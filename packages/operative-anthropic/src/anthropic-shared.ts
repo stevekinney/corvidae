@@ -1,0 +1,440 @@
+import {
+  type GenerateResponse,
+  type ResolvedCommonParameters,
+  type ToolChoice,
+  anthropicSamplingSupport,
+  createModelCatalog,
+  ProviderError,
+} from '@lostgradient/operative/provider-kit';
+import {
+  anthropicDisabledThinkingRule,
+  anthropicRejectsManualThinking,
+  EFFORTS_THAT_FORBID_DISABLED_THINKING,
+} from './anthropic-thinking.ts';
+import {
+  ANTHROPIC_FORCED_TOOL_CHOICE_REJECTED,
+  toAnthropicToolChoice,
+} from './anthropic-tool-choice.ts';
+import type {
+  AnthropicMessageCreateRequest,
+  AnthropicMessageResponse,
+  AnthropicThinkingConfig,
+} from './anthropic-types.ts';
+
+/** The only values a `defaults-only` model accepts, and only one of the two per request. */
+const DEFAULT_ONLY_SAMPLING_VALUES = Object.freeze({ temperature: 1, topP: 0.99 });
+
+/**
+ * Anthropic's floor for an enabled thinking budget, quoted from
+ * `ThinkingConfigEnabled` in `@anthropic-ai/sdk`: "Must be ≥1024 and less than
+ * `max_tokens`."
+ */
+const MINIMUM_THINKING_BUDGET_TOKENS = 1024;
+
+/**
+ * The only `temperature` Anthropic accepts while thinking is on. Its docs:
+ * "On older models, the restriction applies only while thinking is on:
+ * `temperature` and `top_k` are incompatible with thinking" — and on Opus 4.7
+ * and later a non-default `temperature` is rejected regardless of thinking.
+ * Either way, `1` (the API default) is the single value that always survives.
+ */
+const THINKING_TEMPERATURE = 1;
+
+/**
+ * Anthropic's floor for `top_p` while thinking is on, quoted from the same
+ * sentence: "`top_p` is allowed at values between 0.95 and 1." The bound is
+ * inclusive, so exactly `0.95` is accepted.
+ */
+const MINIMUM_THINKING_TOP_P = 0.95;
+
+/**
+ * Rejects an `{ type: 'enabled' }` thinking budget below Anthropic's documented
+ * minimum of 1024 tokens.
+ *
+ * This half of the constraint depends on nothing but the budget itself, so it
+ * is checked once at construction. The upper bound — which depends on the
+ * `max_tokens` actually sent — lives in
+ * {@link assertThinkingBudgetBelowMaximum} instead.
+ *
+ * This throws rather than raising the budget: quietly substituting 1024 would
+ * spend tokens the caller never asked for. The error is a configuration fault,
+ * so it carries no status code and is not retryable.
+ */
+export function assertThinkingBudgetMeetsMinimum(
+  thinking: AnthropicThinkingConfig | undefined,
+): void {
+  if (thinking?.type !== 'enabled') return;
+
+  const budget = thinking.budget_tokens;
+
+  if (budget < MINIMUM_THINKING_BUDGET_TOKENS) {
+    throw new ProviderError({
+      provider: 'anthropic',
+      cause: undefined,
+      message:
+        `[provider:anthropic] thinking.budget_tokens (${budget}) is below Anthropic's minimum ` +
+        `of ${MINIMUM_THINKING_BUDGET_TOKENS}.`,
+    });
+  }
+}
+
+/**
+ * Rejects an `{ type: 'enabled' }` thinking budget that is not strictly below
+ * the `max_tokens` this request will actually send, naming both numbers.
+ *
+ * Deliberately per request, not per construction. `GenerateContext.maximumTokens`
+ * is documented to override the provider's construction-time `maximumTokens`
+ * for that call, so the effective limit is not known until the call happens: a
+ * 4096-token budget against the default `maximumTokens` of 4096 is perfectly
+ * valid for a caller that supplies `maximumTokens: 8192` on every invocation.
+ * Checking at construction would reject a configuration that never produces an
+ * invalid request.
+ *
+ * This throws rather than adjusting either number, deliberately. Quietly
+ * raising `max_tokens` would change billing the caller never asked for, and
+ * quietly lowering `budget_tokens` would degrade the feature they explicitly
+ * requested — both would substitute our guess for their intent. The error is a
+ * configuration fault, so it carries no status code and is not retryable.
+ *
+ * The check is strict because this provider sends no beta headers. Anthropic
+ * documents one exception — under interleaved thinking
+ * (`interleaved-thinking-2025-05-14`) the budget spans a whole assistant turn
+ * and may exceed `max_tokens` — which becomes reachable only if a `betas`
+ * option is ever added here.
+ */
+export function assertThinkingBudgetBelowMaximum(
+  thinking: AnthropicThinkingConfig | undefined,
+  maximumTokens: number,
+): void {
+  if (thinking?.type !== 'enabled') return;
+
+  const budget = thinking.budget_tokens;
+
+  if (budget >= maximumTokens) {
+    throw new ProviderError({
+      provider: 'anthropic',
+      cause: undefined,
+      message:
+        `[provider:anthropic] thinking.budget_tokens (${budget}) must be less than max_tokens ` +
+        `(${maximumTokens}). Raise maximumTokens above ${budget}, or lower thinking.budget_tokens ` +
+        `below ${maximumTokens}.`,
+    });
+  }
+}
+
+/**
+ * Names a `toolChoice` that forces tool use, or `undefined` when it does not.
+ *
+ * Anthropic's two forcing shapes are `{ type: 'any' }` and
+ * `{ type: 'tool', name }`, which this package's neutral `ToolChoice` spells
+ * `'required'` and `{ tool }` respectively — see `toAnthropicToolChoice`.
+ */
+function describeForcedToolChoice(choice: ToolChoice | undefined): string | undefined {
+  if (choice === 'required') return `'required'`;
+  if (typeof choice === 'object') return `the named tool '${choice.tool}'`;
+  return undefined;
+}
+
+/**
+ * Rejects manual extended thinking (`thinking.type 'enabled'`) before any
+ * request on a model whose documentation says Anthropic returns a 400 for it
+ * (`ANTHROPIC_MANUAL_THINKING` in `anthropic-thinking.ts`). Models the table does
+ * not list are left to the API.
+ */
+export function assertManualThinkingSupported(
+  resolvedModel: string,
+  thinking: AnthropicThinkingConfig | undefined,
+): void {
+  if (thinking?.type !== 'enabled' || !anthropicRejectsManualThinking(resolvedModel)) return;
+  throw new ProviderError({
+    provider: 'anthropic',
+    cause: undefined,
+    message:
+      `[provider:anthropic] Model ${resolvedModel} rejects thinking.type 'enabled' with ` +
+      `budget_tokens: manual extended thinking is not supported on this model. Omit thinking or ` +
+      `use 'adaptive', and control thinking depth with effort.`,
+  });
+}
+
+/**
+ * Rejects forced tool choice (`'required'` or a named tool) before any request
+ * on the models that return a 400 for it (`anthropic-tool-choice.ts`). `'auto'`,
+ * `'none'` and an unset choice always pass.
+ */
+export function assertToolChoiceSupported(
+  resolvedModel: string,
+  toolChoice: ToolChoice | undefined,
+): void {
+  const forced = describeForcedToolChoice(toolChoice);
+  if (forced === undefined || !ANTHROPIC_FORCED_TOOL_CHOICE_REJECTED.has(resolvedModel)) return;
+  throw new ProviderError({
+    provider: 'anthropic',
+    cause: undefined,
+    message:
+      `[provider:anthropic] Model ${resolvedModel} rejects forced tool use: toolChoice ${forced} ` +
+      `returns a 400. Use toolChoice 'auto' or 'none' and state in the prompt when the tool ` +
+      `applies.`,
+  });
+}
+
+/**
+ * Rejects `thinking: { type: 'disabled' }` before any request on a model whose
+ * documentation says Anthropic returns a 400 for it (`anthropic-thinking.ts`): at
+ * every effort on `never` models, and at `xhigh`/`max` effort on
+ * `high-or-below` models. `effort` is the value actually sent after
+ * per-model degradation, since that is what the API sees. A model the table
+ * does not list is left to the API.
+ */
+export function assertDisabledThinkingSupported(
+  resolvedModel: string,
+  thinking: AnthropicThinkingConfig | undefined,
+  resolvedEffort: string | undefined,
+): void {
+  if (thinking?.type !== 'disabled') return;
+  const rule = anthropicDisabledThinkingRule(resolvedModel);
+
+  if (rule === 'never') {
+    throw new ProviderError({
+      provider: 'anthropic',
+      cause: undefined,
+      message:
+        `[provider:anthropic] Model ${resolvedModel} rejects thinking.type 'disabled' at every ` +
+        `effort level: thinking cannot be turned off on this model. Omit thinking or use ` +
+        `'adaptive', and lower effort to reduce thinking.`,
+    });
+  }
+
+  if (
+    rule === 'high-or-below' &&
+    resolvedEffort !== undefined &&
+    (EFFORTS_THAT_FORBID_DISABLED_THINKING as readonly string[]).includes(resolvedEffort)
+  ) {
+    throw new ProviderError({
+      provider: 'anthropic',
+      cause: undefined,
+      message:
+        `[provider:anthropic] Model ${resolvedModel} rejects thinking.type 'disabled' at effort ` +
+        `'${resolvedEffort}': it accepts disabled thinking only at 'high' effort or below. Lower ` +
+        `effort, or omit thinking or use 'adaptive' to keep thinking on.`,
+    });
+  }
+}
+
+/**
+ * Rejects `temperature` and `topP` before any request when the resolved model
+ * is recorded as accepting only default sampling values (`shared/sampling.ts`, the
+ * same table the model catalog reads, so a row never advertises what this
+ * throws on). A model the table does not settle is left alone: the request is
+ * sent and a 400 is classified afterwards (COR-989). Like the thinking guard
+ * below, it runs at construction, since both fields are construction-time options.
+ */
+export function assertSamplingParametersSupported(
+  resolvedModel: string,
+  common: ResolvedCommonParameters,
+): void {
+  if (anthropicSamplingSupport(resolvedModel) !== 'defaults-only') return;
+
+  const problems: string[] = [];
+  const { temperature, topP } = common;
+  const defaults = DEFAULT_ONLY_SAMPLING_VALUES;
+  if (temperature !== undefined && temperature !== defaults.temperature) {
+    problems.push(`temperature (${temperature}) must be ${defaults.temperature}`);
+  }
+  if (topP !== undefined && topP !== defaults.topP) {
+    problems.push(`topP (${topP}) must be ${defaults.topP}`);
+  }
+  if (temperature !== undefined && topP !== undefined) {
+    problems.push('temperature and topP cannot be sent together');
+  }
+  if (problems.length === 0) return;
+
+  throw new ProviderError({
+    provider: 'anthropic',
+    cause: undefined,
+    message:
+      `[provider:anthropic] Model ${resolvedModel} rejects this sampling configuration: ` +
+      `${problems.join('; ')}. Anthropic accepts temperature ${defaults.temperature} or topP ` +
+      `${defaults.topP} alone, never both and never another value — omit them and guide the ` +
+      `model with prompting instead.`,
+  });
+}
+
+/**
+ * Rejects the option combinations Anthropic documents as incompatible with an
+ * active `thinking` configuration, naming both conflicting fields.
+ *
+ * Three constraints, each verified against Anthropic's thinking documentation
+ * rather than assumed, because they do not all apply to the same modes:
+ *
+ * - **`temperature`** — "the restriction applies only while thinking is on:
+ *   `temperature` and `top_k` are incompatible with thinking." Applies to
+ *   `enabled` *and* `adaptive`; only the default of `1` survives.
+ * - **`topP`** — from the same sentence, "`top_p` is allowed at values between
+ *   0.95 and 1." Also both active modes. This package sends no `top_k`, so
+ *   that third parameter has nothing to guard.
+ * - **forced `toolChoice`** — `enabled` **only**. Anthropic is explicit that
+ *   the limitation is a manual-extended-thinking one: "Adaptive thinking,
+ *   including on models where thinking is on by default, supports forced tool
+ *   use." Guarding `adaptive` here would reject requests the API accepts.
+ *
+ * `{ type: 'disabled' }` and an absent `thinking` skip all three — the
+ * conflicts exist only while thinking is actually on.
+ *
+ * Checked once at construction, which is complete for this provider: all three
+ * fields are construction-time options and none of them is re-read from
+ * `GenerateContext` on the way to the request body. (`GenerateContext.toolChoice`
+ * exists, but the Anthropic provider lowers `options.toolChoice` only — if that
+ * ever changes, this check has to move per request alongside it.)
+ *
+ * A request this guard rejects is never sent, so it and the post-response
+ * sampling-parameter classification in `anthropic.ts` (COR-989), which only
+ * sees a 400 the API actually returned, can never both fire for one request.
+ * That classification still covers what this guard lets through: a request
+ * with no thinking configuration, or a thinking request whose `topP` clears
+ * 0.95 but which a model rejects because it refuses any non-default value.
+ */
+export function assertThinkingParametersCompatible(
+  thinking: AnthropicThinkingConfig | undefined,
+  toolChoice: ToolChoice | undefined,
+  common: ResolvedCommonParameters,
+): void {
+  if (thinking === undefined || thinking.type === 'disabled') return;
+
+  if (common.temperature !== undefined && common.temperature !== THINKING_TEMPERATURE) {
+    throw new ProviderError({
+      provider: 'anthropic',
+      cause: undefined,
+      message:
+        `[provider:anthropic] temperature (${common.temperature}) cannot be combined with ` +
+        `thinking.type '${thinking.type}'. Anthropic accepts only the default temperature of ` +
+        `${THINKING_TEMPERATURE} while thinking is on — omit temperature, or set thinking.type ` +
+        `to 'disabled'.`,
+    });
+  }
+
+  if (common.topP !== undefined && common.topP < MINIMUM_THINKING_TOP_P) {
+    throw new ProviderError({
+      provider: 'anthropic',
+      cause: undefined,
+      message:
+        `[provider:anthropic] topP (${common.topP}) cannot be combined with thinking.type ` +
+        `'${thinking.type}'. Anthropic accepts top_p only between ${MINIMUM_THINKING_TOP_P} and 1 ` +
+        `while thinking is on — raise topP to at least ${MINIMUM_THINKING_TOP_P}, omit it, or set ` +
+        `thinking.type to 'disabled'.`,
+    });
+  }
+
+  const forced = describeForcedToolChoice(toolChoice);
+
+  if (thinking.type === 'enabled' && forced !== undefined) {
+    throw new ProviderError({
+      provider: 'anthropic',
+      cause: undefined,
+      message:
+        `[provider:anthropic] toolChoice ${forced} cannot be combined with thinking.type ` +
+        `'enabled'. Anthropic rejects forced tool use with manual extended thinking — use ` +
+        `toolChoice 'auto' or 'none', or switch thinking.type to 'adaptive', which does support ` +
+        `forced tool use.`,
+    });
+  }
+}
+
+/**
+ * Build a provider-neutral {@link TokenUsage} from an Anthropic `usage` payload.
+ *
+ * Anthropic's `input_tokens` already EXCLUDES cache activity — it,
+ * `cache_creation_input_tokens`, and `cache_read_input_tokens` are three
+ * disjoint buckets. `cacheCreationTokens`/`cacheReadTokens` are only set when
+ * the API actually reported a numeric value; they are never fabricated as
+ * `0`.
+ *
+ * The SDK's real `Usage` type declares both cache fields `number | null`, not
+ * merely optional — `null` is the API's way of saying "no cache activity,"
+ * the same thing an absent field would mean. Checking `!= null` (rather than
+ * `!== undefined`) treats the two the same, so this omits the field for
+ * either rather than forwarding a literal `null` into {@link TokenUsage},
+ * whose own type never accepted one.
+ */
+export function buildAnthropicUsage(
+  usage: NonNullable<AnthropicMessageResponse['usage']>,
+): GenerateResponse['usage'] {
+  return {
+    prompt: usage.input_tokens ?? 0,
+    completion: usage.output_tokens ?? 0,
+    total: (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0),
+    ...(usage.cache_creation_input_tokens != null
+      ? { cacheCreationTokens: usage.cache_creation_input_tokens }
+      : {}),
+    ...(usage.cache_read_input_tokens != null
+      ? { cacheReadTokens: usage.cache_read_input_tokens }
+      : {}),
+  };
+}
+
+/**
+ * The single `BackendDescriptor` (AB-64 AC2) matching `model` on the
+ * `'messages'` endpoint, from the static seed catalog — an array of zero or
+ * one entries, never fabricated. Zero when `model` has no seed row (a model
+ * newer than the seed, or a typo): the resulting `GenerateFunction` then
+ * reports `mode: 'opaque'` rather than an invented descriptor.
+ */
+export function anthropicDescriptorsFor(model: string) {
+  return createModelCatalog().descriptors.filter(
+    (descriptor) => descriptor.provider === 'anthropic' && descriptor.model === model,
+  );
+}
+
+interface AnthropicRequestParts {
+  model: string;
+  messages: AnthropicMessageCreateRequest['messages'];
+  maxTokens: number;
+  stream?: boolean;
+  system: AnthropicMessageCreateRequest['system'];
+  effort: unknown;
+  thinking: AnthropicMessageCreateRequest['thinking'];
+  metadata: AnthropicMessageCreateRequest['metadata'];
+  tools: unknown;
+  toolChoice: ToolChoice | undefined;
+  common: ResolvedCommonParameters;
+}
+
+/**
+ * Builds the `messages.create` request body from the resolved parts of one call: the common sampling parameters, effort, thinking, metadata, tools, and tool choice.
+ */
+export function buildAnthropicMessageRequest(
+  parts: AnthropicRequestParts,
+): AnthropicMessageCreateRequest {
+  const params: AnthropicMessageCreateRequest = {
+    model: parts.model,
+    messages: parts.messages,
+    max_tokens: parts.maxTokens,
+    ...(parts.stream ? { stream: true } : {}),
+  };
+  addAnthropicOptionalFields(params, parts);
+  addAnthropicTools(params, parts.tools, parts.toolChoice);
+  return params;
+}
+
+function addAnthropicOptionalFields(
+  params: AnthropicMessageCreateRequest,
+  parts: AnthropicRequestParts,
+): void {
+  if (parts.system !== undefined) params['system'] = parts.system;
+  if (parts.effort !== undefined) params['output_config'] = { effort: parts.effort };
+  if (parts.thinking) params['thinking'] = parts.thinking;
+  if (parts.metadata) params['metadata'] = parts.metadata;
+  if (parts.common.temperature !== undefined) params['temperature'] = parts.common.temperature;
+  if (parts.common.topP !== undefined) params['top_p'] = parts.common.topP;
+  if (parts.common.stopSequences) params['stop_sequences'] = parts.common.stopSequences;
+}
+
+function addAnthropicTools(
+  params: AnthropicMessageCreateRequest,
+  tools: AnthropicMessageCreateRequest['tools'],
+  toolChoice: ToolChoice | undefined,
+): void {
+  if (!Array.isArray(tools) || tools.length === 0 || toolChoice === 'none') return;
+  params['tools'] = tools;
+  const adapted = toolChoice ? toAnthropicToolChoice(toolChoice) : undefined;
+  if (adapted !== undefined) params['tool_choice'] = adapted;
+}

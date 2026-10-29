@@ -72,6 +72,8 @@ Arrows run from consumer to provider. Every manifest edge appears below, includi
 | `@lostgradient/markdown` | None | `@lostgradient/typescript` |
 | `@lostgradient/memory` | `armorer`, `@lostgradient/cryptography`, `@lostgradient/embeddings`, `@lostgradient/lifecycle`, `@lostgradient/weft` | `@lostgradient/typescript` |
 | `@lostgradient/operative` | `armorer`, `conversationalist`, `@lostgradient/cryptography`, `@lostgradient/embeddings`, `@lostgradient/lifecycle`, `@lostgradient/tool-protocol`, `@lostgradient/weft` | `@lostgradient/typescript` |
+| `@lostgradient/operative-anthropic` | `armorer`, `conversationalist`, `@lostgradient/operative` | `@lostgradient/lifecycle`, `@lostgradient/testing`, `@lostgradient/typescript` |
+| `@lostgradient/operative-openai` | `armorer`, `conversationalist`, `@lostgradient/operative` | `@lostgradient/lifecycle`, `@lostgradient/testing`, `@lostgradient/typescript` |
 | `@lostgradient/skills` | `armorer`, `@lostgradient/cryptography`, `@lostgradient/lifecycle`, `@lostgradient/tool-protocol`, `@lostgradient/weft` | `@lostgradient/typescript` |
 | `@lostgradient/testing` | None | `@lostgradient/typescript` |
 | `@lostgradient/tool-protocol` | `@lostgradient/lifecycle` | `@lostgradient/typescript` |
@@ -97,7 +99,9 @@ A root override consolidates SvelteKit and Express on `cookie@0.7.2`. This remov
 | `@lostgradient/editor` | `@floating-ui/dom`, `@milkdown/ctx`, `@milkdown/kit`, `@milkdown/prose`, `esm-env`, `prosemirror-inputrules`, `prosemirror-model`, `prosemirror-state`, `prosemirror-view`, `svelte` |
 | `@lostgradient/markdown` | `@shikijs/engine-oniguruma`, `@shikijs/langs`, `@shikijs/types`, `@types/mdast`, `@types/unist`, `comlink`, `diff-match-patch`, `hast-util-sanitize`, `js-yaml`, `rehype-katex`, `rehype-sanitize`, `rehype-stringify`, `remark-gfm`, `remark-math`, `remark-parse`, `remark-rehype`, `remark-stringify`, `shiki`, `unified`, `unist-util-visit` |
 | `@lostgradient/memory` | `zod` |
-| `@lostgradient/operative` | `@anthropic-ai/sdk`, `@google/genai`, `@opentelemetry/api`, `openai`, `zod` |
+| `@lostgradient/operative` | `@google/genai`, `@opentelemetry/api`, `zod` |
+| `@lostgradient/operative-anthropic` | `@anthropic-ai/sdk` |
+| `@lostgradient/operative-openai` | `openai` |
 | `@lostgradient/skills` | `gray-matter`, `zod` |
 | `@lostgradient/testing` | `@axe-core/playwright`, `@playwright/test`, `@testing-library/svelte`, `happy-dom`, `postcss-value-parser`, `svelte`, `typescript`, `zod` |
 | `@lostgradient/weft` | `@msgpack/msgpack`, `@valibot/to-json-schema`, `valibot`, `zod` |

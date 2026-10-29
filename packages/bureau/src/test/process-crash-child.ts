@@ -9,14 +9,14 @@
  * trapped, so whatever the parent finds afterwards was genuinely on disk
  * before the process died and the claim it held is left to lapse.
  *
- * `verify` and `relaunch-recover` are the exceptions: each is a later boot
- * over a store a crashed child left behind, and exits normally.
+ * `verify`, `relaunch-recover`, and `race-recover` are the exceptions: each is
+ * a later boot over a store a crashed child left behind, and exits normally.
  *
  * Not a test file: it is spawned by `process-crash-recovery.test.ts`. Each
  * scenario is a named function below; the `scenarios` table is the extension
  * point for further crash scenarios.
  */
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
@@ -45,6 +45,13 @@ import {
   SECOND_HUMAN_WAIT_SIGNAL,
   SESSION_ID,
 } from './process-crash-work-integrity-fixtures';
+import {
+  RACER_GO_FILE,
+  RACER_READY_FILE,
+  RACER_REPORT_FILE,
+  settleRacer,
+  startRacer,
+} from './process-crash-racer';
 import type { AgentDefinitions } from '../agent-catalog';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { LMDBStorage } from '@lostgradient/storage-lmdb';
@@ -416,6 +423,27 @@ async function relaunchRecover(): Promise<void> {
   process.exit(shutdown.unresolved === 0 ? 0 : 1);
 }
 
+/**
+ * COR-1390: the second of the two racing successors after `park-after-step-0`
+ * died, run here so the test's own process holds the only other handle on the
+ * store (COR-1795). Opens the store, says it is ready, and boots its Bureau
+ * when the parent says go, at the moment the parent boots the other racer.
+ * Writes what it observed once the run has settled, then shuts down.
+ */
+async function raceRecover(): Promise<void> {
+  const directory = dirname(markerPath as string);
+  const { runId } = JSON.parse(readFileSync(markerPath as string, 'utf8')) as { runId: string };
+  const storage =
+    backend === 'lmdb' ? new LMDBStorage(storagePath as string) : new BunSQLiteStorage(storagePath);
+  writeFileSync(join(directory, RACER_READY_FILE), '', 'utf8');
+  await pollUntil('the parent to start the race', () => existsSync(join(directory, RACER_GO_FILE)));
+  const racer = await startRacer(storage);
+  const report = await settleRacer(racer, runId);
+  writeFileSync(join(directory, RACER_REPORT_FILE), JSON.stringify(report), 'utf8');
+  const shutdown = await racer.bureau.shutdown();
+  process.exit(shutdown.unresolved === 0 ? 0 : 1);
+}
+
 /** COR-1391: a non-crashing boot over the recovered, shut-down store. */
 async function verify(): Promise<void> {
   const directory = dirname(markerPath as string);
@@ -491,6 +519,7 @@ const scenarios: Record<string, () => Promise<void>> = {
   'human-wait-two-calls-parked': () => humanWaitParked(true),
   'approve-then-crash': approveThenCrash,
   'relaunch-recover': relaunchRecover,
+  'race-recover': raceRecover,
   verify,
 };
 

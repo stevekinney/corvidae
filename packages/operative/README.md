@@ -10,7 +10,7 @@ Declare `"@lostgradient/operative": "workspace:*"` in the consuming workspace's 
 
 - Defines agents with `createAgent()` and drives the loop directly with `createActiveRun()`.
 - Executes tools through `armorer` and conversation history through `conversationalist`.
-- Accepts caller-provided generate functions and includes Anthropic, OpenAI, and Gemini provider factories.
+- Accepts caller-provided generate functions and includes a Gemini provider factory. Anthropic's lives in `@lostgradient/operative-anthropic` and OpenAI's in `@lostgradient/operative-openai`.
 - Provides sessions, session stores, durable run support, scheduler primitives, and heartbeat utilities.
 - Adds hooks for generation, tool execution, context assembly, validation, run lifecycle, and error handling.
 - Provides guardrails, retry mutators, cache middleware, context compaction, streaming, backpressure, budgets, handoffs, and subagents. Supervisors and agent discovery live in `@lostgradient/bureau`.
@@ -21,7 +21,7 @@ Declare `"@lostgradient/operative": "workspace:*"` in the consuming workspace's 
 
 The core loop starts with an agent definition, a conversation, tools, and a `GenerateFunction`. For each step, it prepares context, calls the generate function, validates the response, executes requested tools, appends tool results back to the conversation, emits typed events, and evaluates stop conditions.
 
-Provider factories such as `createAnthropicProvider`, `createOpenAIProvider`, and `createGeminiProvider` are exported from `@lostgradient/operative`, alongside fallover, routing, and embedding helpers. Callers can also supply any function that satisfies `GenerateFunction`. Durable execution, scheduler tasks, and session persistence build on the same loop so product surfaces can recover or resume runs without changing agent code.
+The Gemini factory `createGeminiProvider` is exported from `@lostgradient/operative`, alongside fallover, routing, and embedding helpers. Anthropic's factories (`createAnthropicProvider` and its siblings) are in the separate `@lostgradient/operative-anthropic` package, and OpenAI's (`createOpenAIProvider` and its siblings) are in `@lostgradient/operative-openai`. Callers can also supply any function that satisfies `GenerateFunction`. Durable execution, scheduler tasks, and session persistence build on the same loop so product surfaces can recover or resume runs without changing agent code.
 
 ## Project Role
 
@@ -289,7 +289,7 @@ Each derivation runs these checks, in order, before anything else sees the media
 4. **Cost.** `RunOptions.mediaCostEstimator` (also a `createAgent` option) returns a `MediaCostOutcome` per part. Without one, `createCatalogMediaCostEstimator` costs the part against the admitting backends: a part is acceptable when at least one of them takes it, and the token figure is an estimate from the part's bytes and a per-modality rate, with `basis` `catalog-estimate`. It is not an upper bound: the rate is per KiB, so a text-heavy document costs more tokens than it assumes, and an underestimate surfaces as a typed provider context-overflow error, which the overflow mutator answers by compacting. A part of unknown size (a remote URL nothing resolved, a provider file handle) is costed at the largest per-part byte cap among the backends that take it, and is `size-unknown` when none of them declares one. A `remote-url` on a backend that does not fetch URLs itself is `source-form-not-accepted`. A caller with a provider token counter supplies its own estimator and reports `provider-count`.
 5. **Admit.** Any outcome other than `estimated` fails the step with a `MediaAdmissionError` (kind `policy`; code `UNSUPPORTED_MEDIA_TYPE` only when every media part of the message is refused as `modality-not-accepted` or `mime-family-not-accepted`, so the model does not accept that kind of media, and `MEDIA_NOT_ADMITTED` for any other refusal reason or mix, and for a message with any admitted part: a flagged or unverified asset, a count or budget limit, an `unbounded` cost, or an `unsupported` part beside an admitted one) carrying one outcome per refused part, before any provider call; a refusal of a retry mutator's request ends the step the same way, without consulting `onError`. A `generate` function with no descriptors and no estimator therefore admits no media, and every provider factory and wrapper in this package (the Gemini streaming factory under the `generateContentStream` endpoint, `composeGenerate`, routing, fallover, fallback, cache, instrumentation) carries its backends' descriptors so that a plain `createAgent({ generate })` handles media without configuration. Estimated media tokens count toward `contextManagement`'s compaction threshold, and `createContextAssembler` reports them in `BudgetReport.mediaTokens` and `AssemblyResult.mediaCosts`; it leaves a message out, never admits it at zero, when a part is not `estimated`.
 
-The OpenAI, Anthropic, and Gemini factories record what each request delivered in `GenerateResponse.metadata.inputLineage`: one entry per media part with its `from` and `to` source kinds and the `transform` applied, so it lands in the durable transcript beside the assistant message. On a response that only calls tools, the lineage is stamped on the step's first tool-call message instead, since no assistant message is appended. An unsupported combination throws conversationalist's `UnsupportedContentError` outside the SDK `try`, so it is never wrapped in a `ProviderError`.
+The OpenAI, Anthropic, and Gemini factories (the first two in their own packages) record what each request delivered in `GenerateResponse.metadata.inputLineage`: one entry per media part with its `from` and `to` source kinds and the `transform` applied, so it lands in the durable transcript beside the assistant message. On a response that only calls tools, the lineage is stamped on the step's first tool-call message instead, since no assistant message is appended. An unsupported combination throws conversationalist's `UnsupportedContentError` outside the SDK `try`, so it is never wrapped in a `ProviderError`.
 
 `onLLMInput` receives a snapshot copy of the conversation the call sends, not the live object: it is a read-only hook that runs between the binding derivation and the call, so a write to its copy never reaches the request. `createInputGuardrail` inspects every user message appended since the previous generation (every user message after the last assistant message, so several session inputs landing at one step boundary are each inspected), field by field, each text-bearing field as its own detector input: text parts; a media part's `name`, `alt`, `caption`, `transcript`, and `extractedText`; the strings in its `metadata`; and the locator its source names (a `remote-url`'s URL, an `mcp-resource`'s `uri`, a `local-file`'s `path`, an `a2a-reference`'s `agentCardUrl`, a `provider-file`'s `providerFileId`). Locators are read but never rewritten. `sanitize` rewrites only the flagged fields of each flagged message and keeps every media part in order (a URL has no sanitized form, so it blocks). The text a provider reads from a part's own bytes (inline UTF-8, inline base64 or a data URL under a textual media type, or the body a resolver returned) is read through conversationalist's `readMediaBody` and inspected as a field of its own; its bytes cannot be rewritten, so `sanitize` blocks it. A text body that does not decode is blocked, whatever the guardrail's action. A resolved asset the safety gate marked `flagged` is always refused; `assetSafety: { unknown: 'block' }` also refuses assets with no verdict (default `'allow'`).
 
@@ -607,7 +607,7 @@ const generate: GenerateFunction = async ({ conversation, toolbox }) => ({
 });
 ```
 
-The root also exports ready-made generate functions for Anthropic, OpenAI, and Gemini.
+The root also exports a ready-made generate function for Gemini. Anthropic's is in `@lostgradient/operative-anthropic` and OpenAI's in `@lostgradient/operative-openai`.
 
 ### Sessions
 
@@ -1372,69 +1372,48 @@ const { messages } = assembler({
 });
 ```
 
-The `cacheBoundary` mark is the same conversation-level primitive `conversationalist`'s Anthropic adapter already lowers to a `cache_control` breakpoint (`toAnthropicMessages`). `createAnthropicProvider` and `createAnthropicProviderStream` consume it directly—pass `assembler` and `contextBudget` and every request runs through stable-prefix assembly instead of sending the conversation verbatim:
-
-```typescript
-import {
-  createAnthropicProvider,
-  createContextAssembler,
-  createTokenBudget,
-} from '@lostgradient/operative';
-import type { Message } from 'conversationalist';
-
-declare const toolUsageNotesMessage: Message;
-
-const generate = createAnthropicProvider({
-  model: 'claude-sonnet-4-20250514',
-  assembler: createContextAssembler(),
-  contextBudget: createTokenBudget({ maxTokens: 100_000 }),
-  pinnedMessages: [toolUsageNotesMessage],
-});
-```
-
-**Cache economics.** Anthropic prices a cache write at 1.25x the base prompt rate and a cache read at 0.1x (`estimateCost` already applies this—see `cost-estimation.ts`). A run whose system prompt is a few thousand tokens pays that 1.25x premium once, on the first step, then reads the same prefix at 0.1x on every following step instead of paying full price for it again—a ~90% cost cut on that slice of the request for steps 2 onward. Prompt-cache hit rate is exposed per step and cumulatively on `usage.accumulated` (`UsageAccumulatedEvent.stepCacheHitRate` / `totalCacheHitRate`, computed by `estimateCacheHitRate`). `test/anthropic/prompt-cache-economics.test.ts` walks through these numbers end to end against the mock Anthropic client (no live API calls)—see it for the worked example.
-
-**Extended (1-hour) cache TTL.** Anthropic's cache breakpoints default to a 5-minute TTL. Passing `extendedCacheTtl: true` to `createAnthropicProvider` / `createAnthropicProviderStream` opts every `cache_control` breakpoint lowered from a `cacheBoundary` mark into the extended one-hour TTL instead (`cache_control: { type: 'ephemeral', ttl: '1h' }`), which Anthropic bills at a higher cache-write rate in exchange for a longer-lived cache. It only takes effect on requests that actually have a cache boundary (i.e. `assembler` + `contextBudget`, or an already-marked conversation). OpenAI and Gemini use implicit, non-configurable prompt caching—there's no checkpoint metadata to interpret, so this option doesn't apply to `createOpenAIProvider` / `createGeminiProvider`.
+The `cacheBoundary` mark is the same conversation-level primitive `conversationalist`'s Anthropic adapter already lowers to a `cache_control` breakpoint (`toAnthropicMessages`). `@lostgradient/operative-anthropic`'s provider factories consume it directly: pass `assembler` and `contextBudget` and every request runs through stable-prefix assembly. Its README covers the options and the cache economics. OpenAI and Gemini use implicit, non-configurable prompt caching, so they have no checkpoint metadata to interpret.
 
 ### Provider definitions and `provider-kit`
 
-A host that picks a model provider by name holds a `ProviderDefinition`: a `name` and two methods, `generate(configuration)` and `stream(configuration)`. Operative ships `anthropicProvider`, `openaiProvider`, and `geminiProvider`. Each passes the configuration object, whole, to the matching factory (`createAnthropicProvider` and `createAnthropicProviderStream`, and so on), so a field the shared `ProviderConfigurationBase` does not name, such as an injected `client`, still reaches the factory:
+A host that picks a model provider by name holds a `ProviderDefinition`: a `name` and two methods, `generate(configuration)` and `stream(configuration)`. Each provider package ships its own definition (`@lostgradient/operative-anthropic` ships `anthropicProvider` and `@lostgradient/operative-openai` ships `openaiProvider`, for example), and Operative itself ships `geminiProvider`. A definition passes the configuration object, whole, to its factories, so a field the shared `ProviderConfigurationBase` does not name, such as an injected `client`, still reaches the factory. The provider package's README shows a real definition registered; this is the shape any of them has:
 
 ```typescript
-import {
-  anthropicProvider,
-  openaiProvider,
-  type ProviderDefinition,
+import type {
+  GenerateFunction,
+  ProviderDefinition,
+  StreamingGenerateFunction,
 } from '@lostgradient/operative';
 
-const definitions: ProviderDefinition[] = [anthropicProvider, openaiProvider];
+declare const generate: GenerateFunction;
+declare const stream: StreamingGenerateFunction;
 
-const generate = definitions
-  .find((definition) => definition.name === 'anthropic')
-  ?.generate({ provider: 'anthropic', model: 'claude-sonnet-4-20250514' });
+const example: ProviderDefinition = {
+  name: 'example',
+  generate: () => generate,
+  stream: () => stream,
+};
+
+const definitions: ProviderDefinition[] = [example];
+
+const selected = definitions
+  .find((definition) => definition.name === 'example')
+  ?.generate({ provider: 'example', model: 'example-model' });
 ```
 
 `stream` returns a streaming generate function, which a host wraps with `withEnhancedStreaming` to get an ordinary one. An injected `client` has to serve both methods, because one configuration feeds both; to inject a client that serves only one, call the factory directly.
 
-`@lostgradient/operative/provider-kit` is the authoring surface for a provider package: the request and response types, the error classes, the parameter and model resolvers every provider shares, and the stream-normalizer helpers. A provider package imports Operative only through `@lostgradient/operative`, `@lostgradient/operative/provider-kit`, and its testing entry points. `scripts/check-provider-imports.ts`, which runs in Operative's `lint`, keeps the line between provider-neutral files and per-provider files (`src/providers/anthropic*.ts`, `openai*.ts`, `gemini*.ts`, and the per-provider batch, embedding, and stream-normalizer files). It reads all of `src/` and `test/`, tests included, and judges a name by the file that declares it, so importing a provider-owned symbol through a barrel fails too. A provider's tests live in `test/<provider>/`.
+`@lostgradient/operative/provider-kit` is the authoring surface for a provider package: the request and response types, the error classes, the parameter and model resolvers every provider shares, and the stream-normalizer helpers. A provider package imports Operative only through `@lostgradient/operative`, `@lostgradient/operative/provider-kit`, and its testing entry points. `scripts/check-provider-imports.ts`, which runs in Operative's `lint`, keeps the line between provider-neutral files and per-provider files (`src/providers/gemini*.ts` and the per-provider batch, embedding, and stream-normalizer files). Anthropic's and OpenAI's files have already moved to `@lostgradient/operative-anthropic` and `@lostgradient/operative-openai`. It reads all of `src/` and `test/`, tests included, and judges a name by the file that declares it, so importing a provider-owned symbol through a barrel fails too. A provider's tests live in `test/<provider>/`, or in its own package once it has moved.
 
 `@lostgradient/operative/provider-testing` is the provider contract suite. `runProviderContract({ definition, createMockClient, fixtures })` registers the cases every provider shares (its name, handing the whole configuration and the injected `client` to both the generate and the stream factory, the backend descriptor for the resolved model, and keeping unavailable tools out of the request), and each provider runs it from its own `test/<provider>/contract.test.ts`; only the mock client and how to read a recorded request come from the provider. The entry also exports the two loop seams, `executeLoop` and `sealDanglingToolCalls`, that a provider's tests drive directly.
 
 ### Providers Behind a Proxy
 
-Every shipped provider (`createAnthropicProvider`, `createOpenAIProvider`, `createGeminiProvider`, and their streaming counterparts) accepts a `baseURL` override and an arbitrary `apiKey` string with no shape validation—both pass straight to the underlying SDK client, so a credential-injecting proxy can sit in front of the real provider and swap in the real key server-side:
+Every shipped provider (`createAnthropicProvider` from `@lostgradient/operative-anthropic`, `createOpenAIProvider` from `@lostgradient/operative-openai`, `createGeminiProvider`, and their streaming counterparts) accepts a `baseURL` override and an arbitrary `apiKey` string with no shape validation—both pass straight to the underlying SDK client, so a credential-injecting proxy can sit in front of the real provider and swap in the real key server-side.
 
-```typescript
-import { createAnthropicProvider } from '@lostgradient/operative';
+Pass `apiKey` (a placeholder) and `baseURL` (the proxy's origin) to the provider's factory; the provider package's README has a worked example (see `@lostgradient/operative-anthropic`).
 
-const generate = createAnthropicProvider({
-  model: 'claude-sonnet-4-20250514',
-  apiKey: 'placeholder-token', // never a real key—the proxy injects it
-  baseURL: 'https://llm-proxy.internal.example.com',
-});
-```
-
-**Per-provider endpoint allowlist.** Each provider issues requests to exactly one endpoint per generate call (a second, distinct endpoint for the streaming factories of OpenAI and Gemini)—the set below is pinned by `test/<provider>/proxy-contract.test.ts`, which runs each provider (and each streaming counterpart) through a real SDK client against a local `Bun.serve` mock and asserts the exact `(method, path)` set observed over a multi-step run. Use it to build a proxy allowlist:
+**Per-provider endpoint allowlist.** Each provider issues requests to exactly one endpoint per generate call (a second, distinct endpoint for the streaming factories of OpenAI and Gemini)—the set below is pinned by each provider's `proxy-contract.test.ts` (Operative's `test/gemini/` for Gemini, the `test/` directory of `@lostgradient/operative-anthropic` and `@lostgradient/operative-openai` for the other two), which runs the provider (and its streaming counterpart) through a real SDK client against a local `Bun.serve` mock and asserts the exact `(method, path)` set observed over a multi-step run. Use it to build a proxy allowlist:
 
 | Provider | Method | Path | Auth header |
 | --- | --- | --- | --- |
@@ -1445,26 +1424,19 @@ const generate = createAnthropicProvider({
 
 No provider issues a token-counting, models-list, or beta/experimental endpoint call as part of a normal generate step.
 
-**Per-run request metadata.** `requestMetadata` (a `Record<string, string>`) attaches to every generate request of a run:
+**Per-run request metadata.** `requestMetadata` (a `Record<string, string>`) attaches to every generate request of a run.
 
-```typescript
-import { createAnthropicProvider } from '@lostgradient/operative';
-
-const generate = createAnthropicProvider({
-  model: 'claude-sonnet-4-20250514',
-  requestMetadata: { requestId: 'run-42', tenant: 'acme' },
-});
-```
+Pass it as the `requestMetadata` option of the provider's factory; the provider package's README has a worked example (see `@lostgradient/operative-anthropic`).
 
 It's mapped to each provider's native field: Anthropic Messages `metadata`, OpenAI Chat Completions `metadata` (native string-keyed map, up to 16 keys). Gemini's `generateContent` API has no request-level metadata field, so `requestMetadata` is an explicit no-op for `createGeminiProvider` / `createGeminiProviderStream`.
 
-**Anthropic caveat—the whole object is forwarded, but the real API only accepts `user_id`.** Anthropic's `Metadata` type has exactly one documented field (`user_id`); calling `createAnthropicProvider` with `requestMetadata` containing OTHER keys and pointing `baseURL` at Anthropic's real endpoint directly (no proxy in front) gets the request rejected. This option exists for the credential-injecting-proxy case above: the proxy sees the whole object on the wire and can route/log on it, then either forward only `user_id` to the real Anthropic API or strip/translate the rest before forwarding. Don't pass arbitrary `requestMetadata` keys straight through to `api.anthropic.com`—only to a proxy that knows what to do with them.
+Anthropic's `metadata` accepts only `user_id`; see the caveat in `@lostgradient/operative-anthropic`'s README before sending other keys to Anthropic's real endpoint.
 
 ### Provider Errors
 
 Every shipped provider throws `ProviderError` (`@lostgradient/operative`) for HTTP/SDK failures—it carries `provider`, `cause`, an optional `statusCode`, and `retryable` (true only for status codes in `{429, 500, 502, 503, 504}`).
 
-`createAnthropicProviderStream` and `createOpenAIProviderStream` throw the more specific `ToolCallParseError`—a `ProviderError` subclass—when the model finishes a turn but the accumulated tool-call argument JSON it streamed doesn't parse. This is a malformed-output problem, not an API failure: the request succeeded, the model just emitted bad JSON. It carries `toolName`, `toolCallId` (`string | undefined`—the provider didn't always assign one before the parse failed), and `rawArguments` (the unparsed fragment) alongside the inherited `ProviderError` fields, and `retryable` is always `false` since it never has a `statusCode`.
+`createAnthropicProviderStream` (from `@lostgradient/operative-anthropic`) and `createOpenAIProviderStream` (from `@lostgradient/operative-openai`) throw the more specific `ToolCallParseError`—a `ProviderError` subclass—when the model finishes a turn but the accumulated tool-call argument JSON it streamed doesn't parse. This is a malformed-output problem, not an API failure: the request succeeded, the model just emitted bad JSON. It carries `toolName`, `toolCallId` (`string | undefined`—the provider didn't always assign one before the parse failed), and `rawArguments` (the unparsed fragment) alongside the inherited `ProviderError` fields, and `retryable` is always `false` since it never has a `statusCode`.
 
 ```typescript
 import { ToolCallParseError } from '@lostgradient/operative';
@@ -2239,27 +2211,27 @@ import {
   type AgentGenerationProfile,
 } from '@lostgradient/operative';
 import {
-  createAnthropicProvider,
   createModelCatalog,
   readBackendDescriptors,
   withBackendDescriptors,
   type GenerateContext,
+  type GenerateFunction,
 } from '@lostgradient/operative';
 
-// createAnthropicProvider/createOpenAIProvider/createGeminiProvider (and the
-// Anthropic/OpenAI streaming siblings) attach the single seed descriptor
-// matching their resolved model automatically—nothing to do here.
-// createGeminiProviderStream is the one exception: the seed catalog's Gemini
-// row describes `generateContent`, not the distinct `generateContentStream`
-// operation this factory calls, so it deliberately attaches nothing.
-const generate = createAnthropicProvider({ model: 'claude-sonnet-5', apiKey: '...' });
+// A provider factory attaches the single seed descriptor matching its resolved
+// model automatically—nothing to do here. `generate` stands for one, and an agent
+// built on it reads 'fixed'. (createGeminiProviderStream is the one exception:
+// the seed catalog's Gemini row describes `generateContent`, not the distinct
+// `generateContentStream` operation this factory calls, so it deliberately
+// attaches nothing.) A bare function with no descriptors reads 'opaque'.
+declare const generate: GenerateFunction;
 const agent = createAgent({ generate });
-agent.generationProfile.mode; // 'fixed'
+agent.generationProfile.mode;
 
 // A custom GenerateFunction can attach its own descriptor(s)—e.g. one
 // resolved from the seed catalog for a model this package doesn't wrap.
 const catalog = createModelCatalog();
-const customDescriptor = catalog.descriptors.find((d) => d.provider === 'anthropic');
+const customDescriptor = catalog.descriptors[0];
 const custom = withBackendDescriptors(
   async (context: GenerateContext) => {
     /* ... */
@@ -2270,16 +2242,12 @@ const custom = withBackendDescriptors(
 readBackendDescriptors(custom); // the array just attached, never inferred
 
 // A lazy generate function attaches descriptors at construction time—a
-// profile read never triggers the loader (here, the provider module itself).
-const lazyGenerate = createLazyGenerate(
-  () =>
-    import('@lostgradient/operative').then((m) =>
-      m.createAnthropicProvider({ model: 'claude-sonnet-5', apiKey: '...' }),
-    ),
-  {
-    descriptors: customDescriptor ? [customDescriptor] : [],
-  },
-);
+// profile read never triggers the loader (typically a dynamic import of the
+// provider package).
+declare const loadGenerate: () => Promise<GenerateFunction>;
+const lazyGenerate = createLazyGenerate(loadGenerate, {
+  descriptors: customDescriptor ? [customDescriptor] : [],
+});
 
 const readOnly: AgentGenerationProfile = readGenerationProfile(agent);
 ```
@@ -3050,12 +3018,12 @@ By default the tool-call events are reconstructed from the resolved `GenerateRes
 
 ```typescript
 import { TypedEventTarget } from '@lostgradient/lifecycle';
-import { createAnthropicProviderStream } from '@lostgradient/operative';
 import { withEnhancedStreaming } from '@lostgradient/operative';
-import type { StreamEventMap } from '@lostgradient/operative';
+import type { StreamEventMap, StreamingGenerateFunction } from '@lostgradient/operative';
+
+declare const provider: StreamingGenerateFunction; // a provider's streaming factory returns one
 
 const eventTarget = new TypedEventTarget<StreamEventMap>();
-const provider = createAnthropicProviderStream({ model: 'claude-sonnet-5', apiKey: '...' });
 
 const generate = withEnhancedStreaming(provider, {
   eventTarget,
@@ -3232,13 +3200,13 @@ Wraps a `GenerateFunction` with a single CLIENT span per call, following the OTe
 
 ```typescript
 import { instrumentGenerate } from '@lostgradient/operative';
-import { createAnthropicProvider } from '@lostgradient/operative';
+import type { GenerateFunction } from '@lostgradient/operative';
 import { trace } from '@opentelemetry/api';
 
-const rawGenerate = createAnthropicProvider({ model: 'claude-sonnet-5' });
+declare const rawGenerate: GenerateFunction; // a provider factory's result
 const generate = instrumentGenerate(rawGenerate, {
-  provider: 'anthropic',
-  model: 'claude-sonnet-5',
+  provider: 'ollama',
+  model: 'llama3.2',
   tracer: trace.getTracer('my-app', '1.0.0'),
 });
 ```
