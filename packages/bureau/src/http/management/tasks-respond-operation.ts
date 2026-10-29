@@ -64,10 +64,22 @@ function respondFault(error: unknown, taskId: string): unknown {
   if (!(error instanceof BureauError)) return error;
   if (error.code === 'NOT_FOUND') return resourceNotFound('task', taskId);
   if (error instanceof TaskRespondError && error.field !== undefined) {
+    const { field } = error;
     return {
       code: 'InvalidParams',
       message: error.message,
-      data: { issues: [{ path: [error.field], message: error.message, code: 'custom' }] },
+      data: {
+        // An answer that fails its wait's schema reports each field, rooted at the request field
+        // that carried it (COR-1804); any other refusal is one issue on the field.
+        issues:
+          error.issues === undefined
+            ? [{ path: [field], message: error.message, code: 'custom' }]
+            : error.issues.map((issue) => ({
+                path: [field, ...issue.path],
+                message: issue.message,
+                code: issue.code,
+              })),
+      },
     } satisfies OperationFault;
   }
   if (error instanceof TaskRespondError && error.reason !== undefined) {

@@ -1102,12 +1102,15 @@ class BureauShuttingDownError extends BureauError {
 class TaskRespondError extends BureauError {
   readonly field: string | undefined;
   readonly reason: string | undefined;
+  /** Every field of the answer that failed the wait's schema, when that is what was refused (COR-1804). */
+  readonly issues: TaskRespondRefusal['issues'];
 
   constructor(refusal: TaskRespondRefusal) {
     super(refusal.message, refusal.code);
     this.name = 'TaskRespondError';
     this.field = refusal.field;
     this.reason = refusal.reason;
+    this.issues = refusal.issues;
   }
 }
 

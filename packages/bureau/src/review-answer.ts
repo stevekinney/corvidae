@@ -19,6 +19,7 @@
 import type { HumanInputSchema } from '@lostgradient/operative';
 import type { ErrorObject } from 'ajv/dist/2020.js';
 
+import { takesPlainText } from './a2ui/input-form.ts';
 import type { InteractiveSurfaceJsonObject } from './interactive-surface/types.ts';
 import { InteractiveSurfaceSchemaCompiler } from './interactive-surface/validation.ts';
 
@@ -193,6 +194,23 @@ export function validateReviewAnswer(
         code: 'schema',
       },
     ];
+  }
+}
+
+/**
+ * The value text typed to a wait stands for (COR-1804). A person answers in text, in the chat, the
+ * reviews inbox, or the run's wait page, so a wait whose schema asks for more than a string reads
+ * the text as JSON (`3` is the integer 3, `{"a":1}` an object). A schema that asks only for a
+ * string (`type: "string"`, or `enum`/`const` of strings) takes the text as written, never as JSON.
+ * Text that is not JSON is kept as the string it is, so {@link validateReviewAnswer} names the type
+ * the schema wanted instead of a parse error.
+ */
+export function answerFromText(schema: HumanInputSchema, text: string): unknown {
+  if (takesPlainText(schema)) return text;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
   }
 }
 

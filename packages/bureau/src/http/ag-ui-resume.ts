@@ -57,7 +57,11 @@ import type {
   BureauTasks,
   BureauInternals,
 } from '../types.ts';
-import { formatReviewAnswerIssues, validateReviewAnswer } from '../review-answer.ts';
+import {
+  answerFromText,
+  formatReviewAnswerIssues,
+  validateReviewAnswer,
+} from '../review-answer.ts';
 import { type AgUiResumePayload, interruptKey, roundOfEntry } from './ag-ui-interrupts.ts';
 import {
   RESUME_ATTEMPT_FAILED_MESSAGES,
@@ -311,8 +315,8 @@ export function createResume(context: ResumeContext) {
     return rows;
   }
 
-  async function resume(request: ResumeRequest): Promise<Response> {
-    const { threadId, owner, entries } = request;
+  async function resume(received: ResumeRequest): Promise<Response> {
+    const { threadId, owner, entries } = received;
 
     // 1. What the entries say, and whether the caller may answer them. Nothing
     //    here depends on whether a review is still pending, so a retry of a resume
@@ -360,7 +364,7 @@ export function createResume(context: ResumeContext) {
       const mayAnswer =
         review?.kind === 'tool-approval'
           ? reviewOwner !== undefined && reviewOwner === owner
-          : context.mayWrite(request.principal, reviewOwner);
+          : context.mayWrite(received.principal, reviewOwner);
       // An approval of a run that is still going has not been offered: the run has not
       // stored its conversation, so the outcome could not be written into it. It is
       // answered once the run has settled, and until then it is not found.
@@ -375,7 +379,7 @@ export function createResume(context: ResumeContext) {
       // with neither, nothing says which agent's it is, so no route is let through.
       const raisedBy =
         review === undefined ? undefined : (review.agentName ?? (await sessionAgent(reviewOwner)));
-      const otherAgents = review !== undefined && raisedBy !== request.agentName;
+      const otherAgents = review !== undefined && raisedBy !== received.agentName;
       if (
         review === undefined ||
         review.sessionId !== threadId ||
@@ -401,20 +405,41 @@ export function createResume(context: ResumeContext) {
     // An approval of a question that has a schema carries an answer that satisfies it (COR-1804).
     // Checked here, with the same function the core of `reviews.resolve` uses, so a bad answer is
     // refused before the command is claimed and before any entry of the resume is applied: a
-    // resume of several interrupts is all-or-nothing in what it refuses, never half applied.
+    // resume of several interrupts is all-or-nothing in what it refuses, never half applied. A
+    // client that can only type (the chat) sends the answer as text, which is read as the value
+    // the schema asks for (`answerFromText`); the value is what is delivered and what the command's
+    // digest covers, so an exact retry of the same text is the same command.
+    const fitted: ResumeEntry[] = [];
     for (const entry of entries) {
       const review = reviews.get(entry.interruptId);
-      if (entry.status !== 'resolved' || review?.kind !== 'human-wait') continue;
       const payload = entry.payload as AgUiResumePayload;
-      if (payload.decision !== 'approve' || review.inputSchema === undefined) continue;
-      const issues = validateReviewAnswer(review.inputSchema, payload.answer);
+      if (
+        entry.status !== 'resolved' ||
+        review?.kind !== 'human-wait' ||
+        payload.decision !== 'approve' ||
+        review.inputSchema === undefined
+      ) {
+        fitted.push(entry);
+        continue;
+      }
+      const answer =
+        typeof payload.answer === 'string'
+          ? answerFromText(review.inputSchema, payload.answer)
+          : payload.answer;
+      const issues = validateReviewAnswer(review.inputSchema, answer);
       if (issues.length > 0) {
         return context.refuse(
           'INVALID_INPUT',
           `The answer to interrupt "${entry.interruptId}" does not fit its question: ${formatReviewAnswerIssues(issues)}`,
         );
       }
+      fitted.push(
+        answer === payload.answer ? entry : { ...entry, payload: { ...payload, answer } },
+      );
     }
+    const request = fitted.every((entry, index) => entry === entries[index])
+      ? received
+      : { ...received, entries: fitted };
 
     // 2. The command: its key and its digest.
     const identity: CommandLedgerIdentity = {
@@ -425,7 +450,7 @@ export function createResume(context: ResumeContext) {
     };
     const digest = digestCommandPayload({
       entries: canonicalJson(
-        entries
+        request.entries
           .map((entry) => ({
             interruptId: entry.interruptId,
             status: entry.status,

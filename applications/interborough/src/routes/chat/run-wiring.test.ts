@@ -1549,6 +1549,66 @@ describe('a resume the mount refused', () => {
     });
   });
 
+  describe('over an answer that does not fit its question (COR-1804)', () => {
+    const REGION = { ...WAIT, id: 'human-wait:native-1:replicas:0', message: 'How many?' };
+
+    async function asked() {
+      let conversation = appendUserMessage(empty(), 'Scale it');
+      const requests: Array<ReadonlyArray<{ interruptId: string; message: string }>> = [];
+      const stubbed = mount([
+        parkedOn(REGION),
+        refusal('INVALID_INPUT', 'The answer to interrupt "x" does not fit its question: nope'),
+        stream([started('run-2'), finished(undefined, 'run-2')]),
+      ]);
+      const wiring = createChatRunWiring({
+        agentName: () => 'request-human-input',
+        fetch: stubbed.fetch,
+        conversation: () => conversation,
+        onHumanRequests: (waits) => requests.push(waits),
+      });
+      await frames(wiring, conversation);
+      return {
+        wiring,
+        sent: stubbed.sent,
+        requests,
+        type(text: string) {
+          conversation = appendUserMessage(conversation, text);
+          return conversation;
+        },
+      };
+    }
+
+    test('drops the answer, so the next message answers the question afresh and is not refused again', async () => {
+      const run = await asked();
+      const typedRow = run.type('three');
+
+      await frames(run.wiring, typedRow);
+      expect(run.wiring.takeRefusal()).toMatchObject({ code: 'INVALID_INPUT', resume: true });
+      // Nothing is owed: repeating "three" would be refused for ever.
+      expect(run.wiring.owesResume()).toBe(false);
+      expect(run.wiring.takeSettledAnswerRows()).toHaveLength(1);
+      // The question is asked again.
+      expect(run.requests.at(-1)).toEqual([{ interruptId: REGION.id, message: REGION.message }]);
+
+      await frames(run.wiring, run.type('3'));
+
+      expect(inputOf(run.sent[1]).resume).toEqual([
+        {
+          interruptId: REGION.id,
+          status: 'resolved',
+          payload: { decision: 'approve', answer: 'three' },
+        },
+      ]);
+      expect(inputOf(run.sent[2]).resume).toEqual([
+        {
+          interruptId: REGION.id,
+          status: 'resolved',
+          payload: { decision: 'approve', answer: '3' },
+        },
+      ]);
+    });
+  });
+
   test('keeps the decision when the request is refused as a refusal and nothing re-reads it', async () => {
     const { wiring, sent, conversation } = await approved([
       refusal('THREAD_BUSY'),

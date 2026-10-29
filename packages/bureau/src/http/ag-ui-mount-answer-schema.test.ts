@@ -23,7 +23,7 @@ const answerSchema = {
   additionalProperties: false,
 } as const;
 
-const askWithSchema = {
+const askWith = (schema: Record<string, unknown>) => ({
   kind: 'respond' as const,
   response: {
     content: 'Asking.',
@@ -31,11 +31,11 @@ const askWithSchema = {
       {
         id: 'call-1',
         name: 'requestHumanInput',
-        arguments: { signalName: 'deploy', prompt: 'Where to?', answerSchema },
+        arguments: { signalName: 'deploy', prompt: 'Where to?', answerSchema: schema },
       },
     ],
   },
-};
+});
 const say = (content: string) => ({
   kind: 'respond' as const,
   response: { content, toolCalls: [] },
@@ -49,9 +49,12 @@ function resolved(interruptId: string, payload: unknown): ResumeEntry {
   return { interruptId, status: 'resolved', payload };
 }
 
-async function withHarness<T>(body: (harness: Harness) => Promise<T>): Promise<T> {
+async function withHarness<T>(
+  body: (harness: Harness) => Promise<T>,
+  schema: Record<string, unknown> = answerSchema,
+): Promise<T> {
   const harness = await openHarness({
-    script: [askWithSchema, say('Deploying.')],
+    script: [askWith(schema), say('Deploying.')],
     stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
   });
   try {
@@ -156,5 +159,99 @@ describe('a human wait with an answer schema, over AG-UI', () => {
       expect(frames.at(-1)!.event.type).toBe(EventType.RUN_FINISHED);
       expect(harness.bureau.reviews.list()).toHaveLength(0);
     });
+  });
+});
+
+describe('a typed answer to a question with a schema, over AG-UI (COR-1804)', () => {
+  // The chat can only type: it sends the answer as the text the person wrote.
+  const succeeded = (frames: Awaited<ReturnType<typeof readAgUiStream>>) =>
+    expect(frames.at(-1)!.event).toMatchObject({
+      type: EventType.RUN_FINISHED,
+      outcome: { type: 'success' },
+    });
+
+  it('answers a string question with the text as written', async () => {
+    await withHarness(
+      async (harness) => {
+        const { interrupts } = await startUntilInterrupted(harness);
+        const frames = await readAgUiStream(
+          await harness.handler(
+            resumeRequest([
+              resolved(interrupts[0]!.id, { decision: 'approve', answer: '{"a": 1}' }),
+            ]),
+          ),
+        );
+
+        succeeded(frames);
+        expect(harness.bureau.reviews.list()).toHaveLength(0);
+      },
+      { type: 'string' },
+    );
+  });
+
+  it('reads the text as the integer a question asks for', async () => {
+    await withHarness(
+      async (harness) => {
+        const { interrupts } = await startUntilInterrupted(harness);
+        const frames = await readAgUiStream(
+          await harness.handler(
+            resumeRequest([resolved(interrupts[0]!.id, { decision: 'approve', answer: '3' })]),
+          ),
+        );
+
+        succeeded(frames);
+        expect(harness.bureau.reviews.list()).toHaveLength(0);
+      },
+      { type: 'integer', minimum: 1, maximum: 5 },
+    );
+  });
+
+  it('reads the text as JSON for an object question', async () => {
+    await withHarness(async (harness) => {
+      const { interrupts } = await startUntilInterrupted(harness);
+      const frames = await readAgUiStream(
+        await harness.handler(
+          resumeRequest([
+            resolved(interrupts[0]!.id, {
+              decision: 'approve',
+              answer: '{"environment":"staging","replicas":2}',
+            }),
+          ]),
+        ),
+      );
+
+      succeeded(frames);
+      expect(harness.bureau.reviews.list()).toHaveLength(0);
+    });
+  });
+
+  it('refuses text that is not the integer, leaves the review pending, and takes a later valid answer', async () => {
+    await withHarness(
+      async (harness) => {
+        const { interrupts } = await startUntilInterrupted(harness);
+        const id = interrupts[0]!.id;
+
+        for (const text of ['three', '9']) {
+          const refused = await readAgUiStream(
+            await harness.handler(
+              resumeRequest([resolved(id, { decision: 'approve', answer: text })]),
+            ),
+          );
+          expect(refused).toHaveLength(1);
+          expect(refused[0]!.event).toMatchObject({ code: 'INVALID_INPUT' });
+          expect(harness.bureau.reviews.list().map((review) => review.id)).toEqual([id]);
+        }
+
+        succeeded(
+          await readAgUiStream(
+            await harness.handler(
+              resumeRequest([resolved(id, { decision: 'approve', answer: '3' })]),
+            ),
+          ),
+        );
+        expect(harness.bureau.reviews.list()).toHaveLength(0);
+      },
+      { type: 'integer', minimum: 1, maximum: 5 },
+    );
   });
 });
