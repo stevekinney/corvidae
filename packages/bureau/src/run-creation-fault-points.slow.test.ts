@@ -16,9 +16,9 @@
  *
  * The same body runs over SQLite and LMDB, so a divergence between the two
  * fails the same assertion rather than being documented as a difference.
- * Booting a child takes real seconds, which cannot fit Bun's per-test clock on
- * a loaded host, so each scenario runs once at module scope and its test only
- * reports how it went (see `test/hoisted-scenario.ts`). Polls use a small real
+ * Booting twelve children takes real seconds, so the file is in the slow lane
+ * (COR-1499), and each scenario runs once at module scope, off Bun's per-test
+ * clock, while its test only reports how it went (see `test/hoisted-scenario.ts`). Polls use a small real
  * delay because a zero-delay poll starves LMDB's own completion callbacks (see
  * `event-history-run-ownership-recovery-lmdb.test.ts`).
  */

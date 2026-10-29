@@ -1,5 +1,5 @@
 /**
- * COR-424, COR-1795 — what the run-creation fault-point test (`run-creation-fault-points.test.ts`)
+ * COR-424, COR-1795 — what the run-creation fault-point test (`run-creation-fault-points.slow.test.ts`)
  * and its crash child (`run-creation-crash-child.ts`) share: the request both Bureaus receive, the
  * scenarios the child can play, and the marker it leaves behind before it dies.
  */

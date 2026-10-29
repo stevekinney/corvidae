@@ -1,6 +1,6 @@
 /**
  * COR-424, COR-1795 — the child half of the run-creation fault-point test
- * (`run-creation-fault-points.test.ts`).
+ * (`run-creation-fault-points.slow.test.ts`).
  *
  * Usage: `bun run-creation-crash-child.ts <scenario> <sqlite|lmdb> <storagePath> <markerPath>`
  *
@@ -15,7 +15,7 @@
  * the parent holds exactly one handle on the path, Bureau B's, opened only after this process is
  * gone: LMDB must not have two handles on one path in one process.
  *
- * Not a test file: it is spawned by `run-creation-fault-points.test.ts`.
+ * Not a test file: it is spawned by `run-creation-fault-points.slow.test.ts`.
  */
 import { writeFileSync } from 'node:fs';
 
