@@ -44,32 +44,73 @@ export const RESUME_PAYLOAD_SCHEMA: Record<string, unknown> = {
   ],
 };
 
-/** Keys whose value is data a schema holds, not a subschema, so a `$ref` inside is not a reference. */
-const SCHEMA_DATA_KEYWORDS: ReadonlySet<string> = new Set(['enum', 'const', 'default', 'examples']);
+/** Keywords whose value is one subschema. */
+const SUBSCHEMA_KEYWORDS: ReadonlySet<string> = new Set([
+  'items',
+  'additionalProperties',
+  'contains',
+  'propertyNames',
+  'not',
+  'if',
+  'then',
+  'else',
+  'unevaluatedItems',
+  'unevaluatedProperties',
+  'contentSchema',
+]);
+/** Keywords whose value is an array of subschemas. */
+const SUBSCHEMA_LIST_KEYWORDS: ReadonlySet<string> = new Set([
+  'allOf',
+  'anyOf',
+  'oneOf',
+  'prefixItems',
+]);
+/** Keywords whose value maps a name the schema's author chose (a property, a definition) to a subschema. */
+const SUBSCHEMA_MAP_KEYWORDS: ReadonlySet<string> = new Set([
+  'properties',
+  'patternProperties',
+  '$defs',
+  'definitions',
+  'dependentSchemas',
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 /**
  * `schema` with every local reference (`#`, `#/...`) moved to where the schema now sits, so it
  * resolves from the resume payload's root. A reference is relative to the document it is in; the
  * answer schema is a document of its own until it is embedded as `properties.answer`.
+ *
+ * It walks only where JSON Schema puts a subschema, never by key name alone: a property or
+ * definition may be called `enum`, `const`, `default` or `examples`, and its subschema is still a
+ * schema, while the value of a real `enum` or `default` is data and is left as it is.
  */
-function withReferencesRebasedUnder(value: unknown, base: string): unknown {
-  if (Array.isArray(value)) return value.map((entry) => withReferencesRebasedUnder(entry, base));
-  if (typeof value !== 'object' || value === null) return value;
-  const rebased: Record<string, unknown> = {};
-  for (const [key, entry] of Object.entries(value)) {
-    if (SCHEMA_DATA_KEYWORDS.has(key)) {
-      rebased[key] = entry;
-    } else if (
-      key === '$ref' &&
-      typeof entry === 'string' &&
-      (entry === '#' || entry.startsWith('#/'))
-    ) {
-      rebased[key] = `${base}${entry.slice(1)}`;
-    } else {
-      rebased[key] = withReferencesRebasedUnder(entry, base);
-    }
-  }
-  return rebased;
+function withReferencesRebasedUnder(schema: unknown, base: string): unknown {
+  if (!isRecord(schema)) return schema;
+  const rebase = (child: unknown): unknown => withReferencesRebasedUnder(child, base);
+  // Built with `fromEntries`, which defines each key, so a property named `__proto__` stays a key.
+  return Object.fromEntries(
+    Object.entries(schema).map(([key, entry]): [string, unknown] => {
+      if (
+        key === '$ref' &&
+        typeof entry === 'string' &&
+        (entry === '#' || entry.startsWith('#/'))
+      ) {
+        return [key, `${base}${entry.slice(1)}`];
+      }
+      if (SUBSCHEMA_KEYWORDS.has(key)) return [key, rebase(entry)];
+      if (SUBSCHEMA_LIST_KEYWORDS.has(key) && Array.isArray(entry)) return [key, entry.map(rebase)];
+      if (SUBSCHEMA_MAP_KEYWORDS.has(key) && isRecord(entry)) {
+        return [
+          key,
+          Object.fromEntries(Object.entries(entry).map(([name, child]) => [name, rebase(child)])),
+        ];
+      }
+      return [key, entry];
+    }),
+  );
 }
 
 /**

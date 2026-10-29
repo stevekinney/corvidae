@@ -139,6 +139,32 @@ describe('the response schema of a question that carries its own answer schema (
     expect(check({ decision: 'approve', answer: { pick: 'z' } })).toBe(false);
   });
 
+  it('rebases references under properties and definitions named like keywords that hold data', () => {
+    // A property called `enum` (or `const`, `default`, `examples`) holds a subschema, not data.
+    const named = {
+      $defs: { text: { type: 'string' }, const: { type: 'integer' } },
+      type: 'object',
+      properties: {
+        enum: { $ref: '#/$defs/text' },
+        const: { $ref: '#/$defs/const' },
+        default: { items: { $ref: '#/$defs/text' } },
+        examples: { anyOf: [{ $ref: '#/$defs/text' }] },
+      },
+    };
+    const schema = responseSchemaFor(named) as {
+      properties: { answer: Record<string, any> };
+    };
+
+    const { properties: rebased } = schema.properties.answer;
+    expect(rebased.enum.$ref).toBe('#/properties/answer/$defs/text');
+    expect(rebased.const.$ref).toBe('#/properties/answer/$defs/const');
+    expect(rebased.default.items.$ref).toBe('#/properties/answer/$defs/text');
+    expect(rebased.examples.anyOf[0].$ref).toBe('#/properties/answer/$defs/text');
+    const check = new Ajv({ strict: false }).compile(schema);
+    expect(check({ decision: 'approve', answer: { enum: 'x', const: 1 } })).toBe(true);
+    expect(check({ decision: 'approve', answer: { enum: 2 } })).toBe(false);
+  });
+
   it('rides on the human-wait interrupt, and a wait without a schema keeps the generic one', () => {
     const wait = {
       kind: 'human-wait',
