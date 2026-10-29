@@ -47,6 +47,7 @@ export const BUREAU_SCOPES = [
   'bureau.decisions:write',
   'bureau.settings:read',
   'bureau.settings:write',
+  'bureau.diagnostics:read',
 ] as const satisfies readonly PackageAuthorizationScope[];
 
 /** One of the scopes in {@link BUREAU_SCOPES}. */

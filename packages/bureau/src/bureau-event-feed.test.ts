@@ -454,3 +454,49 @@ describe('the COR-1721 event families on the feed', () => {
     });
   });
 });
+
+describe('the bureau event feed subscriber count (COR-1731)', () => {
+  it('counts a live subscription until it ends, and a replay holds none', async () => {
+    const eventFeed = createBureauEventFeed({ bureauId: 'bureau-1' });
+    eventFeed.publish(new RunRegisteredEvent('one'));
+    expect(eventFeed.subscriberCount()).toBe(0);
+
+    for await (const _ of eventFeed.feed.replay()) void _;
+    expect(eventFeed.subscriberCount()).toBe(0);
+
+    const first = eventFeed.feed.subscribe()[Symbol.asyncIterator]();
+    const second = eventFeed.feed.subscribe()[Symbol.asyncIterator]();
+    await first.next();
+    await second.next();
+    expect(eventFeed.subscriberCount()).toBe(2);
+
+    await first.return?.();
+    expect(eventFeed.subscriberCount()).toBe(1);
+    await second.return?.();
+    expect(eventFeed.subscriberCount()).toBe(0);
+  });
+
+  it('releases a subscription when its own signal aborts', async () => {
+    const eventFeed = createBureauEventFeed({ bureauId: 'bureau-1' });
+    eventFeed.publish(new RunRegisteredEvent('one'));
+    const controller = new AbortController();
+    const subscription = eventFeed.feed.subscribe({ signal: controller.signal });
+    const iterator = subscription[Symbol.asyncIterator]();
+    await iterator.next();
+    expect(eventFeed.subscriberCount()).toBe(1);
+
+    controller.abort();
+    expect(eventFeed.subscriberCount()).toBe(0);
+  });
+
+  it('holds none once the feed is disposed', async () => {
+    const eventFeed = createBureauEventFeed({ bureauId: 'bureau-1' });
+    const iterator = eventFeed.feed.subscribe()[Symbol.asyncIterator]();
+    const pending = iterator.next();
+    expect(eventFeed.subscriberCount()).toBe(1);
+
+    eventFeed.dispose();
+    await pending;
+    expect(eventFeed.subscriberCount()).toBe(0);
+  });
+});
