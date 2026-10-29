@@ -670,7 +670,7 @@ const CURRENT_BRANCH_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
       {
         reason:
           'Exhaustive default for an unknown CompressionAlgorithm is unreachable through the validated engine/CLI surface, which only ever selects one of the declared algorithms.',
-        lines: new Set([197, 198, 199]),
+        lines: new Set([218, 219, 220]),
         requireUncoveredLines: true,
       },
     ],
