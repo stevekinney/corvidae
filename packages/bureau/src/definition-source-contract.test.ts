@@ -1,6 +1,6 @@
 /**
- * COR-1702 — the contract every definition source keeps, run against an in-memory source and the
- * directory source. Bureau keeps parsing, validation, snapshots, revisions, publication, and the
+ * COR-1702 — the contract every definition source keeps, run against an in-memory source, the
+ * directory source, and (COR-1762) the S3 object source over an in-process S3 server. Bureau keeps parsing, validation, snapshots, revisions, publication, and the
  * write-through operations; a source only holds bytes, so the catalogs behave the same over any
  * source that keeps the contract. The outcome matrix at the end is the concurrency contract of
  * `write`, `delete`, and `watch`.
@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import { createS3TestServer } from '@lostgradient/testing/s3-server';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { AgentFileConflictError } from './agent-file';
@@ -18,13 +19,16 @@ import { readFileAgentBinding } from './agent-file-catalog';
 import type { AgentSnapshot } from './agent-snapshot-store';
 import { agentFileDirectory } from './sources/agent-file-directory';
 import { nodeAgentFileOperations } from './sources/agent-file-operations';
+import { agentObjectSource } from './sources/agent-object-source';
 import {
   type AgentSource,
   hashDefinitionBytes,
   SourceConflictError,
   type WorkflowSource,
 } from './sources/definition-source';
+import { createS3ObjectOperations, type ObjectStoreOperations } from './sources/object-operations';
 import { workflowFileDirectory } from './sources/workflow-file-directory';
+import { workflowObjectSource } from './sources/workflow-object-source';
 import {
   type AgentFileFixture,
   agentFileText,
@@ -135,9 +139,76 @@ async function directoryHarness<K extends HarnessKind>(kind: K): Promise<Harness
   };
 }
 
+/** The poll interval the S3 harness uses, so `reportChange` advances the manual runtime by one tick. */
+const OBJECT_POLL_MILLISECONDS = 50;
+
+async function objectHarness<K extends HarnessKind>(kind: K): Promise<Harness<SourceOf<K>>> {
+  const server = createS3TestServer();
+  const client = new Bun.S3Client(server.clientOptions());
+  const prefix = 'definitions/';
+  const extension = EXTENSIONS[kind];
+  const keyOf = (id: string): string => `${prefix}${id}${extension}`;
+  const runtime = createManualRuntimeServices({ origin: '2026-10-18T00:00:00.000Z' });
+  const real = createS3ObjectOperations(client, server.bucket, 'text/plain');
+  let armed: { readonly key: string; readonly text: string } | undefined;
+  const operations: ObjectStoreOperations = {
+    ...real,
+    // The edit lands inside the conditional PUT: after the write's read and hash check, before the
+    // request reaches the store.
+    put: (key, bytes, condition) => {
+      if (armed?.key === key) {
+        const { text } = armed;
+        armed = undefined;
+        server.put(key, text);
+      }
+      return real.put(key, bytes, condition);
+    },
+  };
+  const options = {
+    client,
+    operations,
+    runtime,
+    pollIntervalMilliseconds: OBJECT_POLL_MILLISECONDS,
+    diagnose: (message: string, cause: unknown): never => {
+      throw new Error(`${message} ${String(cause)}`);
+    },
+  };
+  const location = { bucket: server.bucket, prefix };
+  const source =
+    kind === 'agent'
+      ? agentObjectSource(location, { ...options, tools: { 'lookup-order': lookupTool } })
+      : workflowObjectSource(location, options);
+  const decoder = new TextDecoder();
+  return {
+    source: source as SourceOf<K>,
+    put: async (id, text) => {
+      server.put(keyOf(id), text);
+    },
+    remove: (id) => client.delete(keyOf(id)),
+    text: async (id) => {
+      const bytes = server.objects().get(keyOf(id));
+      return bytes === undefined ? undefined : decoder.decode(bytes);
+    },
+    names: async () => [...server.objects().keys()],
+    reportChange: async () => {
+      // One poll tick, then a load, which queues behind the scan the tick started.
+      await runtime.advance(OBJECT_POLL_MILLISECONDS);
+      await source.load();
+    },
+    editDuringNextWrite: (id, text) => {
+      armed = { key: keyOf(id), text };
+    },
+    dispose: async () => {
+      await source.load().catch(() => undefined);
+      await server.stop();
+    },
+  };
+}
+
 const SOURCES = [
   ['an in-memory source', <K extends HarnessKind>(kind: K) => Promise.resolve(memoryHarness(kind))],
   ['the directory source', directoryHarness],
+  ['the S3 object source', objectHarness],
 ] as const;
 
 const disposers: Array<() => Promise<void>> = [];
@@ -162,7 +233,8 @@ describe.each(SOURCES)('agent files over %s', (_name, makeHarness) => {
   }> {
     const harness = await makeHarness('agent');
     const fixture = await createAgentFileFixture({ source: harness.source });
-    disposers.push(fixture.dispose, harness.dispose);
+    // Disposed in reverse: the catalog closes before the store it scans goes away.
+    disposers.push(harness.dispose, fixture.dispose);
     return { harness, fixture };
   }
 
@@ -446,7 +518,8 @@ describe.each(SOURCES)('workflow files over %s', (_name, makeHarness) => {
   }> {
     const harness = await makeHarness('workflow');
     const fixture = await createWorkflowFileFixture({ source: harness.source });
-    disposers.push(fixture.dispose, harness.dispose);
+    // Disposed in reverse: the catalog closes before the store it scans goes away.
+    disposers.push(harness.dispose, fixture.dispose);
     return { harness, fixture };
   }
 
