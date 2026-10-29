@@ -1,23 +1,4 @@
 export {
-  anthropicMixedResponse,
-  anthropicNoUsageResponse,
-  anthropicStreamEmptyEvents,
-  anthropicStreamMixedEvents,
-  anthropicStreamMultiToolEvents,
-  anthropicStreamTextEvents,
-  anthropicStreamToolUseEvents,
-  anthropicTextResponse,
-  anthropicToolUseResponse,
-} from './anthropic-fixtures.ts';
-export {
-  createMockAnthropicClient,
-  createMockAnthropicStreamingClient,
-} from './anthropic-mock-clients.ts';
-export type {
-  MockAnthropicClient,
-  MockAnthropicStreamingClient,
-} from './anthropic-mock-clients.ts';
-export {
   geminiFunctionCallResponse,
   geminiMixedResponse,
   geminiNoUsageResponse,

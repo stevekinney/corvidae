@@ -59,7 +59,7 @@ export interface BaseProviderOptions {
    *
    * Anthropic caveat: its `Metadata` type documents exactly one field
    * (`user_id`) — the whole object is still forwarded as-is so a
-   * credential-injecting proxy (see {@link AnthropicProviderOptions.baseURL})
+   * credential-injecting proxy (see `AnthropicProviderOptions.baseURL`)
    * can inspect arbitrary keys on the wire, but sending non-`user_id` keys
    * straight to Anthropic's real endpoint (no proxy in front) gets the
    * request rejected. Only pass extra keys when a proxy will translate or
