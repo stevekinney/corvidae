@@ -17,6 +17,10 @@ export type RebuildScheduler = {
   close(): void;
 };
 
+/**
+ * What a rebuild scheduler needs: the build to run, how long to wait after a change, and the
+ * callbacks that report each outcome.
+ */
 export type RebuildSchedulerOptions = {
   /** Compile the application. */
   readonly build: () => Promise<void>;
@@ -28,6 +32,10 @@ export type RebuildSchedulerOptions = {
   readonly onFailure?: (error: unknown) => void;
 };
 
+/**
+ * Creates a scheduler that coalesces changes into rebuilds: a save, or a burst of them, becomes
+ * one build, and a change during a build schedules exactly one more.
+ */
 export function createRebuildScheduler(options: RebuildSchedulerOptions): RebuildScheduler {
   let closed = false;
   let running: Promise<void> | undefined;

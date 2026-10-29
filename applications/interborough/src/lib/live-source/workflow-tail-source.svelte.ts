@@ -61,6 +61,9 @@ export interface WorkflowTailConnection {
   readonly headers?: Record<string, string>;
 }
 
+/**
+ * Options for a workflow tail source: the pre-attach buffer cap and the reconnect backoff curve.
+ */
 export interface WorkflowTailSourceOptions {
   /** Pre-attach buffer cap. Default 500 (plan §5.1: "bounded ~500 frames"). */
   readonly bufferLimit?: number;
@@ -123,6 +126,10 @@ function parseWorkflowEnvelope(data: string, workflowId: string): WorkflowEnvelo
   };
 }
 
+/**
+ * The live tail of one workflow's events. It buffers frames until a subscriber attaches and
+ * reconnects with a backoff when the stream drops.
+ */
 export class WorkflowTailSource implements LiveSource<WorkflowEvent> {
   status: LiveSourceStatus = $state('connecting');
 

@@ -44,6 +44,7 @@ export const bundledLanguages = {
   zsh: grammars.shellscript,
 };
 
+/** The Shiki themes the page bundles, each loaded on first use. */
 export const bundledThemes = {
   'github-dark': () => import('@shikijs/themes/github-dark'),
   'github-light': () => import('@shikijs/themes/github-light'),

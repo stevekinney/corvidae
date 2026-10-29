@@ -62,6 +62,7 @@ import { workflowStatusForEventType } from './workflow-lifecycle-events.ts';
 // Query keys (plan §4). Import these rather than re-deriving the arrays.
 // ---------------------------------------------------------------------------
 
+/** The query key of one workflow's detail. */
 export function workflowDetailKey(workflowId: string): QueryKey {
   return ['workflows', 'detail', workflowId];
 }
@@ -76,27 +77,47 @@ export function workflowEventsKey(workflowId: string): QueryKey {
   return ['workflows', 'events', workflowId];
 }
 
+/** The query-key prefix of every workflow list. */
 export const WORKFLOWS_LIST_KEY_PREFIX: QueryKey = ['workflows', 'list'];
+/** The query-key prefix of every workflow aggregate. */
 export const WORKFLOWS_AGGREGATE_KEY_PREFIX: QueryKey = ['workflows', 'aggregate'];
+/** The query-key prefix of every schedule list. */
 export const SCHEDULES_LIST_KEY_PREFIX: QueryKey = ['schedules', 'list'];
+/** The query-key prefix of every schedule's detail. */
 export const SCHEDULES_DETAIL_KEY_PREFIX: QueryKey = ['schedules', 'detail'];
+/** The query-key prefix of every schedule's run history. */
 export const SCHEDULES_RUN_HISTORY_KEY_PREFIX: QueryKey = ['schedules', 'run-history'];
+/** The query-key prefix of every review list. */
 export const REVIEWS_LIST_KEY_PREFIX: QueryKey = ['reviews', 'list'];
+/** The query key of the worker list. */
 export const WORKERS_LIST_KEY: QueryKey = ['workers', 'list'];
+/** The query-key prefix of every workflow's detail. */
 export const WORKFLOWS_DETAIL_KEY_PREFIX: QueryKey = ['workflows', 'detail'];
+/** The query-key prefix of every workflow's finalizer. */
 export const WORKFLOWS_FINALIZER_KEY_PREFIX: QueryKey = ['workflows', 'finalizer'];
+/** The query-key prefix of every workflow's updates. */
 export const WORKFLOWS_UPDATES_KEY_PREFIX: QueryKey = ['workflows', 'updates'];
+/** The query-key prefix of every worker's manifests. */
 export const WORKERS_MANIFESTS_KEY_PREFIX: QueryKey = ['workers', 'manifests'];
+/** The query key of the worker rejections. */
 export const WORKERS_REJECTIONS_KEY: QueryKey = ['workers', 'rejections'];
+/** The query key of the worker deployments. */
 export const WORKERS_DEPLOYMENTS_KEY: QueryKey = ['workers', 'deployments'];
+/** The query key of the queue list. */
 export const QUEUES_LIST_KEY: QueryKey = ['queues', 'list'];
+/** The query-key prefix of every task's detail. */
 export const TASKS_DETAIL_KEY_PREFIX: QueryKey = ['tasks', 'detail'];
+/** The query-key prefix of every task's deliveries. */
 export const TASKS_DELIVERIES_KEY_PREFIX: QueryKey = ['tasks', 'deliveries'];
 /** The registry snapshot sits under this prefix (`queryKeys.registrySnapshot`), so one invalidation reads both. */
 export const REGISTRY_KEY_PREFIX: QueryKey = ['registry'];
+/** The query key of the realms. */
 export const REALMS_KEY: QueryKey = ['realms'];
+/** The query key of the system lease. */
 export const SYSTEM_LEASE_KEY: QueryKey = ['system', 'lease'];
+/** The query-key prefix of the catalog's sources. */
 export const CATALOG_SOURCES_KEY_PREFIX: QueryKey = ['catalog', 'sources'];
+/** The query-key prefix of the catalog's diagnostics. */
 export const CATALOG_DIAGNOSTICS_KEY_PREFIX: QueryKey = ['catalog', 'diagnostics'];
 
 /** Matches `updateHistoryQueryKey(id)` (`../../routes/workflows/detail/updates/updates-data.ts`) — a literal here for the same reason every other key in this module is, with a test that keeps the two equal. */

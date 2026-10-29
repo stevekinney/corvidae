@@ -68,6 +68,10 @@ export class AttachmentUploadError extends Error {
   }
 }
 
+/**
+ * An uploaded attachment once the Bureau has stored it: the asset's identifier and the media type
+ * the Bureau detected.
+ */
 export type UploadedAsset = {
   readonly assetId: string;
   /** The media type the Bureau detected from the bytes. */

@@ -46,6 +46,7 @@ import { getContext, hasContext, setContext } from 'svelte';
 
 import { HttpClientError, type HttpClient } from '@lostgradient/weft';
 
+/** Every authorization scope a credential can be granted, in the order Weft names them. */
 export const AUTHORIZATION_SCOPES = [
   'workflows:read',
   'workflows:write',
@@ -70,11 +71,13 @@ export const AUTHORIZATION_SCOPES = [
   'system:admin',
 ] as const;
 
+/** One authorization scope a credential can be granted. */
 export type AuthorizationScope = (typeof AUTHORIZATION_SCOPES)[number];
 
 /** Startup policy mirrored from `UnauthenticatedAccessPolicy` (plan §6). */
 export type UnauthenticatedAccessPolicy = 'warn' | 'allow' | 'reject';
 
+/** Who the server says the caller is and the scopes it granted them. */
 export interface Principal {
   /**
    * The scopes the server reported as granted for this credential
@@ -106,11 +109,16 @@ export type BannerMode =
 
 const PRINCIPAL_CONTEXT_KEY = Symbol('weft-ui-principal');
 
+/** Options for a principal store. */
 export interface PrincipalStoreOptions {
   /** Called when a live credential is rejected and the app must reauthenticate. */
   onAuthExpired?: () => void;
 }
 
+/**
+ * The reactive holder of the caller's principal. It answers whether a scope is granted and reports
+ * a credential the server rejected.
+ */
 export class PrincipalStore {
   principal = $state<Principal | null>(null);
 
@@ -173,6 +181,10 @@ export class PrincipalStore {
   }
 }
 
+/**
+ * Creates a principal store and puts it in the component context for the descendants that call
+ * `getPrincipalStore`.
+ */
 export function providePrincipalStore(options?: PrincipalStoreOptions): PrincipalStore {
   const store = new PrincipalStore(options);
   setContext(PRINCIPAL_CONTEXT_KEY, store);
@@ -184,6 +196,10 @@ export function hasPrincipalStore(): boolean {
   return hasContext(PRINCIPAL_CONTEXT_KEY);
 }
 
+/**
+ * Reads the principal store from the component context. It throws when no ancestor called
+ * `providePrincipalStore`.
+ */
 export function getPrincipalStore(): PrincipalStore {
   const store = getContext<PrincipalStore | undefined>(PRINCIPAL_CONTEXT_KEY);
   if (!store) {
@@ -317,6 +333,10 @@ export interface ScopeGate {
   title: string | undefined;
 }
 
+/**
+ * Whether a control that needs `required` scopes is disabled for the store's principal, and the
+ * title that explains why when it is.
+ */
 export function scopeGate(
   store: PrincipalStore,
   required: readonly AuthorizationScope[],

@@ -17,12 +17,17 @@
  */
 import { type LiveSource, type LiveSourceStatus } from './types.ts';
 
+/** Options for a polling source. */
 export interface PollingSourceOptions {
   readonly intervalMs: number;
 }
 
 const MAX_CONSECUTIVE_FAILURES = 5;
 
+/**
+ * A live source that fetches a frame on an interval, for a surface whose push channel is not
+ * available. It stops after repeated failures.
+ */
 export class PollingSource<Frame> implements LiveSource<Frame> {
   status: LiveSourceStatus = $state('polling');
 

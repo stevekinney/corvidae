@@ -33,7 +33,10 @@
  * - `/api/*`, `/v1/*`, `/jsonrpc`, `/mcp`, and Weft's discovery documents: Weft's engine
  *   operations, relayed to its server.
  * - `/bureau/*`: Bureau's operations and its AG-UI mount (`/bureau/ag-ui`, which Chat talks to),
- *   served by `createBureauHandler` with the `/bureau` prefix removed. They do not share Weft's root because both catalogs claim `/jsonrpc` and `/v1/…`.
+ *   served by `createBureauHandler` with the `/bureau` prefix removed. A WebSocket upgrade there
+ *   (`bureau.events` at `/bureau/jsonrpc`) goes to the same handler's `upgrade`, and
+ *   `host-websocket.ts` dispatches the upgraded socket to Bureau beside the engine relay's. They
+ *   do not share Weft's root because both catalogs claim `/jsonrpc` and `/v1/…`.
  * - `/host/paths`: where the host keeps the files a person edits by hand, so the agent editor and
  *   the Workflows pages can show an agent's file path and a workflow's, and the agent editor can
  *   say where to configure a model provider: the configuration file, and the file that holds each
@@ -86,10 +89,14 @@ import {
   isEngineRequestPath,
   relayRequest,
   webSocketRelayData,
-  webSocketRelayHandlers,
-  type WebSocketRelayData,
 } from './engine-proxy.ts';
 import { processEnvironment, resolvePort } from './environment-configuration.ts';
+import {
+  bureauUpgradeServer,
+  hostWebSocketHandlers,
+  isWebSocketUpgrade,
+  type HostSocketData,
+} from './host-websocket.ts';
 import { contentDirectoryPath, sqliteDatabasePath } from './locations.ts';
 import { mcpAppMounts } from './mcp-app-mounts.ts';
 import { createHostMemory } from './memory.ts';
@@ -149,6 +156,10 @@ export type ExtraAgents = {
   readonly published: readonly string[];
 };
 
+/**
+ * What `startHost` reads to start a host. Every field is optional and defaults to the environment
+ * and the checked-in build.
+ */
 export type HostOptions = {
   /** The environment to read `INTERBOROUGH_HOME` and `INTERBOROUGH_PORT` from. Defaults to the process's. */
   readonly environment?: BungalowEnvironment;
@@ -203,6 +214,10 @@ export type HostOptions = {
   readonly development?: boolean;
 };
 
+/**
+ * A running Interborough host: its origin, the Bureau and engine behind it, Weft's server, and the
+ * means to stop it.
+ */
 export type Host = {
   /** The origin the host listens on, `http://127.0.0.1:<port>/`. */
   readonly url: URL;
@@ -289,7 +304,7 @@ function shellResponder(buildDirectory: string, development: boolean): () => Pro
   };
 }
 
-type PublicRoutes = Bun.Serve.Routes<WebSocketRelayData, string>;
+type PublicRoutes = Bun.Serve.Routes<HostSocketData, string>;
 
 /**
  * The route table for the application: `index.html` for every client route, and the build's
@@ -426,13 +441,13 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       engineUpstream = resolve;
     });
     // Every route, the relay, and every WebSocket upgrade go through one guard (`request-guard.ts`).
-    let listening: Bun.Server<WebSocketRelayData> | undefined;
+    let listening: Bun.Server<HostSocketData> | undefined;
     const refuse = createRequestGuard(() => listening?.port ?? 0);
     const buildDirectory = options.buildDirectory ?? DEFAULT_BUILD_DIRECTORY;
     const devReload = options.development === true ? createDevReload() : undefined;
     if (devReload !== undefined) held.devReload = devReload;
     const shell = shellResponder(buildDirectory, devReload !== undefined);
-    const publicServer = Bun.serve<WebSocketRelayData>({
+    const publicServer = Bun.serve<HostSocketData>({
       hostname: LOOPBACK,
       port: options.port ?? resolvePort(environment),
       // Bun closes a connection that sends nothing for 10 seconds by default. The pages hold
@@ -452,8 +467,24 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
                 GET: (request: Request) => refuse(request) ?? devReload.connect(),
               },
             }),
-        [`${BUREAU_PATH_PREFIX}/*`]: (request: Request) =>
-          refuse(request) ?? bureauHandler(withoutBureauPrefix(request)),
+        // The guard answers first, for an upgrade as for any request. An upgrade goes to Bureau's
+        // handler with the prefix removed, as a request does; a refused one falls through to the
+        // handler, which answers it as the plain request it then is.
+        [`${BUREAU_PATH_PREFIX}/*`]: async (
+          request: Request,
+          listener: Bun.Server<HostSocketData>,
+        ) => {
+          const refusal = refuse(request);
+          if (refusal !== undefined) return refusal;
+          const bureauRequest = withoutBureauPrefix(request);
+          if (
+            isWebSocketUpgrade(request) &&
+            (await bureauHandler.upgrade(bureauRequest, bureauUpgradeServer(listener, request)))
+          ) {
+            return undefined;
+          }
+          return bureauHandler(bureauRequest);
+        },
         // Where a person edits what the host keeps by hand. The pages show an agent's file path and
         // a workflow's.
         [HOST_PATHS_ROUTE]: {
@@ -487,7 +518,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         }
         return relayRequest(request, url, key);
       },
-      websocket: webSocketRelayHandlers,
+      websocket: hostWebSocketHandlers(bureauHandler.websocket),
     });
     held.publicServer = publicServer;
     listening = publicServer;
@@ -542,7 +573,7 @@ type Held = {
   bureau?: Bureau<SeededAgents>;
   replacementEngine?: RegistryAgnosticEngine;
   server?: WeftServer;
-  publicServer?: Bun.Server<WebSocketRelayData>;
+  publicServer?: Bun.Server<HostSocketData>;
   devReload?: DevReload;
   closing?: Promise<void>;
 };

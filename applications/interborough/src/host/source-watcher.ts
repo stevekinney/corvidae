@@ -111,6 +111,10 @@ export type WatchDirectory = (
 const watchOnDisk: WatchDirectory = (path, options, listener) =>
   watchPath(path, { recursive: options.recursive }, (event, filename) => listener(event, filename));
 
+/**
+ * What a source watcher needs: the file the build records its inputs in, the directory to watch
+ * until that file exists, and the callback for a change.
+ */
 export type SourceWatcherOptions = {
   /** The file the build records its inputs in. */
   readonly inputsFile: string;

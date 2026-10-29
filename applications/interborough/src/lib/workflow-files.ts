@@ -22,6 +22,10 @@ const problemSchema = z.object({
   issues: z.array(z.object({ path: z.string(), message: z.string() })).nullable(),
 });
 
+/**
+ * A problem the Bureau found in a workflow file: a code, a message, and the field-level issues
+ * behind it when there are any.
+ */
 export type WorkflowProblem = z.infer<typeof problemSchema>;
 
 const fileSchema = z.object({

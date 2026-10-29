@@ -23,6 +23,7 @@ export const taskStateSchema = z.enum([
   'canceled',
 ]);
 
+/** A task's state: submitted, working, waiting for input, or one of the three ways it ends. */
 export type TaskState = z.infer<typeof taskStateSchema>;
 
 /** Where a task's cancellation and cleanup stand, as `bureau.tasks.get` reports it. */
@@ -36,11 +37,16 @@ export const taskCleanupSchema = z.enum([
   'unknown-outcome',
 ]);
 
+/** Where a task's cancellation and cleanup stand. */
 export type TaskCleanup = z.infer<typeof taskCleanupSchema>;
 
 /** What `bureau.tasks.cancel` answers: the cleanup states, and `rejected` for a task already over. */
 export const taskCancelReceiptSchema = z.enum([...taskCleanupSchema.options, 'rejected']);
 
+/**
+ * What `bureau.tasks.cancel` answers: a cleanup state, or `rejected` for a task that is already
+ * over.
+ */
 export type TaskCancelReceipt = z.infer<typeof taskCancelReceiptSchema>;
 
 const openWaitSchema = z.discriminatedUnion('kind', [
@@ -48,6 +54,10 @@ const openWaitSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('tool-approval'), reviewId: z.string(), callId: z.string() }),
 ]);
 
+/**
+ * What an input-required task waits on: a human wait with its signal, or a tool approval with its
+ * call.
+ */
 export type TaskOpenWait = z.infer<typeof openWaitSchema>;
 
 /** One task, as `bureau.tasks.list` and `.get` show it. Message text is never part of it. */
@@ -72,6 +82,7 @@ export const taskViewSchema = z.object({
   openWaits: z.array(openWaitSchema),
 });
 
+/** One task as the task list and `bureau.tasks.get` show it. Message text is never part of it. */
 export type TaskView = z.infer<typeof taskViewSchema>;
 
 /** The service principal the Bureau records as the `actor` of a run a schedule's fire started. */
@@ -92,6 +103,7 @@ const taskPageSchema = z.object({
   nextPageToken: z.string().nullable(),
 });
 
+/** One page of tasks and the opaque token for the next page, or `null` on the last. */
 export type TaskPage = z.infer<typeof taskPageSchema>;
 
 /** What a task list can be narrowed by. */
@@ -160,6 +172,10 @@ const cancelAnswerSchema = z.object({
   task: taskViewSchema.optional(),
 });
 
+/**
+ * The Bureau's answer to a cancellation: the task, the receipt, and the task's view when the
+ * Bureau sends it.
+ */
 export type TaskCancelAnswer = z.infer<typeof cancelAnswerSchema>;
 
 /**
@@ -180,6 +196,10 @@ const respondAnswerSchema = z.object({
   feedback: z.string().optional(),
 });
 
+/**
+ * The Bureau's answer to a response to a task's wait: the review it resolved, the decision, and
+ * whether it was applied, rejected, or superseded.
+ */
 export type TaskRespondAnswer = z.infer<typeof respondAnswerSchema>;
 
 /**
@@ -205,6 +225,10 @@ export const taskArtifactSchema = z.object({
   truncated: z.boolean(),
 });
 
+/**
+ * The answer of a finished task: the artifact's identifier, its text, and whether the text was cut
+ * short.
+ */
 export type TaskArtifact = z.infer<typeof taskArtifactSchema>;
 
 const elementCommon = { taskId: z.string(), cursor: z.string(), emittedAtMs: z.number() };
@@ -247,6 +271,10 @@ export const taskEventSchema = z.discriminatedUnion('kind', [
   z.object({ ...elementCommon, kind: z.literal('task.removed') }),
 ]);
 
+/**
+ * One element of a task's event stream: a snapshot, a status change, a resync, a gap in the
+ * retained history, or the task's removal.
+ */
 export type TaskEvent = z.infer<typeof taskEventSchema>;
 
 /** The cursor a snapshot carries. It names no durable position, so a stream cannot resume from it. */
