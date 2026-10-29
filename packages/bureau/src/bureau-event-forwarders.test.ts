@@ -10,6 +10,7 @@ import { describe, expect, it } from 'bun:test';
 import type { AssetEvent } from './assets/types';
 import { createBureauEventFeed } from './bureau-event-feed';
 import {
+  bufferMissedFires,
   createDiagnosticDispatcher,
   forwardAssetEvents,
   forwardDefinitionChanges,
@@ -232,6 +233,32 @@ describe('the definition change forwarder', () => {
       removed: ['c'],
       rejected: ['b'],
     });
+  });
+});
+
+describe('the missed-fire buffer', () => {
+  it('replays what the engine reported before the first listener, then forwards live events', () => {
+    const engine = new EventTarget();
+    const buffer = bufferMissedFires(engine);
+    engine.dispatchEvent(new ScheduleMissedFireEvent('early-1', 1, 0, 1));
+    engine.dispatchEvent(new Event('unrelated'));
+    engine.dispatchEvent(new ScheduleMissedFireEvent('early-2', 2, 0, 1));
+
+    const first: string[] = [];
+    buffer.addEventListener(ScheduleMissedFireEvent.type, (event) => {
+      if (event instanceof ScheduleMissedFireEvent) first.push(event.scheduleId);
+    });
+    expect(first).toEqual(['early-1', 'early-2']);
+
+    engine.dispatchEvent(new ScheduleMissedFireEvent('live', 1, 0, 1));
+    const second: string[] = [];
+    buffer.addEventListener(ScheduleMissedFireEvent.type, (event) => {
+      if (event instanceof ScheduleMissedFireEvent) second.push(event.scheduleId);
+    });
+    engine.dispatchEvent(new ScheduleMissedFireEvent('later', 1, 0, 1));
+
+    expect(first).toEqual(['early-1', 'early-2', 'live', 'later']);
+    expect(second).toEqual(['later']);
   });
 });
 

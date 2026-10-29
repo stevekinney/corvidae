@@ -2272,7 +2272,9 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   options = booted.options;
   const runtime = await createRuntimeComposition(
     // COR-1546: the resolved identifier, so the memory tenant a run writes under is `Bureau.id`.
-    { ...options, id: bureauId, runtime: runtimeServices },
+    // COR-1721: the wrapped sink, so a diagnostic the composition raises is also a `diagnostic`
+    // event; the user's `onDiagnostic` is still called once, inside `diagnose`.
+    { ...options, id: bureauId, runtime: runtimeServices, onDiagnostic: diagnose },
     {
       ownsStorage: booted.ownsStorage,
       decideToolFor: (owner, offered) => lateDecisions.toolWiringFor(true, owner, offered),
@@ -2457,7 +2459,8 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     if (runtime.durable !== undefined) {
       stopForwarding.push(
         forwardMissedFires(
-          runtime.durable.engine,
+          // COR-1721: the composition listens from the moment the engine exists, and replays here.
+          runtime.durable.missedFires,
           (scheduleId) => getSchedule(scheduleId),
           (event) => emitter.dispatch(event),
           diagnose,

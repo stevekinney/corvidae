@@ -21,6 +21,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
+import { DiagnosticEvent } from './events';
 import { waitForTaskState } from './test';
 import type { Bureau } from './types';
 
@@ -78,10 +79,12 @@ async function start(
   memory: GovernedMemory,
   agents: AgentDefinitions,
   onDiagnostic?: (diagnostic: { scope: string; message: string }) => void,
+  onEvent?: (event: Event) => void,
 ) {
   const bureau = await createBureau<AgentDefinitions>({
     id: BUREAU_ID,
     ...(onDiagnostic === undefined ? {} : { onDiagnostic }),
+    ...(onEvent === undefined ? {} : { onEvent }),
     agents: { ...agents },
     memory,
     storage: { type: 'memory' },
@@ -208,5 +211,37 @@ describe('an answer governed memory rejects (COR-1546)', () => {
     // Only the first answer was stored.
     const stored = await memory.list(ownerAuthority('api-key:alice'), { collection: 'alpha' });
     expect(stored).toHaveLength(1);
+  });
+});
+
+describe('an answer governed memory rejects, on the event feed (COR-1721)', () => {
+  it('is a diagnostic event with its level and scope, and reaches the host sink exactly once', async () => {
+    const diagnostics: Array<{ scope: string; message: string }> = [];
+    const events: Event[] = [];
+    const memory = governedMemory(1);
+    const bureau = await start(
+      memory,
+      { alpha: remembering('A secret answer one.', []) },
+      (diagnostic) => diagnostics.push(diagnostic),
+      (event) => events.push(event),
+    );
+    for (const sessionId of ['chat-1', 'chat-2']) {
+      await chat(bureau, {
+        agentName: 'alpha',
+        sessionId,
+        principal: 'api-key:alice',
+        message: 'Remember.',
+      });
+    }
+
+    const memoryEvents = events.filter(
+      (event): event is DiagnosticEvent =>
+        event instanceof DiagnosticEvent && event.scope === 'memory',
+    );
+    expect(diagnostics.filter((diagnostic) => diagnostic.scope === 'memory')).toHaveLength(1);
+    expect(memoryEvents.map((event) => ({ level: event.level, scope: event.scope }))).toEqual([
+      { level: 'warn', scope: 'memory' },
+    ]);
+    expect(JSON.stringify(memoryEvents)).not.toContain('quota-exceeded');
   });
 });

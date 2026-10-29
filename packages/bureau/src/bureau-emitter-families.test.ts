@@ -2,10 +2,19 @@
  * COR-1721 — each new event family reaches a real Bureau's emitter, and its event feed, from the
  * point its projection, callback, or write runs.
  */
+import {
+  createGovernedMemory,
+  createInMemoryMemoryRecordStorage,
+  createMemoryGovernanceLedger,
+  createMemoryGovernancePolicy,
+  createMockEmbedder,
+  type GovernedMemory,
+} from '@lostgradient/memory';
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { MemoryStorage, ScheduleMissedFireEvent } from '@lostgradient/weft';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { createToolbox } from 'armorer';
-import { afterEach, describe, expect, it, setSystemTime } from 'bun:test';
+import { afterEach, describe, expect, it, jest, setSystemTime, spyOn } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
@@ -304,5 +313,88 @@ describe('missed schedule fires on the bureau emitter', () => {
     expect(missed[0]?.windowEnd).toBeGreaterThanOrEqual(missed[0]?.windowStart ?? Infinity);
     const stored = await bureau.schedules.get(scheduleId ?? '');
     expect(stored?.missedFireCount).toBe(10);
+  });
+});
+
+describe('a missed fire found while the Bureau is still being built', () => {
+  it('is reported once construction finishes, though the first poll ran before the composition returned', async () => {
+    database = createTestDatabase('cor-1721-missed-boot');
+    const options = {
+      id: 'missed-boot-bureau',
+      agents: {
+        default: createAgent({
+          generate: async () => ({ content: 'ok', toolCalls: [] }),
+          toolbox: createToolbox([]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
+      storage: { type: 'sqlite' as const, path: database.path },
+      durable: true,
+      durableOwnership: { ownership: 'none' as const },
+    };
+    const first = await createBureau<AgentDefinitions>(options);
+    const created = await first.schedules.create({
+      agentName: 'default',
+      input: 'tick',
+      spec: '1m',
+    });
+    const scheduleId = created?.id;
+    await first.dispose();
+
+    // Memory initialization is awaited after the engine, and its poller, exist. Holding it open
+    // keeps the composition unfinished while the poll runs.
+    const initializing = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const base = createGovernedMemory({
+      storage: createInMemoryMemoryRecordStorage(),
+      ledger: createMemoryGovernanceLedger(new MemoryStorage()),
+      embedder: createMockEmbedder(64),
+      policy: createMemoryGovernancePolicy({ revision: 'governance:cor-1721' }),
+    });
+    const memory: GovernedMemory = Object.assign(Object.create(base) as GovernedMemory, {
+      init: async () => {
+        initializing.resolve();
+        await release.promise;
+        await base.init();
+      },
+    });
+    const engineReported = Promise.withResolvers<void>();
+    const dispatchEvent = EventTarget.prototype.dispatchEvent;
+    const spy = spyOn(EventTarget.prototype, 'dispatchEvent').mockImplementation(function (
+      this: EventTarget,
+      event: Event,
+    ) {
+      if (event instanceof ScheduleMissedFireEvent) engineReported.resolve();
+      return dispatchEvent.call(this, event);
+    });
+    cleanups.push(() => spy.mockRestore());
+    const missed: ScheduleMissedEvent[] = [];
+    jest.useFakeTimers();
+    // Ten minutes late for its first occurrence, as a restart after downtime finds it.
+    setSystemTime(new Date(Date.now() + 10 * 60_000));
+    try {
+      const booting = createBureau<AgentDefinitions>({
+        ...options,
+        memory,
+        onEvent: (event) => {
+          if (event instanceof ScheduleMissedEvent) missed.push(event);
+        },
+      });
+      await initializing.promise;
+      jest.advanceTimersByTime(1_000);
+      await engineReported.promise;
+      release.resolve();
+      const bureau = await booting;
+      cleanups.push(() => bureau.dispose());
+      jest.useRealTimers();
+      await waitUntil(() => missed.length > 0);
+    } finally {
+      jest.useRealTimers();
+      setSystemTime();
+    }
+
+    expect(missed).toHaveLength(1);
+    expect(missed[0]?.scheduleId).toBe(scheduleId);
+    expect(missed[0]?.missedCount).toBe(10);
   });
 });

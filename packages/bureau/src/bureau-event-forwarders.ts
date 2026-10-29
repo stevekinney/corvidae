@@ -129,6 +129,51 @@ export function forwardDefinitionChanges(
   return catalog.onChange((change) => dispatch(new DefinitionsChangedEvent(source, change)));
 }
 
+/** Where {@link forwardMissedFires} listens: the engine itself, or a {@link bufferMissedFires} view. */
+export interface MissedFireSource {
+  addEventListener(type: string, listener: (event: Event) => void): void;
+  removeEventListener(type: string, listener: (event: Event) => void): void;
+}
+
+/** A {@link MissedFireSource} that holds what the engine reported before anyone listened. */
+export type MissedFireBuffer = MissedFireSource;
+
+/**
+ * Starts listening for the engine's `schedule:missed-fire` signal now and replays it to the first
+ * listener later. Weft's poller starts inside `Engine.create`, and the Bureau forwards the signal
+ * only once the rest of its composition has finished (memory initialization is awaited in
+ * between), so an overdue schedule that the first poll finds in that window would otherwise be
+ * reported to nobody. The first listener added receives every held event, in order, before any
+ * live one; a later listener receives live events only. The engine owns the subscription, which ends
+ * with it.
+ */
+export function bufferMissedFires(
+  engine: Pick<EventTarget, 'addEventListener' | 'removeEventListener'>,
+): MissedFireBuffer {
+  let held: ScheduleMissedFireEvent[] | undefined = [];
+  const listeners = new Set<(event: Event) => void>();
+  const onEngine = (event: Event): void => {
+    if (!(event instanceof ScheduleMissedFireEvent)) return;
+    if (held !== undefined) {
+      held.push(event);
+      return;
+    }
+    for (const listener of listeners) listener(event);
+  };
+  engine.addEventListener(ScheduleMissedFireEvent.type, onEngine);
+  return {
+    addEventListener(_type, listener) {
+      listeners.add(listener);
+      const replay = held;
+      held = undefined;
+      for (const event of replay ?? []) listener(event);
+    },
+    removeEventListener(_type, listener) {
+      listeners.delete(listener);
+    },
+  };
+}
+
 /**
  * Forwards the durable engine's `schedule:missed-fire` as `schedule.missed`, once `getSchedule`
  * confirms the schedule is one this Bureau can read. A lookup that fails is diagnosed and the event
@@ -136,7 +181,7 @@ export function forwardDefinitionChanges(
  * for a lookup already in flight.
  */
 export function forwardMissedFires(
-  engine: Pick<EventTarget, 'addEventListener' | 'removeEventListener'>,
+  engine: MissedFireSource,
   getSchedule: (scheduleId: string) => Promise<unknown>,
   dispatch: (event: ScheduleMissedEvent) => void,
   diagnose: DiagnosticSink,

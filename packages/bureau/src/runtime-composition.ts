@@ -154,6 +154,7 @@ import {
   type GoalAttemptCostEstimation,
   isGoalAttemptCostEstimation,
 } from './goal-cost-estimation';
+import { type MissedFireBuffer, bufferMissedFires } from './bureau-event-forwarders';
 import { ownerOrLocal, SCHEDULER_ACTOR } from './owner-of-record';
 import { resolveDiagnosticSink, serializeUnknownError } from './serialization';
 import {
@@ -2073,6 +2074,13 @@ export interface DurableComposition {
   engine: RegistryAgnosticEngine;
   checkpointStore: CheckpointStore;
   observability?: RunEngineObservability | undefined;
+  /**
+   * The engine's `schedule:missed-fire` signal, listened to from the moment the engine exists and
+   * replayed to the first listener added. Weft's scheduler starts inside `Engine.create`, so a
+   * listener added to `engine` once the composition returns can miss a signal raised while the
+   * rest of the composition was still being built.
+   */
+  missedFires: MissedFireBuffer;
 }
 
 /**
@@ -2901,7 +2909,7 @@ async function buildRuntimeComposition(
     // and the poller otherwise follows recover. In manual mode the serverless
     // host drives timers through `Bureau.maintain()`, so Weft
     // requires the in-process scheduler to remain stopped.
-    durable = await createRunEngine({
+    const createdEngine = await createRunEngine({
       storage: durableStorage,
       runWorkflow,
       checkpointStore,
@@ -2947,6 +2955,9 @@ async function buildRuntimeComposition(
         });
       },
     });
+    // The poller started inside `Engine.create`, so listen for a missed fire now, with nothing
+    // awaited in between, and let `createBureau` take what was held once it can forward it.
+    durable = { ...createdEngine, missedFires: bufferMissedFires(createdEngine.engine) };
 
     // AB-223: schedule-fire terminal events. `workflow:completed`/
     // `workflow:failed` fire on the engine for EVERY workflow (scheduled or
