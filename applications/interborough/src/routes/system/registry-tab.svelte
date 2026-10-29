@@ -17,6 +17,7 @@
 
   import type { RetryPolicy } from '@lostgradient/weft';
 
+  import { useFleetEventsLive } from '../../app/live-polling.svelte.ts';
   import { getClient } from '../../lib/client.ts';
   import { formatDuration } from '../../lib/format/index.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -39,34 +40,56 @@
 
   const client = getClient();
 
-  // Validated by the same loader as Worker detail, and refreshed on the
-  // worker and manifest queries' cadence, so contract verification never
-  // compares fresh manifests with a stale snapshot (COR-162).
-  const query = createQuery(() => ({
-    queryKey: queryKeys.registrySnapshot(),
-    queryFn: (): Promise<RegistrySnapshotSource> => loadRegistrySnapshot(client),
-    refetchInterval: 30_000,
-  }));
+  // Each query asks again when the fleet feed reports what it reads (`worker:connected`,
+  // `worker:disconnected`, `worker:registration-rejected`, `workflow:definition-registered`), and on
+  // a timer only while that feed is not live. The getters read it, because TanStack Query reads an
+  // interval untracked.
+  const fleetLive = useFleetEventsLive();
 
-  const workersQuery = createQuery(() => ({
-    queryKey: queryKeys.workers.list(),
-    queryFn: () => client.operations['weft.workers.list']({}),
-    refetchInterval: 30_000,
-  }));
+  // Validated by the same loader as Worker detail, and refreshed with the
+  // worker and manifest queries, so contract verification never
+  // compares fresh manifests with a stale snapshot (COR-162).
+  const query = createQuery(() => {
+    const polling = !fleetLive();
+    return {
+      queryKey: queryKeys.registrySnapshot(),
+      queryFn: (): Promise<RegistrySnapshotSource> => loadRegistrySnapshot(client),
+      // poll-reason: fallback
+      refetchInterval: polling ? 30_000 : false,
+    };
+  });
+
+  const workersQuery = createQuery(() => {
+    const polling = !fleetLive();
+    return {
+      queryKey: queryKeys.workers.list(),
+      queryFn: () => client.operations['weft.workers.list']({}),
+      // poll-reason: fallback
+      refetchInterval: polling ? 30_000 : false,
+    };
+  });
   const workerIds = $derived(
     (workersQuery.data?.items ?? []).map((worker) => worker.id).toSorted(),
   );
-  const manifestsQuery = createQuery(() => ({
-    queryKey: queryKeys.workers.manifests(workerIds),
-    queryFn: () => loadFleetManifestDiagnostics(client, workerIds),
-    enabled: !workersQuery.isPending,
-    refetchInterval: 30_000,
-  }));
-  const rejectionsQuery = createQuery(() => ({
-    queryKey: queryKeys.workers.rejections(),
-    queryFn: () => loadWorkerRegistrationRejections(client),
-    refetchInterval: 30_000,
-  }));
+  const manifestsQuery = createQuery(() => {
+    const polling = !fleetLive();
+    return {
+      queryKey: queryKeys.workers.manifests(workerIds),
+      queryFn: () => loadFleetManifestDiagnostics(client, workerIds),
+      enabled: !workersQuery.isPending,
+      // poll-reason: fallback
+      refetchInterval: polling ? 30_000 : false,
+    };
+  });
+  const rejectionsQuery = createQuery(() => {
+    const polling = !fleetLive();
+    return {
+      queryKey: queryKeys.workers.rejections(),
+      queryFn: () => loadWorkerRegistrationRejections(client),
+      // poll-reason: fallback
+      refetchInterval: polling ? 30_000 : false,
+    };
+  });
 
   let selectedType = $state<string | null>(null);
 
