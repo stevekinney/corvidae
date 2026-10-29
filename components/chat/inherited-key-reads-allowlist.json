@@ -6,6 +6,12 @@
       "expression": "metadata[key]",
       "count": 2,
       "reason": "every caller passes a string literal for the field name"
+    },
+    {
+      "file": "src/lib/utilities/get-own.ts",
+      "expression": "record[key]",
+      "count": 1,
+      "reason": "the read comes before Object.hasOwn on purpose: on a Svelte $state proxy only a read subscribes to an absent key, and the result is discarded when the key is inherited"
     }
   ]
 }

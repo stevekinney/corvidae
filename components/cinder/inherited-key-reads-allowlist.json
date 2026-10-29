@@ -2,6 +2,12 @@
   "description": "Dynamic reads allowed to use a key the code does not control, checked by scripts/check-inherited-key-reads.ts. Each entry names the file, the expression as written, how many such sites the file holds, and why no inherited key such as constructor can reach them. The list can only shrink: --shrink drops stale entries and lowers counts.",
   "entries": [
     {
+      "file": "src/_internal/own-entry.ts",
+      "expression": "record[key]",
+      "count": 1,
+      "reason": "the read comes before Object.hasOwn on purpose: on a Svelte $state proxy only a read subscribes to an absent key, and the result is discarded when the key is inherited"
+    },
+    {
       "file": "src/components/data-grid/data-grid-hydration-data.ts",
       "expression": "row[`metric${index}`]",
       "count": 1,

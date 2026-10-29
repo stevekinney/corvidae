@@ -68,17 +68,18 @@ function mergeConversationMetadata(
   for (const key of keys) {
     const baseHasKey = Object.prototype.hasOwnProperty.call(base, key);
     const candidateHasKey = Object.prototype.hasOwnProperty.call(candidate, key);
+    const baseValue = Object.hasOwn(base, key) ? base[key] : undefined;
+    const candidateValue = Object.hasOwn(candidate, key) ? candidate[key] : undefined;
     if (
       baseHasKey === candidateHasKey &&
-      (!baseHasKey || metadataValuesAreEqual(base[key], candidate[key]))
+      (!baseHasKey || metadataValuesAreEqual(baseValue, candidateValue))
     ) {
       continue;
     }
     if (!candidateHasKey) {
       delete merged[key];
-    } else {
-      const candidateValue = candidate[key];
-      if (candidateValue !== undefined) merged[key] = candidateValue;
+    } else if (candidateValue !== undefined) {
+      merged[key] = candidateValue;
     }
   }
   return merged;

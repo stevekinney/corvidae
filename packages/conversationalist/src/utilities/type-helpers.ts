@@ -14,8 +14,7 @@ export function hasOwnProperty<X extends object, Y extends PropertyKey>(
  * `constructor` or `toString` finds nothing instead of an `Object.prototype` member.
  */
 export function getOwn<T>(record: Readonly<Record<string, T>>, key: string): T | undefined {
-  const value = record[key];
-  return Object.hasOwn(record, key) ? value : undefined;
+  return Object.hasOwn(record, key) ? record[key] : undefined;
 }
 
 /**

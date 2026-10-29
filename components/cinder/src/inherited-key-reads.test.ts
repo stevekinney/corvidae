@@ -9,6 +9,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { normalizeBarData } from './_internal/chart/chart-bar-data.ts';
 import { formatAcceptDescription } from './components/file-upload/file-upload-utilities.ts';
+import { setValueAtPath } from './components/schema-form/schema-form-model.ts';
 import { issuesByPath } from './components/schema-form/schema-form-validation.ts';
 
 describe('a form field named constructor', () => {
@@ -35,5 +36,14 @@ describe('a bar chart whose category key is constructor', () => {
         [],
       ),
     ).toThrow(/category key is missing/);
+  });
+});
+
+describe('a form field named __proto__', () => {
+  test('is set as a field of the value, not as its prototype', () => {
+    const value = setValueAtPath({}, ['__proto__', 'name'], 'x') as Record<string, unknown>;
+    expect(Object.getPrototypeOf(value)).toBe(Object.prototype);
+    expect(Object.keys(value)).toEqual(['__proto__']);
+    expect(Object.getOwnPropertyDescriptor(value, '__proto__')?.value).toEqual({ name: 'x' });
   });
 });

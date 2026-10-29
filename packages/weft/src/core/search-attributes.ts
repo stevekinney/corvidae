@@ -284,8 +284,8 @@ function buildAttributeIndexOperations(
 ): BatchOperation[] {
   const hadOld = Object.hasOwn(previous, attributeName);
   const hasNew = Object.hasOwn(current, attributeName);
-  const oldValue = hadOld ? previous[attributeName] : undefined;
-  const newValue = hasNew ? current[attributeName] : undefined;
+  const oldValue = Object.hasOwn(previous, attributeName) ? previous[attributeName] : undefined;
+  const newValue = Object.hasOwn(current, attributeName) ? current[attributeName] : undefined;
 
   if (Array.isArray(oldValue) || Array.isArray(newValue)) {
     return buildArrayTransitionOperations({

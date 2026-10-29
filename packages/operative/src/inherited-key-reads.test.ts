@@ -11,9 +11,14 @@ import { z } from 'zod';
 
 import { getModelPricing } from './cost-estimation';
 import { createScratchpad } from './create-scratchpad';
-import { planSessionInputPromotion } from './durable/session-input-delivery-store';
+import {
+  createSessionInputDeliveryStore,
+  parseSessionInputDeliveries,
+  planSessionInputPromotion,
+} from './durable/session-input-delivery-store';
 import { valueAtFieldPath } from './fresh-attempt/field-path';
 import { requireLimits } from './providers/model-catalog-data';
+import { mergeAssembledField } from './providers/openai-parts';
 import { resolveAnthropicEffort } from './providers/shared/effort';
 import { resolveAnthropicModel } from './providers/shared/model-registry';
 import { anthropicSamplingSupport } from './providers/shared/sampling';
@@ -61,5 +66,46 @@ describe('a field path through an object', () => {
   test('does not step into a name every object inherits', () => {
     expect(valueAtFieldPath({ a: 1 }, ['constructor'])).toBeUndefined();
     expect(valueAtFieldPath({ a: { b: 2 } }, ['a', 'b'])).toBe(2);
+  });
+});
+
+describe('a name of __proto__ chosen from outside', () => {
+  test('is stored as an own field of a streamed message', () => {
+    const assembled: Record<string, unknown> = {};
+    mergeAssembledField(assembled, '__proto__', 'a');
+    mergeAssembledField(assembled, '__proto__', 'b');
+    mergeAssembledField(assembled, 'refusal', 'no');
+    expect(Object.getPrototypeOf(assembled)).toBe(Object.prototype);
+    expect(Object.keys(assembled)).toEqual(['__proto__', 'refusal']);
+    expect(Object.getOwnPropertyDescriptor(assembled, '__proto__')?.value).toBe('ab');
+  });
+
+  test('is kept as a delivery record when a command claims it and when storage is read back', async () => {
+    const data = new Map<string, string>();
+    const kv = {
+      get: async (key: string) => data.get(key) ?? null,
+      conditionalBatch: async (
+        expected: readonly { key: string; expectedValue: string | null }[],
+        operations: readonly { type: string; key: string; value?: string }[],
+      ) => {
+        if (expected.some((entry) => (data.get(entry.key) ?? null) !== entry.expectedValue)) {
+          return false;
+        }
+        for (const operation of operations) {
+          if (operation.type === 'set') data.set(operation.key, operation.value ?? '');
+        }
+        return true;
+      },
+    } as unknown as Parameters<typeof createSessionInputDeliveryStore>[0];
+    const store = createSessionInputDeliveryStore(kv, { retentionMs: 60_000, nowMs: () => 0 });
+
+    const outcomes = await store.claim('session-1', 'run-1', ['__proto__'], async () => true);
+
+    expect([...outcomes.values()]).toEqual(['claimed']);
+    const stored = JSON.parse([...data.values()][0]!) as Record<string, unknown>;
+    expect(Object.keys(stored)).toEqual(['__proto__']);
+    const parsed = parseSessionInputDeliveries([...data.values()][0]!);
+    expect(Object.keys(parsed)).toEqual(['__proto__']);
+    expect(Object.getPrototypeOf(parsed)).toBe(Object.prototype);
   });
 });

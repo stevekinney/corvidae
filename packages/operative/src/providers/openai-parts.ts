@@ -1,5 +1,6 @@
 import type { JSONValue, MultiModalContent } from 'conversationalist';
 
+import { defineOwn } from '../define-own.ts';
 import { ProviderContractError } from './errors.ts';
 import type { GenerateResponse } from './types.ts';
 
@@ -84,4 +85,22 @@ export function mapOpenAIMessage(
   if (Object.keys(extensions).length > 0) metadata['providerExtensions'] = extensions;
 
   return { parts, metadata: Object.keys(metadata).length > 0 ? metadata : undefined };
+}
+
+/**
+ * Folds one streamed delta field into the assembled message: strings concatenate across deltas,
+ * anything else keeps its latest value. A provider chooses the field name, so it is stored as an
+ * own entry even when it is `__proto__`.
+ */
+export function mergeAssembledField(
+  assembled: Record<string, unknown>,
+  field: string,
+  value: unknown,
+): void {
+  const previous = Object.hasOwn(assembled, field) ? assembled[field] : undefined;
+  defineOwn(
+    assembled,
+    field,
+    typeof value === 'string' && typeof previous === 'string' ? previous + value : value,
+  );
 }

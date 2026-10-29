@@ -6,7 +6,7 @@ import { concatenateTextParts } from '../response-parts.ts';
 import { withBackendDescriptors } from './backend-descriptor-attachment.ts';
 import { isProviderContractError, ProviderError, ToolCallParseError } from './errors.ts';
 import { createModelCatalog } from './model-catalog.ts';
-import { mapOpenAIMessage } from './openai-parts.ts';
+import { mapOpenAIMessage, mergeAssembledField } from './openai-parts.ts';
 import { resolveOpenAIEffort } from './shared/effort.ts';
 import { withInputLineage } from './shared/input-lineage.ts';
 import { resolveOpenAIModel } from './shared/model-registry.ts';
@@ -326,9 +326,7 @@ export function createOpenAIProviderStream(
           for (const [field, value] of Object.entries(choice.delta)) {
             if (field === 'content' || field === 'tool_calls' || field === 'role') continue;
             if (value === undefined || value === null) continue;
-            const previous = Object.hasOwn(assembled, field) ? assembled[field] : undefined;
-            assembled[field] =
-              typeof value === 'string' && typeof previous === 'string' ? previous + value : value;
+            mergeAssembledField(assembled, field, value);
           }
 
           // Accumulate tool calls

@@ -1,5 +1,6 @@
 import { type ConditionalTextValueStore, encodeStorageKeyComponent } from '@lostgradient/weft';
 
+import { defineOwn } from '../define-own.ts';
 import type { SessionInputDelivery, SessionInputPromotion } from './types';
 
 /**
@@ -97,7 +98,7 @@ export function parseSessionInputDeliveries(raw: string | null): SessionInputDel
     if (record === undefined) {
       throw new TypeError(`Stored session input delivery "${commandId}" is malformed.`);
     }
-    records[commandId] = record;
+    defineOwn(records, commandId, record);
   }
   return records;
 }
@@ -114,7 +115,9 @@ export function pruneSessionInputDeliveries(
   const retained: SessionInputDeliveryRecords = {};
   for (const [commandId, record] of Object.entries(records)) {
     const writtenAt = Date.parse(record.promotion?.promotedAt ?? record.claimedAt);
-    if (Number.isNaN(writtenAt) || nowMs - writtenAt <= retentionMs) retained[commandId] = record;
+    if (Number.isNaN(writtenAt) || nowMs - writtenAt <= retentionMs) {
+      defineOwn(retained, commandId, record);
+    }
   }
   return retained;
 }
@@ -146,14 +149,14 @@ export function planSessionInputPromotion(
       );
     }
     if (record.promotion !== undefined) continue;
-    next[delivery.commandId] = {
+    defineOwn<SessionInputDeliveryRecord>(next, delivery.commandId, {
       ...record,
       promotion: {
         promotedAt: delivery.deliveredAt,
         conversationMessageId: delivery.conversationMessageId,
         providerTurn: delivery.providerTurn,
       },
-    };
+    });
   }
   return next;
 }
@@ -230,7 +233,7 @@ export function createSessionInputDeliveryStore(
         for (const commandId of commandIds) {
           const record = Object.hasOwn(next, commandId) ? next[commandId] : undefined;
           if (record === undefined) {
-            next[commandId] = { runId: owner, claimedAt: new Date(now).toISOString() };
+            defineOwn(next, commandId, { runId: owner, claimedAt: new Date(now).toISOString() });
             outcomes.set(commandId, 'claimed');
             changed = true;
           } else if (record.promotion !== undefined) {
@@ -244,7 +247,7 @@ export function createSessionInputDeliveryStore(
               liveness.set(record.runId, live);
             }
             if (live) break;
-            next[commandId] = { runId: owner, claimedAt: new Date(now).toISOString() };
+            defineOwn(next, commandId, { runId: owner, claimedAt: new Date(now).toISOString() });
             outcomes.set(commandId, 'taken-over');
             changed = true;
           }
@@ -261,7 +264,7 @@ export function createSessionInputDeliveryStore(
         let released = 0;
         for (const [commandId, record] of Object.entries(records)) {
           if (record.runId === runId && record.promotion === undefined) released += 1;
-          else next[commandId] = record;
+          else defineOwn(next, commandId, record);
         }
         return { ...(released > 0 ? { next } : {}), result: released };
       });

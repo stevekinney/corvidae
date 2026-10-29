@@ -12,6 +12,7 @@ import { whenMetadata, whenMetadataPresent } from './composition/conditional-sec
 import { validateConversationHistoryIntegrity } from './conversation/integrity';
 import { getMessageAtPosition, getMessageById } from './conversation/query';
 import type { ConversationHistory } from './types';
+import { toIdRecord } from './utilities/message-store';
 
 /** A history whose ids list a message that its messages record does not hold. */
 function historyListing(id: string): ConversationHistory {
@@ -50,5 +51,14 @@ describe('conditional sections keyed on a metadata name', () => {
     expect(whenMetadataPresent('constructor')(context)).toBe(false);
     expect(whenMetadata('constructor', undefined)(context)).toBe(true);
     expect(whenMetadata('toString', 'x')(context)).toBe(false);
+  });
+});
+
+describe('a message id of __proto__', () => {
+  test('is stored as an entry, not as the record prototype', () => {
+    const record = toIdRecord([{ id: '__proto__' }, { id: 'a' }]);
+    expect(Object.keys(record)).toEqual(['__proto__', 'a']);
+    expect(Object.getPrototypeOf(record)).toBe(Object.prototype);
+    expect(Object.hasOwn(record, '__proto__')).toBe(true);
   });
 });

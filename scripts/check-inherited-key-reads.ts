@@ -16,12 +16,18 @@
  * passes without a listing when any of these holds:
  *
  * - it is the target of a plain assignment or a `delete` (neither reads);
- * - the enclosing function (or file) tests the same receiver and key with `Object.hasOwn`, a
- *   `hasOwnProperty(record, key)` helper, `Object.prototype.hasOwnProperty.call`, or
- *   `record.hasOwnProperty(key)` (an `in` test does not count, because it also answers for
- *   inherited keys);
- * - the key is a variable bound by iterating the same receiver's own keys, as in
- *   `for (const key of Object.keys(record))` or `Object.keys(record).map((key) => ...)`;
+ * - the read is control-dependent on an own-property test of the same receiver and key
+ *   (`Object.hasOwn`, a `hasOwnProperty(record, key)` helper, `Object.prototype.hasOwnProperty.call`,
+ *   or `record.hasOwnProperty(key)`): it sits in the branch of an `if`, conditional, `&&` or `||`
+ *   that the test decides, or it follows an `if` whose test, when false, proves ownership and whose
+ *   body returns, throws, continues or breaks. A test whose result the read does not depend on
+ *   (`void Object.hasOwn(record, key)`) does not count, and neither does an `in` test, which also
+ *   answers for inherited keys;
+ * - the key is a variable in the key position of an enumeration of the same receiver's own keys:
+ *   the variable of `for (const key of Object.keys(record))`, the first element of a
+ *   `[key, value]` pair from `Object.entries(record)`, or the first parameter of a callback over
+ *   either, directly, through `filter`/`sort`/`toSorted`/`slice`/`reverse`, or through one local
+ *   `const`. The value half of a pair, and anything a `map` produced, can be any string;
  * - the receiver is a local `const` created by `Object.create(null)`, which inherits nothing.
  *
  * Fix a finding by testing with `Object.hasOwn(record, key)` first, by holding the entries in a
@@ -82,13 +88,6 @@ function hasStringIndex(checker: ts.TypeChecker, type: ts.Type): boolean {
     .some((info) => (info.keyType.flags & ts.TypeFlags.StringLike) !== 0);
 }
 
-function enclosingScope(node: ts.Node): ts.Node {
-  for (let current = node.parent; current; current = current.parent) {
-    if (ts.isFunctionLike(current) || ts.isSourceFile(current)) return current;
-  }
-  return node.getSourceFile();
-}
-
 /** The expression without the casts, `!` and parentheses that change its type but not its value. */
 function unwrap(node: ts.Node): ts.Node {
   let current = node;
@@ -106,96 +105,240 @@ function unwrap(node: ts.Node): ts.Node {
 
 const textOf = (node: ts.Node): string => unwrap(node).getText().replaceAll(/\s+/g, '');
 
-function testsOwnKey(scope: ts.Node, receiver: string, key: string): boolean {
-  let found = false;
-  const visit = (node: ts.Node): void => {
-    if (found) return;
-    if (ts.isCallExpression(node)) {
-      const callee = textOf(node.expression);
-      const [first, second] = node.arguments;
-      const name = callee.slice(callee.lastIndexOf('.') + 1);
+/** Whether `call` is an own-property test of `receiver` and `key`, in any of the usual spellings. */
+function isOwnPropertyTest(call: ts.CallExpression, receiver: string, key: string): boolean {
+  const callee = textOf(call.expression);
+  const [first, second] = call.arguments;
+  const name = callee.slice(callee.lastIndexOf('.') + 1);
+  if (!(callee.endsWith('hasOwnProperty.call') || name === 'hasOwn' || name === 'hasOwnProperty')) {
+    return false;
+  }
+  // `Object.hasOwn(record, key)`, a `hasOwnProperty(record, key)` helper, and
+  // `Object.prototype.hasOwnProperty.call(record, key)` take the record first.
+  if (first && second) return textOf(first) === receiver && textOf(second) === key;
+  // `record.hasOwnProperty(key)` takes only the key.
+  return first !== undefined && callee === `${receiver}.hasOwnProperty` && textOf(first) === key;
+}
+
+/** Whether `expression` evaluating to `value` proves that the receiver owns the key. */
+function impliesOwnership(
+  expression: ts.Expression,
+  value: boolean,
+  receiver: string,
+  key: string,
+): boolean {
+  const node = unwrap(expression);
+  if (ts.isCallExpression(node)) return value && isOwnPropertyTest(node, receiver, key);
+  if (ts.isPrefixUnaryExpression(node) && node.operator === ts.SyntaxKind.ExclamationToken) {
+    return impliesOwnership(node.operand, !value, receiver, key);
+  }
+  if (ts.isBinaryExpression(node)) {
+    const kind = node.operatorToken.kind;
+    // `a && b` is true only when both are, so either one proves it; `a || b` is false only when
+    // both are false, so either one's falsity proves it. The other outcomes prove nothing.
+    if (kind === ts.SyntaxKind.AmpersandAmpersandToken && value) {
+      return (
+        impliesOwnership(node.left, true, receiver, key) ||
+        impliesOwnership(node.right, true, receiver, key)
+      );
+    }
+    if (kind === ts.SyntaxKind.BarBarToken && !value) {
+      return (
+        impliesOwnership(node.left, false, receiver, key) ||
+        impliesOwnership(node.right, false, receiver, key)
+      );
+    }
+  }
+  return false;
+}
+
+/** Whether a statement always leaves the block it sits in: `return`, `throw`, `continue`, `break`. */
+function leavesBlock(statement: ts.Statement): boolean {
+  if (
+    ts.isReturnStatement(statement) ||
+    ts.isThrowStatement(statement) ||
+    ts.isContinueStatement(statement) ||
+    ts.isBreakStatement(statement)
+  ) {
+    return true;
+  }
+  if (ts.isBlock(statement)) {
+    const last = statement.statements.at(-1);
+    return last !== undefined && leavesBlock(last);
+  }
+  return false;
+}
+
+/**
+ * Whether the read is control-dependent on an own-property test of the same receiver and key: it
+ * sits in the branch of an `if`, conditional, `&&` or `||` that the test decides, or it follows an
+ * `if` whose test, when false, proves ownership and whose body leaves the block. A test whose
+ * result the read does not depend on (`void Object.hasOwn(record, key)`) does not count.
+ */
+function isGuardedByOwnTest(node: ts.Node, receiver: string, key: string): boolean {
+  for (
+    let child: ts.Node = node, parent = node.parent;
+    parent;
+    child = parent, parent = parent.parent
+  ) {
+    if (ts.isIfStatement(parent)) {
       if (
-        callee.endsWith('hasOwnProperty.call') ||
-        name === 'hasOwn' ||
-        name === 'hasOwnProperty'
+        child === parent.thenStatement &&
+        impliesOwnership(parent.expression, true, receiver, key)
       ) {
-        // `Object.hasOwn(record, key)`, a `hasOwnProperty(record, key)` helper, and
-        // `Object.prototype.hasOwnProperty.call(record, key)` take the record first.
-        if (first && second && textOf(first) === receiver && textOf(second) === key) found = true;
-        // `record.hasOwnProperty(key)` takes only the key.
-        else if (
-          first &&
-          !second &&
-          callee === `${receiver}.hasOwnProperty` &&
-          textOf(first) === key
+        return true;
+      }
+      if (
+        child === parent.elseStatement &&
+        impliesOwnership(parent.expression, false, receiver, key)
+      ) {
+        return true;
+      }
+    } else if (ts.isConditionalExpression(parent)) {
+      if (child === parent.whenTrue && impliesOwnership(parent.condition, true, receiver, key)) {
+        return true;
+      }
+      if (child === parent.whenFalse && impliesOwnership(parent.condition, false, receiver, key)) {
+        return true;
+      }
+    } else if (ts.isBinaryExpression(parent) && child === parent.right) {
+      const kind = parent.operatorToken.kind;
+      if (
+        (kind === ts.SyntaxKind.AmpersandAmpersandToken &&
+          impliesOwnership(parent.left, true, receiver, key)) ||
+        (kind === ts.SyntaxKind.BarBarToken && impliesOwnership(parent.left, false, receiver, key))
+      ) {
+        return true;
+      }
+    } else if (ts.isBlock(parent) || ts.isSourceFile(parent) || ts.isCaseClause(parent)) {
+      const statements = parent.statements;
+      const index = statements.indexOf(child as ts.Statement);
+      for (const earlier of statements.slice(0, Math.max(index, 0))) {
+        if (
+          ts.isIfStatement(earlier) &&
+          leavesBlock(earlier.thenStatement) &&
+          impliesOwnership(earlier.expression, false, receiver, key)
         ) {
-          found = true;
+          return true;
         }
       }
     }
-    ts.forEachChild(node, visit);
-  };
-  visit(scope);
-  return found;
+  }
+  return false;
 }
 
-/** The text of an iterated expression, plus the initializer of the local it starts from. */
-function iteratedTexts(checker: ts.TypeChecker, expression: ts.Node): string[] {
-  const texts = [textOf(expression)];
-  let head: ts.Node = unwrap(expression);
-  while (
-    ts.isPropertyAccessExpression(head) ||
-    ts.isCallExpression(head) ||
-    ts.isElementAccessExpression(head)
-  ) {
-    head = unwrap(head.expression);
+/** How an enumeration lists the object: its keys alone, or `[key, value]` pairs. */
+type ElementShape = 'keys' | 'entries';
+
+/** Methods that hand on the elements of the array they are called on, unchanged. */
+const SHAPE_PRESERVING_METHODS = new Set([
+  'filter',
+  'toSorted',
+  'sort',
+  'slice',
+  'toReversed',
+  'reverse',
+]);
+
+/**
+ * What the elements of `expression` are when it enumerates the receiver's own keys: the keys, the
+ * `[key, value]` pairs, or `undefined` when it is anything else. It follows `Object.keys`,
+ * `Object.entries`, `Object.getOwnPropertyNames` and `Reflect.ownKeys` of the receiver, a spread of
+ * one, a chain of order-or-membership methods, and one level of local `const`.
+ */
+function elementShapeOf(
+  checker: ts.TypeChecker,
+  expression: ts.Node,
+  receiver: string,
+): ElementShape | undefined {
+  const node = unwrap(expression);
+  if (ts.isArrayLiteralExpression(node) && node.elements.length === 1) {
+    const only = node.elements[0]!;
+    return ts.isSpreadElement(only)
+      ? elementShapeOf(checker, only.expression, receiver)
+      : undefined;
   }
-  if (ts.isIdentifier(head)) {
-    const declaration = checker.getSymbolAtLocation(head)?.valueDeclaration;
+  if (ts.isIdentifier(node)) {
+    const declaration = checker.getSymbolAtLocation(node)?.valueDeclaration;
     if (
       declaration &&
       ts.isVariableDeclaration(declaration) &&
       declaration.initializer &&
       ts.getCombinedNodeFlags(declaration) & ts.NodeFlags.Const
     ) {
-      texts.push(textOf(declaration.initializer));
+      return elementShapeOf(checker, declaration.initializer, receiver);
     }
+    return undefined;
   }
-  return texts;
+  if (!ts.isCallExpression(node)) return undefined;
+  const callee = unwrap(node.expression);
+  if (ts.isPropertyAccessExpression(callee) && SHAPE_PRESERVING_METHODS.has(callee.name.text)) {
+    return elementShapeOf(checker, callee.expression, receiver);
+  }
+  const argument = node.arguments[0];
+  if (node.arguments.length !== 1 || !argument || textOf(argument) !== receiver) return undefined;
+  const name = textOf(callee);
+  if (['Object.keys', 'Object.getOwnPropertyNames', 'Reflect.ownKeys'].includes(name))
+    return 'keys';
+  return name === 'Object.entries' ? 'entries' : undefined;
 }
 
-/** Whether `key` is an identifier bound by iterating the receiver's own keys. */
+/**
+ * Whether `key` is a binding that holds an own key of the receiver. Only the key position counts:
+ * the variable of a loop over `Object.keys(record)`, the first element of a `[key, value]` pair
+ * from `Object.entries(record)`, or the first parameter of a callback over either. The value half
+ * of a pair, and an index or array parameter, can be anything.
+ */
 function isOwnKeyIteration(checker: ts.TypeChecker, key: ts.Expression, receiver: string): boolean {
   const identifier = unwrap(key);
   if (!ts.isIdentifier(identifier)) return false;
   const declaration = checker.getSymbolAtLocation(identifier)?.valueDeclaration;
   if (!declaration) return false;
-  const enumeration = new RegExp(
-    `(?:Object\\.(?:keys|entries|getOwnPropertyNames)|Reflect\\.ownKeys)\\(${escapeRegExp(receiver)}\\)`,
-  );
-  const enumerates = (expression: ts.Node): boolean =>
-    iteratedTexts(checker, expression).some((text) => enumeration.test(text));
-  const iterates = (node: ts.Node | undefined): boolean => {
-    for (let current = node; current; current = current.parent) {
-      if (ts.isForInStatement(current)) return textOf(current.expression) === receiver;
-      if (ts.isForOfStatement(current)) return enumerates(current.expression);
-      if (ts.isCallExpression(current) && enumerates(current.expression)) return true;
-      if (ts.isSourceFile(current)) return false;
-    }
-    return false;
-  };
-  if (ts.isParameter(declaration) || ts.isBindingElement(declaration)) {
-    return iterates(declaration.parent.parent);
-  }
+  // `for (const key in record)` lists the record's enumerable keys.
   if (ts.isVariableDeclaration(declaration)) {
     const list = declaration.parent;
-    return ts.isVariableDeclarationList(list) && iterates(list.parent);
+    const loop = ts.isVariableDeclarationList(list) ? list.parent : undefined;
+    if (loop && ts.isForInStatement(loop)) return textOf(loop.expression) === receiver;
+  }
+  // The key position: a plain binding, or element 0 of an array pattern.
+  let position: ts.Node = declaration;
+  let pair = false;
+  if (ts.isBindingElement(declaration)) {
+    const pattern = declaration.parent;
+    if (!ts.isArrayBindingPattern(pattern) || pattern.elements[0] !== declaration) return false;
+    position = pattern.parent;
+    pair = true;
+  }
+  const expected: ElementShape = pair ? 'entries' : 'keys';
+  // A loop variable over the enumeration.
+  if (ts.isVariableDeclaration(position)) {
+    const list = position.parent;
+    const loop = ts.isVariableDeclarationList(list) ? list.parent : undefined;
+    return (
+      loop !== undefined &&
+      ts.isForOfStatement(loop) &&
+      elementShapeOf(checker, loop.expression, receiver) === expected
+    );
+  }
+  // The first parameter of a callback passed to a method of the enumeration.
+  if (ts.isParameter(position)) {
+    const callback = position.parent;
+    const call = callback.parent;
+    if (
+      !ts.isFunctionLike(callback) ||
+      callback.parameters[0] !== position ||
+      !ts.isCallExpression(call) ||
+      !call.arguments.includes(callback as ts.Expression)
+    ) {
+      return false;
+    }
+    const method = unwrap(call.expression);
+    return (
+      ts.isPropertyAccessExpression(method) &&
+      elementShapeOf(checker, method.expression, receiver) === expected
+    );
   }
   return false;
-}
-
-function escapeRegExp(text: string): string {
-  return text.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
 
 /** The receiver and key of an element access or `in` test, and the node to report. */
@@ -279,7 +422,7 @@ export function findInheritedKeyReads(program: ts.Program, directory: string): I
       const receiverText = textOf(receiver);
       const keyText = textOf(key);
       if (
-        testsOwnKey(enclosingScope(node), receiverText, keyText) ||
+        isGuardedByOwnTest(node, receiverText, keyText) ||
         isOwnKeyIteration(checker, key, receiverText)
       ) {
         return;
@@ -339,8 +482,8 @@ export function judgeReads(
     group.lines.push(read.line);
     groups.set(id, group);
   }
-  const allowed = new Map(
-    allowlist.map((entry) => [`${entry.file}\u0000${entry.expression}`, entry] as const),
+  const allowed = new Map<string, AllowlistEntry>(
+    allowlist.map((entry) => [`${entry.file}\u0000${entry.expression}`, entry]),
   );
   const unlisted: AllowlistJudgement['unlisted'] = [];
   for (const [id, group] of groups) {

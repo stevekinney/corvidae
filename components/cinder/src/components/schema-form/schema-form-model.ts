@@ -313,7 +313,13 @@ export function setValueAtPath(value: unknown, path: readonly string[], next: un
   }
 
   const copy: Record<string, unknown> = isRecord(value) ? { ...value } : {};
-  copy[head] = setValueAtPath(ownEntry(copy, head), tail, next);
+  // Assignment would turn the property name `__proto__` into "set the prototype" and drop the value.
+  Object.defineProperty(copy, head, {
+    value: setValueAtPath(ownEntry(copy, head), tail, next),
+    enumerable: true,
+    writable: true,
+    configurable: true,
+  });
   return copy;
 }
 

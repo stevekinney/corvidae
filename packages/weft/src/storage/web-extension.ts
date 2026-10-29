@@ -133,6 +133,16 @@ function assertBatchUserStorageKeys(operations: readonly BatchOperation[]): void
   }
 }
 
+/** Stores an envelope as an own entry, so a user key of `__proto__` is kept, not read as "set the prototype". */
+function setEnvelope(keyspace: StorageKeyspace, key: string, envelope: StorageEnvelope): void {
+  Object.defineProperty(keyspace, key, {
+    value: envelope,
+    enumerable: true,
+    writable: true,
+    configurable: true,
+  });
+}
+
 function createPutEnvelope(value: Uint8Array): StorageEnvelope {
   return { __weftStorage: ENVELOPE_MARKER, value: encodeBytesToBase64(value) };
 }
@@ -419,7 +429,7 @@ export class WebExtensionStorage implements Storage {
     assertUserStorageKey(key);
     await this.#withMutationLock(async () => {
       const keyspace = await this.#getKeyspace();
-      keyspace[key] = createPutEnvelope(value);
+      setEnvelope(keyspace, key, createPutEnvelope(value));
       await this.#writeKeyspace(keyspace);
     });
   }
@@ -466,7 +476,7 @@ export class WebExtensionStorage implements Storage {
       const keyspace = await this.#getKeyspace();
       for (const operation of operations) {
         if (operation.type === 'put') {
-          keyspace[operation.key] = createPutEnvelope(operation.value);
+          setEnvelope(keyspace, operation.key, createPutEnvelope(operation.value));
         } else {
           delete keyspace[operation.key];
         }
