@@ -1,4 +1,4 @@
-import { createDeferred, waitForCondition, withTimeout } from '@lostgradient/testing/fake-timers';
+import { createDeferred, waitForCondition } from '@lostgradient/testing/fake-timers';
 import { afterEach, describe, expect, it } from 'bun:test';
 import type { ActivityInterceptor } from '../core/interceptor.ts';
 import { LongPollWorker, type LongPollWorkerOptions } from './long-poll.ts';
@@ -13,7 +13,6 @@ const RESULT_PATH_RE = /^\/api\/v1\/worker-sessions\/([^/]+)\/results$/;
 const HEARTBEAT_PATH_RE = /^\/api\/v1\/worker-sessions\/([^/]+)\/heartbeat$/;
 const SESSION_POLL_PATH_RE = /^\/api\/v1\/worker-sessions\/([^/]+)\/tasks$/;
 const SESSION_RESULT_PATH_RE = /^\/api\/v1\/worker-sessions\/([^/]+)\/results$/;
-const LONG_POLL_TEST_TIMEOUT_MS = 2_000;
 const DEFAULT_TEST_SESSION_ID = 'session-test';
 const DEFAULT_TEST_SESSION_TOKEN =
   '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
@@ -157,11 +156,7 @@ describe('LongPollWorker', () => {
 
     expect(worker.ready).toBe(false);
     worker.start();
-    const result = await withTimeout(
-      taskCompleted.promise,
-      LONG_POLL_TEST_TIMEOUT_MS,
-      'session result delivery',
-    );
+    const result = await taskCompleted.promise;
     expect(worker.ready).toBe(true);
     await worker.stop();
     expect(worker.ready).toBe(false);
@@ -322,18 +317,10 @@ describe('LongPollWorker', () => {
     });
 
     worker.start();
-    await withTimeout(
-      activityStarted.promise,
-      LONG_POLL_TEST_TIMEOUT_MS,
-      'long-poll activity start',
-    );
+    await activityStarted.promise;
     await worker.stop();
 
-    await withTimeout(
-      activityAborted.promise,
-      LONG_POLL_TEST_TIMEOUT_MS,
-      'long-poll activity abort',
-    );
+    await activityAborted.promise;
     expect(worker.inFlight).toBe(0);
   });
 
@@ -388,21 +375,12 @@ describe('LongPollWorker', () => {
     });
 
     worker.start();
-    await withTimeout(
-      activityStarted.promise,
-      LONG_POLL_TEST_TIMEOUT_MS,
-      'long-poll non-cooperative activity start',
-    );
+    await activityStarted.promise;
 
-    await withTimeout(
-      worker.stop(),
-      LONG_POLL_TEST_TIMEOUT_MS,
-      'long-poll stop() bounded by disconnectTimeoutMs',
-    );
+    await worker.stop();
 
-    // Bounded: `withTimeout` above fails the test if stop() waits forever for
-    // an activity that will never finish on its own, so it needs no reading of
-    // the clock here.
+    // A stop() that waits forever for an activity that will never finish on its
+    // own is ended by the hang guard, so it needs no reading of the clock here.
     // The non-cooperative activity is still running — stop() did not, and
     // cannot, force it to stop; it only stopped WAITING for it.
     expect(worker.inFlight).toBe(1);
@@ -475,11 +453,7 @@ describe('LongPollWorker', () => {
     });
 
     worker.start();
-    await withTimeout(
-      taskCompleted.promise,
-      LONG_POLL_TEST_TIMEOUT_MS,
-      'long-poll task completion',
-    );
+    await taskCompleted.promise;
     await worker.stop();
 
     expect(completedTasks.length).toBeGreaterThanOrEqual(1);
@@ -542,11 +516,7 @@ describe('LongPollWorker', () => {
     });
 
     worker.start();
-    await withTimeout(
-      taskCompleted.promise,
-      LONG_POLL_TEST_TIMEOUT_MS,
-      'long-poll failure completion',
-    );
+    await taskCompleted.promise;
     await worker.stop();
 
     const errorCompletion = completedTasks.find((t) => t.operationId === 'op-err-1');
@@ -586,7 +556,7 @@ describe('LongPollWorker', () => {
     });
 
     worker.start();
-    await withTimeout(pollObserved.promise, LONG_POLL_TEST_TIMEOUT_MS, 'long-poll request');
+    await pollObserved.promise;
     await worker.stop();
 
     // Should have attempted at least one poll
@@ -636,11 +606,7 @@ describe('LongPollWorker', () => {
     });
 
     worker.start();
-    await withTimeout(
-      taskCompleted.promise,
-      LONG_POLL_TEST_TIMEOUT_MS,
-      'unknown activity completion',
-    );
+    await taskCompleted.promise;
     // taskCompleted resolves when the server RECEIVES the POST, before it
     // has even sent a response — wait for the client to actually process
     // that response and acknowledge (COR-235) before stopping, so stop()
@@ -700,11 +666,7 @@ describe('LongPollWorker', () => {
     });
 
     worker.start();
-    await withTimeout(
-      taskCompleted.promise,
-      LONG_POLL_TEST_TIMEOUT_MS,
-      'inherited-name activity completion',
-    );
+    await taskCompleted.promise;
     // taskCompleted resolves when the server RECEIVES the POST, before it
     // has even sent a response — wait for the client to actually process
     // that response and acknowledge (COR-235) before stopping, so stop()
@@ -780,16 +742,8 @@ describe('LongPollWorker', () => {
     });
 
     worker.start();
-    await withTimeout(
-      activityAttempted.promise,
-      LONG_POLL_TEST_TIMEOUT_MS,
-      'failing activity attempt',
-    );
-    await withTimeout(
-      resultDelivered.promise,
-      LONG_POLL_TEST_TIMEOUT_MS,
-      'retried result delivery reaching the server',
-    );
+    await activityAttempted.promise;
+    await resultDelivered.promise;
     await waitForCondition(() => worker.unacknowledgedResultCount === 0);
     expect(resultAttempts).toBeGreaterThanOrEqual(2);
 
@@ -859,16 +813,8 @@ describe('LongPollWorker', () => {
     });
 
     worker.start();
-    await withTimeout(
-      activityAttempted.promise,
-      LONG_POLL_TEST_TIMEOUT_MS,
-      'echo activity attempt',
-    );
-    await withTimeout(
-      firstRejectionSent.promise,
-      LONG_POLL_TEST_TIMEOUT_MS,
-      'first correlated 403',
-    );
+    await activityAttempted.promise;
+    await firstRejectionSent.promise;
 
     // The correlated-403 drop is an observed event: unacknowledgedResultCount
     // reaching 0 after the server has already answered with the correlated
@@ -939,11 +885,7 @@ describe('LongPollWorker', () => {
     });
 
     worker.start();
-    await withTimeout(
-      activityAttempted.promise,
-      LONG_POLL_TEST_TIMEOUT_MS,
-      'echo activity attempt',
-    );
+    await activityAttempted.promise;
     // Wait for the first (failing) delivery attempt to land before stopping,
     // so stop() observes a genuinely unacknowledged result rather than
     // racing the very first send.
@@ -958,11 +900,7 @@ describe('LongPollWorker', () => {
     // (intentionally huge) retry backoff.
     serverHealthy = true;
     worker.start();
-    await withTimeout(
-      resultDelivered.promise,
-      LONG_POLL_TEST_TIMEOUT_MS,
-      'resumed result delivery',
-    );
+    await resultDelivered.promise;
     await waitForCondition(() => worker.unacknowledgedResultCount === 0);
     expect(resultAttempts).toBeGreaterThan(attemptsAtStop);
 
@@ -1014,7 +952,7 @@ describe('LongPollWorker', () => {
     });
 
     worker.start();
-    await withTimeout(taskCompleted.promise, LONG_POLL_TEST_TIMEOUT_MS, 'string throw completion');
+    await taskCompleted.promise;
     await worker.stop();
 
     const errorCompletion = completedTasks.find((t) => t.operationId === 'op-string-throw');
@@ -1058,7 +996,7 @@ describe('LongPollWorker', () => {
     });
 
     worker.start();
-    await withTimeout(pollObserved.promise, LONG_POLL_TEST_TIMEOUT_MS, 'billing queue poll');
+    await pollObserved.promise;
     await worker.stop();
 
     expect(registeredQueue).toBe('billing');
@@ -1126,11 +1064,7 @@ describe('LongPollWorker', () => {
 
     try {
       worker.start();
-      await withTimeout(
-        taskCompleted.promise,
-        LONG_POLL_TEST_TIMEOUT_MS,
-        'intercepted task completion',
-      );
+      await taskCompleted.promise;
       await worker.stop();
     } finally {
       worker[Symbol.dispose]();
@@ -1195,11 +1129,7 @@ describe('LongPollWorker', () => {
     });
 
     worker.start();
-    await withTimeout(
-      taskCompleted.promise,
-      LONG_POLL_TEST_TIMEOUT_MS,
-      'modified input task completion',
-    );
+    await taskCompleted.promise;
     await worker.stop();
 
     const taskCompletion = completedTasks.find((t) => t.operationId === 'op-lp-modify');
@@ -1261,11 +1191,7 @@ describe('LongPollWorker', () => {
     });
 
     worker.start();
-    await withTimeout(
-      taskCompleted.promise,
-      LONG_POLL_TEST_TIMEOUT_MS,
-      'header propagation task completion',
-    );
+    await taskCompleted.promise;
     await worker.stop();
 
     expect(capturedHeaders).toBeDefined();
@@ -1342,11 +1268,7 @@ describe('LongPollWorker', () => {
     });
 
     worker.start();
-    await withTimeout(
-      thirdHeartbeatReceived.promise,
-      LONG_POLL_TEST_TIMEOUT_MS,
-      'third interval-driven heartbeat',
-    );
+    await thirdHeartbeatReceived.promise;
     releaseActivity.resolve();
     await worker.stop();
 
@@ -1430,13 +1352,9 @@ describe('LongPollWorker', () => {
     });
 
     worker.start();
-    await withTimeout(activityStarted.promise, LONG_POLL_TEST_TIMEOUT_MS, 'activity started');
-    await withTimeout(activityAborted.promise, LONG_POLL_TEST_TIMEOUT_MS, 'activity aborted');
-    await withTimeout(
-      taskResultReceived.promise,
-      LONG_POLL_TEST_TIMEOUT_MS,
-      'task result received',
-    );
+    await activityStarted.promise;
+    await activityAborted.promise;
+    await taskResultReceived.promise;
     await worker.stop();
 
     const taskResult = completedTasks.find((t) => t.operationId === 'op-cancel-via-heartbeat');
@@ -1517,13 +1435,9 @@ describe('LongPollWorker', () => {
     });
 
     worker.start();
-    await withTimeout(activityStarted.promise, LONG_POLL_TEST_TIMEOUT_MS, 'activity started');
-    await withTimeout(activityAborted.promise, LONG_POLL_TEST_TIMEOUT_MS, 'activity aborted');
-    await withTimeout(
-      taskResultReceived.promise,
-      LONG_POLL_TEST_TIMEOUT_MS,
-      'task result received',
-    );
+    await activityStarted.promise;
+    await activityAborted.promise;
+    await taskResultReceived.promise;
     await worker.stop();
 
     const taskResult = completedTasks.find((t) => t.operationId === 'op-cancel-reason-lp');
@@ -1595,11 +1509,7 @@ describe('LongPollWorker', () => {
     });
 
     worker.start();
-    await withTimeout(
-      detailsHeartbeatReceived.promise,
-      LONG_POLL_TEST_TIMEOUT_MS,
-      'on-demand heartbeat with details',
-    );
+    await detailsHeartbeatReceived.promise;
     await worker.stop();
 
     const detailsHeartbeat = heartbeatBodies.find((body) => body.details !== undefined);
@@ -1702,13 +1612,9 @@ describe('LongPollWorker', () => {
     });
 
     worker.start();
-    await withTimeout(bothStarted.promise, LONG_POLL_TEST_TIMEOUT_MS, 'both activities started');
-    await withTimeout(aAborted.promise, LONG_POLL_TEST_TIMEOUT_MS, 'op-fenced-a aborted');
-    await withTimeout(
-      bResultReceived.promise,
-      LONG_POLL_TEST_TIMEOUT_MS,
-      'op-fenced-b result received',
-    );
+    await bothStarted.promise;
+    await aAborted.promise;
+    await bResultReceived.promise;
     // Checked BEFORE `stop()`: shutdown deliberately aborts every controller
     // still tracked (including one whose activity already returned but
     // whose bookkeeping hasn't been cleaned up yet) — that is normal
@@ -1828,19 +1734,11 @@ describe('LongPollWorker', () => {
     });
 
     worker.start();
-    await withTimeout(bothStarted.promise, LONG_POLL_TEST_TIMEOUT_MS, 'both attempts started');
-    await withTimeout(
-      attempt1ResultReceived.promise,
-      LONG_POLL_TEST_TIMEOUT_MS,
-      'attempt-1 result received',
-    );
+    await bothStarted.promise;
+    await attempt1ResultReceived.promise;
     // Only now does the server start telling attempt-2's heartbeat to
     // cancel — proving attempt-2's controller survived attempt-1's cleanup.
-    await withTimeout(
-      attempt2Aborted.promise,
-      LONG_POLL_TEST_TIMEOUT_MS,
-      'attempt-2 observed its own abort after attempt-1 completed and cleaned up',
-    );
+    await attempt2Aborted.promise;
     await worker.stop();
 
     const attempt2Result = completedTasks.find((t) => t.attemptToken === 'attempt-2');

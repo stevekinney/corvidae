@@ -668,6 +668,49 @@ describe('a budget handed to a wait helper by position', () => {
     expect(inspect(source)).toEqual([]);
   });
 
+  describe('a helper that races a timer on one of its parameters, whatever it is called', () => {
+    const arrow =
+      "const settled = (work: Promise<unknown>, ms: number) =>\n  Promise.race([work.then(() => 'done'), new Promise((resolve) => setTimeout(() => resolve('waiting'), ms))]);\n";
+    const declaration =
+      'async function withTimeout<T>(promise: Promise<T>, milliseconds: number, label: string): Promise<T> {\n  let timer;\n  const expiry = new Promise<never>((_resolve, reject) => {\n    timer = setTimeout(() => reject(new Error(label)), milliseconds);\n  });\n  try {\n    return await Promise.race([promise, expiry]);\n  } finally {\n    clearTimeout(timer);\n  }\n}\n';
+    const sleeper =
+      'async function readWithin(read: () => Promise<string>, window: number) {\n  return Promise.race([read(), sleep(window).then(() => undefined)]);\n}\n';
+
+    test.each([
+      ['an arrow', `${arrow}await settled(pending, 150);`],
+      ['a function declaration', `${declaration}await withTimeout(work, 150, 'work');`],
+      ['a race against sleep', `${sleeper}await readWithin(describe, 150);`],
+    ])('reports %s called with a short window', (_name, source) => {
+      expect(inspect(source)).toEqual(['wait-budget']);
+    });
+
+    test.each([
+      ['an arrow', `${arrow}await settled(pending, HANG_GUARD_MILLISECONDS);`],
+      [
+        'a function declaration',
+        `${declaration}await withTimeout(work, HANG_GUARD_MILLISECONDS, 'work');`,
+      ],
+    ])('accepts %s called with the hang guard', (_name, source) => {
+      expect(inspect(source)).toEqual([]);
+    });
+
+    test('does not read a parameter the body never hands to the timer', () => {
+      expect(
+        inspect(
+          'const settled = (work: Promise<unknown>, count: number) =>\n  Promise.race([work, new Promise((resolve) => setTimeout(resolve, HANG_GUARD_MILLISECONDS))]);\nawait settled(pending, 150);',
+        ),
+      ).toEqual([]);
+    });
+
+    test('does not read a timer delay in a body that races nothing', () => {
+      expect(
+        inspect(
+          'function later(run: () => void, delay: number) { setTimeout(run, delay); }\nlater(run, 150);',
+        ),
+      ).toEqual([]);
+    });
+  });
+
   test('reads a helper declared in another file through the shared table', () => {
     const declaring = ts.createSourceFile(
       'support.test-support.ts',

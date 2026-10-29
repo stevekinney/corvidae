@@ -1,4 +1,4 @@
-import { sleepForTesting, withTimeout } from '@lostgradient/testing/fake-timers';
+import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
 import type { Engine } from '../core/engine.ts';
@@ -23,9 +23,8 @@ async function drain(tail: {
   const consume = (async () => {
     for await (const e of tail) seen.push(e.type);
   })();
-  // `withTimeout` (shared test support) always clears its timer, so a passing
-  // `consume` never leaves a real timeout alive for the guard to flag.
-  await withTimeout(consume, 1000, 'tail to terminate');
+  // A tail that never terminates is ended by the hang guard.
+  await consume;
   return seen;
 }
 
@@ -206,7 +205,7 @@ describe('createLocalWorkflowEventTail', () => {
 
     tail.close();
     // Must resolve (from close), not hang on the gated fetch.
-    await withTimeout(tail.whenConnected(), 1000, 'whenConnected to resolve after close');
+    await tail.whenConnected();
   });
 
   it('close() while idle terminates the tail promptly (pump does not hang)', async () => {

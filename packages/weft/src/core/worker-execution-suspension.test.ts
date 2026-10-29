@@ -1,4 +1,3 @@
-import { withTimeout } from '@lostgradient/testing/fake-timers';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { encodeStorageKeyComponent, MemoryStorage } from '@lostgradient/storage';
@@ -19,7 +18,6 @@ import { activity } from './types/activity.ts';
 import { workflow } from './types/workflow-function.ts';
 
 const workerUrl = new URL('../workers/test-browser-worker.ts', import.meta.url);
-const LOAD_TOLERANT_WORKER_TIMEOUT_ASSERTION_MS = 5_000;
 
 /**
  * Wait for `workflowId` to park on its signal, as an event rather than a
@@ -207,15 +205,9 @@ describe('worker execution signal suspension', () => {
       id: 'worker-infinite-loop',
     });
 
-    expect(
-      await throwingRejectionOf(
-        withTimeout(
-          loopingHandle.result(),
-          LOAD_TOLERANT_WORKER_TIMEOUT_ASSERTION_MS,
-          'infinite-loop timeout',
-        ),
-      ),
-    ).toThrow('Worker workflow turn timed out');
+    expect(await throwingRejectionOf(loopingHandle.result())).toThrow(
+      'Worker workflow turn timed out',
+    );
 
     const simpleHandle = await workerEngine.start(
       'simple',
@@ -248,11 +240,7 @@ describe('worker execution signal suspension', () => {
 
     await workerEngine.signal('worker-infinite-loop-after-resume', 'resume', { status: 'go' });
 
-    const outcome = await withTimeout(
-      loopingOutcome,
-      LOAD_TOLERANT_WORKER_TIMEOUT_ASSERTION_MS,
-      'infinite-loop-after-resume timeout',
-    );
+    const outcome = await loopingOutcome;
     expect(outcome.status).toBe('rejected');
     if (outcome.status === 'fulfilled') {
       throw new Error('Expected the resumed Worker turn to time out, but it fulfilled');

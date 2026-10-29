@@ -14,7 +14,8 @@
  * that. A bound on something other than a real process, such as a stub whose exit never settles,
  * carries a `// wait-bound: <reason>` comment of at least 20 characters directly above its line.
  *
- * Blind spots: a bound reached through a wrapper the file declares itself (a local `watchdog`), a
+ * Blind spots: a bound reached through a wrapper the file declares itself (a local `watchdog`,
+ * which the root `scripts/check-load-sensitive-deadlines.ts` reads when it races a timer), a
  * name imported from another module, or a stand-in's `--wait-milliseconds` argument. An options
  * object in the second place is the shared `waitUntil`'s; only its `hangGuardMilliseconds` is a bound.
  */

@@ -1,5 +1,5 @@
 import { MemoryStorage } from '@lostgradient/storage';
-import { sleepForTesting, withTimeout } from '@lostgradient/testing/fake-timers';
+import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test';
@@ -1089,11 +1089,10 @@ describe('HttpClient live event streaming (end-to-end)', () => {
     );
 
     // Second signal completes the workflow; the resumed stream must deliver
-    // the terminal event and the tail must terminate cleanly. `withTimeout`
-    // (shared test support) always clears its timer, so a passing `consume`
-    // never leaves a real timeout alive for the guard to flag.
+    // the terminal event and the tail must terminate cleanly; a tail that hangs
+    // is ended by the hang guard.
     await handle.signal('continue', undefined, { signalId: 'second' });
-    await withTimeout(consume, 3000, 'resumed stream to complete');
+    await consume;
 
     expect(seen).toContain('workflow:completed');
     expect(await handle.result()).toBe('resume:done');

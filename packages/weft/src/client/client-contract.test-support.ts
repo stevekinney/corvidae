@@ -1,4 +1,4 @@
-import { sleepForTesting, withTimeout } from '@lostgradient/testing/fake-timers';
+import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { describe, expect, it } from 'bun:test';
@@ -248,10 +248,8 @@ export function runWeftClientContractTests(options: ClientContractTestOptions): 
       await handle.signal('continue', 'done');
 
       // The tail must terminate on its own when the workflow completes; if it
-      // hangs, this rejects so the test fails instead of hanging.
-      // `withTimeout` always clears its timer, so a passing `consume` never
-      // leaves a real timeout alive for the guard to flag.
-      await withTimeout(consume, 2000, 'client.tail to terminate on completion');
+      // hangs, the hang guard ends the test.
+      await consume;
 
       expect(seen).toContain('workflow:completed');
       expect(await handle.result()).toBe('tail:done');
@@ -276,8 +274,7 @@ export function runWeftClientContractTests(options: ClientContractTestOptions): 
 
       await tail.whenConnected();
       await handle.signal('continue', 'done');
-      // See the `withTimeout` note on the `client.tail` variant above.
-      await withTimeout(consume, 2000, 'handle.tail to terminate');
+      await consume;
 
       expect(seen).toContain('workflow:completed');
     });

@@ -121,6 +121,8 @@ export async function settleScenario(
       const waited = Math.round(performance.now() - stalled.startedAt);
       let detail = '';
       try {
+        // load-proof: this runs only after the hang guard has fired and the scenario has failed, so
+        // a read that outlasts the window changes the report's detail, never the verdict.
         const described = await readWithin(stalled.describe, DESCRIBE_MILLISECONDS);
         if (described !== undefined) detail = ` (${described})`;
       } catch (error) {
