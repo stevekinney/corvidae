@@ -13,6 +13,7 @@ import {
   sqliteDatabaseSidecarSuffixes,
 } from '@lostgradient/storage/testing';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { TursoStorage } from './turso.ts';
 
 // The adapter loads the driver through `createRequire`, which yields the CommonJS build. The probe
@@ -149,6 +150,28 @@ describe('TursoStorage conditionalBatch non-contention failure', () => {
       executeSpy.mockRestore();
       rollbackSpy.mockRestore();
       storage[Symbol.dispose]();
+    }
+  });
+});
+
+describe('TursoStorage disposal', () => {
+  it('swallows a failure to close the client, which it closes best-effort', async () => {
+    const storage = new TursoStorage({ url: 'file::memory:' });
+    const probe = createClient({ url: 'file::memory:' });
+    const clientPrototype = Object.getPrototypeOf(probe) as { close: () => void };
+    probe.close();
+
+    await storage.put('present', encode('1'));
+    const closeSpy = spyOn(clientPrototype, 'close').mockImplementation(() => {
+      throw new Error('close failed');
+    });
+
+    try {
+      storage[Symbol.dispose]();
+      await waitUntil(() => closeSpy.mock.calls.length === 1);
+      expect(closeSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      closeSpy.mockRestore();
     }
   });
 });

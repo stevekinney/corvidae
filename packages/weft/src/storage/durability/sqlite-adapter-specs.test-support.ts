@@ -1,7 +1,7 @@
 /**
- * The durability suites' specs for the disk-backed SQLite adapters Weft still holds: Node SQLite and
- * Turso (whose spec lives in `turso-adapter-spec.test-support.ts`). Bun SQLite's spec lives in
- * `@lostgradient/storage-bun-sqlite`. The suites and their adapter-independent support live in
+ * The durability suites' specs for the disk-backed SQLite adapters Weft still holds: Node SQLite.
+ * Bun SQLite's and Turso's specs live in `@lostgradient/storage-bun-sqlite` and
+ * `@lostgradient/storage-turso`. The suites and their adapter-independent support live in
  * `@lostgradient/storage/testing`; each spec carries its adapter, the module its child entrypoints
  * import, and, for Node, the raw-handle hooks.
  */
@@ -18,7 +18,6 @@ import {
   type WalCheckpointRow,
 } from '@lostgradient/storage/testing';
 import { NodeSQLiteStorage } from '../node-sqlite.ts';
-import { tursoSpec } from './turso-adapter-spec.test-support.ts';
 
 /** Matches the surface of `BetterSqliteDatabase` in `src/storage/node-sqlite.ts`. */
 type BetterSqliteDatabase = {
@@ -159,7 +158,7 @@ function canLoadNodeSqlite(): boolean {
 
 /** All adapter specs available in the current runtime. */
 export function availableAdapterSpecs(): readonly AdapterSpec[] {
-  const specs: AdapterSpec[] = [tursoSpec];
+  const specs: AdapterSpec[] = [];
   if (canLoadNodeSqlite()) specs.push(nodeSqliteSpec);
   return specs;
 }
