@@ -37,7 +37,6 @@ The check also fails when a classified file drops to 500 lines or fewer, so a cl
 | `src/core/types/workflow-context.ts` | Justified exception | Workflow-context types define one public generator API contract whose overloads and helper result types need local adjacency. |
 | `src/server/operations/bulk-filter-helpers.ts` | Justified exception | Bulk filter helpers keep REST, JSON-RPC, preview, and commit parsing aligned for the shared bulk-operation contract. |
 | `src/server/index.ts` | Justified exception | The server entrypoint owns the public serve surface and exported server types; further splitting would create shallow re-export files. |
-| `src/storage/indexeddb.ts` | Justified exception | IndexedDB storage keeps browser schema setup, transactions, scans, batching, and capability reporting in one adapter boundary. |
 | `src/core/worker-protocol.ts` | Justified exception | Worker protocol types and validators stay together so wire messages, limits, and validation errors remain one auditable contract. |
 | `src/mcp/tools.ts` | Justified exception | MCP tool schemas and handlers are intentionally adjacent so tool metadata and operation dispatch cannot drift. |
 | `src/storage/web-extension.ts` | Justified exception | WebExtension storage keeps namespace detection, callback/promise bridging, quota handling, and scans in one adapter boundary. |

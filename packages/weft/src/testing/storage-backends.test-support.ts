@@ -7,11 +7,11 @@ import {
   type Storage,
 } from '@lostgradient/storage';
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
+import { IndexedDBStorage } from '@lostgradient/storage-indexeddb';
 import { sleepForTesting, yieldToEventLoop } from '@lostgradient/testing/fake-timers';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import type { Engine } from '../core/engine.ts';
 import type { WorkflowStatus } from '../core/types.ts';
-import { IndexedDBStorage } from '../storage/indexeddb.ts';
 
 /**
  * A factory function that creates a fresh storage instance and returns

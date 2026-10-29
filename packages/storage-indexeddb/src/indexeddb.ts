@@ -273,21 +273,14 @@ function continuationRange(
  *
  * @example
  * ```ts
- * import { IndexedDBStorage } from '@lostgradient/weft';
- * import { workflow, Engine, type WorkflowContext } from '@lostgradient/weft';
+ * import { IndexedDBStorage } from '@lostgradient/storage-indexeddb';
  *
  * // Opens (or re-opens) the default 'weft' IndexedDB database
  * await using storage = new IndexedDBStorage();
- * await using engine = new Engine({ storage });
  *
- * engine.register(
- *   workflow({ name: 'greet' }).execute(async function* (ctx: WorkflowContext, input: { name: string }) {
- *     return `Hello, ${input.name}!`;
- *   }),
- * );
- *
- * const handle = await engine.start('greet', { name: 'World' });
- * console.log(await handle.result()); // 'Hello, World!'
+ * await storage.put('app:greeting', new TextEncoder().encode('hello'));
+ * const value = await storage.get('app:greeting');
+ * console.log(new TextDecoder().decode(value)); // 'hello'
  * ```
  */
 export class IndexedDBStorage implements Storage {
