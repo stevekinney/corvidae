@@ -198,6 +198,18 @@ describe('engine state utilities', () => {
     ).toBe(true);
   });
 
+  it('does not match an attribute filter on a key the workflow only inherits, such as constructor', () => {
+    expect(
+      matchesListFilter(
+        createWorkflowState({}),
+        { attributes: [{ key: 'constructor', value: 'x' }] },
+        null,
+        undefined,
+        { region: 'eu' },
+      ),
+    ).toBe(false);
+  });
+
   it('matches date-valued attribute filters only when the timestamp actually satisfies the predicate', () => {
     const exactTimestamp = new Date('2026-06-16T12:00:00.000Z');
     const searchAttributes = {

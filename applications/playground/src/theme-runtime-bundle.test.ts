@@ -159,7 +159,9 @@ describe('the token runtime browser bundle', () => {
         !/\/node_modules\/(?:\.bun\/[^/]+\/node_modules\/)?(?:postcss-value-parser|culori)\//.test(
           file.path,
         ) &&
-        !file.path.endsWith('/entry.ts'),
+        !file.path.endsWith('/entry.ts') &&
+        // A pure, import-free helper (one `Object.hasOwn` read) the token runtime shares.
+        !file.path.endsWith('/components/cinder/src/_internal/own-entry.ts'),
     );
     expect(outside.map((file) => file.path)).toEqual([]);
   });
