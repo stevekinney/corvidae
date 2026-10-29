@@ -1,10 +1,6 @@
+import { createDeferred, waitForCondition, withTimeout } from '@lostgradient/testing/fake-timers';
 import { afterEach, describe, expect, it } from 'bun:test';
 import type { ActivityInterceptor } from '../core/interceptor.ts';
-import {
-  createDeferred,
-  waitForCondition,
-  withTimeout,
-} from '@lostgradient/testing/fake-timers';
 import { LongPollWorker, type LongPollWorkerOptions } from './long-poll.ts';
 import type { RemoteWorkerActivityFunction } from './workflow-activity-binding.ts';
 

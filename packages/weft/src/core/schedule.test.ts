@@ -1,9 +1,9 @@
-import { describe, expect, it, mock, spyOn } from 'bun:test';
 import {
   createDeferred,
   flushMicrotasks,
   waitForCondition,
 } from '@lostgradient/testing/fake-timers';
+import { describe, expect, it, mock, spyOn } from 'bun:test';
 import { settleInlineLaunches } from '../testing/inline-launch-settle.test-support.ts';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';

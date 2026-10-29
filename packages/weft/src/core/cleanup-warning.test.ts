@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from 'bun:test';
 import { waitForever } from '@lostgradient/testing/fake-timers';
+import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { Storage as WeftStorage } from '../storage/interface.ts';
 import { MemoryStorage } from '../storage/memory.ts';

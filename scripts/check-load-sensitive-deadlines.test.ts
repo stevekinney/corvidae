@@ -779,7 +779,8 @@ describe('a single-turn yield used to let real work finish', () => {
 });
 
 describe('an exported one-turn yield helper, resolved through the file imports', () => {
-  const IMPORT_EVENT_LOOP = "import { yieldToEventLoop } from '@lostgradient/testing/fake-timers';\n";
+  const IMPORT_EVENT_LOOP =
+    "import { yieldToEventLoop } from '@lostgradient/testing/fake-timers';\n";
 
   test.each([
     [

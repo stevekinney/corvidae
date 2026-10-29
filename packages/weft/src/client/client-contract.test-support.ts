@@ -1,3 +1,4 @@
+import { sleepForTesting, withTimeout } from '@lostgradient/testing/fake-timers';
 import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { describe, expect, it } from 'bun:test';
@@ -5,7 +6,6 @@ import type { ActivityContext, WorkflowContext } from '../core/types.ts';
 import { activity, signal } from '../core/types.ts';
 import { workflow } from '../core/types/workflow-function.ts';
 import { isWeftFault } from '../core/weft-error.ts';
-import { sleepForTesting, withTimeout } from '@lostgradient/testing/fake-timers';
 import type { WeftClient } from './interface.ts';
 
 type ClientContractWorkflowTypes = {

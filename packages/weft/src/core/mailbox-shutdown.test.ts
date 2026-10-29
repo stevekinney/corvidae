@@ -10,14 +10,14 @@
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { MemoryStorage } from '../storage/memory.ts';
 import {
   advanceTimersByTime,
   flushMicrotasks,
   restoreRealTimers,
   useFakeTimers,
 } from '@lostgradient/testing/fake-timers';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { MemoryStorage } from '../storage/memory.ts';
 import {
   admitOne,
   claimOne,

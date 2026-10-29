@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { ActivityRegistry } from '../activity-registry.ts';
 import { decode, encode } from '../codec.ts';
 import { buildWorkflowManifestFromDefinition } from '../registry-workflow-manifest.ts';

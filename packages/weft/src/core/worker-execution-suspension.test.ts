@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from 'bun:test';
 import { withTimeout } from '@lostgradient/testing/fake-timers';
+import { afterEach, describe, expect, it } from 'bun:test';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { encodeStorageKeyComponent, KEYS } from '../storage/interface.ts';

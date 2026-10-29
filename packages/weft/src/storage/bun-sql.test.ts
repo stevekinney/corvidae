@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
-import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { BunSQLiteStorage } from './bun-sql.ts';
 import {
   describeSqliteContentionViolations,

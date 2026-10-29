@@ -8,9 +8,9 @@
  */
 import { describe, expect, it, mock } from 'bun:test';
 
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { ActivityRegistry } from '../activity-registry.ts';
 import { decode } from '../codec.ts';
 import { buildWorkflowManifestFromDefinition } from '../registry-workflow-manifest.ts';

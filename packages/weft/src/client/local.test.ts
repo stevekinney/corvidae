@@ -1,3 +1,4 @@
+import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 import { AsyncActivityTokenNotFoundError, Engine } from '../core/engine.ts';
@@ -9,7 +10,6 @@ import {
   CONTRACT_PAYLOAD_CAP_BYTES,
   nextAsyncPendingToken,
 } from '../testing/async-activity.test-support.ts';
-import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 import {
   clientContractAsyncActivityWorkflow,
   clientContractEchoWorkflow,

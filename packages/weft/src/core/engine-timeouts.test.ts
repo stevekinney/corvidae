@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'bun:test';
 import { createDeferred, waitForever } from '@lostgradient/testing/fake-timers';
+import { describe, expect, it } from 'bun:test';
 import { settleInlineLaunches } from '../testing/inline-launch-settle.test-support.ts';
 
 import { KEYS } from '../storage/interface.ts';

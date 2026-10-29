@@ -16,8 +16,8 @@
  * disposed, so no background work leaks past a test.
  */
 
-import { describe, expect, it } from 'bun:test';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
+import { describe, expect, it } from 'bun:test';
 
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS } from '../../storage/interface.ts';

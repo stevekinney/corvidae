@@ -1,6 +1,6 @@
+import { sleepForTesting, waitForCondition } from '@lostgradient/testing/fake-timers';
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { sleepForTesting, waitForCondition } from '@lostgradient/testing/fake-timers';
 
 import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import { Context } from './context.ts';

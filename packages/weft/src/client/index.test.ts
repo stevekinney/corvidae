@@ -1,3 +1,4 @@
+import { sleepForTesting, withTimeout } from '@lostgradient/testing/fake-timers';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test';
@@ -12,7 +13,6 @@ import {
   CONTRACT_PAYLOAD_CAP_BYTES,
   nextAsyncPendingToken,
 } from '../testing/async-activity.test-support.ts';
-import { sleepForTesting, withTimeout } from '@lostgradient/testing/fake-timers';
 import {
   clientContractAsyncActivityWorkflow,
   clientContractEchoWorkflow,

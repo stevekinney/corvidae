@@ -1,3 +1,4 @@
+import { sleepForTesting, withTimeout } from '@lostgradient/testing/fake-timers';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
 import type { Engine } from '../core/engine.ts';
@@ -9,7 +10,6 @@ import {
 } from '../core/events.ts';
 import { WorkflowRevisionInstalledEvent } from '../core/events/catalog-events.ts';
 import type { WorkflowEvent, WorkflowState } from '../core/types.ts';
-import { sleepForTesting, withTimeout } from '@lostgradient/testing/fake-timers';
 import { createLocalWorkflowEventTail } from './local-event-tail.ts';
 
 function event(type: string, data: Record<string, unknown> = {}): WorkflowEvent {

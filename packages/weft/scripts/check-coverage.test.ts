@@ -1,8 +1,8 @@
 import { describe, expect, it, mock, spyOn } from 'bun:test';
 
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
-import packageJson from '../package.json' with { type: 'json' };
 import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
+import packageJson from '../package.json' with { type: 'json' };
 import {
   assembleAllowanceLayers,
   assertNoAllowanceKeyIsCoverageIgnored,

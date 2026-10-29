@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'bun:test';
 import { sleepForTesting } from '@lostgradient/testing/fake-timers';
+import { describe, expect, it } from 'bun:test';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { awakeTurns } from '@lostgradient/testing/wait-until';

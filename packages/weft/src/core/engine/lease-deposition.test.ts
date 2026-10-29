@@ -24,6 +24,7 @@
  */
 import { describe, expect, it, spyOn } from 'bun:test';
 
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { BunSQLiteStorage } from '../../storage/bun-sql.ts';
 import type {
@@ -32,7 +33,6 @@ import type {
   Storage,
 } from '../../storage/interface.ts';
 import { KEYS } from '../../storage/interface.ts';
-import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { workflow, type WorkflowContext } from '../types.ts';
 import {
   commitFencedEngineWrite,

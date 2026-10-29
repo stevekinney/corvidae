@@ -16,7 +16,13 @@ import { mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import {
+  sleepForTesting,
+  waitForCondition,
+  waitForRealTimersForTesting,
+} from '@lostgradient/testing/fake-timers';
 import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
+import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { Engine } from '../core/engine.ts';
 import {
@@ -28,12 +34,6 @@ import { serve, type ServeOptions, type TaskDispatch, type WeftServer } from '..
 import { useObservableActivityHeartbeatsForTesting } from '../server/runtime/activity-heartbeat-test-hooks.ts';
 import { useManualTaskReconciliationForTesting } from '../server/runtime/task-reconciliation.ts';
 import { MemoryStorage } from '../storage/memory.ts';
-import {
-  sleepForTesting,
-  waitForCondition,
-  waitForRealTimersForTesting,
-} from '@lostgradient/testing/fake-timers';
-import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import {
   killAndReboot,
   spawnServerSubprocess,

@@ -22,8 +22,8 @@ import { fileURLToPath } from 'node:url';
 
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 
-import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { browserSmokeEnabled } from '@lostgradient/testing/browser-smoke-gate';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 
 const repositoryRoot = new URL('../..', import.meta.url);
 const engineModulePath = fileURLToPath(new URL('src/core/engine.ts', repositoryRoot));

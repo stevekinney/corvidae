@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from 'bun:test';
 import { restoreRealTimers, useFakeTimers } from '@lostgradient/testing/fake-timers';
+import { afterEach, describe, expect, it } from 'bun:test';
 import { settleInlineLaunches } from './inline-launch-settle.test-support.ts';
 
 import { activity, type WorkflowContext } from '../core/types.ts';

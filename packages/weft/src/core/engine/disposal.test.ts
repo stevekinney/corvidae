@@ -1,7 +1,7 @@
 import { describe, expect, it, mock } from 'bun:test';
 
-import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { ActivityRegistry } from '../activity-registry.ts';
 import { WorkflowSourceLoadCancelledEvent } from '../events/workflow-source-events.ts';
 import { buildWorkflowManifestFromDefinition } from '../registry-workflow-manifest.ts';
