@@ -332,7 +332,7 @@ export interface BureauRetentionOptions {
    * Durable maintenance removes a terminal task older than the window through
    * the run store, so Bureau's existing `run.removed` event fires for it and
    * everything keyed on the task releases its own state; deleting a task is
-   * also what eventually releases a withdrawn agent's tombstone mount. A
+   * also what eventually releases an opted-out agent's tombstone mount. A
    * running task, and a terminal one not yet older than the window, is never
    * removed. Only tasks in this process's run store are candidates, so a
    * terminal run from before a restart is not removed. The pass runs from
@@ -398,7 +398,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * and started by name through {@link BureauTasks.start}. See
    * `documentation/agent-files.md`.
    *
-   * Bureau keeps parsing, validation, snapshots, revisions, publication, and the write-through
+   * Bureau keeps parsing, validation, snapshots, revisions, and the write-through
    * operations; the source only holds bytes. The source's `tools` is the deployment's tool
    * catalog: the tools an agent file may name in `tools`. With {@link BureauOptions.workflowSource}
    * Bureau adds `workflows-create`, `workflows-update`, `workflows-pause`, `workflows-resume`,

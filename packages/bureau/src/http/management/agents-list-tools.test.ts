@@ -75,7 +75,7 @@ describe('the bureau.agents.list output schema tools (COR-1650)', () => {
     description: null,
     definitionRevision: 1,
     kind: 'code',
-    publishState: 'published',
+    a2a: true,
     media: null,
     ...(tools === undefined ? {} : { tools }),
   });
@@ -217,7 +217,7 @@ describe('the bureau.agents.list output schema examples', () => {
           description: null,
           definitionRevision: 1,
           kind: 'code',
-          publishState: 'published',
+          a2a: true,
           media: null,
           ...(examples === undefined ? {} : { examples }),
         },

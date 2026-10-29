@@ -11,7 +11,7 @@
  * model: anthropic/claude-sonnet-4-5
  * models: [anthropic/claude-sonnet-4-5, openai/gpt-4.1]
  * tools: [lookup-order]
- * published: false
+ * a2a: false
  * ---
  * You are a careful researcher.
  * ```
@@ -56,8 +56,8 @@ export const AGENT_FILE_KNOWN_KEYS = [
   'model',
   'models',
   'tools',
-  'skills',
-  'published',
+  'skillDescriptors',
+  'a2a',
 ] as const;
 
 /** Why a file cannot be used as an agent. Carried on the listing, and on a refused write. */
@@ -130,14 +130,17 @@ export const agentFileFrontmatterSchema = z
       .refine(unique, { message: 'tool names must be unique' })
       .nullish(),
     /** Descriptive Agent Card skills (COR-1301), never executable skills. */
-    skills: z
+    skillDescriptors: z
       .array(agentSkillDescriptorSchema)
-      .refine((skills) => unique(skills.map((skill) => skill.id)), {
+      .refine((descriptors) => unique(descriptors.map((descriptor) => descriptor.id)), {
         message: 'skill ids must be unique',
       })
       .nullish(),
-    /** Whether the agent may be offered over the network. A strict boolean; defaults to `false`. */
-    published: z.boolean().nullish(),
+    /**
+     * Whether the agent opts into A2A, the agent-to-agent protocol. A strict boolean; defaults to
+     * `false`. Chat and every other surface serve a ready agent whatever this says.
+     */
+    a2a: z.boolean().nullish(),
     /**
      * Prompts that show what a person might ask the agent, which a new chat offers as buttons. Read
      * only: it is not in {@link AGENT_FILE_KNOWN_KEYS}, so a rewrite of the file keeps it as it is.
@@ -206,8 +209,10 @@ export const agentFileDefinitionSchema = z.object({
   /** The models a session may be switched to (COR-1559); absent for a snapshot that has none. */
   models: z.array(z.string().min(1)).optional(),
   tools: z.array(z.string().min(1)).default([]),
-  skills: z.array(agentSkillDescriptorSchema).default([]),
-  published: z.boolean().default(false),
+  /** Absent from a snapshot written before the field was renamed from `skills`; read as none. */
+  skillDescriptors: z.array(agentSkillDescriptorSchema).default([]),
+  /** Absent from a snapshot written before the A2A opt-in existed; read as `false`. */
+  a2a: z.boolean().default(false),
   /** Prompts a new chat offers (see the frontmatter's `examples`); absent for a file that has none. */
   examples: agentExamplesSchema.optional(),
   instructions: z.string(),
@@ -228,8 +233,10 @@ export interface AgentFileDefinition {
    */
   readonly models?: readonly string[];
   readonly tools: readonly string[];
-  readonly skills: readonly AgentSkillDescriptor[];
-  readonly published: boolean;
+  /** Descriptive Agent Card skills (COR-1301), never executable skills. */
+  readonly skillDescriptors: readonly AgentSkillDescriptor[];
+  /** Whether the agent opts into A2A. This part only records it; the A2A mount reads it. */
+  readonly a2a: boolean;
   /**
    * Prompts that show what a person might ask the agent, as the file's `examples` lists them.
    * Absent when it lists none. A caller never supplies them: they stay in the file through a write.
@@ -246,8 +253,10 @@ export interface AgentFileDefinitionInput {
   /** See {@link AgentFileDefinition.models}. Omitting it on an update removes it, as for `tools`. */
   readonly models?: readonly string[] | undefined;
   readonly tools?: readonly string[] | undefined;
-  readonly skills?: readonly AgentSkillDescriptor[] | undefined;
-  readonly published?: boolean | undefined;
+  /** See {@link AgentFileDefinition.skillDescriptors}. */
+  readonly skillDescriptors?: readonly AgentSkillDescriptor[] | undefined;
+  /** See {@link AgentFileDefinition.a2a}. An update that omits it keeps the file's value. */
+  readonly a2a?: boolean | undefined;
   readonly instructions: string;
 }
 
@@ -338,8 +347,8 @@ function toDefinition(
     ...(frontmatter.models == null ? {} : { models: frontmatter.models }),
     tools: frontmatter.tools ?? [],
     // Zod types an absent optional key as possibly `undefined`; it is never present as one.
-    skills: (frontmatter.skills ?? []) as readonly AgentSkillDescriptor[],
-    published: frontmatter.published ?? false,
+    skillDescriptors: (frontmatter.skillDescriptors ?? []) as readonly AgentSkillDescriptor[],
+    a2a: frontmatter.a2a ?? false,
     ...(frontmatter.examples == null ? {} : { examples: frontmatter.examples }),
     instructions,
   };
@@ -431,17 +440,19 @@ function knownFrontmatter(definition: AgentFileDefinitionInput): Record<string, 
   if (definition.tools !== undefined && definition.tools.length > 0) {
     known['tools'] = [...definition.tools];
   }
-  if (definition.skills !== undefined && definition.skills.length > 0) {
-    known['skills'] = definition.skills.map((skill) => ({ ...skill }));
+  if (definition.skillDescriptors !== undefined && definition.skillDescriptors.length > 0) {
+    known['skillDescriptors'] = definition.skillDescriptors.map((descriptor) => ({
+      ...descriptor,
+    }));
   }
-  if (definition.published !== undefined) known['published'] = definition.published;
+  if (definition.a2a !== undefined) known['a2a'] = definition.a2a;
   return known;
 }
 
 /** The bytes of a brand-new agent file. */
 export function serializeNewAgentFile(definition: AgentFileDefinitionInput): Uint8Array {
   const frontmatter = emitMapping(
-    knownFrontmatter({ ...definition, published: definition.published ?? false }),
+    knownFrontmatter({ ...definition, a2a: definition.a2a ?? false }),
     '\n',
   );
   return textEncoder.encode(`---\n${frontmatter}---\n${definition.instructions}`);
@@ -458,8 +469,8 @@ export function resolveAgentFileDefinition(
     model: input.model,
     ...(input.models === undefined ? {} : { models: input.models }),
     tools: input.tools ?? [],
-    skills: input.skills ?? [],
-    published: input.published ?? false,
+    skillDescriptors: input.skillDescriptors ?? [],
+    a2a: input.a2a ?? false,
     instructions: input.instructions,
   };
 }
@@ -478,8 +489,11 @@ export function serializeUpdatedAgentFile(
   existing: ParsedAgentFile,
   input: AgentFileDefinitionInput,
 ): Uint8Array | undefined {
-  const next = resolveAgentFileDefinition(id, input);
   const before = existing.definition;
+  // An `a2a` the caller leaves out is not a change to it: the file keeps the value it has, and a
+  // file with no such key is not given one.
+  const keptA2a = input.a2a === undefined;
+  const next = resolveAgentFileDefinition(id, keptA2a ? { ...input, a2a: before.a2a } : input);
   // `examples` is the file's own and an input never carries it, so it is not a change.
   const { examples: _kept, ...beforeKnown } = before;
   const frontmatterChanged = !isDeepStrictEqual(
@@ -493,7 +507,9 @@ export function serializeUpdatedAgentFile(
   if (frontmatterChanged) {
     frontmatter = rewriteFrontmatter(
       existing,
-      knownFrontmatter(input),
+      knownFrontmatter(
+        keptA2a && Object.hasOwn(existing.raw, 'a2a') ? { ...input, a2a: before.a2a } : input,
+      ),
       AGENT_FILE_KNOWN_KEYS,
       existing.lineEnding,
     );

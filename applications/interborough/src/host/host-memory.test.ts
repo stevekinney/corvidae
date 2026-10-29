@@ -58,7 +58,6 @@ async function start(home?: string): Promise<{ host: Host; home: string }> {
     port: 0,
     extraAgents: {
       agents: { alpha: recalling('alpha'), beta: recalling('beta') },
-      published: ['alpha', 'beta'],
     },
   });
   hosts.push(host);

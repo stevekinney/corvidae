@@ -235,14 +235,6 @@ export interface BureauAgentCatalog<D extends AgentDefinitions> {
   update: AgentFileWriter['update'];
   /** Delete an agent file. */
   delete: AgentFileWriter['delete'];
-  /**
-   * Set `published: true` in an agent file's frontmatter, if the file still hashes to
-   * `expectedHash`. Keeps every other key the file has, and writes nothing when the file is
-   * already published.
-   */
-  publish: AgentFileWriter['delete'];
-  /** Set `published: false` in an agent file's frontmatter. The counterpart of {@link publish}. */
-  withdraw: AgentFileWriter['delete'];
 }
 
 /**
@@ -330,7 +322,7 @@ export function createAgentCatalog<D extends AgentDefinitions>(
     state: 'ready',
     name: entry.agent.name,
     description: entry.agent.description ?? null,
-    published: false,
+    a2a: false,
     owner: ownerOrLocal(undefined),
     definitionRevision: readGenerationProfile(entry.agent).revision,
   });
@@ -413,8 +405,6 @@ export function createAgentCatalog<D extends AgentDefinitions>(
     update: async (id, definition, writeOptions) =>
       requireFiles().update(id, definition, writeOptions),
     delete: async (id, writeOptions) => requireFiles().delete(id, writeOptions),
-    publish: async (id, writeOptions) => requireFiles().publish(id, writeOptions),
-    withdraw: async (id, writeOptions) => requireFiles().withdraw(id, writeOptions),
   };
 
   return Object.freeze(catalog);

@@ -99,7 +99,7 @@ describe('the journey provider resolver', () => {
 describe('the recall echo', () => {
   const generate = async (...rows: Row[]) => recallOrEcho(contextOf(...rows));
 
-  test('is one agent under the name the journey host publishes', () => {
+  test('is one agent under the name the journey host serves', () => {
     const agents = createRecallAgents();
 
     expect(Object.keys(agents)).toEqual([RECALL_AGENT_NAME]);

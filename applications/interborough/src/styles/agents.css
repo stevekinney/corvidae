@@ -115,18 +115,6 @@
   font-size: var(--cinder-text-sm);
 }
 
-/* The badge's tooltip hint reaches a keyboard: the wrapper takes focus and shows its ring. */
-.ib-agent-state {
-  display: inline-flex;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  border-radius: var(--cinder-radius-sm);
-  background: none;
-  font: inherit;
-  cursor: help;
-}
-
 .ib-agent-row__description,
 .ib-agent__description {
   margin: 0;

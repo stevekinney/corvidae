@@ -1,10 +1,12 @@
 /**
- * COR-1489 — what `bureau.agents.list` returns: every entry's `kind` (`code` or `file`), and the
- * code-defined agents the `publish` allowlist does not name, as `unpublished`, to a caller who may
- * read definitions (`mayDiscloseUnpublishedAgents`) and to nobody else.
+ * COR-1489 — what `bureau.agents.list` returns: every entry's `kind` (`code` or `file`) and its
+ * `a2a` opt-in. Every ready agent is listed to any authenticated caller, whether or not it opts
+ * into A2A; the `a2aAgents` allowlist only decides which code-defined agents opt in.
  */
 import { createAgent } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
+
+import { KNOWN_MODEL } from '../../testing/agent-file-fixtures.test-support.ts';
 
 import {
   callAs,
@@ -19,38 +21,44 @@ afterEach(disposeServed);
 
 type Entry = Record<string, unknown>;
 const summary = (entries: Entry[]) =>
-  entries.map((entry) => [entry['name'], entry['kind'], entry['publishState']]);
+  entries.map((entry) => [entry['name'], entry['kind'], entry['a2a']]);
 
 describe('bureau.agents.list kinds', () => {
-  it('says whether each agent is defined in code or in a file', async () => {
+  it('says whether each agent is defined in code or in a file, and whether it opts into A2A', async () => {
     const served = await serve();
     await seed(served);
-    await callAs(served.local, 'bureau.agents.definitions.publish', {
+    await callAs(served.local, 'bureau.agents.definitions.update', {
       id: 'researcher',
       expectedHash: served.hashOf('researcher'),
+      definition: {
+        model: KNOWN_MODEL,
+        name: 'Researcher',
+        instructions: 'Original.\n',
+        a2a: true,
+      },
     });
 
     const listed = await callAs(served.local, 'bureau.agents.list', {});
 
     expect(summary(listOf(listed, 'agents'))).toEqual([
-      ['alpha', 'code', 'published'],
-      ['researcher', 'file', 'published'],
+      ['alpha', 'code', true],
+      ['researcher', 'file', true],
     ]);
   });
 
-  it('keeps a withdrawn file agent a file, for a caller that may read definitions', async () => {
+  it('lists a file agent that has not opted in as a file with a2a false', async () => {
     const served = await serve();
     await seed(served);
 
     const listed = await callAs(served.local, 'bureau.agents.list', {});
 
-    expect(summary(listOf(listed, 'agents'))).toContainEqual(['researcher', 'file', 'withdrawn']);
+    expect(summary(listOf(listed, 'agents'))).toContainEqual(['researcher', 'file', false]);
   });
 });
 
-describe('bureau.agents.list unpublished code-defined agents', () => {
+describe('bureau.agents.list code-defined agents outside the A2A allowlist', () => {
   /** A deployment whose allowlist names `alpha` only, with a second code-defined agent. */
-  function withHiddenAgent() {
+  function withInternalAgent() {
     return serve({
       agents: {
         alpha: createAgent({
@@ -59,47 +67,41 @@ describe('bureau.agents.list unpublished code-defined agents', () => {
         }),
         internal: createAgent({
           name: 'internal',
-          description: 'Never offered',
+          description: 'Never offered over A2A',
           generate: async () => ({ content: 'i', toolCalls: [] }),
         }),
       },
     });
   }
 
-  it('are listed as unpublished to a caller holding bureau.agents:read', async () => {
-    const served = await withHiddenAgent();
+  it('are listed with a2a false to a caller holding bureau.agents:read', async () => {
+    const served = await withInternalAgent();
 
     const listed = await rpc(served.keyed, 'bureau.agents.list', {}, 'operator-key');
 
     expect(summary(listOf(listed, 'agents'))).toEqual([
-      ['alpha', 'code', 'published'],
-      ['internal', 'code', 'unpublished'],
+      ['alpha', 'code', true],
+      ['internal', 'code', false],
     ]);
   });
 
-  it('are listed to the owner of the deployment’s agents, who holds no scope', async () => {
-    const served = await withHiddenAgent();
-
-    const listed = await callAs(served.owner, 'bureau.agents.list', {});
-
-    expect(summary(listOf(listed, 'agents'))).toContainEqual(['internal', 'code', 'unpublished']);
-  });
-
-  it('do not exist for any other caller, by name, label or description', async () => {
-    const served = await withHiddenAgent();
+  it('are listed to a caller who holds no scope and owns nothing, by name, label and description', async () => {
+    const served = await withInternalAgent();
 
     const listed = await rpc(served.keyed, 'bureau.agents.list', {}, 'alice-key');
 
-    expect(summary(listOf(listed, 'agents'))).toEqual([['alpha', 'code', 'published']]);
-    expect(JSON.stringify(listed)).not.toContain('internal');
-    expect(JSON.stringify(listed)).not.toContain('Never offered');
+    expect(summary(listOf(listed, 'agents'))).toEqual([
+      ['alpha', 'code', true],
+      ['internal', 'code', false],
+    ]);
+    expect(JSON.stringify(listed)).toContain('Never offered over A2A');
   });
 
-  it('are not offered: the deployment names only what the allowlist publishes', async () => {
-    const served = await withHiddenAgent();
+  it('are named by the deployment, which lists every ready agent', async () => {
+    const served = await withInternalAgent();
 
     const deployment = await callAs(served.local, 'bureau.deployment.get', {});
 
-    expect(deployment.result?.['publishedAgents']).toEqual(['alpha']);
+    expect(deployment.result?.['agents']).toEqual(['alpha', 'internal']);
   });
 });

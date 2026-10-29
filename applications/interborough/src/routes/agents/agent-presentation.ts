@@ -3,11 +3,6 @@ import type { AgentDetail } from '../../lib/agent-definitions.ts';
 import type { AgentModels, AgentSummary, ChatContext } from '../../lib/bureau-client.ts';
 import { formatRelativeTime } from '../../lib/format/index.ts';
 
-/** Whether a chat can be started with the agent: only a published agent is offered. */
-export function canChat(agent: AgentSummary): boolean {
-  return agent.publishState === 'published';
-}
-
 /** The path that opens a new chat with `agent`. */
 export function newChatPath(agent: string): string {
   return `/chat/new?agent=${encodeURIComponent(agent)}`;
@@ -89,7 +84,8 @@ export function agentFacts(
           ? { kind: 'unknown' }
           : { kind: 'model', name: definition.model },
       tools: definition?.tools ?? agent.tools ?? null,
-      skills: definition?.skills.map((skill) => ({ id: skill.id, name: skill.name })) ?? [],
+      skills:
+        definition?.skillDescriptors.map((skill) => ({ id: skill.id, name: skill.name })) ?? [],
     };
   }
   // A code-defined agent with no model descriptor has an opaque generator: it may be a script or a

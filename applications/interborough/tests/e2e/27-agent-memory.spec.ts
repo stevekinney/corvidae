@@ -186,7 +186,8 @@ test.describe('the memory page', () => {
   });
 
   test('is empty for an agent that has remembered nothing', async ({ page }) => {
-    // `internal` is never published, so no chat can reach it.
+    // No spec chats with `internal`, so it has remembered nothing. Keep it that way: a spec that
+    // does would stop this one from seeing the empty state.
     await page.goto('/agents/internal/memory');
 
     await expect(frame(page)).toHaveAttribute('data-state', 'empty');

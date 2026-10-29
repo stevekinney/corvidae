@@ -15,7 +15,7 @@ declare const mount: OperationHandlerMount;
 
 // Every option, each at its declared type.
 const everyOption = {
-  publish: ['support'],
+  a2aAgents: ['support'],
   authentication,
   unauthenticatedAccess: 'reject',
   mounts: [mount],
@@ -23,8 +23,8 @@ const everyOption = {
 } satisfies BureauHandlerOptions;
 export const handler: OperationHandler = createBureauHandler(bureau, everyOption);
 
-// `publish`, `authentication`, `unauthenticatedAccess`, and `mounts` each stand alone.
-createBureauHandler(bureau, { publish: ['support'] });
+// `a2aAgents`, `authentication`, `unauthenticatedAccess`, and `mounts` each stand alone.
+createBureauHandler(bureau, { a2aAgents: ['support'] });
 createBureauHandler(bureau, { authentication });
 createBureauHandler(bureau, { unauthenticatedAccess: 'allow' });
 createBureauHandler(bureau, { mounts: [mount] });
@@ -38,9 +38,9 @@ createBureauHandler(bureau, { unauthenticatedAccess: 'allow', maxRequestBodyByte
 // @ts-expect-error -- only 'reject' and 'allow'
 createBureauHandler(bureau, { unauthenticatedAccess: 'maybe' });
 
-// `publish` is a list of names, not a single name.
+// `a2aAgents` is a list of names, not a single name.
 // @ts-expect-error -- a string is not a string array
-createBureauHandler(bureau, { publish: 'support' });
+createBureauHandler(bureau, { a2aAgents: 'support' });
 
 // A2A is mounted by `publicUrl` (COR-903), and `signing` is the kit's complete option shape.
 createBureauHandler(bureau, { publicUrl: 'https://example.test' });

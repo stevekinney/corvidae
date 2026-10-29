@@ -32,7 +32,7 @@ describe('attaching by run to a task', () => {
       durable: true,
     });
     try {
-      const handler = createBureauHandler(bureau, { authentication, publish: [], agUi: {} });
+      const handler = createBureauHandler(bureau, { authentication, agUi: {} });
       const run = await bureau.tasks.start('plain', 'hi', { principal: 'api-key:alice' });
       expect(await bureau.ownerOf({ kind: 'run', id: run.id })).toBe('api-key:alice');
 

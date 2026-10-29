@@ -171,13 +171,13 @@ export function probeFor(
           return { empty: false };
         };
       }
-      // A new chat needs an agent that is published: an unknown or unpublished one is not found.
+      // A new chat needs an agent the Bureau lists: an unknown one is not found.
       if (pattern === '/chat/new') {
         const agent = search.get('agent') ?? DEFAULT_AGENT;
         return async () => {
           const agents = await listAgents();
           const found = agents.find((entry) => entry.name === agent);
-          if (found === undefined || found.publishState !== 'published') throw notFound('agent');
+          if (found === undefined) throw notFound('agent');
           return { empty: false };
         };
       }

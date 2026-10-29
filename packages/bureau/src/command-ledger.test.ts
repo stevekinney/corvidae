@@ -836,7 +836,7 @@ describe('createRunCreationLedger', () => {
     }
   });
 
-  it('keys the request id on the published agent, so one request id for two agents is two commands', async () => {
+  it('keys the request id on the agent, so one request id for two agents is two commands', async () => {
     const { fixture, ledger } = runCreationLedger(notObserved);
     try {
       const forBureau = await ledger.begin(beginInput());

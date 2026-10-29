@@ -60,7 +60,7 @@ const AGENT = {
   description: null,
   definitionRevision: 1,
   kind: 'code',
-  publishState: 'published',
+  a2a: false,
 };
 
 function codeSummary() {
@@ -444,11 +444,7 @@ describe('the chat list, a new chat, and the agents', () => {
     stubBureau({
       'bureau.contexts.list': () => rpc('x', { contexts: [], nextOffset: null }),
       'bureau.agents.list': () =>
-        agents(
-          { name: 'assistant' },
-          { name: 'tool-runner' },
-          { name: 'internal', publishState: 'unpublished' },
-        ),
+        agents({ name: 'assistant' }, { name: 'tool-runner' }, { name: 'internal' }),
     });
     const { container, findByTestId } = mount('chat', { pattern: '/chat' });
 
@@ -457,7 +453,7 @@ describe('the chat list, a new chat, and the agents', () => {
     expect(line.textContent).toContain('Agents:');
     expect(
       [...line.querySelectorAll('code.ib-identifier')].map((code) => code.textContent),
-    ).toEqual(['assistant', 'tool-runner']);
+    ).toEqual(['assistant', 'tool-runner', 'internal']);
     // The outlet pads the page, so the empty state is Cinder's with its own padding removed.
     expect(container.querySelector('.cinder-empty-state')?.classList).toContain('weft-view__empty');
   });
@@ -483,7 +479,7 @@ describe('the chat list, a new chat, and the agents', () => {
     expect(container.querySelector('[data-testid="welcome-agents"]')).toBeNull();
   });
 
-  test('a new chat is ready for a published agent', async () => {
+  test('a new chat is ready for an agent the Bureau lists', async () => {
     stubBureau({ 'bureau.agents.list': () => agents({ name: 'assistant' }) });
     const { container, findByTestId } = mount('chat', { pattern: '/chat/new' });
 
@@ -491,11 +487,8 @@ describe('the chat list, a new chat, and the agents', () => {
     expect(frame(container).dataset['state']).toBe('ready');
   });
 
-  test('a new chat is not found for an agent that does not exist, or is not published', async () => {
-    for (const entries of [
-      [{ name: 'other' }],
-      [{ name: 'assistant', publishState: 'unpublished' }],
-    ]) {
+  test('a new chat is not found for an agent that does not exist', async () => {
+    for (const entries of [[{ name: 'other' }], []]) {
       stubBureau({
         'bureau.agents.list': () => agents(...(entries as Array<Partial<typeof AGENT>>)),
       });

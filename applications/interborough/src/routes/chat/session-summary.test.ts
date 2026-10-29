@@ -24,7 +24,7 @@ const agent: AgentSummary = {
   description: null,
   definitionRevision: 1,
   kind: 'code',
-  publishState: 'published',
+  a2a: false,
   media: null,
 };
 

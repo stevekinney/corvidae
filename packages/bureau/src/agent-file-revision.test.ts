@@ -185,16 +185,21 @@ describe('the revision of a file agent', () => {
     expect(await recordOf(revisionStore)).toEqual(before);
   });
 
-  it('rises when the file is published or withdrawn, because that rewrites the file', async () => {
+  it('rises when the file opts into or out of A2A, because that rewrites the file', async () => {
     const fixture = await start();
     await fixture.put('helper.md', versionOne);
     await fixture.catalog.refresh();
     const hash = fixture.catalog.list()[0]?.definitionHash ?? '';
+    const definition = { name: 'Helper', model: KNOWN_MODEL, instructions: 'Version one.\n' };
 
-    await fixture.catalog.publish('helper', { expectedHash: hash });
+    await fixture.catalog.update('helper', { ...definition, a2a: true }, { expectedHash: hash });
     expect(revisionOf(fixture)).toBe(2);
-    const published = fixture.catalog.list()[0]?.definitionHash ?? '';
-    await fixture.catalog.withdraw('helper', { expectedHash: published });
+    const optedIn = fixture.catalog.list()[0]?.definitionHash ?? '';
+    await fixture.catalog.update(
+      'helper',
+      { ...definition, a2a: false },
+      { expectedHash: optedIn },
+    );
     expect(revisionOf(fixture)).toBe(3);
   });
 

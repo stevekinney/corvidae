@@ -2,12 +2,11 @@
   /**
    * The fields of the agent editor, in four titled sections: Identity (name, identifier,
    * description), Model, Instructions, and Tools. A footer holds what acts on the agent as a whole:
-   * for an agent that exists, whether it is published and a delete, and always cancel and save.
-   * `skills` has no field here; the state carries it through a save unchanged
+   * the A2A switch, a delete for an agent that exists, and always cancel and save.
+   * `skillDescriptors` has no field here; the state carries it through a save unchanged
    * (`agent-editor-state.svelte.ts`).
    *
-   * The form owns no requests. The page that renders it sends a save, a publication change, and a
-   * delete, and says whether one is in flight. The page does not render the form for a catalog
+   * The form owns no requests. The page that renders it sends a save and a delete, and says whether one is in flight. The page does not render the form for a catalog
    * with no model (`agent-editor-no-provider.svelte`), so every choice here has something to pick.
    */
   import { Button, FormSection, Input, Select, Textarea, Toggle } from '@lostgradient/cinder';
@@ -18,17 +17,15 @@
 
   interface Props {
     editor: AgentEditorState;
-    /** A save, a publication change, or a delete is in flight. */
+    /** A save or a delete is in flight. */
     busy: boolean;
     onSave: () => void;
     onCancel: () => void;
-    /** Publish (`true`) or withdraw (`false`). Only an agent that exists has the control. */
-    onPublishedChange: (next: boolean) => void;
     /** Asks to delete the agent. Only an agent that exists has the control. */
     onDelete: () => void;
   }
 
-  let { editor, busy, onSave, onCancel, onPublishedChange, onDelete }: Props = $props();
+  let { editor, busy, onSave, onCancel, onDelete }: Props = $props();
 
   const copy = AGENT_EDITOR_COPY;
 
@@ -120,21 +117,10 @@
   </FormSection>
 
   <div class="weft-agent-form__footer">
-    {#if editor.mode === 'edit'}
-      <div class="weft-agent-form__published">
-        <Toggle
-          id="agent-published"
-          label={copy.publishedLabel}
-          checked={editor.published}
-          disabled={busy}
-          onValueChangeRequest={(next) => {
-            onPublishedChange(next);
-            return editor.published;
-          }}
-        />
-        <p class="weft-agent-form__note">{copy.publishedDescription}</p>
-      </div>
-    {/if}
+    <div class="weft-agent-form__a2a">
+      <Toggle id="agent-a2a" label={copy.a2aLabel} bind:checked={editor.a2a} disabled={busy} />
+      <p class="weft-agent-form__note">{copy.a2aDescription}</p>
+    </div>
 
     <div class="weft-agent-form__actions">
       {#if editor.mode === 'edit'}
@@ -180,7 +166,7 @@
   }
 
   /*
-   * What acts on the agent as a whole: publication on the left, the actions on the right. It stays
+   * What acts on the agent as a whole: the A2A switch on the left, the actions on the right. It stays
    * at the foot of the outlet while the form scrolls under it, so Save is always in reach.
    */
   .weft-agent-form__footer {
@@ -199,7 +185,7 @@
     justify-content: space-between;
   }
 
-  .weft-agent-form__published {
+  .weft-agent-form__a2a {
     display: flex;
     flex-wrap: wrap;
     gap: var(--cinder-space-1) var(--cinder-space-3);

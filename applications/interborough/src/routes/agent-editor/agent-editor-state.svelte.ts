@@ -3,7 +3,7 @@
  *
  * An agent is a Markdown file whose name is its identifier, so the form works from three facts the
  * Bureau holds. The catalog says which models and tools an agent may name. The loaded definition
- * says what the file holds now, `skills` included, which the editor never edits and sends back
+ * says what the file holds now, `skillDescriptors` included, which the editor never edits and sends back
  * unchanged. The `hash` says which version of the file the form was filled from, and every write
  * names it, so a file that changed since is refused rather than overwritten.
  */
@@ -75,11 +75,11 @@ export class AgentEditorState {
   readonly #editedId: string | undefined;
   readonly modelChoices: readonly ModelOption[];
   readonly toolChoices: AgentCatalog['tools'];
-  /** `skills` is carried through a save untouched. */
-  readonly skills: readonly AgentSkill[];
+  /** `skillDescriptors` is carried through a save untouched. */
+  readonly skillDescriptors: readonly AgentSkill[];
   /**
    * The models a session may be switched to (COR-1559), as the file lists them, or `null` when it
-   * lists none. Carried through a save untouched, like `skills`: the editor shows no control for
+   * lists none. Carried through a save untouched, like `skillDescriptors`: the editor shows no control for
    * it, and an update that left it out would remove the list.
    */
   readonly models: readonly string[] | null;
@@ -94,7 +94,8 @@ export class AgentEditorState {
   instructions = $state('');
   /** The hash of the file this form was filled from; every write names it. `null` for a new agent. */
   hash = $state<string | null>(null);
-  published = $state(false);
+  /** Whether the agent opts into A2A. Saved with the rest of the definition. */
+  a2a = $state(false);
 
   /** What the person typed into the identifier field, or `null` while it follows the name. */
   #typedIdentifier = $state<string | null>(null);
@@ -114,7 +115,7 @@ export class AgentEditorState {
     this.toolChoices = catalog.tools;
     const definition = detail?.definition ?? null;
     this.#editedId = detail?.id;
-    this.skills = definition?.skills ?? [];
+    this.skillDescriptors = definition?.skillDescriptors ?? [];
     this.models = definition?.models ?? null;
     this.#writtenModel = definition?.model ?? '';
     this.#writtenModelOption = canonicalModel(this.#writtenModel, catalog);
@@ -128,7 +129,7 @@ export class AgentEditorState {
     this.tools = [...definition.tools];
     this.instructions = definition.instructions;
     this.hash = detail?.hash ?? null;
-    this.published = definition.published;
+    this.a2a = definition.a2a;
   }
 
   /** A form for a new agent, with the catalog's first model chosen. */
@@ -205,7 +206,7 @@ export class AgentEditorState {
       : this.tools.filter((tool) => tool !== name);
   }
 
-  /** The definition to write: the form's fields, the carried skills and models, and no `published`. */
+  /** The definition to write: the form's fields and the carried skill descriptors and models. */
   toDefinition(): AgentDefinitionInput {
     const name = this.name.trim();
     const offered = this.toolChoices.map((tool) => tool.name);
@@ -215,14 +216,9 @@ export class AgentEditorState {
       model: this.model === this.#writtenModelOption ? this.#writtenModel : this.model,
       ...(this.models === null ? {} : { models: this.models }),
       tools: offered.filter((tool) => this.tools.includes(tool)),
-      skills: this.skills,
+      skillDescriptors: this.skillDescriptors,
+      a2a: this.a2a,
       instructions: this.instructions,
     };
-  }
-
-  /** Takes the file's new state after a write that changed it, such as publishing. */
-  adopt(result: { readonly hash: string }, published?: boolean): void {
-    this.hash = result.hash;
-    if (published !== undefined) this.published = published;
   }
 }

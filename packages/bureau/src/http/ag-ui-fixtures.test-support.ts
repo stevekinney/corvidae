@@ -83,7 +83,7 @@ export type HarnessOptions = {
   readonly maximumSteps?: number;
   /** The agents' answer for a run that reaches its step cap. */
   readonly onMaximumSteps?: (context: StepContext) => Promise<string | void>;
-  /** Further published agents, each running the same script as `assistant`. */
+  /** Further agents, each running the same script as `assistant`. */
   readonly otherAgents?: readonly string[];
   /** `'sqlite'` keeps a durable event history, so terminal events carry cursors. */
   readonly storage?: 'memory' | 'sqlite';
@@ -221,7 +221,6 @@ async function build(
       ...(options.authentication === undefined
         ? { unauthenticatedAccess: 'allow' as const }
         : { authentication: options.authentication }),
-      publish: [AGENT, ...(options.otherAgents ?? [])],
       agUi: agUi ?? {},
     });
   let restarted = false;

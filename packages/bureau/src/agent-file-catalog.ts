@@ -103,8 +103,11 @@ export interface AgentListing {
   /** The display label. For an invalid file, the identifier. */
   readonly name: string;
   readonly description: string | null;
-  /** Whether the agent may be offered over the network. Always `false` for a code agent. */
-  readonly published: boolean;
+  /**
+   * Whether the agent opts into A2A: a file agent's `a2a` frontmatter. Always `false` for a code
+   * agent, which opts in through the handler's A2A allowlist.
+   */
+  readonly a2a: boolean;
   /** The deployment's owner of record. A file has no owner field. */
   readonly owner: string;
   /** The SHA-256 of the file's bytes, for a file agent whose file could be read. */
@@ -181,14 +184,6 @@ export interface AgentFileCatalog extends AgentFileWriter {
   detail(id: string): Promise<AgentFileDetail | undefined>;
   /** The deployment's tool catalog, by name, as an agent file may name its tools. */
   tools(): readonly AgentToolDescription[];
-  /**
-   * Set `published: true` in the file's frontmatter, if it still hashes to `expectedHash`, and
-   * nothing else: every other key, the comments, and the body stay as they are. Writes nothing
-   * for a file that is already published.
-   */
-  publish(id: string, options: { readonly expectedHash: string }): Promise<AgentFileWriteResult>;
-  /** Set `published: false`, as {@link publish} sets `true`. */
-  withdraw(id: string, options: { readonly expectedHash: string }): Promise<AgentFileWriteResult>;
   /** The agent for a file whose state is `ready`. */
   find(id: string): AnyRunnableAgent | undefined;
   /** Rescan the directory; resolves once the catalog reflects it. */
@@ -309,7 +304,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       state: ready ? 'ready' : 'invalid',
       name: entry.definition?.name ?? entry.id,
       description: entry.definition?.description ?? null,
-      published: ready && entry.definition?.published === true,
+      a2a: ready && entry.definition?.a2a === true,
       owner,
       ...(entry.hash === undefined ? {} : { definitionHash: entry.hash }),
       ...(!ready || entry.definitionRevision === undefined
@@ -393,7 +388,9 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         options.models.catalog().descriptors,
       ).map((row) => ({ provider: row.provider, model: row.model })),
       ...(definition.description === null ? {} : { description: definition.description }),
-      ...(definition.skills.length === 0 ? {} : { skillDescriptors: definition.skills }),
+      ...(definition.skillDescriptors.length === 0
+        ? {}
+        : { skillDescriptors: definition.skillDescriptors }),
       ...(instructions === '' ? {} : { instructions }),
       ...(Object.keys(tools).length === 0 ? {} : { tools }),
     }) as AnyRunnableAgent;
@@ -602,10 +599,6 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
 
   return {
     ...writer,
-
-    publish: (id, publishOptions) => writer.setPublished(id, true, publishOptions),
-
-    withdraw: (id, publishOptions) => writer.setPublished(id, false, publishOptions),
 
     list() {
       return [...directoryWatcher.entries().values()]

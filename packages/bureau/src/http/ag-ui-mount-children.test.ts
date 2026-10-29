@@ -81,7 +81,7 @@ async function withParentAndChild<T>(
     durable: true,
     children: {},
   });
-  const handler = createBureauHandler(bureau, { authentication, publish: ['assistant'], agUi: {} });
+  const handler = createBureauHandler(bureau, { authentication, agUi: {} });
   try {
     const parent = new FrameReader(await handler(startRequest(runAgentInput(), as('alice-key'))));
     await parent.until(EventType.STEP_STARTED);

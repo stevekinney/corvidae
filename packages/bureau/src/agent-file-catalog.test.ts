@@ -60,12 +60,12 @@ describe('loading the agent directory', () => {
     expect(plain).toMatchObject({ id: 'plain', name: 'plain', state: 'ready' });
   });
 
-  it('lists the description, the published flag, the hash, and the owner of record', async () => {
+  it('lists the description, the A2A opt-in, the hash, and the owner of record', async () => {
     const { catalog, put } = await start({ watch: false });
     const text = agentFileText({
       model: KNOWN_MODEL,
       description: 'Finds sources',
-      published: 'true',
+      a2a: 'true',
     });
     await put('researcher.md', text);
     await catalog.refresh();
@@ -75,7 +75,7 @@ describe('loading the agent directory', () => {
       source: 'file',
       state: 'ready',
       description: 'Finds sources',
-      published: true,
+      a2a: true,
       owner: 'anonymous:local',
     });
     expect(listing?.definitionHash).toMatch(/^[0-9a-f]{64}$/);
@@ -89,7 +89,7 @@ describe('loading the agent directory', () => {
     expect(catalog.list()[0]).toMatchObject({ state: 'ready', owner: 'anonymous:local' });
   });
 
-  it('builds a runnable agent from the file, with its tools, skills, and instructions', async () => {
+  it('builds a runnable agent from the file, with its tools, skill descriptors, and instructions', async () => {
     const { catalog, put } = await start({ watch: false });
     await put(
       'researcher.md',
@@ -98,7 +98,7 @@ describe('loading the agent directory', () => {
         `model: ${KNOWN_MODEL}`,
         'description: Finds sources',
         'tools: [lookup-order]',
-        'skills:',
+        'skillDescriptors:',
         '  - {id: cite, name: Cite, description: Cites, tags: [research]}',
         '---',
         'Be careful.',

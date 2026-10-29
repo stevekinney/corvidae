@@ -22,8 +22,8 @@ function definition(instructions: string): AgentFileDefinition {
     description: null,
     model: 'anthropic/claude-opus-5-5',
     tools: [],
-    skills: [],
-    published: false,
+    skillDescriptors: [],
+    a2a: false,
     instructions,
   };
 }
@@ -384,8 +384,8 @@ describe('a stored snapshot whose definition is not valid', () => {
   const invalid: unknown[] = [
     {},
     { model: 'anthropic/claude-opus-5-5' },
-    { ...definition('x'), skills: undefined, tools: 'lookup-order' },
-    { ...definition('x'), published: 'yes' },
+    { ...definition('x'), skillDescriptors: undefined, tools: 'lookup-order' },
+    { ...definition('x'), a2a: 'yes' },
   ];
 
   it.each(invalid.map((value, index) => [index, value] as const))(
@@ -439,9 +439,46 @@ describe('a stored snapshot whose definition is not valid', () => {
       description: null,
       model: 'anthropic/claude-opus-5-5',
       tools: [],
-      skills: [],
-      published: false,
+      skillDescriptors: [],
+      a2a: false,
       instructions: 'Hi.\n',
     });
+  });
+
+  it('loads a snapshot written before the A2A opt-in and `skillDescriptors` existed', async () => {
+    const { backing, store } = setup();
+    // The exact shape of a definition stored before COR-1864: `skills` and `published` keys.
+    await backing.set(
+      `${AGENT_SNAPSHOT_KEY_PREFIX}helper:aa`,
+      JSON.stringify({
+        schemaVersion: 1,
+        id: 'helper',
+        hash: 'aa',
+        firstRunAt: '2026-10-01T00:00:00.000Z',
+        lastRunAt: '2026-10-01T00:00:00.000Z',
+        definition: {
+          name: 'Helper',
+          description: 'Helps',
+          model: 'anthropic/claude-opus-5-5',
+          tools: ['lookup-order'],
+          skills: [{ id: 'cite', name: 'Cite', description: 'Cites', tags: ['research'] }],
+          published: true,
+          instructions: 'Hi.\n',
+        },
+      }),
+    );
+    const loaded = await store.load('helper', 'aa');
+    // The old keys are dropped, and the new fields take their defaults: the run still resumes.
+    expect(loaded?.definition).toEqual({
+      name: 'Helper',
+      description: 'Helps',
+      model: 'anthropic/claude-opus-5-5',
+      tools: ['lookup-order'],
+      skillDescriptors: [],
+      a2a: false,
+      instructions: 'Hi.\n',
+    });
+    const revisions = await store.revisions('helper');
+    expect(revisions.map((revision) => revision.hash)).toEqual(['aa']);
   });
 });

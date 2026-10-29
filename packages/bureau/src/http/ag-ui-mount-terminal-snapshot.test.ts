@@ -152,7 +152,6 @@ function mountOver(
 ) {
   return createBureauHandler(bureau, {
     unauthenticatedAccess: 'allow',
-    publish: ['assistant'],
     agUi: maxStreamDurationMs === undefined ? {} : { maxStreamDurationMs },
   });
 }

@@ -368,7 +368,7 @@ export function createResume(context: ResumeContext) {
         review.status === 'pending' &&
         runIsGoing(bureau, review.runId);
       // The continuation is the agent's that raised the interrupt: it runs under that
-      // agent's route, so a resume through another published agent's route is refused as
+      // agent's route, so a resume through another agent's route is refused as
       // an interrupt that does not exist there, and nothing is resolved.
       // A review with no agent recorded (one read back after a restart) is the session's;
       // with neither, nothing says which agent's it is, so no route is let through.

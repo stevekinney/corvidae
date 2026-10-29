@@ -13,7 +13,7 @@ const THREAD_ID = 'thread-named-option';
 
 const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [] });
 
-/** A Bureau with one published-able agent, with or without a durable engine. */
+/** A Bureau with one agent, with or without a durable engine. */
 async function buildBureau(options: { durable: boolean }) {
   return createBureau<AgentDefinitions>({
     assets: { storage: createMemoryAssetStorage() },
@@ -72,7 +72,7 @@ function mountRequests(prefix: string, runId: string): Record<string, Request> {
 describe('the agUi option on createBureauHandler', () => {
   it('serves the four routes under the default prefix when agUi is set', async () => {
     // The Bureau's own generate holds a bare `createRun` live until released, so the
-    // cancel route has a live run to answer for. The published agent answers at once.
+    // cancel route has a live run to answer for. The agent answers at once.
     let release: () => void = () => {};
     const gate = new Promise<void>((resolve) => {
       release = resolve;
@@ -95,7 +95,6 @@ describe('the agUi option on createBureauHandler', () => {
     try {
       const handler = createBureauHandler(bureau, {
         unauthenticatedAccess: 'allow',
-        publish: [AGENT_NAME],
         agUi: {},
       });
       const run = await bureau.tasks.start('default', 'hold');
@@ -122,7 +121,6 @@ describe('the agUi option on createBureauHandler', () => {
     await withBureau({ durable: true }, async (bureau) => {
       const handler = createBureauHandler(bureau, {
         unauthenticatedAccess: 'allow',
-        publish: [AGENT_NAME],
       });
       const requests = mountRequests('/ag-ui', 'any-run');
 
@@ -138,7 +136,6 @@ describe('the agUi option on createBureauHandler', () => {
     await withBureau({ durable: true }, async (bureau) => {
       const handler = createBureauHandler(bureau, {
         unauthenticatedAccess: 'allow',
-        publish: [AGENT_NAME],
         agUi: { pathPrefix: '/agent-ui' },
       });
 
@@ -159,7 +156,6 @@ describe('the agUi option on createBureauHandler', () => {
       expect(() =>
         createBureauHandler(bureau, {
           unauthenticatedAccess: 'allow',
-          publish: [AGENT_NAME],
           agUi: {},
         }),
       ).toThrow(/durable/);
@@ -193,7 +189,6 @@ describe('the agUi option on createBureauHandler', () => {
         expect(() =>
           createBureauHandler(bureau, {
             unauthenticatedAccess: 'allow',
-            publish: [AGENT_NAME],
             agUi: { [name]: value },
           }),
         ).not.toThrow();
@@ -209,7 +204,6 @@ describe('the agUi option on createBureauHandler', () => {
           expect(() =>
             createBureauHandler(bureau, {
               unauthenticatedAccess: 'allow',
-              publish: [AGENT_NAME],
               agUi: { [name]: bad },
             }),
           ).toThrow(/positive integer/);

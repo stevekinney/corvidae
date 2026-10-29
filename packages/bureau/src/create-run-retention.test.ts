@@ -271,7 +271,7 @@ describe('locateRunCreationReceipt', () => {
     });
   });
 
-  it('scopes the query to the caller and the published agent', async () => {
+  it('scopes the query to the caller and the agent', async () => {
     await withBureau(BACKENDS[0]![1], async (bureau) => {
       await settledRun(bureau);
       expect(await bureau.tasks.receipt({ ...LOCATE, principal: 'mallory' })).toMatchObject({

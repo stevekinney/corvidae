@@ -52,10 +52,10 @@ async function example(console: Recorder): Promise<void> {
     assets: { storage: createMemoryAssetStorage() },
   });
 
-  // The `publish` allowlist is the only thing that makes a code-defined agent visible. `private`
+  // The `a2aAgents` allowlist is the only thing that opts a code-defined agent into A2A. `private`
   // is not on it, so it has no card and starts no task.
   const handler = createBureauHandler(bureau, {
-    publish: ['summarizer', 'watcher'],
+    a2aAgents: ['summarizer', 'watcher'],
     publicUrl, // mounts A2A at <publicUrl>/a2a/<name>
     authentication: {
       auditSink: () => undefined,
@@ -64,7 +64,7 @@ async function example(console: Recorder): Promise<void> {
     },
   });
 
-  // Discover: a card is public. Fetching it needs no credentials, and a withdrawn agent has none.
+  // Discover: a card is public. Fetching it needs no credentials, and an agent that has not opted in has none.
   const cardUrl = `${publicUrl}/a2a/summarizer/.well-known/agent-card.json`;
   const publicCard = await handler(new Request(cardUrl));
   console.log(publicCard.status); // 200

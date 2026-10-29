@@ -32,7 +32,7 @@ describe('a multimodal exchange through A2A and AG-UI', () => {
           }, vision),
         }),
       },
-      publish: ['seer'],
+      a2aAgents: ['seer'],
       handlerOptions: { publicUrl: PUBLIC_URL, agUi: {} },
     });
     try {

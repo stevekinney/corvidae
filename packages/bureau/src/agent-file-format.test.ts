@@ -31,12 +31,12 @@ const FULL = [
   'model: anthropic/claude-sonnet-4-5',
   'tools:',
   '  - lookup-order',
-  'skills:',
+  'skillDescriptors:',
   '  - id: cite',
   '    name: Cite',
   '    description: Cites sources',
   '    tags: [research]',
-  'published: true',
+  'a2a: true',
   '---',
   'You are a careful researcher.',
   '',
@@ -50,8 +50,10 @@ describe('parseAgentFile', () => {
       description: 'Finds sources',
       model: 'anthropic/claude-sonnet-4-5',
       tools: ['lookup-order'],
-      skills: [{ id: 'cite', name: 'Cite', description: 'Cites sources', tags: ['research'] }],
-      published: true,
+      skillDescriptors: [
+        { id: 'cite', name: 'Cite', description: 'Cites sources', tags: ['research'] },
+      ],
+      a2a: true,
       instructions: 'You are a careful researcher.\n',
     });
   });
@@ -63,10 +65,33 @@ describe('parseAgentFile', () => {
       description: null,
       model: 'openai/gpt-4.1',
       tools: [],
-      skills: [],
-      published: false,
+      skillDescriptors: [],
+      a2a: false,
       instructions: '',
     });
+  });
+
+  it('reads `a2a` as a strict boolean that defaults to false', () => {
+    expect(parsed('on', '---\nmodel: a/b\na2a: true\n---\n').definition.a2a).toBe(true);
+    expect(parsed('off', '---\nmodel: a/b\na2a: false\n---\n').definition.a2a).toBe(false);
+    expect(parsed('none', '---\nmodel: a/b\n---\n').definition.a2a).toBe(false);
+    expect(parseAgentFile('text', '---\nmodel: a/b\na2a: "true"\n---\n').ok).toBe(false);
+  });
+
+  it('ignores the removed `published` and `skills` keys and keeps them in the file', () => {
+    const text = '---\nmodel: a/b\npublished: true\nskills:\n  - id: x\n---\nBody.\n';
+    const file = parsed('old', text);
+    expect(file.definition).toMatchObject({ a2a: false, skillDescriptors: [] });
+    expect(file.raw).toMatchObject({ published: true });
+    const bytes = serializeUpdatedAgentFile('old', file, {
+      model: 'a/b',
+      instructions: 'Body.\n',
+      a2a: true,
+    });
+    const rewritten = decoder.decode(bytes);
+    expect(rewritten).toContain('published: true');
+    expect(rewritten).toContain('skills:');
+    expect(rewritten).toContain('a2a: true');
   });
 
   it('keeps a body that holds fences, and Windows line endings', () => {
@@ -104,7 +129,7 @@ describe('parseAgentFile', () => {
   it('lists every schema failure', () => {
     const result = parseAgentFile(
       'bad',
-      '---\nmodel: 7\ntools: [a, a]\npublished: "yes"\nskills: [{id: x}]\n---\n',
+      '---\nmodel: 7\ntools: [a, a]\na2a: "yes"\nskillDescriptors: [{id: x}]\n---\n',
     );
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -112,8 +137,8 @@ describe('parseAgentFile', () => {
       const paths = result.problem.issues?.map((issue) => issue.path) ?? [];
       expect(paths).toContain('model');
       expect(paths).toContain('tools');
-      expect(paths).toContain('published');
-      expect(paths.some((path) => path.startsWith('skills'))).toBe(true);
+      expect(paths).toContain('a2a');
+      expect(paths.some((path) => path.startsWith('skillDescriptors'))).toBe(true);
     }
   });
 
@@ -164,8 +189,8 @@ describe('serializeNewAgentFile', () => {
       description: 'Finds: sources',
       model: 'anthropic/claude-sonnet-4-5',
       tools: ['lookup-order'],
-      skills: [{ id: 'cite', name: 'Cite', description: 'd', tags: ['t'] }],
-      published: true,
+      skillDescriptors: [{ id: 'cite', name: 'Cite', description: 'd', tags: ['t'] }],
+      a2a: true,
       instructions: 'Be careful.\n',
     });
     const file = parsed('researcher', decoder.decode(bytes));
@@ -173,7 +198,7 @@ describe('serializeNewAgentFile', () => {
       name: 'Researcher',
       description: 'Finds: sources',
       tools: ['lookup-order'],
-      published: true,
+      a2a: true,
       instructions: 'Be careful.\n',
     });
   });

@@ -84,7 +84,6 @@ const BUREAU_ID = 'recovered-run-failure-parity';
 async function attachStream(bureau: Bureau, runId: string) {
   const handler = createBureauHandler(bureau, {
     unauthenticatedAccess: 'allow',
-    publish: [],
     agUi: {},
   });
   return readAgUiStream(await handler(attachRunRequest(runId)));

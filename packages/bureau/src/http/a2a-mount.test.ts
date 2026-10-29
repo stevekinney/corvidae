@@ -29,7 +29,7 @@ import { CLEANUP_EXTENSION_URI } from './a2a-task-projection.ts';
 import { TaskListingTokenError } from '../task-list-snapshots.ts';
 
 describe('the A2A Agent Card', () => {
-  it('serves each published agent’s card without credentials, projected from its definition', async () => {
+  it('serves each opted-in agent’s card without credentials, projected from its definition', async () => {
     await withA2A({ asker: answering('done'), writer: answering('ok') }, async (opened) => {
       for (const name of ['asker', 'writer']) {
         const response = await opened.handler(
@@ -67,7 +67,7 @@ describe('the A2A Agent Card', () => {
     });
   });
 
-  it('has no card, starts no task, and reads as not found for an agent that is not published', async () => {
+  it('has no card, starts no task, and reads as not found for an agent that has not opted in', async () => {
     await withA2A(
       { asker: answering('done'), hidden: answering('no') },
       async (opened) => {
@@ -80,7 +80,7 @@ describe('the A2A Agent Card', () => {
         expect([card.status, sent.status, unknown.status]).toEqual([404, 404, 404]);
         expect(listHeldTasks(opened.bureau)).toEqual([]);
       },
-      { publish: ['asker'] },
+      { a2aAgents: ['asker'] },
     );
   });
 
@@ -615,7 +615,7 @@ describe('continuing a task by its other paths', () => {
           stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
         }),
       },
-      publish: ['payer'],
+      a2aAgents: ['payer'],
       handlerOptions: { publicUrl: PUBLIC_URL },
     });
     try {
@@ -939,7 +939,7 @@ describe('the first review pass', () => {
           stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
         }),
       },
-      publish: ['payer'],
+      a2aAgents: ['payer'],
       handlerOptions: { publicUrl: PUBLIC_URL },
     });
     try {

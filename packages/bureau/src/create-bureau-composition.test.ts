@@ -16,7 +16,7 @@ import ts from 'typescript';
 
 /**
  * Every verb a Bureau namespace exposes: the members of `tasks`, `contexts`, `reviews`,
- * `schedules`, and `audit`, and the operations `agents` gained (`models`, `publish`, `withdraw`).
+ * `schedules`, and `audit`, and the operations `agents` gained (`models`).
  * The top-level operations (`ownerOf`, `recovery`, `maintain`, `frames`) belong to the Bureau
  * itself and are not listed.
  */

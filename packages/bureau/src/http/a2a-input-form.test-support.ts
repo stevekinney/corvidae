@@ -113,7 +113,7 @@ export async function open(
         maximumSteps: 100,
       }),
     },
-    publish: ['asker'],
+    a2aAgents: ['asker'],
     // The schema is configured the way a host configures it: on the Bureau option, per signal.
     ...(schema === undefined
       ? {}

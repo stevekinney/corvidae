@@ -1,5 +1,5 @@
 /**
- * Bureau's `A2ARequestHandler` for one published agent (COR-903): A2A 1.0.1's methods over the
+ * Bureau's `A2ARequestHandler` for one agent that opts into A2A (COR-903): A2A 1.0.1's methods over the
  * Bureau's runs, tasks, and reviews, served by the kit's `createA2AHandler` (`a2a-mount.ts`).
  *
  * It implements the interface directly rather than extending the SDK's `DefaultRequestHandler`,
@@ -18,7 +18,7 @@
  * Every send is idempotent on the caller, this agent, the A2A version (normalized to
  * Major.Minor by the kit), the `messageId`, and, for a continuation, the task: the binding is
  * resolved before any other check, so an exact retry returns the original task even after the
- * task finished or the agent was withdrawn, and the same `messageId` with a different payload is
+ * task finished or the agent opted out, and the same `messageId` with a different payload is
  * refused with `-32602`. Without `configuration.returnImmediately` a send waits until the task
  * is terminal or waits on its requester.
  *
@@ -315,7 +315,7 @@ export type BureauA2ARequestHandlerOptions = {
    */
   readonly cancelWaitMilliseconds?: number;
   /**
-   * Whether the agent takes a new task: `false` once it is withdrawn. A withdrawn agent's tasks
+   * Whether the agent takes a new task: `false` once it opts out. An opted-out agent's tasks
    * are still served, and an exact retry of a send whose binding is retained still resolves to
    * its original task. Defaults to always.
    */
@@ -763,7 +763,7 @@ function staleRevision(
   );
 }
 
-/** Creates the request handler that serves one published agent. */
+/** Creates the request handler that serves one opted-in agent. */
 export function createBureauA2ARequestHandler(
   options: BureauA2ARequestHandlerOptions,
 ): A2ARequestHandler {
@@ -1624,7 +1624,9 @@ export function createBureauA2ARequestHandler(
     // the claim would leave an admitted event with no answer applied to the task (COR-1681).
     const expiredBeforeAdmission = pending === undefined && passed();
     if (!continuing && pending === undefined && options.acceptsNewTasks?.() === false) {
-      throw new TaskNotFoundError(`Agent '${agentName}' was withdrawn and takes no new task.`);
+      throw new TaskNotFoundError(
+        `Agent '${agentName}' has opted out of A2A and takes no new task.`,
+      );
     }
 
     if (inlinePush !== undefined) {
@@ -2159,7 +2161,7 @@ export function createBureauA2ARequestHandler(
       // that lands meanwhile reaches it.
       return projector.fence(view.id, async () => {
         const cursor = (await projector.tailOf(view.id)) ?? '-1';
-        // A withdrawn agent's tombstone keeps its tasks readable and their webhooks flowing, but
+        // An opted-out agent's tombstone keeps its tasks readable and their webhooks flowing, but
         // starts no new delivery for a task that has ended (COR-1669). The task is read again
         // after the cursor: one that ended before the cursor is refused here, and one that ends
         // later has its terminal event after the cursor, so the new webhook receives it. Nothing
@@ -2181,7 +2183,7 @@ export function createBureauA2ARequestHandler(
             }
             if (existing !== undefined) return existing;
             throw new UnsupportedOperationError(
-              `Agent '${agentName}' was withdrawn, and task '${view.id}' has ended.`,
+              `Agent '${agentName}' has opted out of A2A, and task '${view.id}' has ended.`,
             );
           }
         }

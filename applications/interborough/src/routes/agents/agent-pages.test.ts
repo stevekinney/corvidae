@@ -38,7 +38,7 @@ const INTERNAL = {
   name: 'internal',
   displayName: 'internal',
   description: null,
-  publishState: 'unpublished',
+  a2a: true,
 };
 
 describe('the list of agents', () => {
@@ -50,7 +50,7 @@ describe('the list of agents', () => {
     origin: 'chat' as 'chat' | 'goal' | 'schedule',
   });
 
-  test('shows each agent’s model, tools and use, badges only one that is not published, and offers New chat only for a published one', async () => {
+  test('shows each agent’s model, tools and use, badges none, and offers New chat for every agent', async () => {
     const recently = new Date(Date.now() - 3 * 60_000).toISOString();
     const served = bureau({
       'bureau.agents.list': () => ({ agents: [ASSISTANT, FILE_AGENT, INTERNAL] }),
@@ -60,16 +60,16 @@ describe('the list of agents', () => {
         state: 'ready',
         name: 'Researcher',
         description: null,
-        published: true,
+        a2a: true,
         hash: 'hash-1',
         problem: null,
         definition: {
           name: 'Researcher',
           description: null,
-          published: true,
+          a2a: true,
           model: 'anthropic/sonnet',
           tools: ['lookup-order', 'issue-refund'],
-          skills: [],
+          skillDescriptors: [],
           instructions: '',
         },
       }),
@@ -96,9 +96,8 @@ describe('the list of agents', () => {
     await findByText('anthropic/sonnet');
     const rows = (name: string) => container.querySelector(`[data-agent="${name}"]`);
     const text = (name: string) => rows(name)?.textContent ?? '';
-    // Neither where an agent is defined nor that it is published is worded.
+    // Where an agent is defined is not worded, and no badge is.
     expect(container.textContent).not.toContain('Defined in');
-    expect(container.textContent).not.toContain('Published');
     // The generator behind `assistant` is opaque to the Bureau (`media` is null): it may be a script
     // or a model, and the listing does not say, so no model line is claimed for it.
     expect(text('assistant')).not.toContain('Scripted');
@@ -122,10 +121,8 @@ describe('the list of agents', () => {
       'No chats yet',
     );
     expect(rows('internal')?.querySelector('[data-testid="agent-last-chat"]')).toBeNull();
-    // The one badge, and no chat action, on the agent that is not published.
-    expect(rows('internal')?.querySelector('[data-testid="agent-not-published"]')).not.toBeNull();
-    expect(container.querySelectorAll('[data-testid="agent-not-published"]')).toHaveLength(1);
-    expect(rows('internal')?.textContent).not.toContain('New chat');
+    // Every agent offers a chat, whether or not it opts into A2A.
+    expect(rows('internal')?.querySelector('a[href="/chat/new?agent=internal"]')).not.toBeNull();
     expect(rows('assistant')?.querySelector('a[href="/chat/new?agent=assistant"]')).not.toBeNull();
     // Edit for a file agent only, Memory for every agent.
     expect(rows('researcher')?.querySelector('a[href="/agents/researcher/edit"]')).not.toBeNull();
@@ -224,7 +221,7 @@ const INVALID_LISTING = {
   state: 'invalid',
   name: 'broken',
   description: null,
-  published: false,
+  a2a: false,
   hash: 'hash-bad',
   problem: { code: 'unknown-model', message: 'The model is not in the catalog.', issues: null },
 };
@@ -361,13 +358,13 @@ describe('one agent’s page', () => {
         state: 'ready',
         name: agent['displayName'],
         description: null,
-        published: true,
+        a2a: true,
         hash: definition === null ? null : 'hash-1',
         problem: null,
         definition:
           definition === null
             ? null
-            : { name: agent['displayName'], description: null, published: true, ...definition },
+            : { name: agent['displayName'], description: null, a2a: true, ...definition },
       }),
       'bureau.contexts.list': contexts,
       'bureau.memory.list': memoryList,
@@ -422,7 +419,7 @@ describe('one agent’s page', () => {
     const served = serve(FILE_AGENT, {
       model: 'anthropic/sonnet',
       tools: ['lookup-order'],
-      skills: [{ id: 'cite', name: 'Cite', description: 'Cites sources', tags: [] }],
+      skillDescriptors: [{ id: 'cite', name: 'Cite', description: 'Cites sources', tags: [] }],
       instructions: 'Be careful.',
     });
     landAt('/agents/researcher');
@@ -455,7 +452,7 @@ describe('one agent’s page', () => {
     serve(FILE_AGENT, {
       model: 'anthropic/sonnet',
       tools: [],
-      skills: [twin('cite-a'), twin('cite-b')],
+      skillDescriptors: [twin('cite-a'), twin('cite-b')],
       instructions: '',
     });
     landAt('/agents/researcher');
@@ -483,7 +480,7 @@ describe('one agent’s page', () => {
     serve(FILE_AGENT, {
       model: 'anthropic/sonnet',
       tools: ['lookup-order', 'lookup-order'],
-      skills: [twin('cite-a'), twin('cite-b')],
+      skillDescriptors: [twin('cite-a'), twin('cite-b')],
       instructions: '',
     });
     landAt('/agents/researcher');
@@ -520,7 +517,12 @@ describe('one agent’s page', () => {
   });
 
   test('says a file agent that names no tools has none, and has no skills section', async () => {
-    serve(FILE_AGENT, { model: 'anthropic/sonnet', tools: [], skills: [], instructions: '' });
+    serve(FILE_AGENT, {
+      model: 'anthropic/sonnet',
+      tools: [],
+      skillDescriptors: [],
+      instructions: '',
+    });
     landAt('/agents/researcher');
 
     const { container, findByText } = mount(AgentDetail);
@@ -532,7 +534,7 @@ describe('one agent’s page', () => {
     expect(container.textContent).not.toContain('Skills');
   });
 
-  test('reads no definition for an agent defined in code, shows no model for it, with no version, and offers New chat when it is published', async () => {
+  test('reads no definition for an agent defined in code, shows no model for it, with no version, and offers New chat', async () => {
     const served = serve(ASSISTANT);
     landAt('/agents/assistant');
 
@@ -544,10 +546,9 @@ describe('one agent’s page', () => {
     for (const present of ['Assistant', 'Answers every message.', 'search-web', 'send-mail']) {
       expect(shown).toContain(present);
     }
-    // Where it is defined and that it is published are not worded, and it has no file version.
+    // Where it is defined is not worded, and it has no file version.
     for (const absent of [
       'Defined in',
-      'Published',
       'Revision',
       'File version',
       'Skills',
@@ -659,8 +660,13 @@ describe('one agent’s page', () => {
     );
   });
 
-  test('offers Edit for an agent that is a file, whether or not it is published, and not for one defined in code', async () => {
-    serve(FILE_AGENT, { model: 'anthropic/sonnet', tools: [], skills: [], instructions: '' });
+  test('offers Edit for an agent that is a file, and not for one defined in code', async () => {
+    serve(FILE_AGENT, {
+      model: 'anthropic/sonnet',
+      tools: [],
+      skillDescriptors: [],
+      instructions: '',
+    });
     landAt('/agents/researcher');
     const file = mount(AgentDetail);
 
@@ -680,15 +686,15 @@ describe('one agent’s page', () => {
     expect(code.queryByRole('link', { name: AGENT_EDITOR_COPY.editAction })).toBeNull();
   });
 
-  test('offers no New chat for an agent that is not published, and says so', async () => {
+  test('offers New chat for an agent that opts into A2A, with no badge', async () => {
     serve(INTERNAL);
     landAt('/agents/internal');
 
-    const { container, findByText, queryByRole } = mount(AgentDetail);
+    const { container, findByRole } = mount(AgentDetail);
 
-    await findByText('Not published');
-    expect(queryByRole('link', { name: 'New chat' })).toBeNull();
+    await findByRole('link', { name: 'New chat' });
     expect(container.textContent).not.toContain('Model');
+    expect(container.textContent).not.toContain('A2A');
   });
 
   test('opens a session from its list', async () => {

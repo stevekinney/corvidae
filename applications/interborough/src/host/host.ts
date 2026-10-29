@@ -121,7 +121,6 @@ import {
   createAgentFileTools,
   createSeededAgents,
   createSeededValidators,
-  PUBLISHED_AGENT_NAMES,
   seedBureau,
   SEEDED_AGENT_NAMES,
   type SeededAgents,
@@ -158,10 +157,9 @@ export const DEFAULT_BUILD_DIRECTORY = join(
   'build',
 );
 
-/** Agents a host serves beside the seeded ones, and which of them it publishes. */
+/** Agents a host serves beside the seeded ones. */
 export type ExtraAgents = {
   readonly agents: Readonly<Record<string, SeededAgents['assistant']>>;
-  readonly published: readonly string[];
 };
 
 /**
@@ -194,8 +192,8 @@ export type HostOptions = {
     'cancellationGracePeriodMs' | 'workerReconnectGracePeriodMs'
   >;
   /**
-   * Agents to define and publish beside the seeded ones, for tests that need an agent of their own
-   * without changing the seed. `published` names the ones the Bureau handler serves.
+   * Agents to define beside the seeded ones, for tests that need an agent of their own without
+   * changing the seed.
    */
   readonly extraAgents?: ExtraAgents;
   /** Whether to create the seeded schedule and goal. Agents are always defined. Defaults to `true`. */
@@ -470,7 +468,6 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
 
     const bureauHandler = createBureauHandler(bureau, {
       unauthenticatedAccess: 'allow',
-      publish: [...PUBLISHED_AGENT_NAMES, ...(options.extraAgents?.published ?? [])],
       // Chat runs over AG-UI: the mount starts, attaches to, and resumes a run, and takes the
       // `RunAgentInput` Chat's transport sends.
       agUi: {},

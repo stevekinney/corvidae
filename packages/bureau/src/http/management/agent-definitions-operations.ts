@@ -1,19 +1,19 @@
 /**
  * `bureau.agents.definitions.*` and `bureau.agents.catalog`: the agent definitions of a Bureau
- * (COR-1526), written, read, published, withdrawn, and deleted through the same Markdown files a
+ * (COR-1526), written, read, and deleted through the same Markdown files a
  * person edits by hand (COR-1524), and the models and tools those files may name.
  *
  * Every agent belongs to the deployment's owner of record, and there is no owner field in a file.
  * A caller reaches the definitions it owns without any scope; `bureau.agents:read` grants `get`,
  * `list`, `revisions`, and `catalog` to any caller, and `bureau.agents:write` grants `create`,
- * `update`, `publish`, `withdraw`, and `delete`, and neither implies the other. A caller that may
+ * `update`, and `delete`, and neither implies the other. A caller that may
  * not see definitions is answered as if there were none: an empty page, or `NotFound`. `create`
  * and `catalog` have no resource to hide, so a caller who may not use them is refused with
  * `Forbidden`.
  *
  * Operations address an agent by its identifier, which is its filename without `.md`, or the key
  * of a code-defined agent, never by its display name. A code-defined agent can be read and listed
- * but not written: an `update`, `publish`, `withdraw`, or `delete` of one is answered `NotFound`.
+ * but not written: an `update` or `delete` of one is answered `NotFound`.
  *
  * A write fails with a typed `Conflict` (`data.reason` is `agent-file-exists`, or
  * `shadows-code-agent` for the key of a code-defined agent) when the identifier is taken, with
@@ -60,8 +60,7 @@ import {
 /** One entry of the audit trail, as the operations write it. */
 export interface AgentDefinitionAuditEntry {
   readonly runId: string;
-  readonly type:
-    'agent.created' | 'agent.updated' | 'agent.published' | 'agent.withdrawn' | 'agent.deleted';
+  readonly type: 'agent.created' | 'agent.updated' | 'agent.deleted';
   readonly detail: { readonly id: string; readonly hash: string; readonly previousHash?: string };
   /** The caller's owner string; absent for a caller the deployment cannot attribute. */
   readonly principal?: string;
@@ -72,18 +71,10 @@ export type BureauAgentDefinitionsOperationHost = BureauOwnershipHost & {
   readonly agentDefinitions: {
     readonly agents: Pick<
       BureauAgentCatalog<AgentDefinitions>,
-      | 'list'
-      | 'detail'
-      | 'tools'
-      | 'revisions'
-      | 'create'
-      | 'update'
-      | 'delete'
-      | 'publish'
-      | 'withdraw'
+      'list' | 'detail' | 'tools' | 'revisions' | 'create' | 'update' | 'delete'
     >;
-    /** Whether the `publish` allowlist of `createBureauHandler` publishes the code-defined agent `id`. */
-    readonly publishesCodeAgent: (id: string) => boolean;
+    /** Whether the `a2a` allowlist of `createBureauHandler` names the code-defined agent `id`. */
+    readonly optsCodeAgentIntoA2A: (id: string) => boolean;
     /** The rows of the deployment's model catalog, as the catalog holds them. */
     readonly models: () => readonly BackendDescriptor[];
     /** Appends to the durable audit trail; resolves without writing when the Bureau keeps none. */
@@ -116,7 +107,7 @@ const agentListingSchema = z.object({
   state: z.enum(['ready', 'invalid']),
   name: z.string(),
   description: z.string().nullable(),
-  published: z.boolean(),
+  a2a: z.boolean(),
   owner: z.string(),
   hash: z.string().nullable(),
   definitionRevision: z.number().int().positive().nullable(),
@@ -130,8 +121,8 @@ const definitionOutputSchema = z.object({
   /** The models a session of the agent may be switched to (COR-1559); `null` when the file lists none. */
   models: z.array(z.string()).nullable(),
   tools: z.array(z.string()),
-  skills: z.array(agentSkillDescriptorSchema),
-  published: z.boolean(),
+  skillDescriptors: z.array(agentSkillDescriptorSchema),
+  a2a: z.boolean(),
   instructions: z.string(),
 });
 
@@ -141,9 +132,9 @@ const agentDetailSchema = agentListingSchema.extend({
 });
 
 /**
- * What a caller supplies to `create` or `update`. `published` is not part of it: whether an agent
- * is offered is changed only by `publish` and `withdraw`, so an editor that rewrites a definition
- * can never withdraw an agent by leaving a field out.
+ * What a caller supplies to `create` or `update`. `a2a` is the one field an update keeps when it
+ * is left out, so an editor that rewrites a definition cannot turn an agent's A2A opt-in off by
+ * omitting it.
  */
 const definitionInputSchema = z
   .strictObject({
@@ -159,12 +150,14 @@ const definitionInputSchema = z
      */
     models: z.array(z.string()).nullable().optional(),
     tools: z.array(z.string().min(1)).optional(),
-    skills: z.array(agentSkillDescriptorSchema).optional(),
+    skillDescriptors: z.array(agentSkillDescriptorSchema).optional(),
+    /** Whether the agent opts into A2A. Omitted, a create is `false` and an update keeps the file's value. */
+    a2a: z.boolean().optional(),
     instructions: z.string(),
   })
   .superRefine((definition, context) => checkModelsList(definition, context))
   .describe(
-    'The agent’s definition: `name`, `description`, `model`, `models` (the models a session may be switched to), `tools`, `skills` and `instructions`. Whether the agent is published is not part of it.',
+    'The agent’s definition: `name`, `description`, `model`, `models` (the models a session may be switched to), `tools`, `skillDescriptors`, `a2a` (whether the agent opts into A2A) and `instructions`.',
   );
 
 /**
@@ -189,21 +182,21 @@ function problemView(problem: NonNullable<AgentListing['problem']>) {
 }
 
 /**
- * An agent as the wire shows it. `published` is whoever publishes the agent saying so: the
- * `publish` allowlist for a code-defined agent, its own file for a persisted one.
+ * An agent as the wire shows it. `a2a` is whoever opts the agent in saying so: the handler's `a2a`
+ * allowlist for a code-defined agent, its own file for a persisted one.
  */
 function listingView(host: BureauAgentDefinitionsOperationHost, listing: AgentListing) {
-  const published =
+  const a2a =
     listing.source === 'code'
-      ? host.agentDefinitions.publishesCodeAgent(listing.id)
-      : listing.published;
+      ? host.agentDefinitions.optsCodeAgentIntoA2A(listing.id)
+      : listing.a2a;
   return {
     id: listing.id,
     source: listing.source,
     state: listing.state,
     name: listing.name,
     description: listing.description,
-    published,
+    a2a,
     owner: listing.owner,
     hash: listing.definitionHash ?? null,
     definitionRevision: listing.definitionRevision ?? null,
@@ -231,8 +224,8 @@ function definitionView(definition: AgentFileDefinition) {
     model: definition.model,
     models: definition.models === undefined ? null : [...definition.models],
     tools: [...definition.tools],
-    skills: definition.skills.map(skillView),
-    published: definition.published,
+    skillDescriptors: definition.skillDescriptors.map(skillView),
+    a2a: definition.a2a,
     instructions: definition.instructions,
   };
 }
@@ -267,7 +260,7 @@ function requireAccess(
 /**
  * The agents an operation that changes an existing agent may reach. A caller who may not write
  * is answered as if the agent were missing, and so is every caller for a code-defined key: its
- * definition is code, its publication is the allowlist's, and no file is read, written, or
+ * definition is code, its A2A opt-in is the allowlist's, and no file is read, written, or
  * removed on its behalf, whether or not a same-named file lies in the directory.
  */
 function requireWritableAgent(
@@ -388,7 +381,7 @@ export const agentDefinitionsCreateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Create an agent definition',
   description:
-    'Writes a new agent file for `id`, the agent’s identifier: a lowercase letter or digit, then lowercase letters, digits, and hyphens, ending in a letter or digit. A caller derives it from the agent’s name; the name is only a label. `definition` is the file’s frontmatter (`name`, `description`, `model` written `<provider>/<model-or-alias>`, `tools`, `skills`) and its body (`instructions`). A new agent is not published; `bureau.agents.definitions.publish` offers it. The file is written to a temporary file and renamed into place, and the agent is in the catalog before the call returns. Requires `bureau.agents:write` unless the caller owns the deployment’s agents. A taken identifier, including the key of a code-defined agent, is a `Conflict`; a definition that would not load is `Unprocessable`, and nothing is written.',
+    'Writes a new agent file for `id`, the agent’s identifier: a lowercase letter or digit, then lowercase letters, digits, and hyphens, ending in a letter or digit. A caller derives it from the agent’s name; the name is only a label. `definition` is the file’s frontmatter (`name`, `description`, `model` written `<provider>/<model-or-alias>`, `tools`, `skillDescriptors`, `a2a`) and its body (`instructions`). A new agent does not opt into A2A unless `a2a` is `true`. The file is written to a temporary file and renamed into place, and the agent is in the catalog before the call returns. Requires `bureau.agents:write` unless the caller owns the deployment’s agents. A taken identifier, including the key of a code-defined agent, is a `Conflict`; a definition that would not load is `Unprocessable`, and nothing is written.',
   destructive: true,
   tags: ['Agents'],
   inputSchema: createInput,
@@ -431,7 +424,7 @@ export const agentDefinitionsUpdateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Replace an agent definition',
   description:
-    'Replaces the agent file for `id` with `definition`, if it still hashes to `expectedHash` (the `hash` a read returned). Frontmatter keys Bureau does not know stay in the file, and whether the agent is published does not change. A `definition` that omits `models` removes the file’s list, as omitting `tools` removes its tools. A file that changed since is a `StaleRevision` fault whose `currentRevision` is the hash now on disk, and nothing is written. A definition that changes nothing writes nothing and returns the same hash. A run in progress keeps the definition it started with. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`, as is an update of a code-defined key, before any file is read.',
+    'Replaces the agent file for `id` with `definition`, if it still hashes to `expectedHash` (the `hash` a read returned). Frontmatter keys Bureau does not know stay in the file, and an omitted `a2a` keeps the file’s opt-in. A `definition` that omits `models` removes the file’s list, as omitting `tools` removes its tools. A file that changed since is a `StaleRevision` fault whose `currentRevision` is the hash now on disk, and nothing is written. A definition that changes nothing writes nothing and returns the same hash. A run in progress keeps the definition it started with. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`, as is an update of a code-defined key, before any file is read.',
   destructive: true,
   tags: ['Agents'],
   inputSchema: updateInput,
@@ -450,17 +443,10 @@ export const agentDefinitionsUpdateOperation = defineOperation<
   invoke: async ({ input, host, principal }) => {
     const definitions = requireWritableAgent(host, principal, input.id);
     try {
-      // The definition the caller supplies has no `published`: the file keeps the state it has.
-      const current = await definitions.agents.detail(input.id);
-      const published = current?.definition?.published;
-      const result = await definitions.agents.update(
-        input.id,
-        {
-          ...definitionOf(input.definition),
-          ...(published === undefined ? {} : { published }),
-        },
-        { expectedHash: input.expectedHash },
-      );
+      // An omitted `a2a` keeps the opt-in the file has: the catalog applies that rule itself.
+      const result = await definitions.agents.update(input.id, definitionOf(input.definition), {
+        expectedHash: input.expectedHash,
+      });
       if (result.hash !== input.expectedHash) {
         await audit(host, principal, 'agent.updated', result, input.expectedHash);
       }
@@ -512,10 +498,7 @@ function defineGuardedWrite(
       const definitions = requireWritableAgent(host, principal, input.id);
       try {
         const result = await run(definitions.agents, input.id, input.expectedHash);
-        // A publish of a published agent, or a withdrawal of a withdrawn one, wrote nothing.
-        if (auditType === 'agent.deleted' || result.hash !== input.expectedHash) {
-          await audit(host, principal, auditType, result, input.expectedHash);
-        }
+        await audit(host, principal, auditType, result, input.expectedHash);
         return result;
       } catch (error) {
         return faultOf(error, input.id, input.expectedHash);
@@ -524,26 +507,10 @@ function defineGuardedWrite(
   });
 }
 
-export const agentDefinitionsPublishOperation = defineGuardedWrite(
-  'bureau.agents.definitions.publish',
-  'Publish an agent',
-  'Sets `published: true` in the agent’s file, if it still hashes to `expectedHash`, and keeps every other key the file has. A published agent appears in `bureau.agents.list` as published and in `bureau.deployment.get`’s `publishedAgents`, and is offered by the adapters that serve published agents. Only a new run is gated by publication. Publishing a published agent writes nothing. The `publish` allowlist of `createBureauHandler` governs code-defined agents only; a code-defined key is answered `NotFound` here, before any file is read. Requires `bureau.agents:write` unless the caller owns the deployment’s agents.',
-  (agents, id, expectedHash) => agents.publish(id, { expectedHash }),
-  'agent.published',
-);
-
-export const agentDefinitionsWithdrawOperation = defineGuardedWrite(
-  'bureau.agents.definitions.withdraw',
-  'Withdraw an agent',
-  'Sets `published: false` in the agent’s file, if it still hashes to `expectedHash`. A withdrawn agent appears in `bureau.agents.list` as withdrawn, but only to a caller who may read definitions, and starts no new run; a run that is waiting for an answer can still be resumed, and its other runs and tasks continue. Withdrawing needs the file to parse, not the deployment to be able to run it, so an agent whose model has left the catalog can still be withdrawn. Withdrawing a withdrawn agent writes nothing. Requires `bureau.agents:write` unless the caller owns the deployment’s agents.',
-  (agents, id, expectedHash) => agents.withdraw(id, { expectedHash }),
-  'agent.withdrawn',
-);
-
 export const agentDefinitionsDeleteOperation = defineGuardedWrite(
   'bureau.agents.definitions.delete',
   'Delete an agent definition',
-  'Deletes the agent’s file, if it still hashes to `expectedHash`, which withdraws the agent. A run keeps the definition it started on: the snapshots of runs that are still retained stay, and `bureau.agents.definitions.revisions` still lists them. A run waiting for an answer can still be resumed after the delete. Deleting a code-defined agent’s key is answered `NotFound` before any file is read, whether or not a same-named file exists. Requires `bureau.agents:write` unless the caller owns the deployment’s agents.',
+  'Deletes the agent’s file, if it still hashes to `expectedHash`, which removes the agent. A run keeps the definition it started on: the snapshots of runs that are still retained stay, and `bureau.agents.definitions.revisions` still lists them. A run waiting for an answer can still be resumed after the delete. Deleting a code-defined agent’s key is answered `NotFound` before any file is read, whether or not a same-named file exists. Requires `bureau.agents:write` unless the caller owns the deployment’s agents.',
   (agents, id, expectedHash) => agents.delete(id, { expectedHash }),
   'agent.deleted',
 );
@@ -559,7 +526,7 @@ export const agentDefinitionsGetOperation = defineOperation<
   mcpExposable: false,
   summary: 'Read one agent definition',
   description:
-    'Returns one agent: whether it is `ready` or `invalid` (with the `problem` that makes it so), whether it is published (by the `publish` allowlist for a code-defined agent, by its own file for a persisted one; an invalid file is never published, even when its `published` key says so), its `definitionRevision` (`null` for an invalid file), and, for a file, its `hash`, exact `text`, and parsed `definition`. An editor writes a change back with `expectedHash` set to `hash`. A code-defined agent has `source: "code"`, no hash, and no definition. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`.',
+    'Returns one agent: whether it is `ready` or `invalid` (with the `problem` that makes it so), whether it opts into A2A (`a2a`: the handler’s `a2a` allowlist for a code-defined agent, its own file for a persisted one; an invalid file never opts in, even when its `a2a` key says so), its `definitionRevision` (`null` for an invalid file), and, for a file, its `hash`, exact `text`, and parsed `definition`. An editor writes a change back with `expectedHash` set to `hash`. A code-defined agent has `source: "code"`, no hash, and no definition. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`.',
   destructive: false,
   tags: ['Agents'],
   inputSchema: getInput,
@@ -772,8 +739,6 @@ export const agentsCatalogOperation = defineOperation<
 export const bureauAgentDefinitionsOperations = [
   agentDefinitionsCreateOperation,
   agentDefinitionsUpdateOperation,
-  agentDefinitionsPublishOperation,
-  agentDefinitionsWithdrawOperation,
   agentDefinitionsDeleteOperation,
   agentDefinitionsGetOperation,
   agentDefinitionsListOperation,

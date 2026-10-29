@@ -1,5 +1,5 @@
 /**
- * Push notifications on a tombstone mount (COR-1669, part 2b-2): a withdrawn agent that still has
+ * Push notifications on a tombstone mount (COR-1669, part 2b-2): an opted-out agent that still has
  * a task keeps `Get`, `List`, and `Delete` of that task's push configurations, `Create` for a
  * task that has not ended, and delivery to the configurations that exist, until the task ends.
  */
@@ -25,6 +25,7 @@ import {
 import { agentFileText, KNOWN_MODEL } from '../testing/agent-file-fixtures.test-support.ts';
 import { eventually, type Json, Receiver, SIGNING_SECRET } from './a2a-push.test-support.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
+import { optOutOfA2A } from './a2a-mount.test-support.ts';
 import { authentication } from './management/management-fixtures.test-support.ts';
 
 /** Parks a task whose first message says `park` on a human wait once; answers anything else. */
@@ -83,7 +84,7 @@ async function serve(): Promise<Served> {
   });
   await harness.put(
     'writer.md',
-    agentFileText({ name: 'Writer', model: KNOWN_MODEL, published: 'true' }, 'Write.\n'),
+    agentFileText({ name: 'Writer', model: KNOWN_MODEL, a2a: 'true' }, 'Write.\n'),
   );
   await harness.bureau.agents.refresh();
   const handler = createBureauHandler(harness.bureau, {
@@ -130,15 +131,10 @@ const webhook = (served: Served, extra: Json = {}): Json => ({
   ...extra,
 });
 
-async function withdraw(served: Served): Promise<void> {
+async function optOut(served: Served): Promise<void> {
   const { bureau } = served.harness;
-  const hash = bureau.agents.list().find((agent) => agent.id === 'writer')?.definitionHash;
-  if (hash === undefined) throw new Error('expected the writer’s file');
-  await bureau.agents.withdraw('writer', { expectedHash: hash });
-  await bureau.agents.refresh();
-  expect(bureau.agents.list().some((agent) => agent.id === 'writer' && !agent.published)).toBe(
-    true,
-  );
+  await optOutOfA2A(bureau.agents, 'writer');
+  expect(bureau.agents.list().some((agent) => agent.id === 'writer' && !agent.a2a)).toBe(true);
 }
 
 async function parked(served: Served): Promise<string> {
@@ -147,7 +143,7 @@ async function parked(served: Served): Promise<string> {
   return sent.result.task.id;
 }
 
-describe('push configurations on a withdrawn agent’s tombstone mount', () => {
+describe('push configurations on an opted-out agent’s tombstone mount', () => {
   it('serves Create, Get, List, and Delete for a task that has not ended', async () => {
     const served = await serve();
     const taskId = await parked(served);
@@ -156,7 +152,7 @@ describe('push configurations on a withdrawn agent’s tombstone mount', () => {
       id: 'before',
       ...webhook(served),
     });
-    await withdraw(served);
+    await optOut(served);
 
     const created = await served.call('CreateTaskPushNotificationConfig', {
       taskId,
@@ -182,7 +178,7 @@ describe('push configurations on a withdrawn agent’s tombstone mount', () => {
       id: 'hook',
       ...webhook(served),
     });
-    await withdraw(served);
+    await optOut(served);
 
     await served.call('SendMessage', {
       message: message('blue', { taskId, metadata: { signalName: 'human-response' } }),
@@ -200,7 +196,7 @@ describe('push configurations on a withdrawn agent’s tombstone mount', () => {
       id: 'hook',
       ...webhook(served),
     });
-    await withdraw(served);
+    await optOut(served);
     await served.call('CancelTask', { id: taskId });
     await eventually(async () => {
       const task = await served.call('GetTask', { id: taskId });
@@ -220,7 +216,7 @@ describe('push configurations on a withdrawn agent’s tombstone mount', () => {
   it('scopes every operation to the task’s owner', async () => {
     const served = await serve();
     const taskId = await parked(served);
-    await withdraw(served);
+    await optOut(served);
 
     for (const [method, params] of [
       ['CreateTaskPushNotificationConfig', { taskId, ...webhook(served) }],
@@ -239,7 +235,7 @@ describe('push configurations on a withdrawn agent’s tombstone mount', () => {
     const params = { taskId, id: 'hook', ...webhook(served) };
     const first = await served.call('CreateTaskPushNotificationConfig', params);
     expect(first.result.id).toBe('hook');
-    await withdraw(served);
+    await optOut(served);
     await served.call('CancelTask', { id: taskId });
     await eventually(async () => {
       const task = await served.call('GetTask', { id: taskId });

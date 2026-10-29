@@ -52,11 +52,11 @@ describe('an agent file that cannot be used', () => {
     const listing = await listingWithSibling(
       await start(),
       'broken.md',
-      agentFileText({ model: KNOWN_MODEL, published: '"yes"', tools: '[a, a]' }),
+      agentFileText({ model: KNOWN_MODEL, a2a: '"yes"', tools: '[a, a]' }),
     );
     expect(listing).toMatchObject({ state: 'invalid', problem: { code: 'invalid-frontmatter' } });
     expect(listing?.problem?.issues?.map((issue) => issue.path)).toEqual(
-      expect.arrayContaining(['published', 'tools']),
+      expect.arrayContaining(['a2a', 'tools']),
     );
   });
 

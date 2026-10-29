@@ -120,7 +120,7 @@ export async function openPushBureau(
   const sender = createOutboxPushNotificationSender({ outbox, pushStore });
   const opened = await openBureau({
     agents: { asker: createAgent({ name: 'asker', generate }) },
-    publish: ['asker'],
+    a2aAgents: ['asker'],
     durableHistory: options.durableHistory ?? true,
     ...(options.bureauStorage === undefined ? {} : { storage: options.bureauStorage }),
     handlerOptions: {

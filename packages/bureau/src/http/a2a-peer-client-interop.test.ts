@@ -1,6 +1,6 @@
 /**
  * Interop of Weft's A2A peer client (COR-905) with Bureau's own A2A mount (COR-1670): the client
- * reads a published agent's card, sends it a message, follows the task to where it stops,
+ * reads an opted-in agent's card, sends it a message, follows the task to where it stops,
  * continues one that asked for input, and cancels one that never ends.
  */
 import { createAgent, type GenerateFunction } from '@lostgradient/operative';
@@ -22,7 +22,7 @@ async function withPeer(
 ): Promise<void> {
   const opened = await openBureau({
     agents: { asker: createAgent({ name: 'asker', description: 'Answers.', generate }) },
-    publish: ['asker'],
+    a2aAgents: ['asker'],
     handlerOptions: { publicUrl: ORIGIN },
   });
   try {
@@ -41,7 +41,7 @@ async function withPeer(
 }
 
 describe('the peer client against a Bureau A2A mount', () => {
-  it('reads the published agent’s card', async () => {
+  it('reads the opted-in agent’s card', async () => {
     await withPeer(
       async () => ({ content: 'ok', toolCalls: [] }),
       async ({ client }) => {

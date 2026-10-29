@@ -892,7 +892,7 @@ A sixth and seventh source, closing a dead entry each: `SESSION_DURABLE_ACTION_T
 
 ### The AG-UI mount
 
-`createBureauHandler(bureau, { publish: ['assistant'], agUi: {} })` mounts an AG-UI 1.0 adapter beside the operation catalog. It needs a Bureau with a durable engine (`bureau.internals.hasDurableEngine`), because its human-wait parks and run-creation receipts both depend on one, and it throws at construction without one. A **thread** is a Bureau session. The adapter selects agents from `publish` (code-defined agents) and from the persisted agents whose own file publishes them (`bureau.agents.definitions.publish`), and an agent served over it should be configured with `stopWhen: pendingApproval()`: without it a run keeps generating past a gated tool call and the interrupt reaches the client steps later.
+`createBureauHandler(bureau, { agUi: {} })` mounts an AG-UI 1.0 adapter beside the operation catalog. It needs a Bureau with a durable engine (`bureau.internals.hasDurableEngine`), because its human-wait parks and run-creation receipts both depend on one, and it throws at construction without one. A **thread** is a Bureau session. The adapter starts any ready agent, code-defined or persisted, whether or not it opts into A2A, and an agent served over it should be configured with `stopWhen: pendingApproval()`: without it a run keeps generating past a gated tool call and the interrupt reaches the client steps later.
 
 The option is `agUi?: { pathPrefix?, maxStreamDurationMs?, liveBufferSize?, keepAliveIntervalMs?, leaseDurationMs?, runtime? }`. `pathPrefix` defaults to `/ag-ui`, `maxStreamDurationMs` to 900000 (fifteen minutes, set separately from the catalog subscriptions' deadline), `liveBufferSize` to 1000, `keepAliveIntervalMs` to 5000, and `leaseDurationMs` to 30000. `runtime` is the clock and timers the mount reads, for a test that drives the deadline with a manual clock.
 
@@ -970,7 +970,6 @@ const bureau = await createBureau({
 // owns what it creates and reaches nothing of anyone else's.
 const keys = { 'alice-key': 'alice', 'bob-key': 'bob' } as const;
 const handler = createBureauHandler(bureau, {
-  publish: ['releaser'],
   authentication: {
     auditSink: () => undefined, // every authentication decision is passed here
     resolveApiKeyPrincipal: async (key) =>
@@ -995,10 +994,10 @@ async function call(method: string, params: object, key = 'alice-key') {
 const unknownKey = await call('bureau.deployment.get', {}, 'no-such-key');
 console.log(unknownKey.status); // 401
 
-// Discover: the deployment's identity, the agents it publishes, and the operations it serves.
+// Discover: the deployment's identity, the agents it has, and the operations it serves.
 const { body: deployment } = await call('bureau.deployment.get', {});
 console.log(deployment.result.id); // 'acme'
-console.log(deployment.result.publishedAgents); // ['releaser']
+console.log(deployment.result.agents); // ['releaser']
 const served = deployment.result.operations.map((operation: { name: string }) => operation.name);
 console.log(served.includes('bureau.tasks.respond')); // true
 
@@ -1053,14 +1052,14 @@ The handler has no run-starting operation of its own, so the host starts the run
 
 ### A2A
 
-`createBureauHandler` serves each published agent as an [A2A](https://a2a-protocol.org/v1.0.1/specification/) agent when it is given a `publicUrl`. This section is for the consumer and for the host that publishes: what is served, what makes an agent publishable, which capabilities the Agent Card declares, and a worked example that runs as a test. The as-built contract (state mapping, identity, retention, and every limit) is [`documentation/external-control-plane.md`](./documentation/external-control-plane.md#as-built); this section links to it instead of repeating it.
+`createBureauHandler` serves each agent that opts in as an [A2A](https://a2a-protocol.org/v1.0.1/specification/) agent when it is given a `publicUrl`. This section is for the consumer and for the host that serves agents: what is served, what makes an agent opt in, which capabilities the Agent Card declares, and a worked example that runs as a test. The as-built contract (state mapping, identity, retention, and every limit) is [`documentation/external-control-plane.md`](./documentation/external-control-plane.md#as-built); this section links to it instead of repeating it.
 
 **Pinned versions.** A2A 1.0.1 over the JSON-RPC binding, with `A2A-Version: 1.0` on every request (a patch version such as `1.0.1` is read as `1.0`; any other value is a `VersionNotSupportedError`). The interoperability test, [`src/http/a2a-interop.test.ts`](./src/http/a2a-interop.test.ts), drives the handler with `@a2a-js/sdk` `1.3.0`, the version Weft's `@lostgradient/weft/a2a` subpath pins exactly. `bun run --filter=@lostgradient/bureau test:a2a-tck` runs the official A2A TCK against a Bureau host, at the commit that [`packages/weft/scripts/run-a2a-tck.ts`](../weft/scripts/run-a2a-tck.ts) pins (`A2A_TCK_COMMIT`); it needs Python 3.11 or later, `uv`, and network access, and it is outside `bun run validate`. One TCK test is deselected for Bureau, the message-response test, because every Bureau send creates a task and never answers with a bare `Message`.
 
-**Publishing an agent.**
+**Opting an agent into A2A.**
 
-- A code-defined agent is published only by the `publish` allowlist of `createBureauHandler`; an agent file is published by its own `published` frontmatter. Publication is read on every request, so publishing or withdrawing takes effect without a restart. An unpublished agent has no card, starts no task, and reads as not found.
-- One agent, one interface: `<publicUrl>/a2a/<catalog-name>` for JSON-RPC, `<publicUrl>/a2a/<catalog-name>/.well-known/agent-card.json` for the card, and, when `signing` is set, `<publicUrl>/a2a/<catalog-name>/.well-known/jwks.json` for the key. The catalog name is a URL path segment, and the handler throws at construction for a `publish` name that is not in the agent catalog.
+- A code-defined agent opts in only through the `a2aAgents` allowlist of `createBureauHandler`; an agent file opts in with `a2a: true` in its frontmatter. The opt-in is read on every request, so opting in or out takes effect without a restart. An agent that has not opted in has no card, starts no task, and reads as not found. It is still listed and can still be chatted with over AG-UI.
+- One agent, one interface: `<publicUrl>/a2a/<catalog-name>` for JSON-RPC, `<publicUrl>/a2a/<catalog-name>/.well-known/agent-card.json` for the card, and, when `signing` is set, `<publicUrl>/a2a/<catalog-name>/.well-known/jwks.json` for the key. The catalog name is a URL path segment, and the handler throws at construction for an `a2aAgents` name that is not in the agent catalog.
 - The card is projected from the catalog and the agent's definition: `name` (the display name, else the catalog name), `description`, `version` (the definition revision), the agent's skill descriptors as `skills` (or one skill standing for the agent), and the input and output modes. It carries no tools, no internal endpoint, no credential, and no capability the deployment does not serve; `securitySchemes` and `securityRequirements` describe the credentials the handler enforces and nothing more.
 - The card is public, and every JSON-RPC request needs the handler's authentication (an API key resolved by `authentication.resolveApiKeyPrincipal`, or `unauthenticatedAccess: 'allow'` on a loopback host). A caller owns the tasks it creates, and another owner's task reads as missing.
 - `publicUrl` needs a Bureau with a durable engine and a `retention.tasks` of at least the 24 hours a send's idempotency binding is kept, or construction throws. The Bureau's `id` must be explicit when storage persists.
@@ -1135,10 +1134,10 @@ const bureau = await createBureau({
   assets: { storage: createMemoryAssetStorage() },
 });
 
-// The `publish` allowlist is the only thing that makes a code-defined agent visible. `private`
+// The `a2aAgents` allowlist is the only thing that opts a code-defined agent into A2A. `private`
 // is not on it, so it has no card and starts no task.
 const handler = createBureauHandler(bureau, {
-  publish: ['summarizer', 'watcher'],
+  a2aAgents: ['summarizer', 'watcher'],
   publicUrl, // mounts A2A at <publicUrl>/a2a/<name>
   authentication: {
     auditSink: () => undefined,
@@ -1147,7 +1146,7 @@ const handler = createBureauHandler(bureau, {
   },
 });
 
-// Discover: a card is public. Fetching it needs no credentials, and a withdrawn agent has none.
+// Discover: a card is public. Fetching it needs no credentials, and an agent that has not opted in has none.
 const cardUrl = `${publicUrl}/a2a/summarizer/.well-known/agent-card.json`;
 const publicCard = await handler(new Request(cardUrl));
 console.log(publicCard.status); // 200
@@ -1941,7 +1940,7 @@ const result = await run.result();
 
 ### Agent files
 
-`createBureau({ agentSource: agentFileDirectory(path, { tools }), models: { generate } })` loads agents from Markdown files in a directory the host names (`agentFileDirectory` comes from `@lostgradient/bureau/sources`, so a bundle that imports only `createBureau` carries no `node:fs`). A file `researcher.md` is the agent `researcher`: YAML frontmatter (`name`, `description`, `model` written `<provider>/<model>`, `tools`, `skills`, `published`) followed by the instructions. Bureau watches the directory, so adding, editing, or deleting a file takes effect without a restart, and `bureau.agents.create`, `update`, `publish`, `withdraw`, and `delete` write through the same files (`createBureauHandler` serves them as `bureau.agents.definitions.*`, with the models and tools a file may name as `bureau.agents.catalog`). `bureau.agents.list()` lists code-defined and file agents together; a file that cannot be used is listed with `state: 'invalid'` and a typed `problem`, never runs, and leaves every other agent working. A file agent runs through `bureau.tasks.start(name, input)` with the same options as a code-defined one.
+`createBureau({ agentSource: agentFileDirectory(path, { tools }), models: { generate } })` loads agents from Markdown files in a directory the host names (`agentFileDirectory` comes from `@lostgradient/bureau/sources`, so a bundle that imports only `createBureau` carries no `node:fs`). A file `researcher.md` is the agent `researcher`: YAML frontmatter (`name`, `description`, `model` written `<provider>/<model>`, `tools`, `skillDescriptors`, `a2a`) followed by the instructions. Bureau watches the directory, so adding, editing, or deleting a file takes effect without a restart, and `bureau.agents.create`, `update`, and `delete` write through the same files (`createBureauHandler` serves them as `bureau.agents.definitions.*`, with the models and tools a file may name as `bureau.agents.catalog`). `bureau.agents.list()` lists code-defined and file agents together; a file that cannot be used is listed with `state: 'invalid'` and a typed `problem`, never runs, and leaves every other agent working. A file agent runs through `bureau.tasks.start(name, input)` with the same options as a code-defined one.
 
 A run uses the definition it started with. Bureau stores that definition as a snapshot keyed by the file's SHA-256, the run records the hash, and a run resumed after a restart is rebuilt from the snapshot even if the file is gone. `bureau.agents.revisions(id)` lists the snapshots that have run. A file agent's `definitionRevision` (on `bureau.agents.list()`, `bureau.agents.list` over HTTP, and `bureau.agents.definitions.get` and `list`) is 1 on first sighting and rises every time the file's content changes, kept in a conditional per-agent record that survives a restart and is safe across Bureau processes on one store; a run keeps the revision it started with. See [`documentation/agent-files.md`](documentation/agent-files.md) for the format and the full contract. Four limits are worth knowing:
 
