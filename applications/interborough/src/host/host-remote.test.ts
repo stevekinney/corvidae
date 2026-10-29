@@ -103,6 +103,29 @@ describe('local mode', () => {
     const snapshot = await host.bureau.settings.get();
     expect(snapshot.keys['durableOwnership.ownership']?.locked).toBe(false);
   });
+
+  // COR-1797: a person's host keeps every setting editable; only remote mode locks these. The
+  // remote refusals are in `remote-host.slow.test.ts`.
+  test.each([
+    ['durableOwnership.ownership', 'none'],
+    ['maintenance', 'manual'],
+    ['durable', false],
+    ['engine.workflowClaimTtl', 30_000],
+    ['engine.workflowClaimRenewInterval', 5_000],
+  ] as const)('leaves %s editable', async (key, value) => {
+    const home = await mkdtemp(join(tmpdir(), 'interborough-local-settings-'));
+    directories.push(home);
+    const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0 });
+    hosts.push(host);
+
+    const snapshot = await host.bureau.settings.get();
+    expect(snapshot.keys[key]?.locked).toBe(false);
+    const stored = await host.bureau.settings.update(
+      { [key]: value },
+      { expectedRevision: snapshot.revision },
+    );
+    expect(stored).toMatchObject({ outcome: 'applied' });
+  });
 });
 
 describe('the bucket the host is pointed at', () => {

@@ -9,7 +9,7 @@
  * Setting `INTERBOROUGH_DATABASE_URL` and `INTERBOROUGH_BUCKET` selects remote mode instead
  * (README, "Running on Postgres and S3"): the Bureau runs on Postgres, the agent and workflow
  * definitions are objects in the bucket, the approval secret is `INTERBOROUGH_SECRET_APPROVAL_SECRET`,
- * and Bureau's durable ownership is locked, so any number of hosts, such as the old and new release
+ * and Bureau's durable ownership and maintenance settings are locked, so any number of hosts, such as the old and new release
  * of a rolling deploy, can run at once on the same state.
  * The seeded agents are code, so they are rebuilt from {@link createSeededAgents} on every start.
  * Other agents are Markdown files in `agents/` under the home, which the Bureau loads and watches
@@ -136,6 +136,19 @@ const LOOPBACK = '127.0.0.1';
 
 /** The Bungalow secret that signs the approvals the seeded `tool-runner` raises. */
 export const APPROVAL_SECRET_KEY = 'approval-secret';
+
+/**
+ * The restart-applied settings a remote host holds to their code options (COR-1797): ownership,
+ * maintenance, the durable engine, and the claim TTL and renew interval, whose code defaults keep
+ * renew below TTL. Hosts that share a database must all run the same overlap-safe configuration.
+ */
+const REMOTE_LOCKED_SETTINGS = [
+  'durableOwnership.ownership',
+  'maintenance',
+  'durable',
+  'engine.workflowClaimTtl',
+  'engine.workflowClaimRenewInterval',
+] as const satisfies NonNullable<SettingsOptions['locked']>;
 
 /** The directory of agent files under the Interborough home: `researcher.md` is the agent `researcher`. */
 export const AGENT_DIRECTORY_NAME = 'agents';
@@ -408,12 +421,15 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const typesafeKey = bungalow.readSecret(TYPESAFE_SECRET_KEY)?.trim();
     // Hosts that share a database must agree on who owns a run, so a remote host holds ownership
     // to Bureau's lease default and the Settings page cannot store `none`: two hosts would then
-    // both run every task. A caller's own locks stay.
+    // both run every task. The other restart-applied settings that overlap depends on are held too
+    // (COR-1797): `maintenance: 'manual'` starts no scheduler, so a run parked by the old release
+    // would never finish on the new one, and `durable: false` or a claim TTL at or below the renew
+    // interval would stop or lose the leases. The code defaults apply. A caller's own locks stay.
     const settings: SettingsOptions | undefined =
       bungalow.mode === 'remote'
         ? {
             ...options.settings,
-            locked: [...callerLocks, 'durableOwnership.ownership'],
+            locked: [...callerLocks, ...REMOTE_LOCKED_SETTINGS],
           }
         : options.settings;
     const bureau = await createBureau({
