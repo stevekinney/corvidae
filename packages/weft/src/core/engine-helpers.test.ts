@@ -1,9 +1,8 @@
-import { describe, expect, it } from 'bun:test';
 import { sleepForTesting } from '@lostgradient/testing/fake-timers';
+import { describe, expect, it } from 'bun:test';
 
-import type { Storage as WeftStorage } from '../storage/interface.ts';
-import { KEYS } from '../storage/interface.ts';
-import { MemoryStorage } from '../storage/memory.ts';
+import { type Storage as WeftStorage, MemoryStorage } from '@lostgradient/storage';
+import { KEYS } from '../storage/keys.ts';
 import {
   cleanupPartialStreamChunks,
   createCleanupErrorReporter,

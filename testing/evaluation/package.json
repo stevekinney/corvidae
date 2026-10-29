@@ -24,6 +24,7 @@
     "@lostgradient/cryptography": "workspace:*",
     "@lostgradient/memory": "workspace:*",
     "@lostgradient/operative": "workspace:*",
+    "@lostgradient/storage": "workspace:*",
     "@lostgradient/weft": "workspace:*",
     "armorer": "workspace:*",
     "conversationalist": "workspace:*",

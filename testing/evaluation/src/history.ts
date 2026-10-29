@@ -31,7 +31,7 @@
  * signals in `promotion.ts`.
  */
 import { sha256Hex } from '@lostgradient/cryptography';
-import type { ConditionalTextValueStore } from '@lostgradient/weft';
+import type { ConditionalTextValueStore } from '@lostgradient/storage';
 import { z } from 'zod';
 
 import { EvaluatorConfigurationError, toConfigurationIssues } from './configuration';

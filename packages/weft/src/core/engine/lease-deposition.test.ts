@@ -24,15 +24,11 @@
  */
 import { describe, expect, it, spyOn } from 'bun:test';
 
+import type { BatchOperation, ConditionalBatchCondition, Storage } from '@lostgradient/storage';
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { BunSQLiteStorage } from '../../storage/bun-sql.ts';
-import type {
-  BatchOperation,
-  ConditionalBatchCondition,
-  Storage,
-} from '../../storage/interface.ts';
-import { KEYS } from '../../storage/interface.ts';
-import { waitForCondition } from '@lostgradient/testing/fake-timers';
+import { KEYS } from '../../storage/keys.ts';
 import { workflow, type WorkflowContext } from '../types.ts';
 import {
   commitFencedEngineWrite,

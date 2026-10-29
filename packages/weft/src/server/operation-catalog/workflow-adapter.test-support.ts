@@ -1,9 +1,9 @@
 import { z } from 'zod';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
 import type { DefinitionSchema, WorkflowContext, WorkflowDefinition } from '../../core/types.ts';
 import { workflow } from '../../core/types.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { catalogWorkflow } from './workflow-adapter.ts';
 
 function emptyAsyncIterable<T>(): AsyncIterable<T> {

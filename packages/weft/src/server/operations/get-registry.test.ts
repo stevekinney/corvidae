@@ -16,11 +16,11 @@
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { MAX_CONTRACT_IDENTIFIER_BYTES } from '../../core/contract/index.ts';
 import { Engine } from '../../core/engine.ts';
 import { activity, query, signal, update, workflow } from '../../core/types.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { handleRequest } from '../handler.ts';
 import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';
 import { defineOperation } from '../operation-registry.ts';

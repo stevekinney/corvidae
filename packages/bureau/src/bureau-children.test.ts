@@ -23,8 +23,8 @@ import {
   type ConditionalTextValueStore,
   MemoryStorage,
   textValueStore,
-  yieldToPortableEventLoop,
-} from '@lostgradient/weft';
+} from '@lostgradient/storage';
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';

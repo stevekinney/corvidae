@@ -15,7 +15,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 import { ActivityRegistry } from '../activity-registry.ts';
 import type { RevisionRealmConfig } from '../realm/revision-realm-registry.ts';
 import { buildWorkflowManifestFromDefinition } from '../registry-workflow-manifest.ts';

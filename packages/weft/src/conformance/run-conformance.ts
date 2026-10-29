@@ -19,9 +19,9 @@
  * @module conformance/run-conformance
  */
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../core/engine/index.ts';
 import type { ServeOptions, WeftServer } from '../server/index.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 import {
   REMOTE_WORKER_PROTOCOL_VERSION,
   REMOTE_WORKER_SUPPORTED_PROTOCOL_VERSIONS,

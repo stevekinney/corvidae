@@ -21,7 +21,7 @@ import {
   type GenerateFunction,
   MEMORY_EVIDENCE_METADATA_KEY,
 } from '@lostgradient/operative';
-import { MemoryStorage } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 import { createTool, createToolbox, type ToolRequestContext } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';

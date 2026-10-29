@@ -11,7 +11,7 @@ import {
   stopWhen,
   waitForCondition,
 } from '@lostgradient/operative';
-import { MemoryStorage, type Storage } from '@lostgradient/weft';
+import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { createTool, createToolbox } from 'armorer';
 import { file } from 'bun';
 import { afterEach, describe, expect, it } from 'bun:test';

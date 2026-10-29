@@ -24,8 +24,8 @@ import {
   principalFromApiKey,
   type AuthorizationScope,
   resolveStorage,
-  type Storage,
 } from '@lostgradient/weft';
+import { type Storage } from '@lostgradient/storage';
 import { createToolbox, type Toolbox } from 'armorer';
 import type { RunAgentInput } from '@ag-ui/core';
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../core/engine.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 import { registerScenarioHandlers, scenarioNames } from './replay-scenarios.test-support.ts';
 
 function createEngine(): Engine {

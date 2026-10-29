@@ -19,6 +19,7 @@
  * reaching through the Node-dependent root barrel.
  */
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../core/engine.ts';
 import type { WorkflowContext } from '../core/types.ts';
 import { workflow } from '../core/types.ts';
@@ -42,7 +43,6 @@ import {
   WorkflowTeardownEvent as WorkflowTeardownEventFromRoot,
   WorkflowTimedOutEvent as WorkflowTimedOutEventFromRoot,
 } from '../index.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 import type { HttpClient } from './http-client.ts';
 import type {
   FaultCode as FaultCodeFromClientBarrel,

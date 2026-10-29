@@ -12,7 +12,7 @@
  * @module core/engine/payload-validation
  */
 
-import { KEYS } from '../../storage/interface.ts';
+import { KEYS } from '../../storage/keys.ts';
 import type { DefinitionSchema } from '../types.ts';
 import { validateStandardSchema } from '../types/standard-schema-validate.ts';
 import { getResolvedDynamicRegistration } from './dynamic-source-execution.ts';

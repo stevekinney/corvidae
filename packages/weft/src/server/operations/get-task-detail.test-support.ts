@@ -1,3 +1,4 @@
+import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
 import {
   encodeRemoteTaskRecord,
@@ -14,7 +15,6 @@ import {
 } from '../../core/task-ledger/task-ledger.ts';
 import type { WorkflowContext } from '../../core/types.ts';
 import { workflow } from '../../core/types.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
 import type { AuthorizationScope } from '../authorization-scope.ts';
 import type { DispatchResult } from '../operation-catalog.ts';
 import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';

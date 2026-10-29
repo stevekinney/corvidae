@@ -1,7 +1,7 @@
 import { describe, expect, it, mock } from 'bun:test';
 
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import { serializeCheckpoint } from '../checkpoint/serialization.ts';
 import { decode, encode } from '../codec.ts';
 import type { Checkpoint, SearchAttributeValue, WorkflowState } from '../types.ts';

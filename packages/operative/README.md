@@ -620,7 +620,7 @@ The main entry point exposes session helpers for direct session management witho
 ```typescript
 import { createAgentSession, loadAgentSession, saveAgentSession } from '@lostgradient/operative';
 import { createConversationHistory } from 'conversationalist';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 
 // Direct persistence (see createSessionStore() below for the full SessionStore API)
 const store = textValueStore(new MemoryStorage());
@@ -647,7 +647,7 @@ import {
 } from '@lostgradient/operative';
 import type { GenerateFunction } from '@lostgradient/operative';
 import { createToolbox } from 'armorer';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 
 // createSessionStore requires a real Weft `ConditionalTextValueStore`—it
 // checks for a `.conditionalBatch` method, so a hand-rolled `{ get, set,
@@ -742,7 +742,7 @@ The store does **not** dispatch `SessionCreatedEvent`/`SessionSavedEvent`/ `Sess
 
 ```ts
 import { createSessionStore } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 
 const sessions = createSessionStore(textValueStore(new MemoryStorage()));
 const LEASE_MS = 30_000;
@@ -847,7 +847,7 @@ import {
   type GenerateFunction,
   stopWhen,
 } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { createToolbox } from 'armorer';
 
 const generate: GenerateFunction = async ({ conversation }) => ({
@@ -947,7 +947,7 @@ import {
   type FreshAttemptSourceRecord,
   type GenerateFunction,
 } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { createToolbox } from 'armorer';
 
 const generate: GenerateFunction = async () => ({
@@ -1524,7 +1524,7 @@ import type { Conversation } from 'conversationalist';
 declare const generate: GenerateFunction;
 declare const toolbox: Toolbox;
 declare const conversation: Conversation;
-import type { TextValueStore } from '@lostgradient/weft';
+import type { TextValueStore } from '@lostgradient/storage';
 
 declare const kvStore: TextValueStore;
 
@@ -3274,7 +3274,7 @@ import type { Conversation } from 'conversationalist';
 declare const generate: GenerateFunction;
 declare const toolbox: Toolbox;
 declare const conversation: Conversation;
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 
 // Build the durable substrate once at startup. createRunEngine returns
 // { engine, checkpointStore }—`storage` is Weft's raw Storage backend;

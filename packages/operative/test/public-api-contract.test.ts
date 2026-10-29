@@ -39,7 +39,8 @@ import {
   stopWhen,
   waitForCondition,
 } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';

@@ -1,15 +1,16 @@
 import { describe, expect, it } from 'bun:test';
 
+import {
+  encodeStorageKeyComponent,
+  MemoryStorage,
+  type BatchOperation,
+  type ConditionalBatchCondition,
+  type Storage,
+} from '@lostgradient/storage';
+import { flushMicrotasks } from '@lostgradient/testing/fake-timers';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { CompressedStorage } from '../../storage/compressed-storage.ts';
-import type {
-  BatchOperation,
-  ConditionalBatchCondition,
-  Storage,
-} from '../../storage/interface.ts';
-import { encodeStorageKeyComponent, KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
-import { flushMicrotasks } from '@lostgradient/testing/fake-timers';
+import { KEYS } from '../../storage/keys.ts';
 import { TestEngine } from '../../testing/test-engine.ts';
 import { ActivityRegistry } from '../activity-registry.ts';
 import { decode, encode } from '../codec.ts';

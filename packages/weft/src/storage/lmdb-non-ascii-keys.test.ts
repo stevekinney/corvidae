@@ -11,8 +11,8 @@
  */
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { createDiskBackedTestFixture } from '../testing/storage-backends.test-support.ts';
-import { storageDeletePrefix, storageKeys } from './interface.ts';
+import { storageDeletePrefix, storageKeys } from '@lostgradient/storage';
+import { createDiskBackedTestFixture } from '@lostgradient/storage/testing';
 import { LMDBStorage } from './lmdb.ts';
 
 /** Accented Latin (two UTF-8 bytes), CJK (three), and an astral emoji (four). */

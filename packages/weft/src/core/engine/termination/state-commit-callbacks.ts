@@ -1,4 +1,4 @@
-import type { BatchOperation } from '../../../storage/interface.ts';
+import type { BatchOperation } from '@lostgradient/storage';
 import type { WorkflowState } from '../../types.ts';
 
 /**

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { StreamChunkEvent } from '../events/fleet-state-events.ts';
 import { workflow } from '../types.ts';
 import { Engine } from './index.ts';

@@ -1,4 +1,5 @@
-import { KEYS, storageHas } from '../../storage/interface.ts';
+import { storageHas } from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import { assertScopedBulkWorkflowFilter } from '../bulk-workflow-filter.ts';
 import type {
   BulkCancelResult,

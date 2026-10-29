@@ -1,5 +1,5 @@
-import type { BatchOperation, ConditionalBatchCondition } from '../../../storage/interface.ts';
-import { KEYS } from '../../../storage/interface.ts';
+import type { BatchOperation, ConditionalBatchCondition } from '@lostgradient/storage';
+import { KEYS } from '../../../storage/keys.ts';
 import { inheritWorkflowWorkerBinding } from '../../../worker/binding-helpers.ts';
 import { assertInheritedWorkerBuildNotRemoved } from '../../../worker/inherited-worker-build.ts';
 import { deserializeCheckpoint } from '../../checkpoint.ts';

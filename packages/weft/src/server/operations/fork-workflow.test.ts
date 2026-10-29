@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
 import { ForkSourceReplacedError } from '../../core/engine/fork-source-replaced-error.ts';
 import { WorkflowRevisionUnavailableError } from '../../core/engine/revision-errors.ts';
 import type { WorkflowContext } from '../../core/types.ts';
 import { workflow } from '../../core/types.ts';
 import { VersionMismatchError } from '../../core/versioning.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
 import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';
 import { principalFromUnauthenticatedLocal } from '../principal.ts';

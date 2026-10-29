@@ -32,7 +32,8 @@
  */
 
 import type { Artifact, Message, Part } from '@a2a-js/sdk';
-import { Engine, MemoryStorage, Outbox, workflow, type WorkflowContext } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
+import { Engine, Outbox, workflow, type WorkflowContext } from '@lostgradient/weft';
 import {
   createA2AHandler,
   createEgressPolicy,

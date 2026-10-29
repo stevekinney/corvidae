@@ -1,6 +1,6 @@
 import { describe, expect, it, mock } from 'bun:test';
 
-import { MemoryStorage } from '../../../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 import type { EngineInternals } from '../internals.ts';
 import { enforceHistoryPolicyBeforeReplayById } from './shared.ts';
 

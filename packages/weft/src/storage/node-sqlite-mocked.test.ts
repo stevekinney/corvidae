@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { storageCount, storageDeletePrefix, storageKeys } from './interface.ts';
+import { storageCount, storageDeletePrefix, storageKeys } from '@lostgradient/storage';
 
 type FakeRow = { key: string; value: Uint8Array };
 

@@ -1,4 +1,4 @@
-import type { ConditionalTextValueStore, TextValueStore } from '@lostgradient/weft';
+import type { ConditionalTextValueStore, TextValueStore } from '@lostgradient/storage';
 import type { ConversationSnapshot } from 'conversationalist';
 
 import {

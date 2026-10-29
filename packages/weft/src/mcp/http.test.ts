@@ -2,6 +2,8 @@ import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/cli
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
 
+import { MemoryStorage } from '@lostgradient/storage';
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { HANG_GUARD_MILLISECONDS, afterAwakeTime } from '@lostgradient/testing/hang-guard';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { Engine } from '../core/engine.ts';
@@ -9,8 +11,6 @@ import { activity, type DefinitionSchema, type WorkflowContext } from '../core/t
 import { workflow } from '../core/types/workflow-function.ts';
 import { serve, type WeftServer } from '../server/index.ts';
 import { anonymousPrincipal, principalFromJwtClaims } from '../server/principal.ts';
-import { MemoryStorage } from '../storage/memory.ts';
-import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { createMcpEndpoint, handleMcpHttpRequest, type McpEndpoint } from './http.ts';
 import { connectInProcessClient, readJsonRpcResponse } from './mcp-client.test-support.ts';
 import { MCP_LEGACY_PROTOCOL_VERSION, MCP_PROTOCOL_VERSION } from './protocol.ts';

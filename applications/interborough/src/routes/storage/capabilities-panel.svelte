@@ -11,7 +11,7 @@
    * gate on them (`WEFT/src/storage/capabilities.ts`).
    */
   import { Badge, DescriptionList, Skeleton } from '@lostgradient/cinder';
-  import type { StorageCapabilities } from '@lostgradient/weft';
+  import type { StorageCapabilities } from '@lostgradient/storage';
 
   import QueryFaultBanner from '../system/query-fault-banner.svelte';
 

@@ -12,14 +12,8 @@ import {
   stopWhen,
   type Validator,
 } from '@lostgradient/operative';
-import {
-  decode,
-  encode,
-  KEYS,
-  resolveStorage,
-  type Storage,
-  textValueStore,
-} from '@lostgradient/weft';
+import { decode, encode, KEYS, resolveStorage } from '@lostgradient/weft';
+import { type Storage, textValueStore } from '@lostgradient/storage';
 import { createToolbox } from 'armorer';
 import { Conversation } from 'conversationalist';
 

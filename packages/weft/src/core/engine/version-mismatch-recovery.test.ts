@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { KEYS } from '../../storage/keys.ts';
 import { decode, encode } from '../codec.ts';
 import { workflow, type WorkflowContext, type WorkflowState } from '../types.ts';
 import { Engine } from './index.ts';

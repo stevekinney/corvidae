@@ -11,13 +11,13 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { decode } from '../../core/codec.ts';
 import { Engine } from '../../core/engine.ts';
 import { nextSignalWaiting } from '../../core/engine/signal-wait-tracking.test-support.ts';
 import { verifyEventLog } from '../../core/event-log-verify.ts';
 import { activity, workflow, type WorkflowContext } from '../../core/types.ts';
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { KEYS } from '../../storage/keys.ts';
 import {
   createFleetEventFeed,
   type FleetEventEnvelope,

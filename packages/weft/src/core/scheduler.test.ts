@@ -1,17 +1,18 @@
-import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import {
   advanceTimersByTime,
   flushMicrotasks,
   restoreRealTimers,
   useFakeTimers,
 } from '@lostgradient/testing/fake-timers';
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import {
   createSchedulerContractContext,
   describeSchedulerContract,
   type SchedulerContractContext,
 } from '../testing/scheduler-contract.test-support.ts';
 
-import { KEYS, type BatchOperation, type ScanOptions } from '../storage/interface.ts';
+import { type BatchOperation, type ScanOptions } from '@lostgradient/storage';
+import { KEYS } from '../storage/keys.ts';
 import { decode, encode } from './codec.ts';
 import {
   buildTimerBatchOperations,

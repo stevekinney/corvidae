@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
 import { StartWorkflowValidationError } from '../../core/start-workflow-validation.ts';
 import type { WorkflowContext } from '../../core/types.ts';
 import { workflow } from '../../core/types.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
 import { createOperationRegistry } from '../operation-catalog.ts';
 import { invalidJsonRequest, jsonRequest } from './operation-test-helpers.test-support.ts';

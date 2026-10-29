@@ -41,7 +41,7 @@ import {
   type GoalRunTerminalReason,
   TERMINAL_STATUS_BY_REASON,
 } from '@lostgradient/operative';
-import type { ConditionalTextValueStore } from '@lostgradient/weft';
+import type { ConditionalTextValueStore } from '@lostgradient/storage';
 
 import {
   auditEventForRestart,

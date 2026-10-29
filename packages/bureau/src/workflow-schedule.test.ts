@@ -2,12 +2,8 @@
  * COR-1527 — a workflow file with a `schedule` trigger owns exactly one native schedule, and every
  * reconcile puts it back to match the file. Run against a real engine on memory storage.
  */
-import {
-  Engine,
-  MemoryStorage,
-  registerWorkflowDocuments,
-  type WorkflowDocument,
-} from '@lostgradient/weft';
+import { Engine, registerWorkflowDocuments, type WorkflowDocument } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import {

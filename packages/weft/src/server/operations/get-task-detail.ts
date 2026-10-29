@@ -48,6 +48,7 @@
 
 import type { z } from 'zod';
 
+import type { Storage } from '@lostgradient/storage';
 import {
   decodeTaskAttemptRecord,
   taskAttemptPrefix,
@@ -65,7 +66,6 @@ import {
   type RemoteTaskRecord,
   type RemoteTaskTerminal,
 } from '../../core/task-ledger/task-ledger.ts';
-import type { Storage } from '../../storage/interface.ts';
 import type { WorkerExecutionIdentity } from '../../worker/manifest/types.ts';
 import { raiseFault } from '../operation-catalog/raise-fault.ts';
 import { defineOperation } from '../operation-registry.ts';

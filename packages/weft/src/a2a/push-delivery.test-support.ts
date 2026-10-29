@@ -10,11 +10,11 @@ import { afterEach } from 'bun:test';
 import { type StreamResponse, type TaskPushNotificationConfig, TaskState } from '@a2a-js/sdk';
 import { ServerCallContext, STATE_HEADERS_KEY } from '@a2a-js/sdk/server';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { createMailboxClock, type MailboxClock } from '../core/mailbox.test-support.ts';
 import type { OutboxOptions } from '../core/outbox-contract.ts';
 import { Outbox } from '../core/outbox.ts';
 import { createEgressPolicy } from '../runtime/egress-policy.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 import { TestReceiver } from '../testing/webhook-receiver.test-support.ts';
 import { callContext, pushConfigFixture } from './a2a-store.test-support.ts';
 import {

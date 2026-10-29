@@ -40,7 +40,11 @@ import {
   createAgent,
   type GenerateFunction,
 } from '@lostgradient/operative';
-import { type ConditionalTextValueStore, MemoryStorage, textValueStore } from '@lostgradient/weft';
+import {
+  type ConditionalTextValueStore,
+  MemoryStorage,
+  textValueStore,
+} from '@lostgradient/storage';
 import { readToolShortDescription, type Tool } from 'armorer';
 
 import type { AnyRunnableAgent } from './agent-catalog';

@@ -9,7 +9,7 @@
  * @module core/engine/lifecycle/start-build-binding
  */
 
-import { type BatchOperation, type Storage } from '../../../storage/interface.ts';
+import { type BatchOperation, type Storage } from '@lostgradient/storage';
 import { workerBuildBinding } from '../../../worker/deployment-records.ts';
 import { throwIfWorkerBuildRemoved } from '../../../worker/inherited-worker-build.ts';
 import type { WorkflowState } from '../../types.ts';

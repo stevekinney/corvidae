@@ -1,5 +1,4 @@
-import type { BatchOperation } from '../../storage/interface.ts';
-import { encodeStorageKeyComponent } from '../../storage/interface.ts';
+import { type BatchOperation, encodeStorageKeyComponent } from '@lostgradient/storage';
 import {
   deleteCompletedReviewsForWorkflow,
   listReviewKeysForWorkflow,

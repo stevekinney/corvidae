@@ -4,8 +4,8 @@ import {
   type ConditionalBatchCondition,
   encodeStorageKeyComponent,
   MemoryStorage,
-  WEFT_RESERVED_KEY_PREFIXES,
-} from '@lostgradient/weft';
+} from '@lostgradient/storage';
+import { WEFT_RESERVED_KEY_PREFIXES } from '@lostgradient/weft';
 import { beforeEach, describe, expect, it } from 'bun:test';
 
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';

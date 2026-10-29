@@ -1,4 +1,4 @@
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 import { workflow } from '../types.ts';
 import { Engine, type RegistryAgnosticEngine } from './index.ts';
 

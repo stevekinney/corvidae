@@ -1,17 +1,18 @@
 import { PGlite } from '@electric-sql/pglite';
 import { describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { NeonStorage } from './neon.ts';
-import { createPGliteTestFixture, pgliteAsPostgresPool } from './pglite.test-support.ts';
-import type { PostgresPool } from './postgres.ts';
+import type { PostgresPool } from '@lostgradient/storage/sql';
 import {
   collect,
   decodeText,
   bytes as encode,
+  pgliteAsPostgresPool,
   runBasicStorageContract,
   runStorageCapabilityConformance,
-} from './storage-adapter.test-support.ts';
+} from '@lostgradient/storage/testing';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { NeonStorage } from './neon.ts';
+import { createPGliteTestFixture } from './pglite.test-support.ts';
 
 const pgliteFixture = createPGliteTestFixture();
 

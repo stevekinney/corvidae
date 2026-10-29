@@ -1,4 +1,4 @@
-import type { Storage } from '../storage/interface.ts';
+import type { Storage } from '@lostgradient/storage';
 import { removedTombstoneKey, type WorkerBuildIdentity } from './deployment-records.ts';
 import { WorkerDeploymentCatalog } from './deployment-routing.ts';
 import { WorkerDeploymentVersionRemovedError } from './deployment-version-removed-error.ts';

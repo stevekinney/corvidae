@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 import { RealmStateChangedEvent } from '../events/fleet-state-events.ts';
 import { Engine } from './index.ts';
 import { getInternals } from './internals.ts';

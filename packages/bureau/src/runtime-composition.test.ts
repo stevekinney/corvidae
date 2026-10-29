@@ -45,14 +45,13 @@ import {
   createCheckpoint,
   encode,
   KEYS,
-  MemoryStorage,
   serializeCheckpoint,
-  textValueStore,
   WorkflowCancelledEvent,
   WorkflowCompletedEvent,
   WorkflowFailedEvent,
   yieldToPortableEventLoop,
 } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { createTool, createToolbox, type ToolRequestContext } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { Conversation, createConversationHistory, getMessages } from 'conversationalist';

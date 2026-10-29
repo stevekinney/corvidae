@@ -8,7 +8,7 @@
  * either, and no outcome may carry it as though it were an id.
  */
 import { createMockGenerate, stopWhen, createAgent } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 

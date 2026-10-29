@@ -15,9 +15,9 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import { quietFor } from '@lostgradient/testing/wait-until';
-import { MemoryStorage } from '../storage/memory.ts';
 import { createFleetEventFeed } from './fleet-event-feed.ts';
 import { createInMemoryEventBackend } from './in-memory-event-feed-backend.test-support.ts';
 import { makeOperation as makeOp } from './json-rpc-operation.test-support.ts';

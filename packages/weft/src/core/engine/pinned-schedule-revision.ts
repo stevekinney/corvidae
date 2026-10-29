@@ -19,7 +19,7 @@
  * @module core/engine/pinned-schedule-revision
  */
 
-import type { ConditionalBatchCondition } from '../../storage/interface.ts';
+import type { ConditionalBatchCondition } from '@lostgradient/storage';
 import type { ScheduleRevisionPolicy } from '../types.ts';
 import { releaseInFlightStart, reserveInFlightStart } from './catalog-removal.ts';
 import {

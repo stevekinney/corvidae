@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { handleRequest } from '../handler.ts';
 import { handleJsonRpcHttpRequest } from '../json-rpc-http.ts';
 import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';

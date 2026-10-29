@@ -6,7 +6,8 @@
  */
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { GenerateFunction } from '@lostgradient/operative';
-import { resolveStorage, type Storage } from '@lostgradient/weft';
+import { resolveStorage } from '@lostgradient/weft';
+import { type Storage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { waitForCondition } from '../../test';

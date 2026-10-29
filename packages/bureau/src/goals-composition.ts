@@ -18,7 +18,11 @@ import {
   type RunOptions,
   type SessionStore,
 } from '@lostgradient/operative';
-import { type ConditionalTextValueStore, MemoryStorage, textValueStore } from '@lostgradient/weft';
+import {
+  type ConditionalTextValueStore,
+  MemoryStorage,
+  textValueStore,
+} from '@lostgradient/storage';
 
 import type { GoalAttemptRun, GoalAttemptStart } from './bureau-catalog-dispatch';
 import type { CatalogRunAssetReleaser } from './catalog-run-asset-release';

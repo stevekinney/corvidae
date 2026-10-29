@@ -7,10 +7,10 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { quietFor } from '@lostgradient/testing/wait-until';
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
+import { quietFor } from '@lostgradient/testing/wait-until';
+import { KEYS } from '../../storage/keys.ts';
 import { decode } from '../codec.ts';
 import { workflow, type WorkflowContext } from '../types.ts';
 import { currentExecutionAttempt, type RunIdentity } from './execution-attempts.ts';

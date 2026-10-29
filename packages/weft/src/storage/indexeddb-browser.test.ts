@@ -46,7 +46,7 @@ import { chromium } from 'playwright';
 
 import { browserSmokeEnabled } from '@lostgradient/testing/browser-smoke-gate';
 
-import type { StorageCapabilities } from './capabilities.ts';
+import type { StorageCapabilities } from '@lostgradient/storage';
 import { SCAN_PAGE_SIZE } from './indexeddb-scan-page-size.ts';
 
 /**

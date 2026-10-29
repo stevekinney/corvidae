@@ -12,8 +12,8 @@
  * @module storage/workflow-lifecycle-keys
  */
 
+import { encodeStorageKeyComponent, formatSortableStorageTimestamp } from '@lostgradient/storage';
 import { DEFAULT_SCOPE } from './default-scope.ts';
-import { encodeStorageKeyComponent, formatSortableStorageTimestamp } from './key-encoding.ts';
 
 const formatSortableTimestamp = formatSortableStorageTimestamp;
 

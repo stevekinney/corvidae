@@ -8,7 +8,7 @@
  * @module core/engine/remote-activity-broker
  */
 
-import type { Storage } from '../../storage/interface.ts';
+import type { Storage } from '@lostgradient/storage';
 import { executionRequirementFromWorkflowWorkerBinding } from '../../worker/binding-helpers.ts';
 import { WorkerDeploymentVersionRemovedError } from '../../worker/deployment-version-removed-error.ts';
 import { readWorkflowWorkerBinding } from '../../worker/versioning-policy.ts';

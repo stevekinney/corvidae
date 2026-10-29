@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'bun:test';
 
+import { type ScanOptions, MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   runWorkflowVisibilityBackfill,
   runWorkflowVisibilityDrop,
 } from '../../../scripts/lib/workflow-visibility-backfill.ts';
-import { KEYS, type ScanOptions } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { decode, encode } from '../codec.ts';
 import { Engine } from '../engine.ts';
 import { buildIndexOperations } from '../search-attributes.ts';

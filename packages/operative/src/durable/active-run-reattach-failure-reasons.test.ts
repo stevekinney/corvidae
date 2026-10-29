@@ -1,5 +1,5 @@
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import {

@@ -4,7 +4,8 @@
  * JSON-RPC helpers the suites share.
  */
 import { createAgent, type GenerateFunction } from '@lostgradient/operative';
-import { MemoryStorage, Outbox, type Storage } from '@lostgradient/weft';
+import { MemoryStorage, type Storage } from '@lostgradient/storage';
+import { Outbox } from '@lostgradient/weft';
 import {
   createEgressPolicy,
   createHttpDeliveryAdapter,

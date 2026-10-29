@@ -198,7 +198,7 @@ These classes are exported from the package root but extend plain `Error`, so `i
 | `ChaosTimeoutError`                       | `testing/chaos.ts`                         |
 | `ChaosTransientError`                     | `testing/chaos.ts`                         |
 | `ConnectionConfigurationError`            | `connection.ts`                            |
-| `StorageBatchOperationLimitExceededError` | `storage/interface.ts`                     |
+| `StorageBatchOperationLimitExceededError` | `@lostgradient/storage`                    |
 | `WeftWorkflowCheckpointConflictWarning`   | `core/engine/checkpoint-conflict-error.ts` |
 | `WeftWorkflowClaimLostWarning`            | `core/engine/lease-deposition.ts`          |
 | `WeftWorkflowWakeDiscardedWarning`        | `core/engine/lease-deposition.ts`          |

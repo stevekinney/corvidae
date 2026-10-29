@@ -266,8 +266,8 @@ describe('ctx.all partial-failure preservation', () => {
     // gap documented in the parallel-execution guide. Engineering
     // around it would require extending the engine's failure-path
     // checkpoint flush, which is out of scope for this fix.)
-    const { MemoryStorage } = await import('../../storage/memory.ts');
-    const { KEYS } = await import('../../storage/interface.ts');
+    const { MemoryStorage } = await import('@lostgradient/storage');
+    const { KEYS } = await import('../../storage/keys.ts');
 
     const storage = new MemoryStorage();
     const engine = new Engine({ storage });

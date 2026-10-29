@@ -7,13 +7,13 @@ import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { encode } from '../core/codec.ts';
 import { Engine } from '../core/engine.ts';
 import type { WorkflowContext, WorkflowState } from '../core/types.ts';
 import { workflow } from '../core/types.ts';
-import { KEYS } from '../storage/interface.ts';
-import { MemoryStorage } from '../storage/memory.ts';
+import { KEYS } from '../storage/keys.ts';
 import { WorkerDeploymentCatalog } from '../worker/deployment-routing.ts';
 import type { WorkerManifest } from '../worker/manifest/types.ts';
 import { resolveWorkflowWorkerStartBinding } from '../worker/versioning-policy.ts';

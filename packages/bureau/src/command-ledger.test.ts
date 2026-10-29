@@ -5,7 +5,7 @@
  * those tests build on.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { type ConditionalTextValueStore, textValueStore } from '@lostgradient/weft';
+import { type ConditionalTextValueStore, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import {

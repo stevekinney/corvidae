@@ -1,4 +1,4 @@
-import { resolvePrefixRangeEnd } from './interface.ts';
+import { resolvePrefixRangeEnd } from '@lostgradient/storage';
 
 /**
  * {@link resolvePrefixRangeEnd} for a prefix known to be non-empty, such as a

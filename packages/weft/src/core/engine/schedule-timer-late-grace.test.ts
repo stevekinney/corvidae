@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../engine.ts';
 import { ScheduleMissedFireEvent } from '../events/schedule-events.ts';
 import { DEFAULT_POLL_INTERVAL_MS } from '../types/constants.ts';

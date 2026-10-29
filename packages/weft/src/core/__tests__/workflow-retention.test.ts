@@ -1,18 +1,18 @@
-import { describe, expect, it } from 'bun:test';
 import {
   sleepForTesting,
   waitForCondition,
   waitForRealTimersForTesting,
 } from '@lostgradient/testing/fake-timers';
+import { describe, expect, it } from 'bun:test';
 
+import {
+  MemoryStorage,
+  type BatchOperation,
+  type ConditionalBatchCondition,
+  type ScanOptions,
+} from '@lostgradient/storage';
 import { quietFor } from '@lostgradient/testing/wait-until';
-import type {
-  BatchOperation,
-  ConditionalBatchCondition,
-  ScanOptions,
-} from '../../storage/interface.ts';
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { ActivityRegistry } from '../activity-registry.ts';
 import { decode, encode } from '../codec.ts';
 import { Engine } from '../engine.ts';

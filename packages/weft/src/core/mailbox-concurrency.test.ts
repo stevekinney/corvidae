@@ -10,10 +10,14 @@
 
 import { describe, expect, it } from 'bun:test';
 
+import {
+  type BatchOperation,
+  type ConditionalBatchCondition,
+  MemoryStorage,
+} from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createFleetEventFeed } from '../server/fleet-event-feed.ts';
-import { KEYS, type BatchOperation, type ConditionalBatchCondition } from '../storage/interface.ts';
-import { MemoryStorage } from '../storage/memory.ts';
+import { KEYS } from '../storage/keys.ts';
 import {
   collectKeys,
   storageBackends,

@@ -10,7 +10,7 @@
  * @module storage/generation-keys
  */
 
-import { encodeStorageKeyComponent } from './key-encoding.ts';
+import { encodeStorageKeyComponent } from '@lostgradient/storage';
 
 /**
  * A monotonic per-workflow-id generation counter, spread into `KEYS`; not

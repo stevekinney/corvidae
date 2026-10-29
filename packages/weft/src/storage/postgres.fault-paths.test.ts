@@ -5,9 +5,10 @@
 
 import { describe, expect, it } from 'bun:test';
 
+import { type PostgresPool } from '@lostgradient/storage/sql';
+import { bytes as encode } from '@lostgradient/storage/testing';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { PostgresStorage, type PostgresPool } from './postgres.ts';
-import { bytes as encode } from './storage-adapter.test-support.ts';
+import { PostgresStorage } from './postgres.ts';
 
 /** A pool whose every pooled query answers with `rows` and whose connections run `onClientQuery`. */
 function scriptedPool(

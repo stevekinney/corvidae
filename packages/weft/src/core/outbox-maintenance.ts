@@ -14,8 +14,12 @@
  * @module core/outbox-maintenance
  */
 
-import type { BatchOperation, ConditionalBatchCondition } from '../storage/interface.ts';
-import { formatSortableStorageTimestamp, storageConditionalBatch } from '../storage/interface.ts';
+import {
+  formatSortableStorageTimestamp,
+  storageConditionalBatch,
+  type BatchOperation,
+  type ConditionalBatchCondition,
+} from '@lostgradient/storage';
 import { leaseCommitSerial } from './application-primitive-attempt-registry.ts';
 import { decodeApplicationDeliveryRecord } from './outbox-codec.ts';
 import type { LoadedDeliveryRecord, OutboxMaintenanceReport } from './outbox-contract.ts';

@@ -1,10 +1,10 @@
 import {
-  KEYS,
   requireStorageCapability,
   storageValuesEqual,
   type BatchOperation,
   type ConditionalBatchCondition,
-} from '../../../storage/interface.ts';
+} from '@lostgradient/storage';
+import { KEYS } from '../../../storage/keys.ts';
 import { AtomicStateConflictError } from '../../atomic-state.ts';
 import type { Checkpoint, StartOptions, TimerEntry, WorkflowState } from '../../types.ts';
 import { getCommittedCheckpointBytes } from '../checkpoint-commit-snapshots.ts';

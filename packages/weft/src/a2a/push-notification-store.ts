@@ -22,8 +22,7 @@ import type {
   StoredPushNotificationConfig,
 } from '@a2a-js/sdk/server';
 
-import { requireStorageCapability } from '../storage/capabilities.ts';
-import type { Storage } from '../storage/interface.ts';
+import { requireStorageCapability, type Storage } from '@lostgradient/storage';
 import { A2APushConfigurationConflictError } from './store-errors.ts';
 import {
   type A2ACallerScope,

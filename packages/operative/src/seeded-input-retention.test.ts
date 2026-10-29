@@ -3,7 +3,7 @@
  * so the media port is told about the seeded input row before the run's first step, on both seeding
  * paths: the in-process loop and the durable workflow.
  */
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { Conversation, createConversationHistory, type MultiModalContent } from 'conversationalist';

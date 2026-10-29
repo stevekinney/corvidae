@@ -181,59 +181,14 @@ export * from './storage/auto.ts';
 export { BunSQLiteStorage } from './storage/bun-sql.ts';
 export * from './storage/cloudflare.ts';
 export { CompressedStorage } from './storage/compressed-storage.ts';
-export { storageDeleteRange } from './storage/delete-range.ts';
-export type { DeleteRangeOptions } from './storage/delete-range.ts';
 export * from './storage/http.ts';
 export * from './storage/indexeddb.ts';
-export {
-  DEFAULT_SCOPE,
-  KEYS,
-  MAX_BATCH_OPERATIONS,
-  MAX_SCAN_LIMIT,
-  StorageBatchOperationLimitExceededError,
-  WEFT_RESERVED_KEY_PREFIXES,
-  assertDurableStorageForRecovery,
-  assertStorageBatchOperationCount,
-  matchesScanOptions,
-  requireStorageCapability,
-  resolvePrefixRangeEnd,
-  storageBatch,
-  storageConditionalBatch,
-  storageCount,
-  storageDeletePrefix,
-  storageHas,
-  storageKeys,
-  storageValuesEqual,
-} from './storage/interface.ts';
-export type {
-  BatchOperation,
-  ConditionalBatchCondition,
-  GatedStorageCapabilityKey,
-  ScanOptions,
-  Storage,
-  StorageBatchOperationLimitTarget,
-  StorageCapabilities,
-} from './storage/interface.ts';
-export {
-  decodeStorageKeyComponent,
-  encodeStorageKeyComponent,
-  formatSortableStorageTimestamp,
-  tryDecodeStorageKeyComponent,
-} from './storage/key-encoding.ts';
+export { DEFAULT_SCOPE, KEYS, WEFT_RESERVED_KEY_PREFIXES } from './storage/keys.ts';
 export * from './storage/lmdb.ts';
-export { MemoryStorage } from './storage/memory.ts';
 export * from './storage/neon.ts';
 export { NodeSQLiteStorage } from './storage/node-sqlite.ts';
 export * from './storage/postgres.ts';
 export * from './storage/resolve.ts';
-export { ScopedStorage, scopedStorage } from './storage/scoped-storage.ts';
-export { copyTextKeyValueRowsToStorage } from './storage/text-value-import.ts';
-export type {
-  CopyTextKeyValueRowsToStorageOptions,
-  CopyTextKeyValueRowsToStorageResult,
-  TextKeyValueRow,
-} from './storage/text-value-import.ts';
-export * from './storage/text-value-store.ts';
 export * from './storage/turso.ts';
 export { jsonCodec, msgpackCodec, withCodec } from './storage/typed-storage.ts';
 export type {

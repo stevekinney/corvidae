@@ -1,4 +1,4 @@
-import type { ConditionalBatchCondition } from '../../storage/interface.ts';
+import type { ConditionalBatchCondition } from '@lostgradient/storage';
 import type { ScheduleState } from '../types.ts';
 import type { EngineInternals } from './internals.ts';
 import { ScheduleStaleRevisionError } from './schedule-stale-revision-error.ts';

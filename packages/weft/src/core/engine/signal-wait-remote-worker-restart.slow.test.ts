@@ -12,8 +12,8 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import type { Storage } from '@lostgradient/storage';
 import { serve } from '../../server/index.ts';
-import type { Storage } from '../../storage/interface.ts';
 import { storageBackends } from '../../testing/storage-backends.test-support.ts';
 import { RemoteWorker } from '../../worker/index.ts';
 import { activity, workflow, type WorkflowContext } from '../types.ts';

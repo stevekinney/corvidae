@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
+import { waitForRealTimersForTesting } from '@lostgradient/testing/fake-timers';
 import { Engine } from '../../src/core/engine.ts';
 import type { WorkflowContext } from '../../src/core/types.ts';
 import { workflow } from '../../src/core/types/workflow-function.ts';
 import type { WeftServer } from '../../src/server/index.ts';
 import { serve } from '../../src/server/index.ts';
 import { NO_AUTHENTICATION_WARNING } from '../../src/server/serve-internals.ts';
-import { MemoryStorage } from '../../src/storage/memory.ts';
-import { waitForRealTimersForTesting } from '@lostgradient/testing/fake-timers';
 import { isCoverageInstrumentationEnabled } from './coverage-mode.ts';
 
 class TokenEvent extends Event {

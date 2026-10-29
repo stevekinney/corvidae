@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 import { workflow } from '../types.ts';
 import type { EngineConstructorOptions } from './engine-internal-types.ts';
 import { Engine } from './index.ts';

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
+import { createCoreStorageAdapter } from '@lostgradient/storage/testing';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { DEFAULT_SCOPE, KEYS } from '../index.ts';
-import { MemoryStorage } from '../storage/memory.ts';
-import { createCoreStorageAdapter } from '../storage/storage-adapter.test-support.ts';
 import {
   AtomicState,
   AtomicStateChangeEvent,

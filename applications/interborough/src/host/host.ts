@@ -59,12 +59,12 @@ import {
 } from '@lostgradient/bureau';
 import { agentFileDirectory, workflowFileDirectory } from '@lostgradient/bureau/sources';
 import { typesafeJev, type GenerateFunction } from '@lostgradient/operative';
+import { type Storage } from '@lostgradient/storage';
 import {
   BunSQLiteStorage,
   serve,
   type RegistryAgnosticEngine,
   type ServeOptions,
-  type Storage,
   type WeftServer,
 } from '@lostgradient/weft';
 

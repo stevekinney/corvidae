@@ -27,9 +27,9 @@
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { Engine } from '../../src/core/engine.ts';
-import { MemoryStorage } from '../../src/storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
+import { Engine } from '../../src/core/engine.ts';
 import {
   registerScenarioHandlers,
   scenarioNames,

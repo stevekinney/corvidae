@@ -1,4 +1,4 @@
-import type { Storage as WeftStorage } from '../../storage/interface.ts';
+import type { Storage as WeftStorage } from '@lostgradient/storage';
 import {
   CURRENT_PERSISTED_DATA_SCHEMA_VERSION,
   PERSISTED_DATA_SCHEMA_VERSION_KEY,

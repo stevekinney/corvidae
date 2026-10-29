@@ -73,7 +73,7 @@ This walk-through runs in [`packages/memory/test/governance/memory-governance-gu
 
 ```typescript
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { MemoryStorage } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 import {
   createGovernedMemory,
   createMemoryAuthority,

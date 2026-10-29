@@ -1,5 +1,6 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';
 

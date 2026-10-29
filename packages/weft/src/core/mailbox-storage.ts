@@ -14,11 +14,11 @@
  */
 
 import {
-  KEYS,
   type BatchOperation,
   type ConditionalBatchCondition,
   type Storage,
-} from '../storage/interface.ts';
+} from '@lostgradient/storage';
+import { KEYS } from '../storage/keys.ts';
 import {
   commitApplicationTransition,
   type ApplicationCommitPlan,

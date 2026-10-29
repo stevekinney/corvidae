@@ -5,11 +5,8 @@ import { existsSync, realpathSync, statSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
+import { copyTextKeyValueRowsToStorage, type TextKeyValueRow } from '@lostgradient/storage';
 import { BunSQLiteStorage } from '../src/storage/bun-sql.ts';
-import {
-  copyTextKeyValueRowsToStorage,
-  type TextKeyValueRow,
-} from '../src/storage/text-value-import.ts';
 
 type CliArgs = {
   sourcePath: string;

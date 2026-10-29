@@ -12,12 +12,17 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import {
+  storageCount,
+  storageDeletePrefix,
+  storageDeleteRange,
+  storageKeys,
+  type Storage,
+} from '@lostgradient/storage';
+import {
   collectKeys,
   storageBackends,
   teardown,
 } from '../testing/storage-backends.test-support.ts';
-import { storageDeleteRange } from './delete-range.ts';
-import { storageCount, storageDeletePrefix, storageKeys, type Storage } from './interface.ts';
 
 const keysInOrder = ['a', 'é', '日', '😀'];
 

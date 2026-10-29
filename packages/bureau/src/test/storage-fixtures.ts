@@ -41,8 +41,8 @@
  */
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
-import type { Storage, StorageConfiguration } from '@lostgradient/weft';
-import { MemoryStorage } from '@lostgradient/weft';
+import { type Storage, MemoryStorage } from '@lostgradient/storage';
+import type { StorageConfiguration } from '@lostgradient/weft';
 import { createTemporaryPath, removeTemporaryPath } from './temporary-path';
 
 /**

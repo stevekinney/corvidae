@@ -21,7 +21,7 @@ import {
   type ConditionalBatchCondition,
   type Storage,
   storageConditionalBatch,
-} from '../storage/interface.ts';
+} from '@lostgradient/storage';
 import {
   type StorageBackendDescriptor,
   storageBackends,

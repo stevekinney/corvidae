@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 import { settleInlineLaunches } from '../../testing/inline-launch-settle.test-support.ts';
 
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import { TestEngine } from '../../testing/test-engine.ts';
 import { decode, encode } from '../codec.ts';
 import { Engine } from '../engine.ts';

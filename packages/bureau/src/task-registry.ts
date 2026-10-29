@@ -41,8 +41,8 @@ import {
   encodeStorageKeyComponent,
   MemoryStorage,
   textValueStore,
-  yieldToPortableEventLoop,
-} from '@lostgradient/weft';
+} from '@lostgradient/storage';
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
 
 import {
   compareListingKeys,

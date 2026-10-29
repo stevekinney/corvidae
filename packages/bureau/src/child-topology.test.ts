@@ -14,7 +14,8 @@ import {
   revokeDelegationGrant,
   verifyDelegationGrant,
 } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore, type WorkflowState } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { type WorkflowState } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

@@ -35,11 +35,11 @@
  */
 
 import {
-  KEYS,
   requireStorageCapability,
   storageConditionalBatch,
   type Storage,
-} from '../../storage/interface.ts';
+} from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import { compareCodepoint } from '../compare-codepoint.ts';
 import type { WorkflowRevisionManifest } from '../contract/types.ts';
 import { validateWorkflowOrActivityName } from '../types/name-grammar.ts';

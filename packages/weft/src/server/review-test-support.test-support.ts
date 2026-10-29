@@ -1,5 +1,5 @@
+import type { Storage } from '@lostgradient/storage';
 import { encode } from '../core/codec.ts';
-import type { Storage } from '../storage/interface.ts';
 
 export async function storeHistoricalReviewDecisionWithoutRequestMetadata(
   storage: Storage,

@@ -20,6 +20,9 @@
     },
     {
       "path": "../conversationalist/tsconfig.source.json"
+    },
+    {
+      "path": "../storage/tsconfig.source.json"
     }
   ]
 }

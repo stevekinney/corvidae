@@ -1,4 +1,4 @@
-import { KEYS } from '../../storage/interface.ts';
+import { KEYS } from '../../storage/keys.ts';
 import type { InlineExecutionStrategy } from '../inline-execution-strategy.ts';
 import { assertLiveWorkflowMessageDeclared } from './declared-messages.ts';
 import type { EngineInternals } from './internals.ts';

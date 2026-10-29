@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { storageBackends, teardown } from '../testing/storage-backends.test-support.ts';
-import type { Storage } from './interface.ts';
-import { MemoryStorage } from './memory.ts';
 import {
   type ConditionalTextValueStore,
+  type Storage,
   type TextValueStore,
+  MemoryStorage,
   textValueStore,
-} from './text-value-store.ts';
+} from '@lostgradient/storage';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { storageBackends, teardown } from '../testing/storage-backends.test-support.ts';
 
 function createCoreStorageAdapter(): Storage {
   const storage = new MemoryStorage();

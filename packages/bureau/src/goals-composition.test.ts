@@ -5,7 +5,7 @@
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { GOAL_WORKFLOW_TYPE } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import { createGoalAttemptFenceHost } from './goal-attempt-fence';

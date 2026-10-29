@@ -25,6 +25,7 @@
     "@lostgradient/lifecycle": "workspace:*",
     "@lostgradient/memory": "workspace:*",
     "@lostgradient/operative": "workspace:*",
+    "@lostgradient/storage": "workspace:*",
     "@lostgradient/weft": "workspace:*",
     "ajv": "catalog:",
     "armorer": "workspace:*",

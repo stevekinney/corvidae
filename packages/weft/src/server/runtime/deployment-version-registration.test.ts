@@ -5,7 +5,7 @@
  */
 import { describe, expect, it, spyOn } from 'bun:test';
 
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { WorkerDeploymentCatalog } from '../../worker/deployment-routing.ts';
 import type { WorkerManifest } from '../../worker/manifest/types.ts';

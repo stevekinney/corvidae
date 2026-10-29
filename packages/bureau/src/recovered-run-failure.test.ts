@@ -5,7 +5,8 @@ import {
   stopWhen,
   createAgent,
 } from '@lostgradient/operative';
-import { resolveStorage, textValueStore } from '@lostgradient/weft';
+import { resolveStorage } from '@lostgradient/weft';
+import { textValueStore } from '@lostgradient/storage';
 import { createToolbox } from 'armorer';
 import { describe, expect, it, spyOn } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';

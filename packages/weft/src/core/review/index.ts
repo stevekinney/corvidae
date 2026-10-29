@@ -9,8 +9,8 @@
 
 import { z } from 'zod';
 
-import type { BatchOperation, Storage } from '../../storage/interface.ts';
-import { KEYS } from '../../storage/interface.ts';
+import type { BatchOperation, Storage } from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import { decode, encode } from '../codec.ts';
 import { WeftError } from '../weft-error.ts';
 import { ReviewRequestedEvent } from './events.ts';
@@ -272,7 +272,7 @@ export class ReviewTimeoutError extends WeftError<'ReviewTimeoutError'> {
  * @example Attach an event target and a fixed clock for tests
  * ```ts
  * import { ReviewCoordinator, type ReviewCoordinatorOptions } from '@lostgradient/weft';
- * import { MemoryStorage } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  *
  * const storage = new MemoryStorage();
  * const options: ReviewCoordinatorOptions = {
@@ -299,7 +299,7 @@ export interface ReviewCoordinatorOptions {
  * @example Create a review and later submit a decision
  * ```ts
  * import { ReviewCoordinator } from '@lostgradient/weft';
- * import { MemoryStorage } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  *
  * const storage = new MemoryStorage();
  * const coordinator = new ReviewCoordinator(storage);

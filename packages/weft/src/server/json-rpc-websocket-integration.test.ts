@@ -1,5 +1,5 @@
-import { quietFor } from '@lostgradient/testing/wait-until';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
+import { quietFor } from '@lostgradient/testing/wait-until';
 /**
  * End-to-end integration — `serve()` WebSocket /jsonrpc endpoint wired to
  * the JSON-RPC WebSocket session adapter.
@@ -7,11 +7,11 @@ import { waitForCondition } from '@lostgradient/testing/fake-timers';
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../core/engine.ts';
 import { WorkflowSuspendedEvent } from '../core/events.ts';
 import type { WorkflowContext } from '../core/types.ts';
 import { workflow } from '../core/types.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 import { REMOTE_WORKER_PROTOCOL_VERSION } from '../worker/protocol.ts';
 import { manifestForActivities } from '../worker/registry-fixtures.test-support.ts';
 import { serve, type WeftServer } from './index.ts';

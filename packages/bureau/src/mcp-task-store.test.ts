@@ -1,4 +1,4 @@
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import type { MCPTaskStore } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 

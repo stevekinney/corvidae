@@ -12,7 +12,7 @@
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { TestEngine } from '../../testing/test-engine.ts';
 import { computeSemanticHash, EffectLog } from '../effect-log/index.ts';

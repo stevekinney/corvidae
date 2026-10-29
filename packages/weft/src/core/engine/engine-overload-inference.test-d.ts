@@ -9,7 +9,7 @@
 // block byte-for-byte; these assertions give the failure a *readable* call-site
 // shape so a regression points at the offending overload, not just a diff.
 
-import type { Storage as WeftStorage } from '../../storage/interface.ts';
+import type { Storage as WeftStorage } from '@lostgradient/storage';
 import type {
   BulkCancelResult,
   BulkOperationCommitOptions,

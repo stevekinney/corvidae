@@ -15,7 +15,7 @@
  * `--record` rewrites each recording's `manifest` from a fresh run instead.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { MemoryStorage } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 import { z } from 'zod';
 
 import { createMemoryAuthority } from '../src/governance/authority';

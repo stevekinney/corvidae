@@ -1,4 +1,5 @@
-import { KEYS, decodeStorageKeyComponent, type BatchOperation } from '../../storage/interface.ts';
+import { decodeStorageKeyComponent, type BatchOperation } from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 
 import { registerCancelHandler } from './cancel-handlers.ts';
 import type { WorkflowHandle } from './handles.ts';

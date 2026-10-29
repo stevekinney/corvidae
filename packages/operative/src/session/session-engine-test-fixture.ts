@@ -1,6 +1,6 @@
+import { MemoryStorage } from '@lostgradient/storage';
 import {
   Engine,
-  MemoryStorage,
   WorkflowHandle,
   type PreparedWorkflowHandle,
   type QueryDefinition,

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { encode } from '../../core/codec.ts';
 import { encodeTaskAttemptRecord, taskAttemptKey } from '../../core/task-ledger/task-attempt.ts';
 import { encodeRemoteTaskRecord, taskLedgerKey } from '../../core/task-ledger/task-ledger.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { sha256HexSync } from '../../worker/manifest/content-digest.ts';
 import * as fixture from './get-task-detail.test-support.ts';
 import { executionIdentityFixture } from './get-task-diagnostics.test-support.ts';

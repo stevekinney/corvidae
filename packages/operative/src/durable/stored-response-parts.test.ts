@@ -4,7 +4,7 @@
  * part (inline bytes are admitted as managed assets before a row is persisted, so a stored part that
  * still carries them was never admitted).
  */
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import { InvalidRunResultError } from '../run-envelope';

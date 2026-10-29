@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import type { TimerEntry } from '../core/types.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 
 /**
  * Minimal disposable scheduler surface the shared timer contract exercises.

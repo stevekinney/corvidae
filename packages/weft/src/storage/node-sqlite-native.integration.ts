@@ -6,18 +6,18 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import { NodeSQLiteStorage } from './node-sqlite.ts';
 import {
   describeSqliteContentionViolations,
   parseSqliteContentionReport,
   SQLITE_CONTENTION_BATCH_PREFIX,
   SQLITE_CONTENTION_COUNTER_KEY,
+  sqliteContentionChildPath,
   type SqliteContentionMode,
   type SqliteContentionReport,
-} from './sqlite-contention.test-support.ts';
+} from '@lostgradient/storage/testing/sqlite-contention';
+import { NodeSQLiteStorage } from './node-sqlite.ts';
 
-const contentionChildPath = new URL('./sqlite-contention-child.test-support.ts', import.meta.url)
-  .pathname;
+const adapterModule = import.meta.resolve('./node-sqlite.ts');
 
 /** A racing child's exit, with what it wrote. A hung child is killed after the guard. */
 function runRacingProcess(
@@ -25,9 +25,13 @@ function runRacingProcess(
   mode: SqliteContentionMode,
   tag: string,
 ): { exited: Promise<SqliteContentionReport>; hasExited: () => boolean } {
-  const child = spawn(process.execPath, [contentionChildPath, 'node', databasePath, mode, tag], {
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  const child = spawn(
+    process.execPath,
+    [sqliteContentionChildPath, adapterModule, 'NodeSQLiteStorage', databasePath, mode, tag],
+    {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
   let stdout = '';
   let stderr = '';
   let exited = false;

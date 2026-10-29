@@ -11,8 +11,8 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import { getInternals } from './internals.ts';
 import {
   createRecoveringEngine,

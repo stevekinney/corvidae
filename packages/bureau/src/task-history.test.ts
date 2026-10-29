@@ -11,7 +11,8 @@ import {
 import { createToolbox, type Toolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
-import { encodeStorageKeyComponent, resolveStorage, type Storage } from '@lostgradient/weft';
+import { encodeStorageKeyComponent, type Storage } from '@lostgradient/storage';
+import { resolveStorage } from '@lostgradient/weft';
 
 import { createBureau } from './create-bureau';
 import { createAskingAgent } from './test/task-record-crash-agent';

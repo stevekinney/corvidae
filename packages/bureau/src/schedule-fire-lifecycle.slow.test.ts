@@ -10,8 +10,12 @@ import {
   type GenerateFunction,
   stopWhen,
 } from '@lostgradient/operative';
-import { MemoryStorage, WorkflowTimedOutEvent } from '@lostgradient/weft';
-import type { BatchOperation, ConditionalBatchCondition } from '@lostgradient/weft';
+import {
+  MemoryStorage,
+  type BatchOperation,
+  type ConditionalBatchCondition,
+} from '@lostgradient/storage';
+import { WorkflowTimedOutEvent } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 

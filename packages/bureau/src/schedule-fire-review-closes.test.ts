@@ -6,7 +6,7 @@
  * a fire's seed state goes with the fire.
  */
 import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
-import type { Storage } from '@lostgradient/weft';
+import type { Storage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';

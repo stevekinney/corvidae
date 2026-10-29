@@ -4,10 +4,10 @@
 
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { WorkflowRevisionTombstonedError } from '../../core/catalog/errors.ts';
 import { WorkflowCatalog } from '../../core/catalog/index.ts';
 import { Engine } from '../../core/engine.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { handleRequest } from '../handler.ts';
 import { executeOperation } from '../operation-catalog.ts';
 import { principalFromApiKey } from '../principal.ts';

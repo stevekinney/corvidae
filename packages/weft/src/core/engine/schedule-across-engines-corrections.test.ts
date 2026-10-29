@@ -6,9 +6,9 @@
  */
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import type { Storage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { Storage } from '../../storage/interface.ts';
-import { KEYS } from '../../storage/interface.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { getInternals } from './internals.ts';
 import {
   closeOpenedEngines,

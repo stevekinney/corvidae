@@ -1,21 +1,19 @@
 import {
-  normalizeDeleteRangeOptions,
-  resolveDeleteRangeBounds,
-  type DeleteRangeOptions,
-} from './delete-range.ts';
-import { SCAN_PAGE_SIZE } from './indexeddb-scan-page-size.ts';
-import {
   assertStorageBatchOperationCount,
   matchesScanOptions,
+  normalizeDeleteRangeOptions,
+  resolveDeleteRangeBounds,
   resolvePrefixRangeEnd,
+  scopedStorage,
   storageValuesEqual,
   type BatchOperation,
   type ConditionalBatchCondition,
+  type DeleteRangeOptions,
   type ScanOptions,
   type Storage,
   type StorageCapabilities,
-} from './interface.ts';
-import { scopedStorage } from './scoped-storage.ts';
+} from '@lostgradient/storage';
+import { SCAN_PAGE_SIZE } from './indexeddb-scan-page-size.ts';
 
 const STORE_NAME = 'kv';
 

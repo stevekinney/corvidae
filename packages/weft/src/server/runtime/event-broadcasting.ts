@@ -11,7 +11,7 @@ import {
   WorkflowTimedOutEvent,
 } from '../../core/events.ts';
 import { getWorkflowIdFromEvent } from '../../core/events/workflow-event-id.ts';
-import { KEYS } from '../../storage/interface.ts';
+import { KEYS } from '../../storage/keys.ts';
 import type { FleetEventFeed } from '../fleet-event-feed.ts';
 import type { ServeOptions } from '../index.ts';
 import { claimNextSequence } from '../runtime-helpers.ts';
@@ -54,7 +54,8 @@ function serializeEvent(event: Event): string | null {
  *
  * @example
  * ```ts
- * import { Engine, MemoryStorage } from '@lostgradient/weft';
+ * import { Engine } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  * import { wireEventBroadcasting, type EventBroadcastingHandle } from '@lostgradient/weft';
  *
  * await using engine = new Engine({ storage: new MemoryStorage() });
@@ -152,7 +153,8 @@ export function registerWorkflowEventLifecycle(
  *
  * @example
  * ```ts
- * import { Engine, MemoryStorage } from '@lostgradient/weft';
+ * import { Engine } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  * import { wireEventBroadcasting } from '@lostgradient/weft';
  *
  * await using engine = new Engine({ storage: new MemoryStorage() });

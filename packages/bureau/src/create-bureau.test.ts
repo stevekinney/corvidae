@@ -60,16 +60,18 @@ import {
   type Toolbox,
 } from '@lostgradient/operative';
 import { discoverSkills, type SkillCatalogRevision } from './skills';
-import type { ConditionalTextValueStore } from '@lostgradient/weft';
+import {
+  type ConditionalTextValueStore,
+  MemoryStorage,
+  textValueStore,
+} from '@lostgradient/storage';
 import {
   createFleetEventFeed,
   encode,
   EngineDisposedError,
   KEYS,
-  MemoryStorage,
   resolveStorage,
   ScheduleHandle,
-  textValueStore,
   yieldToPortableEventLoop,
 } from '@lostgradient/weft';
 import {

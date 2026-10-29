@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { Engine } from '../../core/engine.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { principalFromApiKey } from '../principal.ts';
 import {
   assertOperationEngineMethods,

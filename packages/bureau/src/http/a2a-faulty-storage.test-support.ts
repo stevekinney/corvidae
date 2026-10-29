@@ -3,7 +3,8 @@
  * (COR-1669), shared by the push and the A2A stream repair tests.
  */
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
-import { resolveStorage, type Storage } from '@lostgradient/weft';
+import { resolveStorage } from '@lostgradient/weft';
+import { type Storage } from '@lostgradient/storage';
 
 import { createSqliteStorageFixture } from '../test/storage-fixtures';
 

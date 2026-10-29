@@ -11,11 +11,11 @@
  * @module service-worker/setup
  */
 
+import type { Storage as WeftStorage } from '@lostgradient/storage';
 import { Engine, type RegistryAgnosticEngine } from '../core/engine.ts';
 import type { HandlerOptions } from '../server/handler.ts';
 import { handleRequest } from '../server/handler.ts';
 import { IndexedDBStorage } from '../storage/indexeddb.ts';
-import type { Storage as WeftStorage } from '../storage/interface.ts';
 import { ServiceWorkerScheduler } from './scheduler.ts';
 import {
   buildDelegatedRequest,

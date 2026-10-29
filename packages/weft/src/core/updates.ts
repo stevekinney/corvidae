@@ -7,9 +7,9 @@
  * @module updates
  */
 
+import type { BatchOperation, Storage } from '@lostgradient/storage';
 import { sleep } from '../runtime/portable.ts';
-import type { BatchOperation, Storage } from '../storage/interface.ts';
-import { KEYS } from '../storage/interface.ts';
+import { KEYS } from '../storage/keys.ts';
 import { decode, encode } from './codec.ts';
 import type { WorkflowStatus } from './types.ts';
 import {
@@ -195,7 +195,7 @@ const DEFAULT_CLEANUP_TTL_MS = 5 * 60 * 1000; // 5 minutes
  * @example
  * ```ts
  * import { UpdateCoordinator } from '@lostgradient/weft';
- * import { MemoryStorage } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  *
  * const storage = new MemoryStorage();
  * const coordinator = new UpdateCoordinator(storage);

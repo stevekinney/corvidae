@@ -27,7 +27,8 @@
     "@google/genai": "catalog:",
     "@anthropic-ai/sdk": "catalog:",
     "openai": "catalog:",
-    "@lostgradient/environmentalist": "catalog:"
+    "@lostgradient/environmentalist": "catalog:",
+    "@lostgradient/storage": "workspace:*"
   },
   "peerDependencies": {
     "@tanstack/ai": "catalog:",

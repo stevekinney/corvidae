@@ -19,13 +19,8 @@
  * (what would make a browser's `fetch`/XHR throw client-side), not that the
  * request itself fails server-side.
  */
-import {
-  Engine,
-  MemoryStorage,
-  serve,
-  type CorsOptions,
-  type WeftServer,
-} from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
+import { Engine, serve, type CorsOptions, type WeftServer } from '@lostgradient/weft';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 const ALLOWED_ORIGIN = 'https://weft-ui.example.com';

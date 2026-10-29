@@ -11,6 +11,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { encode } from '../core/codec/index.ts';
 import { Engine } from '../core/engine.ts';
@@ -21,7 +22,6 @@ import { createQueued } from '../core/task-ledger/task-ledger-transitions.ts';
 import { workflow } from '../core/types.ts';
 import { forkWorkflowOperation } from '../server/operations/fork-workflow.ts';
 import { startWorkflowOperation } from '../server/operations/start-workflow.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 import {
   buildManifest,
   DEPLOYMENT,

@@ -8,6 +8,12 @@
 
 import { afterEach, describe, expect, it, mock } from 'bun:test';
 
+import {
+  MemoryStorage,
+  type BatchOperation,
+  type ConditionalBatchCondition,
+} from '@lostgradient/storage';
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { encode } from '../../core/codec.ts';
 import { decodeTaskAttemptRecord, taskAttemptPrefix } from '../../core/task-ledger/task-attempt.ts';
 import {
@@ -16,9 +22,7 @@ import {
   taskLedgerKey,
   type RemoteTaskQueued,
 } from '../../core/task-ledger/task-ledger.ts';
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
-import { waitForCondition } from '@lostgradient/testing/fake-timers';
+import { KEYS } from '../../storage/keys.ts';
 import {
   TEST_ACCEPTED_MANIFEST_DIGEST,
   testWorkerManifest,
@@ -28,7 +32,6 @@ import { dispatchTaskImpl, scheduleDelayedDispatch } from './task-dispatch.ts';
 import { commitTaskLedgerCompletion } from './task-ledger-completion.ts';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
 import type { ServerContext } from './context.ts';
 
 const createMinimalContext = minimalServerContext;

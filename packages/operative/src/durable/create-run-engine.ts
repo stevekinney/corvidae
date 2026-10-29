@@ -1,7 +1,7 @@
+import { textValueStore, type Storage } from '@lostgradient/storage';
 import {
   createObservabilityInterceptors,
   Engine,
-  textValueStore,
   type AnyWorkflowDefinition,
   type CheckpointSizeWarningEvent,
   type HistoryPolicy,
@@ -10,7 +10,6 @@ import {
   type PayloadSizePolicy,
   type RecoverAllOptions,
   type RegistryAgnosticEngine,
-  type Storage,
   type WorkflowLogRecord,
   type WorkflowServicesResolution,
   type WorkflowServicesResolverInfo,

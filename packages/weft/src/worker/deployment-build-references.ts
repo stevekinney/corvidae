@@ -19,13 +19,13 @@
  * @module worker/deployment-build-references
  */
 
+import type { Storage } from '@lostgradient/storage';
 import { decode } from '../core/codec/index.ts';
 import { isTerminalWorkflowStatus } from '../core/engine/validation.ts';
 import { isTopLevelWorkflowStateKey } from '../core/engine/workflow-state-stream.ts';
 import { decodeRemoteTaskRecord } from '../core/task-ledger/task-ledger-codec.ts';
 import type { WorkerExecutionRequirementInput } from '../core/task-ledger/task-ledger-types.ts';
 import type { WorkflowStatus } from '../core/types/identity.ts';
-import type { Storage } from '../storage/interface.ts';
 
 /** A build, named the way the catalog names it. */
 export type DeploymentBuildIdentity = Readonly<{ deploymentName: string; buildId: string }>;

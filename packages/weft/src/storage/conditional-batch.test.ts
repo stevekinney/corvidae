@@ -3,8 +3,8 @@ import { describe, expect, it } from 'bun:test';
 import {
   createDiskBackedTestFixture,
   sqliteDatabaseSidecarSuffixes,
-  storageBackends,
-} from '../testing/storage-backends.test-support.ts';
+} from '@lostgradient/storage/testing';
+import { storageBackends } from '../testing/storage-backends.test-support.ts';
 import { BunSQLiteStorage } from './bun-sql.ts';
 import { TursoStorage } from './turso.ts';
 

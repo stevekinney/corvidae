@@ -45,6 +45,7 @@
         "@lostgradient/markdown": "workspace:*",
         "@lostgradient/memory": "workspace:*",
         "@lostgradient/operative": "workspace:*",
+        "@lostgradient/storage": "workspace:*",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/weft": "workspace:*",
         "@lucide/svelte": "catalog:",
@@ -310,6 +311,7 @@
         "@lostgradient/lifecycle": "workspace:*",
         "@lostgradient/memory": "workspace:*",
         "@lostgradient/operative": "workspace:*",
+        "@lostgradient/storage": "workspace:*",
         "@lostgradient/weft": "workspace:*",
         "ajv": "catalog:",
         "armorer": "workspace:*",
@@ -410,6 +412,7 @@
       "dependencies": {
         "@lostgradient/cryptography": "workspace:*",
         "@lostgradient/lifecycle": "workspace:*",
+        "@lostgradient/storage": "workspace:*",
         "@lostgradient/weft": "workspace:*",
         "armorer": "workspace:*",
         "zod": "catalog:",
@@ -431,6 +434,7 @@
         "@lostgradient/cryptography": "workspace:*",
         "@lostgradient/environmentalist": "catalog:",
         "@lostgradient/lifecycle": "workspace:*",
+        "@lostgradient/storage": "workspace:*",
         "@lostgradient/weft": "workspace:*",
         "@opentelemetry/api": "catalog:",
         "@standard-schema/spec": "catalog:",
@@ -458,6 +462,21 @@
         "@tanstack/ai-typesafe",
       ],
     },
+    "packages/storage": {
+      "name": "@lostgradient/storage",
+      "dependencies": {
+        "@lostgradient/environmentalist": "catalog:",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@electric-sql/pglite": "catalog:",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/ventriloquist": {
       "name": "@lostgradient/ventriloquist",
       "devDependencies": {
@@ -480,6 +499,7 @@
         "@electric-sql/pglite": "catalog:",
         "@libsql/client": "catalog:",
         "@lostgradient/environmentalist": "catalog:",
+        "@lostgradient/storage": "workspace:*",
         "@modelcontextprotocol/server": "catalog:",
         "@msgpack/msgpack": "catalog:",
         "@neondatabase/serverless": "catalog:",
@@ -531,6 +551,7 @@
         "@lostgradient/cryptography": "workspace:*",
         "@lostgradient/memory": "workspace:*",
         "@lostgradient/operative": "workspace:*",
+        "@lostgradient/storage": "workspace:*",
         "@lostgradient/weft": "workspace:*",
         "armorer": "workspace:*",
         "conversationalist": "workspace:*",
@@ -851,6 +872,8 @@
     "@lostgradient/operative": ["@lostgradient/operative@workspace:packages/operative"],
 
     "@lostgradient/playground": ["@lostgradient/playground@workspace:applications/playground"],
+
+    "@lostgradient/storage": ["@lostgradient/storage@workspace:packages/storage"],
 
     "@lostgradient/terminal": ["@lostgradient/terminal@workspace:components/terminal"],
 

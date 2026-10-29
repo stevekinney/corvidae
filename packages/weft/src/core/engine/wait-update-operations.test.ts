@@ -1,6 +1,6 @@
 import { describe, expect, it, mock } from 'bun:test';
 
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 import type { UpdateRequest } from '../updates.ts';
 import type { EngineInternals } from './internals.ts';
 import type { UpdateCallbacks } from './updates.ts';

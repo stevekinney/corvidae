@@ -1,6 +1,6 @@
 /** The record revision and resync mark (COR-1669, part 2b-3): additive, absent reads as 0. */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import { createTaskRegistry, TASK_RECORD_KEY_PREFIX } from './task-registry';

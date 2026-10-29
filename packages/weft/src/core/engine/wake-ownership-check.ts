@@ -38,7 +38,8 @@
  * @module core/engine/wake-ownership-check
  */
 
-import { KEYS, type Storage } from '../../storage/interface.ts';
+import { type Storage } from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import {
   emitWorkflowWakeDiscardedWarning,
   type EmitWorkflowLeaseWarning,

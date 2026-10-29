@@ -1,33 +1,33 @@
 import { describe, expect, it } from 'bun:test';
 
-import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import {
-  createDiskBackedTestFixture,
-  sqliteDatabaseSidecarSuffixes,
-} from '../testing/storage-backends.test-support.ts';
-import { BunSQLiteStorage } from './bun-sql.ts';
-import { normalizeDeleteRangeOptions, storageDeleteRange } from './delete-range.ts';
-import { HTTPStorage } from './http.ts';
-import type { Storage } from './interface.ts';
 import {
   assertDurableStorageForRecovery,
   decodeStorageKeyComponent,
   encodeStorageKeyComponent,
-  KEYS,
   matchesScanOptions,
   MAX_BATCH_OPERATIONS,
+  MemoryStorage,
+  normalizeDeleteRangeOptions,
   resolvePrefixRangeEnd,
   StorageBatchOperationLimitExceededError,
   storageConditionalBatch,
   storageCount,
   storageDeletePrefix,
+  storageDeleteRange,
   storageHas,
   storageKeys,
   storageValuesEqual,
   tryDecodeStorageKeyComponent,
-  WEFT_RESERVED_KEY_PREFIXES,
-} from './interface.ts';
-import { MemoryStorage } from './memory.ts';
+  type Storage,
+} from '@lostgradient/storage';
+import {
+  createDiskBackedTestFixture,
+  sqliteDatabaseSidecarSuffixes,
+} from '@lostgradient/storage/testing';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { BunSQLiteStorage } from './bun-sql.ts';
+import { HTTPStorage } from './http.ts';
+import { KEYS, WEFT_RESERVED_KEY_PREFIXES } from './keys.ts';
 import { resolveNonEmptyPrefixRangeEnd } from './non-empty-prefix-range-end.ts';
 import { TursoStorage } from './turso.ts';
 

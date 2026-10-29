@@ -108,18 +108,13 @@ import type { TaskToolGrant } from './task-registry';
 import { withAddedTools, withToolboxLayer } from './toolbox-additions';
 import {
   type AnyWorkflowDefinition,
-  type ConditionalTextValueStore,
   decode,
   deserializeCheckpoint,
   encode,
   KEYS,
   type RecoverAllOptions,
   resolveStorage,
-  type Storage,
-  storageConditionalBatch,
   type StorageConfiguration,
-  type TextValueStore,
-  textValueStore,
   WorkflowCancelledEvent,
   WorkflowTimedOutEvent,
   WorkflowCompletedEvent,
@@ -127,6 +122,13 @@ import {
   type WorkflowServicesResolution,
   type WorkflowServicesResolverInfo,
 } from '@lostgradient/weft';
+import {
+  type ConditionalTextValueStore,
+  type Storage,
+  storageConditionalBatch,
+  type TextValueStore,
+  textValueStore,
+} from '@lostgradient/storage';
 import {
   type AnyToolbox,
   createTool,

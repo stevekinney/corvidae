@@ -25,11 +25,8 @@ import { userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
 import { parseArgs } from 'node:util';
 
-import {
-  BunSQLiteStorage,
-  type ConditionalTextValueStore,
-  textValueStore,
-} from '@lostgradient/weft';
+import { type ConditionalTextValueStore, textValueStore } from '@lostgradient/storage';
+import { BunSQLiteStorage } from '@lostgradient/weft';
 
 import { describeThresholdBound } from '../src/gate';
 import { createEvaluationHistory } from '../src/history';

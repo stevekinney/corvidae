@@ -1,4 +1,5 @@
-import { KEYS, requireStorageCapability } from '../../../storage/interface.ts';
+import { requireStorageCapability } from '@lostgradient/storage';
+import { KEYS } from '../../../storage/keys.ts';
 import {
   assertIdAndIdempotencyKeyExclusive,
   assertValidIdempotencyKey,

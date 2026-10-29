@@ -6,7 +6,7 @@
  * @module core/engine/checkpoint-reads
  */
 
-import { KEYS } from '../../storage/interface.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { deserializeCheckpoint } from '../checkpoint.ts';
 import { decode } from '../codec.ts';
 import { sanitizeDebugValueForDisplay } from '../debug-output.ts';

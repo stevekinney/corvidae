@@ -1,12 +1,14 @@
+import { sleepForTesting, waitForRealTimersForTesting } from '@lostgradient/testing/fake-timers';
 import { describe, expect, it } from 'bun:test';
-import {
-  sleepForTesting,
-  waitForRealTimersForTesting,
-} from '@lostgradient/testing/fake-timers';
 
+import {
+  type BatchOperation,
+  type ScanOptions,
+  type Storage,
+  MemoryStorage,
+} from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { KEYS, type BatchOperation, type ScanOptions, type Storage } from '../storage/interface.ts';
-import { MemoryStorage } from '../storage/memory.ts';
+import { KEYS } from '../storage/keys.ts';
 import { Engine } from './engine.ts';
 import {
   coerceStartWorkflowTags,

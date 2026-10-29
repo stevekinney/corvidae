@@ -27,6 +27,16 @@
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import {
+  MemoryStorage,
+  type BatchOperation,
+  type ConditionalBatchCondition,
+} from '@lostgradient/storage';
+import {
+  restoreRealTimers,
+  useFakeTimers,
+  waitForCondition,
+} from '@lostgradient/testing/fake-timers';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { decodeTaskAttemptRecord, taskAttemptKey } from '../core/task-ledger/task-attempt.ts';
 import {
@@ -44,13 +54,6 @@ import {
   type RemoteTaskQueued,
   type RemoteTaskRecord,
 } from '../core/task-ledger/task-ledger.ts';
-import type { BatchOperation, ConditionalBatchCondition } from '../storage/interface.ts';
-import { MemoryStorage } from '../storage/memory.ts';
-import {
-  restoreRealTimers,
-  useFakeTimers,
-  waitForCondition,
-} from '@lostgradient/testing/fake-timers';
 import { sha256HexSync } from '../worker/manifest/content-digest.ts';
 import { REMOTE_WORKER_PROTOCOL_VERSION } from '../worker/protocol.ts';
 import {

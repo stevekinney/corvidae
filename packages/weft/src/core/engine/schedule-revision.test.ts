@@ -5,11 +5,14 @@
  */
 import { describe, expect, it, spyOn } from 'bun:test';
 
-import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import {
+  type BatchOperation,
+  type ConditionalBatchCondition,
+  MemoryStorage,
+} from '@lostgradient/storage';
 import { createDeferred, drainMicrotasks } from '@lostgradient/testing/fake-timers';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { KEYS } from '../../storage/keys.ts';
 import { decode, encode } from '../codec.ts';
 import { Engine } from '../engine.ts';
 import type { ScheduleState, WorkflowContext } from '../types.ts';

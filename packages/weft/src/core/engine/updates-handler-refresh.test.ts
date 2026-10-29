@@ -11,7 +11,7 @@
  */
 import { describe, expect, it, mock } from 'bun:test';
 
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 import { tryInlineUpdateHandler } from './updates.ts';
 
 const WORKFLOW_ID = 'workflow-handler-refresh';

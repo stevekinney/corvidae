@@ -16,10 +16,13 @@ import { describe, expect, it } from 'bun:test';
 
 import { collectKeys } from '../testing/storage-backends.test-support.ts';
 
+import {
+  type BatchOperation,
+  type ConditionalBatchCondition,
+  MemoryStorage,
+} from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { BatchOperation, ConditionalBatchCondition } from '../storage/interface.ts';
-import { KEYS } from '../storage/interface.ts';
-import { MemoryStorage } from '../storage/memory.ts';
+import { KEYS } from '../storage/keys.ts';
 import { MailboxContentionError } from './mailbox-internals.ts';
 import { ApplicationCommandValidationError } from './mailbox-validation.ts';
 import {

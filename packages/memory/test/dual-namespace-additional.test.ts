@@ -20,7 +20,8 @@
  *   here so D3's acceptance criteria live in one place for reviewers).
  */
 
-import { MemoryStorage, WEFT_RESERVED_KEY_PREFIXES } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
+import { WEFT_RESERVED_KEY_PREFIXES } from '@lostgradient/weft';
 import { beforeEach, describe, expect, it } from 'bun:test';
 
 import { createMemory } from '../src/create-memory';

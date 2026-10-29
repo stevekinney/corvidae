@@ -5,7 +5,8 @@
  */
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { GenerateFunction } from '@lostgradient/operative';
-import { MemoryStorage, Outbox } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
+import { Outbox } from '@lostgradient/weft';
 import {
   createEgressPolicy,
   createHttpDeliveryAdapter,

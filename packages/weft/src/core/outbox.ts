@@ -18,7 +18,7 @@
  * @module core/outbox
  */
 
-import type { Storage } from '../storage/interface.ts';
+import type { Storage } from '@lostgradient/storage';
 import {
   attemptControllerRegistry,
   releaseAttemptControllerRegistry,
@@ -108,7 +108,8 @@ function requireOutboxStorage(storage: OutboxOptions['storage']): void {
  *
  * @example
  * ```ts
- * import { Outbox, MemoryStorage } from '@lostgradient/weft';
+ * import { Outbox } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  *
  * await using storage = new MemoryStorage();
  * using outbox = new Outbox({

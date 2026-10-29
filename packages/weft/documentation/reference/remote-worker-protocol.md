@@ -538,7 +538,8 @@ A server can run the same checks on request through two operations, so a console
 A request selects a **target** by name and supplies nothing else. Targets are worker commands that the host registers when it starts the server. The host builds them with `createConformanceTargets` from `@lostgradient/weft/testing` and passes the result to `serve()`:
 
 ```ts
-import { Engine, MemoryStorage, serve } from '@lostgradient/weft';
+import { Engine, serve } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 import { createConformanceTargets } from '@lostgradient/weft/testing';
 
 const engine = new Engine({ storage: new MemoryStorage() });

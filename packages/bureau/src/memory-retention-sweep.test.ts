@@ -24,7 +24,7 @@ import {
   stopWhen,
   waitForCondition,
 } from '@lostgradient/operative';
-import { MemoryStorage } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';

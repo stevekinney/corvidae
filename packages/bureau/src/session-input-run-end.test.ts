@@ -8,13 +8,8 @@ import {
   stopWhen,
   createAgent,
 } from '@lostgradient/operative';
-import {
-  MemoryStorage,
-  resolveStorage,
-  type Storage,
-  textValueStore,
-  yieldToPortableEventLoop,
-} from '@lostgradient/weft';
+import { MemoryStorage, type Storage, textValueStore } from '@lostgradient/storage';
+import { resolveStorage, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { Conversation, createConversationHistory, CURRENT_SCHEMA_VERSION } from 'conversationalist';

@@ -41,7 +41,7 @@
  * @module core/engine/workflow-visibility-maintenance
  */
 
-import type { BatchOperation } from '../../storage/interface.ts';
+import type { BatchOperation } from '@lostgradient/storage';
 import type { WorkflowState } from '../types.ts';
 import type { EngineInternals } from './internals.ts';
 import {

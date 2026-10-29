@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 import { buildWorkflowContract } from '../contract/build.ts';
 import { buildWorkflowRevisionManifest } from '../contract/manifest.ts';
 import type { WorkflowRevisionManifest } from '../contract/types.ts';

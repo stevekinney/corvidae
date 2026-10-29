@@ -33,8 +33,8 @@
  */
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import { MemoryStorage } from '../../../storage/memory.ts';
 import { storageBackends } from '../../../testing/storage-backends.test-support.ts';
 import { workflow, type WorkflowContext } from '../../types.ts';
 import { WorkflowAlreadyExistsError } from '../errors.ts';

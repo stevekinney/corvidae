@@ -6,11 +6,10 @@
  * @module storage/resolve-runtime
  */
 
+import { type Storage, MemoryStorage } from '@lostgradient/storage';
 import { resolveDefaultStorage } from './auto.ts';
 import { BunSQLiteStorage } from './bun-sql.ts';
 import { IndexedDBStorage } from './indexeddb.ts';
-import type { Storage } from './interface.ts';
-import { MemoryStorage } from './memory.ts';
 import { NodeSQLiteStorage } from './node-sqlite.ts';
 import { WebExtensionStorage } from './web-extension.ts';
 

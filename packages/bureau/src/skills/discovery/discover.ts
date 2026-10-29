@@ -3,7 +3,7 @@ import { join, resolve, sep } from 'node:path';
 
 import { sha256Hex } from '@lostgradient/cryptography';
 import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
-import type { TextValueStore } from '@lostgradient/weft';
+import type { TextValueStore } from '@lostgradient/storage';
 
 import {
   decodeArtifactText,

@@ -1,9 +1,9 @@
 import {
-  KEYS,
   storageValuesEqual,
   type BatchOperation,
   type ConditionalBatchCondition,
-} from '../../storage/interface.ts';
+} from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import { encode } from '../codec.ts';
 import { buildTimerBatchOperations } from '../scheduler.ts';
 import { WorkflowTimeoutError } from '../timeouts.ts';

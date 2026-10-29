@@ -1,6 +1,7 @@
+import { type BatchOperation, type Storage } from '@lostgradient/storage';
 import { decode, encode } from '../core/codec.ts';
 import { PersistedDataCorruptError } from '../core/persisted-data-incompatible-error.ts';
-import { KEYS, type BatchOperation, type Storage } from '../storage/interface.ts';
+import { KEYS } from '../storage/keys.ts';
 import {
   decodeCursor,
   encodeCursor,

@@ -1,6 +1,6 @@
+import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { ActivityRegistry } from '../activity-registry.ts';
 import { Engine } from '../engine.ts';
 import { buildWorkflowManifestFromDefinition } from '../registry-workflow-manifest.ts';

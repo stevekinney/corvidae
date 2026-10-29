@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import type { BatchOperation } from '../storage/interface.ts';
+import type { BatchOperation } from '@lostgradient/storage';
 import {
   MAX_ENCODED_VALUE_BYTES,
   buildIndexOperations,

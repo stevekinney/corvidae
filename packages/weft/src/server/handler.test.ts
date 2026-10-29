@@ -1,14 +1,14 @@
-import { afterEach, describe, expect, it } from 'bun:test';
 import { sleepForTesting } from '@lostgradient/testing/fake-timers';
+import { afterEach, describe, expect, it } from 'bun:test';
 
+import { encodeStorageKeyComponent, MemoryStorage } from '@lostgradient/storage';
 import { decode, encode } from '../core/codec.ts';
 import { Engine, ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING } from '../core/engine.ts';
 import { StartWorkflowValidationError } from '../core/start-workflow-validation.ts';
 import type { WorkflowContext } from '../core/types.ts';
 import { workflow } from '../core/types.ts';
 import { UpdateCoordinator, WorkflowTerminalError } from '../core/updates.ts';
-import { encodeStorageKeyComponent, KEYS } from '../storage/interface.ts';
-import { MemoryStorage } from '../storage/memory.ts';
+import { KEYS } from '../storage/keys.ts';
 import { getRequiredRouteParameter } from './handler.ts';
 import { handleRequestAsLocalUser as handleRequest } from './local-user-request.test-support.ts';
 import { principalFromApiKey } from './principal.ts';

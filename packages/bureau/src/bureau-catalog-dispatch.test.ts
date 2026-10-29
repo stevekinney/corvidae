@@ -20,7 +20,7 @@ import {
   type OperativeHookMap,
   stopWhen,
 } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import {

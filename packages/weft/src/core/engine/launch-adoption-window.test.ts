@@ -23,12 +23,12 @@
 import { describe, expect, it } from 'bun:test';
 
 import {
-  KEYS,
+  MemoryStorage,
   type BatchOperation,
   type ConditionalBatchCondition,
-} from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+} from '@lostgradient/storage';
 import { createDeferred, waitForCondition } from '@lostgradient/testing/fake-timers';
+import { KEYS } from '../../storage/keys.ts';
 import { decode } from '../codec/api.ts';
 import {
   workflow,

@@ -14,7 +14,7 @@
  * @module core/mailbox-contract
  */
 
-import type { BatchOperation, ConditionalBatchCondition, Storage } from '../storage/interface.ts';
+import type { BatchOperation, ConditionalBatchCondition, Storage } from '@lostgradient/storage';
 import type { JSONValue } from './json.ts';
 import type {
   ApplicationCommandCausation,
@@ -38,7 +38,7 @@ import type {
  *
  * @example
  * ```ts
- * import { MemoryStorage } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  * import type { MailboxEventSink } from '@lostgradient/weft';
  * import { createFleetEventFeed } from '@lostgradient/weft';
  *
@@ -90,7 +90,8 @@ export type ApplicationCommandRejection = Readonly<{
  *
  * @example
  * ```ts
- * import { MemoryStorage, type MailboxOptions } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
+ * import { type MailboxOptions } from '@lostgradient/weft';
  *
  * const options: MailboxOptions = {
  *   storage: new MemoryStorage(),

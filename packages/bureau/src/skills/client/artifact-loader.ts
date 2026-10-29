@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 
-import type { TextValueStore } from '@lostgradient/weft';
+import type { TextValueStore } from '@lostgradient/storage';
 
 import {
   decodeArtifactText,

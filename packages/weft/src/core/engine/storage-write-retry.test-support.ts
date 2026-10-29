@@ -3,8 +3,8 @@
  * started over a {@link RefusingStorage} and parked, so the refusals begin after the run has
  * started and what is refused is the write a step makes.
  */
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import { decode } from '../codec/api.ts';
 import { Engine, ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING } from '../engine.ts';
 import { workflow, type WorkflowContext, type WorkflowState } from '../types.ts';

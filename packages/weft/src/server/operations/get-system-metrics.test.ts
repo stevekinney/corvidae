@@ -14,9 +14,9 @@
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
 import { METRICS, MetricsCollector } from '../../observability/metrics.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { handleRequest } from '../handler.ts';
 import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';
 import type { OperationFault } from '../operation-fault.ts';

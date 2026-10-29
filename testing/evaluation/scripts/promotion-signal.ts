@@ -29,7 +29,8 @@ import { userInfo } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
-import { BunSQLiteStorage, MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { BunSQLiteStorage } from '@lostgradient/weft';
 
 import { CorruptHistoricalRecordError, createEvaluationHistory } from '../src/history';
 import {

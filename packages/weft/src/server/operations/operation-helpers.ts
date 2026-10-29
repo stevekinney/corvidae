@@ -1,6 +1,6 @@
+import type { Storage } from '@lostgradient/storage';
 import { UndeclaredWorkflowMessageError, type Engine } from '../../core/engine.ts';
 import type { WeftErrorCode } from '../../core/weft-error.ts';
-import type { Storage } from '../../storage/interface.ts';
 import { WorkerDeploymentVersionRemovedError } from '../../worker/deployment-version-removed-error.ts';
 import {
   shapeRestFaultAsJson,

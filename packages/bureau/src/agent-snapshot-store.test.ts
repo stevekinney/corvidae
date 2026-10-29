@@ -3,7 +3,7 @@
  * when a snapshot is pruned: kept while any run that references it is retained, gone after the
  * last one's retention ends.
  */
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import { AgentSnapshotError, type AgentFileDefinition } from './agent-file';

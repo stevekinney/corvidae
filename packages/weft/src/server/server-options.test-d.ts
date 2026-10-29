@@ -1,8 +1,8 @@
+import { MemoryStorage } from '@lostgradient/storage';
 import { z } from 'zod';
 import { Engine } from '../core/engine.ts';
 import { workflow } from '../core/types.ts';
 import { createMetricsCollectorExporter, MetricsCollector } from '../observability/metrics.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 import type { HandlerOptions } from './handler.ts';
 
 import {

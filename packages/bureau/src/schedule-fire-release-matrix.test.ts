@@ -9,7 +9,7 @@
  * because the defect that cost the most was an approval a restart brought back.
  */
 import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
-import { MemoryStorage } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { BureauError } from './create-bureau';

@@ -14,9 +14,9 @@ import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 
 import { describe, expect, it } from 'bun:test';
 
+import { MemoryStorage, type BatchOperation, type ScanOptions } from '@lostgradient/storage';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
-import { type BatchOperation, KEYS, type ScanOptions } from '../storage/interface.ts';
-import { MemoryStorage } from '../storage/memory.ts';
+import { KEYS } from '../storage/keys.ts';
 import { decode, encode } from './codec.ts';
 import { Engine, type WorkflowFeedRecord } from './engine.ts';
 import { workflow } from './types/workflow-function.ts';

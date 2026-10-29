@@ -5,7 +5,7 @@
  * session has a run. The summary index is at format version 3, and an index of any earlier version
  * is rebuilt from the bodies rather than refused.
  */
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 import { Conversation, createConversationHistory } from 'conversationalist';
 

@@ -1,6 +1,6 @@
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
-import type { TextValueStore } from '@lostgradient/weft';
+import type { TextValueStore } from '@lostgradient/storage';
 
 import type { MemoryLike, StepResultLike } from '../skill-memory';
 import type { SkillWriter } from '../types';

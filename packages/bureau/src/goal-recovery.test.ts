@@ -6,7 +6,8 @@
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import type { Validator } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore, WorkflowTeardownPendingError } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { WorkflowTeardownPendingError } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { GOAL_ATTEMPT_ACKNOWLEDGEMENT_BUDGET_MS } from './goal-attempt-fence';

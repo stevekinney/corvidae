@@ -11,10 +11,10 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { ClientOperationTypes } from '../client/generated/operation-client.generated.ts';
 import { Engine } from '../core/engine.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 import {
   createAuthenticator,
   createRotatingApiKeyStore,

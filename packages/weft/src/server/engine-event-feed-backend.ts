@@ -46,7 +46,8 @@ import {
  *
  * @example
  * ```ts
- * import { Engine, MemoryStorage } from '@lostgradient/weft';
+ * import { Engine } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  * import {
  *   createEngineEventFeedBackend,
  *   createWorkflowEventFeed,

@@ -49,7 +49,7 @@
  * @module agent-snapshot-store
  */
 
-import { MemoryStorage, textValueStore, type TextValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore, type TextValueStore } from '@lostgradient/storage';
 
 import {
   AgentSnapshotError,

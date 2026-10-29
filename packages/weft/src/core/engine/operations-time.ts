@@ -1,4 +1,5 @@
-import { KEYS, storageHas } from '../../storage/interface.ts';
+import { storageHas } from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import { deserializeCheckpoint } from '../checkpoint.ts';
 import type { ContextOperationRequest } from '../context.ts';
 import { normalizeStorageTimestamp } from '../scheduler.ts';

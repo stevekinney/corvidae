@@ -11,7 +11,8 @@
  * @module settings-validation
  */
 
-import { Engine, MemoryStorage } from '@lostgradient/weft';
+import { Engine } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 
 import { validateDecisionsOptions } from '../decisions/create-decisions.ts';
 import { validateHumanInputOption } from '../human-input-option.ts';

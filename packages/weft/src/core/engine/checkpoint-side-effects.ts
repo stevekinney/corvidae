@@ -1,4 +1,4 @@
-import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
+import type { BatchOperation, ConditionalBatchCondition } from '@lostgradient/storage';
 
 import type { EngineInternals } from './internals.ts';
 

@@ -134,6 +134,9 @@ import { GOAL_AUDIT_WORKFLOW_ID_PREFIX } from '@lostgradient/operative';
 import {
   type BatchOperation,
   type ConditionalBatchCondition,
+  type Storage,
+} from '@lostgradient/storage';
+import {
   createFleetEventFeed,
   type Cursor,
   decodeCursor,
@@ -141,7 +144,6 @@ import {
   encodeCursor,
   type FleetEventEnvelope,
   type FleetEventFeed,
-  type Storage,
 } from '@lostgradient/weft';
 
 import type { AgentDefinitions } from './agent-catalog';

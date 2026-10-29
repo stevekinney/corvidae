@@ -1,14 +1,8 @@
 // COR-121 — isolation coverage for the replay-aware human-wait park marker:
 // where it fires, where it must stay silent, and that it never leaks to a user
 // `onLog` or the console.
-import {
-  Engine,
-  MemoryStorage,
-  textValueStore,
-  workflow,
-  type Storage,
-  type WorkflowLogRecord,
-} from '@lostgradient/weft';
+import { MemoryStorage, textValueStore, type Storage } from '@lostgradient/storage';
+import { Engine, workflow, type WorkflowLogRecord } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { Conversation, createConversationHistory } from 'conversationalist';

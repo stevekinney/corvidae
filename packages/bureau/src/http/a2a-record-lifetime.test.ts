@@ -5,7 +5,7 @@
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgent } from '@lostgradient/operative';
-import type { ConditionalTextValueStore } from '@lostgradient/weft';
+import type { ConditionalTextValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from '../agent-catalog';

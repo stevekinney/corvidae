@@ -1,5 +1,5 @@
 import { sleep } from '../../runtime/portable.ts';
-import { KEYS } from '../../storage/interface.ts';
+import { KEYS } from '../../storage/keys.ts';
 import type { WorkflowStatus } from '../types.ts';
 import { WorkflowTerminalError, type UpdateResponse } from '../updates.ts';
 import { assertWorkflowMessageDeclared } from './declared-messages.ts';

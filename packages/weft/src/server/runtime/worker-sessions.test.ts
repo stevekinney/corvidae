@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import {
   encodeRemoteTaskRecord,
   taskLedgerKey,
   type RemoteTaskQueued,
 } from '../../core/task-ledger/task-ledger.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { manifestForActivities } from '../../worker/registry-fixtures.test-support.ts';
 import type { AuthorizationScope } from '../authorization-scope.ts';
 import { principalFromApiKey, principalFromMutualTls, type Principal } from '../principal.ts';

@@ -1,7 +1,7 @@
 import { expect } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { executeOperation, type OperationRegistry } from '../operation-catalog.ts';
 import {
   principalFromApiKey,

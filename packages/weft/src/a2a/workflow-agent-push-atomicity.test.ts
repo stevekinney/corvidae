@@ -12,9 +12,8 @@ import { type StreamResponse, type TaskPushNotificationConfig, TaskState } from 
 import { RequestMalformedError } from '@a2a-js/sdk/errors';
 import type { ServerCallContext } from '@a2a-js/sdk/server';
 
+import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { Storage } from '../storage/interface.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 import {
   a2aStoreBackends,
   callContext,

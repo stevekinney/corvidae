@@ -24,19 +24,21 @@ import {
   type AuthConfig,
   AUTHORIZATION_SCOPES,
   type AuthorizationScope,
-  type ConditionalTextValueStore,
   createOperationHandler,
   createOperationHandlerAuthenticator,
   getPrincipalOperation,
-  MemoryStorage,
   type OperationHandler,
   type OperationHandlerAuthenticate,
   type OperationHandlerMount,
   type Outbox,
   type AuthenticatedPrincipal,
-  textValueStore,
   unauthenticatedLocalAuthContext,
 } from '@lostgradient/weft';
+import {
+  type ConditionalTextValueStore,
+  MemoryStorage,
+  textValueStore,
+} from '@lostgradient/storage';
 import {
   type AgentSkillDescriptor,
   readGenerationProfile,

@@ -5,8 +5,9 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { textValueStore } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing';
-import { BunSQLiteStorage, textValueStore } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/weft';
 
 import type { EvaluationRunRecord } from '../src/evaluation-run';
 import baselineFixture from '../src/fixtures/history/baseline-run.json';

@@ -12,7 +12,7 @@ import {
   createModelCatalog,
   type GenerateFunction,
 } from '@lostgradient/operative';
-import type { ConditionalTextValueStore } from '@lostgradient/weft';
+import type { ConditionalTextValueStore } from '@lostgradient/storage';
 import { createTool } from 'armorer';
 import { z } from 'zod';
 

@@ -1,9 +1,9 @@
 import { describe, expect, it, mock } from 'bun:test';
 
-import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 import { sleepForTesting } from '@lostgradient/testing/fake-timers';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { KEYS } from '../../storage/keys.ts';
 import type { SignalReceivedInterception } from '../interceptor/interception-contexts.ts';
 import type { WorkflowState } from '../types.ts';
 import {

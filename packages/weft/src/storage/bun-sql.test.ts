@@ -3,26 +3,25 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
-import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
-import { BunSQLiteStorage } from './bun-sql.ts';
-import {
-  describeSqliteContentionViolations,
-  parseSqliteContentionReport,
-  SQLITE_CONTENTION_BATCH_PREFIX,
-  SQLITE_CONTENTION_COUNTER_KEY,
-  type SqliteContentionMode,
-} from './sqlite-contention.test-support.ts';
-import { SQLITE_BUSY_TIMEOUT_MS } from './sqlite-key-value-queries.ts';
+import { SQLITE_BUSY_TIMEOUT_MS } from '@lostgradient/storage/sql';
 import {
   collect,
+  describeSqliteContentionViolations,
   bytes as encode,
+  parseSqliteContentionReport,
   runBasicStorageContract,
   runBinaryAndLargeScanStorageConformance,
   runConcurrentConditionalBatchConformance,
   runStorageCapabilityConformance,
-} from './storage-adapter.test-support.ts';
+  SQLITE_CONTENTION_BATCH_PREFIX,
+  SQLITE_CONTENTION_COUNTER_KEY,
+  sqliteContentionChildPath,
+  type SqliteContentionMode,
+} from '@lostgradient/storage/testing';
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
+import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { BunSQLiteStorage } from './bun-sql.ts';
 
 runStorageCapabilityConformance('BunSQLiteStorage', {
   create: () => new BunSQLiteStorage(':memory:'),
@@ -212,8 +211,7 @@ describe('BunSQLiteStorage', () => {
 // plain batch never throws (COR-1624). The processes are real, so each phase runs at module scope,
 // off Bun's five-second per-test clock; each test rethrows its outcome.
 
-const contentionChildPath = new URL('./sqlite-contention-child.test-support.ts', import.meta.url)
-  .pathname;
+const adapterModule = import.meta.resolve('./bun-sql.ts');
 
 async function raceTwoProcesses(mode: SqliteContentionMode): Promise<void> {
   const directory = mkdtempSync(join(tmpdir(), 'weft-sqlite-contention-'));
@@ -226,7 +224,15 @@ async function raceTwoProcesses(mode: SqliteContentionMode): Promise<void> {
       const tags = ['a', 'b'];
       const children = tags.map((tag) =>
         spawnWithHangGuard(
-          [process.execPath, contentionChildPath, 'bun', databasePath, mode, tag],
+          [
+            process.execPath,
+            sqliteContentionChildPath,
+            adapterModule,
+            'BunSQLiteStorage',
+            databasePath,
+            mode,
+            tag,
+          ],
           { stdout: 'pipe', stderr: 'pipe' },
         ),
       );

@@ -1,5 +1,6 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { MemoryStorage, textValueStore, type WorkflowState } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { type WorkflowState } from '@lostgradient/weft';
 import type { Toolbox } from 'armorer';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';

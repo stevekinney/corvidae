@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 import { createEngine } from './get-task-detail.test-support.ts';
 
 describe('get-task-detail.test-support createEngine', () => {

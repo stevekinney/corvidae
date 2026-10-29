@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { encode } from '../core/codec.ts';
-import { PersistedDataCorruptError } from '../core/persisted-data-incompatible-error.ts';
 import {
-  KEYS,
+  MemoryStorage,
   type BatchOperation,
   type ConditionalBatchCondition,
   type ScanOptions,
-} from '../storage/interface.ts';
-import { MemoryStorage } from '../storage/memory.ts';
+} from '@lostgradient/storage';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { encode } from '../core/codec.ts';
+import { PersistedDataCorruptError } from '../core/persisted-data-incompatible-error.ts';
+import { KEYS } from '../storage/keys.ts';
 import { createFleetEventFeed, type FleetEventEnvelope } from './fleet-event-feed.ts';
 
 class FailingTailReadStorage extends MemoryStorage {

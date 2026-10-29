@@ -1,11 +1,11 @@
-import { describe, expect, it } from 'bun:test';
 import { sleepForTesting } from '@lostgradient/testing/fake-timers';
+import { describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { Engine } from '../../core/engine.ts';
 import type { WorkflowContext } from '../../core/types.ts';
 import { signal, workflow } from '../../core/types.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
 import { createOperationRegistry } from '../operation-catalog.ts';
 import { signalWorkflowOperation, signalWorkflowRestBinding } from './signal-workflow.ts';

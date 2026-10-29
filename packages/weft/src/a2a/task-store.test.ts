@@ -3,8 +3,8 @@ import { describe, expect, it } from 'bun:test';
 import { TaskState } from '@a2a-js/sdk';
 import { toJsonRpcError } from '@a2a-js/sdk/errors';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import { MemoryStorage } from '../storage/memory.ts';
 import {
   a2aStoreBackends,
   callContext,

@@ -9,8 +9,7 @@
  * @module core/outbox.test-support
  */
 
-import type { Storage } from '../storage/interface.ts';
-import { MemoryStorage } from '../storage/memory.ts';
+import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { createIdSource, createMailboxClock, type MailboxClock } from './mailbox.test-support.ts';
 import type {
   ApplicationDeliveryAdapter,

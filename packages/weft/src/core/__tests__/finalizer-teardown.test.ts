@@ -16,12 +16,12 @@
  * disposed, so no background work leaks past a test.
  */
 
-import { describe, expect, it } from 'bun:test';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
+import { describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { decode, encode } from '../codec.ts';
 import { Engine, WorkflowTeardownPendingError } from '../engine.ts';
 import { type TeardownClaim } from '../engine/state-utilities.ts';

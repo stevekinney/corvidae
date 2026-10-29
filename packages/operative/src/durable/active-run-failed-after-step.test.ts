@@ -1,5 +1,5 @@
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
-import { MemoryStorage, type Storage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, type Storage, textValueStore } from '@lostgradient/storage';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';

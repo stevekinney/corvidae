@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, it } from 'bun:test';
 import { waitForever } from '@lostgradient/testing/fake-timers';
+import { afterEach, describe, expect, it } from 'bun:test';
 
-import { KEYS } from '../storage/interface.ts';
+import { KEYS } from '../storage/keys.ts';
 import {
   flush,
   storageBackends,

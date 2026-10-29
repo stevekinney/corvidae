@@ -10,7 +10,8 @@
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
-import { type BatchOperation, resolveStorage, type Storage } from '@lostgradient/weft';
+import { type BatchOperation, type Storage } from '@lostgradient/storage';
+import { resolveStorage } from '@lostgradient/weft';
 import { createTool, createToolbox, type Tool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';

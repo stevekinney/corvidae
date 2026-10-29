@@ -51,7 +51,7 @@
  * resolution buffer live in `async-activity-records.ts`.
  */
 
-import { KEYS } from '../../storage/interface.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { assertPayloadWithinLimit } from '../payload-size.ts';
 import type { OperationOutcome } from '../types.ts';
 import { WeftError } from '../weft-error.ts';

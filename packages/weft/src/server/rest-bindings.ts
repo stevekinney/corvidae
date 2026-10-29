@@ -14,10 +14,10 @@
  * @module server/rest-bindings
  */
 
+import type { Storage } from '@lostgradient/storage';
 import type { ConformanceTargetRunner } from '../conformance/targets.ts';
 import type { RegistryAgnosticEngine } from '../core/engine.ts';
 import type { MetricsCollector } from '../observability/metrics.ts';
-import type { Storage } from '../storage/interface.ts';
 import type { WorkerDeploymentCatalog } from '../worker/deployment-routing.ts';
 import type { WorkerRegistry } from '../worker/registry.ts';
 import {

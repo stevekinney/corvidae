@@ -1,13 +1,10 @@
-import { tryLoadNodeBuiltin } from '../runtime/portable.ts';
-import { createLazyPostgresPool } from './lazy-postgres-pool.ts';
 import {
+  createLazyPostgresPool,
   PostgresKeyValueStorage,
   type PostgresKeyValueStorageOptions,
   type PostgresPool,
-  type PostgresPoolClient,
-} from './postgres-key-value-storage.ts';
-
-export type { PostgresPool, PostgresPoolClient };
+} from '@lostgradient/storage/sql';
+import { tryLoadNodeBuiltin } from '../runtime/portable.ts';
 
 /**
  * Configuration for connecting to a standard Postgres database over the ordinary

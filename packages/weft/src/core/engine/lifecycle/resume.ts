@@ -14,7 +14,7 @@
  * @module core/engine/lifecycle/resume
  */
 
-import { KEYS } from '../../../storage/interface.ts';
+import { KEYS } from '../../../storage/keys.ts';
 import type { WorkflowState } from '../../types.ts';
 import { captureAbandonment, isLaunchedUnderClaim } from '../execution-attempts.ts';
 import type { WorkflowHandle } from '../handles.ts';

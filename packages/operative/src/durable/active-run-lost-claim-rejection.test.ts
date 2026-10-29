@@ -1,5 +1,6 @@
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
-import { MemoryStorage, textValueStore, workflow } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { workflow } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';

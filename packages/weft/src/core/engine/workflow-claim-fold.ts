@@ -36,13 +36,13 @@
  */
 
 import {
-  KEYS,
   requireStorageCapability,
   storageConditionalBatch,
   storageValuesEqual,
   type BatchOperation,
   type ConditionalBatchCondition,
-} from '../../storage/interface.ts';
+} from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import type { EngineInternals } from './internals.ts';
 import { WorkflowClaimUnavailableError } from './lease-errors.ts';
 import { decodeWorkflowClaimHolder } from './workflow-claim-codec.ts';

@@ -39,10 +39,10 @@ import { Engine } from '../../core/engine.ts';
 import type { WorkflowContext } from '../../core/types.ts';
 import { settleInlineLaunches } from '../../testing/inline-launch-settle.test-support.ts';
 import { BunSQLiteStorage } from '../bun-sql.ts';
-import { KEYS as STORAGE_KEYS } from '../interface.ts';
+import { KEYS as STORAGE_KEYS } from '../keys.ts';
 
+import { FixtureScope } from '@lostgradient/storage/testing';
 import { workflow } from '../../core/types.ts';
-import { FixtureScope } from './adapter-spec.test-support.ts';
 
 async function flush(): Promise<void> {
   await settleInlineLaunches();

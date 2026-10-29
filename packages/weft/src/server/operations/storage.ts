@@ -1,12 +1,13 @@
-import { decodeBase64ToBytes, encodeBytesToBase64 } from '../../storage/byte-encoding.ts';
 import {
   assertStorageBatchOperationCount,
+  decodeBase64ToBytes,
+  encodeBytesToBase64,
   storageConditionalBatch,
   type BatchOperation,
   type ConditionalBatchCondition,
   type ScanOptions,
   type Storage,
-} from '../../storage/interface.ts';
+} from '@lostgradient/storage';
 import type { AccessPolicy } from '../authorization.ts';
 import { raiseFault } from '../operation-catalog.ts';
 import { defineOperation } from '../operation-registry.ts';

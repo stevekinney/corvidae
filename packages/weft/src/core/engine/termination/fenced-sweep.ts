@@ -1,4 +1,5 @@
-import { KEYS, storageHas, storageKeys, type BatchOperation } from '../../../storage/interface.ts';
+import { storageHas, storageKeys, type BatchOperation } from '@lostgradient/storage';
+import { KEYS } from '../../../storage/keys.ts';
 import type { EngineInternals } from '../internals.ts';
 import { deleteKeysInGuardedChunks } from './terminal-fence.ts';
 

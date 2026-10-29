@@ -8,8 +8,8 @@
  * @module core/engine/lifecycle/start-or-signal-create
  */
 
-import type { BatchOperation, ConditionalBatchCondition } from '../../../storage/interface.ts';
-import { KEYS } from '../../../storage/interface.ts';
+import type { BatchOperation, ConditionalBatchCondition } from '@lostgradient/storage';
+import { KEYS } from '../../../storage/keys.ts';
 import { encode } from '../../codec.ts';
 import type { StartOrSignalOptions, StartOrSignalSignal } from '../../types.ts';
 import { assertWorkflowMessageDeclared } from '../declared-messages.ts';

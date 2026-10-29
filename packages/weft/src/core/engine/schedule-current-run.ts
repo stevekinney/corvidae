@@ -10,7 +10,7 @@
  * there and the only edge back is a type import.
  */
 
-import { KEYS } from '../../storage/interface.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { ScheduleAttemptedEvent } from '../events.ts';
 import type { ScheduleState, WorkflowState } from '../types.ts';
 import { commitFencedEngineWrite } from './fenced-write.ts';

@@ -3,7 +3,7 @@
  * so a long-prompt tier applies to exactly the requests that crossed it.
  */
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { createTestToolbox, createTool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { Conversation, createConversationHistory } from 'conversationalist';

@@ -1,10 +1,10 @@
 import type { ServerWebSocket } from 'bun';
 import { describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { encode } from '../../core/codec.ts';
 import type { Engine } from '../../core/engine.ts';
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { KEYS } from '../../storage/keys.ts';
 import type { WebSocketData } from '../json-rpc-websocket-runtime.ts';
 import { minimalServerContext } from './server-context.test-support.ts';
 import {

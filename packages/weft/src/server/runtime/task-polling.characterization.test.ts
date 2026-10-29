@@ -17,6 +17,7 @@
 
 import { describe, expect, it, spyOn } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import type { TaskResultDeadLetteredEvent } from '../../core/events.ts';
 import { decodeTaskAttemptRecord, taskAttemptPrefix } from '../../core/task-ledger/task-attempt.ts';
 import {
@@ -28,7 +29,6 @@ import {
   type RemoteTaskQueued,
   type RemoteTaskTerminalResolved,
 } from '../../core/task-ledger/task-ledger.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { principalFromApiKey } from '../principal.ts';
 import {
   FailingTerminalCommitStorage,

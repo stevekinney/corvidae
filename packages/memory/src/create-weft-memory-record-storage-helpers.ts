@@ -4,8 +4,8 @@ import {
   storageConditionalBatch,
   storageDeletePrefix,
   storageKeys,
-  WEFT_RESERVED_KEY_PREFIXES,
-} from '@lostgradient/weft';
+} from '@lostgradient/storage';
+import { WEFT_RESERVED_KEY_PREFIXES } from '@lostgradient/weft';
 
 import type { MemoryRecord, MemoryRecordScope } from './memory-record-storage';
 

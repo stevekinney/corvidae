@@ -7,7 +7,7 @@
  * @module core/outbox-internals
  */
 
-import type { BatchOperation, ConditionalBatchCondition, Storage } from '../storage/interface.ts';
+import type { BatchOperation, ConditionalBatchCondition, Storage } from '@lostgradient/storage';
 import type { AttemptRegistry } from './application-primitive-attempt-registry.ts';
 import type {
   ApplicationDeliveryAdapter,

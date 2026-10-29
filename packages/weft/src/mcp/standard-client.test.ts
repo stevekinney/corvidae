@@ -7,9 +7,9 @@
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../core/engine.ts';
 import { serve, type WeftServer } from '../server/index.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 
 const STATIC_KEY = 'standard-client-static-key';
 

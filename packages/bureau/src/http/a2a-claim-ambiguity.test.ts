@@ -8,7 +8,8 @@ import { Message } from '@a2a-js/sdk';
 import { ServerCallContext } from '@a2a-js/sdk/server';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgent, type GenerateFunction } from '@lostgradient/operative';
-import { MemoryStorage, principalFromApiKey, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { principalFromApiKey } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createCommandLedger } from '../command-ledger.ts';

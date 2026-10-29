@@ -11,15 +11,23 @@
  * @module storage/node-sqlite
  */
 
-import { runConditionalBatchBody } from './conditional-batch-body.ts';
-import type {
-  BatchOperation,
-  ConditionalBatchCondition,
-  ScanOptions,
-  Storage,
-  StorageCapabilities,
-} from './interface.ts';
-import { assertStorageBatchOperationCount } from './interface.ts';
+import {
+  assertStorageBatchOperationCount,
+  type BatchOperation,
+  type ConditionalBatchCondition,
+  type ScanOptions,
+  type Storage,
+  type StorageCapabilities,
+} from '@lostgradient/storage';
+import {
+  buildSqliteKeyValueRangeSelect,
+  runConditionalBatchBody,
+  SQLITE_BUSY_TIMEOUT_MS,
+  SQLITE_CREATE_KEY_VALUE_TABLE,
+  SQLITE_DELETE_VALUE_BY_KEY,
+  SQLITE_SELECT_VALUE_BY_KEY,
+  SQLITE_UPSERT_VALUE_BY_KEY,
+} from '@lostgradient/storage/sql';
 import {
   createMissingBetterSqlite3Error,
   isBetterSqlite3LoadFailure,
@@ -29,14 +37,6 @@ import {
   type BetterSqliteStatement,
   type BetterSqliteTransaction,
 } from './node-sqlite-loader.ts';
-import {
-  SQLITE_BUSY_TIMEOUT_MS,
-  SQLITE_CREATE_KEY_VALUE_TABLE,
-  SQLITE_DELETE_VALUE_BY_KEY,
-  SQLITE_SELECT_VALUE_BY_KEY,
-  SQLITE_UPSERT_VALUE_BY_KEY,
-  buildSqliteKeyValueRangeSelect,
-} from './sqlite-key-value-queries.ts';
 
 type NodeSQLiteStoragePersistence = NonNullable<StorageCapabilities['persistence']>;
 

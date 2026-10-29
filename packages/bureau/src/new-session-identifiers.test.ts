@@ -12,7 +12,7 @@ import {
   stopWhen,
   createAgent,
 } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore, type Storage } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore, type Storage } from '@lostgradient/storage';
 import { createToolbox } from 'armorer';
 import { createConversationHistory } from 'conversationalist';
 import { afterEach, describe, expect, it } from 'bun:test';

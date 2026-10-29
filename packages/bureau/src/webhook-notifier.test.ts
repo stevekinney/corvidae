@@ -8,7 +8,7 @@
  */
 import * as lifecycle from '@lostgradient/lifecycle';
 import type { Action, StallWatchdogClock } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import type { AuditTrail } from './audit-trail';

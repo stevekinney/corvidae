@@ -8,6 +8,16 @@
 
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
+import {
+  MemoryStorage,
+  type BatchOperation,
+  type ConditionalBatchCondition,
+} from '@lostgradient/storage';
+import {
+  restoreRealTimers,
+  useFakeTimers,
+  waitForCondition,
+} from '@lostgradient/testing/fake-timers';
 import { recordCancellationIntent } from '../../core/task-ledger/task-ledger-transitions.ts';
 import {
   decodeRemoteTaskRecord,
@@ -18,13 +28,6 @@ import {
   type RemoteTaskQueued,
   type RemoteTaskTerminalResolved,
 } from '../../core/task-ledger/task-ledger.ts';
-import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
-import {
-  restoreRealTimers,
-  useFakeTimers,
-  waitForCondition,
-} from '@lostgradient/testing/fake-timers';
 import { manifestForActivities } from '../../worker/registry-fixtures.test-support.ts';
 import { minimalServeOptions, minimalServerContext } from './server-context.test-support.ts';
 import {

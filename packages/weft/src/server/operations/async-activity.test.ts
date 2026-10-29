@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { AsyncActivityTokenNotFoundError, Engine } from '../../core/engine.ts';
 import type { ActivityContext, WorkflowContext } from '../../core/types.ts';
 import { activity, workflow } from '../../core/types.ts';
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { nextAsyncPendingToken } from '../../testing/async-activity.test-support.ts';
 import type { AuthorizationScope } from '../authorization-scope.ts';
 import { handleRequest } from '../handler.ts';

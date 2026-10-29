@@ -10,7 +10,11 @@
 
 import { createManualRuntimeServices, TypedEventTarget } from '@lostgradient/lifecycle';
 import { createStore } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore, type ConditionalTextValueStore } from '@lostgradient/weft';
+import {
+  MemoryStorage,
+  textValueStore,
+  type ConditionalTextValueStore,
+} from '@lostgradient/storage';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { createBureau } from './create-bureau';

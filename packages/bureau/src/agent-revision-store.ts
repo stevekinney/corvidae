@@ -39,7 +39,7 @@
  * @module agent-revision-store
  */
 
-import type { ConditionalTextValueStore } from '@lostgradient/weft';
+import type { ConditionalTextValueStore } from '@lostgradient/storage';
 
 export const AGENT_REVISION_KEY_PREFIX = 'bureau-agent-revision:v1:';
 

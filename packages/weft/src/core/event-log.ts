@@ -17,8 +17,8 @@
  * @module core/event-log
  */
 
-import type { BatchOperation, Storage } from '../storage/interface.ts';
-import { KEYS } from '../storage/interface.ts';
+import type { BatchOperation, Storage } from '@lostgradient/storage';
+import { KEYS } from '../storage/keys.ts';
 import { decode, encode } from './codec.ts';
 import {
   EMPTY_EVENT_HEAD,

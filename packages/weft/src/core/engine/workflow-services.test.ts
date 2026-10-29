@@ -10,13 +10,13 @@
  * registries.
  */
 
-import { describe, expect, it } from 'bun:test';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
+import { describe, expect, it } from 'bun:test';
 import { settleInlineLaunches } from '../../testing/inline-launch-settle.test-support.ts';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { encode } from '../codec.ts';
 import { DevelopmentWarningEvent, ScheduleFiredEvent } from '../events.ts';
 import type { ScheduleOverlapPolicy, WorkflowContext } from '../types.ts';

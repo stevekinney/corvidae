@@ -12,7 +12,8 @@
  * records are written under, so the live drain, a retry, and the boot pass write each fact once
  * between them.
  */
-import { type BatchOperation, decode, encode } from '@lostgradient/weft';
+import { type BatchOperation } from '@lostgradient/storage';
+import { decode, encode } from '@lostgradient/weft';
 
 /** The prefix every pending schedule transition is stored under, outside Weft's reserved prefixes. */
 export const SCHEDULE_TRANSITION_KEY_PREFIX = 'bureau-schedule-transition:';

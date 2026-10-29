@@ -8,7 +8,7 @@
  * @module core/engine/bulk-retry-build-binding
  */
 
-import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
+import type { BatchOperation, ConditionalBatchCondition } from '@lostgradient/storage';
 import { workerBuildBinding, type WorkerBuildIdentity } from '../../worker/deployment-records.ts';
 import {
   assertInheritedWorkerBuildNotRemoved,

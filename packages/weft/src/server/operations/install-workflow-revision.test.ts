@@ -4,13 +4,13 @@
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { buildWorkflowContract } from '../../core/contract/build.ts';
 import { buildWorkflowRevisionManifest } from '../../core/contract/manifest.ts';
 import { Engine } from '../../core/engine.ts';
 import type { WorkflowContext } from '../../core/types.ts';
 import { workflow } from '../../core/types.ts';
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { handleRequest } from '../handler.ts';
 import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';
 import { anonymousPrincipal, principalFromApiKey } from '../principal.ts';

@@ -20,9 +20,9 @@ import {
   type BatchOperation,
   type ConditionalBatchCondition,
   encodeStorageKeyComponent,
-  resolveStorage,
   type Storage,
-} from '@lostgradient/weft';
+} from '@lostgradient/storage';
+import { resolveStorage } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 
 import type { AgentDefinitions } from '../agent-catalog';

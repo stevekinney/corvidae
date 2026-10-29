@@ -6,7 +6,7 @@
  */
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { Principal } from '@lostgradient/weft';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import { BureauError, TaskRespondError } from '../../create-bureau.ts';

@@ -1,17 +1,17 @@
 import { describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { Engine, workflow, type WorkflowContext } from '../index.ts';
-import { flush } from '../testing/storage-backends.test-support.ts';
-import { assertDurableStorageForRecovery } from './capabilities.ts';
-import { createCloudflareSqlTestDouble } from './cloudflare-durable-object-sql-test-double.test-support.ts';
-import { CloudflareDurableObjectSQLiteStorage } from './cloudflare.ts';
+import { assertDurableStorageForRecovery } from '@lostgradient/storage';
 import {
   runBasicStorageContract,
   runBinaryAndLargeScanStorageConformance,
   runConcurrentConditionalBatchConformance,
   runStorageCapabilityConformance,
-} from './storage-adapter.test-support.ts';
+} from '@lostgradient/storage/testing';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { Engine, workflow, type WorkflowContext } from '../index.ts';
+import { flush } from '../testing/storage-backends.test-support.ts';
+import { createCloudflareSqlTestDouble } from './cloudflare-durable-object-sql-test-double.test-support.ts';
+import { CloudflareDurableObjectSQLiteStorage } from './cloudflare.ts';
 
 function encode(value: string): Uint8Array {
   return new TextEncoder().encode(value);

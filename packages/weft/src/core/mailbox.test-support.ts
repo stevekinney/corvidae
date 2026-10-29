@@ -8,8 +8,12 @@
  * @module core/mailbox.test-support
  */
 
-import type { BatchOperation, ConditionalBatchCondition, Storage } from '../storage/interface.ts';
-import { MemoryStorage } from '../storage/memory.ts';
+import {
+  type BatchOperation,
+  type ConditionalBatchCondition,
+  type Storage,
+  MemoryStorage,
+} from '@lostgradient/storage';
 import type {
   ApplicationCommandInput,
   MailboxEventSink,

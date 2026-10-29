@@ -1,5 +1,5 @@
-import type { BatchOperation } from '../storage/interface.ts';
-import { KEYS } from '../storage/interface.ts';
+import type { BatchOperation } from '@lostgradient/storage';
+import { KEYS } from '../storage/keys.ts';
 import type { SearchAttributeDefinition, SearchAttributeValue } from './types.ts';
 
 export { searchAttribute, searchAttributeName } from './types.ts';

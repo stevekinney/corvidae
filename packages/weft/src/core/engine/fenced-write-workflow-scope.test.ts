@@ -23,14 +23,14 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import {
+  MemoryStorage,
+  type BatchOperation,
+  type ConditionalBatchCondition,
+  type Storage,
+} from '@lostgradient/storage';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import type {
-  BatchOperation,
-  ConditionalBatchCondition,
-  Storage,
-} from '../../storage/interface.ts';
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { workflow, type WorkflowContext } from '../types.ts';
 import {
   commitFencedEngineWrite,

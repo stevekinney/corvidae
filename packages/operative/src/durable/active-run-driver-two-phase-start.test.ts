@@ -8,7 +8,7 @@
  * `MemoryStorage`, a manual runtime, and no real timers or wall-clock waits.
  */
 import { createManualRuntimeServices, HookRegistry } from '@lostgradient/lifecycle';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';

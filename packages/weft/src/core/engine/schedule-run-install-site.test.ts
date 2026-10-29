@@ -20,9 +20,9 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { KEYS, type BatchOperation } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage, type BatchOperation } from '@lostgradient/storage';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
+import { KEYS } from '../../storage/keys.ts';
 import {
   workflow,
   type Checkpoint,

@@ -2,8 +2,8 @@ import {
   encodeStorageKeyComponent,
   MAX_BATCH_OPERATIONS,
   MemoryStorage,
-  WEFT_RESERVED_KEY_PREFIXES,
-} from '@lostgradient/weft';
+} from '@lostgradient/storage';
+import { WEFT_RESERVED_KEY_PREFIXES } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createWeftEvidenceProjectionStorage } from '../src/create-weft-evidence-projection-storage';

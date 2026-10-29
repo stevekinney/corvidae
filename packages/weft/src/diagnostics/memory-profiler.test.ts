@@ -1,15 +1,15 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { Engine } from '../core/engine.ts';
-import type { WorkflowContext } from '../core/types.ts';
-import { workflow } from '../core/types/workflow-function.ts';
-import { MemoryStorage } from '../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 import {
   advanceTimersByTime,
   restoreRealTimers,
   sleepForTesting,
   useFakeTimers,
 } from '@lostgradient/testing/fake-timers';
+import { Engine } from '../core/engine.ts';
+import type { WorkflowContext } from '../core/types.ts';
+import { workflow } from '../core/types/workflow-function.ts';
 import {
   type MemorySample,
   MemoryProfiler,

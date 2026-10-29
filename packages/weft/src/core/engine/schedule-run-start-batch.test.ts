@@ -23,8 +23,8 @@ import { createHash } from 'node:crypto';
 
 import { describe, expect, it, spyOn } from 'bun:test';
 
-import { KEYS, type BatchOperation } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage, type BatchOperation } from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import {
   workflow,
   type EngineOptions,

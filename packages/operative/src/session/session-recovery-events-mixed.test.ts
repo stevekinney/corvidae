@@ -1,10 +1,6 @@
 import { TypedEventTarget } from '@lostgradient/lifecycle';
-import {
-  MemoryStorage,
-  textValueStore,
-  workflow,
-  yieldToPortableEventLoop,
-} from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { workflow, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';
 

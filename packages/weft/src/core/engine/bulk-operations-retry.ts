@@ -1,9 +1,9 @@
 import {
-  KEYS,
   requireStorageCapability,
   type BatchOperation,
   type ConditionalBatchCondition,
-} from '../../storage/interface.ts';
+} from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import type { WorkerBuildIdentity } from '../../worker/deployment-records.ts';
 import { assertScopedBulkWorkflowFilter } from '../bulk-workflow-filter.ts';
 import { deserializeCheckpoint } from '../checkpoint.ts';

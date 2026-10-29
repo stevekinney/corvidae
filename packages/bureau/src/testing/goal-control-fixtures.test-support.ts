@@ -4,7 +4,7 @@
  * read-back waits for can be left unfinished in turn.
  */
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 
 import type { GoalControlDependencies } from '../goal-controller';
 import {

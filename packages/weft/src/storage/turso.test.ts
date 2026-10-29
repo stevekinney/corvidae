@@ -1,17 +1,15 @@
 import { createClient } from '@libsql/client';
 import { describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { SQLITE_UPSERT_VALUE_BY_KEY } from '@lostgradient/storage/sql';
 import {
   createDiskBackedTestFixture,
-  sqliteDatabaseSidecarSuffixes,
-} from '../testing/storage-backends.test-support.ts';
-import { SQLITE_UPSERT_VALUE_BY_KEY } from './sqlite-key-value-queries.ts';
-import {
   runBasicStorageContract,
   runBinaryAndLargeScanStorageConformance,
   runStorageCapabilityConformance,
-} from './storage-adapter.test-support.ts';
+  sqliteDatabaseSidecarSuffixes,
+} from '@lostgradient/storage/testing';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { TursoStorage } from './turso.ts';
 
 runStorageCapabilityConformance('TursoStorage', {

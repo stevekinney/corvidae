@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import { KEYS } from '../../storage/interface.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { TestEngine } from '../../testing/test-engine.ts';
 import { AtomicStateConflictError } from '../atomic-state.ts';
 import { decode, encode } from '../codec.ts';

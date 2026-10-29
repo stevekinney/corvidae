@@ -1,5 +1,5 @@
-import type { Storage as WeftStorage } from '../../storage/interface.ts';
-import { KEYS, storageKeys } from '../../storage/interface.ts';
+import { type Storage as WeftStorage, storageKeys } from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 
 async function collectKeys(storage: WeftStorage, prefix: string): Promise<string[]> {
   const keys: string[] = [];

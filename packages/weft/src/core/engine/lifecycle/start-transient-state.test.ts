@@ -5,12 +5,12 @@
 import { describe, expect, it } from 'bun:test';
 
 import {
-  KEYS,
+  MemoryStorage,
   type BatchOperation,
   type ConditionalBatchCondition,
-} from '../../../storage/interface.ts';
-import { MemoryStorage } from '../../../storage/memory.ts';
+} from '@lostgradient/storage';
 import { createDeferred } from '@lostgradient/testing/fake-timers';
+import { KEYS } from '../../../storage/keys.ts';
 import type { Checkpoint } from '../../types.ts';
 import { parkedOnSignal } from '../checkpoint-conflict.test-support.ts';
 import { Engine } from '../index.ts';

@@ -1,7 +1,7 @@
+import { MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { WorkerDeploymentCatalog } from '../../worker/deployment-routing.ts';
 import type { WorkerManifest } from '../../worker/manifest/types.ts';
 import { issueWorkflowWorkerStartOverridePreview } from '../../worker/start-override-preview.ts';

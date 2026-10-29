@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'bun:test';
 import { settleInlineLaunches } from './testing/inline-launch-settle.test-support.ts';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { workflow } from './core/types/workflow-function.ts';
-import { Engine, MemoryStorage, WorkflowCompletedEvent, WorkflowStartedEvent } from './index.ts';
+import { Engine, WorkflowCompletedEvent, WorkflowStartedEvent } from './index.ts';
 
 /** Drain microtasks so fire-and-forget work completes. */
 async function flush(): Promise<void> {

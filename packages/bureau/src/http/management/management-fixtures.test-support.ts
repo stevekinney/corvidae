@@ -9,9 +9,9 @@ import {
   type AuthConfig,
   type AuthorizationScope,
   principalFromApiKey,
-  type Storage,
   type StorageConfiguration,
 } from '@lostgradient/weft';
+import { type Storage } from '@lostgradient/storage';
 import { HANG_GUARD_MILLISECONDS, afterAwakeTime } from '@lostgradient/testing/hang-guard';
 import { createTool, createToolbox, type Toolbox } from 'armorer';
 import { z } from 'zod';

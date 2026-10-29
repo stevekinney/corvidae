@@ -7,8 +7,8 @@ import {
   type RunResultBase,
   type ScriptedGenerateStep,
 } from '@lostgradient/operative';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 
 import { EvaluatorConfigurationError } from './configuration';
 import type { EvaluationRunRecord } from './evaluation-run';

@@ -122,7 +122,8 @@ export type StartOrSignalOutcome = EngineStartOrSignalOutcome;
  *
  * @example
  * ```ts
- * import { workflow, Engine, MemoryStorage, LocalClient, type WorkflowCompletedEvent } from '@lostgradient/weft';
+ * import { workflow, Engine, LocalClient, type WorkflowCompletedEvent } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  * import type { ClientHandle } from '@lostgradient/weft';
  *
  * await using engine = new Engine({ storage: new MemoryStorage() });
@@ -249,7 +250,8 @@ export interface ClientHandle<TResult = unknown>
  *
  * @example
  * ```ts
- * import { workflow, Engine, MemoryStorage, LocalClient } from '@lostgradient/weft';
+ * import { workflow, Engine, LocalClient } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  * import type { ClientScheduleHandle } from '@lostgradient/weft';
  *
  * await using engine = new Engine({ storage: new MemoryStorage() });
@@ -321,7 +323,8 @@ export interface WeftClientActivity {
  *
  * @example
  * ```ts
- * import { workflow, Engine, MemoryStorage, LocalClient, type WeftClient } from '@lostgradient/weft';
+ * import { workflow, Engine, LocalClient, type WeftClient } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  *
  * await using engine = new Engine({ storage: new MemoryStorage() });
  * engine.register(workflow({ name: 'my-workflow' }).execute(async function* () { return 42; }));
@@ -622,7 +625,8 @@ export interface WeftClient {
    *
    * @example
    * ```ts
-   * import { workflow, Engine, MemoryStorage, LocalClient } from '@lostgradient/weft';
+   * import { workflow, Engine, LocalClient } from '@lostgradient/weft';
+   * import { MemoryStorage } from '@lostgradient/storage';
    *
    * await using engine = new Engine({ storage: new MemoryStorage() });
    * engine.register(workflow({ name: 'noop' }).execute(async function* () {}));

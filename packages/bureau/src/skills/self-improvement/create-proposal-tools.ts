@@ -1,4 +1,4 @@
-import type { TextValueStore } from '@lostgradient/weft';
+import type { TextValueStore } from '@lostgradient/storage';
 import { createTool } from 'armorer';
 import { z } from 'zod';
 

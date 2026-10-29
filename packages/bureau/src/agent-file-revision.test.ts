@@ -16,9 +16,9 @@ import {
 import {
   type ConditionalTextValueStore,
   MemoryStorage,
-  resolveStorage,
   textValueStore,
-} from '@lostgradient/weft';
+} from '@lostgradient/storage';
+import { resolveStorage } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { hashAgentFileBytes } from './agent-file';

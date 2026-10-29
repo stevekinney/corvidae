@@ -16,7 +16,7 @@ import {
   type MemoryDeletionReceipt,
 } from '@lostgradient/memory';
 import { stopWhen, waitForCondition, createAgent } from '@lostgradient/operative';
-import { MemoryStorage } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';

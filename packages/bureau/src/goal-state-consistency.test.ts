@@ -3,7 +3,7 @@
  * active work contradict each other, and the store can never write one.
  */
 import type { GoalRunTerminalReason } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import {

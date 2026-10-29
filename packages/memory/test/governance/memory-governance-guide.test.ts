@@ -10,7 +10,7 @@
  * and these tests together.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { MemoryStorage } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';

@@ -5,7 +5,7 @@
  * map: everything it knows about the owner it reads back from the key-value store.
  */
 import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';

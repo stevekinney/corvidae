@@ -1,5 +1,5 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { MemoryStorage } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 
 import { createDurableEventHistory } from '../durable-event-history';
 import {

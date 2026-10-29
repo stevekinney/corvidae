@@ -5,7 +5,7 @@ import {
   type MemoryMetadata,
   type MemorySearchResult,
 } from '@lostgradient/memory';
-import { MemoryStorage } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 
 import { createLexicalHashEmbedder } from '../embedder';
 import { EVIDENCE_SOURCES, type EvidenceSource } from '../scenarios';

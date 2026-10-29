@@ -25,8 +25,8 @@
  * @module core/engine/termination/finalizer-claim
  */
 
-import type { BatchOperation } from '../../../storage/interface.ts';
-import { KEYS } from '../../../storage/interface.ts';
+import type { BatchOperation } from '@lostgradient/storage';
+import { KEYS } from '../../../storage/keys.ts';
 import { encode } from '../../codec.ts';
 import { buildTimerBatchOperations, parseDuration } from '../../scheduler.ts';
 import {

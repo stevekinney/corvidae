@@ -4,7 +4,7 @@
  * chat and an index written before origins existed needs no migration. The store lists by origin
  * before it pages, so a page of chats is full of chats however many fires came after them.
  */
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';
 

@@ -4,6 +4,7 @@
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { buildWorkflowContract } from '../../core/contract/build.ts';
 import { buildWorkflowRevisionManifest } from '../../core/contract/manifest.ts';
@@ -12,7 +13,6 @@ import { activateCatalogRevisionCandidate } from '../../core/engine/catalog-acti
 import { ensureWorkflowCatalogReady } from '../../core/engine/catalog-readiness.ts';
 import { getWorkflowCatalog } from '../../core/engine/index.ts';
 import { workflow, type WorkflowContext } from '../../core/types.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { WorkerRegistry } from '../../worker/registry.ts';
 import { handleRequest } from '../handler.ts';
 import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';

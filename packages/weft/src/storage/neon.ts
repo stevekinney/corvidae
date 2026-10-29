@@ -1,9 +1,9 @@
-import { createLazyPostgresPool } from './lazy-postgres-pool.ts';
 import {
+  createLazyPostgresPool,
   PostgresKeyValueStorage,
   type PostgresKeyValueStorageOptions,
   type PostgresPool,
-} from './postgres-key-value-storage.ts';
+} from '@lostgradient/storage/sql';
 
 /**
  * Configuration for connecting {@link NeonStorage} to a Neon database.

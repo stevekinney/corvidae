@@ -1,19 +1,19 @@
 import { describe, expect, it } from 'bun:test';
 
-import { decode, encode } from '../../src/core/codec.ts';
-import { decodeWorkflowState } from '../../src/core/engine/validation.ts';
-import {
-  deriveWorkflowVisibilityIndexKeys,
-  getWorkflowVisibilityWatermark,
-} from '../../src/core/engine/workflow-indexes.ts';
-import { KEYS, type ScanOptions } from '../../src/storage/interface.ts';
-import { MemoryStorage } from '../../src/storage/memory.ts';
+import { type ScanOptions, MemoryStorage } from '@lostgradient/storage';
 import {
   advanceTimersByTime,
   flushMicrotasks,
   restoreRealTimers,
   useFakeTimers,
 } from '@lostgradient/testing/fake-timers';
+import { decode, encode } from '../../src/core/codec.ts';
+import { decodeWorkflowState } from '../../src/core/engine/validation.ts';
+import {
+  deriveWorkflowVisibilityIndexKeys,
+  getWorkflowVisibilityWatermark,
+} from '../../src/core/engine/workflow-indexes.ts';
+import { KEYS } from '../../src/storage/keys.ts';
 
 import {
   WORKFLOW_VISIBILITY_BACKFILL_SETTLE_MILLISECONDS,

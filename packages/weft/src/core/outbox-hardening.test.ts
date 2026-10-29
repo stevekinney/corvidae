@@ -9,10 +9,13 @@
 
 import { describe, expect, it } from 'bun:test';
 
+import {
+  type BatchOperation,
+  type ConditionalBatchCondition,
+  MemoryStorage,
+} from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { BatchOperation, ConditionalBatchCondition } from '../storage/interface.ts';
-import { KEYS } from '../storage/interface.ts';
-import { MemoryStorage } from '../storage/memory.ts';
+import { KEYS } from '../storage/keys.ts';
 import { decode, encode } from './codec.ts';
 import { ApplicationDeliveryValidationError } from './outbox-guards.ts';
 import { encodeApplicationDeliveryEntry, encodeOutboxRecord } from './outbox-index-codec.ts';

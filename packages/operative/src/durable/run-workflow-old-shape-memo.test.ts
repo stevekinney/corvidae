@@ -4,7 +4,8 @@
  * the write-side assertion in the checkpoint store never executes for an old memo; the workflow
  * itself must refuse one, with the typed error rather than a TypeError from reading its parts.
  */
-import { activity, Engine, MemoryStorage, textValueStore, workflow } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { activity, Engine, workflow } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { Conversation, createConversationHistory } from 'conversationalist';

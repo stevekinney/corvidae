@@ -42,7 +42,7 @@
  * @module core/engine/lifecycle/prepare-and-launch
  */
 
-import { KEYS } from '../../../storage/interface.ts';
+import { KEYS } from '../../../storage/keys.ts';
 import { resolveWorkflowWorkerStartBinding } from '../../../worker/versioning-policy.ts';
 import { deserializeCheckpoint, serializeCheckpoint } from '../../checkpoint.ts';
 import { encode } from '../../codec.ts';

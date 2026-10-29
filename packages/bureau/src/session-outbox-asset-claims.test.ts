@@ -16,7 +16,8 @@ import {
   withBackendDescriptors,
 } from '@lostgradient/operative';
 import { waitForTaskState } from './test';
-import { MemoryStorage, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import {
   appendMessages,

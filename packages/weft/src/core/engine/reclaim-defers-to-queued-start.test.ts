@@ -19,9 +19,9 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
+import { KEYS } from '../../storage/keys.ts';
 import { CleanupWarningEvent } from '../events.ts';
 import { createLifecycleCallbacks } from './callback-creators.ts';
 import { currentExecutionAttempt } from './execution-attempts.ts';

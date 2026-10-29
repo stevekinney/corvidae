@@ -5,7 +5,7 @@
  * in the gap.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { MAX_BATCH_OPERATIONS } from '@lostgradient/weft';
+import { MAX_BATCH_OPERATIONS } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import {

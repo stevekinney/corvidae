@@ -14,7 +14,8 @@
  * @example
  * ```ts
  * import { serve, type DiscoveryInfo } from '@lostgradient/weft';
- * import { Engine, MemoryStorage } from '@lostgradient/weft';
+ * import { Engine } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  *
  * const discoveryInfo: DiscoveryInfo = {
  *   description: 'Order processing API',

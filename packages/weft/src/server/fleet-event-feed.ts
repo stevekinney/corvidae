@@ -1,4 +1,4 @@
-import type { Storage } from '../storage/interface.ts';
+import type { Storage } from '@lostgradient/storage';
 import { createFleetEventFeedOperations } from './fleet-event-feed-operations.ts';
 import type {
   Cursor,
@@ -27,7 +27,8 @@ export type {
  *
  * @example
  * ```ts
- * import { Engine, MemoryStorage } from '@lostgradient/weft';
+ * import { Engine } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  * import { createFleetEventFeed, type FleetEventFeed } from '@lostgradient/weft';
  *
  * const engine = new Engine({ storage: new MemoryStorage() });
@@ -65,7 +66,7 @@ export type FleetEventFeed = {
  * `engine.storage` and share it across every fleet transport.
  * @example
  * ```ts
- * import { MemoryStorage } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  * import { createFleetEventFeed } from '@lostgradient/weft';
  * const feed = createFleetEventFeed(new MemoryStorage());
  * ```

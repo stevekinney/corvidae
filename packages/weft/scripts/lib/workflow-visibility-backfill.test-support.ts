@@ -1,12 +1,12 @@
-import { encode } from '../../src/core/codec.ts';
 import {
-  KEYS,
   type BatchOperation,
   type ConditionalBatchCondition,
   type ScanOptions,
   type Storage,
-} from '../../src/storage/interface.ts';
-import { MemoryStorage } from '../../src/storage/memory.ts';
+  MemoryStorage,
+} from '@lostgradient/storage';
+import { encode } from '../../src/core/codec.ts';
+import { KEYS } from '../../src/storage/keys.ts';
 
 type MinimalWorkflowState = {
   id: string;

@@ -15,7 +15,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { MemoryStorage } from '../../src/storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 import {
   NoConditionalBatchStorage,
   RacingStorage,

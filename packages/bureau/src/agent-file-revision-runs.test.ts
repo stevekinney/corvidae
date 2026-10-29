@@ -11,7 +11,8 @@ import {
   createTemporaryDirectory,
   removeTemporaryPath,
 } from '@lostgradient/testing/temporary-path';
-import { resolveStorage, type Storage } from '@lostgradient/weft';
+import { resolveStorage } from '@lostgradient/weft';
+import { type Storage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { SESSION_AGENT_REVISION_METADATA_KEY } from './runtime-composition';

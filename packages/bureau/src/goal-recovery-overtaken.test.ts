@@ -5,7 +5,7 @@
  * cannot read or the record cannot take must not read as success.
  */
 import type { Validator } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import { commitCancellation, ensureController } from './goal-controller';

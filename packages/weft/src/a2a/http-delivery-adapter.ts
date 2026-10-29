@@ -14,13 +14,13 @@
 import { hmac } from '@noble/hashes/hmac.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 
+import { decodeBase64ToBytes, encodeBytesToBase64 } from '@lostgradient/storage';
 import type {
   ApplicationDeliveryAdapter,
   ApplicationDeliveryOutcome,
   ApplicationDeliverySendRequest,
 } from '../core/outbox-contract.ts';
 import type { EgressPolicy } from '../runtime/egress-policy.ts';
-import { decodeBase64ToBytes, encodeBytesToBase64 } from '../storage/byte-encoding.ts';
 import { type A2AStreamTimerScheduler, scheduleWithTimeout } from './sse-response.ts';
 
 /** What `resolveCredential` returns for a delivery's `credentialRef`. */

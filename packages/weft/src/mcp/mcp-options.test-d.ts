@@ -1,6 +1,6 @@
+import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../core/engine.ts';
 import { workflow } from '../core/types.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 import {
   createMcpEndpoint,
   handleMcpHttpRequest,

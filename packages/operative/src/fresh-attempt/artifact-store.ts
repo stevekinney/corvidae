@@ -1,5 +1,5 @@
 import type { RuntimeClock } from '@lostgradient/lifecycle';
-import type { ConditionalTextValueStore } from '@lostgradient/weft';
+import type { ConditionalTextValueStore } from '@lostgradient/storage';
 
 import {
   CorruptFreshAttemptArtifactError,

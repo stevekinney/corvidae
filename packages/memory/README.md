@@ -94,7 +94,7 @@ await memory.close();
 For production, supply a real embedder (your model provider's embedding endpoint) and the durable Weft-backed storage instead of the test doubles:
 
 ```typescript
-import type { Storage } from '@lostgradient/weft';
+import type { Storage } from '@lostgradient/storage';
 import { createMemory, createWeftMemoryRecordStorage } from '@lostgradient/memory';
 
 // Your provider's embedding call, and the host runtime's Weft storage.
@@ -551,7 +551,7 @@ The default durable backend. Wraps a Weft `Storage` instance with the `MemoryRec
 
 ```typescript
 import type { RuntimeServices } from '@lostgradient/lifecycle';
-import type { Storage } from '@lostgradient/weft';
+import type { Storage } from '@lostgradient/storage';
 import {
   createWeftMemoryRecordStorage,
   type CreateWeftMemoryRecordStorageOptions,
@@ -576,7 +576,7 @@ const options: CreateWeftMemoryRecordStorageOptions = {
 ```
 
 ```typescript
-import type { Storage } from '@lostgradient/weft';
+import type { Storage } from '@lostgradient/storage';
 import { createMemory, createWeftMemoryRecordStorage, type Embedder } from '@lostgradient/memory';
 
 // `weftStorage` comes from the host runtime (`ctx.services` or a similar boundary).
@@ -651,7 +651,7 @@ Evidence and projections are a second storage model beside `MemoryRecord`. They 
 - **Indexes** (lexical, vector, temporal, entity, graph) are never stored. `buildDerivedIndexes()` and `rebuildDerivedIndexes()` build them from the active evidence an authority may `search` and the projections that rest on it, and return a fingerprint of their inputs. Drop an index and build it again and it is identical. A `demoted` projection stays recallable. Each lexical and vector hit carries a `rawScore` (the BM25 score, or the cosine similarity a `threshold` is compared with) and a `rankingScore` (what the hit is ordered by). Demotion changes only the order, by one rule: an active projection ranks by `rawScore`; a demoted one ranks by `rawScore * DEMOTED_SCORE_WEIGHT` when `rawScore` is positive and by `rawScore` unchanged otherwise; ties on `rankingScore` put active before demoted, then order by id. A demoted projection therefore never outranks an active one with the same raw score, and a ranking score never leaves the range of its raw score. The graph index emits an edge only when both ends are visible to the authority, so an edge never names an id it cannot search. `rebuildDerivedIndexes()` reads evidence, supersession markers, and projections twice and builds only when the two reads agree, so a correction that commits between them cannot make both the old and the new projection disappear. Under steady ingestion it can fail with `DerivedIndexConsistencyError`, a liveness outcome rather than corruption: handle it and try again shortly.
 
 ```ts
-import { MemoryStorage } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 import {
   createWeftEvidenceProjectionStorage,
   type EvidenceProjectionRecord,
@@ -1759,7 +1759,7 @@ Persistent identity backed by a `TextValueStore` (e.g., a Weft-backed store). Ar
 
 ```typescript
 import type { RuntimeServices } from '@lostgradient/lifecycle';
-import type { TextValueStore } from '@lostgradient/weft';
+import type { TextValueStore } from '@lostgradient/storage';
 import { createStorageIdentityProvider, type IdentityProvider } from '@lostgradient/memory';
 
 const create: (
@@ -1999,7 +1999,7 @@ const toolbox = createToolbox([
 This example runs in [`test/governance/memory-governance-guide.test.ts`](./test/governance/memory-governance-guide.test.ts), which imports from `../../src/index` instead of `@lostgradient/memory` and asserts the value each comment names:
 
 ```typescript file=governed-memory.ts
-import { MemoryStorage } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 import {
   createGovernedMemory,
   createMemoryAuthority,

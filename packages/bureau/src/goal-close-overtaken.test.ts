@@ -3,7 +3,7 @@
  * overtaken. A closed, cleaned goal leaves the boot sweep, which is what stops
  * such a run after a crash, so `close()` must not strand one.
  */
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import type { GoalControlDependencies } from './goal-controller';

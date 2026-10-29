@@ -20,7 +20,11 @@
 import { type AgentSession, parseStepRowIdentifier } from '@lostgradient/operative';
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
-import { type ConditionalTextValueStore, MemoryStorage, textValueStore } from '@lostgradient/weft';
+import {
+  type ConditionalTextValueStore,
+  MemoryStorage,
+  textValueStore,
+} from '@lostgradient/storage';
 
 import { type CommandLedger, createCommandLedger } from './command-ledger';
 import type { SteeringCommandAdmissionOutcome } from './steering';

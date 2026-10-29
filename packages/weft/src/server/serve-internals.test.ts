@@ -1,7 +1,7 @@
 import { describe, expect, it, spyOn } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../core/engine.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 
 import { SERVER_IDLE_TIMEOUT_MARGIN_SECONDS, SERVER_IDLE_TIMEOUT_SECONDS } from './idle-timeout.ts';
 import { DEFAULT_SSE_HEARTBEAT_INTERVAL_MS } from './operations/sse-stream.ts';

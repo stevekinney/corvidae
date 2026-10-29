@@ -21,7 +21,7 @@ import type {
   ScheduleResumedEvent,
   SessionDeletedEvent,
 } from '@lostgradient/operative';
-import type { ConditionalTextValueStore } from '@lostgradient/weft';
+import type { ConditionalTextValueStore } from '@lostgradient/storage';
 
 import type { AgentDefinitions } from './agent-catalog';
 import type { EventTimestampResolver } from './event-timestamp';

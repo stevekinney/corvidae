@@ -7,12 +7,12 @@
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   advanceTimersByTime,
   restoreRealTimers,
   useFakeTimers,
 } from '@lostgradient/testing/fake-timers';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { WaitBudgetElapsedError } from './application-primitive-abort.ts';
 import { ApplicationDeliveryValidationError } from './outbox-guards.ts';
 import {
@@ -102,7 +102,7 @@ describe('Outbox waitForDue', () => {
   it('looks past a due entry whose record already moved on', async () => {
     const { outbox, storage } = createOutboxFixture();
     await enqueueOne(outbox);
-    const { KEYS } = await import('../storage/interface.ts');
+    const { KEYS } = await import('../storage/keys.ts');
     const { encode } = await import('./codec.ts');
     await storage.put(
       KEYS.applicationDeliveryDue('bureau', 'agent-7', 0, 'ghost'),

@@ -4,7 +4,7 @@
  * neither renew nor release what its successor holds.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { textValueStore } from '@lostgradient/weft';
+import { textValueStore } from '@lostgradient/storage';
 import { describe, expect, it, spyOn } from 'bun:test';
 
 import { createMemoryStorageFixture } from '../test/storage-fixtures.ts';

@@ -635,7 +635,7 @@ describe('OpenAPI security schemes — live server honesty', () => {
     const { serve } = await import('./index.ts');
 
     const { Engine } = await import('../core/engine.ts');
-    const { MemoryStorage } = await import('../storage/memory.ts');
+    const { MemoryStorage } = await import('@lostgradient/storage');
 
     const engine = new Engine({ storage: new MemoryStorage() });
     const server = serve({

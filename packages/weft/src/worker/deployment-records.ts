@@ -29,8 +29,8 @@
  * Together they make removal optimistic concurrency, not a lock: nothing is held, so nothing can be
  * left behind by a crash, and there is nothing to reconcile.
  */
+import type { BatchOperation, ConditionalBatchCondition } from '@lostgradient/storage';
 import { decode } from '../core/codec/index.ts';
-import type { BatchOperation, ConditionalBatchCondition } from '../storage/interface.ts';
 import type { WorkerDeploymentRouting, WorkerDeploymentVersion } from './deployment-routing.ts';
 
 export const WORKER_DEPLOYMENT_VERSION_PREFIX = 'worker-deployment-version:';

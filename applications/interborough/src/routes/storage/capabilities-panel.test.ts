@@ -3,7 +3,7 @@
  * `weft.storage.capabilities` reports, shown as the server reports it, plus
  * the loading and fault states.
  */
-import type { StorageCapabilities } from '@lostgradient/weft';
+import type { StorageCapabilities } from '@lostgradient/storage';
 import { render, within } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 

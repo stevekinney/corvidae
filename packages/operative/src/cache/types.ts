@@ -5,7 +5,7 @@
  * events, and metrics tracking.
  */
 
-import type { TextValueStore } from '@lostgradient/weft';
+import type { TextValueStore } from '@lostgradient/storage';
 
 import type { GenerateContext, GenerateResponse } from '../types';
 

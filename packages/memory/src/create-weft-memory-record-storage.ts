@@ -4,7 +4,7 @@ import {
   storageConditionalBatch,
   storageDeletePrefix,
   storageKeys,
-} from '@lostgradient/weft';
+} from '@lostgradient/storage';
 import { cosineSimilarity, type EmbeddingVectorLike } from 'armorer';
 import { z } from 'zod';
 

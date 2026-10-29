@@ -2,11 +2,11 @@ import { Database } from 'bun:sqlite';
 import { describe, expect, it } from 'bun:test';
 import { linkSync, symlinkSync } from 'node:fs';
 
-import { BunSQLiteStorage } from '../src/storage/bun-sql.ts';
 import {
   createDiskBackedTestFixture,
   sqliteDatabaseSidecarSuffixes,
-} from '../src/testing/storage-backends.test-support.ts';
+} from '@lostgradient/storage/testing';
+import { BunSQLiteStorage } from '../src/storage/bun-sql.ts';
 import { runImportStringKeyValueCommand } from './import-string-kv-sqlite-to-weft.ts';
 
 function createSqliteFixture(prefix: string) {

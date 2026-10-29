@@ -32,13 +32,8 @@
  * @module workflow-snapshot-store
  */
 
-import {
-  MemoryStorage,
-  textValueStore,
-  type TextValueStore,
-  type WorkflowDocument,
-  workflowDocumentSchema,
-} from '@lostgradient/weft';
+import { MemoryStorage, textValueStore, type TextValueStore } from '@lostgradient/storage';
+import { type WorkflowDocument, workflowDocumentSchema } from '@lostgradient/weft';
 
 import { workflowVersionOf } from './workflow-file';
 

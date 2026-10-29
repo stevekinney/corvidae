@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { type StreamResponse, type Task, TaskState } from '@a2a-js/sdk';
 
-import { MemoryStorage } from '../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 import { callContext } from './a2a-store.test-support.ts';
 import { manualScheduler } from './push-delivery.test-support.ts';
 import { callerScope, encodeRecord, workflowTaskKey } from './store-support.ts';

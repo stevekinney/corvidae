@@ -1,13 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
+import { createDeferred, waitForCondition, waitForever } from '@lostgradient/testing/fake-timers';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
-import {
-  createDeferred,
-  waitForCondition,
-  waitForever,
-} from '@lostgradient/testing/fake-timers';
+import { KEYS } from '../../storage/keys.ts';
 import { decode } from '../codec.ts';
 import { durableActivity } from '../context/durable-activity.ts';
 import type { Context } from '../context/index.ts';

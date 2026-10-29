@@ -2,7 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 import { createManualRuntimeServices } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 
 import fixtureGate from '../gates/fixture-regression.json';
 import type { EvaluationRunRecord } from './evaluation-run';

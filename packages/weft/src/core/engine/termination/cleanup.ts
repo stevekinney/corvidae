@@ -1,5 +1,5 @@
-import type { BatchOperation } from '../../../storage/interface.ts';
-import { KEYS, encodeStorageKeyComponent, storageHas } from '../../../storage/interface.ts';
+import { encodeStorageKeyComponent, storageHas, type BatchOperation } from '@lostgradient/storage';
+import { KEYS } from '../../../storage/keys.ts';
 import { CleanupWarningEvent, RemoteActivityCancellationRequestedEvent } from '../../events.ts';
 import type { WorkflowState, WorkflowStatus } from '../../types.ts';
 import { asyncActivityWorkflowPrefix } from '../async-activity-records.ts';

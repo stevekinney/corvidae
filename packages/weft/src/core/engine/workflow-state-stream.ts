@@ -1,9 +1,9 @@
-import type { ScanOptions } from '../../storage/interface.ts';
 import {
-  KEYS,
+  type ScanOptions,
   encodeStorageKeyComponent,
   tryDecodeStorageKeyComponent,
-} from '../../storage/interface.ts';
+} from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import { failureCategorySearchValues, isFailureCategory } from '../failure-categories.ts';
 import { encodeAttributeValue, searchAttributeName } from '../search-attributes.ts';
 import type {

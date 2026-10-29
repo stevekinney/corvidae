@@ -15,10 +15,10 @@ import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { record, records } from './protocol.test-support.ts';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../core/engine.ts';
 import { workflow } from '../core/types.ts';
 import { listMcpTools } from '../mcp/tools.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 import { generateOpenRpcDocument } from './openrpc.ts';
 import {
   createOperationRegistry,

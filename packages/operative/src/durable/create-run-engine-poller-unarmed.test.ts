@@ -1,5 +1,5 @@
+import { MemoryStorage } from '@lostgradient/storage';
 import {
-  MemoryStorage,
   Scheduler,
   workflow,
   yieldToPortableEventLoop,

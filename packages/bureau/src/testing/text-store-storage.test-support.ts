@@ -12,7 +12,7 @@ import {
   type ScanOptions,
   type Storage,
   type ConditionalTextValueStore,
-} from '@lostgradient/weft';
+} from '@lostgradient/storage';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();

@@ -10,7 +10,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import { KEYS } from '../../storage/interface.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { yieldToPortableEventLoop } from '../../testing/event-loop.ts';
 import { Engine } from '../engine.ts';
 import { WorkflowFailedEvent } from '../events.ts';

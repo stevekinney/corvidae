@@ -1,4 +1,4 @@
-import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
+import type { BatchOperation, ConditionalBatchCondition } from '@lostgradient/storage';
 import type { Duration } from './retry-retention.ts';
 import type { WorkflowDefinition } from './workflow-function.ts';
 

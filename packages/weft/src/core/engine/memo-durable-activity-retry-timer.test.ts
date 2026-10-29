@@ -8,7 +8,7 @@
  */
 import { expect, it } from 'bun:test';
 
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 import { durableActivity } from '../context/durable-activity.ts';
 import { activity, workflow, type WorkflowContext } from '../types.ts';
 import { ENGINE_WAIT_FOR_SLEEP_RESOLVER_FOR_TESTING, Engine } from './index.ts';

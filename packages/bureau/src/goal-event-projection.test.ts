@@ -9,7 +9,8 @@
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import type { DurableEventEnvelope } from '@lostgradient/operative';
-import { MemoryStorage, resolveStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { resolveStorage } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createDurableEventHistory } from './durable-event-history';

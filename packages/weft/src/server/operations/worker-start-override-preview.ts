@@ -1,8 +1,9 @@
 import { z } from 'zod';
 
+import { type Storage } from '@lostgradient/storage';
 import { decode } from '../../core/codec.ts';
 import type { WorkflowState } from '../../core/types.ts';
-import { KEYS, type Storage } from '../../storage/interface.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { NoRoutedWorkerDeploymentError } from '../../worker/no-routed-deployment-error.ts';
 import {
   issueWorkflowWorkerStartOverridePreview,

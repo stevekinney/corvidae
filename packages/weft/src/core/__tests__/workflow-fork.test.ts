@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'bun:test';
 import { sleepForTesting } from '@lostgradient/testing/fake-timers';
+import { describe, expect, it } from 'bun:test';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
-import { KEYS } from '../../storage/interface.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { TestEngine } from '../../testing/test-engine.ts';
 import { ActivityRegistry } from '../activity-registry.ts';
 import { deserializeCheckpoint } from '../checkpoint.ts';

@@ -6,7 +6,7 @@
  * expiry, the fire's task leaving retention), the crash that must not bring back an approval the
  * run never committed, and what a fire that continues past an approval owes the resolver.
  */
-import { MemoryStorage } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';

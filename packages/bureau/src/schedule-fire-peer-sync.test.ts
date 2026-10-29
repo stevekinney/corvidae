@@ -13,7 +13,7 @@ import {
   type Toolbox,
   createAgent,
 } from '@lostgradient/operative';
-import type { Storage } from '@lostgradient/weft';
+import type { Storage } from '@lostgradient/storage';
 import { createTool, createToolbox } from 'armorer';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { afterEach, describe, expect, it } from 'bun:test';

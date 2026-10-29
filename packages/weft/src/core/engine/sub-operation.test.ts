@@ -1,7 +1,7 @@
 import { describe, expect, it, mock } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { processStateCommitOperation } from './operations-state.ts';
 import { executeSubOperation, processWaitReviewOperation } from './sub-operation.ts';
 

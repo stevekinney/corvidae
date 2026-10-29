@@ -1,4 +1,4 @@
-import type { BatchOperation } from './interface.ts';
+import type { BatchOperation } from '@lostgradient/storage';
 
 import {
   isConstrainedCodexRunner,

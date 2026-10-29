@@ -4,9 +4,9 @@
  *
  * @module core/engine/workflow-state-update
  */
+import type { BatchOperation, ConditionalBatchCondition } from '@lostgradient/storage';
 import { sleep } from '../../runtime/portable.ts';
-import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
-import { KEYS } from '../../storage/interface.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { retryDelay } from '../atomic-state.ts';
 import { encode } from '../codec.ts';
 import type { WorkflowState, WorkflowStatus } from '../types.ts';

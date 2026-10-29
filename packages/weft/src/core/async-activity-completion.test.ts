@@ -11,10 +11,14 @@
 
 import { describe, expect, it } from 'bun:test';
 
+import {
+  type BatchOperation,
+  type ConditionalBatchCondition,
+  MemoryStorage,
+} from '@lostgradient/storage';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { LocalClient } from '../client/local.ts';
-import { KEYS, type BatchOperation, type ConditionalBatchCondition } from '../storage/interface.ts';
-import { MemoryStorage } from '../storage/memory.ts';
+import { KEYS } from '../storage/keys.ts';
 import { nextAsyncPendingToken } from '../testing/async-activity.test-support.ts';
 import { encode } from './codec.ts';
 import { AsyncActivityTokenNotFoundError, Engine } from './engine.ts';

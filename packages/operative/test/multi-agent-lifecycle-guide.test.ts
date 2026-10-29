@@ -9,7 +9,7 @@
  * the cleanup contract the guide's Cancellation section states in prose.
  * Change the example and the documentation together.
  */
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';

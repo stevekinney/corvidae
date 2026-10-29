@@ -3,7 +3,7 @@ import {
   type ConditionalTextValueStore,
   encodeStorageKeyComponent,
   tryDecodeStorageKeyComponent,
-} from '@lostgradient/weft';
+} from '@lostgradient/storage';
 
 import type { Effort, SteeringRequestedValue } from '@lostgradient/operative';
 

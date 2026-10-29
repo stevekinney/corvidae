@@ -4,7 +4,7 @@
  * drops `workflowClaimTtl`/`workflowClaimRenewInterval`, or loosens either
  * field's type away from `Duration`.
  */
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from './index.ts';
 
 // `ownership: 'workflow-lease'` is accepted on its own …

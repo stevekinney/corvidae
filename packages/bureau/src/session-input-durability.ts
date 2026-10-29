@@ -9,13 +9,12 @@ import {
 } from '@lostgradient/operative';
 import { sha256HexSync } from '@lostgradient/cryptography';
 import type { CURRENT_SCHEMA_VERSION } from 'conversationalist';
+import { type ApplicationCommandReceipt, Mailbox } from '@lostgradient/weft';
 import {
-  type ApplicationCommandReceipt,
   type ConditionalTextValueStore,
   encodeStorageKeyComponent,
-  Mailbox,
   type Storage,
-} from '@lostgradient/weft';
+} from '@lostgradient/storage';
 
 /**
  * COR-435 — durable, mailbox-backed `submitSessionInput` admission.

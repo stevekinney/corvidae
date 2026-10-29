@@ -12,7 +12,7 @@
  * @module a2a-task-record
  */
 
-import type { ConditionalTextValueStore } from '@lostgradient/weft';
+import type { ConditionalTextValueStore } from '@lostgradient/storage';
 
 /** The key prefix of a task's A2A record, disjoint from every other prefix the Bureau stores. */
 export const A2A_TASK_RECORD_KEY_PREFIX = 'bureau-a2a-task:v1:';
