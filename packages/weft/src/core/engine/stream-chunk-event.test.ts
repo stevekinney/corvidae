@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { waitUntil } from '@lostgradient/testing/wait-until';
+import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { StreamChunkEvent } from '../events/fleet-state-events.ts';
 import { workflow } from '../types.ts';
@@ -62,5 +62,56 @@ describe('stream:chunk on the Engine', () => {
     await handle.result();
 
     expect(keys).toEqual([]);
+  });
+
+  it("does not announce a chunk a cancelled run's producer yields after a start-new replacement took the id", async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const seen: StreamChunkEvent[] = [];
+    engine.addEventListener(StreamChunkEvent.type, (event) => {
+      seen.push(event);
+    });
+    let producerEntered = false;
+    const producerGate = Promise.withResolvers<void>();
+    let runs = 0;
+    engine.register(
+      workflow({ name: 'restarted-stream' }).execute(async function* (ctx) {
+        runs++;
+        if (runs === 1) {
+          yield* ctx.stream('progress', async function* () {
+            producerEntered = true;
+            await producerGate.promise;
+            yield 'stale-chunk';
+          });
+          return 'old';
+        }
+        yield* ctx.waitForSignal('release');
+        return 'new';
+      }),
+    );
+
+    const first = await engine.start('restarted-stream', {}, { id: 'restarted-stream-1' });
+    await waitUntil(() => producerEntered, { message: 'old producer awaiting its gate' });
+    await first.cancel();
+    const replacement = await engine.start(
+      'restarted-stream',
+      {},
+      { id: 'restarted-stream-1', onTerminalConflict: 'start-new' },
+    );
+    await waitUntil(() => runs === 2, { message: 'replacement run started' });
+
+    producerGate.resolve();
+    // The old producer's late write is observable through storage, so wait on that and then on
+    // the event chain draining before asserting that nothing was announced.
+    await waitUntil(
+      async () => {
+        const stored = await engine.getStreamChunks('restarted-stream-1', 'progress');
+        return stored.length > 0;
+      },
+      { message: 'old producer stored its late chunk' },
+    );
+    await quietFor(50);
+
+    expect(seen).toEqual([]);
+    await replacement.cancel();
   });
 });

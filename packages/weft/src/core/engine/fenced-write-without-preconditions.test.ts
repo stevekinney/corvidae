@@ -24,7 +24,11 @@ async function leaseHoldingEngine(storedEpoch: Uint8Array = HELD_EPOCH) {
   await storage.put(KEYS.leaseEpoch(), storedEpoch);
   const internals = {
     deposed: false,
-    leaseManager: { currentEpochBytes: () => HELD_EPOCH },
+    engine: { dispatchEvent: () => true },
+    leaseManager: {
+      currentEpochBytes: () => HELD_EPOCH,
+      health: () => ({ status: 'healthy', holdsLease: true }),
+    },
     options: { ownershipMode: 'lease' },
     storage,
     tearDownAfterDeposition: null,
