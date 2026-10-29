@@ -64,7 +64,7 @@ Remote mode keeps the home in Postgres, an S3-compatible bucket, and environment
 
 Setting both `<NAME>_DATABASE_URL` and `<NAME>_BUCKET` selects remote mode, and `<NAME>_HOME` is then not read. Setting only one of them throws `BungalowInputError` naming the other. In remote mode the four required `S3_` variables must all be set; the first missing one, in the table's order, is named in a `BungalowInputError`. Every input is checked before any request is made, and no message names a variable's value. `S3_BUCKET` is never read: the bucket is `<NAME>_BUCKET`. The `NODE_ENV=test` refusal applies only to local mode.
 
-The prefix is normalized: a leading `/` is removed and a trailing `/` is added, so `prod` and `/prod/` are both `prod/`, and an unset prefix is the bucket's root. A prefix with an empty or `..` segment, such as `a//b` or `a/../b`, throws `BungalowInputError`. Inside the bucket, with `<prefix>` normalized:
+The prefix is normalized: a leading `/` is removed and a trailing `/` is added, so `prod` and `/prod/` are both `prod/`, and an unset prefix is the bucket's root. A prefix with an empty, `.`, or `..` segment, such as `a//b`, `a/./b`, or `a/../b`, or with a backslash, throws `BungalowInputError`, and so does a bucket containing `/` or `\` or named `.` or `..`: a request URL rewrites each of them, so the object read or written would not be the one Bungalow names, and two prefixes could share one home. Before its first request Bungalow also checks that the signed URL addresses each key exactly. Inside the bucket, with `<prefix>` normalized:
 
 | Key | Holds |
 | --- | --- |

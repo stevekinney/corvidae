@@ -17,6 +17,7 @@ import {
   TEST_NAME,
   useTemporaryDirectories,
 } from './fixtures.test-support.ts';
+import { openRemoteBungalow } from './remote.ts';
 import { useS3Proxy } from './s3-proxy.test-support.ts';
 import { generateUlid, isUlid } from './ulid.ts';
 
@@ -168,6 +169,27 @@ describe('remote mode: input outcome matrix', () => {
       names: PREFIX_VARIABLE,
     },
     {
+      name: 'a prefix with a `.` segment',
+      overrides: { [PREFIX_VARIABLE]: 'a/./b' },
+      names: PREFIX_VARIABLE,
+    },
+    {
+      name: 'a prefix starting with `./`',
+      overrides: { [PREFIX_VARIABLE]: './prod' },
+      names: PREFIX_VARIABLE,
+    },
+    {
+      name: 'a prefix with a backslash',
+      overrides: { [PREFIX_VARIABLE]: 'a\\b' },
+      names: PREFIX_VARIABLE,
+    },
+    {
+      name: 'a bucket with a slash',
+      overrides: { [BUCKET_VARIABLE]: 'a/b' },
+      names: BUCKET_VARIABLE,
+    },
+    { name: 'a bucket of `..`', overrides: { [BUCKET_VARIABLE]: '..' }, names: BUCKET_VARIABLE },
+    {
       name: 'an endpoint Bun refuses',
       overrides: { S3_ENDPOINT: 'http://' },
       names: 'S3_',
@@ -223,6 +245,32 @@ describe('remote mode: the lock', () => {
       ),
     );
     expect(local).toThrow('flock was requested');
+  });
+});
+
+describe('remote mode: exact addressing', () => {
+  test('a key a request URL would rewrite is refused before any request', async () => {
+    const proxy = startProxy(startServer());
+    // Past the prefix validation, as a later caller of `openRemoteBungalow` could be.
+    const error = await rejectionOf(
+      openRemoteBungalow(TEST_NAME, {
+        databaseUrl: DATABASE_URL,
+        bucket: BUCKET,
+        prefix: 'a/./',
+        client: {
+          endpoint: proxy.endpoint,
+          region: 'us-east-1',
+          accessKeyId: ACCESS_KEY_ID,
+          secretAccessKey: SECRET_ACCESS_KEY,
+          bucket: BUCKET,
+          virtualHostedStyle: false,
+        },
+        secrets: new Map(),
+      }),
+    );
+    expect(error).toBeInstanceOf(BungalowInputError);
+    expectNothingLeaked(error, proxy.endpoint);
+    expect(proxy.requests).toEqual([]);
   });
 });
 

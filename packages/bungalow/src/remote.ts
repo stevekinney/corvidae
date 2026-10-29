@@ -128,6 +128,30 @@ function s3Client(configuration: RemoteConfiguration): Bun.S3Client {
 }
 
 /**
+ * Refuse a key that a request URL would not address exactly. Bun's presigned URL turns `\\` into
+ * `/`, and URL parsing drops `.` segments and resolves `..`, so such a key would read and write a
+ * different object than the location Bungalow hands out, and two prefixes would share one home.
+ * `normalizeBucketPrefix` refuses the known cases; this checks the URL itself, before any request.
+ */
+function assertExactlyAddressed(client: Bun.S3Client, bucket: string, key: string): void {
+  let path: string;
+  try {
+    path = decodeURIComponent(
+      new URL(client.presign(key, { expiresIn: PRESIGN_SECONDS })).pathname,
+    );
+  } catch (error) {
+    throw new BungalowInputError('The S3_ variables do not describe a usable S3 client.', {
+      cause: { code: codeOf(error) },
+    });
+  }
+  if (!path.endsWith(`/${bucket}/${key}`)) {
+    throw new BungalowInputError(
+      'The bucket or bucket prefix cannot be addressed exactly in a request URL.',
+    );
+  }
+}
+
+/**
  * Open the remote Bungalow that `configuration` describes: Postgres for the database, the bucket
  * for configuration, content, and the deployment ID, and environment variables for secrets. It
  * takes no lock, since there is no root to lock, and makes no request until every input is valid.
@@ -138,8 +162,11 @@ export async function openRemoteBungalow(
 ): Promise<Bungalow> {
   const { bucket, prefix, secrets } = configuration;
   const client = s3Client(configuration);
-  const deploymentId = await loadDeploymentId(client, `${prefix}deployment-id`);
+  const deploymentKey = `${prefix}deployment-id`;
   const configurationKey = `${prefix}configuration.json`;
+  assertExactlyAddressed(client, bucket, deploymentKey);
+  assertExactlyAddressed(client, bucket, configurationKey);
+  const deploymentId = await loadDeploymentId(client, deploymentKey);
 
   let closed = false;
   const assertOpen = (): void => {

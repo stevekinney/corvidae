@@ -47,17 +47,29 @@ export function readVariable(
   return value === '' ? undefined : value;
 }
 
+/** A bucket name a path-style URL addresses as one segment. */
+function isPathSafeBucket(bucket: string): boolean {
+  return !bucket.includes('/') && !bucket.includes('\\') && bucket !== '.' && bucket !== '..';
+}
+
 /**
  * Normalize `<NAME>_BUCKET_PREFIX`: one leading `/` is removed, and a non-empty prefix ends in
- * `/`. A prefix with an empty or `..` segment is refused, naming the variable and not its value.
+ * `/`. A prefix with an empty, `.`, or `..` segment, or a backslash, is refused, naming the
+ * variable and not its value: a request URL would rewrite each of them, so the object written
+ * would not be the one Bungalow names.
  */
 export function normalizeBucketPrefix(raw: string | undefined, variable: string): string {
   if (raw === undefined) return '';
   let prefix = raw.startsWith('/') ? raw.slice(1) : raw;
   if (prefix === '') return '';
   if (prefix.endsWith('/')) prefix = prefix.slice(0, -1);
-  if (prefix.split('/').some((segment) => segment === '' || segment === '..')) {
-    throw new BungalowInputError(`${variable} must not contain an empty or ".." segment.`);
+  if (
+    prefix.includes('\\') ||
+    prefix.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')
+  ) {
+    throw new BungalowInputError(
+      `${variable} must not contain an empty, ".", or ".." segment, or a backslash.`,
+    );
   }
   return `${prefix}/`;
 }
@@ -77,6 +89,11 @@ export function remoteConfiguration(
   const databaseUrl = readVariable(environment, databaseVariable);
   const bucket = readVariable(environment, bucketVariable);
   if (databaseUrl === undefined && bucket === undefined) return undefined;
+  if (bucket !== undefined && !isPathSafeBucket(bucket)) {
+    throw new BungalowInputError(
+      `${bucketVariable} must be a bucket name, without "/" or "\\", and not "." or "..".`,
+    );
+  }
   if (databaseUrl === undefined || bucket === undefined) {
     const [present, missing] =
       databaseUrl === undefined
