@@ -83,7 +83,10 @@ export function createLazyPostgresPool(
   };
 }
 
-const MODULE_NOT_FOUND = /cannot find module|module_not_found|failed to resolve|could not resolve/i;
+// `require` says "Cannot find module"; a dynamic `import()` under Node and Bun says "Cannot find
+// package" (code ERR_MODULE_NOT_FOUND), which is how every adapter loads its driver.
+const MODULE_NOT_FOUND =
+  /cannot find module|cannot find package|module_not_found|failed to resolve|could not resolve/i;
 
 /**
  * Rewrap a driver-load failure. A missing optional peer dependency becomes an

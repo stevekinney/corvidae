@@ -1,3 +1,5 @@
+import { open } from 'lmdb';
+
 import {
   assertStorageBatchOperationCount,
   matchesScanOptions,
@@ -12,7 +14,6 @@ import {
   type Storage,
   type StorageCapabilities,
 } from '@lostgradient/storage';
-import { tryLoadNodeBuiltin } from '@lostgradient/storage/runtime';
 
 /**
  * Construction options for {@link LMDBStorage}.
@@ -94,21 +95,8 @@ function buildPrefixRange(prefix: string, reverse: boolean | undefined): LMDBRan
   return { start: prefix, ...(prefixEnd === undefined ? {} : { end: prefixEnd }) };
 }
 
-function isLmdbModule(value: unknown): value is typeof import('lmdb') {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'open' in value &&
-    typeof value.open === 'function'
-  );
-}
-
 function openLmdbEnvironment(options: Parameters<OpenLMDBEnvironment>[0]): LMDBDatabase {
-  const module = tryLoadNodeBuiltin('node:module');
-  if (module === undefined) throw new Error('LMDBStorage requires Bun or Node.js.');
-  const driver: unknown = module.createRequire(import.meta.url)('lmdb');
-  if (!isLmdbModule(driver)) throw new Error('The lmdb dependency does not provide open().');
-  return driver.open(options);
+  return open(options);
 }
 
 /**
