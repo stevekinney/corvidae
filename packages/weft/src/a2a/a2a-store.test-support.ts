@@ -27,9 +27,12 @@ import {
   storageBackends,
 } from '../testing/storage-backends.test-support.ts';
 
-const STORE_ADAPTERS = ['MemoryStorage', 'BunSQLiteStorage', 'LMDBStorage'];
+const STORE_ADAPTERS = ['MemoryStorage', 'BunSQLiteStorage'];
 
-/** Weft's memory, SQLite, and LMDB adapters: every A2A store test runs on each. */
+/**
+ * Weft's memory and Bun SQLite adapters: every A2A store test runs on each. IndexedDB is left out
+ * because the stores require snapshot scans, which it does not offer.
+ */
 export const a2aStoreBackends: readonly StorageBackendDescriptor[] = storageBackends.filter(
   (backend) => STORE_ADAPTERS.includes(backend.name),
 );

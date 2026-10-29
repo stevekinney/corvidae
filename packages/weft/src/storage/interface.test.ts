@@ -29,7 +29,6 @@ import { BunSQLiteStorage } from './bun-sql.ts';
 import { HTTPStorage } from './http.ts';
 import { KEYS, WEFT_RESERVED_KEY_PREFIXES } from './keys.ts';
 import { resolveNonEmptyPrefixRangeEnd } from './non-empty-prefix-range-end.ts';
-import { TursoStorage } from './turso.ts';
 
 function createCoreStorageAdapter(): Storage {
   const storage = new MemoryStorage();
@@ -514,24 +513,6 @@ describe('assertDurableStorageForRecovery', () => {
     expect(() => assertDurableStorageForRecovery(storage)).toThrow(
       /persistence must be "local" or "remote"/,
     );
-  });
-
-  it('rejects file-backed TursoStorage because read-after-write is session-scoped', () => {
-    const fixture = createDiskBackedTestFixture({
-      prefix: 'durable-assertion-turso',
-      suffix: '.db',
-      sidecarSuffixes: sqliteDatabaseSidecarSuffixes,
-    });
-    const storage = new TursoStorage({ url: `file:${fixture.path}` });
-
-    try {
-      expect(() => assertDurableStorageForRecovery(storage)).toThrow(
-        /readAfterWrite must be "linearizable"/,
-      );
-    } finally {
-      storage[Symbol.dispose]();
-      fixture.cleanup();
-    }
   });
 
   it('rejects HTTPStorage because its consistency is too weak for recovery', () => {

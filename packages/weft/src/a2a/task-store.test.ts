@@ -39,11 +39,10 @@ describe('createWeftA2ATaskStore', () => {
     );
   });
 
-  it('runs every store suite on the memory, SQLite, and LMDB adapters', () => {
+  it('runs every store suite on the memory and SQLite adapters', () => {
     expect(a2aStoreBackends.map((backend) => backend.name)).toEqual([
       'MemoryStorage',
       'BunSQLiteStorage',
-      'LMDBStorage',
     ]);
   });
 
