@@ -41,12 +41,6 @@
           "import": "./dist/storage/turso.js",
           "default": "./dist/storage/turso.js"
         },
-        "./storage/neon": {
-          "types": "./dist/storage/neon.d.ts",
-          "bun": "./dist/storage/neon.js",
-          "import": "./dist/storage/neon.js",
-          "default": "./dist/storage/neon.js"
-        },
         "./storage/cloudflare": {
           "types": "./dist/storage/cloudflare.d.ts",
           "import": "./dist/storage/cloudflare.js",

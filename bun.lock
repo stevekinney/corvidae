@@ -510,6 +510,23 @@
         "typescript": "catalog:",
       },
     },
+    "packages/storage-neon": {
+      "name": "@lostgradient/storage-neon",
+      "dependencies": {
+        "@lostgradient/storage": "workspace:*",
+        "@neondatabase/serverless": "catalog:",
+      },
+      "devDependencies": {
+        "@electric-sql/pglite": "catalog:",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "@types/pg": "catalog:",
+        "oxlint": "catalog:",
+        "pg": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/storage-node-sqlite": {
       "name": "@lostgradient/storage-node-sqlite",
       "dependencies": {
@@ -559,14 +576,12 @@
         "weft-mcp": "src/cli-mcp.ts",
       },
       "dependencies": {
-        "@electric-sql/pglite": "catalog:",
         "@libsql/client": "catalog:",
         "@lostgradient/environmentalist": "catalog:",
         "@lostgradient/storage": "workspace:*",
         "@lostgradient/storage-bun-sqlite": "workspace:*",
         "@modelcontextprotocol/server": "catalog:",
         "@msgpack/msgpack": "catalog:",
-        "@neondatabase/serverless": "catalog:",
         "@noble/hashes": "catalog:",
         "@valibot/to-json-schema": "catalog:",
         "valibot": "catalog:",
@@ -578,11 +593,9 @@
         "@lostgradient/typescript": "workspace:*",
         "@modelcontextprotocol/client": "catalog:",
         "@types/bun": "catalog:",
-        "@types/pg": "catalog:",
         "ajv": "catalog:",
         "fake-indexeddb": "catalog:",
         "oxlint": "catalog:",
-        "pg": "catalog:",
         "playwright": "catalog:",
         "prettier": "catalog:",
         "standardwebhooks": "catalog:",
@@ -941,6 +954,8 @@
     "@lostgradient/storage-bun-sqlite": ["@lostgradient/storage-bun-sqlite@workspace:packages/storage-bun-sqlite"],
 
     "@lostgradient/storage-lmdb": ["@lostgradient/storage-lmdb@workspace:packages/storage-lmdb"],
+
+    "@lostgradient/storage-neon": ["@lostgradient/storage-neon@workspace:packages/storage-neon"],
 
     "@lostgradient/storage-node-sqlite": ["@lostgradient/storage-node-sqlite@workspace:packages/storage-node-sqlite"],
 
