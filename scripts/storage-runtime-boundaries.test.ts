@@ -42,20 +42,6 @@ type AllowedProbe = { file: string; token: ProbeToken; reason: string };
  */
 const allowedProbes: AllowedProbe[] = [
   {
-    file: 'packages/storage-turso/src/turso.ts',
-    token: 'tryLoadNodeBuiltin',
-    reason:
-      'COR-1783 is waiting on an owner decision about the one fallback left inside an adapter: ' +
-      'createClient chooses the web libSQL client when node:module is absent. The decision removes ' +
-      'this entry.',
-  },
-  {
-    file: 'packages/storage/src/runtime.ts',
-    token: 'tryLoadNodeBuiltin',
-    reason:
-      'The definition of the helper storage-turso still calls. It goes with the Turso decision above.',
-  },
-  {
     file: 'packages/storage/src/environment-configuration.ts',
     token: 'typeof Bun',
     reason:
@@ -228,8 +214,12 @@ describe('storage runtime boundaries (COR-1783)', () => {
     expect(sourceDirectories).toContain('packages/storage-node-sqlite/src');
     expect(sourceDirectories).toContain(join('packages', 'weft', 'src', 'storage'));
     expect(collectSourceFiles(sourceDirectories[0]!).length).toBeGreaterThan(0);
-    // The allowed sites are the proof the walk reaches into src: each must still be found.
-    expect(scanned.has('packages/storage-turso/src/turso.ts')).toBe(true);
+    expect(sourceDirectories).toContain('packages/storage-turso/src');
+    expect(collectSourceFiles('packages/storage-turso/src')).toContain(
+      join('packages', 'storage-turso', 'src', 'turso-web.ts'),
+    );
+    // The allowed site is the proof the walk reaches into src: it must still be found.
+    expect(scanned.has('packages/storage/src/environment-configuration.ts')).toBe(true);
   });
 
   test('no storage source outside tests probes the runtime to choose a driver or a codec', () => {

@@ -14,9 +14,12 @@ import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario'
 
 const tursoPackageRoot = import.meta.dir + '/..';
 
-async function runFixture(relativePath: string): Promise<{ exitCode: number; stderr: string }> {
+async function runFixture(
+  relativePath: string,
+  entry: string,
+): Promise<{ exitCode: number; stderr: string }> {
   return withOptionalStorageDriversAbsent(tursoPackageRoot, async (sandboxRoot) => {
-    const proc = spawnWithHangGuard(['bun', relativePath], {
+    const proc = spawnWithHangGuard(['bun', relativePath, entry], {
       cwd: sandboxRoot,
       stdout: 'pipe',
       stderr: 'pipe',
@@ -35,9 +38,9 @@ async function runFixture(relativePath: string): Promise<{ exitCode: number; std
 /**
  * Regression coverage for COR-1230: the mirror's consumer smoke test failed importing
  * `@lostgradient/weft` with "Cannot find module '@libsql/client/web'", a package declared only as
- * an optional peer dependency. The cause was `storage/turso.ts` (now `src/turso.ts` in this package) importing `@libsql/client/web` at
- * module top level, so anything that merely imported it (or `index.ts`, which re-exports every
- * backend) pulled in Turso's driver whether or not Turso was ever used.
+ * an optional peer dependency. The cause was `storage/turso.ts` (now this package's `src/turso.ts` and `src/turso-web.ts`)
+ * importing the driver at module top level, so anything that merely imported it (or `index.ts`,
+ * which re-exports every backend) pulled in Turso's driver whether or not Turso was ever used.
  *
  * The gate spawns a fresh Bun process in a sandbox whose `node_modules` lacks every optional
  * storage-driver peer dependency (`@libsql/client`, `@neondatabase/serverless`, `better-sqlite3`,
@@ -45,17 +48,27 @@ async function runFixture(relativePath: string): Promise<{ exitCode: number; std
  * would. Constructing `TursoStorage` must succeed there; only its first operation may need the
  * driver.
  */
-const tursoDriverDeferred = await outcomeOf(async () => {
-  const { exitCode, stderr } = await runFixture('src/turso-driver-deferred-fixture.ts');
+async function assertDriverDeferred(entry: string): Promise<void> {
+  const { exitCode, stderr } = await runFixture('src/turso-driver-deferred-fixture.ts', entry);
   if (exitCode !== 0) {
-    throw new Error(`turso-driver-deferred fixture failed (exit ${exitCode}).\nstderr:\n${stderr}`);
+    throw new Error(
+      `turso-driver-deferred fixture failed for ${entry} (exit ${exitCode}).\nstderr:\n${stderr}`,
+    );
   }
   expect(exitCode).toBe(0);
-});
+}
+
+// The native entry's driver is `@libsql/client`; the web entry's is `@libsql/client/web`, which the
+// sandbox removes together with the rest of the `@libsql` scope.
+const tursoDriverDeferred = await outcomeOf(() => assertDriverDeferred('./index.ts'));
+const tursoWebDriverDeferred = await outcomeOf(() => assertDriverDeferred('./web.ts'));
 
 describe('storage-turso (optional-driver subprocess gate)', () => {
   it("defers Turso's driver import to first use rather than construction", () =>
     rethrow(tursoDriverDeferred));
+
+  it("defers the web entry's driver import to first use rather than construction", () =>
+    rethrow(tursoWebDriverDeferred));
 
   it('links every dependency but the optional drivers into a sandbox it removes afterwards', async () => {
     const installedDrivers = (): string[] =>

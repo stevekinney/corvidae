@@ -1,10 +1,11 @@
 # @lostgradient/storage-turso
 
-The Turso storage adapter. `TursoStorage` is a `Storage` over a libSQL database, spoken to through the `@libsql/client` driver: a local `file:` database, an in-memory one, or a remote Turso instance (`libsql://`). It keeps every key in one SQLite key-value table, commits a batch in one write transaction (retrying `SQLITE_BUSY` and `SQLITE_LOCKED`), and reports `readAfterWrite: 'session'`, the floor that also covers a remote primary. The SQL it runs lives in `@lostgradient/storage/sql`, shared with the SQLite adapters; this package supplies the libSQL client and nothing else. Its dependencies are `@lostgradient/storage` and `@libsql/client`.
+The Turso storage adapter. `TursoStorage` is a `Storage` over a libSQL database, spoken to through the `@libsql/client` driver: a local `file:` database, an in-memory one, or a remote Turso instance (`libsql://`). The caller picks the driver by picking the entry: the main entry loads the native `@libsql/client`, and `@lostgradient/storage-turso/web` loads `@libsql/client/web` for browsers and edge runtimes. The adapter never inspects the runtime to choose between them. It keeps every key in one SQLite key-value table, commits a batch in one write transaction (retrying `SQLITE_BUSY` and `SQLITE_LOCKED`), and reports `readAfterWrite: 'session'`, the floor that also covers a remote primary. The SQL it runs lives in `@lostgradient/storage/sql`, shared with the SQLite adapters; this package supplies the libSQL client and nothing else. Its dependencies are `@lostgradient/storage` and `@libsql/client`.
 
-| Entry                         | What it holds                             |
-| ----------------------------- | ----------------------------------------- |
-| `@lostgradient/storage-turso` | `TursoStorage` and `TursoStorageOptions`. |
+| Entry | What it holds |
+| --- | --- |
+| `@lostgradient/storage-turso` | `TursoStorage` and `TursoStorageOptions`, on the native `@libsql/client` driver. |
+| `@lostgradient/storage-turso/web` | The same `TursoStorage` and `TursoStorageOptions`, on `@libsql/client/web`, for remote databases only. |
 
 ## Connect to a database
 
@@ -42,10 +43,26 @@ await using storage = new TursoStorage({
 await storage.put('app:greeting', new TextEncoder().encode('hello'));
 ```
 
+## Connect from a browser or an edge runtime
+
+Import from the `/web` entry. It has the same class name and options and loads `@libsql/client/web`, which speaks to a network database only (`libsql://`, `https://`, `wss://`); a `file:` URL is refused on the first operation. The driver loads on first use here too.
+
+```ts
+import { TursoStorage } from '@lostgradient/storage-turso/web';
+
+await using storage = new TursoStorage({
+  url: 'libsql://my-db.turso.io',
+  authToken: 'token-from-your-secret-store',
+});
+await storage.put('app:greeting', new TextEncoder().encode('hello'));
+```
+
+The native entry also speaks to a remote database over HTTP from Node or Bun, so reach for `/web` only where the native driver cannot load.
+
 ## Hand it to Weft or Bureau
 
 Weft and Bureau take a `Storage` you construct. Pass this one to `new Engine({ storage })` from `@lostgradient/weft`, or to Bureau's `storage` option.
 
 ## Test it
 
-The package runs the shared contract from `@lostgradient/storage/testing` against `TursoStorage` over local libSQL files, the three durability suites (WAL, batch atomicity, mid-transaction kill) with Turso's spec, and the driver-deferral regression (COR-1230): a subprocess in a sandbox without `@libsql/client` constructs a `TursoStorage` and only fails at its first operation. `bun run test:coverage` fails below the line and function coverage of its own files that they had under Weft's coverage run before they moved here.
+The package runs the shared contract from `@lostgradient/storage/testing` against `TursoStorage` over local libSQL files, the three durability suites (WAL, batch atomicity, mid-transaction kill) with Turso's spec, and the driver-deferral regression (COR-1230), once per entry: a subprocess in a sandbox without `@libsql/client` constructs a `TursoStorage` from the main entry and from `/web` and only fails at its first operation. `bun run test:coverage` fails below the line and function coverage of its own files that they had under Weft's coverage run before they moved here.
