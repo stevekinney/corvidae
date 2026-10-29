@@ -13,17 +13,24 @@ import { bytes as encode } from './storage-adapter.test-support.ts';
 function scriptedPool(
   rows: Array<Record<string, unknown>>,
   onClientQuery: (sql: string) => void = () => {},
-): PostgresPool {
+): PostgresPool & { arm(storage: PostgresStorage): Promise<void> } {
+  // `onClientQuery` only sees transactions the test starts: the adapter's one-time
+  // setup transaction (schema/table creation) runs first, in `arm`.
+  let armed = false;
   return {
     query: async () => ({ rows }),
     connect: async () => ({
       query: async (sql: string) => {
-        onClientQuery(sql);
+        if (armed) onClientQuery(sql);
         return { rows: [] };
       },
       release: () => {},
     }),
     end: async () => {},
+    async arm(storage) {
+      await storage.has('__setup__');
+      armed = true;
+    },
   };
 }
 
@@ -39,6 +46,7 @@ describe('PostgresStorage conditionalBatch failures', () => {
       throw failure;
     });
     const storage = new PostgresStorage({ pool });
+    await pool.arm(storage);
 
     const thrown = await throwingRejectionOf(
       storage.conditionalBatch(
@@ -61,6 +69,7 @@ describe('PostgresStorage conditionalBatch failures', () => {
       }
     });
     const storage = new PostgresStorage({ pool });
+    await pool.arm(storage);
 
     const committed = await storage.conditionalBatch(
       [{ key: 'a', expectedValue: null }],
