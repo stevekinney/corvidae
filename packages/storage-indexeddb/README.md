@@ -38,7 +38,13 @@ await storage.put('app:greeting', new TextEncoder().encode('hello'));
 
 ## Scan consistency
 
-`capabilities().scanConsistency` is `'best-effort'`. `scan()` and `keys()` read one page of rows inside a single read-only transaction, buffer it, and only then yield to your loop. No cursor or transaction stays open while your loop body runs, so the body can await any work without a `TransactionInactiveError`. The next page is read in a new transaction that resumes after the last row the previous page scanned, so a write between pages can appear in the iteration, and a record is never yielded twice. The page size is an internal constant, not an option.
+`capabilities().scanConsistency` is `'best-effort'`. `scan()` and `keys()` read one page of rows inside a single read-only transaction, buffer it, and only then yield to your loop. No cursor or transaction stays open while your loop body runs, so the body can await any work without a `TransactionInactiveError`. The next page is read in a new transaction that resumes after the last row the previous page scanned, so a write between pages can appear in the iteration, and a record is never yielded twice. Isolation is per page: no record within a page is torn, but there is no whole-scan snapshot. The page size is an internal constant, not an option.
+
+Because pages are read at different times, concurrent writes behave as follows:
+
+- A buffered page is yielded exactly as it was read when its transaction ran, so a record deleted or overwritten after that page committed is still yielded with its buffered value.
+- A record written while a page is being yielded appears if and only if it sorts strictly after that page's continuation key in the iteration direction and a later page is read after the write.
+- A later page is read only after a page that scanned exactly the page size, so a record inserted while a short final page is being yielded does not appear, and a record inserted while a full final page is being yielded appears because the trailing empty page reads it.
 
 ## Hand it to Weft or Bureau
 
