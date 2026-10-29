@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import type { WorkerDeploymentChangedEvent } from '../../core/events/fleet-state-events.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import {
   seedBoundRun,
@@ -13,6 +14,7 @@ import {
 } from '../../worker/deployment-build-references.test-support.ts';
 import { WorkerDeploymentCatalog } from '../../worker/deployment-routing.ts';
 import { testWorkerManifest } from '../../worker/registry-fixtures.test-support.ts';
+import { WorkerRegistry } from '../../worker/registry.ts';
 import type { OperationFault } from '../operation-fault.ts';
 import { createLiveOperationRegistry } from '../rest-bindings.ts';
 import {
@@ -125,6 +127,55 @@ describe('preview reports the generation a change should be applied against', ()
       }),
     );
     expect(fault.code).toBe('InvalidParams');
+  });
+});
+
+describe('worker:deployment-changed from routing changes (COR-1724)', () => {
+  it('announces setrouting, promote, and rollback with the new generation and the drain state', async () => {
+    const catalog = await catalogWithBuilds();
+    const workerRegistry = new WorkerRegistry();
+    workerRegistry.markDeploymentDraining('billing');
+    const events: WorkerDeploymentChangedEvent[] = [];
+    const options = {
+      catalog,
+      workerRegistry,
+      dispatchEvent: (event: Event) => {
+        events.push(event as WorkerDeploymentChangedEvent);
+      },
+    };
+
+    await invoke(createSetWorkerDeploymentRoutingOperation(options), ROUTING);
+    await invoke(createPromoteWorkerDeploymentOperation(options), {
+      deploymentName: 'billing',
+      buildId: 'build-b',
+    });
+    await invoke(createRollbackWorkerDeploymentOperation(options), {
+      deploymentName: 'billing',
+      buildId: 'build-a',
+    });
+
+    expect(events.map((event) => [event.deploymentName, event.buildId])).toEqual([
+      ['billing', undefined],
+      ['billing', undefined],
+      ['billing', undefined],
+    ]);
+    expect(events.map((event) => event.routingGeneration)).toEqual([1, 2, 3]);
+    expect(events.map((event) => event.drainState)).toEqual(['drained', 'drained', 'drained']);
+  });
+
+  it('announces nothing when the change is refused', async () => {
+    const catalog = await catalogWithBuilds();
+    const events: Event[] = [];
+    const set = createSetWorkerDeploymentRoutingOperation({
+      catalog,
+      dispatchEvent: (event) => events.push(event),
+    });
+    await invoke(set, ROUTING);
+    events.length = 0;
+
+    await faultOf(invoke(set, { ...ROUTING, expectedGeneration: 0 }));
+
+    expect(events).toEqual([]);
   });
 });
 

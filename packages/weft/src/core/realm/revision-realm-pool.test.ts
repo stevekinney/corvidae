@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { ChildProcessRealm } from './child-process-realm.ts';
 import { RealmLifecycle } from './realm-lifecycle.ts';
-import { RevisionRealmPool } from './revision-realm-pool.ts';
+import { RevisionRealmPool, type RevisionRealmStateChange } from './revision-realm-pool.ts';
 import { WorkerRealm } from './worker-realm.ts';
 
 const workerUrl = new URL('./__fixtures__/revision-realm-worker-entry.ts', import.meta.url);
@@ -257,6 +257,56 @@ describe('RevisionRealmPool', () => {
 
     expect(outcome.realm.restart()).toEqual({ ok: false, reason: 'unreferenced' });
     pool.forgetCrashedRealm(outcome.realm);
+  });
+
+  it('reports every lifecycle transition under one stable realm id, including a restart (COR-1724)', async () => {
+    const changes: RevisionRealmStateChange[] = [];
+    const pool = new RevisionRealmPool({
+      workflowRevision: 'revision-a',
+      workerUrl,
+      expectedWorkflowTypes: ['order-workflow'],
+      expectedArtifactDigest: 'digest-a',
+      workerName: 'digest-a',
+      concurrency: 2,
+      maxRestarts: 1,
+      onRealmStateChanged: (change) => changes.push(change),
+    });
+    // A realm's construction is not a transition, so nothing is reported yet.
+    const outcome = await pool.acquireForExecution('execution-1');
+    if (!outcome.ok) throw new Error('unreachable');
+    expect(changes.map((change) => change.state)).toEqual(['ready', 'active']);
+
+    outcome.realm.crash();
+    expect(outcome.realm.restart()).toEqual({ ok: true });
+
+    expect(changes.map((change) => [change.state, change.restartCount])).toEqual([
+      ['ready', 0],
+      ['active', 0],
+      ['crashed', 0],
+      ['warming', 1],
+    ]);
+    expect(new Set(changes.map((change) => change.realmId)).size).toBe(1);
+    expect(changes.every((change) => change.revision === 'revision-a')).toBe(true);
+    pool.dispose();
+  });
+
+  it('gives each realm its own id', async () => {
+    const changes: RevisionRealmStateChange[] = [];
+    const pool = new RevisionRealmPool({
+      workflowRevision: 'revision-a',
+      workerUrl,
+      expectedWorkflowTypes: ['order-workflow'],
+      expectedArtifactDigest: 'digest-a',
+      workerName: 'digest-a',
+      concurrency: 2,
+      onRealmStateChanged: (change) => changes.push(change),
+    });
+    const first = await pool.acquireForExecution('execution-1');
+    const second = await pool.acquireForExecution('execution-2');
+    expect(first.ok && second.ok).toBe(true);
+
+    expect(new Set(changes.map((change) => change.realmId)).size).toBe(2);
+    pool.dispose();
   });
 
   describe('a failed realm-ready handshake', () => {

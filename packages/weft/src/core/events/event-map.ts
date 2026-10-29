@@ -19,6 +19,13 @@ import type {
   WorkflowRevisionRemovedEvent,
 } from './catalog-events.ts';
 import type {
+  LeaseHealthChangedEvent,
+  RealmStateChangedEvent,
+  StreamChunkEvent,
+  WorkerDeploymentChangedEvent,
+  WorkerRegistrationRejectedEvent,
+} from './fleet-state-events.ts';
+import type {
   ScheduleAttemptedEvent,
   ScheduleFiredEvent,
   ScheduleMissedFireEvent,
@@ -127,6 +134,11 @@ export type WeftEventMap = {
   'workflow-source:load-ready': WorkflowSourceLoadReadyEvent;
   'workflow-source:load-failed': WorkflowSourceLoadFailedEvent;
   'workflow-source:load-cancelled': WorkflowSourceLoadCancelledEvent;
+  'realm:state-changed': RealmStateChangedEvent;
+  'lease:health-changed': LeaseHealthChangedEvent;
+  'worker:registration-rejected': WorkerRegistrationRejectedEvent;
+  'worker:deployment-changed': WorkerDeploymentChangedEvent;
+  'stream:chunk': StreamChunkEvent;
 };
 
 /**

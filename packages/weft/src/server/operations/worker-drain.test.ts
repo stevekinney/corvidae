@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import type { WorkerDeploymentChangedEvent } from '../../core/events/fleet-state-events.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { seedBoundRun } from '../../worker/deployment-build-references.test-support.ts';
 import { WorkerDeploymentCatalog } from '../../worker/deployment-routing.ts';
@@ -75,6 +76,113 @@ async function fixture() {
     resume: createClearDeploymentDrainOperation({ workerRegistry: registry, catalog }),
   };
 }
+
+describe('worker:deployment-changed from drain and resume (COR-1724)', () => {
+  function collectDeploymentEvents() {
+    const events: WorkerDeploymentChangedEvent[] = [];
+    return {
+      events,
+      dispatchEvent: (event: Event) => {
+        events.push(event as WorkerDeploymentChangedEvent);
+      },
+    };
+  }
+
+  it('announces a build drain and resume with the drain state and the routing generation', async () => {
+    const { registry, catalog } = await fixture();
+    await catalog.setRouting({
+      deploymentName: 'payments',
+      currentBuildId: 'build-2',
+      rampBasisPoints: 10_000,
+      updatedAt: 1,
+    });
+    const { events, dispatchEvent } = collectDeploymentEvents();
+    const drain = createDrainDeploymentOperation({
+      workerRegistry: registry,
+      catalog,
+      clock: () => 5,
+      dispatchEvent,
+    });
+    const resume = createClearDeploymentDrainOperation({
+      workerRegistry: registry,
+      catalog,
+      dispatchEvent,
+    });
+
+    await invoke(drain, { deploymentName: 'payments', buildId: 'build-1', reason: 'bad build' });
+    await invoke(resume, { deploymentName: 'payments', buildId: 'build-1' });
+
+    expect(events.map((event) => [event.deploymentName, event.buildId, event.drainState])).toEqual([
+      ['payments', 'build-1', 'drained'],
+      ['payments', 'build-1', 'active'],
+    ]);
+    expect(events.map((event) => event.routingGeneration)).toEqual([1, 1]);
+    expect(Object.keys(events[0]!).toSorted()).toEqual([
+      'buildId',
+      'deploymentName',
+      'drainState',
+      'isTrusted',
+      'routingGeneration',
+    ]);
+  });
+
+  it('announces a deployment-wide drain without a build id and reports generation 0 before any routing', async () => {
+    const { registry, catalog } = await fixture();
+    const { events, dispatchEvent } = collectDeploymentEvents();
+    const drain = createDrainDeploymentOperation({
+      workerRegistry: registry,
+      catalog,
+      dispatchEvent,
+    });
+
+    await invoke(drain, { deploymentName: 'payments' });
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      deploymentName: 'payments',
+      buildId: undefined,
+      drainState: 'drained',
+      routingGeneration: 0,
+    });
+  });
+
+  it('keeps a committed drain, and raises no event, when the routing generation cannot be read', async () => {
+    const { registry, storage } = await fixture();
+    class UnreadableRoutingCatalog extends WorkerDeploymentCatalog {
+      override async getRouting(): Promise<never> {
+        throw new Error('routing unreadable');
+      }
+    }
+    const { events, dispatchEvent } = collectDeploymentEvents();
+    const drain = createDrainDeploymentOperation({
+      workerRegistry: registry,
+      catalog: new UnreadableRoutingCatalog(storage),
+      dispatchEvent,
+    });
+
+    expect(await invoke(drain, { deploymentName: 'payments' })).toMatchObject({
+      health: 'drained',
+    });
+    expect(events).toEqual([]);
+  });
+
+  it('announces nothing for a refused drain or without a dispatch hook', async () => {
+    const { registry, catalog } = await fixture();
+    const { events, dispatchEvent } = collectDeploymentEvents();
+    const drain = createDrainDeploymentOperation({
+      workerRegistry: registry,
+      catalog,
+      dispatchEvent,
+    });
+
+    await faultOf(invoke(drain, { deploymentName: 'payments', buildId: 'build-9' }));
+    expect(events).toEqual([]);
+
+    const silent = createDrainDeploymentOperation({ workerRegistry: registry, catalog });
+    await invoke(silent, { deploymentName: 'payments' });
+    expect(events).toEqual([]);
+  });
+});
 
 describe('weft.worker.deployments.drain and .resume — build-scoped', () => {
   it('drains and resumes one build independently of its siblings', async () => {
@@ -265,6 +373,40 @@ describe('build-scoped drain over REST and the live registry', () => {
         {},
       ),
     ).toEqual({ deploymentName: 'payments' });
+  });
+
+  it('wires dispatchEvent into the live drain, resume, and routing operations (COR-1724)', async () => {
+    const engine = createOperationTestEngine();
+    const { registry: workerRegistry, catalog } = await fixture();
+    const events: WorkerDeploymentChangedEvent[] = [];
+    const registry = createLiveOperationRegistry({
+      workerRegistry,
+      workerDeploymentCatalog: catalog,
+      dispatchEvent: (event) => {
+        events.push(event as WorkerDeploymentChangedEvent);
+      },
+    });
+    const call = (name: string, input: Record<string, unknown>) =>
+      executeOperation(name, input, {
+        principal: principalFromApiKey({ subject: 'admin', scopes: ['system:admin'] }),
+        host: engine,
+        transport: 'jsonRpcStdio',
+        registry,
+      });
+
+    await call('weft.worker.deployments.drain', { deploymentName: 'payments' });
+    await call('weft.worker.deployments.resume', { deploymentName: 'payments' });
+    await call('weft.worker.deployments.promote', {
+      deploymentName: 'payments',
+      buildId: 'build-2',
+    });
+    engine[Symbol.dispose]();
+
+    expect(events.map((event) => [event.drainState, event.routingGeneration])).toEqual([
+      ['drained', 0],
+      ['active', 0],
+      ['active', 1],
+    ]);
   });
 
   it('wires the catalog into the live drain operation so a build is checked, with its fault on the wire', async () => {

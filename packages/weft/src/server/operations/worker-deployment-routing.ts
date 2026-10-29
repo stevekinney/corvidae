@@ -4,12 +4,14 @@ import type {
   WorkerDeploymentRemovalOutcome,
   WorkerDeploymentRouting,
 } from '../../worker/deployment-routing.ts';
+import type { WorkerRegistry } from '../../worker/registry.ts';
 import { shapeOperationFaultAsJson, type OperationFault } from '../operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 import { readRestTextBody } from '../rest-body.ts';
 import { invalidParamsFault } from './operation-helpers.ts';
 import { WORKER_CONFLICT_REASONS } from './worker-conflict-reasons.ts';
+import { announceWorkerDeploymentChanged } from './worker-deployment-events.ts';
 
 const routingInput = z.object({
   deploymentName: z.string().min(1),
@@ -30,7 +32,13 @@ const access = {
   kind: 'scoped' as const,
   scopes: { kind: 'anyOf' as const, scopes: ['system:admin'] as const },
 };
-type Options = { catalog?: WorkerDeploymentCatalog };
+type Options = {
+  catalog?: WorkerDeploymentCatalog;
+  /** With `dispatchEvent`, lets a routing change announce the deployment's drain state. */
+  workerRegistry?: WorkerRegistry;
+  /** Receives `worker:deployment-changed` after each routing change. */
+  dispatchEvent?: (event: Event) => void;
+};
 type RoutingInput = z.infer<typeof routingInput>;
 
 function unavailable(name: string): Error {
@@ -131,15 +139,20 @@ export function createSetWorkerDeploymentRoutingOperation(options: Options = {})
     invoke: async ({ input }) => {
       if (options.catalog === undefined) throw unavailable('setRouting');
       const target = await validateRoutingTargets(options.catalog, input);
-      return setRoutingOrThrow(options.catalog, target);
+      const routing = await setRoutingOrThrow(options.catalog, target);
+      await announceWorkerDeploymentChanged(options, routing.deploymentName, undefined, {
+        routingGeneration: routing.generation,
+      });
+      return routing;
     },
   });
 }
 
 async function moveToBuild(
-  catalog: WorkerDeploymentCatalog,
+  options: Options & { catalog: WorkerDeploymentCatalog },
   input: z.infer<typeof moveBuildInput>,
 ): Promise<WorkerDeploymentRouting> {
+  const catalog = options.catalog;
   const target = await validateRoutingTargets(catalog, {
     deploymentName: input.deploymentName,
     currentBuildId: input.buildId,
@@ -149,7 +162,11 @@ async function moveToBuild(
   // still refuses a pointer that moves between the read and the write.
   const expectedGeneration =
     input.expectedGeneration ?? (await currentGenerationOf(catalog, input.deploymentName));
-  return setRoutingOrThrow(catalog, { ...target, expectedGeneration });
+  const routing = await setRoutingOrThrow(catalog, { ...target, expectedGeneration });
+  await announceWorkerDeploymentChanged(options, routing.deploymentName, undefined, {
+    routingGeneration: routing.generation,
+  });
+  return routing;
 }
 
 export function createPromoteWorkerDeploymentOperation(options: Options = {}) {
@@ -172,7 +189,7 @@ export function createPromoteWorkerDeploymentOperation(options: Options = {}) {
     unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
     invoke: async ({ input }) => {
       if (options.catalog === undefined) throw unavailable('promote');
-      return moveToBuild(options.catalog, input);
+      return moveToBuild({ ...options, catalog: options.catalog }, input);
     },
   });
 }
@@ -195,7 +212,7 @@ export function createRollbackWorkerDeploymentOperation(options: Options = {}) {
     unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
     invoke: async ({ input }) => {
       if (options.catalog === undefined) throw unavailable('rollback');
-      return moveToBuild(options.catalog, input);
+      return moveToBuild({ ...options, catalog: options.catalog }, input);
     },
   });
 }

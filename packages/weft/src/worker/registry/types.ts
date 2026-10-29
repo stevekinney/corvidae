@@ -192,4 +192,10 @@ export interface InFlightTask {
 export interface WorkerRegistryOptions {
   /** Routing policy used by {@link WorkerRegistry.findWorker}. Default: `'least-loaded'`. */
   policy?: RoutingPolicy;
+  /**
+   * Receives the lifecycle events this registry raises itself, today a
+   * {@link WorkerRegistrationRejectedEvent} each time {@link WorkerRegistry.recordRejection}
+   * appends. `serve()` passes the engine's `dispatchEvent`. Omitted, the registry raises none.
+   */
+  dispatchEvent?: (event: Event) => void;
 }

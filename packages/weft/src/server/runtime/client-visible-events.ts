@@ -124,6 +124,11 @@ export const EVENT_CLASSIFICATIONS = {
   'workflow-source:load-ready': 'published',
   'workflow-source:load-failed': 'published',
   'workflow-source:load-cancelled': 'published',
+  'realm:state-changed': 'published',
+  'lease:health-changed': 'published',
+  'worker:registration-rejected': 'published',
+  'worker:deployment-changed': 'published',
+  'stream:chunk': 'published',
 } as const satisfies Record<keyof WeftEventMap, 'published' | { denied: string }>;
 
 type PublishedEventType = {

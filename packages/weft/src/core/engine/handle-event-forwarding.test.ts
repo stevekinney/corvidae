@@ -29,6 +29,8 @@ import {
   CleanupWarningEvent,
   ConstraintViolatedEvent,
   DevelopmentWarningEvent,
+  LeaseHealthChangedEvent,
+  RealmStateChangedEvent,
   RemoteActivityCancellationRequestedEvent,
   RemoteActivityQueuedEvent,
   ScheduleAttemptedEvent,
@@ -39,13 +41,16 @@ import {
   SignalReceivedEvent,
   SignalWaitingEvent,
   StorageSizeReportedEvent,
+  StreamChunkEvent,
   TaskAttemptTransitionEvent,
   TaskResultDeadLetteredEvent,
   TaskResultDeliveryEvent,
   UpdateCompletedEvent,
   UpdateReceivedEvent,
   WorkerConnectedEvent,
+  WorkerDeploymentChangedEvent,
   WorkerDisconnectedEvent,
+  WorkerRegistrationRejectedEvent,
   WorkflowCancelledEvent,
   WorkflowCompletedEvent,
   WorkflowDefinitionRegisteredEvent,
@@ -171,6 +176,13 @@ const EVENT_FACTORIES: { [K in keyof WeftEventMap]: (workflowId: string) => Weft
     new WorkflowSourceLoadFailedEvent('guard-type', 'r1', 'module', 5, 'system'),
   'workflow-source:load-cancelled': () =>
     new WorkflowSourceLoadCancelledEvent('guard-type', 'r1', 'module'),
+  'realm:state-changed': () => new RealmStateChangedEvent('realm-1', 'r1', 'ready', 0),
+  'lease:health-changed': () => new LeaseHealthChangedEvent('healthy'),
+  'worker:registration-rejected': () =>
+    new WorkerRegistrationRejectedEvent('worker-1', 'registration_rejected'),
+  'worker:deployment-changed': () =>
+    new WorkerDeploymentChangedEvent('billing', 'b1', 'draining', 3),
+  'stream:chunk': (id) => new StreamChunkEvent(id, 'progress', 0),
 };
 
 const EVENT_KINDS = Object.keys(EVENT_FACTORIES) as (keyof WeftEventMap)[];
@@ -195,6 +207,10 @@ const ENGINE_SCOPED_KINDS: (keyof WeftEventMap)[] = [
   'workflow-source:load-ready',
   'workflow-source:load-failed',
   'workflow-source:load-cancelled',
+  'realm:state-changed',
+  'lease:health-changed',
+  'worker:registration-rejected',
+  'worker:deployment-changed',
 ];
 
 /** Kinds termination forwards to the handle itself, after its supersession check. */

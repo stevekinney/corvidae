@@ -550,6 +550,58 @@ describe('createLeaseManager', () => {
     expect(await holderExpiry(storage)).toBeGreaterThan(expiryBefore!);
   });
 
+  it('reports onRenewalSettled after each renewal attempt, committed or not', async () => {
+    const storage = new MemoryStorage();
+    const clock = makeClock();
+    let settled = 0;
+    const manager = createLeaseManager(
+      managerOptions({
+        storage,
+        getNow: clock.now,
+        renewIntervalMs: 5,
+        onRenewalSettled: () => {
+          settled += 1;
+        },
+      }),
+    );
+    await manager.acquire();
+
+    clock.advance(5);
+    manager.startRenewal();
+    await waitUntil(() => settled >= 2, { message: 'two renewal attempts to settle' });
+    manager.stop();
+
+    expect(settled).toBeGreaterThanOrEqual(2);
+  });
+
+  it('survives an onRenewalSettled observer that throws, and keeps renewing', async () => {
+    const storage = new MemoryStorage();
+    const clock = makeClock();
+    let settled = 0;
+    const manager = createLeaseManager(
+      managerOptions({
+        storage,
+        getNow: clock.now,
+        renewIntervalMs: 5,
+        onRenewalSettled: () => {
+          settled += 1;
+          throw new Error('observer failure');
+        },
+      }),
+    );
+    await manager.acquire();
+
+    clock.advance(5);
+    manager.startRenewal();
+    await waitUntil(() => settled >= 2, {
+      message: 'two renewals to settle past a throwing observer',
+    });
+    manager.stop();
+
+    expect(settled).toBeGreaterThanOrEqual(2);
+    await manager.release();
+  });
+
   it('startRenewal after stop does not start an interval', async () => {
     const storage = new MemoryStorage();
     const clock = makeClock();

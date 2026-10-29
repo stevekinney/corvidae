@@ -509,3 +509,32 @@ describe('buildServerContext task queue policy', () => {
     expect(await schedulingPolicyFor(undefined)).toBe('priority');
   });
 });
+
+describe('buildServerContext engine events (COR-1724)', () => {
+  it('raises worker:registration-rejected on the engine when the registry records a rejection', async () => {
+    using engine = new Engine({ storage: new MemoryStorage() });
+    const configuration = resolveNetworkConfig({
+      engine,
+      port: 0,
+      unauthenticatedAccess: 'allow',
+      trustedHosts: ['localhost'],
+    });
+    const context = buildServerContext(
+      configuration.serverOptions,
+      configuration.serverMetricsCollector,
+    );
+    await context.taskLedgerRecovery.ready;
+    const seen: Array<[string | undefined, string]> = [];
+    engine.addEventListener('worker:registration-rejected', (event) => {
+      seen.push([event.workerId, event.code]);
+    });
+
+    context.registry.recordRejection({
+      code: 'registration_rejected',
+      workerId: 'w-9',
+      rejectedAt: 1,
+    });
+
+    expect(seen).toEqual([['w-9', 'registration_rejected']]);
+  });
+});
