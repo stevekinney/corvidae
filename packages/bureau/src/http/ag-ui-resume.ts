@@ -57,6 +57,7 @@ import type {
   BureauTasks,
   BureauInternals,
 } from '../types.ts';
+import { formatReviewAnswerIssues, validateReviewAnswer } from '../review-answer.ts';
 import { type AgUiResumePayload, interruptKey, roundOfEntry } from './ag-ui-interrupts.ts';
 import {
   RESUME_ATTEMPT_FAILED_MESSAGES,
@@ -395,6 +396,24 @@ export function createResume(context: ResumeContext) {
         return context.refuse('REVIEW_ROUND_CHANGED', RESUME_ROUND_CHANGED_MESSAGE);
       }
       reviews.set(entry.interruptId, review);
+    }
+
+    // An approval of a question that has a schema carries an answer that satisfies it (COR-1804).
+    // Checked here, with the same function the core of `reviews.resolve` uses, so a bad answer is
+    // refused before the command is claimed and before any entry of the resume is applied: a
+    // resume of several interrupts is all-or-nothing in what it refuses, never half applied.
+    for (const entry of entries) {
+      const review = reviews.get(entry.interruptId);
+      if (entry.status !== 'resolved' || review?.kind !== 'human-wait') continue;
+      const payload = entry.payload as AgUiResumePayload;
+      if (payload.decision !== 'approve' || review.inputSchema === undefined) continue;
+      const issues = validateReviewAnswer(review.inputSchema, payload.answer);
+      if (issues.length > 0) {
+        return context.refuse(
+          'INVALID_INPUT',
+          `The answer to interrupt "${entry.interruptId}" does not fit its question: ${formatReviewAnswerIssues(issues)}`,
+        );
+      }
     }
 
     // 2. The command: its key and its digest.

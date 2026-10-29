@@ -36,6 +36,7 @@
 import { z } from 'zod';
 
 import { checkFormSubmission } from '../a2ui/input-form.ts';
+import { formatReviewAnswerIssues, validateReviewAnswer } from '../review-answer.ts';
 import {
   BureauLedgerConflictError,
   type CommandLedger,
@@ -296,6 +297,11 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
     }
     const checked = checkFormSubmission(schema, input.data);
     if (!checked.ok) throw invalid('data', checked.message);
+    // The form check does not assert `format`; the core of `reviews.resolve` does (COR-1804), and
+    // refuses with the same issues. Asked here too, so the refusal names the field (`data`) and
+    // is raised before the command claims anything.
+    const issues = validateReviewAnswer(schema, checked.value);
+    if (issues.length > 0) throw invalid('data', formatReviewAnswerIssues(issues));
     return { value: checked.value };
   }
 

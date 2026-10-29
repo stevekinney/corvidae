@@ -360,6 +360,33 @@ describe('bureau.tasks.respond on a wait with an input schema', () => {
     }
   });
 
+  it('asserts a date-time answer’s format, which the form check leaves as an annotation (COR-1804)', async () => {
+    const fixture = await open({
+      type: 'object',
+      properties: { when: { type: 'string', format: 'date-time' } },
+      required: ['when'],
+    });
+    try {
+      const task = await fixture.start();
+      const respond = (messageId: string, when: string) =>
+        respondToTask(fixture.host, fixture.principal, {
+          taskId: task.id,
+          messageId,
+          data: { when },
+        });
+
+      expect(await rejectionOf(respond('r-1', 'tomorrow'))).toMatchObject({
+        code: 'InvalidParams',
+      });
+      expect(await statusOf(fixture.bureau, task.id)).toBe('input-required');
+
+      const applied = await respond('r-2', '2026-10-29T14:30:00Z');
+      expect(applied).toMatchObject({ kind: 'human-wait', receipt: 'applied' });
+    } finally {
+      await fixture.opened.dispose();
+    }
+  });
+
   it('lets a deny close the wait without data', async () => {
     const fixture = await open(deploySchema);
     try {

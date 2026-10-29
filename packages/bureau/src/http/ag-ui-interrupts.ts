@@ -10,6 +10,7 @@
  * @module ag-ui-interrupts
  */
 
+import type { HumanInputSchema } from '@lostgradient/operative';
 import type { Interrupt, ResumeEntry } from '@ag-ui/core';
 
 import type { PendingReview } from '../types.ts';
@@ -43,6 +44,68 @@ export const RESUME_PAYLOAD_SCHEMA: Record<string, unknown> = {
   ],
 };
 
+/** Keys whose value is data a schema holds, not a subschema, so a `$ref` inside is not a reference. */
+const SCHEMA_DATA_KEYWORDS: ReadonlySet<string> = new Set(['enum', 'const', 'default', 'examples']);
+
+/**
+ * `schema` with every local reference (`#`, `#/...`) moved to where the schema now sits, so it
+ * resolves from the resume payload's root. A reference is relative to the document it is in; the
+ * answer schema is a document of its own until it is embedded as `properties.answer`.
+ */
+function withReferencesRebasedUnder(value: unknown, base: string): unknown {
+  if (Array.isArray(value)) return value.map((entry) => withReferencesRebasedUnder(entry, base));
+  if (typeof value !== 'object' || value === null) return value;
+  const rebased: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (SCHEMA_DATA_KEYWORDS.has(key)) {
+      rebased[key] = entry;
+    } else if (
+      key === '$ref' &&
+      typeof entry === 'string' &&
+      (entry === '#' || entry.startsWith('#/'))
+    ) {
+      rebased[key] = `${base}${entry.slice(1)}`;
+    } else {
+      rebased[key] = withReferencesRebasedUnder(entry, base);
+    }
+  }
+  return rebased;
+}
+
+/**
+ * The `responseSchema` of an interrupt (COR-1804). Without an `answerSchema` it is
+ * {@link RESUME_PAYLOAD_SCHEMA}. With one (a human wait that was parked with a schema, whether the
+ * model's per-call `answerSchema` or the author's per-signal one) it keeps `decision` and `reason`,
+ * which every answer needs, embeds the schema as `properties.answer`, and requires an `answer` to
+ * approve: replacing the payload schema with the answer schema would leave no way to deny or
+ * reject. The schema's own local `$ref`s are rebased to `#/properties/answer/...`. A client that
+ * renders a control from it reads `properties.answer`, with its `x-` keywords, as the question.
+ */
+export function responseSchemaFor(
+  answerSchema: HumanInputSchema | undefined,
+): Record<string, unknown> {
+  if (answerSchema === undefined) return RESUME_PAYLOAD_SCHEMA;
+  return {
+    type: 'object',
+    properties: {
+      decision: { enum: ['approve', 'deny', 'reject'] },
+      reason: { type: 'string' },
+      arguments: {},
+      answer: withReferencesRebasedUnder(answerSchema, '#/properties/answer'),
+    },
+    required: ['decision'],
+    additionalProperties: false,
+    anyOf: [
+      { properties: { decision: { const: 'approve' } }, required: ['answer'] },
+      { properties: { decision: { const: 'deny' } } },
+      {
+        properties: { decision: { const: 'reject' }, reason: { type: 'string', pattern: '\\S' } },
+        required: ['reason'],
+      },
+    ],
+  };
+}
+
 /** The answer to one interrupt, as the `payload` of a `resolved` resume entry. */
 export type AgUiResumePayload = {
   decision: 'approve' | 'deny' | 'reject';
@@ -75,7 +138,7 @@ export function toInterrupt(review: PendingReview): Interrupt {
       id: review.id,
       reason: 'human-wait',
       ...(review.prompt === undefined ? {} : { message: review.prompt }),
-      responseSchema: RESUME_PAYLOAD_SCHEMA,
+      responseSchema: responseSchemaFor(review.inputSchema),
       metadata: {
         [BUREAU_METADATA_KEY]: {
           kind: 'human-wait',

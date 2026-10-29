@@ -234,6 +234,7 @@ export {
   classifyRecoveredRun,
   classifyRecoveredRunDetailed,
   createBureau,
+  ReviewAnswerInvalidError,
   ReviewRoundChangedError,
   ScheduleLocatorUnavailableError,
   TaskRespondError,

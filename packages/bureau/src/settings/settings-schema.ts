@@ -111,7 +111,7 @@ const invariants = z
 export const settingsSchema = z
   .object({
     'tools.humanInput': humanInputSetting.describe(
-      '`false` withholds `requestHumanInput` from tasks started from now on; an object offers it, with optional answer schemas per signal. A started task keeps the grant it started with.',
+      '`false` withholds `requestHumanInput` from tasks started from now on; an object offers it, with optional answer schemas per signal. The tool teaches the agent the kinds of question it can ask (pick one, pick one or something else, pick several, free text, yes or no, a number, a date or time, a rating, a few fields, a secret, a file): each call may carry its own `answerSchema`, which replaces the signal’s schema for that call, and a signal’s schema applies only when a call gives none. A started task keeps the grant it started with.',
     ),
     'tools.wakeup': z
       .boolean()
