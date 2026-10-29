@@ -735,7 +735,12 @@ export function createAgUiMount(
           const run = await bureau.tasks.start(
             agentName,
             { append: appendMessages },
-            { contextId: input.threadId, principal: owner, commandId: input.runId },
+            {
+              contextId: input.threadId,
+              principal: owner,
+              commandId: input.runId,
+              origin: { kind: 'chat' },
+            },
           );
           return { runId: run.id };
         } catch (error) {

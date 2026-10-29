@@ -60,6 +60,7 @@ import {
   type TaskListingRecord,
   type TaskListingScope,
 } from './task-list-snapshots';
+import { isTaskOrigin, type TaskOrigin, type TaskOriginKind } from './task-origin';
 import type { CancelDurableRunOutcome, PendingReview } from './types';
 
 /** The key prefix of a task's record. */
@@ -165,6 +166,12 @@ export interface TaskRecord {
    * it is what this registry records. Absent for every other task.
    */
   readonly kind?: TaskKind | undefined;
+  /**
+   * Where the task came from (COR-1867): a chat, a person, a schedule's fire, or the API. Absent
+   * in a record written before it was kept, which reads as `null`: it is never guessed from the
+   * record's other fields.
+   */
+  readonly origin?: TaskOrigin | undefined;
   readonly createdAt: string;
   readonly history: readonly TaskMessage[];
   readonly settled?: TaskSettlement | undefined;
@@ -222,6 +229,11 @@ export interface TaskAdmission {
   readonly actor?: string | undefined;
   /** See {@link TaskRecord.kind}. */
   readonly kind?: TaskKind | undefined;
+  /**
+   * See {@link TaskRecord.origin}. Required so that a site that admits a task has to decide what
+   * it is; `undefined` records none, as a schedule fire does when its schedule is not known.
+   */
+  readonly origin: TaskOrigin | undefined;
   /** The originating user message's text, when the request had one. */
   readonly message: string | undefined;
   /** See {@link TaskRecord.tools}. */
@@ -254,6 +266,8 @@ export interface TaskView {
   readonly actor: string | null;
   /** What `contextId` names. See {@link TaskViewKind}. */
   readonly kind: TaskViewKind;
+  /** Where the task came from, or `null` for a task recorded before origins were kept. */
+  readonly origin: TaskOrigin | null;
   readonly status: TaskState;
   readonly finishReason: string | null;
   readonly statusMessage: string | null;
@@ -340,6 +354,8 @@ export interface TaskListQuery<T = TaskView> {
   readonly contextId?: string | undefined;
   readonly agentName?: string | undefined;
   readonly status?: TaskState | undefined;
+  /** Only tasks recorded with an origin of this kind; a task with no recorded origin matches none. */
+  readonly origin?: TaskOriginKind | undefined;
   /** Only tasks whose status timestamp is strictly after this ISO 8601 instant. */
   readonly statusTimestampAfter?: string | undefined;
   /** Entries per page. It is not bound to the snapshot, so it may vary between pages. */
@@ -365,6 +381,8 @@ export interface TaskQuery {
   readonly contextId?: string | undefined;
   readonly agentName?: string | undefined;
   readonly status?: TaskState | undefined;
+  /** See {@link TaskListQuery.origin}. */
+  readonly origin?: TaskOriginKind | undefined;
   readonly limit: number;
   readonly offset: number;
 }
@@ -759,6 +777,7 @@ function isTaskRecord(value: unknown): value is TaskRecord {
     typeof value['owner'] === 'string' &&
     (value['actor'] === undefined || typeof value['actor'] === 'string') &&
     (value['kind'] === undefined || value['kind'] === 'schedule-fire') &&
+    (value['origin'] === undefined || isTaskOrigin(value['origin'])) &&
     isTimestamp(value['createdAt']) &&
     Array.isArray(value['history']) &&
     value['history'].every(isTaskMessage) &&
@@ -926,6 +945,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       owner: record.owner,
       actor: record.actor ?? null,
       kind: taskViewKindOf(record),
+      origin: record.origin ?? null,
       status,
       finishReason,
       statusMessage,
@@ -958,7 +978,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
   }
 
   async function matchingViews(
-    query: Pick<TaskQuery, 'owner' | 'contextId' | 'agentName' | 'status'>,
+    query: Pick<TaskQuery, 'owner' | 'contextId' | 'agentName' | 'status' | 'origin'>,
   ): Promise<TaskView[]> {
     let records =
       query.contextId === undefined ? await allRecords() : await recordsOfContext(query.contextId);
@@ -973,6 +993,9 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     }
     if (query.agentName !== undefined) {
       records = records.filter((record) => record.agentName === query.agentName);
+    }
+    if (query.origin !== undefined) {
+      records = records.filter((record) => record.origin?.kind === query.origin);
     }
     const grouped = reviewsByRun(host.pendingReviews());
     const views = records.map((record) => viewOf(record, grouped.get(record.taskId)));
@@ -1002,6 +1025,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       contextId: query.contextId ?? null,
       agentName: query.agentName ?? null,
       status: query.status ?? null,
+      origin: query.origin ?? null,
       statusTimestampAfter:
         query.statusTimestampAfter === undefined ? null : Date.parse(query.statusTimestampAfter),
     };
@@ -1326,6 +1350,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         owner: admission.owner,
         ...(admission.actor === undefined ? {} : { actor: admission.actor }),
         ...(admission.kind === undefined ? {} : { kind: admission.kind }),
+        ...(admission.origin === undefined ? {} : { origin: admission.origin }),
         createdAt,
         history,
         ...(admission.tools === undefined ? {} : { tools: admission.tools }),

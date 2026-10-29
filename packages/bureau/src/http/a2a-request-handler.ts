@@ -1202,6 +1202,8 @@ export function createBureauA2ARequestHandler(
         incarnation: '',
         agentName,
         owner,
+        // An A2A peer has no Bureau surface to name.
+        origin: { kind: 'api' },
         message: textOf(message),
       });
     }

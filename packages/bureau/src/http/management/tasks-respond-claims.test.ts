@@ -99,6 +99,7 @@ function hostOver(
     updatedAt: 'then',
     actor: null,
     kind: 'chat' as const,
+    origin: null,
     cleanup: null,
     openWaits: options.openWaits,
   };

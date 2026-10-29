@@ -103,6 +103,22 @@ describe('start', () => {
     });
   });
 
+  it('records the task as a chat of its thread, agent, and owner (COR-1867)', async () => {
+    await withHarness({ script: [say('Hello there.')] }, async ({ bureau, handler }) => {
+      const frames = await readAgUiStream(await handler(startRequest(runAgentInput())));
+      const nativeRunId = String(bureauMetadata(frames[0]!.event)['runId']);
+
+      const record = await bureau.internals.taskRegistry.record(nativeRunId);
+
+      expect(record?.origin).toEqual({
+        kind: 'chat',
+        contextId: 'thread-1',
+        agentName: 'assistant',
+        principal: record?.owner ?? '',
+      });
+    });
+  });
+
   it('announces a tool call under the native call id and shows its result under the row id', async () => {
     await withHarness({ script: [callTool(), say('Found it.')] }, async ({ handler }) => {
       const frames = await readAgUiStream(await handler(startRequest(runAgentInput())));

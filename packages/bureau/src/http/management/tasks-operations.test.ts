@@ -77,6 +77,7 @@ function createTaskRecords(opened: OpenedBureau) {
         incarnation: '',
         agentName: 'asker',
         owner,
+        origin: { kind: 'api' },
         message: undefined,
         createdAt: new Date(at).toISOString(),
       });
@@ -629,6 +630,7 @@ describe('bureau.tasks.cancel receipts that depend on the cleanup acknowledgemen
             incarnation: '',
             agentName: 'default',
             owner: OWNER.alice,
+            origin: { kind: 'api' },
             message: 'work',
           });
           if (acknowledgement !== 'durable-only') {

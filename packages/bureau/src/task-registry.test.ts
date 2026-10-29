@@ -19,6 +19,7 @@ import {
   type TaskCleanupState,
   type TaskRegistryHost,
 } from './task-registry';
+import type { TaskOrigin } from './task-origin';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { CancelDurableRunOutcome, PendingReview } from './types';
 
@@ -127,6 +128,7 @@ async function admit(
     incarnation: 'incarnation-1',
     agentName: 'assistant',
     owner: OWNER,
+    origin: { kind: 'api' },
     message: `message of ${taskId}`,
     ...overrides,
   });
@@ -1039,6 +1041,20 @@ describe('a task record with a malformed field', () => {
     ['a settlement with a numeric message', { settled: { ...settled, message: 4 } }],
     ['a settlement with a malformed answer', { settled: { ...settled, answer: { text: 1 } } }],
     ['an unknown cleanup state', { cleanup: 'tidy' }],
+    ['an origin of an unknown kind', { origin: { kind: 'teleport' } }],
+    [
+      'a chat origin without its context',
+      { origin: { kind: 'chat', agentName: 'a', principal: 'p' } },
+    ],
+    [
+      'a person origin on an unknown surface',
+      { origin: { kind: 'person', principal: 'p', surface: 'fax' } },
+    ],
+    ['a schedule origin without its fire', { origin: { kind: 'schedule', scheduleId: 's' } }],
+    [
+      'a schedule origin with manual false',
+      { origin: { kind: 'schedule', scheduleId: 's', fireId: 'f', manual: false } },
+    ],
   ];
 
   it.each(MALFORMED)(
@@ -1072,6 +1088,61 @@ describe('a task record with a malformed field', () => {
 
     const view = await registry.get('run-bad');
     expect(view?.status).toBe('completed');
+  });
+});
+
+describe('a task’s origin', () => {
+  const ORIGINS: ReadonlyArray<readonly [string, TaskOrigin]> = [
+    ['chat', { kind: 'chat', contextId: 'context-1', agentName: 'assistant', principal: OWNER }],
+    ['person', { kind: 'person', principal: OWNER, surface: 'palette' }],
+    ['schedule', { kind: 'schedule', scheduleId: 'schedule-1', fireId: 'fire-1' }],
+    [
+      'manual schedule',
+      { kind: 'schedule', scheduleId: 'schedule-1', fireId: 'fire-2', manual: true },
+    ],
+    ['api', { kind: 'api' }],
+  ];
+
+  it.each(ORIGINS)(
+    'reads back the %s origin it was admitted with, identifiers included',
+    async (_label, origin) => {
+      const { registry, kv } = build();
+      await admit(registry, 'run-1', { origin });
+
+      const view = await registry.get('run-1');
+      const record = await registry.record('run-1');
+      expect(view?.origin).toEqual(origin);
+      expect(record?.origin).toEqual(origin);
+      // A stored record is JSON, so what was read is what a restart reads.
+      const raw = await kv.get(`${TASK_RECORD_KEY_PREFIX}run-1`);
+      expect((JSON.parse(raw ?? '{}') as { origin?: unknown }).origin).toEqual(origin);
+    },
+  );
+
+  it('records no origin for an admission that has none, and reads it as null', async () => {
+    const { registry, kv } = build();
+    await admit(registry, 'run-1', { origin: undefined });
+
+    const view = await registry.get('run-1');
+    expect(view?.origin).toBeNull();
+    const raw = await kv.get(`${TASK_RECORD_KEY_PREFIX}run-1`);
+    expect(Object.hasOwn(JSON.parse(raw ?? '{}') as object, 'origin')).toBe(false);
+  });
+
+  it('reads a record stored before origins were kept as origin null, without a diagnostic', async () => {
+    const { registry, kv, diagnostics } = build();
+    // The shape every record had before COR-1867: no `origin` field at all.
+    await kv.set(
+      `${TASK_RECORD_KEY_PREFIX}run-old`,
+      JSON.stringify(storedRecord({ taskId: 'run-old' })),
+    );
+
+    const view = await registry.get('run-old');
+    const listed = await registry.enumerate({ limit: 50, offset: 0 });
+
+    expect(view?.origin).toBeNull();
+    expect(listed.tasks.map((task) => task.origin)).toEqual([null]);
+    expect(diagnostics).toEqual([]);
   });
 });
 
