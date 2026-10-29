@@ -1,5 +1,6 @@
 import { describe, expect, it, spyOn } from 'bun:test';
 
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { LeaseHealthChangedEvent } from '../events/fleet-state-events.ts';
 import { Engine } from './index.ts';
@@ -129,5 +130,35 @@ describe('lease:health-changed', () => {
     } finally {
       warning.mockRestore();
     }
+  });
+
+  it('is dispatched when a renewal settles after the lease expired while the renewal ran', async () => {
+    const storage = new MemoryStorage();
+    let now = 1_000;
+    let expireDuringNextCommit = false;
+    const conditionalBatch = storage.conditionalBatch.bind(storage);
+    storage.conditionalBatch = async (...parameters) => {
+      if (expireDuringNextCommit) {
+        expireDuringNextCommit = false;
+        now += 1_000_000;
+      }
+      return conditionalBatch(...parameters);
+    };
+    await using engine = new Engine({
+      ownership: 'lease',
+      storage,
+      getNow: () => now,
+      leaseTtl: 10_000,
+      leaseRenewInterval: 5,
+    });
+    const statuses = collectStatuses(engine);
+    await engine.recoverAll();
+    expireDuringNextCommit = true;
+
+    await waitUntil(() => statuses.includes('contested'), {
+      message: 'the settled renewal to announce the expired lease',
+    });
+
+    expect(statuses.slice(0, 2)).toEqual(['healthy', 'contested']);
   });
 });

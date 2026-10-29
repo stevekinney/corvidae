@@ -1579,6 +1579,21 @@ describe('WorkerRegistry', () => {
       });
     });
 
+    it('reports the drain state of a deployment, or of one of its builds, as the drain operations do', () => {
+      const registry = new WorkerRegistry();
+
+      expect(registry.deploymentDrainState('payments')).toBe('active');
+      expect(registry.deploymentDrainState('payments', 'build-1')).toBe('active');
+
+      registry.markBuildDraining('payments', 'build-1', { reason: 'bad build', updatedAt: 1 });
+      expect(registry.deploymentDrainState('payments', 'build-1')).toBe('drained');
+      expect(registry.deploymentDrainState('payments', 'build-2')).toBe('active');
+      expect(registry.deploymentDrainState('payments')).toBe('active');
+
+      registry.markDeploymentDraining('payments', { reason: 'pause', updatedAt: 2 });
+      expect(registry.deploymentDrainState('payments')).toBe('drained');
+    });
+
     it('aggregates deployment health by deployment identity', () => {
       const registry = new WorkerRegistry();
       registry.register({
