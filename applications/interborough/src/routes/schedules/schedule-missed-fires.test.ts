@@ -46,7 +46,7 @@ async function missFires(clock: { now: number }, occurrences: number): Promise<v
 }
 
 describe('a schedule that missed fires before the page opened', () => {
-  test('shows the persisted count and when it last missed one, and lists no windows', async () => {
+  test('shows the persisted count and when it last missed one, and lists no windows, though the feed replays the miss', async () => {
     const clock = { now: Date.now() };
     const client = await openSchedule(clock);
     await missFires(clock, 3);
@@ -55,18 +55,25 @@ describe('a schedule that missed fires before the page opened', () => {
         const schedule = await client.getSchedule('missed-probe');
         return (schedule?.lastMissedFireAt ?? 0) > 0;
       },
-      {
-        message: 'missed-probe records its last missed fire',
-      },
+      { message: 'missed-probe records its last missed fire' },
     );
+    let fleet: FleetEventSource | undefined;
 
     const { findByText, findByTestId, queryByTestId } = render(ScheduleDetailHarness, {
-      props: { client, id: 'missed-probe' },
+      props: {
+        client,
+        id: 'missed-probe',
+        onFleetSource: (source: FleetEventSource) => {
+          fleet = source;
+        },
+      },
     });
 
     expect(await findByText('3 missed')).not.toBeNull();
     const last = await findByTestId('schedule-last-missed');
     expect(last.textContent).toContain('last missed');
+    // The feed replays what the engine retained, the miss among it, before it is caught up.
+    await waitUntil(() => fleet?.caughtUp === true, { message: 'the fleet feed is caught up' });
     expect(queryByTestId('schedule-missed-windows')).toBeNull();
   });
 

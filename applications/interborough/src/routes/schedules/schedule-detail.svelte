@@ -123,7 +123,9 @@
     return fleetSource.subscribe((frame) => {
       if (frame.kind !== 'schedule:fired' && frame.kind !== 'schedule:missed-fire') return;
       if (!isRecord(frame.payload) || frame.payload['scheduleId'] !== id) return;
-      if (frame.kind === 'schedule:missed-fire') {
+      // The feed replays what the engine retained before it is caught up, which happened before
+      // this page opened; the schedule's persisted count and last missed time already say so.
+      if (frame.kind === 'schedule:missed-fire' && fleetSource.caughtUp) {
         const missed = missedFireWindowOf(frame.payload);
         if (missed !== undefined) missedWindows = withMissedFireWindow(missedWindows, missed);
       }
