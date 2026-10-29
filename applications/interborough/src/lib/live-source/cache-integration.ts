@@ -134,6 +134,8 @@ const WORKER_FLEET_KEYS: readonly QueryKey[] = [
   REGISTRY_KEY_PREFIX,
   // A worker registering records its build, which the deployments list offers for promotion.
   WORKERS_DEPLOYMENTS_KEY,
+  // A queue's connected workers are the workers on it, and its in-flight count is theirs.
+  QUEUES_LIST_KEY,
 ];
 
 /**
@@ -149,6 +151,18 @@ const DEPLOYMENT_REFERENCE_KINDS: readonly string[] = [
   'workflow:cancelled',
   'workflow:timed-out',
   'activity:remote-queued',
+  'activity:completed',
+  'activity:failed',
+  'task:dead-lettered',
+];
+
+/**
+ * The kinds that move a queue's in-flight count, which is the number of tasks its workers hold: an
+ * attempt starting, or ending without a result or with one. `queue:depth-changed` reports only the
+ * pending count, and a worker connecting or leaving moves the connected count (`WORKER_FLEET_KEYS`).
+ */
+const QUEUE_LOAD_KINDS: readonly string[] = [
+  'activity:started',
   'activity:completed',
   'activity:failed',
   'task:dead-lettered',
@@ -174,10 +188,16 @@ const FLEET_KIND_INVALIDATION: ReadonlyMap<string, readonly QueryKey[]> = new Ma
   ['worker:registration-rejected', [WORKERS_REJECTIONS_KEY]],
   ['worker:deployment-changed', [WORKERS_DEPLOYMENTS_KEY, WORKERS_LIST_KEY]],
   ['queue:depth-changed', [QUEUES_LIST_KEY]],
-  ...DEPLOYMENT_REFERENCE_KINDS.map((kind): [string, readonly QueryKey[]] => [
-    kind,
-    [WORKERS_DEPLOYMENTS_KEY],
-  ]),
+  // A kind may move both the deployments' references and a queue's in-flight count.
+  ...[...new Set([...DEPLOYMENT_REFERENCE_KINDS, ...QUEUE_LOAD_KINDS])].map(
+    (kind): [string, readonly QueryKey[]] => [
+      kind,
+      [
+        ...(DEPLOYMENT_REFERENCE_KINDS.includes(kind) ? [WORKERS_DEPLOYMENTS_KEY] : []),
+        ...(QUEUE_LOAD_KINDS.includes(kind) ? [QUEUES_LIST_KEY] : []),
+      ],
+    ],
+  ),
   ['workflow:definition-registered', [REGISTRY_KEY_PREFIX]],
   ['realm:state-changed', [REALMS_KEY]],
   ['lease:health-changed', [SYSTEM_LEASE_KEY]],
@@ -290,7 +310,6 @@ export function invalidateFleetDrivenQueries(queryClient: QueryClient): void {
     ...WORKER_FLEET_KEYS,
     WORKERS_REJECTIONS_KEY,
     WORKERS_DEPLOYMENTS_KEY,
-    QUEUES_LIST_KEY,
     TASKS_DETAIL_KEY_PREFIX,
     TASKS_DELIVERIES_KEY_PREFIX,
     REALMS_KEY,

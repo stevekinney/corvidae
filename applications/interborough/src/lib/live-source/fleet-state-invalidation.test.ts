@@ -59,6 +59,7 @@ const workerEntries: EntryName[] = [
   'registry',
   'registrySnapshot',
   'deployments',
+  'queues',
 ];
 
 const TABLE: ReadonlyArray<readonly [string, readonly EntryName[]]> = [
@@ -72,9 +73,11 @@ const TABLE: ReadonlyArray<readonly [string, readonly EntryName[]]> = [
   ['workflow:cancelled', ['deployments']],
   ['workflow:timed-out', ['deployments']],
   ['activity:remote-queued', ['deployments']],
-  ['activity:completed', ['deployments']],
-  ['activity:failed', ['deployments']],
-  ['task:dead-lettered', ['deployments']],
+  ['activity:completed', ['deployments', 'queues']],
+  ['activity:failed', ['deployments', 'queues']],
+  ['task:dead-lettered', ['deployments', 'queues']],
+  // A queue's in-flight count is the tasks its workers hold: an attempt starting moves it.
+  ['activity:started', ['queues']],
   ['worker:deployment-changed', ['deployments', 'workers']],
   ['queue:depth-changed', ['queues']],
   ['workflow:definition-registered', ['registry', 'registrySnapshot']],
