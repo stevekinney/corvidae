@@ -7,7 +7,6 @@ import { SQLITE_BUSY_TIMEOUT_MS } from '@lostgradient/storage/sql';
 import { runWithHangGuard, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { loadBetterSqlite3ForTest } from './node-sqlite-loader.ts';
 import { NodeSQLiteStorage } from './node-sqlite.ts';
 import { nativeNodeEnvironment } from './test/environment-configuration.ts';
 
@@ -175,15 +174,22 @@ function createFakeDatabaseConstructor() {
   };
 }
 
+/** Open a database through a constructor that fails the way `better-sqlite3`'s binding load does. */
+function openWith(fail: () => never): NodeSQLiteStorage {
+  const FailingDatabase = function FailingDatabase() {
+    fail();
+  } as unknown as new (path: string) => never;
+  return new NodeSQLiteStorage(':memory:', FailingDatabase);
+}
+
 describe('NodeSQLiteStorage', () => {
   it('throws a clear runtime error when the better-sqlite3 package is missing', () => {
-    // Inject a throwing module resolver instead of mocking `node:module`. Bun's
-    // `mock.module('node:module', ...)` patches the CJS loader process-wide and
-    // `mock.restore()` does not revert it, which poisons `require()` for every
-    // later test in the same process. The injected-resolver seam tests the same
-    // missing-dependency path with no global side effect.
+    // Inject a throwing database constructor instead of mocking `node:module`. Bun's
+    // `mock.module` patches the CJS loader process-wide and `mock.restore()` does not revert it,
+    // which poisons `require()` for every later test in the same process. The injected
+    // constructor seam tests the same failure path with no global side effect.
     expect(() =>
-      loadBetterSqlite3ForTest(() => {
+      openWith(() => {
         const error = new Error("Cannot find module 'better-sqlite3'") as Error & { code: string };
         error.code = 'MODULE_NOT_FOUND';
         throw error;
@@ -196,7 +202,7 @@ describe('NodeSQLiteStorage', () => {
     // require itself rejects with ERR_DLOPEN_FAILED. The compiled addon is present,
     // so telling the caller to install the package would be wrong advice.
     expect(() =>
-      loadBetterSqlite3ForTest(() => {
+      openWith(() => {
         const error = new Error("'better-sqlite3' is not yet supported in Bun.") as Error & {
           code: string;
         };
@@ -211,7 +217,7 @@ describe('NodeSQLiteStorage', () => {
     // absent, which is what an install with lifecycle scripts suppressed leaves
     // behind. The remedy is a rebuild, not an install.
     expect(() =>
-      loadBetterSqlite3ForTest(() => {
+      openWith(() => {
         throw new Error(
           'Could not locate the bindings file. Tried: /node_modules/better-sqlite3/build/better_sqlite3.node',
         );
@@ -223,7 +229,7 @@ describe('NodeSQLiteStorage', () => {
     // The whole point of the change: the real error is in the message, not buried
     // on `cause` where no assertion or test reporter prints it.
     expect(() =>
-      loadBetterSqlite3ForTest(() => {
+      openWith(() => {
         throw new Error(
           'Could not locate the bindings file. Tried: /node_modules/better-sqlite3/build/better_sqlite3.node',
         );

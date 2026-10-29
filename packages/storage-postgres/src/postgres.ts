@@ -1,4 +1,3 @@
-import { tryLoadNodeBuiltin } from '@lostgradient/storage/runtime';
 import {
   createLazyPostgresPool,
   PostgresKeyValueStorage,
@@ -37,27 +36,14 @@ export type PostgresStorageOptions = PostgresKeyValueStorageOptions;
  * default export is used so `pg`'s CommonJS interop resolves the `Pool`
  * constructor under both Bun and Node.
  */
-function isPostgresModule(value: unknown): value is typeof import('pg') {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'Pool' in value &&
-    typeof value.Pool === 'function'
-  );
-}
-
 function postgresPoolFactory(url: string): PostgresPool {
   return createLazyPostgresPool(url, {
     driverName: 'pg',
     storageName: 'PostgresStorage',
-    loadPool: (connectionString) =>
-      Promise.resolve().then(() => {
-        const module = tryLoadNodeBuiltin('node:module');
-        if (module === undefined) throw new Error('PostgresStorage requires Bun or Node.js.');
-        const driver: unknown = module.createRequire(import.meta.url)('pg');
-        if (!isPostgresModule(driver)) throw new Error('The pg dependency does not provide Pool.');
-        return new driver.Pool({ connectionString });
-      }),
+    loadPool: async (connectionString) => {
+      const { default: pg } = await import('pg');
+      return new pg.Pool({ connectionString });
+    },
   });
 }
 

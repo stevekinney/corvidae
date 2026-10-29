@@ -1,15 +1,15 @@
 /**
- * Lazy loader for the optional `better-sqlite3` peer dependency used by
- * {@link NodeSQLiteStorage}. Kept in its own module — and deliberately NOT in the
- * package `exports` map — so the test-only injection seam
- * ({@link loadBetterSqlite3ForTest}) never becomes part of the documented public
- * surface. `node-sqlite.ts` imports `loadBetterSqlite3` (production path);
- * `node-sqlite.test.ts` imports the test entry directly from here.
+ * What {@link NodeSQLiteStorage} needs from `better-sqlite3`: the structural types of the surface it
+ * uses, and the classification of a failure to open its native binding. `better-sqlite3` is a
+ * regular dependency imported statically by `node-sqlite.ts`; its native binding loads when the
+ * first database opens, so a refused or never-compiled binding surfaces from the constructor,
+ * where it is reshaped into an actionable error.
+ *
+ * Kept in its own module, and deliberately NOT in the package `exports` map, so these helpers
+ * never become part of the documented public surface.
  *
  * @module storage/node-sqlite-loader
  */
-
-import { tryLoadNodeBuiltin } from '@lostgradient/storage/runtime';
 
 /**
  * Minimal `better-sqlite3` `Database` surface this adapter uses. Defined here so
@@ -42,11 +42,8 @@ export type BetterSqliteDatabase = {
 
 export type BetterSqliteConstructor = new (path: string) => BetterSqliteDatabase;
 
-/** Lazily resolved `better-sqlite3` constructor, cached after first load. */
-let DatabaseConstructor: BetterSqliteConstructor | undefined;
-
 /**
- * Which way a `better-sqlite3` load failed. The three have different remedies,
+ * Which way opening a `better-sqlite3` database failed. The three have different remedies,
  * so they are distinguished rather than collapsed.
  *
  * - `missing-package`: the module is not installed at all.
@@ -141,76 +138,4 @@ export function createMissingBetterSqlite3Error(cause: unknown): Error {
  */
 export function isBetterSqlite3LoadFailure(error: unknown): boolean {
   return classifyBetterSqlite3Failure(error) !== undefined;
-}
-
-/**
- * Resolve the `better-sqlite3` module via a CommonJS require. This package is
- * ESM (`type: module`), so the global `require` is not defined — `createRequire`
- * from `node:module` builds a CommonJS require for loading the native binding.
- *
- * Extracted as a standalone function so tests can inject a throwing resolver
- * (see {@link loadBetterSqlite3ForTest}) to exercise the missing/failed-dependency
- * paths WITHOUT `mock.module('node:module', ...)`. That mock is irreversible in
- * Bun: it patches the CJS loader process-wide and `mock.restore()` does not undo
- * it, which poisons `require()` for every later test in the same process
- * (notably any WASM module that requires a core module during boot).
- */
-function resolveBetterSqlite3Module(): {
-  default?: BetterSqliteConstructor;
-} & BetterSqliteConstructor {
-  const module = tryLoadNodeBuiltin('node:module');
-  if (module === undefined) throw new Error('NodeSQLiteStorage requires Bun or Node.js.');
-  const requireFromHere = module.createRequire(import.meta.url);
-  return requireFromHere('better-sqlite3') as {
-    default?: BetterSqliteConstructor;
-  } & BetterSqliteConstructor;
-}
-
-/** Resolver for the `better-sqlite3` module. Injectable for tests. */
-type BetterSqlite3ModuleResolver = typeof resolveBetterSqlite3Module;
-
-/**
- * Load (and cache) the `better-sqlite3` constructor. Reshapes a recognized load
- * failure into the actionable peer-dependency error.
- */
-export function loadBetterSqlite3(
-  resolveModule: BetterSqlite3ModuleResolver = resolveBetterSqlite3Module,
-): BetterSqliteConstructor {
-  if (DatabaseConstructor) return DatabaseConstructor;
-
-  let mod: { default?: BetterSqliteConstructor } & BetterSqliteConstructor;
-  try {
-    mod = resolveModule();
-  } catch (error) {
-    // Only a recognized load failure (package absent or native dlopen failure)
-    // is reshaped into the actionable peer-dependency message. An unrecognized
-    // error — a permission failure, or a syntax/runtime error while evaluating
-    // the module — is rethrown unchanged so its real cause is not masked.
-    if (isBetterSqlite3LoadFailure(error)) {
-      throw createMissingBetterSqlite3Error(error);
-    }
-    throw error;
-  }
-
-  DatabaseConstructor = typeof mod.default === 'function' ? mod.default : mod;
-  return DatabaseConstructor;
-}
-
-/**
- * Test-only entry that exercises {@link loadBetterSqlite3}'s module-resolution
- * and error-shaping with an injected resolver, bypassing the cached constructor
- * so the missing/failed-dependency paths run every call. This lets those paths be
- * tested without mocking the global `node:module` loader. Lives in this
- * non-exported module so it never reaches the public package surface.
- */
-export function loadBetterSqlite3ForTest(
-  resolveModule: BetterSqlite3ModuleResolver,
-): BetterSqliteConstructor {
-  const previous = DatabaseConstructor;
-  DatabaseConstructor = undefined;
-  try {
-    return loadBetterSqlite3(resolveModule);
-  } finally {
-    DatabaseConstructor = previous;
-  }
 }
