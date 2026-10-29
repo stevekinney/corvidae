@@ -11,7 +11,6 @@ import {
   createTemporaryDirectory,
   removeTemporaryPath,
 } from '@lostgradient/testing/temporary-path';
-import { resolveStorage } from '@lostgradient/weft';
 import { type Storage, MemoryStorage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
@@ -20,6 +19,7 @@ import { waitForCondition, waitForTaskState } from './test';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
 import type { Bureau } from './types';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -133,14 +133,16 @@ describe('a run resumed after a restart', () => {
     cleanups.push(() => removeTemporaryPath(directory));
     const agents = createTemporaryDirectory('bureau-revision-agents');
     cleanups.push(() => removeTemporaryPath(agents));
-    const storagePath = join(directory, 'bureau.sqlite');
+    await using storageFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
     const hold = new Promise<never>(() => undefined);
     const overrides = {
       durableOwnership: { ownership: 'none' as const },
       maintenance: 'manual' as const,
     };
 
-    const firstStorage = await resolveStorage({ type: 'sqlite', path: storagePath });
+    const firstStorage = storageFixture.storage;
     const first = await openDurable(firstStorage, {
       directory: agents,
       scripts: { 'claude-opus-5-5': () => hold },
@@ -158,7 +160,7 @@ describe('a run resumed after a restart', () => {
     expect(revisionOf(first.bureau, 'researcher')).toBe(3);
 
     const built = spyOn(operative, 'createAgent');
-    const secondStorage = await resolveStorage({ type: 'sqlite', path: storagePath });
+    const secondStorage = storageFixture.open();
     const second = await openDurable(secondStorage, {
       directory: agents,
       scripts: { 'claude-opus-5-5': () => 'resumed' },

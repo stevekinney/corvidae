@@ -27,6 +27,7 @@ import {
   pollUntil,
   reviewOf,
 } from './schedule-fire-fixtures.test-support';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const harness = createScheduleFireHarness();
 const { open, nextDatabasePath } = harness;
@@ -184,8 +185,8 @@ describe('a schedule fire’s tool approval', () => {
 
 describe('a schedule fire’s human wait after a restart', () => {
   it('is listed at boot under the id it had, with the fire’s session, and answering it completes the run', async () => {
-    const databasePath = nextDatabasePath();
-    const storage = { type: 'sqlite' as const, path: databasePath };
+    await using database = createSqliteStorageFixture({ path: nextDatabasePath() });
+    const storage = database.storage;
     const humanInputOptions = {
       stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
     };
@@ -239,8 +240,8 @@ describe('a schedule fire’s human wait after a restart', () => {
 
 describe('a schedule fire’s tool approval after a restart', () => {
   it('is listed at boot with the fire’s session, and approving it runs the tool in the new process', async () => {
-    const databasePath = nextDatabasePath();
-    const storage = { type: 'sqlite' as const, path: databasePath };
+    await using database = createSqliteStorageFixture({ path: nextDatabasePath() });
+    const storage = database.storage;
     const approvalOptions = (charges: number[]) => ({
       generate: chargesOnce,
       toolbox: approvalToolbox(charges),

@@ -33,6 +33,7 @@ import { pollUntil } from './testing/goal-fixtures.test-support';
 import type { Bureau, BureauDiagnostic } from './types';
 import { agentFileDirectory } from './sources/agent-file-directory';
 import { workflowFileDirectory } from './sources/workflow-file-directory';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 const fixtures = createConstructionWindowFixtures();
@@ -134,7 +135,8 @@ function writerAnswering(content: string) {
 describe('a catalog agent run reclaimed while the Bureau scans its agent files (COR-1586)', () => {
   it('resumes under its own agent once the resolver is wired, and records no error', async () => {
     const root = await fixtures.scratchDirectory('bureau-reclaim-catalog-');
-    const storagePath = join(root, 'bureau.sqlite');
+    await using storageFixture = createSqliteStorageFixture({ path: join(root, 'bureau.sqlite') });
+    const storagePath = storageFixture.path;
 
     const { owner, runId } = await startLapsedCatalogRun(storagePath);
 
@@ -150,7 +152,7 @@ describe('a catalog agent run reclaimed while the Bureau scans its agent files (
         },
         agentSource: agentFileDirectory(await fixtures.directoryWithOneAgentFile()),
         models: { generate: constructionWindowGenerate },
-        storage: { type: 'sqlite', path: storagePath },
+        storage: storageFixture.storage,
         durable: true,
         durableOwnership: leaseOptions,
         onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
@@ -181,7 +183,7 @@ describe('a catalog agent run reclaimed while the Bureau scans its agent files (
 describe('a named-agent session run reclaimed while the Bureau scans its agent files (COR-1586)', () => {
   it('resumes under its own agent, not the Bureau-wide one', async () => {
     const root = await fixtures.scratchDirectory('bureau-reclaim-session-');
-    const storagePath = join(root, 'bureau.sqlite');
+    await using storageFixture = createSqliteStorageFixture({ path: join(root, 'bureau.sqlite') });
 
     const reachedStepOne = Promise.withResolvers<void>();
     const owner = await createBureau<AgentDefinitions>({
@@ -203,7 +205,7 @@ describe('a named-agent session run reclaimed while the Bureau scans its agent f
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'sqlite', path: storagePath },
+      storage: storageFixture.storage,
       durable: true,
       maintenance: 'manual',
       durableOwnership: leaseOptions,
@@ -238,7 +240,7 @@ describe('a named-agent session run reclaimed while the Bureau scans its agent f
         },
         agentSource: agentFileDirectory(await fixtures.directoryWithOneAgentFile()),
         models: { generate: constructionWindowGenerate },
-        storage: { type: 'sqlite', path: storagePath },
+        storage: storageFixture.open(),
         durable: true,
         durableOwnership: leaseOptions,
         onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
@@ -421,7 +423,8 @@ describe('a construction that fails while a run is parked for the resolver (COR-
 describe('a Bureau whose construction fails leaves a reclaimed run resumable (COR-1586)', () => {
   it('leaves the run running under workflow-lease, and a correctly configured boot completes it', async () => {
     const root = await fixtures.scratchDirectory('bureau-reclaim-survival-');
-    const storagePath = join(root, 'bureau.sqlite');
+    await using storageFixture = createSqliteStorageFixture({ path: join(root, 'bureau.sqlite') });
+    const storagePath = storageFixture.path;
     const { owner, runId } = await startLapsedCatalogRun(storagePath);
 
     // The composition is taken from the export `createBureau` imports, so the observability handle
@@ -454,7 +457,7 @@ describe('a Bureau whose construction fails leaves a reclaimed run resumable (CO
         },
         agentSource: agentFileDirectory(await fixtures.directoryWithOneAgentFile()),
         models: { generate: constructionWindowGenerate },
-        storage: { type: 'sqlite', path: storagePath },
+        storage: storageFixture.storage,
         durable: true,
         durableOwnership: leaseOptions,
         observability: true,
@@ -516,7 +519,7 @@ describe('a Bureau whose construction fails leaves a reclaimed run resumable (CO
       agents: {
         writer: writerAnswering('recovered'),
       },
-      storage: { type: 'sqlite', path: storagePath },
+      storage: storageFixture.open(),
       durable: true,
       durableOwnership: leaseOptions,
     });

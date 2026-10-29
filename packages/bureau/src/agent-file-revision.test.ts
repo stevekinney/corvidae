@@ -18,7 +18,6 @@ import {
   MemoryStorage,
   textValueStore,
 } from '@lostgradient/storage';
-import { resolveStorage } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { hashAgentFileBytes } from './agent-file';
@@ -37,6 +36,7 @@ import {
 } from './testing/agent-file-fixtures.test-support';
 import { startFileBureau } from './testing/agent-file-bureau.test-support';
 import type { Bureau } from './types';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const fixtures: AgentFileFixture[] = [];
 const directories: string[] = [];
@@ -636,7 +636,9 @@ describe('a Bureau restarted after an offline edit', () => {
     directories.push(directory);
     const agents = createTemporaryDirectory('bureau-revision-offline-agents');
     directories.push(agents);
-    const storagePath = join(directory, 'bureau.sqlite');
+    await using storageFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
     const overrides = {
       durable: true,
       durableOwnership: { ownership: 'none' as const },
@@ -653,7 +655,7 @@ describe('a Bureau restarted after an offline edit', () => {
     };
     const text = (instructions: string) => agentFileText({ model: KNOWN_MODEL }, instructions);
 
-    const firstStorage = await resolveStorage({ type: 'sqlite', path: storagePath });
+    const firstStorage = storageFixture.storage;
     const first = await startFileBureau({
       directory: agents,
       overrides: { ...overrides, storage: firstStorage },
@@ -668,7 +670,7 @@ describe('a Bureau restarted after an offline edit', () => {
     // Edited while the Bureau is down.
     await first.put('researcher.md', text('Edited while down.\n'));
 
-    const secondStorage = await resolveStorage({ type: 'sqlite', path: storagePath });
+    const secondStorage = storageFixture.open();
     const second = await startFileBureau({
       directory: agents,
       overrides: { ...overrides, storage: secondStorage },

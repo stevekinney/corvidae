@@ -31,6 +31,7 @@ import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bu
 import type { Bureau } from './types';
 import type { AgentDefinitions } from './agent-catalog';
 import { agentFileDirectory } from './sources/agent-file-directory';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -194,13 +195,15 @@ describe('a session run the durable engine resumes after a restart', () => {
     cleanups.push(() => removeTemporaryPath(directory));
     const agents = createTemporaryDirectory('bureau-revision-resume-agents');
     cleanups.push(() => removeTemporaryPath(agents));
-    const storagePath = join(directory, 'bureau.sqlite');
+    await using storageFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
     const hold = new Promise<never>(() => undefined);
     const overrides = {
       durable: true,
       durableOwnership: { ownership: 'none' as const },
       maintenance: 'manual' as const,
-      storage: { type: 'sqlite' as const, path: storagePath },
+      storage: storageFixture.storage,
     };
 
     const first = await open({

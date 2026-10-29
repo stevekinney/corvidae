@@ -6438,7 +6438,9 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
     // session, finishes in bureau B. Bureau B hosts no live run, so only a
     // backend-wide read knows A is still the session's sole live run.
     const directory = await mkdtemp(join(tmpdir(), 'corvidae-session-input-two-'));
-    const path = join(directory, 'bureau.sqlite');
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
     const bureauA = await createBureau<AgentDefinitions>({
       agents: {
         default: createAgent({
@@ -6446,7 +6448,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
           toolbox: createEmptyToolbox(),
         }),
       },
-      storage: { type: 'sqlite', path },
+      storage: pathFixture.storage,
       durable: true,
     });
     const bureauB = await createBureau<AgentDefinitions>({
@@ -6457,7 +6459,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'sqlite', path },
+      storage: pathFixture.open(),
       durable: true,
     });
     try {
@@ -17048,7 +17050,8 @@ describe('bureau.maintain prunes stale run ownership (AB-363)', () => {
     }
 
     it('restores a pruned run-ownership entry when task retention records run.removed on another instance', async () => {
-      const databasePath = databasePathFor('delete-run');
+      await using database = createSqliteStorageFixture({ path: databasePathFor('delete-run') });
+      const databasePath = database.path;
       const runtimeA = createManualRuntimeServices();
       const sharedOptions = {
         agents: {
@@ -17058,7 +17061,7 @@ describe('bureau.maintain prunes stale run ownership (AB-363)', () => {
             stopWhen: stopWhen.noToolCalls(),
           }),
         },
-        storage: { type: 'sqlite' as const, path: databasePath },
+        storage: database.storage,
         maintenance: 'manual' as const,
         ...SHORT_TASK_RETENTION,
       };
@@ -17107,10 +17110,13 @@ describe('bureau.maintain prunes stale run ownership (AB-363)', () => {
     });
 
     it('restores a pruned run-ownership entry when a review decision lands after another instance prunes it', async () => {
-      const databasePath = databasePathFor('review-decision');
+      await using database = createSqliteStorageFixture({
+        path: databasePathFor('review-decision'),
+      });
+      const databasePath = database.path;
       const runtimeA = createManualRuntimeServices();
       const sharedOptions = {
-        storage: { type: 'sqlite' as const, path: databasePath },
+        storage: database.storage,
         maintenance: 'manual' as const,
       };
       const agentPolicy = () => ({
@@ -17200,7 +17206,7 @@ describe('bureau.maintain prunes stale run ownership (AB-363)', () => {
           const afterDecision = await bureauA.contexts.get(run.contextId);
           expect(ownersOf(afterDecision)).toEqual({ [run.id]: 'alice' });
 
-          const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
+          const adminStorage = database.open();
           const adminFeed = createFleetEventFeed(adminStorage);
           const recorded: { workflowId: string | undefined; kind: string }[] = [];
           try {
@@ -17327,7 +17333,8 @@ describe('bureau.maintain prunes stale run ownership (AB-363)', () => {
     });
 
     it('restores a pruned run-ownership entry when sweepExpiredReviews records review.expired', async () => {
-      const databasePath = databasePathFor('sweep');
+      await using database = createSqliteStorageFixture({ path: databasePathFor('sweep') });
+      const databasePath = database.path;
       const runtime = createManualRuntimeServices();
       try {
         const bureau = await createBureau<AgentDefinitions>({
@@ -17372,7 +17379,7 @@ describe('bureau.maintain prunes stale run ownership (AB-363)', () => {
               stopWhen: stopWhen.toolOutcome('action_required'),
             }),
           },
-          storage: { type: 'sqlite', path: databasePath },
+          storage: database.storage,
           runtime,
           maintenance: 'manual',
         });
@@ -17401,7 +17408,8 @@ describe('bureau.maintain prunes stale run ownership (AB-363)', () => {
     });
 
     it('keeps the anonymous:local ownership entry a run without a principal was recorded under across deleteRun', async () => {
-      const databasePath = databasePathFor('no-principal');
+      await using database = createSqliteStorageFixture({ path: databasePathFor('no-principal') });
+      const databasePath = database.path;
       const runtime = createManualRuntimeServices();
       try {
         const bureau = await createBureau<AgentDefinitions>({
@@ -17412,7 +17420,7 @@ describe('bureau.maintain prunes stale run ownership (AB-363)', () => {
               stopWhen: stopWhen.noToolCalls(),
             }),
           },
-          storage: { type: 'sqlite', path: databasePath },
+          storage: database.storage,
           runtime,
           ...SHORT_TASK_RETENTION,
           maintenance: 'manual',
@@ -17451,7 +17459,10 @@ describe('bureau.maintain prunes stale run ownership (AB-363)', () => {
     }
 
     it("never restores a run's ownership into a session recreated under the same id (writer side)", async () => {
-      const databasePath = databasePathFor('writer-incarnation');
+      await using database = createSqliteStorageFixture({
+        path: databasePathFor('writer-incarnation'),
+      });
+      const databasePath = database.path;
       const runtime = createManualRuntimeServices();
       try {
         const bureau = await createBureau<AgentDefinitions>({
@@ -17462,7 +17473,7 @@ describe('bureau.maintain prunes stale run ownership (AB-363)', () => {
               stopWhen: stopWhen.noToolCalls(),
             }),
           },
-          storage: { type: 'sqlite', path: databasePath },
+          storage: database.storage,
           runtime,
           ...SHORT_TASK_RETENTION,
           maintenance: 'manual',
@@ -17535,7 +17546,10 @@ describe('bureau.maintain prunes stale run ownership (AB-363)', () => {
     });
 
     it('diagnoses a rejected writer-side restore and still resolves deleteRun', async () => {
-      const databasePath = databasePathFor('writer-failure');
+      await using database = createSqliteStorageFixture({
+        path: databasePathFor('writer-failure'),
+      });
+      const databasePath = database.path;
       const runtime = createManualRuntimeServices();
       const diagnostics: string[] = [];
       try {
@@ -17547,7 +17561,7 @@ describe('bureau.maintain prunes stale run ownership (AB-363)', () => {
               stopWhen: stopWhen.noToolCalls(),
             }),
           },
-          storage: { type: 'sqlite', path: databasePath },
+          storage: database.storage,
           runtime,
           ...SHORT_TASK_RETENTION,
           maintenance: 'manual',
@@ -17683,11 +17697,12 @@ describe('bureau.maintain prunes stale run ownership (AB-363)', () => {
       });
 
       it('task retention on a sqlite-backed bureau whose entry is present', async () => {
-        const databasePath = databasePathFor('count');
+        await using database = createSqliteStorageFixture({ path: databasePathFor('count') });
+        const databasePath = database.path;
         try {
           expect(
             await countDeleteRunUpdates({
-              storage: { type: 'sqlite', path: databasePath },
+              storage: database.storage,
               maintenance: 'manual',
             }),
           ).toBe(3);

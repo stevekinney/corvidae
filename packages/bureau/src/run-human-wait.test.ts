@@ -560,7 +560,7 @@ describe('a bureau.run() park after a restart', () => {
   }
 
   it('lists the park a recovered run makes next, numbered after the ones before it', async () => {
-    const databasePath = nextDatabasePath();
+    await using database = createSqliteStorageFixture({ path: nextDatabasePath() });
     const twoParks = (seen: Seen) => {
       const generate: GenerateFunction = async (context: GenerateContext) => {
         seen.tools.push(context.toolbox.tools().map((tool) => tool.name));
@@ -581,7 +581,7 @@ describe('a bureau.run() park after a restart', () => {
       });
     };
     const options = {
-      storage: { type: 'sqlite' as const, path: databasePath },
+      storage: database.storage,
       durableOwnership: { ownership: 'none' as const },
     };
     const crashed = await start({ asker: twoParks(newSeen()) }, options);

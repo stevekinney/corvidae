@@ -39,6 +39,7 @@ import type { Bureau, BureauDiagnostic, BureauOptions } from './types';
 import type { AgentDefinitions } from './agent-catalog';
 import { startTaskFrom } from './test/task-start-request.ts';
 import { listHeldTasks } from './test';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 /**
  * COR-1476 — a run that ends cancels the input it never delivered, whatever
@@ -1021,8 +1022,10 @@ describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
 
   it("never reads the mailbox without an acknowledged write, and leaves the input to the next boot's sweep", async () => {
     const directory = await mkdtemp(join(tmpdir(), 'corvidae-session-input-run-end-'));
-    const path = join(directory, 'bureau.sqlite');
-    const real = await resolveStorage({ type: 'sqlite', path });
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
+    const real = pathFixture.storage;
     const seam = seamStorage(real);
     const failing = seam.failWrites(logsRunEnded, new Error('the log is unavailable'));
     const stepZeroStarted = deferred();
@@ -1073,13 +1076,13 @@ describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
       real[Symbol.dispose]();
     }
 
-    const second = await openBureau({ type: 'sqlite', path }, async () => {
+    const second = await openBureau(pathFixture.open(), async () => {
       throw new Error('no run should generate');
     });
     try {
       await second.recovery();
       // The run's workflow is terminal, so nothing is live: the boot sweep cancels.
-      const storage = await resolveStorage({ type: 'sqlite', path });
+      const storage = pathFixture.open();
       try {
         expect(await receiptState(storage, sessionId, incarnation, 'input-x', 'late')).toBe(
           'canceled',

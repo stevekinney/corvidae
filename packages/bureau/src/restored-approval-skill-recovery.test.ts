@@ -35,6 +35,7 @@ import {
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau } from './types';
 import { createAgentSkills } from './agent-skills';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const harness = createScheduleFireHarness();
 
@@ -213,9 +214,10 @@ describe('a run’s approval after a later run starts in its session', () => {
 
   it('is refused for a schedule fire once the snapshot is cleared', async () => {
     const catalog = await skillCatalogOnDisk();
-    const path = harness.nextDatabasePath();
+    await using pathFixture = createSqliteStorageFixture({ path: harness.nextDatabasePath() });
+    const path = pathFixture.path;
     const first = await harness.open({
-      storage: { type: 'sqlite', path },
+      storage: pathFixture.storage,
       agents: {
         default: createAgent({
           generate: lockedAfterCharging('wait'),
@@ -234,7 +236,7 @@ describe('a run’s approval after a later run starts in its session', () => {
     await letStepsCommit();
     const charges: number[] = [];
     const restarted = await harness.open({
-      storage: { type: 'sqlite', path },
+      storage: pathFixture.open(),
       agents: {
         default: createAgent({
           generate: hanging,
@@ -260,7 +262,7 @@ describe('a run’s approval after a later run starts in its session', () => {
   });
 
   it('is still approved when no skills are configured, whatever the next run left', async () => {
-    const path = harness.nextDatabasePath();
+    await using pathFixture = createSqliteStorageFixture({ path: harness.nextDatabasePath() });
     const chargesOnce: GenerateFunction = async (context) =>
       context.step === 0
         ? {
@@ -269,7 +271,7 @@ describe('a run’s approval after a later run starts in its session', () => {
           }
         : { content: 'done', toolCalls: [] };
     const first = await harness.open({
-      storage: { type: 'sqlite', path },
+      storage: pathFixture.storage,
       agents: {
         default: createAgent({
           generate: chargesOnce,
@@ -285,7 +287,7 @@ describe('a run’s approval after a later run starts in its session', () => {
     );
     const charges: number[] = [];
     const restarted = await harness.open({
-      storage: { type: 'sqlite', path },
+      storage: pathFixture.open(),
       agents: {
         default: createAgent({
           generate: hanging,
@@ -584,7 +586,8 @@ describe('a session run reattached after its process died in a step', () => {
 describe('a fire replayed after its process died before committing the step that activated a skill', () => {
   it('is decided under no skill, since no committed step activated one', async () => {
     const catalog = await skillCatalogOnDisk();
-    const path = harness.nextDatabasePath();
+    await using pathFixture = createSqliteStorageFixture({ path: harness.nextDatabasePath() });
+    const path = pathFixture.path;
     const crash = crashAfterSessionWrite('"name":"lock"');
     const life = { current: 'first' as 'first' | 'second' };
     // Step 0 activates the skill in the first life, and asks for the charge in the second.
@@ -618,7 +621,7 @@ describe('a fire replayed after its process died before committing the step that
     life.current = 'second';
     const charges: number[] = [];
     const restarted = await harness.open({
-      storage: { type: 'sqlite', path },
+      storage: pathFixture.storage,
       agents: {
         default: createAgent({
           generate,

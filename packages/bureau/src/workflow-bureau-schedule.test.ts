@@ -18,6 +18,7 @@ import {
 } from './testing/workflow-bureau.test-support';
 import { createAgent } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -134,10 +135,10 @@ describe('restarting a Bureau over workflow files', () => {
   it('leaves exactly one live schedule after two restarts in a row', async () => {
     const root = await mkdtemp(join(tmpdir(), 'bureau-workflow-restart-'));
     cleanups.push(() => rm(root, { recursive: true, force: true }));
-    const storagePath = join(root, 'bureau.sqlite');
+    await using storageFixture = createSqliteStorageFixture({ path: join(root, 'bureau.sqlite') });
     const workflows = join(root, 'workflows');
     const overrides = {
-      storage: { type: 'sqlite', path: storagePath },
+      storage: storageFixture.storage,
       durableOwnership: { ownership: 'none' },
     } as const;
     const first = await startWorkflowBureau({ directory: workflows, overrides });

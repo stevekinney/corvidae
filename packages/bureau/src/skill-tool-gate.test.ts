@@ -33,6 +33,7 @@ import {
   skillsRecorded,
 } from './skill-policy-fixtures.test-support';
 import { listHeldTasks } from './test';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const harness = createScheduleFireHarness();
 
@@ -245,11 +246,11 @@ describe('a run whose stored skill fails recovery (COR-1628)', () => {
 describe('a durable run that refused a call and recovered (COR-1628)', () => {
   it('replays the same refusal and does not run the tool', async () => {
     const catalog = await skillCatalogOnDisk();
-    const path = harness.nextDatabasePath();
+    await using pathFixture = createSqliteStorageFixture({ path: harness.nextDatabasePath() });
     const executions: string[] = [];
     let reachedLaterStep = false;
     const first = await harness.open({
-      storage: { type: 'sqlite', path },
+      storage: pathFixture.storage,
       agents: {
         default: createAgent({
           generate: activateThenPing(
@@ -279,7 +280,7 @@ describe('a durable run that refused a call and recovered (COR-1628)', () => {
     // The process "crashes": a second Bureau recovers the run from the same store.
     const replayed: Array<{ outcome: string; code?: string; content: unknown } | undefined> = [];
     const recovered = await harness.open({
-      storage: { type: 'sqlite', path },
+      storage: pathFixture.open(),
       agents: {
         default: createAgent({
           generate: activateThenPing(async (context) => {

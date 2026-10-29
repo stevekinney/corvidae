@@ -38,6 +38,7 @@ import {
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau, BureauDiagnostic } from './types';
 import { createAgentSkills } from './agent-skills';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const harness = createScheduleFireHarness();
 
@@ -303,13 +304,13 @@ describe('a restored fire approval whose snapshot cannot be read', () => {
 describe('a restored fire approval whose snapshot names another fire', () => {
   it('is refused with CONFLICT when a newer fire of the schedule has taken the session', async () => {
     const catalog = await skillCatalogOnDisk();
-    const path = harness.nextDatabasePath();
+    await using pathFixture = createSqliteStorageFixture({ path: harness.nextDatabasePath() });
     const phase = { first: true };
     const locked = lockedAfterCharging('stop');
     const generate: GenerateFunction = (context) =>
       phase.first ? locked(context) : Promise.resolve({ content: 'nothing to do', toolCalls: [] });
     const first = await harness.open({
-      storage: { type: 'sqlite', path },
+      storage: pathFixture.storage,
       agents: {
         default: createAgent({
           generate,
@@ -362,7 +363,7 @@ describe('a restored fire approval whose snapshot names another fire', () => {
     }, 'the newer fire to take the session');
     const charges: number[] = [];
     const restarted = await harness.open({
-      storage: { type: 'sqlite', path },
+      storage: pathFixture.open(),
       agents: {
         default: createAgent({
           generate: () => Promise.resolve({ content: 'nothing to do', toolCalls: [] }),
@@ -525,7 +526,7 @@ describe('a restored approval of a run that never activated a skill', () => {
 
   it('runs as before for a schedule fire', async () => {
     const catalog = await skillCatalogOnDisk();
-    const path = harness.nextDatabasePath();
+    await using pathFixture = createSqliteStorageFixture({ path: harness.nextDatabasePath() });
     const options = async () => ({
       generate: chargesOnce,
       stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
@@ -533,7 +534,7 @@ describe('a restored approval of a run that never activated a skill', () => {
     });
     const first = await harness.open({
       ...(await options()),
-      storage: { type: 'sqlite', path },
+      storage: pathFixture.storage,
       toolbox: chargeApprovalToolbox([]),
     });
     const { fireId } = await fireOnce(first, OWNER.alice, 'no-skill-session');
@@ -541,7 +542,7 @@ describe('a restored approval of a run that never activated a skill', () => {
     const charges: number[] = [];
     const restarted = await harness.open({
       ...(await options()),
-      storage: { type: 'sqlite', path },
+      storage: pathFixture.open(),
       toolbox: chargeApprovalToolbox(charges),
     });
     const restored = await reviewOf(restarted, fireId);
@@ -553,7 +554,7 @@ describe('a restored approval of a run that never activated a skill', () => {
 
   it('runs as before for a fire whose recurring schedule has since run a newer fire', async () => {
     // No `skills` option: the newer fire's snapshot is not this fire's policy, and there is none.
-    const path = harness.nextDatabasePath();
+    await using pathFixture = createSqliteStorageFixture({ path: harness.nextDatabasePath() });
     const phase = { first: true };
     const generate: GenerateFunction = (context) =>
       phase.first && context.step === 0
@@ -563,7 +564,7 @@ describe('a restored approval of a run that never activated a skill', () => {
           })
         : Promise.resolve({ content: 'nothing to do', toolCalls: [] });
     const first = await harness.open({
-      storage: { type: 'sqlite', path },
+      storage: pathFixture.storage,
       agents: {
         default: createAgent({
           generate,
@@ -609,7 +610,7 @@ describe('a restored approval of a run that never activated a skill', () => {
     }, 'the newer fire to take the session');
     const charges: number[] = [];
     const restarted = await harness.open({
-      storage: { type: 'sqlite', path },
+      storage: pathFixture.open(),
       agents: {
         default: createAgent({
           generate,

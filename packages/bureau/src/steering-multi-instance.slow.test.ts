@@ -20,6 +20,7 @@ import { createBureau } from './create-bureau';
 import { readSteeringLogHead } from './steering-log';
 import type { AgentDefinitions } from './agent-catalog';
 import { awakeTurns, quietFor } from '@lostgradient/testing/wait-until';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 async function openBureau(path: string) {
   return createBureau<AgentDefinitions>({
@@ -37,7 +38,10 @@ async function openBureau(path: string) {
 describe('durable steering across two Bureau processes', () => {
   it('aborts a run that is not paused when another process deletes its session', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-remote-delete-running-'));
-    const path = join(directory, 'bureau.sqlite');
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
+    const path = pathFixture.path;
     let releaseTool: (() => void) | undefined;
     const toolGate = new Promise<void>((resolve) => {
       releaseTool = resolve;
@@ -66,7 +70,7 @@ describe('durable steering across two Bureau processes', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'sqlite', path },
+      storage: pathFixture.storage,
       durable: true,
     });
     const bureauB = await openBureau(path);
@@ -97,7 +101,10 @@ describe('durable steering across two Bureau processes', () => {
 
   it('delivers a pause and a resume admitted in another process to the run', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-remote-delivery-'));
-    const path = join(directory, 'bureau.sqlite');
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
+    const path = pathFixture.path;
     let releaseTool: (() => void) | undefined;
     const toolGate = new Promise<void>((resolve) => {
       releaseTool = resolve;
@@ -127,7 +134,7 @@ describe('durable steering across two Bureau processes', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'sqlite', path },
+      storage: pathFixture.storage,
       durable: true,
     });
     const bureauB = await openBureau(path);
@@ -192,7 +199,10 @@ describe('durable steering across two Bureau processes', () => {
 
   it('releases a paused run when another process deletes its session, without recreating it', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-remote-delete-'));
-    const path = join(directory, 'bureau.sqlite');
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
+    const path = pathFixture.path;
     let releaseTool: (() => void) | undefined;
     const toolGate = new Promise<void>((resolve) => {
       releaseTool = resolve;
@@ -228,7 +238,7 @@ describe('durable steering across two Bureau processes', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'sqlite', path },
+      storage: pathFixture.storage,
       durable: true,
     });
     const bureauB = await openBureau(path);

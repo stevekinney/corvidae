@@ -43,6 +43,7 @@ import {
 import type { AgentDefinitions } from './agent-catalog';
 import { startTaskFrom } from './test/task-start-request.ts';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 async function openBureau(path: string) {
   return createBureau<AgentDefinitions>({
@@ -250,7 +251,9 @@ describe('durable steering across two Bureau processes', () => {
 
   it("schedules each session's steering poll on the Bureau's own timers", async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-poll-timers-'));
-    const path = join(directory, 'bureau.sqlite');
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
     const runtime = createManualRuntimeServices();
     let releaseTool: (() => void) | undefined;
     const toolGate = new Promise<void>((resolve) => {
@@ -281,7 +284,7 @@ describe('durable steering across two Bureau processes', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'sqlite', path },
+      storage: pathFixture.storage,
       durable: true,
       runtime,
     });
@@ -346,7 +349,10 @@ describe('durable steering across two Bureau processes', () => {
 
   it('folds a run boundary and a completion to the same command states everywhere', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-boundary-'));
-    const path = join(directory, 'bureau.sqlite');
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
+    const path = pathFixture.path;
     let releaseTool: (() => void) | undefined;
     const toolGate = new Promise<void>((resolve) => {
       releaseTool = resolve;
@@ -387,7 +393,7 @@ describe('durable steering across two Bureau processes', () => {
           ]),
         }),
       },
-      storage: { type: 'sqlite', path },
+      storage: pathFixture.storage,
       durable: true,
     });
     let bureauB: TestBureau | undefined;
@@ -491,7 +497,10 @@ describe('durable steering across two Bureau processes', () => {
 
   it('replays a policy-resolved command for an exact retry, even where the policy is gone', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-policy-'));
-    const path = join(directory, 'bureau.sqlite');
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
+    const path = pathFixture.path;
     const withPolicy = await createBureau<AgentDefinitions>({
       agents: {
         default: createAgent({
@@ -500,7 +509,7 @@ describe('durable steering across two Bureau processes', () => {
           toolbox: createToolbox([]),
         }),
       },
-      storage: { type: 'sqlite', path },
+      storage: pathFixture.storage,
       durable: true,
       modelPolicy: {
         policyRevision: 1,
@@ -519,7 +528,7 @@ describe('durable steering across two Bureau processes', () => {
           toolbox: createToolbox([]),
         }),
       },
-      storage: { type: 'sqlite', path },
+      storage: pathFixture.open(),
       durable: true,
       modelPolicy: {
         policyRevision: 2,
@@ -1331,7 +1340,10 @@ describe('durable steering across two Bureau processes', () => {
 
   it('ends a run quietly when another process already logged its end', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-ended-elsewhere-'));
-    const path = join(directory, 'bureau.sqlite');
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
+    const path = pathFixture.path;
     const diagnostics: BureauDiagnostic[] = [];
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
@@ -1341,7 +1353,7 @@ describe('durable steering across two Bureau processes', () => {
           toolbox: createToolbox([]),
         }),
       },
-      storage: { type: 'sqlite', path },
+      storage: pathFixture.storage,
       durable: true,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
     });
@@ -1799,7 +1811,9 @@ describe('durable steering across two Bureau processes', () => {
 
   it('reports a committed deletion as done even when its steering log cannot be removed', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-delete-cleanup-'));
-    const path = join(directory, 'bureau.sqlite');
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
     const diagnostics: string[] = [];
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
@@ -1809,7 +1823,7 @@ describe('durable steering across two Bureau processes', () => {
           toolbox: createToolbox([]),
         }),
       },
-      storage: { type: 'sqlite', path },
+      storage: pathFixture.storage,
       durable: true,
       onDiagnostic: (diagnostic) => {
         diagnostics.push(diagnostic.message);

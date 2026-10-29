@@ -37,6 +37,7 @@ import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau } from './types';
 import { expireReviews } from './testing/expired-reviews.test-support';
 import { waitUntil } from '@lostgradient/testing/wait-until';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const harness = createScheduleFireHarness();
 const { open } = harness;
@@ -773,8 +774,8 @@ describe('a fire’s task stream ends when its last review closes', () => {
 
 describe('a fire still going when its process restarts', () => {
   it('resolves an approval it committed and one it makes after, each under its own binding', async () => {
-    const databasePath = harness.nextDatabasePath();
-    const storage = { type: 'sqlite' as const, path: databasePath };
+    await using database = createSqliteStorageFixture({ path: harness.nextDatabasePath() });
+    const storage = database.storage;
     let dead = true;
     const generate: GenerateFunction = async (context) => {
       if (context.step === 0) {

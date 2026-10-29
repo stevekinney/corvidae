@@ -23,6 +23,7 @@ import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-s
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
 import type { Bureau, BureauInternals } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const PRINCIPAL = 'api-key:alice';
 const FILE = agentFileText({ model: KNOWN_MODEL }, 'Instructions.\n');
@@ -186,7 +187,9 @@ describe('a recovered file-agent run', () => {
 describe('a recovered child run', () => {
   it('is not a task: it gets no record and is absent from the task list', async () => {
     const directory = await temporaryDirectory();
-    const path = join(directory, 'bureau.sqlite');
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
     const release = Promise.withResolvers<void>();
     // Each process's child waits on its own gate: the first never opens, so only the second
     // process advances the child's checkpoint.
@@ -230,7 +233,7 @@ describe('a recovered child run', () => {
             ),
           }),
         },
-        storage: { type: 'sqlite', path },
+        storage: pathFixture.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
         onDiagnostic: () => undefined,
