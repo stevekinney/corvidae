@@ -15,7 +15,7 @@
  * small fraction of what one shared row loses, so the test fails if the stamp is not sharded.
  *
  * The counts depend on how transactions interleave, which host load moves, so this measurement runs
- * through `test:benchmarks` rather than the default gate. The default suite keeps the deterministic
+ * through `test:benchmarks` rather than the default gate. Weft's default suite keeps the deterministic
  * guard: `deployment-build-binding.test.ts` pins the shard function's values, which one shard fails.
  */
 import { afterAll, describe, expect, it } from 'bun:test';
@@ -24,12 +24,30 @@ import {
   openPostgresTestDatabase,
   requireOpenedPostgresTestDatabase,
 } from '@lostgradient/testing/postgres-server';
-import { PostgresStorage } from '../../src/storage/postgres.ts';
-import {
-  bindingStampKey,
-  bindingStampShard,
-  newBindingStamp,
-} from '../../src/worker/deployment-records.ts';
+import { PostgresStorage } from '../../src/postgres.ts';
+
+// The stamp layout below is a copy of Weft's `worker/deployment-records.ts`
+// (`bindingStampShard`, `bindingStampKey`, `newBindingStamp`). This package cannot import Weft, so
+// the measurement models the layout itself: 64 shards, the shard a 32-bit FNV-1a hash of the
+// binding key picks, and sixteen random bytes. Weft's `deployment-build-binding.test.ts` pins the
+// real shard function; this copy only has to be shaped like it for the contention it measures.
+const WORKER_BINDING_STAMP_SHARDS = 64;
+
+function bindingStampShard(bindingKey: string): number {
+  let hash = 0x811c9dc5;
+  for (const byte of new TextEncoder().encode(bindingKey)) {
+    hash = Math.imul(hash ^ byte, 0x01000193) >>> 0;
+  }
+  return hash % WORKER_BINDING_STAMP_SHARDS;
+}
+
+function bindingStampKey(deploymentName: string, buildId: string, shard: number): string {
+  return `worker-deployment-binding:${encodeURIComponent(deploymentName)}:${encodeURIComponent(buildId)}:${shard.toString(16).padStart(2, '0')}`;
+}
+
+function newBindingStamp(): Uint8Array {
+  return crypto.getRandomValues(new Uint8Array(16));
+}
 
 const database = await openPostgresTestDatabase();
 const ROUNDS = 8;

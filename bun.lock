@@ -524,6 +524,22 @@
         "typescript": "catalog:",
       },
     },
+    "packages/storage-postgres": {
+      "name": "@lostgradient/storage-postgres",
+      "dependencies": {
+        "@lostgradient/storage": "workspace:*",
+        "pg": "catalog:",
+      },
+      "devDependencies": {
+        "@electric-sql/pglite": "catalog:",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "@types/pg": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/ventriloquist": {
       "name": "@lostgradient/ventriloquist",
       "devDependencies": {
@@ -553,7 +569,6 @@
         "@neondatabase/serverless": "catalog:",
         "@noble/hashes": "catalog:",
         "@valibot/to-json-schema": "catalog:",
-        "pg": "catalog:",
         "valibot": "catalog:",
         "zod": "catalog:",
       },
@@ -567,6 +582,7 @@
         "ajv": "catalog:",
         "fake-indexeddb": "catalog:",
         "oxlint": "catalog:",
+        "pg": "catalog:",
         "playwright": "catalog:",
         "prettier": "catalog:",
         "standardwebhooks": "catalog:",
@@ -927,6 +943,8 @@
     "@lostgradient/storage-lmdb": ["@lostgradient/storage-lmdb@workspace:packages/storage-lmdb"],
 
     "@lostgradient/storage-node-sqlite": ["@lostgradient/storage-node-sqlite@workspace:packages/storage-node-sqlite"],
+
+    "@lostgradient/storage-postgres": ["@lostgradient/storage-postgres@workspace:packages/storage-postgres"],
 
     "@lostgradient/terminal": ["@lostgradient/terminal@workspace:components/terminal"],
 
