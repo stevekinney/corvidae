@@ -21,6 +21,7 @@ import {
   hashDefinitionBytes,
   SourceConflictError,
 } from './definition-source';
+import { assertSafeIdentifier } from './safe-identifier';
 import { createWatchedDirectory } from './watched-directory';
 
 /** The options both directory constructors take. */
@@ -53,13 +54,6 @@ export interface DirectorySourceShape {
   readonly extension: string;
   /** The largest file read, in bytes. */
   readonly sizeLimit: number;
-}
-
-/** An identifier that names a file directly inside the directory and nothing else. */
-function assertSafeIdentifier(id: string): void {
-  if (id === '' || id.startsWith('.') || /[\\/\0]/.test(id)) {
-    throw new TypeError(`"${id}" is not an identifier a directory source can hold.`);
-  }
 }
 
 /** A {@link DefinitionSource} over a directory of files. */
