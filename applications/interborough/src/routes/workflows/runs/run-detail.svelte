@@ -8,7 +8,9 @@
    * rest of what only an operator uses.
    *
    * Status comes from the task (`bureau.tasks.get`), which the page reads again whenever the task's
-   * stream (`bureau.tasks.events`) reports a change; the answer is the stream's, because the
+   * stream (`bureau.tasks.events`) reports a change, and whenever `bureau.events` reports a run or
+   * the cleanup of a cancellation (`task.cleanup-acknowledged`), on a timer only while that feed is
+   * not live; the answer is the stream's, because the
    * management plane's task view carries none. A run that is not a task (a goal's attempt, which the
    * Bureau does not make one) is shown from the goal that made it. The Engine tab reads the engine,
    * so it is there only for a caller who holds `workflows:read`; everything else is the Bureau's.
@@ -23,6 +25,7 @@
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { RETRY_LABEL, TASK_COPY } from '../../../app/copy.ts';
+  import { useBureauEventsLive } from '../../../app/live-polling.svelte.ts';
   import { getContext } from '../../../lib/bureau-client.ts';
   import { listAllGoals } from '../../../lib/bureau-goals.ts';
   import {
@@ -62,16 +65,22 @@
     return cleanup === 'cancel-requested' || cleanup === 'cleanup-pending';
   }
 
-  const task = createQuery(
-    () => ({
+  const bureauLive = useBureauEventsLive();
+  const task = createQuery(() => {
+    // Read here, not in the interval below, which TanStack calls on its own and so is not tracked.
+    const polling = !bureauLive();
+    return {
       queryKey: detailKey,
-      queryFn: ({ signal }) => getTask(initialRunId, { signal }),
+      queryFn: ({ signal }: { signal: AbortSignal }) => getTask(initialRunId, { signal }),
       retry: false,
+      // A cancellation's cleanup moves with `task.cleanup-acknowledged` and the `run.*` events.
+      // poll-reason: fallback
       refetchInterval: (query: { state: { data: { cleanup: TaskCleanup | null } | undefined } }) =>
-        inProgress(query.state.data?.cleanup) ? TASK_COPY.cleanupPollMilliseconds : false,
-    }),
-    undefined,
-  );
+        polling && inProgress(query.state.data?.cleanup)
+          ? TASK_COPY.cleanupPollMilliseconds
+          : false,
+    };
+  }, undefined);
 
   // How many elements the task's stream has reported, for the tool calls to read the thread again:
   // a call that starts or ends inside one status is a change the task's own fields do not show.
@@ -112,6 +121,10 @@
   $effect(() => {
     if (follower.state !== 'ended') return;
     if (task.data !== undefined && isTerminalState(task.data.status)) return;
+    // The stream ended before the run did: `run.settled` and `run.removed` read the task again
+    // while the Bureau's feed is live, so the timer is for when it is not.
+    if (bureauLive()) return;
+    // poll-reason: fallback
     const timer = setInterval(() => void task.refetch(), TASK_COPY.endedPollMilliseconds);
     return () => clearInterval(timer);
   });
@@ -141,7 +154,7 @@
   // the page cannot say whether the run exists, so it says so and offers to try again.
   const goals = createQuery(
     () => ({
-      queryKey: ['goals', 'runs'] as const,
+      queryKey: queryKeys.goals.runs(),
       queryFn: ({ signal }) => listAllGoals({ signal }),
       enabled: notFound,
       retry: false,

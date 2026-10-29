@@ -33,6 +33,7 @@
   import { router } from '../lib/router.svelte.ts';
   import { getPrincipalStore, scopeReason } from '../lib/scopes.svelte.ts';
   import { RETRY_LABEL, VIEW_COPY } from './copy.ts';
+  import { useBureauEventsLive, useFleetEventsLive } from './live-polling.svelte.ts';
   import WelcomeAgents from './welcome-agents.svelte';
   import { probeFor, ViewProbeFault, type ViewProbeResult } from './view-probes.ts';
   import { VIEWS, type ViewName } from './views.ts';
@@ -74,8 +75,13 @@
   // The location can be the view's way of creating its first item (`views.ts`, `creating`).
   const creating = $derived(definition.creating?.(router.current.search) ?? false);
 
-  const probeQuery = createQuery(
-    () => ({
+  const bureauLive = useBureauEventsLive();
+  const fleetLive = useFleetEventsLive();
+
+  const probeQuery = createQuery(() => {
+    // Read here, not in the interval below, which TanStack calls on its own and so is not tracked.
+    const live = { bureau: bureauLive(), fleet: fleetLive() };
+    return {
       queryKey: queryKeys.view(
         initial.view,
         (initial.pattern === AGENT_MEMORY_PATTERN && initial.parameters['id'] !== undefined
@@ -92,16 +98,21 @@
       enabled: probe !== undefined && !scopeDenied,
       retry: false,
       staleTime: 5_000,
-      // A probe that expects its empty answer to change asks again while the view is empty, and
-      // stops once there is something to show.
-      refetchInterval: (query: { state: { data: ViewProbeResult | undefined } }) =>
-        query.state.data?.empty ? (query.state.data.recheckMs ?? false) : false,
+      // A probe that expects its empty answer to change is asked again when the feed it names
+      // reports the change, and, while that feed is not live, on a timer until there is something to
+      // show.
+      // poll-reason: fallback
+      refetchInterval: (query: { state: { data: ViewProbeResult | undefined } }) => {
+        const answer = query.state.data;
+        if (!answer?.empty) return false;
+        if (answer.liveSource !== undefined && live[answer.liveSource]) return false;
+        return answer.recheckMs ?? false;
+      },
       // A probe nobody is watching is dropped, so coming back to the view asks again and never
       // shows what it found last time.
       gcTime: 0,
-    }),
-    undefined,
-  );
+    };
+  }, undefined);
 
   function isForbiddenFault(error: unknown): boolean {
     if (error instanceof ViewProbeFault) return error.status === 403;
