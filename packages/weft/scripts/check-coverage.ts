@@ -31,12 +31,12 @@ type CoverageAllowance = {
 
 /**
  * The `workflow-event-feed.ts` lines Bun leaves uncovered on a given host. Linux on x64 misses
- * line 398 (the returned `subscribe` reference); macOS and linux/arm64 (the Dev Container on
+ * line 401 (the returned `subscribe` reference); macOS and linux/arm64 (the Dev Container on
  * Apple silicon, COR-1379) cover it, and the allowance's `requireUncoveredLines` would fail
  * them if it still named the line.
  */
 export function workflowEventFeedUncoveredLines(platform: string, architecture: string): number[] {
-  return platform === 'darwin' || architecture === 'arm64' ? [] : [398];
+  return platform === 'darwin' || architecture === 'arm64' ? [] : [401];
 }
 
 /**
@@ -339,7 +339,7 @@ const COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer('COVERAGE_ALLOWANCE_OVE
     {
       reason:
         'Driver and runtime-specific behavior cannot be attributed in the default Bun LCOV process; fresh coverage confirms only these residual misses. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption), superseding the prior WFT-138 re-derivation: upstream’s coordinates no longer matched corvidae’s file.',
-      lines: new Set([94, 102]),
+      lines: new Set([93, 101]),
       requireUncoveredLines: true,
     },
   ],
@@ -432,15 +432,6 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer(
         reason:
           'The remaining dispatch lines guard a catalog operation without a JSON-RPC binding, which registration validation excludes.',
         lines: new Set([201]),
-        requireUncoveredLines: true,
-      },
-    ],
-    [
-      'src/testing/storage-backends.test-support.ts',
-      {
-        reason:
-          'Driver and runtime-specific behavior cannot be attributed in the default Bun LCOV process; fresh coverage confirms only these residual misses.',
-        lines: new Set([72, 73, 74]),
         requireUncoveredLines: true,
       },
     ],
@@ -998,7 +989,7 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
       {
         reason:
           'Transport disconnect and concurrency exits are behaviorally tested, but Bun does not deterministically attribute these residual paths.',
-        lines: new Set([47, 51]),
+        lines: new Set([48, 52]),
         requireUncoveredLines: true,
       },
     ],
@@ -1007,7 +998,7 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
       {
         reason:
           'The remaining concurrency branches cover lease-loss and simultaneous-settlement interleavings whose public outcomes are tested without deterministic line attribution.',
-        lines: new Set([125, 126, 127, 154]),
+        lines: new Set([129, 130, 131, 158]),
         requireUncoveredLines: true,
       },
     ],
@@ -1016,7 +1007,7 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
       {
         reason:
           'The remaining key-store branches handle rotation races and malformed stored key metadata excluded by validated writes.',
-        lines: new Set([165, 166]),
+        lines: new Set([166, 167]),
         requireUncoveredLines: true,
       },
     ],
@@ -1230,7 +1221,7 @@ export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERA
       reason:
         'The `if (import.meta.main)` entry point only binds `startExampleAgentAndReport` to the real process: the resolved example environment, `console.info`, and the shutdown signals. It runs when `test:a2a-tck` spawns the example, a separate process whose hits are never attributed to the parent LCOV report. `startExampleAgentAndReport` and `startExampleAgent` are covered in process by examples/a2a-workflow-agent.test.ts. The one function miss is the entry block’s signal handler.',
       functions: 1,
-      lines: new Set([266, 267, 268, 269, 270, 271, 272, 273, 274]),
+      lines: new Set([267, 268, 269, 270, 271, 272, 273, 274, 275]),
       requireUncoveredLines: true,
     },
   ],
@@ -1249,7 +1240,7 @@ export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERA
     {
       reason:
         "The `if (import.meta.main) {...}` CLI entry point only runs when this file is spawned directly (bun src/hello-world-example.test-support.ts), never when imported — proven by a dedicated subprocess test (src/examples.test.ts) that spawns it and asserts its stdout, exit code, and empty stderr. That child process runs outside the parent Bun test process's --coverage instrumentation, so its hits are never attributed to the parent LCOV report — the same class of gap TARGET_ONLY_COVERAGE_ALLOWANCES documents for scripts/run-gates.ts, scripts/verify-no-test-sleeps.ts, and examples/hello-world/src/index.ts above.",
-      lines: new Set([76, 77, 79, 80]),
+      lines: new Set([77, 78, 80, 81]),
       requireUncoveredLines: true,
     },
   ],
