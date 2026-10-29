@@ -33,8 +33,8 @@
  *      does not buffer" verification through the public SW entry point
  *      rather than a direct `handleRequest` call.
  */
+import { IndexedDBStorage } from '@lostgradient/storage-indexeddb';
 import {
-  IndexedDBStorage,
   createFleetEventFeed,
   principalFromApiKey,
   setupServiceWorker,

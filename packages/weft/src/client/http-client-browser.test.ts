@@ -18,7 +18,7 @@
  * bundling posture a Vite/Rollup consumer uses — and runs it in a real
  * Chromium tab with no `Bun` global and no Node built-ins available
  * (Playwright's default browser context), following the harness pattern in
- * `src/storage/indexeddb-browser.test.ts` and
+ * `packages/storage-indexeddb/src/indexeddb-browser.test.ts` and
  * `src/service-worker/service-worker-browser.test.ts`.
  *
  * The build step shells out to the `bun build` CLI (`Bun.spawn`) rather than

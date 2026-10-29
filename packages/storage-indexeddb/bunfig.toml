@@ -1,0 +1,17 @@
+[loader]
+".md" = "text"
+
+[run]
+bun = true
+
+[test]
+# Every test file runs with the shared guard that fails a test which leaves a real timer behind,
+# then with `fake-indexeddb/auto`, which installs `globalThis.indexedDB` so the adapter's suites and
+# their fault harness reach the global without each test file importing the shim.
+preload = ["@lostgradient/testing/real-timer-leak-guard", "fake-indexeddb/auto"]
+# `bun run test:coverage` fails below these. They are no lower than the line and function coverage
+# the same files had under Weft's coverage run before they moved here (COR-1777).
+coverageThreshold = { lines = 1.0, functions = 1.0 }
+# Other workspaces are consumed as source, so their modules load into this suite too; they are
+# measured by their own packages.
+coveragePathIgnorePatterns = ["../**"]

@@ -20,7 +20,7 @@
  * Gate: WEFT_BROWSER_SMOKE=1 must be set (the shared flag for all real-browser
  * smokes, via `browserSmokeEnabled`). Otherwise all tests skip. This test does
  * NOT run in the default `bun test` pass. Run it with
- * `bun run --filter=@lostgradient/weft test:browser`.
+ * `bun run --filter=@lostgradient/storage-indexeddb test:browser`.
  *
  * Browser provisioning: `bunx playwright install chromium` (run once). No
  * CHROMIUM_PATH discovery needed — Playwright manages its own pinned binary.
@@ -28,7 +28,7 @@
  * ## Architecture
  *
  * A Bun.serve() local HTTP origin serves a minimal test page. The adapter source
- * (already in src/storage/indexeddb.ts) is bundled into the page via Bun.build()
+ * (already in src/indexeddb.ts) is bundled into the page via Bun.build()
  * and served as a static script. The test drives the browser with Playwright
  * library mode (not @playwright/test) so bun:test remains the sole test runner.
  * Results are collected from page.evaluate() return values or exposeFunction

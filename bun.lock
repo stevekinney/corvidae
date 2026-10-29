@@ -47,6 +47,7 @@
         "@lostgradient/operative": "workspace:*",
         "@lostgradient/storage": "workspace:*",
         "@lostgradient/storage-bun-sqlite": "workspace:*",
+        "@lostgradient/storage-indexeddb": "workspace:*",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/weft": "workspace:*",
         "@lucide/svelte": "catalog:",
@@ -495,6 +496,21 @@
         "typescript": "catalog:",
       },
     },
+    "packages/storage-indexeddb": {
+      "name": "@lostgradient/storage-indexeddb",
+      "dependencies": {
+        "@lostgradient/storage": "workspace:*",
+      },
+      "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "fake-indexeddb": "catalog:",
+        "oxlint": "catalog:",
+        "playwright": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/storage-lmdb": {
       "name": "@lostgradient/storage-lmdb",
       "dependencies": {
@@ -578,6 +594,7 @@
         "@lostgradient/environmentalist": "catalog:",
         "@lostgradient/storage": "workspace:*",
         "@lostgradient/storage-bun-sqlite": "workspace:*",
+        "@lostgradient/storage-indexeddb": "workspace:*",
         "@modelcontextprotocol/server": "catalog:",
         "@msgpack/msgpack": "catalog:",
         "@noble/hashes": "catalog:",
@@ -951,6 +968,8 @@
     "@lostgradient/storage": ["@lostgradient/storage@workspace:packages/storage"],
 
     "@lostgradient/storage-bun-sqlite": ["@lostgradient/storage-bun-sqlite@workspace:packages/storage-bun-sqlite"],
+
+    "@lostgradient/storage-indexeddb": ["@lostgradient/storage-indexeddb@workspace:packages/storage-indexeddb"],
 
     "@lostgradient/storage-lmdb": ["@lostgradient/storage-lmdb@workspace:packages/storage-lmdb"],
 
