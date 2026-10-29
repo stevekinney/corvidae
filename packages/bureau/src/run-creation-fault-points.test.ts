@@ -2,26 +2,39 @@
  * COR-424 — retry-safe run creation at each fault point, over both persistent
  * backends.
  *
- * Every scenario has two bureaus over one storage path, the way two processes
- * would share it. Bureau A is the process that fails: it is left undisposed
- * at the fault point (a graceful dispose would cancel its durable run, which
- * a crash does not), and the write that the crash interrupts is held
- * unsettled so it never lands. Bureau B is the process that boots afterwards
- * and receives the client's retry: the same principal, request id, and
- * payload. Each scenario asserts the outcome the issue fixes for that point.
+ * Every scenario has two Bureaus over one storage path, the way two processes
+ * would share it. Bureau A is the process that fails: it is a real child process
+ * (`test/run-creation-crash-child.ts`) that stops at the fault point, records
+ * what it observed in a marker file, and kills itself with SIGKILL (COR-1795).
+ * A graceful dispose would cancel its durable run, which a crash does not, and
+ * the write that the crash interrupts never lands. Bureau B is the process that
+ * boots afterwards, in this one, and receives the client's retry: the same
+ * principal, request id, and payload. The parent holds exactly one handle on
+ * the path, B's, opened only once the child is gone, because LMDB must not have
+ * two handles on one path in one process. Each scenario asserts the outcome the
+ * issue fixes for that point.
  *
  * The same body runs over SQLite and LMDB, so a divergence between the two
  * fails the same assertion rather than being documented as a difference.
- * Polls use a small real delay because a zero-delay poll starves LMDB's own
- * completion callbacks (see `event-history-run-ownership-recovery-lmdb.test.ts`).
+ * Booting a child takes real seconds, which cannot fit Bun's per-test clock on
+ * a loaded host, so each scenario runs once at module scope and its test only
+ * reports how it went (see `test/hoisted-scenario.ts`). Polls use a small real
+ * delay because a zero-delay poll starves LMDB's own completion callbacks (see
+ * `event-history-run-ownership-recovery-lmdb.test.ts`).
  */
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
-import { type BatchOperation, type Storage, textValueStore } from '@lostgradient/storage';
-import { decode } from '@lostgradient/weft';
+import { textValueStore } from '@lostgradient/storage';
+import { HANG_GUARD_MILLISECONDS, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { createToolbox, type Tool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
+import type { AgentDefinitions } from './agent-catalog';
 import {
   type CommandLedger,
   type CommandLedgerIdentity,
@@ -31,23 +44,18 @@ import {
   type RunCreationLedgerResult,
 } from './command-ledger';
 import { createBureau } from './create-bureau';
+import { listHeldTasks } from './test';
+import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test/hoisted-scenario';
+import { type FaultMarker, type FaultScenario, REQUEST } from './test/run-creation-fault-fixtures';
 import {
   createLmdbStorageFixture,
   createSqliteStorageFixture,
   type PersistentBureauStorageFixture,
 } from './test/storage-fixtures';
-import type { Bureau, BureauDiagnostic } from './types';
-import type { AgentDefinitions } from './agent-catalog';
-import { type TaskStartRequest, startTaskFrom } from './test/task-start-request.ts';
-import { listHeldTasks } from './test';
-import { waitUntil } from '@lostgradient/testing/wait-until';
+import { startTaskFrom } from './test/task-start-request.ts';
+import type { Bureau } from './types';
 
-const REQUEST: TaskStartRequest = {
-  agentName: 'default',
-  input: 'Reconcile the ledger.',
-  principal: 'alice',
-  commandId: 'request-1',
-};
+const CHILD = join(import.meta.dir, 'test', 'run-creation-crash-child.ts');
 
 const IDENTITY: CommandLedgerIdentity = {
   callerId: 'alice',
@@ -56,178 +64,20 @@ const IDENTITY: CommandLedgerIdentity = {
   operationVersion: RUN_CREATION_OPERATION_VERSION,
 };
 
-const LEDGER_ENTRY_PREFIX = 'command-ledger:v1:entry:';
+type Backend = 'sqlite' | 'lmdb';
 
-/** A fixture on a new store, or, given `path`, a second fixture with its own handle on that store. */
-type FixtureFactory = (runtime: RuntimeServices, path?: string) => PersistentBureauStorageFixture;
+/** The one fixture the parent opens on the child's path, once the child is gone. */
+type FixtureFactory = (runtime: RuntimeServices, path: string) => PersistentBureauStorageFixture;
 
-const BACKENDS: readonly (readonly [string, FixtureFactory])[] = [
-  [
-    'sqlite',
-    (runtime, path) =>
-      createSqliteStorageFixture({ runtime, ...(path === undefined ? {} : { path }) }),
-  ],
-  [
-    'lmdb',
-    (runtime, path) =>
-      createLmdbStorageFixture({ runtime, ...(path === undefined ? {} : { path }) }),
-  ],
+const BACKENDS: readonly (readonly [Backend, FixtureFactory])[] = [
+  ['sqlite', (runtime, path) => createSqliteStorageFixture({ runtime, path })],
+  ['lmdb', (runtime, path) => createLmdbStorageFixture({ runtime, path })],
 ];
 
 /** A bounded poll with a small real delay between checks; never a blind sleep. */
 async function pollUntil(check: () => boolean | Promise<boolean>): Promise<true> {
   await waitUntil(check, { message: 'pollUntil' });
   return true;
-}
-
-/** One key/value a storage call was about to write. */
-interface PendingWrite {
-  readonly key: string;
-  readonly text: string;
-  readonly value: Uint8Array;
-}
-
-const decoder = new TextDecoder();
-
-function writesOf(verb: string, args: readonly unknown[]): PendingWrite[] {
-  if (verb === 'put') {
-    const value = args[1] as Uint8Array;
-    return [{ key: args[0] as string, text: decoder.decode(value), value }];
-  }
-  const operations = verb === 'batch' ? args[0] : verb === 'conditionalBatch' ? args[1] : undefined;
-  if (!Array.isArray(operations)) return [];
-  return (operations as BatchOperation[]).flatMap((operation) =>
-    operation.type === 'put'
-      ? [{ key: operation.key, text: decoder.decode(operation.value), value: operation.value }]
-      : [],
-  );
-}
-
-/** Where the crash falls relative to the write that triggers it. */
-type CrashPoint = 'before-write' | 'after-write';
-
-/** A storage handle whose process dies at the first write matching a trigger. */
-interface CrashingStorage {
-  readonly storage: Storage;
-  crashed(): boolean;
-  /**
-   * Teardown only, once the surviving bureau is gone: fails every write the
-   * dead process has made since the crash, and any it makes later, with
-   * {@link ProcessCrashedError}, so the dead bureau can be disposed. None of
-   * them reach the backend, exactly as none would have after a real crash.
-   */
-  discard(): void;
-}
-
-const PROCESS_CRASHED_MESSAGE = 'The process that made this write crashed before it landed.';
-
-/** What every write a crashed process makes after its crash fails with, at teardown. */
-class ProcessCrashedError extends Error {
-  constructor() {
-    super(PROCESS_CRASHED_MESSAGE);
-    this.name = 'ProcessCrashedError';
-  }
-}
-
-const WRITE_VERBS = new Set<PropertyKey>([
-  'put',
-  'delete',
-  'batch',
-  'conditionalBatch',
-  'deletePrefix',
-  'deleteRange',
-]);
-
-/**
- * Wraps `storage` so the process dies at the first write matching `trigger`:
- * with `before-write` that write never reaches the backend, and with
- * `after-write` it lands and the process dies as it returns. From then on
- * no write the process makes reaches the backend; each stays unsettled until
- * `discard()` fails it. Reads pass through, since they cannot change what a
- * later process finds.
- */
-function crashOnWrite(
-  storage: Storage,
-  trigger: (write: PendingWrite) => boolean,
-  point: CrashPoint,
-  landsFirst?: (write: PendingWrite) => boolean,
-): CrashingStorage {
-  let crashed = false;
-  let crashing = false;
-  let discarded = false;
-  const held: (() => void)[] = [];
-  let resolveLanded: () => void = () => {};
-  const landed =
-    landsFirst === undefined
-      ? Promise.resolve()
-      : new Promise<void>((resolve) => {
-          resolveLanded = resolve;
-        });
-  const wrapped = new Proxy(storage, {
-    get(target, property, receiver) {
-      const value: unknown = Reflect.get(target, property, receiver);
-      if (typeof value !== 'function') return value;
-      if (!WRITE_VERBS.has(property)) return value.bind(target);
-      return async (...args: unknown[]) => {
-        const writes = writesOf(String(property), args);
-        if (!crashed && !crashing && writes.some(trigger)) {
-          // The process dies here, but only once a write that must precede the crash has landed;
-          // other writes go through meanwhile.
-          crashing = true;
-          const written =
-            point === 'after-write' ? await Reflect.apply(value, target, args) : undefined;
-          await landed;
-          crashed = true;
-          if (point === 'after-write') return written;
-        }
-        if (!crashed) {
-          const written: unknown = await Reflect.apply(value, target, args);
-          if (landsFirst !== undefined && writes.some(landsFirst)) resolveLanded();
-          return written;
-        }
-        if (discarded) throw new ProcessCrashedError();
-        return new Promise((_resolve, reject) => {
-          held.push(() => reject(new ProcessCrashedError()));
-        });
-      };
-    },
-  });
-  return {
-    storage: wrapped,
-    crashed: () => crashed,
-    discard() {
-      discarded = true;
-      for (const settle of held.splice(0)) settle();
-    },
-  };
-}
-
-/**
- * COR-297 — the write that launches the run: its workflow record moving from `pending` to
- * `running`. `createRun` acknowledges a run once `prepare()` commits it, before it launches, so a
- * scenario about a run that has started work waits for this write before its process dies.
- */
-function runLaunched(write: PendingWrite): boolean {
-  if (!write.key.startsWith('wf:')) return false;
-  try {
-    const record = decode(write.value);
-    return (
-      typeof record === 'object' && record !== null && Reflect.get(record, 'status') === 'running'
-    );
-  } catch {
-    return false;
-  }
-}
-
-function ledgerWriteIn(state: 'pending' | 'completed'): (write: PendingWrite) => boolean {
-  return (write) => {
-    if (!write.key.startsWith(LEDGER_ENTRY_PREFIX)) return false;
-    try {
-      return (JSON.parse(write.text) as { state?: unknown }).state === state;
-    } catch {
-      return false;
-    }
-  };
 }
 
 /**
@@ -252,58 +102,62 @@ function heldGenerate(): { generate: GenerateFunction; calls: () => number; rele
 }
 
 interface Scenario {
-  /** The handle the recovering process boots over. */
-  readonly storageB: Storage;
+  /** What Bureau A, the child, recorded before it was killed. */
+  readonly marker: FaultMarker;
   readonly ledger: CommandLedger<RunCreationClaim, RunCreationLedgerResult>;
-  /** The failing process's handle, which dies at the first write matching `trigger`. */
-  crashOn(
-    trigger: (write: PendingWrite) => boolean,
-    point: CrashPoint,
-    landsFirst?: (write: PendingWrite) => boolean,
-  ): CrashingStorage;
-  boot(storage: Storage, generate: GenerateFunction): Promise<Bureau>;
+  /** Boots the recovering Bureau B over the store Bureau A left behind. */
+  boot(generate: GenerateFunction): Promise<Bureau>;
 }
 
 /**
- * Runs `body` against one backend with two storage handles over the same
- * path. Teardown disposes the surviving bureau first, then discards the dead
- * process's held writes so the failed bureau can be disposed too, then
- * closes the handles and the fixture.
+ * Plays `scenario` against one backend: Bureau A runs in a child that is killed with SIGKILL at the
+ * scenario's fault point, then `body` runs against Bureau B over the store it left. Teardown
+ * disposes B, closes the one fixture, and removes the directory the scenario allocated.
  */
 async function withScenario(
+  backend: Backend,
   factory: FixtureFactory,
+  scenario: FaultScenario,
+  scope: ScenarioScope,
   body: (scenario: Scenario) => Promise<void>,
 ): Promise<void> {
   const runtime = createDefaultRuntimeServices();
-  const fixture = factory(runtime);
-  // Each process holds its own handle on the store: LMDB opens one per fixture.
-  const recovering = factory(runtime, fixture.path);
-  const storageA = fixture.storage;
-  const storageB = recovering.storage;
+  const directory = mkdtempSync(join(tmpdir(), `corvidae-run-creation-${backend}-`));
+  const storagePath = join(directory, 'bureau');
+  const markerPath = join(directory, 'marker.json');
   const bureaus: Bureau[] = [];
-  const crashes: CrashingStorage[] = [];
-  // A dead process reports the writes its crash failed; anything else it
-  // reports is a defect, checked once it has been disposed.
-  const deadProcessDiagnostics: BureauDiagnostic[] = [];
+  let fixture: PersistentBureauStorageFixture | undefined;
+  // A hung scenario never reaches its `finally`, so what it owns is released from here.
+  scope.onHang(async () => {
+    await Promise.allSettled(bureaus.map((bureau) => bureau.dispose()));
+    await fixture?.dispose();
+    rmSync(directory, { recursive: true, force: true });
+  });
   try {
+    // Premise: the child reached its fault point, recorded what it saw, and died from SIGKILL.
+    const child = spawnWithHangGuard(['bun', CHILD, scenario, backend, storagePath, markerPath], {
+      stdout: 'ignore',
+      stderr: 'pipe',
+    });
+    scope.onHang(() => child.kill('SIGKILL'));
+    const [stderr] = await Promise.all([new Response(child.stderr).text(), child.exited]);
+    expect(child.signalCode ?? stderr).toBe('SIGKILL');
+    const marker = JSON.parse(readFileSync(markerPath, 'utf8')) as FaultMarker;
+    // A dead process reports nothing, because its writes never settle; anything it did report is
+    // a defect.
+    expect(marker.diagnostics).toEqual([]);
+
+    fixture = factory(runtime, storagePath);
+    const storage = fixture.storage;
     await body({
-      storageB,
+      marker,
       ledger: createCommandLedger({
-        kv: textValueStore(storageB, { disposeUnderlyingStorage: false }),
+        kv: textValueStore(storage, { disposeUnderlyingStorage: false }),
         clock: runtime.clock,
         nextConflictId: () => runtime.identifiers.next('conflict'),
       }),
-      crashOn(trigger, point, landsFirst) {
-        const crash = crashOnWrite(storageA, trigger, point, landsFirst);
-        crashes.push(crash);
-        return crash;
-      },
-      async boot(storage, generate) {
-        const crashing = crashes.some((crash) => crash.storage === storage);
+      async boot(generate) {
         const bureau = await createBureau<AgentDefinitions>({
-          ...(crashing
-            ? { onDiagnostic: (diagnostic) => deadProcessDiagnostics.push(diagnostic) }
-            : {}),
           agents: {
             default: createAgent({
               generate,
@@ -320,19 +174,10 @@ async function withScenario(
       },
     });
   } finally {
-    const [failed, ...survivors] = bureaus;
-    for (const bureau of survivors.toReversed()) await bureau.dispose();
-    for (const crash of crashes) crash.discard();
-    await failed?.dispose();
-    await recovering.dispose();
-    await fixture.dispose();
+    for (const bureau of bureaus.toReversed()) await bureau.dispose();
+    await fixture?.dispose();
+    rmSync(directory, { recursive: true, force: true });
   }
-  const unexpected = deadProcessDiagnostics.filter(
-    (diagnostic) =>
-      !(diagnostic.cause instanceof ProcessCrashedError) &&
-      !diagnostic.message.includes(PROCESS_CRASHED_MESSAGE),
-  );
-  expect(unexpected).toEqual([]);
 }
 
 async function durableRunIds(bureau: Bureau): Promise<string[] | undefined> {
@@ -345,19 +190,23 @@ async function durableStatus(bureau: Bureau, runId: string): Promise<string | un
   return state?.status;
 }
 
-describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory) => {
-  it('crash-before-claim: the retry claims and runs as a fresh attempt, with no residual entry', async () => {
-    await withScenario(factory, async ({ storageB, ledger, crashOn, boot }) => {
-      const crash = crashOn(ledgerWriteIn('pending'), 'before-write');
-      const bureauA = await boot(crash.storage, heldGenerate().generate);
-      startTaskFrom(bureauA, REQUEST).catch(() => {});
-      expect(await pollUntil(() => crash.crashed())).toBe(true);
+interface FaultCase {
+  readonly scenario: FaultScenario;
+  readonly title: string;
+  readonly body: (scenario: Scenario) => Promise<void>;
+}
 
+const CASES: readonly FaultCase[] = [
+  {
+    scenario: 'crash-before-claim',
+    title:
+      'crash-before-claim: the retry claims and runs as a fresh attempt, with no residual entry',
+    async body({ marker, ledger, boot }) {
       expect(await ledger.read(IDENTITY)).toBeUndefined();
-      expect(await durableRunIds(bureauA)).toEqual([]);
+      expect(marker.runIds).toEqual([]);
 
       const generateB = heldGenerate();
-      const bureauB = await boot(storageB, generateB.generate);
+      const bureauB = await boot(generateB.generate);
       const retry = await startTaskFrom(bureauB, REQUEST);
 
       expect(retry.receipt).toMatchObject({
@@ -370,24 +219,21 @@ describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory)
         state: 'completed',
         result: { receipt: retry.receipt },
       });
-    });
-  });
-
-  it('after-claim: the retry observes the pending entry and starts no run of its own', async () => {
-    await withScenario(factory, async ({ storageB, ledger, crashOn, boot }) => {
+    },
+  },
+  {
+    scenario: 'after-claim',
+    title: 'after-claim: the retry observes the pending entry and starts no run of its own',
+    async body({ marker, ledger, boot }) {
       // The claim lands and the process dies as it returns: the entry exists,
       // pending, and names a run that never reached the engine.
-      const crash = crashOn(ledgerWriteIn('pending'), 'after-write');
-      const bureauA = await boot(crash.storage, heldGenerate().generate);
-      startTaskFrom(bureauA, REQUEST).catch(() => {});
-      expect(await pollUntil(() => crash.crashed())).toBe(true);
       const pending = await ledger.read(IDENTITY);
       if (pending?.state !== 'pending') throw new Error('expected the claim to be pending');
       const { claim } = pending;
-      expect(await durableRunIds(bureauA)).toEqual([]);
+      expect(marker.runIds).toEqual([]);
 
       const generateB = heldGenerate();
-      const bureauB = await boot(storageB, generateB.generate);
+      const bureauB = await boot(generateB.generate);
       const retry = await startTaskFrom(bureauB, REQUEST);
       const again = await startTaskFrom(bureauB, REQUEST);
 
@@ -405,25 +251,22 @@ describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory)
       expect(listHeldTasks(bureauB)).toEqual([]);
       expect(generateB.calls()).toBe(0);
       expect(await ledger.read(IDENTITY)).toEqual(pending);
-    });
-  });
-
-  it('after-work-start: the retry observes the in-flight run instead of restarting it, and records its receipt once', async () => {
-    await withScenario(factory, async ({ storageB, ledger, crashOn, boot }) => {
+    },
+  },
+  {
+    scenario: 'after-work-start',
+    title:
+      'after-work-start: the retry observes the in-flight run instead of restarting it, and records its receipt once',
+    async body({ marker, ledger, boot }) {
       // The run is durably started, but the process dies before the ledger
       // records it: the entry stays pending and names a run the engine has.
-      const crash = crashOn(ledgerWriteIn('completed'), 'before-write', runLaunched);
-      const bureauA = await boot(crash.storage, heldGenerate().generate);
-      startTaskFrom(bureauA, REQUEST).catch(() => {});
-      expect(await pollUntil(() => crash.crashed())).toBe(true);
-
       const pending = await ledger.read(IDENTITY);
       if (pending?.state !== 'pending') throw new Error('expected the claim to be pending');
       const { runId } = pending.claim;
-      expect(await durableRunIds(bureauA)).toEqual([runId]);
+      expect(marker.runIds).toEqual([runId]);
 
       const generateB = heldGenerate();
-      const bureauB = await boot(storageB, generateB.generate);
+      const bureauB = await boot(generateB.generate);
       const retry = await startTaskFrom(bureauB, REQUEST);
 
       const receipt = {
@@ -453,24 +296,22 @@ describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory)
       expect(later.id).toBe(runId);
       expect(later.receipt).toEqual(receipt);
       expect(await durableRunIds(bureauB)).toEqual([runId]);
-    });
-  });
-
-  it('after-prepare-before-launch: recovery cancels the run that never launched, and the retry receives its aborted receipt (COR-297)', async () => {
-    await withScenario(factory, async ({ storageB, ledger, crashOn, boot }) => {
+    },
+  },
+  {
+    scenario: 'after-prepare-before-launch',
+    title:
+      'after-prepare-before-launch: recovery cancels the run that never launched, and the retry receives its aborted receipt (COR-297)',
+    async body({ ledger, boot }) {
       // `createRun` acknowledges a run once `prepare()` commits it. The process dies as the ledger
       // records that, before the run launches: its record stays `pending`, and its session says
       // it is running.
-      const crash = crashOn(ledgerWriteIn('completed'), 'before-write');
-      const bureauA = await boot(crash.storage, heldGenerate().generate);
-      startTaskFrom(bureauA, REQUEST).catch(() => {});
-      expect(await pollUntil(() => crash.crashed())).toBe(true);
       const pending = await ledger.read(IDENTITY);
       if (pending?.state !== 'pending') throw new Error('expected the claim to be pending');
       const { runId } = pending.claim;
 
       const generateB = heldGenerate();
-      const bureauB = await boot(storageB, generateB.generate);
+      const bureauB = await boot(generateB.generate);
       const retry = await startTaskFrom(bureauB, REQUEST);
 
       const receipt = {
@@ -487,21 +328,21 @@ describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory)
         claim: pending.claim,
         result: { receipt },
       });
-    });
-  });
-
-  it('after-effect-before-ack: the run executed once and the retry receives the original receipt', async () => {
-    await withScenario(factory, async ({ storageB, ledger, crashOn, boot }) => {
+    },
+  },
+  {
+    scenario: 'after-effect-before-ack',
+    title:
+      'after-effect-before-ack: the run executed once and the retry receives the original receipt',
+    async body({ marker, ledger, boot }) {
       // The process dies as the ledger records the run, before the caller
       // hears back: the acknowledgement `createRun` resolves with is lost.
-      const crash = crashOn(ledgerWriteIn('completed'), 'after-write', runLaunched);
-      const bureauA = await boot(crash.storage, heldGenerate().generate);
-      const unacknowledged = await startTaskFrom(bureauA, REQUEST);
-      expect(crash.crashed()).toBe(true);
+      const unacknowledged = marker.started;
+      if (unacknowledged === undefined) throw new Error('expected the child to record the run');
       const completed = await ledger.read(IDENTITY);
       if (completed?.state !== 'completed') throw new Error('expected a completed entry');
 
-      const bureauB = await boot(storageB, heldGenerate().generate);
+      const bureauB = await boot(heldGenerate().generate);
       const retry = await startTaskFrom(bureauB, REQUEST);
 
       expect(retry.id).toBe(unacknowledged.id);
@@ -510,30 +351,22 @@ describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory)
       expect(await durableRunIds(bureauB)).toEqual([unacknowledged.id]);
       expect(listHeldTasks(bureauB).map((run) => run.id)).toEqual([unacknowledged.id]);
       expect(await ledger.read(IDENTITY)).toEqual(completed);
-    });
-  });
-
-  it('during-cancellation/cleanup: the retry observes the cancellation and does not run the work again', async () => {
-    await withScenario(factory, async ({ storageB, ledger, crashOn, boot }) => {
+    },
+  },
+  {
+    scenario: 'during-cancellation',
+    title:
+      'during-cancellation/cleanup: the retry observes the cancellation and does not run the work again',
+    async body({ marker, ledger, boot }) {
       // The crash interrupts cancellation cleanup: the run's terminal session
       // write, which follows the durable cancellation.
-      const crash = crashOn(
-        (write) => write.text.includes('"lastRunStatus":"aborted"'),
-        'before-write',
-      );
-      const bureauA = await boot(crash.storage, heldGenerate().generate);
-      const created = await startTaskFrom(bureauA, REQUEST);
-      await bureauA.tasks.cancel(created.id);
-      expect(
-        await pollUntil(
-          async () => crash.crashed() && (await durableStatus(bureauA, created.id)) === 'cancelled',
-        ),
-      ).toBe(true);
+      const created = marker.started;
+      if (created === undefined) throw new Error('expected the child to record the run');
       const completed = await ledger.read(IDENTITY);
       if (completed?.state !== 'completed') throw new Error('expected a completed entry');
 
       const generateB = heldGenerate();
-      const bureauB = await boot(storageB, generateB.generate);
+      const bureauB = await boot(generateB.generate);
       const retry = await startTaskFrom(bureauB, REQUEST);
 
       expect(retry).toMatchObject({ id: created.id });
@@ -548,6 +381,30 @@ describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory)
       const { settledAt, ...unchanged } = settled;
       expect(unchanged).toEqual(completed);
       expect(settledAt).toBeString();
+    },
+  },
+];
+
+// Each scenario boots a child process, which cannot fit a per-test clock on a loaded host, so it
+// runs whole, once, at module scope (see `test/hoisted-scenario.ts`) and the test reports how it
+// went. Scenarios run one after another: they share a host already loaded by the children.
+const outcomes = new Map<string, Awaited<ReturnType<typeof settleScenario>>>();
+for (const [backend, factory] of BACKENDS) {
+  for (const { scenario, body } of CASES) {
+    outcomes.set(
+      `${backend}:${scenario}`,
+      await settleScenario(
+        (scope) => withScenario(backend, factory, scenario, scope, body),
+        HANG_GUARD_MILLISECONDS,
+      ),
+    );
+  }
+}
+
+describe.each(BACKENDS)('run creation fault points over %s', (backend) => {
+  for (const { scenario, title } of CASES) {
+    it(title, () => {
+      expectScenarioPassed(outcomes.get(`${backend}:${scenario}`));
     });
-  });
+  }
 });
