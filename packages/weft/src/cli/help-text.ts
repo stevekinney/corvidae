@@ -26,7 +26,7 @@ Version (leading token only; a subcommand owns its own option line):
 Serve Options:
   -p, --port <port>           Server port (default: 7233)
   -d, --database <path>       Database file path (default: ./weft.db)
-  -s, --storage <backend>     Storage backend: sqlite, lmdb, memory (default: sqlite)
+  -s, --storage <backend>     Storage backend: sqlite, memory (default: sqlite)
   -w, --workflows <path>      Path to workflow module to register on startup
   -h, --help                  Show this help message
 `;
@@ -146,7 +146,7 @@ period after that.
 
 Options:
   -d, --database <path>     Database file path (default: ./weft.db)
-  -s, --storage <backend>   Storage backend: sqlite, lmdb (default: sqlite)
+  -s, --storage <backend>   Storage backend: sqlite (default: sqlite)
   -w, --workflows <path>    Path to workflow definitions module (required for create)
       --every <duration>    Interval cadence for create (e.g. 30s, 5m, 1h); mutually exclusive with the cron positional
       --input <json>        JSON input payload for create (default: null)
