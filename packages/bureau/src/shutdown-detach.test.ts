@@ -9,7 +9,7 @@ import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
-import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
+import { removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { z } from 'zod';
 
@@ -18,6 +18,7 @@ import { createBureau } from './create-bureau';
 import { createRuntimeComposition } from './runtime-composition';
 import type { Bureau } from './types';
 import { MemoryStorage } from '@lostgradient/storage';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 const databasePaths: string[] = [];
@@ -37,7 +38,8 @@ afterEach(async () => {
 
 describe('COR-1716 shutdown readiness baseline', () => {
   test('default shutdown aborts a durable parked run instead of leaving it recoverable', async () => {
-    const databasePath = createTemporaryPath('cor-1716-shutdown-baseline', '.sqlite');
+    await using database = createSqliteStorageFixture();
+    const databasePath = database.path;
     databasePaths.push(databasePath);
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
@@ -56,7 +58,7 @@ describe('COR-1716 shutdown readiness baseline', () => {
           stopWhen: stopWhen.toolCalled('requestHumanInput'),
         }),
       },
-      storage: { type: 'sqlite', path: databasePath },
+      storage: database.storage,
       durable: true,
       durableOwnership: { ownership: 'none' },
     });
@@ -73,7 +75,7 @@ describe('COR-1716 shutdown readiness baseline', () => {
 
     const restarted = await createBureau<AgentDefinitions>({
       agents: {},
-      storage: { type: 'sqlite', path: databasePath },
+      storage: database.open(),
       durable: true,
       durableOwnership: { ownership: 'none' },
     });
@@ -111,7 +113,8 @@ describe('COR-1716 shutdown readiness baseline', () => {
   });
 
   test('detach leaves a durable parked run recoverable and reports it separately', async () => {
-    const databasePath = createTemporaryPath('cor-1716-shutdown-detach', '.sqlite');
+    await using database = createSqliteStorageFixture();
+    const databasePath = database.path;
     databasePaths.push(databasePath);
     const createAsker = () =>
       createAgent({
@@ -130,7 +133,7 @@ describe('COR-1716 shutdown readiness baseline', () => {
       });
     const bureau = await createBureau<AgentDefinitions>({
       agents: { asker: createAsker() },
-      storage: { type: 'sqlite', path: databasePath },
+      storage: database.storage,
       durable: true,
       durableOwnership: { ownership: 'none' },
     });
@@ -145,7 +148,7 @@ describe('COR-1716 shutdown readiness baseline', () => {
 
     const restarted = await createBureau<AgentDefinitions>({
       agents: { asker: createAsker() },
-      storage: { type: 'sqlite', path: databasePath },
+      storage: database.open(),
       durable: true,
       durableOwnership: { ownership: 'none' },
     });

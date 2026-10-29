@@ -5,7 +5,6 @@ import {
   type GenerateFunction,
 } from '@lostgradient/operative';
 import { MemoryStorage, type BatchOperation } from '@lostgradient/storage';
-import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
@@ -15,6 +14,7 @@ import type { Bureau, BureauOptions } from './types';
 import type { AgentDefinitions } from './agent-catalog';
 import { listHeldTasks } from './test';
 import { quietFor } from '@lostgradient/testing/wait-until';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 /**
  * COR-1627: a run that stops at its step limit is a failure on every Bureau surface. Its run
@@ -251,7 +251,7 @@ describe.each(SETTLING_EXECUTIONS)('a failing run’s task, %s (COR-1627)', (_na
 
 describe('a durable run that crashes before its step limit and is recovered (COR-1627)', () => {
   it('announces the step-limit failure once, from the process that recovers it', async () => {
-    const databasePath = createTemporaryPath('bureau-step-limit-recovery', '.sqlite');
+    const database = createSqliteStorageFixture();
     try {
       // Bureau A commits step 0, then its second generate hangs: the process "dies" there, before
       // the run ever reaches its step-limit exit, so it never announces anything.
@@ -270,7 +270,7 @@ describe('a durable run that crashes before its step limit and is recovered (COR
             stopWhen: stopWhen.noToolCalls(),
           }),
         },
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -291,7 +291,7 @@ describe('a durable run that crashes before its step limit and is recovered (COR
             stopWhen: stopWhen.noToolCalls(),
           }),
         },
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -314,7 +314,7 @@ describe('a durable run that crashes before its step limit and is recovered (COR
     } finally {
       // The crashed Bureau stays open until the recovering one is done with the file.
       for (const bureau of bureaus.splice(0).toReversed()) await bureau.dispose();
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 });

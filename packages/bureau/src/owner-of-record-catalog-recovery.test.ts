@@ -2,10 +2,9 @@ import { createAgent, stopWhen } from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
-import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
-
 import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 function nextTool() {
   return createTool({
@@ -18,7 +17,7 @@ function nextTool() {
 
 describe('a task recovered after a restart (COR-718)', () => {
   it('keeps its owner, anonymous:local when it was dispatched with no principal, readable through event history', async () => {
-    const databasePath = createTemporaryPath('owner-of-record-catalog-recovery', '.sqlite');
+    const databaseFixture = createSqliteStorageFixture();
     let reachedStepOne = 0;
     // A settlement that outlives the Bureau it belongs to writes into a closed database.
     const settlementFailures: string[] = [];
@@ -39,7 +38,7 @@ describe('a task recovered after a restart (COR-718)', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'sqlite', path: databasePath },
+      storage: databaseFixture.storage,
       durable: true,
       durableOwnership: { ownership: 'none' },
       onDiagnostic,
@@ -59,7 +58,7 @@ describe('a task recovered after a restart (COR-718)', () => {
             stopWhen: stopWhen.noToolCalls(),
           }),
         },
-        storage: { type: 'sqlite', path: databasePath },
+        storage: databaseFixture.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
         onDiagnostic,
@@ -100,7 +99,7 @@ describe('a task recovered after a restart (COR-718)', () => {
       }
     } finally {
       await first.dispose().catch(() => undefined);
-      removeTemporaryPath(databasePath);
+      await databaseFixture.dispose();
     }
     expect(settlementFailures).toEqual([]);
   });

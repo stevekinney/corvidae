@@ -13,7 +13,7 @@ import {
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
-import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
+import { removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { createBureau, EXPIRY_SWEEP_INTERVAL_MILLISECONDS } from './create-bureau';
 import { OWNER } from './http/management/management-fixtures.test-support.ts';
@@ -22,6 +22,7 @@ import { scheduledFireHoldings, scheduledFireReviewStateOf } from './scheduled-f
 import type { Bureau } from './types';
 import type { AgentDefinitions } from './agent-catalog';
 import { MemoryStorage } from '@lostgradient/storage';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const bureaus: Bureau[] = [];
 const paths: string[] = [];
@@ -36,7 +37,8 @@ afterEach(async () => {
 describe('expired review state under the automatic maintenance profile', () => {
   it('is removed by the Bureau’s own timer, for a fire and a session run, with no host call', async () => {
     const runtime = createManualRuntimeServices();
-    const path = createTemporaryPath('bureau-expiry-maintenance', '.sqlite');
+    await using pathFixture = createSqliteStorageFixture();
+    const path = pathFixture.path;
     paths.push(path);
     let calls = 0;
     const generate: GenerateFunction = async (context) => {
@@ -82,7 +84,7 @@ describe('expired review state under the automatic maintenance profile', () => {
           stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
         }),
       },
-      storage: { type: 'sqlite', path },
+      storage: pathFixture.storage,
       durable: true,
       // The default profile: the Bureau runs its own maintenance timer.
       runtime,
@@ -300,7 +302,8 @@ describe('expired review state of a Bureau with no maintenance timer of its own'
 
   it('is swept by a manual host’s own durable maintenance', async () => {
     const runtime = createManualRuntimeServices();
-    const path = createTemporaryPath('bureau-expiry-manual', '.sqlite');
+    await using pathFixture = createSqliteStorageFixture();
+    const path = pathFixture.path;
     paths.push(path);
     const bureau = await createBureau<AgentDefinitions>({
       id: 'expiry-manual-bureau',
@@ -311,7 +314,7 @@ describe('expired review state of a Bureau with no maintenance timer of its own'
           stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
         }),
       },
-      storage: { type: 'sqlite', path },
+      storage: pathFixture.storage,
       durable: true,
       maintenance: 'manual',
       runtime,

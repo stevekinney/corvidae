@@ -24,6 +24,7 @@ import { humanWaitDeliveryId } from './run-human-waits';
 import type { Bureau, BureauOptions, PendingReview } from './types';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { MemoryStorage } from '@lostgradient/storage';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 const databasePaths: string[] = [];
@@ -780,10 +781,11 @@ describe('a long signalName on a bureau.run() park (COR-1577)', () => {
   });
 
   it('derives the same delivery id after a restart, and resumes the recovered run', async () => {
-    const databasePath = createTemporaryPath('bureau-run-human-wait-long', '.sqlite');
+    await using database = createSqliteStorageFixture();
+    const databasePath = database.path;
     databasePaths.push(databasePath);
     const options = {
-      storage: { type: 'sqlite' as const, path: databasePath },
+      storage: database.storage,
       durableOwnership: { ownership: 'none' as const },
     };
     const crashed = await start({ asker: askingAgent(newSeen(), names.ascii) }, options);

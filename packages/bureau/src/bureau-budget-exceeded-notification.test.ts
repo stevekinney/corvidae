@@ -19,18 +19,16 @@ import {
   type StopCondition,
   createAgent,
 } from '@lostgradient/operative';
-import { resolveStorage } from '@lostgradient/weft';
 import { createTool, createToolbox, type Tool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
-import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
-
 import { createBureau } from './create-bureau';
 import { waitForCondition, waitForTaskState } from './test';
 import { holdFirstTerminalRunCommit } from './test/held-terminal-commit';
 import type { BureauOptions } from './types';
 import type { AgentDefinitions } from './agent-catalog';
 import { MemoryStorage } from '@lostgradient/storage';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const ORIGIN = '2026-10-03T00:00:00.000Z';
 
@@ -168,10 +166,8 @@ describe.each(failureShapes)(
   'a Bureau that reattaches a budget-exceeded run after a restart when $name',
   ({ options }) => {
     it('announces the budget failure without claiming a step it cannot know', async () => {
-      const databasePath = createTemporaryPath('bureau-budget-exceeded-recovery', '.sqlite');
-      const crashed = holdFirstTerminalRunCommit(
-        await resolveStorage({ type: 'sqlite', path: databasePath }),
-      );
+      const databaseFixture = createSqliteStorageFixture();
+      const crashed = holdFirstTerminalRunCommit(databaseFixture.storage);
       let replayed: ReturnType<typeof holdFirstTerminalRunCommit> | undefined;
       let bureauA: Awaited<ReturnType<typeof createBureau>> | undefined;
       let bureauB: Awaited<ReturnType<typeof createBureau>> | undefined;
@@ -192,9 +188,7 @@ describe.each(failureShapes)(
         });
         const run = await bureauA.tasks.start('default', 'Go.');
         await crashed.reached;
-        replayed = holdFirstTerminalRunCommit(
-          await resolveStorage({ type: 'sqlite', path: databasePath }),
-        );
+        replayed = holdFirstTerminalRunCommit(databaseFixture.open());
 
         // Bureau B is a separate bureau over the same file. Replaying the memoized steps settles
         // the run without calling `generate` or announcing any step. Its terminal commit is held
@@ -244,7 +238,7 @@ describe.each(failureShapes)(
         await bureauA?.dispose();
         crashed.storage[Symbol.dispose]();
         replayed?.storage[Symbol.dispose]();
-        removeTemporaryPath(databasePath);
+        await databaseFixture.dispose();
       }
       // Bureau never closes a storage instance it was handed, so each handle this test opened
       // against the database is the test's to release.

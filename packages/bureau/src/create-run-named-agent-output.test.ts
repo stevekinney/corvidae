@@ -9,7 +9,7 @@ import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/oper
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
-import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
+import { removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
@@ -18,6 +18,7 @@ import { withResolvedOptions } from './testing/named-agent.test-support';
 import type { Bureau } from './types';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { MemoryStorage } from '@lostgradient/storage';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 const databasePaths: string[] = [];
@@ -92,7 +93,8 @@ describe('a named agent’s structured output on a session run', () => {
 
 describe('a named agent’s structured output after a restart', () => {
   it('is still enforced when the run resumes', async () => {
-    const databasePath = createTemporaryPath('bureau-named-output', '.sqlite');
+    await using database = createSqliteStorageFixture();
+    const databasePath = database.path;
     databasePaths.push(databasePath);
     const next = createTool({
       name: 'next',
@@ -116,7 +118,7 @@ describe('a named agent’s structured output after a restart', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'sqlite', path: databasePath },
+      storage: database.storage,
       durable: true,
       durableOwnership: { ownership: 'none' },
     });
@@ -143,7 +145,7 @@ describe('a named agent’s structured output after a restart', () => {
           { schemaRetries: 1, schemaRetryMessage: () => RETRY_MESSAGE },
         ),
       },
-      storage: { type: 'sqlite', path: databasePath },
+      storage: database.open(),
       durable: true,
       durableOwnership: { ownership: 'none' },
     });

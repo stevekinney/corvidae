@@ -450,7 +450,8 @@ describe('createSqliteStorageFixture', () => {
 
   it('never deletes a caller-supplied path', async () => {
     const runtime = createManualRuntimeServices();
-    const callerPath = createTemporaryPath('bureau-caller-owned-sqlite', '.sqlite');
+    const callerFixture = createSqliteStorageFixture();
+    const callerPath = callerFixture.path;
     await writeFile(callerPath, '');
 
     try {
@@ -458,13 +459,13 @@ describe('createSqliteStorageFixture', () => {
 
       expect(fixture.owned).toBe(false);
       expect(fixture.path).toBe(callerPath);
-      expect(fixture.configuration).toEqual({ type: 'sqlite', path: callerPath });
+      expect(fixture.configuration).toEqual(callerFixture.storage);
 
       await fixture.dispose();
 
       expect(await pathExists(callerPath)).toBe(true);
     } finally {
-      removeTemporaryPath(callerPath);
+      await callerFixture.dispose();
     }
   });
 

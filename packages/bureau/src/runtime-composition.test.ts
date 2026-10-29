@@ -56,8 +56,6 @@ import { createTool, createToolbox, type ToolRequestContext } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { Conversation, createConversationHistory, getMessages } from 'conversationalist';
 import { z } from 'zod';
-import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
-
 import {
   activeSkillsFromStepMetadata,
   applyCache,
@@ -79,6 +77,7 @@ import {
 import type { GenerateProviderName, ProviderConfiguration } from './types';
 import { storageOverTextStore } from './testing/text-store-storage.test-support';
 import { waitUntil } from '@lostgradient/testing/wait-until';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 // Drain Weft's deferred inline-launch queue between tests — a pending setTimeout(0)
 // inline-launch left by one durable run can starve a later one under full
@@ -2051,34 +2050,34 @@ describe('createRuntimeComposition durable execution', () => {
     // `durable` flag resolves to durable-on, because that is the only
     // place a crash can actually resume. This is the headline behavior — a
     // normal bureau with sqlite storage gets durable runs without opting in.
-    const databasePath = createTemporaryPath('default-on', '.sqlite');
+    const database = createSqliteStorageFixture();
     try {
       const runtime = await createRuntimeComposition({
         generate: async () => ({ content: 'x', toolCalls: [] }),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
       });
       expect(runtime.durable).toBeDefined();
       runtime.durable?.engine[Symbol.dispose]?.();
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
   it('stays OFF when durable is explicitly false even for a persistent backend', async () => {
     // The explicit `false` override: a persistent backend would default to
     // durable-on, but a caller can force the in-memory loop back.
-    const databasePath = createTemporaryPath('explicit-off', '.sqlite');
+    const database = createSqliteStorageFixture();
     try {
       const runtime = await createRuntimeComposition({
         generate: async () => ({ content: 'x', toolCalls: [] }),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: false,
       });
       expect(runtime.durable).toBeUndefined();
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
@@ -3299,7 +3298,7 @@ describe('createRuntimeComposition durable execution', () => {
   //   3. The session is updated to 'running' before recovery (the recoverable state
   //      is present) — so any failure here is in the recovery deps, not setup.
   it('threads agentName and runId from the durable input into rebuilt RunOptions during recovery (regression PRRT_kwDORvupsc6MXoT3)', async () => {
-    const databasePath = createTemporaryPath('recovery-agentname', '.sqlite');
+    const database = createSqliteStorageFixture();
     const runId = 'recovery-agentname-run';
     let recoveredGenerateCalls = 0;
 
@@ -3309,7 +3308,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -3360,7 +3359,7 @@ describe('createRuntimeComposition durable execution', () => {
           return { content: 'recovered', toolCalls: [] };
         },
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -3392,12 +3391,12 @@ describe('createRuntimeComposition durable execution', () => {
         secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
   it('uses Weft launch tags instead of scheduler id heuristics during service resolution', async () => {
-    const databasePath = createTemporaryPath('resolver-launch-tags', '.sqlite');
+    const database = createSqliteStorageFixture();
     const runId = 'tagged-scheduler-origin-without-prefix';
     let recoveredGenerateCalls = 0;
 
@@ -3405,7 +3404,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
       });
 
@@ -3442,7 +3441,7 @@ describe('createRuntimeComposition durable execution', () => {
           return { content: 'should not recover scheduler-origin runs', toolCalls: [] };
         },
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
       });
 
@@ -3460,12 +3459,12 @@ describe('createRuntimeComposition durable execution', () => {
         secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
   it('does not recover shape-only scheduled inputs without a persisted schedule marker', async () => {
-    const databasePath = createTemporaryPath('shape-only-scheduled-input', '.sqlite');
+    const database = createSqliteStorageFixture();
     const runId = 'shape-only-scheduled-input-run';
     let recoveredGenerateCalls = 0;
 
@@ -3473,7 +3472,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
       });
 
@@ -3513,7 +3512,7 @@ describe('createRuntimeComposition durable execution', () => {
           return { content: 'must not run as scheduled fire', toolCalls: [] };
         },
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
       });
 
@@ -3544,12 +3543,12 @@ describe('createRuntimeComposition durable execution', () => {
         secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
   it('recovers markerless scheduled fires when Weft has a schedule-run marker and replaces replayed transcript suffixes', async () => {
-    const databasePath = createTemporaryPath('legacy-scheduled-input', '.sqlite');
+    const database = createSqliteStorageFixture();
     const runId = 'legacy-scheduled-fire-run';
     const scheduleId = 'legacy-digest-schedule';
     const sessionId = 'legacy-digest-session';
@@ -3567,7 +3566,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -3630,7 +3629,7 @@ describe('createRuntimeComposition durable execution', () => {
           return { content: recoveredAssistantContent, toolCalls: [] };
         },
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
@@ -3673,7 +3672,7 @@ describe('createRuntimeComposition durable execution', () => {
         secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
@@ -3693,7 +3692,7 @@ describe('createRuntimeComposition durable execution', () => {
     // finds no way to classify this as scheduled, `isAgentRunWorkflowInput`
     // rejects the `ScheduledAgentRunInput` shape too, and the run fails
     // `unavailable` ("no recoverable session") instead of completing.
-    const databasePath = createTemporaryPath('object-marker-stateless-input', '.sqlite');
+    const database = createSqliteStorageFixture();
     const runId = 'object-marker-stateless-fire-run';
     const scheduleId = 'object-marker-stateless-schedule';
     const sessionId = `sched-${scheduleId}-${runId}`;
@@ -3704,7 +3703,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -3750,7 +3749,7 @@ describe('createRuntimeComposition durable execution', () => {
       const secondRuntime = await createRuntimeComposition({
         generate: async () => ({ content: recoveredAssistantContent, toolCalls: [] }),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
@@ -3778,7 +3777,7 @@ describe('createRuntimeComposition durable execution', () => {
         secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
@@ -3804,7 +3803,7 @@ describe('createRuntimeComposition durable execution', () => {
     // run's `generate` hangs on its very FIRST call — no step is committed, so
     // there is no weft checkpoint replay to reconstruct the recovering
     // generate's conversation; it sees exactly what the resolver seeded.
-    const databasePath = createTemporaryPath('schedule-metadata-recovery', '.sqlite');
+    const database = createSqliteStorageFixture();
     const runId = 'schedule-metadata-recovery-run';
     const scheduleId = 'schedule-metadata-recovery-schedule';
     const sessionId = 'schedule-metadata-recovery-session';
@@ -3818,7 +3817,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -3896,7 +3895,7 @@ describe('createRuntimeComposition durable execution', () => {
           return { content: recoveredAssistantContent, toolCalls: [] };
         },
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
@@ -3933,12 +3932,12 @@ describe('createRuntimeComposition durable execution', () => {
         secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
   it('recovers markerless scheduled fires when the session proves the scheduled fire', async () => {
-    const databasePath = createTemporaryPath('scheduled-session-proof', '.sqlite');
+    const database = createSqliteStorageFixture();
     const runId = 'scheduled-session-proof-run';
     const sessionId = `sched-session-proof-${runId}`;
     const scheduledPrompt = 'session proof scheduled prompt';
@@ -3948,7 +3947,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
       });
 
@@ -3996,7 +3995,7 @@ describe('createRuntimeComposition durable execution', () => {
       const secondRuntime = await createRuntimeComposition({
         generate: async () => ({ content: recoveredAssistantContent, toolCalls: [] }),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         stopWhen: stopWhen.noToolCalls(),
       });
@@ -4026,12 +4025,12 @@ describe('createRuntimeComposition durable execution', () => {
         secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
   it('replaces replayed transcript suffixes for stateless scheduled-fire sessions', async () => {
-    const databasePath = createTemporaryPath('stateless-scheduled-replay', '.sqlite');
+    const database = createSqliteStorageFixture();
     const runId = 'stateless-scheduled-fire-run';
     const scheduleId = 'stateless-digest-schedule';
     const sessionId = `sched-${scheduleId}-${runId}`;
@@ -4044,7 +4043,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -4101,7 +4100,7 @@ describe('createRuntimeComposition durable execution', () => {
           return { content: recoveredAssistantContent, toolCalls: [] };
         },
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
@@ -4132,12 +4131,12 @@ describe('createRuntimeComposition durable execution', () => {
         secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
   it('recovers markerless scheduled fires when the schedule marker read fails transiently', async () => {
-    const databasePath = createTemporaryPath('scheduled-marker-read-error', '.sqlite');
+    const database = createSqliteStorageFixture();
     const runId = 'scheduled-marker-read-error-run';
     const scheduleId = 'unreadable-digest-schedule';
     const recoveredSessionId = `sched-${scheduleId}-${runId}`;
@@ -4151,7 +4150,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -4207,7 +4206,7 @@ describe('createRuntimeComposition durable execution', () => {
           return { content: recoveredAssistantContent, toolCalls: [] };
         },
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
@@ -4253,12 +4252,12 @@ describe('createRuntimeComposition durable execution', () => {
         secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
   it('preserves an interactive run skill snapshot when a scheduled fire shares its session', async () => {
-    const databasePath = createTemporaryPath('scheduled-shared-session-skill', '.sqlite');
+    const database = createSqliteStorageFixture();
     const scheduledRunId = 'scheduled-shared-session-fire-run';
     const interactiveRunId = 'interactive-shared-session-run';
     const scheduleId = 'scheduled-shared-session-schedule';
@@ -4272,7 +4271,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -4329,7 +4328,7 @@ describe('createRuntimeComposition durable execution', () => {
       const secondRuntime = await createRuntimeComposition({
         generate: async () => ({ content: 'scheduled fire completed', toolCalls: [] }),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
@@ -4358,12 +4357,12 @@ describe('createRuntimeComposition durable execution', () => {
         secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
   it('rehydrates active skills for recovered scheduled fires', async () => {
-    const databasePath = createTemporaryPath('scheduled-skill-recovery', '.sqlite');
+    const database = createSqliteStorageFixture();
     const runId = 'scheduled-skill-fire-run';
     const scheduleId = 'scheduled-skill-schedule';
     const sessionId = 'scheduled-skill-session';
@@ -4383,7 +4382,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -4456,7 +4455,7 @@ describe('createRuntimeComposition durable execution', () => {
         },
         toolbox: createToolbox([], { context: {} }),
         skills: { catalog: skillCatalog },
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
@@ -4489,12 +4488,12 @@ describe('createRuntimeComposition durable execution', () => {
         secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
   it('falls back to the latest committed scheduled skill snapshot when later metadata is uncommitted', async () => {
-    const databasePath = createTemporaryPath('scheduled-committed-skill-fallback', '.sqlite');
+    const database = createSqliteStorageFixture();
     const runId = 'scheduled-committed-skill-fallback-run';
     const scheduleId = 'scheduled-committed-skill-fallback-schedule';
     const sessionId = 'scheduled-committed-skill-fallback-session';
@@ -4513,7 +4512,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -4593,7 +4592,7 @@ describe('createRuntimeComposition durable execution', () => {
         },
         toolbox: createToolbox([], { context: {} }),
         skills: { catalog: skillCatalog },
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
@@ -4616,12 +4615,12 @@ describe('createRuntimeComposition durable execution', () => {
         secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
   it('recovers committed scheduled skill snapshots when session activeSkillRecords is malformed', async () => {
-    const databasePath = createTemporaryPath('scheduled-malformed-session-skill', '.sqlite');
+    const database = createSqliteStorageFixture();
     const runId = 'scheduled-malformed-session-skill-run';
     const scheduleId = 'scheduled-malformed-session-skill-schedule';
     const sessionId = 'scheduled-malformed-session-skill-session';
@@ -4640,7 +4639,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -4720,7 +4719,7 @@ describe('createRuntimeComposition durable execution', () => {
         },
         toolbox: createToolbox([], { context: {} }),
         skills: { catalog: skillCatalog },
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
@@ -4743,12 +4742,12 @@ describe('createRuntimeComposition durable execution', () => {
         secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
   it('ignores unmarked step metadata that looks like an internal scheduled skill snapshot', async () => {
-    const databasePath = createTemporaryPath('scheduled-spoofed-step-skill', '.sqlite');
+    const database = createSqliteStorageFixture();
     const runId = 'scheduled-spoofed-step-skill-run';
     const scheduleId = 'scheduled-spoofed-step-skill-schedule';
     const sessionId = 'scheduled-spoofed-step-skill-session';
@@ -4767,7 +4766,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -4851,7 +4850,7 @@ describe('createRuntimeComposition durable execution', () => {
         },
         toolbox: createToolbox([], { context: {} }),
         skills: { catalog: skillCatalog },
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
@@ -4874,12 +4873,12 @@ describe('createRuntimeComposition durable execution', () => {
         secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
   it('does not rehydrate skills from an uncommitted recovered scheduled fire attempt', async () => {
-    const databasePath = createTemporaryPath('scheduled-uncommitted-skill', '.sqlite');
+    const database = createSqliteStorageFixture();
     const runId = 'scheduled-uncommitted-skill-fire-run';
     const scheduleId = 'scheduled-uncommitted-skill-schedule';
     const sessionId = 'scheduled-uncommitted-skill-session';
@@ -4897,7 +4896,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -4960,7 +4959,7 @@ describe('createRuntimeComposition durable execution', () => {
         },
         toolbox: createToolbox([], { context: {} }),
         skills: { catalog: skillCatalog },
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
@@ -4982,12 +4981,12 @@ describe('createRuntimeComposition durable execution', () => {
         secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
   it('does not rehydrate stale skills from prior scheduled fires', async () => {
-    const databasePath = createTemporaryPath('scheduled-stale-skill', '.sqlite');
+    const database = createSqliteStorageFixture();
     const runId = 'scheduled-stale-skill-fire-run';
     const scheduleId = 'scheduled-stale-skill-schedule';
     const sessionId = 'scheduled-stale-skill-session';
@@ -5005,7 +5004,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -5065,7 +5064,7 @@ describe('createRuntimeComposition durable execution', () => {
         },
         toolbox: createToolbox([], { context: {} }),
         skills: { catalog: skillCatalog },
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
@@ -5087,7 +5086,7 @@ describe('createRuntimeComposition durable execution', () => {
         secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 });
