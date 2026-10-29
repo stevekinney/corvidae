@@ -283,6 +283,7 @@ export class WorkflowTailSource implements LiveSource<WorkflowEvent> {
     this.status = 'reconnecting';
     this.#reconnectAttempt += 1;
     const delay = this.#computeReconnectDelayMs(this.#reconnectAttempt);
+    // poll-reason: timer
     this.#reconnectTimer = setTimeout(() => {
       this.#reconnectTimer = null;
       void this.#connect();

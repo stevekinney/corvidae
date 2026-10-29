@@ -214,6 +214,7 @@ async function start(): Promise<void> {
   await app.connect();
   // A host that does not hand the page the opening result still shows the queue at once.
   await refresh();
+  // poll-reason: mcp-transport
   timer = setInterval(() => void refresh(), REFRESH_MILLISECONDS);
 }
 

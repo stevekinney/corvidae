@@ -288,6 +288,7 @@
       queryKey: queryKeys.bureauReviews.list(),
       queryFn: ({ signal }) => listBureauReviews({ signal }),
       enabled: waitingOnPerson,
+      // poll-reason: fallback
       refetchInterval: bureauLive() ? false : REREAD_POLL_MILLISECONDS,
       retry: false,
     }),

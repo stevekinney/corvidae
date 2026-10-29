@@ -404,6 +404,7 @@ export class ChatSessionState {
     if (this.#retryTimer !== undefined) clearTimeout(this.#retryTimer);
     const generation = ++this.#retryGeneration;
     const delay = Math.min(500 * 2 ** (this.#retryFailures - 1), 10_000);
+    // poll-reason: timer
     this.#retryTimer = setTimeout(() => {
       this.#retryTimer = undefined;
       void this.#retryAfter(generation);

@@ -162,6 +162,7 @@ async function start(): Promise<void> {
     return {};
   };
   await app.connect();
+  // poll-reason: mcp-transport
   timer = setInterval(() => void refresh(), REFRESH_MILLISECONDS);
 }
 

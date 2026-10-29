@@ -65,6 +65,7 @@
 
   $effect(() => {
     const currentQuery = query;
+    // poll-reason: timer
     const timer = setTimeout(() => void search(currentQuery), 150);
     return () => clearTimeout(timer);
   });

@@ -127,6 +127,7 @@
   // the list is read.
   let reviewsNow = $state(Date.now());
   $effect(() => {
+    // poll-reason: clock
     const timer = setInterval(() => {
       reviewsNow = Date.now();
     }, REVIEW_POLL_MILLISECONDS);

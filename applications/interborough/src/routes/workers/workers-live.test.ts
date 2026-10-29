@@ -46,6 +46,8 @@ function workersRoute(): LiveSite {
     queryKeys.workers.list(),
     queryKeys.workers.manifests([]),
     queryKeys.registrySnapshot(),
+    // A queue's connected workers are the workers on it.
+    queryKeys.queues.list(),
   ];
   const task = { operationId: OPERATION };
   return {
@@ -53,6 +55,7 @@ function workersRoute(): LiveSite {
     watched: [
       ...connection,
       queryKeys.workers.rejections(),
+      queryKeys.queues.list(),
       queryKeys.tasks.detail(OPERATION),
       queryKeys.tasks.deliveries(OPERATION),
     ],
@@ -61,18 +64,33 @@ function workersRoute(): LiveSite {
       { kind: 'worker:disconnected', rereads: connection },
       { kind: 'worker:registration-rejected', rereads: [queryKeys.workers.rejections()] },
       { kind: 'worker:deployment-changed', rereads: [queryKeys.workers.list()] },
+      { kind: 'queue:depth-changed', rereads: [queryKeys.queues.list()] },
       { kind: 'workflow:definition-registered', rereads: [queryKeys.registrySnapshot()] },
       {
         kind: 'task:result-delivery',
         payload: task,
         rereads: [queryKeys.tasks.detail(OPERATION), queryKeys.tasks.deliveries(OPERATION)],
       },
+      // The queue list's in-flight count is the tasks its workers hold, which these three move.
       {
         kind: 'activity:completed',
         payload: task,
-        rereads: [queryKeys.tasks.detail(OPERATION), queryKeys.tasks.deliveries(OPERATION)],
+        rereads: [
+          queryKeys.tasks.detail(OPERATION),
+          queryKeys.tasks.deliveries(OPERATION),
+          queryKeys.queues.list(),
+        ],
       },
-      { kind: 'activity:started', payload: task, rereads: [queryKeys.tasks.detail(OPERATION)] },
+      {
+        kind: 'activity:started',
+        payload: task,
+        rereads: [queryKeys.tasks.detail(OPERATION), queryKeys.queues.list()],
+      },
+      {
+        kind: 'activity:failed',
+        payload: task,
+        rereads: [queryKeys.tasks.detail(OPERATION), queryKeys.queues.list()],
+      },
       {
         kind: 'activity:remote-queued',
         payload: task,

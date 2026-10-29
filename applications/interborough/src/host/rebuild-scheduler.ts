@@ -65,6 +65,7 @@ export function createRebuildScheduler(options: RebuildSchedulerOptions): Rebuil
     schedule() {
       if (closed) return;
       if (timer !== undefined) clearTimeout(timer);
+      // poll-reason: timer
       timer = setTimeout(() => {
         timer = undefined;
         run().then(
