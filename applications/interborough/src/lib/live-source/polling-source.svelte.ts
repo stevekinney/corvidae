@@ -94,6 +94,7 @@ export class PollingSource<Frame> implements LiveSource<Frame> {
       this.#pausedForVisibility = true;
       return;
     }
+    // poll-reason: timer
     this.#timer = setTimeout(() => {
       this.#timer = null;
       void this.#tick();

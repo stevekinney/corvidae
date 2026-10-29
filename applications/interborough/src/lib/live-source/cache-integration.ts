@@ -89,6 +89,7 @@ export const WORKFLOWS_UPDATES_KEY_PREFIX: QueryKey = ['workflows', 'updates'];
 export const WORKERS_MANIFESTS_KEY_PREFIX: QueryKey = ['workers', 'manifests'];
 export const WORKERS_REJECTIONS_KEY: QueryKey = ['workers', 'rejections'];
 export const WORKERS_DEPLOYMENTS_KEY: QueryKey = ['workers', 'deployments'];
+export const QUEUES_LIST_KEY: QueryKey = ['queues', 'list'];
 export const TASKS_DETAIL_KEY_PREFIX: QueryKey = ['tasks', 'detail'];
 export const TASKS_DELIVERIES_KEY_PREFIX: QueryKey = ['tasks', 'deliveries'];
 /** The registry snapshot sits under this prefix (`queryKeys.registrySnapshot`), so one invalidation reads both. */
@@ -172,6 +173,7 @@ const FLEET_KIND_INVALIDATION: ReadonlyMap<string, readonly QueryKey[]> = new Ma
   ['worker:disconnected', WORKER_FLEET_KEYS],
   ['worker:registration-rejected', [WORKERS_REJECTIONS_KEY]],
   ['worker:deployment-changed', [WORKERS_DEPLOYMENTS_KEY, WORKERS_LIST_KEY]],
+  ['queue:depth-changed', [QUEUES_LIST_KEY]],
   ...DEPLOYMENT_REFERENCE_KINDS.map((kind): [string, readonly QueryKey[]] => [
     kind,
     [WORKERS_DEPLOYMENTS_KEY],
@@ -288,6 +290,7 @@ export function invalidateFleetDrivenQueries(queryClient: QueryClient): void {
     ...WORKER_FLEET_KEYS,
     WORKERS_REJECTIONS_KEY,
     WORKERS_DEPLOYMENTS_KEY,
+    QUEUES_LIST_KEY,
     TASKS_DETAIL_KEY_PREFIX,
     TASKS_DELIVERIES_KEY_PREFIX,
     REALMS_KEY,

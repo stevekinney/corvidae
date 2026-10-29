@@ -76,6 +76,7 @@ const TABLE: ReadonlyArray<readonly [string, readonly EntryName[]]> = [
   ['activity:failed', ['deployments']],
   ['task:dead-lettered', ['deployments']],
   ['worker:deployment-changed', ['deployments', 'workers']],
+  ['queue:depth-changed', ['queues']],
   ['workflow:definition-registered', ['registry', 'registrySnapshot']],
   ['realm:state-changed', ['realms']],
   ['lease:health-changed', ['lease']],
@@ -110,9 +111,8 @@ describe('the engine’s state events', () => {
     applyFleetEventFrame(queryClient, frame('fleet:gap'));
     expect(invalidated(queryClient).toSorted()).toEqual(
       (Object.keys(entries) as EntryName[])
-        // The queue list and the conformance targets are not driven by this feed (the queue depth is
-        // not published, and the targets are static), so a gap leaves them alone.
-        .filter((name) => name !== 'queues' && name !== 'conformance')
+        // The conformance targets are static, not driven by this feed, so a gap leaves them alone.
+        .filter((name) => name !== 'conformance')
         .toSorted(),
     );
   });

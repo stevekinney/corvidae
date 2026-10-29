@@ -195,11 +195,19 @@ export function workersListQuery(client: WorkersOperations): CreateQueryResult<W
 
 /** `GET /v1/task-queues` (`system:read`). */
 export function taskQueuesListQuery(client: WorkersOperations) {
-  return createQuery(() => ({
-    queryKey: queryKeys.queues.list(),
-    queryFn: () => client.operations['weft.task.queues.list']({}),
-    refetchInterval: REFETCH_INTERVAL_MS,
-  }));
+  // `queue:depth-changed` asks for the list again (`../../lib/live-source/cache-integration.ts`); the
+  // timer runs only while the fleet feed is not live.
+  const fleetLive = useFleetEventsLive();
+  return createQuery(() => {
+    // Read here, not in the interval, which TanStack Query reads untracked.
+    const polling = !fleetLive();
+    return {
+      queryKey: queryKeys.queues.list(),
+      queryFn: () => client.operations['weft.task.queues.list']({}),
+      // poll-reason: fallback
+      refetchInterval: polling ? REFETCH_INTERVAL_MS : false,
+    };
+  });
 }
 
 /**

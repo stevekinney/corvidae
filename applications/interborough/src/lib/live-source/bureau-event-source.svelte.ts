@@ -239,6 +239,7 @@ export class BureauEventSource implements LiveSource<BureauEventFrame> {
     this.status = 'reconnecting';
     this.#reconnectAttempt += 1;
     const delay = this.#computeReconnectDelayMs(this.#reconnectAttempt);
+    // poll-reason: timer
     this.#reconnectTimer = setTimeout(() => {
       this.#reconnectTimer = null;
       void this.#connect();

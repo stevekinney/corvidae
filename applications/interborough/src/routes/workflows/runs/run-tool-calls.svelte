@@ -53,6 +53,7 @@
     const now = events;
     if (now === lastEvents) return;
     lastEvents = now;
+    // poll-reason: timer
     const timer = setTimeout(() => void untrack(() => thread.refetch()), EVENT_REREAD_MILLISECONDS);
     return () => clearTimeout(timer);
   });

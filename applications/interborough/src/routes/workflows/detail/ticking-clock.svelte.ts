@@ -10,6 +10,7 @@ export class TickingClock {
   #timer: ReturnType<typeof setInterval> | null = null;
 
   constructor(intervalMs = 1000) {
+    // poll-reason: clock
     this.#timer = setInterval(() => {
       this.now = Date.now();
     }, intervalMs);

@@ -82,6 +82,7 @@ function sleepFor(milliseconds: number, signal: AbortSignal): Promise<void> {
       signal.removeEventListener('abort', finish);
       resolve();
     };
+    // poll-reason: timer
     const timer = setTimeout(finish, milliseconds);
     signal.addEventListener('abort', finish, { once: true });
   });

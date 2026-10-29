@@ -53,6 +53,7 @@ function workersRoute(): LiveSite {
     watched: [
       ...connection,
       queryKeys.workers.rejections(),
+      queryKeys.queues.list(),
       queryKeys.tasks.detail(OPERATION),
       queryKeys.tasks.deliveries(OPERATION),
     ],
@@ -61,6 +62,7 @@ function workersRoute(): LiveSite {
       { kind: 'worker:disconnected', rereads: connection },
       { kind: 'worker:registration-rejected', rereads: [queryKeys.workers.rejections()] },
       { kind: 'worker:deployment-changed', rereads: [queryKeys.workers.list()] },
+      { kind: 'queue:depth-changed', rereads: [queryKeys.queues.list()] },
       { kind: 'workflow:definition-registered', rereads: [queryKeys.registrySnapshot()] },
       {
         kind: 'task:result-delivery',
