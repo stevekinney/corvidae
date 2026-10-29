@@ -280,6 +280,7 @@ export {
   DiagnosticEvent,
   GOAL_EVENT_KINDS,
   GoalLifecycleEvent,
+  MemoryGovernanceEvent,
   ScheduleMissedEvent,
   TaskCleanupAcknowledgedEvent,
   RecoveryAttemptedEvent,

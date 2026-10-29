@@ -38,6 +38,7 @@ import {
   GOAL_EVENT_KINDS,
   type GoalEventKind,
   GoalLifecycleEvent,
+  MemoryGovernanceEvent,
   ScheduleMissedEvent,
   TaskCleanupAcknowledgedEvent,
   RunAbortSettledEvent,
@@ -200,6 +201,7 @@ export const BUREAU_EVENT_CLASSIFICATION = {
   'schedule.missed': 'published',
   'task.cleanup-acknowledged': 'published',
   diagnostic: 'published',
+  'memory.governance': 'published',
 } as const satisfies Record<DeclaredKeys<BureauEventMap>, 'published' | { denied: string }>;
 
 export type PublishedBureauEventKind = {
@@ -411,6 +413,18 @@ const PROJECTIONS: readonly BureauEventProjection[] = [
     level: event.level,
     scope: event.scope,
   })),
+  // Identifiers, statuses, and a timestamp: the notification is already redacted, and the event
+  // keeps no principal, correlation, or record content.
+  projection(MemoryGovernanceEvent.type, isInstance(MemoryGovernanceEvent), (event) =>
+    definedFields({
+      type: event.notificationType,
+      outcome: event.outcome,
+      tenantId: event.tenantId,
+      at: event.at,
+      recordIds: [...event.recordIds],
+      operationId: event.operationId,
+    }),
+  ),
 ];
 
 /** Every event kind this feed publishes, derived from the exhaustive classification. */

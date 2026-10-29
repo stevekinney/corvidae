@@ -189,6 +189,7 @@ import {
   createDiagnosticDispatcher,
   forwardAssetEvents,
   forwardDefinitionChanges,
+  forwardMemoryGovernance,
   forwardMissedFires,
   subscribeEventFeed,
 } from './bureau-event-forwarders.ts';
@@ -2411,6 +2412,10 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         failures.push(stopError);
       }
     };
+    // First: each forwarder holds a subscription on something the caller or a later Bureau may
+    // keep (the supplied governed memory, the file catalogs), so none outlives a failed build.
+    // Drained, so a second pass has nothing left to stop.
+    for (const stop of stopForwarding.splice(0)) await attempt(stop);
     await attempt(() => fileAgents?.files.close());
     await attempt(() => assetServiceInstance?.shutdown());
     await attempt(() => runtime.durable?.observability?.dispose());
@@ -2458,6 +2463,13 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         ),
       );
     });
+    // COR-1723 — the supplied governed memory's notifications, so its writes, forgets, and
+    // corrections reach the emitter whoever constructed it.
+    if (runtime.memory !== undefined) {
+      stopForwarding.push(
+        forwardMemoryGovernance(runtime.memory, (event) => emitter.dispatch(event), diagnose),
+      );
+    }
     if (runtime.durable !== undefined) {
       stopForwarding.push(
         forwardMissedFires(

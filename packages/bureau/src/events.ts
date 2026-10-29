@@ -616,6 +616,43 @@ export class DiagnosticEvent extends Event {
 }
 
 /**
+ * Fired on the bureau emitter for each notification the governed memory in `BureauOptions.memory`
+ * hands its subscribers (COR-1723): every ledger event a write, read, denial, share, quarantine,
+ * deletion, retention sweep, or policy change appends, after the governed call that raised it has
+ * stored its change. `notificationType` is the ledger event's own type (for example
+ * `memory.write.admitted`), since `type` is this event's kind. It carries the notification's
+ * `outcome`, `tenantId`, `at`, `recordIds`, and `operationId` when it has one, and never record
+ * content, a protected reason, a diagnostic, or the acting principal.
+ */
+export class MemoryGovernanceEvent extends Event {
+  static readonly type = 'memory.governance' as const;
+
+  readonly notificationType: string;
+  readonly outcome: string;
+  readonly tenantId: string;
+  readonly at: number;
+  readonly recordIds: readonly string[];
+  readonly operationId: string | undefined;
+
+  constructor(notification: {
+    readonly type: string;
+    readonly outcome: string;
+    readonly tenantId: string;
+    readonly at: number;
+    readonly recordIds: readonly string[];
+    readonly operationId?: string | undefined;
+  }) {
+    super(MemoryGovernanceEvent.type);
+    this.notificationType = notification.type;
+    this.outcome = notification.outcome;
+    this.tenantId = notification.tenantId;
+    this.at = notification.at;
+    this.recordIds = [...notification.recordIds];
+    this.operationId = notification.operationId;
+  }
+}
+
+/**
  * Maps event type strings to their corresponding Event subclasses.
  *
  * `schedule.created`/`paused`/`resumed`/`cancelled`/`failed`/`completed`
@@ -707,4 +744,5 @@ export interface BureauEventMap extends EventMap {
   [ScheduleMissedEvent.type]: ScheduleMissedEvent;
   [TaskCleanupAcknowledgedEvent.type]: TaskCleanupAcknowledgedEvent;
   [DiagnosticEvent.type]: DiagnosticEvent;
+  [MemoryGovernanceEvent.type]: MemoryGovernanceEvent;
 }
