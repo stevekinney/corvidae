@@ -13,10 +13,6 @@ import {
   runConcurrentConditionalBatchConformance,
   runStorageCapabilityConformance,
 } from '@lostgradient/storage/testing';
-import { restoreWorkflowCatalog } from '../core/catalog/storage-io.ts';
-import { WorkflowCatalog } from '../core/catalog/workflow-catalog.ts';
-import { buildWorkflowContract } from '../core/contract/build.ts';
-import { buildWorkflowRevisionManifest } from '../core/contract/manifest.ts';
 import { NeonStorage } from './neon.ts';
 
 // Opened at load, before any hook is timed — see `openPostgresTestDatabase`. `null`
@@ -218,26 +214,6 @@ describe.skipIf(database === null)('live Neon driver', () => {
       expect(rejected).toBe(false);
       expect(await storage.get(target2)).toBeNull();
       await storage.deletePrefix(prefix);
-    });
-  });
-
-  describe('NeonStorage (live) workflow catalog', () => {
-    it('installs, activates, and restores catalog state against a real Postgres endpoint', async () => {
-      await using storage = await createLiveNeonStorage();
-      const name = `catalog-live-${crypto.randomUUID()}`;
-      const contract = buildWorkflowContract({ name, version: '1.0.0' });
-      const manifest = await buildWorkflowRevisionManifest(contract);
-
-      const catalog = new WorkflowCatalog(storage);
-      const pointer = await catalog.activateCandidate(name, manifest);
-      expect(pointer.applied).toBe(true);
-
-      const restored = await restoreWorkflowCatalog(storage);
-      expect(restored.active.get(name)?.revision).toBe(manifest.revision);
-      expect(restored.active.get(name)?.generation).toBe(1);
-      expect(restored.entries.get(name)?.get(manifest.revision)?.manifest.revision).toBe(
-        manifest.revision,
-      );
     });
   });
 });

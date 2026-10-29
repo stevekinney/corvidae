@@ -3,9 +3,6 @@ import { describe, expect, it } from 'bun:test';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createPGliteTestFixture } from './pglite.test-support.ts';
 
-// This fixture stays in Weft only for `neon.test.ts` until Neon moves into its own package
-// (COR-1775), which deletes both the fixture and this test. The Postgres adapter's package runs
-// the same case against its own copy.
 describe('createPGliteTestFixture', () => {
   it('rejects PGlite fixture access outside its registered lifecycle', async () => {
     let initialize: (() => void | Promise<void>) | undefined;
