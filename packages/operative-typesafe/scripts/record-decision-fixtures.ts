@@ -1,25 +1,25 @@
 #!/usr/bin/env bun
 // Records the Jev contract fixtures in `test/fixtures/decisions/` by sending each scenario in
-// `test/fixtures/decisions/scenarios.ts` to the live TypeSafe API through `typesafeJev`. This is
-// the only network path in the decision suite and it runs by hand:
+// `decisionScenarios` (from `@lostgradient/operative/decision-testing`) to the live TypeSafe API
+// through `typesafeJev`. This is the only network path in the decision suite and it runs by hand:
 //
-//   bun packages/operative/scripts/record-decision-fixtures.ts
+//   bun packages/operative-typesafe/scripts/record-decision-fixtures.ts
 //
 // The key comes from `TYPESAFE_API_KEY` in the environment or, absent that, from the macOS Keychain
 // service `typesafe-api`. It is held in one variable and never printed, and a fixture that contains
 // it is refused. A fixture holds the request body, the response status, and the response body: no
-// headers. Run `bunx prettier --write packages/operative/test/fixtures/decisions` afterwards,
+// headers. Run `bunx prettier --write packages/operative-typesafe/test/fixtures/decisions` afterwards,
 // because the repository formats JSON.
 //
 // This file is registered by path in `scripts/environment-configuration-policy.ts` as the one place
-// in operative that may read the environment, so the environment read stays out of operative's
-// runtime `environment-configuration.ts`.
+// in operative-typesafe that may read the environment, so the environment read stays out of the
+// package's runtime source.
 
+import { decisionScenarios } from '@lostgradient/operative/decision-testing';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { typesafeJev } from '../src/decisions/typesafe-jev';
-import { decisionScenarios } from '../test/fixtures/decisions/scenarios';
 
 const FIXTURE_DIRECTORY = join(import.meta.dir, '..', 'test', 'fixtures', 'decisions');
 const KEYCHAIN_SERVICE = 'typesafe-api';

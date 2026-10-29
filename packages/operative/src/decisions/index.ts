@@ -10,5 +10,3 @@ export type {
   DecisionOption,
   DecisionRequest,
 } from './types';
-export { typesafeJev } from './typesafe-jev';
-export type { TypesafeJevOptions } from './typesafe-jev';

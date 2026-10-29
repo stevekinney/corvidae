@@ -75,6 +75,7 @@ Arrows run from consumer to provider. Every manifest edge appears below, includi
 | `@lostgradient/operative-anthropic` | `armorer`, `conversationalist`, `@lostgradient/operative` | `@lostgradient/lifecycle`, `@lostgradient/testing`, `@lostgradient/typescript` |
 | `@lostgradient/operative-gemini` | `armorer`, `conversationalist`, `@lostgradient/cryptography`, `@lostgradient/lifecycle`, `@lostgradient/operative` | `@lostgradient/testing`, `@lostgradient/typescript` |
 | `@lostgradient/operative-openai` | `armorer`, `conversationalist`, `@lostgradient/operative` | `@lostgradient/lifecycle`, `@lostgradient/testing`, `@lostgradient/typescript` |
+| `@lostgradient/operative-typesafe` | `conversationalist`, `@lostgradient/operative` | `@lostgradient/typescript` |
 | `@lostgradient/skills` | `armorer`, `@lostgradient/cryptography`, `@lostgradient/lifecycle`, `@lostgradient/tool-protocol`, `@lostgradient/weft` | `@lostgradient/typescript` |
 | `@lostgradient/testing` | None | `@lostgradient/typescript` |
 | `@lostgradient/tool-protocol` | `@lostgradient/lifecycle` | `@lostgradient/typescript` |
@@ -104,6 +105,7 @@ A root override consolidates SvelteKit and Express on `cookie@0.7.2`. This remov
 | `@lostgradient/operative-anthropic` | `@anthropic-ai/sdk` |
 | `@lostgradient/operative-gemini` | `@google/genai`, `@lostgradient/environmentalist`, `zod` |
 | `@lostgradient/operative-openai` | `openai` |
+| `@lostgradient/operative-typesafe` | `@tanstack/ai`, `@tanstack/ai-typesafe` (optional peers) |
 | `@lostgradient/skills` | `gray-matter`, `zod` |
 | `@lostgradient/testing` | `@axe-core/playwright`, `@playwright/test`, `@testing-library/svelte`, `happy-dom`, `postcss-value-parser`, `svelte`, `typescript`, `zod` |
 | `@lostgradient/weft` | `@msgpack/msgpack`, `@valibot/to-json-schema`, `valibot`, `zod` |

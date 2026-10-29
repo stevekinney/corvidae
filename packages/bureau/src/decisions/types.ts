@@ -3,7 +3,7 @@ import type { Decision, DecisionModel, DecisionRequest } from '@lostgradient/ope
 /** The `decisions` option of `createBureau`. Every field is a code default a host may leave out. */
 export interface DecisionsOptions {
   /**
-   * A model that answers the kinds in its `kinds` set (Interborough passes `typesafeJev`). A
+   * A model that answers the kinds in its `kinds` set (Interborough passes `typesafeJev` from `@lostgradient/operative-typesafe`). A
    * request whose kind it does not serve goes to the language-model fallback.
    */
   readonly model?: DecisionModel;

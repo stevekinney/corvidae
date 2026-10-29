@@ -1,9 +1,10 @@
 {
   "name": "@lostgradient/operative",
-  "description": "A composable agent loop. Its model providers live in their own packages (@lostgradient/operative-anthropic, @lostgradient/operative-openai, and @lostgradient/operative-gemini).",
+  "description": "A composable agent loop. Its model providers live in their own packages (@lostgradient/operative-anthropic, @lostgradient/operative-openai, and @lostgradient/operative-gemini), and its TypeSafe decision model lives in @lostgradient/operative-typesafe.",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./decision-testing": "./src/decision-testing.ts",
     "./provider-kit": "./src/provider-kit.ts",
     "./provider-testing": "./src/provider-testing.ts",
     "./run-engine-workflow-types": "./src/durable/run-engine-workflow-types.ts"
@@ -29,21 +30,7 @@
     "@lostgradient/environmentalist": "catalog:",
     "@lostgradient/storage": "workspace:*"
   },
-  "peerDependencies": {
-    "@tanstack/ai": "catalog:",
-    "@tanstack/ai-typesafe": "catalog:"
-  },
-  "peerDependenciesMeta": {
-    "@tanstack/ai": {
-      "optional": true
-    },
-    "@tanstack/ai-typesafe": {
-      "optional": true
-    }
-  },
   "devDependencies": {
-    "@tanstack/ai": "catalog:",
-    "@tanstack/ai-typesafe": "catalog:",
     "@types/bun": "catalog:",
     "@lostgradient/typescript": "workspace:*",
     "oxlint": "catalog:",

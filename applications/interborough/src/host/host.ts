@@ -66,7 +66,8 @@ import {
   type Bureau,
   type SettingsOptions,
 } from '@lostgradient/bureau';
-import { typesafeJev, type GenerateFunction } from '@lostgradient/operative';
+import { type GenerateFunction } from '@lostgradient/operative';
+import { typesafeJev } from '@lostgradient/operative-typesafe';
 import { type Storage } from '@lostgradient/storage';
 import {
   serve,
