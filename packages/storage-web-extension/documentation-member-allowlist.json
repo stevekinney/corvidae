@@ -1,0 +1,18 @@
+{
+  "description": "Members of exported interfaces, classes, and object type aliases allowed to lack a documentation comment, as \"<entry point> <Symbol>.<member>\", checked by scripts/check-documentation-coverage.ts. The list can only shrink: --shrink drops stale entries, --seed-members refuses to run once this file exists.",
+  "entries": [
+    ". WebExtensionStorage.[Symbol.dispose]",
+    ". WebExtensionStorage.batch",
+    ". WebExtensionStorage.count",
+    ". WebExtensionStorage.delete",
+    ". WebExtensionStorage.deletePrefix",
+    ". WebExtensionStorage.deleteRange",
+    ". WebExtensionStorage.get",
+    ". WebExtensionStorage.has",
+    ". WebExtensionStorage.keys",
+    ". WebExtensionStorage.put",
+    ". WebExtensionStorage.scan",
+    ". WebExtensionStorage.scoped",
+    ". WebExtensionStorageOptions.area"
+  ]
+}
