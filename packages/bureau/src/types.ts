@@ -1950,7 +1950,7 @@ export interface BureauDiagnostics {
   readonly watchers: readonly BureauWatcherHealth[];
   /** The model catalog's `revision`: `1` at boot, plus one for each `bureau.models.replace`. */
   readonly modelCatalogRevision: number;
-  /** How many runs this process is executing: bureau-owned runs and `bureau.run()` catalog runs. */
+  /** How many bureau-owned runs and `bureau.run()` catalog runs this process is executing; durable goal attempts and workflow steps are not counted. */
   readonly runningRunCount: number;
   /** How many runs have a requested cancellation that has not settled ({@link BureauInternals.abortingTasks}). */
   readonly abortingRunCount: number;

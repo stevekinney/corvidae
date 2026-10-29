@@ -85,7 +85,9 @@ const getOutput = z.object({
     .number()
     .int()
     .nonnegative()
-    .describe('How many runs this process is executing.'),
+    .describe(
+      'How many bureau-owned runs and `bureau.run()` catalog runs this process is executing; durable goal attempts and workflow steps are not counted.',
+    ),
   abortingRunCount: z
     .number()
     .int()
@@ -107,7 +109,7 @@ export const diagnosticsGetOperation = defineOperation<
   mcpExposable: false,
   summary: 'Read the Bureau’s diagnostics',
   description:
-    'Returns a point-in-time reading of what the Bureau is holding: the boot `recovery` outcome (`status`, `failedRunCount`), the `lifecycle`, the `liveFrameSubscriberCount` and `eventFeedSubscriberCount`, one `watchers` entry per configured definition source (`lastScanAt`, and the `lastScanError` message of a scan that failed), the `modelCatalogRevision`, and the `runningRunCount`, `abortingRunCount`, and `pendingReviewCount`. It carries counts, statuses, and timestamps only, never an identifier of a run, review, or agent, a message, a credential, a file’s contents, or a stack. Requires `bureau.diagnostics:read`.',
+    'Returns a point-in-time reading of what the Bureau is holding: the boot `recovery` outcome (`status`, `failedRunCount`), the `lifecycle`, the `liveFrameSubscriberCount` and `eventFeedSubscriberCount`, one `watchers` entry per configured definition source (`lastScanAt`, and the `lastScanError` message of a scan that failed), the `modelCatalogRevision`, and the `runningRunCount`, `abortingRunCount`, and `pendingReviewCount`. It carries counts, statuses, and timestamps only, never an identifier of a run, review, or agent, a conversation message, a credential, a file’s contents, or a stack. Requires `bureau.diagnostics:read`.',
   destructive: false,
   tags: ['Deployment'],
   inputSchema: getInput,
