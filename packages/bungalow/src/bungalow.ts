@@ -333,6 +333,9 @@ export function resolveOpenRoot(options: OpenBungalowOptions): string {
  * optionally `S3_SESSION_TOKEN` and `<NAME>_BUCKET_PREFIX`, and secrets in `<NAME>_SECRET_<KEY>`.
  * `<NAME>_HOME` is then not read and no lock is taken. With exactly one of the two set, or a
  * required S3 variable missing, this throws `BungalowInputError` naming it, before any request.
+ * It also throws that error when the process started with `AWS_SESSION_TOKEN` or
+ * `S3_SESSION_TOKEN` and the given environment sets no `S3_SESSION_TOKEN`, since Bun would sign with
+ * the ambient token.
  *
  * Otherwise the home is local and this takes its single-instance lock. The root is `<NAME>_HOME`
  * or `~/.<name>`; see `resolveBungalowRoot`. Under `NODE_ENV=test` with no `<NAME>_HOME` in effect

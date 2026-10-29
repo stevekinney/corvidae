@@ -7,6 +7,9 @@ import { assertDirectoryName, assertSecretKey } from './validation.ts';
 /** How long a presigned request stays valid. Each request is signed just before it is sent. */
 const PRESIGN_SECONDS = 60;
 
+/** The query parameter of a presigned URL that carries a session token. */
+const SESSION_TOKEN_PARAMETER = 'X-Amz-Security-Token';
+
 /** The S3 operations Bungalow performs, which are all a failure's message may name. */
 type S3Operation = 'read configuration' | 'read deployment ID' | 'write deployment ID';
 
@@ -152,6 +155,40 @@ function assertExactlyAddressed(client: Bun.S3Client, bucket: string, key: strin
 }
 
 /**
+ * Refuse a client that would sign with a session token nobody gave Bungalow. The decision is that
+ * remote credentials come only from the environment Bungalow is given, but `Bun.S3Client` falls
+ * back to the `AWS_SESSION_TOKEN` or `S3_SESSION_TOKEN` the process had when it started whenever
+ * no `sessionToken` option is set, or it is `''`, and no option turns that off. The probe is a
+ * presigned URL, so nothing is sent, and its query shows exactly what every request would carry.
+ * A token the given environment supplies is the intended one. Names only, never a value.
+ */
+function assertNoAmbientSessionToken(
+  client: Bun.S3Client,
+  configuration: RemoteConfiguration,
+  key: string,
+): void {
+  if (configuration.client.sessionToken !== undefined) return;
+  let signed: boolean;
+  try {
+    signed = new URL(client.presign(key, { expiresIn: PRESIGN_SECONDS })).searchParams.has(
+      SESSION_TOKEN_PARAMETER,
+    );
+  } catch (error) {
+    throw new BungalowInputError('The S3_ variables do not describe a usable S3 client.', {
+      cause: { code: codeOf(error) },
+    });
+  }
+  if (signed) {
+    throw new BungalowInputError(
+      'The process environment sets AWS_SESSION_TOKEN or S3_SESSION_TOKEN, which Bun would sign ' +
+        'every request with, but the environment given to Bungalow sets no S3_SESSION_TOKEN. ' +
+        'Set S3_SESSION_TOKEN in the given environment, or unset AWS_SESSION_TOKEN and ' +
+        'S3_SESSION_TOKEN in the process.',
+    );
+  }
+}
+
+/**
  * Open the remote Bungalow that `configuration` describes: Postgres for the database, the bucket
  * for configuration, content, and the deployment ID, and environment variables for secrets. It
  * takes no lock, since there is no root to lock, and makes no request until every input is valid.
@@ -166,6 +203,7 @@ export async function openRemoteBungalow(
   const configurationKey = `${prefix}configuration.json`;
   assertExactlyAddressed(client, bucket, deploymentKey);
   assertExactlyAddressed(client, bucket, configurationKey);
+  assertNoAmbientSessionToken(client, configuration, deploymentKey);
   const deploymentId = await loadDeploymentId(client, deploymentKey);
 
   let closed = false;
