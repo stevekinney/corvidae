@@ -1,4 +1,4 @@
-import type { Database, SQLQueryBindings, Statement } from 'bun:sqlite';
+import { Database, type SQLQueryBindings, type Statement } from 'bun:sqlite';
 
 import {
   assertStorageBatchOperationCount,
@@ -11,7 +11,6 @@ import {
   type Storage,
   type StorageCapabilities,
 } from '@lostgradient/storage';
-import { tryLoadNodeBuiltin } from '@lostgradient/storage/runtime';
 import {
   assertReadOnlyQuery,
   buildSqliteCountKeysByPrefix,
@@ -96,9 +95,7 @@ export class BunSQLiteStorage implements Storage {
 
   constructor(path: string = ':memory:') {
     this.#persistence = path === ':memory:' ? 'ephemeral' : 'local';
-    const sqlite = tryLoadNodeBuiltin('bun:sqlite');
-    if (sqlite === undefined) throw new Error('BunSQLiteStorage requires the Bun runtime.');
-    this.#database = new sqlite.Database(path);
+    this.#database = new Database(path);
 
     // First, so the connection waits for another process's lock from its first statement,
     // including the journal-mode switch below, which takes a write lock of its own.

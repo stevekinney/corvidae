@@ -6,7 +6,7 @@ The key-value storage protocol that Weft and its storage adapters share. It hold
 | --- | --- |
 | `@lostgradient/storage` | `Storage`, `BatchOperation`, `ScanOptions`, the `storage*` helpers, `MemoryStorage`, `ScopedStorage`, `textValueStore`, `copyTextKeyValueRowsToStorage`, the capability model, and the key and byte encodings. |
 | `@lostgradient/storage/sql` | What the SQL adapters share: the SQLite and Postgres key-value queries, `PostgresKeyValueStorage` over any `PostgresPool`, the lazy driver pool, and the Neon batch and value mappings. |
-| `@lostgradient/storage/runtime` | Storage's own loader for Node built-ins, `tryLoadNodeBuiltin`, with its test override. |
+| `@lostgradient/storage/runtime` | Storage's own loader for the `node:module` built-in, `tryLoadNodeBuiltin`, with its test override. Only `@lostgradient/storage-turso` still calls it, pending the decision on its native-versus-web client choice (COR-1783). |
 | `@lostgradient/storage/testing` | The contract runners every adapter's tests run, and the test support several storage packages share, including the durability suites. |
 | `@lostgradient/storage/testing/sqlite-contention` | Only the SQLite contention support, for a test that runs under Node, which cannot load the `bun:test`-dependent `testing` entry. |
 

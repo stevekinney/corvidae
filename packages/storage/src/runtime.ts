@@ -6,6 +6,10 @@
  * with a separate override, {@link setStorageRuntimeTestOverridesForTesting}, instead of splitting
  * that registry.
  *
+ * The only remaining caller is `@lostgradient/storage-turso`, whose choice between the native and
+ * the web libSQL client rests on it. That choice is the one runtime fallback inside an adapter and
+ * is pending an owner decision (COR-1783); once it is decided, this module goes with it.
+ *
  * @module runtime
  */
 
@@ -26,7 +30,7 @@ let storageRuntimeTestOverrides: StorageRuntimeTestOverrides | undefined;
  * import { setStorageRuntimeTestOverridesForTesting, tryLoadNodeBuiltin } from '@lostgradient/storage/runtime';
  *
  * setStorageRuntimeTestOverridesForTesting({ process: undefined });
- * console.log(tryLoadNodeBuiltin('node:fs')); // undefined
+ * console.log(tryLoadNodeBuiltin('node:module')); // undefined
  * setStorageRuntimeTestOverridesForTesting();
  * ```
  */
@@ -72,18 +76,10 @@ export function getProcess(): typeof globalThis.process | undefined {
  * ```ts
  * import { tryLoadNodeBuiltin } from '@lostgradient/storage/runtime';
  *
- * const fs = tryLoadNodeBuiltin('node:fs');
- * console.log(typeof fs?.existsSync); // 'function' under Bun or Node
+ * const module = tryLoadNodeBuiltin('node:module');
+ * console.log(typeof module?.createRequire); // 'function' under Bun or Node
  * ```
  */
-export function tryLoadNodeBuiltin(id: 'bun:sqlite'): typeof import('bun:sqlite') | undefined;
-export function tryLoadNodeBuiltin(id: 'node:crypto'): typeof import('node:crypto') | undefined;
-export function tryLoadNodeBuiltin(id: 'node:dns'): typeof import('node:dns') | undefined;
-export function tryLoadNodeBuiltin(id: 'node:fs'): typeof import('node:fs') | undefined;
-export function tryLoadNodeBuiltin(
-  id: 'node:fs/promises',
-): typeof import('node:fs/promises') | undefined;
-export function tryLoadNodeBuiltin(id: 'node:zlib'): typeof import('node:zlib') | undefined;
 export function tryLoadNodeBuiltin(id: 'node:module'): typeof import('node:module') | undefined;
 export function tryLoadNodeBuiltin(id: string): unknown {
   const nodeProcess = getProcess();
