@@ -28,7 +28,6 @@ import {
   skillCatalogOnDisk,
   skillsRecorded,
 } from './skill-policy-fixtures.test-support';
-import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const harness = createScheduleFireHarness();
 
@@ -72,7 +71,7 @@ function dyingInStepOne(life: Life, offered: string[]): GenerateFunction {
 describe('a session run of an agent with skills, reattached after its process died', () => {
   it('resumes with the skill it had activated, so the skill still narrows the run’s tools', async () => {
     const catalog = await skillCatalogOnDisk();
-    await using pathFixture = createSqliteStorageFixture({ path: harness.nextDatabasePath() });
+    const path = harness.nextDatabasePath();
     const life: Life = { current: 'first' };
     const agentFor = async (charges: number[], offered: string[]) =>
       createAgent({
@@ -83,7 +82,7 @@ describe('a session run of an agent with skills, reattached after its process di
       });
 
     const first = await harness.open({
-      storage: pathFixture.storage,
+      storage: harness.sqliteHandle(path),
       agents: { default: await agentFor([], []) },
     });
     const run = await first.tasks.start('default', 'lock, then charge', { principal: OWNER.alice });
@@ -97,7 +96,7 @@ describe('a session run of an agent with skills, reattached after its process di
     const charges: number[] = [];
     const offered: string[] = [];
     const restarted = await harness.open({
-      storage: pathFixture.open(),
+      storage: harness.sqliteHandle(path),
       agents: { default: await agentFor(charges, offered) },
     });
     await pollUntil(

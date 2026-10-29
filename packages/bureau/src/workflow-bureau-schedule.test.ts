@@ -135,7 +135,9 @@ describe('restarting a Bureau over workflow files', () => {
   it('leaves exactly one live schedule after two restarts in a row', async () => {
     const root = await mkdtemp(join(tmpdir(), 'bureau-workflow-restart-'));
     cleanups.push(() => rm(root, { recursive: true, force: true }));
-    await using storageFixture = createSqliteStorageFixture({ path: join(root, 'bureau.sqlite') });
+    const storageFixture = createSqliteStorageFixture({ path: join(root, 'bureau.sqlite') });
+    // Closed after the Bureaus: the cleanups dispose those first.
+    cleanups.push(() => storageFixture.dispose());
     const workflows = join(root, 'workflows');
     const overrides = {
       storage: storageFixture.storage,

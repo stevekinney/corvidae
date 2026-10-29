@@ -27,7 +27,6 @@ import {
   pollUntil,
   reviewOf,
 } from './schedule-fire-fixtures.test-support';
-import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const harness = createScheduleFireHarness();
 const { open, nextDatabasePath } = harness;
@@ -185,14 +184,14 @@ describe('a schedule fire’s tool approval', () => {
 
 describe('a schedule fire’s human wait after a restart', () => {
   it('is listed at boot under the id it had, with the fire’s session, and answering it completes the run', async () => {
-    await using database = createSqliteStorageFixture({ path: nextDatabasePath() });
-    const storage = database.storage;
+    const path = nextDatabasePath();
+    // Each Bureau opens its own handle; the harness closes them after its Bureaus.
     const humanInputOptions = {
       stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
     };
     const crashed = await open({
       ...humanInputOptions,
-      storage,
+      storage: harness.sqliteHandle(path),
       agents: { default: createAgent({ generate: askingGenerate() }) },
     });
     const { fireId } = await fireOnce(crashed);
@@ -203,7 +202,7 @@ describe('a schedule fire’s human wait after a restart', () => {
     const seen: string[] = [];
     const restarted = await open({
       ...humanInputOptions,
-      storage,
+      storage: harness.sqliteHandle(path),
       agents: { default: createAgent({ generate: askingGenerate('answer', seen) }) },
     });
     const restored = await reviewOf(restarted, fireId);
@@ -240,13 +239,13 @@ describe('a schedule fire’s human wait after a restart', () => {
 
 describe('a schedule fire’s tool approval after a restart', () => {
   it('is listed at boot with the fire’s session, and approving it runs the tool in the new process', async () => {
-    await using database = createSqliteStorageFixture({ path: nextDatabasePath() });
-    const storage = database.storage;
+    const path = nextDatabasePath();
+    // Each Bureau opens its own handle; the harness closes them after its Bureaus.
     const approvalOptions = (charges: number[]) => ({
       generate: chargesOnce,
       toolbox: approvalToolbox(charges),
       stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
-      storage,
+      storage: harness.sqliteHandle(path),
     });
     const before: number[] = [];
     const first = await open(approvalOptions(before));

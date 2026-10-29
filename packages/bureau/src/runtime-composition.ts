@@ -2134,9 +2134,10 @@ export interface RuntimeComposition {
    */
   workflowVersionMismatches: Map<string, { storedVersion: string; registeredVersion: string }>;
   /**
-   * Stops this composition's use of the caller's `options.storage` (COR-1767): every later
-   * operation through `kv`, the checkpoint store, the engine, or `durableStorage` throws. It never
-   * closes the caller's storage, which stays the caller's to close. A no-op without storage.
+   * Stops this composition's writes to the caller's `options.storage` (COR-1767): every later
+   * write through `kv`, the checkpoint store, the engine, or `durableStorage` throws; reads still
+   * pass. It never closes the caller's storage, which stays the caller's to close. A no-op
+   * without storage.
    */
   stopUsingStorage(): void;
   /**

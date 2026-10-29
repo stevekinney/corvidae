@@ -200,7 +200,9 @@ describe('cancelling a run while its generated image is being admitted', () => {
 describe('a durable run restarted over SQLite (COR-713)', () => {
   it('keeps the run-wide parts, the committed row id and the asset after a new Bureau opens the same store', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'bureau-generated-media-'));
-    await using storageFixture = createSqliteStorageFixture({ path: join(directory, 'bureau') });
+    const storageFixture = createSqliteStorageFixture({ path: join(directory, 'bureau') });
+    // Closed after the Bureaus: the cleanups dispose those first.
+    cleanups.push(() => storageFixture.dispose());
     cleanups.push(async () => {
       await rm(directory, { recursive: true, force: true });
     });

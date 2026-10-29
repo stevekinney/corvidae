@@ -2092,8 +2092,12 @@ describe('createRuntimeComposition durable execution', () => {
       await engineStorage?.put('probe', new Uint8Array([5]));
       expect(await storage.get('probe')).toEqual(new Uint8Array([5]));
       runtime.stopUsingStorage();
-      expect(() => engineStorage?.get('probe')).toThrow(/stopped using its storage/);
-      expect(await storage.get('probe')).toEqual(new Uint8Array([5]));
+      expect(() => engineStorage?.put('probe', new Uint8Array([6]))).toThrow(
+        /stopped writing to its storage/,
+      );
+      expect(await engineStorage?.get('probe')).toEqual(new Uint8Array([5]));
+      await storage.put('probe', new Uint8Array([7]));
+      expect(await storage.get('probe')).toEqual(new Uint8Array([7]));
     } finally {
       runtime.durable?.engine[Symbol.dispose]?.();
       storage[Symbol.dispose]();

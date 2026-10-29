@@ -48,7 +48,9 @@ describe('a run reclaimed while the bureau is still being composed (COR-1509)', 
   it('is held for the composition and then resumed, not durably failed', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'recovery-before-composition-'));
     directories.push(directory);
-    await using storageFixture = createSqliteStorageFixture({ path: join(directory, 'bureau') });
+    const storageFixture = createSqliteStorageFixture({ path: join(directory, 'bureau') });
+    // Closed after the Bureaus: the cleanups dispose those first.
+    closers.push(() => storageFixture.dispose());
 
     // The owner reaches step 1, then stops: its claim is never renewed, so it lapses.
     const reachedStepOne = Promise.withResolvers<void>();

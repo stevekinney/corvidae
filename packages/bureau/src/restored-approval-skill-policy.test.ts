@@ -26,7 +26,6 @@ import {
   skillsRecorded,
 } from './skill-policy-fixtures.test-support';
 import { createAgentSkills } from './agent-skills';
-import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const harness = createScheduleFireHarness();
 
@@ -43,7 +42,7 @@ async function lockingCatalog() {
 describe('a restored approval keeps the skill policy it was requested under', () => {
   it('refuses a call the active skill would refuse, for a schedule fire', async () => {
     const catalog = await lockingCatalog();
-    await using pathFixture = createSqliteStorageFixture({ path: harness.nextDatabasePath() });
+    const path = harness.nextDatabasePath();
     const options = {
       generate: lockedAfterCharging('wait'),
       stopWhen: stopWhen.noToolCalls(),
@@ -51,7 +50,7 @@ describe('a restored approval keeps the skill policy it was requested under', ()
     };
     const first = await harness.open({
       ...options,
-      storage: pathFixture.storage,
+      storage: harness.sqliteHandle(path),
       toolbox: approvalToolbox([]),
     });
     const { fireId } = await fireOnce(first, OWNER.alice, 'skill-fire-session');
@@ -66,7 +65,7 @@ describe('a restored approval keeps the skill policy it was requested under', ()
     const charges: number[] = [];
     const restarted = await harness.open({
       ...options,
-      storage: pathFixture.open(),
+      storage: harness.sqliteHandle(path),
       toolbox: approvalToolbox(charges),
     });
     const restored = await reviewOf(restarted, fireId);
@@ -80,7 +79,7 @@ describe('a restored approval keeps the skill policy it was requested under', ()
 
   it('refuses a call the active skill would refuse, for a session run', async () => {
     const catalog = await lockingCatalog();
-    await using pathFixture = createSqliteStorageFixture({ path: harness.nextDatabasePath() });
+    const path = harness.nextDatabasePath();
     const options = {
       generate: lockedAfterCharging('stop'),
       stopWhen: stopWhen.noToolCalls(),
@@ -88,7 +87,7 @@ describe('a restored approval keeps the skill policy it was requested under', ()
     };
     const first = await harness.open({
       ...options,
-      storage: pathFixture.storage,
+      storage: harness.sqliteHandle(path),
       toolbox: approvalToolbox([]),
     });
     const run = await first.tasks.start('default', 'charge, then lock', { principal: OWNER.alice });
@@ -105,7 +104,7 @@ describe('a restored approval keeps the skill policy it was requested under', ()
     const charges: number[] = [];
     const restarted = await harness.open({
       ...options,
-      storage: pathFixture.open(),
+      storage: harness.sqliteHandle(path),
       toolbox: approvalToolbox(charges),
     });
     const restored = await pollUntil(
@@ -122,7 +121,7 @@ describe('a restored approval keeps the skill policy it was requested under', ()
 
 describe('the control: without the skill, the same restored approval runs', () => {
   it('runs the tool when no skill was active', async () => {
-    await using pathFixture = createSqliteStorageFixture({ path: harness.nextDatabasePath() });
+    const path = harness.nextDatabasePath();
     const generate: GenerateFunction = async (context) =>
       context.step === 0
         ? {
@@ -133,7 +132,7 @@ describe('the control: without the skill, the same restored approval runs', () =
     const options = { generate, stopWhen: stopWhen.noToolCalls() };
     const first = await harness.open({
       ...options,
-      storage: pathFixture.storage,
+      storage: harness.sqliteHandle(path),
       toolbox: approvalToolbox([]),
     });
     const run = await first.tasks.start('default', 'charge', { principal: OWNER.alice });
@@ -144,7 +143,7 @@ describe('the control: without the skill, the same restored approval runs', () =
     const charges: number[] = [];
     const restarted = await harness.open({
       ...options,
-      storage: pathFixture.open(),
+      storage: harness.sqliteHandle(path),
       toolbox: approvalToolbox(charges),
     });
     await pollUntil(
