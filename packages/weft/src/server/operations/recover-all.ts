@@ -25,6 +25,11 @@ export const recoverAllOperation = defineOperation({
   name: 'weft.recover.all',
   mcpExposable: false,
   summary: 'Recover all interrupted workflows',
+  description:
+    'Re-drive every workflow the engine finds interrupted in storage from its ' +
+    'persisted checkpoint, returning the ids it resumed. Takes no input. Faults with ' +
+    'Conflict when stored workflows belong to a type this engine has not registered; ' +
+    'the fault data names the missing types.',
   destructive: true,
   tags: ['System'],
   inputSchema: recoverAllInput,

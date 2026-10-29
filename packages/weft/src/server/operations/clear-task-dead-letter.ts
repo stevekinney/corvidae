@@ -9,7 +9,12 @@ import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 import { requireOperationStorage } from './operation-helpers.ts';
 
-const clearTaskDeadLetterInput = z.object({ operationId: z.string().min(1) });
+const clearTaskDeadLetterInput = z.object({
+  operationId: z
+    .string()
+    .min(1)
+    .describe('Id of the dead-lettered task operation whose entry is cleared.'),
+});
 const okOutput = z.object({ ok: z.literal(true) }).strict();
 
 export type ClearTaskDeadLetterInput = z.infer<typeof clearTaskDeadLetterInput>;
@@ -26,6 +31,10 @@ export const clearTaskDeadLetterOperation = defineOperation({
   name: 'weft.tasks.diagnostics.deadletters.clear',
   mcpExposable: false,
   summary: 'Clear a task-result dead-letter diagnostic entry',
+  description:
+    'Remove a dead-lettered task from the ledger along with its attempt history and ' +
+    'delivery record. Irreversible. Faults with NotFound when no dead-lettered task ' +
+    'has the given operation id. Served over REST only.',
   destructive: true,
   tags: ['Observability'],
   inputSchema: clearTaskDeadLetterInput,

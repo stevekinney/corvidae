@@ -13,9 +13,14 @@ import { createStoredChunkSSEStream, SSE_RESPONSE_HEADERS } from './sse-stream.t
 // receive identical "Invalid after query parameter" messages (and reject
 // the same edge cases — < -1, hex, scientific notation).
 const getStreamChunksInput = z.object({
-  workflowId: z.string().min(1),
-  key: z.string().min(1),
-  after: z.unknown().optional(),
+  workflowId: z.string().min(1).describe('Id of the workflow that owns the stream.'),
+  key: z.string().min(1).describe('Stream key whose stored chunks are read.'),
+  after: z
+    .unknown()
+    .optional()
+    .describe(
+      'Return only chunks after this sequence number (-1 or greater); omit it to read from the start.',
+    ),
 });
 
 export type GetStreamChunksInput = z.infer<typeof getStreamChunksInput>;
@@ -25,6 +30,10 @@ export const getStreamChunksOperation = defineOperation({
   name: 'weft.workflows.streams.chunks',
   mcpExposable: false,
   summary: 'Read stored stream chunks for a workflow stream key',
+  description:
+    'Read the stored chunks a workflow wrote to one named stream, in order, ' +
+    'optionally only those after a given sequence number. Read-only. Use ' +
+    '`weft.workflows.streams.sse` to follow the token stream live.',
   destructive: false,
   tags: ['Streams'],
   inputSchema: getStreamChunksInput,

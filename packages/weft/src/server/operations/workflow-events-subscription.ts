@@ -21,12 +21,21 @@ const INITIAL_SUBSCRIPTION_CURSOR: Cursor = '-1';
 const MAX_WORKFLOW_SUBSCRIPTION_REPLAY_EVENTS = 1_000;
 
 const workflowEventsSubscriptionInput = z.object({
-  workflowId: z.string().min(1),
-  selector: z.enum(['events', 'tokens']).optional().default('events'),
+  workflowId: z.string().min(1).describe('Id of the workflow to subscribe to.'),
+  selector: z
+    .enum(['events', 'tokens'])
+    .optional()
+    .default('events')
+    .describe(
+      'What to deliver: "events" for workflow events (default) or "tokens" for the workflow\'s token stream.',
+    ),
   fromCursor: z
     .string()
     .refine((cursor) => decodeCursor(cursor) !== null, { message: 'Invalid cursor' })
-    .optional(),
+    .optional()
+    .describe(
+      'Resume after this cursor, as returned with an earlier event. Omit it to start from the beginning.',
+    ),
 });
 
 const workflowEventsSubscriptionEnvelope = z.object({

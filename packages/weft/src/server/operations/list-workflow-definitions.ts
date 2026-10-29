@@ -14,8 +14,19 @@ import {
 
 const listWorkflowDefinitionsInput = z
   .object({
-    limit: z.number().int().min(1).max(1000).optional(),
-    offset: z.number().int().min(0).optional(),
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(1000)
+      .optional()
+      .describe('Maximum number of entries to return, 1 to 1000; defaults to 100.'),
+    offset: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe('Number of entries to skip before the first returned; defaults to 0.'),
   })
   .strict();
 const listWorkflowDefinitionsOutput = z

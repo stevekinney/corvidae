@@ -12,7 +12,9 @@ import type { ErasedOperation } from './operation-catalog.ts';
  * Public operations are always discoverable. Non-public operations opt in with
  * `discoverable: true`; `discoverable: false` cannot hide a public operation.
  */
-export function isDiscoverable(operation: ErasedOperation): boolean {
+export function isDiscoverable(
+  operation: Pick<ErasedOperation, 'access' | 'discoverable'>,
+): boolean {
   if (operation.access.kind === 'public') return true;
   return operation.discoverable === true;
 }

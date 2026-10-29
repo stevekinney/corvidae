@@ -5,39 +5,76 @@ const binaryValueSchema: z.ZodType<Uint8Array, Uint8Array> = z
   .instanceof(Uint8Array)
   .meta({ type: 'string', format: 'binary' });
 
-export const storageGetInput = z.object({ key: z.string().min(1) });
+const storageKeyInput = z.string().min(1);
 
-export const storagePutInput = z.object({ key: z.string().min(1), value: binaryValueSchema });
+export const storageGetInput = z.object({
+  key: storageKeyInput.describe('Key of the raw storage value to read.'),
+});
 
-export const storageDeleteInput = z.object({ key: z.string().min(1) });
+export const storagePutInput = z.object({
+  key: storageKeyInput.describe('Key to write the value under.'),
+  value: binaryValueSchema.describe('Value bytes to store, replacing any existing value.'),
+});
+
+export const storageDeleteInput = z.object({
+  key: storageKeyInput.describe('Key of the raw storage value to delete.'),
+});
 
 export const storageScanInput = z.object({
-  prefix: z.string(),
-  limit: z.number().int().positive().max(MAX_SCAN_LIMIT).optional(),
-  reverse: z.boolean().optional(),
-  gt: z.string().optional(),
-  gte: z.string().optional(),
-  lt: z.string().optional(),
-  lte: z.string().optional(),
+  prefix: z.string().describe('Return only entries whose key starts with this prefix.'),
+  limit: z
+    .number()
+    .int()
+    .positive()
+    .max(MAX_SCAN_LIMIT)
+    .optional()
+    .describe('Maximum number of entries to return.'),
+  reverse: z
+    .boolean()
+    .optional()
+    .describe('When true, return entries in descending key order instead of ascending.'),
+  gt: z.string().optional().describe('Return only keys strictly greater than this key.'),
+  gte: z.string().optional().describe('Return only keys greater than or equal to this key.'),
+  lt: z.string().optional().describe('Return only keys strictly less than this key.'),
+  lte: z.string().optional().describe('Return only keys less than or equal to this key.'),
 });
 
 const storageBatchOperationInput = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('put'), key: z.string().min(1), value: z.string() }),
-  z.object({ type: z.literal('delete'), key: z.string().min(1) }),
+  z.object({
+    type: z.literal('put').describe('Write a value.'),
+    key: storageKeyInput.describe('Key to write.'),
+    value: z.string().describe('Value to store, base64-encoded.'),
+  }),
+  z.object({
+    type: z.literal('delete').describe('Delete a value.'),
+    key: storageKeyInput.describe('Key to delete.'),
+  }),
 ]);
 
 const storageConditionInput = z.object({
-  key: z.string().min(1),
-  expectedValue: z.string().nullable(),
+  key: storageKeyInput.describe('Key whose current value is checked.'),
+  expectedValue: z
+    .string()
+    .nullable()
+    .describe('Base64-encoded value the key must currently hold, or null if it must be absent.'),
 });
 
 export const storageBatchInput = z.object({
-  operations: z.array(storageBatchOperationInput).max(MAX_BATCH_OPERATIONS),
+  operations: z
+    .array(storageBatchOperationInput)
+    .max(MAX_BATCH_OPERATIONS)
+    .describe('Puts and deletes to apply together as one atomic batch.'),
 });
 
 export const storageConditionalBatchInput = z.object({
-  conditions: z.array(storageConditionInput).max(MAX_BATCH_OPERATIONS),
-  operations: z.array(storageBatchOperationInput).max(MAX_BATCH_OPERATIONS),
+  conditions: z
+    .array(storageConditionInput)
+    .max(MAX_BATCH_OPERATIONS)
+    .describe('Key checks that must all hold for the batch to be applied.'),
+  operations: z
+    .array(storageBatchOperationInput)
+    .max(MAX_BATCH_OPERATIONS)
+    .describe('Puts and deletes to apply, only if every condition holds.'),
 });
 
 export const emptyOutput = z.null();

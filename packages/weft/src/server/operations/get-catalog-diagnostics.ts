@@ -38,8 +38,8 @@ const workflowRevisionReferenceCountsSchema = z
 
 const getCatalogDiagnosticsInput = z
   .object({
-    name: z.string().min(1),
-    revision: z.string().min(1),
+    name: z.string().min(1).describe('Workflow name of the catalog entry to inspect.'),
+    revision: z.string().min(1).describe('Revision of the catalog entry to inspect.'),
   })
   .strict();
 

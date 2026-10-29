@@ -6,7 +6,7 @@ import type { UnknownRestBinding } from '../rest-bindings.ts';
 import { assertOperationEngineMethods, shapeRestFault } from './operation-helpers.ts';
 
 const getWorkflowResultInput = z.object({
-  workflowId: z.string().min(1),
+  workflowId: z.string().min(1).describe('Id of the workflow whose result is read.'),
 });
 const getWorkflowResultOutput = z.unknown();
 
@@ -17,6 +17,11 @@ export const getWorkflowResultOperation = defineOperation({
   name: 'weft.workflows.result.get',
   mcpExposable: false,
   summary: 'Get workflow result by id',
+  description:
+    "Read a workflow's result by id, waiting up to 30 seconds for a running workflow " +
+    'to finish. Faults with NotFound when the workflow is not visible, Unprocessable ' +
+    'when it failed or was cancelled, and Timeout when it is still running after the ' +
+    'wait.',
   destructive: false,
   tags: ['Workflows'],
   inputSchema: getWorkflowResultInput,

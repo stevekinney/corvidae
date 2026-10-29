@@ -32,15 +32,30 @@ const createScheduleInput = z.object({
     .describe(
       'Interval period (duration string or milliseconds). Supply exactly one of cronExpression or every.',
     ),
-  input: z.unknown().optional(),
-  id: z.unknown().optional(),
+  input: z.unknown().optional().describe('Input payload handed to each run the schedule starts.'),
+  id: z.unknown().optional().describe('Client-chosen schedule id. Omit it to have one generated.'),
   description: z
     .unknown()
     .optional()
     .describe('Operator-facing schedule description. Runtime validation requires a string.'),
-  overlap: z.unknown().optional(),
-  backfill: z.unknown().optional(),
-  jitter: z.unknown().optional(),
+  overlap: z
+    .unknown()
+    .optional()
+    .describe(
+      'What to do when a tick fires while the previous run is still active: "skip", "queue", "cancel-running", or "allow".',
+    ),
+  backfill: z
+    .unknown()
+    .optional()
+    .describe(
+      'When true, ticks missed during downtime are run on recovery; when false (default) late ticks are skipped.',
+    ),
+  jitter: z
+    .unknown()
+    .optional()
+    .describe(
+      'Deterministic delay spread over each occurrence, as milliseconds or a duration string such as "30s".',
+    ),
   revisionPolicy: z
     .unknown()
     .optional()

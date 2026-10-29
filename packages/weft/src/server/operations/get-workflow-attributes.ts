@@ -7,7 +7,7 @@ import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 
 const getWorkflowAttributesInput = z.object({
-  workflowId: z.string().min(1),
+  workflowId: z.string().min(1).describe('Id of the workflow whose search attributes are read.'),
 });
 const getWorkflowAttributesOutput = z.unknown();
 
@@ -18,6 +18,9 @@ export const getWorkflowAttributesOperation = defineOperation({
   name: 'weft.workflows.attributes.get',
   mcpExposable: false,
   summary: 'Get workflow attributes by id',
+  description:
+    'Read the search attributes currently set on a workflow. Read-only. Faults with ' +
+    'NotFound when the workflow has no attributes record.',
   destructive: false,
   tags: ['Attributes'],
   inputSchema: getWorkflowAttributesInput,

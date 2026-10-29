@@ -18,7 +18,7 @@ import {
 // `scheduleId` comes from the path on REST (and is required at the schema level
 // for JSON-RPC); we keep the min-length guard.
 const updateScheduleInput = z.object({
-  scheduleId: z.string().min(1),
+  scheduleId: z.string().min(1).describe('Id of the schedule to update.'),
   cronExpression: z
     .unknown()
     .optional()
@@ -35,9 +35,24 @@ const updateScheduleInput = z.object({
     .unknown()
     .optional()
     .describe('Operator-facing schedule description. Runtime validation requires a string.'),
-  overlap: z.unknown().optional(),
-  backfill: z.unknown().optional(),
-  jitter: z.unknown().optional(),
+  overlap: z
+    .unknown()
+    .optional()
+    .describe(
+      'What to do when a tick fires while the previous run is still active: "skip", "queue", "cancel-running", or "allow".',
+    ),
+  backfill: z
+    .unknown()
+    .optional()
+    .describe(
+      "When true, ticks missed during downtime are run on recovery; when false late ticks are skipped. Omit it to keep the schedule's current setting.",
+    ),
+  jitter: z
+    .unknown()
+    .optional()
+    .describe(
+      'Deterministic delay spread over each occurrence, as milliseconds or a duration string such as "30s".',
+    ),
   revisionPolicy: z
     .unknown()
     .optional()

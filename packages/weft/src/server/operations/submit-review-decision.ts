@@ -16,12 +16,28 @@ const VALID_DECISIONS = [
 const sectionDecisionsSchema = z.record(z.string(), z.enum(['approved', 'rejected']));
 
 const submitReviewDecisionInput = z.object({
-  reviewId: z.string().min(1),
-  decision: z.unknown().optional(),
-  reviewer: z.unknown().optional(),
-  feedback: z.unknown().optional(),
-  sectionDecisions: z.unknown().optional(),
-  workflowId: z.unknown().optional(),
+  reviewId: z.string().min(1).describe('Id of the review request being decided.'),
+  decision: z
+    .unknown()
+    .optional()
+    .describe('Decision to record: "approved", "rejected", or "needs-changes". Required.'),
+  reviewer: z
+    .unknown()
+    .optional()
+    .describe('Identifier of the person or system recording the decision. Required.'),
+  feedback: z.unknown().optional().describe('Free-text feedback recorded with the decision.'),
+  sectionDecisions: z
+    .unknown()
+    .optional()
+    .describe(
+      'Per-section decisions for partial approval, keyed by section name, each "approved" or "rejected".',
+    ),
+  workflowId: z
+    .unknown()
+    .optional()
+    .describe(
+      'Id of the workflow the review belongs to; when given, the review is found by direct lookup instead of a scan.',
+    ),
 });
 const submitReviewDecisionOutput = z.object({
   ok: z.literal(true),

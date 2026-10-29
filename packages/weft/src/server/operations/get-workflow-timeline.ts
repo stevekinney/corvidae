@@ -8,7 +8,7 @@ import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 
 const getWorkflowTimelineInput = z.object({
-  workflowId: z.string().min(1),
+  workflowId: z.string().min(1).describe('Id of the workflow whose timeline is read.'),
 });
 const getWorkflowTimelineOutput = z.unknown();
 
@@ -19,6 +19,9 @@ export const getWorkflowTimelineOperation = defineOperation({
   name: 'weft.workflows.timeline.get',
   mcpExposable: false,
   summary: 'Get the structured execution timeline for a workflow',
+  description:
+    'Read the structured execution timeline of a workflow: one chronological entry per operation the run performed (activity call, sleep, signal wait, and so on). Read-only. Faults with NotFound when the workflow is ' +
+    'not visible.',
   destructive: false,
   tags: ['Checkpoints'],
   inputSchema: getWorkflowTimelineInput,

@@ -7,7 +7,7 @@ import {
 } from './single-workflow-control-operation.ts';
 
 const cancelWorkflowInput = z.object({
-  workflowId: z.string().min(1),
+  workflowId: z.string().min(1).describe('Id of the workflow to cancel.'),
 });
 const cancelWorkflowOutput = z.undefined();
 

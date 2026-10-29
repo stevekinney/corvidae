@@ -5,7 +5,12 @@ import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 
 const getUpdateResultInput = z.object({
-  updateId: z.string().min(1),
+  updateId: z
+    .string()
+    .min(1)
+    .describe(
+      'Id of the update request whose result is read, as returned when the update was submitted.',
+    ),
 });
 const getUpdateResultOutput = z.unknown();
 
@@ -17,6 +22,10 @@ export const getUpdateResultOperation = defineOperation({
   name: 'weft.updates.result.get',
   mcpExposable: false,
   summary: 'Get the result of an update request',
+  description:
+    'Read the outcome of an update request by update id. Returns status `pending` ' +
+    "until the workflow has answered, then status `completed` with the handler's " +
+    'result, or an error message when the handler failed. Read-only.',
   destructive: false,
   tags: ['Updates'],
   inputSchema: getUpdateResultInput,

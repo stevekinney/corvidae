@@ -339,6 +339,7 @@ export {
   isRemoteTaskTerminalResolved,
   taskLedgerKey,
 } from './core/task-ledger/task-ledger.ts';
+export { findUndescribedOperations } from './server/operation-description-audit.ts';
 export { createLiveOperationRegistry } from './server/rest-bindings.ts';
 export type { LiveOperationRegistryOptions } from './server/rest-bindings.ts';
 

@@ -17,7 +17,7 @@ import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 
 const getWorkflowInput = z.object({
-  workflowId: z.string().min(1),
+  workflowId: z.string().min(1).describe('Id of the workflow whose state is read.'),
 });
 
 /**

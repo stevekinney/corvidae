@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'bun:test';
 import { createCatalogSnapshot, createLiveOperationRegistry } from '../index.ts';
 
-import { executeApi } from './api.ts';
+import { z } from 'zod';
+
+import { defineOperation } from '../server/operation-registry.ts';
+import { executeApi, formatOperationDescription } from './api.ts';
 
 describe('api command', () => {
   it('resolves every catalog snapshot operation in the live registry that validates its input', () => {
@@ -120,27 +123,31 @@ describe('api command', () => {
     expect((descriptionLine ?? '').length).toBeGreaterThan((summaryLine ?? '').length);
   });
 
-  it('falls back to the summary when an operation declares no description', async () => {
-    // weft.storage.get is not in the interactive subset and declares no
-    // description, so --describe must echo the summary on the Description line.
-    const result = await executeApi({
-      command: 'api',
-      describe: 'weft.storage.get',
-      list: false,
-      yes: false,
-      help: false,
-      json: false,
-    });
-    expect(result.exitCode).toBe(0);
+  it('falls back to the summary when an operation declares no description', () => {
+    // Every live operation is described, so --describe is rendered here for a
+    // snapshot of an operation that declares none.
+    const [operation] = createCatalogSnapshot([
+      defineOperation({
+        name: 'weft.test.summaryonly',
+        mcpExposable: false,
+        destructive: false,
+        summary: 'just a summary',
+        inputSchema: z.object({ id: z.string() }),
+        outputSchema: z.object({ id: z.string() }),
+        access: { kind: 'public' },
+        transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
+        unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
+        invoke: async () => ({ id: 'x' }),
+      }),
+    ]).operations;
+    expect(operation).toBeDefined();
 
-    const lines = result.stdout.split('\n');
+    const lines = formatOperationDescription(operation!).split('\n');
     const summaryLine = lines.find((line) => line.startsWith('Summary: '));
     const descriptionLine = lines.find((line) => line.startsWith('Description: '));
-    expect(summaryLine).toBeDefined();
-    expect(descriptionLine).toBeDefined();
-    const summaryText = (summaryLine ?? '').slice('Summary: '.length);
-    const descriptionText = (descriptionLine ?? '').slice('Description: '.length);
-    expect(descriptionText).toBe(summaryText);
+    expect((descriptionLine ?? '').slice('Description: '.length)).toBe(
+      (summaryLine ?? '').slice('Summary: '.length),
+    );
   });
 
   it('blocks destructive operations unless --yes is present', async () => {

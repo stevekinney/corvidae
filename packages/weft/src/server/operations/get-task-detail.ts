@@ -417,6 +417,11 @@ export const getTaskDetailOperation = defineOperation({
   name: 'weft.tasks.get',
   mcpExposable: false,
   summary: "Get one task's full durable ledger state",
+  description:
+    'Read the full durable ledger record of one task by operation id: its dispatch envelope, current state, priority, headers, retry ' +
+    'availability, adoption, and retention evidence. Read-only. Faults with NotFound ' +
+    'when no such task exists and EngineFailure when the stored record cannot be ' +
+    'decoded.',
   destructive: false,
   tags: ['Observability'],
   inputSchema: getTaskDetailInput,

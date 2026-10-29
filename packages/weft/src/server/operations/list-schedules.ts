@@ -27,10 +27,19 @@ function isValidScheduleStatus(value: string): value is ScheduleStatus {
 }
 
 const listSchedulesInput = z.object({
-  status: z.unknown().optional(),
-  workflowType: z.unknown().optional(),
-  limit: z.unknown().optional(),
-  offset: z.unknown().optional(),
+  status: z
+    .unknown()
+    .optional()
+    .describe('Return only schedules in this state: "active", "paused", or "cancelled".'),
+  workflowType: z
+    .unknown()
+    .optional()
+    .describe('Return only schedules that start this workflow type.'),
+  limit: z.unknown().optional().describe('Maximum number of schedules to return.'),
+  offset: z
+    .unknown()
+    .optional()
+    .describe('Number of schedules to skip before the first returned, for paging.'),
 });
 
 const listSchedulesOutput = z.unknown();

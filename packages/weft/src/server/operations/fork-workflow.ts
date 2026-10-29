@@ -18,8 +18,13 @@ import { mapRevisionUnavailableToFault } from './revision-unavailable-fault.ts';
 // "Field 'fromStep' must be a non-negative safe integer" error path
 // lives in `invoke()` so REST and JSON-RPC callers share one contract.
 const forkWorkflowInput = z.object({
-  workflowId: z.string().min(1),
-  fromStep: z.unknown().optional(),
+  workflowId: z.string().min(1).describe('Id of the workflow to fork.'),
+  fromStep: z
+    .unknown()
+    .optional()
+    .describe(
+      'Checkpoint step to fork from, as a non-negative integer. Omit it to fork from the latest checkpoint.',
+    ),
   /**
    * Explicit opt-in (WFT-21) to fork against a DIFFERENT installed revision
    * than the source run's own pin — see `ForkOptions.revision`'s own doc
@@ -27,7 +32,13 @@ const forkWorkflowInput = z.object({
    * persists the source run's own revision, unchanged from before this
    * field existed.
    */
-  revision: z.string().min(1).optional(),
+  revision: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Installed revision to fork onto instead of the source run's own revision. Omit it to keep the source revision; an unresolvable or version-incompatible revision faults with Conflict.",
+    ),
 });
 
 const forkWorkflowOutput = z.object({
@@ -169,6 +180,12 @@ export const forkWorkflowOperation = defineOperation({
   name: 'weft.workflows.fork',
   mcpExposable: false,
   summary: 'Fork a workflow from a checkpoint',
+  description:
+    'Start a new workflow from a checkpoint of an existing one, leaving the source ' +
+    'untouched, and return the new workflow `id`. Forks from `fromStep` or the latest ' +
+    'checkpoint, optionally onto a different installed `revision`. Faults with ' +
+    'NotFound for a missing workflow or checkpoint, InvalidParams for a bad step, and ' +
+    'Conflict for an unavailable or version-incompatible revision.',
   destructive: false,
   tags: ['Workflows'],
   inputSchema: forkWorkflowInput,
