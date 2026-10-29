@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test';
-import { sleepForTesting, waitForCondition } from '../testing/fake-timers.test-support.ts';
+import { sleepForTesting, waitForCondition } from '@lostgradient/testing/fake-timers';
 
 import { Engine } from '../core/engine.ts';
 import { decodeRemoteTaskRecord, taskLedgerKey } from '../core/task-ledger/task-ledger.ts';

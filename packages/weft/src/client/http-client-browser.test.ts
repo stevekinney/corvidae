@@ -60,8 +60,8 @@ import type { Browser, BrowserContext } from 'playwright';
 import { chromium } from 'playwright';
 
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
-import { browserSmokeEnabled } from '../testing/browser-smoke-gate.test-support.ts';
-import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
+import { browserSmokeEnabled } from '@lostgradient/testing/browser-smoke-gate';
+import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 
 const repositoryRoot = fileURLToPath(new URL('../..', import.meta.url));
 

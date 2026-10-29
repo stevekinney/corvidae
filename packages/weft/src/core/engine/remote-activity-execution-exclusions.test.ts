@@ -35,7 +35,7 @@ import { describe, expect, it, mock } from 'bun:test';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS } from '../../storage/interface.ts';
-import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { durableActivity } from '../context/durable-activity.ts';
 import type { RemoteActivityBroker, RemoteActivityTaskRequest } from '../remote-activity-broker.ts';
 import type { WorkflowContext } from '../types.ts';

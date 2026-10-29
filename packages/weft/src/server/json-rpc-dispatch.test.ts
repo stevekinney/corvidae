@@ -1,4 +1,4 @@
-import { flushMicrotasks } from '../testing/fake-timers.test-support.ts';
+import { flushMicrotasks } from '@lostgradient/testing/fake-timers';
 /**
  * Tests for `dispatchJsonRpc` — the transport-neutral JSON-RPC dispatcher
  * that every JSON-RPC transport adapter (HTTP POST, WebSocket frame,

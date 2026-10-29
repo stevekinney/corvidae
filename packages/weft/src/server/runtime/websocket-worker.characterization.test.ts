@@ -25,7 +25,7 @@ import {
   type RemoteTaskTerminalResolved,
 } from '../../core/task-ledger/task-ledger.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { sleepForTesting, waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { sleepForTesting, waitForCondition } from '@lostgradient/testing/fake-timers';
 import { REMOTE_WORKER_PROTOCOL_VERSION } from '../../worker/protocol.ts';
 import { manifestForActivities } from '../../worker/registry-fixtures.test-support.ts';
 import { principalFromApiKey } from '../principal.ts';

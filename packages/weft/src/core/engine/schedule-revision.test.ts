@@ -9,7 +9,7 @@ import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { createDeferred, drainMicrotasks } from '../../testing/fake-timers.test-support.ts';
+import { createDeferred, drainMicrotasks } from '@lostgradient/testing/fake-timers';
 import { decode, encode } from '../codec.ts';
 import { Engine } from '../engine.ts';
 import type { ScheduleState, WorkflowContext } from '../types.ts';

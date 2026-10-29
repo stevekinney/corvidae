@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { outcomeOf, rethrow } from '../../../src/testing/module-scope-scenario.test-support.ts';
+import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import { formatGreetingRemotely, runRemoteWorkerExample } from '../src/index';
 
 // This scenario spawns the example entry point as a real process, which takes seconds on a loaded host, so each scenario runs here at

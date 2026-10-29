@@ -11,7 +11,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { createDeferred } from '../../testing/fake-timers.test-support.ts';
+import { createDeferred } from '@lostgradient/testing/fake-timers';
 import type {
   WorkflowClaimReclaimAttemptResult,
   WorkflowClaimReclaimTarget,

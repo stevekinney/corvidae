@@ -5,7 +5,7 @@ import type { ActivityContext, WorkflowContext } from '../core/types.ts';
 import { activity, signal } from '../core/types.ts';
 import { workflow } from '../core/types/workflow-function.ts';
 import { isWeftFault } from '../core/weft-error.ts';
-import { sleepForTesting, withTimeout } from '../testing/fake-timers.test-support.ts';
+import { sleepForTesting, withTimeout } from '@lostgradient/testing/fake-timers';
 import type { WeftClient } from './interface.ts';
 
 type ClientContractWorkflowTypes = {

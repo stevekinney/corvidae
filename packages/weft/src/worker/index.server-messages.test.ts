@@ -10,7 +10,7 @@ import {
   createDeferred,
   restoreRealTimers,
   waitForCondition,
-} from '../testing/fake-timers.test-support.ts';
+} from '@lostgradient/testing/fake-timers';
 import { RemoteWorker } from './index.ts';
 
 type ScriptedServer = {

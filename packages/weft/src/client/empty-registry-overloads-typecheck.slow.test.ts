@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { resolve } from 'node:path';
 
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
-import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
+import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 
 // Spawns a real `tsc --noEmit` subprocess against an isolated tsconfig, on
 // purpose: it is the only way to reproduce a genuinely unaugmented

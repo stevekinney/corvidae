@@ -10,7 +10,7 @@ import {
   withOptionalStorageDriversAbsent,
 } from './block-optional-storage-drivers.test-support.ts';
 
-import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
+import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 
 const weftRoot = import.meta.dir + '/../..';
 

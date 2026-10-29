@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test';
-import { waitForCondition, waitForever } from '../testing/fake-timers.test-support.ts';
+import { waitForCondition, waitForever } from '@lostgradient/testing/fake-timers';
 
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { ScanOptions, Storage } from '../storage/interface.ts';

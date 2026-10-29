@@ -30,7 +30,7 @@ import {
 import { Engine } from '../../core/engine.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { createConformanceTargets } from '../../testing/conformance-targets.ts';
-import { outcomeOf, rethrow } from '../../testing/module-scope-scenario.test-support.ts';
+import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import {
   REMOTE_WORKER_PROTOCOL_VERSION,
   REMOTE_WORKER_SUPPORTED_PROTOCOL_VERSIONS,

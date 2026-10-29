@@ -35,8 +35,8 @@ import { describe, expect, it } from 'bun:test';
 
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
-import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
-import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
+import { sleepForTesting } from '@lostgradient/testing/fake-timers';
+import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 
 const REVISION_MODULE_NAME = 'revision.ts';
 

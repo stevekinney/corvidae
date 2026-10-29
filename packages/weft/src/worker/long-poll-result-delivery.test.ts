@@ -14,7 +14,7 @@ import {
   restoreRealTimers,
   useFakeTimers,
   waitForCondition,
-} from '../testing/fake-timers.test-support.ts';
+} from '@lostgradient/testing/fake-timers';
 import {
   LongPollResultDelivery,
   type LongPollTaskResultBody,

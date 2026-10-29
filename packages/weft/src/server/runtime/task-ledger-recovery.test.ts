@@ -20,7 +20,7 @@ import {
   type RemoteTaskTerminalResolved,
 } from '../../core/task-ledger/task-ledger.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { sha256Hex } from '../../worker/manifest/content-digest.ts';
 import { minimalServeOptions, minimalServerContext } from './server-context.test-support.ts';
 import { commitTaskLedgerCompletion } from './task-ledger-completion.ts';

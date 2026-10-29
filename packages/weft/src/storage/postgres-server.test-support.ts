@@ -62,7 +62,7 @@ export function selectPostgresTestDatabase(
  *   disposable cluster below.
  *
  * Read through the registered runtime boundary rather than off `Bun.env`, the same way
- * `testing/browser-smoke-gate.test-support.ts` reads its own opt-in switch: a test-only
+ * `@lostgradient/testing/browser-smoke-gate` reads its own opt-in switch: a test-only
  * variable does not belong in a production configuration schema, and
  * `readEnvironmentVariable` is that boundary's sanctioned single-name read. The value is
  * resolved once at import, which is what `describe.skipIf` needs — a suite is skipped

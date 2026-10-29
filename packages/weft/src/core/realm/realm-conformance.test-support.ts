@@ -39,7 +39,7 @@ import {
   outcomeOf,
   rethrow,
   ScenarioHangError,
-} from '../../testing/module-scope-scenario.test-support.ts';
+} from '@lostgradient/testing/module-scope-scenario';
 import type { RealmReadyOutcome } from '../worker-realm-readiness.ts';
 import type { RealmLifecycle, RealmRestartOutcome } from './realm-lifecycle.ts';
 import type { RealmTurnEnvelope } from './realm-protocol.ts';

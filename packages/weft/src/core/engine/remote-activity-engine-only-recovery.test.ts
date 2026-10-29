@@ -42,7 +42,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { MemoryStorage } from '../../storage/memory.ts';
-import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import type { RemoteActivityBroker } from '../remote-activity-broker.ts';
 import { commitTaskLedgerTransition } from '../task-ledger/task-ledger-runtime.ts';
 import { beginCompletion, claimQueued } from '../task-ledger/task-ledger-transitions.ts';

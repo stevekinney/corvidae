@@ -9,7 +9,7 @@
  */
 import { describe, expect, it, spyOn } from 'bun:test';
 
-import { createDeferred, flushMicrotasks } from '../../testing/fake-timers.test-support.ts';
+import { createDeferred, flushMicrotasks } from '@lostgradient/testing/fake-timers';
 import type { WorkerOutboundMessage } from '../types.ts';
 import { RevisionRealmExecutionStrategy } from './revision-realm-execution-strategy.ts';
 import type { RevisionRealmAcquireOutcome } from './revision-realm-pool.ts';

@@ -31,7 +31,7 @@ import {
   drainMicrotasks,
   waitForCondition,
   yieldToEventLoop,
-} from '../../testing/fake-timers.test-support.ts';
+} from '@lostgradient/testing/fake-timers';
 import { decode } from '../codec/api.ts';
 import {
   activity,

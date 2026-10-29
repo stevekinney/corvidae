@@ -8,8 +8,8 @@ import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { HttpClient } from '../client/http-client.ts';
 import type { WorkflowState } from '../core/types.ts';
-import { sleepForTesting } from './fake-timers.test-support.ts';
-import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
+import { sleepForTesting } from '@lostgradient/testing/fake-timers';
+import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import {
   killAndReboot,
   spawnServerSubprocess,

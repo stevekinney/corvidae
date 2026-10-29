@@ -17,7 +17,7 @@ import {
   taskLedgerKey,
 } from '../../core/task-ledger/task-ledger.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { createDeferred } from '../../testing/fake-timers.test-support.ts';
+import { createDeferred } from '@lostgradient/testing/fake-timers';
 import {
   connectFaultInjectingWorker,
   type FaultInjectingWorker,

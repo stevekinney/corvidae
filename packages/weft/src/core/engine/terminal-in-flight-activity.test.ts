@@ -17,7 +17,7 @@ import { nextAsyncPendingToken } from '../../testing/async-activity.test-support
 import {
   createDeferred,
   waitForRealTimersForTesting,
-} from '../../testing/fake-timers.test-support.ts';
+} from '@lostgradient/testing/fake-timers';
 import { encode } from '../codec.ts';
 import { WorkflowTimeoutError } from '../timeouts.ts';
 import type { ActivityContext, WorkflowContext } from '../types.ts';

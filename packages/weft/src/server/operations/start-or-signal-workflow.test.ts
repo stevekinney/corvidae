@@ -7,7 +7,7 @@ import type { AnyActivityDefinition, WorkflowContext } from '../../core/types.ts
 import { activity, signal, workflow } from '../../core/types.ts';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { serve, type WeftServer } from '../index.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
 import { createOperationRegistry } from '../operation-catalog.ts';

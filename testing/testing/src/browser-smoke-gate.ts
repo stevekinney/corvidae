@@ -25,14 +25,13 @@
  * suite's `beforeAll`/`afterAll` hooks as well as its tests — the hook is where
  * the browser actually launches, so gating the tests alone would not help.
  *
- * The flag is read through the registered runtime boundary rather than off
- * `Bun.env`, the same way `storage/bun-sql-workload.test-support.ts` reads its
- * own opt-in benchmark switch. A test-only flag does not belong in a production
- * configuration schema, and `readEnvironmentVariable` is the boundary's
- * sanctioned single-name read.
+ * The flag is read through this package's registered environment boundary
+ * (`environment-configuration.ts`) rather than off `Bun.env`. A test-only flag
+ * does not belong in a production configuration schema, so it lives here, in the
+ * testing package, and not in Weft's runtime configuration.
  */
 
-import { readEnvironmentVariable } from '../runtime/environment-configuration.ts';
+import { environmentConfiguration } from './environment-configuration.ts';
 
 /** True only when `WEFT_BROWSER_SMOKE=1` asks for the real-browser suites. */
-export const browserSmokeEnabled = readEnvironmentVariable('WEFT_BROWSER_SMOKE') === '1';
+export const browserSmokeEnabled = environmentConfiguration().weftBrowserSmoke === '1';

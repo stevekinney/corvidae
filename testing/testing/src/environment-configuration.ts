@@ -13,6 +13,7 @@ const schema = z.object({
   cinderVisualDiff: z.string().optional().meta({ env: 'CINDER_VISUAL_DIFF' }),
   nodeEnv: z.string().optional().meta({ env: 'NODE_ENV' }),
   testWorkerIndex: z.string().optional().meta({ env: 'TEST_WORKER_INDEX' }),
+  weftBrowserSmoke: z.string().optional().meta({ env: 'WEFT_BROWSER_SMOKE' }),
 });
 
 const environmentSource: Source = {
@@ -31,6 +32,7 @@ function loadEnvironment() {
     CINDER_VISUAL_DIFF: 'cinderVisualDiff',
     NODE_ENV: 'nodeEnv',
     TEST_WORKER_INDEX: 'testWorkerIndex',
+    WEFT_BROWSER_SMOKE: 'weftBrowserSmoke',
   };
   for (const [name, key] of Object.entries(keyByEnvironmentName)) {
     const value = typeof process === 'undefined' ? undefined : process.env[name];

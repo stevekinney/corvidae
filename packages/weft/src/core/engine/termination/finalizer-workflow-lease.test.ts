@@ -25,7 +25,7 @@ import {
   restoreRealTimers,
   useFakeTimers,
   waitForCondition,
-} from '../../../testing/fake-timers.test-support.ts';
+} from '@lostgradient/testing/fake-timers';
 import { collectTeardownEvents } from '../../__tests__/finalizer-teardown.test-support.ts';
 import { decode } from '../../codec.ts';
 import { Engine } from '../../engine.ts';

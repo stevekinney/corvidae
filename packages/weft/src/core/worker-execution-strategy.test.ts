@@ -6,9 +6,9 @@ import {
   sleepForTesting,
   useFakeTimers,
   waitForCondition as waitForTestingCondition,
-} from '../testing/fake-timers.test-support.ts';
+} from '@lostgradient/testing/fake-timers';
 
-import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
+import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import { buildInternalRealmManifest } from '../worker/manifest/internal-realm.ts';
 import type { WorkerPool } from '../workers/pool.ts';
 import type { WorkerOutboundMessage } from './types.ts';

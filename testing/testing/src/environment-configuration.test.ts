@@ -40,3 +40,11 @@ test('snapshot updates retain the exact one flag convention', () => {
     expect(environmentConfiguration().cinderUpdateSnapshots).toBe(value === '1');
   }
 });
+
+test('the browser smoke flag is read from WEFT_BROWSER_SMOKE', () => {
+  setEnvironment('WEFT_BROWSER_SMOKE', '1');
+  expect(environmentConfiguration().weftBrowserSmoke).toBe('1');
+
+  setEnvironment('WEFT_BROWSER_SMOKE', undefined);
+  expect(environmentConfiguration().weftBrowserSmoke).toBeUndefined();
+});

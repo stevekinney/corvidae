@@ -25,7 +25,7 @@ import {
   REMOTE_WORKER_PROTOCOL_VERSION,
   REMOTE_WORKER_SUPPORTED_PROTOCOL_VERSIONS,
 } from '../index.ts';
-import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
+import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import { executeConformance } from './index.ts';
 
 // executeConformance() spawns the worker fixture as a real process, which takes seconds on a loaded host, so each scenario runs here at

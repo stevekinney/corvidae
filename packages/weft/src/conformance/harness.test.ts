@@ -3,7 +3,7 @@ import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
 
 import type { WeftServer } from '../server/index.ts';
-import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
+import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import {
   stopWorker,
   waitForCondition,

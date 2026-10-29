@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { restoreRealTimers, useFakeTimers } from './fake-timers.test-support.ts';
+import { restoreRealTimers, useFakeTimers } from '@lostgradient/testing/fake-timers';
 import {
   createDiskBackedTestFixture,
   flush,

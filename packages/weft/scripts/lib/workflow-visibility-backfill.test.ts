@@ -13,7 +13,7 @@ import {
   flushMicrotasks,
   restoreRealTimers,
   useFakeTimers,
-} from '../../src/testing/fake-timers.test-support.ts';
+} from '@lostgradient/testing/fake-timers';
 
 import {
   WORKFLOW_VISIBILITY_BACKFILL_SETTLE_MILLISECONDS,

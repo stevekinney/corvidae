@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, mock } from 'bun:test';
 
 import { Engine } from '../../core/engine.ts';
 import { serve, type WeftServer } from '../../server/index.ts';
-import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { TestEngine } from '../../testing/test-engine.ts';
 import { RemoteWorker } from '../../worker/index.ts';
 import type { RemoteTaskTerminalResolved } from '../task-ledger/task-ledger-types.ts';

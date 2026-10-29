@@ -3,7 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS, type BatchOperation, type ConditionalBatchCondition } from '../storage/interface.ts';
 import { MemoryStorage } from '../storage/memory.ts';
-import { waitForCondition } from '../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { deserializeCheckpoint } from './checkpoint/serialization.ts';
 import { decode } from './codec.ts';
 import { Engine } from './engine.ts';

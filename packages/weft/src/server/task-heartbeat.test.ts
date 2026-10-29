@@ -38,7 +38,7 @@ import {
   restoreRealTimers,
   useFakeTimers,
   waitForCondition,
-} from '../testing/fake-timers.test-support.ts';
+} from '@lostgradient/testing/fake-timers';
 import { REMOTE_WORKER_PROTOCOL_VERSION } from '../worker/protocol.ts';
 import { manifestForActivities } from '../worker/registry-fixtures.test-support.ts';
 import type { WebSocketData } from './json-rpc-websocket-runtime.ts';

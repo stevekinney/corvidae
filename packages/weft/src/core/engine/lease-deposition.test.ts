@@ -32,7 +32,7 @@ import type {
   Storage,
 } from '../../storage/interface.ts';
 import { KEYS } from '../../storage/interface.ts';
-import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { workflow, type WorkflowContext } from '../types.ts';
 import {
   commitFencedEngineWrite,

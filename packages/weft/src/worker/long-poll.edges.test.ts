@@ -6,7 +6,7 @@
 
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
-import { createDeferred, waitForCondition } from '../testing/fake-timers.test-support.ts';
+import { createDeferred, waitForCondition } from '@lostgradient/testing/fake-timers';
 import { LongPollWorker, type LongPollWorkerOptions } from './long-poll.ts';
 
 const SESSION_PATH = '/api/v1/worker-sessions';

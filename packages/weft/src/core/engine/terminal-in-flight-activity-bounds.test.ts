@@ -12,7 +12,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { createDeferred } from '../../testing/fake-timers.test-support.ts';
+import { createDeferred } from '@lostgradient/testing/fake-timers';
 import { WorkflowTimeoutError } from '../timeouts.ts';
 import type { ActivityContext, WorkflowContext } from '../types.ts';
 import { activity, HISTORY_CIRCUIT_BREAKER_REASON, workflow } from '../types.ts';
