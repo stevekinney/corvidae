@@ -187,3 +187,39 @@ export class StreamChunkEvent extends Event {
     this.sequence = sequence;
   }
 }
+
+/**
+ * Fired on the {@link Engine} (in the server runtime) when the number of pending,
+ * unclaimed tasks in one of the server's in-memory task queues changes. `queue`
+ * is the task queue name and `depth` is its pending count after the change.
+ * It is coalesced per queue to at most one event per second: the first change
+ * after a quiet period is announced at once, and a trailing event carries the
+ * latest depth when the second ends, so a burst that settles at `0` ends with a
+ * `0` event. A change that leaves the depth as it was announced is silent.
+ *
+ * The depth is read from the owning process's own `TaskQueue`, not the durable
+ * task ledger, so it is per-process: a deployment with several server processes
+ * emits one stream of depths per process and does not sum them. The count
+ * restarts at `0` when the process does.
+ *
+ * @example
+ * ```ts
+ * import { Engine, QueueDepthChangedEvent } from '@lostgradient/weft';
+ *
+ * const engine = new Engine();
+ * engine.addEventListener(QueueDepthChangedEvent.type, (event) => {
+ *   console.log(event.queue, event.depth);
+ * });
+ * ```
+ */
+export class QueueDepthChangedEvent extends Event {
+  static readonly type = 'queue:depth-changed' as const;
+  readonly queue: string;
+  readonly depth: number;
+
+  constructor(queue: string, depth: number) {
+    super(QueueDepthChangedEvent.type);
+    this.queue = queue;
+    this.depth = depth;
+  }
+}

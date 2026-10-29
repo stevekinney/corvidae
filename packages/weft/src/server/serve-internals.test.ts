@@ -537,4 +537,32 @@ describe('buildServerContext engine events (COR-1724)', () => {
 
     expect(seen).toEqual([['w-9', 'registration_rejected']]);
   });
+
+  it('raises queue:depth-changed on the engine when the server task queue gains a pending task', async () => {
+    using engine = new Engine({ storage: new MemoryStorage() });
+    const configuration = resolveNetworkConfig({
+      engine,
+      port: 0,
+      unauthenticatedAccess: 'allow',
+      trustedHosts: ['localhost'],
+    });
+    const context = buildServerContext(
+      configuration.serverOptions,
+      configuration.serverMetricsCollector,
+    );
+    await context.taskLedgerRecovery.ready;
+    const seen: Array<[string, number]> = [];
+    engine.addEventListener('queue:depth-changed', (event) => {
+      seen.push([event.queue, event.depth]);
+    });
+
+    context.taskQueue.enqueue('payments', {
+      operationId: 'op-1',
+      activityName: 'charge',
+      input: {},
+    });
+    context.taskQueue[Symbol.dispose]();
+
+    expect(seen).toEqual([['payments', 1]]);
+  });
 });

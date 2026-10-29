@@ -129,6 +129,7 @@ export const EVENT_CLASSIFICATIONS = {
   'worker:registration-rejected': 'published',
   'worker:deployment-changed': 'published',
   'stream:chunk': 'published',
+  'queue:depth-changed': 'published',
 } as const satisfies Record<keyof WeftEventMap, 'published' | { denied: string }>;
 
 type PublishedEventType = {

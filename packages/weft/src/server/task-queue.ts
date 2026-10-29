@@ -2,7 +2,8 @@
 // In-memory task queue for HTTP long-poll workers
 // ---------------------------------------------------------------------------
 
-import { insertByPolicy } from './task-queue-ordering.ts';
+import { TaskQueueDepthAnnouncer } from './task-queue-depth-announcer.ts';
+import { insertByPolicy, warnOnceOnLifoStarvation } from './task-queue-ordering.ts';
 import type { TaskQueueSnapshot } from './task-queue-summary.ts';
 import { buildQueueSummaries } from './task-queue-summary.ts';
 import type {
@@ -18,21 +19,6 @@ import type {
 type CompletionCallback = (result: TaskResult) => void;
 
 const DEFAULT_PENDING_TASK_TTL = 5 * 60 * 1000; // 5 minutes
-
-/**
- * Tracks whether the LIFO + finite-TTL starvation warning has already been
- * emitted in this process. The warning is one-shot to avoid spamming logs when
- * many TaskQueues are constructed with the same configuration (e.g. tests).
- */
-let lifoStarvationWarningEmitted = false;
-
-/**
- * Reset the one-shot LIFO starvation warning. Test-only: production code
- * should never need to call this.
- */
-export function resetLifoStarvationWarningForTesting(): void {
-  lifoStarvationWarningEmitted = false;
-}
 
 interface Waiter {
   activities: string[];
@@ -87,33 +73,20 @@ export class TaskQueue implements Disposable {
   #expirationTimers = new Map<string, ReturnType<typeof setTimeout>>();
   #pendingTaskTimeToLive: number;
   #schedulingPolicy: SchedulingPolicy;
+  #depthAnnouncer: TaskQueueDepthAnnouncer | undefined;
 
   constructor(options?: TaskQueueOptions) {
     const ttl = options?.pendingTaskTimeToLive ?? DEFAULT_PENDING_TASK_TTL;
     this.#pendingTaskTimeToLive = ttl;
     this.#schedulingPolicy = options?.schedulingPolicy ?? 'priority';
-
-    // Warn once per process when LIFO is paired with a finite expiration. The
-    // combination silently produces "task expired" failures for tasks that
-    // never reach the head of the stack under sustained load — the producer
-    // sees a generic timeout, not the LIFO scheduling decision behind it.
-    // We only warn (rather than reject) so existing configurations keep
-    // working; the documentation on `SchedulingPolicy` describes the trade-off in full.
-    if (
-      this.#schedulingPolicy === 'lifo' &&
-      this.#pendingTaskTimeToLive > 0 &&
-      Number.isFinite(this.#pendingTaskTimeToLive) &&
-      !lifoStarvationWarningEmitted
-    ) {
-      lifoStarvationWarningEmitted = true;
-      console.warn(
-        `[weft] TaskQueue configured with schedulingPolicy='lifo' and a finite ` +
-          `pendingTaskTimeToLive (${this.#pendingTaskTimeToLive}ms). Under sustained ` +
-          `load, tasks at the bottom of the LIFO stack can sit unclaimed until they ` +
-          `expire and fail with a generic timeout error. Set pendingTaskTimeToLive to ` +
-          `Infinity to disable expiration, or use 'fifo'/'priority' if fairness matters.`,
+    const dispatchEvent = options?.dispatchEvent;
+    if (dispatchEvent) {
+      this.#depthAnnouncer = new TaskQueueDepthAnnouncer(
+        (q) => this.pendingCount(q),
+        dispatchEvent,
       );
     }
+    warnOnceOnLifoStarvation(this.#schedulingPolicy, this.#pendingTaskTimeToLive);
   }
 
   /** The scheduling policy this queue was configured with. */
@@ -145,6 +118,7 @@ export class TaskQueue implements Disposable {
     this.#pending.set(queue, tasks);
 
     this.#scheduleExpiration(queue, task.operationId);
+    this.#depthAnnouncer?.changed(queue);
 
     return true;
   }
@@ -169,6 +143,7 @@ export class TaskQueue implements Disposable {
     if (tasks.length === 0) this.#pending.delete(queue);
     this.#cancelExpiration(task.operationId);
     this.#dispatched.delete(task.operationId);
+    this.#depthAnnouncer?.changed(queue);
     return { queue, task, index };
   }
 
@@ -190,6 +165,7 @@ export class TaskQueue implements Disposable {
 
     const remaining = this.#pendingTaskTimeToLive - (Date.now() - (task.enqueuedAt ?? Date.now()));
     this.#scheduleExpiration(queue, task.operationId, Math.max(0, remaining));
+    this.#depthAnnouncer?.changed(queue);
     return true;
   }
 
@@ -233,6 +209,7 @@ export class TaskQueue implements Disposable {
         const task = tasks.splice(index, 1)[0]!;
         if (tasks.length === 0) this.#pending.delete(queue);
         this.#cancelExpiration(task.operationId);
+        this.#depthAnnouncer?.changed(queue);
         return Promise.resolve(task);
       }
     }
@@ -333,6 +310,7 @@ export class TaskQueue implements Disposable {
       waiter.resolve(null);
     }
 
+    this.#depthAnnouncer?.[Symbol.dispose]();
     this.#pending.clear();
     this.#completionCallbacks.clear();
     this.#dispatched.clear();
@@ -405,6 +383,7 @@ export class TaskQueue implements Disposable {
       if (index !== -1) {
         tasks.splice(index, 1);
         if (tasks.length === 0) this.#pending.delete(queue);
+        this.#depthAnnouncer?.changed(queue);
       }
     }
 
@@ -462,6 +441,7 @@ export class TaskQueue implements Disposable {
     }
     const cutoff = Date.now() - maxAge;
     const stale: PendingTask[] = [];
+    const visited = [...this.#pending.keys()];
 
     for (const [queue, tasks] of this.#pending) {
       const remaining: PendingTask[] = [];
@@ -493,6 +473,12 @@ export class TaskQueue implements Disposable {
       }
     }
 
+    this.#announceDepths(visited);
     return stale;
+  }
+
+  /** Report each queue's pending list to the depth announcer; an unchanged depth announces nothing. */
+  #announceDepths(queues: readonly string[]): void {
+    for (const queue of queues) this.#depthAnnouncer?.changed(queue);
   }
 }
