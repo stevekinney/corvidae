@@ -315,6 +315,5 @@ export async function seedFinishedRun(path: string, runId: string, content = 'do
     );
   } finally {
     engine[Symbol.dispose]?.();
-    composition.disposeStorage?.();
   }
 }

@@ -73,7 +73,6 @@ async function durableEnginePrototype() {
     list: (query: unknown) => Promise<unknown>;
   };
   probe.durable!.engine[Symbol.dispose]?.();
-  probe.disposeStorage?.();
   return prototype;
 }
 

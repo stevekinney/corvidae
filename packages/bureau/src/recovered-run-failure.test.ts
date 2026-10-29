@@ -55,7 +55,6 @@ describe('a run Bureau recovers after the engine failed it', () => {
       get: (id: string) => Promise<unknown>;
     };
     probe.durable!.engine[Symbol.dispose]?.();
-    probe.disposeStorage?.();
 
     const input = { runId, sessionId, agentName: 'default' };
     const handle = {

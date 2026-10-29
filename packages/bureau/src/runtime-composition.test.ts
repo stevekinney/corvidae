@@ -269,7 +269,6 @@ describe('createRuntimeComposition', () => {
     expect(executionError).toBeInstanceOf(Error);
     expect((executionError as Error).message).toContain('no longer current');
     expect(executions).toBe(1);
-    runtime.disposeStorage?.();
   });
 
   it('cancels a stalled transport authority revalidation before tool dispatch', async () => {
@@ -319,7 +318,6 @@ describe('createRuntimeComposition', () => {
     expect(executionError).toBeInstanceOf(Error);
     expect((executionError as Error).message).toBe('authority check cancelled');
     expect(executions).toBe(0);
-    runtime.disposeStorage?.();
   });
 
   it('rejects pre-aborted and deadline-expired transport authority checks', async () => {
@@ -393,7 +391,6 @@ describe('createRuntimeComposition', () => {
       (error: unknown) => error,
     );
     expect((deadlineError as Error).message).toBe('Execution deadline exceeded');
-    runtime.disposeStorage?.();
   });
 
   it('chunks long transport authority deadlines without expiring them early', async () => {
@@ -464,7 +461,6 @@ describe('createRuntimeComposition', () => {
     const result = await execution;
     expect(result.result).toBe('authorized');
     expect(cleared).toContain(scheduled[1]);
-    runtime.disposeStorage?.();
   });
 
   it('propagates transport authority validator failures', async () => {
@@ -499,7 +495,6 @@ describe('createRuntimeComposition', () => {
       (error: unknown) => error,
     );
     expect((executionError as Error).message).toBe('validator unavailable');
-    runtime.disposeStorage?.();
   });
 
   it('validates and restores persisted request authority for durable recovery', () => {
@@ -2093,7 +2088,6 @@ describe('createRuntimeComposition durable execution', () => {
 
     try {
       expect(runtime.durable?.engine.storage).toBe(storage);
-      expect(runtime.disposeStorage).toBeUndefined();
     } finally {
       runtime.durable?.engine[Symbol.dispose]?.();
       storage[Symbol.dispose]();
@@ -3232,7 +3226,6 @@ describe('createRuntimeComposition durable execution', () => {
 
     try {
       expect(runtime.durable).toBeUndefined();
-      expect(runtime.disposeStorage).toBeUndefined();
     } finally {
       storage[Symbol.dispose]();
     }
@@ -3346,7 +3339,6 @@ describe('createRuntimeComposition durable execution', () => {
         // Dispose = simulated crash. The Weft storage persists the workflow input
         // (including agentName) so the second engine can recover it.
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       // Phase 2: boot a fresh engine and recover. resolveRunServices is called
@@ -3388,7 +3380,6 @@ describe('createRuntimeComposition durable execution', () => {
         expect(recoveredGenerateCalls).toBeGreaterThan(0);
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
       await database.dispose();
@@ -3432,7 +3423,6 @@ describe('createRuntimeComposition durable execution', () => {
         expect(running).toBe(true);
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const secondRuntime = await createRuntimeComposition({
@@ -3456,7 +3446,6 @@ describe('createRuntimeComposition durable execution', () => {
         expect(recoveredGenerateCalls).toBe(0);
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
       await database.dispose();
@@ -3503,7 +3492,6 @@ describe('createRuntimeComposition durable execution', () => {
         expect(running).toBe(true);
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const secondRuntime = await createRuntimeComposition({
@@ -3540,7 +3528,6 @@ describe('createRuntimeComposition durable execution', () => {
         expect(sessions.some((session) => session.id.startsWith('sched-'))).toBe(false);
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
       await database.dispose();
@@ -3613,7 +3600,6 @@ describe('createRuntimeComposition durable execution', () => {
         expect(running).toBe(true);
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const secondRuntime = await createRuntimeComposition({
@@ -3669,7 +3655,6 @@ describe('createRuntimeComposition durable execution', () => {
         );
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
       await database.dispose();
@@ -3743,7 +3728,6 @@ describe('createRuntimeComposition durable execution', () => {
         expect(running).toBe(true);
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const secondRuntime = await createRuntimeComposition({
@@ -3774,7 +3758,6 @@ describe('createRuntimeComposition durable execution', () => {
         );
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
       await database.dispose();
@@ -3880,7 +3863,6 @@ describe('createRuntimeComposition durable execution', () => {
         expect(running).toBe(true);
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const secondRuntime = await createRuntimeComposition({
@@ -3929,7 +3911,6 @@ describe('createRuntimeComposition durable execution', () => {
         );
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
       await database.dispose();
@@ -3989,7 +3970,6 @@ describe('createRuntimeComposition durable execution', () => {
         expect(running).toBe(true);
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const secondRuntime = await createRuntimeComposition({
@@ -4022,7 +4002,6 @@ describe('createRuntimeComposition durable execution', () => {
         expect(unknownSession).toBeUndefined();
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
       await database.dispose();
@@ -4088,7 +4067,6 @@ describe('createRuntimeComposition durable execution', () => {
         expect(running).toBe(true);
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const secondRuntime = await createRuntimeComposition({
@@ -4128,7 +4106,6 @@ describe('createRuntimeComposition durable execution', () => {
         );
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
       await database.dispose();
@@ -4197,7 +4174,6 @@ describe('createRuntimeComposition durable execution', () => {
         expect(running).toBe(true);
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const secondRuntime = await createRuntimeComposition({
@@ -4249,7 +4225,6 @@ describe('createRuntimeComposition durable execution', () => {
         expect(unknownSession).toBeUndefined();
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
       await database.dispose();
@@ -4322,7 +4297,6 @@ describe('createRuntimeComposition durable execution', () => {
         expect(running).toBe(true);
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const secondRuntime = await createRuntimeComposition({
@@ -4354,7 +4328,6 @@ describe('createRuntimeComposition durable execution', () => {
         expect(session?.metadata['lastScheduledFireRunId']).toBe(scheduledRunId);
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
       await database.dispose();
@@ -4440,7 +4413,6 @@ describe('createRuntimeComposition durable execution', () => {
         });
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const secondRuntime = await createRuntimeComposition({
@@ -4485,7 +4457,6 @@ describe('createRuntimeComposition durable execution', () => {
         expect(snapshot.entries[0]!.artifactDigest).toMatch(/^[0-9a-f]{64}$/u);
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
       await database.dispose();
@@ -4577,7 +4548,6 @@ describe('createRuntimeComposition durable execution', () => {
         });
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const secondRuntime = await createRuntimeComposition({
@@ -4612,7 +4582,6 @@ describe('createRuntimeComposition durable execution', () => {
         expect(loadedSkillResource).toBe('print("Hello")');
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
       await database.dispose();
@@ -4704,7 +4673,6 @@ describe('createRuntimeComposition durable execution', () => {
         });
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const secondRuntime = await createRuntimeComposition({
@@ -4739,7 +4707,6 @@ describe('createRuntimeComposition durable execution', () => {
         expect(loadedSkillResource).toBe('print("Hello")');
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
       await database.dispose();
@@ -4835,7 +4802,6 @@ describe('createRuntimeComposition durable execution', () => {
         });
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const secondRuntime = await createRuntimeComposition({
@@ -4870,7 +4836,6 @@ describe('createRuntimeComposition durable execution', () => {
         expect(loadedSkillResource).toBe('print("Hello")');
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
       await database.dispose();
@@ -4945,7 +4910,6 @@ describe('createRuntimeComposition durable execution', () => {
         expect(running).toBe(true);
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const secondRuntime = await createRuntimeComposition({
@@ -4978,7 +4942,6 @@ describe('createRuntimeComposition durable execution', () => {
         expect(skillResourceError).toBe('Resource not found, or the skill is not active');
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
       await database.dispose();
@@ -5050,7 +5013,6 @@ describe('createRuntimeComposition durable execution', () => {
         expect(running).toBe(true);
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const secondRuntime = await createRuntimeComposition({
@@ -5083,7 +5045,6 @@ describe('createRuntimeComposition durable execution', () => {
         expect(skillResourceError).toBe('Resource not found, or the skill is not active');
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
       await database.dispose();

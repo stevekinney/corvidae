@@ -180,7 +180,6 @@ describe('COR-1716 shutdown readiness baseline', () => {
       [Symbol.asyncDispose]: () => Promise<void>;
     };
     probe.durable!.engine[Symbol.dispose]?.();
-    probe.disposeStorage?.();
     const originalAsyncDispose = enginePrototype[Symbol.asyncDispose];
     const asyncDisposeSpy = spyOn(enginePrototype, Symbol.asyncDispose).mockImplementation(
       async function (this: unknown) {
@@ -415,7 +414,6 @@ describe('COR-1716 shutdown readiness baseline', () => {
       [Symbol.asyncDispose]: () => Promise<void>;
     };
     probe.durable!.engine[Symbol.dispose]?.();
-    probe.disposeStorage?.();
     const originalAsyncDispose = enginePrototype[Symbol.asyncDispose];
     let engineDisposed = false;
     const asyncDisposeSpy = spyOn(enginePrototype, Symbol.asyncDispose).mockImplementation(

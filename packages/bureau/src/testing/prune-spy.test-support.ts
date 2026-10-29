@@ -23,7 +23,6 @@ export async function spyOnPrune() {
     pruneCheckpoints: Prune;
   };
   probe.durable!.engine[Symbol.dispose]?.();
-  probe.disposeStorage?.();
   const original = prototype.pruneCheckpoints;
   return {
     spy: spyOn(prototype, 'pruneCheckpoints'),

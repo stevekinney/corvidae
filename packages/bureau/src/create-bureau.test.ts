@@ -2259,7 +2259,6 @@ describe('createBureau', () => {
         ).toBe(true);
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       let recoveredFireStepped = false;
@@ -2666,7 +2665,6 @@ describe('createBureau', () => {
       cancel: (runId: string) => Promise<void>;
     };
     probe.durable!.engine[Symbol.dispose]?.();
-    probe.disposeStorage?.();
 
     const recoverAllSpy = spyOn(enginePrototype, 'recoverAll').mockResolvedValue([
       {
@@ -2740,7 +2738,6 @@ describe('createBureau', () => {
         expect(running).toBe(true);
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const bureau = await createBureau<AgentDefinitions>({
@@ -2837,7 +2834,6 @@ describe('createBureau', () => {
         expect(running).toBe(true);
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const bureau = await createBureau<AgentDefinitions>({
@@ -5157,7 +5153,6 @@ describe('createBureau durable inspection surface', () => {
       runMaintenance: (now?: number) => Promise<void>;
     };
     probe.durable!.engine[Symbol.dispose]?.();
-    probe.disposeStorage?.();
     const maintenanceSpy = spyOn(enginePrototype, 'runMaintenance').mockResolvedValue(undefined);
 
     try {
@@ -5237,7 +5232,6 @@ describe('createBureau schedule management sentinel (regression PRRT_kwDORvupsc6
     });
     const realEngineProto = Object.getPrototypeOf(probe.durable!.engine) as object;
     probe.durable!.engine[Symbol.dispose]?.();
-    probe.disposeStorage?.();
 
     // Spy on the engine-level void methods so we don't need a real schedule in storage.
     const engineProtoTyped = realEngineProto as {
@@ -5354,12 +5348,9 @@ describe('createBureau scheduler-origin crash semantics (#25)', () => {
         expect(suspendedState?.status).toBe('suspended');
       }
 
-      // Tear down in the SAME order the production dispose path uses: dispose the
-      // engine FIRST (it holds the open SQLite connection), THEN release the raw
-      // storage handle. A single disposeStorage call — disposing twice could close
-      // an already-closed handle.
+      // Dispose the engine; the storage handle is the fixture's, which the test
+      // closes after the Bureau below has shut down.
       engine[Symbol.dispose]?.();
-      composition.disposeStorage?.();
 
       // === "Process 2": a fresh bureau over the same SQLite file. recoverDurableRuns
       // runs the suspended-scheduler sweep at boot. The dangling suspended run must
@@ -8733,7 +8724,6 @@ describe('createBureau review queue (AB-20)', () => {
       getLeaseHealth: () => unknown;
     };
     probe.durable!.engine[Symbol.dispose]?.();
-    probe.disposeStorage?.();
 
     const targetRunId = 'cancelled-lease-release-run';
     const recoverAllSpy = spyOn(enginePrototype, 'recoverAll').mockResolvedValue([
@@ -8850,7 +8840,6 @@ describe('createBureau review queue (AB-20)', () => {
       getLeaseHealth: () => unknown;
     };
     probe.durable!.engine[Symbol.dispose]?.();
-    probe.disposeStorage?.();
 
     const targetRunId = 'no-lease-release-run';
     const recoverAllSpy = spyOn(enginePrototype, 'recoverAll').mockResolvedValue([
@@ -8932,7 +8921,6 @@ describe('createBureau review queue (AB-20)', () => {
       recoverAll: () => Promise<unknown[]>;
     };
     probe.durable!.engine[Symbol.dispose]?.();
-    probe.disposeStorage?.();
     const recoverAllSpy = spyOn(enginePrototype, 'recoverAll').mockRejectedValue(
       new Error('deferred recovery unavailable'),
     );
@@ -9018,7 +9006,6 @@ describe('createBureau review queue (AB-20)', () => {
       recoverAll: () => Promise<unknown[]>;
     };
     probe.durable!.engine[Symbol.dispose]?.();
-    probe.disposeStorage?.();
     const recoverAllSpy = spyOn(enginePrototype, 'recoverAll').mockResolvedValue([]);
     try {
       const bureau = await createBureau<AgentDefinitions>({
@@ -9093,7 +9080,6 @@ describe('createBureau review queue (AB-20)', () => {
       recoverAll: () => Promise<unknown[]>;
     };
     probe.durable!.engine[Symbol.dispose]?.();
-    probe.disposeStorage?.();
     const recoverAllSpy = spyOn(enginePrototype, 'recoverAll').mockRejectedValue(
       new Error('boot recovery unavailable'),
     );
@@ -9204,7 +9190,6 @@ describe('createBureau review queue (AB-20)', () => {
         };
         const originalRecoverAll = enginePrototype.recoverAll;
         probe.durable!.engine[Symbol.dispose]?.();
-        probe.disposeStorage?.();
 
         // Call through to the REAL recoverAll (so bureauA's genuine crashed
         // run still reattaches), then inject one corrupted handle alongside
@@ -9271,7 +9256,6 @@ describe('createBureau review queue (AB-20)', () => {
         recoverAll: () => Promise<unknown[]>;
       };
       probe.durable!.engine[Symbol.dispose]?.();
-      probe.disposeStorage?.();
       const recoverAllSpy = spyOn(enginePrototype, 'recoverAll').mockRejectedValue(
         new Error('boot recovery unavailable'),
       );
@@ -9312,7 +9296,6 @@ describe('createBureau review queue (AB-20)', () => {
         recoverAll: () => Promise<unknown[]>;
       };
       probe.durable!.engine[Symbol.dispose]?.();
-      probe.disposeStorage?.();
       const listSpy = spyOn(enginePrototype, 'list').mockRejectedValue(
         new Error('scheduler-residue sweep unavailable'),
       );
@@ -9383,7 +9366,6 @@ describe('createBureau review queue (AB-20)', () => {
           list: (filter: unknown) => Promise<unknown>;
         };
         probe.durable!.engine[Symbol.dispose]?.();
-        probe.disposeStorage?.();
 
         // Fails the unconditional scheduler-residue sweep (`engine.list`)
         // without touching `recoverAll`, so the genuinely crashed run still
@@ -9442,7 +9424,6 @@ describe('createBureau review queue (AB-20)', () => {
         }) => Promise<unknown[]>;
       };
       probe.durable!.engine[Symbol.dispose]?.();
-      probe.disposeStorage?.();
 
       // A bureau-owned agentRun input whose session is absent: the awaited
       // hook (onRecoveredWorkflow) classifies it 'cancel'/'session-absent'
@@ -9497,7 +9478,6 @@ describe('createBureau review queue (AB-20)', () => {
         recoverAll: () => Promise<unknown[]>;
       };
       probe.durable!.engine[Symbol.dispose]?.();
-      probe.disposeStorage?.();
 
       const listSpy = spyOn(enginePrototype, 'list').mockResolvedValue({
         items: [{ id: 'scheduler-run-stuck-1' }],
@@ -13139,12 +13119,10 @@ describe('Bureau.shutdown() (AB-207)', () => {
 
     // Spy on the SHARED engine class prototype (the established pattern in
     // this file's durable-recovery describe blocks) so it observes whichever
-    // instance `createBureau` builds internally. `[Symbol.asyncDispose]` and
-    // `runtime.disposeStorage()` run in the SAME unconditional `finally`
-    // block, strictly AFTER `Promise.allSettled(ownerDrains)` — so this spy
-    // stands in for "the critical backend teardown has not run yet" without
-    // needing to intercept `resolveStorage()`'s own internal instance
-    // directly (which a `'memory'` backend does not expose reliably).
+    // instance `createBureau` builds internally. `[Symbol.asyncDispose]` runs
+    // in the unconditional `finally` block, strictly AFTER
+    // `Promise.allSettled(ownerDrains)` — so this spy stands in for "the
+    // critical backend teardown has not run yet".
     const probe = await createRuntimeComposition({
       generate: createMockGenerate(),
       toolbox: createEmptyToolbox(),
@@ -13155,7 +13133,6 @@ describe('Bureau.shutdown() (AB-207)', () => {
       [Symbol.asyncDispose]: () => Promise<void>;
     };
     probe.durable!.engine[Symbol.dispose]?.();
-    probe.disposeStorage?.();
 
     let engineDisposed = false;
     const originalAsyncDispose = enginePrototype[Symbol.asyncDispose];
@@ -13440,7 +13417,6 @@ describe('Bureau.shutdown() (AB-207)', () => {
       [Symbol.asyncDispose]: () => Promise<void>;
     };
     probe.durable!.engine[Symbol.dispose]?.();
-    probe.disposeStorage?.();
 
     let engineDisposeCalls = 0;
     let engineDisposed = false;
@@ -13577,7 +13553,6 @@ describe('Bureau.shutdown() (AB-207)', () => {
       [Symbol.dispose]: () => void;
     };
     probe.durable!.engine[Symbol.dispose]?.();
-    probe.disposeStorage?.();
 
     const asyncDisposeSpy = spyOn(enginePrototype, Symbol.asyncDispose).mockImplementation(
       async function (this: unknown) {
@@ -16832,7 +16807,6 @@ describe('bureau.maintain prunes stale run ownership (AB-363)', () => {
       });
       const prototype = Object.getPrototypeOf(probe.durable!.engine) as ClaimPrototype;
       probe.durable!.engine[Symbol.dispose]?.();
-      probe.disposeStorage?.();
       return prototype;
     }
 
@@ -18499,7 +18473,6 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
       runMaintenance: (now?: number) => Promise<void>;
     };
     probe.durable!.engine[Symbol.dispose]?.();
-    probe.disposeStorage?.();
     const maintenanceSpy = spyOn(enginePrototype, 'runMaintenance').mockRejectedValue(
       new Error('engine maintenance backend unavailable'),
     );
@@ -22161,7 +22134,6 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
       ) => Promise<{ removed: number; retained: number }>;
     };
     probe.durable!.engine[Symbol.dispose]?.();
-    probe.disposeStorage?.();
     return prototype;
   }
 
@@ -22442,7 +22414,6 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
       }) => Promise<unknown[]>;
     };
     probe.durable!.engine[Symbol.dispose]?.();
-    probe.disposeStorage?.();
 
     const input = { runId, sessionId, agentName: 'default' };
     const handle = {

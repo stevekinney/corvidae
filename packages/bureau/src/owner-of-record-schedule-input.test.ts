@@ -40,7 +40,6 @@ describe('the owner of a schedule that is not an agent schedule (COR-718)', () =
         );
       } finally {
         runtime.durable?.engine[Symbol.dispose]?.();
-        runtime.disposeStorage?.();
       }
 
       const bureau = await createBureau<AgentDefinitions>({

@@ -376,12 +376,6 @@ describe('a construction that fails while a run is parked for the resolver (COR-
       order.push('waiters settled');
       realAbandon(reason);
     });
-    const realDisposeStorage = composition.disposeStorage;
-    if (realDisposeStorage === undefined) throw new Error('Expected storage the Bureau owns.');
-    spyOn(composition, 'disposeStorage').mockImplementation(() => {
-      order.push('storage disposed');
-      realDisposeStorage();
-    });
     await composition.persistCatalogRunRecoveryRecord('parked-run', {
       agentName: 'writer',
       definitionRevision: 1,
@@ -419,7 +413,6 @@ describe('a construction that fails while a run is parked for the resolver (COR-
       'asset service shut down',
       'observability disposed',
       'engine shut down',
-      'storage disposed',
       'waiters settled',
     ]);
   });
