@@ -1,7 +1,7 @@
 /**
  * COR-1472: a workflow parked on `waitForSignal('approval')` reports
  * `waitingForSignals: ['approval']` from a fresh engine over the same storage,
- * before that engine recovers anything, on `MemoryStorage`, SQLite, and LMDB.
+ * before that engine recovers anything, on `MemoryStorage`, SQLite, and IndexedDB.
  * Covered for an inline-parked workflow, a workflow the engine cannot park (it
  * handles updates, so it waits through a live waiter, the same path a Worker
  * run takes), and a durable child workflow. The Worker-mode run itself is in
@@ -90,12 +90,8 @@ const scenarios: Scenario[] = [
   },
 ];
 
-const backends = storageBackends.filter((backend) =>
-  ['MemoryStorage', 'BunSQLiteStorage', 'LMDBStorage'].includes(backend.name),
-);
-
 describe('waitingForSignals across an engine restart', () => {
-  for (const backend of backends) {
+  for (const backend of storageBackends) {
     for (const scenario of scenarios) {
       it(`survives for ${scenario.name} on ${backend.name}`, async () => {
         const { storage, cleanup } = backend.factory();

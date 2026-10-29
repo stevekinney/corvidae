@@ -3,28 +3,10 @@ import { describe, expect, it } from 'bun:test';
 import { MemoryStorage } from '@lostgradient/storage';
 import { closeIfOpen, FixtureScope } from '@lostgradient/storage/testing';
 import {
-  availableAdapterSpecs,
   canLoadNodeSqliteWith,
   createNodeSqliteSpec,
   loadBetterSqlite3Locally,
 } from './sqlite-adapter-specs.test-support.ts';
-
-describe('Turso adapter spec', () => {
-  it('reports a successful no-op checkpoint, since libSQL manages its own', async () => {
-    const spec = availableAdapterSpecs().find((candidate) => candidate.name === 'TursoStorage');
-    expect(spec).toBeDefined();
-    const scope = new FixtureScope();
-    const adapter = await spec!.open(`${scope.makeTempDirectory('turso')}/checkpoint.db`);
-
-    try {
-      const checkpoint = await adapter.checkpoint();
-      expect(checkpoint.truncated).toBe(true);
-    } finally {
-      await closeIfOpen(adapter);
-      scope.cleanup();
-    }
-  });
-});
 
 /** A stand-in for the `better-sqlite3` driver, which loads only under Node. */
 function stubDriver(pragmaRow: { busy: number; log: number; checkpointed: number }) {

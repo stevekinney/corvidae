@@ -1,6 +1,6 @@
 /**
  * The durability suites' specs for the disk-backed SQLite adapters Weft still holds: Bun SQLite,
- * Node SQLite, and Turso. The suites and their adapter-independent support live in
+ * Node SQLite, and Turso (whose spec lives in `turso-adapter-spec.test-support.ts`). The suites and their adapter-independent support live in
  * `@lostgradient/storage/testing`; each spec carries its adapter, the module its child entrypoints
  * import, and, for Bun and Node, the raw-handle hooks.
  */
@@ -20,7 +20,7 @@ import {
 } from '@lostgradient/storage/testing';
 import { BunSQLiteStorage } from '../bun-sql.ts';
 import { NodeSQLiteStorage } from '../node-sqlite.ts';
-import { TursoStorage } from '../turso.ts';
+import { tursoSpec } from './turso-adapter-spec.test-support.ts';
 
 /** Matches the surface of `BetterSqliteDatabase` in `src/storage/node-sqlite.ts`. */
 type BetterSqliteDatabase = {
@@ -196,45 +196,6 @@ const nodeSqliteSpec = createNodeSqliteSpec({
   storageConstructor: NodeSQLiteStorage,
   loadDriver: loadBetterSqlite3Locally,
 });
-
-const tursoSpec: AdapterSpec = {
-  name: 'TursoStorage',
-  // libSQL local-file may or may not expose standard sidecars depending on
-  // the bundled client. Treat as false by default; the sidecar test routes
-  // Turso to a libSQL-shaped equivalent (write/close/reopen with a fresh
-  // client against the same `file:` URL).
-  exposesStandardSidecars: false,
-  expectedCapabilities: {
-    persistence: 'local',
-    readAfterWrite: 'session',
-    scanConsistency: 'snapshot',
-    atomicBatch: true,
-    conditionalBatch: true,
-    boundedRangeDelete: true,
-  },
-  child: {
-    moduleSpecifier: import.meta.resolve('../turso.ts'),
-    exportName: 'TursoStorage',
-    constructorArgument: "{ url: 'file:' + path }",
-  },
-  async open(databasePath: string) {
-    const storage = new TursoStorage({ url: `file:${databasePath}` });
-    return {
-      storage,
-      databasePath,
-      async checkpoint(): Promise<CheckpointResult> {
-        // Turso's local-file client controls its own checkpointing; we do
-        // not have a stable passthrough. The sidecar test does not call
-        // checkpoint() for Turso, so this is a no-op success.
-        return { truncated: true, raw: { note: 'libsql local-file: no explicit pragma path' } };
-      },
-      async close(): Promise<void> {
-        storage[Symbol.dispose]();
-      },
-      makeFailingBatch: makeNullValueFailingBatch,
-    };
-  },
-};
 
 /**
  * Whether `better-sqlite3` is loadable in the current runtime. Bun cannot

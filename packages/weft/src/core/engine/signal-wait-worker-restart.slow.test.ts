@@ -38,12 +38,8 @@ function createWorkerEngine(storage: Storage): Engine {
   return engine;
 }
 
-const backends = storageBackends.filter((backend) =>
-  ['MemoryStorage', 'BunSQLiteStorage', 'LMDBStorage'].includes(backend.name),
-);
-
 describe('waitingForSignals across a restart of a Worker-mode engine', () => {
-  for (const backend of backends) {
+  for (const backend of storageBackends) {
     it(`survives on ${backend.name}`, async () => {
       const { storage, cleanup } = backend.factory();
       const workflowId = `worker-restart-${crypto.randomUUID()}`;

@@ -2,7 +2,12 @@ import { afterEach, describe, expect, it, mock } from 'bun:test';
 
 import { restoreRealTimers, useFakeTimers } from '@lostgradient/testing/fake-timers';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { flush, teardown, waitForWorkflowStatus } from './storage-backends.test-support.ts';
+import {
+  flush,
+  storageBackends,
+  teardown,
+  waitForWorkflowStatus,
+} from './storage-backends.test-support.ts';
 
 afterEach(() => {
   restoreRealTimers();
@@ -34,6 +39,28 @@ describe('waitForWorkflowStatus', () => {
         }),
       ),
     ).toThrow('Expected workflow "workflow-1" to reach status "completed"');
+  });
+});
+
+describe('storageBackends', () => {
+  it('holds the three adapters Weft depends on at runtime, in order', () => {
+    expect(storageBackends.map((backend) => backend.name)).toEqual([
+      'MemoryStorage',
+      'BunSQLiteStorage',
+      'IndexedDBStorage',
+    ]);
+  });
+
+  it('builds a fresh storage for each backend and cleans it up', async () => {
+    for (const backend of storageBackends) {
+      const { storage, cleanup } = backend.factory();
+      try {
+        await storage.put('probe', new Uint8Array([1]));
+        expect(await storage.get('probe')).toEqual(new Uint8Array([1]));
+      } finally {
+        await cleanup();
+      }
+    }
   });
 });
 

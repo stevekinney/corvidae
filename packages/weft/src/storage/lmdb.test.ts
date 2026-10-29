@@ -241,6 +241,34 @@ describe('LMDBStorage', () => {
     storage[Symbol.dispose]();
   });
 
+  it('reports zero deletions for a prefix or range that matches no key', async () => {
+    const storage = createStorage();
+    await storage.put('keep:1', encode('one'));
+
+    expect(await storage.deletePrefix('absent:')).toBe(0);
+    expect(await storage.deleteRange('absent:', { gte: 'absent:' })).toBe(0);
+    expect(await storage.has('keep:1')).toBe(true);
+    storage[Symbol.dispose]();
+  });
+
+  it('applies a delete operation in a conditionalBatch whose conditions match', async () => {
+    const storage = createStorage();
+    await storage.batch([
+      { type: 'put', key: 'cas:gone', value: encode('before') },
+      { type: 'put', key: 'cas:stay', value: encode('stay') },
+    ]);
+
+    const committed = await storage.conditionalBatch(
+      [{ key: 'cas:gone', expectedValue: encode('before') }],
+      [{ type: 'delete', key: 'cas:gone' }],
+    );
+
+    expect(committed).toBe(true);
+    expect(await storage.has('cas:gone')).toBe(false);
+    expect(await storage.has('cas:stay')).toBe(true);
+    storage[Symbol.dispose]();
+  });
+
   it('rejects a durability value that is not "full" or "relaxed"', () => {
     expect(() => new LMDBStorage('unused-path', { durability: 'eventual' as never })).toThrow(
       'LMDBStorage durability must be "full" or "relaxed", received "eventual".',

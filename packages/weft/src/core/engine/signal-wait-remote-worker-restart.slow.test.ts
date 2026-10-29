@@ -48,12 +48,8 @@ function createRemoteEngine(storage: Storage): Engine {
   return engine;
 }
 
-const backends = storageBackends.filter((backend) =>
-  ['MemoryStorage', 'BunSQLiteStorage', 'LMDBStorage'].includes(backend.name),
-);
-
 describe('waitingForSignals across a restart of an engine whose activities run on a RemoteWorker', () => {
-  for (const backend of backends) {
+  for (const backend of storageBackends) {
     it(`survives on ${backend.name}`, async () => {
       const { storage, cleanup } = backend.factory();
       const workflowId = `remote-worker-restart-${crypto.randomUUID()}`;

@@ -6,18 +6,12 @@ import {
   storageKeys,
   type Storage,
 } from '@lostgradient/storage';
-import {
-  createDiskBackedTestFixture,
-  sqliteDatabaseSidecarSuffixes,
-} from '@lostgradient/storage/testing';
 import { sleepForTesting, yieldToEventLoop } from '@lostgradient/testing/fake-timers';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import type { Engine } from '../core/engine.ts';
 import type { WorkflowStatus } from '../core/types.ts';
 import { BunSQLiteStorage } from '../storage/bun-sql.ts';
 import { IndexedDBStorage } from '../storage/indexeddb.ts';
-import { LMDBStorage } from '../storage/lmdb.ts';
-import { TursoStorage } from '../storage/turso.ts';
 
 /**
  * A factory function that creates a fresh storage instance and returns
@@ -61,41 +55,6 @@ export const storageBackends: StorageBackendDescriptor[] = [
       return {
         storage,
         cleanup: () => storage[Symbol.dispose](),
-      };
-    },
-  },
-  {
-    name: 'LMDBStorage',
-    factory: () => {
-      const fixture = createDiskBackedTestFixture({
-        prefix: 'lmdb-test',
-        recursive: true,
-      });
-      const storage = new LMDBStorage(fixture.path);
-      return {
-        storage,
-        cleanup: async () => {
-          await storage.close();
-          fixture.cleanup();
-        },
-      };
-    },
-  },
-  {
-    name: 'TursoStorage',
-    factory: () => {
-      const fixture = createDiskBackedTestFixture({
-        prefix: 'turso-test',
-        suffix: '.db',
-        sidecarSuffixes: sqliteDatabaseSidecarSuffixes,
-      });
-      const storage = new TursoStorage({ url: `file:${fixture.path}` });
-      return {
-        storage,
-        cleanup: () => {
-          storage[Symbol.dispose]();
-          fixture.cleanup();
-        },
       };
     },
   },
@@ -165,7 +124,7 @@ export async function waitForWorkflowStatus(
 
 /**
  * Dispose engine first, flush to let async work drain, then clean up storage.
- * This ordering prevents "client closed" errors from backends like Turso
+ * This ordering prevents "client closed" errors from backends
  * where async operations may still reference storage after engine disposal.
  */
 export async function teardown(
@@ -174,9 +133,8 @@ export async function teardown(
 ): Promise<void> {
   engine?.[Symbol.dispose]();
   await flush();
-  // LMDB-backed tests can still have a read transaction unwinding on the next
-  // turn after engine disposal under heavy suite load. Give backend cleanup one
-  // more event-loop turn so storage disposal does not race that shutdown path.
+  // Give backend cleanup one more event-loop turn so storage disposal does not race an engine
+  // shutdown path that is still unwinding under heavy suite load.
   await flush();
   await storageCleanup?.();
 }

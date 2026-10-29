@@ -224,6 +224,71 @@ describe('TursoStorage', () => {
     storage[Symbol.dispose]();
   });
 
+  it('answers has, delete, count, keys, scan, deletePrefix, and deleteRange over a prefix', async () => {
+    const storage = new TursoStorage({ url: 'file::memory:' });
+    await storage.batch(
+      ['p:a', 'p:b', 'p:c', 'p:d', 'q:a'].map((key) => ({
+        type: 'put' as const,
+        key,
+        value: encode(key),
+      })),
+    );
+
+    expect(await storage.has('p:a')).toBe(true);
+    expect(await storage.has('p:missing')).toBe(false);
+    expect(await storage.count('p:')).toBe(4);
+
+    const keys: string[] = [];
+    for await (const key of storage.keys('p:')) keys.push(key);
+    expect(keys).toEqual(['p:a', 'p:b', 'p:c', 'p:d']);
+
+    const entries: Array<[string, string]> = [];
+    for await (const [key, value] of storage.scan('p:', { limit: 2 })) {
+      entries.push([key, decode(value)]);
+    }
+    expect(entries).toEqual([
+      ['p:a', 'p:a'],
+      ['p:b', 'p:b'],
+    ]);
+
+    await storage.delete('p:a');
+    expect(await storage.has('p:a')).toBe(false);
+    expect(await storage.deleteRange('p:', { gte: 'p:c' })).toBe(2);
+    expect(await storage.deletePrefix('p:')).toBe(1);
+    expect(await storage.count('p:')).toBe(0);
+    expect(await storage.has('q:a')).toBe(true);
+    storage[Symbol.dispose]();
+  });
+
+  it('applies a delete operation in a conditionalBatch whose conditions match', async () => {
+    // A file-backed database: the transaction a conditionalBatch opens gets its own connection,
+    // which an in-memory database would not share.
+    const fixture = createFileBackedTursoStorage('turso-cas-delete');
+
+    try {
+      await fixture.storage.put('cas:gone', encode('before'));
+
+      const committed = await fixture.storage.conditionalBatch(
+        [{ key: 'cas:gone', expectedValue: encode('before') }],
+        [{ type: 'delete', key: 'cas:gone' }],
+      );
+
+      expect(committed).toBe(true);
+      expect(await fixture.storage.has('cas:gone')).toBe(false);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it('scopes a view of the storage under a prefix', async () => {
+    const storage = new TursoStorage({ url: 'file::memory:' });
+    const scoped = storage.scoped('scope:');
+    await scoped.put('key', encode('value'));
+
+    expect(decode((await storage.get('scope:key'))!)).toBe('value');
+    storage[Symbol.dispose]();
+  });
+
   it('accepts authToken in configuration', () => {
     const storage = new TursoStorage({
       url: 'file::memory:',
