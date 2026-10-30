@@ -137,8 +137,10 @@ function readField(
 ): { readonly found: boolean; readonly value?: unknown } {
   let node: unknown = root;
   for (const segment of segmentsOf(field)) {
-    if (!isPlainObject(node) || !Object.hasOwn(node, segment)) return { found: false };
-    node = node[segment];
+    if (!isPlainObject(node)) return { found: false };
+    const entry = Object.getOwnPropertyDescriptor(node, segment);
+    if (entry === undefined) return { found: false };
+    node = entry.value;
   }
   return { found: true, value: node };
 }

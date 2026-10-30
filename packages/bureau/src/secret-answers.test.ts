@@ -3,6 +3,7 @@ import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
 
+import { createReviewDecisionRecords, digestReviewDelivery } from './review-decision-record.ts';
 import {
   createSecretAnswerStore,
   isSealedSecretAnswer,
@@ -165,5 +166,42 @@ describe('createSecretAnswerStore', () => {
     );
     expect(failure).toBeInstanceOf(CryptographyError);
     expect((failure as CryptographyError).code).toBe('secret-unavailable');
+  });
+});
+
+describe('the decision record of a sealed answer', () => {
+  it('digests two sealings of one answer alike, so a same-decision retry joins the claim', async () => {
+    const answerKeys = await keys();
+    const sealings = await Promise.all(
+      [1, 2].map(() =>
+        sealSecretAnswer({
+          reviewId: REVIEW,
+          fields: ['/password'],
+          answer: { user: 'ada', password: 'hunter2' },
+          keys: answerKeys,
+        }),
+      ),
+    );
+    const [first, second] = sealings.map((outcome) => {
+      if (!outcome.ok) throw new Error('expected a sealed answer');
+      return outcome.sealed;
+    });
+    expect(first).not.toEqual(second);
+    const digest = digestReviewDelivery(first);
+    expect(digestReviewDelivery(second)).toBe(digest);
+    expect(digestReviewDelivery(withoutCiphertext(first))).toBe(digest);
+
+    const records = createReviewDecisionRecords(textValueStore(new MemoryStorage()));
+    const request = (sealed: unknown) => ({
+      reviewId: REVIEW,
+      round: 0,
+      decision: 'approve' as const,
+      principal: 'owner-1',
+      digest: digestReviewDelivery(sealed),
+    });
+    const claimed = await records.claim(request(first));
+    const joined = await records.claim(request(second));
+    expect(claimed.outcome).toBe('claimed');
+    expect(joined.outcome).toBe('same');
   });
 });

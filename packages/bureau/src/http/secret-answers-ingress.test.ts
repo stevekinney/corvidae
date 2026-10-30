@@ -20,6 +20,7 @@ import {
 } from '@lostgradient/operative';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { createTool, createToolbox, type Toolbox } from 'armorer';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
@@ -499,6 +500,11 @@ describe('a secret answer through bureau.reviews.resolve', () => {
       // different decision won.
       expect(refusal).not.toContain('different resolver');
       await harness.settled(runId);
+      // Once the run has moved on, a retry finds no pending review, as it would for any answer:
+      // nothing reports another decision.
+      const serial = String(await rejectionOf(harness.bureau.reviews.resolve(input)));
+      expect(serial).toContain('No pending review');
+      expect(serial).not.toContain('different resolver');
 
       await harness.expectRecords(runId);
       await harness.scan(runId);

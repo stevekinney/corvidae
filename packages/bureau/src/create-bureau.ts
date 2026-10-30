@@ -16884,6 +16884,8 @@ async function constructBureau<const D extends AgentDefinitions>(
     }
     // COR-1920: a review that has closed is read back from the audit trail, which keeps the fields
     // its schema marked secret, so a same-decision retry seals them and digests alike.
+    // A tool approval carries no answer, so only a human wait's id is looked up.
+    if (!input.id.startsWith('human-wait:')) return input;
     const review = await getReview(input.id);
     if (review?.kind !== 'human-wait') return input;
     const sealed = await sealHumanWaitAnswer(review, snapshot);
