@@ -1560,10 +1560,24 @@ export interface ClassifyRecoveredRunArgs {
   /**
    * COR-297 — the status of the run's durable record, when it was read. A `'pending'` record was
    * prepared and never launched, so a run that would otherwise reattach is cancelled instead
-   * (`'prepared-not-launched'`). Omitted, or any other status, changes nothing.
+   * (`'prepared-not-launched'`). A terminal status (`RECOVERED_RUN_TERMINAL_STATUSES`) on a run
+   * whose session is no longer running means a peer already finished the run, so there is nothing
+   * to cancel (`'skip'`, COR-1916). Omitted, or any other status, changes nothing.
    */
   engineRecordStatus?: string;
 }
+
+/**
+ * COR-1916 — the durable statuses a run never leaves. A recovered handle whose record already
+ * reads one of these, with its session settled, was finished by a peer while this boot was
+ * classifying it (a peer takes the claim of a process that stalled past its lease TTL).
+ */
+const RECOVERED_RUN_TERMINAL_STATUSES: ReadonlySet<string> = new Set([
+  'completed',
+  'failed',
+  'cancelled',
+  'timed-out',
+]);
 
 /**
  * `classifyRecoveredRun`'s verdict, plus — only when the verdict is
@@ -1600,6 +1614,14 @@ export function classifyRecoveredRunDetailed(args: ClassifyRecoveredRunArgs): {
     return { verdict: 'cancel', rejection: 'session-run-mismatch' };
   }
   if (session.lastRunStatus !== 'running') {
+    // COR-1916 — session and record agree the run is over: a peer finished it after this boot
+    // took its handle. Cancelling it would be a no-op and reporting it a recovery failure a lie.
+    if (
+      args.engineRecordStatus !== undefined &&
+      RECOVERED_RUN_TERMINAL_STATUSES.has(args.engineRecordStatus)
+    ) {
+      return { verdict: 'skip' };
+    }
     return { verdict: 'cancel', rejection: 'session-not-running' };
   }
   // A pending record never resumes, so a version mismatch is moot for it.
@@ -9795,6 +9817,27 @@ async function constructBureau<const D extends AgentDefinitions>(
             });
           } else if (prepared === 'preparing-elsewhere') {
             classification = { verdict: 'skip' };
+          }
+        }
+        // COR-1916 — a run whose session is settled may have been finished by a peer since
+        // `recoverAll()` took its handle, so the record is read before the session alone cancels
+        // it. A read that fails leaves the verdict as it was.
+        if (classification.rejection === 'session-not-running') {
+          try {
+            const record = await durable.engine.get(handle.id);
+            if (record !== null && RECOVERED_RUN_TERMINAL_STATUSES.has(record.status)) {
+              classification = classifyRecoveredRunDetailed({
+                ...classificationArgs,
+                engineRecordStatus: record.status,
+              });
+            }
+          } catch (error) {
+            diagnose({
+              level: 'error',
+              scope: 'recovery',
+              message: `[bureau] Could not read the durable record of recovered run "${handle.id}"; classifying it without its status: ${serializeUnknownError(error)}`,
+              cause: error,
+            });
           }
         }
         // The session says the run is running, and no later boot could repair that once the record

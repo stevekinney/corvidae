@@ -81,6 +81,32 @@ describe('classifyRecoveredRunDetailed with the durable record status (COR-297)'
     ).toEqual({ verdict: 'reattach-version-mismatch' });
   });
 
+  it('skips a run whose session is settled and whose record is already terminal (COR-1916)', () => {
+    const settled = {
+      ...base,
+      sessionLoad: {
+        ok: true as const,
+        session: { lastRunId: 'run-1', lastRunStatus: 'completed' },
+      },
+    };
+    for (const status of ['completed', 'failed', 'cancelled', 'timed-out']) {
+      expect(classifyRecoveredRunDetailed({ ...settled, engineRecordStatus: status })).toEqual({
+        verdict: 'skip',
+      });
+    }
+    // A record that is not over, or not read, still has the session-only verdict.
+    const cancelled = { verdict: 'cancel', rejection: 'session-not-running' } as const;
+    expect(classifyRecoveredRunDetailed(settled)).toEqual(cancelled);
+    for (const engineRecordStatus of ['running', 'pending']) {
+      expect(classifyRecoveredRunDetailed({ ...settled, engineRecordStatus })).toEqual(cancelled);
+    }
+    // A terminal record does not outrank a session that still says running (a run that finished
+    // fast during `recoverAll` must still reattach so its completion is persisted).
+    expect(classifyRecoveredRunDetailed({ ...base, engineRecordStatus: 'completed' })).toEqual({
+      verdict: 'reattach',
+    });
+  });
+
   it('keeps the plain verdict equal to the detailed one', () => {
     for (const args of [base, pending, { ...pending, versionMismatch: true }]) {
       expect(classifyRecoveredRun(args)).toBe(classifyRecoveredRunDetailed(args).verdict);
@@ -309,6 +335,42 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
       const settled = await run.crashed.contexts.get(run.contextId);
       return settled?.metadata['lastRunStatus'] !== 'running';
     }, 'the held process never settled its run');
+  });
+
+  it('reports a run a peer finished since recovery took its handle as clean, not failed (COR-1916)', async () => {
+    const fixture = newFixture();
+    const run = await prepareWithoutLaunching(fixture.storage);
+    const storage = fixture.open();
+    cleanups.push(() => storage[Symbol.dispose]());
+    const sessions = createSessionStore(
+      textValueStore(storage, { disposeUnderlyingStorage: false }),
+    );
+    // The peer that took the claim has finished the run: its session is settled and its record
+    // is terminal by the time this boot classifies the handle it was given.
+    await sessions.updateMetadata(run.contextId, { lastRunStatus: 'completed' });
+    const realGet = Engine.prototype.get;
+    const get = spyOn(Engine.prototype, 'get').mockImplementation(async function (
+      this: Engine,
+      workflowId: string,
+    ) {
+      const record = await realGet.call(this, workflowId);
+      return workflowId === run.id && record !== null
+        ? { ...record, status: 'completed' as const }
+        : record;
+    });
+    cleanups.push(() => get.mockRestore());
+    const recovery = {
+      attempted: [] as Array<[string, string]>,
+      rejected: [] as Array<[string, string]>,
+    };
+
+    const restarted = await open(fixture.open(), { recovery });
+    const report = await restarted.recovery();
+    get.mockRestore();
+
+    expect(report).toMatchObject({ outcome: 'clean', perRunFailures: [], skippedRuns: [] });
+    expect(recovery.attempted).toContainEqual([run.id, 'skip']);
+    expect(recovery.rejected.filter(([runId]) => runId === run.id)).toEqual([]);
   });
 
   it('cancels a catalog run prepared and never launched, and settles its task', async () => {
