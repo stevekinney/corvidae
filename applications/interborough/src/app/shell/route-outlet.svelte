@@ -17,7 +17,10 @@
   import { clearChunkReloadGuard, reloadOnceForMissingChunk } from './chunk-reload.ts';
   import FaultBoundary from '../fault-boundary.svelte';
   import ViewFrame from '../view-frame.svelte';
-  import { VIEWS } from '../views.ts';
+  import { effectiveDensity, getLayoutPreferences } from '../layout-preferences.svelte.ts';
+  import { pageWidth, VIEWS } from '../views.ts';
+
+  const layoutPreferences = getLayoutPreferences();
 
   let activeComponent = $state<Component | null>(null);
   let loading = $state(false);
@@ -103,15 +106,17 @@
 </script>
 
 <!-- The outlet is the only thing that pads a page. The view the route belongs to decides how dense
-     the page is and how wide, so a page never chooses either for itself: it reads Cinder's
-     density tokens, and `foundation.css` centres its content in the reading column. A
+     the page is, unless the person asked for compact everywhere, and the kind of page the route is
+     decides how wide (`views.ts`, `pageWidth`), so a page never chooses either for itself: it reads
+     Cinder's density tokens, and `foundation.css` centres a reading page in the reading column. A
      route that belongs to no view (the not-found page) reads like a reading page. -->
 <main
   class="weft-shell-outlet"
-  data-density={router.current.route?.view
-    ? VIEWS[router.current.route.view].density
-    : 'comfortable'}
-  data-width={router.current.route?.view ? VIEWS[router.current.route.view].width : 'reading'}
+  data-density={effectiveDensity(
+    router.current.route?.view ? VIEWS[router.current.route.view].density : 'comfortable',
+    layoutPreferences?.density ?? 'comfortable',
+  )}
+  data-width={router.current.route ? pageWidth(router.current.route.kind) : 'reading'}
 >
   <FaultBoundary>
     {#if notFound}
