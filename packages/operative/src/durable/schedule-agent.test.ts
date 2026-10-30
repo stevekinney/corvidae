@@ -5,7 +5,7 @@ import type {
   ScheduleSpec,
   ScheduleSummary,
 } from '@lostgradient/weft';
-import { encode, KEYS, ScheduleHandle } from '@lostgradient/weft';
+import { canonicalTimeZone, encode, KEYS, ScheduleHandle } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
@@ -362,6 +362,21 @@ describe('createAgentSchedule', () => {
     expect(same.id).toBe('zoned-run');
     const respelled = await retry('america/los_angeles');
     expect(respelled.id).toBe('zoned-run');
+    const aliased = makeSchedulingEngine({
+      summaries: [{ ...existingSummary, timeZone: canonicalTimeZone('Asia/Kolkata') }],
+    });
+    for (const alias of ['Asia/Kolkata', 'asia/kolkata']) {
+      const again = await createAgentSchedule({
+        engine: aliased,
+        agentName: 'researcher',
+        spec: { cron: '0 9 * * *' },
+        input: 'hello',
+        id: 'zoned-run',
+        idempotent: true,
+        timeZone: alias,
+      });
+      expect(again.id).toBe('zoned-run');
+    }
     for (const other of ['Europe/Berlin', undefined]) {
       let refusal: unknown;
       try {

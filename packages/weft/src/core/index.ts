@@ -184,7 +184,7 @@ export type {
   ReviewOptions,
   ReviewRequest,
 } from './review/index.ts';
-export { isValidTimeZone } from './schedule.ts';
+export { canonicalTimeZone, isValidTimeZone } from './schedule.ts';
 export { Scheduler, calculateBackoff, parseDuration } from './scheduler.ts';
 export {
   buildIndexOperations,

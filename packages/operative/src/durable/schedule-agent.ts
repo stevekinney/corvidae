@@ -8,7 +8,7 @@ import type {
   ScheduleSpec,
   ScheduleSummary,
 } from '@lostgradient/weft';
-import { decode, KEYS, parseDuration, ScheduleHandle } from '@lostgradient/weft';
+import { canonicalTimeZone, decode, KEYS, parseDuration, ScheduleHandle } from '@lostgradient/weft';
 
 import { snapshotPayload } from '../agent-input';
 import type { ClosedFunction } from '../closed-acknowledgement';
@@ -501,8 +501,9 @@ function assertCompatibleAgentSchedule(
     throw new Error(`Schedule ${scheduleId} already exists with a different description.`);
   }
 
-  // Weft stores the canonical spelling of a zone, and the caller may have written `utc`.
-  if (schedule.timeZone.toLowerCase() !== (timeZone ?? 'UTC').toLowerCase()) {
+  // Weft stores the canonical spelling of a zone (`Asia/Calcutta` for `Asia/Kolkata`, `UTC` for
+  // `Etc/UTC`), so the requested zone is canonicalized the same way before it is compared.
+  if (schedule.timeZone !== canonicalTimeZone(timeZone ?? 'UTC')) {
     throw new Error(`Schedule ${scheduleId} already exists with a different time zone.`);
   }
 
