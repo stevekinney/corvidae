@@ -169,8 +169,9 @@ function nested(depth: number): Record<string, unknown> {
 
 describe('the input a schema describes', () => {
   it('is the input of a manual start, the payload of a signal, and null for a schedule fire', () => {
-    expect(workflowInputOf({ kind: 'manual', input: { a: 1 } })).toEqual({ a: 1 });
-    expect(workflowInputOf({ kind: 'manual' })).toBeNull();
+    const origin = { kind: 'person', principal: 'p', surface: 'api' };
+    expect(workflowInputOf({ kind: 'manual', input: { a: 1 }, origin })).toEqual({ a: 1 });
+    expect(workflowInputOf({ kind: 'manual', origin })).toBeNull();
     expect(workflowInputOf({ kind: 'signal', name: 'go', payload: 'p' })).toBe('p');
     expect(workflowInputOf({ kind: 'signal', name: 'go' })).toBeNull();
     expect(workflowInputOf({ kind: 'schedule', scheduleId: 's' })).toBeNull();
@@ -181,6 +182,19 @@ describe('the input a schema describes', () => {
     expect(workflowInputOf('text')).toBe('text');
     expect(workflowInputOf(undefined)).toBeNull();
     expect(workflowInputOf(null)).toBeNull();
+  });
+
+  it('is a raw start’s input as it is when that input merely has a trigger’s kind', () => {
+    for (const raw of [
+      { kind: 'manual', city: 'Oslo' },
+      { kind: 'manual', input: 'x' },
+      { kind: 'signal', city: 'Oslo' },
+      { kind: 'signal', name: 'go', city: 'Oslo' },
+      { kind: 'schedule', city: 'Oslo' },
+      { kind: 'schedule', scheduleId: 's', city: 'Oslo' },
+    ]) {
+      expect(workflowInputOf(raw)).toEqual(raw);
+    }
   });
 });
 

@@ -49,6 +49,7 @@ import { BureauError } from '../../create-bureau.ts';
 import { WorkflowFileConflictError, WorkflowFileError } from '../../workflow-file.ts';
 import {
   type BureauWorkflows,
+  type WorkflowCodeDetail,
   SIGNAL_ID_MAXIMUM_BYTES,
   WorkflowApplyError,
   WorkflowSignalFailure,
@@ -68,6 +69,11 @@ import {
 /** What the workflow operations read from the handler's `host`. */
 export type BureauWorkflowsOperationHost = BureauOwnershipHost & {
   readonly workflows: BureauWorkflows | undefined;
+  /**
+   * The code-defined workflow `id`, or `undefined` when the engine has none. It does not need a
+   * workflow directory: the Bureau's own workflows are registered by code on any durable Bureau.
+   */
+  readonly codeWorkflow: (id: string) => WorkflowCodeDetail | undefined;
 };
 
 const workflowIdentifier = z.string().min(1).max(256);
@@ -848,8 +854,10 @@ export const workflowsInternalGetOperation = defineOperation<
   transports,
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
-    const workflows = workflowsFor(host, principal, 'bureau.workflows:read', 'workflow', input.id);
-    const detail = workflows.getCode(input.id);
+    if (!mayAccessWorkflows(host, principal, 'bureau.workflows:read')) {
+      throw resourceNotFound('workflow', input.id);
+    }
+    const detail = host.codeWorkflow(input.id);
     if (detail === undefined) throw resourceNotFound('workflow', input.id);
     return { ...detail, source: { ...detail.source } };
   },

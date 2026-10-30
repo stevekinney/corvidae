@@ -253,3 +253,17 @@ describe('bureau.workflows.internal.get', () => {
     }
   });
 });
+
+describe('bureau.workflows.internal.get without a workflow directory', () => {
+  it('reads a code-defined workflow from a durable Bureau that has no workflowSource', async () => {
+    const served = await serveWorkflows(cleanups, { withoutDirectory: true });
+    expect(served.bureau.workflows).toBeUndefined();
+
+    const found = await ownerRpc(served.owner, 'bureau.workflows.internal.get', { id: 'agentRun' });
+    const missing = await ownerRpc(served.owner, 'bureau.workflows.internal.get', { id: 'nobody' });
+
+    expect(found.error).toBeUndefined();
+    expect((found.result as { source: { kind: string } }).source.kind).toBe('code');
+    expect(missing.error?.data?.httpStatus).toBe(404);
+  });
+});

@@ -156,6 +156,36 @@ export interface WorkflowCodeDetail {
   readonly source: { readonly kind: 'code'; readonly text: string };
 }
 
+/**
+ * The source of the workflow `id` the engine has from code, or `undefined` when it has none. It
+ * does not know which names a workflow directory registered: a caller that has a directory
+ * excludes those itself, as `getCode` does, and one without a directory has none to exclude.
+ */
+export function describeCodeWorkflow(
+  engine: Pick<Engine, 'getWorkflowDefinition'>,
+  id: string,
+): WorkflowCodeDetail | undefined {
+  const definition = engine.getWorkflowDefinition(id);
+  if (definition === undefined) return undefined;
+  const description = definition.description ?? null;
+  const contract = {
+    type: definition.type,
+    version: definition.version,
+    tags: [...definition.tags],
+    signals: Object.keys(definition.signals ?? {}),
+    updates: Object.keys(definition.updates ?? {}),
+    queries: Object.keys(definition.queries ?? {}),
+    uses: Object.keys(definition.uses ?? {}),
+  };
+  const text = `${description === null ? '' : `${description}\n\n`}${JSON.stringify(contract, null, 2)}\n`;
+  return {
+    id,
+    description,
+    version: definition.version === '' ? null : definition.version,
+    source: { kind: 'code', text },
+  };
+}
+
 /** A revision of a workflow that has run, with whether it is compatible with the workflow's current revision. */
 export interface WorkflowRevisionReport extends WorkflowRevision {
   /**
@@ -1206,25 +1236,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     },
 
     getCode(id) {
-      const definition = engine.getWorkflowDefinition(id);
-      if (definition === undefined || registeredTypes.has(id)) return undefined;
-      const description = definition.description ?? null;
-      const contract = {
-        type: definition.type,
-        version: definition.version,
-        tags: [...definition.tags],
-        signals: Object.keys(definition.signals ?? {}),
-        updates: Object.keys(definition.updates ?? {}),
-        queries: Object.keys(definition.queries ?? {}),
-        uses: Object.keys(definition.uses ?? {}),
-      };
-      const text = `${description === null ? '' : `${description}\n\n`}${JSON.stringify(contract, null, 2)}\n`;
-      return {
-        id,
-        description,
-        version: definition.version === '' ? null : definition.version,
-        source: { kind: 'code', text },
-      };
+      return registeredTypes.has(id) ? undefined : describeCodeWorkflow(engine, id);
     },
 
     onChange: (listener) => catalog.onChange(listener),

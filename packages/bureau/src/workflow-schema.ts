@@ -90,22 +90,43 @@ export function workflowSchemaIssues(
   }
 }
 
+/** Whether `record` has no key outside `allowed`, so a raw input that merely shares a `kind` is not taken for an envelope. */
+function onlyKeys(record: Readonly<Record<string, unknown>>, allowed: readonly string[]): boolean {
+  return Object.keys(record).every((key) => allowed.includes(key));
+}
+
 /**
  * The value an `inputSchema` describes, taken from the trigger an instance was started with. See
  * the module comment for what each start supplies.
+ *
+ * Only the exact envelopes Bureau and Weft write are unwrapped: `{ kind: 'manual', input, origin }`,
+ * `{ kind: 'signal', name, payload }`, and `{ kind: 'schedule', scheduleId }`, each with its
+ * required fields and no others. A raw start whose input merely has a `kind` of `manual`, `signal`
+ * or `schedule` (`{ kind: 'manual', city: 'Oslo' }`) is its own input. A raw input that spells out
+ * a whole envelope is indistinguishable from one, which is why the trigger is the one place the
+ * envelope's shape is decided.
  */
 export function workflowInputOf(trigger: unknown): unknown {
   if (typeof trigger !== 'object' || trigger === null || Array.isArray(trigger)) {
     return trigger ?? null;
   }
   const record = trigger as Readonly<Record<string, unknown>>;
+  const isObject = (value: unknown): boolean =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);
   switch (record['kind']) {
     case 'manual':
-      return record['input'] ?? null;
+      return isObject(record['origin']) && onlyKeys(record, ['kind', 'input', 'origin'])
+        ? (record['input'] ?? null)
+        : trigger;
     case 'signal':
-      return record['payload'] ?? null;
+      return typeof record['name'] === 'string' && onlyKeys(record, ['kind', 'name', 'payload'])
+        ? (record['payload'] ?? null)
+        : trigger;
     case 'schedule':
-      return null;
+      return typeof record['scheduleId'] === 'string' &&
+        onlyKeys(record, ['kind', 'scheduleId', 'fireId'])
+        ? null
+        : trigger;
     default:
       return trigger;
   }
