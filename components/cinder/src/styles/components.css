@@ -138,6 +138,7 @@
 @import '../components/run-step-timeline/run-step-timeline.css';
 @import '../components/schedule-builder/schedule-builder.css';
 @import '../components/schema-form/schema-form.css';
+@import '../components/schema-view/schema-view.css';
 @import '../components/scroll-area/scroll-area.css';
 @import '../components/search-field/search-field.css';
 @import '../components/secret-value-field/secret-value-field.css';

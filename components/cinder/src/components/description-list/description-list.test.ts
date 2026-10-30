@@ -1,12 +1,12 @@
 /// <reference lib="dom" />
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, mock, test } from 'bun:test';
 
 import { setupHappyDom } from '@lostgradient/testing';
 import type { DescriptionListDefinition } from './description-list.types.ts';
 
 setupHappyDom();
 
-const { render } = await import('@testing-library/svelte');
+const { cleanup, fireEvent, render } = await import('@testing-library/svelte');
 const { default: DescriptionList } = await import('./description-list.svelte');
 const { createRawSnippet } = await import('svelte');
 
@@ -26,6 +26,8 @@ function definitionSnippet(html: string): DescriptionListDefinition {
     render: () => html,
   }));
 }
+
+afterEach(() => cleanup());
 
 const sampleItems: Item[] = [
   { term: 'Status', definition: 'Active' },
@@ -245,5 +247,151 @@ describe('DescriptionList', () => {
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       expect(children[0]!.classList.contains('cinder-description-list__definition')).toBe(true);
     }
+  });
+});
+
+const descriptionListCss = await Bun.file(
+  new URL('./description-list.css', import.meta.url),
+).text();
+
+describe('DescriptionList formatted values', () => {
+  test('formats a timestamp as readable text with the exact time on hover', () => {
+    const { container } = render(DescriptionList, {
+      items: [
+        { term: 'Created', definition: { type: 'timestamp', value: '2026-10-30T14:15:07Z' } },
+      ],
+    });
+    const time = container.querySelector('dd time');
+    expect(time).not.toBeNull();
+    // Readable: a short date and time in the list's time zone.
+    // ICU 74+ joins the date and time with "at", older ICU with a comma.
+    expect(time?.textContent?.trim()).toMatch(/^Oct 30, 2026(?:,| at) 2:15 PM UTC$/);
+    // Exact: the full date with seconds, on hover.
+    expect(time?.getAttribute('title')).toMatch(
+      /^Friday, October 30, 2026(?:,| at) 2:15:07 PM UTC$/,
+    );
+    // Machine-readable: the exact instant.
+    expect(time?.getAttribute('datetime')).toBe('2026-10-30T14:15:07.000Z');
+  });
+
+  test('accepts a Date and an epoch number, and honours the time zone and locale', () => {
+    const when = new Date('2026-10-30T14:15:07Z');
+    const { container } = render(DescriptionList, {
+      items: [
+        { id: 'date', term: 'Date', definition: { type: 'timestamp', value: when } },
+        {
+          id: 'epoch',
+          term: 'Epoch',
+          definition: { type: 'timestamp', value: when.getTime(), timeZone: 'America/New_York' },
+        },
+      ],
+    });
+    const times = Array.from(container.querySelectorAll('dd time'));
+    expect(times[0]?.textContent?.trim()).toMatch(/^Oct 30, 2026(?:,| at) 2:15 PM UTC$/);
+    expect(times[1]?.textContent?.trim()).toContain('10:15 AM');
+  });
+
+  test('an unparseable timestamp reads as invalid and carries no title', () => {
+    const { container } = render(DescriptionList, {
+      items: [{ term: 'Created', definition: { type: 'timestamp', value: 'not a date' } }],
+    });
+    expect(container.querySelector('dd time')).toBeNull();
+    expect(container.querySelector('dd')?.textContent).toContain('Invalid date');
+  });
+
+  test('shortens an ID and offers a copy button that copies the whole value', async () => {
+    const id = '3f2b9c1a-7d4e-4a86-9b0c-1e5d6f7a8b90';
+    const writeText = mock(async () => undefined);
+    const originalClipboard = navigator.clipboard;
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    try {
+      const { container } = render(DescriptionList, {
+        items: [{ term: 'Run ID', definition: { type: 'identifier', value: id } }],
+      });
+      const code = container.querySelector('dd code');
+      expect(code?.textContent?.trim()).toBe('3f2b9c1a…8b90');
+      expect(code?.textContent).not.toBe(id);
+      expect(code?.getAttribute('title')).toBe(id);
+
+      const copy = container.querySelector<HTMLButtonElement>('dd .cinder-copy-button');
+      expect(copy).not.toBeNull();
+      expect(copy?.getAttribute('aria-label')).toBe('Copy Run ID');
+      // Icon-only: an icon and no visible text.
+      expect(copy?.querySelector('svg')).not.toBeNull();
+      expect(copy?.textContent?.trim()).toBe('');
+
+      await fireEvent.click(copy as HTMLButtonElement);
+      expect(writeText).toHaveBeenCalledWith(id);
+    } finally {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: originalClipboard,
+      });
+    }
+  });
+
+  test('shows a short ID whole', () => {
+    const { container } = render(DescriptionList, {
+      items: [{ term: 'Run ID', definition: { type: 'identifier', value: 'run-42' } }],
+    });
+    expect(container.querySelector('dd code')?.textContent?.trim()).toBe('run-42');
+  });
+
+  test('lists read-only tags and counts system tags instead of listing them', () => {
+    const { container } = render(DescriptionList, {
+      items: [
+        {
+          term: 'Tags',
+          definition: { type: 'tags', tags: ['billing', 'nightly'], systemTagCount: 3 },
+        },
+      ],
+    });
+    const chips = Array.from(container.querySelectorAll('dd .cinder-chip'));
+    expect(chips.map((chip) => chip.textContent?.trim())).toEqual(['billing', 'nightly']);
+    // Read-only: nothing to remove.
+    expect(container.querySelector('dd [aria-label^="Remove"]')).toBeNull();
+    expect(
+      container.querySelector('dd .cinder-description-list__system-tags')?.textContent,
+    ).toContain('3 system tags');
+    // Without a callback there is no add action.
+    expect(container.querySelector('dd button')).toBeNull();
+  });
+
+  test('offers Add a tag when a callback is given and calls it', async () => {
+    const onAddTag = mock(() => {});
+    const { getByRole } = render(DescriptionList, {
+      items: [{ term: 'Tags', definition: { type: 'tags', tags: [], onAddTag } }],
+    });
+    await fireEvent.click(getByRole('button', { name: 'Add a tag' }));
+    expect(onAddTag).toHaveBeenCalledTimes(1);
+  });
+
+  test('singularises one system tag and says No tags for an empty read-only list', () => {
+    const { container } = render(DescriptionList, {
+      items: [
+        { id: 'one', term: 'One', definition: { type: 'tags', tags: [], systemTagCount: 1 } },
+        { id: 'none', term: 'None', definition: { type: 'tags', tags: [] } },
+      ],
+    });
+    const text = container.textContent ?? '';
+    expect(text).toContain('1 system tag');
+    expect(text).not.toContain('1 system tags');
+    expect(text).toContain('No tags');
+  });
+
+  test('two-column variant mutes the term and draws no row dividers', () => {
+    const rule = (selector: string) =>
+      new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`).exec(
+        descriptionListCss,
+      )?.[1] ?? '';
+    expect(rule(".cinder-description-list[data-cinder-variant='two-column'] dt")).toContain(
+      'color: var(--cinder-text-muted)',
+    );
+    // Only the default variant draws a divider.
+    const dividers = descriptionListCss.match(/border-block-start[^;]*;/g) ?? [];
+    expect(dividers).toHaveLength(1);
+    expect(descriptionListCss).toMatch(
+      /data-cinder-variant='default'\]\s*\.cinder-description-list__row:not\(:first-child\)\s*\{[^}]*border-block-start/,
+    );
   });
 });

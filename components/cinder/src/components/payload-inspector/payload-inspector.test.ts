@@ -33,6 +33,7 @@ describe('PayloadInspector', () => {
 
       expect(payloadInspectorSchema.properties).toHaveProperty('value');
       expect(payloadInspectorSchema.metadata?.unsupportedProps?.map((prop) => prop.name)).toEqual([
+        'linkFor',
         'parse',
       ]);
 
@@ -99,14 +100,14 @@ describe('PayloadInspector', () => {
   });
 
   describe('object and array payloads', () => {
-    test('renders objects as a JSON tree', () => {
-      const { container } = renderInspector({ value: { key: 'value' } });
+    test('renders objects as a JSON tree in the JSON view', () => {
+      const { container } = renderInspector({ value: { key: 'value' }, view: 'json' });
       expect(container.querySelector('.cinder-json-viewer')).not.toBeNull();
       expect(container.textContent).toContain('key');
     });
 
-    test('renders arrays as a JSON tree', () => {
-      const { container } = renderInspector({ value: [1, 2, 3] });
+    test('renders arrays as a JSON tree in the JSON view', () => {
+      const { container } = renderInspector({ value: [1, 2, 3], view: 'json' });
       expect(container.querySelector('.cinder-json-viewer')).not.toBeNull();
     });
 
@@ -120,6 +121,7 @@ describe('PayloadInspector', () => {
           },
         },
         initialDepth: 2,
+        view: 'json',
       });
 
       const webhookNode = container.querySelector<HTMLElement>(
@@ -169,13 +171,13 @@ describe('PayloadInspector', () => {
 
   describe('string value parsing', () => {
     test('parses a valid JSON object string into a tree', () => {
-      const { container } = renderInspector({ value: '{"hello":"world"}' });
+      const { container } = renderInspector({ value: '{"hello":"world"}', view: 'json' });
       expect(container.querySelector('.cinder-json-viewer')).not.toBeNull();
       expect(container.textContent).toContain('hello');
     });
 
     test('parses a valid JSON array string into a tree', () => {
-      const { container } = renderInspector({ value: '[1,2,3]' });
+      const { container } = renderInspector({ value: '[1,2,3]', view: 'json' });
       expect(container.querySelector('.cinder-json-viewer')).not.toBeNull();
     });
 
@@ -252,6 +254,7 @@ describe('PayloadInspector', () => {
       const { container } = renderInspector({
         value: 'custom-format-data',
         parse: customParse,
+        view: 'json',
       });
       expect(container.querySelector('.cinder-json-viewer')).not.toBeNull();
       expect(container.textContent).toContain('parsed');
@@ -332,5 +335,148 @@ describe('PayloadInspector', () => {
         /\.cinder-payload-inspector__panel \.cinder-json-viewer\s*\{[^}]*user-select:\s*text/s,
       );
     });
+  });
+});
+
+describe('PayloadInspector fields and JSON views', () => {
+  const payload = {
+    orderId: 'ord_8f2a3b',
+    customer: { fullName: 'Ada Lovelace', email: 'ada@example.com' },
+    lines: [{ sku: 'p_001', quantity: 2 }],
+    paid: true,
+    note: null,
+    amount: 89.93,
+  };
+
+  test('defaults to fields and switches to JsonViewer', async () => {
+    const { container, getByRole } = renderInspector({ value: payload });
+
+    // Fields by default: labelled rows, and no JSON tree.
+    expect(container.querySelector('.cinder-json-viewer')).toBeNull();
+    const labels = Array.from(
+      container.querySelectorAll('.cinder-payload-inspector__field-label'),
+    ).map((label) => label.textContent?.trim());
+    expect(labels).toContain('Order ID');
+    expect(labels).toContain('Full Name');
+    expect(labels).not.toContain('orderId');
+    expect(container.querySelector('[role="tree"]')).toBeNull();
+
+    // The switch names both views and marks Fields as the current one.
+    const fieldsOption = getByRole('radio', { name: 'Fields' });
+    const jsonOption = getByRole('radio', { name: 'JSON' });
+    expect(fieldsOption.getAttribute('aria-checked')).toBe('true');
+    expect(jsonOption.getAttribute('aria-checked')).toBe('false');
+
+    await fireEvent.click(jsonOption);
+
+    // JSON is the existing JsonViewer, and the fields are gone.
+    expect(container.querySelector('.cinder-json-viewer')).not.toBeNull();
+    expect(container.querySelector('[role="tree"]')).not.toBeNull();
+    expect(container.querySelector('.cinder-payload-inspector__field-label')).toBeNull();
+    expect(jsonOption.getAttribute('aria-checked')).toBe('true');
+
+    await fireEvent.click(fieldsOption);
+    expect(container.querySelector('.cinder-json-viewer')).toBeNull();
+    expect(container.querySelector('.cinder-payload-inspector__field-label')).not.toBeNull();
+  });
+
+  test('formats values: IDs in small monospace, nested objects and arrays as sub-lists', () => {
+    const { container } = renderInspector({ value: payload });
+    const identifier = container.querySelector('code.cinder-payload-inspector__identifier');
+    expect(identifier?.textContent).toBe('ord_8f2a3b');
+    // sku is not an ID key, so it reads as text; the nested rows exist.
+    const rows = Array.from(container.querySelectorAll('.cinder-payload-inspector__field'));
+    const rowFor = (label: string) =>
+      rows.find(
+        (row) =>
+          row
+            .querySelector(':scope > .cinder-payload-inspector__field-label')
+            ?.textContent?.trim() === label,
+      );
+    expect(rowFor('Customer')?.querySelector('dl')).not.toBeNull();
+    expect(rowFor('Email')?.textContent).toContain('ada@example.com');
+    // Array entries are labelled by position, not formatted as property names.
+    expect(rowFor('Lines')?.querySelector('.cinder-payload-inspector__field-label')).not.toBeNull();
+    expect(rowFor('1')?.querySelector('dl')).not.toBeNull();
+    expect(rowFor('Paid')?.textContent).toContain('true');
+    expect(rowFor('Note')?.textContent).toContain('null');
+  });
+
+  test('links a value to what it names when linkFor gives an address', () => {
+    const seen: string[] = [];
+    const { container } = renderInspector({
+      value: payload,
+      linkFor: ({ path, key, value }: { path: string[]; key: string; value: unknown }) => {
+        seen.push(path.join('.'));
+        return key === 'orderId' ? `/orders/${String(value)}` : undefined;
+      },
+    });
+    const links = container.querySelectorAll('a.cinder-payload-inspector__link');
+    expect(links).toHaveLength(1);
+    expect(links[0]?.getAttribute('href')).toBe('/orders/ord_8f2a3b');
+    expect(links[0]?.textContent).toBe('ord_8f2a3b');
+    expect(seen).toContain('customer.email');
+  });
+
+  test('keeps the copy button in the heading row, copying the whole payload', () => {
+    const { container } = renderInspector({ value: payload });
+    const header = container.querySelector('.cinder-payload-inspector__header');
+    expect(header?.querySelectorAll('.cinder-copy-button')).toHaveLength(1);
+    expect(header?.querySelector('.cinder-copy-button')?.getAttribute('aria-label')).toBe(
+      'Copy Payload inspector',
+    );
+    // The same control is shown whichever view is active; there is no second, floating one.
+    expect(container.querySelectorAll('.cinder-copy-button')).toHaveLength(1);
+  });
+
+  test('a primitive payload has one view and no switch', () => {
+    const { container } = renderInspector({ value: 42 });
+    expect(container.querySelector('[role="radiogroup"]')).toBeNull();
+    expect(
+      container.querySelector('.cinder-payload-inspector__primitive')?.textContent?.trim(),
+    ).toBe('42');
+  });
+
+  test('an unserializable payload has no switch', () => {
+    const circular: Record<string, unknown> = { name: 'cycle' };
+    circular['self'] = circular;
+    const { container } = renderInspector({ value: circular });
+    expect(container.querySelector('[role="radiogroup"]')).toBeNull();
+  });
+
+  test('summarises entries past the per-list cap and points at the JSON view', () => {
+    const wide = Object.fromEntries(
+      Array.from({ length: 130 }, (_, index) => [`key${index}`, index]),
+    );
+    const { container } = renderInspector({ value: wide });
+    expect(container.querySelectorAll('.cinder-payload-inspector__field')).toHaveLength(100);
+    expect(container.querySelector('.cinder-payload-inspector__more')?.textContent).toContain(
+      '30 more not shown',
+    );
+  });
+
+  test('replaces the fields with a notice past maxBytes instead of building them', () => {
+    const { container } = renderInspector({ value: { text: 'x'.repeat(2048) }, maxBytes: 1024 });
+    expect(container.querySelector('.cinder-payload-inspector__field')).toBeNull();
+    expect(container.querySelector('.cinder-payload-inspector__notice')?.textContent).toContain(
+      'too large to show as fields',
+    );
+  });
+
+  test('shows an empty object and an empty array as such', () => {
+    const { container } = renderInspector({ value: { none: {}, items: [] } });
+    const text = container.textContent ?? '';
+    expect(text).toContain('No fields');
+    expect(text).toContain('No items');
+  });
+
+  test('the heading row is flat: no frame or bar background', () => {
+    const css = readFileSync(new URL('./payload-inspector.css', import.meta.url), 'utf8');
+    const rule = (selector: string) =>
+      new RegExp(`\\n\\s*${selector.replace(/\./g, '\\.')}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? '';
+    for (const selector of ['.cinder-payload-inspector', '.cinder-payload-inspector__header']) {
+      expect(rule(selector)).not.toMatch(/(?<![\w-])border(?:-(?!radius)[a-z-]+)?\s*:/);
+      expect(rule(selector)).not.toMatch(/background\s*:/);
+    }
   });
 });

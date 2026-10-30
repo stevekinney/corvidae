@@ -1,4 +1,8 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@import '../button/button.css';
+@import '../chip/chip.css';
+@import '../copy-button/copy-button.css';
+
 @layer cinder.components {
   /* ========================================
  * DESCRIPTION LIST
@@ -78,6 +82,12 @@
     }
   }
 
+  /* The term is the quiet side of the pair: muted, so the value carries the row.
+   * There are no row dividers in this variant (only the default variant draws them). */
+  .cinder-description-list[data-cinder-variant='two-column'] dt {
+    color: var(--cinder-text-muted);
+  }
+
   /* Collapse two-column to stacked at narrow container widths. */
   @container (max-width: 28rem) {
     .cinder-description-list[data-cinder-variant='two-column'] .cinder-description-list__row {
@@ -93,5 +103,57 @@
     flex-direction: row;
     align-items: baseline;
     gap: var(--cinder-space-2);
+  }
+
+  /* ----------------------------------------
+   * Formatted values
+   * ---------------------------------------- */
+
+  .cinder-description-list__timestamp {
+    font-variant-numeric: tabular-nums;
+    /* A dotted underline marks text that carries a hover title. */
+    text-decoration: underline dotted var(--cinder-text-muted);
+    text-underline-offset: 0.25em;
+    cursor: help;
+  }
+
+  .cinder-description-list__identifier-group {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1);
+  }
+
+  .cinder-description-list__identifier {
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-default);
+  }
+
+  /* The copy action is a quiet glyph here, not a bordered button. */
+  .cinder-description-list__identifier-group .cinder-copy-button {
+    border-color: transparent;
+    padding: var(--cinder-space-1);
+  }
+
+  .cinder-description-list__tags {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-description-list__tag-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-1);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .cinder-description-list__system-tags,
+  .cinder-description-list__empty {
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-muted);
   }
 }

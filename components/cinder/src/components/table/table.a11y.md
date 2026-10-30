@@ -49,7 +49,7 @@ Cinder does **not** sort the rows — that's the consumer's responsibility. The 
 
 ## Caption
 
-Pass a `caption` prop to render a `<caption>` element above the table. This is the primary accessible name source. Consumers without a visible caption should provide an `aria-label` on the wrapping element.
+Pass a `caption` prop to render a `<caption>` element above the table. This is the primary accessible name source. The caption is visually hidden (clipped to a zero-height box, not removed), so it is announced but takes no room and never sits under a sticky header. Consumers without a visible caption should provide an `aria-label` on the wrapping element.
 
 ## Sticky header
 

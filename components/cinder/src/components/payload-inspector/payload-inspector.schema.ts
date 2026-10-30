@@ -28,6 +28,12 @@ const schema = {
       description:
         'Hard depth cap for the JSON tree. Nodes deeper than this never render\ntheir children. Defaults to 50.',
     },
+    view: {
+      enum: ['fields', 'json'],
+      description:
+        "Which view a structured payload (an object or array) shows. `'fields'`\nlists each property with a formatted label; `'json'` shows the collapsible\nJSON tree. Bindable, and switched by the Fields / JSON control in the\nheading row.",
+      default: 'fields',
+    },
     label: {
       type: 'string',
       description: 'Visible header label for the inspector. Defaults to "Payload inspector".',
@@ -40,6 +46,12 @@ const schema = {
   additionalProperties: false,
   metadata: {
     unsupportedProps: [
+      {
+        name: 'linkFor',
+        reason: 'function-or-snippet',
+        description:
+          'Returns the address a value in the Fields view leads to, so a value that\nnames something (a run, a workflow, a user) can link to it. Return\n`undefined` to leave the value as text. The JSON view is never linked.',
+      },
       {
         name: 'parse',
         reason: 'function-or-snippet',
