@@ -3270,6 +3270,10 @@ export class Engine<
         // before any awaited release.
         const { registry: workflowClaimRegistry } = this.#detachWorkflowClaimOwnership();
         disposeEngine(getInternals(this), (event) => this.dispatchEvent(event));
+        // A scheduler tick already scanning storage outlives the synchronous teardown above, so
+        // wait for it here: the caller closes its storage once this promise resolves, and a scan
+        // still reading then fails on a closed pool (COR-1908).
+        await getInternals(this).scheduler.stop();
         await getInternals(this).workflowRefreshCoordinator?.[Symbol.asyncDispose]();
         // A lease acquire may still be parked (waiting for handoff) when disposal
         // runs. disposeEngine() set `disposed` and stopped the manager, so the
@@ -3307,6 +3311,7 @@ export class Engine<
       return leaseReleased;
     }
     this[Symbol.dispose]();
+    await getInternals(this).scheduler.stop();
     await getInternals(this).inFlightLeaseAcquire?.catch(() => {});
     // An engine already disposed synchronously may still have purge writes in
     // flight; settle them here too (see the first-disposal branch above).

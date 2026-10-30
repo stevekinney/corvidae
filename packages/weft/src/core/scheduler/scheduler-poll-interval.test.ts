@@ -22,7 +22,7 @@ describe('Scheduler.setPollInterval', () => {
     const scheduler = createScheduler(1_000);
     const tick = spyOn(scheduler, 'tick').mockResolvedValue(undefined);
     scheduler.start();
-    scheduler.stop();
+    await scheduler.stop();
     const timersBefore = jest.getTimerCount();
 
     scheduler.setPollInterval(100);
@@ -31,7 +31,7 @@ describe('Scheduler.setPollInterval', () => {
     scheduler.start();
     await advanceTimersByTime(300);
     expect(tick).toHaveBeenCalledTimes(3);
-    scheduler.stop();
+    await scheduler.stop();
   });
 
   it('re-arms a running scheduler once, at the new interval', async () => {
@@ -45,6 +45,6 @@ describe('Scheduler.setPollInterval', () => {
     expect(jest.getTimerCount()).toBe(timersBefore);
     await advanceTimersByTime(1_000);
     expect(tick).toHaveBeenCalledTimes(4);
-    scheduler.stop();
+    await scheduler.stop();
   });
 });
