@@ -16813,6 +16813,8 @@ async function constructBureau<const D extends AgentDefinitions>(
       secretAnswers: secretAnswerAudit,
       answerDigest,
       owner: decisionOwner,
+      // COR-1828: a superseded call decided nothing, so it keeps no resolved-review record.
+      decisionIsFinal: !keepPending,
     });
 
     if (outcomeNotWritten !== undefined) throw outcomeNotWritten;
@@ -16905,7 +16907,19 @@ async function constructBureau<const D extends AgentDefinitions>(
     if (!payload.type.startsWith('review.')) return;
     const resolved = resolvedReviewOfAudit(payload, decidedAt);
     if (resolved === undefined) return;
-    await resolvedReviewStore.record(resolved);
+    if (await resolvedReviewStore.record(resolved)) return;
+    // A record already held is the same decision replayed, unless another decision won the review.
+    const held = await resolvedReviewStore.get(resolved.review.id);
+    if (
+      held !== undefined &&
+      (held.decision !== resolved.decision || held.decidedBy !== resolved.decidedBy)
+    ) {
+      diagnose({
+        level: 'error',
+        scope: 'audit-trail',
+        message: `[bureau] The resolved-review record of "${resolved.review.id}" already holds ${held.decision} by "${held.decidedBy}"; ${resolved.decision} by "${resolved.decidedBy}" was not kept.`,
+      });
+    }
   }
 
   /** The owner of record a decision's records name: the run's, or the local owner of a run no one holds. */
@@ -16951,6 +16965,12 @@ async function constructBureau<const D extends AgentDefinitions>(
       secretAnswers?: readonly SecretAnswerAuditEntry[] | undefined;
       answerDigest?: string | undefined;
       owner?: string | undefined;
+      /**
+       * COR-1828: `false` for a decision that left the review pending (a re-gated approval), whose
+       * resolved-review record would name a decision nothing acted on and, being written once,
+       * would hide the real one.
+       */
+      decisionIsFinal?: boolean;
     },
   ): Promise<void> {
     // COR-1622: a close follows the request it closes in the history, and the request of a fire's
@@ -16968,7 +16988,9 @@ async function constructBureau<const D extends AgentDefinitions>(
       );
       await auditTrailInstance?.record(directAudit);
       // COR-1828: this entry rode no session commit, so no replay will keep the record.
-      await recordResolvedReviewBestEffort(directAudit);
+      if (requestOptions?.decisionIsFinal !== false) {
+        await recordResolvedReviewBestEffort(directAudit);
+      }
     }
 
     // AB-224: the live counterpart of the durable write above — dispatched
@@ -17313,6 +17335,8 @@ async function constructBureau<const D extends AgentDefinitions>(
    * review resolves through the session path.
    */
   async function resolveAnyReview(requested: ResolveReviewInput): Promise<ResolveReviewResult> {
+    // COR-1828: the engine's human waits skip `resolveReview`, so the shape of the decision is refused here.
+    assertDecisionFitsInput(requested);
     const input = await humanWaitAnswerFittingItsSchema(requested);
     if (runHumanWaits.has(input.id)) {
       assertExpectedReviewRound(input, { id: input.id, kind: 'human-wait' });

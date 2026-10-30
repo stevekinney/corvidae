@@ -13,14 +13,17 @@
 import { App } from '@modelcontextprotocol/ext-apps';
 
 import {
+  bureauReviewsOf,
   describeResolution,
   describeStatus,
   isOutcomeNotWritten,
   isReview,
   isReviewList,
   isRoundChanged,
-  type Review,
+  PAGE_LIMIT,
+  readPendingQueue,
   viewReview,
+  type Review,
 } from './model.ts';
 import { renderReviews, type ReviewHandlers, type RowState } from './render.ts';
 
@@ -69,7 +72,7 @@ async function start(): Promise<void> {
     );
   };
 
-  const adopt = (next: Review[], announceReconnect: boolean): void => {
+  const adopt = (next: Review[], announceReconnect: boolean, truncated = false): void => {
     const known = new Set(reviews.map((review) => review.id));
     const arrived = next.filter((review) => !known.has(review.id)).length;
     // A review this page just decided has said so already; only the others left without a word.
@@ -82,6 +85,9 @@ async function start(): Promise<void> {
       if (!next.some((review) => review.id === id) && rowOf(id).outcome === null) states.delete(id);
     }
     notice = canCallServer() ? null : 'This host does not let the page decide; it only lists.';
+    if (truncated) {
+      notice = `${notice === null ? '' : `${notice} `}Showing the ${next.length} oldest pending reviews; decide some to see the rest.`;
+    }
     const parts = [
       announceReconnect ? 'Reconnected.' : '',
       arrived > 0 ? `${arrived} new review${arrived === 1 ? '' : 's'}.` : '',
@@ -100,14 +106,23 @@ async function start(): Promise<void> {
   const refresh = async (): Promise<void> => {
     if (!canCallServer()) return;
     try {
-      const listed = structured(
-        await app.callServerTool({ name: 'bureau.reviews.list', arguments: {} }),
-        isReviewList,
+      const queue = await readPendingQueue(async (pageToken) =>
+        structured(
+          await app.callServerTool({
+            name: 'bureau.reviews.list',
+            arguments: {
+              status: 'pending',
+              limit: PAGE_LIMIT,
+              ...(pageToken === undefined ? {} : { pageToken }),
+            },
+          }),
+          isReviewList,
+        ),
       );
-      if (listed === undefined) return lost();
+      if (queue === undefined) return lost();
       const wasConnected = connected;
       connected = true;
-      adopt(listed.reviews, !wasConnected);
+      adopt(queue.reviews, !wasConnected, queue.truncated);
     } catch {
       lost();
     }
@@ -202,7 +217,10 @@ async function start(): Promise<void> {
   // The result that opened the page is its first render, whether or not the host lets it call back.
   app.ontoolresult = (result) => {
     const listed = structured(result, isReviewList);
-    if (listed !== undefined) adopt(listed.reviews, false);
+    if (listed === undefined) return;
+    // The opening result is one page; a longer queue is read in full rather than shown cut short.
+    if (typeof listed.nextPageToken === 'string' && canCallServer()) void refresh();
+    else adopt(bureauReviewsOf(listed), false);
   };
   // Closing the page releases only this page's observation: nothing is decided.
   app.onteardown = async () => {

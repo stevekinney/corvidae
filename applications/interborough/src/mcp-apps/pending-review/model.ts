@@ -48,28 +48,84 @@ export type ReviewView = {
 
 const MAX_ARGUMENT_CHARACTERS = 400;
 
-/** Whether `value` is the shape of a review list. */
-export function isReviewList(value: unknown): value is { reviews: Review[] } {
+/**
+ * A workflow review of the durable engine, which `bureau.reviews.list` lists beside the Bureau's own
+ * for a caller who may read them (COR-1828). It is answered through the engine, never decided here,
+ * so the page keeps only its identity.
+ */
+export type EngineReview = { readonly id: string; readonly kind: 'engine-review' };
+
+/** One page of `bureau.reviews.list`: its items of either source, and where the next page starts. */
+export type ReviewPage = {
+  readonly reviews: ReadonlyArray<Review | EngineReview>;
+  readonly nextPageToken?: string | null;
+};
+
+/** How many reviews one page asks for, the most `bureau.reviews.list` allows. */
+export const PAGE_LIMIT = 100;
+
+/**
+ * How many pages one refresh follows: with {@link PAGE_LIMIT}, the 1,000 oldest pending reviews. A
+ * queue longer than that is shown cut off and says so, rather than reading without end.
+ */
+export const MAXIMUM_PAGES = 10;
+
+function hasKind(value: unknown, kinds: readonly string[]): value is { id: string } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'id' in value &&
+    typeof value.id === 'string' &&
+    'kind' in value &&
+    typeof value.kind === 'string' &&
+    kinds.includes(value.kind)
+  );
+}
+
+/** Whether `value` is the shape of a review list page, engine reviews included. */
+export function isReviewList(value: unknown): value is ReviewPage {
   return (
     typeof value === 'object' &&
     value !== null &&
     'reviews' in value &&
     Array.isArray(value.reviews) &&
-    value.reviews.every(
-      (review: unknown) =>
-        typeof review === 'object' &&
-        review !== null &&
-        'id' in review &&
-        typeof review.id === 'string' &&
-        'kind' in review &&
-        (review.kind === 'tool-approval' || review.kind === 'human-wait'),
-    )
+    value.reviews.every((review: unknown) =>
+      hasKind(review, ['tool-approval', 'human-wait', 'engine-review']),
+    ) &&
+    (!('nextPageToken' in value) ||
+      value.nextPageToken === null ||
+      typeof value.nextPageToken === 'string')
   );
 }
 
-/** Whether `value` is one review, as `bureau.reviews.get` answers. */
+/** Whether `value` is one review of the Bureau's own, as `bureau.reviews.get` answers. */
 export function isReview(value: unknown): value is Review {
-  return isReviewList({ reviews: [value] });
+  return hasKind(value, ['tool-approval', 'human-wait']);
+}
+
+/** The reviews of `page` this page can show and decide: the Bureau's own, never an engine review. */
+export function bureauReviewsOf(page: ReviewPage): Review[] {
+  return page.reviews.filter((review): review is Review => review.kind !== 'engine-review');
+}
+
+/**
+ * Reads the pending queue page by page, oldest first, until no page remains or
+ * {@link MAXIMUM_PAGES} have been read. `undefined` is a page that could not be read, so the
+ * whole read failed rather than showing a queue with a hole in it.
+ */
+export async function readPendingQueue(
+  readPage: (pageToken: string | undefined) => Promise<ReviewPage | undefined>,
+): Promise<{ reviews: Review[]; truncated: boolean } | undefined> {
+  const reviews: Review[] = [];
+  let pageToken: string | undefined;
+  for (let read = 0; read < MAXIMUM_PAGES; read += 1) {
+    const page = await readPage(pageToken);
+    if (page === undefined) return undefined;
+    reviews.push(...bureauReviewsOf(page));
+    if (typeof page.nextPageToken !== 'string') return { reviews, truncated: false };
+    pageToken = page.nextPageToken;
+  }
+  return { reviews, truncated: true };
 }
 
 function preview(value: unknown): string {

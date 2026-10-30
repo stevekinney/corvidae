@@ -13,7 +13,9 @@ import { type PendingToolApproval, type ToolExecutionResult } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 
-import { createScheduledFireApprovalHook } from './create-bureau';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
+
+import { BureauError, createScheduledFireApprovalHook } from './create-bureau';
 import { OWNER, rpc } from './http/management/management-fixtures.test-support.ts';
 import { isScheduledFireAuthority, scheduledFireApprovalMetadata } from './runtime-composition';
 import {
@@ -97,6 +99,37 @@ describe('a schedule fire’s human wait', () => {
     );
     expect(seen.join('')).toContain('staging');
     expect(bureau.reviews.list()).toEqual([]);
+  });
+});
+
+describe('a schedule fire’s human wait refuses what no human wait can take (COR-1828)', () => {
+  it('refuses remember on the fire’s wait, which resolves through the engine, and decides nothing', async () => {
+    const seen: string[] = [];
+    const bureau = await open({
+      agents: {
+        default: createAgent({
+          generate: askingGenerate('answer', seen),
+          stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+        }),
+      },
+    });
+    const { fireId } = await fireOnce(bureau);
+    const review = await reviewOf(bureau, fireId);
+
+    const refused = await rejectionOf(
+      bureau.reviews.resolve({
+        id: review.id,
+        decision: 'approve',
+        principal: 'alice',
+        payload: 'staging',
+        remember: true,
+      }),
+    );
+
+    expect(refused).toBeInstanceOf(BureauError);
+    expect((refused as BureauError).code).toBe('BAD_REQUEST');
+    expect(bureau.reviews.list().map((pending) => pending.id)).toEqual([review.id]);
+    expect(seen.join('')).not.toContain('staging');
   });
 });
 

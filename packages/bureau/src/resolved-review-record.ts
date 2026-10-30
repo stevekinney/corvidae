@@ -210,8 +210,11 @@ function parse(raw: string): ResolvedReview | undefined {
 
 /** The resolved-review records of a Bureau. */
 export type ResolvedReviewStore = {
-  /** Writes the record of a decided review, once; a record already held is left as it is. */
-  record(resolved: ResolvedReview): Promise<void>;
+  /**
+   * Writes the record of a decided review, once, and answers whether it did: a record already held
+   * is left as it is and answers `false`, so a caller can tell a replay from a different decision.
+   */
+  record(resolved: ResolvedReview): Promise<boolean>;
   /** The record of one review, or `undefined` when none is held. */
   get(reviewId: string): Promise<ResolvedReview | undefined>;
   /** Every record held, in no order. A record that cannot be read is left out. */
@@ -229,7 +232,7 @@ export function createResolvedReviewStore(
 ): ResolvedReviewStore {
   if (kv === undefined) {
     return {
-      record: () => Promise.resolve(),
+      record: () => Promise.resolve(true),
       get: () => Promise.resolve(undefined),
       list: () => Promise.resolve([]),
       pruneBefore: () => Promise.resolve(0),
@@ -238,7 +241,7 @@ export function createResolvedReviewStore(
   return {
     async record(resolved) {
       const key = keyOf(resolved.review.id);
-      await kv.conditionalBatch(
+      return kv.conditionalBatch(
         [{ key, expectedValue: null }],
         [{ type: 'set', key, value: serialize(resolved) }],
       );
