@@ -617,3 +617,47 @@ describe('bureau.tasks.respond writes no digest of an answer it cannot place (CO
     expect(await ledger.read(secretIdentity)).toBeUndefined();
   });
 });
+
+describe('a retry of a command to a secret question after the task is gone (COR-1920)', () => {
+  const secretSchema = {
+    type: 'object',
+    properties: { password: { type: 'string', writeOnly: true, 'x-secret': true } },
+  } as const;
+  const secretReview = {
+    ...resolved('pending', undefined),
+    inputSchema: secretSchema,
+  } as PendingReview & { status: ReviewStatus };
+
+  for (const [name, command] of [
+    ['a denial, which carries no answer', { decision: 'deny' as const }],
+    ['an answer that leaves the optional secret out', { data: { note: 'none' } }],
+  ] as const) {
+    it(`replays the receipt of ${name}, digested with the secret fields its claim kept`, async () => {
+      const ledger = newLedger();
+      const request = {
+        principal: owner,
+        taskId: 'run-1',
+        messageId: 'm-secret-retry',
+        ...command,
+      };
+      const first = await hostOver(ledger, {
+        openWaits: [openWait],
+        getReview: async () => secretReview,
+        resolveReview: async (input) => ({
+          id: input.id,
+          kind: 'human-wait',
+          decision: input.decision,
+          result: undefined,
+        }),
+      }).respond(request);
+
+      const retried = await hostOver(ledger, {
+        openWaits: [],
+        getReview: async () => undefined,
+        taskGone: true,
+      }).respond(request);
+
+      expect(retried).toEqual(first);
+    });
+  }
+});

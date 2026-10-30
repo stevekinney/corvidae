@@ -51,7 +51,6 @@ import {
 import {
   gateSecretAnswer,
   SecretAnswerRefusedError,
-  sealedSecretFields,
   secretFieldsOfReview,
   secretReferenceFormOfInput,
 } from '../secret-answers.ts';
@@ -140,6 +139,12 @@ export type TasksRespondClaim = {
    * resolved by this command, without validating again.
    */
   readonly submission?: { readonly value: unknown };
+  /**
+   * COR-1920: the fields the addressed review marks secret, as JSON Pointers, when it marks any.
+   * The command was digested with them in reference form, so a retry digests it the same way
+   * without reading the review, which task retention may since have removed.
+   */
+  readonly secretFields?: readonly string[];
 };
 
 /** The ledger this command records its receipts in. */
@@ -422,18 +427,13 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
         ? located.entry.claim.reviewId
         : undefined;
     // A completed command is compared with what its own claim kept, so its receipt does not depend
-    // on reading the review again: a sealed answer in the claim names the secret fields.
+    // on reading the review again: the claim names the secret fields it was digested with.
     if (
       located.state === 'retained' &&
       located.entry.state === 'completed' &&
       recordedReviewId !== undefined &&
       located.entry.payloadDigest ===
-        digestOf(
-          input,
-          answerText,
-          recordedReviewId,
-          sealedSecretFields(located.entry.claim.submission?.value, recordedReviewId),
-        )
+        digestOf(input, answerText, recordedReviewId, located.entry.claim.secretFields ?? [])
     ) {
       return located.entry.result;
     }
@@ -486,12 +486,8 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
     // is not found is refused before anything is claimed.
     const addressed = await reviews.get(addressedReviewId);
     if (addressed === undefined) throw notFound(input.taskId);
-    const digest = digestOf(
-      input,
-      answerText,
-      addressedReviewId,
-      addressed.kind === 'human-wait' ? secretFieldsOfReview(addressed) : [],
-    );
+    const secretFields = addressed.kind === 'human-wait' ? secretFieldsOfReview(addressed) : [];
+    const digest = digestOf(input, answerText, addressedReviewId, secretFields);
 
     const flightKey = `${actor}\u0000${input.taskId}\u0000${input.messageId}\u0000${digest}`;
     const running = inFlight.get(flightKey);
@@ -521,6 +517,7 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
           reviewId: wait?.reviewId ?? '',
           ...(readRound === undefined ? {} : { round: readRound }),
           ...(submission === undefined || submissionRefusal !== undefined ? {} : { submission }),
+          ...(secretFields.length === 0 ? {} : { secretFields }),
         });
       } catch (error) {
         if (error instanceof BureauLedgerConflictError) {

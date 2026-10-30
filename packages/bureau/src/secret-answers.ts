@@ -267,17 +267,6 @@ export function unsealedSecretFields(answer: unknown, fields: readonly string[])
   });
 }
 
-/**
- * The fields of an answer to `reviewId` that a sealed answer stands in, read from the references
- * the sealed answers carry: what a kept, sealed answer says about which of its fields are secret.
- */
-export function sealedSecretFields(value: unknown, reviewId: string): string[] {
-  return sealedAnswersIn(value).flatMap((answer) => {
-    const field = fieldOfReference(answer.secretRef, reviewId);
-    return field === undefined ? [] : [field];
-  });
-}
-
 /** Whether `value` holds a {@link SealedSecretAnswer} anywhere. */
 export function holdsSealedAnswer(value: unknown): boolean {
   return sealedAnswersIn(value).length > 0;
