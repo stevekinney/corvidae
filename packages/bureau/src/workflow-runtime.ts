@@ -52,6 +52,7 @@ import {
   type WorkflowFileWriteResult,
   type WorkflowListing,
 } from './workflow-file-catalog';
+import type { ScheduleHookOrigins } from './hooks/schedule-hook-origins';
 import { toWeftDocument, validateBureauWorkflowDocument } from './workflow-document-handlers';
 import {
   bridgeEngineActivities,
@@ -239,6 +240,14 @@ export interface WorkflowWriteContext {
    * principal's owner string for one made over HTTP. Absent for a caller that cannot be attributed.
    */
   readonly actor?: string | undefined;
+  /**
+   * The hook that started the run that made the write (COR-1952), set by the workflow tools from
+   * the calling run and by nothing else. A `create` or `update` that carries it records the hook as
+   * the origin of the file's schedule, so the schedule's fires are read as that hook's runs and
+   * start no `start-workflow` hook. A `create` without it clears any origin left under the
+   * identifier; an `update` without it leaves the origin as it is.
+   */
+  readonly hookOrigin?: string | undefined;
 }
 
 /** What `workflows.signal` did: the instances it started and the ones it delivered to. */
@@ -456,6 +465,11 @@ export interface WorkflowRuntimeOptions {
    * trigger it starts an instance with are checked against it before anything is delivered.
    */
   readonly payloadMaximumBytes?: number | null | undefined;
+  /**
+   * Where the hook that started the run that wrote a workflow's file is recorded (COR-1952), so the
+   * file's schedule carries it. Absent for a Bureau with no key-value store.
+   */
+  readonly hookOrigins?: Pick<ScheduleHookOrigins, 'recordWorkflow' | 'clearWorkflow'> | undefined;
   /** Registers background work with the Bureau, so a test can wait for it to settle. */
   readonly track?: ((promise: Promise<unknown>, label: string) => void) | undefined;
   /**
@@ -925,6 +939,26 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
   }
 
   /**
+   * Record, right after a file is written and before its schedule is put in line (COR-1952), that a
+   * hook started the run that wrote it, so no fire of the schedule is read as a run no hook started.
+   * A file created without a hook's origin clears any a previous file under the identifier left. A
+   * failure here fails the write, because the file is already there and its schedule would
+   * otherwise start untagged.
+   */
+  async function recordHookOrigin(
+    type: WorkflowAuditType,
+    id: string,
+    hookOrigin: string | undefined,
+  ): Promise<void> {
+    const origins = options.hookOrigins;
+    if (origins === undefined || (type !== 'workflow.created' && type !== 'workflow.updated')) {
+      return;
+    }
+    if (hookOrigin !== undefined) await origins.recordWorkflow(id, hookOrigin);
+    else if (type === 'workflow.created') await origins.clearWorkflow(id);
+  }
+
+  /**
    * Run a write to a workflow file, record it, and wait until the engine and the schedules have
    * followed it. A write whose apply failed is reported as a failure, because the file now says
    * one thing and the engine another; the next rescan applies it again. The audit entry is written
@@ -940,6 +974,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     work: () => Promise<WorkflowFileWriteResult>,
   ): Promise<WorkflowFileWriteResult> {
     const result = await work();
+    await recordHookOrigin(type, result.id, context?.hookOrigin);
     await audit(type, result, context?.actor, previousHash);
     if (applyPending) queueApply();
     await settled();

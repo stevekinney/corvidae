@@ -373,7 +373,6 @@ import {
   type StartTaskOrigin,
   type TaskOrigin,
   taskOriginOfStart,
-  taskOriginParentOf,
   taskOriginTag,
 } from './task-origin';
 import { createTaskResync, type TaskResync } from './task-resync';
@@ -586,6 +585,7 @@ import type {
   TryAgentResult,
   OwnedResource,
   DiagnosticSink,
+  CreateScheduleOptions,
   DurableScheduleDefinition,
   DurableScheduleUpdate,
   ScheduleRevisionGuard,
@@ -633,7 +633,7 @@ import {
   type WebhookNotifierOptions,
 } from './webhook-notifier';
 import { createHooks, type CreatedHooks } from './hooks/create-hooks';
-import { createHookOriginLookup } from './hooks/hook-origin';
+import { createRunHookOrigins } from './hooks/run-hook-origins';
 import { scheduleInputPreview } from './schedule-input-preview';
 import { ownEntry } from './own-entry';
 
@@ -2782,6 +2782,18 @@ async function constructBureau<const D extends AgentDefinitions>(
   const tryAgents = createTryAgents();
   let agentCatalog: ReturnType<typeof createAgentCatalog<D>>;
   let workflowRuntime: WorkflowRuntime | undefined;
+  // COR-1952: a schedule a hook-started run creates records the hook, and the chain guard reads the
+  // record for each run the schedule fires. These closures read `tasks`, declared far below, only
+  // when a run is looked up, which is after construction.
+  const { scheduleHookOrigins, startedByHook, hookOriginOfRun } = createRunHookOrigins({
+    kv: runtime.kv,
+    workflowOf: async (runId) => runtime.durable?.engine.get(runId),
+    taskOriginOf: async (runId) => {
+      const record = await tasks.record(runId);
+      return record?.origin;
+    },
+    diagnose,
+  });
   const abandonConstruction = async (error: unknown): Promise<never> => {
     const failures: unknown[] = [];
     const attempt = async (stop: () => unknown): Promise<void> => {
@@ -2982,6 +2994,7 @@ async function constructBureau<const D extends AgentDefinitions>(
             runIdentity: async (runId) => ({
               agent: runAttribution.get(runId)?.agentName,
               owner: await ownerOf({ kind: 'run', id: runId }),
+              hookOrigin: await hookOriginOfRun(runId),
             }),
           });
     agentToolCatalog = { ...options.agentSource?.tools, ...settingsTools, ...workflowTools };
@@ -3082,6 +3095,7 @@ async function constructBureau<const D extends AgentDefinitions>(
             track: (promise, label) => runtimeServices.deferred.track(promise, label),
             // The trail is built later in construction; a write only happens after it exists.
             audit: async (entry) => auditTrailInstance?.record(entry),
+            hookOrigins: scheduleHookOrigins,
           });
     workflowFileTypes.current = workflowRuntime?.isRegisteredType;
   } catch (error) {
@@ -18495,6 +18509,7 @@ async function constructBureau<const D extends AgentDefinitions>(
 
   async function createSchedule(
     definition: DurableScheduleDefinition,
+    scheduleOptions?: CreateScheduleOptions,
   ): Promise<import('@lostgradient/weft').ScheduleSummary | undefined> {
     if (definition.sessionId !== undefined) {
       rejectReservedIdentifier('"sessionId"', definition.sessionId.trim());
@@ -18533,9 +18548,21 @@ async function constructBureau<const D extends AgentDefinitions>(
     // straight onto it, exactly once for the fresh registration this call makes —
     // no separate dispatch needed here.
     const scheduler = createAgentScheduler({ engine: runtime.durable.engine, emitter });
+    // COR-1952: a schedule a hook-started run creates records the hook before it exists, under an
+    // id minted here, so no fire can run before its origin is readable.
+    const hookOrigin =
+      scheduleOptions?.createdByRun === undefined || scheduleHookOrigins === undefined
+        ? undefined
+        : await hookOriginOfRun(scheduleOptions.createdByRun);
+    const originId =
+      hookOrigin === undefined ? undefined : runtimeServices.identifiers.next('schedule');
+    if (originId !== undefined && hookOrigin !== undefined) {
+      await scheduleHookOrigins!.recordSchedule(originId, hookOrigin);
+    }
     let handle;
     try {
       handle = await scheduler.schedule(definition.agentName, {
+        ...(originId === undefined ? {} : { id: originId }),
         spec: toScheduleSpec(definition.spec),
         input: definition.input,
         ...(definition.description !== undefined ? { description: definition.description } : {}),
@@ -18545,6 +18572,8 @@ async function constructBureau<const D extends AgentDefinitions>(
         principal: owner,
       });
     } catch (error) {
+      // Nothing was registered under the id, so its origin names no schedule.
+      if (originId !== undefined) await scheduleHookOrigins?.clearSchedule(originId);
       if (error instanceof InvalidScheduleError) {
         toBadRequest(error.message);
       }
@@ -21099,16 +21128,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     // COR-1940: a run a hook started, or any run beneath it, raises events no `start-workflow`
     // hook acts on. The instance carries the hook's tag; a step, child or attempt reaches it
     // through the parent its task records.
-    startedByHook: createHookOriginLookup({
-      workflowTags: async (runId) => {
-        const workflow = await runtime.durable?.engine.get(runId);
-        return workflow?.tags;
-      },
-      parentOf: async (runId) => {
-        const record = await tasks.record(runId);
-        return taskOriginParentOf(record?.origin);
-      },
-    }),
+    startedByHook,
   });
 
   // COR-718: an expiry is a deletion, so each expiring session's owner is recorded for

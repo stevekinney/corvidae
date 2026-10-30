@@ -616,6 +616,7 @@ export type {
   CacheConfiguration,
   CleanupAcknowledgement,
   CreateRunRequest,
+  CreateScheduleOptions,
   DurableGuardrailsConfiguration,
   DurableScheduleDefinition,
   EventHistoryDeletedAggregateOutcome,
