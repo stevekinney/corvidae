@@ -163,7 +163,7 @@ function requireAuditRetention(value: number, label: string): void {
   }
 }
 
-function validateRetentionRules(
+export function validateRetentionRules(
   rules: Partial<Record<MemoryClass, MemoryRetentionRule>>,
   label: string,
 ): void {

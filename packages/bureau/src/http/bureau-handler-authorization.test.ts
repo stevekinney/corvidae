@@ -162,6 +162,8 @@ const MEMORY_PARAMETERS = {
   id: 'memory-1',
   query: 'x',
   content: 'x',
+  granteeOwnerId: 'x',
+  reason: 'x',
 } as const;
 
 /**
@@ -704,6 +706,8 @@ describe('credentials', () => {
           agentId: 'x',
           query: 'x',
           content: 'x',
+          granteeOwnerId: 'x',
+          reason: 'x',
           ...definitionParameters(operation),
         });
         const response = operation.transports.jsonRpcHttp
@@ -998,6 +1002,8 @@ describe('transcripts stay inside the Bureau', () => {
           agentId: 'x',
           query: 'x',
           content: 'x',
+          granteeOwnerId: 'x',
+          reason: 'x',
           ...definitionParameters(operation),
         });
         const response = operation.transports.jsonRpcHttp

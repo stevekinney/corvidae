@@ -47,6 +47,7 @@ describe('the controls', () => {
       'retention.events': 'literal-or-fields',
       'retention.tasks': 'literal-or-fields',
       'retention.receipts': 'fields',
+      'retention.memory': 'fields',
       'retention.checkpoints': 'literal-or-fields',
       'sessionInput.sessionBacklogLimit': 'number',
       'sessionInput.principalBacklogLimit': 'number',

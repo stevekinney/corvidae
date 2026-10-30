@@ -12523,7 +12523,14 @@ async function constructBureau<const D extends AgentDefinitions>(
     const authority = maintenanceMemoryAuthority;
     const sweep = (async () => {
       try {
-        const result = await memory.sweepRetention(authority);
+        // COR-1809: `retention.memory` is read per pass, so a change applies to the next sweep.
+        const window = currentSettings()['retention.memory'];
+        const result = await memory.sweepRetention(
+          authority,
+          window === undefined
+            ? undefined
+            : { retention: { episodic: { kind: 'duration', milliseconds: window.olderThan } } },
+        );
         if (result.status !== 'applied') {
           diagnose({
             level: 'error',

@@ -508,6 +508,7 @@ export type {
   BureauInternals,
   BureauMemoryAuthorityOptions,
   BureauOptions,
+  BureauMemoryRetentionOption,
   BureauReceiptRetentionOption,
   BureauRetentionOptions,
   BureauRecoveryReport,

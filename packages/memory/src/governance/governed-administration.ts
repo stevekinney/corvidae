@@ -13,7 +13,13 @@ import type {
   MemoryRetentionSweep,
 } from './governed-memory-types';
 import type { MemoryDeletionReceipt, MemoryGovernanceEvent } from './ledger-types';
-import { type MemoryGovernancePolicy, resolveTenantPolicy } from './policy';
+import {
+  type MemoryClass,
+  type MemoryGovernancePolicy,
+  type MemoryRetentionRule,
+  resolveTenantPolicy,
+  validateRetentionRules,
+} from './policy';
 import { readRecordGovernance } from './record-governance';
 import { retentionExpiry } from './retention';
 
@@ -135,15 +141,24 @@ async function pruneAudit(
  * plan and receipt as a requested deletion, and a held record reports every
  * target exempt. A dry run reports what would expire without deleting, which is
  * how a candidate policy revision is inspected before it is activated; a
- * candidate is never applied outside a dry run, so only an activated revision
- * ever deletes. The sweep also prunes audit history older than the tenant's
- * (one-year minimum) audit retention.
+ * candidate is never applied outside a dry run, so deletion follows the activated
+ * retention policy or a per-sweep `retention` override the caller supplies (Bureau
+ * uses one for the episodic class through its `retention.memory` setting). A
+ * record under legal hold still waits for its release. The sweep also prunes audit history older than the tenant's
+ * (one-year minimum) audit retention. `options.retention` overrides the policy's
+ * per-class rules for this sweep alone (a host's operating setting, such as
+ * Bureau's `retention.memory`); a rule that fails the policy's own validation
+ * rejects the sweep as `invalid-retention`.
  */
 export async function sweepRetention(
   context: GovernanceContext,
   deletion: DeletionEngine,
   authority: MemoryAuthority,
-  options: { readonly dryRun?: boolean; readonly policy?: MemoryGovernancePolicy } = {},
+  options: {
+    readonly dryRun?: boolean;
+    readonly policy?: MemoryGovernancePolicy;
+    readonly retention?: Partial<Record<MemoryClass, MemoryRetentionRule>>;
+  } = {},
 ): Promise<MemoryRetentionSweep> {
   const operationId = context.operationId();
   const active = context.policy();
@@ -158,8 +173,23 @@ export async function sweepRetention(
       reason: 'candidate-policy-requires-dry-run',
     });
   }
+  if (options.retention !== undefined) {
+    try {
+      validateRetentionRules(options.retention, 'retention');
+    } catch {
+      return sweepResult(operationId, active.revision, {
+        status: 'rejected',
+        reason: 'invalid-retention',
+      });
+    }
+  }
   const policy = options.policy ?? active;
-  const tenantPolicy = resolveTenantPolicy(policy, authority.tenantId);
+  const resolvedPolicy = resolveTenantPolicy(policy, authority.tenantId);
+  // The caller's per-class rules replace the policy's for this sweep only: nothing is activated.
+  const tenantPolicy =
+    options.retention === undefined
+      ? resolvedPolicy
+      : { ...resolvedPolicy, retention: { ...resolvedPolicy.retention, ...options.retention } };
   const now = context.now();
   const expired: ResolvedRecord[] = [];
   const candidates: MemoryRetentionCandidate[] = [];
@@ -192,7 +222,18 @@ export async function sweepRetention(
       outcome: dryRun ? 'dry-run' : 'applied',
       attribution: context.attribution(authority, operationId),
       recordIds: candidates.map((candidate) => candidate.id),
-      details: { policyRevision: policy.revision, ...pruned },
+      details: {
+        policyRevision: policy.revision,
+        // A ledger detail is a flat record, so each overridden class is one `retention.<class>` entry
+        // holding its rule as JSON: the audit names the rule that decided the sweep.
+        ...Object.fromEntries(
+          Object.entries(options.retention ?? {}).map(([memoryClass, rule]) => [
+            `retention.${memoryClass}`,
+            JSON.stringify(rule),
+          ]),
+        ),
+        ...pruned,
+      },
     });
   }
   return sweepResult(operationId, policy.revision, {
