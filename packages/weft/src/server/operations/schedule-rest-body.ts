@@ -9,6 +9,7 @@ export type SharedScheduleRestFields = {
   readonly overlap: unknown;
   readonly backfill: unknown;
   readonly jitter: unknown;
+  readonly timeZone: unknown;
   readonly revisionPolicy: unknown;
 };
 
@@ -45,6 +46,7 @@ export function extractSharedScheduleRestFields(
     overlap: record['overlap'],
     backfill: record['backfill'],
     jitter: record['jitter'],
+    timeZone: record['timeZone'],
     revisionPolicy: record['revisionPolicy'],
   };
 }

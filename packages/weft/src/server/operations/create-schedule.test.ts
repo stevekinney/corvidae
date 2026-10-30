@@ -25,6 +25,12 @@ function createEngine(): Engine {
   return engine;
 }
 
+/** The time zone a stored schedule is read in. */
+async function zoneOf(engine: Engine, scheduleId: string): Promise<string | undefined> {
+  const summary = await engine.getSchedule(scheduleId);
+  return summary?.timeZone;
+}
+
 const registry = createOperationRegistry([createScheduleOperation]);
 const bindings = [createScheduleRestBinding];
 
@@ -67,6 +73,76 @@ describe('weft.schedules.create', () => {
         jitterMs: 30_000,
       }),
     );
+  });
+
+  it('creates a schedule in the time zone it names, and in UTC when it names none', async () => {
+    engine = createEngine();
+
+    const zoned = await handleRequest(
+      jsonRequest('POST', '/v1/schedules', {
+        type: 'echo',
+        cronExpression: '0 9 * * 1-5',
+        id: 'weekday-mornings',
+        timeZone: 'America/Los_Angeles',
+      }),
+      engine,
+      { operationRegistry: registry, restBindings: bindings },
+    );
+    const plain = await handleRequest(
+      jsonRequest('POST', '/v1/schedules', {
+        type: 'echo',
+        cronExpression: '0 9 * * 1-5',
+        id: 'weekday-mornings-utc',
+      }),
+      engine,
+      { operationRegistry: registry, restBindings: bindings },
+    );
+
+    expect([zoned.status, plain.status]).toEqual([201, 201]);
+    expect(await zoneOf(engine, 'weekday-mornings')).toBe('America/Los_Angeles');
+    expect(await zoneOf(engine, 'weekday-mornings-utc')).toBe('UTC');
+  });
+
+  it('returns 400 for a time zone the runtime does not know, over REST and JSON-RPC', async () => {
+    engine = createEngine();
+
+    for (const timeZone of ['Mars/Olympus', '', 7]) {
+      const response = await handleRequest(
+        jsonRequest('POST', '/v1/schedules', {
+          type: 'echo',
+          cronExpression: '0 * * * *',
+          id: 'bad-zone',
+          timeZone,
+        }),
+        engine,
+        { operationRegistry: registry, restBindings: bindings },
+      );
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        error:
+          'Field "timeZone" must be an IANA time zone name such as "America/Los_Angeles", or "UTC"',
+      });
+    }
+    expect(await engine.getSchedule('bad-zone')).toBeNull();
+  });
+
+  it('returns 400 for a time zone on an interval schedule', async () => {
+    engine = createEngine();
+
+    const response = await handleRequest(
+      jsonRequest('POST', '/v1/schedules', {
+        type: 'echo',
+        every: '5m',
+        id: 'interval-zone',
+        timeZone: 'America/Los_Angeles',
+      }),
+      engine,
+      { operationRegistry: registry, restBindings: bindings },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await engine.getSchedule('interval-zone')).toBeNull();
   });
 
   it('keeps create-only fields beside shared schedule fields', async () => {

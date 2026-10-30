@@ -17075,6 +17075,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         ...(definition.description !== undefined ? { description: definition.description } : {}),
         ...(definition.sessionId !== undefined ? { session: definition.sessionId } : {}),
         ...(definition.overlap !== undefined ? { overlap: definition.overlap } : {}),
+        ...(definition.timeZone !== undefined ? { timeZone: definition.timeZone } : {}),
         principal: owner,
       });
     } catch (error) {
@@ -17350,6 +17351,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     await runtime.durable.engine.updateSchedule(scheduleId, toScheduleSpec(update.spec), {
       ...(update.description === undefined ? {} : { description: update.description }),
       ...(update.overlap === undefined ? {} : { overlap: update.overlap }),
+      ...(update.timeZone === undefined ? {} : { timeZone: update.timeZone }),
       ...(guard?.expectedRevision === undefined
         ? {}
         : { expectedRevision: guard.expectedRevision }),

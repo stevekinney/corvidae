@@ -66,6 +66,7 @@ function createScheduleState(overrides: Partial<ScheduleState> = {}): ScheduleSt
     status: 'paused',
     overlap: 'skip',
     backfill: false,
+    timeZone: 'UTC',
     revisionPolicy: 'active-at-fire',
     createdAt: FIXED_NOW,
     updatedAt: FIXED_NOW,
@@ -216,7 +217,9 @@ const MAIN_VALUE_DIGESTS: Record<string, string> = {
   [KEYS.scheduleRunBySchedule(SCHEDULE_ID, WORKFLOW_ID)]: EMPTY_VALUE_DIGEST,
   [KEYS.terminalCleanupNeeded(WORKFLOW_ID)]: EMPTY_VALUE_DIGEST,
   [KEYS.workflowHasServices(WORKFLOW_ID)]: EMPTY_VALUE_DIGEST,
-  [KEYS.schedule(SCHEDULE_ID)]: '5285574ad3d8c04f61aea5846088bb7f3949d11a8d81ffbbbdc67558c6b2cfaf',
+  // The schedule record gained `timeZone` (COR-1820), so its digest is that of main's bytes plus
+  // the one field; the rest of the batch is untouched.
+  [KEYS.schedule(SCHEDULE_ID)]: '41fd31ddfbca5cca3cb563e0259995691f68132a33f4656660a0e537ff5aa091',
   // Generation 1, as an 8-byte big-endian counter.
   [KEYS.workflowGeneration(WORKFLOW_ID)]:
     'cd2662154e6d76b2b2b92e70c0cac3ccf534f9b74eb5b89819ec509083d00a50',

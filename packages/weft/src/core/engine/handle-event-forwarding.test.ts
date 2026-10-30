@@ -148,7 +148,7 @@ const EVENT_FACTORIES: { [K in keyof WeftEventMap]: (workflowId: string) => Weft
   'human-review:completed': (id) =>
     new ReviewCompletedEvent(id, 'review-1', 'approved', 'reviewer', 5),
   'attributes:changed': (id) => new AttributesChangedEvent(id, { priority: 'high' }),
-  'schedule:missed-fire': () => new ScheduleMissedFireEvent('schedule-1', 2, 0, 10),
+  'schedule:missed-fire': () => new ScheduleMissedFireEvent('schedule-1', 2, 0, 10, 'late'),
   'schedule:attempted': () => new ScheduleAttemptedEvent('schedule-1', 1),
   'schedule:skipped': () => new ScheduleSkippedEvent('schedule-1', 1, 'skip'),
   'update:received': (id) => new UpdateReceivedEvent('update-1', id, 'rename', 'payload'),

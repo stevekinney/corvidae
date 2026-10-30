@@ -438,9 +438,17 @@ describe('the COR-1721 event families on the feed', () => {
       kind: 'definitions.changed',
       payload: { source: 'agents', added: ['a'], changed: ['b'], removed: ['c'], rejected: ['b'] },
     });
-    expect(projectBureauEvent(new ScheduleMissedEvent('schedule-1', 3, 100, 400))).toEqual({
+    expect(
+      projectBureauEvent(new ScheduleMissedEvent('schedule-1', 3, 100, 400, 'dst-gap')),
+    ).toEqual({
       kind: 'schedule.missed',
-      payload: { scheduleId: 'schedule-1', missedCount: 3, windowStart: 100, windowEnd: 400 },
+      payload: {
+        scheduleId: 'schedule-1',
+        missedCount: 3,
+        windowStart: 100,
+        windowEnd: 400,
+        reason: 'dst-gap',
+      },
     });
     expect(projectBureauEvent(new TaskCleanupAcknowledgedEvent('run-1', 'cleanup-failed'))).toEqual(
       {
