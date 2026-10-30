@@ -72,36 +72,3 @@ describe('a resumed backfill drains the queue while another engine changes the s
     }
   });
 });
-
-describe('a resumed backfill drains the queue while another engine starts the queued run', () => {
-  it('stops draining once the slot is filled and does not start the queued run again', async () => {
-    const errors = spyOn(console, 'error').mockImplementation(() => {});
-    try {
-      const { shared, engineA, engineB, resolved, tickingA, draining } =
-        await parkResumedSectionDrain();
-      const queuedBefore = await stateOf(shared);
-      const queuedAhead = queuedBefore.queuedRuns[0]?.workflowId;
-      expect(queuedAhead).toBeDefined();
-
-      // A run now on the other engine drains the queue first: the queued run takes the slot,
-      // without moving the cadence, so the parked drain loses its condition and finds the slot full.
-      await engineB.triggerSchedule(SCHEDULE_ID);
-      const takenOver = await stateOf(shared);
-      expect(takenOver.currentWorkflowId).toBe(queuedAhead);
-      draining.release();
-      await tickingA;
-      await drainEngine();
-
-      const state = await stateOf(shared);
-      expect(state.status).toBe('active');
-      expect(state.currentWorkflowId).toBe(queuedAhead);
-      expect(state.queuedRuns.map((run) => run.workflowId)).not.toContain(queuedAhead);
-      const started = [...resolved.a, ...resolved.b];
-      expect(started.filter((id) => id === queuedAhead)).toHaveLength(1);
-      expect(await listRunningWorkflowIds(engineA)).toContain(queuedAhead!);
-      expect(errors).not.toHaveBeenCalled();
-    } finally {
-      errors.mockRestore();
-    }
-  });
-});

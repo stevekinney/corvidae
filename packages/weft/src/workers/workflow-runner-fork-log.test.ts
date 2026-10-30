@@ -105,13 +105,15 @@ describe('worker ctx.log in a forked run', () => {
     });
     expect(resumed.type).toBe('completed');
   });
-  it('keeps marked the copied steps the fork has not yet yielded, and unmarks only the step it yields', async () => {
+
+  it('pins only the yielded operation as the fork’s own and keeps the other copied steps', async () => {
     const sourceResult = await handleRunMessage(
       createWorkflowRunnerContext(),
       { workflowId: 'wf-source', workflowType: 'forked', input: null },
       () => loggingWorkflow,
     );
-    if (sourceResult.type !== 'checkpoint') throw new Error('The source should park.');
+    expect(sourceResult.type).toBe('checkpoint');
+    if (sourceResult.type !== 'checkpoint') return;
     const sourceCheckpoint = deserializeCheckpoint(new Uint8Array(sourceResult.checkpoint));
     const forkCheckpoint = buildForkCheckpoint(
       {} as Parameters<typeof buildForkCheckpoint>[0],
@@ -122,12 +124,11 @@ describe('worker ctx.log in a forked run', () => {
       { workflowId: 'wf-source', step: sourceCheckpoint.step },
       {} as Parameters<typeof buildForkCheckpoint>[6],
     );
-    const parkedStep = sourceCheckpoint.step - 1;
-    // A later step whose signature the fork also copied without an outcome.
-    const laterStep = sourceCheckpoint.step + 4;
-    expect(forkCheckpoint.forkCopiedSignatureSteps).toEqual([parkedStep]);
+    const parkedStep = forkCheckpoint.forkCopiedSignatureSteps;
+    expect(parkedStep).toHaveLength(1);
+    const otherStep = parkedStep![0]! + 7;
 
-    const firstTurn = await handleRunMessage(
+    const forkFirstTurn = await handleRunMessage(
       createWorkflowRunnerContext(),
       {
         workflowId: 'wf-fork',
@@ -135,15 +136,15 @@ describe('worker ctx.log in a forked run', () => {
         input: null,
         checkpoint: serializeCheckpoint({
           ...forkCheckpoint,
-          forkCopiedSignatureSteps: [parkedStep, laterStep],
+          forkCopiedSignatureSteps: [...parkedStep!, otherStep],
         }).buffer as ArrayBuffer,
       },
       () => loggingWorkflow,
     );
-    if (firstTurn.type !== 'checkpoint') throw new Error('The fork should park.');
+    expect(forkFirstTurn.type).toBe('checkpoint');
+    if (forkFirstTurn.type !== 'checkpoint') return;
 
-    expect(
-      deserializeCheckpoint(new Uint8Array(firstTurn.checkpoint)).forkCopiedSignatureSteps,
-    ).toEqual([laterStep]);
+    const takenTurn = deserializeCheckpoint(new Uint8Array(forkFirstTurn.checkpoint));
+    expect(takenTurn.forkCopiedSignatureSteps).toEqual([otherStep]);
   });
 });

@@ -625,9 +625,9 @@ describe('validateCheckpointShape (via deserializeCheckpoint)', () => {
     }
   });
 
-  it('accepts a fork-copied signature step list and reads it back (COR-1924)', () => {
+  it('keeps a valid `forkCopiedSignatureSteps` list and reads an absent one as absent (COR-1924)', () => {
     const { encode } = require('./codec.ts');
-    const bytes = encode({
+    const base = {
       workflowId: 'wf-fork-copied',
       step: 0,
       locals: {},
@@ -636,23 +636,26 @@ describe('validateCheckpointShape (via deserializeCheckpoint)', () => {
       version: '1.0.0',
       schemaVersion: CURRENT_CHECKPOINT_SCHEMA_VERSION,
       createdAt: Date.now(),
-      forkCopiedSignatureSteps: [0, 3],
-    });
+    };
 
-    expect(deserializeCheckpoint(bytes).forkCopiedSignatureSteps).toEqual([0, 3]);
+    expect(deserializeCheckpoint(encode(base)).forkCopiedSignatureSteps).toBeUndefined();
+    expect(
+      deserializeCheckpoint(encode({ ...base, forkCopiedSignatureSteps: [0, 3] }))
+        .forkCopiedSignatureSteps,
+    ).toEqual([0, 3]);
   });
 
-  it('throws when `forkCopiedSignatureSteps` is not a list of step numbers (COR-1924)', () => {
+  it('throws when `forkCopiedSignatureSteps` is not a list of non-negative integers (COR-1924)', () => {
     const { encode } = require('./codec.ts');
     const cases: unknown[] = [
-      '1',
-      1,
+      '3',
+      3,
       {},
-      ['1'],
+      ['3'],
       [-1],
       [1.5],
+      [Number.MAX_SAFE_INTEGER + 1],
       [null],
-      [Number.MAX_SAFE_INTEGER + 2],
     ];
     for (const invalidSteps of cases) {
       const bytes = encode({

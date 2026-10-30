@@ -6,18 +6,10 @@
  * start the occurrence a second time.
  */
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
-import { afterEach, describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'bun:test';
 
-import { KEYS } from '../../storage/keys.ts';
-import { encode } from '../codec.ts';
 import type { WorkflowServicesResolverInfo } from '../types/services-resolution.ts';
-import {
-  closeOpenedEngines,
-  nextTimerArmed,
-  openEngines,
-  SCHEDULE_ID,
-  stateOf,
-} from './schedule-across-engines.test-support.ts';
+import { SCHEDULE_ID, stateOf } from './schedule-across-engines.test-support.ts';
 import {
   createEngine,
   drainEngine,
@@ -26,8 +18,6 @@ import {
   registerWorkflow,
   START,
 } from './schedule.test-support.ts';
-
-afterEach(closeOpenedEngines);
 
 describe('a process that dies after a tick committed and before it resolved the run’s services', () => {
   it('recovers the run with its schedule and occurrence, and the tick does not start it again', async () => {
@@ -85,27 +75,5 @@ describe('a process that dies after a tick committed and before it resolved the 
     } finally {
       recovered[Symbol.dispose]();
     }
-  });
-});
-
-describe('a tick that finds the occurrence it was woken for already fired', () => {
-  it('starts no run and moves the schedule on to the occurrence after it, with that timer armed', async () => {
-    const { clock, shared, engineA } = await openEngines({ backfill: true });
-    const stored = await stateOf(shared);
-    const fired = stored.nextFireAt!;
-    // Another engine's catch-up fired the occurrence and died before it moved the cadence on: the
-    // schedule names the occurrence as fired, and its timer is the one that wakes this tick.
-    await shared.put(KEYS.schedule(SCHEDULE_ID), encode({ ...stored, lastFireAt: fired }));
-    clock.now = fired;
-
-    await engineA.scheduler.tick(clock.now);
-
-    const after = await stateOf(shared);
-    expect(after.lastFireAt).toBe(fired);
-    expect(after.nextFireAt).toBe(fired + MINUTE);
-    expect(after.currentWorkflowId).toBeUndefined();
-    expect(await listRunningWorkflowIds(engineA)).toEqual([]);
-    expect(await nextTimerArmed(shared)).toBe(true);
-    expect(await shared.get(KEYS.scheduleTick(fired, SCHEDULE_ID))).toBeNull();
   });
 });

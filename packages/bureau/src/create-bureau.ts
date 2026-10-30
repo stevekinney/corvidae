@@ -228,7 +228,8 @@ import {
   createChildTopology,
 } from './child-topology';
 import { childActionOf } from './child-announcement';
-import { createChildTopologyStore } from './child-topology-store';
+import { type BureauChildChat, createChildTopologyStore } from './child-topology-store';
+import { type ChatPermissionReading, ChatPermissionUnavailableError } from './tool-approval';
 import {
   type CommandLedger,
   type CreatedRunSummary,
@@ -18413,16 +18414,39 @@ async function constructBureau<const D extends AgentDefinitions>(
   /**
    * COR-1936 — the permission mode of the chat `runId` belongs to, read when a tool call is
    * decided: the mode the session's steering holds, caught up from the durable log first (so a
-   * mode another process admitted is seen), so a steer is in force for the calls decided after it. `undefined` for a run no session holds, which has no chat to steer.
-   * A chat that was never steered is `on-changes`. A read that fails rejects, and the approval
-   * hook treats that as `read-only`.
+   * mode another process admitted is seen), so a steer is in force for the calls decided after it.
+   * `undefined` for a run no session holds, which has no chat to steer. A chat that was never
+   * steered is `on-changes`. A read that fails rejects, and the approval hook treats that as
+   * `read-only`.
+   *
+   * COR-1955 — a child run reads the mode of the chat its record is stamped with
+   * ({@link BureauChildChat}), the root of its delegation chain, and never of an ancestor: a parent
+   * that ended and was retained away has no records left to find a chat by. A child cannot be put
+   * to a person, so it is `askable: false`, and the stricter of the chat's mode and the child's own
+   * `on-changes`: `allow-all` skips the asks of a chat's person, and a child has none. A child
+   * whose chain started in no chat has no mode. A chat deleted since the child started rejects,
+   * naming the chat, so the child is held to `read-only` and told why.
    */
-  async function permissionModeOfRun(runId: string): Promise<PermissionMode | undefined> {
+  async function permissionModeOfRun(runId: string): Promise<ChatPermissionReading | undefined> {
+    const child = await childTopologyStore.get(runId);
+    if (child === undefined) return await permissionModeOfChatRun(runId);
+    if (child.chat === undefined) return undefined;
+    const { contextId, incarnation } = child.chat;
+    const current = await runtime.sessionStore?.load(contextId);
+    if (current?.incarnation !== incarnation) {
+      throw new ChatPermissionUnavailableError(
+        `the chat "${contextId}" this child run belongs to was deleted, so only read-only calls are allowed.`,
+      );
+    }
+    const mode = await permissionModeOfSession(contextId, incarnation);
+    return { mode: mode === 'allow-all' ? 'on-changes' : mode, askable: false };
+  }
+
+  /** The mode of the chat `runId` itself belongs to; `undefined` for a run no chat holds. */
+  async function permissionModeOfChatRun(runId: string): Promise<PermissionMode | undefined> {
     if (runtime.sessionStore === undefined) return undefined;
     const sessionId = await sessionIdOfRun(runId);
     if (sessionId === undefined) return undefined;
-    // Read through the log catch-up, not the gate alone: another process on a shared durable
-    // backend may have admitted a mode since this process last polled.
     const incarnation = runSessionIncarnations.get(runId);
     const kv = durableSteeringStore();
     if (incarnation !== undefined && kv !== undefined) {
@@ -18436,15 +18460,42 @@ async function constructBureau<const D extends AgentDefinitions>(
           'CONFLICT',
         );
       }
+    }
+    // A run with no incarnation yet (a fresh schedule fire whose session does not exist) has no
+    // chat to steer.
+    return await permissionModeOfSession(sessionId, incarnation);
+  }
+
+  /** The mode a session's steering holds, `on-changes` before any was set. */
+  async function permissionModeOfSession(
+    sessionId: string,
+    incarnation: string | undefined,
+  ): Promise<PermissionMode> {
+    // Read through the log catch-up, not the gate alone: another process on a shared durable
+    // backend may have admitted a mode since this process last polled.
+    const kv = durableSteeringStore();
+    if (incarnation !== undefined && kv !== undefined) {
       const cursor = await enqueueSteering(sessionId, () =>
         catchUpSteering(kv, sessionId, incarnation),
       );
       return cursor.gate.getDesiredState().permissionMode ?? 'on-changes';
     }
-    // A run with no incarnation yet (a fresh schedule fire whose session does not exist) has no
-    // chat to steer.
     const steering = await getSessionSteering(sessionId);
     return steering?.permissionMode ?? 'on-changes';
+  }
+
+  /**
+   * COR-1955 — the chat `parentRunId` runs in, as its children are stamped: its session and the
+   * incarnation it started in. `undefined` for a run that belongs to no chat.
+   */
+  async function chatOfParentRun(parentRunId: string): Promise<BureauChildChat | undefined> {
+    if (runtime.sessionStore === undefined) return undefined;
+    const contextId = await sessionIdOfRun(parentRunId);
+    if (contextId === undefined) return undefined;
+    const known = runSessionIncarnations.get(parentRunId);
+    const session = known === undefined ? await runtime.sessionStore.load(contextId) : undefined;
+    const incarnation = known ?? session?.incarnation;
+    return incarnation === undefined ? undefined : { contextId, incarnation };
   }
 
   /**
@@ -20961,6 +21012,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         principal: ownerOrLocal(attribution?.principal),
         live: runState.status === 'running',
         ...contextOfParent(getRunSessionIdentifier(runState)),
+        ...(await chatStampOf(parentRunId)),
       };
     }
     const state = runtime.durable ? await runtime.durable.engine.get(parentRunId) : null;
@@ -20970,7 +21022,14 @@ async function constructBureau<const D extends AgentDefinitions>(
       principal: ownerOrLocal(attribution?.principal),
       live: DURABLE_FORCIBLY_TERMINABLE_STATUSES.has(state.status),
       ...contextOfParent(state.input.sessionId),
+      ...(await chatStampOf(parentRunId)),
     };
+  }
+
+  /** {@link chatOfParentRun} as a field of a parent, absent for a run that belongs to no chat. */
+  async function chatStampOf(parentRunId: string): Promise<{ readonly chat?: BureauChildChat }> {
+    const chat = await chatOfParentRun(parentRunId);
+    return chat === undefined ? {} : { chat };
   }
 
   /** The parent's session, as a child's task origin records it; absent when the parent has none. */
