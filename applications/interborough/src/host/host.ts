@@ -362,7 +362,7 @@ export type Host = {
    */
   readonly toolSources: Pick<
     ToolSourceManager,
-    'connect' | 'remove' | 'snapshot' | 'authorize' | 'completeAuthorization'
+    'connect' | 'configureTools' | 'remove' | 'snapshot' | 'authorize' | 'completeAuthorization'
   >;
   /**
    * A point-in-time reading of the host's own state: the Bureau's diagnostics, the engine server's
@@ -874,6 +874,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       configurationQueue,
       toolSources: {
         connect: (request) => toolSources.connect(request),
+        configureTools: (request) => toolSources.configureTools(request),
         remove: (request) => toolSources.remove(request),
         snapshot: () => toolSources.snapshot(),
         authorize: (id) => toolSources.authorize(id),
