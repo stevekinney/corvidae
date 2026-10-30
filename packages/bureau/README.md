@@ -183,7 +183,7 @@ The identity and storage fields name the Bureau and say where it keeps state.
 | `store` | `Store` | An `@lostgradient/operative` run `Store` to use instead of the one Bureau creates. The resolved store is `bureau.internals.store`. |
 | `runtime` | `RuntimeServices` | The clock, timers, and identifier source every Bureau-owned timer and identifier uses. Omit it for the real globals; a test passes `createManualRuntimeServices()`. |
 
-`id` is required when `memory` and `storage` are both set. A generated id changes on every start, so a restarted Bureau would read an empty memory tenant, and `createBureau` throws `BureauError` (`BAD_REQUEST`) instead. `maintenance: 'manual'` suits Cloudflare Durable Objects and other serverless hosts, which call `bureau.maintain()` from each alarm or Cron wake-up.
+`id` is required when `memory` and `storage` are both set. A generated id changes on every start, so a restarted Bureau would read an empty memory tenant, and `createBureau` throws `BureauError` (`BAD_REQUEST`) instead. `maintenance: 'manual'` suits Cloudflare Durable Objects and other serverless hosts, which call `bureau.maintain()` from each alarm or Cron wake-up. A manual host that shares storage with other Bureau processes must call `maintain()` at least every 30 seconds: over persistent storage a Bureau holds a 30-second process lease that `maintain()` renews, and a peer settles the process-local tasks of a process whose lease lapsed as failed with finish reason `owner-lost`. A fleet driven only by Cron cannot meet that cadence, so it should not run process-local tasks beside another Bureau on the same storage.
 
 The agent fields say what a Bureau can run and where the definitions come from.
 
@@ -251,7 +251,7 @@ One option bounds how long each kind of history is kept.
 
 | Field | Type | Purpose |
 | --- | --- | --- |
-| `retention` | `{ audit?; checkpoints?; events?; tasks?; receipts?; notifications? }` | How long each kind of history is kept. Every window is read at the next maintenance pass. |
+| `retention` | `{ audit?; checkpoints?; events?; tasks?; receipts?; notifications?; hookDeliveries? }` | How long each kind of history is kept. Every window is read at the next maintenance pass. |
 
 A bad value throws `BureauError` (`BAD_REQUEST`) at construction. Each key keeps its own type and default:
 
@@ -261,6 +261,7 @@ A bad value throws `BureauError` (`BAD_REQUEST`) at construction. Each key keeps
 - **`tasks`**: `'forever' | { olderThan }`, default 30 days.
 - **`receipts`**: `{ olderThan }` only, default 24 hours; `'forever'` is refused. See [run-creation receipts](#run-creation-receipts).
 - **`notifications`**: `{ olderThan }` only, in milliseconds, default unset (an owner keeps up to 1000). See [notifications](#notifications).
+- **`hookDeliveries`**: `{ olderThan }` only, in milliseconds, default unset (a hook keeps every delivery record until it is deleted). Removes settled deliveries (delivered, exhausted, aborted, failed) last written longer ago than the window; a pending delivery is never removed. Has effect only with `hooks`.
 
 The host fields attach memory, assets, and the sinks a host wants to hear from.
 
@@ -398,7 +399,7 @@ The bounded wait always sleeps on the Bureau's own `RuntimeServices.timers`, nev
 Four operations belong to the Bureau itself rather than to a namespace. They keep their meaning and replace the longer names they had (`waitForRecovery`, `runDurableMaintenance`, `getOwner`, `subscribeLiveFrames`).
 
 - `recovery()`: waits for boot durable recovery and resolves a `BureauRecoveryReport`. A Bureau with no durable engine has no runs to recover, so it resolves `{ outcome: 'clean', perRunFailures: [], skippedRuns: [] }` immediately.
-- `maintain(now?)`: runs one durable maintenance pass now. A host that sets `maintenance: 'manual'` calls it from each alarm or Cron wake-up.
+- `maintain(now?)`: runs one durable maintenance pass now. A host that sets `maintenance: 'manual'` calls it from each alarm or Cron wake-up, and, when it shares storage with other Bureau processes, at least every 30 seconds so its process lease (and so its tasks) is not taken for a stopped process's; a Cron-driven fleet cannot meet this.
 - `ownerOf(resource)`: the owner of record of a run, context, goal, schedule, review, or audit entry.
 - `frames(listener)`: subscribes to every live `ServerFrame` and returns the unsubscribe function.
 

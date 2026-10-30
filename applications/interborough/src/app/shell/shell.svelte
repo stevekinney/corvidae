@@ -10,7 +10,10 @@
    * Keyboard (plan §13 T1.6's "⌘K opens palette, Esc closes overlays"):
    * ⌘K is registered by `./command-palette.svelte`; Esc-closes-overlays is
    * already Cinder's own contract for `CommandPalette` and `Dropdown` (both
-   * close on Escape internally) — nothing extra to wire here.
+   * close on Escape internally). Every other key goes through the shortcut
+   * registry (`../../lib/shortcuts.ts`): the shell registers `g` then a letter
+   * for each destination and `?` for the map (`./destinations.ts`), and reads
+   * each key press against it.
    */
   import { SIDEBAR_MOBILE_MEDIA_QUERY } from '@lostgradient/cinder';
   import type { HttpClient } from '@lostgradient/weft';
@@ -20,8 +23,8 @@
 
   import { provideClient } from '../../lib/client.ts';
   import { BureauEventSource } from '../../lib/live-source/bureau-event-source.svelte.ts';
-  import { stepChord } from '../../lib/navigation-shortcuts.ts';
   import { router } from '../../lib/router.svelte.ts';
+  import { shortcuts } from '../../lib/shortcuts.ts';
   import type { Principal } from '../../lib/scopes.svelte.ts';
   import { providePrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
   import { subscribeBureauInvalidation } from '../bureau-event-queries.ts';
@@ -29,13 +32,16 @@
   import { connectFleetInvalidation } from '../fleet-invalidation.svelte.ts';
   import { provideBureauEventSource } from '../live-polling.svelte.ts';
   import { connectNotificationFeed } from '../notification-feed.svelte.ts';
+  import { LayoutPreferences, provideLayoutPreferences } from '../layout-preferences.svelte.ts';
   import { NotificationStore } from '../notifications.svelte.ts';
   import { subscribeTaskEvidenceInvalidation } from '../task-event-queries.ts';
   import { ThemeStore } from '../theme.svelte.ts';
   import AuthModeBanner from './auth-mode-banner.svelte';
   import CommandPaletteLauncher from './command-palette.svelte';
   import CriticalAlertStrip from './critical-alert-strip.svelte';
+  import { registerShellShortcuts } from './destinations.ts';
   import RouteOutlet from './route-outlet.svelte';
+  import ShortcutMap from './shortcut-map.svelte';
   import Sidebar from './sidebar.svelte';
   import Topbar from './topbar.svelte';
 
@@ -69,6 +75,7 @@
   principalStore.setPrincipal(resolvedPrincipal);
 
   const theme = new ThemeStore();
+  const layout = provideLayoutPreferences(new LayoutPreferences());
   const notifications = new NotificationStore();
   const engineStatus = new EngineStatusController(initialClient);
   // Additive Track B workaround — see `engine-status.svelte.ts`'s
@@ -97,17 +104,35 @@
   // What is waiting on the person, and what finished, comes from the Bureau.
   connectNotificationFeed(notifications);
 
-  // `g`, then a letter, opens a view (`../../lib/navigation-shortcuts.ts`); the sidebar's tooltips
-  // name the same keys.
+  let shortcutMapOpen = $state(false);
+
+  $effect(() =>
+    registerShellShortcuts(shortcuts, {
+      navigate: (path) => router.navigate(path),
+      openShortcutMap: () => (shortcutMapOpen = true),
+    }),
+  );
+
+  // Every key press is read against the registry, in the scope of the route on screen and the
+  // focus regions (`data-shortcut-region`) around the focus.
   $effect(() => {
-    let armedAtMs: number | null = null;
     function onKeydown(event: KeyboardEvent): void {
+      if (event.defaultPrevented) return;
       const target = event.target;
+      const element = target instanceof Element ? target : null;
       const editable =
-        target instanceof HTMLElement &&
-        (target.isContentEditable || ['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName));
-      const step = stepChord(
-        armedAtMs,
+        element instanceof HTMLElement &&
+        (element.isContentEditable || ['INPUT', 'SELECT', 'TEXTAREA'].includes(element.tagName));
+      const regions: string[] = [];
+      for (
+        let region = element?.closest('[data-shortcut-region]');
+        region;
+        region = region.parentElement?.closest('[data-shortcut-region]')
+      ) {
+        const id = region.getAttribute('data-shortcut-region');
+        if (id !== null) regions.push(id);
+      }
+      const handled = shortcuts.handleKey(
         {
           key: event.key,
           metaKey: event.metaKey,
@@ -115,10 +140,10 @@
           altKey: event.altKey,
           editable,
         },
+        { routePattern: router.current.route?.pattern ?? null, regions },
         Date.now(),
       );
-      armedAtMs = step.armedAtMs;
-      if (step.path !== null) router.navigate(step.path);
+      if (handled) event.preventDefault();
     }
     window.addEventListener('keydown', onKeydown);
     return () => window.removeEventListener('keydown', onKeydown);
@@ -135,38 +160,36 @@
   $effect(() => subscribeBureauInvalidation(bureauEvents, queryClient));
 
   /**
-   * `collapsed` doubles as "drawer closed" once Cinder's `Sidebar` switches
-   * to its mobile presentation below `SIDEBAR_MOBILE_MEDIA_QUERY` (its own
-   * internal `open = !collapsed` — `sidebar.svelte`). Left at its plain
-   * default of `false`, a mobile page load would render the navigation
-   * drawer OPEN over the whole screen with no trigger to close it. Start
-   * collapsed on a mobile viewport instead.
-   *
-   * The desktop shell has no manual icon-rail toggle (the design keeps the
-   * sidebar always expanded above the mobile breakpoint — see the CSS
-   * comment on `.weft-shell-menu-trigger` in `foundation.css`), so
-   * `collapsed` must track the breakpoint directly: true while the
-   * viewport is mobile, false once it crosses back to desktop. Anything
-   * short of that (e.g. only forcing collapse on mobile *entry*) leaves a
-   * desktop→mobile→desktop resize with the sidebar permanently stuck at
-   * 64px with no way to re-expand it, since the only toggle
-   * (`.weft-shell-menu-trigger`) is CSS-hidden above the breakpoint.
+   * On a desktop viewport the sidebar's `collapsed` is the person's icon-rail preference, which
+   * the shell keeps in storage. Below `SIDEBAR_MOBILE_MEDIA_QUERY` Cinder's `Sidebar` becomes a
+   * drawer and `collapsed` means "drawer closed" (its own `open = !collapsed`), which starts
+   * closed on every page load and is never stored: a phone must not open on a drawer over the
+   * whole screen, and closing the drawer must not fold the desktop sidebar.
    */
   const isMobileViewport = new MediaQuery(SIDEBAR_MOBILE_MEDIA_QUERY, false);
 
-  let sidebarCollapsed = $state(isMobileViewport.current);
+  let drawerOpen = $state(false);
 
-  $effect(() => {
-    sidebarCollapsed = isMobileViewport.current;
-  });
+  function sidebarCollapsed(): boolean {
+    return isMobileViewport.current ? !drawerOpen : layout.sidebarCollapsed;
+  }
+
+  function setSidebarCollapsed(collapsed: boolean): void {
+    if (isMobileViewport.current) drawerOpen = !collapsed;
+    else layout.setSidebarCollapsed(collapsed);
+  }
 
   let paletteOpen = $state(false);
 </script>
 
 <div class="weft-shell">
-  <Sidebar {client} engineStatus={engineStatus.status} bind:collapsed={sidebarCollapsed} />
+  <Sidebar
+    {client}
+    engineStatus={engineStatus.status}
+    bind:collapsed={sidebarCollapsed, setSidebarCollapsed}
+  />
   <div class="weft-shell-main">
-    <Topbar {notifications} {theme} bind:paletteOpen bind:sidebarCollapsed />
+    <Topbar {notifications} {theme} {layout} bind:paletteOpen bind:drawerOpen />
     <AuthModeBanner mode={principalStore.bannerMode} />
     <CriticalAlertStrip store={notifications} />
     <RouteOutlet />
@@ -178,3 +201,5 @@
   {client}
   scheduleReadGate={scopeGate(principalStore, ['schedules:read'])}
 />
+
+<ShortcutMap registry={shortcuts} bind:open={shortcutMapOpen} />

@@ -14,6 +14,7 @@ import { nodeAgentFileOperations } from './agent-file-operations';
 import { DIRECTORY_POLL_INTERVAL_MILLISECONDS } from './watched-directory';
 import type { AgentSource, SiblingRead } from './definition-source';
 import { createDirectorySource, type DirectorySourceOptions } from './directory-source';
+import { pluginLayer } from './plugin-layer';
 import { assertReferencePath } from './reference-path';
 
 /** What {@link agentFileDirectory} takes beyond the directory itself. */
@@ -30,7 +31,8 @@ export interface AgentFileDirectoryOptions extends DirectorySourceOptions {
  * filename without the extension. Bureau reads, watches, and writes the directory; a directory
  * that does not exist is an empty one. The documents an agent file's `references` name are read
  * from the same directory, in subdirectories too, by path (a symbolic link is followed, as it is
- * for an agent file). See `documentation/agent-files.md`.
+ * for an agent file). With `options.plugin` the directory is that plugin's read-only layer
+ * (COR-1873). See `documentation/agent-files.md`.
  */
 export function agentFileDirectory(
   path: string,
@@ -71,7 +73,7 @@ export function agentFileDirectory(
     if (bytes.byteLength > readOptions.limit) return { kind: 'too-large', size: bytes.byteLength };
     return { kind: 'found', bytes, stamp };
   }
-  return Object.assign(source, {
+  const agentSource: AgentSource = Object.assign(source, {
     kind: 'agent' as const,
     readSibling,
     ...(options.watch === false
@@ -79,4 +81,5 @@ export function agentFileDirectory(
       : { referencePollMilliseconds: DIRECTORY_POLL_INTERVAL_MILLISECONDS }),
     ...(options.tools === undefined ? {} : { tools: options.tools }),
   });
+  return options.plugin === undefined ? agentSource : pluginLayer(agentSource, options.plugin);
 }

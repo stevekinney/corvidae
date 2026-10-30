@@ -163,6 +163,21 @@ export function validateNotificationsRetentionOption(value: unknown, badRequest:
   }
 }
 
+/** COR-1943 — `BureauRetentionOptions.hookDeliveries` is `{ olderThan }`, a positive integer of milliseconds. */
+export function validateHookDeliveriesRetentionOption(
+  value: unknown,
+  badRequest: BadRequest,
+): void {
+  if (value === undefined) return;
+  if (typeof value !== 'object' || value === null) {
+    badRequest('"options.retention.hookDeliveries" must be { olderThan: number }');
+  }
+  const olderThan = (value as { readonly olderThan?: unknown }).olderThan;
+  if (typeof olderThan !== 'number' || !Number.isSafeInteger(olderThan) || olderThan <= 0) {
+    badRequest('"options.retention.hookDeliveries.olderThan" must be a positive integer');
+  }
+}
+
 /** COR-1811 — `BureauLogsOptions.maximumLinesPerRun` is a positive integer, at most 5000, when given. */
 export function validateLogsMaximumLinesPerRun(value: unknown, badRequest: BadRequest): void {
   if (value === undefined) return;
@@ -193,6 +208,7 @@ export function validateRetentionOptions(
   validateMemoryRetentionOption(retention?.memory, badRequest);
   validateLogsRetentionOption(retention?.logs, badRequest);
   validateNotificationsRetentionOption(retention?.notifications, badRequest);
+  validateHookDeliveriesRetentionOption(retention?.hookDeliveries, badRequest);
 }
 
 /**

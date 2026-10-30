@@ -153,7 +153,7 @@ describe('skills in configuration.json', () => {
       }),
       expect.objectContaining({
         name: 'summarize',
-        source: { id: 'home', kind: 'user', location: userSkills },
+        source: { id: 'home', kind: 'user', location: userSkills, plugin: null },
         trust: 'untrusted',
         available: false,
         unavailableReason: 'source-untrusted',

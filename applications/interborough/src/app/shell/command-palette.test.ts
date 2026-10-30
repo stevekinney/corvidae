@@ -132,7 +132,7 @@ describe('the chats, agents, and commands', () => {
     const view = render(CommandPaletteLauncher, {
       props: { open: true, client: new HttpClient({ baseUrl: 'http://localhost/api' }) },
     });
-    expect(view.getByPlaceholderText('Search chats, agents, workflows…')).not.toBeNull();
+    expect(view.getByPlaceholderText('Search everything')).not.toBeNull();
     await fireEvent.input(await view.findByRole('combobox'), { target: { value: 'ech' } });
 
     await waitFor(() => expect(view.getAllByRole('option')).toHaveLength(3));

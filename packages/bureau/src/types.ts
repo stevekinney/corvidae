@@ -392,6 +392,24 @@ export interface BureauRetentionOptions {
    * `createBureau` throws `BureauError(..., 'BAD_REQUEST')`.
    */
   notifications?: BureauNotificationsRetentionOption | undefined;
+  /**
+   * COR-1943 — how long a settled hook delivery record (delivered, exhausted, aborted, or failed
+   * for want of a secret) is kept after it was last written, swept by each maintenance pass. A
+   * pending delivery is never removed, whatever its age. Leave it out to keep delivery records until
+   * their hook is deleted. Has effect only on a Bureau composed with {@link BureauOptions.hooks}.
+   * `olderThan` must be a positive integer; otherwise `createBureau` throws
+   * `BureauError(..., 'BAD_REQUEST')`.
+   */
+  hookDeliveries?: BureauHookDeliveriesRetentionOption | undefined;
+}
+
+/**
+ * COR-1943 — the window of {@link BureauRetentionOptions.hookDeliveries}. Only `{ olderThan }`
+ * exists: keeping delivery records forever is leaving the option out.
+ */
+export interface BureauHookDeliveriesRetentionOption {
+  /** Milliseconds after a delivery was last written; a positive integer. */
+  readonly olderThan: number;
 }
 
 /**
@@ -486,8 +504,15 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * `BureauError` (`BAD_REQUEST`). Requires {@link ModelsOptions.generate}: a model name that
    * nothing can turn into a `generate` would be silently ignored, so `createBureau` refuses the
    * combination with `BureauError` (`BAD_REQUEST`).
+   *
+   * COR-1873: pass several sources to layer them. The owner's sources come first; a plugin's
+   * read-only layer (`agentFileDirectory(path, { plugin })`) sits beneath them, lists its agents
+   * as `plugin:name`, reloads them when they change, and refuses every write with
+   * `agent-file-read-only`. `agents.duplicate` copies one into the owner's source. The list is
+   * read as `layeredAgentSource(list)`; an empty list or two layers of one plugin is refused with
+   * `BureauError` (`BAD_REQUEST`).
    */
-  agentSource?: AgentSource;
+  agentSource?: AgentSource | readonly AgentSource[];
   /**
    * COR-1913 — the secret that signs the tool approvals the file agents of
    * {@link BureauOptions.agentSource} raise. A file agent's tools ask a person before they run
@@ -508,8 +533,12 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * schedule its `trigger` names. Requires a durable engine, and `createBureau` refuses the
    * combination without one with `BureauError` (`BAD_REQUEST`). See
    * `documentation/workflow-files.md`.
+   *
+   * COR-1873: pass several sources to layer them, as for {@link BureauOptions.agentSource}: a
+   * plugin's read-only layer lists its workflows as `plugin:name` and refuses every write with
+   * `workflow-file-read-only`.
    */
-  workflowSource?: WorkflowSource;
+  workflowSource?: WorkflowSource | readonly WorkflowSource[];
   /**
    * COR-1813 — Weft's worker deployment catalog, the durable store of worker builds and routing
    * pointers. With it, {@link Bureau.deployments} reads a deployment's routing pointer and ramps,
@@ -595,6 +624,12 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * default `'automatic'` profile uses in-process intervals. Cloudflare
    * Durable Objects and other serverless hosts should use `'manual'`, then
    * call {@link Bureau.maintain} from each alarm or Cron wake-up.
+   *
+   * COR-1946: over persistent storage a Bureau holds a 30-second process lease that other
+   * processes read to tell a task whose process stopped from one still running. `'automatic'`
+   * renews it on a timer; `'manual'` renews it only inside {@link Bureau.maintain}, so a manual host
+   * should call `maintain()` at least every 30 seconds while it runs process-local tasks that
+   * another Bureau over the same storage may boot beside.
    */
   maintenance?: 'automatic' | 'manual';
   /**

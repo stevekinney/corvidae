@@ -24,6 +24,7 @@ import {
   validateCheckpointRetentionOption,
   validateDelegationTimeToLive,
   validateLogsMaximumLinesPerRun,
+  validateHookDeliveriesRetentionOption,
   validateLogsRetentionOption,
   validateNotificationsRetentionOption,
   validateMemoryRetentionOption,
@@ -79,6 +80,7 @@ export const OPTION_VALIDATORS: Readonly<Partial<Record<SettingKey, (value: unkn
   'retention.memory': (value) => validateMemoryRetentionOption(value, refuse),
   'retention.logs': (value) => validateLogsRetentionOption(value, refuse),
   'retention.notifications': (value) => validateNotificationsRetentionOption(value, refuse),
+  'retention.hookDeliveries': (value) => validateHookDeliveriesRetentionOption(value, refuse),
   'logs.maximumLinesPerRun': (value) => validateLogsMaximumLinesPerRun(value, refuse),
   'sessionInput.sessionBacklogLimit': (value) =>
     validateSessionInputBacklogLimit(value as number, 'sessionBacklogLimit', refuse),

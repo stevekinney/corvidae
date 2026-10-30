@@ -20,10 +20,12 @@ import {
   type DefinitionChange,
   type DefinitionScannerHealth,
 } from './definition-scanner';
+import { isNamespacedIdentifier } from './namespaced-identifier';
 import { ownerOrLocal } from './owner-of-record';
 import {
   type DefinitionEntry,
   SourceConflictError,
+  SourceReadOnlyError,
   type WorkflowSource,
 } from './sources/definition-source';
 import {
@@ -150,7 +152,13 @@ export function createWorkflowFileCatalog(
   const { source, host } = options;
   const owner = ownerOrLocal(undefined);
 
-  function evaluate(id: string, bytes: Uint8Array, hash: string, revision: number): WorkflowEntry {
+  function evaluate(
+    id: string,
+    bytes: Uint8Array,
+    hash: string,
+    revision: number,
+    plugin: string | undefined,
+  ): WorkflowEntry {
     const invalid = (problem: WorkflowFileProblem): WorkflowEntry => ({
       id,
       hash,
@@ -161,7 +169,7 @@ export function createWorkflowFileCatalog(
     if (text === undefined) {
       return invalid({ code: 'not-utf8', message: 'The file is not valid UTF-8.' });
     }
-    const parsed = parseWorkflowFile(id, text, host);
+    const parsed = parseWorkflowFile(id, text, host, plugin);
     if (!parsed.ok) return invalid(parsed.problem);
     if (options.isCodeWorkflow(id)) {
       return invalid({
@@ -242,8 +250,17 @@ export function createWorkflowFileCatalog(
     try {
       return await work();
     } catch (error) {
+      if (error instanceof SourceReadOnlyError) throw readOnly(error.id, error.plugin);
       throw error instanceof SourceConflictError ? conflictOf(error) : error;
     }
+  }
+
+  /** The refusal of a write to a workflow a plugin's read-only layer holds (COR-1873). */
+  function readOnly(id: string, plugin: string): WorkflowFileError {
+    return new WorkflowFileError(
+      'workflow-file-read-only',
+      new SourceReadOnlyError(id, plugin).message,
+    );
   }
 
   /** The definition as the source holds it now, read from the source and not from the last scan. */
@@ -272,6 +289,8 @@ export function createWorkflowFileCatalog(
   }
 
   function checkIdentifier(id: string): void {
+    // A plugin's workflow is never written, whether or not the plugin is loaded (COR-1873).
+    if (isNamespacedIdentifier(id)) throw readOnly(id, id.slice(0, id.indexOf(':')));
     const problem = checkWorkflowIdentifier(id);
     if (problem !== undefined) refuse(problem);
   }
@@ -334,7 +353,8 @@ export function createWorkflowFileCatalog(
     find: (id) => watched.entries().get(id)?.file,
 
     async read(id) {
-      checkIdentifier(id);
+      // A plugin's workflow can be read, only not written.
+      if (!isNamespacedIdentifier(id)) checkIdentifier(id);
       const entry = await readFresh(id);
       if (entry === undefined) return undefined;
       if (entry.problem !== undefined) {

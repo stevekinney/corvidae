@@ -280,6 +280,7 @@ import type { BureauGoals } from './goal-types';
 import { createGoalValidatorCatalog } from './goal-validator-catalog';
 import { composeBureauGoals } from './goals-composition';
 import { leaseEvidenceFromLostHealth } from './liveness-projection';
+import { createAbandonedTaskSweeper, openProcessLease } from './process-lease';
 import {
   createDecisions,
   decisionModelNames,
@@ -408,7 +409,8 @@ import {
   type WorkflowRuntime,
 } from './workflow-runtime';
 import { createBureauWorkerDeployments } from './worker-deployments';
-import { validateDefinitionSource } from './sources/validate-definition-source';
+import type { AgentSource, WorkflowSource } from './sources/definition-source';
+import { resolveDefinitionSource } from './sources/validate-definition-source';
 import { collidingWorkflowToolName, createWorkflowTools } from './workflow-tools';
 import { createSettingsTools } from './settings/settings-tools';
 import { createWorkflowSnapshotStore } from './workflow-snapshot-store';
@@ -1159,6 +1161,54 @@ class ApprovalOutcomeNotWrittenError extends BureauError {
 }
 
 /**
+ * A tool call waiting for approval names a tool version the toolbox no longer holds (COR-1872). A
+ * durable record pins `namespace:name@version` and runs only that version: `reason` is
+ * `version-mismatch` when other versions of the tool are loaded, which `candidates` lists, and
+ * `missing` when none is. Recovery reports it as the cause of the review it cannot restore, and
+ * `resolveReview` throws it rather than run another version; either way the tool does not run.
+ */
+class PinnedToolUnavailableError extends BureauError {
+  /** Why the pinned id did not resolve. */
+  readonly reason: 'missing' | 'ambiguous' | 'version-mismatch';
+  /** The `namespace:name@version` the run recorded. */
+  readonly toolId: string;
+  /** The ids of the loaded tools that came closest; empty for `missing`. */
+  readonly candidates: readonly string[];
+  constructor(
+    toolId: string,
+    reason: 'missing' | 'ambiguous' | 'version-mismatch',
+    candidates: readonly string[],
+  ) {
+    super(
+      `The run recorded tool "${toolId}", and the toolbox ${
+        candidates.length === 0 ? 'holds no version of it' : `holds ${candidates.join(', ')}`
+      } (${reason}).`,
+      'CONFLICT',
+    );
+    this.name = 'PinnedToolUnavailableError';
+    this.reason = reason;
+    this.toolId = toolId;
+    this.candidates = candidates;
+  }
+}
+
+/**
+ * The error for an approval whose binding pins a tool id `toolbox` no longer resolves, or
+ * `undefined` when it resolves or the approval pins none.
+ */
+function pinnedToolUnavailable(
+  toolbox: Pick<BureauToolbox, 'resolveTool'>,
+  approval: Pick<SignedPendingToolApproval, 'approvalBinding'>,
+): PinnedToolUnavailableError | undefined {
+  const toolId = approval.approvalBinding?.toolDefinitionRevision;
+  if (typeof toolId !== 'string') return undefined;
+  const resolution = toolbox.resolveTool(toolId);
+  return resolution.ok
+    ? undefined
+    : new PinnedToolUnavailableError(toolId, resolution.reason, resolution.candidates);
+}
+
+/**
  * `resolveReview` was given the round the caller read, and the review has moved past it: another
  * resolver superseded the approval, which replaces it under the same id with the next round
  * (COR-1659). Nothing took effect, so it is a `CONFLICT` the caller answers by reading the review
@@ -1245,6 +1295,7 @@ export {
   ApprovalOutcomeNotWrittenError,
   BureauError,
   BureauShuttingDownError,
+  PinnedToolUnavailableError,
   ReviewAnswerInvalidError,
   ReviewRoundChangedError,
   TaskRespondError,
@@ -1346,6 +1397,40 @@ export class UnknownScheduleAgentError extends BureauError {
     this.name = 'UnknownScheduleAgentError';
     this.agentName = agentName;
   }
+}
+
+/** {@link BureauOptions} once each definition-source option is one source (COR-1873). */
+type LayeredBureauOptions<D extends AgentDefinitions> = Omit<
+  BureauOptions<D>,
+  'agentSource' | 'workflowSource'
+> & {
+  readonly agentSource?: AgentSource;
+  readonly workflowSource?: WorkflowSource;
+};
+
+/** `options` with `agentSource` and `workflowSource` each checked and layered into one source. */
+function withLayeredSources<const D extends AgentDefinitions>(
+  options: BureauOptions<D>,
+): LayeredBureauOptions<D> {
+  const { agentSource, workflowSource, ...rest } = options;
+  return {
+    ...rest,
+    ...(agentSource === undefined
+      ? {}
+      : {
+          agentSource: resolveDefinitionSource('agentSource', 'agent', agentSource, toBadRequest),
+        }),
+    ...(workflowSource === undefined
+      ? {}
+      : {
+          workflowSource: resolveDefinitionSource(
+            'workflowSource',
+            'workflow',
+            workflowSource,
+            toBadRequest,
+          ),
+        }),
+  };
 }
 
 function toBadRequest(message: string): never {
@@ -2100,7 +2185,7 @@ export function createScheduledFireApprovalHook(
 /**
  * Whether a maintenance pass had anything to drive: a durable engine, the audit trail, governed
  * memory (COR-1546, whose deletions advance only when asked to), a notification retention window
- * (COR-1941), or terminal tasks it removed.
+ * (COR-1941), a hook delivery retention window (COR-1943), or terminal tasks it removed.
  * Kept apart from `createBureau` so its complexity stays inside the repository's bound.
  */
 function hasMaintenanceSurface(surface: {
@@ -2108,6 +2193,7 @@ function hasMaintenanceSurface(surface: {
   readonly auditTrail: boolean;
   readonly memory: boolean;
   readonly notificationRetention: boolean;
+  readonly hookDeliveryRetention: boolean;
   readonly tasksRemoved: number;
 }): boolean {
   return (
@@ -2115,6 +2201,7 @@ function hasMaintenanceSurface(surface: {
     surface.auditTrail ||
     surface.memory ||
     surface.notificationRetention ||
+    surface.hookDeliveryRetention ||
     surface.tasksRemoved > 0
   );
 }
@@ -2149,12 +2236,15 @@ function needsAutomaticMaintenance(composed: {
   readonly keyValueStore: boolean;
   readonly activeAuditRetention: boolean;
   readonly activeNotificationRetention: boolean;
+  readonly activeHookDeliveryRetention: boolean;
 }): boolean {
   return (
     composed.durableEngine ||
     composed.memory ||
     (composed.keyValueStore &&
-      (composed.activeAuditRetention || composed.activeNotificationRetention))
+      (composed.activeAuditRetention ||
+        composed.activeNotificationRetention ||
+        composed.activeHookDeliveryRetention))
   );
 }
 
@@ -2299,9 +2389,11 @@ function resumeHooks(input: {
 }
 
 async function constructBureau<const D extends AgentDefinitions>(
-  options: BureauOptions<D>,
+  given: BureauOptions<D>,
   construction: BureauConstruction<D>,
 ): Promise<void> {
+  // COR-1873: several definition sources are read as one layered source from here on.
+  let options = withLayeredSources(given);
   // COR-1920: the answer keys are the caller's, so they are read once, before the first await.
   const answerEncryption: AnswerEncryptionKeys | undefined =
     options.answerEncryption === undefined
@@ -2350,7 +2442,6 @@ async function constructBureau<const D extends AgentDefinitions>(
   // COR-1524: a model written in an agent file has to become a `generate` somehow, and only the
   // host holds the credentials to do it. Refused here rather than leaving every file unusable.
   if (options.agentSource !== undefined) {
-    validateDefinitionSource('agentSource', 'agent', options.agentSource, toBadRequest);
     if (options.models?.generate === undefined) {
       toBadRequest(
         '"options.models.generate" is required with "options.agentSource": it turns a model in the model catalog into the generate an agent file runs with',
@@ -2365,7 +2456,6 @@ async function constructBureau<const D extends AgentDefinitions>(
     );
   }
   if (options.workflowSource !== undefined) {
-    validateDefinitionSource('workflowSource', 'workflow', options.workflowSource, toBadRequest);
     // COR-1529: Bureau adds the workflow tools to the tool catalog itself, so a host tool that
     // already has one of their names would be silently shadowed or shadow them.
     const colliding = collidingWorkflowToolName(options.agentSource?.tools);
@@ -4688,6 +4778,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   let recoveryPassActive = false;
   /** The boot repair of task histories (COR-1669), which `shutdown()` awaits before storage closes. */
   let taskResyncBootPass: Promise<void> | undefined;
+
   const bootFrameRunIds = new Set<string>();
   let liveFramesSubscribed = false;
   const bootFrameBuffer: ServerFrame[] = [];
@@ -4899,10 +4990,23 @@ async function constructBureau<const D extends AgentDefinitions>(
   // COR-1915: what each run of a chat spent, which a file agent's `costBudget.perChatUsd` is
   // measured against. A Bureau with no key-value store keeps it in memory, as it does its tasks.
   const chatSpendLedger = createChatSpendLedger({ kv: runtime.kv, diagnose });
+  // COR-1946: a Bureau over a store that outlives the process names itself on every task it admits
+  // and holds a lease under that name, which is how a later boot tells a task whose process is gone
+  // from one whose process is another Bureau still running over the same store.
+  const processLease = openProcessLease({
+    kv: runtime.kv,
+    persistence: options.storage?.capabilities().persistence,
+    clock: runtimeServices.clock,
+    timers: runtimeServices.timers,
+    identifiers: runtimeServices.identifiers,
+    diagnose: (message, cause) =>
+      diagnose({ level: 'error', scope: 'task-registry', message: `[bureau] ${message}`, cause }),
+  });
   const tasks = createTaskRegistry({
     kv: runtime.kv,
     clock: runtimeServices.clock,
     identifiers: runtimeServices.identifiers,
+    processId: processLease.processId,
     // COR-1594: the end of a fire reaches a stream another process serves through the fire's
     // durable history. A Bureau with no persistent storage has none, and no second process.
     onFireSettled: appendFireSettledEvent,
@@ -5362,6 +5466,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         keyValueStore: Boolean(runtime.kv),
         activeAuditRetention: auditRetention !== undefined && auditRetention !== 'forever',
         activeNotificationRetention: currentSettings()['retention.notifications'] !== undefined,
+        activeHookDeliveryRetention: currentSettings()['retention.hookDeliveries'] !== undefined,
       }) && options.maintenance !== 'manual'
     );
   }
@@ -7370,9 +7475,17 @@ async function constructBureau<const D extends AgentDefinitions>(
       if (approval && typeof approval === 'object' && !Array.isArray(approval)) {
         if (!(approval as { approvalBinding?: unknown }).approvalBinding) continue;
         try {
+          // COR-1872: the call resumes at the tool version its run recorded, or not at all.
+          const unavailable = pinnedToolUnavailable(toolbox, approval);
+          if (unavailable !== undefined) throw unavailable;
           await restoreApproval(approval as SignedPendingToolApproval);
         } catch (error) {
-          if (!isTerminalApprovalBindingError(error)) throw error;
+          if (
+            !(error instanceof PinnedToolUnavailableError) &&
+            !isTerminalApprovalBindingError(error)
+          ) {
+            throw error;
+          }
           if (scheduledFireApprovalRuns.has(runId)) {
             await releaseScheduledFireApproval(runId, reviewId, 'invalid', { sessionId });
           } else {
@@ -7384,8 +7497,11 @@ async function constructBureau<const D extends AgentDefinitions>(
             level: 'warn',
             scope: 'approval-recovery',
             message:
-              `[bureau] Failed to restore approval binding for "${reviewId}"; ` +
-              'the affected review will remain unavailable while other runs recover.',
+              `[bureau] Failed to restore approval binding for "${reviewId}"` +
+              (error instanceof PinnedToolUnavailableError
+                ? ` (${error.reason}: ${error.toolId})`
+                : '') +
+              '; the affected review will remain unavailable while other runs recover.',
             cause: error,
           });
         }
@@ -9993,6 +10109,29 @@ async function constructBureau<const D extends AgentDefinitions>(
    * `createBureau()` never rejects on it, in whole or in part).
    */
   /**
+   * COR-1946 — settles the tasks of a process that is gone (see `process-lease.ts`). A lease that is
+   * still current is left alone and looked at again when it would lapse, so a process restarted
+   * inside its predecessor's lease still settles what the predecessor left. Never rejects.
+   */
+  const abandonedTaskSweeper = createAbandonedTaskSweeper({
+    lease: processLease,
+    kv: runtime.kv,
+    timers: runtimeServices.timers,
+    // A manual host has no timer of the Bureau's: its next `maintain()` looks again.
+    rearm: options.maintenance !== 'manual',
+    now: runtimeServices.clock.now,
+    nowISO: runtimeServices.clock.nowISO,
+    unsettled: () => tasks.unsettled(),
+    hasLiveRun: (taskId) => store.getRun(taskId) !== undefined,
+    isDurablyRecorded: async (taskId) =>
+      runtime.durable !== undefined && (await runtime.durable.engine.get(taskId)) !== null,
+    settleAbandoned: (taskId, ownerProcess, lease, settlement) =>
+      tasks.settleAbandoned(taskId, ownerProcess, lease, settlement),
+    diagnose: (message, cause) =>
+      diagnose({ level: 'error', scope: 'recovery', message: `[bureau] ${message}`, cause }),
+  });
+
+  /**
    * COR-1481 — a crash can land between a run reaching its terminal state and the task record
    * saying so, or between a catalog run's durable start and its task record being written. At
    * boot, a task record whose durable run is terminal is settled from the durable state, and a
@@ -10001,7 +10140,11 @@ async function constructBureau<const D extends AgentDefinitions>(
    */
   async function reconcileTaskRecords(): Promise<void> {
     const durable = runtime.durable;
-    if (!durable) return;
+    if (!durable) {
+      // COR-1946: with no durable engine every run is process-local, and only the lease rule applies.
+      await abandonedTaskSweeper.run();
+      return;
+    }
     const settle = async (
       taskId: string,
       state: Awaited<ReturnType<typeof durable.engine.get>>,
@@ -10064,6 +10207,9 @@ async function constructBureau<const D extends AgentDefinitions>(
       if (store.getRun(record.taskId) !== undefined) continue;
       await settle(record.taskId, await durable.engine.get(record.taskId));
     }
+    // COR-1946: what the durable state did not settle, and no durable workflow records, belongs to
+    // the process that admitted it.
+    await abandonedTaskSweeper.run();
     // COR-1594: a fire whose settlement was written but whose history event never was, because its
     // process died between the two, would leave a stream open on another process for ever. The
     // event is deduplicated per fire, so the ones that were appended are skipped by their marker.
@@ -13319,6 +13465,27 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
+   * COR-1943 — removes the settled hook deliveries last written longer ago than
+   * `retention.hookDeliveries`, read per pass so a change applies to the next one. With the setting
+   * unset, or no hooks, nothing is removed; a pending delivery never is. A failure is reported and
+   * never stops the rest of a pass.
+   */
+  async function pruneHookDeliveries(pass: 'Manual' | 'Automatic'): Promise<void> {
+    const window = currentSettings()['retention.hookDeliveries'];
+    if (window === undefined || hooksInstance === undefined) return;
+    try {
+      await hooksInstance.prune(window.olderThan);
+    } catch (error: unknown) {
+      diagnose({
+        level: 'error',
+        scope: 'durable-maintenance',
+        message: `[bureau] ${pass} hook delivery retention pass failed: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
+  }
+
+  /**
    * COR-1546 — advances every open governed-memory deletion: resumes an interrupted synchronous
    * lane and settles the bounded-async targets, which stay pending until something asks. Governed
    * memory runs nothing on a timer of its own, so a record forgotten through `bureau.memory.forget`
@@ -13359,6 +13526,21 @@ async function constructBureau<const D extends AgentDefinitions>(
           `[bureau] Manual settings re-read failed: ${serializeUnknownError(error)}`,
           error,
         );
+      }
+      // COR-1946 — a manual host's lease is renewed here, and what a stopped process left is looked
+      // for again, since the Bureau runs no timer of its own for either.
+      if (options.maintenance === 'manual') {
+        try {
+          await processLease.renew();
+        } catch (error: unknown) {
+          diagnose({
+            level: 'error',
+            scope: 'durable-maintenance',
+            message: `[bureau] Could not renew the process lease: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        }
+        await abandonedTaskSweeper.run();
       }
       if (hasDurableEngine) {
         try {
@@ -13503,6 +13685,8 @@ async function constructBureau<const D extends AgentDefinitions>(
       await pruneWorkflowLogs('Manual');
       // COR-1941 — notifications past `retention.notifications`.
       await pruneNotifications('Manual');
+      // COR-1943 — settled hook deliveries past `retention.hookDeliveries`.
+      await pruneHookDeliveries('Manual');
       // COR-1546 — governed memory's deletions advance only when asked to.
       try {
         await propagateMemoryDeletions();
@@ -13542,6 +13726,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       auditTrail: Boolean(auditTrailInstance),
       memory: runtime.memory !== undefined,
       notificationRetention: currentSettings()['retention.notifications'] !== undefined,
+      hookDeliveryRetention: currentSettings()['retention.hookDeliveries'] !== undefined,
       tasksRemoved,
     })
       ? true
@@ -13817,6 +14002,8 @@ async function constructBureau<const D extends AgentDefinitions>(
         await pruneWorkflowLogs('Automatic');
         // COR-1941 — notifications past `retention.notifications`.
         await pruneNotifications('Automatic');
+        // COR-1943 — settled hook deliveries past `retention.hookDeliveries`.
+        await pruneHookDeliveries('Automatic');
         // COR-1546 — governed memory's deletions advance only when asked to.
         try {
           await propagateMemoryDeletions();
@@ -19165,6 +19352,9 @@ async function constructBureau<const D extends AgentDefinitions>(
         await automaticRunOwnershipPruneCurrentPass;
       }
       if (taskResyncBootPass) await taskResyncBootPass;
+      // COR-1946: no further lease renewals or sweeps; the lease itself is removed last.
+      processLease.halt();
+      await abandonedTaskSweeper.close();
       // AB-388: drain any manual `maintain()` call(s) still in
       // flight — see `manualDurableMaintenancePasses`'s own doc comment
       // above. `allSettled` (never `all`): a rejection here is either
@@ -19376,6 +19566,16 @@ async function constructBureau<const D extends AgentDefinitions>(
               // watcher stops and drains before storage closes under it (COR-1669).
               await fileAgents?.files.close();
             } finally {
+              // COR-1946: removed after every task write of this shutdown, so a peer need not wait
+              // for it to lapse; a failure only means the peer waits.
+              await processLease.release().catch((error: unknown) => {
+                diagnose({
+                  level: 'error',
+                  scope: 'shutdown',
+                  message: `[bureau] Could not remove the process lease: ${serializeUnknownError(error)}`,
+                  cause: error,
+                });
+              });
               try {
                 // Bureau stops using the caller's storage, which the caller closes (COR-1767).
                 runtime.stopUsingStorage();
@@ -21366,6 +21566,9 @@ async function constructBureau<const D extends AgentDefinitions>(
       cause: error,
     });
   });
+  // COR-1946: the lease exists before the first task is admitted and before recovery looks at
+  // what a stopped process left, so a peer that boots now finds this process alive.
+  await processLease.start(options.maintenance === 'manual' ? 'manual' : 'timer');
   // Orphaned steering logs are independent of run recovery, so they are
   // swept at boot even when that recovery is deferred; in the background,
   // and awaited by shutdown before the backend closes.

@@ -52,6 +52,7 @@ import type { AuditTrail } from './audit-trail';
 import type { ActionEvent } from './events';
 import type { Bureau } from './types';
 import type { WebhookNotifier } from './webhook-notifier';
+import { formatVersionedId } from './versioned-catalog';
 
 // ── Public surface ──────────────────────────────────────────────────
 
@@ -223,6 +224,11 @@ function deriveEvaluationAssessment(
 export interface OnlineEvalJudge {
   /** Name recorded on every audit record and alert payload produced by this judge. */
   name: string;
+  /**
+   * The judge's version (COR-1872), recorded beside its name on every audit record and alert
+   * payload, so a score can be traced to the exact judge that gave it.
+   */
+  version: string;
   /** Scores a sampled run. May be async (e.g. an LLM-as-judge call). */
   evaluate: (runResult: RunResult) => EvalScore | Promise<EvalScore>;
   /**
@@ -622,6 +628,7 @@ export function createOnlineEvalSampler<D extends AgentDefinitions = AgentDefini
       type: 'eval.sample.recorded',
       detail: {
         judgeName: judge.name,
+        judgeVersion: judge.version,
         pass: result.pass,
         score: result.score,
         message: result.message,
@@ -632,10 +639,11 @@ export function createOnlineEvalSampler<D extends AgentDefinitions = AgentDefini
   function fireAlert(runId: string, judge: OnlineEvalJudge, result: EvalScore): void {
     webhookNotifier?.notify({
       runId,
-      subjectId: `eval:${runId}:${judge.name}`,
+      subjectId: `eval:${runId}:${formatVersionedId(judge.name, judge.version)}`,
       trigger: EVAL_ALERT_TRIGGER,
       detail: {
         judgeName: judge.name,
+        judgeVersion: judge.version,
         score: result.score,
         threshold: judge.alertThreshold,
         message: result.message,

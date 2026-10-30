@@ -460,6 +460,8 @@ export function createAgentSnapshotStore(options: AgentSnapshotStoreOptions): Ag
         const parsed = parseSnapshot(await store.get(key));
         if (parsed.kind !== 'ok') continue;
         const { snapshot } = parsed;
+        // The prefix of `linear` also lists the plugin agent `linear:triager` (COR-1873).
+        if (snapshot.id !== id) continue;
         found.push({
           id: snapshot.id,
           hash: snapshot.hash,

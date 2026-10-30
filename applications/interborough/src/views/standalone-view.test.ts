@@ -95,7 +95,7 @@ function toastRegions(container: HTMLElement): number {
 
 /** Each view with the title its route renders once it has mounted. */
 const views: readonly (readonly [string, Component, string])[] = [
-  ['DashboardView', DashboardView, 'Engine'],
+  ['DashboardView', DashboardView, 'Health'],
   ['WorkflowsView', WorkflowsView, 'Runs'],
   ['ReviewsView', ReviewsView, 'Reviews'],
   ['WorkersView', WorkersView, 'Workers'],
