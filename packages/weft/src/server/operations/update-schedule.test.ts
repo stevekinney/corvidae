@@ -72,6 +72,44 @@ describe('weft.schedules.update', () => {
     );
   });
 
+  it('changes the time zone when given, keeps it when omitted, and refuses an unknown one', async () => {
+    engine = createEngine();
+    await engine.schedule('echo', null, '0 9 * * *', {
+      id: 'zoned',
+      timeZone: 'America/Los_Angeles',
+    });
+
+    const kept = await handleRequest(
+      jsonRequest('PATCH', '/v1/schedules/zoned', { cronExpression: '0 10 * * *' }),
+      engine,
+      { operationRegistry: registry, restBindings: bindings },
+    );
+    expect(kept.status).toBe(204);
+    expect((await engine.getSchedule('zoned'))?.timeZone).toBe('America/Los_Angeles');
+
+    const changed = await handleRequest(
+      jsonRequest('PATCH', '/v1/schedules/zoned', {
+        cronExpression: '0 10 * * *',
+        timeZone: 'Europe/Berlin',
+      }),
+      engine,
+      { operationRegistry: registry, restBindings: bindings },
+    );
+    expect(changed.status).toBe(204);
+    expect((await engine.getSchedule('zoned'))?.timeZone).toBe('Europe/Berlin');
+
+    const refused = await handleRequest(
+      jsonRequest('PATCH', '/v1/schedules/zoned', {
+        cronExpression: '0 10 * * *',
+        timeZone: 'Mars/Olympus',
+      }),
+      engine,
+      { operationRegistry: registry, restBindings: bindings },
+    );
+    expect(refused.status).toBe(400);
+    expect((await engine.getSchedule('zoned'))?.timeZone).toBe('Europe/Berlin');
+  });
+
   it('keeps the path identifier and partial update fields at the binding boundary', async () => {
     const extracted = await updateScheduleRestBinding.extractInput(
       jsonRequest('PATCH', '/v1/schedules/schedule-partial', {
