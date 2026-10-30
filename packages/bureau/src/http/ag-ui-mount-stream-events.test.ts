@@ -135,6 +135,21 @@ describe('reasoning', () => {
     );
   });
 
+  it('is not read back out of the history of a run that has ended, when its start is retried', async () => {
+    await withHarness(
+      { script: [reasoned('a thought for one reader', 'The answer.')] },
+      async ({ handler }) => {
+        const first = await new FrameReader(await handler(startRequest(runAgentInput()))).rest();
+        const again = await new FrameReader(await handler(startRequest(runAgentInput()))).rest();
+
+        expect(reasoningOf(first)).toHaveLength(5);
+        expect(typesOf(again)).toContain(EventType.TEXT_MESSAGE_CONTENT);
+        expect(reasoningOf(again)).toEqual([]);
+        expect(JSON.stringify(again)).not.toContain('a thought for one reader');
+      },
+    );
+  });
+
   it('is not replayed to an owner who attaches after it was sent, nor held by a snapshot', async () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {

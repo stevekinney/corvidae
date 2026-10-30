@@ -464,18 +464,26 @@ export function openRunStream(
 
   /**
    * Reasoning is the model's chain of thought: it is sent to the run's owner, as the run produces
-   * it, and to no one else. A stream that replays what already happened (an attach, or a reconnect
-   * with a cursor) is sent none, so a snapshot, a replay and a second reader never hold it; a stream
-   * that starts or continues a run replays from its beginning because its client holds nothing.
+   * it, and to no one else. A reader of recorded history (`history`) is sent none, so a settled
+   * run's thoughts are not read back out of its event log. The live feed's retained window
+   * (`retained`) is part of the live stream for a stream that starts or continues a run, which
+   * replays from its beginning because its client holds nothing, and a replay for any other
+   * (an attach, or a reconnect with a cursor), which is sent none.
    */
-  const mayReceive = (event: Event, replayed: boolean): boolean =>
-    !isReasoningEvent(event) ||
-    (request.viewerIsOwner === true && !(replayed && request.replay !== 'beginning'));
+  const mayReceive = (event: Event, source?: 'history' | 'retained'): boolean => {
+    if (!isReasoningEvent(event)) return true;
+    if (request.viewerIsOwner !== true || source === 'history') return false;
+    return source !== 'retained' || request.replay === 'beginning';
+  };
 
-  const writeEvents = (events: ReadonlyArray<Event>, cursor?: string, replayed = false): void => {
+  const writeEvents = (
+    events: ReadonlyArray<Event>,
+    cursor?: string,
+    source?: 'history' | 'retained',
+  ): void => {
     for (const event of events) {
       if (ended) return;
-      if (!mayReceive(event, replayed)) continue;
+      if (!mayReceive(event, source)) continue;
       if (opened ? !sink.writeLive(event, cursor) : (sink.writeOpening(event, cursor), false)) {
         fail('STREAM_OVERFLOW', 'The stream fell too far behind; attach again.');
         return;
@@ -1036,7 +1044,7 @@ export function openRunStream(
       highestSequence = Math.max(highestSequence, event.sequence);
       if (projector === undefined) break;
       const projection = projector.handleRecorded(event.event, event.detail);
-      writeEvents(projection.events, undefined, true);
+      writeEvents(projection.events, undefined, 'history');
       if (ended) return;
       if (projection.terminal !== undefined) ending = projection.terminal;
       else if (projection.parked === true) {
@@ -1055,7 +1063,7 @@ export function openRunStream(
 
     if (liveSubscription !== undefined) {
       for (const envelope of liveSubscription.opening)
-        writeEvents([envelope.event], envelope.cursor, true);
+        writeEvents([envelope.event], envelope.cursor, 'retained');
       ending = liveSubscription.terminal;
     }
 
