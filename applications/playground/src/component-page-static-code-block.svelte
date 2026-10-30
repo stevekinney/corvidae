@@ -16,7 +16,7 @@
 
 <div class="cinder-code-block" data-readme-code-block>
   {#if language || copyable}
-    <header class="cinder-code-block__header">
+    <div class="cinder-code-block__meta">
       {#if language}
         <span class="cinder-code-block__language">{language}</span>
       {/if}
@@ -29,7 +29,7 @@
           iconOnly={true}
         />
       {/if}
-    </header>
+    </div>
   {/if}
   <!-- The README renderer already initialized Shiki and sanitized this HTML at
        build time. Rendering that exact result here preserves the CodeBlock

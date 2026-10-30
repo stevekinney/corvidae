@@ -48,7 +48,7 @@ The leaves are also named exports of `@lostgradient/cinder`.
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `caption` | `string` | no | — | Visual caption rendered as a `<caption>` element. |
+| `caption` | `string` | no | — | Accessible caption rendered as a `<caption>` element. It names the table for assistive technology but is visually hidden: the heading above the table already says what it is, and the table draws no title row of its own. |
 | `class` | `string` | no | — | Additional class names merged with `.cinder-table`. |
 | `density` | `"comfortable"` \| `"condensed"` \| `"spacious"` | no | `"comfortable"` | Vertical padding density for header and body cells. Defaults to `'comfortable'`. |
 | `scrollable` | `boolean` | no | `false` | When true, wraps the table in a `.cinder-table-scroll` container that enables horizontal overflow scrolling for dense or unknown-width tables. Use this instead of manually wrapping Table in `.cinder-table-scroll`. When combined with `stickyHeader`, the generated wrapper is the sticky header's scroll container. Set a bounded block size on `scrollContainerProps` when the table should scroll vertically inside that wrapper. |

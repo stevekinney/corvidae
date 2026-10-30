@@ -172,6 +172,12 @@
     const finiteWidth = Number.isFinite(width) ? width : 150;
     return Math.min(max, Math.max(min, finiteWidth));
   }
+  /** The hover text of a truncated cell: the value's own text, when it has one. */
+  function truncatedTitle(value: unknown): string | undefined {
+    if (typeof value === 'string') return value === '' ? undefined : value;
+    if (typeof value === 'number' || typeof value === 'bigint') return String(value);
+    return undefined;
+  }
   function columnAriaMax(column: DataTableColumn<Row>): number {
     const { max } = columnWidthBounds(column);
     return Number.isFinite(max) ? max : Number.MAX_SAFE_INTEGER;
@@ -658,6 +664,8 @@
             <TableCell
               as={column.key === rowHeaderKey ? 'th' : 'td'}
               align={mapAlign(column.align) ?? 'left'}
+              truncate={column.truncate ?? false}
+              title={column.truncate ? truncatedTitle(virtualRow.row[column.key]) : undefined}
               style={columnWidth(column) ? `width: ${columnWidth(column)}px` : undefined}
             >
               {virtualRow.row[column.key]}

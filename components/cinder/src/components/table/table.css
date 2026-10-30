@@ -18,10 +18,24 @@
 
   .cinder-table {
     width: 100%;
-    border-collapse: collapse;
+    /* One framed style, matching the list surfaces (DataList, StackedList):
+     * a hairline border and the surface radius around the whole table. A
+     * collapsed-border table cannot round its corners, so the table separates
+     * its borders and each cell draws only its own bottom edge. `overflow: clip`
+     * rounds the row hover fill at the corners without becoming a scroll
+     * container, so a sticky header still pins to the real scroll parent. */
+    border-collapse: separate;
+    border-spacing: 0;
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-lg);
+    overflow: clip;
     font-size: var(--cinder-text-sm);
     color: var(--cinder-text-default);
     background: var(--cinder-surface);
+    /* Longest a truncating cell's text may grow before it ellipsizes. */
+    --_cinder-table-truncate-size: 28rem;
+    /* Narrowest a cell that holds form controls may get. */
+    --_cinder-table-controls-size: 10rem;
   }
 
   .cinder-table-scroll {
@@ -61,21 +75,30 @@
     box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
+  /* The caption names the table for assistive technology but is not painted:
+   * the page heading above the table already says what it is. It is clipped to
+   * a zero-height box rather than removed, so it stays in the accessibility
+   * tree and contributes no height to the table or to a sticky header offset. */
   .cinder-table__caption {
     caption-side: top;
     text-align: left;
-    padding-block: var(--cinder-space-3) var(--cinder-space-2);
-    padding-inline: var(--cinder-space-3);
-    font-weight: var(--cinder-font-medium);
-    color: var(--cinder-text-default);
+    block-size: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    white-space: nowrap;
   }
 
   /* ----------------------------------------
  * Header
  * ---------------------------------------- */
 
+  /* A quiet header: the same surface as the body, set apart by muted small
+   * text and a hairline, not a filled bar. Sticky headers need an opaque
+   * background, which the surface supplies. */
   .cinder-table__header {
-    background: var(--cinder-surface-inset);
+    background: var(--cinder-surface);
   }
 
   .cinder-table[data-cinder-sticky-header] .cinder-table__header {
@@ -101,6 +124,7 @@
     padding-block: var(--cinder-space-2);
     padding-inline: var(--cinder-space-3);
     text-align: left;
+    font-size: var(--cinder-text-xs);
     font-weight: var(--cinder-font-medium);
     color: var(--cinder-text-muted);
     border-bottom: 1px solid var(--cinder-border-muted);
@@ -245,6 +269,43 @@
     padding-block: var(--cinder-space-2);
     padding-inline: var(--cinder-space-3);
     border-bottom: 1px solid var(--cinder-border-muted);
+  }
+
+  /* The frame draws the bottom edge, so the last row adds none of its own. */
+  .cinder-table__body .cinder-table__row:last-child > .cinder-table__cell {
+    border-bottom: 0;
+  }
+
+  /* ----------------------------------------
+ * Truncation — a cell with `truncate` keeps its text on one line and ends it
+ * with an ellipsis, with the full text in the `title`. The text sits in a block
+ * with a maximum inline size, which bounds the width the column asks for: a
+ * 2,000px value cannot widen the table, whatever the table layout.
+ * ---------------------------------------- */
+
+  .cinder-table__cell-text {
+    display: block;
+    min-inline-size: 0;
+    max-inline-size: var(--_cinder-table-truncate-size);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ----------------------------------------
+ * Controls — every control in a `controls` column fills the cell, so the
+ * controls share the one width the column has and a longer value in one row
+ * cannot make its control wider than its neighbours.
+ * ---------------------------------------- */
+
+  .cinder-table__cell[data-cinder-controls] {
+    min-inline-size: var(--_cinder-table-controls-size);
+  }
+
+  .cinder-table__cell[data-cinder-controls] > * {
+    box-sizing: border-box;
+    inline-size: 100%;
+    max-inline-size: 100%;
   }
 
   .cinder-table__cell[data-cinder-align='center'] {

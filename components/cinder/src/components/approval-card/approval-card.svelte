@@ -277,6 +277,7 @@
             value={argumentsPreview.value}
             truncated={argumentsPreview.truncated}
             label={`${tool.name} arguments`}
+            view="json"
           />
         </div>
       {/if}

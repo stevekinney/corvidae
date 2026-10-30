@@ -39,7 +39,8 @@ describe('GetPanel', () => {
     await fireEvent.input(getByLabelText('Exact key'), { target: { value: 'app:config' } });
     await fireEvent.click(getByText('Get'));
 
-    expect(await findByText('"ops"')).not.toBeNull();
+    // Fields view: a formatted label and a bare value, not the JSON tree's quoted string.
+    expect(await findByText('ops')).not.toBeNull();
   });
 
   test('shows a not-found empty state for a missing key', async () => {

@@ -1,6 +1,6 @@
 # PayloadInspector
 
-Compact inspector for structured payloads. Presents a payload as an interactive JSON tree with a visible label, byte size, truncation state, and a single copy action.
+Inspector for structured payloads. Presents a payload as data first: labelled fields by default, with a Fields / JSON switch for the raw JSON tree, a visible label, byte size, truncation state, and a single copy action.
 
 ## Overview
 
@@ -9,11 +9,11 @@ Compact inspector for structured payloads. Presents a payload as an interactive 
 Edge cases handled out of the box:
 
 - `null`, `boolean`, `number`, and plain strings — shown inline as primitives
-- Arrays and objects — navigable in the JSON tree
+- Arrays and objects — listed as labelled fields (property names formatted as labels, IDs and hashes in small monospace, nested objects and arrays as indented sub-lists); the Fields / JSON switch in the heading row shows the collapsible JSON tree instead
 - Invalid JSON strings — shown with a parse error notice above the raw text
 - Empty / no payload — shows a "No payload" placeholder
-- Oversized payloads — JsonViewer's built-in cap prevents browser freezes
-- Truncated payloads — a header badge indicates producer-side truncation
+- Oversized payloads — a notice replaces the fields, and JsonViewer's built-in cap protects the JSON view
+- Truncated payloads — a badge in the heading row indicates producer-side truncation
 - Circular references and non-serializable values (e.g. BigInt) — an explanatory message renders instead of the tree; size reads "Unknown size"
 
 ## Usage
@@ -47,7 +47,7 @@ When the producer truncates a payload before sending (e.g. due to wire limits), 
 
 ### Copy behavior
 
-The header copy button copies pretty-printed JSON of the parsed value. When the payload itself is a string — including a JSON-encoded string primitive like `'"hello"'` — it copies that original string verbatim instead, so the copied text always matches what was actually passed as `value`. It is hidden for empty and unserializable payloads.
+The copy button in the heading row copies pretty-printed JSON of the parsed value. When the payload itself is a string — including a JSON-encoded string primitive like `'"hello"'` — it copies that original string verbatim instead, so the copied text always matches what was actually passed as `value`. It is hidden for empty and unserializable payloads.
 
 ### Redacting sensitive fields
 
@@ -87,6 +87,8 @@ Pass a `parse` function to support alternative serialization formats:
 | `maxDepth` | `number` | no | — | Hard depth cap for the JSON tree. Nodes deeper than this never render their children. Defaults to 50. |
 | `truncated` | `boolean` | no | — | When true, the payload has been truncated by the producer (e.g. because it exceeded a wire size limit). The inspector renders a truncation badge in the header. |
 | `value` | `unknown` | no | — | The payload value to inspect. Pass any JSON-serializable value — object, array, string, number, boolean, or null. Plain strings are rendered as string values; strings that look like serialized JSON are parsed. Pass `undefined` when no payload is available yet. |
+| `view` | `"fields"` \| `"json"` | no | `"fields"` | Which view a structured payload (an object or array) shows. `'fields'` lists each property with a formatted label; `'json'` shows the collapsible JSON tree. Bindable, and switched by the Fields / JSON control in the heading row. |
+| `linkFor` | `(opaque)` | no | — | Returns the address a value in the Fields view leads to, so a value that names something (a run, a workflow, a user) can link to it. Return `undefined` to leave the value as text. The JSON view is never linked. Not expressible in JSON Schema; see the component types for the signature. |
 | `parse` | `(opaque)` | no | — | Custom parser applied when `value` is a string. Receives the raw string and must return a parsed value or throw. Defaults to JSON.parse. Use this to support alternative serialization formats. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->

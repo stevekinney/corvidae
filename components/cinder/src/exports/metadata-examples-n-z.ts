@@ -24,6 +24,7 @@ import resizablePanelsExamplesJson from '../components/resizable-panels/resizabl
 import runStepTimelineExamplesJson from '../components/run-step-timeline/run-step-timeline.examples.json' with { type: 'json' };
 import scheduleBuilderExamplesJson from '../components/schedule-builder/schedule-builder.examples.json' with { type: 'json' };
 import schemaFormExamplesJson from '../components/schema-form/schema-form.examples.json' with { type: 'json' };
+import schemaViewExamplesJson from '../components/schema-view/schema-view.examples.json' with { type: 'json' };
 import scrollAreaExamplesJson from '../components/scroll-area/scroll-area.examples.json' with { type: 'json' };
 import searchFieldExamplesJson from '../components/search-field/search-field.examples.json' with { type: 'json' };
 import secretValueFieldExamplesJson from '../components/secret-value-field/secret-value-field.examples.json' with { type: 'json' };
@@ -123,6 +124,8 @@ export const runStepTimelineExamples = runStepTimelineExamplesJson;
 export const scheduleBuilderExamples = scheduleBuilderExamplesJson;
 /** Code examples for this component. */
 export const schemaFormExamples = schemaFormExamplesJson;
+/** Code examples for this component. */
+export const schemaViewExamples = schemaViewExamplesJson;
 /** Code examples for this component. */
 export const scrollAreaExamples = scrollAreaExamplesJson;
 /** Code examples for this component. */

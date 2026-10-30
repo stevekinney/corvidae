@@ -643,7 +643,11 @@ export { default as PageHeader } from './components/page-header/index.ts';
 export type { PageHeaderHeadingLevel, PageHeaderProps } from './components/page-header/index.ts';
 
 export { default as PayloadInspector } from './components/payload-inspector/index.ts';
-export type { PayloadInspectorProps } from './components/payload-inspector/index.ts';
+export type {
+  PayloadInspectorField,
+  PayloadInspectorProps,
+  PayloadInspectorView,
+} from './components/payload-inspector/index.ts';
 
 export { default as PermissionMatrix } from './components/permission-matrix/index.ts';
 export type {
@@ -752,6 +756,9 @@ export type {
   SchemaFormSchema,
   SchemaFormSubmitHandler,
 } from './components/schema-form/index.ts';
+
+export { default as SchemaView } from './components/schema-view/index.ts';
+export type { SchemaViewProps } from './components/schema-view/index.ts';
 
 export { default as ScrollArea } from './components/scroll-area/index.ts';
 export type {
@@ -1190,7 +1197,13 @@ export type {
   DataGridSelectionMode,
   DataGridSelectionModel,
 } from './components/data-grid/index.ts';
-export type { DescriptionListDefinition } from './components/description-list/index.ts';
+export type {
+  DescriptionListDefinition,
+  DescriptionListFormattedValue,
+  DescriptionListIdentifier,
+  DescriptionListTags,
+  DescriptionListTimestamp,
+} from './components/description-list/index.ts';
 export type { InvocationRuleBuilderSchemaProps } from './components/invocation-rule-builder/index.ts';
 export type { KbdSize } from './components/kbd/index.ts';
 export type {

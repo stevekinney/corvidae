@@ -13,13 +13,13 @@ import type { Highlighter } from '../../utilities/highlighter.ts';
  * emits the plain `<pre><code>` fallback. Highlighting is a two-phase,
  * client-only enhancement: colorization may appear after first paint, but the
  * stable viewport keeps the block's layout from moving. Pass
- * `highlight={false}` to keep `language` semantics (the header label) with
+ * `highlight={false}` to keep `language` semantics (the language label) with
  * zero highlighting.
  */
 export type CodeBlockProps = {
   /** The code to render. */
   code: string;
-  /** Optional language label rendered in the header; also selects the grammar for highlighting. */
+  /** Optional language label rendered above the code (there is no header bar); also selects the grammar for highlighting. */
   language?: string;
   /**
    * Whether to highlight. Defaults to `true` whenever `language` is set and a
@@ -28,7 +28,7 @@ export type CodeBlockProps = {
    * `highlight={false}` is an absolute off switch: it disables ALL
    * highlighting — including an explicit `highlighter` prop and a context
    * highlighter. The block renders the escaped plain `<pre><code>` fallback
-   * while keeping the `language` header label. When highlighting is enabled,
+   * while keeping the `language` label. When highlighting is enabled,
    * client-side colorization may appear after first paint, but the block keeps
    * stable layout metrics.
    */
@@ -49,12 +49,12 @@ export type CodeBlockProps = {
    * `highlight={false}` when you want guaranteed-escaped plaintext.
    */
   highlighter?: Highlighter;
-  /** When true, render a copy button in the header. */
+  /** When true, render an icon-only copy button above the code. The block has no header bar or frame. */
   copyable?: boolean;
   /**
-   * Whether to render the language label in the header. Default `true`.
+   * Whether to render the language label above the code. Default `true`.
    * Pass `false` to keep `language`-driven highlighting without the visible
-   * header chip; with `copyable` also unset, no header renders at all.
+   * label; with `copyable` also unset, nothing renders above the code.
    */
   languageLabelVisible?: boolean;
   /**

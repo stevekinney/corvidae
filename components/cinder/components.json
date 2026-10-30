@@ -3748,11 +3748,12 @@
       "exportName": "PayloadInspector",
       "category": "data-display",
       "status": "stable",
-      "purpose": "Compact inspector for structured payloads: a labeled tree view with a copy action and size/truncation status.",
+      "purpose": "Inspector for structured payloads: labelled fields by default with a Fields / JSON switch, a copy action, and size and truncation status.",
       "tags": ["json", "inspector", "payload"],
       "useWhen": [
         "Inspecting workflow inputs, signal payloads, activity results, or API response bodies in a dashboard.",
-        "Displaying a structured payload with a visible label, byte size, and copy affordance."
+        "Displaying a structured payload with a visible label, byte size, and copy affordance.",
+        "Reading a payload as data first, with the raw JSON one switch away."
       ],
       "avoidWhen": [
         {
@@ -3762,7 +3763,7 @@
           "reason": "Needing search, filtering, or virtualization over large collections — compose a custom viewer."
         }
       ],
-      "related": ["json-viewer", "code-block", "copy-button"],
+      "related": ["json-viewer", "code-block", "copy-button", "schema-view"],
       "hasConstraints": false,
       "hasExamples": true,
       "artifacts": {
@@ -4319,6 +4320,38 @@
         "notes": [
           "Invalid submission moves focus to the first invalid field and associates each field error through aria-describedby."
         ]
+      }
+    },
+    {
+      "name": "SchemaView",
+      "id": "schema-view",
+      "import": "@lostgradient/cinder",
+      "exportName": "SchemaView",
+      "category": "data-display",
+      "status": "beta",
+      "purpose": "Read-only view of a JSON Schema: one line per field with a label, a red dot when required, a monospace type and a description, nested objects indented, and a disclosure for the raw document.",
+      "tags": ["schema", "json-schema", "read-only", "data-display"],
+      "useWhen": [
+        "Showing the shape of a workflow input or output, a tool input, or a signal or update payload without a raw JSON dump.",
+        "Telling the reader which fields are required and what type each one takes."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "The schema must be edited.",
+          "alternative": "json-schema-editor"
+        },
+        {
+          "reason": "You are showing a value rather than the shape it must have.",
+          "alternative": "payload-inspector"
+        }
+      ],
+      "related": ["json-schema-editor", "payload-inspector", "json-viewer", "description-list"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/schema-view/schema-view.schema.json",
+        "variables": "src/components/schema-view/schema-view.variables.json",
+        "examples": "src/components/schema-view/schema-view.examples.json"
       }
     },
     {

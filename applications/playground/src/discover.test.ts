@@ -315,6 +315,7 @@ const SIDEBAR_BASELINE = [
   'run-step-timeline',
   'schedule-builder',
   'schema-form',
+  'schema-view',
   'scroll-area',
   'search-field',
   'secret-value-field',

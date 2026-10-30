@@ -79,7 +79,7 @@
 
   <div class="weft-start-review__payload">
     <span class="weft-start-review__payload-label">Payload</span>
-    <PayloadInspector value={payload} />
+    <PayloadInspector value={payload} view="json" />
   </div>
 
   {#if submitState.status === 'success'}

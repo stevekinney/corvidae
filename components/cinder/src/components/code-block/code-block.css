@@ -29,7 +29,8 @@
     );
 
     background: var(--cinder-code-block-background);
-    border: 1px solid var(--cinder-border);
+    /* Flat: no border and no inner frame. The fill alone separates the code
+     * field from the surface behind it. */
     /* A code block is a block-level PANEL, not a control: it takes the surface
      * radius, the same step cards and dialogs use. At the control radius it read
      * as a hard-cornered plate at panel width. */
@@ -38,20 +39,15 @@
     user-select: none;
   }
 
-  .cinder-code-block__header {
+  /* The language label and copy action share one quiet row at the top of the
+   * field. It is not a bar: no border, no fill of its own, and no extra
+   * padding beyond the code's own inset, so it reads as part of the code field. */
+  .cinder-code-block__meta {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: var(--cinder-space-2);
-    min-height: 2rem;
-    padding: var(--cinder-space-1-5) var(--cinder-space-3);
-    border-bottom: 1px solid var(--cinder-border-muted);
-    /* Transparent, not a fill of its own. The header used to paint
-     * `--cinder-surface-inset` while the body painted `surface-raised`, so in light
-     * mode a heavy grey title bar sat on a white code field — two plates stacked
-     * inside one rounded, clipped container, which is what read as broken corners.
-     * The hairline below is enough to separate chrome from content; the header now
-     * shares the block's single surface. */
+    padding: var(--cinder-space-1) var(--cinder-space-2) 0 var(--cinder-code-block-padding);
     background: transparent;
   }
 
@@ -230,29 +226,27 @@
     }
   }
 
-  /* Compact copy button when nested inside a code block header. It reads as a
- * real button — a square hit target with a subtle resting chip background — not
- * a bare floating glyph crammed against the panel edge. The chip is a faint
- * raised surface so the button is discoverable at rest without competing with
- * the code content; hover deepens it (rule below).
+  /* Quiet icon-only copy button inside the meta row: no chip, no border, just
+ * the glyph with a hover wash.
  *
  * Hit target: 1.75rem (28px) square clears the WCAG 2.5.8 AA 24px floor with
  * margin. The icon stays centered via inline-flex.
  *
- * Specificity bump (`.cinder-code-block .cinder-code-block__header .cinder-copy-button`)
+ * Specificity bump (`.cinder-code-block .cinder-code-block__meta .cinder-copy-button`)
  * is required because copy-button.css imports AFTER code-block.css in components.css;
  * with equal specificity the later import would win and the bordered default would
  * leak through. Scoped so the standalone CopyButton keeps its bordered default
  * everywhere else in the app. */
-  .cinder-code-block .cinder-code-block__header .cinder-copy-button {
+  .cinder-code-block .cinder-code-block__meta .cinder-copy-button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    inline-size: 2rem;
-    min-block-size: 2rem;
+    inline-size: 1.75rem;
+    min-block-size: 1.75rem;
+    margin-inline-start: auto;
     border: 1px solid transparent;
     border-radius: var(--cinder-radius-sm);
-    background: var(--cinder-surface-raised);
+    background: transparent;
     padding: var(--cinder-space-1);
     color: var(--cinder-text-muted);
     transition:
@@ -260,13 +254,13 @@
       color var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
 
-  .cinder-code-block .cinder-code-block__header .cinder-copy-button:focus-visible {
+  .cinder-code-block .cinder-code-block__meta .cinder-copy-button:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
     box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
   }
 
   @media (forced-colors: active) {
-    .cinder-code-block .cinder-code-block__header .cinder-copy-button:focus-visible {
+    .cinder-code-block .cinder-code-block__meta .cinder-copy-button:focus-visible {
       outline: var(--cinder-ring-width) solid ButtonText;
       outline-offset: 3px;
       box-shadow: none;
@@ -275,7 +269,7 @@
 
   /* Sticky-hover suppression on touch. */
   @media (hover: hover) {
-    .cinder-code-block .cinder-code-block__header .cinder-copy-button:hover {
+    .cinder-code-block .cinder-code-block__meta .cinder-copy-button:hover {
       background: var(--cinder-surface-hover);
       color: var(--cinder-text-default);
       border-color: transparent;

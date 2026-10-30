@@ -1034,3 +1034,101 @@ describe('CSS rule assertions — sort indicator and focus ring', () => {
     expect(rule?.style.zIndex).toBe('2');
   });
 });
+
+describe('Table data display', () => {
+  // happy-dom has no layout engine, so a rendered width cannot be measured.
+  // These tests assert the contract that produces the layout instead: the
+  // markup that marks a cell, and the CSS the table ships for that marker.
+  const longValue = 'storage/'.concat('segment-'.repeat(250)); // about 2,000 characters
+
+  function ruleBody(selector: string): string {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = new RegExp(`(?:^|\\n)\\s*${escaped}\\s*\\{([^}]*)\\}`).exec(tableCss);
+    return match?.[1] ?? '';
+  }
+
+  test('a 2,000 px value in a truncating column does not widen the table', async () => {
+    const { default: ColumnsFixture } =
+      await import('../../test/fixtures/table-columns-fixture.svelte');
+    const { container } = render(ColumnsFixture, { values: [longValue, 'short'] });
+    expect(longValue.length).toBeGreaterThan(1900);
+
+    const cells = Array.from(container.querySelectorAll('td[data-cinder-truncate]'));
+    expect(cells).toHaveLength(2);
+    const text = requiredInstance(cells[0]?.querySelector('.cinder-table__cell-text'), HTMLElement);
+    // The full text is on the title, so nothing is lost when it is clipped.
+    expect(text.getAttribute('title')).toBe(longValue);
+    expect(text.textContent?.trim()).toBe(longValue);
+
+    // The CSS contract that keeps the column from growing with its content.
+    const rule = ruleBody('.cinder-table__cell-text');
+    expect(rule).toMatch(/max-inline-size:\s*var\(--_cinder-table-truncate-size\)/);
+    expect(rule).toMatch(/overflow:\s*hidden/);
+    expect(rule).toMatch(/text-overflow:\s*ellipsis/);
+    expect(rule).toMatch(/white-space:\s*nowrap/);
+    expect(rule).toMatch(/display:\s*block/);
+    expect(ruleBody('.cinder-table')).toMatch(/--_cinder-table-truncate-size:\s*28rem/);
+  });
+
+  test('an explicit title on a truncating cell wins over the rendered text', async () => {
+    const { default: ColumnsFixture } =
+      await import('../../test/fixtures/table-columns-fixture.svelte');
+    const { container } = render(ColumnsFixture, { values: ['one', 'two'], explicitTitles: true });
+    const titles = Array.from(container.querySelectorAll('.cinder-table__cell-text')).map(
+      (element) => element.getAttribute('title'),
+    );
+    expect(titles).toEqual(['Key 1', 'Key 2']);
+    // The title lives on the text, not on the cell, so it is announced once.
+    expect(container.querySelector('td[data-cinder-truncate]')?.getAttribute('title')).toBeNull();
+  });
+
+  test('controls in one table column share one width', async () => {
+    const { default: ColumnsFixture } =
+      await import('../../test/fixtures/table-columns-fixture.svelte');
+    const { container } = render(ColumnsFixture, { values: ['a', 'b', 'c'] });
+
+    // Every cell in the column is marked, and the control is its direct child.
+    const cells = Array.from(container.querySelectorAll('td[data-cinder-controls]'));
+    expect(cells).toHaveLength(3);
+    for (const cell of cells) expect(cell.firstElementChild?.tagName).toBe('INPUT');
+
+    // The controls differ in content length, so only the rule can make them equal.
+    const widths = Array.from(container.querySelectorAll('input')).map(
+      (input) => input.value.length,
+    );
+    expect(new Set(widths).size).toBe(3);
+
+    const fill = ruleBody('.cinder-table__cell[data-cinder-controls] > *');
+    expect(fill).toMatch(/inline-size:\s*100%/);
+    expect(fill).toMatch(/max-inline-size:\s*100%/);
+    expect(ruleBody('.cinder-table__cell[data-cinder-controls]')).toMatch(
+      /min-inline-size:\s*var\(--_cinder-table-controls-size\)/,
+    );
+  });
+
+  test('the table is framed with a quiet header and a caption kept for screen readers', () => {
+    const frame = ruleBody('.cinder-table');
+    expect(frame).toMatch(/border:\s*1px solid var\(--cinder-border\)/);
+    expect(frame).toMatch(/border-radius:\s*var\(--cinder-radius-lg\)/);
+    expect(frame).toMatch(/border-collapse:\s*separate/);
+    // The header sits on the table surface instead of a filled bar.
+    expect(ruleBody('.cinder-table__header')).toMatch(/background:\s*var\(--cinder-surface\)/);
+    expect(ruleBody('.cinder-table__header')).not.toContain('surface-inset');
+
+    // The caption is clipped to a zero-height box, not removed from the tree.
+    const caption = ruleBody('.cinder-table__caption');
+    expect(caption).toMatch(/block-size:\s*0/);
+    expect(caption).toMatch(/overflow:\s*hidden/);
+    expect(caption).not.toMatch(/display:\s*none/);
+    expect(caption).not.toMatch(/visibility:\s*hidden/);
+  });
+
+  test('a captioned table still exposes its caption to assistive technology', async () => {
+    const { default: ColumnsFixture } =
+      await import('../../test/fixtures/table-columns-fixture.svelte');
+    const { container } = render(ColumnsFixture, { values: ['a'] });
+    expect(container.querySelector('caption.cinder-table__caption')?.textContent?.trim()).toBe(
+      'Stored values',
+    );
+  });
+});

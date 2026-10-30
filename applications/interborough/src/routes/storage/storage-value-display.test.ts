@@ -29,7 +29,9 @@ describe('StorageValueDisplay', () => {
     const bytes = new TextEncoder().encode('{"owner":"ops"}');
     const { getByText } = render(StorageValueDisplay, { props: { value: bytes } });
 
-    expect(getByText('"ops"')).not.toBeNull();
+    // PayloadInspector shows fields by default: a formatted label and a bare value.
+    expect(getByText('Owner')).not.toBeNull();
+    expect(getByText('ops')).not.toBeNull();
   });
 
   test('passes a custom label through to PayloadInspector', () => {
