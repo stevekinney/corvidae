@@ -703,6 +703,8 @@ export function createResume(context: ResumeContext) {
         contextId: request.threadId,
         principal: request.owner,
         commandId: `ag-ui-resume:${request.threadId}:${interruptKey([...reviews.values()])}`,
+        // The continuation is the chat's own: the Bureau fills the context, agent, and principal.
+        origin: { kind: 'chat' },
       },
     );
     return created.id;

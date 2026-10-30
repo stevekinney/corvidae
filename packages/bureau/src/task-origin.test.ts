@@ -6,11 +6,13 @@ import { describe, expect, it, spyOn } from 'bun:test';
 import { createBureau } from './create-bureau';
 import { createRuntimeComposition } from './runtime-composition';
 import {
+  isStoredTaskOrigin,
   isTaskOrigin,
   parseStartTaskOrigin,
   TASK_ORIGIN_KINDS,
   taskOriginOfStart,
   taskOriginTag,
+  taskOriginView,
 } from './task-origin';
 
 const START = { sessionId: 'context-1', agentName: 'assistant', owner: 'api-key:alice' } as const;
@@ -206,5 +208,19 @@ describe('the run a task starts', () => {
     } finally {
       await bureau.dispose();
     }
+  });
+});
+
+describe('the stored origin rule (COR-1867)', () => {
+  it('accepts any object with a non-empty kind, and the view shows only origins it can read', () => {
+    expect(isStoredTaskOrigin({ kind: 'agent', parentRunId: 'run-0' })).toBe(true);
+    expect(isStoredTaskOrigin({ kind: 'chat' })).toBe(true);
+    for (const value of [undefined, null, 'chat', [], {}, { kind: '' }, { kind: 3 }]) {
+      expect(isStoredTaskOrigin(value), JSON.stringify(value)).toBe(false);
+    }
+    expect(taskOriginView({ kind: 'api' })).toEqual({ kind: 'api' });
+    expect(taskOriginView({ kind: 'agent' })).toBeNull();
+    expect(taskOriginView({ kind: 'chat' })).toBeNull();
+    expect(taskOriginView(undefined)).toBeNull();
   });
 });

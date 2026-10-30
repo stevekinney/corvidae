@@ -60,7 +60,13 @@ import {
   type TaskListingRecord,
   type TaskListingScope,
 } from './task-list-snapshots';
-import { isTaskOrigin, type TaskOrigin, type TaskOriginKind } from './task-origin';
+import {
+  isStoredTaskOrigin,
+  type StoredTaskOrigin,
+  type TaskOrigin,
+  type TaskOriginKind,
+  taskOriginView,
+} from './task-origin';
 import type { CancelDurableRunOutcome, PendingReview } from './types';
 
 /** The key prefix of a task's record. */
@@ -169,9 +175,10 @@ export interface TaskRecord {
   /**
    * Where the task came from (COR-1867): a chat, a person, a schedule's fire, or the API. Absent
    * in a record written before it was kept, which reads as `null`: it is never guessed from the
-   * record's other fields.
+   * record's other fields. A record whose origin this release cannot read (a kind it does not
+   * know) stays readable and keeps the value as stored; the view shows `null`.
    */
-  readonly origin?: TaskOrigin | undefined;
+  readonly origin?: StoredTaskOrigin | undefined;
   readonly createdAt: string;
   readonly history: readonly TaskMessage[];
   readonly settled?: TaskSettlement | undefined;
@@ -777,7 +784,7 @@ function isTaskRecord(value: unknown): value is TaskRecord {
     typeof value['owner'] === 'string' &&
     (value['actor'] === undefined || typeof value['actor'] === 'string') &&
     (value['kind'] === undefined || value['kind'] === 'schedule-fire') &&
-    (value['origin'] === undefined || isTaskOrigin(value['origin'])) &&
+    (value['origin'] === undefined || isStoredTaskOrigin(value['origin'])) &&
     isTimestamp(value['createdAt']) &&
     Array.isArray(value['history']) &&
     value['history'].every(isTaskMessage) &&
@@ -945,7 +952,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       owner: record.owner,
       actor: record.actor ?? null,
       kind: taskViewKindOf(record),
-      origin: record.origin ?? null,
+      origin: taskOriginView(record.origin),
       status,
       finishReason,
       statusMessage,
@@ -1329,6 +1336,11 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
 
   return {
     async recordAdmission(admission) {
+      // The reader's own rule, applied before anything is written: a record this registry
+      // stores is a record it can read back.
+      if (admission.origin !== undefined && !isStoredTaskOrigin(admission.origin)) {
+        throw new TypeError('A task admission\'s "origin" must be an object with a "kind"');
+      }
       const createdAt = admission.createdAt ?? clock.nowISO();
       const history: TaskMessage[] =
         admission.message === undefined

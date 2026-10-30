@@ -1041,20 +1041,9 @@ describe('a task record with a malformed field', () => {
     ['a settlement with a numeric message', { settled: { ...settled, message: 4 } }],
     ['a settlement with a malformed answer', { settled: { ...settled, answer: { text: 1 } } }],
     ['an unknown cleanup state', { cleanup: 'tidy' }],
-    ['an origin of an unknown kind', { origin: { kind: 'teleport' } }],
-    [
-      'a chat origin without its context',
-      { origin: { kind: 'chat', agentName: 'a', principal: 'p' } },
-    ],
-    [
-      'a person origin on an unknown surface',
-      { origin: { kind: 'person', principal: 'p', surface: 'fax' } },
-    ],
-    ['a schedule origin without its fire', { origin: { kind: 'schedule', scheduleId: 's' } }],
-    [
-      'a schedule origin with manual false',
-      { origin: { kind: 'schedule', scheduleId: 's', fireId: 'f', manual: false } },
-    ],
+    ['an origin that is not an object', { origin: 'chat' }],
+    ['an origin without a kind', { origin: { principal: 'p' } }],
+    ['an origin with an empty kind', { origin: { kind: '' } }],
   ];
 
   it.each(MALFORMED)(
@@ -1143,6 +1132,92 @@ describe('a task’s origin', () => {
     expect(view?.origin).toBeNull();
     expect(listed.tasks.map((task) => task.origin)).toEqual([null]);
     expect(diagnostics).toEqual([]);
+  });
+});
+
+describe('a task record whose origin this release cannot read (COR-1867)', () => {
+  const UNREADABLE_ORIGINS: ReadonlyArray<readonly [string, unknown]> = [
+    ['a kind this release does not know', { kind: 'agent', parentRunId: 'run-0' }],
+    ['a chat without its context', { kind: 'chat', agentName: 'a', principal: 'p' }],
+    ['a person on an unknown surface', { kind: 'person', principal: 'p', surface: 'fax' }],
+    ['a person with an empty principal', { kind: 'person', principal: '', surface: 'web' }],
+    ['a schedule without its fire', { kind: 'schedule', scheduleId: 's' }],
+    [
+      'a schedule with manual false',
+      { kind: 'schedule', scheduleId: 's', fireId: 'f', manual: false },
+    ],
+  ];
+
+  it.each(UNREADABLE_ORIGINS)(
+    'stays readable, settles, lists, and is removed, and its view shows origin null: %s',
+    async (_label, origin) => {
+      const { registry, kv, diagnostics } = build();
+      const key = `${TASK_RECORD_KEY_PREFIX}run-other`;
+      await kv.set(key, JSON.stringify(storedRecord({ taskId: 'run-other', origin })));
+
+      const view = await registry.get('run-other');
+      const listed = await registry.enumerate({ limit: 50, offset: 0 });
+      const settled = await registry.recordSettled('run-other', {
+        at: '2026-09-01T00:00:00.000Z',
+        status: 'completed',
+        finishReason: 'stop-condition',
+        message: null,
+      });
+      const settledView = await registry.get('run-other');
+      const stored = JSON.parse((await kv.get(key)) ?? '{}') as { origin?: unknown };
+
+      expect(view?.origin).toBeNull();
+      expect(listed.tasks.map((task) => task.id)).toEqual(['run-other']);
+      expect(settled).toBe(true);
+      expect(settledView?.status).toBe('completed');
+      // Settling keeps the origin as written, so the release that wrote it still reads it.
+      expect(stored.origin).toEqual(origin);
+
+      await registry.remove('run-other');
+      expect(await registry.record('run-other')).toBeUndefined();
+      expect(diagnostics).toEqual([]);
+    },
+  );
+
+  it('filters by the kind as stored, whether or not this release knows it', async () => {
+    const { registry, kv } = build();
+    await kv.set(
+      `${TASK_RECORD_KEY_PREFIX}run-chat`,
+      JSON.stringify(
+        storedRecord({
+          taskId: 'run-chat',
+          origin: { kind: 'chat', agentName: 'a', principal: 'p' },
+        }),
+      ),
+    );
+    await admit(registry, 'run-api');
+
+    const chats = await registry.enumerate({ limit: 50, offset: 0, origin: 'chat' });
+
+    // The chat origin is malformed for this release, so it views null but still matches its kind.
+    expect(chats.tasks.map((task) => task.id)).toEqual(['run-chat']);
+    expect(chats.tasks[0]?.origin).toBeNull();
+  });
+
+  it('keeps a start that states an empty principal readable', async () => {
+    const { registry } = build();
+    const origin = { kind: 'person', principal: '', surface: 'web' } as const;
+    await admit(registry, 'run-empty', { owner: '', origin });
+
+    const view = await registry.get('run-empty');
+
+    expect(view).toBeDefined();
+    const record = await registry.record('run-empty');
+    expect(record?.origin).toEqual(origin);
+  });
+
+  it('refuses at admission an origin the reader could not store', async () => {
+    const { registry } = build();
+
+    await expect(
+      admit(registry, 'run-bad', { origin: { kind: '' } as unknown as TaskOrigin }),
+    ).rejects.toThrow('origin');
+    expect(await registry.record('run-bad')).toBeUndefined();
   });
 });
 

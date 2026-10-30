@@ -4,8 +4,11 @@
  *
  * An origin is a discriminated union on `kind`. A kind is added by adding a variant to
  * {@link TaskOrigin}, its name to {@link TASK_ORIGIN_KINDS}, and its check to the table behind
- * {@link isTaskOrigin}; a record already stored keeps reading as it was written, so a new kind is
- * not a format change.
+ * {@link isTaskOrigin}. The stored record is read by a looser rule than the one the view applies
+ * ({@link isStoredTaskOrigin}): an origin of a kind this release does not know, or of a known
+ * kind with a field it cannot read, leaves the record readable, so a release that does not know
+ * a kind can still settle, list, and remove a task that a newer release (sharing the storage)
+ * recorded with it. The view shows such an origin as `null`; the wire union stays closed.
  *
  * @module task-origin
  */
@@ -80,6 +83,20 @@ export type StartTaskOrigin =
   | { readonly kind: 'person'; readonly surface: TaskPersonSurface }
   | { readonly kind: 'api' };
 
+/**
+ * An origin as it may be stored: a `kind` this release does not know, or fields it cannot read.
+ * It is kept as written and shown as `null` ({@link taskOriginView}).
+ */
+export interface UnrecognizedTaskOrigin {
+  /** The kind as stored. */
+  readonly kind: string;
+  /** Whatever else was stored with it. */
+  readonly [field: string]: unknown;
+}
+
+/** An origin as a task record stores it. See {@link UnrecognizedTaskOrigin}. */
+export type StoredTaskOrigin = TaskOrigin | UnrecognizedTaskOrigin;
+
 function isRecordOf(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -114,6 +131,21 @@ export function isTaskOrigin(value: unknown): value is TaskOrigin {
   const kind = value['kind'];
   if (typeof kind !== 'string' || !Object.hasOwn(ORIGIN_CHECKS, kind)) return false;
   return ORIGIN_CHECKS[kind as TaskOriginKind](value);
+}
+
+/**
+ * Whether a stored value is an origin a record may carry: an object with a non-empty string
+ * `kind`. This is the one rule both sides share, the reader of a persisted record and the
+ * admission that writes it, so nothing accepted on write is unreadable on read. It is looser than
+ * {@link isTaskOrigin} on purpose: see the module comment.
+ */
+export function isStoredTaskOrigin(value: unknown): value is StoredTaskOrigin {
+  return isRecordOf(value) && isNonEmptyString(value['kind']);
+}
+
+/** The origin a task's view shows: the stored one when this release can read it, else `null`. */
+export function taskOriginView(stored: StoredTaskOrigin | undefined): TaskOrigin | null {
+  return stored !== undefined && isTaskOrigin(stored) ? stored : null;
 }
 
 /** Whether `value` names a kind of origin. */
