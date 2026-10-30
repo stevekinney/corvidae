@@ -114,6 +114,9 @@ export type ToolSourceVaultOptions = {
  */
 export type TokenStorageTurn = 'take' | 'held';
 
+/** Answers, under the source's turn, whether the caller's sign-in still belongs to the source. */
+export type TokenStorageFence = () => Promise<boolean>;
+
 /** The encrypted store of tool-source credentials and OAuth state. See the module comment. */
 export type ToolSourceVault = {
   /** The names of the credentials a source holds, without decrypting anything. */
@@ -132,7 +135,11 @@ export type ToolSourceVault = {
    * Record that a sign-in has started, once the loader has recorded its `state`. Resolves `false`,
    * recording nothing, when the source holds no `state` to attach it to.
    */
-  beginSignIn(sourceId: string, signIn: ToolSourceSignIn): Promise<boolean>;
+  beginSignIn(
+    sourceId: string,
+    signIn: ToolSourceSignIn,
+    fence?: TokenStorageFence,
+  ): Promise<boolean>;
   /**
    * Run `work` after every earlier piece of work on this source has settled. A change reads, then
    * writes, so two that overlapped would each start from what the other is about to replace.
@@ -142,8 +149,16 @@ export type ToolSourceVault = {
    * The OAuth storage Armorer's loader reads and writes a source's sign-in through. Each save or
    * clear takes the source's turn, unless the caller already holds it and says so with `held`.
    * Recording a new `state` voids the sign-in recorded before it, and so does clearing `state`.
+   * With a `fence`, every read, save and clear first asks it, under the source's turn, whether the
+   * caller still owns the source's sign-in; one that does not reads nothing and writes nothing, so
+   * a sign-in begun for a source that was since removed or replaced can never store into, or erase
+   * from, the secret of whatever holds that id now.
    */
-  tokenStorage(sourceId: string, turn?: TokenStorageTurn): McpOAuthTokenStorage;
+  tokenStorage(
+    sourceId: string,
+    turn?: TokenStorageTurn,
+    fence?: TokenStorageFence,
+  ): McpOAuthTokenStorage;
 };
 
 /** Whether `value` has the fields of an encrypted value; `decrypt` checks their contents. */
@@ -332,40 +347,55 @@ export function createToolSourceVault(options: ToolSourceVaultOptions): ToolSour
       bungalow.writeSecret(toolSourceSecretKey(sourceId), '');
     },
     exclusive,
-    beginSignIn: (sourceId, signIn) =>
+    beginSignIn: (sourceId, signIn, fence) =>
       exclusive(sourceId, async () => {
+        if (fence !== undefined && !(await fence())) return false;
         const current = await read(sourceId);
         if (current.oauth?.state === undefined) return false;
         await write(sourceId, { ...current, signIn });
         return true;
       }),
-    tokenStorage(sourceId, turn = 'take') {
+    tokenStorage(sourceId, turn = 'take', fence) {
       const run = <Result>(work: () => Promise<Result>): Promise<Result> =>
         turn === 'held' ? work() : exclusive(sourceId, work);
+      const fenced = async (work: () => Promise<void>): Promise<void> => {
+        if (fence === undefined || (await fence())) await work();
+      };
       return {
-        load: () => read(sourceId).then((secrets) => ({ ...secrets.oauth })),
+        load: () =>
+          fence === undefined
+            ? read(sourceId).then((secrets) => ({ ...secrets.oauth }))
+            : run(async () => {
+                if (!(await fence())) return {};
+                const secrets = await read(sourceId);
+                return { ...secrets.oauth };
+              }),
         save: (patch) =>
-          run(async () => {
-            const current = await read(sourceId);
-            // A new `state` is a new sign-in: the one recorded for the old state is not this one's.
-            const startsNew = patch.state !== undefined && patch.state !== current.oauth?.state;
-            await write(sourceId, {
-              credentials: current.credentials,
-              oauth: { ...current.oauth, ...patch },
-              signIn: startsNew ? undefined : current.signIn,
-            });
-          }),
+          run(() =>
+            fenced(async () => {
+              const current = await read(sourceId);
+              // A new `state` is a new sign-in: the one recorded for the old state is not this one's.
+              const startsNew = patch.state !== undefined && patch.state !== current.oauth?.state;
+              await write(sourceId, {
+                credentials: current.credentials,
+                oauth: { ...current.oauth, ...patch },
+                signIn: startsNew ? undefined : current.signIn,
+              });
+            }),
+          ),
         clear: (names) =>
-          run(async () => {
-            const current = await read(sourceId);
-            const next = { ...current.oauth };
-            for (const name of names) delete next[name];
-            await write(sourceId, {
-              credentials: current.credentials,
-              oauth: next,
-              signIn: names.includes('state') ? undefined : current.signIn,
-            });
-          }),
+          run(() =>
+            fenced(async () => {
+              const current = await read(sourceId);
+              const next = { ...current.oauth };
+              for (const name of names) delete next[name];
+              await write(sourceId, {
+                credentials: current.credentials,
+                oauth: next,
+                signIn: names.includes('state') ? undefined : current.signIn,
+              });
+            }),
+          ),
       };
     },
   };

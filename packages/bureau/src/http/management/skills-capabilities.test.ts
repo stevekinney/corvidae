@@ -289,6 +289,38 @@ describe('the audit record of a saved tool source’s change', () => {
     expect(listOf(asStranger as never, 'records')).toEqual([]);
     expect(AUDIT_SYNTHETIC_OWNER_PREFIXES).toContain('tool-source:');
   });
+
+  it('shows the agent files a removal left invalid, as scalars', async () => {
+    const served = await serve();
+    const trail = served.bureau.internals.auditTrail;
+    if (trail === undefined) throw new Error('The Bureau keeps no audit trail.');
+    const resource = auditTrailToolSourceOwnerId('files');
+    await trail.record({
+      runId: resource,
+      type: 'tool.source.removed',
+      principal: ANONYMOUS_LOCAL_OWNER,
+      detail: {
+        sourceId: 'files',
+        affectedAgents: 'approver,reader',
+        affectedAgentCount: 2,
+        agents: [{ id: 'never-shown' }],
+      },
+    });
+
+    const asOperator = await rpc(
+      served.keyed,
+      'bureau.audit.query',
+      { runId: resource },
+      'operator-key',
+    );
+
+    expect(listOf(asOperator as never, 'records')).toEqual([
+      expect.objectContaining({
+        type: 'tool.source.removed',
+        detail: { sourceId: 'files', affectedAgents: 'approver,reader', affectedAgentCount: 2 },
+      }),
+    ]);
+  });
 });
 
 describe('bureau.agents.catalog', () => {

@@ -1045,7 +1045,8 @@ export function auditTrailSkillSourceOwnerId(sourceId: string): string {
  * The synthetic `runId` a change to a saved tool source is filed under, `tool-source:<id>`: the
  * change belongs to no run. `query({ runId })` with it retrieves one source's changes, in order.
  * The record's `principal` is the owner who made the change and its detail names the source
- * (`sourceId`) and the owner; a local-command MCP source's record also holds its `commandLine`.
+ * (`sourceId`) and the owner; a local-command MCP source's record also holds its `commandLine`,
+ * and a removal's holds `affectedAgents` (comma-joined agent identifiers) and `affectedAgentCount`.
  * It never holds a credential or an environment value.
  */
 export function auditTrailToolSourceOwnerId(sourceId: string): string {
