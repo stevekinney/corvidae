@@ -17,9 +17,10 @@
  * when it would lapse, so a crash that is restarted within the lease time is still settled.
  *
  * What this does not do: it does not stop a stalled-but-alive owner's run. If an owner stalls past
- * its lease and a peer settles its task, the run goes on in the owner and the settlement stays: the
- * owner's later settlement of that task is refused by the registry
- * ({@link TASK_OWNER_LOST_FINISH_REASON}).
+ * its lease and a peer settles its task, the run goes on in the owner. `owner-lost` is an inference,
+ * so when that run really ends, the owner's settlement replaces it (the registry announces it as the
+ * first settlement); a failure notification written for the inference is dismissed if the real
+ * result is not a failure. A lapsed lease whose owner owes no task is removed by the sweep.
  *
  * @module process-lease
  */
@@ -177,6 +178,9 @@ export function openProcessLease(options: OpenProcessLeaseOptions): ProcessLease
   };
 }
 
+/** How soon a task whose settlement lost a compare-and-swap is judged again: a renewal interval. */
+export const LOST_RACE_RETRY_MILLISECONDS = Math.floor(PROCESS_LEASE_MILLISECONDS / 3);
+
 /** What {@link settleAbandonedTasks} reads and writes. */
 export interface SettleAbandonedTasksOptions {
   readonly kv: ConditionalTextValueStore;
@@ -194,14 +198,15 @@ export interface SettleAbandonedTasksOptions {
   readonly isDurablyRecorded: (taskId: string) => Promise<boolean>;
   /**
    * Settles the task if and only if it is still unsettled, still owned by `ownerProcess`, and the
-   * owner's lease still reads exactly `expectedLease`. Resolves whether it wrote.
+   * owner's lease still reads exactly `lease.expected`. `'lost-race'` means the record or the lease
+   * changed under the write, so the task is worth judging again soon.
    */
   readonly settleAbandoned: (
     taskId: string,
     ownerProcess: string,
     lease: { readonly key: string; readonly expected: string | null },
     settlement: TaskSettlement,
-  ) => Promise<boolean>;
+  ) => Promise<'written' | 'lost-race' | 'not-applicable'>;
   readonly diagnose: (message: string, cause?: unknown) => void;
 }
 
@@ -210,8 +215,9 @@ export interface AbandonedTaskSweep {
   /** The tasks it settled. */
   readonly settled: readonly string[];
   /**
-   * When (epoch milliseconds) the earliest lease it left alone lapses, or `undefined` when no other
-   * process holds an unsettled process-local task: the time to look again.
+   * When (epoch milliseconds) to look again: the earliest lease it left alone lapses, or a
+   * settlement it lost a race for ({@link LOST_RACE_RETRY_MILLISECONDS} from now). `undefined` when
+   * nothing is left to look at.
    */
   readonly lookAgainAt: number | undefined;
 }
@@ -228,8 +234,11 @@ export async function settleAbandonedTasks(
   const settled: string[] = [];
   let lookAgainAt: number | undefined;
   const readings = new Map<string, ProcessLeaseReading>();
+  /** The owners with an unsettled task, by task, until this sweep settles it: their lease stays. */
+  const owing = new Map<string, string>();
   for (const record of await options.unsettled()) {
     const owner = record.ownerProcess;
+    if (owner !== undefined) owing.set(record.taskId, owner);
     if (owner === undefined || owner === options.processId) continue;
     if (record.kind === 'schedule-fire') continue;
     if (options.hasLiveRun(record.taskId)) continue;
@@ -262,12 +271,48 @@ export async function settleAbandonedTasks(
           message: 'The process that was running this task stopped before it finished.',
         },
       );
-      if (wrote) settled.push(record.taskId);
+      if (wrote === 'written') {
+        settled.push(record.taskId);
+        owing.delete(record.taskId);
+        continue;
+      }
+      if (wrote === 'lost-race') {
+        const retryAt = options.now() + LOST_RACE_RETRY_MILLISECONDS;
+        lookAgainAt = Math.min(lookAgainAt ?? retryAt, retryAt);
+      }
     } catch (error) {
       options.diagnose(`Could not settle abandoned task "${record.taskId}"`, error);
     }
+    // Not settled here: the owner still owes this task, so its lease is kept for the next sweep.
+  }
+  try {
+    await reclaimLapsedLeases(options, new Set(owing.values()));
+  } catch (error) {
+    options.diagnose('Could not remove the lapsed lease of a stopped process', error);
   }
   return { settled, lookAgainAt };
+}
+
+/**
+ * Removes the lease of every other process that has lapsed and owes no unsettled task, so the
+ * leases of processes that crashed do not pile up in the store. The delete is a compare-and-swap on
+ * the value judged lapsed: an owner that renewed first keeps its lease. A stalled owner that
+ * writes a task after this is judged like any owner with no lease; its next renewal restores it.
+ */
+async function reclaimLapsedLeases(
+  options: SettleAbandonedTasksOptions,
+  owing: ReadonlySet<string>,
+): Promise<void> {
+  for (const key of await options.kv.list(LEASE_PREFIX)) {
+    const owner = key.slice(LEASE_PREFIX.length);
+    if (owner === options.processId || owing.has(owner)) continue;
+    const reading = await readProcessLease(options.kv, owner, options.now());
+    if (reading.state !== 'expired') continue;
+    await options.kv.conditionalBatch(
+      [{ key, expectedValue: reading.raw }],
+      [{ type: 'delete', key }],
+    );
+  }
 }
 
 /** What {@link createAbandonedTaskSweeper} needs, beyond the sweep's own reads and writes. */

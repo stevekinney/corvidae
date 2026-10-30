@@ -22,14 +22,18 @@
  */
 import { createManualRuntimeServices, type ManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
-import { textValueStore } from '@lostgradient/storage';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
-import { processLeaseKey } from './process-lease';
+import {
+  LOST_RACE_RETRY_MILLISECONDS,
+  processLeaseKey,
+  settleAbandonedTasks,
+} from './process-lease';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 import type { TaskRecord } from './task-registry';
 import type { Bureau } from './types';
@@ -52,10 +56,13 @@ interface Process {
 }
 
 /** A parked run ends when this process lets it, or fails when it is aborted (shutdown). */
-function parkedUntil(finish: Promise<void>): GenerateFunction {
+function parkedUntil(finish: Promise<void>, outcome: 'completed' | 'failed'): GenerateFunction {
   return ({ signal }) =>
     new Promise((resolve, reject) => {
-      void finish.then(() => resolve({ content: 'done', toolCalls: [] }));
+      void finish.then(() => {
+        if (outcome === 'failed') reject(new Error('the provider failed'));
+        else resolve({ content: 'done', toolCalls: [] });
+      });
       signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
     });
 }
@@ -64,6 +71,7 @@ async function boot(
   database: ReturnType<typeof createSqliteStorageFixture>,
   atMilliseconds: number,
   maintenance: 'automatic' | 'manual' = 'automatic',
+  outcome: 'completed' | 'failed' = 'completed',
 ): Promise<Process> {
   const runtime = createManualRuntimeServices({ origin: new Date(atMilliseconds).toISOString() });
   let finishRuns = (): void => undefined;
@@ -74,12 +82,12 @@ async function boot(
   const bureau = await createBureau<AgentDefinitions>({
     agents: {
       default: createAgent({
-        generate: parkedUntil(finish),
+        generate: parkedUntil(finish, outcome),
         toolbox: createToolbox([]),
         stopWhen: stopWhen.noToolCalls(),
       }),
       worker: createAgent({
-        generate: parkedUntil(finish),
+        generate: parkedUntil(finish, outcome),
         toolbox: createToolbox([]),
         stopWhen: stopWhen.noToolCalls(),
       }),
@@ -262,32 +270,102 @@ describe('a crashed process’s local tasks are settled by the next boot', () =>
     });
   });
 
-  it('does not let a stalled owner replace the settlement a peer already committed', async () => {
+  it.each([
+    ['completed', 'completed', 0],
+    ['failed', 'failed', 1],
+    ['canceled', 'canceled', 0],
+  ] as const)(
+    'replaces owner-lost with the stalled owner’s real result: %s',
+    async (_name, real, notified) => {
+      const database = createSqliteStorageFixture();
+      cleanups.push(() => database.dispose());
+      const stalled = await boot(
+        database,
+        ORIGIN_MS,
+        'automatic',
+        real === 'failed' ? 'failed' : 'completed',
+      );
+      const taskId = await startTask(stalled);
+
+      const booter = await boot(database, ORIGIN_MS + 31 * SECOND);
+      await booter.bureau.recovery();
+      const inferred = await settledOf(booter, taskId);
+      expect(inferred).toMatchObject({ status: 'failed', finishReason: 'owner-lost' });
+      await waitUntil(
+        async () => {
+          const page = await booter.bureau.notifications.list({ owner: PRINCIPAL });
+          return page.notifications.length === 1;
+        },
+        { message: 'the inferred failure was notified' },
+      );
+
+      // The owner was alive all along; its run now ends for real, and that replaces the inference.
+      if (real === 'canceled') await stalled.bureau.tasks.cancel(taskId);
+      else stalled.finishRuns();
+      await waitUntil(
+        async () => {
+          const settled = await settledOf(booter, taskId);
+          return settled !== undefined && settled.finishReason !== 'owner-lost';
+        },
+        { message: 'the owner’s real settlement replaced owner-lost' },
+      );
+      // Shutdown drains the notification writes the settlement started.
+      await stalled.bureau.shutdown();
+
+      const final = await settledOf(booter, taskId);
+      expect(final?.status).toBe(real);
+      const open = await booter.bureau.notifications.list({ owner: PRINCIPAL });
+      const all = await booter.bureau.notifications.list({
+        owner: PRINCIPAL,
+        includeDismissed: true,
+      });
+      // Exactly one notification ever; a real failure keeps it, a real completion or cancel dismisses it.
+      expect(all.notifications).toHaveLength(1);
+      expect(open.notifications).toHaveLength(notified);
+    },
+  );
+
+  it('removes the lapsed lease of a stopped process once it owes no task, and keeps a live one', async () => {
     const database = createSqliteStorageFixture();
     cleanups.push(() => database.dispose());
-    const stalled = await boot(database, ORIGIN_MS);
-    const taskId = await startTask(stalled);
+    // One crashed process left a task; another finished its work and crashed owing nothing.
+    const owing = await boot(database, ORIGIN_MS);
+    const owingTask = await startTask(owing);
+    await boot(database, ORIGIN_MS);
+    const live = await boot(database, ORIGIN_MS);
+    await live.runtime.advance(25 * SECOND);
+    const owingRecord = await recordOf(owing, owingTask);
+    const owingProcess = owingRecord?.ownerProcess ?? '';
+    const leases = async () => await textValueStore(live.storage).list('bureau-process:v1:');
+    expect(await leases()).toHaveLength(3);
 
     const booter = await boot(database, ORIGIN_MS + 31 * SECOND);
     await booter.bureau.recovery();
-    const peerSettlement = await settledOf(booter, taskId);
-    expect(peerSettlement?.finishReason).toBe('owner-lost');
 
-    // The stalled owner was alive all along; its run now completes and it writes its settlement.
-    stalled.finishRuns();
-    await waitUntil(
-      async () => {
-        const detail = await stalled.bureau.tasks.detail(taskId);
-        return detail?.status === 'completed';
-      },
-      { message: 'the stalled owner’s run completed' },
-    );
-    await stalled.bureau.internals.taskRegistry.flush();
+    // The settled owner's and the idle owner's leases are gone; the live peer's and the booter's stay.
+    const left = await leases();
+    expect(left).toHaveLength(2);
+    expect(left).not.toContain(`bureau-process:v1:${owingProcess}`);
+    expect(await settledOf(booter, owingTask)).toMatchObject({ finishReason: 'owner-lost' });
+  });
 
-    expect(await settledOf(booter, taskId)).toMatchObject({
-      status: 'failed',
-      finishReason: 'owner-lost',
-    });
+  it('judges a task again soon after its settlement lost a race, not at the next boot', async () => {
+    const lost = {
+      kv: textValueStore(new MemoryStorage()),
+      processId: 'booter',
+      now: () => ORIGIN_MS,
+      nowISO: () => new Date(ORIGIN_MS).toISOString(),
+      unsettled: async () => [{ taskId: 'task-1', ownerProcess: 'gone' } as TaskRecord],
+      hasLiveRun: () => false,
+      isDurablyRecorded: async () => false,
+      settleAbandoned: async () => 'lost-race' as const,
+      diagnose: () => undefined,
+    };
+
+    const sweep = await settleAbandonedTasks(lost);
+
+    expect(sweep.settled).toEqual([]);
+    expect(sweep.lookAgainAt).toBe(ORIGIN_MS + LOST_RACE_RETRY_MILLISECONDS);
   });
 
   it('writes nothing when the owner’s lease was renewed after it was read', async () => {
@@ -318,7 +396,7 @@ describe('a crashed process’s local tasks are settled by the next boot', () =>
       },
     );
 
-    expect(wrote).toBe(false);
+    expect(wrote).toBe('lost-race');
     expect(await settledOf(owner, taskId)).toBeUndefined();
   });
 

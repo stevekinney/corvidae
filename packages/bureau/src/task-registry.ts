@@ -227,8 +227,10 @@ export interface TaskRecord {
 
 /**
  * COR-1946 — the finish reason of a task settled because the process that owned its run is gone.
- * A settlement carrying it is final: the owner's own later settlement of the task, if the owner was
- * only stalled and is still running it, does not replace it.
+ * It is an inference (the owner's lease lapsed), not an observation: if the owner was only stalled
+ * and ends its run later, its real settlement replaces this one and announces itself as a first
+ * settlement. It is the only settlement a later one replaces as though it were the first; any other
+ * terminal state keeps the first-wins treatment {@link TaskRegistry.recordSettled} describes.
  */
 export const TASK_OWNER_LOST_FINISH_REASON = 'owner-lost';
 
@@ -531,23 +533,26 @@ export interface TaskRegistry {
    */
   reviewClosedElsewhere(taskId: string, reviewId: string, eventKind: string): Promise<void>;
   /**
-   * Records how a task ended. The latest settlement wins, with the answer kept, except that a
-   * settlement with {@link TASK_OWNER_LOST_FINISH_REASON} (COR-1946) is final. Resolves `false`,
-   * writing nothing, when the task has no record.
+   * Records how a task ended. The latest settlement wins, with the answer kept, and only the first
+   * is announced as a settlement, except that a settlement with
+   * {@link TASK_OWNER_LOST_FINISH_REASON} (COR-1946) is an inference, so the one that replaces it is
+   * announced as the first. Resolves `false`, writing nothing, when the task has no record.
    */
   recordSettled(taskId: string, settlement: TaskSettlement): Promise<boolean>;
   /**
    * COR-1946 — settles a task whose owning process is gone. Writes only when the task is still
    * unsettled, is still owned by `ownerProcess`, and `lease.key` still holds exactly
    * `lease.expected` (`null` for no record): a renewal of the lease, or any settlement, that lands
-   * first defeats it. One attempt; resolves `false` when it wrote nothing.
+   * first defeats it. One attempt. Resolves `'written'`; `'lost-race'` when the record or the lease
+   * changed between the reads and the write (worth judging again); or `'not-applicable'` when the
+   * task is gone, already settled, unreadable or owned by another process (nothing to judge).
    */
   settleAbandoned(
     taskId: string,
     ownerProcess: string,
     lease: { readonly key: string; readonly expected: string | null },
     settlement: TaskSettlement,
-  ): Promise<boolean>;
+  ): Promise<'written' | 'lost-race' | 'not-applicable'>;
   /**
    * A bound, not a barrier. Waits up to `maximumTurns` event-loop turns (default 50; by turn, not
    * by clock) for the cleanup acknowledgements the registry is following to arrive, then waits
@@ -1400,12 +1405,12 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       update(
         taskId,
         (record) => {
-          // COR-1946 — a task settled because its owner was lost stays settled: the owner, if it
-          // was only stalled, ends its run later, and that must not undo a settlement a peer
-          // already committed (and, for a failure, notified).
-          if (record.settled?.finishReason === TASK_OWNER_LOST_FINISH_REASON) return undefined;
           const next = withSettlement(record, settlement);
-          captured.newlySettled = record.settled === undefined;
+          // COR-1946 — `owner-lost` is an inference, so the owner's real settlement of the task
+          // replaces it and is announced as the settlement; any other earlier one is not.
+          captured.newlySettled =
+            record.settled === undefined ||
+            record.settled.finishReason === TASK_OWNER_LOST_FINISH_REASON;
           captured.settled = next;
           return next;
         },
@@ -1456,13 +1461,13 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     ownerProcess: string,
     lease: { readonly key: string; readonly expected: string | null },
     settlement: TaskSettlement,
-  ): Promise<boolean> {
+  ): Promise<'written' | 'lost-race' | 'not-applicable'> {
     const key = recordKey(taskId);
     const raw = await kv.get(key);
-    if (raw === null) return false;
+    if (raw === null) return 'not-applicable';
     const current = readable(key, raw);
-    if (current === undefined || current.settled !== undefined) return false;
-    if (current.ownerProcess !== ownerProcess) return false;
+    if (current === undefined || current.settled !== undefined) return 'not-applicable';
+    if (current.ownerProcess !== ownerProcess) return 'not-applicable';
     const next = withSettlement(current, settlement);
     // One attempt, conditioned on the record as read and the lease as it was judged: a renewal
     // or any other write since either read makes this a no-op, and the next sweep decides again.
@@ -1482,9 +1487,9 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         ],
       ),
     );
-    if (!committed) return false;
+    if (!committed) return 'lost-race';
     await announceRecordedSettlement(taskId, next, true);
-    return true;
+    return 'written';
   }
 
   async function announceSettled(taskId: string): Promise<void> {
