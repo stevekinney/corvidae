@@ -517,3 +517,47 @@ describe('retention racing a create under the same dedupe key', () => {
     ).toBe(false);
   });
 });
+
+describe('purgeRuns (COR-1953)', () => {
+  it('removes the notifications about the runs for every owner, with their dedupe keys, and no others', async () => {
+    const { store, kv } = open();
+    await store.create(
+      input(ALICE, 'Gone', { dedupeKey: 'run.settled:r1', subject: { runId: 'r1' }, body: 'boom' }),
+    );
+    await store.create(
+      input(BOB, 'Gone too', { dedupeKey: 'review.waiting:x', subject: { runId: 'r1' } }),
+    );
+    await store.create(
+      input(ALICE, 'Other run', { dedupeKey: 'run.settled:r2', subject: { runId: 'r2' } }),
+    );
+    await store.create(input(ALICE, 'No run'));
+
+    expect(await store.purgeRuns(new Set(['r1']))).toBe(2);
+
+    const titles = async (owner: string) => {
+      const page = await store.list({ owner, includeDismissed: true });
+      return page.notifications.map((entry) => entry.title).toSorted();
+    };
+    expect(await titles(ALICE)).toEqual(['No run', 'Other run']);
+    expect(await titles(BOB)).toEqual([]);
+    const indexKeys = await kv.list(`${NOTIFICATION_KEY_PREFIX}d:`);
+    expect(indexKeys.filter((key) => key.includes('r1') || key.includes('review.waiting'))).toEqual(
+      [],
+    );
+    // The event is written again afterwards, since nothing holds its dedupe key.
+    expect(
+      await store
+        .create(input(ALICE, 'Again', { dedupeKey: 'run.settled:r1' }))
+        .then((value) => value.created),
+    ).toBe(true);
+  });
+
+  it('removes a record this release cannot parse, by the run its subject names', async () => {
+    const { store, kv } = open();
+    const key = `${NOTIFICATION_KEY_PREFIX}r:newer`;
+    await kv.set(key, JSON.stringify({ schemaVersion: 2, subject: { runId: 'r1' } }));
+
+    expect(await store.purgeRuns(new Set(['r1']))).toBe(1);
+    expect(await kv.get(key)).toBeNull();
+  });
+});

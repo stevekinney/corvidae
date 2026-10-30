@@ -34,6 +34,8 @@ interface Calls {
   readonly settlements: string[][];
   readonly memories: string[];
   readonly assets: string[][];
+  readonly notifications: string[][];
+  readonly hookDeliveries: string[];
 }
 
 function setup(
@@ -60,6 +62,8 @@ function setup(
     settlements: [],
     memories: [],
     assets: [],
+    notifications: [],
+    hookDeliveries: [],
   };
   const clock = { now: 1_000 };
   const diagnostics: BureauDiagnostic[] = [];
@@ -111,6 +115,12 @@ function setup(
     purgeReviews: async (runIds) => {
       calls.reviews.push([...runIds]);
     },
+    purgeNotifications: async (runIds) => {
+      calls.notifications.push([...runIds]);
+    },
+    purgeHookDeliveries: async (chat, runIds) => {
+      calls.hookDeliveries.push(`${chat.sessionId}@${chat.incarnation}:${[...runIds].join(',')}`);
+    },
     purgeSessionInput: async (sessionId, incarnation) => {
       calls.sessionInput.push(`${sessionId}@${incarnation}`);
     },
@@ -149,6 +159,9 @@ describe('createChatContentPurge (COR-1934)', () => {
     expect(calls.reviews).toEqual([['run-1', 'run-2']]);
     expect(calls.sessionInput).toEqual(['chat-1@one']);
     expect(calls.memories).toEqual(['chat-1:run-1,run-2:']);
+    // COR-1953: the owner's notifications and the hook deliveries of the runs go with them.
+    expect(calls.notifications).toEqual([['run-1', 'run-2']]);
+    expect(calls.hookDeliveries).toEqual(['chat-1@one:run-1,run-2']);
     // The record stays, settled, for the second pass.
     const [key] = await kv.list(PENDING_PREFIX);
     expect(JSON.parse((await kv.get(key!))!)).toMatchObject({ settledAt: 1_000 });

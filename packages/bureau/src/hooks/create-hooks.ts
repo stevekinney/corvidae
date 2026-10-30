@@ -68,6 +68,7 @@ import {
   type HookActionRunner,
   type HookEventToDeliver,
 } from './hook-delivery.ts';
+import { type DeletedChatReference, purgeChatHookDeliveries } from './chat-hook-purge.ts';
 import {
   createHookStore,
   createKvHookSecretStore,
@@ -267,6 +268,11 @@ export interface CreatedHooks {
   resume(): Promise<number>;
   /** Removes settled deliveries last written more than the given milliseconds ago; resolves with how many. */
   prune(olderThanMilliseconds: number): Promise<number>;
+  /**
+   * Removes the deliveries of events about a deleted chat's runs (COR-1953), pending ones
+   * included, so none is still sent; resolves with how many.
+   */
+  purgeChatDeliveries(chat: DeletedChatReference, runIds: ReadonlySet<string>): Promise<number>;
 }
 
 function viewOf(record: HookRecord): Hook {
@@ -930,5 +936,6 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
       return deliveries.resume();
     },
     prune: (olderThanMilliseconds) => deliveries.prune(olderThanMilliseconds),
+    purgeChatDeliveries: (chat, runIds) => purgeChatHookDeliveries(store, chat, runIds),
   };
 }

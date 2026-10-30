@@ -175,6 +175,13 @@ export interface NotificationStore extends BureauNotifications {
   dismissByDedupeKey(dedupeKey: string): Promise<number>;
   /** Removes every notification written before `cutoffMilliseconds` (epoch ms). Resolves how many. */
   prune(cutoffMilliseconds: number): Promise<number>;
+  /**
+   * Removes the notifications whose subject names one of the given runs, with their dedupe keys,
+   * for every owner, and resolves how many records went (COR-1953). A deleted chat's failure
+   * notification quotes the first line of the run's error; the record is read loosely, so one a
+   * newer release wrote in a shape this release cannot parse is removed too.
+   */
+  purgeRuns(runIds: ReadonlySet<string>): Promise<number>;
 }
 
 /** Options for {@link createNotificationStore}. */
@@ -602,12 +609,48 @@ export function createNotificationStore(
       return changed;
     },
 
+    async purgeRuns(runIds) {
+      let removed = 0;
+      for (const key of await kv.list(recordPrefix)) {
+        const raw = await kv.get(key);
+        if (raw === null) continue;
+        const runId = subjectRunOf(raw);
+        if (runId === undefined || !runIds.has(runId)) continue;
+        // Conditional on the text read: a record changed meanwhile is read again by the next pass.
+        if (
+          !(await kv.conditionalBatch([{ key, expectedValue: raw }], [{ type: 'delete', key }]))
+        ) {
+          continue;
+        }
+        removed += 1;
+        const stamp = stampOf(key, raw);
+        if (stamp !== undefined && stamp.dedupeKey !== null) {
+          await deleteIndexIf(dedupeIndexKey(stamp.owner, stamp.dedupeKey), stamp.id);
+        }
+      }
+      return removed;
+    },
+
     async prune(cutoffMilliseconds) {
       const stamps = await readStamps(await kv.list(recordPrefix));
       const stale = stamps.filter((stamp) => Date.parse(stamp.createdAt) < cutoffMilliseconds);
       return remove(stale);
     },
   };
+}
+
+/** The run a stored notification is about, read without the strict schema; `undefined` for none. */
+function subjectRunOf(raw: string): string | undefined {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null) return undefined;
+    const subject: unknown = Reflect.get(parsed, 'subject');
+    if (typeof subject !== 'object' || subject === null) return undefined;
+    const runId: unknown = Reflect.get(subject, 'runId');
+    return typeof runId === 'string' ? runId : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function stripUndefined(subject: NotificationSubject): Record<string, string> {
