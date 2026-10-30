@@ -593,6 +593,7 @@ import {
   createChatContentPurge,
   type DeletedChat,
 } from './chat-content-purge';
+import { purgeReviewRecords } from './chat-review-purge';
 import { createContexts } from './contexts/create-contexts';
 import { createTaskHandle, createTasks, seedsConversation } from './tasks/create-tasks';
 import {
@@ -13695,6 +13696,25 @@ async function constructBureau<const D extends AgentDefinitions>(
     status === 'cancelled' ||
     status === 'timed-out';
   /**
+   * COR-1934 — the runs the given runs delegated to, directly or through other children, breadth
+   * first, so a child comes before its own children; none of the given runs is repeated.
+   */
+  async function descendantRunIdsOf(parents: readonly string[]): Promise<string[]> {
+    const found: string[] = [];
+    const seen = new Set(parents);
+    const queue = [...parents];
+    for (let index = 0; index < queue.length; index += 1) {
+      for (const child of await childTopologyStore.listByParent(queue[index]!)) {
+        if (seen.has(child.childRunId)) continue;
+        seen.add(child.childRunId);
+        found.push(child.childRunId);
+        queue.push(child.childRunId);
+      }
+    }
+    return found;
+  }
+
+  /**
    * COR-1934 — the content a deleted chat leaves outside the session store: its event history, its
    * dedupe and surface markers, its runs' workflows, and the answer text in its audit entries. See
    * `chat-content-purge.ts` for what goes, the order, and how a failed purge is finished.
@@ -13711,6 +13731,42 @@ async function constructBureau<const D extends AgentDefinitions>(
       return state === null || isTerminalDurableStatus(state.status);
     },
     purgeRun: purgeDurableRun,
+    purgeReviews:
+      runtime.kv === undefined
+        ? undefined
+        : async (runIds) => {
+            await purgeReviewRecords({ kv: runtime.kv!, audit: () => auditTrailInstance }, runIds);
+          },
+    // Read when it runs: the surface store is built after this purge.
+    descendantsOf: descendantRunIdsOf,
+    purgeRunRecords: async (runId) => {
+      const recovery = await runtime.loadCatalogRunRecoveryRecord(runId);
+      // A goal attempt's or a workflow step's record is its owner's claim, not a chat's words.
+      const claimed =
+        recovery.status === 'found' &&
+        (recovery.record.goalAttempt !== undefined || recovery.record.workflowStep !== undefined);
+      if (recovery.status !== 'missing' && recovery.status !== 'read-error' && !claimed) {
+        await runtime.deleteCatalogRunRecoveryRecord(runId);
+      }
+      await childTopologyStore.remove(runId);
+      await childTopologyStore.deletePeerCalls(runId);
+    },
+    purgeSurfaces: async (runId) => {
+      await surfaces?.removeTask(runId);
+    },
+    purgeSessionInput:
+      runtime.durable === undefined
+        ? undefined
+        : async (sessionId, incarnation) => {
+            const mailbox = tryGetSessionInputMailbox(sessionId, incarnation);
+            if (mailbox !== undefined) {
+              await mailbox.purge();
+              // The mailbox is gone: a handle kept for it would only hold its registry.
+              sessionInputMailboxes.delete(`${sessionId}\u0000${incarnation}`);
+              mailbox.dispose();
+            }
+            await sessionInputSettlement?.forget(sessionId, incarnation);
+          },
     hasUndrainedEvents: async (sessionId, incarnation) => {
       const pending = await runtime.sessionStore?.outbox.pending();
       return (
@@ -13726,6 +13782,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       const session = await runtime.sessionStore?.load(sessionId);
       return session?.incarnation;
     },
+    now: () => runtimeServices.clock.now(),
     diagnose,
   });
 
@@ -13745,6 +13802,9 @@ async function constructBureau<const D extends AgentDefinitions>(
     for (const taskId of await tasks.taskIdsOfContext(session.id, session.incarnation)) {
       runIds.add(taskId);
     }
+    // Children the chat's runs delegated to hold its words too (COR-1934); the purge reads the
+    // topology again on every pass, so one dispatched after this is found as well.
+    for (const child of await descendantRunIdsOf([...runIds])) runIds.add(child);
     return [...runIds];
   }
 
@@ -17900,6 +17960,9 @@ async function constructBureau<const D extends AgentDefinitions>(
       if (!record.type.startsWith('review.')) continue;
       const detail = record.detail;
       if (detail === null || typeof detail !== 'object') continue;
+      // COR-1934: a deleted chat's entry keeps the review's identity and nothing it asked, so it
+      // cannot stand for the review.
+      if ((detail as Record<string, unknown>)['redacted'] === true) continue;
       const reviewDetail = (detail as Record<string, unknown>)['review'];
       if (reviewDetail === null || typeof reviewDetail !== 'object') continue;
       if ((reviewDetail as Record<string, unknown>)['id'] !== id) continue;

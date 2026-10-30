@@ -479,15 +479,16 @@ export interface AuditTrail {
     },
   ): Promise<AuditPruneResult | undefined>;
   /**
-   * COR-1934 — redacts the answer text of the `step.completed` and `run.completed` entries of
-   * the given runs, in place, for a chat that was deleted. An entry keeps its key, `type`,
+   * COR-1934 — redacts every entry of the given runs, in place, for a chat that was deleted: the
+   * answer text of its steps and runs, the parameters and results of its tool calls, the text of
+   * its failures, and what its reviews asked and were decided with. An entry keeps its key, `type`,
    * `runId`, `timestamp`, `timestampMs`, `sequence`, `actionSequence` and `principal`; its
    * `detail` becomes `{ redacted: true }` plus the structural fields
-   * {@link AUDIT_REDACTION_KEPT_DETAIL_FIELDS} names that hold no text (see
-   * {@link redactAuditDetail}). Every other entry is left as it is, and so is an entry already
-   * redacted, so the call is idempotent and a retry finishes what a failure stopped. The writes
-   * of the given runs that are still in flight are awaited first. Resolves how many entries it
-   * rewrote. A no-op when no KV store is configured.
+   * {@link AUDIT_REDACTION_KEPT_DETAIL_FIELDS} names that hold no authored text (see
+   * {@link redactAuditDetail}). An entry of a type in {@link AUDIT_CONTENT_FREE_EVENT_TYPES} is left
+   * whole, and so is an entry already redacted, so the call is idempotent and a retry finishes what
+   * a failure stopped. The writes of the given runs that are still in flight are awaited first.
+   * Resolves how many entries it rewrote. A no-op when no KV store is configured.
    */
   redact(runIds: ReadonlySet<string>): Promise<number>;
   /**
@@ -1063,17 +1064,19 @@ export function auditTrailSessionOwnerId(sessionId: string): string {
 
 // ── Redaction (COR-1934) ────────────────────────────────────────────
 
-/** The audit entry types whose `detail` holds what the agent answered. */
-export const AUDIT_REDACTED_EVENT_TYPES: ReadonlySet<string> = new Set([
-  'step.completed',
-  'run.completed',
-]);
+/**
+ * The audit entry types whose `detail` holds no text a user or an agent wrote, so redaction keeps
+ * them whole. Every other type of a deleted chat's runs is redacted, so a type a later version
+ * adds is redacted by default and has to be listed here to be kept.
+ */
+export const AUDIT_CONTENT_FREE_EVENT_TYPES: ReadonlySet<string> = new Set(['run.cleanup-settled']);
 
 /**
- * The top-level `detail` fields a redacted entry keeps: counters, flags and ids that hold no text.
- * Every other field is dropped, whatever it holds: `content`, `parts`, `toolCalls`, `results`,
- * `steps`, `result`, `planReason`, `effectiveContext`, and any field a later version adds. A list
- * of what to keep, and not of what to drop, so a new text-bearing field is redacted by default.
+ * The top-level `detail` fields a redacted entry keeps when they hold a string, number or boolean:
+ * counters, flags, ids and names that hold no authored text. Every other field is dropped, whatever
+ * it holds: `content`, `parts`, `toolCalls`, `results`, `steps`, `result`, `params`, `reason`,
+ * `planReason`, `effectiveContext`, and any field a later version adds. A list of what to keep, and
+ * not of what to drop, so a new text-bearing field is redacted by default.
  */
 export const AUDIT_REDACTION_KEPT_DETAIL_FIELDS: readonly string[] = [
   'isTrusted',
@@ -1081,8 +1084,41 @@ export const AUDIT_REDACTION_KEPT_DETAIL_FIELDS: readonly string[] = [
   'final',
   'finishReason',
   'messageId',
-  'usage',
+  'agentName',
+  'runId',
+  'toolName',
+  'toolCallId',
+  'status',
+  'startedAt',
+  'decision',
+  'owner',
+  'inputForm',
 ];
+
+/** The fields of a review snapshot (`detail.review`) a redacted entry keeps: ids, kind and status. */
+const AUDIT_REDACTION_KEPT_REVIEW_FIELDS: readonly string[] = [
+  'id',
+  'kind',
+  'runId',
+  'sessionId',
+  'agentName',
+  'status',
+  'round',
+  'requestedAt',
+  'signalName',
+  'toolName',
+];
+
+/** The fields of a failure (`detail.error`) a redacted entry keeps: its class, not its message. */
+const AUDIT_REDACTION_KEPT_ERROR_FIELDS: readonly string[] = ['code', 'category', 'retryable'];
+
+function isScalar(value: unknown): value is string | number | boolean {
+  return (
+    typeof value === 'string' ||
+    typeof value === 'boolean' ||
+    (typeof value === 'number' && Number.isFinite(value))
+  );
+}
 
 function isFiniteNumberRecord(value: unknown): value is Record<string, number> {
   return (
@@ -1093,39 +1129,50 @@ function isFiniteNumberRecord(value: unknown): value is Record<string, number> {
   );
 }
 
-/**
- * What a `step.completed` or `run.completed` entry's `detail` becomes once it is redacted:
- * `{ redacted: true }` and the {@link AUDIT_REDACTION_KEPT_DETAIL_FIELDS} that hold a string,
- * number or boolean (`usage`: an object of numbers). Anything else under a kept name is dropped.
- */
-export function redactAuditDetail(detail: unknown): Record<string, unknown> {
-  const redacted: Record<string, unknown> = { redacted: true };
-  if (typeof detail !== 'object' || detail === null) return redacted;
-  for (const field of AUDIT_REDACTION_KEPT_DETAIL_FIELDS) {
-    if (!Object.hasOwn(detail, field)) continue;
-    const value: unknown = Reflect.get(detail, field);
-    if (
-      typeof value === 'string' ||
-      typeof value === 'boolean' ||
-      (typeof value === 'number' && Number.isFinite(value)) ||
-      (field === 'usage' && isFiniteNumberRecord(value))
-    ) {
-      redacted[field] = value;
-    }
+/** The scalar fields of `source` named in `fields`, in that order. */
+function pickScalars(source: object, fields: readonly string[]): Record<string, unknown> {
+  const picked: Record<string, unknown> = {};
+  for (const field of fields) {
+    if (!Object.hasOwn(source, field)) continue;
+    const value: unknown = Reflect.get(source, field);
+    if (isScalar(value)) picked[field] = value;
   }
-  return redacted;
+  return picked;
 }
 
-/** Whether an audit `detail` is one {@link redactAuditDetail} produced. */
-function isRedactedAuditDetail(detail: unknown): boolean {
-  return (
-    typeof detail === 'object' &&
-    detail !== null &&
-    Reflect.get(detail, 'redacted') === true &&
-    Object.keys(detail).every(
-      (field) => field === 'redacted' || AUDIT_REDACTION_KEPT_DETAIL_FIELDS.includes(field),
-    )
-  );
+/**
+ * What an entry's `detail` becomes once it is redacted: `{ redacted: true }` and the
+ * {@link AUDIT_REDACTION_KEPT_DETAIL_FIELDS} that hold a string, number or boolean, `usage` when it
+ * is an object of numbers, the class of a failure (`error.code`, `error.category`,
+ * `error.retryable`: never its message, which can quote what was said), and the identity of a
+ * review (`review.id`, kind, run, session, agent, status, round, `toolName`: never what it asked,
+ * its arguments or the reason it was decided with). Anything else is dropped, so the projection is
+ * its own fixed point: redacting a redacted detail changes nothing. An entry of a type in
+ * {@link AUDIT_CONTENT_FREE_EVENT_TYPES} is kept whole.
+ */
+export function redactAuditDetail(type: string, detail: unknown): unknown {
+  if (AUDIT_CONTENT_FREE_EVENT_TYPES.has(type)) return detail;
+  const redacted: Record<string, unknown> = { redacted: true };
+  if (typeof detail !== 'object' || detail === null) return redacted;
+  Object.assign(redacted, pickScalars(detail, AUDIT_REDACTION_KEPT_DETAIL_FIELDS));
+  const usage: unknown = Reflect.get(detail, 'usage');
+  if (isFiniteNumberRecord(usage)) redacted['usage'] = usage;
+  const error: unknown = Reflect.get(detail, 'error');
+  if (typeof error === 'object' && error !== null) {
+    const kept = pickScalars(error, AUDIT_REDACTION_KEPT_ERROR_FIELDS);
+    if (Object.keys(kept).length > 0) redacted['error'] = kept;
+  }
+  const review: unknown = Reflect.get(detail, 'review');
+  if (typeof review === 'object' && review !== null) {
+    const kept = pickScalars(review, AUDIT_REDACTION_KEPT_REVIEW_FIELDS);
+    // A tool approval names its tool inside `approval`; a redacted one carries it flat.
+    const approval: unknown = Reflect.get(review, 'approval');
+    if (typeof approval === 'object' && approval !== null) {
+      Object.assign(kept, pickScalars(approval, ['toolName']));
+    }
+    redacted['review'] = kept;
+  }
+  return redacted;
 }
 
 // ── Audit trail factory ─────────────────────────────────────────────
@@ -2623,16 +2670,12 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
         } catch {
           continue;
         }
-        if (
-          !isPrunableAuditRecordShape(record) ||
-          record.runId !== candidate.runId ||
-          !AUDIT_REDACTED_EVENT_TYPES.has(record.type)
-        ) {
-          continue;
-        }
+        if (!isPrunableAuditRecordShape(record) || record.runId !== candidate.runId) continue;
         const detail: unknown = Reflect.get(record, 'detail');
-        if (isRedactedAuditDetail(detail)) continue;
-        const redacted = { ...record, detail: redactAuditDetail(detail) };
+        const redactedDetail = redactAuditDetail(record.type, detail);
+        // A fixed point: an entry already redacted, or one that holds no text, is left as it is.
+        if (JSON.stringify(redactedDetail) === JSON.stringify(detail)) continue;
+        const redacted = { ...record, detail: redactedDetail };
         const committed = await kv.conditionalBatch(
           [{ key, expectedValue: text }],
           [{ type: 'set', key, value: JSON.stringify(redacted) }],

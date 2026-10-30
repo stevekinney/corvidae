@@ -373,6 +373,12 @@ export interface ChildTopologyStore {
   getPeerCall(parentRunId: string, operationKey: string): Promise<BureauPeerCallRecord | undefined>;
   /** Removes every peer call record of `parentRunId`. Idempotent. */
   deletePeerCalls(parentRunId: string): Promise<void>;
+  /**
+   * COR-1934 — removes a child's record, with its outcome (the child's final text and parts) and its
+   * entry in its parent's index. Idempotent. The grant and ledger entries stay: they hold ids and
+   * amounts, and no text.
+   */
+  remove(childRunId: string): Promise<void>;
 }
 
 export interface ChildTopologyStoreOptions {
@@ -545,6 +551,16 @@ export function createChildTopologyStore(
     },
     getPeerCall: (parentRunId, operationKey) =>
       readPeerCall(peerCallKey(parentRunId, operationKey)),
+    async remove(childRunId) {
+      const key = recordKey(childRunId);
+      // A record this build cannot read names no parent to read, so only the record goes.
+      const parentRunId = await readRecord(key).then(
+        (stored) => stored?.record?.parentRunId,
+        () => undefined,
+      );
+      await kv.delete(key);
+      if (parentRunId !== undefined) await kv.delete(parentIndexKey(parentRunId, childRunId));
+    },
     async deletePeerCalls(parentRunId) {
       // The trailing separator keeps `run-1` from matching the records of `run-10`.
       await kv.deletePrefix(peerCallPrefix(parentRunId));

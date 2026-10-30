@@ -1163,7 +1163,7 @@ describe('a run promoted but never started (COR-1476)', () => {
 });
 
 describe("a deleted session's input mailbox (COR-1476)", () => {
-  it('is retired by the sweep once retention has elapsed, because deletion marks the incarnation', async () => {
+  it('is purged at once by the deletion, and an admission that races it is retired by the sweep once retention has elapsed', async () => {
     const origin = '2026-10-17T12:00:00.000Z';
     const runtime = createManualRuntimeServices({ origin });
     const storage = new MemoryStorage();
@@ -1202,9 +1202,30 @@ describe("a deleted session's input mailbox (COR-1476)", () => {
       await bureau.maintain();
       expect(await markers(storage)).toHaveLength(0);
 
-      // Deletion marks the incarnation again, for the sweep to retire its
-      // mailbox: no run will ever maintain it.
+      // COR-1934: deletion purges the mailbox and its marker at once, since the receipts hold
+      // the input's text; retention has nothing left to wait for.
       await bureau.contexts.delete(run.contextId);
+      expect(await mailbox.list({ limit: 1 })).toEqual([]);
+      expect(await markers(storage)).toHaveLength(0);
+
+      // An admission that loaded the old incarnation before the delete can still commit after
+      // the purge, under a marker of its own. The sweep cancels it, keeps the mailbox until
+      // retention has emptied it, and then drops the marker, as it does for any retired one.
+      const late = await mailbox.admit({
+        caller: 'alice',
+        target: run.contextId,
+        kind: 'steer',
+        payload: { form: 'inline', value: 'late' },
+        idempotencyKey: 'late-input',
+      });
+      expect(late.status).toBe('admitted');
+      await storage.put(
+        `session-input-open:v2:${encodeURIComponent(run.contextId)}:${encodeURIComponent(incarnation)}`,
+        new TextEncoder().encode(
+          JSON.stringify({ sessionId: run.contextId, incarnation, version: 1 }),
+        ),
+      );
+      await bureau.maintain();
       expect(await markers(storage)).toHaveLength(1);
       await runtime.advance(SESSION_INPUT_TERMINAL_RETENTION_MS + 3_600_000);
       await bureau.maintain();

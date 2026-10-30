@@ -93,8 +93,13 @@ export function boundedReviewId(reviewId: string, kind: 'human-wait' | 'approval
 }
 
 export function reviewDecisionKey(reviewId: string, round: number): string {
+  return `${reviewDecisionKeyPrefix(reviewId)}${String(round)}`;
+}
+
+/** The prefix of every round's decision record of one review (COR-1934: a chat delete removes them). */
+export function reviewDecisionKeyPrefix(reviewId: string): string {
   const kind = reviewId.startsWith('approval:') ? 'approval' : 'human-wait';
-  return `${REVIEW_DECISION_KEY_PREFIX}:${encodeStorageKeyComponent(boundedReviewId(reviewId, kind))}:${String(round)}`;
+  return `${REVIEW_DECISION_KEY_PREFIX}:${encodeStorageKeyComponent(boundedReviewId(reviewId, kind))}:`;
 }
 
 /**

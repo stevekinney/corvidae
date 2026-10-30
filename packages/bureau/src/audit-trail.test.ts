@@ -3439,6 +3439,60 @@ describe('redact() (COR-1934)', () => {
     result: { steps: [{ content: 'the answer' }] },
     finishReason: 'stop-condition',
   };
+  const TOOL_STARTED = {
+    isTrusted: false,
+    agentName: 'helper',
+    runId: 'run-1',
+    step: 1,
+    toolName: 'search',
+    toolCallId: 'c',
+    params: { q: 'the params' },
+    startedAt: 5,
+  };
+  const TOOL_SETTLED = {
+    agentName: 'helper',
+    runId: 'run-1',
+    step: 1,
+    toolName: 'search',
+    toolCallId: 'c',
+    status: 'success',
+    result: { text: 'the result' },
+  };
+  const TOOL_ERROR = {
+    toolName: 'search',
+    toolCallId: 'c',
+    error: {
+      code: 'EXECUTION_ERROR',
+      category: 'internal',
+      retryable: false,
+      message: 'quoted text',
+    },
+  };
+  const REVIEW_DECIDED = {
+    review: {
+      kind: 'tool-approval',
+      id: 'approval:run-1:c',
+      runId: 'run-1',
+      sessionId: 'chat-1',
+      agentName: 'helper',
+      approval: {
+        callId: 'c',
+        toolName: 'search',
+        arguments: { q: 'the asked' },
+        action: { message: 'the message' },
+        reason: 'the policy reason',
+        approvalToken: 'token',
+      },
+      requestedAt: 4,
+      status: 'approved',
+      round: 1,
+    },
+    decision: 'approve',
+    reason: 'the free text',
+    owner: 'alice',
+    answerDigest: 'digest',
+    secretAnswers: [{ field: '/password', digest: 'ciphertext digest' }],
+  };
 
   async function seedWithDetail(
     kv: ReturnType<typeof textValueStore>,
@@ -3451,47 +3505,140 @@ describe('redact() (COR-1934)', () => {
   }
 
   it('keeps the structure of a step or run completion and drops everything else', () => {
-    expect(redactAuditDetail(ANSWER_DETAIL)).toEqual({
+    expect(redactAuditDetail('step.completed', ANSWER_DETAIL)).toEqual({
       redacted: true,
       isTrusted: false,
       step: 0,
-      messageId: 'run-1:step:0',
       final: true,
-      usage: { prompt: 3, completion: 4, total: 7 },
       finishReason: 'stop-condition',
+      messageId: 'run-1:step:0',
+      usage: { prompt: 3, completion: 4, total: 7 },
     });
-    expect(redactAuditDetail({ finishReason: { text: 'nested' }, usage: { prompt: 'x' } })).toEqual(
-      {
-        redacted: true,
-      },
-    );
-    expect(redactAuditDetail('a string')).toEqual({ redacted: true });
-    expect(redactAuditDetail(null)).toEqual({ redacted: true });
+    expect(
+      redactAuditDetail('run.completed', {
+        finishReason: { text: 'nested' },
+        usage: { prompt: 'x' },
+      }),
+    ).toEqual({ redacted: true });
+    expect(redactAuditDetail('run.completed', 'a string')).toEqual({ redacted: true });
+    expect(redactAuditDetail('run.completed', null)).toEqual({ redacted: true });
   });
 
-  it('redacts the answer text of the given runs in place, and nothing else', async () => {
+  it('drops the parameters and result of a tool call, and the message of a failure but not its class', () => {
+    expect(redactAuditDetail('tool.started', TOOL_STARTED)).toEqual({
+      redacted: true,
+      isTrusted: false,
+      step: 1,
+      agentName: 'helper',
+      runId: 'run-1',
+      toolName: 'search',
+      toolCallId: 'c',
+      startedAt: 5,
+    });
+    expect(redactAuditDetail('tool.settled', TOOL_SETTLED)).toEqual({
+      redacted: true,
+      step: 1,
+      agentName: 'helper',
+      runId: 'run-1',
+      toolName: 'search',
+      toolCallId: 'c',
+      status: 'success',
+    });
+    expect(redactAuditDetail('tool.error', TOOL_ERROR)).toEqual({
+      redacted: true,
+      toolName: 'search',
+      toolCallId: 'c',
+      error: { code: 'EXECUTION_ERROR', category: 'internal', retryable: false },
+    });
+    // A failure that was serialized to a string can quote what was said, so nothing of it stays.
+    expect(
+      redactAuditDetail('run.error', { error: 'Error: quoted text', finishReason: 'error' }),
+    ).toEqual({ redacted: true, finishReason: 'error' });
+    expect(redactAuditDetail('run.aborted', { reason: 'quoted text', step: 2 })).toEqual({
+      redacted: true,
+      step: 2,
+    });
+  });
+
+  it('keeps who decided a review, and which, and drops what it asked, its arguments, its reason and its answers', () => {
+    const redacted = redactAuditDetail('review.tool-approval.approved', REVIEW_DECIDED);
+
+    expect(redacted).toEqual({
+      redacted: true,
+      decision: 'approve',
+      owner: 'alice',
+      review: {
+        id: 'approval:run-1:c',
+        kind: 'tool-approval',
+        runId: 'run-1',
+        sessionId: 'chat-1',
+        agentName: 'helper',
+        status: 'approved',
+        round: 1,
+        requestedAt: 4,
+        toolName: 'search',
+      },
+    });
+    expect(JSON.stringify(redacted)).not.toMatch(/asked|free text|policy reason|digest|token/);
+    // A question to a person: its prompt and signal stay out of the redacted review's text fields.
+    expect(
+      redactAuditDetail('review.human-wait.approved', {
+        review: { kind: 'human-wait', id: 'human-wait:run-1:s:0', runId: 'run-1', prompt: 'ask' },
+        inputForm: true,
+        decision: 'approve',
+      }),
+    ).toEqual({
+      redacted: true,
+      decision: 'approve',
+      inputForm: true,
+      review: { id: 'human-wait:run-1:s:0', kind: 'human-wait', runId: 'run-1' },
+    });
+  });
+
+  it('is its own fixed point, and keeps an entry that holds no text whole', () => {
+    for (const [type, detail] of [
+      ['step.completed', ANSWER_DETAIL],
+      ['tool.started', TOOL_STARTED],
+      ['tool.error', TOOL_ERROR],
+      ['review.tool-approval.approved', REVIEW_DECIDED],
+    ] as const) {
+      const once = redactAuditDetail(type, detail);
+      expect(redactAuditDetail(type, once)).toEqual(once);
+    }
+    const cleanup = { acknowledgement: { status: 'not-required' } };
+    expect(redactAuditDetail('run.cleanup-settled', cleanup)).toBe(cleanup);
+  });
+
+  it('redacts every entry of the given runs in place, and nothing else', async () => {
     const kv = textValueStore(new MemoryStorage());
     const { bureau } = createStubBureau();
     await seedWithDetail(kv, 1, 'run-1', 'step.completed', ANSWER_DETAIL);
     await seedWithDetail(kv, 2, 'run-1', 'run.completed', ANSWER_DETAIL);
-    await seedWithDetail(kv, 3, 'run-1', 'tool.started', { toolName: 'search' });
+    await seedWithDetail(kv, 3, 'run-1', 'tool.started', TOOL_STARTED);
     await seedWithDetail(kv, 4, 'run-10', 'run.completed', ANSWER_DETAIL);
     await seedWithDetail(kv, 5, 'session:chat-1', 'session.deleted', { sessionId: 'chat-1' });
+    await seedWithDetail(kv, 6, 'run-1', 'review.tool-approval.approved', REVIEW_DECIDED);
+    await seedWithDetail(kv, 7, 'run-1', 'run.cleanup-settled', {
+      acknowledgement: { status: 'not-required' },
+    });
     const trail = createAuditTrail(bureau, kv);
     const before = await trail.query();
 
-    expect(await trail.redact(new Set(['run-1', 'session:chat-1']))).toBe(2);
+    expect(await trail.redact(new Set(['run-1', 'session:chat-1']))).toBe(5);
 
     const after = await trail.query();
     expect(after.map((entry) => ({ ...entry, detail: undefined }))).toEqual(
       before.map((entry) => ({ ...entry, detail: undefined })),
     );
     expect(after.map((entry) => entry.detail)).toEqual([
-      redactAuditDetail(ANSWER_DETAIL),
-      redactAuditDetail(ANSWER_DETAIL),
-      { toolName: 'search' },
+      redactAuditDetail('step.completed', ANSWER_DETAIL),
+      redactAuditDetail('run.completed', ANSWER_DETAIL),
+      redactAuditDetail('tool.started', TOOL_STARTED),
+      // Another run, whose id begins with the redacted one's, is untouched.
       ANSWER_DETAIL,
-      { sessionId: 'chat-1' },
+      redactAuditDetail('session.deleted', { sessionId: 'chat-1' }),
+      redactAuditDetail('review.tool-approval.approved', REVIEW_DECIDED),
+      { acknowledgement: { status: 'not-required' } },
     ]);
     // Repeating it rewrites nothing.
     expect(await trail.redact(new Set(['run-1']))).toBe(0);

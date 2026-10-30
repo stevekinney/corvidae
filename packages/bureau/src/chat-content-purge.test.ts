@@ -7,7 +7,12 @@ import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import type { AuditTrail } from './audit-trail';
-import { ChatRunsNotEndedError, createChatContentPurge } from './chat-content-purge';
+import {
+  ChatRunsNotEndedError,
+  createChatContentPurge,
+  LATE_WRITE_GRACE_MILLISECONDS,
+} from './chat-content-purge';
+import { A2A_TASK_RECORD_KEY_PREFIX, createA2ATaskRecords } from './http/a2a-task-record';
 import type { DurableEventHistory, DurableEventProducer } from './durable-event-history';
 import type { BureauDiagnostic } from './types';
 
@@ -17,17 +22,31 @@ interface Calls {
   readonly events: string[];
   readonly redacted: string[][];
   readonly workflows: string[];
+  readonly surfaces: string[];
+  readonly reviews: string[][];
+  readonly sessionInput: string[];
+  readonly records: string[];
 }
 
 function setup(
   options: {
     ended?: (runId: string) => boolean;
+    descendants?: () => Record<string, string[]>;
     undrained?: () => boolean;
     incarnation?: () => string | undefined;
   } = {},
 ) {
   const kv = textValueStore(new MemoryStorage());
-  const calls: Calls = { events: [], redacted: [], workflows: [] };
+  const calls: Calls = {
+    events: [],
+    redacted: [],
+    workflows: [],
+    surfaces: [],
+    reviews: [],
+    sessionInput: [],
+    records: [],
+  };
+  const clock = { now: 1_000 };
   const diagnostics: BureauDiagnostic[] = [];
   const history = {
     async purgeOwner(
@@ -58,18 +77,33 @@ function setup(
     purgeRun: async (runId) => {
       calls.workflows.push(runId);
     },
+    descendantsOf: async (parents) =>
+      parents.flatMap((parent) => options.descendants?.()[parent] ?? []),
+    purgeRunRecords: async (runId) => {
+      calls.records.push(runId);
+    },
+    purgeSurfaces: async (runId) => {
+      calls.surfaces.push(runId);
+    },
+    purgeReviews: async (runIds) => {
+      calls.reviews.push([...runIds]);
+    },
+    purgeSessionInput: async (sessionId, incarnation) => {
+      calls.sessionInput.push(`${sessionId}@${incarnation}`);
+    },
+    now: () => clock.now,
     hasUndrainedEvents: async () => options.undrained?.() ?? false,
     currentIncarnation: async () =>
       options.incarnation === undefined ? undefined : options.incarnation(),
     diagnose: (diagnostic) => diagnostics.push(diagnostic),
   });
-  return { kv, calls, diagnostics, purge };
+  return { kv, calls, diagnostics, purge, clock };
 }
 
 const CHAT = { sessionId: 'chat-1', incarnation: 'one', runIds: ['run-1', 'run-2', 'run-1'] };
 
 describe('createChatContentPurge (COR-1934)', () => {
-  it('purges each run once and the chat of its incarnation, keeping its deletion marker, then drops the record', async () => {
+  it('purges each run once and the chat of its incarnation, keeping its deletion marker, then settles the record', async () => {
     const { kv, calls, purge } = setup();
     await purge.record(CHAT);
     expect(await kv.list(PENDING_PREFIX)).toHaveLength(1);
@@ -78,8 +112,118 @@ describe('createChatContentPurge (COR-1934)', () => {
 
     expect(calls.events).toEqual(['run:run-1', 'run:run-2', 'session:chat-1@one+keep']);
     expect(calls.workflows).toEqual(['run-1', 'run-2']);
+    expect(calls.surfaces).toEqual(['run-1', 'run-2']);
     expect(calls.redacted).toEqual([['run-1', 'run-2']]);
+    expect(calls.reviews).toEqual([['run-1', 'run-2']]);
+    expect(calls.sessionInput).toEqual(['chat-1@one']);
+    // The record stays, settled, for the second pass.
+    const [key] = await kv.list(PENDING_PREFIX);
+    expect(JSON.parse((await kv.get(key!))!)).toMatchObject({ settledAt: 1_000 });
+  });
+
+  it('runs the whole purge a second time once the grace has passed, and then drops the record', async () => {
+    const { kv, calls, purge, clock } = setup({ incarnation: () => undefined });
+    await purge.record(CHAT);
+    await purge.run(CHAT);
+    expect(calls.workflows).toHaveLength(2);
+
+    // Before the grace the sweep leaves a settled record alone.
+    clock.now += LATE_WRITE_GRACE_MILLISECONDS - 1;
+    expect(await purge.sweep()).toBe(0);
+    expect(calls.workflows).toHaveLength(2);
+    expect(await kv.list(PENDING_PREFIX)).toHaveLength(1);
+
+    clock.now += 1;
+    expect(await purge.sweep()).toBe(1);
+    expect(calls.workflows).toEqual(['run-1', 'run-2', 'run-1', 'run-2']);
+    expect(calls.redacted).toEqual([
+      ['run-1', 'run-2'],
+      ['run-1', 'run-2'],
+    ]);
+    expect(calls.sessionInput).toEqual(['chat-1@one', 'chat-1@one']);
     expect(await kv.list(PENDING_PREFIX)).toEqual([]);
+    expect(await purge.sweep()).toBe(0);
+  });
+
+  it('purges the runs the chat delegated to with it, and removes their records last, the deepest first', async () => {
+    const { calls, purge } = setup({ descendants: () => ({ 'run-1': ['child-1'], 'run-2': [] }) });
+    await purge.record(CHAT);
+
+    await purge.run(CHAT);
+
+    expect(calls.events).toEqual([
+      'run:run-1',
+      'run:run-2',
+      'run:child-1',
+      'session:chat-1@one+keep',
+    ]);
+    expect(calls.workflows).toEqual(['run-1', 'run-2', 'child-1']);
+    expect(calls.redacted).toEqual([['run-1', 'run-2', 'child-1']]);
+    expect(calls.records).toEqual(['child-1', 'run-2', 'run-1']);
+  });
+
+  it('covers a child in the second pass although the first removed the records that led to it', async () => {
+    let linked = true;
+    const { calls, purge, clock } = setup({
+      descendants: () => (linked ? { 'run-1': ['child-1'] } : {}),
+      incarnation: () => undefined,
+    });
+    await purge.record(CHAT);
+    await purge.run(CHAT);
+    expect(calls.workflows).toEqual(['run-1', 'run-2', 'child-1']);
+
+    // The first pass removed the child's record, so the topology no longer names it.
+    linked = false;
+    clock.now += LATE_WRITE_GRACE_MILLISECONDS;
+    expect(await purge.sweep()).toBe(1);
+
+    expect(calls.workflows.slice(3)).toEqual(['run-1', 'run-2', 'child-1']);
+    expect(calls.redacted.at(-1)).toEqual(['run-1', 'run-2', 'child-1']);
+  });
+
+  it('keeps every record while a child has not ended, so a retry still finds it', async () => {
+    const { calls, purge } = setup({
+      descendants: () => ({ 'run-1': ['child-1'] }),
+      ended: (runId) => runId !== 'child-1',
+      incarnation: () => undefined,
+    });
+    await purge.record(CHAT);
+
+    expect(await purge.run(CHAT).catch((reason: unknown) => reason)).toBeInstanceOf(
+      ChatRunsNotEndedError,
+    );
+
+    // No run's records go while a run below it could still be waiting: they are how a retry finds it.
+    expect(calls.records).toEqual([]);
+    expect(calls.workflows).not.toContain('child-1');
+  });
+
+  it('clears the chat’s A2A history itself, for the incarnation that was deleted only', async () => {
+    const { kv, purge } = setup();
+    const records = createA2ATaskRecords(kv);
+    const message = [{ messageId: 'm-1', parts: [{ text: 'A2A words' }] }];
+    for (const [taskId, incarnation] of [
+      ['task-old', 'one'],
+      ['task-new', 'two'],
+    ] as const) {
+      await records.create({
+        recordVersion: 1,
+        taskId,
+        contextId: 'chat-1',
+        incarnation,
+        history: message,
+        replyRecorded: false,
+      });
+    }
+    await purge.record(CHAT);
+
+    await purge.run(CHAT);
+
+    const cleared = await records.read('task-old');
+    const kept = await records.read('task-new');
+    expect(cleared?.history).toEqual([]);
+    expect(kept?.history).toEqual(message);
+    expect(await kv.list(A2A_TASK_RECORD_KEY_PREFIX)).toHaveLength(2);
   });
 
   it('purges the runs that have ended, keeps the record, and finishes once the rest have', async () => {
@@ -96,6 +240,8 @@ describe('createChatContentPurge (COR-1934)', () => {
     expect(calls.events).toEqual(['run:run-1', 'session:chat-1@one+keep']);
     expect(calls.workflows).toEqual(['run-1']);
     expect(calls.redacted).toEqual([['run-1']]);
+    // What belongs to the chat as a whole waits for its last run: a live run still reads its input.
+    expect(calls.sessionInput).toEqual([]);
     expect(await kv.list(PENDING_PREFIX)).toHaveLength(1);
 
     // The sweep reports it as a warning, not an error, and comes back.
@@ -105,7 +251,9 @@ describe('createChatContentPurge (COR-1934)', () => {
     expect(await purge.sweep()).toBe(1);
     // Each pass purges what has ended again, which is idempotent; the last also takes run-2.
     expect(calls.workflows).toEqual(['run-1', 'run-1', 'run-1', 'run-2']);
-    expect(await kv.list(PENDING_PREFIX)).toEqual([]);
+    expect(calls.sessionInput).toEqual(['chat-1@one']);
+    // Settled now: the second pass is owed.
+    expect(await kv.list(PENDING_PREFIX)).toHaveLength(1);
   });
 
   it('purges nothing while events of the chat are still in the session outbox', async () => {
@@ -139,7 +287,7 @@ describe('createChatContentPurge (COR-1934)', () => {
     incarnation = 'two';
     expect(await purge.sweep()).toBe(1);
     expect(calls.events).toEqual(['run:run-1', 'run:run-2', 'session:chat-1@one+keep']);
-    expect(await kv.list(PENDING_PREFIX)).toEqual([]);
+    expect(await kv.list(PENDING_PREFIX)).toHaveLength(1);
   });
 
   it('shares one pass between concurrent calls for the same chat', async () => {

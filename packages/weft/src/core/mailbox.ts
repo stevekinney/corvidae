@@ -46,6 +46,7 @@ import {
 } from './mailbox-internals.ts';
 import { listCommandReceipts, loadReceiptByIdempotencyKey } from './mailbox-listing.ts';
 import { runMailboxMaintenance } from './mailbox-maintenance.ts';
+import { purgeMailbox } from './mailbox-purge.ts';
 import {
   acknowledgeClaim,
   readCleanupState,
@@ -387,6 +388,23 @@ export class Mailbox {
   async runMaintenance(now = this.#runtime.now()): Promise<MailboxMaintenanceReport> {
     this.#assertLive();
     return runMailboxMaintenance(this.#runtime, requireMaintenanceInstant(now));
+  }
+
+  /**
+   * Permanently delete every durable record of this mailbox: its commands (and the payloads they
+   * carry), receipts, indexes and header. For a host that has retired the resource and must
+   * forget what was sent to it rather than wait for terminal retention.
+   *
+   * It does not cancel work: a command a consumer has claimed is deleted under it, so call it
+   * only once the resource has no consumer. A mailbox that is admitted to afterwards starts
+   * again from sequence zero. Safe to repeat: a second call finishes what a failed one stopped,
+   * and answers `0` when nothing is left.
+   *
+   * @returns How many keys were deleted.
+   */
+  async purge(): Promise<number> {
+    this.#assertLive();
+    return purgeMailbox(this.#runtime);
   }
 
   /**

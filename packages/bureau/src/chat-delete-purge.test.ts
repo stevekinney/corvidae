@@ -15,6 +15,7 @@ import { describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';
 
 import type { AgentDefinitions } from './agent-catalog';
+import { LATE_WRITE_GRACE_MILLISECONDS } from './chat-content-purge';
 import { createBureau } from './create-bureau';
 import { type BureauStorageFixture, createSqliteStorageFixture } from './test/storage-fixtures';
 import { startTaskFrom } from './test/task-start-request.ts';
@@ -87,6 +88,8 @@ interface Harness {
   readonly fixture: BureauStorageFixture;
   /** Starts a chat and waits for its first run to settle; returns the run's id. */
   chat(contextId: string, input?: string): Promise<string>;
+  /** Lets the late-write grace pass and runs a maintenance pass, which makes the second purge. */
+  afterGrace(): Promise<void>;
 }
 
 async function withBureau(
@@ -109,6 +112,10 @@ async function withBureau(
       diagnostics,
       bureau,
       fixture,
+      async afterGrace() {
+        runtime.setTime(runtime.clock.now() + LATE_WRITE_GRACE_MILLISECONDS);
+        await bureau.maintain();
+      },
       async chat(contextId, input = OTHER_INPUT) {
         const run = await startTaskFrom(bureau, {
           agentName: 'default',
@@ -126,6 +133,12 @@ async function withBureau(
     await bureau.dispose();
     await fixture.dispose();
   }
+}
+
+/** The pending purge records in the store: a finished purge keeps its record until the second pass. */
+async function pendingRecords(fixture: BureauStorageFixture): Promise<string[]> {
+  const entries = await scan(fixture);
+  return [...entries.keys()].filter((key) => key.startsWith(PENDING_PREFIX));
 }
 
 /** Whether `contexts.delete` removed the chat. */
@@ -210,7 +223,10 @@ describe('contexts.delete purges the content of the chat (COR-1934)', () => {
         runKeys.filter((key) => !RUN_KEYS_THAT_STAY.some((prefix) => key.startsWith(prefix))),
       ).toEqual([]);
       expect(after.has(surfaceMarker)).toBe(false);
-      expect([...after.keys()].filter((key) => key.startsWith(PENDING_PREFIX))).toEqual([]);
+      // A finished purge keeps its record, settled, until the second pass; then it is gone.
+      expect([...after.keys()].filter((key) => key.startsWith(PENDING_PREFIX))).toHaveLength(1);
+      await harness.afterGrace();
+      expect(await pendingRecords(harness.fixture)).toEqual([]);
       // Of the chat itself only the deletion marker, which holds no content.
       expect(
         [...after.keys()].filter((key) =>
@@ -246,7 +262,8 @@ describe('contexts.delete purges the content of the chat (COR-1934)', () => {
   });
 
   it('purges a chat with no run', async () => {
-    await withBureau(firstCallAnswers(), async ({ bureau, fixture, diagnostics }) => {
+    await withBureau(firstCallAnswers(), async (harness) => {
+      const { bureau, fixture, diagnostics } = harness;
       await bureau.internals.sessionStore!.save(
         createAgentSession({
           id: 'bare-chat',
@@ -273,7 +290,9 @@ describe('contexts.delete purges the content of the chat (COR-1934)', () => {
       expect(
         after.filter((key) => key.startsWith('fleet-event-by-workflow:session%3Abare-chat:')),
       ).toHaveLength(1);
-      expect(after.filter((key) => key.startsWith(PENDING_PREFIX))).toEqual([]);
+      expect(after.filter((key) => key.startsWith(PENDING_PREFIX))).toHaveLength(1);
+      await harness.afterGrace();
+      expect(await pendingRecords(fixture)).toEqual([]);
       expect(errorsOf(diagnostics)).toEqual([]);
     });
   });
@@ -322,11 +341,54 @@ describe('contexts.delete purges the content of the chat (COR-1934)', () => {
           (key) => run.test(key) && !RUN_KEYS_THAT_STAY.some((prefix) => key.startsWith(prefix)),
         ),
       ).toEqual([]);
-      expect([...after.keys()].filter((key) => key.startsWith(PENDING_PREFIX))).toEqual([]);
+      // A finished purge keeps its record, settled, until the second pass; then it is gone.
+      expect([...after.keys()].filter((key) => key.startsWith(PENDING_PREFIX))).toHaveLength(1);
+      await harness.afterGrace();
+      expect(await pendingRecords(harness.fixture)).toEqual([]);
       expect(errorsOf(harness.diagnostics)).toEqual([]);
       // The other chat keeps its content.
       expect(holding(after, OTHER_ANSWER).length).toBeGreaterThan(0);
       expect(holding(after, settledRunId).some((key) => key.startsWith('fleet-event:'))).toBe(true);
+    });
+  });
+});
+
+describe('a late write of the process that drove a deleted chat’s run (COR-1934)', () => {
+  it('is removed by the second pass, after the grace, and not before', async () => {
+    await withBureau(firstCallAnswers(), async (harness) => {
+      const { bureau, fixture } = harness;
+      const runId = await harness.chat('chat-1', INPUT);
+      const otherRunId = await harness.chat('chat-2');
+      await bureau.maintain();
+      await bureau.contexts.delete('chat-1');
+      await bureau.maintain();
+      expect(holding(await scan(fixture), ANSWER)).toEqual([]);
+
+      // The process that drove the run writes its last audit entry after the purge removed the
+      // run's workflow: another process's owner, whose terminal workflow was the purge's signal.
+      const LATE = 'LATE-WRITE-SENTINEL-5b9d';
+      await bureau.internals.auditTrail!.record({
+        runId,
+        type: 'run.completed',
+        detail: { result: { content: LATE }, content: LATE },
+      });
+      await bureau.internals.auditTrail!.record({
+        runId: otherRunId,
+        type: 'run.completed',
+        detail: { content: LATE },
+      });
+      expect(holding(await scan(fixture), LATE).length).toBeGreaterThan(0);
+
+      // Before the grace the sweep leaves the settled record alone: the window is bounded in time.
+      await bureau.maintain();
+      expect(holding(await scan(fixture), LATE).length).toBeGreaterThan(0);
+
+      await harness.afterGrace();
+      const after = await scan(fixture);
+      // The deleted chat's late entry is redacted; another chat's entry is not touched.
+      expect(holding(after, LATE).filter((key) => key.includes(runId))).toEqual([]);
+      expect(holding(after, LATE).filter((key) => key.includes(otherRunId))).not.toEqual([]);
+      expect(errorsOf(harness.diagnostics)).toEqual([]);
     });
   });
 });
@@ -368,7 +430,10 @@ describe('a chat delete that fails after the chat is gone (COR-1934)', () => {
       await bureau.maintain();
       expect(errorsOf(harness.diagnostics)).toEqual([]);
       during = await scan(fixture);
-      expect([...during.keys()].filter((key) => key.startsWith(PENDING_PREFIX))).toEqual([]);
+      // A finished purge keeps its record, settled, until the second pass; then it is gone.
+      expect([...during.keys()].filter((key) => key.startsWith(PENDING_PREFIX))).toHaveLength(1);
+      await harness.afterGrace();
+      expect(await pendingRecords(harness.fixture)).toEqual([]);
       expect(holding(during, ANSWER)).toEqual([]);
       expect(await bureau.contexts.get('chat-2')).toBeDefined();
     });
@@ -406,7 +471,10 @@ describe('a chat delete that fails after the chat is gone (COR-1934)', () => {
       expect(errorsOf(harness.diagnostics)).toEqual([]);
 
       const after = await scan(fixture);
-      expect([...after.keys()].filter((key) => key.startsWith(PENDING_PREFIX))).toEqual([]);
+      // A finished purge keeps its record, settled, until the second pass; then it is gone.
+      expect([...after.keys()].filter((key) => key.startsWith(PENDING_PREFIX))).toHaveLength(1);
+      await harness.afterGrace();
+      expect(await pendingRecords(harness.fixture)).toEqual([]);
       expect(holding(after, ANSWER)).toEqual([]);
       expect(entriesOf(after, 'chat-2', otherRunId)).toEqual(otherBefore);
     });
@@ -460,7 +528,10 @@ describe('a chat delete that fails after the chat is gone (COR-1934)', () => {
       await bureau.maintain();
       const after = await scan(fixture);
       expect(holding(after, ANSWER)).toEqual([]);
-      expect([...after.keys()].filter((key) => key.startsWith(PENDING_PREFIX))).toEqual([]);
+      // A finished purge keeps its record, settled, until the second pass; then it is gone.
+      expect([...after.keys()].filter((key) => key.startsWith(PENDING_PREFIX))).toHaveLength(1);
+      await harness.afterGrace();
+      expect(await pendingRecords(harness.fixture)).toEqual([]);
     });
   });
 });

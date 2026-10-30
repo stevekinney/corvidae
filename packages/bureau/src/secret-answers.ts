@@ -474,6 +474,29 @@ function parseRecord(raw: string | null): SecretAnswerRecord | undefined {
   }
 }
 
+/**
+ * Deletes the stored secret answers of the given runs and answers how many went (COR-1934): a
+ * deleted chat's answers are content its user wrote, and nothing else would read them again. It
+ * needs no encryption key, because it reads each record's `runId` and never its ciphertext.
+ */
+export async function purgeSecretAnswersOfRuns(
+  kv: ConditionalTextValueStore,
+  runIds: ReadonlySet<string>,
+): Promise<number> {
+  let deleted = 0;
+  for (const key of await kv.list(SECRET_ANSWER_KEY_PREFIX)) {
+    const raw = await kv.get(key);
+    if (raw === null) continue;
+    const record = parseRecord(raw);
+    // An unreadable record names no run: it is left for whoever can read it.
+    if (record === undefined || !runIds.has(record.runId)) continue;
+    if (await kv.conditionalBatch([{ key, expectedValue: raw }], [{ type: 'delete', key }])) {
+      deleted += 1;
+    }
+  }
+  return deleted;
+}
+
 /** The stored secret answers of one Bureau. */
 export interface SecretAnswerStore {
   /**

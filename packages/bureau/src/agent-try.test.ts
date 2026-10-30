@@ -367,8 +367,8 @@ describe('deleting a tried chat (COR-1911)', () => {
    * What a deleted chat may leave in storage, by key prefix. The same as a deleted chat of any
    * other origin leaves (COR-1934 purges its content):
    *
-   * - `audit:v1:` and `audit-sequence:v1:`: the audit trail's entries and its counter. The step and
-   *   run entries stay, with their answer text redacted, and the `session.deleted` entry stays.
+   * - `audit:v1:` and `audit-sequence:v1:`: the audit trail's entries and its counter. Its entries
+   *   stay, with their content redacted, and the `session.deleted` entry stays.
    * - `fleet-event:`, `fleet-event-by-workflow:` and `fleet-event-tail`: on a persistent store
    *   only the `session.deleted` event, which holds no content, and the feed's tail. A store
    *   opened as ephemeral writes none of it, so on MemoryStorage these are absent.
@@ -376,8 +376,8 @@ describe('deleting a tried chat (COR-1911)', () => {
    * - `agent-session-outbox:v1:ordinal`: the session outbox's counter.
    * - `wf-gen:` and `wf-owner-epoch:`: the engine's tombstones, which keep a run id from being
    *   used twice.
-   * - `session-input-open:v2:`: the sweep's index of a retired session's mailbox, removed once
-   *   retention has emptied it.
+   * - `chat-content-purge-pending:v1:`: the finished purge's record, kept settled until the second
+   *   pass removes what a late writer added.
    */
   const KEPT = [
     'audit:v1:',
@@ -389,7 +389,7 @@ describe('deleting a tried chat (COR-1911)', () => {
     'agent-session-outbox:v1:ordinal',
     'wf-gen:',
     'wf-owner-epoch:',
-    'session-input-open:v2:',
+    'chat-content-purge-pending:v1:',
   ];
 
   /** The prefixes of the keys that are the chat, its runs, its tasks, its workflow and its agent. */
