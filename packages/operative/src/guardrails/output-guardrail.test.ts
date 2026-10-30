@@ -329,21 +329,39 @@ describe('createOutputGuardrail over thinking parts (COR-1806)', () => {
     expect(result?.parts).toBeUndefined();
   });
 
-  it('redacts by withholding the flagged thinking: the answer, its calls and other parts stand', async () => {
+  it('redacts a step with no tool calls by removing the flagged thinking: the answer and other parts stand', async () => {
     const hook = createOutputGuardrail({ validators: [secretValidator], action: 'redact' });
-    const response = responseWithThought('the SECRET is x');
+    const response = { ...responseWithThought('the SECRET is x'), toolCalls: [] };
     response.parts.splice(1, 0, thinking('a clean second thought') as never);
 
     const result = await hook(response, createMockStepContext());
 
     expect(result?.content).toBe('A clean answer.');
-    expect(result?.toolCalls).toEqual(response.toolCalls);
+    expect(result?.toolCalls).toEqual([]);
     expect(result?.parts).toEqual([
       thinking('a clean second thought'),
       { type: 'redacted_thinking', data: 'opaque' },
       { type: 'text', text: 'A clean answer.' },
     ]);
+    expect(result?.withheldThinking).toBeUndefined();
     expect(JSON.stringify(result)).not.toContain('SECRET');
+  });
+
+  it('redacts a tool-call step by marking the flagged thinking withheld, every part kept unchanged', async () => {
+    // A provider requires a tool-use turn's thinking back complete and unmodified on the next
+    // request, so the parts stay as they are and only the stream is told to leave them out.
+    const hook = createOutputGuardrail({ validators: [secretValidator], action: 'redact' });
+    const response = responseWithThought('the SECRET is x');
+    response.parts.splice(2, 0, thinking('another SECRET thought') as never);
+    response.parts.splice(1, 0, thinking('a clean second thought') as never);
+    const parts = structuredClone(response.parts);
+
+    const result = await hook(response, createMockStepContext());
+
+    expect(result?.content).toBe('A clean answer.');
+    expect(result?.toolCalls).toEqual(response.toolCalls);
+    expect(result?.parts).toEqual(parts);
+    expect(result?.withheldThinking).toEqual([0, 3]);
   });
 
   it('redacts flagged content as before even when the thinking is flagged too', async () => {

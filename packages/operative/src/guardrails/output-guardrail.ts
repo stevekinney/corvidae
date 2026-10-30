@@ -45,9 +45,14 @@ function highestConfidence(failures: readonly Failure[]): Failure | undefined {
  *   flagged. The response's parts, thinking included, are dropped with it.
  * - `'warn'`: calls `onTriggered` but passes the original response through
  * - `'redact'`: for flagged content, returns a new `GenerateResponse` with the validator's
- *   redacted content. For a response whose content is clean and whose thinking is flagged, returns
- *   the response with the flagged thinking parts removed: a thinking part carries a provider
- *   signature that must be replayed byte-for-byte, so its text cannot be edited, only withheld.
+ *   redacted content. For a response whose content is clean and whose thinking is flagged, the
+ *   flagged thinking is withheld, never edited: a thinking part carries a provider signature, so
+ *   its text cannot change. A step with no tool calls returns the response with the flagged
+ *   thinking parts removed. A step with tool calls keeps every part unchanged and names the
+ *   flagged ones in `withheldThinking`, because a provider such as Anthropic requires a tool-use
+ *   turn's thinking back complete and unmodified on the request that carries the tool results.
+ *   That thinking stays in the stored conversation, where only the model reads it again, and a
+ *   surface that shows the run's reasoning (Bureau's AG-UI stream) leaves it out.
  * - `'tripwire'`: throws a `GuardrailTripwireError`, hard-halting the run right after
  *   post-processing flags the response (see `createGuardrails({ mode: 'tripwire' })`)
  *
@@ -137,10 +142,19 @@ export function createOutputGuardrail(options: OutputGuardrailOptions): Validate
       }
       if (contentFailure === undefined) {
         // Only thinking was flagged: the answer and its tool calls stand, the flagged thoughts go.
-        const withheld = new Set(failures.map((failure) => failure.target));
+        const withheld = new Set([
+          ...(response.withheldThinking ?? []),
+          ...failures.map((failure) => failure.target),
+        ]);
+        if (response.toolCalls.length > 0) {
+          // The next request replays this turn's thinking byte-for-byte, so the parts stay and
+          // only the observers are told to leave the flagged ones out.
+          return { ...response, withheldThinking: [...withheld].toSorted((a, b) => a - b) };
+        }
         return {
           ...response,
           parts: (response.parts ?? []).filter((_part, index) => !withheld.has(index)),
+          withheldThinking: undefined,
         };
       }
     }

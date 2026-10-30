@@ -17,6 +17,7 @@ import {
 import { MemoryStorage } from '@lostgradient/storage';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
+import { toAnthropicMessages } from 'conversationalist';
 import { z } from 'zod';
 
 import { createMemoryAssetStorage } from '../assets/storage';
@@ -281,12 +282,86 @@ describe('PII only in the thinking (the answer is clean)', () => {
           output: { validators: [createOutputPIIValidator()], action: 'redact' },
         },
       },
-      async ({ handler }) => {
+      async ({ handler, generate }) => {
         const frames = await new FrameReader(await handler(startRequest(runAgentInput()))).rest();
 
         expect(leaks(frames)).toEqual([]);
         expect(reasoningOf(frames)).toEqual([]);
         expect(JSON.stringify(frames)).toContain('A clean answer.');
+        expect(typesOf(frames).at(-1)).toBe(EventType.RUN_FINISHED);
+        // A step with no tool call is not replayed with its thinking, so the stored answer drops it.
+        const stored = generate.calls[0]!.context.conversation.getMessages();
+        expect(JSON.stringify(stored)).not.toContain(PII);
+        expect(JSON.stringify(stored)).toContain('A clean answer.');
+      },
+    );
+  });
+
+  it('on a tool-call step under validate mode, replays the thinking unmodified to the provider and streams none of the flagged thought', async () => {
+    // Anthropic requires a tool-use turn's thinking blocks back complete and unmodified on the
+    // request that carries the tool result, so redaction may not touch the stored parts; it only
+    // keeps the flagged thought off the wire.
+    const flagged = { type: 'thinking' as const, thinking: thought, signature: 'sig-a' };
+    const clean = { type: 'thinking' as const, thinking: 'then answer', signature: 'sig-b' };
+    const lookup = createTool({
+      name: 'lookup',
+      description: 'looks something up',
+      input: z.object({}),
+      async execute() {
+        return 'ok';
+      },
+    });
+    await withHarness(
+      {
+        toolbox: createToolbox([lookup]) as unknown as Toolbox,
+        guardrails: {
+          mode: 'validate',
+          output: { validators: [createOutputPIIValidator()], action: 'redact' },
+        },
+        script: [
+          {
+            kind: 'respond',
+            response: {
+              content: '',
+              toolCalls: [{ id: 'call-1', name: 'lookup', arguments: {} }],
+              parts: [flagged, clean],
+            },
+          },
+          { kind: 'block', barrier: 'second-request' },
+          { kind: 'respond', response: { content: 'Done.', toolCalls: [] } },
+        ],
+      },
+      async ({ handler, generate }) => {
+        const reader = new FrameReader(await handler(startRequest(runAgentInput())));
+        await generate.reached('second-request');
+
+        // What the Anthropic adapter sends for the second step (it converts the same
+        // `conversation.current`), read while that request is in flight.
+        const { messages } = toAnthropicMessages(generate.calls[1]!.context.conversation.current);
+        const toolTurn = messages.find(
+          (message) =>
+            message.role === 'assistant' &&
+            Array.isArray(message.content) &&
+            message.content.some((block) => block.type === 'tool_use'),
+        );
+        expect(toolTurn?.content).toMatchObject([
+          { type: 'thinking', thinking: thought, signature: 'sig-a' },
+          { type: 'thinking', thinking: 'then answer', signature: 'sig-b' },
+          { type: 'tool_use', id: 'call-1', name: 'lookup' },
+        ]);
+
+        generate.release('second-request');
+        const frames = [...reader.received, ...(await reader.rest())];
+
+        expect(leaks(frames)).toEqual([]);
+        const delivered = reasoningOf(frames).filter(
+          (frame) => frame.event.type === EventType.REASONING_MESSAGE_CONTENT,
+        );
+        expect(delivered.map((frame) => (frame.event as { delta: string }).delta)).toEqual([
+          'then answer',
+        ]);
+        expect(typesOf(frames)).toContain(EventType.TOOL_CALL_START);
+        expect(JSON.stringify(frames)).toContain('Done.');
         expect(typesOf(frames).at(-1)).toBe(EventType.RUN_FINISHED);
       },
     );

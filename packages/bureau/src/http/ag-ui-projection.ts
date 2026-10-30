@@ -32,11 +32,13 @@
  * before the step's text message. It is read from `generate.completed`, which the run records only
  * after its output guardrails have run, so a guardrail that blocked or redacted a response also
  * replaced the parts the frames would have been read from: no frame ever carries the response as
- * the model first produced it. `redacted_thinking` parts and every part's `signature` are never
- * sent. The projector emits these events; it is the stream that sends them to the run's owner
- * alone and never in a replay. None of the reasoning events, and none of the `CUSTOM` events above
- * except `bureau.asset-part`, enters the checkpoint a late attach replays: they are announced to
- * the streams that are attached when they happen.
+ * the model first produced it. On a step that called tools, redaction keeps the flagged thinking
+ * parts (the provider requires them back unmodified) and names them in the response's
+ * `withheldThinking`; no frame is sent for those. `redacted_thinking` parts and every part's
+ * `signature` are never sent. The projector emits these events; it is the stream that sends them
+ * to the run's owner alone and never in a replay. None of the reasoning events, and none of the
+ * `CUSTOM` events above except `bureau.asset-part`, enters the checkpoint a late attach replays:
+ * they are announced to the streams that are attached when they happen.
  *
  * What it does not emit: `STATE_DELTA`, `ACTIVITY_*`, `RAW`, `SUBAGENT_*`,
  * `REASONING_ENCRYPTED_VALUE`, and the `*_CHUNK` forms.
@@ -148,10 +150,16 @@ function resultsOf(value: unknown): ToolResultDetail[] {
   return Array.isArray(value) ? value.map((entry) => record(entry) as ToolResultDetail) : [];
 }
 
-/** The text of every `thinking` part among `parts`, in order. Redacted thinking has none to send. */
-function thinkingOf(parts: unknown): string[] {
+/**
+ * The text of every `thinking` part of a response, in order, except the parts its output guardrail
+ * withheld (their indices in `parts`, as `withheldThinking`). Redacted thinking has none to send.
+ */
+function thinkingOf(response: Record<string, unknown>): string[] {
+  const { parts, withheldThinking } = response;
   if (!Array.isArray(parts)) return [];
-  return (parts as unknown[]).flatMap((part) => {
+  const withheld = new Set(Array.isArray(withheldThinking) ? (withheldThinking as unknown[]) : []);
+  return (parts as unknown[]).flatMap((part, index) => {
+    if (withheld.has(index)) return [];
     const { type, thinking } = record(part);
     return type === 'thinking' && typeof thinking === 'string' && thinking.length > 0
       ? [thinking]
@@ -279,7 +287,7 @@ export class RunProjector {
         const response = record(data['response']);
         return {
           events: [
-            ...this.announceReasoning(stepOf(data), thinkingOf(response['parts'])),
+            ...this.announceReasoning(stepOf(data), thinkingOf(response)),
             ...this.completeText(
               stepOf(data),
               response['content'],

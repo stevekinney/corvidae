@@ -95,6 +95,56 @@ describe('reasoning', () => {
     expect(plain.events.filter(isReasoningEvent)).toEqual([]);
   });
 
+  it('sends no frame for a thinking part the output guardrail withheld, and the others as usual', () => {
+    const run = projector();
+    run.handleRecorded(RECORDED.stepStarted, { step: 0 });
+
+    const done = run.handleRecorded(RECORDED.generateCompleted, {
+      step: 0,
+      response: {
+        content: '',
+        toolCalls: [{ id: 'call-1', name: 'lookup', arguments: {} }],
+        parts: [
+          { type: 'thinking', thinking: 'flagged thought', signature: 'sig-1' },
+          { type: 'redacted_thinking', data: 'opaque' },
+          { type: 'thinking', thinking: 'clean thought', signature: 'sig-2' },
+        ],
+        withheldThinking: [0],
+      },
+    });
+
+    const reasoning = done.events.filter(isReasoningEvent);
+    expect(types(reasoning)).toEqual([
+      EventType.REASONING_START,
+      EventType.REASONING_MESSAGE_START,
+      EventType.REASONING_MESSAGE_CONTENT,
+      EventType.REASONING_MESSAGE_END,
+      EventType.REASONING_END,
+    ]);
+    expect(reasoning[2]).toMatchObject({ delta: 'clean thought' });
+    expect(JSON.stringify(done.events)).not.toContain('flagged thought');
+  });
+
+  it('sends no reasoning span at all when every thinking part was withheld', () => {
+    const run = projector();
+    run.handleRecorded(RECORDED.stepStarted, { step: 0 });
+
+    const done = run.handleRecorded(RECORDED.generateCompleted, {
+      step: 0,
+      response: {
+        content: '',
+        parts: [
+          { type: 'thinking', thinking: 'flagged one', signature: 'sig-1' },
+          { type: 'thinking', thinking: 'flagged two', signature: 'sig-2' },
+        ],
+        withheldThinking: [0, 1],
+      },
+    });
+
+    expect(done.events.filter(isReasoningEvent)).toEqual([]);
+    expect(JSON.stringify(done.events)).not.toContain('flagged');
+  });
+
   it('is not part of what a late attach replays', () => {
     const run = projector();
     run.handleRecorded(RECORDED.stepStarted, { step: 0 });
