@@ -8991,6 +8991,44 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
+   * COR-1916 — a run whose session is settled and whose durable record is terminal was finished by
+   * a peer after this boot took its claim (a process that stalls past its lease TTL loses the run
+   * to a peer), so there is nothing to cancel and no recovery failure to report. Applies only to
+   * the session-only `session-not-running` verdict, and never to a run this boot ended itself
+   * (`unrebuildableRecoveredRuns`), which stays reported. A record that cannot be read leaves the
+   * verdict as it was.
+   */
+  async function skipRunFinishedByPeer(
+    runId: string,
+    args: ClassifyRecoveredRunArgs,
+    classification: { verdict: RecoveredRunVerdict; rejection?: RecoveryRejectionReason },
+  ): Promise<{ verdict: RecoveredRunVerdict; rejection?: RecoveryRejectionReason }> {
+    const durable = runtime.durable;
+    if (
+      durable === undefined ||
+      classification.rejection !== 'session-not-running' ||
+      runtime.unrebuildableRecoveredRuns.has(runId)
+    ) {
+      return classification;
+    }
+    try {
+      const record = await durable.engine.get(runId);
+      if (record === null || !RECOVERED_RUN_TERMINAL_STATUSES.has(record.status)) {
+        return classification;
+      }
+      return classifyRecoveredRunDetailed({ ...args, engineRecordStatus: record.status });
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'recovery',
+        message: `[bureau] Could not read the durable record of recovered run "${runId}"; classifying it without its status: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+      return classification;
+    }
+  }
+
+  /**
    * Dispatches `recovery.attempted` for every `classifyRecoveredRun` call
    * (AB-90/ab90-09), making the classification externally observable, then
    * `recovery.rejected` — synchronously, right after, so the two are always
@@ -9112,7 +9150,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       return;
     }
 
-    const classification = classifyRecoveredRunDetailed({
+    const classificationArgs: ClassifyRecoveredRunArgs = {
       handleId: info.workflowId,
       scheduledFire: false,
       ownedSessionId: info.input.sessionId,
@@ -9120,7 +9158,17 @@ async function constructBureau<const D extends AgentDefinitions>(
       hasSessionStore: true,
       sessionLoad,
       versionMismatch: runtime.workflowVersionMismatches.has(info.workflowId),
-    });
+    };
+    let classification = classifyRecoveredRunDetailed(classificationArgs);
+    // Awaited only for the one verdict it can change: a reattach must register its run in the
+    // same turn as the classification, before the run can reach a terminal event.
+    if (classification.rejection === 'session-not-running') {
+      classification = await skipRunFinishedByPeer(
+        info.workflowId,
+        classificationArgs,
+        classification,
+      );
+    }
     const { verdict } = classification;
     dispatchRecoveryClassification(info.workflowId, classification);
     dispatchRecoveryLeaseReleasedIfAny(info.workflowId);
@@ -9819,26 +9867,12 @@ async function constructBureau<const D extends AgentDefinitions>(
             classification = { verdict: 'skip' };
           }
         }
-        // COR-1916 — a run whose session is settled may have been finished by a peer since
-        // `recoverAll()` took its handle, so the record is read before the session alone cancels
-        // it. A read that fails leaves the verdict as it was.
         if (classification.rejection === 'session-not-running') {
-          try {
-            const record = await durable.engine.get(handle.id);
-            if (record !== null && RECOVERED_RUN_TERMINAL_STATUSES.has(record.status)) {
-              classification = classifyRecoveredRunDetailed({
-                ...classificationArgs,
-                engineRecordStatus: record.status,
-              });
-            }
-          } catch (error) {
-            diagnose({
-              level: 'error',
-              scope: 'recovery',
-              message: `[bureau] Could not read the durable record of recovered run "${handle.id}"; classifying it without its status: ${serializeUnknownError(error)}`,
-              cause: error,
-            });
-          }
+          classification = await skipRunFinishedByPeer(
+            handle.id,
+            classificationArgs,
+            classification,
+          );
         }
         // The session says the run is running, and no later boot could repair that once the record
         // is cancelled, so it is settled first; the cancel is issued whether or not this write

@@ -2033,6 +2033,13 @@ export interface RuntimeComposition {
    */
   workflowVersionMismatches: Map<string, { storedVersion: string; registeredVersion: string }>;
   /**
+   * COR-1916 — run ids this process's own recovery resolver ended because their deps could not be
+   * rebuilt here (their session is reconciled to `error` and Weft fails the record). Boot recovery
+   * reads it to tell a run this boot ended, which it reports, from one a peer finished, which it
+   * leaves alone.
+   */
+  unrebuildableRecoveredRuns: Set<string>;
+  /**
    * Stops this composition's writes to the caller's `options.storage` (COR-1767): every later
    * write through `kv`, the checkpoint store, the engine, or `durableStorage` throws; reads still
    * pass. It never closes the caller's storage, which stays the caller's to close. A no-op
@@ -2635,6 +2642,9 @@ async function buildRuntimeComposition(
     string,
     { storedVersion: string; registeredVersion: string }
   >();
+
+  // COR-1916: see RuntimeComposition.unrebuildableRecoveredRuns.
+  const unrebuildableRecoveredRuns = new Set<string>();
 
   // AB-223: runId → scheduleId for a scheduled fire whose deps this composition
   // has built (live tick or recovered), so the `workflow:completed`/
@@ -5087,6 +5097,7 @@ async function buildRuntimeComposition(
       // reconcile it to `error` synchronously on the boot path (not a racy
       // detached write).
       const reason = error instanceof Error ? error.message : String(error);
+      unrebuildableRecoveredRuns.add(info.workflowId);
       try {
         await sessionStore.updateMetadata(sessionId, {
           lastRunStatus: 'error',
@@ -5129,6 +5140,7 @@ async function buildRuntimeComposition(
     kv,
     durable,
     workflowVersionMismatches,
+    unrebuildableRecoveredRuns,
     scheduleFireEvents,
     skillEvents,
     stopUsingStorage: () => storageFence?.close(),

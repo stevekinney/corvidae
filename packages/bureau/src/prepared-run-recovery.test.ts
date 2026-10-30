@@ -373,6 +373,71 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
     expect(recovery.rejected.filter(([runId]) => runId === run.id)).toEqual([]);
   });
 
+  it('reports a run a peer finished as clean at the recovery hook too (COR-1916)', async () => {
+    const fixture = newFixture();
+    // A run that crashed mid-step: its record is `running`, so recovery resumes it and fires the
+    // recovery hook, which classifies it before the post-recovery pass does.
+    const crashed = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createToolbox([]),
+        }),
+      },
+      storage: fixture.storage,
+      durable: true,
+      durableOwnership: { ownership: 'none' },
+    });
+    cleanups.push(() => crashed.dispose());
+    const run = await crashed.tasks.start('default', 'crash mid-step');
+    await waitForCondition(
+      async () => (await durableStatus(crashed, run.id)) === 'running',
+      'the run never started',
+    );
+    const storage = fixture.open();
+    cleanups.push(() => storage[Symbol.dispose]());
+    const sessions = createSessionStore(
+      textValueStore(storage, { disposeUnderlyingStorage: false }),
+    );
+    const realGet = Engine.prototype.get;
+    const get = spyOn(Engine.prototype, 'get').mockImplementation(async function (
+      this: Engine,
+      workflowId: string,
+    ) {
+      const record = await realGet.call(this, workflowId);
+      return workflowId === run.id && record !== null
+        ? { ...record, status: 'completed' as const }
+        : record;
+    });
+    cleanups.push(() => get.mockRestore());
+    // A peer takes the claim, finishes the run and settles its session after the resolver found the
+    // session running and before the hook loads it. The hook's catalog-record read is the last
+    // storage read before that load (the resolver's is the first), so the peer lands on the second.
+    const bootStorage = fixture.open();
+    cleanups.push(() => bootStorage[Symbol.dispose]());
+    const realStorageGet = bootStorage.get.bind(bootStorage);
+    let catalogReads = 0;
+    bootStorage.get = async (key: string) => {
+      if (key === `bureau-catalog-run:${run.id}` && ++catalogReads === 2) {
+        await sessions.updateMetadata(run.contextId, { lastRunStatus: 'completed' });
+      }
+      return realStorageGet(key);
+    };
+    const recovery = {
+      attempted: [] as Array<[string, string]>,
+      rejected: [] as Array<[string, string]>,
+    };
+
+    const restarted = await open(bootStorage, { recovery });
+    const report = await restarted.recovery();
+    get.mockRestore();
+
+    expect(catalogReads).toBeGreaterThanOrEqual(2);
+    expect(report).toMatchObject({ outcome: 'clean', perRunFailures: [] });
+    expect(recovery.attempted).toContainEqual([run.id, 'skip']);
+    expect(recovery.rejected.filter(([runId]) => runId === run.id)).toEqual([]);
+  });
+
   it('cancels a catalog run prepared and never launched, and settles its task', async () => {
     const fixture = newFixture();
     const hook = heldStartHook();
