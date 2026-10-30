@@ -12,11 +12,13 @@
  * Not a test file: the invocation entry points import it, and so does the
  * driver.
  */
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
+
+import { publishChildFile } from '../child-output-file';
 
 /** Every protocol line on an invocation's stdout starts with this. */
 export const INVOCATION_LINE_PREFIX = '@@invocation ';
@@ -50,7 +52,7 @@ const POLL_DELAY_MS = 5;
 const runtime = createDefaultRuntimeServices();
 
 export function writeClock(directory: string, now: number): void {
-  writeFileSync(join(directory, 'clock'), String(now), 'utf8');
+  publishChildFile(join(directory, 'clock'), String(now));
 }
 
 export function readClock(directory: string): number {

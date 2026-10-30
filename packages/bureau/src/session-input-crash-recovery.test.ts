@@ -9,7 +9,7 @@
  * runs once at module scope, off Bun's per-test clock, under one hang guard
  * (see `test/hoisted-scenario.ts`).
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -33,6 +33,7 @@ import {
   createSqliteStorageFixture,
   type PersistentBureauStorageFixture,
 } from './test/storage-fixtures';
+import { readChildJson } from './test/child-output-file';
 
 const CHILD = join(import.meta.dir, 'test', 'session-input-crash-child.ts');
 
@@ -77,7 +78,7 @@ async function runCrashingChild(
   // instead, which would invalidate the test's premise, not merely fail it.
   expect(child.signalCode ?? stderr).toBe('SIGKILL');
   expect(existsSync(markerPath)).toBe(true);
-  return JSON.parse(readFileSync(markerPath, 'utf8')) as Marker;
+  return readChildJson<Marker>(markerPath);
 }
 
 /** A fixture on the child's store in `directory`, which the test opens after the child is gone. */

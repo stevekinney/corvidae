@@ -16,7 +16,7 @@
  * No `dispose()`, no `shutdown()`, no flush: whatever the next process finds was on disk
  * before this one died. Not a test file: it is spawned by `task-record-crash.slow.test.ts`.
  */
-import { writeFileSync } from 'node:fs';
+import { publishChildFile } from './child-output-file';
 
 import { stopWhen, createAgent } from '@lostgradient/operative';
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
@@ -89,7 +89,7 @@ const bureau = await createBureau<AgentDefinitions>({
 const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 const kill = (runId: string): never => {
   // Written synchronously so it is on disk before the kill.
-  writeFileSync(markerPath, JSON.stringify({ runId }), 'utf8');
+  publishChildFile(markerPath, JSON.stringify({ runId }));
   process.kill(process.pid, 'SIGKILL');
   return undefined as never;
 };

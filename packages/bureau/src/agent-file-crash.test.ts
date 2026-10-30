@@ -7,7 +7,7 @@
  * as. The scenario boots real processes and waits out a real claim lapse, so it runs once at module
  * scope (`test/hoisted-scenario.ts`) and its test reports how it went.
  */
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -34,6 +34,7 @@ import type { Bureau } from './types';
 import type { AgentDefinitions } from './agent-catalog';
 import { agentFileDirectory } from './sources/agent-file-directory';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
+import { readChildJson } from './test/child-output-file';
 
 const CHILD = join(import.meta.dir, 'test', 'agent-file-crash-child.ts');
 const runtime = createDefaultRuntimeServices();
@@ -82,7 +83,7 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
     const stderr = await new Response(child.stderr).text();
     expect(child.signalCode ?? unexpectedChildStderr(stderr)).toBe('SIGKILL');
     expect(existsSync(markerPath)).toBe(true);
-    const marker = JSON.parse(readFileSync(markerPath, 'utf8')) as CrashMarker;
+    const marker = readChildJson<CrashMarker>(markerPath);
     expect(marker.runs).toHaveLength(4);
 
     // What a human does while the process is down: delete one agent, rewrite the other.
