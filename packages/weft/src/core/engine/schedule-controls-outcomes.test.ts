@@ -4,13 +4,15 @@
  * have started a run, wherever the cadence stands; run now answers with its own run, never with a
  * run it dequeued on the way. Every test drives the engine's injected clock; nothing waits.
  */
-import { MemoryStorage } from '@lostgradient/storage';
+import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { KEYS } from '../../storage/keys.ts';
 import { encode } from '../codec.ts';
 import { Engine } from '../engine.ts';
 import type { ScheduleOverlapPolicy, ScheduleState } from '../types.ts';
+import { WorkflowAlreadyExistsError } from './errors.ts';
+import { engineStorage } from './schedule-across-engines.test-support.ts';
 import { resolveEffectiveScheduleFireAt } from './schedule-jitter.ts';
 import {
   drainEngine,
@@ -30,7 +32,7 @@ function at(iso: string): number {
   return Date.parse(iso);
 }
 
-type Opened = { engine: Engine; clock: Clock; storage: MemoryStorage; runs: number[] };
+type Opened = { engine: Engine; clock: Clock; storage: Storage; runs: number[] };
 
 const opened: Opened[] = [];
 
@@ -42,9 +44,8 @@ afterEach(() => {
  * An engine over a fresh store whose `report` workflow records when it began. A run whose input
  * is `'hold'` waits for the `release` signal, so it stays the schedule's current run.
  */
-function open(start: number): Opened {
+function open(start: number, storage: Storage = new MemoryStorage()): Opened {
   const clock: Clock = { now: start };
-  const storage = new MemoryStorage();
   const runs: number[] = [];
   const engine = new Engine({ storage, getNow: () => clock.now });
   registerWorkflow(engine, 'report', async function* (ctx, input: unknown) {
@@ -57,7 +58,7 @@ function open(start: number): Opened {
   return result;
 }
 
-async function stored(storage: MemoryStorage, id: string): Promise<ScheduleState> {
+async function stored(storage: Storage, id: string): Promise<ScheduleState> {
   const bytes = await storage.get(KEYS.schedule(id));
   const state = bytes === null ? null : decodeScheduleState(bytes);
   if (state === null) throw new Error(`Schedule "${id}" is missing`);
@@ -65,7 +66,7 @@ async function stored(storage: MemoryStorage, id: string): Promise<ScheduleState
 }
 
 async function fieldOf<K extends keyof ScheduleState>(
-  storage: MemoryStorage,
+  storage: Storage,
   id: string,
   key: K,
 ): Promise<ScheduleState[K]> {
@@ -339,6 +340,81 @@ describe('running a paused schedule now under the queue policy', () => {
     expect(state.queuedRuns).toEqual([]);
     expect(state.currentWorkflowId).toBe(second.outcome === 'queued' ? second.workflowId : '');
     expect(await listRunningWorkflowIds(engine)).toEqual([state.currentWorkflowId!]);
+    await releaseRunningWorkflows(engine);
+  });
+});
+
+describe('running a schedule now under cancel-running', () => {
+  it('cancels the run that holds the slot and starts its own in its place', async () => {
+    const { engine, storage } = open(at('2026-01-01T00:00:00.000Z'));
+    await engine.schedule('report', 'hold', '0 9 * * *', {
+      id: 'daily',
+      overlap: 'cancel-running',
+    });
+    const first = await engine.triggerSchedule('daily');
+    await drainEngine();
+
+    const second = await engine.triggerSchedule('daily');
+    await drainEngine();
+
+    expect(first.outcome).toBe('started');
+    expect(second.outcome).toBe('started');
+    const replaced = first.outcome === 'started' ? first.workflowId : '';
+    const own = second.outcome === 'started' ? second.workflowId : '';
+    expect(own).not.toBe(replaced);
+    expect(await fieldOf(storage, 'daily', 'currentWorkflowId')).toBe(own);
+    expect(await listRunningWorkflowIds(engine)).toEqual([own]);
+    await releaseRunningWorkflows(engine);
+  });
+});
+
+describe('running a schedule now when storage refuses it', () => {
+  it('rejects with the fault when its run cannot start, and records nothing', async () => {
+    const faulty = engineStorage(new MemoryStorage());
+    const { engine, storage } = open(at('2026-01-01T00:00:00.000Z'), faulty.storage);
+    await engine.schedule('report', 'hold', '0 9 * * *', { id: 'daily', overlap: 'skip' });
+    const before = await stored(storage, 'daily');
+    faulty.failRunStarts();
+
+    const failure = await engine.triggerSchedule('daily').catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({ message: 'simulated schedule start failure' });
+    expect(await stored(storage, 'daily')).toEqual(before);
+  });
+
+  it('rejects with the fault when its queued run cannot be written', async () => {
+    const faulty = engineStorage(new MemoryStorage());
+    const { engine, storage } = open(at('2026-01-01T00:00:00.000Z'), faulty.storage);
+    await engine.schedule('report', 'hold', '0 9 * * *', { id: 'daily', overlap: 'queue' });
+    await engine.triggerSchedule('daily');
+    await drainEngine();
+    const before = await stored(storage, 'daily');
+    faulty.failScheduleWrites();
+
+    const failure = await engine.triggerSchedule('daily').catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({ message: 'simulated schedule write failure' });
+    expect(await stored(storage, 'daily')).toEqual(before);
+    await releaseRunningWorkflows(engine);
+  });
+
+  it('rejects when the run queued ahead already exists and the schedule has not moved', async () => {
+    const { engine, storage } = open(at('2026-01-01T00:00:00.000Z'));
+    await engine.schedule('report', 'hold', '0 9 * * *', { id: 'daily', overlap: 'queue' });
+    const existing = await engine.start('report', 'hold');
+    await drainEngine();
+    const state = await stored(storage, 'daily');
+    await storage.put(
+      KEYS.schedule('daily'),
+      encode({
+        ...state,
+        queuedRuns: [{ workflowId: existing.id, queuedAt: state.createdAt, manual: true }],
+      }),
+    );
+
+    const failure = await engine.triggerSchedule('daily').catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(WorkflowAlreadyExistsError);
     await releaseRunningWorkflows(engine);
   });
 });

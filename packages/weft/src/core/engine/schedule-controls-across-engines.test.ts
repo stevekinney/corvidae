@@ -259,3 +259,49 @@ describe('skipping the next run while another engine fires it (tick parked, skip
     expect(state.skipUntil).toBe(first + MINUTE);
   });
 });
+
+describe('skipping the next run while another engine catches up (backfill write parked)', () => {
+  it('moves the skip past the occurrence the tick just started, and the tick honors it', async () => {
+    const { clock, shared, b, engineA, engineB } = await openEngines({
+      backfill: true,
+      overlap: 'allow',
+    });
+    const initial = await stateOf(shared);
+    const first = initial.nextFireAt!;
+    const hold = b.holdScheduleWrite();
+
+    // Three occurrences are overdue; the tick's write after the first run is parked.
+    const ticking = tickB(clock, engineB, shared, 2 * MINUTE);
+    await hold.reached;
+    await engineA.skipNextScheduleOccurrence(SCHEDULE_ID);
+    hold.release();
+    await ticking;
+    await drainEngine();
+
+    const state = await stateOf(shared);
+    expect(state.lastFireAt).toBe(first + 2 * MINUTE);
+    expect(state.nextFireAt).toBe(first + 3 * MINUTE);
+    expect(state.skipUntil).toBeUndefined();
+    expect(await listRunningWorkflowIds(engineA)).toHaveLength(2);
+  });
+});
+
+describe('skipping the next run while another engine counts missed fires (late write parked)', () => {
+  it('keeps a skip the late tick has not reached', async () => {
+    const { clock, shared, b, engineA, engineB } = await openEngines();
+    const initial = await stateOf(shared);
+    const first = initial.nextFireAt!;
+    const hold = b.holdScheduleWrite();
+
+    const ticking = tickB(clock, engineB, shared, 3 * MINUTE);
+    await hold.reached;
+    await engineA.skipNextScheduleOccurrence(SCHEDULE_ID);
+    hold.release();
+    await ticking;
+
+    const state = await stateOf(shared);
+    expect(state.missedFireCount).toBe(4);
+    expect(state.nextFireAt).toBe(first + 4 * MINUTE);
+    expect(state.skipUntil).toBe(first + 4 * MINUTE);
+  });
+});

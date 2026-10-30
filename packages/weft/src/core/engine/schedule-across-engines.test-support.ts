@@ -7,7 +7,7 @@ import type { BatchOperation, Storage } from '@lostgradient/storage';
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { KEYS } from '../../storage/keys.ts';
 import type { Engine } from '../engine.ts';
-import type { ScheduleState } from '../types.ts';
+import type { ScheduleOptions, ScheduleState } from '../types.ts';
 import { createEngine, registerWorkflow, START } from './schedule.test-support.ts';
 import { decodeScheduleState } from './validation/schedule-decode.ts';
 
@@ -20,10 +20,10 @@ function removesTimer(operations: readonly BatchOperation[]): boolean {
   );
 }
 
-/** What a held write is: the first one that puts the schedule's own key. */
+/** What a held write is: the first one that puts a schedule's key (each test has one schedule). */
 function putsScheduleKey(operations: readonly BatchOperation[]): boolean {
   return operations.some(
-    (operation) => operation.type === 'put' && operation.key === KEYS.schedule(SCHEDULE_ID),
+    (operation) => operation.type === 'put' && operation.key.startsWith(KEYS.schedule('')),
   );
 }
 
@@ -44,6 +44,7 @@ export function engineStorage(shared: Storage) {
       }
     | undefined;
   let failRunStarts = false;
+  let failScheduleWrites = false;
   let conditionalBatchCap: number | undefined;
   let conditionalBatches = 0;
   const hold = (matches: (operations: readonly BatchOperation[]) => boolean): Hold => {
@@ -74,6 +75,9 @@ export function engineStorage(shared: Storage) {
         ) {
           return Promise.reject(new Error('simulated schedule start failure'));
         }
+        if (failScheduleWrites && putsScheduleKey(operations)) {
+          return Promise.reject(new Error('simulated schedule write failure'));
+        }
         if (armed?.matches(operations)) {
           const held = armed;
           armed = undefined;
@@ -95,6 +99,10 @@ export function engineStorage(shared: Storage) {
     failRunStarts(): void {
       failRunStarts = true;
     },
+    /** Makes every write that puts the schedule key throw, as a storage fault does. */
+    failScheduleWrites(): void {
+      failScheduleWrites = true;
+    },
     /** Bounds a write that would otherwise retry without end: past `limit` batches it rejects. */
     capConditionalBatches(limit: number): void {
       conditionalBatchCap = limit;
@@ -112,7 +120,9 @@ export function closeOpenedEngines(): void {
   for (const close of closers.splice(0)) close();
 }
 
-export async function openEngines(scheduleOptions: { backfill?: boolean } = {}) {
+export async function openEngines(
+  scheduleOptions: Pick<ScheduleOptions, 'backfill' | 'overlap'> = {},
+) {
   const clock = { now: START };
   const shared = new BunSQLiteStorage(':memory:');
   const a = engineStorage(shared);
