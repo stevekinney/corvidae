@@ -324,6 +324,67 @@ describe('bureau.contexts.window', () => {
     }
   });
 
+  it('looks through one bounded page of tasks, so its reads grow only linearly with the context’s failed runs', async () => {
+    /** Counts the keys read, so the cost of a report is a number. */
+    class CountingStorage extends MemoryStorage {
+      gets = 0;
+      override async get(key: string): Promise<Uint8Array | null> {
+        this.gets += 1;
+        return super.get(key);
+      }
+    }
+    const storage = new CountingStorage();
+    let calls = 0;
+    const opened = await openBureau({
+      agents: {
+        flaky: createAgent({
+          name: 'flaky',
+          instructions: 'You are flaky.',
+          generate: withBackendDescriptors(async () => {
+            calls += 1;
+            if (calls > 1) throw new Error('the provider is down');
+            return {
+              content: 'Done.',
+              toolCalls: [],
+              usage: { prompt: 41, completion: 6, total: 47 },
+            };
+          }, [SMALL]),
+        }),
+      },
+      storage,
+      bureauOptions: { models: modelsOf([SMALL, LARGE]) },
+    });
+    const readsOfReport = async (contextId: string): Promise<number> => {
+      const before = storage.gets;
+      expect(reportOf(await windowOf(opened, contextId)).usedReported).toBeNull();
+      return storage.gets - before;
+    };
+    const failMore = async (contextId: string, count: number) => {
+      for (let attempt = 0; attempt < count; attempt += 1) {
+        const failed = await opened.bureau.tasks.start('flaky', 'fail', {
+          contextId,
+          principal: OWNER.alice,
+        });
+        await waitForTaskState(opened.bureau, failed.id);
+      }
+    };
+    try {
+      const first = await opened.bureau.tasks.start('flaky', 'work', { principal: OWNER.alice });
+      await waitForTaskState(opened.bureau, first.id);
+      // Fifty newer runs that took no step push the one that did out of the scan.
+      await failMore(first.contextId, 50);
+      const atTheLimit = await readsOfReport(first.contextId);
+      await failMore(first.contextId, 30);
+      const beyondIt = await readsOfReport(first.contextId);
+
+      // One enumeration reads each record once, a few keys a task; paging through every task again
+      // for each page of five would cost more than a thousand reads for these thirty.
+      expect(beyondIt - atTheLimit).toBeLessThanOrEqual(30 * 3);
+    } finally {
+      await opened.dispose();
+    }
+  });
+
   it('reads the same report in process as over the wire', async () => {
     await withBureau(async (opened) => {
       const run = await finishedChat(opened);

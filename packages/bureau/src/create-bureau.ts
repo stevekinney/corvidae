@@ -624,6 +624,9 @@ import { ownEntry } from './own-entry';
 
 const BUREAU_AGENT_NAME = 'bureau';
 
+/** COR-1937: how many of a context's newest tasks `contexts.window` looks through for its latest step. */
+const CONTEXT_WINDOW_TASK_SCAN_LIMIT = 50;
+
 const SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS = 3;
 const SESSION_PERSISTENCE_RETRY_DELAY_MILLISECONDS = 10;
 /** COR-1621: the longest wait between attempts to reconcile a followed fire with its history. */
@@ -15079,25 +15082,24 @@ async function constructBureau<const D extends AgentDefinitions>(
               (named.provider === null || row.provider === named.provider),
           );
 
-    // Newest first; a context's latest step is the last step of its newest task that has one, so
-    // the scan pages past tasks that ended before taking a step until one is found.
-    const latest = await tasks.enumerate({ contextId, limit: 5, offset: 0 });
+    // Newest first; a context's latest step is the last step of its newest task that has one. One
+    // page of `CONTEXT_WINDOW_TASK_SCAN_LIMIT` tasks bounds the reads of a report that clients
+    // poll: a context whose newest tasks all ended before a step reports `usedReported: null`.
+    const latest = await tasks.enumerate({
+      contextId,
+      limit: CONTEXT_WINDOW_TASK_SCAN_LIMIT,
+      offset: 0,
+    });
     let reported: ReportedStepUsage | undefined;
-    let foundStep = false;
-    for (let page = latest; ;) {
-      for (const task of page.tasks) {
-        const liveStep = store.getRun(task.id)?.steps.at(-1);
-        // A run this process no longer holds keeps its steps in the durable checkpoint.
-        const checkpointed =
-          liveStep === undefined ? await runtime.durable?.checkpointStore.loadSteps(task.id) : [];
-        const step = liveStep ?? checkpointed?.at(-1);
-        if (step === undefined) continue;
-        reported = step.usage;
-        foundStep = true;
-        break;
-      }
-      if (foundStep || page.nextOffset === null) break;
-      page = await tasks.enumerate({ contextId, limit: 5, offset: page.nextOffset });
+    for (const task of latest.tasks) {
+      const liveStep = store.getRun(task.id)?.steps.at(-1);
+      // A run this process no longer holds keeps its steps in the durable checkpoint.
+      const checkpointed =
+        liveStep === undefined ? await runtime.durable?.checkpointStore.loadSteps(task.id) : [];
+      const step = liveStep ?? checkpointed?.at(-1);
+      if (step === undefined) continue;
+      reported = step.usage;
+      break;
     }
 
     const liveToolbox = latest.tasks.map((task) => runToolboxesByRunId.get(task.id)).find(Boolean);

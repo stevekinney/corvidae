@@ -2006,8 +2006,12 @@ export interface ContextWindowCategory {
  * and always equals the sum of `categories`, which lists all five categories once, in the order
  * `system`, `tools`, `messages`, `memory`, `attachments`. `usedReported` is the provider's own
  * count, never an estimate: the input tokens (fresh, cache-read and cache-written) of the context's
- * latest step, `null` when there is none or the provider reported none. It describes the request
- * that step sent, so it lags `usedEstimated` by that step's reply and tool results. `maxTokens` is
+ * latest step, `null` when there is none or the provider reported none. The latest step is looked
+ * for among the context's 50 newest tasks, so a context whose 50 newest tasks all ended before a
+ * step reads `null`. It describes the request that step sent, so once the run has ended it lags
+ * `usedEstimated` by that step's reply and tool results; mid-run, a chat that saves its rows only
+ * when its run ends (a scheduled fire saves after every step) can have the reverse, an estimate
+ * behind the steps already sent. `maxTokens` is
  * the context window of the model that would answer, from the model catalog: the context's steered
  * model, else its agent's default, and `null` when neither names a catalog row.
  */
@@ -2211,8 +2215,9 @@ export interface BureauContexts {
    * How full the context's window is (COR-1937): the size of the prompt its next step would send,
    * split by what fills it, against the window of the model that would answer. Read-only: it calls
    * no model and writes no state, so it answers for an idle context, for a context with no run, and
-   * for a running one without waiting on the run (it reads the last committed history, so a step in
-   * flight is not in it yet). `undefined` for a context this Bureau does not hold, or, with
+   * for a running one without waiting on the run (it reads the last committed history: a chat saves
+   * its rows when its run ends, a scheduled fire after every step, so a chat mid-run can show fewer
+   * rows than the steps it has already sent). `undefined` for a context this Bureau does not hold, or, with
    * `options.incarnation`, one whose id now names another incarnation. It does not authorize the
    * caller: that is the caller's to do, as for `contexts.get`. See {@link ContextWindowReport}.
    */
