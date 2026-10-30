@@ -87,6 +87,40 @@ describe('the remembered list width', () => {
     const storage = memoryStorage();
     expect(resolveStorage(storage)).toBe(storage);
   });
+
+  describe('without a storage of its own', () => {
+    function withLocalStorage(descriptor: PropertyDescriptor | undefined, run: () => void): void {
+      const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+      if (descriptor === undefined) Reflect.deleteProperty(globalThis, 'localStorage');
+      else Object.defineProperty(globalThis, 'localStorage', { configurable: true, ...descriptor });
+      try {
+        run();
+      } finally {
+        if (original === undefined) Reflect.deleteProperty(globalThis, 'localStorage');
+        else Object.defineProperty(globalThis, 'localStorage', original);
+      }
+    }
+
+    test('falls back to localStorage', () => {
+      const local = memoryStorage();
+      withLocalStorage({ value: local }, () => expect(resolveStorage(undefined)).toBe(local));
+    });
+
+    test('has nothing to remember in when there is no localStorage', () => {
+      withLocalStorage(undefined, () => expect(resolveStorage(undefined)).toBeUndefined());
+    });
+
+    test('has nothing to remember in when reading localStorage throws', () => {
+      withLocalStorage(
+        {
+          get: () => {
+            throw new Error('blocked');
+          },
+        },
+        () => expect(resolveStorage(undefined)).toBeUndefined(),
+      );
+    });
+  });
 });
 
 describe('createBrowserSelectionLocation', () => {

@@ -542,6 +542,60 @@ describe('JsonEditor — schema completion', () => {
     expect(completeAt('{"name": |}')).toEqual([]);
   });
 
+  test('merges the properties of allOf, anyOf and oneOf members', () => {
+    const combined: JsonEditorSchema = {
+      allOf: [{ properties: { viaAll: { type: 'string' } } }],
+      anyOf: [{ properties: { viaAny: { type: 'string' } } }],
+      oneOf: [{ properties: { viaOne: { type: 'string' } } }],
+    };
+    expect(labels(completeAt('{|}', true, combined))).toEqual(['viaAll', 'viaAny', 'viaOne']);
+  });
+
+  test('falls back to the additionalProperties schema for a key the schema does not name', () => {
+    const open: JsonEditorSchema = {
+      properties: { known: { type: 'string' } },
+      additionalProperties: { type: 'object', properties: { deep: { type: 'boolean' } } },
+    };
+    expect(labels(completeAt('{"anything": {|}}', true, open))).toEqual(['deep']);
+    expect(labels(completeAt('{"known": {|}}', true, open))).toEqual([]);
+  });
+
+  describe('where a property key cannot be read', () => {
+    // `"a\q"` is not a JSON string, so the key of this property cannot be decoded and nothing
+    // below it can be tied to a schema.
+    test('offers nothing for a value, a delimiter, or a bare word below it', () => {
+      expect(completeAt('{"a\\q": 1|}')).toEqual([]);
+      expect(completeAt('{"a\\q": |1}')).toEqual([]);
+      expect(completeAt('{"a\\q": [|]}')).toEqual([]);
+      expect(completeAt('{"a\\q": [1 |]}')).toEqual([]);
+      expect(completeAt('{"a\\q": [f|]}')).toEqual([]);
+      expect(completeAt('{"a\\q": {|}}')).toEqual([]);
+    });
+  });
+
+  test('offers values right after a colon or an opening bracket', () => {
+    expect(labels(completeAt('{"mode":|}'))).toEqual(['"fast"', '"safe"']);
+    expect(labels(completeAt('{"list": [|]}'))).toEqual([]);
+    const numbers: JsonEditorSchema = { type: 'array', items: { enum: [1, 2] } };
+    expect(labels(completeAt('[|]', true, numbers))).toEqual(['1', '2']);
+    expect(labels(completeAt('[1,|]', true, numbers))).toEqual(['1', '2']);
+  });
+
+  test('offers values for a bare word being typed beside a key or inside an array', () => {
+    expect(labels(completeAt('{"mode": f|}'))).toEqual(['"fast"', '"safe"']);
+    const numbers: JsonEditorSchema = { type: 'array', items: { enum: [1, 2] } };
+    expect(labels(completeAt('[f|]', true, numbers))).toEqual(['1', '2']);
+  });
+
+  test('completes a key while the cursor sits inside a complete key', () => {
+    expect(labels(completeAt('{"mo|de": 1}'))).toEqual(['name', 'enabled', 'nested', 'list']);
+  });
+
+  test('offers nothing for a stray value that no property or array holds', () => {
+    expect(completeAt('{1|}')).toEqual([]);
+    expect(completeAt('{true|}')).toEqual([]);
+  });
+
   describe('at the document root', () => {
     const rootSchema: JsonEditorSchema = { enum: ['fast', 'safe'] };
 
