@@ -4,7 +4,7 @@
  *
  * A context belongs to the principal that created it. A caller reaches its own
  * contexts without any scope; `bureau.contexts:read` grants `list` and `get` on any
- * owner's, `bureau.contexts:write` grants `delete`, neither implies the other, and a
+ * owner's, `bureau.contexts:write` grants `delete` and `rename`, neither implies the other, and a
  * context the caller may not see is answered exactly as a missing one. A task's id is not a context id, so it reads as missing here.
  *
  * @module contexts-operations
@@ -13,6 +13,7 @@
 import {
   type AgentSession,
   SESSION_ORIGINS,
+  type SessionListOptions,
   type SessionSummary,
   sessionOriginOf,
   sessionOwnerOf,
@@ -205,7 +206,7 @@ export const contextDetailSchema = contextSummarySchema.extend({
   configVersion: z.number().int().nonnegative(),
 });
 
-function projectContext(
+export function projectContext(
   summary: SessionSummary,
   activity: ContextActivity | undefined,
 ): z.infer<typeof contextSummarySchema> {
@@ -225,7 +226,8 @@ function projectContext(
   };
 }
 
-function noSessions(): OperationFault {
+/** The fault for a Bureau that keeps no session store, and so no contexts. */
+export function noSessions(): OperationFault {
   return {
     code: 'UnsupportedCapability',
     message: 'This Bureau keeps no sessions, so it has no contexts',
@@ -233,8 +235,20 @@ function noSessions(): OperationFault {
   };
 }
 
+/** How many contexts an `activity` listing reads and classifies at a time. */
+const ACTIVITY_SCAN_CHUNK = 100;
+
 const contextsListInput = z.object({
   agentName: z.string().min(1).optional().describe('Only the contexts of this agent.'),
+  titleContains: z
+    .string()
+    .min(1)
+    .max(200)
+    .optional()
+    .describe('Only the contexts whose title contains this text, ignoring case.'),
+  activity: contextActivitySchema
+    .optional()
+    .describe('Only the contexts that are in this activity state right now.'),
   origin: contextOriginSchema
     .optional()
     .describe(
@@ -268,7 +282,7 @@ export const contextsListOperation = defineOperation<
   mcpExposable: true,
   summary: 'List contexts',
   description:
-    'Lists the caller’s own contexts (chat sessions) with a title, a last-message preview, a message count, times and `activity` (`running`, `awaiting-input` or `idle`), newest update first by default. Each carries its `origin`: `chat` for a context a person started (and for every context that records no origin), `goal` for a goal’s session, `schedule` for a session a schedule’s fire created. `agentName` filters by agent and `origin` by origin, before the page is cut, so a page of chats holds chats. `allOwners: true` lists every owner’s and requires `bureau.contexts:read`; without it the call is a `Forbidden` fault. Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. No transcript and no internal metadata is returned.',
+    'Lists the caller’s own contexts (chat sessions) with a title, a last-message preview, a message count, times and `activity` (`running`, `awaiting-input` or `idle`), newest update first by default. Each carries its `origin`: `chat` for a context a person started (and for every context that records no origin), `goal` for a goal’s session, `schedule` for a session a schedule’s fire created. `agentName` filters by agent, `origin` by origin, `titleContains` by a case-insensitive substring of the title (a title given by `bureau.contexts.rename` counts), and `activity` by what the context is doing right now, all before the page is cut, so a page of chats holds chats and `offset` counts matches. An `activity` filter classifies the contexts the other filters leave, a hundred at a time, until the page is full, so it reads further the rarer its matches are; a context’s activity can change between pages. `allOwners: true` lists every owner’s and requires `bureau.contexts:read`; without it the call is a `Forbidden` fault. Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. No transcript and no internal metadata is returned.',
   destructive: false,
   tags: ['Contexts'],
   inputSchema: contextsListInput,
@@ -293,16 +307,19 @@ export const contextsListOperation = defineOperation<
     if (!everyOwner && owner === undefined) return { contexts: [], nextOffset: null };
     const limit = input.limit ?? DEFAULT_PAGE_LIMIT;
     const offset = input.offset ?? 0;
-    // One row past the page says whether another page follows.
-    const rows = await host.contexts.list({
+    const filters = {
       ...(owner === undefined ? {} : { owner }),
       ...(input.agentName === undefined ? {} : { agentName: input.agentName }),
       ...(input.origin === undefined ? {} : { origin: input.origin }),
+      ...(input.titleContains === undefined ? {} : { titleContains: input.titleContains }),
       ...(input.sortBy === undefined ? {} : { sortBy: input.sortBy }),
       ...(input.sortOrder === undefined ? {} : { sortOrder: input.sortOrder }),
-      limit: limit + 1,
-      offset,
-    });
+    };
+    if (input.activity !== undefined) {
+      return listByActivity(host, filters, input.activity, offset, limit);
+    }
+    // One row past the page says whether another page follows.
+    const rows = await host.contexts.list({ ...filters, limit: limit + 1, offset });
     const page = rows.slice(0, limit);
     // One query answers the whole page.
     const activity = await host.tasks.activityOf(page.map((summary) => summary.id));
@@ -312,6 +329,45 @@ export const contextsListOperation = defineOperation<
     };
   },
 });
+
+/**
+ * One page of the contexts `filters` leave that are `wanted`. Activity derives from live tasks, so
+ * it is not on the summary index and cannot be filtered there: the index is read in chunks of
+ * {@link ACTIVITY_SCAN_CHUNK}, each chunk's activity is one task query, and the scan stops as soon
+ * as one match past the page proves another page follows, or when the index ends. `offset` counts
+ * matches.
+ */
+async function listByActivity(
+  host: BureauContextsOperationHost,
+  filters: SessionListOptions,
+  wanted: ContextActivity,
+  offset: number,
+  limit: number,
+): Promise<z.infer<typeof contextsListOutput>> {
+  const contexts: z.infer<typeof contextSummarySchema>[] = [];
+  let skipped = 0;
+  let scanned = 0;
+  for (;;) {
+    const chunk = await host.contexts.list({
+      ...filters,
+      limit: ACTIVITY_SCAN_CHUNK,
+      offset: scanned,
+    });
+    scanned += chunk.length;
+    const activity = await host.tasks.activityOf(chunk.map((summary) => summary.id));
+    for (const summary of chunk) {
+      if ((activity.get(summary.id) ?? 'idle') !== wanted) continue;
+      if (skipped < offset) {
+        skipped += 1;
+        continue;
+      }
+      // One match past the page says another page follows.
+      if (contexts.length === limit) return { contexts, nextOffset: offset + limit };
+      contexts.push(projectContext(summary, wanted));
+    }
+    if (chunk.length < ACTIVITY_SCAN_CHUNK) return { contexts, nextOffset: null };
+  }
+}
 
 const contextsGetInput = z.object({
   contextId: z.string().min(1).describe('The identifier of the context to read.'),

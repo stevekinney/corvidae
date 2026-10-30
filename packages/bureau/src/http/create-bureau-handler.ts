@@ -108,6 +108,10 @@ import {
   contextsForkOperation,
 } from './management/contexts-fork-operation.ts';
 import {
+  type BureauContextsRenameOperationHost,
+  contextsRenameOperation,
+} from './management/contexts-rename-operation.ts';
+import {
   type BureauContextsSteerOperationHost,
   contextsSteerOperation,
 } from './management/contexts-steer-operation.ts';
@@ -233,6 +237,7 @@ export type BureauHandlerSource = Pick<
     | 'list'
     | 'get'
     | 'delete'
+    | 'rename'
     | 'input'
     | 'inputsDeliveredBy'
     | 'steer'
@@ -295,6 +300,7 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauContextsInputOperationHost &
   BureauContextsSteerOperationHost &
   BureauContextsForkOperationHost &
+  BureauContextsRenameOperationHost &
   BureauAgentModelsOperationHost &
   BureauAgentDefinitionsOperationHost &
   BureauWorkflowsOperationHost &
@@ -668,6 +674,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   contextsInputOperation,
   contextsSteerOperation,
   contextsForkOperation,
+  contextsRenameOperation,
   ...bureauAgentDefinitionsOperations,
   ...bureauWorkflowsOperations,
   defineBureauEventsSubscriptionOperation('bureau.events:observe-all'),
@@ -1028,6 +1035,7 @@ export function buildBureauHandlerHost(
       list: (listOptions) => bureau.contexts.list(listOptions),
       get: (id) => bureau.contexts.get(id),
       delete: (id, deleteOptions) => bureau.contexts.delete(id, deleteOptions),
+      rename: (id, title, renameOptions) => bureau.contexts.rename(id, title, renameOptions),
       steering: (id) => bureau.contexts.steering(id),
       input: (id, request) => bureau.contexts.input(id, request),
       steer: (id, request) => bureau.contexts.steer(id, request),

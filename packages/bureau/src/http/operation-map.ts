@@ -79,6 +79,7 @@ export const OPERATION_MAP = {
   'bureau.contexts.input': { member: 'contexts.input' },
   'bureau.contexts.steer': { member: 'contexts.steer' },
   'bureau.contexts.fork': { member: 'contexts.fork' },
+  'bureau.contexts.rename': { member: 'contexts.rename' },
 
   'bureau.reviews.list': { member: 'reviews.list' },
   'bureau.reviews.get': { member: 'reviews.get' },
@@ -120,6 +121,7 @@ export const OPERATION_MAP = {
   'bureau.assets.uploads.create': { member: 'assets.beginUpload' },
   'bureau.assets.uploads.append': { member: 'assets.appendUpload' },
   'bureau.assets.uploads.complete': { member: 'assets.admit' },
+  'bureau.assets.uploads.abort': { member: 'assets.abortUpload' },
 
   'bureau.audit.query': { member: 'audit.query' },
 

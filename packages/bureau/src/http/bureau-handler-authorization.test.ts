@@ -171,6 +171,9 @@ const CONTEXT_COMMAND_PARAMETERS = {
   commandId: 'command-1',
   override: { provider: 'anthropic', model: 'claude-opus-5-5' },
   throughMessageId: 'message-1',
+  // Clearing a title the context never had changes nothing, so the rename reaches its own check
+  // without altering the title the transcript scan looks for.
+  title: null,
 } as const;
 
 /** The parameters beside an identifier that `operation` declares and needs to reach its own check. */
@@ -992,8 +995,13 @@ describe('transcripts stay inside the Bureau', () => {
           expect(status).toBe(200);
           expect(await response.clone().text()).toContain(alice.reviewId);
         }
-        if (operation.name === 'bureau.contexts.list' || operation.name === 'bureau.contexts.get') {
-          // The title is the first user message, the one place a context carries its text.
+        if (
+          operation.name === 'bureau.contexts.list' ||
+          operation.name === 'bureau.contexts.get' ||
+          operation.name === 'bureau.contexts.rename'
+        ) {
+          // The title is the first user message, the one place a context carries its text; a
+          // rename answers the renamed context's summary, so it carries it too.
           const text = await response.text();
           expect(text).toContain(`alice ${SENTINEL}`);
           bodies.push(text.replaceAll(`alice ${SENTINEL}`, '<title>'));

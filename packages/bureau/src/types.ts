@@ -1694,6 +1694,26 @@ export interface BureauContexts {
   ): Promise<ContextDeletionReport>;
 
   /**
+   * Gives a session (a context) a title, or removes the one it was given (COR-1909). `title` is
+   * stored in the session's metadata and wins over the title derived from the first user message in
+   * every summary until it is removed: `null` removes it, and the derived title returns. Text is
+   * trimmed, and must be non-empty and at most `SESSION_TITLE_OVERRIDE_LIMIT` characters, or the
+   * call throws a `BureauError` `BAD_REQUEST`. Renaming does not count as activity: the session's
+   * `updatedAt`, and so its place in a listing, does not move. Setting the title it already has is
+   * not an error. With `options.incarnation` it renames only that incarnation: an id reused since
+   * the caller read the session is left untouched.
+   *
+   * Resolves the renamed session, or `undefined` when this Bureau holds no such session (or none of
+   * that incarnation). It does not authorize the caller: that is the caller's to do, as for
+   * {@link BureauContexts.get}. Throws a `BureauError` `CONFLICT` when Bureau is shutting down.
+   */
+  rename(
+    contextId: string,
+    title: string | null,
+    options?: { readonly incarnation?: string | undefined },
+  ): Promise<AgentSession | undefined>;
+
+  /**
    * Deliver a fire-and-forget signal to a session's current in-flight durable run.
    * Maps to `engine.signal(runId, name, payload)`. Requires a durable engine and a
    * session store. Throws `BureauError('NOT_CONFIGURED', subject: 'durable')` when no durable
