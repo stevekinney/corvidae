@@ -100,9 +100,9 @@ describe('schedule time zones', () => {
     });
     expect(await fieldOf(handle, 'timeZone')).toBe(LOS_ANGELES);
 
-    for (let fire = 0; fire < 3; fire += 1) {
-      await tickEngine(engine, opened.clock, await nextFireOf(handle));
-    }
+    await tickEngine(engine, opened.clock, await nextFireOf(handle));
+    await tickEngine(engine, opened.clock, await nextFireOf(handle));
+    await tickEngine(engine, opened.clock, await nextFireOf(handle));
 
     expect(opened.runs).toEqual([
       '2026-03-06T17:00:00.000Z',
@@ -119,9 +119,9 @@ describe('schedule time zones', () => {
       timeZone: LOS_ANGELES,
     });
 
-    for (let fire = 0; fire < 3; fire += 1) {
-      await tickEngine(engine, opened.clock, await nextFireOf(handle));
-    }
+    await tickEngine(engine, opened.clock, await nextFireOf(handle));
+    await tickEngine(engine, opened.clock, await nextFireOf(handle));
+    await tickEngine(engine, opened.clock, await nextFireOf(handle));
 
     expect(opened.runs).toEqual([
       '2026-10-30T16:00:00.000Z',
