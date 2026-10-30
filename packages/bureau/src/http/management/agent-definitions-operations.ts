@@ -44,6 +44,7 @@ import {
   AGENT_IDENTIFIER_MAX_LENGTH,
   agentCompactionSchema,
   agentReferencesSchema,
+  agentGuardrailPresetSchema,
   agentRetrySchema,
   agentSkillDescriptorSchema,
   agentStepLimitSchema,
@@ -140,6 +141,8 @@ const definitionOutputSchema = z.object({
   compaction: agentCompactionSchema.nullable(),
   /** The reference documents, as paths beside the file; `null` when the file lists none. */
   references: agentReferencesSchema.nullable(),
+  /** The guardrail preset the file names; `null` when it names none and Operative's default applies. */
+  guardrails: agentGuardrailPresetSchema.nullable(),
   instructions: z.string(),
 });
 
@@ -149,9 +152,10 @@ const agentDetailSchema = agentListingSchema.extend({
 });
 
 /**
- * What a caller supplies to `create` or `update`. An update keeps `a2a`, `stepLimit` and `retry` when
- * it leaves them out, so an editor that rewrites a definition cannot turn an agent's A2A opt-in
- * off, or drop its step limit or retry, by omitting them; `null` removes `stepLimit` or `retry`.
+ * What a caller supplies to `create` or `update`. An update keeps `a2a`, `stepLimit`, `retry`,
+ * `compaction`, `references` and `guardrails` when it leaves them out, so an editor that rewrites a
+ * definition cannot turn an agent's A2A opt-in off, or drop its step limit, retry, compaction,
+ * references or guardrails, by omitting them; `null` removes any of them but `a2a`.
  */
 const definitionInputSchema = z
   .strictObject({
@@ -191,11 +195,17 @@ const definitionInputSchema = z
      * empty list, removes it.
      */
     references: agentReferencesSchema.nullable().optional(),
+    /**
+     * The guardrail preset: `default` (block or redact and go on), `tripwire` (halt the run) or
+     * `off`. Omitted, a create names none, so the agent runs Operative's default (the `tripwire`
+     * preset), and an update keeps the file's value; `null` removes the file's.
+     */
+    guardrails: agentGuardrailPresetSchema.nullable().optional(),
     instructions: z.string(),
   })
   .superRefine((definition, context) => checkModelsList(definition, context))
   .describe(
-    'The agent’s definition: `name`, `description`, `model`, `models` (the models a session may be switched to), `tools`, `skillDescriptors`, `a2a` (whether the agent opts into A2A), `stepLimit` (the most steps a run takes, 1 to 1000), `retry` (`attempts` 1 to 10, `delayMilliseconds` 0 to 60000, `jitter`), `compaction` (`enabled`, `thresholdPercent` 50 to 95), `references` (paths of documents beside the file, whose text joins the instructions) and `instructions`.',
+    'The agent’s definition: `name`, `description`, `model`, `models` (the models a session may be switched to), `tools`, `skillDescriptors`, `a2a` (whether the agent opts into A2A), `stepLimit` (the most steps a run takes, 1 to 1000), `retry` (`attempts` 1 to 10, `delayMilliseconds` 0 to 60000, `jitter`), `compaction` (`enabled`, `thresholdPercent` 50 to 95), `references` (paths of documents beside the file, whose text joins the instructions), `guardrails` (`default`, `tripwire` or `off`) and `instructions`.',
   );
 
 /**
@@ -268,6 +278,7 @@ function definitionView(definition: AgentFileDefinition) {
     retry: definition.retry === undefined ? null : { ...definition.retry },
     compaction: definition.compaction === undefined ? null : { ...definition.compaction },
     references: definition.references === undefined ? null : [...definition.references],
+    guardrails: definition.guardrails ?? null,
     instructions: definition.instructions,
   };
 }
@@ -429,7 +440,7 @@ export const agentDefinitionsCreateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Create an agent definition',
   description:
-    'Writes a new agent file for `id`, the agent’s identifier: a lowercase letter or digit, then lowercase letters, digits, and hyphens, ending in a letter or digit. A caller derives it from the agent’s name; the name is only a label. `definition` is the file’s frontmatter (`name`, `description`, `model` written `<provider>/<model-or-alias>`, `tools`, `skillDescriptors`, `a2a`, `stepLimit`, `retry`, `compaction`, `references`) and its body (`instructions`). A new agent does not opt into A2A unless `a2a` is `true`. The file is written to a temporary file and renamed into place, and the agent is in the catalog before the call returns. Requires `bureau.agents:write` unless the caller owns the deployment’s agents. A taken identifier, including the key of a code-defined agent, is a `Conflict`; a definition that would not load is `Unprocessable`, and nothing is written.',
+    'Writes a new agent file for `id`, the agent’s identifier: a lowercase letter or digit, then lowercase letters, digits, and hyphens, ending in a letter or digit. A caller derives it from the agent’s name; the name is only a label. `definition` is the file’s frontmatter (`name`, `description`, `model` written `<provider>/<model-or-alias>`, `tools`, `skillDescriptors`, `a2a`, `stepLimit`, `retry`, `compaction`, `references`, `guardrails`) and its body (`instructions`). A new agent does not opt into A2A unless `a2a` is `true`. The file is written to a temporary file and renamed into place, and the agent is in the catalog before the call returns. Requires `bureau.agents:write` unless the caller owns the deployment’s agents. A taken identifier, including the key of a code-defined agent, is a `Conflict`; a definition that would not load is `Unprocessable`, and nothing is written.',
   destructive: true,
   tags: ['Agents'],
   inputSchema: createInput,
@@ -474,7 +485,7 @@ export const agentDefinitionsUpdateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Replace an agent definition',
   description:
-    'Replaces the agent file for `id` with `definition`, if it still hashes to `expectedHash` (the `hash` a read returned). Frontmatter keys Bureau does not know stay in the file, and an omitted `a2a`, `stepLimit`, `retry`, `compaction` or `references` keeps the file’s value (`null` removes any but `a2a`). A `definition` that omits `models` removes the file’s list, as omitting `tools` removes its tools. A file that changed since is a `StaleRevision` fault whose `currentRevision` is the hash now on disk, and nothing is written. A definition that changes nothing writes nothing and returns the same hash. A run in progress keeps the definition it started with. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`, as is an update of a code-defined key, before any file is read.',
+    'Replaces the agent file for `id` with `definition`, if it still hashes to `expectedHash` (the `hash` a read returned). Frontmatter keys Bureau does not know stay in the file, and an omitted `a2a`, `stepLimit`, `retry`, `compaction`, `references` or `guardrails` keeps the file’s value (`null` removes any but `a2a`). A `definition` that omits `models` removes the file’s list, as omitting `tools` removes its tools. A file that changed since is a `StaleRevision` fault whose `currentRevision` is the hash now on disk, and nothing is written. A definition that changes nothing writes nothing and returns the same hash. A run in progress keeps the definition it started with. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`, as is an update of a code-defined key, before any file is read.',
   destructive: true,
   tags: ['Agents'],
   inputSchema: updateInput,
@@ -493,7 +504,7 @@ export const agentDefinitionsUpdateOperation = defineOperation<
   invoke: async ({ input, host, principal }) => {
     const definitions = requireWritableAgent(host, principal, input.id);
     try {
-      // An omitted `a2a`, `stepLimit`, `retry`, `compaction` or `references` keeps the file's value: the catalog applies that rule itself.
+      // An omitted `a2a`, `stepLimit`, `retry`, `compaction`, `references` or `guardrails` keeps the file's value: the catalog applies that rule itself.
       const result = await definitions.agents.update(input.id, definitionOf(input.definition), {
         expectedHash: input.expectedHash,
         savedBy: ownerOfPrincipal(principal),

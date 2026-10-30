@@ -62,6 +62,7 @@ export const AGENT_FILE_KNOWN_KEYS = [
   'retry',
   'compaction',
   'references',
+  'guardrails',
 ] as const;
 
 /** Why a file cannot be used as an agent. Carried on the listing, and on a refused write. */
@@ -102,6 +103,20 @@ export const agentSkillDescriptorSchema = z.strictObject({
   inputModes: z.array(z.string()).optional(),
   outputModes: z.array(z.string()).optional(),
 });
+
+/**
+ * The guardrail presets a file's `guardrails` key may name. `default` runs the shipped detectors in
+ * validate mode, so a run goes on with the input blocked or the reply redacted; `tripwire` runs the
+ * same detectors as a tripwire, which halts the run; `off` runs none. See `guardrail-presets.ts`
+ * for what each one runs.
+ */
+export const AGENT_GUARDRAIL_PRESETS = ['default', 'tripwire', 'off'] as const;
+
+/** One of {@link AGENT_GUARDRAIL_PRESETS}. */
+export type AgentGuardrailPreset = (typeof AGENT_GUARDRAIL_PRESETS)[number];
+
+/** A file's `guardrails`: the name of a preset. */
+export const agentGuardrailPresetSchema = z.enum(AGENT_GUARDRAIL_PRESETS);
 
 /** The most steps an agent file may allow a run (`stepLimit`). */
 export const AGENT_STEP_LIMIT_MAXIMUM = 1000;
@@ -257,6 +272,11 @@ export const agentFileFrontmatterSchema = z
      */
     references: agentReferencesSchema.nullish(),
     /**
+     * The guardrail preset the agent runs under. Absent, the agent runs Operative's own default,
+     * which is the `tripwire` preset.
+     */
+    guardrails: agentGuardrailPresetSchema.nullish(),
+    /**
      * Prompts that show what a person might ask the agent, which a new chat offers as buttons. Read
      * only: it is not in {@link AGENT_FILE_KNOWN_KEYS}, so a rewrite of the file keeps it as it is.
      */
@@ -340,6 +360,7 @@ export const agentFileDefinitionSchema = z.object({
    * existed, and from a file that has none.
    */
   references: agentReferencesSchema.optional(),
+  guardrails: agentGuardrailPresetSchema.optional(),
   /** Prompts a new chat offers (see the frontmatter's `examples`); absent for a file that has none. */
   examples: agentExamplesSchema.optional(),
   instructions: z.string(),
@@ -395,6 +416,11 @@ export interface AgentFileDefinition {
    */
   readonly references?: readonly string[];
   /**
+   * The guardrail preset the agent runs under. Absent when the file sets none: the agent runs
+   * Operative's own default, which is the `tripwire` preset.
+   */
+  readonly guardrails?: AgentGuardrailPreset;
+  /**
    * Prompts that show what a person might ask the agent, as the file's `examples` lists them.
    * Absent when it lists none. A caller never supplies them: they stay in the file through a write.
    */
@@ -418,6 +444,7 @@ const definitionKeyTable: Record<keyof AgentFileDefinition, true> = {
   retry: true,
   compaction: true,
   references: true,
+  guardrails: true,
   examples: true,
   instructions: true,
 };
@@ -474,6 +501,11 @@ export interface AgentFileDefinitionInput {
    * `null`, or an empty list, removes it.
    */
   readonly references?: readonly string[] | null | undefined;
+  /**
+   * See {@link AgentFileDefinition.guardrails}. An update that omits it keeps the file's value;
+   * `null` removes it.
+   */
+  readonly guardrails?: AgentGuardrailPreset | null | undefined;
   readonly instructions: string;
 }
 
@@ -593,6 +625,7 @@ function toDefinition(
     ...(frontmatter.references == null || frontmatter.references.length === 0
       ? {}
       : { references: [...frontmatter.references] }),
+    ...(frontmatter.guardrails == null ? {} : { guardrails: frontmatter.guardrails }),
     ...(frontmatter.examples == null ? {} : { examples: frontmatter.examples }),
     instructions,
   };
@@ -696,6 +729,7 @@ function knownFrontmatter(definition: AgentFileDefinitionInput): Record<string, 
   if (definition.references != null && definition.references.length > 0) {
     known['references'] = [...definition.references];
   }
+  if (definition.guardrails != null) known['guardrails'] = definition.guardrails;
   return known;
 }
 
@@ -727,6 +761,7 @@ export function resolveAgentFileDefinition(
     ...(input.references == null || input.references.length === 0
       ? {}
       : { references: [...input.references] }),
+    ...(input.guardrails == null ? {} : { guardrails: input.guardrails }),
     instructions: input.instructions,
   };
 }
@@ -746,8 +781,9 @@ export function serializeUpdatedAgentFile(
   input: AgentFileDefinitionInput,
 ): Uint8Array | undefined {
   const before = existing.definition;
-  // A key the caller leaves out (`a2a`, `stepLimit`, `retry`, `compaction`, `references`) is not a change to it: the file keeps
-  // the value it has, and a file with no such key is not given one.
+  // A key the caller leaves out (`a2a`, `stepLimit`, `retry`, `compaction`, `references`,
+  // `guardrails`) is not a change to it: the file keeps the value it has, and a file with no such
+  // key is not given one.
   const keptA2a = input.a2a === undefined;
   const next = resolveAgentFileDefinition(id, {
     ...input,
@@ -756,6 +792,7 @@ export function serializeUpdatedAgentFile(
     ...(input.retry === undefined ? { retry: before.retry } : {}),
     ...(input.compaction === undefined ? { compaction: before.compaction } : {}),
     ...(input.references === undefined ? { references: before.references } : {}),
+    ...(input.guardrails === undefined ? { guardrails: before.guardrails } : {}),
   });
   // `examples` is the file's own and an input never carries it, so it is not a change.
   const { examples: _kept, ...beforeKnown } = before;
@@ -777,6 +814,7 @@ export function serializeUpdatedAgentFile(
         ...(input.retry === undefined ? { retry: before.retry } : {}),
         ...(input.compaction === undefined ? { compaction: before.compaction } : {}),
         ...(input.references === undefined ? { references: before.references } : {}),
+        ...(input.guardrails === undefined ? { guardrails: before.guardrails } : {}),
       }),
       AGENT_FILE_KNOWN_KEYS,
       existing.lineEnding,

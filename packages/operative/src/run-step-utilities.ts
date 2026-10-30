@@ -5,19 +5,34 @@ import type {
 } from '@lostgradient/lifecycle';
 
 import { GeneratedMediaNotAdmittedError, ResponsePartsMismatchError } from './errors';
-import { GenerateRetryEvent } from './events';
+import { GenerateRetryEvent, RunGuardrailEvent } from './events';
 import { isProviderContractError } from './providers/errors';
 import { addJitter } from './retry/jitter';
 import type { EventDispatcher } from './run-step';
 import type {
   GenerateContext,
   GenerateResponse,
+  GuardrailFiring,
   RetryOptions,
   RunOptions,
   SteeringGate,
   StepResult,
   StopCondition,
 } from './types';
+
+/**
+ * The `reportGuardrail` a step hands its guardrail hooks: a firing becomes a `run.guardrail` event
+ * on the run. `undefined` where the run has no emitter, so a hook sees no reporter there.
+ */
+export function guardrailReporter(
+  emitter: EventDispatcher | undefined,
+  step: number,
+): ((firing: GuardrailFiring) => void) | undefined {
+  if (emitter === undefined) return undefined;
+  return (firing) => {
+    emitter.dispatch(new RunGuardrailEvent(step, firing));
+  };
+}
 
 export function explicitAbortReason(signal: AbortSignal | undefined): string | undefined {
   return typeof signal?.reason === 'string' ? signal.reason : undefined;
@@ -179,7 +194,7 @@ export async function callGenerateWithRetry(
    * sealed before `generate.started`; minting a successor for it would
    * claim a context change that did not happen.
    */
-  sealMutatedEpoch?: (mutatedContext: GenerateContext, attempt: number) => string,
+  sealMutatedEpoch?: (mutatedContext: GenerateContext, attempt: number) => string | undefined,
   /**
    * COR-716 — derives `resolvedSources` for a mutated request before it is
    * issued, so the media a retry sends was admitted on the exact conversation it

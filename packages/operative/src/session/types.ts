@@ -22,6 +22,13 @@ export interface SessionListOptions {
    * `owner`, so a page is full of sessions of this origin.
    */
   origin?: SessionOrigin | undefined;
+  /**
+   * Only the sessions whose `title` contains this text, ignoring case: the title a person gave the
+   * session if it has one (`SESSION_TITLE_METADATA_KEY`), otherwise the derived one. A session with
+   * no title matches none. Applied to the summary index before `offset` and `limit`, like `owner`,
+   * so a page is full of matches. Empty text matches every session that has a title.
+   */
+  titleContains?: string | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
   sortBy?: ('createdAt' | 'updatedAt') | undefined;
@@ -36,9 +43,10 @@ export interface SessionSummary {
   id: string;
   agentName: string;
   /**
-   * The first visible user message's text, trimmed and cut to 80 characters, or
-   * `null` before one exists. Computed when the session is saved and kept in the
-   * summary index, so a listing reads it without opening a body.
+   * The title a person gave the session (`SESSION_TITLE_METADATA_KEY`), or else the first visible
+   * user message's text, trimmed and cut to 80 characters, or `null` before either exists.
+   * Computed when the session is saved and kept in the summary index, so a listing reads it
+   * without opening a body.
    */
   title: string | null;
   /**

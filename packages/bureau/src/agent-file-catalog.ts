@@ -90,6 +90,7 @@ import {
 } from './agent-reference-documents';
 import { createFileAgentCompactor } from './file-agent-compaction';
 import { createFileAgentGenerate } from './file-agent-generate';
+import { guardrailsOfPreset } from './guardrail-presets';
 import { type AgentRevisionRecord, createAgentRevisionStore } from './agent-revision-store';
 import {
   type AgentFileSaveOptions,
@@ -374,14 +375,15 @@ const DETAIL_SETTLE_ATTEMPTS = 3;
 function inputOf(definition: AgentFileDefinition): AgentFileDefinitionInput {
   // A rest, so a key the definition gains is carried into the input and not dropped here.
   const { examples: _examples, ...input } = definition;
-  // An update that omits `stepLimit`, `retry`, `compaction` or `references` keeps the file's value,
-  // and a version that has none must remove it: `null` says so.
+  // An update that omits `stepLimit`, `retry`, `compaction`, `references` or `guardrails` keeps the
+  // file's value, and a version that has none must remove it: `null` says so.
   return {
     ...input,
     stepLimit: definition.stepLimit ?? null,
     retry: definition.retry ?? null,
     compaction: definition.compaction ?? null,
     references: definition.references ?? null,
+    guardrails: definition.guardrails ?? null,
   };
 }
 
@@ -577,6 +579,9 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         : { skillDescriptors: definition.skillDescriptors }),
       ...(instructions === '' ? {} : { instructions }),
       ...(Object.keys(tools).length === 0 ? {} : { tools }),
+      ...(definition.guardrails === undefined
+        ? {}
+        : { guardrails: guardrailsOfPreset(definition.guardrails) }),
       ...(definition.stepLimit === undefined ? {} : { maximumSteps: definition.stepLimit }),
       ...contextManagementOf(id, definition, descriptor),
       ...(definition.retry === undefined

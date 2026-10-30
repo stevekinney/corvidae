@@ -20,12 +20,14 @@ import type {
   DurableEventGap,
   DurableEventOwner,
   DurableEventPage,
+  EffectiveContextRecord,
   EnhancedStreamingOptions,
   FlowControlPolicy,
   FreshAttemptSourceResolver,
   HumanInputSchema,
   LivenessSnapshot,
   PeerCallJournal,
+  PlanReason,
   ProviderConfigurationBase,
   RunEvent,
   RunFrame,
@@ -1250,6 +1252,10 @@ export type AuditQuery = {
   readonly type?: string | undefined;
   /** Only records at or after this time, in epoch milliseconds. */
   readonly since?: number | undefined;
+  /** Only records at or before this time, in epoch milliseconds. */
+  readonly until?: number | undefined;
+  /** Only records whose actor (`principal`) is exactly this string. */
+  readonly principal?: string | undefined;
   /** The `nextCursor` of the previous page. */
   readonly cursor?: string | undefined;
   /** How many records a page holds, 1 to 100. Defaults to 50. */
@@ -1387,6 +1393,28 @@ export interface TaskReceiptQuery {
   readonly contextId?: string | undefined;
 }
 
+/**
+ * One step of a task's run as its reply details show it (COR-1810): why the step's generation ran on
+ * the model it did, and what that model saw. A step recorded before either was kept reads `null`.
+ */
+export interface TaskInspectionStep {
+  /** The step's index in the run. */
+  readonly step: number;
+  /** The id of the assistant row the step committed, or `null` when it committed none. */
+  readonly messageId: string | null;
+  /** The effective-context epoch the step's generation was issued under, or `null` when the run sealed none. */
+  readonly contextEpochId: string | null;
+  /** Why the step ran on its model, or `null` when the run had no model plan and no steering override. */
+  readonly planReason: PlanReason | null;
+  /** Whether the step kept an effective context; the list form carries this in place of the record. */
+  readonly hasEffectiveContext: boolean;
+  /**
+   * What the step's model saw, as digests and message ids capped at 256 KiB. Read only when the
+   * inspection names one `step`; `null` in the list form and for a step that kept none.
+   */
+  readonly effectiveContext: EffectiveContextRecord | null;
+}
+
 /** What {@link BureauTasks.inspect} reads about one task. */
 export interface TaskInspection {
   readonly task: TaskView;
@@ -1402,7 +1430,16 @@ export interface TaskInspection {
     /** The child's liveness, or `undefined` when this process holds no live run for it. */
     readonly liveness: LivenessSnapshot | undefined;
   }[];
+  /**
+   * The run's steps with their reply details, oldest first: the newest {@link INSPECTED_STEP_LIMIT}
+   * steps, or just the one asked for with `options.step`. Empty for a Bureau with no durable
+   * engine, whose steps are not kept.
+   */
+  readonly steps: readonly TaskInspectionStep[];
 }
+
+/** How many of a run's newest steps {@link TaskInspection.steps} lists when no step is asked for. */
+export const INSPECTED_STEP_LIMIT = 50;
 
 /**
  * One answer to a task's open wait, for {@link BureauTasks.respond}. Send exactly one of `answer`,
@@ -1549,7 +1586,10 @@ export interface BureauTasks<D extends AgentDefinitions = AgentDefinitions> {
    * The task's record, its run's liveness, and the children it owns, for the run inspector;
    * `undefined` for a task the registry does not hold.
    */
-  inspect(id: string): Promise<TaskInspection | undefined>;
+  inspect(
+    id: string,
+    options?: { readonly step?: number | undefined },
+  ): Promise<TaskInspection | undefined>;
   /**
    * Answers one open wait of a task as `request.principal`: answer text or structured `data` for
    * a human-input wait, or a `decision` on an approval or a human wait. `signalName` or `callId`
@@ -1725,6 +1765,26 @@ export interface BureauContexts {
     id: string,
     options?: { readonly incarnation?: string | undefined },
   ): Promise<ContextDeletionReport>;
+
+  /**
+   * Gives a session (a context) a title, or removes the one it was given (COR-1909). `title` is
+   * stored in the session's metadata and wins over the title derived from the first user message in
+   * every summary until it is removed: `null` removes it, and the derived title returns. Text is
+   * trimmed, and must be non-empty and at most `SESSION_TITLE_OVERRIDE_LIMIT` characters, or the
+   * call throws a `BureauError` `BAD_REQUEST`. Renaming does not count as activity: the session's
+   * `updatedAt`, and so its place in a listing, does not move. Setting the title it already has is
+   * not an error. With `options.incarnation` it renames only that incarnation: an id reused since
+   * the caller read the session is left untouched.
+   *
+   * Resolves the renamed session, or `undefined` when this Bureau holds no such session (or none of
+   * that incarnation). It does not authorize the caller: that is the caller's to do, as for
+   * {@link BureauContexts.get}. Throws a `BureauError` `CONFLICT` when Bureau is shutting down.
+   */
+  rename(
+    contextId: string,
+    title: string | null,
+    options?: { readonly incarnation?: string | undefined },
+  ): Promise<AgentSession | undefined>;
 
   /**
    * Deliver a fire-and-forget signal to a session's current in-flight durable run.

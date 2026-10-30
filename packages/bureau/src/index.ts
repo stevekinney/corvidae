@@ -10,6 +10,7 @@ export type {
   CreateAgentCatalogOptions,
 } from './agent-catalog';
 export { createAgentCatalog } from './agent-catalog';
+export { guardrailsOfPreset } from './guardrail-presets';
 export type {
   AgentFileDefinition,
   AgentFileDefinitionInput,
@@ -19,9 +20,11 @@ export type {
   AgentFileProblem,
   AgentFileProblemCode,
   AgentCompaction,
+  AgentGuardrailPreset,
   AgentRetry,
 } from './agent-file';
 export {
+  AGENT_GUARDRAIL_PRESETS,
   AGENT_IDENTIFIER_PATTERN,
   agentFileFrontmatterSchema,
   AgentFileConflictError,
