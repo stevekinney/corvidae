@@ -5,8 +5,8 @@
  * Every agent answers from a script, so a seeded agent calls no model and needs no provider key,
  * whatever providers the host is configured with. The scripts start over whenever the host does.
  * The agents are code, so {@link createSeededAgents} rebuilds them on every start; the schedule and
- * the goal are Bureau state, so {@link seedBureau} creates each only when the Bureau does not
- * already hold it, and a restart adds nothing.
+ * the goal are Bureau state, so {@link seedBureau} creates them once, under one claim on a record
+ * in the host's storage, and a restart adds nothing.
  *
  * A task that names one of these agents (Chat, or `bureau.tasks.start(name, input)`) runs that
  * agent's script, tools, and stop conditions. The durable Bureau also offers every such run its
@@ -32,7 +32,7 @@
  * There are no users and no webhook receiver.
  */
 
-import type { Bureau } from '@lostgradient/bureau';
+import { ScheduleLocatorUnavailableError, type Bureau } from '@lostgradient/bureau';
 import {
   createAgent,
   createModelCatalog,
@@ -384,18 +384,34 @@ export class SeededScheduleRecordLostError extends Error {
 /**
  * Create the seeded schedule and goal unless they already exist. The schedule is recognised by the
  * identifier recorded when it was created, so an operator who renames or edits it, or deletes it,
- * does not get a second one on the next start. The goal carries its own identifier.
+ * does not get a second one on the next start.
  *
  * The record lives in the host's Weft `storage`, and every change to it is a conditional write, so
  * starts that overlap, in one process or two over one database, create the schedule once: only the
  * start whose write of `claimed:<uuid>` finds the record absent creates it. It then replaces its
  * claim with the identifier. When the schedule is not created (`create` throws, or returns
- * `undefined`) it removes its claim, and only its own, so the next start tries again.
+ * `undefined`) it removes its claim, and only its own, so the next start tries again. When `create`
+ * throws `ScheduleLocatorUnavailableError`, the schedule is registered and only its summary could
+ * not be read, so the start records the error's identifier in place of its claim and carries on.
+ *
+ * The seeded goal is created under the same claim: only the start that won it creates the goal, and
+ * only after the schedule's outcome is settled, so a second host never loses the goal's controller
+ * claim and logs it as an error. A start that loses the claim creates neither. The accepted window
+ * is the claim's own: a crash after the claim and before the goal exists leaves the record present,
+ * so no later start creates the goal, and a goal whose creation throws is not retried either.
+ * Both leave the install without its seeded goal, the same as a crash leaves it without its
+ * schedule. A start that finds a `claimed:` record left behind reports it through `warn`.
  *
  * Previous releases kept the identifier in the Bungalow secret `seeded-schedule-id`. That file is
  * not read, so an install that has it seeds one more schedule on its first start after this change.
+ *
+ * @param warn Receives a possibly stale claim. Defaults to `console.warn`.
  */
-export async function seedBureau(bureau: Bureau<SeededAgents>, storage: Storage): Promise<void> {
+export async function seedBureau(
+  bureau: Bureau<SeededAgents>,
+  storage: Storage,
+  warn: (message: string) => void = (message) => console.warn(message),
+): Promise<void> {
   // `disposeUnderlyingStorage: false` because the host's storage outlives this call: nothing here closes the store.
   const records = textValueStore(scopedStorage(storage, INTERBOROUGH_STORAGE_PREFIX), {
     disposeUnderlyingStorage: false,
@@ -406,33 +422,47 @@ export async function seedBureau(bureau: Bureau<SeededAgents>, storage: Storage)
   // claim behind, and every later start finds the record present, so the install has no seeded
   // schedule (when the crash came before `create` returned) or an unrecorded one (after). Nothing
   // recovers a claim, because a claim cannot be told from one a live start is still using.
-  if (
-    await records.conditionalBatch(
-      [{ key, expectedValue: null }],
-      [{ type: 'put', key, value: claim }],
-    )
-  ) {
-    let created: Awaited<ReturnType<Bureau<SeededAgents>['schedules']['create']>>;
-    try {
-      created = await bureau.schedules.create({
-        description: SEEDED_SCHEDULE_DESCRIPTION,
-        agentName: 'assistant',
-        input: 'Summarize what happened yesterday.',
-        spec: '0 9 * * *',
-      });
-    } catch (error) {
+  const claimed = await records.conditionalBatch(
+    [{ key, expectedValue: null }],
+    [{ type: 'put', key, value: claim }],
+  );
+  if (!claimed) {
+    // A start that lost the claim leaves both the schedule and the goal to the one that won it.
+    const held = await records.get(key);
+    if (held?.startsWith('claimed:') === true) {
+      warn(
+        `The "${key}" record holds a claim. It is stale only if no other host is starting right now: a start that crashed after claiming it never seeds the schedule or the goal, and nothing removes the claim. Delete the "${INTERBOROUGH_STORAGE_PREFIX}:${key}" record to seed again.`,
+      );
+    }
+    return;
+  }
+  let created: Awaited<ReturnType<Bureau<SeededAgents>['schedules']['create']>>;
+  let scheduleId: string | undefined;
+  try {
+    created = await bureau.schedules.create({
+      description: SEEDED_SCHEDULE_DESCRIPTION,
+      agentName: 'assistant',
+      input: 'Summarize what happened yesterday.',
+      spec: '0 9 * * *',
+    });
+    scheduleId = created?.id;
+  } catch (error) {
+    if (error instanceof ScheduleLocatorUnavailableError) {
+      // The schedule is registered, so releasing the claim would seed a duplicate on the next start.
+      scheduleId = error.scheduleId;
+    } else {
       await releaseClaim(records, key, claim);
       throw error;
     }
-    if (created === undefined) {
-      await releaseClaim(records, key, claim);
-    } else {
-      const recorded = await records.conditionalBatch(
-        [{ key, expectedValue: claim }],
-        [{ type: 'put', key, value: created.id }],
-      );
-      if (!recorded) throw new SeededScheduleRecordLostError(created.id);
-    }
+  }
+  if (scheduleId === undefined) {
+    await releaseClaim(records, key, claim);
+  } else {
+    const recorded = await records.conditionalBatch(
+      [{ key, expectedValue: claim }],
+      [{ type: 'put', key, value: scheduleId }],
+    );
+    if (!recorded) throw new SeededScheduleRecordLostError(scheduleId);
   }
   await bureau.goals.create({
     goalRunId: SEEDED_GOAL_RUN_IDENTIFIER,
