@@ -140,10 +140,12 @@ import {
   createFleetEventFeed,
   type Cursor,
   decodeCursor,
+  decode,
   encode,
   encodeCursor,
   type FleetEventEnvelope,
   type FleetEventFeed,
+  KEYS,
 } from '@lostgradient/weft';
 
 import type { AgentDefinitions } from './agent-catalog';
@@ -758,6 +760,29 @@ export interface DurableEventHistory {
    * the {@link DURABLE_HISTORY_GAP_KIND} event on its next read.
    */
   retainBefore(cutoffMs: number): Promise<number>;
+  /**
+   * COR-1934 — deletes the events one owner holds, with their `fleet-event-by-workflow:` index
+   * entries and their deduplication markers, and resolves how many events it deleted. This is the
+   * delete-by-owner the feed lacks: Weft's workflow purge removes the events that carry a
+   * workflow's own id, and Bureau records under `run:<id>` and `session:<id>`, which that purge
+   * never sees. Nothing is moved on the feed itself: its tail, its retention floor and every other
+   * owner's events stay as they are, as after a workflow purge.
+   *
+   * `incarnation` limits the deletion to the events recorded for that session incarnation, so a
+   * session id used again is not emptied; an event stamped with none is then kept. `keepKinds`
+   * names event kinds that stay, and so do their markers (the `session.deleted` record a deleted
+   * session's history is recognised by). Safe to repeat: it lists what is left each time, so a
+   * call that failed partway is finished by the next, and the events go before nothing else.
+   * Appends are not held back: a caller that must see the owner quiet waits for its in-flight
+   * writes first.
+   */
+  purgeOwner(
+    owner: DurableEventOwner,
+    options?: {
+      readonly incarnation?: string | undefined;
+      readonly keepKinds?: ReadonlySet<string> | undefined;
+    },
+  ): Promise<number>;
   /** Releases the underlying `FleetEventFeed`. Idempotent. */
   dispose(): Promise<void>;
 }
@@ -942,6 +967,15 @@ export function deletionMarkerKindFor(ownerKind: DurableEventOwner['kind']): str
     case 'goal':
       return undefined;
   }
+}
+
+/** The sequence an owner's `fleet-event-by-workflow:` index key ends in, or `undefined`. */
+function parseFleetEventSequence(indexKey: string, indexPrefix: string): number | undefined {
+  if (!indexKey.startsWith(indexPrefix)) return undefined;
+  const raw = indexKey.slice(indexPrefix.length);
+  if (!/^\d+$/.test(raw)) return undefined;
+  const sequence = Number(raw);
+  return Number.isSafeInteger(sequence) ? sequence : undefined;
 }
 
 function isStoredDurableEventPayload(value: unknown): value is StoredDurableEventPayload {
@@ -1844,6 +1878,64 @@ export function createDurableEventHistory(
     return orphans.length;
   }
 
+  async function purgeOwner(
+    owner: DurableEventOwner,
+    purgeOptions: {
+      readonly incarnation?: string | undefined;
+      readonly keepKinds?: ReadonlySet<string> | undefined;
+    } = {},
+  ): Promise<number> {
+    const workflowId = encodeOwner(owner);
+    const indexPrefix = KEYS.fleetEventByWorkflowPrefix(workflowId);
+    const doomed: string[] = [];
+    let events = 0;
+    for await (const [indexKey] of storage.scan(indexPrefix)) {
+      const sequence = parseFleetEventSequence(indexKey, indexPrefix);
+      if (sequence === undefined) continue;
+      const eventKey = KEYS.fleetEvent(sequence);
+      const stored = await storage.get(eventKey);
+      // An index entry whose event is gone is a leftover; it goes, and nothing else follows from it.
+      if (stored === null) {
+        doomed.push(indexKey);
+        continue;
+      }
+      let envelope: unknown;
+      try {
+        envelope = decode(stored);
+      } catch {
+        // A record this module cannot read is not one it wrote; it is neither judged nor deleted.
+        continue;
+      }
+      if (typeof envelope !== 'object' || envelope === null) continue;
+      const kind: unknown = Reflect.get(envelope, 'kind');
+      const wrapper: unknown = Reflect.get(envelope, 'payload');
+      if (typeof kind !== 'string' || !isStoredDurableEventPayload(wrapper)) continue;
+      if (Reflect.get(envelope, 'workflowId') !== workflowId) continue;
+      if (purgeOptions.keepKinds?.has(kind) === true) continue;
+      if (
+        purgeOptions.incarnation !== undefined &&
+        wrapper.incarnation !== purgeOptions.incarnation
+      ) {
+        continue;
+      }
+      doomed.push(indexKey, eventKey);
+      if (wrapper.dedupeKey !== undefined) {
+        doomed.push(`${DEDUPE_MARKER_PREFIX}${workflowId}:${kind}:${wrapper.dedupeKey}`);
+      }
+      events += 1;
+    }
+    // The event goes with its index entry and marker in one batch, so a failure leaves a whole event
+    // for the next call and never an index entry that points at nothing it can still delete by.
+    for (let start = 0; start < doomed.length; start += RECONCILE_BATCH_SIZE * 3) {
+      await storage.batch(
+        doomed
+          .slice(start, start + RECONCILE_BATCH_SIZE * 3)
+          .map((key) => ({ type: 'delete' as const, key })),
+      );
+    }
+    return events;
+  }
+
   function dispose(): Promise<void> {
     feed.dispose();
     return Promise.resolve();
@@ -1872,6 +1964,7 @@ export function createDurableEventHistory(
     latestDeletionMarker,
     retentionFloorTimestamp,
     retainBefore,
+    purgeOwner,
     dispose,
   };
 }

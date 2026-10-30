@@ -47,6 +47,7 @@ export const BUREAU_RESERVED_KEY_PREFIXES: readonly string[] = [
   'bureau-workflow-cancelled-run:v1:',
   'bureau-workflow-schedule:',
   'bureau-workflow-snapshot:v1:',
+  'chat-content-purge-pending:v1:',
   'ag-ui-lease:v1',
   'command-ledger:a2a-send:v1',
   'command-ledger:ag-ui-resume:v1',

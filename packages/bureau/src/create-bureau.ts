@@ -588,6 +588,11 @@ import {
 } from './types';
 import { isSettlingRunAction, settledActionTimestamp } from './run-settlement';
 import { createAudit } from './audit/create-audit';
+import {
+  ChatRunsNotEndedError,
+  createChatContentPurge,
+  type DeletedChat,
+} from './chat-content-purge';
 import { createContexts } from './contexts/create-contexts';
 import { createTaskHandle, createTasks, seedsConversation } from './tasks/create-tasks';
 import {
@@ -7604,11 +7609,10 @@ async function constructBureau<const D extends AgentDefinitions>(
    * in keeps these as history until retention ends them; a tried one is a throwaway, so it keeps
    * none. Best-effort for each step, like the rest of a deletion that has already committed: a
    * failure is diagnosed and the retention that ends every run's history ends this one's.
-   * What a deletion of any context leaves stays until retention removes it (a purge is COR-1934):
-   * the audit trail's entries, which hold what the agent answered; on a store that keeps durable
-   * event history, the fleet event records and their indexes, which hold the run's content too;
-   * delivery markers and counters; and the engine's tombstones (`wf-gen:` and
-   * `wf-owner-epoch:`), which keep a run id from being reused.
+   * The content a deletion of any context leaves (event history, dedupe and surface markers,
+   * audit text) is purged by `chatContentPurge` (COR-1934), which this tried path runs after; the
+   * engine's tombstones (`wf-gen:` and `wf-owner-epoch:`), which keep a run id from being reused,
+   * stay until retention.
    */
   async function discardTriedRuns(
     session: AgentSession,
@@ -7647,10 +7651,8 @@ async function constructBureau<const D extends AgentDefinitions>(
     for (const runId of runIds) {
       if (store.getRun(runId) !== undefined) await attempt('run', runId, () => deleteRun(runId));
       await attempt('task record', runId, () => tasks.remove(runId));
-      const durable = runtime.durable;
-      if (durable === undefined) continue;
-      await attempt('workflow', runId, () => durable.engine.purge({ idPrefix: runId }));
-      await attempt('checkpoints', runId, () => durable.checkpointStore.clear(runId));
+      if (runtime.durable === undefined) continue;
+      await attempt('workflow and checkpoints', runId, () => purgeDurableRun(runId));
     }
   }
 
@@ -10577,6 +10579,18 @@ async function constructBureau<const D extends AgentDefinitions>(
       currentRecoveryPerRunFailures?.push(...(await recoverGoalsAtBoot()));
     }
 
+    // COR-1934 — a deleted chat whose content purge a crash or a failure stopped.
+    try {
+      await chatContentPurge.sweep();
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'recovery',
+        message: `[bureau] Boot recovery could not finish the pending content purges of deleted chats: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
+
     // COR-1476 — recovered runs are reattached and visible as live now, so
     // input left open with no run at all (a process that died between a run's
     // end and its settlement) is cancelled, and the rest waits for its run.
@@ -13092,6 +13106,17 @@ async function constructBureau<const D extends AgentDefinitions>(
           cause: error,
         });
       }
+      // COR-1934 — the content purge of a deleted chat that failed or was cut short is finished.
+      try {
+        await chatContentPurge.sweep();
+      } catch (error: unknown) {
+        diagnose({
+          level: 'error',
+          scope: 'durable-maintenance',
+          message: `[bureau] Manual deleted-chat purge pass failed: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      }
       // COR-1664 — claims on assets whose run ended or whose session was deleted without a release.
       await reconcileAssetClaims();
       // COR-194 — a schedule transition whose record failed after its commit is retried here.
@@ -13416,6 +13441,17 @@ async function constructBureau<const D extends AgentDefinitions>(
             cause: error,
           });
         }
+        // COR-1934 — the content purge of a deleted chat that failed or was cut short.
+        try {
+          await chatContentPurge.sweep();
+        } catch (error: unknown) {
+          diagnose({
+            level: 'error',
+            scope: 'durable-maintenance',
+            message: `[bureau] Automatic deleted-chat purge pass failed: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        }
         // COR-1476 — the backstop for input left open with no live run.
         try {
           await sessionInputSettlement?.sweep();
@@ -13633,6 +13669,85 @@ async function constructBureau<const D extends AgentDefinitions>(
   // runs (either via the commit callback or the `finally` safety net for
   // the never-existed-session path / a thrown error before commit) so it
   // never double-clears an entry a later, unrelated call may already own.
+  /**
+   * COR-1934 — removes one run's durable workflow and its checkpoints. The workflow is purged by
+   * `idPrefix`, which also matches every run whose id begins with this one (`…-run-1` and
+   * `…-run-10`), so the purge is pinned to the run's own creation time as well. A workflow that is
+   * not terminal is skipped by the engine's purge.
+   */
+  async function purgeDurableRun(runId: string): Promise<void> {
+    const durable = runtime.durable;
+    if (durable === undefined) return;
+    const state = await durable.engine.get(runId);
+    if (state !== null) {
+      await durable.engine.purge({
+        idPrefix: runId,
+        createdAt: { gte: state.createdAt, lte: state.createdAt },
+      });
+    }
+    await durable.checkpointStore.clear(runId);
+  }
+
+  /** The statuses after which a durable workflow no longer changes. */
+  const isTerminalDurableStatus = (status: string): boolean =>
+    status === 'completed' ||
+    status === 'failed' ||
+    status === 'cancelled' ||
+    status === 'timed-out';
+  /**
+   * COR-1934 — the content a deleted chat leaves outside the session store: its event history, its
+   * dedupe and surface markers, its runs' workflows, and the answer text in its audit entries. See
+   * `chat-content-purge.ts` for what goes, the order, and how a failed purge is finished.
+   */
+  const chatContentPurge = createChatContentPurge({
+    kv: runtime.kv,
+    history: () => eventHistoryInstance,
+    producer: () => durableEventProducerInstance,
+    audit: () => auditTrailInstance,
+    runEnded: async (runId) => {
+      const durable = runtime.durable;
+      if (durable === undefined) return true;
+      const state = await durable.engine.get(runId);
+      return state === null || isTerminalDurableStatus(state.status);
+    },
+    purgeRun: purgeDurableRun,
+    hasUndrainedEvents: async (sessionId, incarnation) => {
+      const pending = await runtime.sessionStore?.outbox.pending();
+      return (
+        pending?.some(
+          (entry) =>
+            entry.sessionId === sessionId &&
+            entry.incarnation === incarnation &&
+            entry.kind !== 'session.deleted',
+        ) ?? false
+      );
+    },
+    currentIncarnation: async (sessionId) => {
+      const session = await runtime.sessionStore?.load(sessionId);
+      return session?.incarnation;
+    },
+    diagnose,
+  });
+
+  /**
+   * COR-1934 — every run of a chat about to be deleted: the runs this process holds for it, the
+   * runs its ownership map names (pruned once a run's history expires), and its task records,
+   * the complete list. A list that cannot be read fails the delete before anything is removed,
+   * because a partial one would leave a run's content behind for good.
+   */
+  async function chatRunIdsOf(session: AgentSession): Promise<string[]> {
+    const runIds = new Set<string>();
+    for (const [, runState] of store.getState().runs) {
+      if (getRunSessionIdentifier(runState) === session.id) runIds.add(runState.id);
+    }
+    const owners = session.metadata['lastRunOwningPrincipals'];
+    if (isPlainAuthorityRecord(owners)) for (const runId of Object.keys(owners)) runIds.add(runId);
+    for (const taskId of await tasks.taskIdsOfContext(session.id, session.incarnation)) {
+      runIds.add(taskId);
+    }
+    return [...runIds];
+  }
+
   const inFlightSessionDeletions = new Map<string, Promise<ContextDeletionReport>>();
   async function deleteSession(
     id: string,
@@ -14013,6 +14128,14 @@ async function constructBureau<const D extends AgentDefinitions>(
       return { deleted: false, tasks: [] };
     }
     if (session) {
+      // COR-1934 — before anything is removed: the purge that follows the commit is owed from here,
+      // and a delete that cannot record it is refused, so the chat is deleted again whole.
+      const deletedChat: DeletedChat = {
+        sessionId: id,
+        incarnation: session.incarnation,
+        runIds: await chatRunIdsOf(session),
+      };
+      await chatContentPurge.record(deletedChat);
       await prepareSessionsForRemoval([session]);
       for (const runId of persistedApprovalRunIds(session.metadata)) {
         await revokePendingApprovalsForRun(runId, {
@@ -14121,9 +14244,12 @@ async function constructBureau<const D extends AgentDefinitions>(
             : await sessionStore.delete(id, { expectedIncarnation });
       } catch (error) {
         if (triedAgent !== undefined) tryAgents.hold(triedAgent);
+        // The delete did not commit: the purge is not owed.
+        await chatContentPurge.forget(deletedChat);
         throw error;
       }
       onStoreDeletionCommitted();
+      if (!removedLiveRecord) await chatContentPurge.forget(deletedChat);
       // COR-1915 — the deleted chat's spend records go with it. A record left behind is ignored
       // anyway, since a chat recreated under the id has another incarnation, so a failure here is
       // diagnosed and never keeps the deletion from finishing.
@@ -14241,6 +14367,21 @@ async function constructBureau<const D extends AgentDefinitions>(
       // with it: the other contexts' runs are history that retention ends.
       if (removedLiveRecord && sessionOriginOf(session.metadata) === 'try') {
         await discardTriedRuns(session, sessionRunIds);
+      }
+      // COR-1934 — the chat's content goes once its runs have ended, so their last events are in.
+      // The deletion has committed: a failure is diagnosed, the pending record stays, and the next
+      // maintenance pass or boot finishes the purge.
+      if (removedLiveRecord) {
+        try {
+          await chatContentPurge.run(deletedChat);
+        } catch (error) {
+          diagnose({
+            level: error instanceof ChatRunsNotEndedError ? 'warn' : 'error',
+            scope: 'durable-maintenance',
+            message: `[bureau] Chat "${id}" was deleted, but its content could not be purged yet; a later maintenance pass retries: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        }
       }
       return { deleted: removedLiveRecord, tasks: liveTasks };
     }
@@ -20363,6 +20504,12 @@ async function constructBureau<const D extends AgentDefinitions>(
       },
     );
     taskResyncInstance = createTaskResync({
+      contextIsLive: async (contextId, incarnation) => {
+        const sessionStore = runtime.sessionStore;
+        if (sessionStore === undefined) return true;
+        const session = await sessionStore.load(contextId);
+        return session?.incarnation === incarnation;
+      },
       answerOf: (taskId) => {
         const content = bureau.tasks
           .detail(taskId)

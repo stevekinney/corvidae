@@ -18,7 +18,12 @@ import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 
-import { type AuditRecord, computeInitialAuditSequence, createAuditTrail } from './audit-trail';
+import {
+  type AuditRecord,
+  computeInitialAuditSequence,
+  createAuditTrail,
+  redactAuditDetail,
+} from './audit-trail';
 import { ActionEvent, type BureauEventMap } from './events';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau } from './types';
@@ -3421,6 +3426,92 @@ describe('createAuditTrail', () => {
 // `createDefaultRuntimeServices()` instance the caller never sees. The writes
 // tracked on that instance's `deferred` ledger must still be drained by the
 // trail's own `dispose()`, so the hidden ledger is never the only path to them.
+describe('redact() (COR-1934)', () => {
+  const ANSWER_DETAIL = {
+    isTrusted: false,
+    step: 0,
+    content: 'the answer',
+    parts: [{ type: 'text', text: 'the answer' }],
+    messageId: 'run-1:step:0',
+    toolCalls: [{ id: 'c', name: 'search', arguments: { q: 'the answer' } }],
+    final: true,
+    usage: { prompt: 3, completion: 4, total: 7 },
+    result: { steps: [{ content: 'the answer' }] },
+    finishReason: 'stop-condition',
+  };
+
+  async function seedWithDetail(
+    kv: ReturnType<typeof textValueStore>,
+    sequence: number,
+    runId: string,
+    type: string,
+    detail: unknown,
+  ) {
+    await seedRecord(kv, { ...makeRecord(sequence, { runId, type }), detail });
+  }
+
+  it('keeps the structure of a step or run completion and drops everything else', () => {
+    expect(redactAuditDetail(ANSWER_DETAIL)).toEqual({
+      redacted: true,
+      isTrusted: false,
+      step: 0,
+      messageId: 'run-1:step:0',
+      final: true,
+      usage: { prompt: 3, completion: 4, total: 7 },
+      finishReason: 'stop-condition',
+    });
+    expect(redactAuditDetail({ finishReason: { text: 'nested' }, usage: { prompt: 'x' } })).toEqual(
+      {
+        redacted: true,
+      },
+    );
+    expect(redactAuditDetail('a string')).toEqual({ redacted: true });
+    expect(redactAuditDetail(null)).toEqual({ redacted: true });
+  });
+
+  it('redacts the answer text of the given runs in place, and nothing else', async () => {
+    const kv = textValueStore(new MemoryStorage());
+    const { bureau } = createStubBureau();
+    await seedWithDetail(kv, 1, 'run-1', 'step.completed', ANSWER_DETAIL);
+    await seedWithDetail(kv, 2, 'run-1', 'run.completed', ANSWER_DETAIL);
+    await seedWithDetail(kv, 3, 'run-1', 'tool.started', { toolName: 'search' });
+    await seedWithDetail(kv, 4, 'run-10', 'run.completed', ANSWER_DETAIL);
+    await seedWithDetail(kv, 5, 'session:chat-1', 'session.deleted', { sessionId: 'chat-1' });
+    const trail = createAuditTrail(bureau, kv);
+    const before = await trail.query();
+
+    expect(await trail.redact(new Set(['run-1', 'session:chat-1']))).toBe(2);
+
+    const after = await trail.query();
+    expect(after.map((entry) => ({ ...entry, detail: undefined }))).toEqual(
+      before.map((entry) => ({ ...entry, detail: undefined })),
+    );
+    expect(after.map((entry) => entry.detail)).toEqual([
+      redactAuditDetail(ANSWER_DETAIL),
+      redactAuditDetail(ANSWER_DETAIL),
+      { toolName: 'search' },
+      ANSWER_DETAIL,
+      { sessionId: 'chat-1' },
+    ]);
+    // Repeating it rewrites nothing.
+    expect(await trail.redact(new Set(['run-1']))).toBe(0);
+    expect(await trail.redact(new Set())).toBe(0);
+    await trail.dispose();
+  });
+
+  it('redacts a run whose id holds colons, and does nothing without a store', async () => {
+    const kv = textValueStore(new MemoryStorage());
+    const { bureau } = createStubBureau();
+    await seedWithDetail(kv, 1, 'schedule:s:1', 'run.completed', ANSWER_DETAIL);
+    const trail = createAuditTrail(bureau, kv);
+
+    expect(await trail.redact(new Set(['schedule:s:1']))).toBe(1);
+    expect(JSON.stringify(await trail.query())).not.toContain('the answer');
+    await trail.dispose();
+    expect(await createAuditTrail(bureau, undefined).redact(new Set(['run-1']))).toBe(0);
+  });
+});
+
 describe('COR-89 — omitted runtime', () => {
   it("dispose() drains every write tracked on the internal default runtime's deferred ledger", async () => {
     const factory = spyOn(lifecycle, 'createDefaultRuntimeServices');

@@ -89,6 +89,9 @@ function createStubAuditTrail(): { auditTrail: AuditTrail; records: Record<strin
     async prune() {
       return undefined;
     },
+    async redact() {
+      return 0;
+    },
     async dispose() {},
   };
   return { auditTrail, records };
@@ -757,6 +760,9 @@ describe('createOnlineEvalSampler', () => {
       },
       async prune() {
         return undefined;
+      },
+      async redact() {
+        return 0;
       },
       async dispose() {},
     };

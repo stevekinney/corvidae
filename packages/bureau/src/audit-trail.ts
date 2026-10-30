@@ -479,6 +479,18 @@ export interface AuditTrail {
     },
   ): Promise<AuditPruneResult | undefined>;
   /**
+   * COR-1934 — redacts the answer text of the `step.completed` and `run.completed` entries of
+   * the given runs, in place, for a chat that was deleted. An entry keeps its key, `type`,
+   * `runId`, `timestamp`, `timestampMs`, `sequence`, `actionSequence` and `principal`; its
+   * `detail` becomes `{ redacted: true }` plus the structural fields
+   * {@link AUDIT_REDACTION_KEPT_DETAIL_FIELDS} names that hold no text (see
+   * {@link redactAuditDetail}). Every other entry is left as it is, and so is an entry already
+   * redacted, so the call is idempotent and a retry finishes what a failure stopped. The writes
+   * of the given runs that are still in flight are awaited first. Resolves how many entries it
+   * rewrote. A no-op when no KV store is configured.
+   */
+  redact(runIds: ReadonlySet<string>): Promise<number>;
+  /**
    * Stop listening to bureau events, release the subscription, and await
    * every write already in flight (from the action-stream listener and from
    * {@link record}) before resolving (AB-207). Never rejects — an
@@ -1047,6 +1059,73 @@ function ownerDetail(owner: string | undefined): { owner?: string } {
  */
 export function auditTrailSessionOwnerId(sessionId: string): string {
   return `${AUDIT_SESSION_OWNER_PREFIX}${sessionId}`;
+}
+
+// ── Redaction (COR-1934) ────────────────────────────────────────────
+
+/** The audit entry types whose `detail` holds what the agent answered. */
+export const AUDIT_REDACTED_EVENT_TYPES: ReadonlySet<string> = new Set([
+  'step.completed',
+  'run.completed',
+]);
+
+/**
+ * The top-level `detail` fields a redacted entry keeps: counters, flags and ids that hold no text.
+ * Every other field is dropped, whatever it holds: `content`, `parts`, `toolCalls`, `results`,
+ * `steps`, `result`, `planReason`, `effectiveContext`, and any field a later version adds. A list
+ * of what to keep, and not of what to drop, so a new text-bearing field is redacted by default.
+ */
+export const AUDIT_REDACTION_KEPT_DETAIL_FIELDS: readonly string[] = [
+  'isTrusted',
+  'step',
+  'final',
+  'finishReason',
+  'messageId',
+  'usage',
+];
+
+function isFiniteNumberRecord(value: unknown): value is Record<string, number> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.values(value).every((entry) => typeof entry === 'number' && Number.isFinite(entry))
+  );
+}
+
+/**
+ * What a `step.completed` or `run.completed` entry's `detail` becomes once it is redacted:
+ * `{ redacted: true }` and the {@link AUDIT_REDACTION_KEPT_DETAIL_FIELDS} that hold a string,
+ * number or boolean (`usage`: an object of numbers). Anything else under a kept name is dropped.
+ */
+export function redactAuditDetail(detail: unknown): Record<string, unknown> {
+  const redacted: Record<string, unknown> = { redacted: true };
+  if (typeof detail !== 'object' || detail === null) return redacted;
+  for (const field of AUDIT_REDACTION_KEPT_DETAIL_FIELDS) {
+    if (!Object.hasOwn(detail, field)) continue;
+    const value: unknown = Reflect.get(detail, field);
+    if (
+      typeof value === 'string' ||
+      typeof value === 'boolean' ||
+      (typeof value === 'number' && Number.isFinite(value)) ||
+      (field === 'usage' && isFiniteNumberRecord(value))
+    ) {
+      redacted[field] = value;
+    }
+  }
+  return redacted;
+}
+
+/** Whether an audit `detail` is one {@link redactAuditDetail} produced. */
+function isRedactedAuditDetail(detail: unknown): boolean {
+  return (
+    typeof detail === 'object' &&
+    detail !== null &&
+    Reflect.get(detail, 'redacted') === true &&
+    Object.keys(detail).every(
+      (field) => field === 'redacted' || AUDIT_REDACTION_KEPT_DETAIL_FIELDS.includes(field),
+    )
+  );
 }
 
 // ── Audit trail factory ─────────────────────────────────────────────
@@ -2520,6 +2599,47 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
       // what the caller actually awaits and sees the rejection through.
       prunePassQueue = scheduled.catch(() => undefined);
       return scheduled;
+    },
+
+    async redact(runIds: ReadonlySet<string>): Promise<number> {
+      if (!kv || runIds.size === 0) return 0;
+      // The terminal entries of a run that just ended are written after its terminal event, so
+      // the writes in flight for these runs are awaited first, as `query({ runId })` does.
+      for (const runId of runIds) {
+        const owned = activeWritesByRunId.get(runId);
+        if (owned && owned.size > 0) await Promise.allSettled(owned);
+      }
+      let rewritten = 0;
+      for (const key of await kv.list(PREFIX)) {
+        const candidate = parsePruneCandidateFromKey(key);
+        if (candidate === undefined || !runIds.has(candidate.runId)) continue;
+        // Read, rewritten only if the text is still what was read: an entry another pass pruned
+        // is not written back, and one another process redacted first is left as it is.
+        const text = await kv.get(key);
+        if (text === null) continue;
+        let record: unknown;
+        try {
+          record = JSON.parse(text);
+        } catch {
+          continue;
+        }
+        if (
+          !isPrunableAuditRecordShape(record) ||
+          record.runId !== candidate.runId ||
+          !AUDIT_REDACTED_EVENT_TYPES.has(record.type)
+        ) {
+          continue;
+        }
+        const detail: unknown = Reflect.get(record, 'detail');
+        if (isRedactedAuditDetail(detail)) continue;
+        const redacted = { ...record, detail: redactAuditDetail(detail) };
+        const committed = await kv.conditionalBatch(
+          [{ key, expectedValue: text }],
+          [{ type: 'set', key, value: JSON.stringify(redacted) }],
+        );
+        if (committed) rewritten += 1;
+      }
+      return rewritten;
     },
 
     async query(options: AuditQueryOptions = {}): Promise<AuditRecord[]> {
