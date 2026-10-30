@@ -177,7 +177,6 @@
           id={`${id}-json`}
           label={`${name}: ${SETTINGS_COPY.jsonLabel}`}
           rows={6}
-          highlight
           validFeedbackVisible={false}
           disabled={locked}
           value={form.text(name)}
@@ -191,7 +190,6 @@
         label={name}
         {description}
         rows={8}
-        highlight
         validFeedbackVisible={false}
         disabled={locked}
         value={form.text(name)}

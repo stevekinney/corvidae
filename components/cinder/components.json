@@ -2821,13 +2821,17 @@
       "exportName": "JsonEditor",
       "category": "form",
       "status": "stable",
-      "purpose": "Controlled free-form JSON text editor with native textarea fallback, parse feedback, and accessible field wiring.",
+      "purpose": "Controlled free-form JSON editor on a lazily loaded CodeMirror view with folding, schema completion, inline errors, and Format, backed by a native textarea.",
       "tags": ["form", "json", "editor"],
       "useWhen": [
         "Editing arbitrary JSON source while preserving the exact string in parent-owned state.",
-        "A lightweight native editor is preferable to shipping a code-editor runtime."
+        "The value is genuinely free-form JSON and benefits from line numbers, folding, and completion."
       ],
       "avoidWhen": [
+        {
+          "reason": "The value has a known shape that a guided form can edit.",
+          "alternative": "schema-form"
+        },
         {
           "reason": "Editing a JSON Schema with guided form and diff views.",
           "alternative": "json-schema-editor"
@@ -2851,9 +2855,19 @@
           {
             "keys": "Tab",
             "action": "Moves focus out of the editor without trapping the keyboard."
+          },
+          {
+            "keys": "Shift+Alt+F",
+            "action": "Formats the document as indented JSON."
+          },
+          {
+            "keys": "Ctrl+Space",
+            "action": "Opens schema completions when a schema is provided."
           }
         ],
-        "notes": ["Uses a native textarea with a programmatic label and announced parse feedback."]
+        "notes": [
+          "The editable area is labelled by the visible label and described by the description and parse feedback; a native textarea with the same wiring serves until the editor loads and wherever it cannot."
+        ]
       }
     },
     {

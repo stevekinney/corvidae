@@ -2,7 +2,7 @@
   /**
    * Start wizard — Configure step (plan §9.2 T2.3, §10.2 payload editor).
    * `SchemaForm` (Cinder) for form mode when the registry published an
-   * `inputSchema`; Cinder's lazy-highlighted `JsonEditor` for raw-JSON mode.
+   * `inputSchema`; Cinder's lazily loaded CodeMirror `JsonEditor` for raw-JSON mode.
    *
    * **Mode-switch losslessness, honestly scoped.** `SchemaForm` has no way
    * to read its live, uncommitted value outside its own `onsubmit` (its
@@ -91,7 +91,6 @@
       rows={8}
       value={rawText}
       onValueChange={onRawTextChange}
-      highlight
       validFeedbackVisible={false}
     />
   {/if}

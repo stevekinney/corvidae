@@ -6,15 +6,22 @@ const schema = {
   properties: {
     disabled: {
       type: 'boolean',
-      description: 'Disables the editor. Passed through to the native textarea.',
+      description: 'Disables the editor. A disabled field is not posted with its form.',
+    },
+    readonly: {
+      type: 'boolean',
+      description:
+        'Makes the editor read-only. A read-only field stays focusable and selectable and is posted with its form, but cannot be edited or formatted.',
     },
     required: {
       type: 'boolean',
-      description: 'Marks the editor as required. Passed through to the native textarea.',
+      description:
+        'Marks the editor as required. An empty value is valid and reads "Not set" unless the field is required.',
     },
     rows: {
       type: 'number',
-      description: 'Number of visible text rows. Defaults to 8.',
+      description:
+        'The most lines the editor shows before it scrolls. It grows with its content up to this height, so a short value is not a large empty box. Defaults to 8.',
       default: 8,
     },
     id: {
@@ -27,7 +34,7 @@ const schema = {
     },
     label: {
       type: 'string',
-      description: 'Visible label associated with the native textarea.',
+      description: 'Visible label for the editor.',
     },
     description: {
       type: 'string',
@@ -43,12 +50,6 @@ const schema = {
         'Whether valid JSON should render an announced success message. Defaults to true.',
       default: true,
     },
-    highlight: {
-      type: 'boolean',
-      description:
-        'Enables a lazy syntax-highlighted view with inline parse-error annotation. Defaults to false.',
-      default: false,
-    },
     class: {
       type: 'string',
       description: 'Extra class names merged onto the field wrapper.',
@@ -61,7 +62,13 @@ const schema = {
       {
         name: 'onValueChange',
         reason: 'function-or-snippet',
-        description: 'Called with the proposed JSON source whenever the user edits the textarea.',
+        description: 'Called with the proposed JSON source whenever the user edits the field.',
+      },
+      {
+        name: 'schema',
+        reason: 'unknown-shape',
+        description:
+          'A JSON Schema that drives property-name and value completion. Without one the editor offers no completions.',
       },
     ],
   },

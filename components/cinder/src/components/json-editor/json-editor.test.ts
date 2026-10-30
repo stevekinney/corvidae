@@ -1,6 +1,5 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
-import { flushSync } from 'svelte';
 
 import {
   prepareSvelteServerSource,
@@ -13,7 +12,6 @@ import { injectStrippedStyles } from '../../test/css.ts';
 setupHappyDom();
 
 const { cleanup, fireEvent, render, waitFor } = await import('@testing-library/svelte');
-const { enhanceJson } = await import('./json-editor-enhancement.ts');
 const { default: JsonEditor } = await import('./json-editor.svelte');
 const { default: schema } = await import('./json-editor.schema.ts');
 const jsonEditorSource = new URL('./json-editor.svelte', import.meta.url).pathname;
@@ -35,6 +33,11 @@ const autofocusServerHtml = new Map(
     ),
   ),
 );
+
+/** The native textarea, which stays the source of truth for form posting once the editor loads. */
+function textareaOf(view: { container: HTMLElement }): HTMLTextAreaElement {
+  return requiredInstance(view.container.querySelector('textarea'), HTMLTextAreaElement);
+}
 
 afterEach(() => {
   cleanup();
@@ -91,101 +94,6 @@ describe('JsonEditor', () => {
     expect(schema.properties).toHaveProperty('required');
   });
 
-  test('keeps highlighting opt-in and annotates invalid JSON after lazy enhancement', async () => {
-    const baseline = render(JsonEditor, {
-      id: 'baseline-payload',
-      label: 'Baseline payload',
-      value: '{"ready":true}',
-    });
-    flushSync();
-    expect(
-      baseline.container.querySelector('.cinder-json-editor__highlight')?.outerHTML ?? null,
-    ).toBeNull();
-    baseline.unmount();
-
-    const view = render(JsonEditor, {
-      id: 'payload',
-      label: 'Payload',
-      value: '{"ready":true}',
-      highlight: true,
-    });
-
-    await waitFor(() =>
-      expect(view.container.querySelector('.cinder-json-editor__highlight')).not.toBeNull(),
-    );
-    expect(view.container.querySelector('.cinder-json-token-key')).not.toBeNull();
-
-    await view.rerender({
-      id: 'payload',
-      label: 'Payload',
-      value: '{',
-      highlight: true,
-    });
-    await waitFor(() =>
-      expect(view.container.querySelector('[data-cinder-json-lint-position]')).not.toBeNull(),
-    );
-    expect(view.container.querySelector('.cinder-json-lint')).not.toBeNull();
-  });
-
-  test('maps line and column syntax errors to a highlighted source position', () => {
-    const parse = spyOn(JSON, 'parse').mockImplementation(() => {
-      throw new SyntaxError('JSON Parse error: line 3 column 2');
-    });
-    try {
-      const enhanced = enhanceJson('aa\nbb\ncc');
-
-      expect(enhanced.lint).toEqual({ position: 7 });
-      expect(enhanced.html).toContain('aa\nbb\nc<span class="cinder-json-lint">c</span>');
-    } finally {
-      parse.mockRestore();
-    }
-  });
-
-  test('preserves native wrap and scroll props in highlighted mode', async () => {
-    const view = render(JsonEditor, {
-      id: 'payload',
-      label: 'Payload',
-      value: '{"ready":true}',
-      highlight: true,
-      wrap: 'off',
-    });
-    const editor = view.getByLabelText('Payload');
-    expect(editor.getAttribute('wrap')).toBe('off');
-    expect(view.container.querySelector('.cinder-json-editor__input--nowrap')).not.toBeNull();
-  });
-
-  test('does not add parse lint while an external error owns feedback', () => {
-    const view = render(JsonEditor, {
-      id: 'payload',
-      label: 'Payload',
-      value: '{',
-      highlight: true,
-      error: 'Payload failed validation.',
-    });
-    expect(view.getByRole('alert').textContent).toBe('Payload failed validation.');
-    expect(view.container.querySelector('.cinder-json-lint')).toBeNull();
-  });
-
-  test('keeps the native textarea visible until highlighted mode finishes loading', async () => {
-    const view = render(JsonEditor, {
-      id: 'payload',
-      label: 'Payload',
-      value: '{"ready":true}',
-      highlight: true,
-    });
-
-    expect(view.container.querySelector('.cinder-json-editor__input--highlighted')).toBeNull();
-
-    await waitFor(() =>
-      expect(
-        view.container.querySelector('.cinder-json-editor__input--highlighted'),
-      ).not.toBeNull(),
-    );
-
-    expect(view.container.querySelector('.cinder-json-editor__input--highlighted')).not.toBeNull();
-    expect(view.container.querySelector('.cinder-json-editor__highlight')).not.toBeNull();
-  });
-
   test('emits each proposed string value without taking ownership of controlled state', async () => {
     const onValueChange = mock();
     const view = render(JsonEditor, {
@@ -195,7 +103,7 @@ describe('JsonEditor', () => {
       onValueChange,
     });
 
-    const editor = requiredInstance(view.getByLabelText('Payload'), HTMLTextAreaElement);
+    const editor = textareaOf(view);
     await fireEvent.input(editor, { target: { value: '{"after":true}' } });
 
     expect(onValueChange).toHaveBeenCalledWith('{"after":true}');
@@ -214,9 +122,7 @@ describe('JsonEditor', () => {
       value: '{"version":2}',
     });
 
-    expect(requiredInstance(view.getByLabelText('Payload'), HTMLTextAreaElement).value).toBe(
-      '{"version":2}',
-    );
+    expect(textareaOf(view).value).toBe('{"version":2}');
   });
 
   test('synchronizes parse feedback after a native form reset', async () => {
@@ -230,7 +136,7 @@ describe('JsonEditor', () => {
       defaultValue: '{}',
       form: form.id,
     });
-    const editor = requiredInstance(view.getByLabelText('Payload'), HTMLTextAreaElement);
+    const editor = textareaOf(view);
 
     await fireEvent.input(editor, { target: { value: '{' } });
     expect(editor.getAttribute('aria-invalid')).toBe('true');
@@ -251,7 +157,7 @@ describe('JsonEditor', () => {
       value: '{"valid":true}',
     });
 
-    const editor = view.getByLabelText('Payload');
+    const editor = textareaOf(view);
     const description = view.getByText('Enter the request body.');
     const status = view.getByRole('status');
 
@@ -270,7 +176,7 @@ describe('JsonEditor', () => {
       value: '{',
     });
 
-    const editor = view.getByLabelText('Payload');
+    const editor = textareaOf(view);
     expect(editor.getAttribute('aria-invalid')).toBe('true');
     expect(view.getByRole('alert').textContent).toBe('Enter valid JSON.');
 
@@ -333,7 +239,7 @@ describe('JsonEditor', () => {
       label: 'Payload',
       value: '{}',
     });
-    const editor = view.getByLabelText('Payload');
+    const editor = textareaOf(view);
 
     await fireEvent.input(editor, { target: { value: '{' } });
 
@@ -348,7 +254,7 @@ describe('JsonEditor', () => {
       label: 'Payload',
       value: '{}',
     });
-    const editor = view.getByLabelText('Payload');
+    const editor = textareaOf(view);
     await fireEvent.input(editor, { target: { value: '{' } });
 
     await view.rerender({
@@ -371,7 +277,7 @@ describe('JsonEditor', () => {
       'aria-invalid': 'true',
       'aria-describedby': 'payload-domain-error',
     });
-    const editor = view.getByLabelText('Payload');
+    const editor = textareaOf(view);
 
     expect(editor.getAttribute('aria-invalid')).toBe('true');
     expect(editor.getAttribute('aria-describedby')).toBe('payload-domain-error');
@@ -393,7 +299,7 @@ describe('JsonEditor', () => {
       'aria-invalid': null,
     });
 
-    expect(view.getByLabelText('Payload').getAttribute('aria-invalid')).toBeNull();
+    expect(textareaOf(view).getAttribute('aria-invalid')).toBeNull();
     expect(view.getByRole('status').textContent).toBe('Valid JSON.');
   });
 
@@ -405,7 +311,7 @@ describe('JsonEditor', () => {
       value: '{}',
       onValueChange,
     });
-    const editor = requiredInstance(view.getByLabelText('Payload'), HTMLTextAreaElement);
+    const editor = textareaOf(view);
 
     const tabEvent = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
     editor.dispatchEvent(tabEvent);
@@ -442,7 +348,7 @@ describe('JsonEditor', () => {
       value: '{ broken',
       validFeedbackVisible: false,
     });
-    const editor = requiredInstance(view.getByLabelText('Payload'), HTMLTextAreaElement);
+    const editor = textareaOf(view);
     expect(view.getByRole('alert').textContent).toBe('Enter valid JSON.');
 
     await fireEvent.input(editor, { target: { value: '{ "force": true }' } });

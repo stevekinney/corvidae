@@ -37,6 +37,7 @@ import {
   JOURNEY_WORKFLOW_ID,
   RECALL_AGENT_NAME,
 } from './journey-agent.ts';
+import { jsonEditor, jsonEditorSource } from './json-editor-support.ts';
 import { removeWorkflow } from './workflow-support.ts';
 
 test.use({ baseURL: E2E_JOURNEY_URL, viewport: { width: 1280, height: 900 } });
@@ -339,8 +340,8 @@ test('follows the schedule’s link to the workflow editor, changes its cadence 
   await expect(page).toHaveURL(new RegExp(`/workflows/${JOURNEY_WORKFLOW_ID}/edit$`));
 
   const root = page.locator('[data-page="workflow-editor"]');
-  const editor = root.getByRole('textbox', { name: WORKFLOW_COPY.editor.textLabel });
-  const document = JSON.parse(await editor.inputValue()) as Record<string, unknown>;
+  const editor = await jsonEditor(root, WORKFLOW_COPY.editor.textLabel);
+  const document = JSON.parse(await jsonEditorSource(editor)) as Record<string, unknown>;
   expect(document['trigger']).toEqual({ kind: 'schedule', spec: JOURNEY_WORKFLOW_CADENCE });
   document['trigger'] = { kind: 'schedule', spec: '1h' };
   await editor.fill(JSON.stringify(document, null, 2));

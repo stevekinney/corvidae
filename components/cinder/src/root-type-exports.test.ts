@@ -101,8 +101,8 @@ test('root barrel exposes ChartDataTableVisibility from all seven chart componen
 
 // These are authored component contracts, available through the sole package entry.
 test('root exports retain the component contract types formerly exposed through subpaths', () => {
-  expectTypeOf<import('./index.ts').JsonLint>().toEqualTypeOf<
-    import('./components/json-editor/json-editor-enhancement.ts').JsonLint
+  expectTypeOf<import('./index.ts').JsonEditorSchema>().toEqualTypeOf<
+    import('./components/json-editor/index.ts').JsonEditorSchema
   >();
   expectTypeOf<import('./index.ts').CarouselSlideContext>().toEqualTypeOf<
     import('./components/carousel/index.ts').CarouselSlideContext
