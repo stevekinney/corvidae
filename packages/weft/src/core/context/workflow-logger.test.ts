@@ -21,6 +21,7 @@ describe('createWorkflowLogger (shared factory)', () => {
       workflowType: 'demo',
       isReplaying: () => false,
       now: () => 1_700_000_000_000,
+      step: () => 3,
       ...overrides,
     };
   }
@@ -40,6 +41,16 @@ describe('createWorkflowLogger (shared factory)', () => {
     }
     expect(captured.records[0]!.record).toMatchObject({ level: 'debug', message: 'd' });
     expect(captured.records[3]!.record).toMatchObject({ level: 'error', message: 'e' });
+  });
+
+  it('stamps the step the body is about to run, read fresh on each call', () => {
+    let step = 0;
+    const logger = createWorkflowLogger(bindings({ step: () => step }));
+    logger.info('before the first step');
+    step = 2;
+    logger.info('before the third step');
+
+    expect(captured.records.map(({ record }) => record.step)).toEqual([0, 2]);
   });
 
   it('nests caller attributes so they cannot shadow envelope fields', () => {

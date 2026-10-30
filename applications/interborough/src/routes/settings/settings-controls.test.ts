@@ -48,6 +48,8 @@ describe('the controls', () => {
       'retention.tasks': 'literal-or-fields',
       'retention.receipts': 'fields',
       'retention.memory': 'fields',
+      'retention.logs': 'fields',
+      'logs.maximumLinesPerRun': 'number',
       'retention.checkpoints': 'literal-or-fields',
       'sessionInput.sessionBacklogLimit': 'number',
       'sessionInput.principalBacklogLimit': 'number',

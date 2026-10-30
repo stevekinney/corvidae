@@ -18,6 +18,9 @@ import { z } from 'zod';
 
 /** A positive safe integer: `z.number().int()` alone admits integers past 2^53. */
 const positiveInteger = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
+
+/** The most lines a run may keep (COR-1811): Weft's `MAXIMUM_LOG_LINES_PER_RUN_LIMIT`, which a test holds equal. */
+export const MAXIMUM_WORKFLOW_LOG_LINES_PER_RUN = 5000;
 /** A safe integer, 0 or more: Weft reads 0 as "disabled" for its history and payload caps. */
 const nonNegativeInteger = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const nonNegativeMilliseconds = z.number().finite().nonnegative();
@@ -167,6 +170,17 @@ export const settingsSchema = z
       .describe(
         'How long governed memory keeps an episodic memory, in milliseconds, in place of the memory policy’s own window; the next maintenance pass sweeps by it. Unset, the policy decides.',
       ),
+    'retention.logs': z
+      .object({ olderThan: z.number().int().positive() })
+      .strict()
+      .describe(
+        'How long a run keeps its workflow log lines after it last wrote one, in milliseconds; the next maintenance pass sweeps by it. Has effect only on a Bureau that persists workflow logs.',
+      ),
+    'logs.maximumLinesPerRun': positiveInteger
+      .max(MAXIMUM_WORKFLOW_LOG_LINES_PER_RUN)
+      .describe(
+        'How many workflow log lines a run keeps, at most 5000; past it the oldest line is evicted and counted as dropped. Applies to the next line written.',
+      ),
     'retention.checkpoints': z
       .union([
         z.literal('keep-all'),
@@ -282,6 +296,8 @@ export const SETTING_APPLY: Readonly<Record<SettingKey, SettingApply>> = {
   'retention.tasks': 'live',
   'retention.receipts': 'live',
   'retention.memory': 'live',
+  'retention.logs': 'live',
+  'logs.maximumLinesPerRun': 'live',
   'retention.checkpoints': 'live',
   // Live from the next session (owner decision, COR-1710 revision 2026-10-27): a running session
   // keeps the limit its Weft mailbox was built with, which keeps Weft's backlog check atomic.

@@ -523,6 +523,14 @@ describe('Worker log message validation (#529)', () => {
       expect(isValidWorkerLogRecord({ ...validRecord, level: 'trace' })).toBe(false);
     });
 
+    it('accepts an absent or non-negative integer step and rejects any other', () => {
+      expect(isValidWorkerLogRecord({ ...validRecord, step: 0 })).toBe(true);
+      expect(isValidWorkerLogRecord({ ...validRecord, step: 4 })).toBe(true);
+      expect(isValidWorkerLogRecord({ ...validRecord, step: -1 })).toBe(false);
+      expect(isValidWorkerLogRecord({ ...validRecord, step: 1.5 })).toBe(false);
+      expect(isValidWorkerLogRecord({ ...validRecord, step: '1' })).toBe(false);
+    });
+
     it('rejects a record missing required envelope fields', () => {
       // The full-shape validator requires every engine-owned envelope field, because a
       // host sink is typed to receive a complete WorkflowLogRecord.

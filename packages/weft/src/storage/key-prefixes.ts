@@ -52,6 +52,8 @@ export const WEFT_RESERVED_KEY_PREFIXES = [
   'idx:',
   'lease:',
   'liveness:',
+  'log-counter:',
+  'log:',
   'offload:',
   'ownership-mode-marker',
   'op:',

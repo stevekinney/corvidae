@@ -223,3 +223,12 @@ export {
   isWeftFault,
 } from './weft-error.ts';
 export type { WeftErrorCode } from './weft-error.ts';
+export {
+  DEFAULT_MAXIMUM_LOG_LINES_PER_RUN,
+  DEFAULT_MAXIMUM_LOG_LINE_BYTES,
+  MAXIMUM_LOG_LINES_PER_RUN_LIMIT,
+  WORKFLOW_LOG_TRUNCATION_MARKER,
+} from './workflow-log-codec.ts';
+export type { WorkflowLogLine, WorkflowLogsResult } from './workflow-log-codec.ts';
+export { createWorkflowLogStore } from './workflow-log-store.ts';
+export type { WorkflowLogStore, WorkflowLogStoreOptions } from './workflow-log-store.ts';

@@ -49,6 +49,7 @@ import { listCheckpointsOperation } from './list-checkpoints.ts';
 import { listReviewsOperation } from './list-reviews.ts';
 import { listSchedulesOperation } from './list-schedules.ts';
 import { listWorkflowDefinitionsOperation } from './list-workflow-definitions.ts';
+import { listWorkflowLogsOperation } from './list-workflow-logs.ts';
 import { listWorkflowRevisionsOperation } from './list-workflow-revisions.ts';
 import { listWorkflowUpdatesOperation } from './list-workflow-updates.ts';
 import { listWorkflowsOperation } from './list-workflows.ts';
@@ -127,6 +128,7 @@ export const STATIC_OPERATIONS: ReadonlyArray<RegistrableOperation> = [
   timeoutWorkflowOperation,
   updateWorkflowOperation,
   listWorkflowUpdatesOperation,
+  listWorkflowLogsOperation,
   createScheduleOperation,
   updateScheduleOperation,
   getRegistryOperation,

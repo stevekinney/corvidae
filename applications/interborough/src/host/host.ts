@@ -171,6 +171,19 @@ const REMOTE_LOCKED_SETTINGS = {
  */
 export const AUDIT_RETENTION_MILLISECONDS = 90 * 24 * 60 * 60 * 1000;
 
+/**
+ * How long the host keeps a run's workflow log lines after the run last wrote one: 7 days, in
+ * milliseconds (COR-1811). It is the `retention.logs` window the Bureau starts with; a value stored
+ * on the Settings page replaces it.
+ */
+export const WORKFLOW_LOG_RETENTION_MILLISECONDS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * How many workflow log lines a run keeps by default: 500, with the oldest evicted past it
+ * (COR-1811). It is the `logs.maximumLinesPerRun` setting the Bureau starts with.
+ */
+export const WORKFLOW_LOG_MAXIMUM_LINES_PER_RUN = 500;
+
 /** The directory of agent files under the Interborough home: `researcher.md` is the agent `researcher`. */
 export const AGENT_DIRECTORY_NAME = 'agents';
 
@@ -521,7 +534,13 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       storage,
       // The audit trail is kept 90 days (COR-1810); a person changes it on the Settings page, and
       // the stored value then replaces this default.
-      retention: { audit: { olderThan: AUDIT_RETENTION_MILLISECONDS } },
+      retention: {
+        audit: { olderThan: AUDIT_RETENTION_MILLISECONDS },
+        logs: { olderThan: WORKFLOW_LOG_RETENTION_MILLISECONDS },
+      },
+      // The `ctx.log` lines of a workflow are kept with its run (COR-1811), so the run page can show
+      // them: the newest 500 per run, for seven days, both changeable on the Settings page.
+      logs: { maximumLinesPerRun: WORKFLOW_LOG_MAXIMUM_LINES_PER_RUN },
       // Governed memory (COR-1546): an agent remembers across every chat its owner has with it, and
       // the Memory page lists, searches, forgets, and corrects what it remembers.
       memory: createHostMemory(storage),

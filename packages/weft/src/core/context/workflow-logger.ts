@@ -47,6 +47,11 @@ export interface WorkflowLoggerBindings {
   /** Wall-clock millisecond timestamp for the record (never checkpointed). */
   now(): number;
   /**
+   * The index of the durable step the body is about to run, stamped on the record as `step`.
+   * Evaluated per emit with the replay probe, so it tracks the live frontier.
+   */
+  step(): number;
+  /**
    * Optional host sink (`EngineOptions.onLog`). When provided, each non-replayed
    * record is routed here INSTEAD of the console — the host owns where logs go
    * (pino / winston / OpenTelemetry / etc.). When absent, records fall back to the
@@ -74,6 +79,7 @@ function buildLogRecord(
     workflowId: bindings.workflowId,
     workflowType: bindings.workflowType,
     timestamp: bindings.now(),
+    step: bindings.step(),
     ...(attributes !== undefined && { attributes }),
   };
 }
@@ -142,6 +148,7 @@ export function createInlineWorkflowLogger(
       return internals.accumulatedResults?.has(internals.stepIndex) ?? false;
     },
     now: () => getInternals().getNow(),
+    step: () => getInternals().stepIndex,
     ...(sink !== undefined && { sink }),
   });
 }
@@ -199,6 +206,7 @@ export function createWorkerWorkflowLogger(
       return replayState.accumulatedResults.has(step) || replayState.failedOutcomes.has(step);
     },
     now: () => Date.now(),
+    step: () => getReplayState()?.nextStepIndex ?? 0,
     ...(forwardToHost !== undefined && { sink: forwardToHost }),
   });
 }

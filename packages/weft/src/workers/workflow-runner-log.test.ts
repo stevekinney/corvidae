@@ -130,6 +130,31 @@ describe('worker ctx.log', () => {
     expect(recovered.type).toBe('checkpoint');
     expect(recovered.type === 'checkpoint' ? recovered.operationRequest : undefined).toEqual(op2);
     expect(captured.records.map((r) => r.message)).toEqual(['before-2']);
+    // The recovered log is the second step's: it carries the position it was logged at (COR-1811).
+    expect(captured.records.map((r) => r.step)).toEqual([1]);
+  });
+
+  it('stamps each record with the step the body was about to run', async () => {
+    const op = activityOperation('wf-worker-step', 'step1', 'one');
+    async function* loggingWorkflow(ctx: WorkerWorkflowContext) {
+      ctx.log.info('before-first');
+      const first: unknown = yield op;
+      ctx.log.info('after-first');
+      return first;
+    }
+
+    const context = createWorkflowRunnerContext();
+    await handleRunMessage(
+      context,
+      { workflowId: 'wf-worker-step', workflowType: 'step', input: null },
+      () => loggingWorkflow,
+    );
+    await handleResumeMessage(context, { workflowId: 'wf-worker-step', result: 'one-result' });
+
+    expect(captured.records.map((r) => [r.message, r.step])).toEqual([
+      ['before-first', 0],
+      ['after-first', 1],
+    ]);
   });
 
   it('quarantines caller attributes under their own key (no envelope shadowing)', async () => {

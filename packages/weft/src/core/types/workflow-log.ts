@@ -21,12 +21,14 @@ export type WorkflowLogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 /**
  * The structured record a {@link WorkflowLogger} emits for one log call. Envelope
- * fields (`level`, `message`, `workflowId`, `workflowType`, `timestamp`) are
- * engine-owned and always present; caller `attributes` nest under their own key so
- * they can never shadow an envelope field. `timestamp` is wall-clock ms at emit —
- * observability metadata, never checkpointed or replayed. Weft does not retain
- * records for later engine/client/transport queries; a host that needs history
- * persists records received through `EngineOptions.onLog` in its logging system.
+ * fields (`level`, `message`, `workflowId`, `workflowType`, `timestamp`, `step`) are
+ * engine-owned; caller `attributes` nest under their own key so they can never shadow
+ * an envelope field. `timestamp` is wall-clock ms at emit — observability metadata,
+ * never checkpointed or replayed. Weft retains nothing by itself: a host that wants
+ * history persists the records it receives through `EngineOptions.onLog` in its
+ * logging system, or hands the engine a `createWorkflowLogStore` store, which writes
+ * them with the run and serves them through `Engine.getLogs` and the
+ * `weft.workflows.logs.list` operation.
  *
  * @example
  * ```ts
@@ -40,6 +42,13 @@ export interface WorkflowLogRecord {
   readonly workflowId: string;
   readonly workflowType: string;
   readonly timestamp: number;
+  /**
+   * The index of the durable step the workflow body was about to run when it logged: the
+   * number of durable operations it had completed or replayed so far. The engine sets it on
+   * every record it emits, inline and worker-forwarded; a record a host builds itself may
+   * omit it.
+   */
+  readonly step?: number;
   readonly attributes?: Record<string, unknown>;
 }
 

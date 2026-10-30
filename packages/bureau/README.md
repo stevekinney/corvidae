@@ -272,6 +272,7 @@ The host fields attach memory, assets, and the sinks a host wants to hear from.
 | `webhooks` | `WebhookNotifierOptions` | Webhook delivery for pending approvals and parked human waits, with a deep link back to the review. |
 | `onlineEvals` | `OnlineEvalSamplerOptions` | Samples completed live runs through judges, records each score in the audit trail, and fires a webhook on a breach. |
 | `onLog` | `(record: WorkflowLogRecord) => void` | Sink for the `ctx.log` records durable workflow code emits. |
+| `logs` | `{ maximumLinesPerRun? }` | Keeps those records with their runs: the durable engine serves them through `engine.getLogs` and `weft.workflows.logs.list`. A run keeps its newest `maximumLinesPerRun` lines (500 by default) and counts the older ones it evicted as dropped; a message is cut at 2 KiB with a marker. `retention.logs` (`{ olderThan }`, unset keeps them until the run is purged) is swept by each maintenance pass, and the `logs.maximumLinesPerRun` and `retention.logs` settings change both live. The sink is buffered and flushed on shutdown, so a crash can lose the last turn's lines. |
 | `onDiagnostic` | `(diagnostic: BureauDiagnostic) => void` | Sink for Bureau's own operational diagnostics. Omit it to log to the console. |
 | `onEvent` | `(event: BureauEventMap[…]) => void` | Listener on the Bureau's event emitter, registered before recovery so it hears boot-time events. |
 

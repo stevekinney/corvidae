@@ -37,6 +37,13 @@ function isValidLogAttributes(attributes: unknown): boolean {
   return prototype === Object.prototype || prototype === null;
 }
 
+/** Whether `step` is absent or a non-negative safe integer, per the `WorkflowLogRecord.step` contract. */
+function isValidLogStep(step: unknown): boolean {
+  return (
+    step === undefined || (typeof step === 'number' && Number.isSafeInteger(step) && step >= 0)
+  );
+}
+
 /**
  * A candidate `log` outbound message: every field is `unknown` because this lane
  * accepts the message by `type` ALONE and validates the payload separately. Narrowing
@@ -59,7 +66,7 @@ export interface WorkerLogMessageCandidate {
  * the host sink is typed to receive a `WorkflowLogRecord`, this validates the FULL
  * envelope an untrusted worker must supply: `level` (allowed literal), `message`,
  * `workflowId`, `workflowType` (strings), `timestamp` (finite number), and — when
- * present — `attributes` (a plain object). A record missing any required field or
+ * present — `step` (a non-negative integer) and `attributes` (a plain object). A record missing any required field or
  * carrying a wrong-typed field is rejected so a malformed wire payload can never reach
  * a strongly typed host sink.
  */
@@ -73,6 +80,7 @@ export function isValidWorkerLogRecord(record: unknown): record is WorkflowLogRe
     typeof candidate['workflowType'] === 'string' &&
     typeof candidate['timestamp'] === 'number' &&
     Number.isFinite(candidate['timestamp']) &&
+    isValidLogStep(candidate['step']) &&
     isValidLogAttributes(candidate['attributes'])
   );
 }
