@@ -109,7 +109,9 @@ function hasBeforePolicies(
     enforceMutating ||
     enforceDangerous ||
     options.approvalPolicy ||
+    registryPolicy?.beforeAdmission ||
     registryPolicy?.beforeExecute ||
+    toolPolicy?.beforeAdmission ||
     toolPolicy?.beforeExecute,
   );
 }
@@ -123,14 +125,14 @@ async function runBeforeExecute(
 ): Promise<ToolPolicyDecision> {
   const admission = checkBaselineAdmission(context, enforceMutating, enforceDangerous);
   if (admission) return admission;
-  const capability = await consumeCapabilityApproval(context, options);
+  const gate = await evaluateAdmissionPolicies(context, registryPolicy, toolPolicy);
+  if (gate.decision) return gate.decision;
+  const capability = await consumeCapabilityApproval(context, options, gate.pauses.length === 0);
   if (capability.decision) return capability.decision;
-  const ordered = await evaluateOrderedPolicies(
-    context,
-    registryPolicy,
-    toolPolicy,
-    capability.pauses,
-  );
+  const ordered = await evaluateOrderedPolicies(context, registryPolicy, toolPolicy, [
+    ...gate.pauses,
+    ...capability.pauses,
+  ]);
   if (ordered.decision) return ordered.decision;
   return finalizePolicyDecision(ordered.pauses, ordered.capabilities);
 }
@@ -155,16 +157,31 @@ function checkBaselineAdmission(
   }
   return undefined;
 }
+/** The `beforeAdmission` hooks: what stops the call, and what pauses it, before any grant is read. */
+async function evaluateAdmissionPolicies(
+  context: ToolPolicyContext,
+  registryPolicy: ToolPolicyHooks | undefined,
+  toolPolicy: ToolPolicyHooks | undefined,
+): Promise<{ decision?: ToolPolicyDecision; pauses: ToolPolicyDecision[] }> {
+  const pauses: ToolPolicyDecision[] = [];
+  const registry = await resolvePolicyDecision(registryPolicy?.beforeAdmission, context);
+  const registryDecision = appendDecision(pauses, registry, 'registry');
+  if (registryDecision) return { pauses, decision: registryDecision };
+  const tool = await resolvePolicyDecision(toolPolicy?.beforeAdmission, context);
+  const toolDecision = appendDecision(pauses, tool, 'tool');
+  return toolDecision ? { pauses, decision: toolDecision } : { pauses };
+}
 async function consumeCapabilityApproval(
   context: ToolPolicyContext,
   options: PolicyPhaseOptions,
+  grantsApply: boolean,
 ): Promise<{ decision?: ToolPolicyDecision; pauses: ToolPolicyDecision[] }> {
   if (!options.approvalPolicy) return { pauses: [] };
   const result = evaluateCapabilityApproval(context, options.approvalPolicy);
   if (result.status === 'deny')
     return { decision: approvalStatusToDecision(context.toolName, result), pauses: [] };
   if (result.status !== 'ask') return { pauses: [] };
-  const grant = await findGrant(context, options);
+  const grant = grantsApply ? await findGrant(context, options) : undefined;
   if (grant && options.grantStateStore) {
     await reportGrantUse(context, grant, options);
     return { decision: { allow: true }, pauses: [] };

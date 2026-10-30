@@ -261,7 +261,8 @@ function createToolRunnerToolbox(approvalSecret: string, secretResolver?: ToolSe
   // reads runs, and one that changes something waits for an operator.
   return createToolbox([lookupOrder, issueRefund], {
     approvalSecret,
-    // Its own two tools only: the Bureau adds `requestHumanInput` and the like to a run.
+    // Its own two tools only: the Bureau adds `requestHumanInput` and the like to a run. A chat's
+    // permission mode needs no option here: the Bureau hands it to this hook for each call.
     policy: createToolApprovalHooks(undefined, { tools: [lookupOrder.name, issueRefund.name] }),
     ...(secretResolver === undefined ? {} : { secretResolver }),
   });

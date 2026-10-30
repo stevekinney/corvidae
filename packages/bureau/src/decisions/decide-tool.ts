@@ -120,6 +120,11 @@ export function createDecideToolbox(options: DecideToolOptions): AnyToolbox {
   let calls = 0;
   const tool = createTool({
     name: DECIDE_TOOL_NAME,
+    // COR-1947: a read to a chat's permission mode: it asks a model a question and changes nothing
+    // but its own audit record and call count. A version, because Armorer can only raise an
+    // approval for a versioned tool, and `always` asks about it.
+    version: '1.0.0',
+    metadata: { readOnly: true, summary: 'Decide: {question}' },
     description:
       'Ask a model for a typed answer to one question: a yes/no, a choice among options, a rating on a scale, or an object that satisfies a JSON Schema. Returns { ok: true, value, ... } or { ok: false, refusal, message }.',
     input: decideInput,

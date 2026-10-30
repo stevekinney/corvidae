@@ -32,6 +32,8 @@ export function createSkillClientToolbox(
   return {
     activateSkill: createTool({
       name: 'activate_skill',
+      version: '1.0.0',
+      metadata: { readOnly: true },
       description:
         'Activate a skill by name from the available skills, loading its full instructions.',
       input: z.object({
@@ -54,6 +56,8 @@ export function createSkillClientToolbox(
 
     deactivateSkill: createTool({
       name: 'deactivate_skill',
+      version: '1.0.0',
+      metadata: { readOnly: true },
       description: 'Deactivate a skill, removing its instructions from context.',
       input: z.object({
         name: z.string().describe('The skill name to deactivate'),
@@ -70,6 +74,8 @@ export function createSkillClientToolbox(
 
     loadSkillResource: createTool({
       name: 'load_skill_resource',
+      version: '1.0.0',
+      metadata: { readOnly: true },
       description: 'Load a bundled resource from an active skill.',
       input: z.object({
         skillName: z.string().describe('The active skill name'),

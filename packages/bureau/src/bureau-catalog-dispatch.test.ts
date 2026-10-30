@@ -72,6 +72,7 @@ function durableRuntime(claimed: boolean): RuntimeComposition {
     durable: { engine: {}, checkpointStore: {} },
     createBureauInvariantHooks: () => undefined,
     mediaOptionsFor: () => ({}),
+    withChatPermission: (toolbox: unknown) => toolbox,
     claimCatalogRunRecoveryRecord: async () => claimed,
     persistCatalogRunRecoveryRecord: () => {
       throw new Error('a child never overwrites a recovery record');
@@ -127,6 +128,7 @@ describe('createCatalogDispatcher — startChildRun', () => {
       runtime: {
         createBureauInvariantHooks: () => undefined,
         mediaOptionsFor: () => ({}),
+        withChatPermission: (toolbox: unknown) => toolbox,
       } as unknown as RuntimeComposition,
     });
 
@@ -186,6 +188,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
       durable: { engine, checkpointStore },
       createBureauInvariantHooks: () => undefined,
       mediaOptionsFor: () => ({}),
+      withChatPermission: (toolbox: unknown) => toolbox,
       claimCatalogRunRecoveryRecord: async () => true,
       persistCatalogRunRecoveryRecord: async () => {},
     } as unknown as RuntimeComposition;
@@ -239,6 +242,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
       durable: { engine: {}, checkpointStore: {} },
       createBureauInvariantHooks: () => undefined,
       mediaOptionsFor: () => ({}),
+      withChatPermission: (toolbox: unknown) => toolbox,
       claimCatalogRunRecoveryRecord: async () => true,
       persistCatalogRunRecoveryRecord: async () => {},
     } as unknown as RuntimeComposition;
@@ -309,6 +313,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
         durable: { engine, checkpointStore },
         createBureauInvariantHooks: () => undefined,
         mediaOptionsFor: () => ({}),
+        withChatPermission: (toolbox: unknown) => toolbox,
         claimCatalogRunRecoveryRecord: async () => true,
         persistCatalogRunRecoveryRecord: async () => {},
         ...runtimeOverrides,
@@ -433,6 +438,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
         durable: { engine: {}, checkpointStore: {} },
         createBureauInvariantHooks: () => undefined,
         mediaOptionsFor: () => ({}),
+        withChatPermission: (toolbox: unknown) => toolbox,
         claimCatalogRunRecoveryRecord: async () => false,
         loadCatalogRunRecoveryRecord: async () =>
           record === undefined
@@ -537,6 +543,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
       const runtime = {
         durable: { engine, checkpointStore },
         mediaOptionsFor: () => ({}),
+        withChatPermission: (toolbox: unknown) => toolbox,
         // What the runtime composition does for a goal attempt's run.
         createBureauInvariantHooks: (goalAttempt?: { goalRunId: string }) => {
           const hooks = new HookRegistry<OperativeHookMap>({ source: 'bureau' });
@@ -646,6 +653,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
         durable: { engine, checkpointStore },
         createBureauInvariantHooks: () => undefined,
         mediaOptionsFor: () => ({}),
+        withChatPermission: (toolbox: unknown) => toolbox,
         claimCatalogRunRecoveryRecord: async (runId: string, record: Record<string, unknown>) => {
           if (records.has(runId)) return false;
           records.set(runId, { schemaVersion: 1, ...record });
@@ -782,6 +790,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
           durable: { engine, checkpointStore: {} },
           createBureauInvariantHooks: () => undefined,
           mediaOptionsFor: () => ({}),
+          withChatPermission: (toolbox: unknown) => toolbox,
           claimCatalogRunRecoveryRecord: async () => false,
           loadCatalogRunRecoveryRecord: async () => ({ status: 'found', record: claimed }),
           persistCatalogRunRecoveryRecord: async (_id: string, record: unknown) => {
@@ -860,6 +869,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
         durable: { engine: {}, checkpointStore: {} },
         createBureauInvariantHooks: () => undefined,
         mediaOptionsFor: () => ({}),
+        withChatPermission: (toolbox: unknown) => toolbox,
         claimCatalogRunRecoveryRecord: async (_id: string, record: unknown) => {
           claims.push(record);
           return true;
@@ -909,6 +919,7 @@ describe('createCatalogDispatcher — telling Bureau a run settled (COR-1630)', 
   const processLocal = {
     createBureauInvariantHooks: () => undefined,
     mediaOptionsFor: () => ({}),
+    withChatPermission: (toolbox: unknown) => toolbox,
   } as unknown as RuntimeComposition;
 
   async function durableComposition(): Promise<RuntimeComposition> {
@@ -926,6 +937,7 @@ describe('createCatalogDispatcher — telling Bureau a run settled (COR-1630)', 
       durable: { engine, checkpointStore },
       createBureauInvariantHooks: () => undefined,
       mediaOptionsFor: () => ({}),
+      withChatPermission: (toolbox: unknown) => toolbox,
       claimCatalogRunRecoveryRecord: async () => true,
       persistCatalogRunRecoveryRecord: async () => {},
     } as unknown as RuntimeComposition;
@@ -962,6 +974,29 @@ describe('createCatalogDispatcher — telling Bureau a run settled (COR-1630)', 
       .result();
 
     expect(ended).toEqual([expect.objectContaining({ runId: 'step-run-1', principal: 'alice' })]);
+  });
+
+  it('holds a durable run’s toolbox to the mode of its chat, under the run’s own id (COR-1947)', async () => {
+    const governed: string[] = [];
+    const runtime = {
+      ...(await durableComposition()),
+      withChatPermission: (toolbox: unknown, runId: string) => {
+        governed.push(runId);
+        return toolbox;
+      },
+    } as unknown as RuntimeComposition;
+
+    await observed(runtime)
+      .dispatcher.startWorkflowStepRun({
+        agentName: 'worker',
+        input: 'work',
+        runId: 'step-run-2',
+        workflowStep: { workflowId: 'workflow-1', step: 0 },
+        principal: 'alice',
+      })
+      .result();
+
+    expect(governed).toEqual(['step-run-2']);
   });
 
   it('does not report a goal attempt: the goal forwarder releases it, after the goal session holds its rows', async () => {

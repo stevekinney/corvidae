@@ -247,6 +247,17 @@ export type ToolPolicyAfterContext = ToolPolicyContext & {
 
 export type ToolPolicyHooks = {
   /**
+   * Decides a call before anything else can answer it, a reusable grant included. A denial ends the
+   * call there. A pause stands whatever else is decided, and no grant is looked up or spent on the
+   * call, because a grant answers `approvalPolicy` and this is a separate question. Anything else
+   * leaves the call to the rest of the pipeline. Runs after the toolbox's `readOnly`,
+   * `allowMutation` and `allowDangerous` checks, and for a toolbox's or a tool's hooks only when the
+   * tool is called through a toolbox.
+   */
+  beforeAdmission?: (
+    context: ToolPolicyContext,
+  ) => ToolPolicyDecision | boolean | void | Promise<ToolPolicyDecision | boolean | void>;
+  /**
    * `resolvePolicyDecision` (`src/create-tool.ts` and `src/create-toolbox.ts`)
    * tolerates a bare `boolean` return at runtime — `typeof decision ===
    * 'boolean'` is treated as an `allow` shorthand equivalent to `{ allow:
