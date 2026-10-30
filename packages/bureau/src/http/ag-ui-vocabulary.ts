@@ -129,6 +129,22 @@ export type ChildRunSettledAnnouncement = {
 };
 
 /**
+ * Whether `event` is one of the live-only announcements: a memory record written, a wakeup
+ * scheduled, a child run started or settled. A stream announces them when they happen and never
+ * reads them back out of a run's recorded history. (`bureau.asset-part` is not one: it names a part
+ * of a message a replay shows.)
+ */
+export function isLiveAnnouncement(event: Event): boolean {
+  return (
+    event.type === EventType.CUSTOM &&
+    (event.name === MEMORY_WRITTEN_EVENT_NAME ||
+      event.name === WAKEUP_SCHEDULED_EVENT_NAME ||
+      event.name === CHILD_RUN_STARTED_EVENT_NAME ||
+      event.name === CHILD_RUN_SETTLED_EVENT_NAME)
+  );
+}
+
+/**
  * Whether `event` is one of the `REASONING_*` family. Reasoning is the model's chain of thought:
  * it goes to the run's owner, live, and to no one else, and no snapshot or replay holds it.
  */

@@ -403,6 +403,42 @@ describe('bureau.memory-written', () => {
   });
 });
 
+describe('announcements and a retried start', () => {
+  it('are not read back out of the history of a run that has ended', async () => {
+    const memoryStore = createTool({
+      name: 'memory_store',
+      description: 'Store information in memory for later recall',
+      input: z.object({ content: z.string() }),
+      async execute() {
+        return { stored: true, id: 'record-1', collection: 'assistant', memoryClass: 'episodic' };
+      },
+    });
+    await withHarness(
+      {
+        toolbox: createToolbox([memoryStore]) as unknown as Toolbox,
+        script: [
+          {
+            kind: 'respond',
+            response: {
+              content: '',
+              toolCalls: [{ id: 'call-1', name: 'memory_store', arguments: { content: 'x' } }],
+            },
+          },
+          { kind: 'respond', response: { content: 'Remembered.', toolCalls: [] } },
+        ],
+      },
+      async ({ handler }) => {
+        const first = await new FrameReader(await handler(startRequest(runAgentInput()))).rest();
+        const again = await new FrameReader(await handler(startRequest(runAgentInput()))).rest();
+
+        expect(customs(first, 'bureau.memory-written')).toHaveLength(1);
+        expect(customs(again, 'bureau.memory-written')).toEqual([]);
+        expect(typesOf(again)).toContain(EventType.TOOL_CALL_RESULT);
+      },
+    );
+  });
+});
+
 describe('bureau.wakeup-scheduled', () => {
   it('announces a scheduleWakeup call the run made, with the time it is due', async () => {
     const before = Date.now();

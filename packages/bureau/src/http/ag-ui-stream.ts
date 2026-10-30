@@ -62,6 +62,7 @@ import {
 import {
   type AgUiErrorCode,
   type EventStamp,
+  isLiveAnnouncement,
   isReasoningEvent,
   stamp,
 } from './ag-ui-vocabulary.ts';
@@ -468,9 +469,11 @@ export function openRunStream(
    * run's thoughts are not read back out of its event log. The live feed's retained window
    * (`retained`) is part of the live stream for a stream that starts or continues a run, which
    * replays from its beginning because its client holds nothing, and a replay for any other
-   * (an attach, or a reconnect with a cursor), which is sent none.
+   * (an attach, or a reconnect with a cursor), which is sent none. The live-only announcements
+   * (memory, wakeup, child run) are not read back out of history either.
    */
   const mayReceive = (event: Event, source?: 'history' | 'retained'): boolean => {
+    if (source === 'history' && isLiveAnnouncement(event)) return false;
     if (!isReasoningEvent(event)) return true;
     if (request.viewerIsOwner !== true || source === 'history') return false;
     return source !== 'retained' || request.replay === 'beginning';
