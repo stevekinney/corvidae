@@ -113,6 +113,30 @@ describe('serializeActionDetail', () => {
     expect(steps[1]!['content']).toBe('b');
   });
 
+  it('drops each step’s effective context from run.completed, which the step record keeps', () => {
+    const effectiveContext = { baselineDigest: 'abc', messageCount: 1, messages: [], sources: [] };
+    const step = {
+      step: 1,
+      conversation: { snapshot: () => ({}) },
+      content: 'a',
+      planReason: { code: 'pinned', detail: 'x', rejected: [] },
+      effectiveContext,
+      toolCalls: [],
+      results: [],
+      final: true,
+    };
+    const detail = { steps: [step], result: { steps: [step], content: 'done' }, content: 'done' };
+
+    const result = requireRecord(serializeActionDetail('run.completed', detail));
+
+    const [top] = requireRecords(result['steps']);
+    const [nested] = requireRecords(requireRecord(result['result'])['steps']);
+    for (const projected of [top!, nested!]) {
+      expect(projected).not.toHaveProperty('effectiveContext');
+      expect(projected['planReason']).toEqual(step.planReason);
+    }
+  });
+
   it('projects nested run.completed result without conversation graphs', () => {
     const detail = {
       conversation: { snapshot: () => ({}) },

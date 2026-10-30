@@ -185,6 +185,9 @@ const CONTEXT_COMMAND_PARAMETERS = {
   commandId: 'command-1',
   override: { provider: 'anthropic', model: 'claude-opus-5-5' },
   throughMessageId: 'message-1',
+  // Clearing a title the context never had changes nothing, so the rename reaches its own check
+  // without altering the title the transcript scan looks for.
+  title: null,
 } as const;
 
 /** Whether `operation`'s `id` names an agent: a definition operation or a versions operation. */

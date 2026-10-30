@@ -7,6 +7,7 @@
  * - `bureau.assets.uploads.complete` admits the session as an asset and answers only once the
  *   asset has settled: with a descriptor in state `available`, or with a typed fault when the
  *   asset was rejected or quarantined. No call answers while the asset is `pending`.
+ * - `bureau.assets.uploads.abort` discards an open upload session and its chunks (COR-1909).
  * - `bureau.assets.get` reads one asset's descriptor.
  *
  * An upload session admits exactly one asset (COR-1609). A completion claims the session; one that
@@ -20,8 +21,7 @@
  * nothing across owners. `AssetService` authorizes by owner and readers alone, as the owner string
  * the caller's credential names (`ownerOfPrincipal`), the same owner a run's assets and an AG-UI
  * chat's attachments are admitted under. An asset or upload session another owner holds is
- * answered exactly as a missing one. `abortUpload` is deliberately not served in v1: a session
- * that is never completed expires.
+ * answered exactly as a missing one. An upload session never completed or aborted expires.
  *
  * @module assets-operations
  */
@@ -266,7 +266,7 @@ export const assetsUploadsAppendOperation = defineOperation<
   mcpExposable: false,
   summary: 'Append a chunk to an asset upload',
   description:
-    'Appends one base64 chunk to the caller’s own open upload and answers the session with its `receivedBytes`. A chunk that is not base64 is `InvalidParams`; a chunk larger than the handler’s `maxRequestBodyBytes` is refused with 413 before the operation runs. A chunk that would take the session past its declared length, and an empty one, are refused and nothing is stored. A session another owner holds, one that is not open, and one that does not exist are all `NotFound`. An append that loses to another append to the same session, in this process or any other sharing the store, is `Conflict` with `data.reason: "concurrent-write"`: nothing of it is stored, and the session holds only the chunk that won. A session that already holds a chunk at the next index (left by a writer that stored the chunk and died before it recorded it) answers every append `Conflict` until it expires (an embedding host can also abort it through `AssetService.abortUpload`; the management plane does not serve abort). A session holds at most 9999 chunks: the append that would exceed that is refused as `Unprocessable` with `reason: "per-part-limit-exceeded"` and stores nothing, so a client sends chunks large enough to fit its declared length in 9999. Requires `bureau.assets:write`.',
+    'Appends one base64 chunk to the caller’s own open upload and answers the session with its `receivedBytes`. A chunk that is not base64 is `InvalidParams`; a chunk larger than the handler’s `maxRequestBodyBytes` is refused with 413 before the operation runs. A chunk that would take the session past its declared length, and an empty one, are refused and nothing is stored. A session another owner holds, one that is not open, and one that does not exist are all `NotFound`. An append that loses to another append to the same session, in this process or any other sharing the store, is `Conflict` with `data.reason: "concurrent-write"`: nothing of it is stored, and the session holds only the chunk that won. A session that already holds a chunk at the next index (left by a writer that stored the chunk and died before it recorded it) answers every append `Conflict` until it expires (`bureau.assets.uploads.abort` discards it). A session holds at most 9999 chunks: the append that would exceed that is refused as `Unprocessable` with `reason: "per-part-limit-exceeded"` and stores nothing, so a client sends chunks large enough to fit its declared length in 9999. Requires `bureau.assets:write`.',
   destructive: false,
   tags: ['Assets'],
   inputSchema: appendInput,
@@ -290,6 +290,64 @@ export const assetsUploadsAppendOperation = defineOperation<
       service.appendUpload(input.uploadId, caller, bytes),
     );
     return uploadView(session);
+  },
+});
+
+/** An abort found no open session of the caller's to discard. */
+class NothingToAbort extends Error {}
+
+const abortInput = z.object({
+  uploadId: z.string().min(1).describe('The identifier of the upload to abort.'),
+});
+
+const abortOutput = z.object({
+  uploadId: z.string(),
+  /**
+   * `true` when this call discarded an open session, `false` when the caller holds no open session
+   * by this id: it was already aborted, completed, or has expired.
+   */
+  aborted: z.boolean(),
+});
+
+export const assetsUploadsAbortOperation = defineOperation<
+  typeof abortInput,
+  typeof abortOutput,
+  BureauAssetsOperationHost
+>({
+  name: 'bureau.assets.uploads.abort',
+  mcpExposable: false,
+  summary: 'Abort an asset upload',
+  description:
+    'Discards the caller’s own open upload and every chunk appended to it, freeing their storage, and answers `aborted: true`. It is safe to retry: the caller holding no open session by this id (it was already aborted, was completed, has expired, belongs to another owner, or never existed) is answered `aborted: false`, the same answer for each, so it tells a caller nothing about a session it does not own. An abort that loses to a completion or an append in this process or another sharing the store is `Conflict` with `data.reason: "concurrent-write"` and deletes nothing: read the session again before retrying. A completed upload is not undone; the asset it admitted is unaffected. Requires `bureau.assets:write`.',
+  destructive: true,
+  tags: ['Assets'],
+  inputSchema: abortInput,
+  outputSchema: abortOutput,
+  producibleFaults: ['InvalidParams', 'Conflict', 'UnsupportedCapability', 'Unavailable'],
+  access: write,
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    const { uploadId } = input;
+    // A credential that can own nothing holds no session: nothing to discard, like any other miss.
+    if (host.assets !== undefined && ownerOfPrincipal(principal) === undefined) {
+      return { uploadId, aborted: false };
+    }
+    const { service, caller } = assetPrincipalOf(host, principal, 'upload', uploadId);
+    try {
+      await asFault('upload', uploadId, () =>
+        service.abortUpload(uploadId, caller).catch((error: unknown) => {
+          // No open session of the caller's by this id: nothing to discard, and nothing to tell.
+          if (error instanceof AssetNotFoundError) throw new NothingToAbort();
+          throw error;
+        }),
+      );
+    } catch (error) {
+      if (error instanceof NothingToAbort) return { uploadId, aborted: false };
+      throw error;
+    }
+    return { uploadId, aborted: true };
   },
 });
 
@@ -421,5 +479,6 @@ export const bureauAssetsOperations = [
   assetsUploadsCreateOperation,
   assetsUploadsAppendOperation,
   assetsUploadsCompleteOperation,
+  assetsUploadsAbortOperation,
   assetsGetOperation,
 ] as const;

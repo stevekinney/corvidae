@@ -265,6 +265,54 @@ export class RunTripwireEvent extends Event {
   }
 }
 
+/**
+ * Fired when a `mode: 'validate'` guardrail acts on a step and the run goes on: an input detector
+ * blocked or sanitized the request, or an output validator blocked or redacted the reply (or only
+ * warned). It is the validate-mode counterpart of {@link RunTripwireEvent}, which a tripwire
+ * guardrail fires as it halts the run, and a tripwire never fires this one.
+ *
+ * It names the guardrail and how it acted and carries neither the flagged text nor the
+ * guardrail's `detail`, which can quote it, so the event is safe to publish and to record.
+ */
+export class RunGuardrailEvent extends Event {
+  /** The event's type string, `run.guardrail`. */
+  static readonly type = 'run.guardrail' as const;
+  /** The step the guardrail acted on. */
+  readonly step: number;
+  /** The detector or validator that fired. */
+  readonly guardrailName: string;
+  /** What it found, such as `prompt-injection` or `pii`. */
+  readonly category: string;
+  /** Whether it checked the request (`input`) or the reply (`output`). */
+  readonly phase: 'input' | 'output';
+  /** How sure the guardrail was, from 0 to 1. */
+  readonly confidence: number;
+  /**
+   * The action the guardrail is set to take: `block` and `sanitize` for an input, `block` and
+   * `redact` for an output, or `warn`, which lets the step through. A `redact` or `sanitize` that
+   * has nothing to substitute falls back to a block.
+   */
+  readonly action: 'block' | 'warn' | 'sanitize' | 'redact';
+  constructor(
+    step: number,
+    data: {
+      guardrailName: string;
+      category: string;
+      phase: 'input' | 'output';
+      confidence: number;
+      action: 'block' | 'warn' | 'sanitize' | 'redact';
+    },
+  ) {
+    super(RunGuardrailEvent.type);
+    this.step = step;
+    this.guardrailName = data.guardrailName;
+    this.category = data.category;
+    this.phase = data.phase;
+    this.confidence = data.confidence;
+    this.action = data.action;
+  }
+}
+
 export class StepAbortedEvent extends Event {
   static readonly type = 'step.aborted' as const;
   readonly step: number;
@@ -2209,6 +2257,7 @@ export interface OperativeEventClassMap {
   [RunErrorEvent.type]: RunErrorEvent;
   [RunAbortedEvent.type]: RunAbortedEvent;
   [RunTripwireEvent.type]: RunTripwireEvent;
+  [RunGuardrailEvent.type]: RunGuardrailEvent;
   [StepAbortedEvent.type]: StepAbortedEvent;
   [GenerateStartedEvent.type]: GenerateStartedEvent;
   [GenerateCompletedEvent.type]: GenerateCompletedEvent;
@@ -2327,6 +2376,7 @@ export const OPERATIVE_EVENT_TYPES = [
   RunErrorEvent.type,
   RunAbortedEvent.type,
   RunTripwireEvent.type,
+  RunGuardrailEvent.type,
   StepAbortedEvent.type,
   GenerateStartedEvent.type,
   GenerateCompletedEvent.type,

@@ -88,6 +88,8 @@ import {
   StoreActionEvent,
   type Subscription,
   SESSION_OWNER_METADATA_KEY,
+  SESSION_TITLE_METADATA_KEY,
+  SESSION_TITLE_OVERRIDE_LIMIT,
   createSessionHandle,
   ForkThroughMessageError,
   SKILL_TOOL_DENIED_CODE,
@@ -13073,6 +13075,49 @@ async function constructBureau<const D extends AgentDefinitions>(
     return requireSessionStore().load(id);
   }
 
+  // COR-1909: a title a person gave the session lives in its metadata, under a key of its own, so
+  // clearing it is removing the key and the summary reads the derived title again. The write is
+  // one `update()` that does not refresh `updatedAt`: a rename is not activity, and must not
+  // reorder the listing or keep a session from expiring.
+  async function renameSession(
+    id: string,
+    title: string | null,
+    renameOptions?: { readonly incarnation?: string | undefined },
+  ): Promise<AgentSession | undefined> {
+    const sessions = requireSessionStore();
+    if (runAdmissionClosed) {
+      throw new BureauShuttingDownError(
+        'Cannot rename: Bureau is shutting down.',
+        runtimeServices.clock.nowISO(),
+      );
+    }
+    const trimmed = title === null ? null : title.trim();
+    if (trimmed !== null && (trimmed === '' || trimmed.length > SESSION_TITLE_OVERRIDE_LIMIT)) {
+      throw new BureauError(
+        `A session title is 1 to ${SESSION_TITLE_OVERRIDE_LIMIT} characters, or null to clear it`,
+        'BAD_REQUEST',
+      );
+    }
+    return sessions.update(
+      id,
+      (session) => {
+        if (session === undefined) return undefined;
+        if (
+          renameOptions?.incarnation !== undefined &&
+          session.incarnation !== renameOptions.incarnation
+        ) {
+          return undefined;
+        }
+        const { [SESSION_TITLE_METADATA_KEY]: _replaced, ...rest } = session.metadata;
+        return {
+          ...session,
+          metadata: trimmed === null ? rest : { ...rest, [SESSION_TITLE_METADATA_KEY]: trimmed },
+        };
+      },
+      { refreshActivity: false },
+    );
+  }
+
   // AB-228 (Codex P2 review finding, PR #566): two concurrent
   // `deleteSession(id)` calls can both observe a truthy `session` from
   // their own `sessionStore.load(id)` before either has actually deleted
@@ -19068,6 +19113,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     list: listSessions,
     get: getSession,
     delete: deleteSession,
+    rename: renameSession,
     signal: signalSession,
     input: submitSessionInput,
     inputsDeliveredBy: sessionInputsDeliveredBy,
@@ -19098,6 +19144,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     children: childTopology.children,
     eventHistory: readEventHistory,
     subscribeEventHistory: subscribeToEventHistory,
+    steps: async (runId) => (await runtime.durable?.checkpointStore.loadSteps(runId)) ?? [],
     notFound: (message) => new BureauError(message, 'NOT_FOUND'),
     responder: {
       reviews,

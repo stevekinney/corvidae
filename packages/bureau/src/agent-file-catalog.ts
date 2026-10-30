@@ -61,6 +61,7 @@ import {
   parseAgentFile,
 } from './agent-file';
 import { createFileAgentGenerate } from './file-agent-generate';
+import { guardrailsOfPreset } from './guardrail-presets';
 import { type AgentRevisionRecord, createAgentRevisionStore } from './agent-revision-store';
 import {
   type AgentFileSaveOptions,
@@ -445,6 +446,9 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         : { skillDescriptors: definition.skillDescriptors }),
       ...(instructions === '' ? {} : { instructions }),
       ...(Object.keys(tools).length === 0 ? {} : { tools }),
+      ...(definition.guardrails === undefined
+        ? {}
+        : { guardrails: guardrailsOfPreset(definition.guardrails) }),
       ...(definition.stepLimit === undefined ? {} : { maximumSteps: definition.stepLimit }),
       ...(definition.retry === undefined
         ? {}
