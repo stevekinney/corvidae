@@ -471,7 +471,11 @@ export interface WorkflowRuntimeOptions {
    * file's schedule carries it. Absent for a Bureau with no key-value store.
    */
   readonly hookOrigins?:
-    Pick<ScheduleHookOrigins, 'recordWorkflow' | 'clearWorkflow' | 'hookOfWorkflow'> | undefined;
+    | Pick<
+        ScheduleHookOrigins,
+        'recordWorkflow' | 'clearWorkflow' | 'hookOfWorkflow' | 'workflowsWithOrigin'
+      >
+    | undefined;
   /** Registers background work with the Bureau, so a test can wait for it to settle. */
   readonly track?: ((promise: Promise<unknown>, label: string) => void) | undefined;
   /**
@@ -563,6 +567,25 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
   /** Put the schedules in line with the files, leaving the unreadable ones as they are. */
   async function reconcileSchedules(): Promise<void> {
     await reconcileWorkflowSchedules(engine, desiredSchedules(), unreadableWorkflows());
+    await forgetVanishedHookOrigins();
+  }
+
+  /** The identifiers a write is between claiming the hook origin of and listing the file for. */
+  const writingOrigins = new Set<string>();
+
+  /**
+   * Forget the hook origin of every workflow that has no file any more (COR-1952), so a file an
+   * owner adds later under the identifier is not read as a hook's. A file removed by hand never
+   * passes through a write, so this runs with every reconcile. A file listed as invalid or
+   * unreadable still counts as there.
+   */
+  async function forgetVanishedHookOrigins(): Promise<void> {
+    const origins = options.hookOrigins;
+    if (origins === undefined) return;
+    const present = new Set(catalog.list().map((listing) => listing.id));
+    for (const id of await origins.workflowsWithOrigin()) {
+      if (!present.has(id) && !writingOrigins.has(id)) await origins.clearWorkflow(id);
+    }
   }
 
   function desiredSchedules(): Map<string, DesiredWorkflowSchedule> {
@@ -988,12 +1011,15 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     id?: string,
   ): Promise<WorkflowFileWriteResult> {
     const restoreHookOrigin = await claimHookOrigin(type, id, context?.hookOrigin);
+    if (id !== undefined) writingOrigins.add(id);
     let result: WorkflowFileWriteResult;
     try {
       result = await work();
     } catch (error) {
       await restoreHookOrigin();
       throw error;
+    } finally {
+      if (id !== undefined) writingOrigins.delete(id);
     }
     await audit(type, result, context?.actor, previousHash);
     if (applyPending) queueApply();

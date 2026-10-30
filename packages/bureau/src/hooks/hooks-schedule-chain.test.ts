@@ -9,6 +9,9 @@
  * depend on the engine's clock, and the schedules' own interval is long enough never to fire in the
  * test.
  */
+import { rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
 import type { BureauDiagnostic } from '../types.ts';
 import type { EncryptionKey } from '@lostgradient/cryptography';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
@@ -21,11 +24,8 @@ import {
   startWorkflowBureau,
   type WorkflowBureauHarness,
 } from '../testing/workflow-bureau.test-support.ts';
-import { AGENT_STEP } from '../testing/workflow-file-fixtures.test-support.ts';
-import {
-  startWorkflowToolsBureau,
-  type WorkflowToolsHarness,
-} from '../testing/workflow-tools-bureau.test-support.ts';
+import { AGENT_STEP, workflowFileText } from '../testing/workflow-file-fixtures.test-support.ts';
+import { startWorkflowToolsBureau } from '../testing/workflow-tools-bureau.test-support.ts';
 import { workflowScheduleId } from '../workflow-schedule.ts';
 import {
   createReceiver,
@@ -290,6 +290,31 @@ describe('the schedule a tool makes with the run that is calling it', () => {
     const state = await probe.engine.get(instanceId);
     expect(state?.input).toMatchObject({ kind: 'schedule' });
   });
+});
+
+describe('a workflow file that is gone', () => {
+  it.each(['deleted through the workflow operations', 'removed from the directory by hand'])(
+    'leaves nothing of its hook origin for a file added by hand under its identifier: %s',
+    async (how) => {
+      const probe = await probeWithFirstSchedule();
+      if (how.startsWith('deleted')) {
+        const detail = await probe.workflows.get('probe-1');
+        await probe.workflows.delete('probe-1', { expectedHash: detail!.hash! });
+      } else {
+        await rm(join(probe.harness.workflowsPath, 'probe-1.json'));
+        await probe.workflows.refresh();
+      }
+      // An owner adds the file again, not through a run, and its schedule fires.
+      await writeFile(
+        join(probe.harness.workflowsPath, 'probe-1.json'),
+        workflowFileText('probe-1', SCHEDULED),
+      );
+      await probe.workflows.refresh();
+      await probe.engine.triggerSchedule(workflowScheduleId('probe-1', 2));
+      const decided = await probe.deliveries(3);
+      expect(decided.at(-1)).toMatchObject({ status: 'delivered' });
+    },
+  );
 });
 
 describe('a reopened Bureau', () => {

@@ -28,8 +28,10 @@
  * - A run the schedule fires is an instance whose trigger, or a task whose origin, names the
  *   schedule. The walk reads the record for it, so the fire counts as a hook's run and so does
  *   everything beneath it. A schedule with no record (one an owner made) is not a hook's.
- * - A hook-started run's schedules therefore cannot start a start-workflow hook, however short
- *   their interval, and the chain stays one start deep through them too.
+ * - The fires of a hook-started run's schedule therefore start no start-workflow hook, however short
+ *   the interval, and the chain stays one start deep through them too. `schedule.missed` is the
+ *   exception: it is an `external` kind that names no run, so a hook listing it still acts on a
+ *   missed occurrence of such a schedule (it needs downtime, and starts nothing more by itself).
  *
  * @module hook-origin
  */
