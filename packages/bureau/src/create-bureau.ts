@@ -101,6 +101,7 @@ import {
   isFailureFinishReason,
   readDurableRunResult,
   humanInputSchemaOf,
+  sessionOwnerOf,
 } from '@lostgradient/operative';
 import {
   SkillActivatedEvent,
@@ -606,6 +607,7 @@ import {
   buildContextWindow,
   type ContextWindowTool,
   type ReportedStepUsage,
+  sizeManagedAssets,
 } from './contexts/context-window';
 import { createContexts } from './contexts/create-contexts';
 import { createTaskHandle, createTasks, seedsConversation } from './tasks/create-tasks';
@@ -15077,18 +15079,25 @@ async function constructBureau<const D extends AgentDefinitions>(
               (named.provider === null || row.provider === named.provider),
           );
 
-    // Newest first; a context's latest step is the last step of its newest task that has one.
+    // Newest first; a context's latest step is the last step of its newest task that has one, so
+    // the scan pages past tasks that ended before taking a step until one is found.
     const latest = await tasks.enumerate({ contextId, limit: 5, offset: 0 });
     let reported: ReportedStepUsage | undefined;
-    for (const task of latest.tasks) {
-      const liveStep = store.getRun(task.id)?.steps.at(-1);
-      // A run this process no longer holds keeps its steps in the durable checkpoint.
-      const checkpointed =
-        liveStep === undefined ? await runtime.durable?.checkpointStore.loadSteps(task.id) : [];
-      const step = liveStep ?? checkpointed?.at(-1);
-      if (step === undefined) continue;
-      reported = step.usage;
-      break;
+    let foundStep = false;
+    for (let page = latest; ;) {
+      for (const task of page.tasks) {
+        const liveStep = store.getRun(task.id)?.steps.at(-1);
+        // A run this process no longer holds keeps its steps in the durable checkpoint.
+        const checkpointed =
+          liveStep === undefined ? await runtime.durable?.checkpointStore.loadSteps(task.id) : [];
+        const step = liveStep ?? checkpointed?.at(-1);
+        if (step === undefined) continue;
+        reported = step.usage;
+        foundStep = true;
+        break;
+      }
+      if (foundStep || page.nextOffset === null) break;
+      page = await tasks.enumerate({ contextId, limit: 5, offset: page.nextOffset });
     }
 
     const liveToolbox = latest.tasks.map((task) => runToolboxesByRunId.get(task.id)).find(Boolean);
@@ -15113,6 +15122,22 @@ async function constructBureau<const D extends AgentDefinitions>(
     const current = await sessions.load(contextId);
     if (current?.incarnation !== session.incarnation) return undefined;
 
+    // A managed asset is sized from its descriptor as the session's owner, so no bytes are read.
+    const assetService = assetServiceHolder.current;
+    const owner = ownerOrLocal(sessionOwnerOf(session.metadata) ?? undefined);
+    const resolvedSources =
+      assetService === undefined
+        ? undefined
+        : await sizeManagedAssets(session.conversationHistory, async (assetId) => {
+            const descriptor = await assetService.inspect(assetId, { id: owner });
+            return {
+              state: descriptor.state,
+              custody: descriptor.custody,
+              mediaType: descriptor.mediaType,
+              byteLength: descriptor.byteLength,
+            };
+          });
+
     return buildContextWindow({
       history: session.conversationHistory,
       instructions: agent === undefined ? undefined : instructionsOf(agent),
@@ -15120,6 +15145,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       model,
       catalog,
       reported,
+      resolvedSources,
     });
   }
 

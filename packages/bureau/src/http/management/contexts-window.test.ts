@@ -14,6 +14,7 @@ import { MemoryStorage } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import { waitForCondition, waitForTaskState } from '../../test';
+import { pngBytes } from '../../testing/asset-fixtures.test-support.ts';
 import type { ContextWindowReport } from '../../types.ts';
 import { modelsOf, noopTool, OPUS_5, OPUS_5_5 } from '../../testing/model-override.test-support.ts';
 import {
@@ -245,6 +246,81 @@ describe('bureau.contexts.window', () => {
       expect(report.usedReported).toBe(40 + 900 + 60);
     } finally {
       await second.dispose();
+    }
+  });
+
+  it('sizes a managed-asset attachment from the asset’s descriptor, reading no bytes', async () => {
+    await withBureau(async (opened) => {
+      const png = pngBytes(4, 3, 3 * 1024);
+      const admission = await opened.bureau.assets!.admit(
+        { source: { kind: 'inline', bytes: png }, declaredMediaType: 'image/png' },
+        { id: OWNER.alice },
+      );
+      await admission.work.result();
+      const run = await opened.bureau.tasks.start(
+        'chooser',
+        [
+          { type: 'text', text: 'Which one?' },
+          { type: 'image', source: { kind: 'managed-asset', assetId: admission.assetId } },
+        ],
+        { principal: OWNER.alice },
+      );
+      await waitForTaskState(opened.bureau, run.id);
+      await waitForCondition(async () => {
+        const session = await opened.bureau.contexts.get(run.contextId);
+        return Object.values(session?.conversationHistory.messages ?? {}).some(
+          (message) => message.role === 'assistant',
+        );
+      }, 'session saved');
+
+      const report = reportOf(await windowOf(opened, run.contextId));
+
+      const attachments = report.categories.find((category) => category.name === 'attachments');
+      expect(attachments?.tokens).toBeGreaterThan(0);
+      expect(report.usedEstimated).toBe(
+        report.categories.reduce((total, category) => total + category.tokens, 0),
+      );
+    });
+  });
+
+  it('finds the latest recorded step past a page of newer runs that took none', async () => {
+    let calls = 0;
+    const opened = await openBureau({
+      agents: {
+        flaky: createAgent({
+          name: 'flaky',
+          instructions: 'You are flaky.',
+          generate: withBackendDescriptors(async () => {
+            // Only the first call answers; every later call fails before it takes a step.
+            calls += 1;
+            if (calls > 1) throw new Error('the provider is down');
+            return {
+              content: 'Done.',
+              toolCalls: [],
+              usage: { prompt: 41, completion: 6, total: 47 },
+            };
+          }, [SMALL]),
+        }),
+      },
+      bureauOptions: { models: modelsOf([SMALL, LARGE]) },
+    });
+    try {
+      const first = await opened.bureau.tasks.start('flaky', 'work', { principal: OWNER.alice });
+      await waitForTaskState(opened.bureau, first.id);
+      // Six newer runs end in error before any step: more than the five the first page holds.
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        const failed = await opened.bureau.tasks.start('flaky', `fail ${attempt}`, {
+          contextId: first.contextId,
+          principal: OWNER.alice,
+        });
+        await waitForTaskState(opened.bureau, failed.id);
+      }
+
+      const report = reportOf(await windowOf(opened, first.contextId));
+
+      expect(report.usedReported).toBe(41);
+    } finally {
+      await opened.dispose();
     }
   });
 

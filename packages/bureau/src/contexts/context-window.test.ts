@@ -3,14 +3,18 @@
  * `usedEstimated`, the instructions counted once, the provider's own count labeled as such.
  */
 import { createModelCatalog, MEMORY_EVIDENCE_METADATA_KEY } from '@lostgradient/operative';
-import { Conversation } from 'conversationalist';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { compactConversation, Conversation, resolvedSourceKey } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
 
+import { AssetNotFoundError } from '../assets/errors.ts';
 import {
   buildContextWindow,
   type ContextWindowInputs,
   estimateText,
+  type ManagedAssetFacts,
   reportedInputTokens,
+  sizeManagedAssets,
 } from './context-window.ts';
 
 const catalog = createModelCatalog({ now: () => '2026-10-30T00:00:00.000Z' }).descriptors;
@@ -162,5 +166,159 @@ describe('buildContextWindow limits and reported usage', () => {
     // A counter read back from storage that is not a number is ignored, and a missing prompt is none.
     expect(reportedInputTokens({ prompt: 5, cacheReadTokens: '9' as unknown as number })).toBe(5);
     expect(reportedInputTokens({ prompt: Number.NaN })).toBeNull();
+  });
+});
+
+describe('buildContextWindow tool results, compaction and managed assets', () => {
+  it('counts a tool result’s content, which sits beside its parts and not in the row’s content', () => {
+    const conversation = new Conversation();
+    const payload = 'x'.repeat(40_000);
+    const call = (id: string) =>
+      conversation.appendMessages({
+        role: 'tool-call',
+        content: '',
+        toolCall: { id, name: 'lookup', arguments: {} },
+      });
+    const callTokens = estimateText(JSON.stringify({ name: 'lookup', arguments: {} }));
+    call('call-1');
+    conversation.appendMessages({
+      role: 'tool-result',
+      content: '',
+      toolResult: { callId: 'call-1', outcome: 'success', content: payload },
+    });
+    call('call-2');
+    conversation.appendMessages({
+      role: 'tool-result',
+      content: '',
+      toolResult: { callId: 'call-2', outcome: 'success', content: { rows: [1, 2, 3] } },
+    });
+    // With parts, `content` is the application value no provider sends: only the parts count.
+    call('call-3');
+    conversation.appendMessages({
+      role: 'tool-result',
+      content: '',
+      toolResult: {
+        callId: 'call-3',
+        outcome: 'success',
+        content: 'y'.repeat(40_000),
+        parts: [{ type: 'text', text: 'short' }],
+      },
+    });
+
+    const report = buildContextWindow(inputs({ history: conversation.current }));
+
+    expect(tokensOf(report, 'messages')).toBe(
+      3 * callTokens +
+        estimateText(payload) +
+        estimateText(JSON.stringify({ rows: [1, 2, 3] })) +
+        estimateText('short'),
+    );
+    expect(tokensOf(report, 'messages')).toBeGreaterThan(10_000);
+  });
+
+  it('counts a compaction summary as conversation, so system stays the instructions', async () => {
+    const conversation = new Conversation();
+    conversation.appendSystemMessage('You are terse.');
+    for (let turn = 0; turn < 6; turn += 1) {
+      conversation.appendMessages({ role: 'user', content: `Question ${turn}?` });
+      conversation.appendMessages({ role: 'assistant', content: `Answer ${turn}.` });
+    }
+    const { conversation: compacted, result } = await compactConversation(
+      conversation.current,
+      async () => 'The user asked six questions about tea.',
+      { preserveRecentCount: 2 },
+    );
+    expect(result.compacted).toBe(true);
+    const summaryRow = Object.values(compacted.messages).find(
+      (row) => row.metadata['compactionSummary'] === true,
+    );
+    expect(summaryRow?.role).toBe('system');
+
+    const report = buildContextWindow(inputs({ history: compacted }));
+
+    expect(tokensOf(report, 'system')).toBe(estimateText('You are terse.'));
+    expect(tokensOf(report, 'messages')).toBeGreaterThanOrEqual(
+      estimateText('The user asked six questions about tea.'),
+    );
+  });
+
+  describe('a managed-asset attachment', () => {
+    const managedImage = (assetId: string) => ({
+      type: 'image' as const,
+      source: { kind: 'managed-asset' as const, assetId },
+      mimeType: 'image/png',
+    });
+    const held = (overrides: Partial<ManagedAssetFacts> = {}): ManagedAssetFacts => ({
+      state: 'available',
+      custody: 'bureau',
+      mediaType: 'image/png',
+      byteLength: 3 * 1024,
+      ...overrides,
+    });
+
+    function conversationWith(...assetIds: string[]) {
+      const conversation = new Conversation();
+      conversation.appendMessages({
+        role: 'user',
+        content: [{ type: 'text', text: 'Look.' }, ...assetIds.map(managedImage)],
+      });
+      return conversation;
+    }
+
+    it('costs nothing without a resolved source, as its stored form is one no backend accepts', () => {
+      const report = buildContextWindow(inputs({ history: conversationWith('asset-1').current }));
+      expect(tokensOf(report, 'attachments')).toBe(0);
+    });
+
+    it('is sized from the descriptor’s byte length, as the inline bytes of the same size are', async () => {
+      const conversation = conversationWith('asset-1');
+      const inspected: string[] = [];
+      const resolvedSources = await sizeManagedAssets(conversation.current, async (assetId) => {
+        inspected.push(assetId);
+        return held();
+      });
+
+      const report = buildContextWindow(inputs({ history: conversation.current, resolvedSources }));
+
+      // Three KiB at the catalog's two tokens per KiB, as the inline image above.
+      expect(tokensOf(report, 'attachments')).toBe(6);
+      expect(inspected).toEqual(['asset-1']);
+      const [message] = Object.values(conversation.current.messages);
+      expect(resolvedSources?.has(resolvedSourceKey(message!.id, 1))).toBe(true);
+    });
+
+    it('inspects each asset once and costs one that is gone or not available at nothing', async () => {
+      const conversation = conversationWith('asset-1', 'asset-1', 'gone', 'pending');
+      const inspected: string[] = [];
+      const resolvedSources = await sizeManagedAssets(conversation.current, async (assetId) => {
+        inspected.push(assetId);
+        if (assetId === 'gone') throw new AssetNotFoundError(assetId);
+        return assetId === 'pending' ? held({ state: 'pending' }) : held();
+      });
+
+      const report = buildContextWindow(inputs({ history: conversation.current, resolvedSources }));
+
+      expect(inspected).toEqual(['asset-1', 'gone', 'pending']);
+      expect(tokensOf(report, 'attachments')).toBe(12);
+    });
+
+    it('lets an unexpected failure of the asset store through', async () => {
+      const failure = await throwingRejectionOf(
+        sizeManagedAssets(conversationWith('asset-1').current, async () => {
+          throw new Error('the store is down');
+        }),
+      );
+      expect(failure).toThrow('the store is down');
+    });
+
+    it('is undefined for a history with no managed asset', async () => {
+      const conversation = new Conversation();
+      conversation.appendMessages({ role: 'user', content: 'plain' });
+      expect(
+        await sizeManagedAssets(conversation.current, async () => {
+          throw new Error('not called');
+        }),
+      ).toBeUndefined();
+    });
   });
 });

@@ -21,9 +21,17 @@ import {
   getMessages,
   isMediaContent,
   type Message,
+  type ResolvedMediaSource,
+  type ResolvedMediaSources,
+  resolvedSourceKey,
   simpleTokenEstimator,
 } from 'conversationalist';
 
+import {
+  AssetAccessDeniedError,
+  AssetNotFoundError,
+  AssetUnavailableError,
+} from '../assets/errors';
 import type {
   ContextWindowCategory,
   ContextWindowCategoryName,
@@ -71,6 +79,12 @@ export interface ContextWindowInputs {
   readonly catalog: readonly BackendDescriptor[];
   /** The last step's reported usage, or `undefined` when the provider reported none. */
   readonly reported: ReportedStepUsage | undefined;
+  /**
+   * Media sources a resolver projected to a form the model accepts, keyed as
+   * {@link resolvedSourceKey} does (see {@link sizeManagedAssets}). A part without an entry is
+   * costed from the form it is stored in.
+   */
+  readonly resolvedSources?: ResolvedMediaSources | undefined;
 }
 
 /** A row that carries no stored message, so the shared estimator can size a bare string. */
@@ -103,13 +117,24 @@ function isMemoryRow(message: Message): boolean {
   return Object.hasOwn(message.metadata, MEMORY_EVIDENCE_METADATA_KEY);
 }
 
+/** The summary compaction writes in place of the rows it replaced: conversation, not instructions. */
+function isCompactionSummary(message: Message): boolean {
+  return message.metadata['compactionSummary'] === true;
+}
+
 function isInstructionRow(message: Message): boolean {
-  return (message.role === 'system' || message.role === 'developer') && !isMemoryRow(message);
+  return (
+    (message.role === 'system' || message.role === 'developer') &&
+    !isMemoryRow(message) &&
+    !isCompactionSummary(message)
+  );
 }
 
 /**
- * The tokens a message costs: its content and tool result through the shared estimator, and the
- * call it carries, which that estimator does not read.
+ * The tokens a message costs: its content and the parts of its tool result through the shared
+ * estimator, plus what that estimator does not read: the call a row carries, and a tool result's
+ * own `content`. With parts, `content` is the application value beside them, which no provider
+ * sends, so it is counted only when the result has none.
  */
 function messageTokens(message: Message): number {
   const call =
@@ -118,7 +143,84 @@ function messageTokens(message: Message): number {
       : estimateText(
           JSON.stringify({ name: message.toolCall.name, arguments: message.toolCall.arguments }),
         );
-  return simpleTokenEstimator(message) + call;
+  const result =
+    message.toolResult === undefined || message.toolResult.parts !== undefined
+      ? 0
+      : estimateText(
+          typeof message.toolResult.content === 'string'
+            ? message.toolResult.content
+            : JSON.stringify(message.toolResult.content),
+        );
+  return simpleTokenEstimator(message) + call + result;
+}
+
+/** What {@link sizeManagedAssets} asks of the asset service for one asset. */
+export interface ManagedAssetFacts {
+  readonly state: string;
+  readonly custody: 'bureau' | 'provider-fetch';
+  readonly mediaType: string | undefined;
+  readonly byteLength: number | undefined;
+}
+
+/**
+ * The sources a run would resolve for the `managed-asset` parts of `history`, sized from the
+ * asset's own descriptor (`AssetService.inspect`) instead of its bytes, so the report reads no
+ * asset content. A Bureau-held asset is an `inline` source of the descriptor's byte length, and a
+ * provider-fetch one a `remote-url` of unknown size, as `createAssetContentSourceResolver` makes
+ * them; the source's data is a placeholder because only its form and length are costed. An asset
+ * that is gone, not available, or not readable by `inspect`'s principal costs nothing, as a part
+ * a run could not resolve sends nothing.
+ */
+export async function sizeManagedAssets(
+  history: ConversationHistory,
+  inspect: (assetId: string) => Promise<ManagedAssetFacts>,
+): Promise<ResolvedMediaSources | undefined> {
+  const sources = new Map<string, ResolvedMediaSource>();
+  const facts = new Map<string, Promise<ManagedAssetFacts | undefined>>();
+  const factsOf = (assetId: string): Promise<ManagedAssetFacts | undefined> => {
+    let known = facts.get(assetId);
+    if (known === undefined) {
+      known = inspect(assetId).catch((error: unknown) => {
+        if (
+          error instanceof AssetNotFoundError ||
+          error instanceof AssetAccessDeniedError ||
+          error instanceof AssetUnavailableError
+        ) {
+          return undefined;
+        }
+        throw error;
+      });
+      facts.set(assetId, known);
+    }
+    return known;
+  };
+  for (const message of getMessages(history)) {
+    const groups = [
+      typeof message.content === 'string' ? [] : message.content,
+      message.toolResult?.parts ?? [],
+    ];
+    // Both groups are keyed by their own index, as `attachmentTokens` and the run's resolver do.
+    for (const parts of groups) {
+      for (const [partIndex, part] of parts.entries()) {
+        if (!isMediaContent(part) || part.source.kind !== 'managed-asset') continue;
+        const asset = await factsOf(part.source.assetId);
+        if (asset === undefined || asset.state !== 'available') continue;
+        sources.set(resolvedSourceKey(message.id, partIndex), {
+          outcome: 'resolved',
+          source:
+            asset.custody === 'provider-fetch'
+              ? { kind: 'remote-url', url: `asset:${part.source.assetId}` }
+              : { kind: 'inline', data: '', encoding: 'base64' },
+          ...(asset.mediaType === undefined ? {} : { mimeType: asset.mediaType }),
+          ...(asset.custody === 'bureau' && asset.byteLength !== undefined
+            ? { byteLength: asset.byteLength }
+            : {}),
+          safety: 'unknown',
+        });
+      }
+    }
+  }
+  return sources.size === 0 ? undefined : sources;
 }
 
 /**
@@ -128,8 +230,9 @@ function messageTokens(message: Message): number {
 function attachmentTokens(
   messages: readonly Message[],
   descriptors: readonly BackendDescriptor[],
+  resolvedSources: ResolvedMediaSources | undefined,
 ): number {
-  const estimate = createCatalogMediaCostEstimator(descriptors);
+  const estimate = createCatalogMediaCostEstimator(descriptors, { resolvedSources });
   let tokens = 0;
   for (const message of messages) {
     const parts = typeof message.content === 'string' ? [] : message.content;
@@ -184,6 +287,7 @@ export function buildContextWindow(inputs: ContextWindowInputs): ContextWindowRe
     attachments: attachmentTokens(
       messages,
       inputs.model === undefined ? inputs.catalog : [inputs.model],
+      inputs.resolvedSources,
     ),
   };
   const categories: ContextWindowCategory[] = CONTEXT_WINDOW_CATEGORIES.map((name) => ({
