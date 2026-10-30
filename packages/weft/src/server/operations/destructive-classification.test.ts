@@ -101,6 +101,7 @@ const EXPECTED_DESTRUCTIVE: Readonly<Record<string, boolean>> = {
   'weft.workflows.events': false,
   'weft.updates.result.get': false,
   'weft.workflows.updates.list': false,
+  'weft.workflows.logs.list': false,
   'weft.retention.get': false,
   'weft.reviews.get': false,
   'weft.reviews.list': false,

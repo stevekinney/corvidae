@@ -18,6 +18,9 @@ import { z } from 'zod';
 
 /** A positive safe integer: `z.number().int()` alone admits integers past 2^53. */
 const positiveInteger = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
+
+/** The most lines a run may keep (COR-1811): Weft's `MAXIMUM_LOG_LINES_PER_RUN_LIMIT`, which a test holds equal. */
+export const MAXIMUM_WORKFLOW_LOG_LINES_PER_RUN = 5000;
 /** A safe integer, 0 or more: Weft reads 0 as "disabled" for its history and payload caps. */
 const nonNegativeInteger = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const nonNegativeMilliseconds = z.number().finite().nonnegative();
@@ -167,6 +170,12 @@ export const settingsSchema = z
       .describe(
         'How long governed memory keeps an episodic memory, in milliseconds, in place of the memory policy’s own window; the next maintenance pass sweeps by it. Unset, the policy decides.',
       ),
+    'retention.logs': z
+      .object({ olderThan: z.number().int().positive() })
+      .strict()
+      .describe(
+        'How long a finished run keeps its workflow log lines after it last wrote one, in milliseconds; the next maintenance pass sweeps by it. A run that is still active keeps its lines. Has effect only on a Bureau that persists workflow logs.',
+      ),
     'retention.checkpoints': z
       .union([
         z.literal('keep-all'),
@@ -178,6 +187,11 @@ export const settingsSchema = z
           .strict(),
       ])
       .describe('How many checkpoints of a durable run are kept.'),
+    'logs.maximumLinesPerRun': positiveInteger
+      .max(MAXIMUM_WORKFLOW_LOG_LINES_PER_RUN)
+      .describe(
+        'How many workflow log lines a run keeps, at most 5000; past it the oldest line is evicted and counted as dropped. Applies to the next line written.',
+      ),
     'sessionInput.sessionBacklogLimit': positiveInteger.describe(
       'How many undelivered inputs one context may hold. Live from the next session: a session started after the change admits against the new limit, and a running session keeps the limit its mailbox was built with.',
     ),
@@ -282,7 +296,9 @@ export const SETTING_APPLY: Readonly<Record<SettingKey, SettingApply>> = {
   'retention.tasks': 'live',
   'retention.receipts': 'live',
   'retention.memory': 'live',
+  'retention.logs': 'live',
   'retention.checkpoints': 'live',
+  'logs.maximumLinesPerRun': 'live',
   // Live from the next session (owner decision, COR-1710 revision 2026-10-27): a running session
   // keeps the limit its Weft mailbox was built with, which keeps Weft's backlog check atomic.
   'sessionInput.sessionBacklogLimit': 'live',

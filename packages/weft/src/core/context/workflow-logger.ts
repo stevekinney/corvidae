@@ -44,8 +44,19 @@ export interface WorkflowLoggerBindings {
    * step. Evaluated lazily at each emit call so it reflects the live frontier.
    */
   isReplaying(): boolean;
+  /**
+   * Whether the call sits in front of the operation a continued run was parked on, which its
+   * earlier execution already reached and logged. Such a record is still delivered, marked
+   * `replayed`. Evaluated per emit, like `isReplaying`.
+   */
+  isRepeatOfEarlierExecution?(): boolean;
   /** Wall-clock millisecond timestamp for the record (never checkpointed). */
   now(): number;
+  /**
+   * The index of the durable step the body is about to run, stamped on the record as `step`.
+   * Evaluated per emit with the replay probe, so it tracks the live frontier.
+   */
+  step(): number;
   /**
    * Optional host sink (`EngineOptions.onLog`). When provided, each non-replayed
    * record is routed here INSTEAD of the console — the host owns where logs go
@@ -74,6 +85,8 @@ function buildLogRecord(
     workflowId: bindings.workflowId,
     workflowType: bindings.workflowType,
     timestamp: bindings.now(),
+    step: bindings.step(),
+    ...(bindings.isRepeatOfEarlierExecution?.() === true && { replayed: true }),
     ...(attributes !== undefined && { attributes }),
   };
 }
@@ -123,7 +136,10 @@ export function createWorkflowLogger(bindings: WorkflowLoggerBindings): Workflow
  * the RAW nullable `internals.accumulatedResults` field (not the allocating
  * `ctx.accumulatedResults` getter) and the live `internals.stepIndex` without
  * incrementing it — `ctx.log` consumes no durable position, the same step-neutral
- * peek `waitForSignal` makes. `getInternals` is read per emit so the probe tracks
+ * peek `waitForSignal` makes. A relaunched run (`internals.replayingToPark`) repeats
+ * its earlier execution until its body first yields an operation: the operation it was parked
+ * on is not cached, but that execution already ran the body up to it and logged what sits in
+ * front, so those records are delivered marked `replayed`. `getInternals` is read per emit so the probe tracks
  * the frontier as durable ops advance `stepIndex`. The `sink` is captured by value:
  * `EngineOptions.onLog` is fixed at engine construction, so it never changes for the
  * life of the context.
@@ -131,7 +147,10 @@ export function createWorkflowLogger(bindings: WorkflowLoggerBindings): Workflow
 export function createInlineWorkflowLogger(
   workflowId: string,
   workflowType: string,
-  getInternals: () => Pick<ContextInternals, 'accumulatedResults' | 'stepIndex' | 'getNow'>,
+  getInternals: () => Pick<
+    ContextInternals,
+    'accumulatedResults' | 'replayingToPark' | 'stepIndex' | 'getNow'
+  >,
   sink?: (record: WorkflowLogRecord) => void,
 ): WorkflowLogger {
   return createWorkflowLogger({
@@ -141,7 +160,9 @@ export function createInlineWorkflowLogger(
       const internals = getInternals();
       return internals.accumulatedResults?.has(internals.stepIndex) ?? false;
     },
+    isRepeatOfEarlierExecution: () => getInternals().replayingToPark,
     now: () => getInternals().getNow(),
+    step: () => getInternals().stepIndex,
     ...(sink !== undefined && { sink }),
   });
 }
@@ -156,6 +177,11 @@ export function createInlineWorkflowLogger(
 export interface WorkerLoggerReplayState {
   readonly accumulatedResults: ReadonlyMap<number, unknown>;
   readonly failedOutcomes: ReadonlyMap<number, unknown>;
+  /**
+   * The replay signature of every step the run reached, including the pending one it was parked
+   * on when it was checkpointed. A pending step has a signature but no cached outcome.
+   */
+  readonly signatures: ReadonlyMap<number, unknown>;
   readonly nextStepIndex: number;
 }
 
@@ -198,7 +224,14 @@ export function createWorkerWorkflowLogger(
       const step = replayState.nextStepIndex;
       return replayState.accumulatedResults.has(step) || replayState.failedOutcomes.has(step);
     },
+    // A signature without an outcome is the operation the previous execution parked on: it
+    // logged what sits in front of it before it parked, so a relaunch repeats those calls.
+    isRepeatOfEarlierExecution: () => {
+      const replayState = getReplayState();
+      return replayState !== undefined && replayState.signatures.has(replayState.nextStepIndex);
+    },
     now: () => Date.now(),
+    step: () => getReplayState()?.nextStepIndex ?? 0,
     ...(forwardToHost !== undefined && { sink: forwardToHost }),
   });
 }

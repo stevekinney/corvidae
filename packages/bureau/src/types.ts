@@ -362,6 +362,29 @@ export interface BureauRetentionOptions {
    * `createBureau` throws `BureauError(..., 'BAD_REQUEST')`.
    */
   memory?: BureauMemoryRetentionOption | undefined;
+  /**
+   * COR-1811 — how long a finished run's persisted `ctx.log` lines are kept after the run last
+   * wrote one, swept by each maintenance pass. A run that is still active (running, suspended, or
+   * parked on a signal, a review, or a timer) keeps its lines whatever their age. Leave it out to keep them until the run is purged. Has effect
+   * only on a Bureau composed with {@link BureauOptions.logs}. `olderThan` must be a positive
+   * integer; otherwise `createBureau` throws `BureauError(..., 'BAD_REQUEST')`.
+   */
+  logs?: BureauLogsRetentionOption | undefined;
+}
+
+/**
+ * COR-1811 — the window of {@link BureauRetentionOptions.logs}. Only `{ olderThan }` exists:
+ * keeping lines forever is leaving the option out.
+ */
+export interface BureauLogsRetentionOption {
+  /** Milliseconds after a run last wrote a line; a positive integer. */
+  readonly olderThan: number;
+}
+
+/** COR-1811 — {@link BureauOptions.logs}: the bounds of a run's persisted `ctx.log` lines. */
+export interface BureauLogsOptions {
+  /** How many lines a run keeps; the oldest is evicted past it. A positive integer of at most 5000; default 500. */
+  readonly maximumLinesPerRun?: number | undefined;
 }
 
 /**
@@ -634,6 +657,20 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * structured logging). Has effect only when a durable engine is composed.
    */
   onLog?: (record: WorkflowLogRecord) => void;
+  /**
+   * COR-1811 — keep the `ctx.log` lines of durable workflows with their runs. Setting it (even to
+   * `{}`) composes a Weft log store over the durable storage: every non-replayed line, inline and
+   * worker-forwarded, is written beside the run (the human-wait park marker excepted), and
+   * `engine.getLogs` and `weft.workflows.logs.list` serve it per run and per step. {@link onLog}
+   * still receives every line. A run keeps its newest `maximumLinesPerRun` lines (500 by default);
+   * each older line the cap evicts is counted as dropped. A line's message and attributes together are held to
+   * 2 KiB: a long message is cut with a marker, and attributes that do not fit are dropped. Lines are kept {@link BureauRetentionOptions.logs} (unset keeps them until the run is purged),
+   * and the `logs.maximumLinesPerRun` and `retention.logs` settings replace these at runtime. The
+   * sink is buffered, so a crash can lose the last turn's lines; shutdown flushes it. Has effect
+   * only when a durable engine is composed. A `maximumLinesPerRun` that is not a positive integer of
+   * at most 5000 throws `BureauError(..., 'BAD_REQUEST')`.
+   */
+  logs?: BureauLogsOptions;
   /**
    * History/checkpoint guardrails for durable runs. `history.maxEvents` is a
    * circuit breaker (a breach terminates the run as an error, classified

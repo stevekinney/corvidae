@@ -169,6 +169,7 @@ import {
 import { humanInputSchemasOf, validateHumanInputOption } from './human-input-option';
 import {
   validateChildrenOption,
+  validateLogsMaximumLinesPerRun,
   validateRetentionOptions,
   validateSessionInputBacklogLimit,
 } from './option-validators.ts';
@@ -2101,6 +2102,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   validateDecisionsOptions(options.decisions, toBadRequest);
   validateHumanInputOption(options.humanInput);
   validateRetentionOptions(options.retention, toBadRequest);
+  validateLogsMaximumLinesPerRun(options.logs?.maximumLinesPerRun, toBadRequest);
   validateChildrenOption(options.children, toBadRequest);
   assertMemoryTenantIsStable(options);
   // COR-1577: `bureau` names the Bureau-wide default agent on the session path, which is told
@@ -2361,6 +2363,22 @@ async function constructBureau<const D extends AgentDefinitions>(
     // event; the user's `onDiagnostic` is still called once, inside `diagnose`.
     { ...options, id: bureauId, runtime: runtimeServices, onDiagnostic: diagnose },
     {
+      // COR-1811 — persisted workflow log lines, when `options.logs` asks for them. The cap is read
+      // on every line, so a change to `logs.maximumLinesPerRun` applies to the next one.
+      ...(options.logs === undefined
+        ? {}
+        : {
+            workflowLogs: {
+              maximumLinesPerRun: () => currentSettings()['logs.maximumLinesPerRun'],
+              onError: (error: unknown) =>
+                diagnose({
+                  level: 'error',
+                  scope: 'durable-maintenance',
+                  message: `[bureau] Writing workflow log lines failed: ${serializeUnknownError(error)}`,
+                  cause: error,
+                }),
+            },
+          }),
       decideToolFor: (owner, offered) => lateDecisions.toolWiringFor(true, owner, offered),
       toolGrantFor: async (taskId) =>
         (await taskRegistryHolder.current?.recordToolGrant(taskId, toolGrantNow())) ??
@@ -12576,6 +12594,27 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
+   * COR-1811 — removes the persisted workflow log lines of finished runs that wrote nothing for longer
+   * than `retention.logs`, read per pass so a change applies to the next one. With the setting unset the
+   * lines stay until their run is purged. A failure is reported and never stops the rest of a pass.
+   */
+  async function pruneWorkflowLogs(pass: 'Manual' | 'Automatic'): Promise<void> {
+    const logs = runtime.durable?.workflowLogs;
+    const window = currentSettings()['retention.logs'];
+    if (logs === undefined || window === undefined) return;
+    try {
+      await logs.prune({ olderThan: window.olderThan });
+    } catch (error: unknown) {
+      diagnose({
+        level: 'error',
+        scope: 'durable-maintenance',
+        message: `[bureau] ${pass} workflow log retention pass failed: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
+  }
+
+  /**
    * COR-1546 — advances every open governed-memory deletion: resumes an interrupted synchronous
    * lane and settles the bounded-async targets, which stay pending until something asks. Governed
    * memory runs nothing on a timer of its own, so a record forgotten through `bureau.memory.forget`
@@ -12756,6 +12795,8 @@ async function constructBureau<const D extends AgentDefinitions>(
       }
       // COR-1629 — governed memory's retention expires only when asked to, before its deletions advance.
       await sweepMemoryRetention('Manual');
+      // COR-1811 — persisted workflow log lines past `retention.logs`.
+      await pruneWorkflowLogs('Manual');
       // COR-1546 — governed memory's deletions advance only when asked to.
       try {
         await propagateMemoryDeletions();
@@ -13065,6 +13106,8 @@ async function constructBureau<const D extends AgentDefinitions>(
         }
         // COR-1629 — governed memory's retention expires only when asked to, before its deletions advance.
         await sweepMemoryRetention('Automatic');
+        // COR-1811 — persisted workflow log lines past `retention.logs`.
+        await pruneWorkflowLogs('Automatic');
         // COR-1546 — governed memory's deletions advance only when asked to.
         try {
           await propagateMemoryDeletions();

@@ -103,6 +103,7 @@ import type { TimerEntry } from '../types/checkpoint.ts';
 import { PREPARED_WORKFLOW_ABANDONED_REASON } from '../types/history-policy.ts';
 import type { WorkflowAlreadyRegistered } from '../types/workflow-builder.ts';
 import { UpdateCoordinator } from '../updates.ts';
+import type { WorkflowLogsResult } from '../workflow-log-codec.ts';
 import {
   aggregate as aggregateWorkflows,
   type AggregateOptions,
@@ -369,6 +370,7 @@ import {
   type WorkflowFeedRecord,
   type WorkflowFeedSelector,
 } from './workflow-feed.ts';
+import { flushWorkflowLogs, getWorkflowLogs } from './workflow-logs.ts';
 
 export type { WorkflowRevisionReferenceCounts } from '../catalog/index.ts';
 export type {
@@ -3065,6 +3067,18 @@ export class Engine<
   async getEvents(workflowId: string): Promise<WorkflowEvent[]> {
     return getWorkflowEvents(getInternals(this), workflowId);
   }
+  /**
+   * The `ctx.log` lines a run logged that its log store still keeps, oldest first, with the
+   * count of lines the per-run cap evicted (COR-1811). `step` narrows the read to the lines logged
+   * before that durable step. Reads the store handed in as `EngineOptions.workflowLogs`, after
+   * flushing its buffered tail; an engine created without one answers `{ lines: [], dropped: 0 }`.
+   */
+  async getLogs(
+    workflowId: string,
+    options?: { step?: number | undefined },
+  ): Promise<WorkflowLogsResult> {
+    return getWorkflowLogs(getInternals(this), workflowId, options);
+  }
   async *replayWorkflowFeed(
     workflowId: string,
     selector: WorkflowFeedSelector,
@@ -3299,6 +3313,7 @@ export class Engine<
         // already issued so none lands after this promise or the lease handoff
         // below. Its pending reads are abandoned instead: storage calls cannot
         // be cancelled, and every purge write checks for disposal first.
+        await flushWorkflowLogs(getInternals(this));
         await settleInFlightPurgeWrites(getInternals(this));
         // Clean deploy handoff: release the ownership lease as the LAST durable
         // action, AFTER queued starts have drained and all write paths are down, so
@@ -3325,6 +3340,7 @@ export class Engine<
     await getInternals(this).inFlightLeaseAcquire?.catch(() => {});
     // An engine already disposed synchronously may still have purge writes in
     // flight; settle them here too (see the first-disposal branch above).
+    await flushWorkflowLogs(getInternals(this));
     await settleInFlightPurgeWrites(getInternals(this));
     return (await this.#synchronousDisposeResult) ?? true;
   }

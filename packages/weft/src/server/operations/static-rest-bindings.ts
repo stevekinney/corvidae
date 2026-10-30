@@ -49,6 +49,7 @@ import { listCheckpointsRestBinding } from './list-checkpoints.ts';
 import { listReviewsRestBinding } from './list-reviews.ts';
 import { listSchedulesRestBinding } from './list-schedules.ts';
 import { listWorkflowDefinitionsRestBinding } from './list-workflow-definitions.ts';
+import { listWorkflowLogsRestBinding } from './list-workflow-logs.ts';
 import { listWorkflowRevisionsRestBinding } from './list-workflow-revisions.ts';
 import { listWorkflowUpdatesRestBinding } from './list-workflow-updates.ts';
 import { listWorkflowsRestBinding } from './list-workflows.ts';
@@ -127,6 +128,7 @@ export const STATIC_REST_BINDINGS: ReadonlyArray<UnknownRestBinding> = [
   timeoutWorkflowRestBinding,
   updateWorkflowRestBinding,
   listWorkflowUpdatesRestBinding,
+  listWorkflowLogsRestBinding,
   createScheduleRestBinding,
   updateScheduleRestBinding,
   getRegistryRestBinding,
