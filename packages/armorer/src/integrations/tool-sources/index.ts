@@ -8,6 +8,10 @@
  * {@link LoadToolSourceOptions.resolveCredential}, and the loader reads no environment variable,
  * file, or other store. OAuth state for an MCP source persists through the injected
  * {@link McpOAuthTokenStorage}.
+ *
+ * Parsing is strict, so a host that needs its own fields on a saved source (a per-tool
+ * `acceptsSecrets`, say) keeps them in a record beside the description, keyed by its `id`, and
+ * never spreads them into it.
  */
 import type { Client, OAuthClientMetadata } from '@modelcontextprotocol/client';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
@@ -25,6 +29,21 @@ import {
 import { createToolboxFromOpenAPI, type OpenAPIAuth, type OpenAPISpec } from '../openapi';
 
 const nonEmptyString = z.string().min(1);
+
+/**
+ * A URL a description may hold: http or https, with no userinfo, so a credential written as
+ * `user:password@host` can never be saved in a description.
+ */
+const httpUrl = z
+  .url({ protocol: /^https?$/ })
+  .refine((value) => !hasUserinfo(value), 'a URL must not contain a username or password');
+
+function hasUserinfo(value: string): boolean {
+  // A refinement also runs on a value the URL check already rejected.
+  if (!URL.canParse(value)) return false;
+  const url = new URL(value);
+  return url.username !== '' || url.password !== '';
+}
 
 /** The name a saved description uses for a credential the host stores; never the secret itself. */
 const credentialName = nonEmptyString;
@@ -45,7 +64,7 @@ const mcpHttpAuthenticationSchema = z.discriminatedUnion('type', [
 const mcpTransportSchema = z.discriminatedUnion('type', [
   z.strictObject({
     type: z.literal('http'),
-    url: z.url(),
+    url: httpUrl,
     authentication: mcpHttpAuthenticationSchema.optional(),
   }),
   z.strictObject({
@@ -69,7 +88,7 @@ const mcpToolSourceSchema = z.strictObject({
 
 /** Where an OpenAPI source reads its document: fetched from a URL, or embedded as JSON. */
 const openApiSpecificationSchema = z.discriminatedUnion('type', [
-  z.strictObject({ type: z.literal('url'), url: z.url() }),
+  z.strictObject({ type: z.literal('url'), url: httpUrl }),
   z.strictObject({
     type: z.literal('document'),
     document: z.custom<OpenAPISpec>(
@@ -95,7 +114,7 @@ const openApiToolSourceSchema = z.strictObject({
   kind: z.literal('openapi'),
   specification: openApiSpecificationSchema,
   /** Defaults to the document's `servers[0].url`. */
-  baseUrl: z.url().optional(),
+  baseUrl: httpUrl.optional(),
   authentication: openApiAuthenticationSchema.optional(),
   /** Restricts the generated tools to these `operationId`s. */
   allowOperations: z.array(nonEmptyString).optional(),
@@ -138,6 +157,18 @@ export class ToolSourceDescriptionError extends Error {
   constructor(message: string) {
     super(`Invalid tool source description: ${message}`);
     this.name = 'ToolSourceDescriptionError';
+  }
+}
+
+/** Thrown when an OpenAPI source has no usable absolute http(s) base URL to send requests to. */
+export class ToolSourceBaseUrlError extends Error {
+  constructor(
+    /** The source whose base URL could not be resolved. */
+    readonly sourceId: string,
+    reason: string,
+  ) {
+    super(`Tool source "${sourceId}": ${reason}`);
+    this.name = 'ToolSourceBaseUrlError';
   }
 }
 
@@ -191,8 +222,8 @@ export class ToolSourceAuthorizationRequiredError extends Error {
 export type ToolSourceOAuthOptions = {
   /** Where one source's tokens, client registration, and PKCE state live. */
   tokenStorage: (sourceId: string) => McpOAuthTokenStorage;
-  /** The redirect URI registered with the authorization server. */
-  redirectUrl: string | URL;
+  /** The redirect URI registered with the authorization server for one source. */
+  redirectUrl: (sourceId: string) => string | URL;
   /** Receives the URL the user must visit; this module opens no browser. */
   onAuthorizationRequired: (sourceId: string, authorizationUrl: URL) => void | Promise<void>;
 };
@@ -326,7 +357,7 @@ async function connectHttp(
         `Tool source "${sourceId}" authenticates with OAuth, but no \`oauth\` options were given to the loader.`,
       );
     }
-    const redirectUrl = oauth.redirectUrl;
+    const redirectUrl = oauth.redirectUrl(sourceId);
     const clientMetadata: OAuthClientMetadata = {
       client_name: authentication.clientName ?? 'armorer-mcp-client',
       redirect_uris: [String(redirectUrl)],
@@ -417,14 +448,52 @@ async function loadOpenApiSource(
             value: await requireCredential(source.id, authentication.credential, options),
           }
         : undefined;
+  const baseUrl = resolveBaseUrl(source, specification);
   const tools = createToolboxFromOpenAPI(specification, {
     fetch: fetchImplementation,
-    ...(source.baseUrl ? { baseUrl: source.baseUrl } : {}),
+    baseUrl,
     ...(auth ? { auth } : {}),
     ...(source.allowOperations ? { allowOperations: source.allowOperations } : {}),
     ...(source.namePrefix ? { namePrefix: source.namePrefix } : {}),
   });
   return { id: source.id, kind: 'openapi', tools, close: async () => undefined };
+}
+
+/**
+ * The base URL requests go to: the description's `baseUrl`, else the document's first server. A
+ * relative server URL resolves against the document's own URL when it was fetched, and is an error
+ * for an inline document, which has nothing to resolve it against.
+ */
+function resolveBaseUrl(source: OpenApiToolSourceDescription, specification: OpenAPISpec): string {
+  if (source.baseUrl) return source.baseUrl;
+  const server = specification.servers?.[0]?.url;
+  if (!server) {
+    throw new ToolSourceBaseUrlError(
+      source.id,
+      'it has no `baseUrl` and its document lists no server.',
+    );
+  }
+  const documentUrl = source.specification.type === 'url' ? source.specification.url : undefined;
+  let resolved: URL;
+  try {
+    resolved = new URL(server, documentUrl);
+  } catch {
+    throw new ToolSourceBaseUrlError(
+      source.id,
+      `its server URL "${server}" is relative and there is no document URL to resolve it against; set \`baseUrl\`.`,
+    );
+  }
+  if (
+    (resolved.protocol !== 'http:' && resolved.protocol !== 'https:') ||
+    resolved.username !== '' ||
+    resolved.password !== ''
+  ) {
+    throw new ToolSourceBaseUrlError(
+      source.id,
+      'its server URL must be an http(s) URL without a username or password; set `baseUrl`.',
+    );
+  }
+  return resolved.href;
 }
 
 /** The document is fetched without credentials: they belong to the API, which may be another host. */

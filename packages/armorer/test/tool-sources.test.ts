@@ -13,6 +13,7 @@ import {
   loadToolSources,
   parseToolSourceDescription,
   ToolSourceAuthorizationRequiredError,
+  ToolSourceBaseUrlError,
   ToolSourceCredentialError,
   ToolSourceDescriptionError,
   type ToolSourceCredentialRequest,
@@ -66,6 +67,29 @@ describe('parseToolSourceDescription', () => {
     };
     const restored = parseToolSourceDescription(JSON.parse(JSON.stringify(description)));
     expect(restored).toEqual(description);
+  });
+
+  it('rejects non-http URLs and URLs carrying userinfo in every description URL field', () => {
+    const badUrls = [
+      'ftp://example.test/x',
+      'file:///etc/passwd',
+      'https://user:pw@example.test/x',
+      'https://token@example.test/x',
+    ];
+    for (const url of badUrls) {
+      for (const description of [
+        { id: 'a', kind: 'mcp', transport: { type: 'http', url } },
+        { id: 'a', kind: 'openapi', specification: { type: 'url', url } },
+        {
+          id: 'a',
+          kind: 'openapi',
+          specification: { type: 'document', document: {} },
+          baseUrl: url,
+        },
+      ]) {
+        expect(() => parseToolSourceDescription(description)).toThrow(ToolSourceDescriptionError);
+      }
+    }
   });
 
   it('rejects unknown fields, unknown kinds, and malformed values', () => {
@@ -138,6 +162,82 @@ describe('loadToolSource for OpenAPI', () => {
     expect(loaded.tools.map((tool) => tool.name)).toEqual(['pets-find-pets']);
     expect(calls[0]?.url).toBe('https://specs.example.test/pets.json');
     expect(calls[0]?.headers.get('authorization')).toBeNull();
+  });
+
+  describe('base URL resolution', () => {
+    const documentWithServer = (server: string) => ({
+      ...(petstoreSpec as OpenAPISpec),
+      servers: [{ url: server }],
+    });
+    const urlSource = (
+      overrides: Partial<Extract<ToolSourceDescription, { kind: 'openapi' }>> = {},
+    ) =>
+      openApiSource({
+        specification: { type: 'url', url: 'https://specs.example.test/v3/openapi.json' },
+        baseUrl: undefined,
+        ...overrides,
+      });
+
+    it('resolves a relative server URL against the document URL', async () => {
+      const { fetch, calls } = createRecordingFetch(documentWithServer('/api/v3'));
+      const loaded = await loadToolSource(urlSource(), {
+        resolveCredential: () => undefined,
+        fetch,
+      });
+      await loaded.tools.find((tool) => tool.name === 'find-pets')?.execute({});
+      expect(calls[1]?.url.startsWith('https://specs.example.test/api/v3/pets')).toBe(true);
+    });
+
+    it('uses an absolute server URL as written', async () => {
+      const { fetch, calls } = createRecordingFetch(
+        documentWithServer('https://api.example.test/v1'),
+      );
+      const loaded = await loadToolSource(urlSource(), {
+        resolveCredential: () => undefined,
+        fetch,
+      });
+      await loaded.tools.find((tool) => tool.name === 'find-pets')?.execute({});
+      expect(calls[1]?.url.startsWith('https://api.example.test/v1/pets')).toBe(true);
+    });
+
+    it('fails the load for an inline document with a relative server and no baseUrl', async () => {
+      await expectPromiseToReject(
+        loadToolSource(
+          openApiSource({
+            specification: { type: 'document', document: documentWithServer('/api/v3') },
+            baseUrl: undefined,
+          }),
+          { resolveCredential: () => undefined },
+        ),
+        (error) => expect(error).toBeInstanceOf(ToolSourceBaseUrlError),
+      );
+    });
+
+    it('fails the load for a non-http server URL or one with userinfo, and for no server at all', async () => {
+      for (const server of ['ftp://api.example.test', 'https://user:pw@api.example.test']) {
+        await expectPromiseToReject(
+          loadToolSource(
+            openApiSource({
+              specification: { type: 'document', document: documentWithServer(server) },
+              baseUrl: undefined,
+            }),
+            { resolveCredential: () => undefined },
+          ),
+          (error) => expect(error).toBeInstanceOf(ToolSourceBaseUrlError),
+        );
+      }
+      const { servers: _servers, ...withoutServers } = petstoreSpec as OpenAPISpec;
+      await expectPromiseToReject(
+        loadToolSource(
+          openApiSource({
+            specification: { type: 'document', document: withoutServers },
+            baseUrl: undefined,
+          }),
+          { resolveCredential: () => undefined },
+        ),
+        (error) => expect(error).toBeInstanceOf(ToolSourceBaseUrlError),
+      );
+    });
   });
 
   it('reports an unusable document URL', async () => {
@@ -347,7 +447,7 @@ describe('loadToolSource for MCP over HTTP', () => {
           storageRequests.push(sourceId);
           return storage;
         },
-        redirectUrl: 'http://127.0.0.1:9/callback',
+        redirectUrl: (sourceId) => `http://127.0.0.1:9/host/oauth/callback/${sourceId}`,
         onAuthorizationRequired: (_sourceId, url) => {
           authorizationUrls.push(url);
         },
