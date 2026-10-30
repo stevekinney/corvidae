@@ -50,6 +50,7 @@ function setup(start: Start) {
     },
     workflows: () => ({
       assertStartable: () => undefined,
+      findStart: () => Promise.resolve(undefined),
       start: (workflowId, options) => start(workflowId, options),
     }),
   });

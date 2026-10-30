@@ -241,6 +241,7 @@ import { createLeaseManager } from './lease-manager.ts';
 import {
   abandonPreparedWorkflow as abandonPreparedWorkflowFromLifecycle,
   fork as forkFromLifecycle,
+  getRunByIdempotencyKey as getRunByIdempotencyKeyFromLifecycle,
   launchPreparedWorkflow as launchPreparedWorkflowFromLifecycle,
   prepareWorkflow as prepareWorkflowFromLifecycle,
   recoverAll as recoverAllFromLifecycle,
@@ -3075,6 +3076,18 @@ export class Engine<
       return { ...state, status: 'pending' };
     }
     return state;
+  }
+  /**
+   * Read-only lookup by idempotency key: the state of the run that a {@link Engine.start} with
+   * `options.idempotencyKey` created, or `null` when no start with that key has committed. It
+   * answers a caller that cannot tell whether its start committed (a crash between the commit and
+   * the caller's own receipt) without validating or starting anything, so it still answers when
+   * the workflow's definition has since changed. The mapping is permanent: a terminal run is still
+   * returned. Throws {@link IdempotencyKeyPurgedError} when the key was used but its run has been
+   * purged, and `StartWorkflowValidationError` for a key a start would refuse.
+   */
+  async getByIdempotencyKey(idempotencyKey: string): Promise<WorkflowState | null> {
+    return getRunByIdempotencyKeyFromLifecycle(getInternals(this), idempotencyKey);
   }
   /** Return the schedule occurrence that launched a workflow, when applicable. */
   async getScheduleProvenance(workflowId: string): Promise<WorkflowScheduleProvenance | null> {
