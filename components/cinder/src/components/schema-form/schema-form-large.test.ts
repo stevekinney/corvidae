@@ -331,6 +331,71 @@ describe('SchemaForm large schemas: review corrections', () => {
     expect(submitted.at(-1)).toMatchObject({ labels: ['pending'] });
   });
 
+  test('a tag committed from a hidden field is not added again by the next submit', async () => {
+    const { submitted, container } = await mountLarge({
+      ...largeValue,
+      shipping: { carrier: 'UPS' },
+    });
+    const labels = () =>
+      requiredInstance(screen.getByRole('textbox', { name: /Labels/ }), HTMLInputElement);
+    const search = screen.getByRole('searchbox', { name: 'Find a field' });
+
+    await fireEvent.input(labels(), { target: { value: 'pending' } });
+    await fireEvent.input(search, { target: { value: 'note' } });
+    await submit(container);
+    await submit(container);
+
+    expect(submitted.at(-2)).toMatchObject({ labels: ['pending'] });
+    expect(submitted.at(-1)).toMatchObject({ labels: ['pending'] });
+
+    await fireEvent.input(search, { target: { value: '' } });
+    expect(labels().value).toBe('');
+    await submit(container);
+    expect(submitted.at(-1)).toMatchObject({ labels: ['pending'] });
+  });
+
+  test('a failed submit keeps the uncommitted tag text for the next submit', async () => {
+    const { submitted, container } = await mountLarge({
+      ...largeValue,
+      shipping: { carrier: '' },
+    });
+    const labels = () =>
+      requiredInstance(screen.getByRole('textbox', { name: /Labels/ }), HTMLInputElement);
+    const search = screen.getByRole('searchbox', { name: 'Find a field' });
+
+    await fireEvent.input(labels(), { target: { value: 'pending' } });
+    await fireEvent.input(search, { target: { value: 'note' } });
+    await submit(container);
+
+    expect(submitted).toEqual([]);
+    expect(labels().value).toBe('pending');
+
+    await fireEvent.input(screen.getByLabelText(/Carrier/), { target: { value: 'UPS' } });
+    await fireEvent.input(search, { target: { value: 'note' } });
+    await submit(container);
+    expect(submitted.at(-1)).toMatchObject({ labels: ['pending'] });
+  });
+
+  test('a tag committed with Enter is not added again when its field is later hidden', async () => {
+    const { submitted, container } = await mountLarge({
+      ...largeValue,
+      shipping: { carrier: 'UPS' },
+    });
+    const labels = () =>
+      requiredInstance(screen.getByRole('textbox', { name: /Labels/ }), HTMLInputElement);
+    const search = screen.getByRole('searchbox', { name: 'Find a field' });
+
+    await fireEvent.input(labels(), { target: { value: 'entered' } });
+    await fireEvent.keyDown(labels(), { key: 'Enter' });
+    await flush();
+    await fireEvent.input(search, { target: { value: 'note' } });
+    await submit(container);
+
+    expect(submitted.at(-1)).toMatchObject({ labels: ['entered'] });
+    await fireEvent.input(search, { target: { value: '' } });
+    expect(labels().value).toBe('');
+  });
+
   test('a tag typed in a group that is then closed is still submitted', async () => {
     const { submitted, container } = await mountLarge(
       { ...largeValue, shipping: { carrier: 'UPS' } },

@@ -71,6 +71,8 @@ export class SchemaFormState {
   // Text typed into a tag input but not yet committed as a tag. The tag input keeps it in its own
   // state, which is lost when a filter or a closed group unmounts it, so it is mirrored here.
   #tagDrafts = $state<Record<string, string>>({});
+  /** Tag text the latest submit candidate took from fields that are not on screen, by path key. */
+  #submittedTagDrafts = new Map<string, string>();
   #touchedValidationSequences = $state<Record<string, number>>({});
   #arrayKeys = $state<Record<string, string[]>>({});
   #arrayKeyCounter = 0;
@@ -572,7 +574,9 @@ export class SchemaFormState {
       if (draft !== undefined) candidate = setValueAtPath(candidate, field.path, draft);
     }
     // A tag input on screen commits its own pending text before submit. Only the text of an input
-    // that is not rendered (filtered out, or in a closed group) is committed here.
+    // that is not rendered (filtered out, or in a closed group) is committed here, and `commit`
+    // drops it once the submit is accepted, so a failed submit keeps what the person typed.
+    this.#submittedTagDrafts = new Map();
     for (const field of this.#currentFields(
       this.#model.field,
       this.formValue,
@@ -580,6 +584,10 @@ export class SchemaFormState {
     )) {
       const pending = ownEntry(this.#tagDrafts, pathKey(field.path))?.trim();
       if (!pending || isRendered(field)) continue;
+      this.#submittedTagDrafts.set(
+        pathKey(field.path),
+        ownEntry(this.#tagDrafts, pathKey(field.path)) ?? '',
+      );
       candidate = setValueAtPath(candidate, field.path, [
         ...arrayValueAtPath(candidate, field.path),
         pending,
@@ -594,11 +602,23 @@ export class SchemaFormState {
     this.clearSerializedValue();
   }
 
+  /** Forgets the tag text the accepted submit committed, unless it was edited since. */
+  #dropSubmittedTagDrafts(): void {
+    if (this.#submittedTagDrafts.size === 0) return;
+    const remaining = { ...this.#tagDrafts };
+    for (const [key, text] of this.#submittedTagDrafts) {
+      if (ownEntry(remaining, key) === text) delete remaining[key];
+    }
+    this.#tagDrafts = remaining;
+    this.#submittedTagDrafts = new Map();
+  }
+
   /** Applies a successfully validated + serialized submit result. */
   commit(value: unknown, serializedValue: string): void {
     this.formValue = value;
     this.#errors = {};
     this.serializedValue = serializedValue;
+    this.#dropSubmittedTagDrafts();
   }
 }
 
