@@ -17,6 +17,27 @@ Clusters related action buttons into a unified visual group with shared borders.
 </ButtonGroup>
 ```
 
+## Input with an attached Button
+
+An `Input` can be the first member of a group, with a `Button` as the trailing part of the field. The pair shares one border, one height and the outer corners: the Input and the Button take their height from the same step of the shared control height scale, so give both the same `size` and they match at `sm`, `md` and `lg`.
+
+```svelte
+<script lang="ts">
+  import { Button, ButtonGroup, FormField, Input } from '@lostgradient/cinder';
+
+  let key = $state('');
+</script>
+
+<FormField id="api-key" label="API key">
+  <ButtonGroup ariaLabelledby="api-key-label">
+    <Input id="api-key" bind:value={key} />
+    <Button variant="secondary">Test a key</Button>
+  </ButtonGroup>
+</FormField>
+```
+
+Keep the label, description and error outside the group, so nothing but the control sits beside the Button: label the field with an enclosing `FormField` (as above) or a visually hidden label (`labelVisible={false}`), and put any description or error on the `FormField`. Use this for a field the user submits with the button (Test a key, Add a tag). A field that updates as the user types needs no button. A group that holds a field is horizontal only.
+
 ## Props
 
 <!-- generated:props:start -->

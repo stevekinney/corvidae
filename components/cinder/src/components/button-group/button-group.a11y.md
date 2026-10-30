@@ -55,6 +55,17 @@ The `<Dropdown>` already wires `aria-haspopup="menu"` and `aria-expanded` on its
 
 When a child opens a portaled overlay, focus may move outside the group while the overlay is open. The group does not keep portaled content visually attached with `:focus-within`; overlay positioning and active trigger styling remain the child component's responsibility.
 
+## Input with an attached Button
+
+A group may hold an `Input` as its first member and a `Button` after it. The group still has no keyboard model of its own: Tab moves from the input to the button. The group's accessible name is required as for any group; when a `FormField` already shows a visible label, point `ariaLabelledby` at that label's id (`{field id}-label`) so the name is not announced twice.
+
+Two things keep the pair aligned, and both are the consumer's to honor:
+
+- The Input and the Button share a `size`. Both resolve their height from the same `--cinder-control-height-<size>` step, so equal sizes mean equal heights; mixed sizes are a usage error exactly as they are for buttons.
+- Nothing but the control sits in the field's wrapper: no visible label of the Input's own, and no description or error rendered by the Input. Put them on the enclosing `FormField`. The group does not stretch its members when it holds a field, so a taller wrapper would not make the Button taller, it would leave the Button short beside the field.
+
+The field keeps its own border on the side that meets the Button, so that edge is the single shared line; the corners that face the Button are flattened. Interactive content inside the Input's own leading or trailing slots is not supported inside a group.
+
 ## Keyboard model
 
 Tab enters the first child, Tab moves to the next, Shift+Tab reverses. There is no arrow-key interception. A `<Dropdown>` child's internal arrow handling (up/down through menu items) kicks in once focus is inside the open menu — orthogonal to the group.

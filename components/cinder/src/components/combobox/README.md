@@ -24,6 +24,26 @@ Filterable dropdown that combines a text input with a selectable option list.
 />
 ```
 
+## Grouped options
+
+Give options a `group` name to render them under headings. Ungrouped options come first without a heading, and groups follow in order of first appearance, even when the groups interleave in `options`. Each heading shows the group name and how many of its options are listed. Typing filters across every group, keeps the headings of groups that still match, and hides the rest; arrow keys move through the options in the order they are displayed.
+
+```svelte
+<script lang="ts">
+  import { Combobox } from '@lostgradient/cinder';
+
+  const workflows = [
+    { value: 'chat', label: 'Chat with an agent', group: 'Built in' },
+    { value: 'digest', label: 'Daily digest', group: 'Recent' },
+    { value: 'triage', label: 'Triage issues' },
+  ];
+</script>
+
+<Combobox id="workflow" label="Workflow" options={workflows} />
+```
+
+The default filter matches an option's label and description, not its group name. `maxVisibleOptions` counts options in display order.
+
 ## Props
 
 <!-- generated:props:start -->
