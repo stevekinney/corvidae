@@ -136,6 +136,7 @@ export type {
   DurableRunDeps,
   PendingWakeup,
   PermissionMode,
+  RecordedToolCall,
   RunCheckpoint,
   RunCursor,
   SessionInputAdmissionOutcome,

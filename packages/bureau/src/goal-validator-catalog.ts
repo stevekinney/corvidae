@@ -16,6 +16,11 @@
 import { sha256HexSync } from '@lostgradient/cryptography';
 import type { Validator, ValidatorIdentity } from '@lostgradient/operative';
 
+import { createVersionedCatalog, type VersionedCatalogSource } from './versioned-catalog';
+
+/** The source recorded for validators passed to Bureau's options rather than contributed by a plugin. */
+const GOAL_VALIDATOR_SOURCE: VersionedCatalogSource = Object.freeze({ name: 'bureau' });
+
 /** The serializable description of a registered validator. */
 export interface GoalValidatorDescriptor {
   readonly identity: ValidatorIdentity;
@@ -103,16 +108,17 @@ export function decodeGoalValidatorDescriptor(value: unknown): GoalValidatorDesc
 }
 
 /**
- * Builds the immutable catalog over a fixed list of validators. Throws at
- * construction for a validator with no usable identity and for two validators
- * registered under the same `(name, version)`: both are programming errors a
- * bureau should refuse to start with.
+ * Builds the immutable catalog over a fixed list of validators, on the shared versioned catalog
+ * (COR-1872) under the `validator` kind. Throws at construction for a validator with no usable
+ * identity and for two validators registered under the same `(name, version)`: in a list passed
+ * to Bureau both are programming errors a bureau should refuse to start with, so the catalog's
+ * `clash` result becomes an error here.
  */
 export function createGoalValidatorCatalog(
   validators: readonly Validator[] = [],
 ): GoalValidatorCatalog {
+  const catalog = createVersionedCatalog<GoalValidatorCatalogEntry>();
   const entries: GoalValidatorCatalogEntry[] = [];
-  const byName = new Map<string, Map<string, GoalValidatorCatalogEntry>>();
   for (const validator of validators) {
     const { name, version } =
       (validator as { identity?: Partial<ValidatorIdentity> }).identity ?? {};
@@ -121,41 +127,33 @@ export function createGoalValidatorCatalog(
       name.length === 0 ||
       typeof version !== 'string' ||
       version.length === 0 ||
+      version.includes('@') ||
       typeof validator.validate !== 'function'
     ) {
       throw new TypeError(
-        'Bureau goal validators require a non-empty identity name and version and a validate() function.',
+        'Bureau goal validators require a non-empty identity name, a non-empty version without "@", and a validate() function.',
       );
-    }
-    const versions = byName.get(name) ?? new Map<string, GoalValidatorCatalogEntry>();
-    if (versions.has(version)) {
-      throw new Error(`Bureau goal validator "${name}@${version}" is registered more than once.`);
     }
     const descriptor = describeValidator(validator);
     const entry = Object.freeze({ identity: descriptor.identity, validator, descriptor });
-    versions.set(version, entry);
-    byName.set(name, versions);
+    const registered = catalog.register({
+      kind: 'validator',
+      name,
+      version,
+      value: entry,
+      source: GOAL_VALIDATOR_SOURCE,
+    });
+    if (!registered.ok) {
+      throw new Error(`Bureau goal validator "${name}@${version}" is registered more than once.`);
+    }
     entries.push(entry);
   }
 
   const resolve: GoalValidatorCatalog['resolve'] = (identity) => {
-    const name = typeof identity.name === 'string' ? identity.name : '';
-    const version = typeof identity.version === 'string' ? identity.version : '';
-    const requested = Object.freeze({ name, version });
-    const versions = byName.get(name);
-    if (versions === undefined) {
-      return { ok: false, reason: 'missing', requested, availableVersions: [] };
-    }
-    const entry = versions.get(version);
-    if (entry === undefined) {
-      return {
-        ok: false,
-        reason: 'version-mismatch',
-        requested,
-        availableVersions: [...versions.keys()],
-      };
-    }
-    return { ok: true, entry };
+    const resolution = catalog.resolve('validator', identity);
+    if (resolution.ok) return { ok: true, entry: resolution.entry.value };
+    const { reason, requested, availableVersions } = resolution;
+    return { ok: false, reason, requested, availableVersions };
   };
 
   return Object.freeze({

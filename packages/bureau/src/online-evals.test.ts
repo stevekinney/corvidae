@@ -196,6 +196,7 @@ function blockingJudge(name = 'blocking-judge'): {
   const resolvers: (() => void)[] = [];
   const judge: OnlineEvalJudge = {
     name,
+    version: '1.0.0',
     evaluate: () =>
       new Promise<EvalScore>((resolve) => {
         resolvers.push(() => resolve({ pass: true, score: 1, message: 'unblocked' }));
@@ -212,6 +213,7 @@ function blockingJudge(name = 'blocking-judge'): {
 function passingMatcher(name = 'exact-match'): OnlineEvalJudge {
   return {
     name,
+    version: '1.0.0',
     evaluate: (): EvalScore => ({ pass: true, score: 1, message: 'matched' }),
   };
 }
@@ -219,6 +221,7 @@ function passingMatcher(name = 'exact-match'): OnlineEvalJudge {
 function failingMatcher(name = 'exact-match', score = 0): OnlineEvalJudge {
   return {
     name,
+    version: '1.0.0',
     evaluate: (): EvalScore => ({ pass: false, score, message: 'did not match' }),
   };
 }
@@ -349,7 +352,13 @@ describe('createOnlineEvalSampler', () => {
     expect(records[0]).toMatchObject({
       runId: 'run-1',
       type: 'eval.sample.recorded',
-      detail: { judgeName: 'judge-a', pass: true, score: 1, message: 'matched' },
+      detail: {
+        judgeName: 'judge-a',
+        judgeVersion: '1.0.0',
+        pass: true,
+        score: 1,
+        message: 'matched',
+      },
     });
     expect(records[1]).toMatchObject({
       runId: 'run-1',
@@ -360,11 +369,38 @@ describe('createOnlineEvalSampler', () => {
     await sampler.dispose();
   });
 
+  it('records the judge name and version on every audit record (COR-1872)', async () => {
+    const { bureau, emit } = createStubBureau();
+    const { auditTrail, records } = createStubAuditTrail();
+    const judge: OnlineEvalJudge = {
+      name: 'linear:triage-quality',
+      version: '2.1.0',
+      evaluate: (): EvalScore => ({ pass: true, score: 0.9, message: 'fine' }),
+    };
+    const sampler = createOnlineEvalSampler(bureau, auditTrail, undefined, {
+      judges: [judge],
+      sampleRate: 1,
+      rng: scriptedRng([0]),
+    });
+
+    emit(makeAction({ type: 'run.completed', runId: 'run-1', detail: makeRunResult() }));
+    await sampler.flush();
+
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      type: 'eval.sample.recorded',
+      detail: { judgeName: 'linear:triage-quality', judgeVersion: '2.1.0' },
+    });
+
+    await sampler.dispose();
+  });
+
   it('records a failed judge (throws) as a score-0 audit entry instead of crashing', async () => {
     const { bureau, emit } = createStubBureau();
     const { auditTrail, records } = createStubAuditTrail();
     const throwingJudge: OnlineEvalJudge = {
       name: 'flaky-judge',
+      version: '1.0.0',
       evaluate: () => {
         throw new Error('judge exploded');
       },
@@ -415,6 +451,7 @@ describe('createOnlineEvalSampler', () => {
     const { webhookNotifier, notifications } = createStubWebhookNotifier();
     const breachingJudge: OnlineEvalJudge = {
       name: 'quality-judge',
+      version: '1.0.0',
       alertThreshold: 0.5,
       evaluate: (): EvalScore => ({ pass: true, score: 0.2, message: 'quality dropped' }),
     };
@@ -430,10 +467,11 @@ describe('createOnlineEvalSampler', () => {
     expect(notifications).toHaveLength(1);
     expect(notifications[0]).toMatchObject({
       runId: 'run-1',
-      subjectId: 'eval:run-1:quality-judge',
+      subjectId: 'eval:run-1:quality-judge@1.0.0',
       trigger: 'eval.threshold-breached',
       detail: {
         judgeName: 'quality-judge',
+        judgeVersion: '1.0.0',
         score: 0.2,
         threshold: 0.5,
         message: 'quality dropped',
@@ -449,6 +487,7 @@ describe('createOnlineEvalSampler', () => {
     const { webhookNotifier, notifications } = createStubWebhookNotifier();
     const okJudge: OnlineEvalJudge = {
       name: 'quality-judge',
+      version: '1.0.0',
       alertThreshold: 0.5,
       evaluate: (): EvalScore => ({ pass: true, score: 0.5, message: 'fine' }),
     };
@@ -489,6 +528,7 @@ describe('createOnlineEvalSampler', () => {
     const { auditTrail, records } = createStubAuditTrail();
     const breachingJudge: OnlineEvalJudge = {
       name: 'quality-judge',
+      version: '1.0.0',
       alertThreshold: 0.5,
       evaluate: (): EvalScore => ({ pass: false, score: 0.1, message: 'bad' }),
     };
@@ -515,6 +555,7 @@ describe('createOnlineEvalSampler', () => {
     const { webhookNotifier, notifications } = createStubWebhookNotifier();
     const healthyJudge: OnlineEvalJudge = {
       name: 'quality-judge',
+      version: '1.0.0',
       alertThreshold: 0.1,
       evaluate: (): EvalScore => ({ pass: true, score: 0.95, message: 'excellent' }),
     };
@@ -556,6 +597,7 @@ describe('createOnlineEvalSampler', () => {
     let releaseJudge: (() => void) | undefined;
     const gatedJudge: OnlineEvalJudge = {
       name: 'gated-judge',
+      version: '1.0.0',
       evaluate: () =>
         new Promise<EvalScore>((resolve) => {
           releaseJudge = () => resolve({ pass: true, score: 1, message: 'released' });
@@ -598,6 +640,7 @@ describe('createOnlineEvalSampler', () => {
     // forever instead of resolving once the signal aborts.
     const neverSettlingJudge: OnlineEvalJudge = {
       name: 'never-settling-judge',
+      version: '1.0.0',
       evaluate: () => new Promise<EvalScore>(() => {}),
     };
     const sampler = createOnlineEvalSampler(bureau, auditTrail, undefined, {
@@ -628,6 +671,7 @@ describe('createOnlineEvalSampler', () => {
     let releaseFirstJudge: (() => void) | undefined;
     const firstJudge: OnlineEvalJudge = {
       name: 'first-judge',
+      version: '1.0.0',
       evaluate: () =>
         new Promise<EvalScore>((resolve) => {
           releaseFirstJudge = () => resolve({ pass: true, score: 1, message: 'first' });
@@ -636,6 +680,7 @@ describe('createOnlineEvalSampler', () => {
     let secondJudgeCalled = false;
     const secondJudge: OnlineEvalJudge = {
       name: 'second-judge',
+      version: '1.0.0',
       evaluate: (): EvalScore => {
         secondJudgeCalled = true;
         return { pass: true, score: 1, message: 'second' };
@@ -683,6 +728,7 @@ describe('createOnlineEvalSampler', () => {
     // -time branch rather than the abort-mid-wait one.
     const selfAbortingJudge: OnlineEvalJudge = {
       name: 'self-aborting-judge',
+      version: '1.0.0',
       evaluate: () => {
         controller.abort(new Error('aborted by the judge itself'));
         return new Promise<EvalScore>(() => {});
@@ -715,6 +761,7 @@ describe('createOnlineEvalSampler', () => {
     let judgeInvoked = false;
     const trackedJudge: OnlineEvalJudge = {
       name: 'tracked-judge',
+      version: '1.0.0',
       evaluate: () => {
         judgeInvoked = true;
         return { pass: true, score: 1, message: 'ok' };
@@ -764,6 +811,7 @@ describe('createOnlineEvalSampler', () => {
 
     const breachingJudge: OnlineEvalJudge = {
       name: 'breaching-judge',
+      version: '1.0.0',
       evaluate: () => ({ pass: false, score: 0, message: 'breach' }),
     };
     const sampler = createOnlineEvalSampler(bureau, auditTrail, webhookNotifier, {
