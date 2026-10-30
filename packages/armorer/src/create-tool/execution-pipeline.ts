@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import type { ToolErrorCategory } from '../core/errors';
 import type { ToolExecutionIdentity } from '../event-types';
+import { freezeToolRequestContext } from '../execution-context';
 import type {
   MinimalAbortSignal,
   ToolConfiguration,
@@ -14,7 +15,13 @@ import type {
   ToolPolicyContextProvider,
   ToolPolicyDecision,
   ToolPolicyHooks,
+  ToolSecretResolver,
 } from '../is-tool';
+import {
+  createToolCallSecrets,
+  findSecretReferences,
+  snapshotSecretBearingArguments,
+} from '../secrets';
 import {
   type ToolCall,
   type ToolExecutionResult,
@@ -28,6 +35,7 @@ import type { InternalToolExecuteOptions } from './execution-options';
 import { attachRequestContextPolicyFacts } from './policy-hooks';
 import { finalizeSuccessfulExecution } from './result-handlers';
 import { runRuntimeExecution } from './runtime-execution';
+import { parseSubstitutedArguments } from './secret-arguments';
 import { handleStreamingExecution } from './streaming';
 
 type Emit = (type: string, detail: unknown) => boolean;
@@ -80,6 +88,7 @@ type ExecutionPipelineInput<TInput, TOutput, E extends ToolEventsMap> = {
   policyContextProvider?: ToolPolicyContextProvider;
   policyHooks?: ToolPolicyHooks;
   diagnostics?: ToolDiagnostics;
+  secretResolver?: ToolSecretResolver;
   buildPolicyContext: BuildPolicyContext;
   resolvePolicyDecision: ResolvePolicyDecision;
   runPolicyAfter: RunPolicyAfter;
@@ -116,8 +125,11 @@ export async function runExecutionPipeline<TInput, TOutput, E extends ToolEvents
   } = input;
   let policyRequestContext = options.requestContext;
   try {
+    // One structural read of the caller's arguments, shared by admission and execution.
+    const secretBearingArguments = snapshotSecretBearingArguments(toolCall.arguments);
     emit('execute-start', { ...baseDetail, params: toolCall.arguments });
     const admission = await admitToolExecution({
+      secretBearingArguments,
       schema: typedSchema,
       toolCall,
       options,
@@ -147,6 +159,9 @@ export async function runExecutionPipeline<TInput, TOutput, E extends ToolEvents
     policyRequestContext = admission.effectiveRequestContext;
     return await runReadyExecution({
       admission,
+      secretBearingArguments,
+      schema: typedSchema,
+      ...(input.secretResolver !== undefined ? { secretResolver: input.secretResolver } : {}),
       options,
       inputDigest,
       nowFunction,
@@ -171,6 +186,9 @@ export async function runExecutionPipeline<TInput, TOutput, E extends ToolEvents
 
 type ReadyExecutionInput<TInput, TOutput, E extends ToolEventsMap> = {
   admission: import('./admission').ReadyAdmission<TInput>;
+  secretBearingArguments: unknown;
+  schema: z.ZodType;
+  secretResolver?: ToolSecretResolver;
   options: InternalToolExecuteOptions;
   inputDigest: string | undefined;
   nowFunction: () => number;
@@ -199,6 +217,9 @@ async function runReadyExecution<TInput, TOutput, E extends ToolEventsMap>(
 ): Promise<TypedToolExecutionResult<TOutput>> {
   const {
     admission,
+    secretBearingArguments,
+    schema,
+    secretResolver,
     options,
     inputDigest,
     nowFunction,
@@ -218,7 +239,19 @@ async function runReadyExecution<TInput, TOutput, E extends ToolEventsMap>(
   } = input;
   const resolvedExecute =
     typeof fn === 'function' ? fn : await raceWithSignal(resolveExecute(), options.signal);
+  const secrets = createToolCallSecrets({
+    configuration,
+    toolName: name,
+    callId: admission.typedToolCall.id,
+    resolver: secretResolver,
+    signal: options.signal,
+    requestContext: admission.effectiveRequestContext
+      ? freezeToolRequestContext(admission.effectiveRequestContext)
+      : undefined,
+    executionContext: options.executionContext,
+  });
   const runtimeOutcome = runRuntimeExecution<TInput, E, TOutput>({
+    secrets,
     parsed: admission.parsed,
     typedToolCall: admission.typedToolCall,
     configuration,
@@ -230,8 +263,27 @@ async function runReadyExecution<TInput, TOutput, E extends ToolEventsMap>(
     runtime,
     name,
     dispatch,
-    runUserCallback: (params: TInput, toolContext: ToolContext<E>) =>
-      Promise.resolve(resolvedExecute(params, toolContext)),
+    runUserCallback:
+      secretBearingArguments !== undefined
+        ? async (_params: TInput, toolContext: ToolContext<E>) => {
+            // The first point at which plaintext exists: after the call was recorded, validated
+            // in its reference form, and approved. The snapshot is copied, never edited. A call
+            // cancelled while the resolver works has already settled as cancelled, so the tool
+            // must not start once the plaintext arrives.
+            const substituted = await raceWithSignal(
+              secrets.substitute(secretBearingArguments),
+              options.signal,
+            );
+            const params = (await parseSubstitutedArguments(
+              schema,
+              substituted,
+              findSecretReferences(secretBearingArguments).map((location) => location.path),
+            )) as TInput;
+            if (options.signal?.aborted) throw createAbortRejection(options.signal.reason);
+            return resolvedExecute(params, toolContext);
+          }
+        : (params: TInput, toolContext: ToolContext<E>) =>
+            Promise.resolve(resolvedExecute(params, toolContext)),
     handleCancellation,
   });
   if (runtimeOutcome.kind === 'cancelled') return runtimeOutcome.result;

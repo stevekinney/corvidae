@@ -53,6 +53,12 @@ const updateScheduleInput = z.object({
     .describe(
       'Deterministic delay spread over each occurrence, as milliseconds or a duration string such as "30s".',
     ),
+  timeZone: z
+    .unknown()
+    .optional()
+    .describe(
+      'IANA time zone the cron expression is read in, such as "America/Los_Angeles", or "UTC". Omitted, a new schedule runs in UTC and an update keeps the schedule\'s zone. Only a cronExpression schedule takes one. A wall-clock time the clock skips when it springs forward is recorded as a missed fire, and one it repeats when it falls back runs once.',
+    ),
   revisionPolicy: z
     .unknown()
     .optional()
@@ -69,10 +75,11 @@ export const updateScheduleOperation = defineOperation({
   summary: 'Update a recurring schedule',
   description:
     'Update an existing recurring schedule by `id`, replacing its recurrence specification and ' +
-    'optionally changing description, overlap, backfill, or jitter. Omitted options retain their ' +
+    'optionally changing description, overlap, backfill, jitter, or the IANA `timeZone` of a cron ' +
+    'schedule. Omitted options retain their ' +
     'persisted values; schedule id, workflow type, and input remain unchanged. Returns null on ' +
     'success. Faults with NotFound when no schedule with the given id exists and InvalidParams ' +
-    'for malformed fields.',
+    'for malformed fields or an unknown time zone.',
   destructive: false,
   tags: ['Schedules'],
   inputSchema: updateScheduleInput,
@@ -112,6 +119,7 @@ export const updateScheduleRestBinding: UnknownRestBinding = {
     overlap: { kind: 'body-field', bodyField: 'overlap' },
     backfill: { kind: 'body-field', bodyField: 'backfill' },
     jitter: { kind: 'body-field', bodyField: 'jitter' },
+    timeZone: { kind: 'body-field', bodyField: 'timeZone' },
     revisionPolicy: { kind: 'body-field', bodyField: 'revisionPolicy' },
   },
   extractInput: async (request, pathParams, context) => {

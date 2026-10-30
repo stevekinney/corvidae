@@ -15,6 +15,7 @@ import {
   type ToolPolicyDecision,
 } from '../is-tool';
 import { providerCallIdField } from '../provider-call-id';
+import { notAccepted, toolAcceptsSecrets } from '../secrets';
 import type { ToolCall, ToolExecutionResult } from '../types';
 import { handleAuthorizationOnly } from './admission-authorization';
 import { handlePolicyPause } from './admission-pause';
@@ -23,6 +24,7 @@ import { normalizeToolContent } from './content';
 import { createToolError } from './errors';
 import type { Emit, ExecutionDetail, FinishTelemetry, RunPolicyAfter } from './execution-contracts';
 import type { InternalToolExecuteOptions } from './execution-options';
+import { parseArgumentsWithSecretReferences } from './secret-arguments';
 
 export type ReadyAdmission<TInput> = {
   kind: 'ready';
@@ -45,6 +47,11 @@ export type AdmitToolExecutionOptions<TInput> = {
   options: InternalToolExecuteOptions;
   configuration: ToolConfiguration;
   name: string;
+  /**
+   * A snapshot of `toolCall.arguments` (see `snapshotSecretBearingArguments`) when the call holds
+   * a `{ secretRef }`, taken once by the caller; `undefined` otherwise.
+   */
+  secretBearingArguments: unknown;
   inputDigest?: string;
   baseDetail: ExecutionDetail<ToolCall & { arguments: unknown }>;
   policyContextProvider?: ToolPolicyContextProvider;
@@ -146,10 +153,10 @@ async function parseToolCall<TInput>(
     }
     return { kind: 'cancelled', result: handleCancellation(options.signal.reason) };
   }
-  const parsed = await racePreExecution(
-    () => schema.parseAsync(toolCall.arguments),
-    options.signal,
-  );
+  const parsed =
+    input.secretBearingArguments !== undefined
+      ? await parseSecretBearingArguments(input)
+      : await racePreExecution(() => schema.parseAsync(toolCall.arguments), options.signal);
   const typedToolCall: ToolCallWithArguments = {
     ...toolCall,
     arguments: normalizeToolContent(parsed),
@@ -162,6 +169,24 @@ async function parseToolCall<TInput>(
   };
   emit('validate-success', { ...parsedDetail, params: toolCall.arguments, parsed });
   return { kind: 'ready', parsed, typedToolCall, parsedDetail };
+}
+
+/**
+ * Validates the arguments of a call that carries `{ secretRef }` values. Such a call reaches a
+ * tool that did not declare `acceptsSecrets` only to fail with `secret-not-accepted`, before
+ * validation, policy or approval. For a declaring tool the references are validated in place: the
+ * plaintext is validated later, right before execution (see `parseArgumentsWithSecretReferences`).
+ */
+async function parseSecretBearingArguments<TInput>(
+  input: AdmitToolExecutionOptions<TInput>,
+): Promise<TInput> {
+  const { schema, secretBearingArguments, options, configuration, name } = input;
+  if (!toolAcceptsSecrets(configuration)) throw notAccepted(name);
+  return (await parseArgumentsWithSecretReferences(
+    schema,
+    secretBearingArguments,
+    options.signal,
+  )) as TInput;
 }
 
 async function preparePolicy<TInput>(

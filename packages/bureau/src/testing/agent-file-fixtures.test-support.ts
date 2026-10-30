@@ -68,6 +68,8 @@ export interface AgentFileFixture {
   readonly models: Models;
   readonly descriptors: readonly BackendDescriptor[];
   readonly generated: BackendDescriptor[];
+  /** Name the summarizer model (`<provider>/<model>`), or unset it with `undefined`; call `catalog.revalidate()` after. */
+  setSummarizerModel(name: string | undefined): void;
   /** Write a file into the directory without going through the catalog. */
   put(name: string, text: string | Uint8Array): Promise<void>;
   /** Resolves with the next change that satisfies `predicate`; rejects at the test's own timeout. */
@@ -97,6 +99,8 @@ export interface AgentFileFixtureOptions {
   /** A source to run over instead of the fixture's directory; the directory options then do nothing. */
   readonly source?: AgentSource;
   readonly descriptors?: readonly BackendDescriptor[];
+  /** The `context.summarizerModel` setting in force at the start. Unset by default. */
+  readonly summarizerModel?: string;
   readonly runtime?: RuntimeServices;
   /** Replaces the host's resolver, to make a model that cannot be set up. */
   readonly resolveGenerate?: (descriptor: BackendDescriptor) => GenerateFunction;
@@ -110,6 +114,7 @@ export async function createAgentFileFixture(
   const root = options.directory ?? (await mkdtemp(join(tmpdir(), 'bureau-agent-files-')));
   const directory = options.subdirectory === undefined ? root : join(root, options.subdirectory);
   const descriptors = options.descriptors ?? createModelCatalog().descriptors;
+  let summarizerModel = options.summarizerModel;
   const models = createModels({
     options: { catalog: descriptors },
     now: () => '2026-10-18T00:00:00.000Z',
@@ -119,6 +124,8 @@ export async function createAgentFileFixture(
     },
     onReplace: () => {},
     agents: {},
+    settings: () =>
+      summarizerModel === undefined ? {} : { 'context.summarizerModel': summarizerModel },
     modelPolicy: undefined,
   });
   const generated: BackendDescriptor[] = [];
@@ -161,6 +168,9 @@ export async function createAgentFileFixture(
     models,
     descriptors,
     generated,
+    setSummarizerModel(name) {
+      summarizerModel = name;
+    },
     async put(name, text) {
       await writeFile(join(directory, name), text);
     },

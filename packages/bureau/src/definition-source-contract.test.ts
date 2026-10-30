@@ -6,11 +6,12 @@
  * `write`, `delete`, and `watch`.
  */
 import type { FSWatcher } from 'node:fs';
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createS3TestServer } from '@lostgradient/testing/s3-server';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -57,6 +58,8 @@ interface Harness<TSource> {
   /** Change a definition without going through Bureau, reporting nothing. */
   put(id: string, text: string): Promise<void>;
   remove(id: string): Promise<void>;
+  /** Put a document beside the definitions, such as an agent file's reference. */
+  putSibling(path: string, text: string | Uint8Array): Promise<void>;
   text(id: string): Promise<string | undefined>;
   /** Every name the source holds, temporary files included. */
   names(): Promise<string[]>;
@@ -78,6 +81,7 @@ function memoryHarness<K extends HarnessKind>(kind: K): Harness<SourceOf<K>> {
     source: memory.source,
     put: async (id, text) => memory.set(id, text),
     remove: async (id) => memory.remove(id),
+    putSibling: async (path, text) => memory.setSibling(path, text),
     text: async (id) => memory.text(id),
     names: async () => [...(await memory.source.load())].map((entry) => entry.id),
     reportChange: async (id) => memory.emit({ changed: [id] }),
@@ -126,6 +130,11 @@ async function directoryHarness<K extends HarnessKind>(kind: K): Promise<Harness
     source: source as SourceOf<K>,
     put: (id, text) => writeFile(pathOf(id), text),
     remove: (id) => rm(pathOf(id), { force: true }),
+    putSibling: async (path, text) => {
+      const target = join(root, ...path.split('/'));
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, text);
+    },
     text: async (id) => readFile(pathOf(id), 'utf8').catch(() => undefined),
     names: () => readdir(root),
     reportChange: async (id) => {
@@ -185,6 +194,9 @@ async function objectHarness<K extends HarnessKind>(kind: K): Promise<Harness<So
       server.put(keyOf(id), text);
     },
     remove: (id) => client.delete(keyOf(id)),
+    putSibling: async (path, text) => {
+      server.put(`${prefix}${path}`, text);
+    },
     text: async (id) => {
       const bytes = server.objects().get(keyOf(id));
       return bytes === undefined ? undefined : decoder.decode(bytes);
@@ -265,6 +277,56 @@ describe.each(SOURCES)('agent files over %s', (_name, makeHarness) => {
     await harness.put('helper', validAgentFile('Second.\n'));
     await fixture.catalog.refresh();
     expect(fixture.catalog.list()[0]?.definitionRevision).toBe(2);
+  });
+
+  it('reads a reference beside the definitions, and reports one that is gone or too large', async () => {
+    const { harness } = await start();
+    await harness.putSibling('docs/style.md', 'Be brief.\n');
+    const found = await harness.source.readSibling('docs/style.md', { limit: 1024 });
+    expect(found.kind).toBe('found');
+    if (found.kind === 'found') expect(new TextDecoder().decode(found.bytes)).toBe('Be brief.\n');
+    expect(await harness.source.readSibling('docs/nope.md', { limit: 1024 })).toEqual({
+      kind: 'missing',
+    });
+    expect(await harness.source.readSibling('docs/style.md', { limit: 3 })).toEqual({
+      kind: 'too-large',
+      size: 10,
+    });
+  });
+
+  it('refuses a reference path that leaves the source’s own location, before it reads', async () => {
+    const { harness } = await start();
+    for (const path of [
+      '../outside.md',
+      'docs/../../outside.md',
+      '/etc/passwd',
+      '.hidden',
+      'a//b',
+      '',
+    ]) {
+      expect(await rejectionOf(harness.source.readSibling(path, { limit: 1024 }))).toBeInstanceOf(
+        TypeError,
+      );
+    }
+  });
+
+  it('lists an agent invalid for a missing reference, ready for a present one, and raises the revision when it changes', async () => {
+    const { harness, fixture } = await start();
+    await harness.put(
+      'helper',
+      agentFileText({ model: KNOWN_MODEL, references: '[docs/style.md]' }),
+    );
+    await fixture.catalog.refresh();
+    expect(fixture.catalog.list()[0]).toMatchObject({
+      state: 'invalid',
+      problem: { code: 'missing-reference' },
+    });
+    await harness.putSibling('docs/style.md', 'Be brief.\n');
+    await fixture.catalog.refresh();
+    expect(fixture.catalog.list()[0]).toMatchObject({ state: 'ready', definitionRevision: 1 });
+    await harness.putSibling('docs/style.md', 'Be thorough.\n');
+    await fixture.catalog.refresh();
+    expect(fixture.catalog.list()[0]).toMatchObject({ state: 'ready', definitionRevision: 2 });
   });
 
   it('rebuilds an agent from a snapshot of what the source held', async () => {

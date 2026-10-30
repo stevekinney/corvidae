@@ -333,6 +333,17 @@ export interface GenerateResponse {
    * returns, the loop has admitted it as a managed asset.
    */
   parts?: readonly MultiModalContent[] | undefined;
+  /**
+   * The indices in `parts` of `thinking` parts an output guardrail withheld from the run's
+   * observers (COR-1806). The redact action sets it on a step that called tools: a provider such
+   * as Anthropic requires a tool-use turn's thinking back complete and unmodified on the request
+   * that carries the tool results, so those parts stay in `parts` and in the stored conversation,
+   * and only a surface that shows the run's reasoning leaves them out. Bureau's AG-UI stream sends
+   * no reasoning frame for them. A step with no tool calls has its flagged thinking removed from
+   * `parts` instead, and leaves this unset. It rides `generate.completed`, but never the row the
+   * step commits.
+   */
+  withheldThinking?: readonly number[] | undefined;
   toolCalls: ToolCallInput[];
   usage?: TokenUsage | undefined;
   metadata?: Record<string, JSONValue> | undefined;

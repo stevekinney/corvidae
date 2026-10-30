@@ -716,6 +716,7 @@ describe('engine validation helpers', () => {
         skippedCount: 0,
         queuedRuns: [{ workflowId: 'queued-run', queuedAt: 2, occurrence: 3 }],
         jitterMs: 30_000,
+        timeZone: 'UTC',
         revision: 0,
       } satisfies Pick<
         ScheduleState,
@@ -727,6 +728,7 @@ describe('engine validation helpers', () => {
         | 'nextFireAt'
         | 'currentWorkflowId'
         | 'missedFireCount'
+        | 'timeZone'
         | 'skippedCount'
         | 'queuedRuns'
         | 'jitterMs'

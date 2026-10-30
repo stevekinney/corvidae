@@ -511,14 +511,14 @@ async function runStepBody(
   //
   // Streaming deltas (`stream:text-delta`, emitted by
   // `withEnhancedStreaming`/`composeConfiguredGenerate` while the provider
-  // call above is still in flight) are a separate, already-decided surface:
-  // bureau's `runtime-composition.ts` (AB-40) forces buffered, non-streaming
-  // generation whenever its auto-wired default guardrail preset is active,
-  // specifically so no delta reaches a client before this post-guardrail
-  // point. A caller who explicitly supplies a custom `guardrails` config (as
-  // opposed to leaving it `undefined`) has opted into managing that
-  // tradeoff themselves per that same file's comment, and streaming deltas
-  // for such a run remain pre-guardrail by design.
+  // call above is still in flight) are a separate surface, and they are
+  // pre-guardrail by construction: nothing here holds them back. Bureau does
+  // not buffer them and does not produce them either (COR-1806): it wires no
+  // `streamEventTarget`, so the frames its AG-UI mount sends for a run's text
+  // and reasoning are read from the recorded events that follow this point, a
+  // `generate.completed` that carries the response the guardrails left. A host
+  // that wires streaming itself owns keeping a delta from a client until its
+  // output guardrail has run.
   if (generateDurationMilliseconds !== undefined) {
     emitter?.dispatch(new GenerateCompletedEvent(step, response, generateDurationMilliseconds));
   }

@@ -56,6 +56,10 @@ import {
   agentFileDefinitionSchema,
   type AgentFileDefinition,
 } from './agent-file';
+import {
+  type AgentReferenceDocument,
+  agentReferenceDocumentSchema,
+} from './agent-reference-documents';
 
 export const AGENT_SNAPSHOT_KEY_PREFIX = 'bureau-agent-snapshot:v1:';
 export const AGENT_RUN_REFERENCE_KEY_PREFIX = 'bureau-agent-run:v1:';
@@ -68,6 +72,13 @@ export interface AgentSnapshot {
   readonly firstRunAt: string;
   readonly lastRunAt: string;
   readonly definition: AgentFileDefinition;
+  /**
+   * The reference documents the definition's `references` named when the run started (COR-1866),
+   * as the text the run was given. Absent for an agent with no references, and for a snapshot
+   * written before the field existed. A snapshot is keyed by the agent's identity hash, which
+   * folds in each document's digest, so one key always means one set of documents.
+   */
+  readonly referenceDocuments?: readonly AgentReferenceDocument[];
 }
 
 /** The tie between one run and the snapshot it started on. */
@@ -94,6 +105,8 @@ export interface AgentSnapshotSource {
   readonly id: string;
   readonly hash: string;
   readonly definition: AgentFileDefinition;
+  /** See {@link AgentSnapshot.referenceDocuments}. */
+  readonly referenceDocuments?: readonly AgentReferenceDocument[] | undefined;
   /** The definition revision the run starts at, kept on its reference. Not part of the snapshot. */
   readonly definitionRevision?: number | undefined;
 }
@@ -198,6 +211,12 @@ function parseSnapshot(text: string | null): ParsedSnapshot {
   }
   const definition = agentFileDefinitionSchema.safeParse(value['definition']);
   if (!definition.success) return { kind: 'invalid' };
+  // Absent from a snapshot of an agent with no references, and from one written before they existed.
+  const documents =
+    value['referenceDocuments'] === undefined
+      ? undefined
+      : agentReferenceDocumentSchema.array().safeParse(value['referenceDocuments']);
+  if (documents !== undefined && !documents.success) return { kind: 'invalid' };
   return {
     kind: 'ok',
     snapshot: {
@@ -207,6 +226,9 @@ function parseSnapshot(text: string | null): ParsedSnapshot {
       firstRunAt: value['firstRunAt'],
       lastRunAt: value['lastRunAt'],
       definition: definition.data as AgentFileDefinition,
+      ...(documents === undefined || documents.data.length === 0
+        ? {}
+        : { referenceDocuments: documents.data }),
     },
   };
 }
@@ -287,6 +309,9 @@ export function createAgentSnapshotStore(options: AgentSnapshotStoreOptions): Ag
             firstRunAt: now,
             lastRunAt: now,
             definition: source.definition,
+            ...(source.referenceDocuments === undefined || source.referenceDocuments.length === 0
+              ? {}
+              : { referenceDocuments: source.referenceDocuments }),
           } satisfies AgentSnapshot),
         );
       } catch (error) {
@@ -337,6 +362,9 @@ export function createAgentSnapshotStore(options: AgentSnapshotStoreOptions): Ag
               firstRunAt: current.kind === 'ok' ? current.snapshot.firstRunAt : now,
               lastRunAt: now,
               definition: source.definition,
+              ...(source.referenceDocuments === undefined || source.referenceDocuments.length === 0
+                ? {}
+                : { referenceDocuments: source.referenceDocuments }),
             };
             await store.set(key, JSON.stringify(snapshot));
           } finally {

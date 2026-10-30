@@ -204,6 +204,7 @@ import {
   type ChildTopologyParent,
   createChildTopology,
 } from './child-topology';
+import { childActionOf } from './child-announcement';
 import { createChildTopologyStore } from './child-topology-store';
 import {
   type CommandLedger,
@@ -2628,6 +2629,23 @@ async function constructBureau<const D extends AgentDefinitions>(
         await auditTrailInstance?.record(entry);
       },
       applyLive: (values, keys) => {
+        // COR-1866: a file agent that enables compaction is valid only while a summarizer is
+        // configured, and the model catalog does not carry the setting, so the files are checked
+        // again here. Unset at boot there is no catalog yet, and its first scan reads the setting.
+        if (
+          fileAgents !== undefined &&
+          keys.includes('context.summarizerModel') &&
+          !runAdmissionClosed
+        ) {
+          fileAgents.files.revalidate().catch((cause: unknown) =>
+            diagnose({
+              level: 'error',
+              scope: 'agent-files',
+              message: '[bureau] could not validate agent files against the summarizer setting',
+              cause,
+            }),
+          );
+        }
         const engine = runtime.durable?.engine;
         const patch = enginePatchOf(values, keys);
         if (engine === undefined || patch === undefined) return;
@@ -17075,6 +17093,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         ...(definition.description !== undefined ? { description: definition.description } : {}),
         ...(definition.sessionId !== undefined ? { session: definition.sessionId } : {}),
         ...(definition.overlap !== undefined ? { overlap: definition.overlap } : {}),
+        ...(definition.timeZone !== undefined ? { timeZone: definition.timeZone } : {}),
         principal: owner,
       });
     } catch (error) {
@@ -17350,6 +17369,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     await runtime.durable.engine.updateSchedule(scheduleId, toScheduleSpec(update.spec), {
       ...(update.description === undefined ? {} : { description: update.description }),
       ...(update.overlap === undefined ? {} : { overlap: update.overlap }),
+      ...(update.timeZone === undefined ? {} : { timeZone: update.timeZone }),
       ...(guard?.expectedRevision === undefined
         ? {}
         : { expectedRevision: guard.expectedRevision }),
@@ -18924,6 +18944,14 @@ async function constructBureau<const D extends AgentDefinitions>(
         ...entry,
         ...(principal === undefined ? {} : { principal }),
       });
+    },
+    // COR-1806: a child shows on its parent run's stream as a child a tool dispatched does. A
+    // parent this process does not hold has no action log here, and the record is dropped.
+    announce: (announcement) => {
+      const action = childActionOf(announcement);
+      if (action !== undefined) {
+        store.recordAction(announcement.record.parentRunId, action.type, action.detail);
+      }
     },
     resolveParent: resolveChildParent,
     isKnownRun,

@@ -29,7 +29,7 @@ type ConcatenateTools<TBoxes extends readonly unknown[]> = TBoxes extends readon
  *   `policy` (including any `needs_approval` `beforeExecute` hook) together
  *   with the `policyContext` that hook reads its tenant/approval-context
  *   values from,
- *   `approvalPolicy`, `approvalSecret`, `approvalStateStore`,
+ *   `approvalPolicy`, `approvalSecret`, `secretResolver`, `approvalStateStore`,
  *   `grantStateStore`, `approvalBindingTtlMs`, `approvalNow`,
  *   `approvalNonce`, `policyRevision`, `approvalRevision`,
  *   `toolboxRevision`, `readOnly`, `allowMutation`, and `allowDangerous` —

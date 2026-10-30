@@ -5,6 +5,7 @@ import type { InspectorDetailLevel, RegistryInspection } from './core/inspect';
 import { inspectRegistry } from './core/inspect';
 import type { AnyToolDefinition } from './core/tool-definition';
 import type { RuntimeToolContext, ToolConfiguration } from './is-tool';
+import { createToolCallSecrets } from './secrets';
 import type {
   SerializedToolbox,
   SerializedToolboxJSONSchema,
@@ -158,13 +159,23 @@ export function requireRuntimeToolContext(
   tool: ToolsFromEntries<ToolboxEntries>[number],
   parameters: unknown,
 ): RuntimeToolContext {
-  if (isRuntimeToolContext(value)) return value;
+  const secrets = createToolCallSecrets({
+    configuration: tool.configuration,
+    toolName: tool.name,
+  });
+  if (isRuntimeToolContext(value)) {
+    // A context built before `resolveSecret` existed still gets the gate, not a TypeError.
+    return typeof Reflect.get(value, 'resolveSecret') === 'function'
+      ? value
+      : { ...value, resolveSecret: (reference: string) => secrets.resolve(reference) };
+  }
   const record = isRecord(value) ? value : {};
   const dispatch = Reflect.get(record, 'dispatch');
   return {
     ...record,
     dispatch: typeof dispatch === 'function' ? (event: Event) => dispatch(event) : () => true,
     progress: () => undefined,
+    resolveSecret: (reference: string) => secrets.resolve(reference),
     toolCall: { id: '', name: tool.name, arguments: normalizeToolCallArguments(parameters) },
     configuration: tool.configuration,
   };

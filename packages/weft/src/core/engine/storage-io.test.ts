@@ -70,6 +70,7 @@ function createScheduleState(overrides: Partial<ScheduleState> = {}): ScheduleSt
     nextFireAt: 2_000,
     overlap: 'skip',
     queuedRuns: [],
+    timeZone: 'UTC',
     revisionPolicy: 'active-at-fire',
     status: 'active',
     updatedAt: 1_000,

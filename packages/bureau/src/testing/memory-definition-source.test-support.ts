@@ -11,6 +11,7 @@ import {
   SourceConflictError,
   type WorkflowSource,
 } from '../sources/definition-source.ts';
+import { assertReferencePath } from '../sources/reference-path.ts';
 
 export interface MemoryDefinitionSource<TSource extends AgentSource | WorkflowSource> {
   readonly source: TSource;
@@ -18,6 +19,12 @@ export interface MemoryDefinitionSource<TSource extends AgentSource | WorkflowSo
   set(id: string, text: string): void;
   /** Remove a definition from outside Bureau, reporting nothing. */
   remove(id: string): void;
+  /** Put a document beside the definitions, which an agent source reads by path (a `references` entry). */
+  setSibling(path: string, text: string | Uint8Array): void;
+  /** Remove a document beside the definitions. */
+  removeSibling(path: string): void;
+  /** How many times a document's content was read (a read answered `unchanged` is not one). */
+  readonly siblingContentReads: () => number;
   /** The text of a definition, or `undefined`. */
   text(id: string): string | undefined;
   /** Report a change to every watcher, as a source does when it sees one. */
@@ -40,6 +47,9 @@ export function createMemoryDefinitionSource<TKind extends 'agent' | 'workflow'>
   extras: Record<string, unknown> = {},
 ): MemoryDefinitionSource<TKind extends 'agent' ? AgentSource : WorkflowSource> {
   const held = new Map<string, Uint8Array>();
+  const siblings = new Map<string, { bytes: Uint8Array; version: number }>();
+  let siblingVersion = 0;
+  let siblingContentReads = 0;
   const listeners = new Set<(change: DefinitionSourceChange) => void>();
   let hook: (() => void) | undefined;
   let failure: Error | undefined;
@@ -63,6 +73,18 @@ export function createMemoryDefinitionSource<TKind extends 'agent' | 'workflow'>
         throw error;
       }
       return [...held].map(([id, bytes]) => entryOf(id, bytes));
+    },
+    async readSibling(path: string, options: { limit: number; unlessStamp?: string }) {
+      assertReferencePath(path);
+      const held = siblings.get(path);
+      if (held === undefined) return { kind: 'missing' };
+      if (held.bytes.byteLength > options.limit) {
+        return { kind: 'too-large', size: held.bytes.byteLength };
+      }
+      const stamp = String(held.version);
+      if (options.unlessStamp === stamp) return { kind: 'unchanged' };
+      siblingContentReads += 1;
+      return { kind: 'found', bytes: held.bytes, stamp };
     },
     watch(listener: (change: DefinitionSourceChange) => void) {
       listeners.add(listener);
@@ -102,6 +124,13 @@ export function createMemoryDefinitionSource<TKind extends 'agent' | 'workflow'>
     source,
     set: (id, text) => void held.set(id, encoder.encode(text)),
     remove: (id) => void held.delete(id),
+    setSibling: (path, text) =>
+      void siblings.set(path, {
+        bytes: typeof text === 'string' ? encoder.encode(text) : text,
+        version: (siblingVersion += 1),
+      }),
+    siblingContentReads: () => siblingContentReads,
+    removeSibling: (path) => void siblings.delete(path),
     text: (id) => {
       const bytes = held.get(id);
       return bytes === undefined ? undefined : decoder.decode(bytes);

@@ -339,7 +339,7 @@ describe('events', () => {
       spec: { every: '1h' },
       sessionId: 'session-1',
     });
-    const wakeup = new WakeupScheduledEvent(5000, 'resume work');
+    const wakeup = new WakeupScheduledEvent(5000, 1_700_000_005_000, 'resume work');
 
     expect(scheduled.type).toBe('schedule.created');
     expect(scheduled.agentName).toBe('assistant');
@@ -348,6 +348,7 @@ describe('events', () => {
     expect(scheduled.sessionId).toBe('session-1');
     expect(wakeup.type).toBe('schedule.wakeup');
     expect(wakeup.duration).toBe(5000);
+    expect(wakeup.wakeAt).toBe(1_700_000_005_000);
     expect(wakeup.note).toBe('resume work');
   });
 

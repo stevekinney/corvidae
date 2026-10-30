@@ -1,6 +1,7 @@
 import { describe, expect, it, mock } from 'bun:test';
 import { Conversation } from 'conversationalist';
 
+import { GuardrailTripwireError } from '../errors';
 import { createOutputGuardrail } from './output-guardrail';
 import type {
   OutputGuardrailTriggeredEvent,
@@ -273,5 +274,134 @@ describe('createOutputGuardrail', () => {
       expect(ctx.conversationLength).toBe(2);
       expect(ctx.toolCallCount).toBe(2);
     });
+  });
+});
+
+describe('createOutputGuardrail over thinking parts (COR-1806)', () => {
+  /** Flags any text that contains `SECRET`, and offers the text with it redacted. */
+  const secretValidator: OutputValidator = {
+    name: 'secret',
+    validate: async (text) =>
+      text.includes('SECRET')
+        ? {
+            valid: false,
+            confidence: 0.9,
+            category: 'secret',
+            redacted: text.replaceAll('SECRET', '[REDACTED]'),
+          }
+        : { valid: true, confidence: 0, category: 'secret' },
+  };
+
+  const thinking = (text: string) => ({
+    type: 'thinking' as const,
+    thinking: text,
+    signature: 'signature',
+  });
+
+  /** A clean answer whose reasoning (and nothing else) holds the secret. */
+  function responseWithThought(thought: string) {
+    const call = { id: 'call-1', name: 'lookup', arguments: {} };
+    return {
+      content: 'A clean answer.',
+      toolCalls: [call],
+      parts: [
+        thinking(thought),
+        { type: 'redacted_thinking' as const, data: 'opaque' },
+        { type: 'text' as const, text: 'A clean answer.' },
+      ],
+    };
+  }
+
+  it('passes a response whose thinking is clean, parts untouched', async () => {
+    const hook = createOutputGuardrail({ validators: [secretValidator], action: 'redact' });
+    expect(await hook(responseWithThought('a clean thought'), createMockStepContext())).toBe(
+      undefined,
+    );
+  });
+
+  it('blocks the whole response when only the thinking is flagged', async () => {
+    const hook = createOutputGuardrail({ validators: [secretValidator], action: 'block' });
+
+    const result = await hook(responseWithThought('the SECRET is x'), createMockStepContext());
+
+    expect(result?.content).toContain('blocked');
+    expect(result?.toolCalls).toEqual([]);
+    expect(result?.parts).toBeUndefined();
+  });
+
+  it('redacts a step with no tool calls by removing the flagged thinking: the answer and other parts stand', async () => {
+    const hook = createOutputGuardrail({ validators: [secretValidator], action: 'redact' });
+    const response = { ...responseWithThought('the SECRET is x'), toolCalls: [] };
+    response.parts.splice(1, 0, thinking('a clean second thought') as never);
+
+    const result = await hook(response, createMockStepContext());
+
+    expect(result?.content).toBe('A clean answer.');
+    expect(result?.toolCalls).toEqual([]);
+    expect(result?.parts).toEqual([
+      thinking('a clean second thought'),
+      { type: 'redacted_thinking', data: 'opaque' },
+      { type: 'text', text: 'A clean answer.' },
+    ]);
+    expect(result?.withheldThinking).toBeUndefined();
+    expect(JSON.stringify(result)).not.toContain('SECRET');
+  });
+
+  it('redacts a tool-call step by marking the flagged thinking withheld, every part kept unchanged', async () => {
+    // A provider requires a tool-use turn's thinking back complete and unmodified on the next
+    // request, so the parts stay as they are and only the stream is told to leave them out.
+    const hook = createOutputGuardrail({ validators: [secretValidator], action: 'redact' });
+    const response = responseWithThought('the SECRET is x');
+    response.parts.splice(2, 0, thinking('another SECRET thought') as never);
+    response.parts.splice(1, 0, thinking('a clean second thought') as never);
+    const parts = structuredClone(response.parts);
+
+    const result = await hook(response, createMockStepContext());
+
+    expect(result?.content).toBe('A clean answer.');
+    expect(result?.toolCalls).toEqual(response.toolCalls);
+    expect(result?.parts).toEqual(parts);
+    expect(result?.withheldThinking).toEqual([0, 3]);
+  });
+
+  it('redacts flagged content as before even when the thinking is flagged too', async () => {
+    const hook = createOutputGuardrail({ validators: [secretValidator], action: 'redact' });
+    const response = { ...responseWithThought('the SECRET is x'), content: 'the SECRET answer' };
+
+    const result = await hook(response, createMockStepContext());
+
+    expect(result).toEqual({ content: 'the [REDACTED] answer', toolCalls: [] });
+  });
+
+  it('throws the tripwire for flagged thinking, as it does for flagged content', async () => {
+    const onTriggered = mock((_event: OutputGuardrailTriggeredEvent) => {});
+    const hook = createOutputGuardrail({
+      validators: [secretValidator],
+      action: 'tripwire',
+      onTriggered,
+    });
+
+    let thrown: unknown;
+    try {
+      await hook(responseWithThought('the SECRET is x'), createMockStepContext());
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(GuardrailTripwireError);
+    expect(onTriggered).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onTriggered once and passes the response through under warn', async () => {
+    const onTriggered = mock((_event: OutputGuardrailTriggeredEvent) => {});
+    const hook = createOutputGuardrail({
+      validators: [secretValidator],
+      action: 'warn',
+      onTriggered,
+    });
+    const response = responseWithThought('the SECRET is x');
+
+    expect(await hook(response, createMockStepContext())).toBeUndefined();
+    expect(onTriggered).toHaveBeenCalledTimes(1);
+    expect(onTriggered.mock.calls[0]![0].validator).toBe('secret');
   });
 });

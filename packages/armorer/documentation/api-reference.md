@@ -15,6 +15,7 @@ import { createTool, createToolbox, createRegistry, defineTool } from 'armorer';
 - `createTool`: create an executable tool from a configuration object.
 - `createToolCall`: create a canonical tool call object with validated arguments.
 - `createToolbox`: create a toolbox instance or rehydrate one from serialized/imported definitions.
+- `isSecretReference`: whether a value is a `{ secretRef }` reference (a plain object whose only key is a string `secretRef`).
 - `isTool`: runtime type guard for tools.
 - `isToolbox`: runtime type guard for toolboxes.
 - `lazy`: memoized lazy loader for deferred execute functions.
@@ -27,10 +28,15 @@ import { createTool, createToolbox, createRegistry, defineTool } from 'armorer';
 - `readToolShortDescription`: read a tool's `metadata.shortDescription`, the one line a screen shows in place of its model-facing `description`, or `undefined` when it declares none.
 - `renderToolSummary`: write a tool's `metadata.summary` template for one call, such as `Refund order order-1001 for $42.00`.
 - `withContext`: bind extra runtime context into a tool factory.
+- `ToolSecretError`, `secretNotAcceptedCode`, `secretUnavailableCode`: the typed failure, and its two codes, of a secret request (see [Secrets](secrets.md)).
 
 ### Types
 
 - `CreateToolOptions`
+- `SecretReference`
+- `ToolSecretErrorCode`
+- `ToolSecretResolutionContext`
+- `ToolSecretResolver`
 - `DefaultToolEvents`
 - `ImportedToolConfiguration`
 - `ImportedToolboxOptions`

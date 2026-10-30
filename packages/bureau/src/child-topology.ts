@@ -318,11 +318,26 @@ export interface ChildAuditEntry {
   readonly dedupeKey?: string | undefined;
 }
 
+/**
+ * What the topology announces to the parent run's own event stream (COR-1806): a child that was
+ * registered and started (`started`), and a child whose record reached a terminal status
+ * (`settled`, with that status on `record`).
+ */
+export interface ChildAnnouncement {
+  readonly kind: 'started' | 'settled';
+  readonly record: BureauChildRecord;
+}
+
 export interface ChildTopologyDependencies {
   readonly store: ChildTopologyStore;
   readonly runtime: Pick<RuntimeServices, 'clock' | 'identifiers'>;
   readonly diagnose: DiagnosticSink;
   readonly recordAudit: (entry: ChildAuditEntry) => Promise<void>;
+  /**
+   * Told of each child that started and each that settled, after the audit entry is written, so
+   * the parent run's stream can show it. A failure is a diagnostic and never changes the child.
+   */
+  readonly announce?: ((announcement: ChildAnnouncement) => void) | undefined;
   readonly resolveParent: (parentRunId: string) => Promise<ChildTopologyParent | undefined>;
   /**
    * Whether `runId` already names a run or workflow Bureau knows, other than
@@ -643,6 +658,19 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
       childAgentName: record.childAgentName,
       childRunId: record.childRunId,
     };
+  }
+
+  function announce(kind: ChildAnnouncement['kind'], record: BureauChildRecord): void {
+    try {
+      dependencies.announce?.({ kind, record });
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'child-topology',
+        message: `[bureau] Could not announce child "${record.childRunId}" to its parent run: ${describeError(error)}`,
+        cause: error,
+      });
+    }
   }
 
   async function audit(
@@ -1000,6 +1028,7 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
     await audit(`child.${record.status}`, record, {
       dedupeKey: `child.${record.status}:${record.childRunId}`,
     });
+    announce('settled', record);
     try {
       await releaseReservation(record);
     } catch (error) {
@@ -1399,6 +1428,7 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
       dedupeKey: `child.started:${childRunId}`,
       ...(record.principal === undefined ? {} : { principal: record.principal }),
     });
+    announce('started', record);
 
     const entry = ensureTracked(childRunId);
     const contract = contractFor(request.agentName);
