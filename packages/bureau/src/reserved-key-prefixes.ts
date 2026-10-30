@@ -41,6 +41,7 @@ export const BUREAU_RESERVED_KEY_PREFIXES: readonly string[] = [
   'bureau-hook-secret:v1:',
   'bureau-notification:v1:',
   'bureau-peer-call:record:',
+  'bureau-process:v1:',
   'bureau-removed-surfaces:v1:',
   'bureau-resolved-review:v1:',
   'bureau-schedule-transition:',

@@ -215,7 +215,22 @@ export interface TaskRecord {
    * a task resumes with the settings at resume, which are then recorded here.
    */
   readonly tools?: TaskToolGrant | undefined;
+  /**
+   * The id of the Bureau process that admitted the task (COR-1946), stored as a plain string. A
+   * run with no durable workflow lives only in that process, so a later boot settles the task as
+   * lost when the process's lease (`bureau-process:v1:<id>`, see `process-lease.ts`) is absent or
+   * expired. Absent in a record written before it was kept: such a task is never settled by that
+   * rule, because nothing says whose it is.
+   */
+  readonly ownerProcess?: string | undefined;
 }
+
+/**
+ * COR-1946 — the finish reason of a task settled because the process that owned its run is gone.
+ * A settlement carrying it is final: the owner's own later settlement of the task, if the owner was
+ * only stalled and is still running it, does not replace it.
+ */
+export const TASK_OWNER_LOST_FINISH_REASON = 'owner-lost';
 
 /** COR-1710 — the tools a task was granted at start: `tools.*` of `bureau.settings` at that moment. */
 export interface TaskToolGrant {
@@ -516,10 +531,23 @@ export interface TaskRegistry {
    */
   reviewClosedElsewhere(taskId: string, reviewId: string, eventKind: string): Promise<void>;
   /**
-   * Records how a task ended. The latest settlement wins, with the answer kept. Resolves
-   * `false`, writing nothing, when the task has no record.
+   * Records how a task ended. The latest settlement wins, with the answer kept, except that a
+   * settlement with {@link TASK_OWNER_LOST_FINISH_REASON} (COR-1946) is final. Resolves `false`,
+   * writing nothing, when the task has no record.
    */
   recordSettled(taskId: string, settlement: TaskSettlement): Promise<boolean>;
+  /**
+   * COR-1946 — settles a task whose owning process is gone. Writes only when the task is still
+   * unsettled, is still owned by `ownerProcess`, and `lease.key` still holds exactly
+   * `lease.expected` (`null` for no record): a renewal of the lease, or any settlement, that lands
+   * first defeats it. One attempt; resolves `false` when it wrote nothing.
+   */
+  settleAbandoned(
+    taskId: string,
+    ownerProcess: string,
+    lease: { readonly key: string; readonly expected: string | null },
+    settlement: TaskSettlement,
+  ): Promise<boolean>;
   /**
    * A bound, not a barrier. Waits up to `maximumTurns` event-loop turns (default 50; by turn, not
    * by clock) for the cleanup acknowledgements the registry is following to arrive, then waits
@@ -631,6 +659,12 @@ export interface CreateTaskRegistryOptions {
   readonly identifiers: RuntimeIdentifiers;
   readonly host: TaskRegistryHost;
   readonly diagnose: (message: string, cause?: unknown) => void;
+  /**
+   * COR-1946 — this process's id, stamped on every record the registry admits as
+   * {@link TaskRecord.ownerProcess}. Omitted for a Bureau with no persistent store, which has no
+   * second process and so no owner to tell apart.
+   */
+  readonly processId?: string | undefined;
   /**
    * Told, after {@link TaskRegistry.recordSettled} has written the settlement and announced it
    * here, of each schedule fire it settled (COR-1594). The Bureau records the fire's end in the
@@ -833,6 +867,7 @@ function isTaskRecord(value: unknown): value is TaskRecord {
     typeof value['owner'] === 'string' &&
     (value['actor'] === undefined || typeof value['actor'] === 'string') &&
     (value['kind'] === undefined || value['kind'] === 'schedule-fire') &&
+    (value['ownerProcess'] === undefined || typeof value['ownerProcess'] === 'string') &&
     (value['origin'] === undefined || isStoredTaskOrigin(value['origin'])) &&
     isTimestamp(value['createdAt']) &&
     Array.isArray(value['history']) &&
@@ -1365,30 +1400,19 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       update(
         taskId,
         (record) => {
-          // A task has more than one writer of its settlement (the action that ended the run,
-          // and the catalog hook that carries the answer), so the answer is never lost to
-          // whichever lands last. Only a catalog task and a schedule fire record one: a session
-          // run's answer lives in its durable history, and a fire writes none there.
-          const answer =
-            record.incarnation === '' || record.kind === 'schedule-fire'
-              ? (settlement.answer ?? record.settled?.answer)
-              : undefined;
-          const { answer: _ignored, ...rest } = settlement;
+          // COR-1946 — a task settled because its owner was lost stays settled: the owner, if it
+          // was only stalled, ends its run later, and that must not undo a settlement a peer
+          // already committed (and, for a failure, notified).
+          if (record.settled?.finishReason === TASK_OWNER_LOST_FINISH_REASON) return undefined;
+          const next = withSettlement(record, settlement);
           captured.newlySettled = record.settled === undefined;
-          const next: TaskRecord = {
-            ...record,
-            settled: { ...rest, ...(answer === undefined ? {} : { answer }) },
-          };
           captured.settled = next;
           return next;
         },
         true,
         () =>
-          // COR-1945 — a run that ends `failed` owes a notification. The entry commits with the
-          // settlement or not at all, so a process that dies before the notification is written
-          // finds the debt at its next boot. Only a store that outlives the process is written to.
-          captured.newlySettled && settlement.status === 'failed' && options.kv !== undefined
-            ? [{ type: 'set', key: notificationOutboxKey(taskId), value: '1' }]
+          captured.newlySettled && captured.settled !== undefined
+            ? settlementOutbox(taskId, settlement)
             : [],
       ),
     );
@@ -1396,6 +1420,71 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       await announceRecordedSettlement(taskId, captured.settled, captured.newlySettled);
     }
     return recorded;
+  }
+
+  /**
+   * The record with `settlement` written. A task has more than one writer of its settlement (the
+   * action that ended the run, and the catalog hook that carries the answer), so the answer is
+   * never lost to whichever lands last. Only a catalog task and a schedule fire record one: a
+   * session run's answer lives in its durable history, and a fire writes none there.
+   */
+  function withSettlement(record: TaskRecord, settlement: TaskSettlement): TaskRecord {
+    const answer =
+      record.incarnation === '' || record.kind === 'schedule-fire'
+        ? (settlement.answer ?? record.settled?.answer)
+        : undefined;
+    const { answer: _ignored, ...rest } = settlement;
+    return { ...record, settled: { ...rest, ...(answer === undefined ? {} : { answer }) } };
+  }
+
+  /**
+   * COR-1945 — a run that ends `failed` owes a notification. The entry commits with the settlement
+   * or not at all, so a process that dies before the notification is written finds the debt at its
+   * next boot. Only a store that outlives the process is written to.
+   */
+  function settlementOutbox(
+    taskId: string,
+    settlement: TaskSettlement,
+  ): readonly TextValueStoreBatchOperation[] {
+    return settlement.status === 'failed' && options.kv !== undefined
+      ? [{ type: 'set', key: notificationOutboxKey(taskId), value: '1' }]
+      : [];
+  }
+
+  async function settleAbandoned(
+    taskId: string,
+    ownerProcess: string,
+    lease: { readonly key: string; readonly expected: string | null },
+    settlement: TaskSettlement,
+  ): Promise<boolean> {
+    const key = recordKey(taskId);
+    const raw = await kv.get(key);
+    if (raw === null) return false;
+    const current = readable(key, raw);
+    if (current === undefined || current.settled !== undefined) return false;
+    if (current.ownerProcess !== ownerProcess) return false;
+    const next = withSettlement(current, settlement);
+    // One attempt, conditioned on the record as read and the lease as it was judged: a renewal
+    // or any other write since either read makes this a no-op, and the next sweep decides again.
+    const committed = await track(
+      kv.conditionalBatch(
+        [
+          { key, expectedValue: raw },
+          { key: lease.key, expectedValue: lease.expected },
+        ],
+        [
+          {
+            type: 'set',
+            key,
+            value: JSON.stringify({ ...next, revision: (current.revision ?? 0) + 1 }),
+          },
+          ...settlementOutbox(taskId, settlement),
+        ],
+      ),
+    );
+    if (!committed) return false;
+    await announceRecordedSettlement(taskId, next, true);
+    return true;
   }
 
   async function announceSettled(taskId: string): Promise<void> {
@@ -1467,6 +1556,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         ...(admission.actor === undefined ? {} : { actor: admission.actor }),
         ...(admission.kind === undefined ? {} : { kind: admission.kind }),
         ...(admission.origin === undefined ? {} : { origin: admission.origin }),
+        ...(options.processId === undefined ? {} : { ownerProcess: options.processId }),
         createdAt,
         history,
         ...(admission.tools === undefined ? {} : { tools: admission.tools }),
@@ -1593,6 +1683,8 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       }
       await this.flush();
     },
+
+    settleAbandoned,
 
     async flush() {
       while (inFlight.size > 0) await Promise.allSettled(inFlight);
