@@ -130,6 +130,32 @@ describe('preview reports the generation a change should be applied against', ()
   });
 });
 
+describe('previousBuildId on the routing operations (COR-1813)', () => {
+  it('reports the replaced build from promote and rollback, and keeps it through a ramp', async () => {
+    const catalog = await catalogWithBuilds(['build-a', 'build-b', 'build-c']);
+    const set = createSetWorkerDeploymentRoutingOperation({ catalog });
+    const promote = createPromoteWorkerDeploymentOperation({ catalog });
+    const rollback = createRollbackWorkerDeploymentOperation({ catalog });
+
+    expect(await invoke(set, ROUTING)).not.toHaveProperty('previousBuildId');
+    expect(await invoke(promote, { deploymentName: 'billing', buildId: 'build-b' })).toMatchObject({
+      currentBuildId: 'build-b',
+      previousBuildId: 'build-a',
+    });
+    expect(
+      await invoke(set, {
+        deploymentName: 'billing',
+        currentBuildId: 'build-b',
+        rampingBuildId: 'build-c',
+        rampBasisPoints: 500,
+      }),
+    ).toMatchObject({ previousBuildId: 'build-a', rampingBuildId: 'build-c' });
+    expect(await invoke(rollback, { deploymentName: 'billing', buildId: 'build-a' })).toMatchObject(
+      { currentBuildId: 'build-a', previousBuildId: 'build-b' },
+    );
+  });
+});
+
 describe('worker:deployment-changed from routing changes (COR-1724)', () => {
   it('announces setrouting, promote, and rollback with the new generation and the drain state', async () => {
     const catalog = await catalogWithBuilds();

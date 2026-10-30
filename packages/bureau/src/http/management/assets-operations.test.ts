@@ -8,6 +8,7 @@ import { BUREAU_SCOPES } from '../bureau-scopes.ts';
 import { BUREAU_HANDLER_OPERATIONS } from '../create-bureau-handler.ts';
 import {
   assetsGetOperation,
+  assetsUploadsAbortOperation,
   assetsUploadsAppendOperation,
   assetsUploadsCompleteOperation,
   assetsUploadsCreateOperation,
@@ -45,6 +46,9 @@ const append = (opened: OpenedBureau, key: string, uploadId: string, bytes: Uint
 const complete = (opened: OpenedBureau, key: string, uploadId: string) =>
   rpc(opened.handler, 'bureau.assets.uploads.complete', { uploadId }, key);
 
+const abort = (opened: OpenedBureau, key: string, uploadId: string) =>
+  rpc(opened.handler, 'bureau.assets.uploads.abort', { uploadId }, key);
+
 const get = (opened: OpenedBureau, key: string, assetId: string) =>
   rpc(opened.handler, 'bureau.assets.get', { assetId }, key);
 
@@ -74,15 +78,13 @@ describe('the asset operations and their scopes', () => {
       assetsUploadsCreateOperation,
       assetsUploadsAppendOperation,
       assetsUploadsCompleteOperation,
+      assetsUploadsAbortOperation,
       assetsGetOperation,
     ]) {
       expect(BUREAU_HANDLER_OPERATIONS).toContain(operation);
     }
     expect(BUREAU_SCOPES).toContain('bureau.assets:read');
     expect(BUREAU_SCOPES).toContain('bureau.assets:write');
-    expect(BUREAU_HANDLER_OPERATIONS.map((operation) => operation.name)).not.toContain(
-      'bureau.assets.uploads.abort',
-    );
   });
 
   it('answer 403 to a caller without the scope each needs, and a write scope does not imply read', async () => {
@@ -98,6 +100,8 @@ describe('the asset operations and their scopes', () => {
       const unscopedGet = await get(opened, 'alice-key', 'asset-1');
       const unscopedAppend = await append(opened, 'alice-key', uploadId, png);
       const unscopedComplete = await complete(opened, 'alice-key', uploadId);
+      const unscopedAbort = await abort(opened, 'alice-key', uploadId);
+      const readOnlyAbort = await abort(opened, 'assets-reader-key', uploadId);
 
       for (const body of [
         unscoped,
@@ -106,9 +110,14 @@ describe('the asset operations and their scopes', () => {
         unscopedGet,
         unscopedAppend,
         unscopedComplete,
+        unscopedAbort,
+        readOnlyAbort,
       ]) {
         expect(httpStatusOf(body)).toBe(403);
       }
+      // Refused for want of the scope, it discarded nothing.
+      const stillOpen = await append(opened, 'alice-assets-key', uploadId, png);
+      expect(stillOpen.result).toMatchObject({ receivedBytes: png.byteLength });
     });
   });
 });
@@ -318,6 +327,7 @@ describe('two principals', () => {
         await get(opened, key, asset),
         await append(opened, key, upload, png),
         await complete(opened, key, upload),
+        await abort(opened, key, upload),
       ];
       const mask = (bodies: RpcBody[], ids: string[]) =>
         JSON.stringify(bodies, null, 1).replaceAll(ids[0]!, '<id>').replaceAll(ids[1]!, '<id>');
@@ -330,7 +340,10 @@ describe('two principals', () => {
       // A completion refused for a session the caller does not hold starts no admission, so it
       // leaves no rejected asset behind under the caller.
       expect(await assetStorage.list(KEYS.recordPrefix)).toEqual(recordsBefore);
-      for (const body of bob) expect(httpStatusOf(body)).toBe(404);
+      // Every probe but the abort is a fault; an abort that finds nothing of the caller's to
+      // discard is the answer for another owner's upload and a missing one alike.
+      for (const body of bob.slice(0, 3)) expect(httpStatusOf(body)).toBe(404);
+      expect(bob[3]!.result).toEqual({ uploadId: openUploadId, aborted: false });
       expect(mask(bob, [openUploadId, assetId])).toBe(
         mask(missing, ['upload-missing', 'asset-missing']),
       );
@@ -467,6 +480,92 @@ describe('a retried or concurrent completion', () => {
     }
     expect(assetsUploadsCreateOperation.producibleFaults).not.toContain('Conflict');
     expect(assetsGetOperation.producibleFaults).not.toContain('Conflict');
+  });
+});
+
+describe('bureau.assets.uploads.abort', () => {
+  it('discards an open upload and every chunk it held, and the session no longer exists', async () => {
+    const assetStorage = createMemoryAssetStorage();
+    await withBureau({ assetStorage }, async (opened) => {
+      const created = await create(opened, 'alice-assets-key', {
+        declaredByteLength: png.byteLength,
+      });
+      const uploadId = created.result!['uploadId'] as string;
+      const half = Math.floor(png.byteLength / 2);
+      await append(opened, 'alice-assets-key', uploadId, png.subarray(0, half));
+      expect(await assetStorage.list(KEYS.chunkPrefix(uploadId))).not.toEqual([]);
+
+      const aborted = await abort(opened, 'alice-assets-key', uploadId);
+
+      expect(aborted.result).toEqual({ uploadId, aborted: true });
+      expect(await assetStorage.list(KEYS.chunkPrefix(uploadId))).toEqual([]);
+      expect(await assetStorage.list(KEYS.uploadPrefix)).toEqual([]);
+      const afterwards = await append(opened, 'alice-assets-key', uploadId, png);
+      expect(httpStatusOf(afterwards)).toBe(404);
+      expect(httpStatusOf(await complete(opened, 'alice-assets-key', uploadId))).toBe(404);
+    });
+  });
+
+  it('is safe to retry: a second abort, and one of an upload that never existed, discard nothing and are not faults', async () => {
+    await withBureau({}, async (opened) => {
+      const created = await create(opened, 'alice-assets-key', { declaredByteLength: 4 });
+      const uploadId = created.result!['uploadId'] as string;
+
+      const first = await abort(opened, 'alice-assets-key', uploadId);
+      const second = await abort(opened, 'alice-assets-key', uploadId);
+      const never = await abort(opened, 'alice-assets-key', 'upload-never');
+
+      expect(first.result).toEqual({ uploadId, aborted: true });
+      expect(second.result).toEqual({ uploadId, aborted: false });
+      expect(never.result).toEqual({ uploadId: 'upload-never', aborted: false });
+    });
+  });
+
+  it('leaves a completed upload’s asset alone and reports that it aborted nothing', async () => {
+    await withBureau({}, async (opened) => {
+      const { uploadId, completed } = await upload(opened, 'alice-assets-key', png, 'image/png');
+      const assetId = completed.result!['assetId'] as string;
+
+      const aborted = await abort(opened, 'alice-assets-key', uploadId);
+
+      expect(aborted.result).toEqual({ uploadId, aborted: false });
+      const asset = await get(opened, 'alice-assets-key', assetId);
+      expect(asset.result).toMatchObject({
+        assetId,
+        state: 'available',
+      });
+    });
+  });
+
+  it('answers a credential that can own nothing as it answers any other miss, without reaching the service', async () => {
+    let reached = false;
+    const host = {
+      assets: {
+        abortUpload: async () => {
+          reached = true;
+        },
+      },
+    };
+    const principal = {
+      method: 'api-key',
+      subject: undefined,
+      scopes: new Set(['bureau.assets:write']),
+    };
+
+    const answer = await assetsUploadsAbortOperation.invoke({
+      input: { uploadId: 'upload-1' },
+      host,
+      principal,
+    } as never);
+
+    expect(answer).toEqual({ uploadId: 'upload-1', aborted: false });
+    expect(reached).toBe(false);
+  });
+
+  it('is destructive, needs the write scope, and names Conflict among its faults', () => {
+    expect(assetsUploadsAbortOperation.destructive).toBe(true);
+    expect(assetsUploadsAbortOperation.producibleFaults).toContain('Conflict');
+    expect(assetsUploadsAbortOperation.description).toMatch(/`bureau\.assets:write`/);
   });
 });
 

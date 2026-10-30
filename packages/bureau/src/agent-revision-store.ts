@@ -36,10 +36,31 @@
  * Deleting a file leaves its record, so recreating the identifier continues from the last
  * revision.
  *
+ * ## The version beside it (COR-1815)
+ *
+ * The revision record never sees a definition, so a caller that wants the definition kept passes
+ * it as {@link AdvanceOptions.version}. The version record (`agent-version-store.ts`) is then set
+ * in the same conditional batch that raises the revision, together with the deletes that prune the
+ * oldest versions, so a crash or a lost condition leaves both the record and the version
+ * unwritten, and a commit leaves both written. Nothing is written for a call that raises nothing.
+ *
  * @module agent-revision-store
  */
 
-import type { ConditionalTextValueStore } from '@lostgradient/storage';
+import type {
+  ConditionalTextValueStore,
+  TextValueStoreBatchOperation,
+} from '@lostgradient/storage';
+
+import {
+  agentVersionKey,
+  agentVersionKeyPrefix,
+  type AgentVersionInput,
+  changedDefinitionKeys,
+  encodeAgentVersion,
+  parseAgentVersion,
+  versionKeysToPrune,
+} from './agent-version-store';
 
 export const AGENT_REVISION_KEY_PREFIX = 'bureau-agent-revision:v1:';
 
@@ -64,6 +85,11 @@ export interface AgentRevisionStore {
    * made: the record exists and describes other content. A caller that cannot be sure its reading
    * of the file is still current answers `true`, nothing is written, and the record that stands
    * (whose hash is not `hash`) is what resolves.
+   *
+   * `options.version` is recorded, in the same atomic write, as the saved version of the revision
+   * this call raises (see `agent-version-store.ts`). It is not recorded when the call raises
+   * nothing: the record already describes `hash`, or `defer` answered `true`, or another writer
+   * raised the revision first.
    */
   advance(id: string, hash: string, options?: AdvanceOptions): Promise<AgentRevisionRecord>;
 }
@@ -72,6 +98,8 @@ export interface AgentRevisionStore {
 export interface AdvanceOptions {
   /** Answer `true` to write nothing now. Asked only when the record exists and differs. */
   readonly defer?: ((current: AgentRevisionRecord) => boolean) | undefined;
+  /** The version to record with the revision this call raises. */
+  readonly version?: AgentVersionInput | undefined;
 }
 
 export interface AgentRevisionStoreOptions {
@@ -125,6 +153,45 @@ export function createAgentRevisionStore(options: AgentRevisionStoreOptions): Ag
     return store.get(keyOf(id));
   }
 
+  /**
+   * The writes that record the version of `next` and remove the versions it pushes out. The
+   * previous version is read for its definition, to diff against; one that is not stored (the
+   * first revision, or one raised before versions were kept) leaves every key listed as changed.
+   */
+  async function versionOperations(
+    id: string,
+    current: AgentRevisionRecord | undefined,
+    next: AgentRevisionRecord,
+    version: AgentVersionInput,
+  ): Promise<TextValueStoreBatchOperation[]> {
+    const previous =
+      current === undefined
+        ? undefined
+        : parseAgentVersion(await store.get(agentVersionKey(id, current.revision)));
+    const record = {
+      revision: next.revision,
+      hash: next.hash,
+      savedAt: version.savedAt,
+      savedBy: version.savedBy,
+      owner: version.owner,
+      definition: version.definition,
+      changedKeys: changedDefinitionKeys(previous?.definition, version.definition),
+    };
+    const doomed = versionKeysToPrune({
+      id,
+      existingKeys: await store.list(agentVersionKeyPrefix(id)),
+      newest: next.revision,
+      retained: (await version.retainedRevisions?.()) ?? new Set<number>(),
+    });
+    return [
+      { type: 'set', key: agentVersionKey(id, next.revision), value: encodeAgentVersion(record) },
+      ...doomed.map((doomedKey): TextValueStoreBatchOperation => ({
+        type: 'delete',
+        key: doomedKey,
+      })),
+    ];
+  }
+
   return {
     async read(id) {
       const text = await readText(id);
@@ -146,10 +213,13 @@ export function createAgentRevisionStore(options: AgentRevisionStoreOptions): Ag
         if (!Number.isSafeInteger(next.revision)) {
           throw new Error(`The revision of agent "${id}" cannot be raised any further.`);
         }
-        const committed = await store.conditionalBatch(
-          [{ key, expectedValue: text }],
-          [{ type: 'set', key, value: encode(next) }],
-        );
+        const operations: TextValueStoreBatchOperation[] = [
+          { type: 'set', key, value: encode(next) },
+        ];
+        if (advanceOptions?.version !== undefined) {
+          operations.push(...(await versionOperations(id, current, next, advanceOptions.version)));
+        }
+        const committed = await store.conditionalBatch([{ key, expectedValue: text }], operations);
         if (committed) return next;
       }
       throw new Error(

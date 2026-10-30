@@ -46,6 +46,7 @@ export function settingsDefaultsOf<D extends AgentDefinitions>(
     'retention.events': options.retention?.events,
     'retention.tasks': options.retention?.tasks,
     'retention.receipts': options.retention?.receipts,
+    'retention.memory': options.retention?.memory,
     'retention.checkpoints': options.retention?.checkpoints,
     'sessionInput.sessionBacklogLimit': options.sessionInput?.sessionBacklogLimit,
     'sessionInput.principalBacklogLimit': options.sessionInput?.principalBacklogLimit,
@@ -63,8 +64,28 @@ export function settingsDefaultsOf<D extends AgentDefinitions>(
     maintenance: options.maintenance,
     'durableOwnership.ownership': options.durableOwnership?.ownership,
     workflowVersion: options.workflowVersion,
+    'a2a.push.enabled': A2A_PUSH_DEFAULTS.enabled,
+    'a2a.push.sweepIntervalMs': A2A_PUSH_DEFAULTS.sweepIntervalMs,
   });
 }
+
+/**
+ * The defaults of the `a2a.push.*` settings. There is no code option to take them from: the host
+ * reads these keys when it builds the handler, so the defaults live here. The sweep interval is
+ * the handler's own default, one hour.
+ */
+export const A2A_PUSH_DEFAULTS = { enabled: false, sweepIntervalMs: 3_600_000 } as const;
+
+/**
+ * The `restart` keys no `BureauOptions` field takes: the host reads them from
+ * `bureau.settings.get()` once, when it builds the handler (`createBureauHandler`'s
+ * `pushNotifications`), and a changed value waits for the next start like any `restart` key.
+ * `setting-owners.test.ts` holds this list and {@link RESTART_OPTION_PATHS} to the `restart` keys.
+ */
+export const HOST_RESTART_KEYS = [
+  'a2a.push.enabled',
+  'a2a.push.sweepIntervalMs',
+] as const satisfies readonly SettingKey[];
 
 /**
  * Each `restart` key and the option it replaces at boot, as a path into `BureauOptions`.

@@ -17,6 +17,8 @@ export type ContextsDependencies = {
   readonly get: BureauContexts['get'];
   /** {@link BureauContexts.delete}. */
   readonly delete: BureauContexts['delete'];
+  /** {@link BureauContexts.rename}. */
+  readonly rename: BureauContexts['rename'];
   /** {@link BureauContexts.signal}. */
   readonly signal: BureauContexts['signal'];
   /** {@link BureauContexts.input}. */
@@ -46,6 +48,7 @@ export function createContexts(dependencies: ContextsDependencies): BureauContex
     list: dependencies.list,
     get: dependencies.get,
     delete: dependencies.delete,
+    rename: dependencies.rename,
     signal: dependencies.signal,
     input: dependencies.input,
     inputsDeliveredBy: dependencies.inputsDeliveredBy,

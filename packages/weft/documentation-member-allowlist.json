@@ -1309,7 +1309,6 @@
     ". WorkerDeploymentCatalog.getVersion",
     ". WorkerDeploymentCatalog.listVersions",
     ". WorkerDeploymentCatalog.registerVersion",
-    ". WorkerDeploymentCatalog.setRouting",
     ". WorkerDeploymentChangedEvent.buildId",
     ". WorkerDeploymentChangedEvent.deploymentName",
     ". WorkerDeploymentChangedEvent.drainState",

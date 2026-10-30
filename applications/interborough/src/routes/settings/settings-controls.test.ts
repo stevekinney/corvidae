@@ -47,6 +47,7 @@ describe('the controls', () => {
       'retention.events': 'literal-or-fields',
       'retention.tasks': 'literal-or-fields',
       'retention.receipts': 'fields',
+      'retention.memory': 'fields',
       'retention.checkpoints': 'literal-or-fields',
       'sessionInput.sessionBacklogLimit': 'number',
       'sessionInput.principalBacklogLimit': 'number',
@@ -66,6 +67,8 @@ describe('the controls', () => {
       maintenance: 'select',
       'durableOwnership.ownership': 'select',
       workflowVersion: 'text',
+      'a2a.push.enabled': 'toggle',
+      'a2a.push.sweepIntervalMs': 'number',
     });
   });
 
@@ -115,6 +118,7 @@ describe('the groups', () => {
       'children',
       'engine',
       'durability',
+      'a2a',
     ]);
     // A group the page does not know comes after the ones it does, so a new key is not dropped.
     expect(groupsOf(['zeta.key', 'tools.wakeup'])).toEqual(['tools', 'zeta']);

@@ -79,6 +79,7 @@ export const OPERATION_MAP = {
   'bureau.contexts.input': { member: 'contexts.input' },
   'bureau.contexts.steer': { member: 'contexts.steer' },
   'bureau.contexts.fork': { member: 'contexts.fork' },
+  'bureau.contexts.rename': { member: 'contexts.rename' },
 
   'bureau.reviews.list': { member: 'reviews.list' },
   'bureau.reviews.get': { member: 'reviews.get' },
@@ -115,11 +116,18 @@ export const OPERATION_MAP = {
   'bureau.memory.forget': { member: 'memory.forget' },
   // `correct` stays composed in the handler over `forget` plus a write.
   'bureau.memory.correct': { member: 'memory.forget' },
+  'bureau.memory.share': { member: 'memory.share' },
+  'bureau.memory.share.revoke': { member: 'memory.revokeShare' },
+  'bureau.memory.hold': { member: 'memory.placeLegalHold' },
+  'bureau.memory.hold.release': { member: 'memory.releaseLegalHold' },
+  'bureau.memory.quarantine': { member: 'memory.quarantine' },
+  'bureau.memory.export': { member: 'memory.export' },
 
   'bureau.assets.get': { member: 'assets.inspect' },
   'bureau.assets.uploads.create': { member: 'assets.beginUpload' },
   'bureau.assets.uploads.append': { member: 'assets.appendUpload' },
   'bureau.assets.uploads.complete': { member: 'assets.admit' },
+  'bureau.assets.uploads.abort': { member: 'assets.abortUpload' },
 
   'bureau.audit.query': { member: 'audit.query' },
 
@@ -139,4 +147,13 @@ export const OPERATION_MAP = {
   'bureau.agents.definitions.get': { member: 'agents.detail' },
   'bureau.agents.definitions.list': { member: 'agents.list' },
   'bureau.agents.definitions.revisions': { member: 'agents.revisions' },
+  'bureau.agents.versions.list': { member: 'agents.versions.list' },
+  'bureau.agents.versions.restore': { member: 'agents.versions.restore' },
+
+  // COR-1813: the wire name is `rollback` because operation names are lowercase; the in-process
+  // member keeps the camel-cased `rollBack`.
+  'bureau.deployments.get': { member: 'deployments.get' },
+  'bureau.deployments.ramp': { member: 'deployments.ramp' },
+  'bureau.deployments.promote': { member: 'deployments.promote' },
+  'bureau.deployments.rollback': { member: 'deployments.rollBack' },
 } as const satisfies Readonly<Record<string, OperationBinding>>;

@@ -344,15 +344,32 @@ export async function createProviderManager(
         );
         const secretKey = PROVIDER_SECRET_KEYS[provider];
         const previousKey = bungalow.readSecret(secretKey);
-        // Set only once the new key is on the disk, so a failure of that very write is not
-        // mistaken for one that needs undoing.
+        // True once the new key is on the disk. A write that throws may still have replaced the
+        // file (Bungalow renames it, then syncs the directory), so a throw is checked against the
+        // disk and not taken to mean that nothing changed.
         let keyWritten = false;
         try {
-          bungalow.writeSecret(secretKey, key);
-          keyWritten = true;
+          try {
+            bungalow.writeSecret(secretKey, key);
+            keyWritten = true;
+          } catch (error) {
+            let onDisk: string | undefined;
+            let known = true;
+            try {
+              onDisk = bungalow.readSecret(secretKey);
+            } catch {
+              known = false;
+            }
+            if (onDisk === key) keyWritten = true;
+            else {
+              // The key is not there, or cannot be told. Read the disk back so the host serves
+              // what it holds, and report the failure.
+              if (!known) await apply().catch(() => undefined);
+              throw error;
+            }
+          }
           bungalow.writeConfiguration(text);
         } catch (error) {
-          // Nothing was written: the disk and the host are as they were.
           if (!keyWritten) throw error;
           // The key went first. Put the old one back (an empty value reads as no key), so a change
           // that did not happen leaves the host on the key it had.

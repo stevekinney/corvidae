@@ -20,7 +20,7 @@ export function createToolboxViewState(input: {
         ),
       );
       return Array.from(input.toolsById.values()).filter(
-        (tool, index) => available[index] === true && input.getTool(tool.name) === tool,
+        (tool, index) => available[index] === true && input.getTool(tool.id) === tool,
       );
     },
     listDefinitions: () => Array.from(input.toolsById.values()),
@@ -31,7 +31,7 @@ export function createToolboxViewState(input: {
         ),
       );
       return Array.from(input.toolsById.values()).filter(
-        (tool, index) => available[index] === true && input.getTool(tool.name) === tool,
+        (tool, index) => available[index] === true && input.getTool(tool.id) === tool,
       );
     },
     getTool: input.getTool,

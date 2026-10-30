@@ -48,10 +48,23 @@ function canonicalName(
   registeredNames: readonly string[],
   name: string,
 ): string | undefined {
-  const direct = target.getTool(name)?.name;
+  const direct = registeredNameOf(target, name);
   if (direct !== undefined) return direct;
   const resolved = resolveFuzzyToolName(name, [...registeredNames]).resolved;
-  return resolved === null ? undefined : target.getTool(resolved)?.name;
+  return resolved === null ? undefined : registeredNameOf(target, resolved);
+}
+
+/**
+ * The tool name a reference points at, including when the toolbox will not run it. A name that
+ * several tools share (two namespaces, or two versions) is ambiguous to the toolbox, but every
+ * candidate carries that one name, so the gate still knows which name the call is after and can
+ * refuse it as a hidden tool instead of letting it fall through as unknown.
+ */
+function registeredNameOf(target: AnyToolbox, reference: string): string | undefined {
+  const resolution = target.resolveTool(reference);
+  if (resolution.ok) return resolution.tool.name;
+  const [candidate] = resolution.candidates;
+  return candidate === undefined ? undefined : target.getTool(candidate)?.name;
 }
 
 /** Re-bases a function key's index onto the original batch, so a refusal never shifts a key. */

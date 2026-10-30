@@ -161,6 +161,12 @@ export const settingsSchema = z
       .object({ olderThan: z.number().int().positive() })
       .strict()
       .describe('How long a run-creation receipt is kept.'),
+    'retention.memory': z
+      .object({ olderThan: z.number().int().positive() })
+      .strict()
+      .describe(
+        'How long governed memory keeps an episodic memory, in milliseconds, in place of the memory policy’s own window; the next maintenance pass sweeps by it. Unset, the policy decides.',
+      ),
     'retention.checkpoints': z
       .union([
         z.literal('keep-all'),
@@ -238,6 +244,16 @@ export const settingsSchema = z
       .string()
       .min(1)
       .describe('The version recorded on new durable runs. Applies at restart.'),
+    'a2a.push.enabled': z
+      .boolean()
+      .describe(
+        'Whether the host delivers A2A push notifications: an opted-in agent then declares `pushNotifications` on its card and accepts push configurations. Applies at restart.',
+      ),
+    'a2a.push.sweepIntervalMs': positiveInteger
+      .max(2_147_483_647)
+      .describe(
+        'How often, in milliseconds, the host sweeps A2A push configurations of tasks that no longer exist. At most 2147483647. Applies at restart.',
+      ),
   })
   .partial()
   .strict();
@@ -265,6 +281,7 @@ export const SETTING_APPLY: Readonly<Record<SettingKey, SettingApply>> = {
   'retention.events': 'live',
   'retention.tasks': 'live',
   'retention.receipts': 'live',
+  'retention.memory': 'live',
   'retention.checkpoints': 'live',
   // Live from the next session (owner decision, COR-1710 revision 2026-10-27): a running session
   // keeps the limit its Weft mailbox was built with, which keeps Weft's backlog check atomic.
@@ -286,6 +303,8 @@ export const SETTING_APPLY: Readonly<Record<SettingKey, SettingApply>> = {
   maintenance: 'restart',
   'durableOwnership.ownership': 'restart',
   workflowVersion: 'restart',
+  'a2a.push.enabled': 'restart',
+  'a2a.push.sweepIntervalMs': 'restart',
 };
 
 /** Each live engine key and the {@link EnginePatch} field it sets. */

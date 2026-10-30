@@ -113,9 +113,12 @@ describe('Core Runtime Completeness', () => {
       expect(retrieved2).toBeDefined();
       expect(retrieved1?.id).not.toBe(retrieved2?.id);
 
-      // Retrieve by name gets the last one (tool2)
-      const retrievedByName = toolbox.getTool('my-tool');
-      expect(retrievedByName?.id).toBe(tool2.id);
+      // A bare name both tools share is ambiguous, so it names neither.
+      expect(toolbox.getTool('my-tool')).toBeUndefined();
+      expect(toolbox.resolveTool('my-tool')).toMatchObject({
+        ok: false,
+        reason: 'ambiguous',
+      });
     });
 
     it('serializes all configurations correctly', () => {

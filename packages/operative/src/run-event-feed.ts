@@ -35,6 +35,7 @@ import {
   RunAbortedEvent,
   RunCompletedEvent,
   RunErrorEvent,
+  RunGuardrailEvent,
   RunStartedEvent,
   RunTripwireEvent,
   StepCompletedEvent,
@@ -201,6 +202,16 @@ const PROJECTIONS: readonly RunEventProjection[] = [
     // quote it, so it stays off the feed: a subscriber authorized to watch a
     // run is not thereby authorized to read what tripped a guardrail.
   })),
+  // The validate-mode counterpart of the tripwire above, with the same fields plus what the
+  // guardrail did, and the same omission: no `detail`, and no flagged text.
+  projection(RunGuardrailEvent.type, isInstance(RunGuardrailEvent), (event) => ({
+    step: event.step,
+    guardrailName: event.guardrailName,
+    category: event.category,
+    phase: event.phase,
+    confidence: event.confidence,
+    action: event.action,
+  })),
   projection(RunErrorEvent.type, isInstance(RunErrorEvent), (event) => ({
     step: event.step,
     error: projectError(event.error),
@@ -239,6 +250,7 @@ export const PUBLISHED_RUN_EVENT_KINDS = [
   StepCompletedEvent.type,
   RunCompletedEvent.type,
   RunTripwireEvent.type,
+  RunGuardrailEvent.type,
   RunErrorEvent.type,
   RunAbortedEvent.type,
 ] as const;

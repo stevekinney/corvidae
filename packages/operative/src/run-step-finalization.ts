@@ -3,12 +3,14 @@ import type { ToolCall } from 'armorer/protocol';
 import type { MultiModalContent } from 'conversationalist';
 import { Conversation } from 'conversationalist';
 
+import type { EffectiveContextRecord } from './effective-context-record';
 import {
   ResponseSchemaFailedEvent,
   RunErrorEvent,
   StepCompletedEvent,
   StepGeneratedEvent,
 } from './events';
+import type { PlanReason } from './providers/plan-reason';
 import type { EventDispatcher, RunState, StepDeps, StepOutcome } from './run-step';
 import { evaluateStopConditions } from './run-step-utilities';
 import { validateOutput } from './structured-output/response-schema';
@@ -27,6 +29,8 @@ export interface StepFinalizationDependencies {
   materializedToolCalls: ToolCall[];
   results: ToolExecutionResult[];
   contextEpochId: string | undefined;
+  planReason?: PlanReason | undefined;
+  effectiveContext?: EffectiveContextRecord | undefined;
 }
 
 export async function finalizeStep(input: StepFinalizationDependencies): Promise<StepOutcome> {
@@ -42,6 +46,8 @@ export async function finalizeStep(input: StepFinalizationDependencies): Promise
     materializedToolCalls,
     results,
     contextEpochId,
+    planReason,
+    effectiveContext,
   } = input;
   const { hooks } = deps;
   const { content, usage, metadata } = response;
@@ -67,6 +73,8 @@ export async function finalizeStep(input: StepFinalizationDependencies): Promise
     usage,
     metadata,
     ...(contextEpochId === undefined ? {} : { contextEpochId }),
+    ...(planReason === undefined ? {} : { planReason }),
+    ...(effectiveContext === undefined ? {} : { effectiveContext }),
     final: false,
   };
 

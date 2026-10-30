@@ -178,7 +178,7 @@ You are a careful researcher.
 - A file that cannot be used stays in `bureau.agents.list()` with `state: 'invalid'` and a typed `problem`, and never runs. A file cannot take the name of a seeded agent.
 - Every file agent belongs to the local owner, `anonymous:local`.
 
-The host serves every ready agent to chat, and mounts no A2A handler, so an agent's `a2a` opt-in is recorded and listed but not served here. See the Bureau's `documentation/agent-files.md` for the format.
+The host serves every ready agent to chat. An agent's `a2a` opt-in decides whether it is also served over A2A, as [A2A](#a2a) describes. See the Bureau's `documentation/agent-files.md` for the format.
 
 ### The agent editor
 
@@ -194,6 +194,16 @@ The host serves every ready agent to chat, and mounts no A2A handler, so an agen
 - **After a write** a save lands on `/agents/:id`, and a delete lands on `/agents`.
 
 The Playwright suite gives its host a provider configuration and a fixture key in the temporary home, and a fake provider client, so its catalog holds `anthropic/claude-sonnet-5` and `anthropic/claude-haiku-4-5`, and saving, conflicts, history, and deletion run against the real Bureau (`tests/e2e/e2e-server.ts`, `src/host/fake-provider.test-support.ts`).
+
+## A2A
+
+The host mounts Bureau's A2A 1.0.1 handler under `/bureau/a2a/<agent>` (COR-1819), so another agent or tool can read an agent's card and send it work. Only an agent that opted in is served:
+
+- A file agent opts in with `a2a: true` in its own file (the agent editor's A2A switch). Turning it off takes the card down and refuses new tasks, and the agent keeps serving the tasks it already has until the last of them is past its retention.
+- A code agent opts in by name through `HostOptions.a2aAgents`. The default is none, so the seeded agents are not served; naming an agent the host does not define stops the host at start.
+- The card is at `http://127.0.0.1:<port>/bureau/a2a/<agent>/.well-known/agent-card.json` and names the interface URL `http://127.0.0.1:<port>/bureau/a2a/<agent>`. Both are derived from the origin the listener ended up on, so a host started on port 0 names the port it got.
+- The host has no sign-in, so A2A has none either: it is reachable only on the loopback listener, behind the same request guard as the rest of the host, and every call acts as the owner (`anonymous:local`). A caller therefore sees what the owner sees, including `bureau.agents.list`, `bureau.agents.models`, and `bureau.deployment.get`. Remote exposure with authentication, and a narrower view for an A2A caller, are a separate piece of work.
+- **Push notifications** are off by default. The `a2a.push.enabled` setting turns them on and `a2a.push.sweepIntervalMs` sets how often configurations of vanished tasks are swept (default one hour, at most 2147483647). Both apply at restart: the host reads them once when it builds the handler. With the setting on, a card declares `pushNotifications`, configurations and deliveries are kept in the host's database, and a delivery loop runs until the host closes (`src/host/a2a-push.ts`). Delivery uses Weft's default egress policy, which allows HTTPS to public addresses only, so a configuration naming a loopback or private address is refused at delivery. The Settings page shows both under A2A.
 
 ## Workflow files
 
@@ -229,7 +239,7 @@ A write whose revision or hash is no longer current is refused and nothing is wr
 
 `/goals` is not in the sidebar. It lists the caller's goals (`bureau.goals.list`) with the status as the Bureau names it, creates one from an agent, a prompt, an identity, a validator named by free text, and a maximum number of attempts (`bureau.goals.create`), and cancels one that has not ended, after a confirmation and with the revision it read. The Bureau needs a bound on all the attempts together besides how many it may make, so the form also asks for the most steps, which starts at 50. A validator the Bureau lacks is `Unprocessable`, said in the drawer. The host seeds a validator that never passes (`never-passes`, version `1`), which waits until it is cancelled, so a goal that names it stays going until a cancel ends it as `canceled`.
 
-`/audit` searches the Bureau's trail (`bureau.audit.query`) by a `since` time, a free-text `type`, and a resource sent as `runId`, which takes a run id or `schedule:<id>`, `session:<id>`, `agent:<id>`, or `workflow:<id>`. Records come oldest first, as the Bureau returns them, and Load more follows `nextCursor`. The address holds the filters. `/audit` and `/goals` hold no console scope: the Bureau shows each caller what it owns, so owner scoping is the gate and a principal holding no scope sees its own records.
+`/audit` searches the Bureau's trail (`bureau.audit.query`) by a `since` time, a free-text `type`, and a resource sent as `runId`, which takes a run id or `schedule:<id>`, `session:<id>`, `agent:<id>`, or `workflow:<id>`. The host keeps the trail 90 days (`retention.audit`, replaced by a value stored on the Settings page), and the maintenance sweep prunes older records. Records come oldest first, as the Bureau returns them, and Load more follows `nextCursor`. The address holds the filters. `/audit` and `/goals` hold no console scope: the Bureau shows each caller what it owns, so owner scoping is the gate and a principal holding no scope sees its own records.
 
 The Playwright suite runs a second host (`E2E_BUREAU_PORT`, `tests/e2e/e2e-server.ts`) whose console is the Bureau's own engine, because the main host's console is the fixtures' engine and cannot see a schedule the Bureau holds. The schedules specs for an agent run and a workflow file's schedule open it, and the specs for an engine schedule open the main host.
 

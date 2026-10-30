@@ -12,6 +12,7 @@ import { freezeToolRequestContext, type ToolRequestContext } from './execution-c
 import type { Tool } from './is-tool';
 import { providerCallIdField } from './provider-call-id';
 import {
+  findApprovedTool,
   issueGrant,
   listGrants,
   restoreApproval,
@@ -279,7 +280,7 @@ async function rejectApproval(
   if (!context.approvalStateStore || !approval.approvalBinding) {
     throw new Error('Approval state store and binding are required to resolve approval denial.');
   }
-  const currentTool = context.getTool(approval.toolName);
+  const currentTool = findApprovedTool(approval, context.getTool);
   if (!currentTool) throw new Error(`Tool not found: ${approval.toolName}`);
   const approvalContext = createApprovalContext(options.requestContext, currentTool, context);
   const binding = approval.approvalBinding;

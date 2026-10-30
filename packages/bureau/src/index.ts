@@ -10,6 +10,7 @@ export type {
   CreateAgentCatalogOptions,
 } from './agent-catalog';
 export { createAgentCatalog } from './agent-catalog';
+export { guardrailsOfPreset } from './guardrail-presets';
 export type {
   AgentFileDefinition,
   AgentFileDefinitionInput,
@@ -18,9 +19,11 @@ export type {
   AgentFileIssue,
   AgentFileProblem,
   AgentFileProblemCode,
+  AgentGuardrailPreset,
   AgentRetry,
 } from './agent-file';
 export {
+  AGENT_GUARDRAIL_PRESETS,
   AGENT_IDENTIFIER_PATTERN,
   agentFileFrontmatterSchema,
   AgentFileConflictError,
@@ -45,6 +48,7 @@ export type {
 } from './sources/definition-source';
 export { hashDefinitionBytes, SourceConflictError } from './sources/definition-source';
 export type { AgentRevision } from './agent-snapshot-store';
+export type { AgentVersionRecord } from './agent-version-store';
 export type {
   WorkflowDetail,
   WorkflowRunDetail,
@@ -66,7 +70,18 @@ export {
 } from './workflow-file';
 export type { WorkflowListing, WorkflowFileWriteResult } from './workflow-file-catalog';
 export type { WorkflowRevision } from './workflow-snapshot-store';
+export type { WorkflowRevisionReport } from './workflow-runtime';
 export { WorkflowAgentStepError, WorkflowHostConflictError } from './workflow-host';
+export { WorkerDeploymentRolloutError } from './worker-deployments';
+export type {
+  BureauWorkerDeploymentRouting,
+  BureauWorkerDeployments,
+  WorkerDeploymentMoveInput,
+  WorkerDeploymentRampInput,
+  WorkerDeploymentRolloutContext,
+  WorkerDeploymentRolloutFence,
+  WorkerDeploymentRolloutReason,
+} from './worker-deployments';
 export type { AgentSkillsOptions } from './agent-skills';
 export { createAgentSkills } from './agent-skills';
 export type { AssetServiceOptions, BureauAssetOptions } from './assets/asset-service';
@@ -496,6 +511,7 @@ export type {
   BureauInternals,
   BureauMemoryAuthorityOptions,
   BureauOptions,
+  BureauMemoryRetentionOption,
   BureauReceiptRetentionOption,
   BureauRetentionOptions,
   BureauRecoveryReport,

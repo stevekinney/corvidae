@@ -62,6 +62,7 @@ export const SETTING_OWNERS: readonly SettingOwner[] = [
       'retention.events',
       'retention.tasks',
       'retention.receipts',
+      'retention.memory',
       'retention.checkpoints',
     ],
     reads: 'literal',

@@ -4,6 +4,7 @@ import type { ImportedToolConfiguration } from '../../toolbox-type-inference';
 import { isAsyncIterable } from '../../type-guards';
 import type { ToolCallInput, ToolResultLike } from '../../types';
 import { importToolSchema } from '../imported-schema';
+import { toProviderToolName } from '../provider-tool-names';
 import { normalizeToSerializedDefinitions, type ToolRegistryLike } from '../shared';
 import { geminiToolResultParts, toolResultParts } from '../tool-result-parts';
 import type {
@@ -41,8 +42,25 @@ type GeminiToolCallSource =
   | null;
 
 export interface GeminiFormatToolResultsOptions {
+  /**
+   * The function name to echo for a call id. A name found here wins over the result's own
+   * `toolName`, so tools exported with `naming: 'safe-id'` can answer under the encoded name
+   * Gemini was given (a result carries only the bare tool name).
+   */
   toolNameByCallId?: Record<string, string> | ((callId: string) => string | undefined);
   defaultToolName?: string;
+}
+
+/** Options for {@link toGeminiTools}. */
+export interface GeminiAdapterOptions {
+  /**
+   * Strategy for naming tools in Gemini format.
+   * - 'default': Use the tool name (identity.name).
+   * - 'safe-id': Use the tool ID (`namespace:name@version`) encoded as a legal provider name,
+   *   which keeps same-named tools from different namespaces apart. Pass
+   *   `createProviderToolNameMapper(tools)` to `parseGeminiToolCalls` to map a call back to the id.
+   */
+  naming?: 'default' | 'safe-id';
 }
 
 /**
@@ -67,9 +85,12 @@ export function toGeminiTools(
     | AnyToolDefinition
     | readonly (SerializedToolDefinition | AnyToolDefinition)[]
     | ToolRegistryLike,
+  options?: GeminiAdapterOptions,
 ): GeminiTool[] {
   const definitions = normalizeToSerializedDefinitions(input);
-  const converted = definitions.map(convertToGeminiFunctionDeclaration);
+  const converted = definitions.map((definition) =>
+    convertToGeminiFunctionDeclaration(definition, options),
+  );
 
   return converted.length === 0 ? [] : [{ functionDeclarations: converted }];
 }
@@ -90,7 +111,10 @@ export function fromGeminiTools(
  * one; earlier models may send none, and execution then generates it). The formatters echo that id
  * as `functionResponse.id` with no further wiring, so two calls to one function pair correctly.
  */
-export function parseGeminiToolCalls(parts: GeminiToolCallSource): ToolCallInput[] {
+export function parseGeminiToolCalls(
+  parts: GeminiToolCallSource,
+  mapName?: (name: string) => string,
+): ToolCallInput[] {
   const resolvedParts = extractGeminiParts(parts);
   if (!resolvedParts || !Array.isArray(resolvedParts)) {
     return [];
@@ -99,7 +123,7 @@ export function parseGeminiToolCalls(parts: GeminiToolCallSource): ToolCallInput
   return resolvedParts.flatMap((part) => {
     const functionCall = 'functionCall' in part ? part.functionCall : undefined;
     return typeof functionCall?.name === 'string'
-      ? [convertFunctionCall({ ...functionCall, name: functionCall.name })]
+      ? [convertFunctionCall({ ...functionCall, name: functionCall.name }, mapName)]
       : [];
   });
 }
@@ -153,9 +177,10 @@ export const geminiToolAdapter = {
 
 function convertToGeminiFunctionDeclaration(
   tool: SerializedToolDefinition,
+  options?: GeminiAdapterOptions,
 ): GeminiFunctionDeclaration {
   return {
-    name: tool.identity.name,
+    name: options?.naming === 'safe-id' ? toProviderToolName(tool.id) : tool.identity.name,
     description: tool.display.description,
     parameters: transformToGeminiSchema(tool.input),
   };
@@ -184,12 +209,13 @@ function transformToGeminiSchema(schema: Record<string, unknown>): GeminiSchema 
 
 function convertFunctionCall(
   functionCall: NonNullable<GeminiResponsePart['functionCall']> & { name: string },
+  mapName: ((name: string) => string) | undefined,
 ): ToolCallInput {
   return {
     ...(typeof functionCall.id === 'string'
       ? { id: functionCall.id, providerCallId: functionCall.id }
       : {}),
-    name: functionCall.name,
+    name: mapName ? mapName(functionCall.name) : functionCall.name,
     arguments: functionCall.args ?? {},
   };
 }
@@ -259,20 +285,15 @@ function resolveGeminiToolName(
   result: ToolResultLike,
   options: GeminiFormatToolResultsOptions,
 ): string {
-  if ('toolName' in result) {
-    return result.toolName;
-  }
   const mapping = options.toolNameByCallId;
-  if (typeof mapping === 'function') {
-    return mapping(result.callId) ?? options.defaultToolName ?? 'unknown';
-  }
-  if (mapping && typeof mapping === 'object') {
-    return (
-      (Object.hasOwn(mapping, result.callId) ? mapping[result.callId] : undefined) ??
-      options.defaultToolName ??
-      'unknown'
-    );
-  }
+  const mapped =
+    typeof mapping === 'function'
+      ? mapping(result.callId)
+      : mapping && typeof mapping === 'object' && Object.hasOwn(mapping, result.callId)
+        ? mapping[result.callId]
+        : undefined;
+  if (mapped !== undefined) return mapped;
+  if ('toolName' in result) return result.toolName;
   return options.defaultToolName ?? 'unknown';
 }
 

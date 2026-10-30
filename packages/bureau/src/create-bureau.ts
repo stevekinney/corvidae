@@ -88,6 +88,8 @@ import {
   StoreActionEvent,
   type Subscription,
   SESSION_OWNER_METADATA_KEY,
+  SESSION_TITLE_METADATA_KEY,
+  SESSION_TITLE_OVERRIDE_LIMIT,
   createSessionHandle,
   ForkThroughMessageError,
   SKILL_TOOL_DENIED_CODE,
@@ -177,6 +179,7 @@ import {
   AUDIT_AGENT_OWNER_PREFIX,
   AUDIT_SCHEDULE_OWNER_PREFIX,
   AUDIT_SESSION_OWNER_PREFIX,
+  AUDIT_WORKER_DEPLOYMENT_OWNER_PREFIX,
   AUDIT_WORKFLOW_OWNER_PREFIX,
   type AuditTrail,
   auditTrailSessionOwnerId,
@@ -378,6 +381,7 @@ import {
   payloadMaximumBytesOf,
   type WorkflowRuntime,
 } from './workflow-runtime';
+import { createBureauWorkerDeployments } from './worker-deployments';
 import { validateDefinitionSource } from './sources/validate-definition-source';
 import { collidingWorkflowToolName, createWorkflowTools } from './workflow-tools';
 import { createSettingsTools } from './settings/settings-tools';
@@ -1594,10 +1598,24 @@ export interface ClassifyRecoveredRunArgs {
   /**
    * COR-297 — the status of the run's durable record, when it was read. A `'pending'` record was
    * prepared and never launched, so a run that would otherwise reattach is cancelled instead
-   * (`'prepared-not-launched'`). Omitted, or any other status, changes nothing.
+   * (`'prepared-not-launched'`). A terminal status (`RECOVERED_RUN_TERMINAL_STATUSES`) on a run
+   * whose session is no longer running means a peer already finished the run, so there is nothing
+   * to cancel (`'skip'`, COR-1916). Omitted, or any other status, changes nothing.
    */
   engineRecordStatus?: string;
 }
+
+/**
+ * COR-1916 — the durable statuses a run never leaves. A recovered handle whose record already
+ * reads one of these, with its session settled, was finished by a peer while this boot was
+ * classifying it (a peer takes the claim of a process that stalled past its lease TTL).
+ */
+const RECOVERED_RUN_TERMINAL_STATUSES: ReadonlySet<string> = new Set([
+  'completed',
+  'failed',
+  'cancelled',
+  'timed-out',
+]);
 
 /**
  * `classifyRecoveredRun`'s verdict, plus — only when the verdict is
@@ -1634,6 +1652,14 @@ export function classifyRecoveredRunDetailed(args: ClassifyRecoveredRunArgs): {
     return { verdict: 'cancel', rejection: 'session-run-mismatch' };
   }
   if (session.lastRunStatus !== 'running') {
+    // COR-1916 — session and record agree the run is over: a peer finished it after this boot
+    // took its handle. Cancelling it would be a no-op and reporting it a recovery failure a lie.
+    if (
+      args.engineRecordStatus !== undefined &&
+      RECOVERED_RUN_TERMINAL_STATUSES.has(args.engineRecordStatus)
+    ) {
+      return { verdict: 'skip' };
+    }
     return { verdict: 'cancel', rejection: 'session-not-running' };
   }
   // A pending record never resumes, so a version mismatch is moot for it.
@@ -2646,6 +2672,11 @@ async function constructBureau<const D extends AgentDefinitions>(
               }),
             }),
           };
+    // COR-1815: built before the catalog, which asks it which revisions a retained run references.
+    const agentSnapshots = createAgentSnapshotStore({
+      store: runtime.kv,
+      nowISO: runtimeServices.clock.nowISO,
+    });
     fileAgents =
       options.agentSource === undefined || options.models?.generate === undefined
         ? undefined
@@ -2660,6 +2691,7 @@ async function constructBureau<const D extends AgentDefinitions>(
               // COR-1584: the revision records share the Bureau's store, so a revision survives a
               // restart and two Bureaus on one store agree on it.
               revisionStore: runtime.kv,
+              retainedRevisions: (id) => agentSnapshots.referencedRevisions(id),
               diagnose: (message, cause) =>
                 diagnose({
                   level: 'error',
@@ -2668,10 +2700,7 @@ async function constructBureau<const D extends AgentDefinitions>(
                   cause,
                 }),
             }),
-            snapshots: createAgentSnapshotStore({
-              store: runtime.kv,
-              nowISO: runtimeServices.clock.nowISO,
-            }),
+            snapshots: agentSnapshots,
             diagnose: (message, cause) =>
               diagnose({
                 level: 'error',
@@ -9007,6 +9036,44 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
+   * COR-1916 — a run whose session is settled and whose durable record is terminal was finished by
+   * a peer after this boot took its claim (a process that stalls past its lease TTL loses the run
+   * to a peer), so there is nothing to cancel and no recovery failure to report. Applies only to
+   * the session-only `session-not-running` verdict, and never to a run this boot ended itself
+   * (`unrebuildableRecoveredRuns`), which stays reported. A record that cannot be read leaves the
+   * verdict as it was.
+   */
+  async function skipRunFinishedByPeer(
+    runId: string,
+    args: ClassifyRecoveredRunArgs,
+    classification: { verdict: RecoveredRunVerdict; rejection?: RecoveryRejectionReason },
+  ): Promise<{ verdict: RecoveredRunVerdict; rejection?: RecoveryRejectionReason }> {
+    const durable = runtime.durable;
+    if (
+      durable === undefined ||
+      classification.rejection !== 'session-not-running' ||
+      runtime.unrebuildableRecoveredRuns.has(runId)
+    ) {
+      return classification;
+    }
+    try {
+      const record = await durable.engine.get(runId);
+      if (record === null || !RECOVERED_RUN_TERMINAL_STATUSES.has(record.status)) {
+        return classification;
+      }
+      return classifyRecoveredRunDetailed({ ...args, engineRecordStatus: record.status });
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'recovery',
+        message: `[bureau] Could not read the durable record of recovered run "${runId}"; classifying it without its status: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+      return classification;
+    }
+  }
+
+  /**
    * Dispatches `recovery.attempted` for every `classifyRecoveredRun` call
    * (AB-90/ab90-09), making the classification externally observable, then
    * `recovery.rejected` — synchronously, right after, so the two are always
@@ -9128,7 +9195,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       return;
     }
 
-    const classification = classifyRecoveredRunDetailed({
+    const classificationArgs: ClassifyRecoveredRunArgs = {
       handleId: info.workflowId,
       scheduledFire: false,
       ownedSessionId: info.input.sessionId,
@@ -9136,7 +9203,17 @@ async function constructBureau<const D extends AgentDefinitions>(
       hasSessionStore: true,
       sessionLoad,
       versionMismatch: runtime.workflowVersionMismatches.has(info.workflowId),
-    });
+    };
+    let classification = classifyRecoveredRunDetailed(classificationArgs);
+    // Awaited only for the one verdict it can change: a reattach must register its run in the
+    // same turn as the classification, before the run can reach a terminal event.
+    if (classification.rejection === 'session-not-running') {
+      classification = await skipRunFinishedByPeer(
+        info.workflowId,
+        classificationArgs,
+        classification,
+      );
+    }
     const { verdict } = classification;
     dispatchRecoveryClassification(info.workflowId, classification);
     dispatchRecoveryLeaseReleasedIfAny(info.workflowId);
@@ -9835,6 +9912,13 @@ async function constructBureau<const D extends AgentDefinitions>(
             classification = { verdict: 'skip' };
           }
         }
+        if (classification.rejection === 'session-not-running') {
+          classification = await skipRunFinishedByPeer(
+            handle.id,
+            classificationArgs,
+            classification,
+          );
+        }
         // The session says the run is running, and no later boot could repair that once the record
         // is cancelled, so it is settled first; the cancel is issued whether or not this write
         // lands, and a cancel that fails leaves the next boot a `session-not-running` run to cancel.
@@ -10299,6 +10383,10 @@ async function constructBureau<const D extends AgentDefinitions>(
         }
         if (runId.startsWith(AUDIT_AGENT_OWNER_PREFIX)) {
           // COR-1526 — an agent file has no owner field: it belongs to the deployment's owner.
+          return ownerOrLocal(undefined);
+        }
+        if (runId.startsWith(AUDIT_WORKER_DEPLOYMENT_OWNER_PREFIX)) {
+          // COR-1813 — a worker deployment has no owner field: it belongs to the deployment's owner.
           return ownerOrLocal(undefined);
         }
         if (runId.startsWith(AUDIT_WORKFLOW_OWNER_PREFIX)) {
@@ -12437,7 +12525,14 @@ async function constructBureau<const D extends AgentDefinitions>(
     const authority = maintenanceMemoryAuthority;
     const sweep = (async () => {
       try {
-        const result = await memory.sweepRetention(authority);
+        // COR-1809: `retention.memory` is read per pass, so a change applies to the next sweep.
+        const window = currentSettings()['retention.memory'];
+        const result = await memory.sweepRetention(
+          authority,
+          window === undefined
+            ? undefined
+            : { retention: { episodic: { kind: 'duration', milliseconds: window.olderThan } } },
+        );
         if (result.status !== 'applied') {
           diagnose({
             level: 'error',
@@ -12977,6 +13072,49 @@ async function constructBureau<const D extends AgentDefinitions>(
 
   async function getSession(id: string) {
     return requireSessionStore().load(id);
+  }
+
+  // COR-1909: a title a person gave the session lives in its metadata, under a key of its own, so
+  // clearing it is removing the key and the summary reads the derived title again. The write is
+  // one `update()` that does not refresh `updatedAt`: a rename is not activity, and must not
+  // reorder the listing or keep a session from expiring.
+  async function renameSession(
+    id: string,
+    title: string | null,
+    renameOptions?: { readonly incarnation?: string | undefined },
+  ): Promise<AgentSession | undefined> {
+    const sessions = requireSessionStore();
+    if (runAdmissionClosed) {
+      throw new BureauShuttingDownError(
+        'Cannot rename: Bureau is shutting down.',
+        runtimeServices.clock.nowISO(),
+      );
+    }
+    const trimmed = title === null ? null : title.trim();
+    if (trimmed !== null && (trimmed === '' || trimmed.length > SESSION_TITLE_OVERRIDE_LIMIT)) {
+      throw new BureauError(
+        `A session title is 1 to ${SESSION_TITLE_OVERRIDE_LIMIT} characters, or null to clear it`,
+        'BAD_REQUEST',
+      );
+    }
+    return sessions.update(
+      id,
+      (session) => {
+        if (session === undefined) return undefined;
+        if (
+          renameOptions?.incarnation !== undefined &&
+          session.incarnation !== renameOptions.incarnation
+        ) {
+          return undefined;
+        }
+        const { [SESSION_TITLE_METADATA_KEY]: _replaced, ...rest } = session.metadata;
+        return {
+          ...session,
+          metadata: trimmed === null ? rest : { ...rest, [SESSION_TITLE_METADATA_KEY]: trimmed },
+        };
+      },
+      { refreshActivity: false },
+    );
   }
 
   // AB-228 (Codex P2 review finding, PR #566): two concurrent
@@ -18966,6 +19104,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     list: listSessions,
     get: getSession,
     delete: deleteSession,
+    rename: renameSession,
     signal: signalSession,
     input: submitSessionInput,
     inputsDeliveredBy: sessionInputsDeliveredBy,
@@ -18996,6 +19135,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     children: childTopology.children,
     eventHistory: readEventHistory,
     subscribeEventHistory: subscribeToEventHistory,
+    steps: async (runId) => (await runtime.durable?.checkpointStore.loadSteps(runId)) ?? [],
     notFound: (message) => new BureauError(message, 'NOT_FOUND'),
     responder: {
       reviews,
@@ -19070,6 +19210,21 @@ async function constructBureau<const D extends AgentDefinitions>(
     },
     agents: agentCatalog,
     workflows: workflowRuntime?.workflows,
+    deployments:
+      options.workerDeployments === undefined
+        ? undefined
+        : createBureauWorkerDeployments({
+            catalog: options.workerDeployments,
+            now: () => runtimeServices.clock.now(),
+            audit: async (entry) => auditTrailInstance?.record(entry),
+            diagnose: (message, cause) =>
+              diagnose({
+                level: 'error',
+                scope: 'worker-deployments',
+                message: `[bureau] ${message}`,
+                cause,
+              }),
+          }),
     models,
     decisions: lateDecisions.decisions,
     // COR-1710: composed with the runtime, before this object exists.

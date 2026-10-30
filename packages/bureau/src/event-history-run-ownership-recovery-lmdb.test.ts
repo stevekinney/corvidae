@@ -63,11 +63,18 @@ function recoveredToolCallId(page: { events: readonly { payload?: unknown }[] })
  * consistency by the caller.
  */
 function expectedRecoveredPage(runId: string, toolCallId: string): unknown {
+  // COR-1810: an agent that names its model and runs with no selection plan reads `pinned`.
+  const planReason = {
+    code: 'pinned',
+    detail: 'The agent names its model; no selection plan ran',
+    rejected: [],
+  };
   const stepZero = {
     step: 0,
     content: 'A step 0',
     parts: [{ type: 'text', text: 'A step 0' }],
     messageId: expect.any(String),
+    planReason,
     toolCalls: [{ id: toolCallId, name: 'next', arguments: {} }],
     results: [
       {
@@ -87,6 +94,7 @@ function expectedRecoveredPage(runId: string, toolCallId: string): unknown {
     content: 'B recovered step 1',
     parts: [{ type: 'text', text: 'B recovered step 1' }],
     messageId: expect.any(String),
+    planReason,
     toolCalls: [],
     results: [],
     metadata: { __bureauActiveSkills: { version: 2, entries: [] } },

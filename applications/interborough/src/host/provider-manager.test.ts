@@ -28,6 +28,7 @@ type FakeHome = Pick<
   readonly writes: string[];
   configuration: string | undefined;
   readonly secrets: Map<string, string>;
+  unreadable: boolean;
 };
 
 function fakeHome(
@@ -36,6 +37,10 @@ function fakeHome(
     readonly failConfiguration?: boolean;
     readonly failRestore?: boolean;
     readonly failEverySecret?: boolean;
+    /** The first write of a secret reaches the disk and then throws, as a failed directory sync does. */
+    readonly throwAfterStoring?: boolean;
+    /** After the first secret write, reading a secret throws. */
+    readonly failRead?: boolean;
   } = {},
 ): FakeHome {
   const home: FakeHome = {
@@ -44,13 +49,17 @@ function fakeHome(
     writes: [],
     configuration: JSON.stringify({ providers: { anthropic: { models: ['sonnet'] } } }),
     secrets: new Map([['anthropic-api-key', 'fixture-existing-key']]),
+    unreadable: false,
     readConfiguration: () => Promise.resolve(home.configuration),
     writeConfiguration: (text) => {
       home.writes.push('configuration');
       if (options.failConfiguration === true) throw new Error('The disk is full.');
       home.configuration = text;
     },
-    readSecret: (key) => home.secrets.get(key),
+    readSecret: (key) => {
+      if (home.unreadable) throw new Error('The disk cannot be read.');
+      return home.secrets.get(key);
+    },
     writeSecret: (key, value) => {
       home.writes.push(`secret ${key}`);
       if (options.failEverySecret === true) throw new Error('The disk is full.');
@@ -62,6 +71,13 @@ function fakeHome(
         throw new Error('The disk is full.');
       }
       home.secrets.set(key, value);
+      if (options.failRead === true) home.unreadable = true;
+      if (
+        options.throwAfterStoring === true &&
+        home.writes.filter((write) => write === `secret ${key}`).length === 1
+      ) {
+        throw new Error('The directory could not be synced.');
+      }
     },
   };
   return home;
@@ -245,6 +261,42 @@ describe('a write that fails', () => {
     const text = await response.text();
     expect(JSON.parse(text).error).toBe('failed');
     expect(text.includes('is in use')).toBe(false);
+  });
+
+  test('a key write that throws after replacing the file is judged by the disk: the change goes on', async () => {
+    const home = fakeHome('local', { throwAfterStoring: true });
+    const { manager } = await managerFor(home);
+
+    await manager.connect({ provider: 'anthropic', apiKey: KEY });
+
+    expect(home.secrets.get('anthropic-api-key')).toBe(KEY);
+    expect(manager.current().apiKeys.get('anthropic')).toBe(KEY);
+    expect(home.writes).toEqual(['secret anthropic-api-key', 'configuration']);
+  });
+
+  test('a key write that throws after replacing the file undoes it when the configuration then fails', async () => {
+    const home = fakeHome('local', { throwAfterStoring: true, failConfiguration: true });
+    const { manager } = await managerFor(home);
+
+    const failure = await failureOf(manager.connect({ provider: 'anthropic', apiKey: KEY }));
+
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure).not.toBeInstanceOf(ProviderPartialChangeError);
+    expect(home.secrets.get('anthropic-api-key')).toBe('fixture-existing-key');
+    expect(manager.current().apiKeys.get('anthropic')).toBe('fixture-existing-key');
+  });
+
+  test('a key write that throws when the disk cannot be read back reports the failure and keeps what it loaded', async () => {
+    const home = fakeHome('local', { throwAfterStoring: true, failRead: true });
+    const { manager } = await managerFor(home);
+
+    const failure = await failureOf(manager.connect({ provider: 'anthropic', apiKey: KEY }));
+
+    expect(failure).toBeInstanceOf(Error);
+    expect(String(failure).includes(KEY)).toBe(false);
+    expect(failure).not.toBeInstanceOf(ProviderPartialChangeError);
+    // The disk cannot be read, so the host cannot reload it and keeps the key it loaded.
+    expect(manager.current().apiKeys.get('anthropic')).toBe('fixture-existing-key');
   });
 
   test('a new provider whose configuration cannot be written is stored but not in use, and the message says so', async () => {
