@@ -20,6 +20,7 @@ import { createToolbox, type Toolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
 import { MemoryStorage } from '@lostgradient/storage';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { AgentDefinitions } from '../agent-catalog';
 import { createMemoryAssetStorage } from '../assets/storage';
 import { createBureau, ReviewAnswerInvalidError } from '../create-bureau.ts';
@@ -488,14 +489,15 @@ describe('the answer check as a Bureau API', () => {
     try {
       const review = await park({ signalName: 'ask', answerSchema: { type: 'boolean' } });
 
-      await expect(
+      const refusal = await rejectionOf(
         bureau.reviews.resolve({
           id: review.id,
           decision: 'approve',
           principal: 'api-key:tester',
           payload: 'yes',
         }),
-      ).rejects.toBeInstanceOf(ReviewAnswerInvalidError);
+      );
+      expect(refusal).toBeInstanceOf(ReviewAnswerInvalidError);
       expect(bureau.reviews.list().some((candidate) => candidate.id === review.id)).toBe(true);
     } finally {
       await bureau.dispose();
