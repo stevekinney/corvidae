@@ -2,7 +2,7 @@ import type { AnyToolbox } from 'armorer';
 import type { ResolvedMediaSources } from 'conversationalist';
 import { Conversation } from 'conversationalist';
 
-import { sealContextEpoch } from './context-epoch';
+import { type ContextEpochSealInput, sealContextEpoch } from './context-epoch';
 import type { SteeringDesiredState } from './durable/types';
 import {
   composeEffectiveContextRecord,
@@ -40,6 +40,11 @@ import {
 } from './run-step-utilities';
 import type { ToolChoice } from './structured-output/types';
 import type { GenerateContext, GenerateResponse } from './types';
+
+/** The epoch of a run that has no sealer: sealed once, never minted an id, so the record that flattens it names none. */
+function sealUnsealed(input: ContextEpochSealInput) {
+  return sealContextEpoch({ ...input, epochId: '' });
+}
 
 export interface GenerationDependencies {
   deps: StepDeps;
@@ -298,8 +303,7 @@ export async function executeGeneration(
         // the sealer's epoch, are unchanged.
         const recordedEpoch =
           sealedEpoch ??
-          sealContextEpoch({
-            epochId: '',
+          sealUnsealed({
             conversation: generateContext.conversation,
             steering: steeringDesiredState,
             plan: deps.selection?.getPlan(),
@@ -338,33 +342,37 @@ export async function executeGeneration(
           const derived = await admission.derive(mutatedContext.conversation);
           return { ...mutatedContext, resolvedSources: derived.resolvedSources };
         };
-        const sealMutatedEpoch =
-          deps.contextEpoch === undefined
-            ? undefined
-            : (mutatedContext: GenerateContext, providerAttempt: number): string => {
-                const mutatedEpoch = deps.contextEpoch!.seal({
-                  conversation: mutatedContext.conversation,
-                  steering: steeringDesiredState,
-                  plan: deps.selection?.getPlan(),
-                  toolNames: mutatedContext.toolbox.tools().map((tool) => tool.name),
-                  consumer: {
-                    runId: deps.runId,
-                    step,
-                    // Offset past the error-recovery attempt index so a
-                    // provider retry and an error-recovery retry of the
-                    // same step are never reported as the same attempt.
-                    attempt: stepRetryCount + providerAttempt,
-                  },
-                });
-                // The mutated request is what a successful retry sends, so the step names its epoch
-                // and records what that request carried.
-                contextEpochId = mutatedEpoch.epochId;
-                effectiveContext = composeEffectiveContextRecord(
-                  mutatedEpoch,
-                  mutatedContext.conversation,
-                );
-                return mutatedEpoch.epochId;
-              };
+        // The callback runs for a run without a sealer too: it refreshes the step's effective
+        // context to the mutated request, and returns no epoch id, which the retry event then omits.
+        const sealMutatedEpoch = (
+          mutatedContext: GenerateContext,
+          providerAttempt: number,
+        ): string | undefined => {
+          const mutatedEpoch = (deps.contextEpoch?.seal.bind(deps.contextEpoch) ?? sealUnsealed)({
+            conversation: mutatedContext.conversation,
+            steering: steeringDesiredState,
+            plan: deps.selection?.getPlan(),
+            toolNames: mutatedContext.toolbox.tools().map((tool) => tool.name),
+            consumer: {
+              runId: deps.runId,
+              step,
+              // Offset past the error-recovery attempt index so a
+              // provider retry and an error-recovery retry of the
+              // same step are never reported as the same attempt.
+              attempt: stepRetryCount + providerAttempt,
+            },
+          });
+          // The mutated request is what a successful retry sends, so the step names its epoch
+          // and records what that request carried.
+          contextEpochId = deps.contextEpoch === undefined ? undefined : mutatedEpoch.epochId;
+          effectiveContext = composeEffectiveContextRecord(
+            deps.contextEpoch === undefined
+              ? { ...mutatedEpoch, epochId: undefined }
+              : mutatedEpoch,
+            mutatedContext.conversation,
+          );
+          return contextEpochId;
+        };
         try {
           response =
             deps.parentContext !== undefined && deps.withTraceContext !== undefined

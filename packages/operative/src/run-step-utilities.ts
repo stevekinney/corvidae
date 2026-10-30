@@ -179,7 +179,7 @@ export async function callGenerateWithRetry(
    * sealed before `generate.started`; minting a successor for it would
    * claim a context change that did not happen.
    */
-  sealMutatedEpoch?: (mutatedContext: GenerateContext, attempt: number) => string,
+  sealMutatedEpoch?: (mutatedContext: GenerateContext, attempt: number) => string | undefined,
   /**
    * COR-716 — derives `resolvedSources` for a mutated request before it is
    * issued, so the media a retry sends was admitted on the exact conversation it

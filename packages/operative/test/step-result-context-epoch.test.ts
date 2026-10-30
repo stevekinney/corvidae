@@ -201,4 +201,35 @@ describe('StepResult.planReason and StepResult.effectiveContext', () => {
     expect(result.steps.every((step) => !('planReason' in step))).toBe(true);
     expect(result.steps.every((step) => !('effectiveContext' in step))).toBe(true);
   });
+
+  it('records what a mutated provider retry sent when the run seals no epochs', async () => {
+    let calls = 0;
+    const result = await createActiveRun({
+      generate: async () => {
+        calls += 1;
+        if (calls === 1) throw new Error('transient');
+        return { content: 'Done.', toolCalls: [] };
+      },
+      toolbox: createTestToolbox([lookup]),
+      conversation: new Conversation(),
+      stopWhen: noToolCalls(),
+      retry: {
+        attempts: 2,
+        sleep: async () => {},
+        mutate: (context) => {
+          const conversation = new Conversation(context.conversation.current);
+          conversation.appendSystemMessage('Retrying with less context.');
+          return { ...context, conversation };
+        },
+      },
+    }).result;
+
+    const [step] = result.steps;
+    expect(calls).toBe(2);
+    // The request that produced the reply carried the row the mutation added, not the failed one's.
+    expect(step?.effectiveContext?.messageCount).toBe(1);
+    expect(step?.effectiveContext?.messages.map((message) => message.role)).toEqual(['system']);
+    expect(step?.effectiveContext?.epochId).toBeUndefined();
+    expect('contextEpochId' in (step ?? {})).toBe(false);
+  });
 });
