@@ -236,6 +236,10 @@ function buildFields(
     // on it is not followed again: the field shows the reference's name instead.
     const followed: string[] = [];
     const schema = isRecord(definition) ? flatten(root, definition, path, followed) : {};
+    // The type is read against the references that led to this field only. The
+    // ones `nestedObject` follows into an array's items are being expanded
+    // below the field, not above it, so they do not make its type recursive.
+    const typePath = [...path, ...followed];
     const nested = nestedObject(root, schema, path, followed);
     const below = [...path, ...followed];
     budget.remaining -= 1;
@@ -243,7 +247,7 @@ function buildFields(
     const field: SchemaViewField = {
       key,
       label: humanizeIdentifier(key),
-      type: describeType(root, schema, below),
+      type: describeType(root, schema, typePath),
       required: required.has(key),
       fields: expand ? buildFields(root, nested, below, depth + 1, maxDepth, budget) : [],
       truncated: nested !== undefined && !expand,

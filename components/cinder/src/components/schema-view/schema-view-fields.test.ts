@@ -165,6 +165,31 @@ describe('readSchemaFields', () => {
     expect(fields[0]?.type).toBe('array of nested (recursive)');
   });
 
+  test('does not call an array of non-recursive references recursive', () => {
+    const fields = readSchemaFields({
+      type: 'object',
+      properties: {
+        lines: { type: 'array', items: { $ref: '#/$defs/Line' } },
+        optionalLines: { type: ['array', 'null'], items: { $ref: '#/$defs/Line' } },
+        tree: { type: 'array', items: { $ref: '#/$defs/Node' } },
+      },
+      $defs: {
+        Line: { type: 'object', properties: { sku: { type: 'string' } } },
+        Node: {
+          type: 'object',
+          properties: { children: { type: 'array', items: { $ref: '#/$defs/Node' } } },
+        },
+      },
+    });
+    const [lines, optionalLines, tree] = fields;
+    expect(lines?.type).toBe('array of object');
+    expect(lines?.fields.map((field) => field.key)).toEqual(['sku']);
+    expect(optionalLines?.type).toBe('array of object | null');
+    expect(optionalLines?.fields.map((field) => field.key)).toEqual(['sku']);
+    expect(tree?.type).toBe('array of object');
+    expect(tree?.fields[0]?.type).toBe('array of Node (recursive)');
+  });
+
   test('merges the property schemas of allOf members that describe the same property', () => {
     const fields = readSchemaFields({
       allOf: [
