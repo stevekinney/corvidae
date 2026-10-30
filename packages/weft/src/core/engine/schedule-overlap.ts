@@ -17,9 +17,9 @@ export async function applyBlockedScheduleOccurrence(
   state: ScheduleState,
   hasActiveWorkflow: boolean,
   callbacks: ScheduleOverlapCallbacks,
-  occurrence?: number,
-  manual?: true,
-  commit?: OccurrenceCommit,
+  occurrence: number | undefined,
+  manual: true | undefined,
+  commit: OccurrenceCommit,
 ): Promise<ScheduleState> {
   if (!hasActiveWorkflow) {
     return startScheduleRunInOccupiedSlot(state, callbacks, occurrence, manual, commit);
@@ -85,9 +85,9 @@ export async function applyBlockedScheduleOccurrence(
 async function startScheduleRunInOccupiedSlot(
   state: ScheduleState,
   callbacks: Pick<ScheduleOverlapCallbacks, 'startScheduledRun'>,
-  occurrence?: number,
-  manual?: true,
-  commit?: OccurrenceCommit,
+  occurrence: number | undefined,
+  manual: true | undefined,
+  commit: OccurrenceCommit,
 ): Promise<ScheduleState> {
   const workflowId = crypto.randomUUID();
   const stateAfterStart: ScheduleState = { ...state, currentWorkflowId: workflowId };
@@ -96,11 +96,7 @@ async function startScheduleRunInOccupiedSlot(
     ...(occurrence !== undefined && { occurrence }),
     ...(manual === true && { manual }),
   };
-  if (commit === undefined) {
-    await callbacks.startScheduledRun(state, options);
-  } else {
-    await startOccurrenceRun(commit, callbacks, state, stateAfterStart, options, true);
-  }
+  await startOccurrenceRun(commit, callbacks, state, stateAfterStart, options, true);
   return stateAfterStart;
 }
 
