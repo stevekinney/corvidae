@@ -180,6 +180,9 @@ describe('acceptsSecrets on a saved source tool', () => {
     for (const key of ['identity', 'display', 'risk', 'availability', 'lifecycle'] as const) {
       expect(flagged[key]).toEqual(original.configuration[key]);
     }
+    // The loader's version rides through the rebuild, and is the same at the second start (COR-1950).
+    expect(flagged.identity.version).toMatch(/^[0-9a-f]{32}$/);
+    expect(flagged.identity.version).toBe(original.configuration.identity.version);
     expect(flagged.tags).toEqual(original.configuration.tags);
     expect(flagged.description).toBe(original.configuration.description);
     expect({ ...flagged.metadata, acceptsSecrets: undefined }).toEqual({

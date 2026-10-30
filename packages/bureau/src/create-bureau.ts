@@ -726,7 +726,9 @@ function isJsonObject(value: JSONValue | undefined): value is Record<string, JSO
 
 /**
  * COR-1828 — the tools a person allowed for the rest of a chat: the `approvalGrants` entry of the
- * session's metadata, a list of tool names. It lives and dies with the session, so deleting the
+ * session's metadata, a list of tool ids (`namespace:name@version`, COR-1950: a tool whose
+ * definition changed is a different id, so its grant no longer applies), or of names for an
+ * approval that was not signed. It lives and dies with the session, so deleting the
  * chat ends the grant, and a fork (which copies the owner and its provenance only) starts with none.
  */
 function approvalGrantsOf(metadata: Record<string, JSONValue> | undefined): string[] {
@@ -17045,7 +17047,9 @@ async function constructBureau<const D extends AgentDefinitions>(
       answerDigest: review.kind === 'human-wait' && approving ? digest : undefined,
       rememberTool:
         review.kind === 'tool-approval' && approving && input.remember === true
-          ? review.approval.toolName
+          ? // COR-1950: the id the approval is bound to, which carries the tool's version, so a
+            // tool whose definition changed is not covered. An unsigned approval has none.
+            (review.approval.approvalBinding?.toolDefinitionRevision ?? review.approval.toolName)
           : undefined,
     };
   }

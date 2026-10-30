@@ -773,9 +773,12 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
             ...(rememberedTools === undefined || runId === undefined
               ? {}
               : {
-                  remembered: async (toolName: string) => {
+                  // A grant is the tool's id, version included, when the approvals are signed (the
+                  // approval binds to that id), so a tool whose definition changed asks again
+                  // (COR-1950). Unsigned approvals carry no id, so their grant is the name.
+                  remembered: async (tool: { name: string; id: string }) => {
                     const granted = await rememberedTools(runId);
-                    return granted.has(toolName);
+                    return granted.has(options.approvalSecret === undefined ? tool.name : tool.id);
                   },
                 }),
             // The chat's permission mode, read for each call so a steer applies from the next.
