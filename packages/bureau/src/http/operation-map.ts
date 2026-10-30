@@ -63,6 +63,9 @@ export const OPERATION_MAP = {
   'bureau.deployment.get': { exempt: 'composed from the Bureau’s id, lifecycle, and agents' },
   'bureau.diagnostics.get': { member: 'internals.diagnostics' },
   'bureau.events': { exempt: 'a transport subscription over the Bureau’s event feed' },
+  'bureau.events.catalog': {
+    exempt: 'a static description of the published event kinds; it reads no Bureau state',
+  },
   'operative.runs.events': { exempt: 'a transport subscription over a run’s event feed' },
   'bureau.agents.catalog': { exempt: 'composed from the catalog, the opt-ins, and the models' },
   'bureau.skills.list': {

@@ -65,7 +65,7 @@ describe('hook records', () => {
     expect(created).toMatchObject({
       owner: 'api-key:alice',
       name: 'Settled runs',
-      url: HOOK.url,
+      action: { type: 'webhook', url: HOOK.url },
       events: ['run.registered'],
       enabled: true,
       revision: 1,
@@ -83,7 +83,7 @@ describe('hook records', () => {
       expectedRevision: 1,
     });
     expect(updated).toMatchObject({
-      url: 'https://receiver.example/other',
+      action: { type: 'webhook', url: 'https://receiver.example/other' },
       events: ['run.settled', 'run.registered'],
       enabled: false,
       revision: 2,
@@ -144,7 +144,7 @@ describe('hook records', () => {
     expect(refused.code).toBe('invalid');
     const lenient = await open();
     const allowed = await lenient.bureau.hooks!.create({ ...HOOK, url: 'http://localhost:3000/h' });
-    expect(allowed.url).toBe('http://localhost:3000/h');
+    expect(allowed.action).toEqual({ type: 'webhook', url: 'http://localhost:3000/h' });
   });
 
   it('refuses hooks on a Bureau with no storage to keep them in', async () => {
