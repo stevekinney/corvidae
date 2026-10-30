@@ -1,3 +1,4 @@
+import { SETTING_LOCK_REASONS as BUREAU_LOCK_REASONS } from '@lostgradient/bureau';
 import { HttpClientError } from '@lostgradient/weft';
 import { afterEach, describe, expect, test } from 'bun:test';
 
@@ -5,6 +6,7 @@ import {
   followSettingsEvents,
   getSettings,
   getSettingsSchema,
+  SETTING_LOCK_REASONS,
   settingsFaultOf,
   updateSettings,
 } from './bureau-settings.ts';
@@ -14,6 +16,12 @@ let stub: BureauStub | undefined;
 afterEach(() => {
   stub?.restore();
   stub = undefined;
+});
+
+describe('the lock reasons', () => {
+  test('are the ones Bureau reports, in its order', () => {
+    expect([...SETTING_LOCK_REASONS]).toEqual([...BUREAU_LOCK_REASONS]);
+  });
 });
 
 describe('the settings the Bureau shows', () => {

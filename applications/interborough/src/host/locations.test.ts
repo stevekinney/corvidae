@@ -66,6 +66,7 @@ describe('the backend report', () => {
       agentDirectory: 's3://state/prod/agents/',
       workflowDirectory: 's3://state/prod/workflows/',
       configurationFile: 's3://state/prod/configuration.json',
+      locked: { configuration: 'deployment', providerKeys: 'deployment' },
       providers: [{ name: 'anthropic', secretFile: 'INTERBOROUGH_SECRET_ANTHROPIC_API_KEY' }],
     });
     const text = JSON.stringify(report);
@@ -93,6 +94,7 @@ describe('the backend report', () => {
       mode: 'local',
       database: { kind: 'sqlite', path: '/home/database.sqlite' },
       agentDirectory: '/home/agents',
+      locked: {},
     });
   });
 });

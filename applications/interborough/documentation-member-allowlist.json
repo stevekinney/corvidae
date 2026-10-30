@@ -14,8 +14,6 @@
     "src/host/providers.ts LoadedProviders.rows",
     "src/host/providers.ts ModelSelection.model",
     "src/host/providers.ts ModelSelection.provider",
-    "src/host/providers.ts ProviderConfigurationError.field",
-    "src/host/providers.ts ProviderConfigurationError.path",
     "src/host/providers.ts ProviderConfigurationFile.providers",
     "src/host/shutdown-signals.ts ShutdownSignalTarget.on",
     "src/host/source-watcher.ts DirectoryWatcher.close",

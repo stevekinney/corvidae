@@ -78,6 +78,7 @@ export function stubRemoteHostPaths() {
     agentDirectory: STUB_REMOTE_AGENT_DIRECTORY,
     workflowDirectory: STUB_REMOTE_WORKFLOW_DIRECTORY,
     configurationFile: STUB_REMOTE_CONFIGURATION_FILE,
+    locked: { configuration: 'deployment' as const, providerKeys: 'deployment' as const },
     providers: STUB_REMOTE_PROVIDERS,
   };
 }
@@ -97,6 +98,10 @@ export function stubHostPaths(
     agentDirectory,
     workflowDirectory,
     configurationFile: STUB_CONFIGURATION_FILE,
+    locked:
+      mode === 'local'
+        ? {}
+        : { configuration: 'deployment' as const, providerKeys: 'deployment' as const },
     providers: STUB_PROVIDERS,
   };
 }

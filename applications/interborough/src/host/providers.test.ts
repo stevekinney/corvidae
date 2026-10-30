@@ -4,13 +4,13 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { ProviderConfigurationError } from './provider-configuration-error.ts';
 import {
   createCatalogGenerate,
   loadProviders,
   parseProviderConfiguration,
   PROVIDER_DEFINITIONS,
   PROVIDER_SECRET_KEYS,
-  ProviderConfigurationError,
   readProviderConfiguration,
   selectCatalogRows,
   type ProviderConfigurationFile,
@@ -88,6 +88,20 @@ describe('the configuration shape', () => {
       PATH,
     );
     expect(configuration).toEqual({ providers: { gemini: {} } });
+  });
+
+  test('reads the catalog edits beside the providers, and leaves them out when there are none', () => {
+    const edit = { provider: 'openai', model: 'gpt-4.1', off: true };
+    expect(
+      parseProviderConfiguration(JSON.stringify({ providers: {}, catalog: [edit] }), PATH),
+    ).toEqual({ providers: {}, catalog: [edit] });
+    expect(parseProviderConfiguration('{"catalog":[]}', PATH)).toEqual({
+      providers: {},
+      catalog: [],
+    });
+    expect(Object.hasOwn(parseProviderConfiguration('{"providers":{}}', PATH), 'catalog')).toBe(
+      false,
+    );
   });
 
   test('an empty providers object, and an empty file object, mean no providers', () => {
@@ -201,7 +215,47 @@ describe('the secret keys', () => {
 });
 
 describe('the catalog rows', () => {
-  const configure = (providers: ProviderConfigurationFile['providers']) => ({ providers });
+  const configure = (
+    providers: ProviderConfigurationFile['providers'],
+    catalog?: ProviderConfigurationFile['catalog'],
+  ) => ({ providers, ...(catalog === undefined ? {} : { catalog }) });
+
+  test('apply an edit only to a provider that has a key, but check the edit either way', () => {
+    const off = [{ provider: 'openai', model: 'gpt-4.1', off: true }];
+    const withKey = selectCatalogRows({
+      configuration: configure({ openai: {} }, off),
+      path: PATH,
+      available: ALL,
+    });
+    expect(withKey.find((row) => row.model === 'gpt-4.1')?.availability).toBe('unavailable');
+    expect(
+      selectCatalogRows({
+        configuration: configure({ openai: {} }, off),
+        path: PATH,
+        available: new Set(['anthropic'] as const),
+      }),
+    ).toEqual([]);
+    const stale = failureOf(() =>
+      selectCatalogRows({
+        configuration: configure({ openai: {} }, [{ provider: 'openai', model: 'gpt-unheard-of' }]),
+        path: PATH,
+        available: new Set<'openai'>(),
+      }),
+    );
+    expect(stale.field).toBe('catalog[0].model');
+    expect(stale.message).not.toContain('gpt-unheard-of');
+  });
+
+  test('leave an allowlisted-out row out even when an edit names it', () => {
+    const rows = selectCatalogRows({
+      configuration: configure({ openai: { models: ['gpt-4.1'] } }, [
+        { provider: 'openai', model: 'o3', off: true },
+      ]),
+      path: PATH,
+      available: ALL,
+    });
+    expect(rows.map((row) => row.model)).toEqual(['gpt-4.1']);
+  });
 
   test('are exactly the configured providers’ rows when no allowlist is given', () => {
     const rows = selectCatalogRows({

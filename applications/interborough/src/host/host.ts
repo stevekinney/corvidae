@@ -21,7 +21,11 @@
  * its owner's chats.
  *
  * The model catalog holds the models of the providers in Bungalow's `configuration.json` that have
- * an API key in its secrets (`providers.ts`). The seeded agents still answer from a script.
+ * an API key in its secrets (`providers.ts`), with the catalog edits beside them
+ * (`catalog-edits.ts`). The seeded agents still answer from a script. A local host writes the
+ * configuration and a provider's key, and reloads the catalog, without a restart
+ * (`provider-manager.ts`, `provider-routes.ts`); a remote host refuses, reporting the reason
+ * `deployment`.
  *
  * Every request acts as the one local caller, `anonymous:local`, holding every Weft scope and
  * every Bureau scope. There is no sign-in: the host binds `127.0.0.1` only, and the Bureau handler
@@ -47,6 +51,8 @@
  *   the Workflows pages can show an agent's file path and a workflow's, and the agent editor can
  *   say where to configure a model provider: the configuration file, and the file that holds each
  *   provider's API key.
+ * - `/host/providers`, `/host/providers/<name>`, `/host/providers/reload`, and `/host/catalog`:
+ *   read and change the provider configuration (`provider-routes.ts`).
  * - `POST /host/restart`: asks the host to restart. It is registered only for a host started with
  *   `onRestartRequested` (the entries, which run under the supervisor), and answers `202` before
  *   the callback runs.
@@ -115,9 +121,9 @@ import {
 } from './locations.ts';
 import { mcpAppMounts } from './mcp-app-mounts.ts';
 import { createHostMemory } from './memory.ts';
+import { createProviderManager, type ProviderManager } from './provider-manager.ts';
+import { providerRoutes } from './provider-routes.ts';
 import {
-  createCatalogGenerate,
-  loadProviders,
   PROVIDER_NAMES,
   PROVIDER_SECRET_KEYS,
   TYPESAFE_SECRET_KEY,
@@ -270,6 +276,12 @@ export type Host = {
    * not hold.
    */
   generateFor(selection: ModelSelection): GenerateFunction;
+  /**
+   * Change the model providers without a restart: connect one with its key, edit the catalog, or
+   * read the configuration again. A remote host refuses a change with
+   * {@link ProviderWriteLockedError}, reason `deployment`. See {@link ProviderManager}.
+   */
+  readonly providers: Pick<ProviderManager, 'connect' | 'editCatalog' | 'reload' | 'snapshot'>;
   /**
    * A point-in-time reading of the host's own state: the Bureau's diagnostics, the engine server's
    * lease, workers, and connections, the build it serves, and the providers it offers. It holds no
@@ -435,18 +447,14 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // the secrets, and nothing else. The Bureau is created with exactly these rows, so no boot step
     // plans against a provider that is not configured. The seeded agents still answer from a
     // script.
-    const providers = await loadProviders({
-      configurationLocation: bungalow.configurationLocation,
-      readConfiguration: () => bungalow.readConfiguration(),
-      readSecret: (key) => bungalow.readSecret(key),
+    const providers = await createProviderManager({
+      bungalow,
       warn: options.warn ?? ((message) => console.warn(message)),
+      resolveProviderGenerate: options.resolveProviderGenerate ?? resolveProviderGenerate,
     });
+    held.providers = providers;
     const generateFor = (selection: ModelSelection): GenerateFunction =>
-      createCatalogGenerate(selection, {
-        rows: providers.rows,
-        apiKeys: providers.apiKeys,
-        resolveProviderGenerate: options.resolveProviderGenerate ?? resolveProviderGenerate,
-      });
+      providers.generateFor(selection);
     const agentContent = bungalow.content(AGENT_DIRECTORY_NAME);
     const workflowContent = bungalow.content(WORKFLOW_DIRECTORY_NAME);
     // The TypeSafe key, when the secrets hold one, registers a decision model, `typesafe`, for the
@@ -486,7 +494,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           }),
       // A file's `model` is a row of this catalog, so it runs with the key in the secrets.
       models: {
-        catalog: providers.rows,
+        catalog: providers.current().rows,
         generate: (row) => {
           const provider = PROVIDER_NAMES.find((name) => name === row.provider);
           if (provider === undefined) {
@@ -511,6 +519,16 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       ...(settings === undefined ? {} : { settings }),
     });
     held.bureau = bureau;
+    // From here a change to the configuration or a key reaches the Bureau's catalog, and a file
+    // agent is validated against it again.
+    providers.attach(async (rows) => {
+      const catalog = bureau.models.replace(rows);
+      // `replace` starts a rescan of the agent files without waiting for it. A file agent keeps
+      // the generate it was built with, so a run that starts after this resolves must find the
+      // agents already rebuilt with the keys just read.
+      await bureau.agents.refresh();
+      return catalog.revision;
+    });
     if (options.seed !== false) {
       await seedBureau(bureau, storage);
     }
@@ -596,6 +614,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           : { [HOST_RESTART_ROUTE]: { POST: (request: Request) => refuse(request) ?? restart() } }),
         // Where a person edits what the host keeps by hand. The pages show an agent's file path and
         // a workflow's.
+        ...providerRoutes(providers, refuse),
         [HOST_PATHS_ROUTE]: {
           GET: (request: Request) =>
             refuse(request) ??
@@ -659,6 +678,12 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       deploymentId: bungalow.deploymentId,
       database,
       generateFor,
+      providers: {
+        connect: (connection) => providers.connect(connection),
+        editCatalog: (edits) => providers.editCatalog(edits),
+        reload: () => providers.reload(),
+        snapshot: () => providers.snapshot(),
+      },
       diagnostics: () => ({
         bureau: bureau.internals.diagnostics(),
         weft: {
@@ -667,7 +692,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           connections: server.connections(),
         },
         build: buildDiagnostics(buildDirectory),
-        providers: providerDiagnostics(providers),
+        providers: providerDiagnostics(providers.current()),
       }),
       notifyRebuilt: () => devReload?.notify(),
       close: () => (held.closing ??= teardown(held)),
@@ -688,6 +713,7 @@ type Held = {
   readonly bungalow: Bungalow;
   storage?: Storage;
   bureau?: Bureau<SeededAgents>;
+  providers?: ProviderManager;
   replacementEngine?: RegistryAgnosticEngine;
   server?: WeftServer;
   publicServer?: Bun.Server<HostSocketData>;
@@ -705,6 +731,8 @@ async function teardown(held: Held): Promise<void> {
       failures.push(error);
     }
   };
+  // No change to the providers may start once the host is going away.
+  held.providers?.close();
   // End the reload streams first, so no page is left reading a host that is going away.
   await step(held.devReload && (() => held.devReload?.close()));
   await step(held.publicServer && (() => held.publicServer?.stop(true)));
