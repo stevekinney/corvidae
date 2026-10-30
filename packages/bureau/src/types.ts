@@ -567,14 +567,15 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * COR-1709 — whether a durable Bureau offers the `decide` tool to a task: a typed question put
    * to a model (`boolean`, `choice`, `scale`, or `structured` against a JSON Schema). It is offered
    * by default, to the run kinds that are offered `requestHumanInput`, and only when something can
-   * answer: {@link BureauOptions.decisions}'s `model` or {@link ModelsOptions.generate}. The tool
+   * answer: a model registered in {@link DecisionsOptions.models} or {@link ModelsOptions.generate}. The tool
    * acts as the task's principal and is capped per task by {@link DecisionsOptions.maximumPerTask}.
    * Pass `false` to leave it out. Passing `true` throws `BureauError` `BAD_REQUEST`: the tool is
    * already the default.
    */
   decide?: false;
   /**
-   * COR-1709 — how `bureau.decisions.decide` and the `decide` tool are answered: a `model` for the
+   * COR-1709 — how `bureau.decisions.decide` and the `decide` tool are answered: `models` registered by
+   * name, of which the `decisions.model` setting (default `model`) names the one that answers the
    * kinds it serves, a `fallbackModel` row of the model catalog for the rest, and a
    * `maximumPerTask` cap on the tool. See {@link DecisionsOptions}.
    */

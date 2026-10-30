@@ -41,7 +41,7 @@ export function createSettingsTools(host: SettingsToolHost): Record<string, Tool
   const get = createTool({
     name: 'settings-get',
     description:
-      "Read the deployment's runtime settings: each setting's value by dotted key, the `revision` to pass to settings-update as `expectedRevision`, and per key whether it applies live or at restart and whether it is locked.",
+      "Read the deployment's runtime settings: each setting's value by dotted key, the `revision` to pass to settings-update as `expectedRevision`, and per key whether it applies live or at restart and whether it is locked (with the `lockReason`).",
     input: z.object({}),
     metadata: { shortDescription: "Read the deployment's runtime settings." },
     execute: async (): Promise<SettingsSnapshot> => host.settings().get(),
