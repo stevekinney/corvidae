@@ -66,6 +66,7 @@
   import type { LiveSourceStatus } from '../../../lib/live-source/index.ts';
   import {
     applyWorkflowTailFrame,
+    createWorkflowCheckpointRefresher,
     workflowEventsKey,
   } from '../../../lib/live-source/cache-integration.ts';
   import { WorkflowTailSource } from '../../../lib/live-source/workflow-tail-source.svelte.ts';
@@ -127,10 +128,20 @@
   let live = $state(untrack(() => !isTerminalStatus(workflow.status)));
   let tail = $state<WorkflowTailSource | null>(null);
 
+  const refreshCheckpoints = createWorkflowCheckpointRefresher(
+    queryClient,
+    untrack(() => workflow.id),
+    (id) => client.getEvents(id),
+  );
+
   function startTail(): void {
     if (tail !== null) return;
     const source = new WorkflowTailSource(client, workflow.id);
-    source.subscribe((event) => applyWorkflowTailFrame(queryClient, workflow.id, event));
+    source.subscribe((event) => {
+      applyWorkflowTailFrame(queryClient, workflow.id, event);
+      // The tail carries lifecycle events; checkpoints come from the durable log.
+      void refreshCheckpoints();
+    });
     tail = source;
   }
 
