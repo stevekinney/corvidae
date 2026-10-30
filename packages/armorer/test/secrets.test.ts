@@ -14,6 +14,7 @@ import {
   type ToolSecretResolver,
 } from '../src';
 import { findSecretReferences, replaceSecretReferences } from '../src/secrets';
+import { expectNoPlaintext, recordEveryEvent } from './secret-leak-scan';
 
 const plaintext = 'sk-live-plaintext-9f3a';
 const requestContext = {
@@ -165,6 +166,7 @@ describe('a tool that declares acceptsSecrets', () => {
         },
       },
     });
+    const everything = recordEveryEvent(toolbox);
     const events: unknown[] = [];
     for (const type of [
       'tool.started',
@@ -195,6 +197,7 @@ describe('a tool that declares acceptsSecrets', () => {
     const recorded = JSON.stringify([events, seenByPolicy, result]);
     expect(recorded).toContain('review-1/token');
     expect(recorded).not.toContain(plaintext);
+    expectNoPlaintext({ everything, seenByPolicy, result }, plaintext);
     // Recording and approval evaluation come first; the plaintext exists only from `resolve` on.
     expect(order.indexOf('tool.started')).toBeLessThan(order.indexOf('resolve'));
     expect(order.indexOf('validate-success')).toBeLessThan(order.indexOf('resolve'));

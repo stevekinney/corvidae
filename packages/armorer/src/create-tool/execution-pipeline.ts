@@ -263,9 +263,15 @@ async function runReadyExecution<TInput, TOutput, E extends ToolEventsMap>(
       secretBearingArguments !== undefined
         ? async (_params: TInput, toolContext: ToolContext<E>) => {
             // The first point at which plaintext exists: after the call was recorded, validated
-            // in its reference form, and approved. The snapshot is copied, never edited.
-            const substituted = await secrets.substitute(secretBearingArguments);
+            // in its reference form, and approved. The snapshot is copied, never edited. A call
+            // cancelled while the resolver works has already settled as cancelled, so the tool
+            // must not start once the plaintext arrives.
+            const substituted = await raceWithSignal(
+              secrets.substitute(secretBearingArguments),
+              options.signal,
+            );
             const params = (await parseSubstitutedArguments(schema, substituted)) as TInput;
+            if (options.signal?.aborted) throw createAbortRejection(options.signal.reason);
             return resolvedExecute(params, toolContext);
           }
         : (params: TInput, toolContext: ToolContext<E>) =>

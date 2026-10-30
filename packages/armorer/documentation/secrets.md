@@ -65,10 +65,12 @@ For a declaring tool, in order:
 
 1. The call is recorded and emitted exactly as received (`execute-start`, `tool.started`): the reference shows.
 2. The arguments are validated in their reference form (see below), then policy and approval run on that form. A pending approval, its `arguments`, and its signature carry the reference.
-3. **Immediately before `execute`**, after any approval is consumed, the toolbox calls the resolver once per distinct reference and builds a **fresh copy** of the arguments with each reference replaced by its plaintext. The recorded arguments, the caller's object, and `context.toolCall.arguments` are never edited; they keep showing the references.
+3. **Immediately before `execute`**, after any approval is consumed, the toolbox calls the resolver once per distinct reference and builds a **fresh copy** of the arguments with each reference replaced by its plaintext. The recorded arguments, the caller's object, and `context.toolCall.arguments` are never edited; they keep showing the references. A call cancelled while the resolver works settles as cancelled, and the tool does not start when the plaintext arrives.
 4. The substituted copy is validated against the tool's input schema, and the tool receives the parsed result.
 
-Events, policy hooks, approvals, and the result Armorer builds see the reference. A tool that returns or logs the plaintext it was given is the tool's own responsibility.
+Events, policy hooks, approvals, idempotency records, and the result Armorer builds see the reference.
+
+What a declaring tool does with the plaintext is its own responsibility. A tool that returns the plaintext, logs it, or throws an error whose message quotes it hands it to whoever reads that result or error, the model included; Armorer passes a tool's own result and error through as it does for any tool. Armorer itself never adds the plaintext to anything it emits or returns.
 
 Each call has its own resolutions and its own copy, so two calls running in parallel never see each other's secrets. Within one call a reference is resolved once, however many times it appears.
 
@@ -76,10 +78,12 @@ Each call has its own resolutions and its own copy, so two calls running in para
 
 A schema that expects `z.string()` rejects the reference object, and the plaintext is not available until step 3. Armorer therefore validates in two passes:
 
-- **Admission (reference form).** The arguments are parsed as received. A failure whose issues all sit at, or below, a reference is set aside, because those positions are judged on the plaintext later. Any other issue (a wrong type elsewhere, a missing field) fails the call as usual, before the resolver is ever called. Resuming a paused approval applies the same rule.
-- **Execution (plaintext form).** The substituted copy is parsed again, and the tool receives that parse. If it fails, the error keeps each issue's path but replaces its message with a fixed sentence, because a message can quote the rejected value and the value is a secret.
+- **Admission (reference form).** For this call only, the input schema is rewritten so that each position holding a reference also accepts the `{ secretRef }` object there, unchanged. Every other field is parsed by its own schema exactly as in a call without references: transforms, coercions, and defaults apply, so `beforeExecute` and a pending approval see the same non-reference values a literal call would show them, and a reference can never make a policy decision more permissive. Any issue is a validation failure, before the resolver is ever called. Resuming a paused approval validates the same way.
+- **Execution (plaintext form).** The substituted copy is parsed against the tool's original schema, and the tool receives that parse. Any failure, whether an issue the schema reports or an error a transform, refinement, or parser throws, becomes a `VALIDATION_ERROR` that keeps the issue paths but carries a fixed message and no `cause`, because a message can quote the rejected value and the value is a secret.
 
-Two consequences: a schema transform runs again on the substituted copy, and a refinement that inspects a secret's value should sit on the field, not on the enclosing object, because the object-level check runs on the reference form at admission.
+A position's own schema (its type, refinements, and transforms) judges only the plaintext, at execution. A check on an enclosing object runs at both passes, so at admission it sees the reference object where the secret will be; a refinement that inspects a secret's value belongs on the field.
+
+A reference must sit where the schema can hold it without changing how the rest of the value parses. Admission walks through objects (including a `catchall`), arrays, tuples, records, and `optional`, `nullable`, `default`, `prefault`, `nonoptional`, `readonly`, and `lazy` wrappers, and stops at `z.unknown()` or `z.any()`, which pass the reference through. A reference inside a union, an intersection, a transform or pipe, a `catch`, or a custom or Standard Schema validator fails admission with `VALIDATION_ERROR`, before policy and resolution: which branch a union takes, or what a transform of the enclosing value produces, could depend on the secret, so policy could not be shown what the call will run with. A tool with such a schema can take the reference's string in an ordinary field and call `context.resolveSecret` itself.
 
 ## A tool that does not declare it
 
