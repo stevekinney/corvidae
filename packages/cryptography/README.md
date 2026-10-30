@@ -1,6 +1,6 @@
 # Cryptography
 
-`@lostgradient/cryptography` owns the cross-platform hashing, signing, and timing-safe comparison primitives shared by Corvidae packages.
+`@lostgradient/cryptography` owns the cross-platform hashing, signing, timing-safe comparison, and authenticated-encryption primitives shared by Corvidae packages.
 
 ## Public API
 
@@ -10,6 +10,8 @@
 - `hmacSha256HexSync` signs text with HMAC-SHA-256.
 - `timingSafeEqualHex` compares valid equal-length hexadecimal digests without leaking the first differing byte.
 - `createIncrementalHash` hashes streamed text incrementally.
+- `generateEncryptionKey`, `importEncryptionKey`, and `exportEncryptionKey` create and persist AES-256-GCM keys.
+- `encrypt`, `decrypt`, and `decryptBytes` seal and open values with a `Keyring`; failures are `CryptographyError`s with a `code`.
 
 The synchronous APIs fail explicitly when the host does not expose the required cryptographic primitive. Browser consumers should use `sha256Hex`.
 
@@ -25,7 +27,7 @@ console.log(digest);
 // 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
 ```
 
-Hash the exact serialized representation you intend to identify. This package does not normalize whitespace, canonicalize JSON, encrypt content, or provide password storage.
+Hash the exact serialized representation you intend to identify. This package does not normalize whitespace, canonicalize JSON, or provide password storage.
 
 On the server, the incremental API lets you feed text in chunks without concatenating the complete input first:
 
@@ -39,6 +41,61 @@ console.log(hash.digest() === sha256HexSync('hello')); // true
 ```
 
 Call `digest()` when all chunks have arrived and create a new hasher for the next message. Treat finalization as the end of that instance's lifetime.
+
+## Encrypting stored secrets
+
+`encrypt` and `decrypt` use AES-256-GCM through Web Crypto, so they run in browsers, Bun, Node.js, and Deno. A stored value is plain JSON-safe data, all binary fields base64url without padding:
+
+```typescript
+import {
+  decrypt,
+  encrypt,
+  exportEncryptionKey,
+  generateEncryptionKey,
+  importEncryptionKey,
+} from '@lostgradient/cryptography';
+
+const key = await generateEncryptionKey();
+const encoded = await exportEncryptionKey(key); // 32 raw bytes as base64url: key material, store as a secret.
+
+const stored = await encrypt('correct horse battery staple', key);
+// { version: 1, ciphertext: '…', iv: '…', keyId: '…' }
+
+const restored = await importEncryptionKey(encoded);
+console.log(await decrypt(stored, { current: restored })); // correct horse battery staple
+```
+
+Each call to `encrypt` draws a fresh random 96-bit IV, so encrypting the same text twice gives different output; rotate a key well before it has sealed about 2^32 values. The 128-bit tag is part of `ciphertext`. The `keyId` is a truncated, domain-separated SHA-256 of the key, so it is safe to store and log and can be recomputed from the key; use it to name the secret that holds a retired key. The version and `keyId` are bound into the GCM additional data, so rewriting either one fails authentication instead of selecting another key.
+
+`importEncryptionKey` returns a non-extractable key by default, which `exportEncryptionKey` then refuses; pass `{ extractable: true }` when you must export it again. `generateEncryptionKey` returns an extractable key.
+
+### Rotation
+
+A `Keyring` is the key that encrypts new values plus retired keys that can only decrypt. Values name their key by `keyId`, so rotating means making the new key `current` and moving the old one to `retired`:
+
+```typescript
+import {
+  CryptographyError,
+  decrypt,
+  encrypt,
+  generateEncryptionKey,
+  type Keyring,
+} from '@lostgradient/cryptography';
+
+const oldKey = await generateEncryptionKey();
+const stored = await encrypt('token', oldKey);
+
+const keyring: Keyring = { current: await generateEncryptionKey(), retired: [oldKey] };
+console.log(await decrypt(stored, keyring)); // token
+
+try {
+  await decrypt(stored, { current: keyring.current }); // the retired key was dropped
+} catch (error) {
+  if (error instanceof CryptographyError) console.log(error.code); // secret-unavailable
+}
+```
+
+`CryptographyError.code` is one of `secret-unavailable` (the keyring lacks the stored `keyId`), `authentication-failed` (a field was altered or the key is wrong), `malformed-secret`, `unsupported-version`, `invalid-key`, or `invalid-text` (`decrypt` found bytes that are not UTF-8; use `decryptBytes`). Messages are fixed text and never contain key material or plaintext.
 
 ## Signatures and comparison
 
