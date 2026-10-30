@@ -213,6 +213,26 @@ describe('loadToolSource for OpenAPI', () => {
       );
     });
 
+    it('never puts the server URL, its userinfo, or its query in an error message', async () => {
+      for (const server of [
+        '/api?token=SECRETQ',
+        'http://user:SECRETPW@',
+        'https://user:SECRETPW@x.test/?token=SECRETQ',
+      ]) {
+        const failure = await loadToolSource(
+          openApiSource({
+            specification: { type: 'document', document: documentWithServer(server) },
+            baseUrl: undefined,
+          }),
+          { resolveCredential: () => undefined },
+        ).catch((error: unknown) => error);
+        expect(failure).toBeInstanceOf(ToolSourceBaseUrlError);
+        const message = (failure as Error).message;
+        expect(message).not.toContain('SECRET');
+        expect(message).not.toContain('token=');
+      }
+    });
+
     it('fails the load for a non-http server URL or one with userinfo, and for no server at all', async () => {
       for (const server of ['ftp://api.example.test', 'https://user:pw@api.example.test']) {
         await expectPromiseToReject(

@@ -480,7 +480,7 @@ function resolveBaseUrl(source: OpenApiToolSourceDescription, specification: Ope
   } catch {
     throw new ToolSourceBaseUrlError(
       source.id,
-      `its server URL "${server}" is relative and there is no document URL to resolve it against; set \`baseUrl\`.`,
+      'its first server URL is not an absolute http(s) URL and there is no document URL to resolve it against; set `baseUrl`. The URL is left out of this message because it may carry a credential.',
     );
   }
   if (
