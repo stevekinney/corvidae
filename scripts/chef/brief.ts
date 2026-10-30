@@ -46,7 +46,7 @@ export { UsageError };
 
 /** The charter rules, kept equal to `references/execution-record.md` by `brief.test.ts`. */
 export const charterRules = [
-  '**Merge gate:** run the focused checks on what you changed before opening the pull request, not `bun run check`: `bun test` on the touched files, `bun run lint:root` and `bun run typecheck:root` when root or `scripts/` files changed, `bunx turbo run lint typecheck --filter=<workspace>` for each changed workspace, and `bunx prettier --check` on the changed files. A full `bun run validate` only for a one-way door, the lock or concurrency infrastructure, or `turbo.json` and the root scripts. Delivery runs no gate and does not repeat a check because `main` moved: after the coordinator has accepted your ready-for-review return, merge only with `bun scripts/chef/merge-gate.ts --pr <n> --worktree <path> --comment-file <file> --head <sha>`, which refuses for a conflict with the base, an unresolved review thread, or a head other than the one accepted. On a conflict, merge `main` in yourself, run the focused checks again, and return the new head. A red `main` is a warning there, not a refusal.',
+  '**Merge gate:** run the focused checks on what you changed before opening the pull request, not `bun run check`: `bun test` on the touched files, `bun run lint:root` always, because its guards scan the tests of every workspace, `bun run typecheck:root` when root or `scripts/` files changed, `bunx turbo run lint typecheck --filter=<workspace>` for each changed workspace, and `bunx prettier --check` on the changed files. A full `bun run validate` only for a one-way door, the lock or concurrency infrastructure, or `turbo.json` and the root scripts. Delivery runs no gate and does not repeat a check because `main` moved: after the coordinator has accepted your ready-for-review return, merge only with `bun scripts/chef/merge-gate.ts --pr <n> --worktree <path> --comment-file <file> --head <sha>`, which refuses for a conflict with the base, an unresolved review thread, or a head other than the one accepted. On a conflict, merge `main` in yourself, run the focused checks again, and return the new head. A red `main` is a warning there, not a refusal.',
   '**Review rounds (AGENTS.md "Review guidelines"):** answer every thread before merge; at most three rounds; round one fixes every real finding; rounds two and three fix only regressions, one-way-door defects, and real defects in changed lines; after round three, open items go to one follow-up issue; push once per round, because Codex reviews every push automatically; do not re-answer a re-reported comment.',
   '**Turn rule:** end a turn only on a state change: merged, blocked, needs-decision, or ready-for-review. Wait for a gate, a check, or a review bot in a background command and keep working; never end a turn to report that you are still waiting.',
   "**Defect-class self-check:** before opening the pull request, check the diff against every class in `.agents/skills/chef/references/defect-classes.md`, fix what applies, and report each class's result in the return. Before every fix push, run `bun scripts/chef/review-threads.ts classes --pr <n>`; on exit 1, push no further patch and return blocked.",
@@ -55,12 +55,24 @@ export const charterRules = [
   '**Corrections:** after two unsuccessful attempts at the same defect, stop patching and return evidence for causal reassessment.',
 ];
 
+const rootLint = 'bun run lint:root';
+
 const defaultVerification = [
   'bun test <the test files you changed>',
-  'bun run lint:root',
+  rootLint,
   'bun run typecheck:root',
   'bunx prettier --check <the files you changed>',
 ];
+
+/**
+ * The verification list: the explicit commands, or the defaults when there are none. The
+ * root lint is always on it, because its guards scan the tests of every workspace, so a
+ * change inside one workspace can fail it.
+ */
+export function verificationCommands(explicit: string[]): string[] {
+  if (explicit.length === 0) return defaultVerification;
+  return explicit.includes(rootLint) ? explicit : [...explicit, rootLint];
+}
 
 /** The body of the description section whose heading matches `heading`, or `undefined`. */
 export function sectionOf(description: string, heading: RegExp): string | undefined {
@@ -146,9 +158,7 @@ export function renderBrief(issue: IssueSummary, options: BriefOptions): string 
     '',
     '## Verification',
     '',
-    ...(options.verify.length > 0 ? options.verify : defaultVerification).map(
-      (command) => `- \`${command}\``,
-    ),
+    ...verificationCommands(options.verify).map((command) => `- \`${command}\``),
     '',
     '## Charter rules',
     '',
