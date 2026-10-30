@@ -724,6 +724,7 @@ export {
   type BureauEventCatalogEntry,
   type BureauEventField,
   type BureauEventFieldType,
+  type BureauEventOrigin,
 } from './bureau-event-catalog';
 export {
   bureauEventEnvelopeSchema,

@@ -170,11 +170,11 @@ describe('a start-workflow hook and the origin of an event’s run', () => {
     for (const workflowId of ['one', 'two', 'three']) {
       await run.hooks.create({
         action: { type: 'start-workflow', workflowId },
-        events: ['run.settled', 'definitions.changed'],
+        events: ['run.settled', 'schedule.missed'],
       });
     }
     await run.fire('run.settled', { runId: 'r1' });
-    await run.fire('definitions.changed', { source: 'workflows', added: [] });
+    await run.fire('schedule.missed', { scheduleId: 's-1' });
 
     expect(asked).toEqual(['r1']);
     expect(run.starts).toHaveLength(6);
@@ -208,7 +208,16 @@ async function refusedPath(work: Promise<unknown>): Promise<readonly string[]> {
 describe('a start-workflow hook and a kind it cannot place', () => {
   const START = { type: 'start-workflow', workflowId: 'lookup' } as const;
   // Kinds a run may raise that name no run: a hook started from one could start itself again.
-  const UNPLACED = ['notification.created', 'session.saved', 'session.created', 'diagnostic'];
+  const UNPLACED = [
+    'notification.created',
+    'session.saved',
+    'session.created',
+    'diagnostic',
+    // A run's `workflows-create` tool writes the files it reports.
+    'definitions.changed',
+    'schedule.attempted',
+    'schedule.skipped',
+  ];
 
   it.each(UNPLACED)(
     'is refused at create and at update for %s, naming the events field',
@@ -235,7 +244,7 @@ describe('a start-workflow hook and a kind it cannot place', () => {
         'run.settled',
         'goal.succeeded',
         'review.requested',
-        'definitions.changed',
+        'bureau.disposed',
         'schedule.missed',
       ],
     });
@@ -288,9 +297,9 @@ describe('a start-workflow hook and a kind it cannot place', () => {
       asked.push(runId);
       return Promise.resolve('hook-origin-1');
     });
-    await run.hooks.create({ action: START, events: ['schedule.missed', 'schedule.attempted'] });
+    await run.hooks.create({ action: START, events: ['schedule.missed', 'bureau.disposed'] });
     await run.fire('schedule.missed', { scheduleId: 's-1', runId: 'r-from-a-hook' });
-    await run.fire('schedule.attempted', { scheduleId: 's-1' });
+    await run.fire('bureau.disposed', {});
 
     expect(asked).toEqual([]);
     expect(run.starts).toHaveLength(2);
@@ -298,11 +307,11 @@ describe('a start-workflow hook and a kind it cannot place', () => {
 
   it('holds an event published before the hooks open, and starts the workflow once the files are loaded', async () => {
     const run = setup(() => Promise.resolve(undefined));
-    const hook = await run.hooks.create({ action: START, events: ['definitions.changed'] });
+    const hook = await run.hooks.create({ action: START, events: ['schedule.missed'] });
     run.loaded.ready = false;
 
     // Published during boot, before the workflow files are loaded: held, not refused as missing.
-    run.publishWithoutOpening('definitions.changed', { source: 'agents', added: [] });
+    run.publishWithoutOpening('schedule.missed', { scheduleId: 's-1' });
     await run.settle();
     expect(await run.hooks.deliveries(hook.id)).toEqual([]);
 
@@ -310,7 +319,7 @@ describe('a start-workflow hook and a kind it cannot place', () => {
     await run.created.resume();
     await run.settle();
     const [delivery] = await run.hooks.deliveries(hook.id);
-    expect(delivery).toMatchObject({ status: 'delivered', kind: 'definitions.changed' });
+    expect(delivery).toMatchObject({ status: 'delivered', kind: 'schedule.missed' });
     expect(delivery!.attempts.map((attempt) => attempt.error)).toEqual([undefined]);
     expect(run.starts).toHaveLength(1);
   });

@@ -27,7 +27,7 @@ const catalogOutput = z.object({
         origin: z
           .enum(['run', 'external', 'unattributed'])
           .describe(
-            'Where the event can come from. A `start-workflow` hook may list `run` kinds (the payload names a run) and `external` kinds (nothing in a run causes them), never `unattributed` ones.',
+            'Where the event can come from. A `start-workflow` hook may list `run` kinds (the payload names a run) and `external` kinds (a short allowlist that no run can cause: `schedule.missed`, `bureau.disposed`), never `unattributed` ones, which is every other kind and the default for a new one.',
           ),
         payload: z
           .array(

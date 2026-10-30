@@ -54,13 +54,19 @@ async function pathOf(work: Promise<unknown>): Promise<readonly string[]> {
   return error.issues[0]!.path;
 }
 
-/** What `definitions.changed` publishes when a workflow file appears: the event these tests fire. */
-const ON_FILES = ['definitions.changed'];
+/**
+ * The event these tests fire: a run settling. A `start-workflow` hook may listen to a kind that
+ * names a run, and a run a person started is not one a hook started (`settleARun`).
+ */
+const ON_RUNS = ['run.settled'];
+
+/** A workflow that raises no run of its own, so the workflows hooks start add no events. */
+const QUIET_STEPS = [{ kind: 'sleep', duration: 1 }];
 
 const LOOKUP_INPUT = {
   type: 'object',
-  properties: { source: { type: 'string' }, added: { type: 'array' } },
-  required: ['source'],
+  properties: { runId: { type: 'string' } },
+  required: ['runId'],
 } as const;
 const CITY_INPUT = {
   type: 'object',
@@ -75,7 +81,7 @@ type WorkflowHooksBureau = {
   readonly workflows: BureauWorkflows;
 };
 
-/** A workflow Bureau with hooks on, over `storage`; a workflow file added to it is the event. */
+/** A workflow Bureau with hooks on, over `storage`; a run settling in it is the event. */
 async function openWorkflowHooks(
   options: {
     storage?: Parameters<typeof openHooksBureau>[0]['storage'];
@@ -103,6 +109,12 @@ async function openWorkflowHooks(
   });
   cleanups.push(() => harness.dispose());
   return { harness, workflows: harness.bureau.workflows! };
+}
+
+/** Starts a run no hook started and waits for none of it: its agent step settling is the event. */
+async function settleARun(harness: WorkflowBureauHarness): Promise<void> {
+  await harness.putWorkflow('source', { trigger: ON_GO });
+  await harness.bureau.workflows!.start('source', { input: {}, owner: 'anonymous:local' });
 }
 
 async function instancesOf(harness: WorkflowBureauHarness, workflow: string) {
@@ -242,21 +254,25 @@ describe('a hook record stored before actions existed', () => {
 describe('a start-workflow hook', () => {
   it('starts the workflow as the hook’s owner with the event’s payload, and records the run', async () => {
     const { harness, workflows } = await openWorkflowHooks();
-    await harness.putWorkflow('lookup', { trigger: ON_GO, inputSchema: LOOKUP_INPUT });
+    await harness.putWorkflow('lookup', {
+      trigger: ON_GO,
+      steps: QUIET_STEPS,
+      inputSchema: LOOKUP_INPUT,
+    });
     const hook = await harness.bureau.hooks!.create({
       action: { type: 'start-workflow', workflowId: 'lookup' },
-      events: ON_FILES,
+      events: ON_RUNS,
     });
     expect(hook.action).toEqual({ type: 'start-workflow', workflowId: 'lookup', input: 'payload' });
     expect(hook.owner).toBe('anonymous:local');
 
-    await harness.putWorkflow('other');
+    await settleARun(harness);
     const [delivery] = await waitForSettledDeliveries(harness.bureau, hook.id, 1);
 
     expect(delivery).toMatchObject({
       actionType: 'start-workflow',
       status: 'delivered',
-      kind: 'definitions.changed',
+      kind: 'run.settled',
       work: { type: 'start-workflow', workflowId: 'lookup' },
     });
     expect(delivery!.request).toBeUndefined();
@@ -268,20 +284,20 @@ describe('a start-workflow hook', () => {
     expect(await workflows.getRun(receipt.runId!)).toMatchObject({ workflow: 'lookup' });
     expect(state!.input).toMatchObject({
       kind: 'manual',
-      input: { source: 'workflows', added: ['other'] },
+      input: { runId: expect.any(String) },
       origin: { kind: 'person', principal: 'anonymous:local', surface: 'api' },
     });
   });
 
   it('maps the whole event when the action asks for it', async () => {
     const { harness } = await openWorkflowHooks();
-    await harness.putWorkflow('lookup', { trigger: ON_GO });
+    await harness.putWorkflow('lookup', { trigger: ON_GO, steps: QUIET_STEPS });
     const hook = await harness.bureau.hooks!.create({
       action: { type: 'start-workflow', workflowId: 'lookup', input: 'event' },
-      events: ON_FILES,
+      events: ON_RUNS,
     });
 
-    await harness.putWorkflow('other');
+    await settleARun(harness);
     await waitForSettledDeliveries(harness.bureau, hook.id, 1);
 
     const [instance] = await instancesOf(harness, 'lookup');
@@ -289,23 +305,27 @@ describe('a start-workflow hook', () => {
     expect(state!.input).toMatchObject({
       kind: 'manual',
       input: {
-        kind: 'definitions.changed',
+        kind: 'run.settled',
         bureauId: harness.bureau.id,
-        payload: { source: 'workflows', added: ['other'] },
+        payload: { runId: expect.any(String) },
       },
     });
   });
 
   it('records input the workflow refuses as a failed delivery, starts nothing, retries nothing, and keeps delivering', async () => {
     const { harness } = await openWorkflowHooks();
-    await harness.putWorkflow('lookup', { trigger: ON_GO, inputSchema: CITY_INPUT });
+    await harness.putWorkflow('lookup', {
+      trigger: ON_GO,
+      steps: QUIET_STEPS,
+      inputSchema: CITY_INPUT,
+    });
     const hook = await harness.bureau.hooks!.create({
       action: { type: 'start-workflow', workflowId: 'lookup' },
-      events: ON_FILES,
+      events: ON_RUNS,
     });
 
-    await harness.putWorkflow('first');
-    await harness.putWorkflow('second');
+    await settleARun(harness);
+    await settleARun(harness);
     const deliveries = await waitForSettledDeliveries(harness.bureau, hook.id, 2);
 
     // Permanent: one attempt each, a terminal status, and the loop went on to the next event.
@@ -324,12 +344,12 @@ describe('a start-workflow hook', () => {
     cleanups.push(() => database.dispose());
     const { now } = createClock();
     const first = await openWorkflowHooks({ storage: database.storage, now });
-    await first.harness.putWorkflow('lookup', { trigger: ON_GO });
+    await first.harness.putWorkflow('lookup', { trigger: ON_GO, steps: QUIET_STEPS });
     const hook = await first.harness.bureau.hooks!.create({
       action: { type: 'start-workflow', workflowId: 'lookup' },
-      events: ON_FILES,
+      events: ON_RUNS,
     });
-    await first.harness.putWorkflow('other');
+    await settleARun(first.harness);
     const [done] = await waitForSettledDeliveries(first.harness.bureau, hook.id, 1);
     const runId = done!.attempts[0]!.receipt!.runId!;
     const directory = first.harness.directory;
@@ -372,7 +392,7 @@ describe('a start-workflow hook', () => {
     cleanups.push(() => database.dispose());
     const { now } = createClock();
     const first = await openWorkflowHooks({ storage: database.storage, now });
-    await first.harness.putWorkflow('lookup', { trigger: ON_GO });
+    await first.harness.putWorkflow('lookup', { trigger: ON_GO, steps: QUIET_STEPS });
     // A start-workflow hook cannot listen to `session.saved`, which a run it started could raise
     // without a trace back to it; a notify hook can. (The hold itself, for a start, is in
     // `hooks-chain.test.ts`, over an allowed kind.)
@@ -417,13 +437,13 @@ describe('a start-workflow hook', () => {
 
   it('is refused for an owner who may not start workflows, an unknown workflow, and a Bureau with none', async () => {
     const { harness } = await openWorkflowHooks();
-    await harness.putWorkflow('lookup', { trigger: ON_GO });
+    await harness.putWorkflow('lookup', { trigger: ON_GO, steps: QUIET_STEPS });
     const hooks = harness.bureau.hooks!;
 
     const foreign = await refusal(
       hooks.create({
         action: { type: 'start-workflow', workflowId: 'lookup' },
-        events: ON_FILES,
+        events: ON_RUNS,
         principal: 'api-key:alice',
       }),
     );
@@ -432,7 +452,7 @@ describe('a start-workflow hook', () => {
     const unknown = await refusal(
       hooks.create({
         action: { type: 'start-workflow', workflowId: 'nothing-here' },
-        events: ON_FILES,
+        events: ON_RUNS,
       }),
     );
     expect(unknown).toMatchObject({
@@ -449,7 +469,7 @@ describe('a start-workflow hook', () => {
     const without = await refusal(
       none.bureau.hooks!.create({
         action: { type: 'start-workflow', workflowId: 'lookup' },
-        events: ON_FILES,
+        events: ON_RUNS,
       }),
     );
     expect(without).toMatchObject({
@@ -461,10 +481,10 @@ describe('a start-workflow hook', () => {
   it('asks again when the event fires, so an owner who has lost the authority starts nothing', async () => {
     const storage = new MemoryStorage();
     const { harness } = await openWorkflowHooks({ storage });
-    await harness.putWorkflow('lookup', { trigger: ON_GO });
+    await harness.putWorkflow('lookup', { trigger: ON_GO, steps: QUIET_STEPS });
     const hook = await harness.bureau.hooks!.create({
       action: { type: 'start-workflow', workflowId: 'lookup' },
-      events: ON_FILES,
+      events: ON_RUNS,
     });
     // The hook's owner changes to one that may not start workflows, as the record is stored.
     const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
@@ -477,7 +497,7 @@ describe('a start-workflow hook', () => {
       JSON.stringify({ ...raw, owner: 'api-key:mallory', revision: 2 }),
     );
 
-    await harness.putWorkflow('other');
+    await settleARun(harness);
     const [delivery] = await waitForSettledDeliveries(harness.bureau, hook.id, 1);
 
     expect(delivery).toMatchObject({ status: 'failed', owner: 'api-key:mallory' });
@@ -488,10 +508,10 @@ describe('a start-workflow hook', () => {
 
   it('cannot be tested, because a test would start a real run', async () => {
     const { harness } = await openWorkflowHooks();
-    await harness.putWorkflow('lookup', { trigger: ON_GO });
+    await harness.putWorkflow('lookup', { trigger: ON_GO, steps: QUIET_STEPS });
     const hook = await harness.bureau.hooks!.create({
       action: { type: 'start-workflow', workflowId: 'lookup' },
-      events: ON_FILES,
+      events: ON_RUNS,
     });
     const error = await refusal(harness.bureau.hooks!.test(hook.id));
     expect(error.issues[0]!.path).toEqual(['action']);
@@ -500,12 +520,12 @@ describe('a start-workflow hook', () => {
 
   it('keeps its action type on update, and checks a new workflow as it checks a new hook', async () => {
     const { harness } = await openWorkflowHooks();
-    await harness.putWorkflow('lookup', { trigger: ON_GO });
-    await harness.putWorkflow('second-lookup', { trigger: ON_GO });
+    await harness.putWorkflow('lookup', { trigger: ON_GO, steps: QUIET_STEPS });
+    await harness.putWorkflow('second-lookup', { trigger: ON_GO, steps: QUIET_STEPS });
     const hooks = harness.bureau.hooks!;
     const hook = await hooks.create({
       action: { type: 'start-workflow', workflowId: 'lookup' },
-      events: ON_FILES,
+      events: ON_RUNS,
     });
 
     const moved = await hooks.update(hook.id, {

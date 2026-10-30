@@ -46,11 +46,12 @@ export interface BureauEventField {
  *
  * - `run`: the payload names a run (its `runId`, `goalRunId` or `taskId` is present on every
  *   event of the kind), so the guard can follow it to the workflow instance a hook started.
- * - `external`: only something outside any run causes it, such as a schedule's clock or a change
- *   to the definition files on disk.
- * - `unattributed`: anything else. A run may cause the event (a session saved, a notification
- *   written, a schedule paused) and nothing on it leads back to the run, so a hook that started a
- *   workflow from it could start itself again.
+ * - `external`: a narrow allowlist. Only a kind with a stated argument that no run, tool or action
+ *   of a run can cause it. Each carries a one-line reason beside its entry.
+ * - `unattributed`: everything else, and the default for a new kind. A run may cause the event (a
+ *   session saved, a notification written, a schedule paused, a definition file written by a
+ *   tool) and nothing on it leads back to the run, so a hook that started a workflow from it
+ *   could start itself again. A kind is `unattributed` unless someone can argue otherwise.
  */
 export type BureauEventOrigin = 'run' | 'external' | 'unattributed';
 
@@ -169,6 +170,7 @@ export const BUREAU_EVENT_CATALOG: Readonly<
     'A run that was asked to abort has finished stopping.',
     RUN,
   ),
+  // external: only the host disposes a Bureau; no tool or action of a run reaches it.
   'bureau.disposed': entry(
     'bureau.disposed',
     'external',
@@ -239,7 +241,7 @@ export const BUREAU_EVENT_CATALOG: Readonly<
   ]),
   'schedule.attempted': entry(
     'schedule.attempted',
-    'external',
+    'unattributed',
     'A schedule tried to fire an occurrence.',
     [
       ['scheduleId', 'string'],
@@ -248,7 +250,7 @@ export const BUREAU_EVENT_CATALOG: Readonly<
   ),
   'schedule.skipped': entry(
     'schedule.skipped',
-    'external',
+    'unattributed',
     'A schedule skipped an occurrence because an earlier run still held it, by the schedule’s overlap policy.',
     [
       ['scheduleId', 'string'],
@@ -422,7 +424,7 @@ export const BUREAU_EVENT_CATALOG: Readonly<
   ),
   'definitions.changed': entry(
     'definitions.changed',
-    'external',
+    'unattributed',
     'A rescan of the agent or workflow files changed what the catalog holds. `rejected` names the added or changed definitions that are invalid now.',
     [
       ['source', 'string'],
@@ -432,6 +434,7 @@ export const BUREAU_EVENT_CATALOG: Readonly<
       ['rejected', 'string[]'],
     ],
   ),
+  // external: downtime or a daylight-saving gap swallowed the occurrences; a run cannot make time pass or skip.
   'schedule.missed': entry(
     'schedule.missed',
     'external',

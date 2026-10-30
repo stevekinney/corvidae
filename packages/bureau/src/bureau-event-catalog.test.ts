@@ -333,13 +333,16 @@ describe('the Bureau event catalog', () => {
         'asset.expired',
         'asset.upload.purged',
         'asset.upload.started',
+        'definitions.changed',
         'diagnostic',
         'memory.governance',
         'notification.created',
+        'schedule.attempted',
         'schedule.cancelled',
         'schedule.created',
         'schedule.paused',
         'schedule.resumed',
+        'schedule.skipped',
         'session.created',
         'session.deleted',
         'session.saved',
@@ -351,15 +354,8 @@ describe('the Bureau event catalog', () => {
         'steering.accepted',
       ].toSorted(),
     );
-    expect(byOrigin('external')).toEqual(
-      [
-        'bureau.disposed',
-        'definitions.changed',
-        'schedule.attempted',
-        'schedule.missed',
-        'schedule.skipped',
-      ].toSorted(),
-    );
+    // A narrow allowlist: each needs an argument that no run can cause it (see the catalog).
+    expect(byOrigin('external')).toEqual(['bureau.disposed', 'schedule.missed']);
   });
 
   it('has a builder for every published kind', () => {
