@@ -38,6 +38,7 @@ export const environmentBoundaries = [
       'components/cinder/scripts/environment-configuration.ts',
       'scripts/browser-fixtures/environment-configuration.ts',
       'scripts/environment-configuration.ts',
+      'packages/armorer/test/fixtures/environment-configuration.ts',
       'packages/bureau/src/test/signal-shutdown/environment-configuration.ts',
       'packages/storage-node-sqlite/src/test/environment-configuration.ts',
       'packages/operative-typesafe/scripts/record-decision-fixtures.ts',
