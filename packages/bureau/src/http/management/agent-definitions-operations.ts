@@ -934,7 +934,7 @@ const catalogOutput = z.object({
       /** What the tool may technically do; `null` when it declares none, which is never read as read-only. */
       tier: z.enum(['read-only', 'mutating', 'dangerous']).nullable(),
       /** What happens by default when an agent calls the tool: the tier's `on-mutation` rule. */
-      defaultApproval: z.enum(['allow', 'ask', 'deny']),
+      defaultApproval: z.enum(['allow', 'ask']),
       /** `bureau` for a tool Bureau adds itself, `host` for one the host passed in. */
       source: z.enum(['host', 'bureau']),
       /** The agents that use the tool now: ready agent files that list it, and code agents that name it. */

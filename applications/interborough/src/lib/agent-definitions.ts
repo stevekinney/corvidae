@@ -78,6 +78,23 @@ const detailSchema = z.object({
   hash: z.string().nullable(),
   problem: problemSchema.nullable(),
   definition: definitionSchema.nullable(),
+  /** What a code-defined agent states about itself, read-only (COR-1818); `null` for a file agent. */
+  codeDefinition: z
+    .object({
+      name: z.string(),
+      description: z.string().nullable(),
+      /** `<provider>/<model>`, or `null` for a scripted or routed agent. */
+      model: z.string().nullable(),
+      models: z.array(z.string()),
+      tools: z.array(z.string()),
+      /** The executable skills the agent can activate, by name. */
+      skills: z.array(z.string()),
+      skillDescriptors: z.array(skillSchema),
+      instructions: z.string().nullable(),
+    })
+    .nullable()
+    // The Bureau always sends it. A stub that predates the key reads as a file agent.
+    .default(null),
 });
 
 /** One agent as `bureau.agents.definitions.get` shows it. */
@@ -105,6 +122,16 @@ const catalogSchema = z.object({
       description: z.string(),
       /** The one line a person is shown for the tool, or `null` when the tool declares none. */
       shortDescription: z.string().nullable(),
+      /** What the tool takes, as a JSON Schema, or `null` when it cannot be written as one. */
+      inputSchema: z.record(z.string(), z.unknown()).nullable(),
+      /** What the tool may technically do, or `null` when it declares none. */
+      tier: z.enum(['read-only', 'mutating', 'dangerous']).nullable(),
+      /** What happens by default when an agent calls the tool (Armorer's tier rule). */
+      defaultApproval: z.enum(['allow', 'ask']),
+      /** `bureau` for a tool Bureau adds, `host` for one the host provides. */
+      source: z.enum(['host', 'bureau']),
+      /** The agents that use the tool now. */
+      users: z.array(z.string()),
     }),
   ),
 });

@@ -192,7 +192,7 @@ export interface AgentToolDescription {
    * not yet read a per-tool rule an agent file states (COR-1913), which can only tighten it, and a
    * file agent's toolbox applies no approval policy until that lands.
    */
-  readonly defaultApproval: ApprovalStatus;
+  readonly defaultApproval: Exclude<ApprovalStatus, 'deny'>;
   /**
    * Where the tool comes from: `bureau` for a tool Bureau adds itself (the settings and workflow
    * tools), `host` for a tool the host passed in `agentSource.tools`.
@@ -224,7 +224,8 @@ export function describeToolCapability(
   return {
     inputSchema,
     tier: tier ?? null,
-    defaultApproval: evaluateApprovalStatus(tier, 'on-mutation'),
+    // `on-mutation` never denies, so the status is `allow` or `ask`.
+    defaultApproval: evaluateApprovalStatus(tier, 'on-mutation') === 'allow' ? 'allow' : 'ask',
   };
 }
 
