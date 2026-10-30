@@ -66,15 +66,18 @@ export function agentToolUseOf(catalog: AgentFileReader): () => Promise<readonly
   };
 }
 
-/** The files in `use` that name any of `toolNames`, with the names they use, in the order `use` lists them. */
+/**
+ * The files in `use` that name a tool `isSourceTool` accepts, with the names they use, in the order
+ * `use` lists them.
+ */
 export function affectedAgents(
   use: readonly AgentToolUse[],
-  toolNames: ReadonlySet<string>,
+  isSourceTool: (name: string) => boolean,
 ): AffectedAgent[] {
   const affected: AffectedAgent[] = [];
   for (const file of use) {
-    const tools = file.tools.filter((name) => toolNames.has(name)).toSorted();
-    const toolApproval = file.toolApproval.filter((name) => toolNames.has(name)).toSorted();
+    const tools = file.tools.filter(isSourceTool).toSorted();
+    const toolApproval = file.toolApproval.filter(isSourceTool).toSorted();
     if (tools.length === 0 && toolApproval.length === 0) continue;
     affected.push({ id: file.id, name: file.name, tools, toolApproval });
   }

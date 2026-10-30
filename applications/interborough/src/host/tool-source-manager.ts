@@ -46,9 +46,11 @@
  *   {@link ToolSourceManager.affectedAgents} reads the agent files that name any of the source's
  *   tools, in `tools` or only in `toolApproval`, before anything is removed; {@link
  *   ToolSourceManager.remove} answers the same list and records the agents' identifiers in its audit
- *   entry. An agent file is never edited. The Bureau's tool catalog is fixed when the host starts,
- *   so the removed tools stay in it (connected, but denied the source's credentials) and the
- *   affected agents stay as they were until the next start; then each reads `invalid` with
+ *   entry. A file is affected when it names a tool the host loaded from the source or any name
+ *   that starts with `<id>__` (a source that failed, awaits a sign-in, or was added since the host
+ *   started loaded nothing, but an agent file may still name its tools). An agent file is never
+ *   edited. The Bureau's tool catalog is fixed when the host starts, so the removed tools stay in it
+ *   (the source's connection is closed on removal, so a call fails) and the affected agents stay as they were until the next start; then each reads `invalid` with
  *   `unknown-tool`, naming the tool, until the owner detaches it. Taking the tools away at once
  *   would need a catalog that changes while agents run, which the Bureau does not have, and it
  *   matches every other change to a source, which also takes effect at the next start. The
@@ -602,6 +604,8 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
   /** What the last start made of each source: its standing, and the description it loaded. */
   const booted = new Map<string, { standing: ToolSourceStanding; description: string }>();
   const loadedSources: LoadedToolSource[] = [];
+  /** The connection each source loaded at boot holds, so a removal can close it. */
+  const loadedById = new Map<string, LoadedToolSource>();
   const catalog: Record<string, Tool> = {};
   /**
    * The sources whose loaded incarnation was removed, or replaced by one that goes somewhere
@@ -772,6 +776,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
         return;
       }
       loadedSources.push(loaded);
+      loadedById.set(source.id, loaded);
       const tools: ToolSourceToolStanding[] = [];
       const skipped: { tool: string; reason: string }[] = [];
       // The names are settled for the whole listing before any is taken, so the order the
@@ -827,11 +832,20 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
     return (booted.get(id)?.standing.tools ?? []).map((tool) => tool.name);
   }
 
-  /** The agent files that name any tool the host loaded from the source `id`. */
+  /**
+   * The agent files that name a tool of the source `id`: one the host loaded from it, or any name
+   * that starts with `<id>__`, which belongs to this source alone (`tool-sources-configuration.ts`).
+   * A source that failed, awaits a sign-in, or was added since the host started loaded nothing,
+   * but an agent file may name its tools all the same.
+   */
   async function agentsUsing(id: string): Promise<AffectedAgent[]> {
-    const names = new Set(loadedToolNames(id));
-    if (names.size === 0 || options.agentToolUse === undefined) return [];
-    return affectedAgents(await options.agentToolUse(), names);
+    if (options.agentToolUse === undefined) return [];
+    const loaded = new Set(loadedToolNames(id));
+    const prefix = `${id}__`;
+    return affectedAgents(
+      await options.agentToolUse(),
+      (name) => loaded.has(name) || name.startsWith(prefix),
+    );
   }
 
   /** The source `id` as the file lists it, or the refusal for one it does not. */
@@ -874,20 +888,29 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
   }
 
   /**
-   * Refuse, and clear what the source's secret holds, when the source has been removed. A sign-in
-   * stores its `state` and verifier while the loader runs, outside the source's turn, so a removal
-   * that cleared the secret first would otherwise find that state written back afterwards.
+   * Refuse, and clear what the sign-in stored, when the source was removed or replaced since the
+   * sign-in began for `revision`. A sign-in stores its `state`, client registration and discovery
+   * while the loader runs, outside the source's turn, so a removal that cleared the secret first
+   * would otherwise find that state written back afterwards, and a source added again under the
+   * same id would inherit it. A removed source loses its whole secret; a replacement keeps the
+   * credentials it stored and loses only the OAuth state.
    */
-  function clearIfRemoved(id: string): Promise<void> {
+  function clearIfStale(id: string, revision: string): Promise<void> {
     return serialized(() =>
       vault.exclusive(id, async () => {
+        let current: ConfiguredToolSource;
         try {
-          await configured(id);
+          current = await configured(id);
         } catch (error) {
           if (error instanceof ToolSourceInputError && error.kind === 'unknown-source') {
             vault.clear(id);
           }
           throw error;
+        }
+        if (revisionOf(current.source) !== revision) {
+          const { credentials } = await vault.read(id);
+          await vault.write(id, { credentials, oauth: undefined });
+          throw new ToolSourceInputError('source', 'changed while the sign-in was starting.');
         }
       }),
     );
@@ -1080,6 +1103,14 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
             throw new Error('The tool-source configuration could not be written.');
           }
           retired.add(id);
+          // Its connection was opened with credentials a removal cannot take back (a local command
+          // got them in its environment), so it is closed: the tools fail until the next start.
+          const connection = loadedById.get(id);
+          if (connection !== undefined) {
+            loadedById.delete(id);
+            loadedSources.splice(loadedSources.indexOf(connection), 1);
+            await connection.close().catch(() => undefined);
+          }
           try {
             vault.clear(id);
           } catch {
@@ -1102,6 +1133,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       if (!isOAuth(entry.source)) {
         throw new ToolSourceInputError('source', 'does not sign in with OAuth.');
       }
+      const revision = revisionOf(entry.source);
       let authorizationUrl: URL | undefined;
       try {
         const loaded = await within((signal) =>
@@ -1116,14 +1148,14 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
         );
         // The tokens already work: there is nothing to sign in to.
         await loaded.close().catch(() => undefined);
-        await clearIfRemoved(id);
+        await clearIfStale(id, revision);
         return { authorized: true };
       } catch (error) {
         if (
           error instanceof ToolSourceAuthorizationRequiredError &&
           authorizationUrl !== undefined
         ) {
-          await clearIfRemoved(id);
+          await clearIfStale(id, revision);
           // The sign-in is good for this description and for a while: the callback checks both.
           const recorded = await vault.beginSignIn(id, {
             startedAt: now(),

@@ -13,10 +13,15 @@ import {
   ToolSourceWriteLockedError,
   type ToolSourceAuditEntry,
   type ToolSourceManager,
+  type ToolSourceState,
 } from './tool-source-manager.ts';
 import { keysOf, memoryHome } from './tool-source-memory-home.test-support.ts';
 import { toolSourceRoutes } from './tool-source-routes.ts';
-import { petsDocument, startOAuthMcpServer } from './tool-source-servers.test-support.ts';
+import {
+  petsDocument,
+  startMcpServer,
+  startOAuthMcpServer,
+} from './tool-source-servers.test-support.ts';
 import { toolSourceSecretKey } from './tool-source-vault.ts';
 
 const owner = 'anonymous:local';
@@ -54,7 +59,11 @@ const agents: AgentToolUse[] = [
 
 async function started(
   home: ReturnType<typeof memoryHome>,
-  extra: { fetch?: typeof fetch; keys?: AnswerEncryptionKeys } = {},
+  extra: {
+    fetch?: typeof fetch;
+    keys?: AnswerEncryptionKeys;
+    agents?: readonly AgentToolUse[];
+  } = {},
 ): Promise<{ manager: ToolSourceManager; audited: ToolSourceAuditEntry[] }> {
   const audited: ToolSourceAuditEntry[] = [];
   const manager = createToolSourceManager({
@@ -62,7 +71,7 @@ async function started(
     keys: extra.keys ?? (await keysOf()),
     audit: async (entry) => void audited.push(entry),
     origin: () => 'http://127.0.0.1:1',
-    agentToolUse: async () => agents,
+    agentToolUse: async () => extra.agents ?? agents,
     ...(extra.fetch === undefined ? {} : { fetch: extra.fetch }),
   });
   closers.push(() => manager.close());
@@ -186,45 +195,190 @@ describe('a remote home', () => {
   });
 });
 
+const calendarSource = (origin: string, path = '/') => ({
+  id: 'calendar',
+  kind: 'mcp',
+  transport: { type: 'http', url: `${origin}${path}`, authentication: { type: 'oauth' } },
+});
+
+/** A fetch whose first request waits for `release`, so a test changes the source while a sign-in starts. */
+function gatedFetch() {
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  let held = false;
+  const gated: typeof fetch = Object.assign(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (!held) {
+        held = true;
+        entered.resolve();
+        await release.promise;
+      }
+      return fetch(input, init);
+    },
+    fetch,
+  );
+  return { gated, entered: entered.promise, release: release.resolve };
+}
+
+/** What the source's secret holds, parsed; an empty secret is an empty record. */
+function storedSecret(home: ReturnType<typeof memoryHome>, id: string) {
+  const text = home.state.secrets.get(toolSourceSecretKey(id)) ?? '';
+  return text === '' ? {} : (JSON.parse(text) as { credentials?: object; oauth?: unknown });
+}
+
 describe('a sign-in that is starting when its source is removed', () => {
   test('leaves no OAuth state behind, and fails as an unknown source', async () => {
     const oauth = await startOAuthMcpServer();
     closers.push(() => oauth.stop());
     const home = memoryHome();
-    const entered = Promise.withResolvers<void>();
-    const release = Promise.withResolvers<void>();
-    let held = false;
-    // The first request the loader makes waits, so the removal lands while the sign-in starts.
-    const gated: typeof fetch = Object.assign(
-      async (input: RequestInfo | URL, init?: RequestInit) => {
-        if (!held) {
-          held = true;
-          entered.resolve();
-          await release.promise;
-        }
-        return fetch(input, init);
-      },
-      fetch,
-    );
+    const { gated, entered, release } = gatedFetch();
     const { manager } = await started(home, { fetch: gated });
     await manager.connect({
       id: 'calendar',
-      source: {
-        id: 'calendar',
-        kind: 'mcp',
-        transport: { type: 'http', url: `${oauth.origin}/`, authentication: { type: 'oauth' } },
-      },
+      source: calendarSource(oauth.origin),
       principal: owner,
     });
 
     const signingIn = manager.authorize('calendar');
-    await entered.promise;
+    await entered;
     await manager.remove({ id: 'calendar', principal: owner });
-    release.resolve();
+    release();
     const failure = await failureOf(signingIn);
 
     expect(failure).toBeInstanceOf(ToolSourceInputError);
     expect((failure as ToolSourceInputError).kind).toBe('unknown-source');
     expect(home.state.secrets.get(toolSourceSecretKey('calendar')) ?? '').toBe('');
+  });
+
+  test('leaves the OAuth state of the old sign-in out of a source added again under the same id', async () => {
+    const oauth = await startOAuthMcpServer();
+    closers.push(() => oauth.stop());
+    const home = memoryHome();
+    const { gated, entered, release } = gatedFetch();
+    const { manager } = await started(home, { fetch: gated });
+    await manager.connect({
+      id: 'calendar',
+      source: calendarSource(oauth.origin),
+      principal: owner,
+    });
+
+    const signingIn = manager.authorize('calendar');
+    await entered;
+    await manager.remove({ id: 'calendar', principal: owner });
+    await manager.connect({
+      id: 'calendar',
+      source: calendarSource(oauth.origin, '/other'),
+      principal: owner,
+    });
+    release();
+    const failure = await failureOf(signingIn);
+
+    expect(failure).toBeInstanceOf(ToolSourceInputError);
+    expect(storedSecret(home, 'calendar')).not.toHaveProperty('oauth');
+    const snapshot = await manager.snapshot();
+    const [standing] = snapshot.sources;
+    expect(standing).toMatchObject({ id: 'calendar', authorized: false });
+  });
+});
+
+describe('a source that loaded nothing', () => {
+  const named: AgentToolUse[] = [
+    { id: 'searcher', name: 'Searcher', tools: ['down__search', 'lookup-order'], toolApproval: [] },
+    { id: 'approver', name: 'Approver', tools: [], toolApproval: ['down__wipe'] },
+    { id: 'near', name: 'Near', tools: ['down-town__search', 'downer__search'], toolApproval: [] },
+  ];
+
+  async function expectsTheAgentsToBeFound(
+    home: ReturnType<typeof memoryHome>,
+    prepare: (manager: ToolSourceManager) => Promise<unknown>,
+    expectedState: ToolSourceState,
+  ) {
+    const { manager, audited } = await started(home, { agents: named });
+    await prepare(manager);
+    const snapshot = await manager.snapshot();
+    const [standing] = snapshot.sources;
+    expect(standing?.state).toBe(expectedState);
+    expect(standing?.tools).toEqual([]);
+
+    const preview = await manager.affectedAgents('down');
+    const removed = await manager.remove({ id: 'down', principal: owner });
+
+    const ids = ['searcher', 'approver'];
+    expect(preview.affectedAgents.map((agent) => agent.id)).toEqual(ids);
+    expect(preview.affectedAgents[0]).toMatchObject({ tools: ['down__search'] });
+    expect(preview.affectedAgents[1]).toMatchObject({ toolApproval: ['down__wipe'] });
+    expect(removed.affectedAgents).toEqual(preview.affectedAgents);
+    expect(audited.at(-1)).toMatchObject({
+      type: 'tool.source.removed',
+      detail: { affectedAgents: 'searcher,approver', affectedAgentCount: 2 },
+    });
+  }
+
+  test('is found when it failed to load', async () => {
+    const home = memoryHome();
+    // The description names a credential nobody stored, so it cannot load.
+    home.state.configuration = JSON.stringify({
+      toolSources: [{ source: { ...petsSource, id: 'down' } }],
+    });
+
+    await expectsTheAgentsToBeFound(home, async () => undefined, 'failed');
+  });
+
+  test('is found when it awaits a sign-in', async () => {
+    const home = memoryHome();
+    home.state.configuration = JSON.stringify({
+      toolSources: [{ source: { ...calendarSource('http://127.0.0.1:9'), id: 'down' } }],
+    });
+
+    await expectsTheAgentsToBeFound(home, async () => undefined, 'needs-authorization');
+  });
+
+  test('is found when it was added since the host started', async () => {
+    await expectsTheAgentsToBeFound(
+      memoryHome(),
+      (manager) =>
+        manager.connect({
+          id: 'down',
+          source: { ...petsSource, id: 'down' },
+          credentials: { key: 'k' },
+          principal: owner,
+        }),
+      'pending-restart',
+    );
+  });
+});
+
+describe('the connection of a removed source', () => {
+  test('is closed, so its tools fail until the host starts again, whatever it holds', async () => {
+    const mcp = await startMcpServer('removal-token');
+    closers.push(() => mcp.stop());
+    // The source names no credential: the token is added to the request on its way out, so a
+    // call fails after the removal only because the connection was closed, not because a
+    // credential was refused.
+    const authorizing: typeof fetch = Object.assign(
+      (input: RequestInfo | URL, init?: RequestInit) => {
+        const headers = new Headers(init?.headers);
+        headers.set('authorization', 'Bearer removal-token');
+        return fetch(input, { ...init, headers });
+      },
+      fetch,
+    );
+    const home = memoryHome();
+    const keys = await keysOf();
+    const source = {
+      id: 'files',
+      kind: 'mcp',
+      transport: { type: 'http', url: `${mcp.origin}/` },
+    };
+    const seeding = await started(home, { keys });
+    await seeding.manager.connect({ id: 'files', source, principal: owner });
+    const { manager } = await started(home, { keys, fetch: authorizing });
+    const lookup = manager.tools()['files__lookup'];
+    expect(lookup).toBeDefined();
+    expect(await lookup?.execute({})).toBeDefined();
+
+    await manager.remove({ id: 'files', principal: owner });
+
+    expect(await failureOf(Promise.resolve(lookup?.execute({})))).toBeDefined();
   });
 });
