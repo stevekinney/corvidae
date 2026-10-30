@@ -258,10 +258,15 @@ import type { BureauGoals } from './goal-types';
 import { createGoalValidatorCatalog } from './goal-validator-catalog';
 import { composeBureauGoals } from './goals-composition';
 import { leaseEvidenceFromLostHealth } from './liveness-projection';
-import { createDecisions, validateDecisionsOptions } from './decisions/create-decisions';
+import {
+  createDecisions,
+  decisionModelNames,
+  validateDecisionsOptions,
+} from './decisions/create-decisions';
 import { createLateDecisions } from './decisions/late-decisions';
 import { createSettings, type SettingsComposition } from './settings/create-settings';
 import type { SettingsValues } from './settings/settings-schema';
+import { summarizerFailures } from './settings/settings-validation';
 import {
   bootSettings,
   enginePatchOf,
@@ -2512,6 +2517,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         );
       },
       agents: agentsSnapshot,
+      settings: currentSettings,
       modelPolicy: () => modelPolicyOf(currentSettings()),
     });
     // COR-1709: decisions read the model catalog and write to the audit trail, which is built
@@ -2540,6 +2546,9 @@ async function constructBureau<const D extends AgentDefinitions>(
       persisted: booted.persisted,
       defaults: settingsDefaults,
       locked: settingsLocked,
+      decisionModels: decisionModelNames(options.decisions),
+      // A summarizer must name a row of the catalog as it is at the write (COR-1899).
+      checkPatch: (values) => summarizerFailures(values, models.catalog().descriptors),
       boot: booted.stored,
       nowISO: runtimeServices.clock.nowISO,
       diagnose: diagnoseSettings,

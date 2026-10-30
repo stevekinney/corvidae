@@ -126,6 +126,12 @@ export const settingsSchema = z
       })
       .strict()
       .describe('The model policy the next plan or step is selected under.'),
+    'decisions.model': z
+      .string()
+      .min(1)
+      .describe(
+        'The decision model that answers the kinds it serves: a name registered in `decisions.models`, or `catalog` for the language-model fallback alone. Resolved on every decision.',
+      ),
     'decisions.fallbackModel': z
       .string()
       .regex(/^[^/\s]+\/\S+$/, 'must be "<provider>/<model>"')
@@ -135,6 +141,12 @@ export const settingsSchema = z
     'decisions.maximumPerTask': positiveInteger.describe(
       'How many decisions one task may make through the `decide` tool.',
     ),
+    'context.summarizerModel': z
+      .string()
+      .regex(/^[^/\s]+\/\S+$/, 'must be "<provider>/<model>"')
+      .describe(
+        'The model-catalog row, `<provider>/<model>`, that summarizes a conversation when an agent compacts its context. Unset by default; a change must name an available row of the catalog as it is now.',
+      ),
     'retention.audit': retentionWindow.describe(
       'How long audit records are kept, swept by the next maintenance pass.',
     ),
@@ -242,8 +254,10 @@ export const SETTING_APPLY: Readonly<Record<SettingKey, SettingApply>> = {
   'tools.wakeup': 'live',
   'tools.decide': 'live',
   modelPolicy: 'live',
+  'decisions.model': 'live',
   'decisions.fallbackModel': 'live',
   'decisions.maximumPerTask': 'live',
+  'context.summarizerModel': 'live',
   'retention.audit': 'live',
   'retention.events': 'live',
   'retention.tasks': 'live',
@@ -281,6 +295,16 @@ export const ENGINE_PATCH_FIELDS = {
   'engine.checkpointSizeWarningThreshold': 'checkpointSizeWarningThreshold',
   'engine.schedulerPollIntervalMs': 'schedulerPollIntervalMs',
 } as const satisfies Partial<Record<SettingKey, keyof EnginePatch>>;
+
+/** Why a key is locked: the deployment chose it, or processes sharing one store must agree on it. */
+export const SETTING_LOCK_REASONS = ['deployment', 'shared-storage'] as const;
+
+/**
+ * Why a key is locked (`bureau.settings.get` reports it per key): `deployment` when the deployment's
+ * code or host holds the key to its code option, `shared-storage` when several processes share one
+ * store and must run the same value (a remote host's ownership and maintenance settings).
+ */
+export type SettingLockReason = (typeof SETTING_LOCK_REASONS)[number];
 
 /** Every key, in the schema's order. */
 export const SETTING_KEYS: readonly SettingKey[] = Object.keys(

@@ -23,6 +23,9 @@ import type {
 /** {@link DecisionsOptions.fallbackModel}'s default. */
 export const DEFAULT_DECISION_FALLBACK_MODEL = 'anthropic/claude-haiku-5-5';
 
+/** The name of the language-model fallback as a `decisions.model`: no registered model answers. */
+export const CATALOG_DECISION_MODEL = 'catalog';
+
 /** {@link DecisionsOptions.maximumPerTask}'s default. */
 export const DEFAULT_DECISIONS_PER_TASK = 20;
 
@@ -38,7 +41,7 @@ export type DecisionsDependencies = {
    */
   readonly settings: () => Pick<
     SettingsValues,
-    'decisions.fallbackModel' | 'decisions.maximumPerTask'
+    'decisions.model' | 'decisions.fallbackModel' | 'decisions.maximumPerTask'
   >;
   /** The catalog the fallback row is chosen from and the `generate` it runs with. */
   readonly models: Pick<Models, 'catalog' | 'generate'>;
@@ -63,7 +66,7 @@ export type DecisionsComposition = {
   /** {@link DecisionsOptions.maximumPerTask}, resolved from the settings as they are now. */
   readonly maximumPerTask: () => number;
   /**
-   * Whether anything can answer a decision at all: a {@link DecisionsOptions.model} or a
+   * Whether anything can answer a decision at all: a model in {@link DecisionsOptions.models} or a
    * `models.generate`. The `decide` tool is offered only to a Bureau where this holds.
    */
   readonly configured: boolean;
@@ -80,6 +83,22 @@ function isDecisionModel(value: unknown): value is DecisionModel {
   );
 }
 
+/** Whether `name` is `catalog` or a key `models` registers. */
+function isRegisteredDecisionModel(name: string, models: unknown): boolean {
+  return (
+    name === CATALOG_DECISION_MODEL ||
+    (typeof models === 'object' && models !== null && Object.hasOwn(models, name))
+  );
+}
+
+/**
+ * Every name a `decisions.model` may take with these options: `catalog`, and each model registered
+ * in {@link DecisionsOptions.models}.
+ */
+export function decisionModelNames(options: DecisionsOptions | undefined): ReadonlySet<string> {
+  return new Set([CATALOG_DECISION_MODEL, ...Object.keys(options?.models ?? {})]);
+}
+
 /** Refuses a malformed `decisions` option, as `BAD_REQUEST`, before `createBureau` opens anything. */
 export function validateDecisionsOptions(
   options: unknown,
@@ -89,13 +108,35 @@ export function validateDecisionsOptions(
   if (typeof options !== 'object' || options === null || Array.isArray(options)) {
     badRequest('"options.decisions" must be an object');
   }
-  const { model, fallbackModel, maximumPerTask } = options as {
+  const { models, model, fallbackModel, maximumPerTask } = options as {
+    models?: unknown;
     model?: unknown;
     fallbackModel?: unknown;
     maximumPerTask?: unknown;
   };
-  if (model !== undefined && !isDecisionModel(model)) {
-    badRequest('"options.decisions.model" must be a decision model with `kinds` and `decide`');
+  if (models !== undefined) {
+    if (typeof models !== 'object' || models === null || Array.isArray(models)) {
+      badRequest('"options.decisions.models" must be an object of decision models by name');
+    }
+    for (const [name, candidate] of Object.entries(models)) {
+      if (name === '' || name === CATALOG_DECISION_MODEL) {
+        badRequest(
+          `"options.decisions.models" cannot register "${name}": the name is empty or reserved for the language-model fallback`,
+        );
+      }
+      if (!isDecisionModel(candidate)) {
+        badRequest(
+          `"options.decisions.models.${name}" must be a decision model with \`kinds\` and \`decide\``,
+        );
+      }
+    }
+  }
+  if (model !== undefined) {
+    if (typeof model !== 'string' || !isRegisteredDecisionModel(model, models)) {
+      badRequest(
+        `"options.decisions.model" must be \`${CATALOG_DECISION_MODEL}\` or a name in "options.decisions.models"`,
+      );
+    }
   }
   if (fallbackModel !== undefined) {
     if (typeof fallbackModel !== 'string' || !/^[^/\s]+\/\S+$/.test(fallbackModel)) {
@@ -170,7 +211,13 @@ export function schemaDigest(request: DecisionRequest): string | undefined {
 /** Builds Bureau's decision namespace. */
 export function createDecisions(dependencies: DecisionsDependencies): DecisionsComposition {
   const { options } = dependencies;
-  const hostModel = options?.model;
+  // The caller owns `options.models`: the registered names are read once, here.
+  const registered: Readonly<Record<string, DecisionModel>> = { ...options?.models };
+  /** The model `decisions.model` names, or `undefined` for the fallback alone. Read on every decision. */
+  const hostModelNow = (): DecisionModel | undefined => {
+    const name = dependencies.settings()['decisions.model'];
+    return name !== undefined && Object.hasOwn(registered, name) ? registered[name] : undefined;
+  };
   const fallbackModelNow = (): string =>
     dependencies.settings()['decisions.fallbackModel'] ?? DEFAULT_DECISION_FALLBACK_MODEL;
   const maximumPerTask = (): number =>
@@ -207,7 +254,8 @@ export function createDecisions(dependencies: DecisionsDependencies): DecisionsC
       }
       const { kind } = request;
       const digest = schemaDigest(request);
-      const model = hostModel !== undefined && hostModel.kinds.has(kind) ? hostModel : fallback();
+      const hostModel = hostModelNow();
+      const model = hostModel?.kinds.has(kind) === true ? hostModel : fallback();
       const decision = await model.decide(request, {
         ...(principal === undefined ? {} : { principal }),
         ...(signal === undefined ? {} : { signal }),
@@ -230,6 +278,7 @@ export function createDecisions(dependencies: DecisionsDependencies): DecisionsC
   return {
     decisions,
     maximumPerTask,
-    configured: hostModel !== undefined || dependencies.modelsOptions?.generate !== undefined,
+    configured:
+      Object.keys(registered).length > 0 || dependencies.modelsOptions?.generate !== undefined,
   };
 }
