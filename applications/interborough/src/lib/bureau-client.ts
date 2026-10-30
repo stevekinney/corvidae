@@ -211,15 +211,15 @@ export async function steerContext(
 }
 
 /**
- * Branches a session after one of its agent's replies (`bureau.contexts.fork`) and returns the new
- * session's identifier. A refusal is a `Conflict` fault whose `data.reason` says why
+ * Branches a session after one of its agent's replies, or before its first message when
+ * `throughMessageId` is `null` (`bureau.contexts.fork`), and returns the new session's identifier. A refusal is a `Conflict` fault whose `data.reason` says why
  * (`forkRefusalReason`).
  */
 export async function forkContext(
   input: {
     readonly contextId: string;
     readonly commandId: string;
-    readonly throughMessageId: string;
+    readonly throughMessageId: string | null;
   },
   options?: { readonly signal?: AbortSignal },
 ): Promise<string> {

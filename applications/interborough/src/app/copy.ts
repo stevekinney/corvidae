@@ -834,8 +834,6 @@ export const CHAT_COPY = {
     /** Said under the chat when a branch could not be made, by the reason the Bureau gave. */
     refused: {
       'not-a-branch-point': 'Only the last reply of a finished turn can be branched.',
-      'branch-from-errored-run': 'That turn ended in an error, so it cannot be branched.',
-      'branch-from-aborted-run': 'That turn was stopped, so it cannot be branched.',
       'branch-with-pending-approval':
         'That turn is waiting for an approval, so it cannot be branched.',
       'branch-with-unresolved-tool-call':
