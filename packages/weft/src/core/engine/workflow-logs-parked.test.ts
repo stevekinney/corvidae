@@ -410,6 +410,171 @@ describe('a run that never took a turn before it was recovered', () => {
   });
 });
 
+/** Read a run's stored lines through a store of its own, as a process that restarted would. */
+async function readLogs(storage: MemoryStorage, workflowId: string): Promise<WorkflowLogsResult> {
+  return createWorkflowLogStore(storage).read(workflowId);
+}
+
+/**
+ * A storage that dies at the moment a fork's checkpoint is committed: the commit lands, then every
+ * later read and write never settles, as for a process killed inside `fork()`. `committedForkId`
+ * resolves with the fork's id once that commit has landed.
+ */
+function crashAfterForkCommit(inner: MemoryStorage): {
+  storage: MemoryStorage;
+  committedForkId: Promise<string>;
+} {
+  const [prefix = '', suffix = ''] = KEYS.checkpoint('ID').split('ID');
+  const checkpointKey = { prefix, suffix };
+  let dead = false;
+  let resolveForkId: (id: string) => void = () => undefined;
+  const committedForkId = new Promise<string>((resolve) => (resolveForkId = resolve));
+  const never = () => new Promise<never>(() => undefined);
+  const storage = new Proxy(inner, {
+    get(target, property) {
+      const value: unknown = Reflect.get(target, property);
+      if (typeof value !== 'function') return value;
+      if (property === 'scan') {
+        return (...args: unknown[]) =>
+          dead
+            ? (async function* () {
+                await never();
+              })()
+            : value.apply(target, args);
+      }
+      if (property !== 'batch' && property !== 'conditionalBatch') {
+        return (...args: unknown[]) => (dead ? never() : value.apply(target, args));
+      }
+      return async (...args: unknown[]) => {
+        if (dead) return never();
+        const result: unknown = await value.apply(target, args);
+        const operations = (property === 'batch' ? args[0] : args[1]) as Array<{
+          type: string;
+          key: string;
+        }>;
+        const forkCheckpoint = operations.find(
+          (operation) =>
+            operation.type === 'put' &&
+            operation.key.startsWith(checkpointKey.prefix) &&
+            operation.key.endsWith(checkpointKey.suffix) &&
+            operation.key !== KEYS.checkpoint('run-source'),
+        );
+        if (forkCheckpoint !== undefined) {
+          dead = true;
+          resolveForkId(
+            forkCheckpoint.key.slice(checkpointKey.prefix.length, -checkpointKey.suffix.length),
+          );
+          return never();
+        }
+        return result;
+      };
+    },
+  });
+  return { storage, committedForkId };
+}
+
+/**
+ * COR-1924. A fork copies its source's checkpoint under the fork's own id, so the checkpoint's step
+ * is above zero before the fork has run. The step is not evidence that this run's own execution took
+ * a turn, so a fork recovered before its first turn stores its lines.
+ */
+describe('a fork that was recovered before its first turn', () => {
+  const buildForkWorkflow = (engine: Engine) =>
+    engine.register(
+      workflow({ name: 'fork-first-turn-crash' })
+        .activities({ noop })
+        .execute(async function* (ctx) {
+          ctx.log?.info('before step');
+          yield* ctx.run('noop', 'x');
+          ctx.log?.info('before wait');
+          yield* ctx.waitForSignal<string>('go');
+          ctx.log?.info('after wait');
+          return 'done';
+        }),
+    );
+
+  async function parkSource(storage: MemoryStorage): Promise<void> {
+    await using source = createEngine(storage, createWorkflowLogStore(storage));
+    buildForkWorkflow(source);
+    await source.start('fork-first-turn-crash', null, { id: 'run-source' });
+    await settleInlineLaunches();
+    expect(messagesOf(await source.getLogs('run-source'))).toEqual(['before step', 'before wait']);
+  }
+
+  it('stores the lines of its first turn, because only the source logged them before', async () => {
+    const storage = new MemoryStorage();
+    await parkSource(storage);
+    const crash = crashAfterForkCommit(storage);
+    const first = createEngine(crash.storage, createWorkflowLogStore(crash.storage));
+    buildForkWorkflow(first);
+    // The process dies inside `fork()`, after its commit and before the fork's first turn.
+    void first.fork('run-source').catch(() => undefined);
+    const forkId = await crash.committedForkId;
+    first[Symbol.dispose]();
+    expect(messagesOf(await readLogs(storage, forkId))).toEqual([]);
+
+    const emitted: Array<[string, boolean | undefined]> = [];
+    const logs = createWorkflowLogStore(storage);
+    await using recovered = new Engine({
+      storage,
+      onLog: (record) => {
+        if (record.workflowId === forkId) emitted.push([record.message, record.replayed]);
+        logs.sink(record);
+      },
+      workflowLogs: logs,
+    });
+    buildForkWorkflow(recovered);
+    await recovered.recoverAll();
+    await settleInlineLaunches();
+
+    expect(emitted).toEqual([['before wait', undefined]]);
+    expect(messagesOf(await recovered.getLogs(forkId))).toEqual(['before wait']);
+    // The source keeps its own lines, and the fork's recovery does not touch them.
+    expect(messagesOf(await recovered.getLogs('run-source'))).toEqual([
+      'before step',
+      'before wait',
+    ]);
+
+    await recovered.signal(forkId, 'go', 'x');
+    await settleInlineLaunches();
+    expect(messagesOf(await recovered.getLogs(forkId))).toEqual(['before wait', 'after wait']);
+  });
+
+  it('still marks the lines a fork logged before its own crash as replayed', async () => {
+    const storage = new MemoryStorage();
+    await parkSource(storage);
+    let forkId = '';
+    {
+      const first = createEngine(storage, createWorkflowLogStore(storage));
+      buildForkWorkflow(first);
+      const fork = await first.fork('run-source');
+      forkId = fork.id;
+      await settleInlineLaunches();
+      expect(messagesOf(await first.getLogs(forkId))).toEqual(['before wait']);
+      first[Symbol.dispose]();
+    }
+
+    const emitted: Array<[string, boolean | undefined]> = [];
+    const logs = createWorkflowLogStore(storage);
+    await using recovered = new Engine({
+      storage,
+      onLog: (record) => {
+        if (record.workflowId === forkId) emitted.push([record.message, record.replayed]);
+        logs.sink(record);
+      },
+      workflowLogs: logs,
+    });
+    buildForkWorkflow(recovered);
+    await recovered.recoverAll();
+    await settleInlineLaunches();
+
+    expect(emitted).toEqual([['before wait', true]]);
+    await recovered.signal(forkId, 'go', 'x');
+    await settleInlineLaunches();
+    expect(messagesOf(await recovered.getLogs(forkId))).toEqual(['before wait', 'after wait']);
+  });
+});
+
 describe('the engine keeps the key family of a run it purges', () => {
   it('still removes the counter of a run when it is purged', async () => {
     const storage = new MemoryStorage();

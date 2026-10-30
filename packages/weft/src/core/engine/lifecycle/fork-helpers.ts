@@ -15,6 +15,7 @@ import type { EngineInternals } from '../internals.ts';
 import { WorkflowRevisionUnavailableError } from '../revision-errors.ts';
 import { encodeWorkflowStartHeaders } from '../state-utilities.ts';
 import { visibilityIndexOperations } from '../workflow-visibility-maintenance.ts';
+import { signaturesOfSettledSteps } from './fork-checkpoint-signatures.ts';
 import { EMPTY_STORAGE_VALUE, FORK_LINEAGE_ATTRIBUTE, type LifecycleCallbacks } from './shared.ts';
 import { buildCatalogEntryRevisionCondition } from './start-commit.ts';
 
@@ -466,10 +467,15 @@ export function buildForkCheckpoint(
   lineage: ForkLineage,
   callbacks: LifecycleCallbacks,
 ): Checkpoint {
-  const { accumulatedResultReplayWatermark: _sourceReplayWatermark, ...sourceCheckpointForFork } =
-    sourceCheckpoint;
+  const {
+    accumulatedResultReplayWatermark: _sourceReplayWatermark,
+    workerReplaySignatures: _sourceSignatures,
+    ...sourceCheckpointForFork
+  } = sourceCheckpoint;
+  const forkSignatures = signaturesOfSettledSteps(sourceCheckpoint);
   return {
     ...sourceCheckpointForFork,
+    ...(forkSignatures.length > 0 && { workerReplaySignatures: forkSignatures }),
     createdAt: forkedAt,
     workflowId,
     // The fork's own fresh token, never the source's.
