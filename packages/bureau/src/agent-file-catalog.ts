@@ -317,7 +317,9 @@ const DETAIL_SETTLE_ATTEMPTS = 3;
 function inputOf(definition: AgentFileDefinition): AgentFileDefinitionInput {
   // A rest, so a key the definition gains is carried into the input and not dropped here.
   const { examples: _examples, ...input } = definition;
-  return input;
+  // An update that omits `stepLimit` or `retry` keeps the file's value, and a version that has
+  // none must remove it: `null` says so.
+  return { ...input, stepLimit: definition.stepLimit ?? null, retry: definition.retry ?? null };
 }
 
 export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentFileCatalog {

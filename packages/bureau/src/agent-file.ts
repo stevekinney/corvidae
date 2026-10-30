@@ -302,6 +302,8 @@ const definitionKeyTable: Record<keyof AgentFileDefinition, true> = {
   tools: true,
   skillDescriptors: true,
   a2a: true,
+  stepLimit: true,
+  retry: true,
   examples: true,
   instructions: true,
 };
