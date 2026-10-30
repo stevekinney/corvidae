@@ -444,7 +444,7 @@ The predicate per action:
 
 | Action | Owner | Operator scope |
 | --- | --- | --- |
-| List, get, query | Own resources | The kind's read scope (`bureau.tasks:read`, `bureau.reviews:read`, `bureau.contexts:read`, `bureau.deliveries:read`, `bureau.schedules:read`, `bureau.goals:read`, `bureau.agents:read`) |
+| List, get, query | Own resources | The kind's read scope (`bureau.tasks:read`, `bureau.reviews:read`, `bureau.contexts:read`, `bureau.deliveries:read`, `bureau.schedules:read`, `bureau.goals:read`, `bureau.agents:read`, `bureau.hooks:read`) |
 | Command | Own resources | The kind's write scope |
 | Events | Own resources | `bureau.tasks:read`; `bureau.events:observe-all` for wildcard |
 | Result | Own tasks | `bureau.tasks:read` |

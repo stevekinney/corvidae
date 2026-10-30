@@ -92,7 +92,7 @@ export interface HookDeliveries {
   enqueue(hook: HookRecord, event: HookEventToDeliver, test: boolean): Promise<string>;
   /** Drives a delivery to a stop: delivered, exhausted, aborted, or released by a shutdown. Never rejects. */
   drive(deliveryId: string): Promise<void>;
-  /** Takes every pending delivery whose lease has expired, and drives it. Resolves with how many it took. */
+  /** Takes every pending delivery whose lease has expired, drives each to a stop, and resolves with how many it took. */
   resume(): Promise<number>;
 }
 
@@ -389,7 +389,7 @@ export function createHookDeliveries(dependencies: HookDeliveryDependencies): Ho
     },
     drive,
     async resume() {
-      let resumed = 0;
+      const driving: Promise<void>[] = [];
       for (const listed of await store.listDeliveries()) {
         if (listed.status !== 'pending' || listed.leaseUntil > engine.now()) continue;
         const stored = await store.getDelivery(listed.id);
@@ -404,11 +404,11 @@ export function createHookDeliveries(dependencies: HookDeliveryDependencies): Ho
           stored,
           advanced(stored.record, { attempts: withoutSending(stored.record.attempts) }),
         );
-        if (claimed === undefined) continue;
-        engine.track(drive(listed.id));
-        resumed += 1;
+        if (claimed !== undefined) driving.push(drive(listed.id));
       }
-      return resumed;
+      // Awaited, so the tracked `resume()` covers the deliveries it took.
+      await Promise.allSettled(driving);
+      return driving.length;
     },
   };
 }

@@ -437,10 +437,13 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
     const scope = event.payload['scope'];
     if (event.kind === 'diagnostic' && (scope === 'webhook' || scope === 'hooks')) return;
     const work = (async () => {
+      // The deliveries are awaited here, so the one tracked promise covers all of them: a `flush()`
+      // or `dispose()` that took its snapshot before they began still waits for them.
+      const driving: Promise<void>[] = [];
       for (const hook of await matching(event.kind)) {
-        const id = await deliveries.enqueue(hook, event, false);
-        engine.track(deliveries.drive(id));
+        driving.push(deliveries.drive(await deliveries.enqueue(hook, event, false)));
       }
+      await Promise.allSettled(driving);
     })().catch((cause: unknown) => dependencies.diagnose('Failed to dispatch a hook event', cause));
     engine.track(work);
   }

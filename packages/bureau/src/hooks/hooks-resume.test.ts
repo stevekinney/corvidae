@@ -45,7 +45,6 @@ const HOOK = {
 /** Waits for the notifier to finish the resume pass and every delivery it took. */
 async function resumed(opened: OpenedHooksBureau): Promise<void> {
   await opened.bureau.internals.webhookNotifier!.flush();
-  await opened.bureau.internals.webhookNotifier!.flush();
 }
 
 async function firstProcess() {

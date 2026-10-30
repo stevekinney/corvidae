@@ -295,7 +295,6 @@ describe('a delivery whose circumstances change', () => {
 
     await fireRunEvents(bureau);
     await bureau.internals.webhookNotifier!.flush();
-    await bureau.internals.webhookNotifier!.flush();
 
     // The first writer lost the fence at the end of its attempt and did nothing further.
     expect(receiver.calls).toHaveLength(1);
