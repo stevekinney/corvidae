@@ -26,6 +26,12 @@
       "title": "Vertical button group",
       "description": "Vertically stacked buttons with collapsed borders.",
       "code": "<script lang=\"ts\">\n  import { Button } from '@lostgradient/cinder';\n  import { ButtonGroup } from '@lostgradient/cinder';\n</script>\n\n<ButtonGroup label=\"Document actions\" orientation=\"vertical\">\n  <Button variant=\"secondary\">Save</Button>\n  <Button variant=\"secondary\">Duplicate</Button>\n  <Button variant=\"secondary\">Archive</Button>\n</ButtonGroup>\n"
+    },
+    {
+      "id": "input-with-button",
+      "title": "Input with an attached button",
+      "description": "An Input as the first member and a Button as the trailing part of the field share one border, height and set of corners. Give both the same size.",
+      "code": "<script lang=\"ts\">\n  import { Button, ButtonGroup, FormField, Input } from '@lostgradient/cinder';\n\n  let key = $state('');\n</script>\n\n<FormField id=\"api-key\" label=\"API key\" description=\"Tested against the provider before it is saved.\">\n  <ButtonGroup ariaLabelledby=\"api-key-label\">\n    <Input id=\"api-key\" bind:value={key} placeholder=\"sk-…\" />\n    <Button variant=\"secondary\">Test a key</Button>\n  </ButtonGroup>\n</FormField>\n"
     }
   ]
 }

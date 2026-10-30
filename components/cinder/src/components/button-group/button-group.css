@@ -181,6 +181,63 @@
     border-block-end-color: transparent;
   }
 
+  /* ── Field members (Input beside a Button) ───────────────────────────── */
+  /*
+ * An Input is a valid group member: `<Input>` renders its own wrapper
+ * (`.cinder-input-field`), which is the direct child the group tags, and the
+ * bordered surface inside it is either the bare `.cinder-input` or, when the
+ * Input has leading or trailing content, the `.cinder-input-group` frame.
+ *
+ * HEIGHT. The Input's surface and a Button of the same `size` both take their
+ * height from the shared `--cinder-control-height-<size>` step (the Button
+ * through its `--cinder-button-height-<size>` alias), so they match without the
+ * group measuring anything. That only holds while the field wrapper contains
+ * nothing but the control, so the group stops stretching its members when it
+ * holds a field and every member keeps its own height. The label must come from
+ * an enclosing FormField or be visually hidden, and the description and error
+ * belong outside the group (see button-group.a11y.md).
+ *
+ * BORDERS. The field keeps its own border on every side, including the side
+ * that meets the Button, so that edge is the one shared line. The field never
+ * draws the group's seam, the Button next to it skips its seam, and the
+ * Button's seam-facing border is already transparent from the rules above.
+ *
+ * CORNERS. The field flattens the corners that face a neighbour, mirroring the
+ * Button rules above, for a group laid out horizontally.
+ */
+  .cinder-button-group:has(> .cinder-input-field) {
+    display: flex;
+    align-items: flex-start;
+  }
+
+  .cinder-button-group > .cinder-input-field[data-cinder-button-group-item] {
+    flex: 1 1 auto;
+    inline-size: auto;
+    min-inline-size: 0;
+  }
+
+  .cinder-button-group
+    > .cinder-input-field[data-cinder-button-group-item]:not(:first-child)::before,
+  .cinder-button-group
+    > .cinder-input-field[data-cinder-button-group-item]
+    + [data-cinder-button-group-item]::before {
+    display: none;
+  }
+
+  .cinder-button-group[data-cinder-orientation='horizontal']
+    > .cinder-input-field[data-cinder-button-group-item]:not(:last-child)
+    :is(.cinder-input, .cinder-input-group) {
+    border-start-end-radius: 0;
+    border-end-end-radius: 0;
+  }
+
+  .cinder-button-group[data-cinder-orientation='horizontal']
+    > .cinder-input-field[data-cinder-button-group-item]:not(:first-child)
+    :is(.cinder-input, .cinder-input-group) {
+    border-start-start-radius: 0;
+    border-end-start-radius: 0;
+  }
+
   /* Forced colors: the pseudo-element background may not map to a system color,
  * so remap to CanvasText. The seam-facing border stays transparent (not
  * restored) so exactly one separator renders — the pseudo-element line. */

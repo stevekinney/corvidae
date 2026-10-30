@@ -27,6 +27,7 @@
 
   import CheckboxIndicatorShell from '../_internal/checkbox-indicator-shell.svelte';
   import { createCommandListState } from '../_internal/create-command-list-state.svelte.ts';
+  import { groupOptions, hasGroupedOptions } from '../_internal/group-options.ts';
   import { createAnchoredOverlay } from '../../_internal/anchored-overlay.svelte.ts';
   import { resolveFieldControl } from '../../_internal/field-control.ts';
   import { getFormFieldContext } from '../../_internal/form-field-context.ts';
@@ -187,21 +188,31 @@
     return items.filter((item) => fn(item, query));
   });
 
+  const groupOf = (item: MultiSelectItem<T>): string | undefined => item.group;
+
+  // Display order is the single source of truth: option ids, the active option
+  // and keyboard navigation all index into this flat list, and the sections
+  // below render it in the same order. Promoting selected items happens first
+  // and the grouping pass is stable, so promotion stays within each group
+  // rather than moving an item across a heading.
   const visibleItems = $derived.by(() => {
     const shouldPromoteSelected =
       selectionFeedback === 'top' ||
       (selectionFeedback === 'top-after-reopen' && reorderAfterReopen);
 
-    if (!shouldPromoteSelected) return filteredItems;
-
-    const selected: MultiSelectItem<T>[] = [];
-    const unselected: MultiSelectItem<T>[] = [];
-    for (const item of filteredItems) {
-      if (selectedSet.has(item.id)) selected.push(item);
-      else unselected.push(item);
+    let list: readonly MultiSelectItem<T>[] = filteredItems;
+    if (shouldPromoteSelected) {
+      const selected: MultiSelectItem<T>[] = [];
+      const unselected: MultiSelectItem<T>[] = [];
+      for (const item of filteredItems) {
+        if (selectedSet.has(item.id)) selected.push(item);
+        else unselected.push(item);
+      }
+      list = [...selected, ...unselected];
     }
-    return [...selected, ...unselected];
+    return hasGroupedOptions(list, groupOf) ? groupOptions(list, groupOf).ordered : list;
   });
+  const itemSections = $derived(groupOptions(visibleItems, groupOf).sections);
 
   const activeOptionId = $derived(open ? (commandList.activeItemId ?? undefined) : undefined);
   const activeIndex = $derived(
@@ -409,6 +420,44 @@
   });
 </script>
 
+{#snippet itemRow(item: MultiSelectItem<T>, index: number)}
+  <li
+    id="{id}-option-{index}"
+    role="option"
+    class="cinder-_option-row cinder-multi-select__option"
+    aria-selected={selectedSet.has(item.id)}
+    aria-disabled={item.disabled || undefined}
+    data-cinder-active={activeIndex === index || undefined}
+    onmousedown={(event) => {
+      event.preventDefault();
+      if (item.disabled) return;
+      commandList.setActiveById(`${id}-option-${index}`);
+      toggleItem(item);
+    }}
+    onmouseenter={() => {
+      if (item.disabled) return;
+      commandList.setActiveById(`${id}-option-${index}`);
+    }}
+  >
+    <CheckboxIndicatorShell class="cinder-multi-select__checkbox-indicator">
+      {#snippet control()}
+        <span
+          class="cinder-checkbox cinder-checkbox--indicator cinder-multi-select__checkbox-box"
+          data-cinder-checked={selectedSet.has(item.id) || undefined}
+          data-cinder-disabled={field.disabled || readonly || item.disabled || undefined}
+          aria-hidden="true"
+        ></span>
+      {/snippet}
+    </CheckboxIndicatorShell>
+    <span class="cinder-multi-select__option-text">
+      <span class="cinder-multi-select__option-label">{item.label}</span>
+      {#if item.description}
+        <span class="cinder-multi-select__option-description">{item.description}</span>
+      {/if}
+    </span>
+  </li>
+{/snippet}
+
 {#snippet multiSelectControl()}
   <div bind:this={controlElement} class="cinder-multi-select__control">
     <!-- svelte-ignore a11y_role_supports_aria_props_implicit (the focusable picker trigger intentionally mirrors invalid state for assistive tech) -->
@@ -499,42 +548,32 @@
           tabindex={filterable ? -1 : 0}
           onkeydown={handleListNavigationKeydown}
         >
-          {#each visibleItems as item, index (item.id)}
-            <li
-              id="{id}-option-{index}"
-              role="option"
-              class="cinder-_option-row cinder-multi-select__option"
-              aria-selected={selectedSet.has(item.id)}
-              aria-disabled={item.disabled || undefined}
-              data-cinder-active={activeIndex === index || undefined}
-              onmousedown={(event) => {
-                event.preventDefault();
-                if (item.disabled) return;
-                commandList.setActiveById(`${id}-option-${index}`);
-                toggleItem(item);
-              }}
-              onmouseenter={() => {
-                if (item.disabled) return;
-                commandList.setActiveById(`${id}-option-${index}`);
-              }}
-            >
-              <CheckboxIndicatorShell class="cinder-multi-select__checkbox-indicator">
-                {#snippet control()}
-                  <span
-                    class="cinder-checkbox cinder-checkbox--indicator cinder-multi-select__checkbox-box"
-                    data-cinder-checked={selectedSet.has(item.id) || undefined}
-                    data-cinder-disabled={field.disabled || readonly || item.disabled || undefined}
-                    aria-hidden="true"
-                  ></span>
-                {/snippet}
-              </CheckboxIndicatorShell>
-              <span class="cinder-multi-select__option-text">
-                <span class="cinder-multi-select__option-label">{item.label}</span>
-                {#if item.description}
-                  <span class="cinder-multi-select__option-description">{item.description}</span>
-                {/if}
-              </span>
-            </li>
+          {#each itemSections as section (section.group ?? '')}
+            {#if section.group === undefined}
+              {#each section.members as member (member.option.id)}
+                {@render itemRow(member.option, member.index)}
+              {/each}
+            {:else}
+              <li role="presentation" class="cinder-_option-group">
+                <div role="presentation" class="cinder-_option-group__heading">
+                  <span id="{id}-group-{section.sectionIndex}" class="cinder-_option-group__label"
+                    >{section.group}</span
+                  >
+                  <span class="cinder-_option-group__count" aria-hidden="true"
+                    >{section.members.length}</span
+                  >
+                </div>
+                <ul
+                  role="group"
+                  class="cinder-_option-group__options"
+                  aria-labelledby="{id}-group-{section.sectionIndex}"
+                >
+                  {#each section.members as member (member.option.id)}
+                    {@render itemRow(member.option, member.index)}
+                  {/each}
+                </ul>
+              </li>
+            {/if}
           {/each}
         </ul>
         <!--
