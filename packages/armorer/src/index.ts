@@ -169,6 +169,7 @@ export type {
 } from './toolbox-contracts';
 export { isToolbox } from './toolbox-instance';
 export type { AnyToolbox, LoopDetectorInstance, Toolbox } from './toolbox-interface';
+export type { ToolResolution, ToolResolutionFailureReason } from './toolbox-tool-access';
 export type {
   ImportedToolConfiguration,
   ToolboxCallInputForTools,
@@ -278,6 +279,11 @@ export type { EmbeddingVectorLike, IsEmbeddingVectorOptions } from './embedding-
 export * from './adapters/anthropic';
 export * from './adapters/gemini';
 export * from './adapters/openai';
+export {
+  PROVIDER_TOOL_NAME_LIMIT,
+  createProviderToolNameMapper,
+  toProviderToolName,
+} from './adapters/provider-tool-names';
 export * from './inspect';
 export * from './instrumentation';
 export * from './integrations/mcp';

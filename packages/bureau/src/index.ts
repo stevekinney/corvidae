@@ -10,6 +10,7 @@ export type {
   CreateAgentCatalogOptions,
 } from './agent-catalog';
 export { createAgentCatalog } from './agent-catalog';
+export { guardrailsOfPreset } from './guardrail-presets';
 export type {
   AgentFileDefinition,
   AgentFileDefinitionInput,
@@ -18,9 +19,11 @@ export type {
   AgentFileIssue,
   AgentFileProblem,
   AgentFileProblemCode,
+  AgentGuardrailPreset,
   AgentRetry,
 } from './agent-file';
 export {
+  AGENT_GUARDRAIL_PRESETS,
   AGENT_IDENTIFIER_PATTERN,
   agentFileFrontmatterSchema,
   AgentFileConflictError,
@@ -508,6 +511,7 @@ export type {
   BureauInternals,
   BureauMemoryAuthorityOptions,
   BureauOptions,
+  BureauMemoryRetentionOption,
   BureauReceiptRetentionOption,
   BureauRetentionOptions,
   BureauRecoveryReport,

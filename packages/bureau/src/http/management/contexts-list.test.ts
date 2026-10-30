@@ -1,9 +1,18 @@
-import { createAgent, type GenerateFunction } from '@lostgradient/operative';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import {
+  createAgent,
+  createAgentSession,
+  createSessionStore,
+  type GenerateFunction,
+} from '@lostgradient/operative';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { Conversation, createConversationHistory } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
 
 import { waitForCondition } from '../../test';
 import type { BureauHandlerSource } from '../create-bureau-handler.ts';
 import { createBureauHandler } from '../create-bureau-handler.ts';
+import { contextsListOperation } from './contexts-operations.ts';
 import {
   answering,
   authentication,
@@ -529,5 +538,292 @@ describe('bureau.contexts.get', () => {
       );
       expect(operator.result).toMatchObject({ id: run.contextId, owner: OWNER.alice });
     });
+  });
+});
+
+describe('bureau.contexts.list by title', () => {
+  const list = (opened: OpenedBureau, params: Record<string, unknown>) =>
+    rpc(opened.handler, 'bureau.contexts.list', params, 'alice-key');
+
+  it('returns only the contexts whose title contains the text, ignoring case, across pages', async () => {
+    await withBureau(catalog, async (opened) => {
+      const wanted = new Set<string>();
+      for (const [index, message] of [
+        'Plan the TRIP',
+        'unrelated one',
+        'another trip home',
+        'unrelated two',
+        'trip budget',
+        'unrelated three',
+      ].entries()) {
+        const run = await finishedSession(opened, { principal: OWNER.alice, message });
+        if (index % 2 === 0) wanted.add(run.contextId);
+      }
+
+      const first = await list(opened, { titleContains: 'trip', limit: 2 });
+      const second = await list(opened, { titleContains: 'trip', limit: 2, offset: 2 });
+
+      expect(contextsOf(first)).toHaveLength(2);
+      expect(first.result?.['nextOffset']).toBe(2);
+      expect(contextsOf(second)).toHaveLength(1);
+      expect(second.result?.['nextOffset']).toBeNull();
+      expect(new Set([...contextsOf(first), ...contextsOf(second)].map((c) => c.id))).toEqual(
+        wanted,
+      );
+    });
+  });
+
+  it('matches a title given by rename, and not the first message it replaced', async () => {
+    await withBureau(catalog, async (opened) => {
+      const run = await finishedSession(opened, { principal: OWNER.alice, message: 'first words' });
+      await opened.bureau.contexts.rename(run.contextId, 'Quarterly review');
+
+      expect(contextsOf(await list(opened, { titleContains: 'quarterly' }))).toHaveLength(1);
+      expect(contextsOf(await list(opened, { titleContains: 'first words' }))).toHaveLength(0);
+
+      await opened.bureau.contexts.rename(run.contextId, null);
+
+      expect(contextsOf(await list(opened, { titleContains: 'quarterly' }))).toHaveLength(0);
+      expect(contextsOf(await list(opened, { titleContains: 'first words' }))).toHaveLength(1);
+    });
+  });
+
+  it('never matches another owner’s contexts, and refuses an empty needle', async () => {
+    await withBureau(catalog, async (opened) => {
+      await finishedSession(opened, { principal: OWNER.bob, message: 'bob trip' });
+
+      expect(contextsOf(await list(opened, { titleContains: 'trip' }))).toEqual([]);
+      const empty = await list(opened, { titleContains: '' });
+      expect(empty.error?.data).toMatchObject({ weftCode: 'InvalidParams' });
+    });
+  });
+});
+
+describe('bureau.contexts.list by activity', () => {
+  const byMessage: GenerateFunction = ({ conversation, signal }) => {
+    const { ids, messages } = conversation.current;
+    const first = ids.map((id) => messages[id]).find((message) => message?.role === 'user');
+    const text = typeof first?.content === 'string' ? first.content : '';
+    if (text.startsWith('hold')) {
+      return new Promise((_resolve, reject) => {
+        signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+      });
+    }
+    return Promise.resolve({ content: 'finished', toolCalls: [] });
+  };
+
+  it('returns only the contexts in that state, paged by matches, with the other filters applied', async () => {
+    await withBureau({ generate: byMessage }, async (opened) => {
+      const holding: string[] = [];
+      for (const message of ['hold one', 'done one', 'hold two', 'done two', 'hold three']) {
+        const run = await opened.bureau.tasks.start('default', message, {
+          principal: OWNER.alice,
+        });
+        if (message.startsWith('hold')) {
+          holding.push(run.contextId);
+          await waitForCondition(
+            () => opened.bureau.tasks.detail(run.id)?.status === 'running',
+            'running',
+          );
+        } else {
+          await waitForCondition(
+            () => opened.bureau.tasks.detail(run.id)?.status === 'completed',
+            'finish',
+          );
+        }
+      }
+      const call = (params: Record<string, unknown>) =>
+        rpc(opened.handler, 'bureau.contexts.list', params, 'alice-key');
+
+      const running = await call({ activity: 'running', limit: 2 });
+      const rest = await call({ activity: 'running', limit: 2, offset: 2 });
+      const idle = await call({ activity: 'idle' });
+      const titled = await call({ activity: 'running', titleContains: 'TWO' });
+      const waiting = await call({ activity: 'awaiting-input' });
+
+      expect(contextsOf(running)).toHaveLength(2);
+      expect(running.result?.['nextOffset']).toBe(2);
+      expect(contextsOf(rest)).toHaveLength(1);
+      expect(rest.result?.['nextOffset']).toBeNull();
+      expect(
+        new Set([...contextsOf(running), ...contextsOf(rest)].map((context) => context.id)),
+      ).toEqual(new Set(holding));
+      for (const context of [...contextsOf(running), ...contextsOf(rest)]) {
+        expect(context.activity).toBe('running');
+      }
+      expect(contextsOf(idle).map((context) => context.title)).toEqual(['done two', 'done one']);
+      expect(contextsOf(titled).map((context) => context.title)).toEqual(['hold two']);
+      expect(contextsOf(waiting)).toEqual([]);
+      expect(waiting.result?.['nextOffset']).toBeNull();
+    });
+  });
+
+  it('refuses an activity it does not know as invalid parameters', async () => {
+    await withBureau(catalog, async (opened) => {
+      const body = await rpc(
+        opened.handler,
+        'bureau.contexts.list',
+        { activity: 'sleeping' },
+        'alice-key',
+      );
+
+      expect(body.error?.data).toMatchObject({ weftCode: 'InvalidParams' });
+    });
+  });
+});
+
+describe('bureau.contexts.list by activity across chunks', () => {
+  /** A host over `count` synthetic contexts, of which every `period`th is running. */
+  function syntheticHost(count: number, period: number) {
+    const ids = Array.from(
+      { length: count },
+      (_, index) => `ctx-${String(index).padStart(4, '0')}`,
+    );
+    const summary = (id: string) => ({
+      id,
+      agentName: 'default',
+      title: `title ${id}`,
+      lastMessagePreview: null,
+      owner: 'anonymous:local',
+      parentContextId: null,
+      forkedFromMessageId: null,
+      messageCount: 1,
+      createdAt: '2026-10-29T00:00:00.000Z',
+      updatedAt: '2026-10-29T00:00:00.000Z',
+      metadata: {},
+    });
+    const reads: { offset: number | undefined; limit: number | undefined }[] = [];
+    const queries: number[] = [];
+    const host = {
+      ownership: { mayAccess: () => true, runOwner: async () => undefined },
+      contexts: {
+        internals: { sessionStore: {} },
+        list: async (options: { offset?: number; limit?: number }) => {
+          const offset = options.offset ?? 0;
+          const limit = options.limit ?? 100;
+          reads.push({ offset: options.offset, limit: options.limit });
+          return ids.slice(offset, offset + limit).map(summary);
+        },
+      },
+      tasks: {
+        activityOf: async (contextIds: readonly string[]) => {
+          queries.push(contextIds.length);
+          return new Map(
+            contextIds.map((id) => [
+              id,
+              Number(id.slice(4)) % period === 0 ? ('running' as const) : ('idle' as const),
+            ]),
+          );
+        },
+      },
+    };
+    return { host, reads, queries, ids };
+  }
+
+  const principal = { method: 'unauthenticated-local', scopes: new Set<string>() };
+  const callList = (host: unknown, input: Record<string, unknown>) =>
+    contextsListOperation.invoke({ input, host, principal } as never) as Promise<{
+      contexts: { id: string }[];
+      nextOffset: number | null;
+    }>;
+
+  it('pages matches that sit far apart in the index, reading it once and classifying it in bounded chunks', async () => {
+    const { host, reads, queries } = syntheticHost(450, 150);
+
+    const first = await callList(host, { activity: 'running', limit: 2 });
+
+    // ctx-0000, ctx-0150, ctx-0300 are running: two on the page, a third proves another follows.
+    expect(first.contexts.map((context) => context.id)).toEqual(['ctx-0000', 'ctx-0150']);
+    expect(first.nextOffset).toBe(2);
+    // One read of the filtered index, with no offset to drift under a concurrent write, and the
+    // task queries are bounded chunks of it.
+    expect(reads).toHaveLength(1);
+    expect(reads[0]?.offset).toBeUndefined();
+    expect(queries.length).toBeGreaterThan(1);
+    expect(Math.max(...queries)).toBeLessThanOrEqual(100);
+
+    const second = await callList(host, { activity: 'running', limit: 2, offset: 2 });
+
+    expect(second.contexts.map((context) => context.id)).toEqual(['ctx-0300']);
+    expect(second.nextOffset).toBeNull();
+  });
+
+  it('ends at the last chunk, even a full one, with no further page', async () => {
+    const { host, queries } = syntheticHost(200, 1000);
+
+    const body = await callList(host, { activity: 'running' });
+
+    // Only ctx-0000 matches; the scan classified both full chunks and found nothing more.
+    expect(queries).toEqual([100, 100]);
+    expect(body.contexts.map((context) => context.id)).toEqual(['ctx-0000']);
+    expect(body.nextOffset).toBeNull();
+  });
+
+  it('stops classifying once the page is full and one more match is found', async () => {
+    const { host, reads, queries } = syntheticHost(1000, 1);
+
+    const body = await callList(host, { activity: 'running', limit: 3 });
+
+    expect(body.contexts).toHaveLength(3);
+    expect(body.nextOffset).toBe(3);
+    expect(reads).toHaveLength(1);
+    // The first chunk already held the page and the match that proves another follows.
+    expect(queries).toEqual([100]);
+  });
+});
+
+describe('bureau.contexts.list by activity while the index changes', () => {
+  it('never shows a session twice in one page when one is reordered between chunk classifications', async () => {
+    const runtime = createManualRuntimeServices({ origin: '2026-10-29T00:00:00.000Z' });
+    const store = createSessionStore(textValueStore(new MemoryStorage()), { runtime });
+    for (let index = 0; index < 250; index += 1) {
+      const conversation = new Conversation(createConversationHistory());
+      conversation.appendMessages({ role: 'user', content: `message ${index}` });
+      runtime.setTime(Date.parse('2026-10-29T00:00:00.000Z') + index * 1000);
+      await store.save(
+        createAgentSession({
+          id: `s${String(index).padStart(3, '0')}`,
+          agentName: 'a',
+          conversationHistory: conversation.current,
+          metadata: {},
+          runs: [],
+        }),
+      );
+    }
+    const indexed = await store.list({ limit: 1000 });
+    const order = indexed.map((summary) => summary.id);
+    const mover = order[200]!;
+    let moved = false;
+    const host = {
+      ownership: { mayAccess: () => true, runOwner: async () => undefined },
+      contexts: {
+        internals: { sessionStore: store },
+        list: (options: never) => store.list(options),
+      },
+      tasks: {
+        activityOf: async (contextIds: readonly string[]) => {
+          if (!moved) {
+            moved = true;
+            // A run on an older session commits between the scan's chunk classifications: it
+            // moves to the top of the index.
+            runtime.setTime(Date.parse('2027-01-01T00:00:00.000Z'));
+            await store.update(mover, (session) => (session ? { ...session } : undefined));
+          }
+          return new Map(contextIds.map((id) => [id, 'running' as const]));
+        },
+      },
+    };
+    const principal = { method: 'unauthenticated-local', scopes: new Set<string>() };
+
+    const body = (await contextsListOperation.invoke({
+      input: { activity: 'running', offset: 50, limit: 100 },
+      host,
+      principal,
+    } as never)) as { contexts: { id: string }[] };
+
+    const ids = body.contexts.map((context) => context.id);
+    // The page is cut from the index as it was read: the same hundred, none twice.
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toEqual(order.slice(50, 150));
   });
 });

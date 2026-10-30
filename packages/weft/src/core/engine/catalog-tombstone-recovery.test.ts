@@ -137,6 +137,7 @@ describe('resolveOrphanedCatalogTombstones', () => {
       status: 'active',
       overlap: 'skip',
       backfill: false,
+      timeZone: 'UTC',
       revisionPolicy: 'pinned',
       pinnedRevision: v1.revision,
       createdAt: 1,

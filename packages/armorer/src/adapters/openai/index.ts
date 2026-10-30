@@ -5,6 +5,7 @@ import type { ImportedToolConfiguration } from '../../toolbox-type-inference';
 import { isAsyncIterable } from '../../type-guards';
 import type { ToolCallInput, ToolResultLike } from '../../types';
 import { importToolSchema } from '../imported-schema';
+import { createProviderToolNameMapper, toProviderToolName } from '../provider-tool-names';
 import {
   type AdapterInput,
   isSingleInput,
@@ -26,7 +27,9 @@ export interface OpenAIAdapterOptions {
   /**
    * Strategy for naming tools in OpenAI format.
    * - 'default': Use tool name (identity.name).
-   * - 'safe-id': Use sanitized tool ID (namespace__name__version).
+   * - 'safe-id': Use the tool ID (`namespace:name@version`) encoded as a legal provider name,
+   *   which keeps same-named tools from different namespaces apart. Pass
+   *   `createNameMapper(tools)` to `parseOpenAIToolCalls` to map a call back to the id.
    */
   naming?: 'default' | 'safe-id';
 }
@@ -51,7 +54,7 @@ type OpenAIToolCallSource =
  * Maps a tool ID to an OpenAI-safe name (sanitized).
  */
 export function mapToOpenAIName(toolId: string): string {
-  return toolId.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64);
+  return toProviderToolName(toolId);
 }
 
 /**
@@ -60,12 +63,7 @@ export function mapToOpenAIName(toolId: string): string {
 export function createNameMapper(
   tools: (SerializedToolDefinition | AnyToolDefinition)[],
 ): (name: string) => string {
-  const definitions = normalizeToSerializedDefinitions(tools);
-  const map = new Map<string, string>();
-  for (const tool of definitions) {
-    map.set(mapToOpenAIName(tool.id), tool.id);
-  }
-  return (name: string) => map.get(name) ?? name;
+  return createProviderToolNameMapper(tools);
 }
 
 /**

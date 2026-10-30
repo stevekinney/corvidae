@@ -43,6 +43,11 @@
  *   (`bureau.events` at `/bureau/jsonrpc`) goes to the same handler's `upgrade`, and
  *   `host-websocket.ts` dispatches the upgraded socket to Bureau beside the engine relay's. They
  *   do not share Weft's root because both catalogs claim `/jsonrpc` and `/v1/…`.
+ * - `/bureau/a2a/<agent>`: the A2A 1.0.1 interface of every agent that opts in, and its public Agent
+ *   Card at `/bureau/a2a/<agent>/.well-known/agent-card.json` (COR-1819). A file agent opts in with
+ *   `a2a: true` in its own file; a code agent opts in by being named in {@link HostOptions.a2aAgents}.
+ *   The URL a card names is derived from the origin the listener ended up on, and A2A is served
+ *   under the same posture as the rest of the host: loopback only, every call as `anonymous:local`.
  * - `/host/paths`: where the host keeps the files a person edits by hand, so the agent editor and
  *   the Workflows pages can show an agent's file path and a workflow's, and the agent editor can
  *   say where to configure a model provider: the configuration file, and the file that holds each
@@ -80,6 +85,7 @@ import {
 
 import { routes as clientRoutes } from '../app/routes.ts';
 import { HOST_PATHS_ROUTE } from '../lib/host-paths.ts';
+import { startHostPushDelivery, type HostPushDelivery } from './a2a-push.ts';
 import {
   createDevReload,
   DEV_RELOAD_ROUTE,
@@ -102,6 +108,7 @@ import {
   bureauUpgradeServer,
   hostWebSocketHandlers,
   isWebSocketUpgrade,
+  type BureauHandler,
   type HostSocketData,
 } from './host-websocket.ts';
 import {
@@ -158,6 +165,12 @@ const REMOTE_LOCKED_SETTINGS = {
   'engine.workflowClaimRenewInterval': 'shared-storage',
 } as const satisfies NonNullable<SettingsOptions['locked']>;
 
+/**
+ * How long the host keeps its audit trail by default: 90 days, in milliseconds (COR-1810). It is
+ * the `retention.audit` window the Bureau starts with; a value stored on the Settings page replaces it.
+ */
+export const AUDIT_RETENTION_MILLISECONDS = 90 * 24 * 60 * 60 * 1000;
+
 /** The directory of agent files under the Interborough home: `researcher.md` is the agent `researcher`. */
 export const AGENT_DIRECTORY_NAME = 'agents';
 
@@ -210,6 +223,14 @@ export type HostOptions = {
    * changing the seed.
    */
   readonly extraAgents?: ExtraAgents;
+  /**
+   * The code-defined agents that opt into A2A (COR-1819): each is served at
+   * `/bureau/a2a/<name>` with an Agent Card, as a file agent with `a2a: true` is. Every name must
+   * be an agent the host defines (a seeded one, or one of {@link HostOptions.extraAgents}) and a
+   * valid A2A name, or the host does not start. Defaults to none, so a code agent is reachable
+   * over A2A only when it is named here.
+   */
+  readonly a2aAgents?: readonly string[];
   /** Whether to create the seeded schedule and goal. Agents are always defined. Defaults to `true`. */
   readonly seed?: boolean;
   /**
@@ -422,6 +443,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
   const environment = options.environment ?? processEnvironment();
   // The caller's lock list is read before the first await, so a later change to it cannot reach the Bureau.
   const callerLocks = { ...options.settings?.locked };
+  // The A2A allowlist is read the same way: after the first await it would be the caller's live array.
+  const a2aAgents = options.a2aAgents === undefined ? undefined : [...options.a2aAgents];
   const bungalow: Bungalow = await openBungalow({ name: APPLICATION_NAME, environment });
   const held: Held = { bungalow };
   try {
@@ -496,6 +519,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         },
       },
       storage,
+      // The audit trail is kept 90 days (COR-1810); a person changes it on the Settings page, and
+      // the stored value then replaces this default.
+      retention: { audit: { olderThan: AUDIT_RETENTION_MILLISECONDS } },
       // Governed memory (COR-1546): an agent remembers across every chat its owner has with it, and
       // the Memory page lists, searches, forgets, and corrects what it remembers.
       memory: createHostMemory(storage),
@@ -524,18 +550,16 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       held.replacementEngine = engine;
     }
 
-    const bureauHandler = createBureauHandler(bureau, {
-      unauthenticatedAccess: 'allow',
-      // Chat runs over AG-UI: the mount starts, attaches to, and resumes a run, and takes the
-      // `RunAgentInput` Chat's transport sends.
-      agUi: {},
-      // An MCP host (Claude Desktop or Claude Code) observes and steers this Bureau's work at
-      // `/bureau/mcp` (COR-839). It is Bureau's own endpoint, not the engine's `/mcp`: Bureau owns
-      // what a local caller does as `anonymous:local`, which the engine's relayed principal is not.
-      // Its run inspector is an MCP App (COR-910): the page is built here, in this application, and
-      // handed to the adapter as an injected `ui://` resource linked to `bureau.tasks.inspect`.
-      mcp: await mcpAppMounts(),
-    });
+    // The handler is built once the listener has a port, because the Agent Card of an agent that
+    // opts into A2A names the URL it is served at (COR-1819). Until then `/bureau/*` answers 503,
+    // which only a client that guessed the port could see.
+    const mcpMounts = await mcpAppMounts();
+    let bureauHandler: BureauHandler | undefined;
+    const bureauSockets: BureauHandler['websocket'] = {
+      open: (socket) => bureauHandler?.websocket.open(socket),
+      message: (socket, message) => bureauHandler?.websocket.message(socket, message),
+      close: (socket) => bureauHandler?.websocket.close(socket),
+    };
     let engineUpstream: ((upstream: EngineUpstream) => void) | undefined;
     const upstream = new Promise<EngineUpstream>((resolve) => {
       engineUpstream = resolve;
@@ -580,6 +604,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         ) => {
           const refusal = refuse(request);
           if (refusal !== undefined) return refusal;
+          if (bureauHandler === undefined) {
+            return new Response('The Bureau is not serving yet.', { status: 503 });
+          }
           const bureauRequest = withoutBureauPrefix(request);
           if (
             isWebSocketUpgrade(request) &&
@@ -625,12 +652,42 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         }
         return relayRequest(request, url, key);
       },
-      websocket: hostWebSocketHandlers(bureauHandler.websocket),
+      websocket: hostWebSocketHandlers(bureauSockets),
     });
     held.publicServer = publicServer;
     listening = publicServer;
     const publicPort = publicServer.port;
     if (publicPort === undefined) throw new Error('The public listener has no port.');
+    const publicOrigin = `http://${LOOPBACK}:${publicPort}`;
+    // A2A push delivery is a restart-applied setting: the values read here are the ones this
+    // process booted with (COR-1819).
+    const { values: bootedSettings } = await bureau.settings.get();
+    const pushDelivery = startHostPushDelivery(
+      storage,
+      bungalow.deploymentId,
+      bootedSettings,
+      options.warn ?? ((message) => console.warn(message)),
+    );
+    if (pushDelivery !== undefined) held.pushDelivery = pushDelivery;
+    bureauHandler = createBureauHandler(bureau, {
+      unauthenticatedAccess: 'allow',
+      // Chat runs over AG-UI: the mount starts, attaches to, and resumes a run, and takes the
+      // `RunAgentInput` Chat's transport sends.
+      agUi: {},
+      // An MCP host (Claude Desktop or Claude Code) observes and steers this Bureau's work at
+      // `/bureau/mcp` (COR-839). It is Bureau's own endpoint, not the engine's `/mcp`: Bureau owns
+      // what a local caller does as `anonymous:local`, which the engine's relayed principal is not.
+      // Its run inspector is an MCP App (COR-910): the page is built here, in this application, and
+      // handed to the adapter as an injected `ui://` resource linked to `bureau.tasks.inspect`.
+      mcp: mcpMounts,
+      // A2A (COR-1819): an agent that opts in is served at `<origin>/bureau/a2a/<name>`, which is
+      // where the `/bureau/*` route above sends it once the prefix is removed. The listener is
+      // loopback-only behind the request guard and every call acts as the owner, so A2A is no more
+      // reachable than the rest of the host.
+      publicUrl: `${publicOrigin}${BUREAU_PATH_PREFIX}`,
+      ...(a2aAgents === undefined ? {} : { a2aAgents }),
+      ...(pushDelivery === undefined ? {} : { pushNotifications: pushDelivery.pushNotifications }),
+    });
 
     const key = randomBytes(32).toString('hex');
     const server = serve({
@@ -644,7 +701,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       workerStartOverrideSigningSecret: deriveStartOverrideSigningSecret(key),
       // Discovery documents name absolute URLs, and they must name the origin a browser used, not
       // the private listener the relay forwards to.
-      publicOrigin: `http://${LOOPBACK}:${publicPort}`,
+      publicOrigin,
       trustedHosts: allowedHosts(publicPort),
       ...options.engineServer,
     });
@@ -690,6 +747,7 @@ type Held = {
   bureau?: Bureau<SeededAgents>;
   replacementEngine?: RegistryAgnosticEngine;
   server?: WeftServer;
+  pushDelivery?: HostPushDelivery;
   publicServer?: Bun.Server<HostSocketData>;
   devReload?: DevReload;
   closing?: Promise<void>;
@@ -709,6 +767,7 @@ async function teardown(held: Held): Promise<void> {
   await step(held.devReload && (() => held.devReload?.close()));
   await step(held.publicServer && (() => held.publicServer?.stop(true)));
   await step(held.server && (() => held.server?.stop()));
+  await step(held.pushDelivery && (() => held.pushDelivery?.stop()));
   await step(held.bureau && (() => held.bureau?.shutdown({ policy: 'detach' })));
   await step(held.replacementEngine && (() => held.replacementEngine?.[Symbol.asyncDispose]()));
   const { storage } = held;

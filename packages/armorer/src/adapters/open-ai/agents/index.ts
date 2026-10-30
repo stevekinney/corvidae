@@ -1,5 +1,6 @@
 import type { Tool, ToolExecutionResult } from '../../../index';
 import { isTool } from '../../../is-tool';
+import { toProviderToolName } from '../../provider-tool-names';
 import { textOfToolResultParts, toolResultParts } from '../../tool-result-parts';
 
 type ToolboxLike = {
@@ -27,6 +28,12 @@ export type OpenAIAgentToolConfiguration = {
 
 /** Options for {@link toOpenAIAgentTools}. */
 export type OpenAIAgentToolOptions = {
+  /**
+   * How to name each tool for the SDK when `toolConfiguration` gives no name: `'default'` uses the
+   * tool name, `'safe-id'` the tool id encoded as a legal provider name, which keeps same-named
+   * tools from different namespaces apart. A call always runs the tool it was converted from.
+   */
+  naming?: 'default' | 'safe-id';
   toolConfiguration?: (tool: Tool) => OpenAIAgentToolConfiguration;
   formatResult?: (result: ToolExecutionResult) => unknown;
 };
@@ -51,6 +58,8 @@ export type OpenAIToolGateOptions = {
     dangerous?: string[];
   };
   allowUnknown?: boolean;
+  /** Must match the `naming` the tools were converted with. */
+  naming?: 'default' | 'safe-id';
   toolConfiguration?: (tool: Tool) => OpenAIAgentToolConfiguration;
   messages?: {
     mutating?: string;
@@ -91,7 +100,7 @@ export async function toOpenAIAgentTools(
 
   const sdkTools = tools.map((tool) => {
     const override = options.toolConfiguration?.(tool);
-    const name = override?.name ?? tool.name;
+    const name = override?.name ?? agentToolName(tool, options.naming);
     const description = override?.description ?? tool.description;
     const parameters =
       override?.parameters ?? (tool.input as unknown as OpenAIAgentsToolParameters);
@@ -107,8 +116,8 @@ export async function toOpenAIAgentTools(
       strict: true,
       execute: async (args: unknown) => {
         const result =
-          isExecutableToolbox(input) && input.getTool?.(tool.name) === tool
-            ? await input.execute({ name: tool.name, arguments: args ?? {} })
+          isExecutableToolbox(input) && input.getTool?.(tool.id) === tool
+            ? await input.execute({ name: tool.id, arguments: args ?? {} })
             : await tool.executeWith({ params: args ?? {} });
         return options.formatResult ? options.formatResult(result) : formatToolResult(result);
       },
@@ -160,7 +169,7 @@ export function createOpenAIToolGate(
   >();
   for (const tool of registryTools) {
     const override = options.toolConfiguration?.(tool);
-    const name = override?.name ?? tool.name;
+    const name = override?.name ?? agentToolName(tool, options.naming);
     toolInfo.set(name, {
       mutating: isMutating(tool),
       dangerous: isDangerous(tool),
@@ -206,6 +215,12 @@ export function createOpenAIToolGate(
       message: messages.unknown(toolName),
     });
   };
+}
+
+function agentToolName(tool: Tool, naming: 'default' | 'safe-id' | undefined): string {
+  // The SDK rewrites `-` to `_` in a tool name, so write it that way to keep the gate's names equal
+  // to the names the model sees; the digest suffix keeps `a-b` and `a_b` apart.
+  return naming === 'safe-id' ? toProviderToolName(tool.id).replaceAll('-', '_') : tool.name;
 }
 
 function normalizeToTools(input: ToolboxLike | Tool | readonly Tool[]): Tool[] {

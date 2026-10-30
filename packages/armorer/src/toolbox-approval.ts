@@ -14,6 +14,19 @@ import type { Tool } from './is-tool';
 import type { GrantListFilter, ReusableApprovalGrantInput } from './toolbox-approval-contracts';
 import type { PendingToolApproval, SignedPendingToolApproval } from './types';
 
+/**
+ * Finds the tool a pending approval was issued for. The approval's `toolName` is the bare name,
+ * which two namespaces can share, so the binding's tool definition revision (the tool id) is
+ * tried first; the name is the fallback for an approval issued without a binding.
+ */
+export function findApprovedTool(
+  approval: Pick<SignedPendingToolApproval, 'toolName' | 'approvalBinding'>,
+  getTool: (nameOrId: string) => Tool | undefined,
+): Tool | undefined {
+  const revision = approval.approvalBinding?.toolDefinitionRevision;
+  return (revision === undefined ? undefined : getTool(revision)) ?? getTool(approval.toolName);
+}
+
 export type ApprovalTokenContext = { readonly approvalSecret: string | undefined };
 
 export function signPendingApproval(
@@ -156,7 +169,7 @@ export async function restoreApproval(
   if (!store || !binding) {
     throw new Error('Approval state store and binding are required to restore approvals.');
   }
-  const currentTool = context.getTool(approval.toolName);
+  const currentTool = findApprovedTool(approval, context.getTool);
   validateApprovalBinding(binding, undefined, context.approvalNow());
   assertCurrentBinding(binding, currentTool, context);
   await restoreBindingState(store, binding);

@@ -54,6 +54,18 @@ export function createGuardrails(options: GuardrailsOptions): GuardrailHooks {
           });
         }
 
+        // Tell the run, so a validate-mode firing shows in its activity. A tripwire does not: the
+        // halt it causes is the run's `run.tripwire` event.
+        if (event.action !== 'tripwire') {
+          context.reportGuardrail?.({
+            guardrailName: event.detector,
+            category: event.category,
+            phase: 'input',
+            confidence: event.confidence,
+            action: event.action,
+          });
+        }
+
         // Forward to user's onTriggered if provided
         input.onTriggered?.(event);
       },
@@ -78,6 +90,15 @@ export function createGuardrails(options: GuardrailsOptions): GuardrailHooks {
       validators: activeValidators,
       action: mode === 'tripwire' ? 'tripwire' : output?.action,
       onTriggered: (event) => {
+        if (event.action !== 'tripwire') {
+          context.reportGuardrail?.({
+            guardrailName: event.validator,
+            category: event.category,
+            phase: 'output',
+            confidence: event.confidence,
+            action: event.action,
+          });
+        }
         output?.onTriggered?.(event);
       },
     });

@@ -147,8 +147,11 @@ async function recoveryScenario(backend: Backend, scope: ScenarioScope): Promise
     ) as RacerReport;
 
     for (const report of [bReport, cReport]) {
-      expect(report.recoveryOutcome).toBe('clean');
-      expect(report.perRunFailures).toEqual([]);
+      // One assertion, so a partial recovery prints the failures that made it partial.
+      expect({ outcome: report.recoveryOutcome, failures: report.perRunFailures }).toEqual({
+        outcome: 'clean',
+        failures: [],
+      });
       expect(report.durableStatus).toBe('completed');
     }
 

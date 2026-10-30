@@ -2,6 +2,7 @@ import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { WorkflowContext, WorkflowOperation } from '@lostgradient/weft';
 import { Conversation, type MessageInput, type MultiModalContent } from 'conversationalist';
 
+import { effectiveContextTail } from '../effective-context-record';
 import { toAgentRunError } from '../errors';
 import { buildStepDeps, createRunState } from '../loop';
 import { runStep } from '../run-step';
@@ -95,6 +96,7 @@ export interface DurableStepMemoResult {
     | 'finalRowIsReplacement'
     | 'schemaAttempts'
     | 'lastAppliedConfigVersion'
+    | 'effectiveContextTail'
   >;
   pendingWakeup?: PendingWakeup | undefined;
   pendingHumanWait?: PendingHumanWait | undefined;
@@ -182,6 +184,7 @@ export function runStepMemo(
     runState.finalRowIsReplacement = carriedAccumulators.finalRowIsReplacement;
     runState.schemaAttempts = carriedAccumulators.schemaAttempts;
     runState.lastAppliedConfigVersion = carriedAccumulators.lastAppliedConfigVersion;
+    runState.effectiveContextTail = carriedAccumulators.effectiveContextTail;
     let outcome = await runStep(stepDeps, runState, conversation, stepIndex, deps.emitter);
     // COR-1476 — input admitted while this step generated would otherwise wait
     // for a boundary that never comes, because the step ends the run. Ask the
@@ -200,6 +203,14 @@ export function runStepMemo(
     deps.onStepToolbox?.(deps.toolbox);
     const pushed: StepResult | undefined = runState.steps.at(-1);
     const stepMetadata = pushed ? { ...pushed.metadata, ...deps.getStepMetadata?.() } : undefined;
+    // COR-1810: the stored form of the record the step reports, a delta from the previous stored
+    // step's conversation when this one extends it.
+    const storedContext =
+      pushed?.effectiveContext === undefined ? undefined : runState.storedEffectiveContext;
+    const nextContextTail =
+      storedContext === undefined
+        ? carriedAccumulators.effectiveContextTail
+        : effectiveContextTail(storedContext);
     const record: StepRecord | null = pushed
       ? {
           schemaVersion: CHECKPOINT_RECORD_SCHEMA_VERSION,
@@ -208,6 +219,8 @@ export function runStepMemo(
           parts: pushed.parts,
           ...(pushed.messageId === undefined ? {} : { messageId: pushed.messageId }),
           ...(pushed.contextEpochId === undefined ? {} : { contextEpochId: pushed.contextEpochId }),
+          ...(pushed.planReason === undefined ? {} : { planReason: pushed.planReason }),
+          ...(storedContext === undefined ? {} : { effectiveContext: storedContext }),
           toolCalls: pushed.toolCalls,
           results: pushed.results,
           ...(pushed.usage ? { usage: pushed.usage } : {}),
@@ -254,6 +267,7 @@ export function runStepMemo(
         finalRowIsReplacement: runState.finalRowIsReplacement,
         schemaAttempts: runState.schemaAttempts,
         lastAppliedConfigVersion: runState.lastAppliedConfigVersion,
+        ...(nextContextTail === undefined ? {} : { effectiveContextTail: nextContextTail }),
       },
       pendingWakeup: deps.pendingWakeup,
       pendingHumanWait: deps.pendingHumanWait,

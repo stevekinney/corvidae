@@ -9,7 +9,11 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { SETTING_OWNERS } from './setting-owners.ts';
-import { RESTART_OPTION_PATHS, withRestartSettings } from './settings-options.ts';
+import {
+  HOST_RESTART_KEYS,
+  RESTART_OPTION_PATHS,
+  withRestartSettings,
+} from './settings-options.ts';
 import { ENGINE_PATCH_FIELDS, SETTING_APPLY, SETTING_KEYS } from './settings-schema.ts';
 
 const sourceRoot = join(import.meta.dirname, '..');
@@ -54,8 +58,10 @@ describe('who reads each setting', () => {
     });
   }
 
-  it('the restart keys are exactly the keys a boot read replaces an option for', () => {
-    expect(Object.keys(RESTART_OPTION_PATHS).toSorted()).toEqual([...restart].toSorted());
+  it('the restart keys are exactly the keys a boot read replaces an option for, and the keys the host reads', () => {
+    expect([...Object.keys(RESTART_OPTION_PATHS), ...HOST_RESTART_KEYS].toSorted()).toEqual(
+      [...restart].toSorted(),
+    );
   });
 
   for (const [key, path] of Object.entries(RESTART_OPTION_PATHS)) {

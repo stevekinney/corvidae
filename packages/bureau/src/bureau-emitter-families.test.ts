@@ -311,6 +311,7 @@ describe('missed schedule fires on the bureau emitter', () => {
     expect(missed).toHaveLength(1);
     expect(missed[0]?.scheduleId).toBe(scheduleId);
     expect(missed[0]?.missedCount).toBe(10);
+    expect(missed[0]?.reason).toBe('late');
     expect(summary?.nextFireAt).toBe(missed[0]?.windowStart);
     expect(missed[0]?.windowEnd).toBeGreaterThanOrEqual(missed[0]?.windowStart ?? Infinity);
     const stored = await bureau.schedules.get(scheduleId ?? '');

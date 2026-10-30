@@ -71,6 +71,7 @@ export type ScheduleFixture = {
   overlap: string;
   backfill: boolean;
   revisionPolicy: string;
+  timeZone: string;
   /** How many times the schedule itself has changed: `1` when created, then one more per change. */
   revision: number;
   createdAt: number;
@@ -203,6 +204,7 @@ export function scheduleFixture(
     overlap: 'skip',
     backfill: false,
     revisionPolicy: 'active-at-fire',
+    timeZone: 'UTC',
     revision: 1,
     createdAt: 1_760_000_000_000,
     updatedAt: 1_760_000_000_000,

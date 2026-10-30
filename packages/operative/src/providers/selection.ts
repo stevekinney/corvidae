@@ -135,6 +135,7 @@ import { mimeFamilyOf, sourceByteLength } from '../context/media-cost.ts';
 
 import type { SteeringRequestedValue } from '../durable/types.ts';
 import type { BackendDescriptor, ModelCatalog } from './model-catalog.ts';
+import { derivePlanReason, type PlanReason } from './plan-reason.ts';
 import {
   type AgentPreferences,
   type BureauInvariants,
@@ -429,6 +430,11 @@ interface SelectionPlanCommon {
   /** Version of the selector algorithm itself, independent of the catalog
    *  or policy revisions it ran against. */
   readonly selectorRevision: number;
+  /**
+   * Why the selected model was chosen (COR-1810): present on a plan that selected a model, absent on
+   * every other outcome and on a plan recorded before this field existed.
+   */
+  readonly reason?: PlanReason | undefined;
   /** AB-67's `SteeringDesiredState.configVersion`, when steering produced
    *  this request. */
   readonly configurationRevision?: number | undefined;
@@ -999,9 +1005,17 @@ export function select(request: SelectionRequest, options: SelectOptions): Selec
       : evaluateEffort(winner.descriptorSnapshot, requested, effortMode).effort;
 
   const fallbackPlan = buildFallbackPlan(eligibleCandidates, options.user?.fallbackOrder);
+  const reason = derivePlanReason({
+    ranked: sorted,
+    rejected: annotated.filter((candidate) => !candidate.eligible),
+    pinned: usingExactOverride,
+    costPreference: options.user?.costPreference,
+    latencyPreference: options.user?.latencyPreference,
+  });
 
   return Object.freeze({
     ...common,
+    reason: Object.freeze({ ...reason, rejected: Object.freeze(reason.rejected) }),
     candidates: Object.freeze(annotated),
     selected: Object.freeze({
       provider: winner.provider,

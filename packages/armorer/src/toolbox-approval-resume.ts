@@ -11,7 +11,7 @@ import { approvalConsumeSymbol, approvalResumeSymbol } from './internal/approval
 import type { Tool } from './is-tool';
 import { providerCallIdField } from './provider-call-id';
 import { findSecretReferences, toolAcceptsSecrets } from './secrets';
-import { verifyAndSnapshotPendingApproval } from './toolbox-approval';
+import { findApprovedTool, verifyAndSnapshotPendingApproval } from './toolbox-approval';
 import {
   createApprovalConsumption,
   throwApprovalConsumptionError,
@@ -100,6 +100,7 @@ export async function resumeApproval(
   );
   return executeResumedCall(
     verifiedApproval,
+    currentTool,
     executeOptions,
     executeArguments,
     consumption,
@@ -127,6 +128,7 @@ function safeParseResumedArguments(
 
 async function executeResumedCall(
   approval: SignedPendingToolApproval,
+  currentTool: Tool,
   executeOptions: ToolboxExecuteOptions,
   executeArguments: unknown,
   consumption: ApprovalConsumption | undefined,
@@ -136,7 +138,7 @@ async function executeResumedCall(
     {
       id: approval.callId,
       ...providerCallIdField(approval),
-      name: approval.toolName,
+      name: currentTool.id,
       arguments: executeArguments,
     },
     {
@@ -184,7 +186,7 @@ async function prepareResume(
 ): Promise<ResumePreparation> {
   const { executeOptions, executeArguments } = resolveResumeArguments(approval, resumeOptions);
   const requestDeadline = validateResumeDeadline(executeOptions);
-  const currentTool = context.getTool(approval.toolName);
+  const currentTool = findApprovedTool(approval, context.getTool);
   if (!currentTool) throw new Error(`Tool not found: ${approval.toolName}`);
   const stateValidation = await validateApprovalState(
     approval,

@@ -45,6 +45,7 @@ const SAMPLES: Readonly<Record<SettingKey, unknown>> = {
   'retention.events': { olderThan: 3_600_000 },
   'retention.tasks': 'forever',
   'retention.receipts': { olderThan: 7_200_000 },
+  'retention.memory': { olderThan: 604_800_000 },
   'retention.checkpoints': { keepLast: 4 },
   'sessionInput.sessionBacklogLimit': 7,
   'sessionInput.principalBacklogLimit': 9,
@@ -64,6 +65,8 @@ const SAMPLES: Readonly<Record<SettingKey, unknown>> = {
   maintenance: 'manual',
   'durableOwnership.ownership': 'none',
   workflowVersion: 'v2',
+  'a2a.push.enabled': true,
+  'a2a.push.sweepIntervalMs': 600_000,
 };
 
 type Snapshot = {

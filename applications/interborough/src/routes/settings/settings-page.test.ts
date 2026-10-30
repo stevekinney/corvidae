@@ -94,6 +94,7 @@ describe('the page', () => {
       'Children',
       'Engine',
       'Durability',
+      'A2A',
       SETTINGS_COPY.hostPaths.title,
     ]);
     const durability = container.querySelector(
