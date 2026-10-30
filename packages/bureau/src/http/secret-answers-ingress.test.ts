@@ -6,6 +6,8 @@
  * plain SHA-256 of it. A tool that declares `acceptsSecrets` in the run that asked reads it back;
  * an undeclared tool and a tool of another run are refused.
  */
+import { Message } from '@a2a-js/sdk';
+import { ServerCallContext } from '@a2a-js/sdk/server';
 import { EventType, type ResumeEntry } from '@ag-ui/core';
 import {
   type EncryptionKey,
@@ -18,7 +20,9 @@ import {
   type HumanInputSchema,
   stopWhen,
 } from '@lostgradient/operative';
-import { MemoryStorage, type Storage } from '@lostgradient/storage';
+import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
+import { MemoryStorage, type Storage, textValueStore } from '@lostgradient/storage';
+import { principalFromApiKey } from '@lostgradient/weft';
 import { createTool, createToolbox, type Toolbox } from 'armorer';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
@@ -26,7 +30,7 @@ import { z } from 'zod';
 
 import type { AgentDefinitions } from '../agent-catalog';
 import { createMemoryAssetStorage } from '../assets/storage';
-import { canonicalJson, digestCommandPayload } from '../command-ledger.ts';
+import { canonicalJson, createCommandLedger, digestCommandPayload } from '../command-ledger.ts';
 import { createBureau } from '../create-bureau.ts';
 import {
   type AnswerEncryptionKeys,
@@ -35,9 +39,19 @@ import {
 } from '../secret-answers.ts';
 import { waitForCondition } from '../test';
 import type { Bureau, PendingReview } from '../types.ts';
+import { createBureauAgentCard } from './a2a-agent-card.ts';
+import {
+  A2A_SEND_LEDGER_KEY_PREFIX,
+  type A2ASendClaim,
+  type A2ASendResult,
+  BureauA2AUser,
+  createBureauA2ARequestHandler,
+} from './a2a-request-handler.ts';
+import { createA2ATaskRecords } from './a2a-task-record.ts';
 import { runAgentInput, startRequest } from './ag-ui-fixtures.test-support.ts';
 import { readAgUiStream } from './ag-ui-stream.test-support.ts';
-import { createBureauHandler } from './create-bureau-handler.ts';
+import { buildBureauHandlerHost, createBureauHandler } from './create-bureau-handler.ts';
+import { respondToTask } from './management/tasks-respond-operation.ts';
 
 /** A value no fixture or framework string could hold by chance. */
 const SECRET = 'pw-7f3c9e1a-plaintext-sentinel';
@@ -128,7 +142,13 @@ type Plan =
  * A Bureau whose agent asks for a secret, then hands the reference it was given to three tools; with
  * `guarded`, to one tool that needs an approval before it runs.
  */
-async function secretBureau(options: { readonly guarded?: boolean } = {}) {
+async function secretBureau(
+  options: {
+    readonly guarded?: boolean;
+    /** The first step also calls the guarded tool, so the task holds a secret wait and an approval. */
+    readonly twoWaits?: boolean;
+  } = {},
+) {
   const storage = new RecordingStorage();
   const keys: AnswerEncryptionKeys = { current: await generateEncryptionKey() };
   const seen = {
@@ -186,7 +206,7 @@ async function secretBureau(options: { readonly guarded?: boolean } = {}) {
   });
   const toolbox = createToolbox([useSecret, signIn, peek, guardedUse], {
     secretResolver: createSecretAnswerResolver({ storage, keys }),
-    ...(options.guarded === true
+    ...(options.guarded === true || options.twoWaits === true
       ? {
           approvalSecret: 'secret-answers-approval-secret-0123456789',
           // Only the guarded tool waits; the question itself must still park.
@@ -231,9 +251,13 @@ async function secretBureau(options: { readonly guarded?: boolean } = {}) {
             name: 'requestHumanInput',
             arguments: { signalName: 'login', prompt: 'Sign in', answerSchema: secretSchema },
           },
+          ...(options.twoWaits === true
+            ? [{ id: 'guard-0', name: 'guarded-use', arguments: { credential: 'not-a-secret' } }]
+            : []),
         ],
       };
     }
+    if (options.twoWaits === true) return { content: 'thanks', toolCalls: [] };
     const results = messages.filter((message) => message.toolResult !== undefined);
     if (
       results.some((message) => ['use-1', 'guard-1'].includes(message.toolResult?.callId ?? ''))
@@ -296,10 +320,19 @@ async function secretBureau(options: { readonly guarded?: boolean } = {}) {
   async function park(): Promise<{ runId: string; review: PendingReview }> {
     seen.plan = { kind: 'ask' };
     const run = await bureau.tasks.start(AGENT, 'sign me in', { principal: PRINCIPAL });
+    const expected = options.twoWaits === true ? 2 : 1;
     await waitForCondition(
-      () => bureau.reviews.list().some((review) => review.runId === run.id),
+      () => bureau.reviews.list().filter((review) => review.runId === run.id).length >= expected,
       'expected the run to park on its question',
     );
+    if (options.twoWaits === true) {
+      return {
+        runId: run.id,
+        review: bureau.reviews
+          .list()
+          .find((review) => review.runId === run.id && review.kind === 'human-wait')!,
+      };
+    }
     return {
       runId: run.id,
       review: bureau.reviews.list().find((review) => review.runId === run.id)!,
@@ -374,8 +407,14 @@ async function secretBureau(options: { readonly guarded?: boolean } = {}) {
     await bureau.dispose();
   }
 
+  /** Every value ever written to storage, scanned for any leak form. */
+  function expectNoWrittenLeak(where: string): void {
+    expectNoLeak(`${where}: a value ever written to storage`, storage.written.join('\n'));
+  }
+
   return {
     bureau,
+    expectNoWrittenLeak,
     storage,
     keys,
     toolbox,
@@ -729,6 +768,193 @@ describe('a secret answer through an AG-UI resume', () => {
         'the AG-UI resume frames': JSON.stringify(resumed),
         'the AG-UI retry frames': JSON.stringify(retried),
       });
+    } finally {
+      await harness.dispose();
+    }
+  });
+});
+
+/**
+ * The A2A request handler over `bureau`, with a send ledger and task records that keep every value
+ * ever written, so a value written and released is scanned too.
+ */
+function a2aOver(bureau: Bureau) {
+  const ledgerStorage = new RecordingStorage();
+  const recordStorage = new RecordingStorage();
+  const runtime = createDefaultRuntimeServices();
+  const host = buildBureauHandlerHost(bureau, [AGENT]);
+  const card = createBureauAgentCard({
+    catalogName: AGENT,
+    displayName: undefined,
+    description: undefined,
+    definitionRevision: 1,
+    skillDescriptors: undefined,
+    security: undefined,
+    durableHistory: false,
+    pushNotifications: false,
+  });
+  const handler = createBureauA2ARequestHandler({
+    publicUrl: 'http://localhost',
+    timers: runtime.timers,
+    agentName: AGENT,
+    card: () => ({ ...card, supportedInterfaces: [], signatures: [] }),
+    bureau,
+    records: createA2ATaskRecords(textValueStore(recordStorage)),
+    ledger: createCommandLedger<A2ASendClaim, A2ASendResult>({
+      kv: textValueStore(ledgerStorage),
+      keyPrefix: A2A_SEND_LEDGER_KEY_PREFIX,
+      clock: runtime.clock,
+      nextConflictId: () => runtime.identifiers.next('conflict'),
+    }),
+    respond: (principal, input) => respondToTask(host, principal, input),
+  });
+  const principal = principalFromApiKey({ subject: 'tester', scopes: [] });
+  const send = (message: Message) =>
+    handler.sendMessage(
+      { tenant: '', message, configuration: undefined, metadata: undefined },
+      new ServerCallContext({
+        user: new BureauA2AUser(principal),
+        requestedVersion: '1.0',
+        requestedExtensions: [],
+      }),
+    );
+  const written = () => [...ledgerStorage.written, ...recordStorage.written].join('\n');
+  return { send, written };
+}
+
+describe('an answer that could reach a secret wait it does not name (COR-1920)', () => {
+  // Each task holds two open waits: the secret question and a tool approval.
+  it('tasks.respond refuses it before the ledger writes, and the named answer still replays', async () => {
+    const harness = await secretBureau({ twoWaits: true });
+    try {
+      const { runId } = await harness.park();
+      const answer = { user: 'ada', password: SECRET };
+
+      const ambiguous = await rejectionOf(
+        harness.bureau.tasks.respond({
+          principal: PRINCIPAL,
+          taskId: runId,
+          messageId: 'unnamed',
+          data: answer,
+        }),
+      );
+      // Refused before anything is written, whichever check speaks first.
+      expect(String(ambiguous)).toContain('several open waits');
+      harness.expectNoWrittenLeak('the unnamed answer');
+
+      const named = {
+        principal: PRINCIPAL,
+        taskId: runId,
+        messageId: 'named',
+        signalName: 'login',
+        data: answer,
+      };
+      const receipt = await harness.bureau.tasks.respond(named);
+      expect(receipt).toMatchObject({ kind: 'human-wait', receipt: 'applied' });
+      expect(await harness.bureau.tasks.respond(named)).toEqual(receipt);
+      harness.expectNoWrittenLeak('the named answer and its retry');
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it('reviews.resolve names its review, so it seals and writes nothing in plaintext', async () => {
+    const harness = await secretBureau({ twoWaits: true });
+    try {
+      const { review } = await harness.park();
+
+      await harness.bureau.reviews.resolve({
+        id: review.id,
+        decision: 'approve',
+        principal: PRINCIPAL,
+        payload: { user: 'ada', password: SECRET },
+      });
+
+      harness.expectNoWrittenLeak('reviews.resolve');
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it('an AG-UI resume names its interrupt, so it seals and writes nothing in plaintext', async () => {
+    const harness = await secretBureau({ twoWaits: true });
+    try {
+      const started = await readAgUiStream(
+        await harness.handler(startRequest(runAgentInput(), {}, AGENT)),
+      );
+      await waitForCondition(
+        () => harness.bureau.reviews.list().length === 2,
+        'expected the thread to hold the secret wait and the approval',
+      );
+      const review = harness.bureau.reviews
+        .list()
+        .find((pending) => pending.kind === 'human-wait')!;
+
+      const resumed = await readAgUiStream(
+        await harness.handler(
+          startRequest(
+            runAgentInput({
+              runId: 'client-run-2',
+              messages: [],
+              resume: [
+                {
+                  interruptId: review.id,
+                  status: 'resolved',
+                  payload: {
+                    decision: 'approve',
+                    answer: JSON.stringify({ user: 'ada', password: SECRET }),
+                  },
+                },
+              ],
+            }),
+            {},
+            AGENT,
+          ),
+        ),
+      );
+
+      expectNoLeak('the AG-UI frames', JSON.stringify([started, resumed]));
+      harness.expectNoWrittenLeak('the AG-UI resume');
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it('an A2A message is refused, named or not, before the send ledger or the task history writes', async () => {
+    const harness = await secretBureau({ twoWaits: true });
+    const a2a = a2aOver(harness.bureau);
+    try {
+      const task = await a2a.send(
+        Message.fromJSON({ messageId: 'm-start', role: 'ROLE_USER', parts: [{ text: 'go' }] }),
+      );
+      if (!('status' in task)) throw new Error('expected a task');
+      await waitForCondition(
+        () =>
+          harness.bureau.reviews.list().filter((pending) => pending.runId === task.id).length === 2,
+        'expected the task to hold the secret wait and the approval',
+      );
+      const text = JSON.stringify({ user: 'ada', password: SECRET });
+
+      for (const [messageId, metadata] of [
+        ['m-unnamed', undefined],
+        ['m-named', { signalName: 'login' }],
+      ] as const) {
+        const refused = await rejectionOf(
+          a2a.send(
+            Message.fromJSON({
+              messageId,
+              taskId: task.id,
+              role: 'ROLE_USER',
+              parts: [{ text }],
+              ...(metadata === undefined ? {} : { metadata }),
+            }),
+          ),
+        );
+        expect(String(refused), messageId).toContain('answered only in the chat');
+      }
+
+      expectNoLeak('the A2A send ledger and task history', a2a.written());
+      harness.expectNoWrittenLeak('the A2A sends');
     } finally {
       await harness.dispose();
     }

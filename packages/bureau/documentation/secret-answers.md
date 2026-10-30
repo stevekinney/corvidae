@@ -61,13 +61,13 @@ export const toolbox = createToolbox([signIn], {
 
 ## Every ingress
 
-`bureau.reviews.resolve`, `bureau.tasks.respond` and an AG-UI resume all reach one check (`validateReviewAnswer`), and the secret is sealed there. Each ingress keeps nothing of the plaintext:
+`bureau.reviews.resolve`, `bureau.tasks.respond` and an AG-UI resume all reach one check (`validateReviewAnswer`), and the secret is sealed there. Before any of them, or A2A, writes anything that covers an answer (a command-ledger claim, a decision digest, a task's history), it passes one gate, `gateSecretAnswer`: it reads every open human wait the answer could reach (the one it names, else all of them) and refuses when any asks for a secret, or cannot be read, unless the path seals and the answer reaches exactly one wait. A read error is the command's, never a reason to digest. A decision whose payload still holds a secret field unsealed is refused before its decision record is claimed. Each ingress keeps nothing of the plaintext:
 
 - **`bureau.tasks.respond`** seals the answer before its command ledger claims it, so the claim a retry completes from holds the sealed form, which the check accepts back after it decrypts under its own reference.
 - **Digests.** The `tasks.respond` and AG-UI ledgers and the `review-decision:v1` record digest an answer with each secret replaced by its `{ secretRef }`. Sealing draws a fresh IV, so a digest of the ciphertext would make a same-decision retry a conflict, and a digest of the plaintext would keep something a guess could be checked against. A review that has closed is read back from the audit trail, which keeps the fields its schema marked secret (`review.secretFields`), so a retry after the review closed digests alike.
 - **AG-UI frames** show the answer row the run appended, with the reference.
 - **Audit.** The decision's entry names each secret by its field and the SHA-256 of its ciphertext (`detail.secretAnswers: [{ field, ciphertextDigest }]`), never by its value.
-- **A2A and A2UI.** A2A records the message that carries an answer, so a question that asks for a secret is answered in the chat alone: its task offers no A2UI form, and a message that approves it is refused (`RequestMalformedError`) before the send ledger or the task's history records it. A deny or a reject carries no answer and is let through.
+- **A2A and A2UI.** A2A records the message that carries an answer, so a question that asks for a secret is answered in the chat alone: its task offers no A2UI form, and a message with text or form values that could reach it (it names that wait, or names none) is refused (`RequestMalformedError`) before the send ledger or the task's history records it. A bare decision, with no text and no values, carries no answer and is let through.
 
 ## Rotating the key
 

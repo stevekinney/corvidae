@@ -63,6 +63,7 @@ import {
   validateReviewAnswer,
 } from '../review-answer.ts';
 import {
+  gateSecretAnswer,
   secretFieldsOfReview,
   secretReferenceForm,
   secretReferenceFormOfInput,
@@ -465,6 +466,15 @@ export function createResume(context: ResumeContext) {
       requestId: interruptKey([...reviews.values()]),
       operationVersion: AG_UI_OPERATION_VERSION,
     };
+    // The shared gate (COR-1920): each entry names the one interrupt it answers, and this path
+    // seals for it, so it passes; it is asked here so that every answer path asks it before writing.
+    for (const entry of entries) {
+      await gateSecretAnswer({
+        candidates: [entry.interruptId],
+        read: async (reviewId) => reviews.get(reviewId),
+        seals: true,
+      });
+    }
     // COR-1920: the answer to a question that asks for a secret is digested in reference form, read
     // from the fields its review marks secret (which a closed review still names), so a retry
     // digests alike and no digest of a secret's plaintext is kept.

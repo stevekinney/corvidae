@@ -49,6 +49,8 @@ import {
   digestCommandPayload,
 } from '../command-ledger.ts';
 import {
+  gateSecretAnswer,
+  SecretAnswerRefusedError,
   sealedSecretFields,
   secretFieldsOfReview,
   secretReferenceFormOfInput,
@@ -454,6 +456,26 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
     // wait. A command that addresses neither is refused here, before the ledger holds any digest
     // of it: its answer could be a secret that no review says how to keep out of one (COR-1920).
     const addressedReviewId = recordedReviewId ?? wait?.reviewId;
+    // The shared gate (COR-1920): an answer that could reach a secret question it does not name is
+    // refused before the ledger holds anything of it. A read error is the command's.
+    if (input.answer !== undefined || input.data !== undefined) {
+      const candidates =
+        addressedReviewId !== undefined
+          ? [addressedReviewId]
+          : task.openWaits
+              .filter(
+                (open) =>
+                  open.kind === 'human-wait' &&
+                  (input.signalName === undefined || open.signalName === input.signalName),
+              )
+              .map((open) => open.reviewId);
+      try {
+        await gateSecretAnswer({ candidates, read: (id) => reviews.get(id), seals: true });
+      } catch (error) {
+        if (error instanceof SecretAnswerRefusedError) throw invalid('signalName', error.message);
+        throw error;
+      }
+    }
     if (addressedReviewId === undefined) {
       throw notAwaiting ?? conflict('The task is not awaiting input');
     }

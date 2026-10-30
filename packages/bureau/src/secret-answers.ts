@@ -295,6 +295,52 @@ export function secretFieldsOfReview(review: {
   return review.secretFields ?? [];
 }
 
+/** Thrown by {@link gateSecretAnswer}: an answer that could reach a secret question unsealed. */
+export class SecretAnswerRefusedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SecretAnswerRefusedError';
+  }
+}
+
+/**
+ * The one gate every answer path passes before it writes anything that covers the answer: a
+ * command-ledger claim, a decision-record digest, a task's history (COR-1920).
+ *
+ * `candidates` are the open human waits the answer could reach, by review id: the one it names,
+ * or every open human wait when it names none. Each is read (an error reading one is the caller's,
+ * never a reason to go on), and the gate refuses when any of them asks for a secret, or cannot be
+ * read, unless the path `seals` the answer and it reaches exactly one wait, which the path then
+ * seals for before it records anything. A path that does not seal (A2A records the message itself)
+ * is refused whenever a secret wait is among the candidates.
+ */
+export async function gateSecretAnswer(options: {
+  readonly candidates: readonly string[];
+  readonly read: (reviewId: string) => Promise<
+    | {
+        readonly kind: string;
+        readonly inputSchema?: HumanInputSchema | undefined;
+        readonly secretFields?: readonly string[] | undefined;
+      }
+    | undefined
+  >;
+  readonly seals: boolean;
+}): Promise<void> {
+  const reviews = await Promise.all(options.candidates.map((reviewId) => options.read(reviewId)));
+  const risky = reviews.filter(
+    (review) =>
+      review === undefined ||
+      (review.kind === 'human-wait' && secretFieldsOfReview(review).length > 0),
+  );
+  if (risky.length === 0) return;
+  if (options.seals && options.candidates.length === 1) return;
+  throw new SecretAnswerRefusedError(
+    options.seals
+      ? 'This answer could reach a question that asks for a secret; name the wait it answers.'
+      : 'This question asks for a secret, which is answered only in the chat, never over A2A.',
+  );
+}
+
 /** The keyring that can open `value`: the current key, and the retired key it names when it is not that. */
 async function keyringFor(
   keys: AnswerEncryptionKeys,

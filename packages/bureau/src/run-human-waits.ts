@@ -135,6 +135,15 @@ export type RunHumanWaitsDependencies = {
     secretAnswers: readonly SecretAnswerAuditEntry[],
   ) => Promise<void>;
   /**
+   * Refuses a payload that holds a secret field unsealed (COR-1920). Called before the decision is
+   * claimed, so nothing of a secret's plaintext is digested.
+   */
+  readonly checkDelivery: (
+    review: PendingHumanWaitReview,
+    payload: unknown,
+    decision: ResolveReviewInput['decision'],
+  ) => void;
+  /**
    * Stores the sealed secret answers a payload carries for the run that asked, and returns the
    * payload to deliver, each reduced to its `{ secretRef }`, with what the audit entry says of them
    * (COR-1920). Called after the decision is claimed and before the signal is sent.
@@ -542,8 +551,9 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
     if (resolving.has(review.id)) {
       throw createError(`Review with id "${review.id}" is already being resolved`, 'CONFLICT');
     }
-    resolving.add(review.id);
     const payload = humanWaitDecisionPayload(input);
+    dependencies.checkDelivery(review, payload, input.decision);
+    resolving.add(review.id);
     const request = humanWaitDecisionRequest(review.id, input, payload);
     let secretAnswers: readonly SecretAnswerAuditEntry[] = [];
     try {

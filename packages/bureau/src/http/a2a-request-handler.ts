@@ -87,8 +87,8 @@ import {
 } from '../command-ledger.ts';
 import { BureauError } from '../create-bureau.ts';
 import { TaskListingTokenError } from '../task-list-snapshots.ts';
-import type { TaskOpenWait, TaskRegistry, TaskView } from '../task-registry.ts';
-import { secretFieldsOfReview } from '../secret-answers.ts';
+import type { TaskRegistry, TaskView } from '../task-registry.ts';
+import { gateSecretAnswer, SecretAnswerRefusedError } from '../secret-answers.ts';
 import type { Bureau, BureauContexts, BureauReviews, BureauTasks } from '../types.ts';
 import { A2UI_EXTENSION_URI, supportedCatalogIdsOf } from '../a2ui/catalogs.ts';
 import { surfaceActionOf } from './a2a-surface-actions.ts';
@@ -628,37 +628,40 @@ async function surfaceAnswerOf(
 }
 
 /**
- * Refuses an answer that approves a wait whose question asks for a secret (COR-1920): A2A records
- * the message that carries an answer, so a secret is answered in the chat alone, where it is sealed
- * before anything holds it. The wait is the one the answer names, or the task's only open wait. A
- * deny or a reject carries no answer and is let through.
+ * Refuses an answer that could reach a wait whose question asks for a secret (COR-1920), through
+ * the shared gate, before the send ledger digests the message or the task's history records it: A2A
+ * keeps the message that carries an answer, so a secret is answered in the chat alone. The waits
+ * the answer could reach are the one its `signalName` names, else every open human wait, since a
+ * message that names none may be read as an answer to any of them. A message that carries no
+ * text and no form values (a bare decision) holds no answer and is let through; the message is
+ * judged, not the command parsed from it, because the ledger digests the whole message. A wait that
+ * cannot be read is refused.
  */
 async function refuseSecretAnswer(
   bureau: { readonly reviews: Pick<BureauReviews, 'get'> },
   view: TaskView | undefined,
+  message: Message,
   command: ContinuationCommand | undefined,
 ): Promise<void> {
   if (view === undefined || command?.path !== 'answer') return;
   const { input } = command;
-  if ((input.decision ?? 'approve') !== 'approve') return;
-  const waits = view.openWaits.filter(
-    (wait): wait is Extract<TaskOpenWait, { kind: 'human-wait' }> => wait.kind === 'human-wait',
-  );
-  const addressed =
-    input.signalName !== undefined
-      ? waits.filter((wait) => wait.signalName === input.signalName)
-      : input.callId !== undefined
-        ? []
-        : view.openWaits.length === 1
-          ? waits
-          : [];
-  for (const wait of addressed) {
-    const review = await bureau.reviews.get(wait.reviewId).catch(() => undefined);
-    if (review?.kind === 'human-wait' && secretFieldsOfReview(review).length > 0) {
-      throw invalid(
-        'This question asks for a secret, which is answered only in the chat, never over A2A.',
-      );
-    }
+  if (textOf(message) === '' && input.answer === undefined && input.data === undefined) return;
+  const candidates = view.openWaits
+    .filter(
+      (wait) =>
+        wait.kind === 'human-wait' &&
+        (input.signalName === undefined || wait.signalName === input.signalName),
+    )
+    .map((wait) => wait.reviewId);
+  try {
+    await gateSecretAnswer({
+      candidates,
+      read: (reviewId) => bureau.reviews.get(reviewId),
+      seals: false,
+    });
+  } catch (error) {
+    if (error instanceof SecretAnswerRefusedError) throw invalid(error.message);
+    throw error;
   }
 }
 
@@ -1723,7 +1726,7 @@ export function createBureauA2ARequestHandler(
             );
     // COR-1920: an answer to a question that asks for a secret is refused here, before the send
     // ledger or the task's history records the message that carries it.
-    await refuseSecretAnswer(bureau, continued, command);
+    await refuseSecretAnswer(bureau, continued, message, command);
     // The message's parts, read and authorized before anything is admitted. An answer to a wait
     // reads no file, so only a new task and input to a working task plan any.
     const inboundContextOfCaller = inboundContext(user.principal, owner);

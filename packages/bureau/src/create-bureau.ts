@@ -439,6 +439,7 @@ import {
 } from './review-answer';
 import {
   type AnswerEncryptionKeys,
+  gateSecretAnswer,
   holdsSealedAnswer,
   type SecretAnswerAuditEntry,
   SecretAnswerUnavailableError,
@@ -16186,6 +16187,8 @@ async function constructBureau<const D extends AgentDefinitions>(
       throw new BureauError(`No pending review with id "${input.id}"`, 'NOT_FOUND');
     }
 
+    // COR-1920: nothing unsealed is digested or claimed.
+    refuseUnsealedSecrets(review, humanWaitDecisionPayload(input), input.decision);
     if (resolvingReviewIds.has(review.id)) {
       throw new BureauError(`Review with id "${review.id}" is already being resolved`, 'CONFLICT');
     }
@@ -16896,6 +16899,8 @@ async function constructBureau<const D extends AgentDefinitions>(
     // A tool approval carries no answer, so only a human wait's id is looked up.
     if (!input.id.startsWith('human-wait:')) return input;
     const review = await getReview(input.id);
+    // The shared gate (COR-1920): the answer names its review, which this path seals for.
+    await gateSecretAnswer({ candidates: [input.id], read: async () => review, seals: true });
     if (review?.kind !== 'human-wait') return input;
     const sealed = await sealHumanWaitAnswer(review, snapshot);
     if (review.inputSchema === undefined) {
@@ -16932,6 +16937,29 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
+   * COR-1920 — refuses a human-wait approval whose payload holds a secret field unsealed. Both
+   * delivery paths call it before their decision record digests the payload, so nothing of a
+   * secret's plaintext is digested, claimed, or signalled. A deny or a reject delivers its own
+   * marker, which carries no answer.
+   */
+  function refuseUnsealedSecrets(
+    review: PendingReview,
+    payload: unknown,
+    decision: ResolveReviewInput['decision'],
+  ): void {
+    if (
+      review.kind === 'human-wait' &&
+      decision === 'approve' &&
+      unsealedSecretFields(payload, secretFieldsOfReview(review)).length > 0
+    ) {
+      throw new BureauError(
+        `Review "${review.id}" was answered with a secret that was not sealed`,
+        'BAD_REQUEST',
+      );
+    }
+  }
+
+  /**
    * COR-1920 — stores the sealed secret answers a human-wait payload carries for the run that
    * asked, and returns the payload to signal, each reduced to its `{ secretRef }`, with what the
    * audit entry says of them. Both delivery paths call it after their decision is claimed and
@@ -16944,17 +16972,8 @@ async function constructBureau<const D extends AgentDefinitions>(
     principal: string,
     decision: ResolveReviewInput['decision'],
   ): Promise<{ readonly payload: unknown; readonly audit: readonly SecretAnswerAuditEntry[] }> {
-    // A secret field that reaches delivery unsealed is refused: nothing may signal its plaintext.
-    // A deny or a reject delivers its own marker, which carries no answer.
-    if (
-      decision === 'approve' &&
-      unsealedSecretFields(payload, secretFieldsOfReview(review)).length > 0
-    ) {
-      throw new BureauError(
-        `Review "${review.id}" was answered with a secret that was not sealed`,
-        'BAD_REQUEST',
-      );
-    }
+    // Checked again here, after the claim: a sealed payload is the only kind this stores.
+    refuseUnsealedSecrets(review, payload, decision);
     if (!holdsSealedAnswer(payload)) return { payload, audit: [] };
     if (runtime.secretAnswers === undefined) {
       throw new BureauError(
@@ -18767,6 +18786,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       // COR-1596: a fire answered is no longer waiting, which whoever follows its task is told.
       await tasks.announceChanged(review.runId);
     },
+    checkDelivery: (review, payload, decision) => refuseUnsealedSecrets(review, payload, decision),
     prepareDelivery: (review, payload, principal, decision) =>
       prepareHumanWaitDelivery(review, payload, principal, decision),
     decisions: reviewDecisions,
