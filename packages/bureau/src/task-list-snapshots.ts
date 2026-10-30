@@ -22,8 +22,9 @@ import { type ConditionalTextValueStore, encodeStorageKeyComponent } from '@lost
 
 /**
  * The key prefix of a task-listing snapshot. A snapshot stores whole task views, so the version
- * moves with the view's shape: `v2` (COR-1689) added `kind` and `v4` (COR-1867) added `origin`, and a
- * snapshot of an earlier version is never read as a view that lacks them. A record of an earlier
+ * moves with the view's shape: `v2` (COR-1689) added `kind`, `v3` (COR-1867) added `origin`, and `v4`
+ * (COR-1868) widened the origin union and added the parent filters to the page token's binding, and
+ * a snapshot of an earlier version is never read as a view that lacks them. A record of an earlier
  * version left in storage is not read, and is not swept.
  */
 export const TASK_LISTING_KEY_PREFIX = 'bureau-task-listing:v4:';

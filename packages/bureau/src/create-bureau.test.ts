@@ -2950,11 +2950,16 @@ describe('createBureau', () => {
       // Bureau B: resumes at step 1, which calls the `next` tool again before
       // settling — so a toolbox action fires on the RECOVERED run's surface.
       const actions: string[] = [];
+      // COR-1938: step 1 waits for the listener below. Without the gate, whether the resumed step
+      // runs before or after the listener is attached depends on how many async turns the boot
+      // takes, and a boot that reads one more record would silently turn this test off.
+      const listenerAttached = Promise.withResolvers<void>();
       const bureauB = await createBureau<AgentDefinitions>({
         agents: {
           default: createAgent({
             generate: async ({ step }) => {
               if (step === 1) {
+                await listenerAttached.promise;
                 return { content: 'B resume step 1', toolCalls: [{ name: 'next', arguments: {} }] };
               }
               return { content: `B step ${step}`, toolCalls: [] };
@@ -2970,6 +2975,7 @@ describe('createBureau', () => {
       bureauB.addEventListener('action', (event) => {
         actions.push(event.action.type);
       });
+      listenerAttached.resolve();
 
       try {
         // Wait until the recovered run reaches a terminal session status (its
@@ -3143,11 +3149,14 @@ describe('createBureau', () => {
       // the resolver now wires the C3 block so the tool.started event emitted
       // during resume carries {agentName:'recovery-agent', runId}.
       const capturedStamps: Array<{ agentName: string; runId: string }> = [];
+      // COR-1938: step 1 waits for the listener below, so the resumed step cannot run first.
+      const listenerAttached = Promise.withResolvers<void>();
       const bureauB = await createBureau<AgentDefinitions>({
         agents: {
           'recovery-agent': createAgent({
             generate: async ({ step }) => {
               if (step === 1) {
+                await listenerAttached.promise;
                 return { content: 'B resume', toolCalls: [{ name: 'next', arguments: {} }] };
               }
               return { content: `B step ${step}`, toolCalls: [] };
@@ -3173,6 +3182,7 @@ describe('createBureau', () => {
       runState?.activeRun.addEventListener('tool.started', (event) => {
         capturedStamps.push({ agentName: event.agentName, runId: event.runId });
       });
+      listenerAttached.resolve();
 
       try {
         await pollUntil(async () => {

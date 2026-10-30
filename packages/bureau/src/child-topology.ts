@@ -119,6 +119,7 @@ import {
 import { ownerOrLocal, principalDefect } from './owner-of-record';
 import { principalAllows } from './principal-allows';
 import { reservedWorkflowIdentifierReason } from './reserved-identifiers';
+import type { AgentTaskOrigin } from './task-origin';
 import type { CancelDurableRunOutcome, DiagnosticSink } from './types';
 
 // ---------------------------------------------------------------------------
@@ -172,6 +173,11 @@ export interface BureauChildDispatchRequest<TName extends string = string> {
   readonly parentCancellation?: BureauChildParentCancellation | undefined;
   /** Ignored unless `BureauOptions.children.delegation` is configured. */
   readonly authority?: BureauChildAuthorityRequest | undefined;
+  /**
+   * The tool call of the parent that dispatched this child, when a tool call did (COR-1868). It is
+   * recorded on the child's task as `origin.toolCallId`. A non-empty string of at most 256 bytes.
+   */
+  readonly toolCallId?: string | undefined;
 }
 
 /** The grant a dispatch issued, as far as its disclosure policy allows. */
@@ -300,6 +306,8 @@ export interface ChildTopologyParent {
   readonly agentName: string;
   readonly principal?: string | undefined;
   readonly live: boolean;
+  /** The parent's session, when it has one; recorded on the child's task origin (COR-1868). */
+  readonly contextId?: string | undefined;
 }
 
 export interface ChildTopologyStart {
@@ -308,6 +316,8 @@ export interface ChildTopologyStart {
   readonly childRunId: string;
   readonly principal?: string | undefined;
   readonly context: Pick<AgentRunContext, 'parentSignals' | 'childCorrelation'>;
+  /** The origin of the child's task: the parent run that dispatched it (COR-1868). */
+  readonly taskOrigin: AgentTaskOrigin;
 }
 
 export interface ChildAuditEntry {
@@ -398,6 +408,9 @@ export interface ChildTopology {
 // ---------------------------------------------------------------------------
 
 export const CHILD_AGENT_RUN_WORKFLOW_TYPE = 'agentRun';
+
+/** The longest `toolCallId` a dispatch may name, in UTF-8 bytes. */
+const MAX_TOOL_CALL_ID_BYTES = 256;
 const DEFAULT_POLICY_VERSION = 'bureau-delegation/1';
 const DEFAULT_TIME_TO_LIVE_MILLISECONDS = 60 * 60 * 1000;
 const TERMINAL_WORKFLOW_STATUSES: ReadonlySet<string> = new Set([
@@ -1258,7 +1271,20 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
       throw dependencies.createBadRequest('parentCancellation must be "cascade" or "detach"');
     }
     dependencies.validateInput(request.input);
+    if (request.toolCallId !== undefined) validateToolCallId(request.toolCallId);
     if (delegation) validateAuthority(request.authority);
+  }
+
+  function validateToolCallId(toolCallId: unknown): void {
+    if (
+      typeof toolCallId !== 'string' ||
+      toolCallId.length === 0 ||
+      new TextEncoder().encode(toolCallId).byteLength > MAX_TOOL_CALL_ID_BYTES
+    ) {
+      throw dependencies.createBadRequest(
+        `toolCallId must be a non-empty string of at most ${String(MAX_TOOL_CALL_ID_BYTES)} bytes`,
+      );
+    }
   }
 
   async function dispatch(
@@ -1447,6 +1473,13 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
         context: {
           childCorrelation: correlationOf(record),
           ...(entry.channel === undefined ? {} : { parentSignals: entry.channel.child }),
+        },
+        taskOrigin: {
+          kind: 'agent',
+          parentRunId: request.parentRunId,
+          ...(parent.contextId === undefined ? {} : { parentContextId: parent.contextId }),
+          agentName: parent.agentName,
+          ...(request.toolCallId === undefined ? {} : { toolCallId: request.toolCallId }),
         },
       });
     } catch (error) {
