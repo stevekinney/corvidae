@@ -95,6 +95,8 @@ describe('a plugin layer beneath the owner directory', () => {
       plugin: 'linear',
     });
 
+    // Its revision and version records are kept under its plugin:name identifier.
+    expect(await agents.versions.list('linear:triager')).toMatchObject([{ revision: 1 }]);
     const read = await agents.read('linear:triager');
     expect(read?.text).toBe(triagerFile());
     const definition = {
