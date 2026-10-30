@@ -300,6 +300,25 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
       .catch((cause: unknown) => dependencies.diagnose('Failed to audit a hook change', cause));
   }
 
+  // Changes to one hook's record and secret, one at a time. The secret port is the host's and cannot
+  // join the record's compare-and-swap, so without this an update that committed revision 2 and is
+  // still writing its secret could land after revision 3's write and leave the older secret signing.
+  const changing = new Map<string, Promise<unknown>>();
+  async function exclusively<T>(hookId: string, work: () => Promise<T>): Promise<T> {
+    const previous = changing.get(hookId) ?? Promise.resolve();
+    const run = previous.then(work, work);
+    const settled = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    changing.set(hookId, settled);
+    try {
+      return await run;
+    } finally {
+      if (changing.get(hookId) === settled) changing.delete(hookId);
+    }
+  }
+
   const hooks: BureauHooks = {
     async create(input) {
       const url = input.url;
@@ -353,51 +372,55 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
       const expectedRevision = input.expectedRevision;
       const actor = input.principal;
 
-      const stored = await store.getHook(hookId);
-      if (stored === undefined) return undefined;
-      const before = stored.record;
-      if (expectedRevision !== undefined && expectedRevision !== before.revision) {
-        throw new HookError('stale-revision', 'The hook has changed since it was read', {
-          currentRevision: before.revision,
-        });
-      }
-      const nextName = name === undefined ? before.name : (name ?? undefined);
-      const { name: _previousName, ...withoutName } = before;
-      const after: HookRecord = {
-        ...withoutName,
-        ...(nextName === undefined ? {} : { name: nextName }),
-        url: url ?? before.url,
-        events: events ?? before.events,
-        enabled: enabled ?? before.enabled,
-        updatedAt: engine.now(),
-        revision: before.revision + 1,
-      };
-      // Sealed (and the lock and key checked) before the commit, written after it: a writer that
-      // loses the compare-and-swap leaves the secret the winner's, not its own.
-      const sealed = secret === undefined ? undefined : await sealSecret(hookId, secret);
-      if (!(await store.replaceHook(stored, after))) {
-        const current = await store.getHook(hookId);
-        if (current === undefined) return undefined;
-        throw new HookError('stale-revision', 'The hook has changed since it was read', {
-          currentRevision: current.record.revision,
-        });
-      }
-      if (sealed !== undefined) await secrets.set(hookId, sealed);
-      recordChange('hook.updated', after, actor);
-      return viewOf(after);
+      return exclusively(hookId, async () => {
+        const stored = await store.getHook(hookId);
+        if (stored === undefined) return undefined;
+        const before = stored.record;
+        if (expectedRevision !== undefined && expectedRevision !== before.revision) {
+          throw new HookError('stale-revision', 'The hook has changed since it was read', {
+            currentRevision: before.revision,
+          });
+        }
+        const nextName = name === undefined ? before.name : (name ?? undefined);
+        const { name: _previousName, ...withoutName } = before;
+        const after: HookRecord = {
+          ...withoutName,
+          ...(nextName === undefined ? {} : { name: nextName }),
+          url: url ?? before.url,
+          events: events ?? before.events,
+          enabled: enabled ?? before.enabled,
+          updatedAt: engine.now(),
+          revision: before.revision + 1,
+        };
+        // Sealed (and the lock and key checked) before the commit, written after it: a writer that
+        // loses the compare-and-swap leaves the secret the winner's, not its own.
+        const sealed = secret === undefined ? undefined : await sealSecret(hookId, secret);
+        if (!(await store.replaceHook(stored, after))) {
+          const current = await store.getHook(hookId);
+          if (current === undefined) return undefined;
+          throw new HookError('stale-revision', 'The hook has changed since it was read', {
+            currentRevision: current.record.revision,
+          });
+        }
+        if (sealed !== undefined) await secrets.set(hookId, sealed);
+        recordChange('hook.updated', after, actor);
+        return viewOf(after);
+      });
     },
     async delete(hookId, options) {
-      const stored = await store.getHook(hookId);
-      if (stored === undefined) return false;
-      if (!(await store.deleteHook(stored))) return false;
-      await secrets
-        .delete(hookId)
-        .catch((cause: unknown) =>
-          dependencies.diagnose('Failed to remove a hook’s sealed secret', cause),
-        );
-      await store.deleteDeliveriesOf(hookId);
-      recordChange('hook.deleted', stored.record, options?.principal);
-      return true;
+      return exclusively(hookId, async () => {
+        const stored = await store.getHook(hookId);
+        if (stored === undefined) return false;
+        if (!(await store.deleteHook(stored))) return false;
+        await secrets
+          .delete(hookId)
+          .catch((cause: unknown) =>
+            dependencies.diagnose('Failed to remove a hook’s sealed secret', cause),
+          );
+        await store.deleteDeliveriesOf(hookId);
+        recordChange('hook.deleted', stored.record, options?.principal);
+        return true;
+      });
     },
     async get(hookId) {
       const stored: Stored<HookRecord> | undefined = await store.getHook(hookId);
@@ -460,11 +483,16 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
     const work = (async () => {
       // The deliveries are awaited here, so the one tracked promise covers all of them: a `flush()`
       // or `dispose()` that took its snapshot before they began still waits for them.
+      // A later hook whose delivery cannot be stored must not leave the earlier ones undrained, so
+      // the wait is in a `finally`.
       const driving: Promise<void>[] = [];
-      for (const hook of await matching(event.kind)) {
-        driving.push(deliveries.drive(await deliveries.enqueue(hook, event, false)));
+      try {
+        for (const hook of await matching(event.kind)) {
+          driving.push(deliveries.drive(await deliveries.enqueue(hook, event, false)));
+        }
+      } finally {
+        await Promise.allSettled(driving);
       }
-      await Promise.allSettled(driving);
     })().catch((cause: unknown) => dependencies.diagnose('Failed to dispatch a hook event', cause));
     engine.track(work);
   }

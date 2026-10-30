@@ -5,6 +5,7 @@
 import { generateEncryptionKey, type EncryptionKey } from '@lostgradient/cryptography';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
+import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, beforeAll, describe, expect, it, spyOn } from 'bun:test';
 
 import type { BureauDiagnostic } from '../types.ts';
@@ -408,5 +409,60 @@ describe('a host that locks secret writes (remote mode)', () => {
     expect(receiver.calls).toHaveLength(1);
     await bureau.hooks!.delete(hook.id);
     expect(held.size).toBe(0);
+  });
+});
+
+describe('two successful secret rotations', () => {
+  it('leave the later rotation’s secret active even when the earlier one is slow to write', async () => {
+    const held = new Map<string, Awaited<ReturnType<HookSecretStore['get']>>>();
+    const writers: string[] = [];
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let sets = 0;
+    const secrets: HookSecretStore = {
+      get: async (id) => held.get(id),
+      set: async (id, encrypted) => {
+        sets += 1;
+        // The create is the first write and the rotation under test is the second: it waits.
+        if (sets === 2) {
+          writers.push('earlier');
+          await gate;
+        } else if (sets > 2) {
+          writers.push('later');
+        }
+        held.set(id, encrypted);
+      },
+      delete: async (id) => void held.delete(id),
+    };
+    const { bureau, receiver } = await open({ hooks: { secrets } });
+    const hook = await bureau.hooks!.create(HOOK);
+
+    const earlier = bureau.hooks!.update(hook.id, { signingSecret: 'earlier-secret-abcdefghij' });
+    await waitUntil(() => writers.includes('earlier'));
+    const later = bureau.hooks!.update(hook.id, { signingSecret: 'later-secret-abcdefghijkl' });
+    // The later rotation has had every chance to write, and must not have while the earlier one
+    // is still in flight.
+    await quietFor(50);
+    expect(writers).toEqual(['earlier']);
+
+    release();
+    await Promise.all([earlier, later]);
+    const rotated = await bureau.hooks!.get(hook.id);
+    expect(rotated?.revision).toBe(3);
+
+    await bureau.hooks!.test(hook.id);
+    const { verifyHookSignature } = await import('./hook-signature.ts');
+    const call = receiver.calls[0]!;
+    expect(
+      verifyHookSignature({
+        secret: 'later-secret-abcdefghijkl',
+        header: call.headers.get('X-Signature')!,
+        body: call.body,
+        now: Date.now(),
+        toleranceSeconds: Number.MAX_SAFE_INTEGER,
+      }),
+    ).toEqual({ ok: true });
   });
 });

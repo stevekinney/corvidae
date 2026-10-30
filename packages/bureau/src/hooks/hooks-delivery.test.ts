@@ -4,7 +4,10 @@
  */
 import { MemoryStorage, textValueStore, type Storage } from '@lostgradient/storage';
 import type { EncryptionKey } from '@lostgradient/cryptography';
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { afterEach, beforeAll, describe, expect, it } from 'bun:test';
+
+import { waitForCondition } from '../test';
 
 import { HOOK_SIGNATURE_HEADER, verifyHookSignature } from './hook-signature.ts';
 import { HOOK_DELIVERY_KEY_PREFIX } from './hook-store.ts';
@@ -343,5 +346,79 @@ describe('hooks.test', () => {
   it('answers undefined for a hook that does not exist', async () => {
     const { bureau } = await open();
     expect(await bureau.hooks!.test('nope')).toBeUndefined();
+  });
+});
+
+/** A storage whose `failing`th creation of a hook delivery record fails (1-based). */
+function failingDeliveryCreation(storage: Storage, failing: number) {
+  const counts = { created: 0, failed: false };
+  const proxy = new Proxy(storage, {
+    get(target, property, receiver) {
+      const member: unknown = Reflect.get(target, property, receiver);
+      if (typeof member !== 'function') return member;
+      const call = (...args: unknown[]) =>
+        (member as (...rest: unknown[]) => unknown).apply(target, args);
+      if (String(property) !== 'conditionalBatch') return call;
+      return async (...args: unknown[]) => {
+        const text = JSON.stringify(args);
+        if (text.includes(HOOK_DELIVERY_KEY_PREFIX) && text.includes('"expectedValue":null')) {
+          counts.created += 1;
+          if (counts.created === failing) {
+            counts.failed = true;
+            throw new Error('the delivery record could not be stored');
+          }
+        }
+        return call(...args);
+      };
+    },
+  });
+  return { storage: proxy, counts };
+}
+
+describe('an event that matches several hooks when a later delivery cannot be stored', () => {
+  it('still waits for the deliveries it already started before flush() settles', async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const diagnostics: string[] = [];
+    const failing = failingDeliveryCreation(new MemoryStorage(), 2);
+    const receiver = createReceiver(async () => {
+      await held;
+      return new Response('ok');
+    });
+    const bureau = await openHooksBureau({
+      storage: failing.storage,
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
+      fetch: receiver.fetch,
+      key,
+    });
+    opened.push(bureau);
+    const first = await bureau.bureau.hooks!.create(HOOK);
+    await bureau.bureau.hooks!.create({ ...HOOK, name: 'second' });
+
+    let flushed = false;
+    let flushing: Promise<void> = Promise.resolve();
+    let fired: Promise<void> = Promise.resolve();
+    try {
+      // Starting a task waits for its run, and the run for its hook deliveries: not awaited here.
+      fired = fireRunEvents(bureau.bureau);
+      await waitForCondition(
+        async () => receiver.calls.length === 1 && failing.counts.failed,
+        'the first delivery never started, or the second enqueue never failed',
+      );
+
+      flushing = bureau.bureau.internals.webhookNotifier!.flush().then(() => {
+        flushed = true;
+      });
+      await quietFor(50);
+      expect(flushed).toBe(false);
+    } finally {
+      release();
+    }
+    await Promise.all([fired, flushing]);
+    const [delivery] = await deliveriesOf(bureau.bureau, first.id);
+    expect(delivery!.status).toBe('delivered');
+    expect(diagnostics.some((message) => message.includes('Failed to dispatch'))).toBe(true);
   });
 });
