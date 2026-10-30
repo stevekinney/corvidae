@@ -49,7 +49,7 @@ afterEach(() => {
 describe('StreamChunkAnnouncer', () => {
   it('collapses a burst into the first chunk and one trailing event naming the highest sequence', async () => {
     const { seen, dispatchEvent } = recorder();
-    using announcer = new StreamChunkAnnouncer(dispatchEvent);
+    using announcer = new StreamChunkAnnouncer(dispatchEvent, () => false);
 
     storeBurst(announcer, 0, 99);
     expect(seen).toEqual([['wf', 'progress', 0, 'run-1']]);
@@ -71,7 +71,7 @@ describe('StreamChunkAnnouncer', () => {
 
   it('emits at most twice per window while a stream keeps writing', async () => {
     const { seen, dispatchEvent } = recorder();
-    using announcer = new StreamChunkAnnouncer(dispatchEvent);
+    using announcer = new StreamChunkAnnouncer(dispatchEvent, () => false);
 
     let next = 0;
     for (let window = 0; window < 5; window++) {
@@ -86,7 +86,7 @@ describe('StreamChunkAnnouncer', () => {
 
   it('announces a lone chunk once and holds no state after its quiet window', async () => {
     const { seen, dispatchEvent } = recorder();
-    using announcer = new StreamChunkAnnouncer(dispatchEvent);
+    using announcer = new StreamChunkAnnouncer(dispatchEvent, () => false);
 
     announcer.stored('wf', 'progress', 0, 'run-1');
     await advanceTimersByTime(INTERVAL);
@@ -97,7 +97,7 @@ describe('StreamChunkAnnouncer', () => {
 
   it('coalesces each workflow stream key on its own', () => {
     const { seen, dispatchEvent } = recorder();
-    using announcer = new StreamChunkAnnouncer(dispatchEvent);
+    using announcer = new StreamChunkAnnouncer(dispatchEvent, () => false);
 
     storeBurst(announcer, 0, 3, 'run-1', 'wf', 'progress');
     storeBurst(announcer, 0, 3, 'run-1', 'wf', 'log');
@@ -113,7 +113,7 @@ describe('StreamChunkAnnouncer', () => {
 
   it('settle announces the pending sequence at once and closes the window', async () => {
     const { seen, dispatchEvent } = recorder();
-    using announcer = new StreamChunkAnnouncer(dispatchEvent);
+    using announcer = new StreamChunkAnnouncer(dispatchEvent, () => false);
 
     storeBurst(announcer, 0, 7);
     announcer.settle('wf', 'progress', 'run-1');
@@ -126,7 +126,7 @@ describe('StreamChunkAnnouncer', () => {
 
   it('settle adds nothing when the last chunk was the one already announced', () => {
     const { seen, dispatchEvent } = recorder();
-    using announcer = new StreamChunkAnnouncer(dispatchEvent);
+    using announcer = new StreamChunkAnnouncer(dispatchEvent, () => false);
 
     announcer.stored('wf', 'progress', 0, 'run-1');
     announcer.settle('wf', 'progress', 'run-1');
@@ -137,7 +137,7 @@ describe('StreamChunkAnnouncer', () => {
 
   it('discard drops the pending sequence so a removed chunk is never announced', async () => {
     const { seen, dispatchEvent } = recorder();
-    using announcer = new StreamChunkAnnouncer(dispatchEvent);
+    using announcer = new StreamChunkAnnouncer(dispatchEvent, () => false);
 
     storeBurst(announcer, 0, 5);
     announcer.discard('wf', 'progress', 'run-1');
@@ -149,7 +149,7 @@ describe('StreamChunkAnnouncer', () => {
 
   it('flushWorkflow announces every pending key of the workflow and leaves other workflows alone', async () => {
     const { seen, dispatchEvent } = recorder();
-    using announcer = new StreamChunkAnnouncer(dispatchEvent);
+    using announcer = new StreamChunkAnnouncer(dispatchEvent, () => false);
 
     storeBurst(announcer, 0, 4, 'run-1', 'wf', 'progress');
     storeBurst(announcer, 0, 2, 'run-1', 'wf', 'log');
@@ -169,7 +169,7 @@ describe('StreamChunkAnnouncer', () => {
 
   it('tags a trailing event with the run that stored it, and a new run of the id restarts the key', () => {
     const { seen, dispatchEvent } = recorder();
-    using announcer = new StreamChunkAnnouncer(dispatchEvent);
+    using announcer = new StreamChunkAnnouncer(dispatchEvent, () => false);
 
     storeBurst(announcer, 0, 5, 'old-run');
     // A `start-new` replacement writes the same key: its first chunk is announced at once under its
@@ -188,9 +188,29 @@ describe('StreamChunkAnnouncer', () => {
     ]);
   });
 
+  it("ignores a superseded run's late chunk, so it cannot displace the replacement's pending sequence", () => {
+    const { seen, dispatchEvent } = recorder();
+    const currentToken = 'new-run';
+    using announcer = new StreamChunkAnnouncer(
+      dispatchEvent,
+      (_workflowId, token) => token !== currentToken,
+    );
+
+    storeBurst(announcer, 0, 1, 'new-run');
+    // The cancelled run's producer outlived it and stores a chunk on the same key.
+    announcer.stored('wf', 'progress', 0, 'old-run');
+    announcer.settle('wf', 'progress', 'new-run');
+
+    expect(seen).toEqual([
+      ['wf', 'progress', 0, 'new-run'],
+      ['wf', 'progress', 1, 'new-run'],
+    ]);
+    expect(announcer.openWindowCount).toBe(0);
+  });
+
   it('disposal cancels every open window without a trailing event and is idempotent', async () => {
     const { seen, dispatchEvent } = recorder();
-    const announcer = new StreamChunkAnnouncer(dispatchEvent);
+    const announcer = new StreamChunkAnnouncer(dispatchEvent, () => false);
 
     storeBurst(announcer, 0, 9);
     announcer[Symbol.dispose]();

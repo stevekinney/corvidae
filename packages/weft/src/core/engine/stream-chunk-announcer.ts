@@ -38,20 +38,28 @@ type StreamChunkWindow = {
  * returns, and {@link discard} drops it unannounced when a failed stream's
  * partial chunks are removed.
  *
- * Every event is tagged with the execution token of the run that stored the
- * chunk it names, so `Engine.dispatchEvent` drops one from a run a `start-new`
- * replacement superseded, a trailing event included.
+ * A chunk from a run that a `start-new` replacement superseded is ignored
+ * before it touches any window, so a producer that outlives its run cannot
+ * displace the replacement's pending announcement. Every event is also tagged
+ * with the execution token of the run that stored the chunk it names, so
+ * `Engine.dispatchEvent` drops one whose run was superseded while it waited.
  */
 export class StreamChunkAnnouncer implements Disposable {
   readonly #dispatchEvent: (event: Event) => void;
+  readonly #isSuperseded: (
+    workflowId: string,
+    workflowExecutionToken: string | undefined,
+  ) => boolean;
   readonly #intervalMilliseconds: number;
   readonly #windows = new Map<string, Map<string, StreamChunkWindow>>();
 
   constructor(
     dispatchEvent: (event: Event) => void,
+    isSuperseded: (workflowId: string, workflowExecutionToken: string | undefined) => boolean,
     intervalMilliseconds: number = STREAM_CHUNK_EVENT_INTERVAL_MILLISECONDS,
   ) {
     this.#dispatchEvent = dispatchEvent;
+    this.#isSuperseded = isSuperseded;
     this.#intervalMilliseconds = intervalMilliseconds;
   }
 
@@ -62,13 +70,14 @@ export class StreamChunkAnnouncer implements Disposable {
     sequence: number,
     workflowExecutionToken: string | undefined,
   ): void {
+    if (this.#isSuperseded(workflowId, workflowExecutionToken)) return;
     const window = this.#windows.get(workflowId)?.get(key);
     if (window !== undefined && window.workflowExecutionToken === workflowExecutionToken) {
       window.storedSequence = sequence;
       return;
     }
-    // A chunk from a different run of the id restarts the key: the old run's window named its own
-    // sequences, which mean nothing to the new run.
+    // A chunk from the current run of a reused id restarts the key: the superseded run's window
+    // named its own sequences, which mean nothing to the new run.
     if (window !== undefined) this.#forget(workflowId, key, window);
     this.#announce(workflowId, key, sequence, workflowExecutionToken);
   }
