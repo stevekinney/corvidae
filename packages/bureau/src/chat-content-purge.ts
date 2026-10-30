@@ -18,6 +18,8 @@
  *   `session.deleted` listener, which runs only where a mount does and swallows its failure;
  * - its reviews' records: the resolved-review records, the decision records and the secret
  *   answers (see `chat-review-purge.ts`);
+ * - the memories its runs wrote, which `chat-memory-purge.ts` forgets;
+ * - the managed assets it held that nothing else holds (`chat-asset-purge.ts`);
  * - the audit trail's entries of its runs, which hold the answer word for word, the arguments and
  *   results of every tool call, and what each review asked and was told. Those are kept, as proof
  *   that the runs happened, with their content redacted (see `redactAuditDetail`).
@@ -73,6 +75,7 @@ import {
 } from './chat-content-tombstone';
 import type { DurableEventHistory, DurableEventProducer } from './durable-event-history';
 import { deletionMarkerKindFor } from './durable-event-history';
+import type { ChatAsset } from './chat-asset-purge';
 import { serializeUnknownError } from './serialization';
 import type { DiagnosticSink } from './types';
 
@@ -102,6 +105,11 @@ export interface DeletedChat {
    * while the first pass is owed.
    */
   readonly settledAt?: number | undefined;
+  /**
+   * The managed assets the chat held, named before it was deleted because its rows and claims are
+   * gone by the time the purge runs. Absent in a record written before they were named.
+   */
+  readonly assets?: readonly ChatAsset[] | undefined;
 }
 
 /** What {@link createChatContentPurge} reaches out to. */
@@ -139,6 +147,17 @@ export interface ChatContentPurgeDependencies {
    * reviews, decision records and secret answers (`chat-review-purge.ts`).
    */
   readonly purgeReviews: ((runIds: ReadonlySet<string>) => Promise<void>) | undefined;
+  /**
+   * Forgets the memories the chat's runs wrote (`chat-memory-purge.ts`); `undefined` without
+   * governed memory.
+   */
+  readonly purgeMemories:
+    ((sessionId: string, runIds: ReadonlySet<string>) => Promise<void>) | undefined;
+  /**
+   * Deletes the managed assets the chat held that nothing else holds (`chat-asset-purge.ts`);
+   * `undefined` without an asset service.
+   */
+  readonly purgeAssets: ((assets: readonly ChatAsset[]) => Promise<void>) | undefined;
   /** Removes an ended run's interactive surfaces; `undefined` without a surface store. */
   readonly purgeSurfaces: ((runId: string) => Promise<void>) | undefined;
   /**
@@ -212,14 +231,28 @@ function pendingValue(chat: DeletedChat): string {
     incarnation: chat.incarnation,
     runIds: [...new Set(chat.runIds)],
     ...(chat.settledAt === undefined ? {} : { settledAt: chat.settledAt }),
+    ...(chat.assets === undefined ? {} : { assets: chat.assets }),
   });
+}
+
+function parseAssets(value: unknown): ChatAsset[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const assets: ChatAsset[] = [];
+  for (const entry of value as unknown[]) {
+    if (typeof entry !== 'object' || entry === null) return undefined;
+    const { assetId, ownerId } = entry as Record<string, unknown>;
+    if (typeof assetId !== 'string' || typeof ownerId !== 'string') return undefined;
+    assets.push({ assetId, ownerId });
+  }
+  return assets;
 }
 
 function parsePending(text: string): DeletedChat | undefined {
   try {
     const value: unknown = JSON.parse(text);
     if (typeof value !== 'object' || value === null) return undefined;
-    const { sessionId, incarnation, runIds, settledAt } = value as Record<string, unknown>;
+    const { sessionId, incarnation, runIds, settledAt, assets } = value as Record<string, unknown>;
+    const parsedAssets = parseAssets(assets);
     if (
       typeof sessionId !== 'string' ||
       typeof incarnation !== 'string' ||
@@ -233,6 +266,7 @@ function parsePending(text: string): DeletedChat | undefined {
       incarnation,
       runIds,
       ...(typeof settledAt === 'number' && Number.isFinite(settledAt) ? { settledAt } : {}),
+      ...(parsedAssets === undefined ? {} : { assets: parsedAssets }),
     };
   } catch {
     return undefined;
@@ -363,6 +397,7 @@ export function createChatContentPurge(
       await step(runId, () => dependencies.purgeRun?.(runId) ?? Promise.resolve());
     await step(undefined, async () => dependencies.audit()?.redact(runIds));
     await step(undefined, async () => dependencies.purgeReviews?.(runIds));
+    await step(undefined, async () => dependencies.purgeMemories?.(chat.sessionId, runIds));
     await step(undefined, async () => dependencies.purgeLedgers?.(runIds));
     await step(undefined, async () => dependencies.redactTaskRecords?.(runIds));
 
@@ -385,6 +420,7 @@ export function createChatContentPurge(
       await step(undefined, async () =>
         dependencies.purgeSessionInput?.(chat.sessionId, chat.incarnation),
       );
+      await step(undefined, async () => dependencies.purgeAssets?.(chat.assets ?? []));
     }
     if (failures.length > 0) throw new ChatPurgeIncompleteError(chat.sessionId, failures, owned);
     // Owed, not lost: the runs that have not ended keep their content, and the pending record

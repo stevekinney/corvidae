@@ -164,12 +164,14 @@ import { createAssetGeneratedMediaAdmitter } from './assets/generated-media-admi
 import {
   claimRowAssets,
   isPermanentClaimFailure,
+  managedAssetIdsOf,
   releaseClaimsByHolderPrefix,
   releaseRowAssetClaims,
   runRowHolderId,
   sessionRowHolderId,
   sessionRowHolderPrefix,
 } from './assets/row-asset-claims';
+import { heldClaimsOf } from './assets/internal-access';
 import { humanInputSchemasOf, validateHumanInputOption } from './human-input-option';
 import {
   validateChildrenOption,
@@ -180,6 +182,8 @@ import {
 import type { AssetService } from './assets/types';
 import type { DefinitionScannerHealth } from './definition-scanner';
 import { createAssetClaimReconciler } from './asset-claim-reconciliation';
+import { purgeChatAssets, type ChatAsset } from './chat-asset-purge';
+import { purgeChatMemories } from './chat-memory-purge';
 import {
   AUDIT_AGENT_OWNER_PREFIX,
   AUDIT_SCHEDULE_OWNER_PREFIX,
@@ -13684,7 +13688,14 @@ async function constructBureau<const D extends AgentDefinitions>(
     if (durable === undefined) return;
     // By exact id: a prefix purge would take `…-run-10` with `…-run-1`, and refuses a documented
     // custom child id such as `order:42`.
-    await durable.engine.purgeById(runId);
+    const purged = await durable.engine.purgeById(runId);
+    // `false` is also what a lost compare-and-set, a run that began again, or a finalizer still
+    // owed answer. A workflow that is still stored is then the run's content left behind: the step
+    // fails, so the pending record stays and the next pass retries, and its checkpoints stay with
+    // it, since the id may by now be another run's.
+    if (!purged && (await durable.engine.get(runId)) !== null) {
+      throw new Error(`The durable workflow of run "${runId}" was not purged and is still stored`);
+    }
     await durable.checkpointStore.clear(runId);
   }
 
@@ -13763,6 +13774,30 @@ async function constructBureau<const D extends AgentDefinitions>(
     redactTaskRecords: async (runIds) => {
       for (const runId of runIds) await tasks.redactSettlement(runId);
     },
+    purgeAssets: async (assets) => {
+      const service = assetServiceHolder.current;
+      if (service !== undefined) await purgeChatAssets(service, assets);
+    },
+    purgeMemories:
+      runtime.memory === undefined
+        ? undefined
+        : async (sessionId, runIds) => {
+            await purgeChatMemories(
+              {
+                memory: runtime.memory!,
+                tenantId: bureauId,
+                // The task record outlives the chat, and names the agent and owner a run's memory
+                // was written under.
+                placementOf: async (runId) => {
+                  const record = await tasks.record(runId);
+                  return record === undefined || record.agentName === null
+                    ? undefined
+                    : { agentName: record.agentName, owner: record.owner };
+                },
+              },
+              { sessionId, runIds },
+            );
+          },
     purgeSessionInput:
       runtime.durable === undefined
         ? undefined
@@ -14136,6 +14171,32 @@ async function constructBureau<const D extends AgentDefinitions>(
     if (checkFailure !== undefined) throw checkFailure.error;
   }
 
+  /**
+   * COR-1934 — the managed assets a session holds: the ones its rows reference, owned by the
+   * session's owner, and the ones it holds a claim on, owned by whoever owns the asset. Read before
+   * the delete, because the rows are gone by the time the purge runs and the delete releases the
+   * claims. An asset it never claimed is found by its row, and one whose row compaction removed by
+   * its claim.
+   */
+  async function chatAssetsOf(session: AgentSession): Promise<ChatAsset[]> {
+    const context = rowClaimContext(session);
+    if (context === undefined) return [];
+    const found = new Map<string, ChatAsset>();
+    for (const row of context.rows) {
+      for (const assetId of managedAssetIdsOf(row)) {
+        found.set(assetId, { assetId, ownerId: context.principalId });
+      }
+    }
+    const claims = await heldClaimsOf(
+      context.service,
+      sessionRowHolderPrefix(session.id, session.incarnation),
+    );
+    for (const claim of claims) {
+      found.set(claim.assetId, { assetId: claim.assetId, ownerId: claim.ownerId });
+    }
+    return [...found.values()];
+  }
+
   async function releaseSessionGeneratedAssets(session: AgentSession): Promise<void> {
     const context = rowClaimContext(session);
     if (context === undefined) return;
@@ -14203,6 +14264,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         sessionId: id,
         incarnation: session.incarnation,
         runIds: await chatRunIdsOf(session),
+        assets: await chatAssetsOf(session),
       };
       await chatContentPurge.record(deletedChat);
       await prepareSessionsForRemoval([session]);

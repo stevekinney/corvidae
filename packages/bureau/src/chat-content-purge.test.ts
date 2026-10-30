@@ -4,9 +4,11 @@
  * session outbox, a chat that still exists, and a chat recreated under the same id.
  */
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
 
 import type { AuditTrail } from './audit-trail';
+import type { ChatAsset } from './chat-asset-purge';
 import {
   ChatPurgeIncompleteError,
   ChatRunsNotEndedError,
@@ -30,6 +32,8 @@ interface Calls {
   readonly records: string[];
   readonly ledgers: string[][];
   readonly settlements: string[][];
+  readonly memories: string[];
+  readonly assets: string[][];
 }
 
 function setup(
@@ -38,6 +42,7 @@ function setup(
     descendants?: () => Record<string, string[]>;
     taskIds?: () => string[];
     purgeRun?: (runId: string) => Promise<void>;
+    purgeAssets?: (assets: readonly ChatAsset[]) => Promise<void>;
     undrained?: () => boolean;
     incarnation?: () => string | undefined;
   } = {},
@@ -53,6 +58,8 @@ function setup(
     records: [],
     ledgers: [],
     settlements: [],
+    memories: [],
+    assets: [],
   };
   const clock = { now: 1_000 };
   const diagnostics: BureauDiagnostic[] = [];
@@ -107,6 +114,13 @@ function setup(
     purgeSessionInput: async (sessionId, incarnation) => {
       calls.sessionInput.push(`${sessionId}@${incarnation}`);
     },
+    purgeMemories: async (sessionId, runIds) => {
+      calls.memories.push(`${sessionId}:${[...runIds].join(',')}`);
+    },
+    purgeAssets: async (assets) => {
+      calls.assets.push(assets.map((asset) => `${asset.ownerId}/${asset.assetId}`));
+      await options.purgeAssets?.(assets);
+    },
     now: () => clock.now,
     hasUndrainedEvents: async () => options.undrained?.() ?? false,
     currentIncarnation: async () =>
@@ -132,9 +146,46 @@ describe('createChatContentPurge (COR-1934)', () => {
     expect(calls.redacted).toEqual([['run-1', 'run-2']]);
     expect(calls.reviews).toEqual([['run-1', 'run-2']]);
     expect(calls.sessionInput).toEqual(['chat-1@one']);
+    expect(calls.memories).toEqual(['chat-1:run-1,run-2']);
     // The record stays, settled, for the second pass.
     const [key] = await kv.list(PENDING_PREFIX);
     expect(JSON.parse((await kv.get(key!))!)).toMatchObject({ settledAt: 1_000 });
+  });
+
+  it('names the chat’s assets in its pending record, deletes them once its runs have ended, and retries them when that fails', async () => {
+    let failing = true;
+    const { kv, calls, purge } = setup({
+      purgeAssets: async () => {
+        if (failing) throw new Error('injected: asset store down');
+      },
+    });
+    const chat = { ...CHAT, assets: [{ assetId: 'asset-1', ownerId: 'api-key:alice' }] };
+    await purge.record(chat);
+    const [key] = await kv.list(PENDING_PREFIX);
+    expect(JSON.parse((await kv.get(key!))!)).toMatchObject({ assets: chat.assets });
+
+    expect(String(await rejectionOf(purge.run(chat)))).toContain('injected: asset store down');
+    // The pass failed, so the record is not settled and still names the assets.
+    expect(JSON.parse((await kv.get(key!))!)).not.toHaveProperty('settledAt');
+    expect(JSON.parse((await kv.get(key!))!)).toMatchObject({ assets: chat.assets });
+
+    failing = false;
+    await purge.run(chat);
+    expect(calls.assets).toEqual([['api-key:alice/asset-1'], ['api-key:alice/asset-1']]);
+    expect(JSON.parse((await kv.get(key!))!)).toMatchObject({ settledAt: 1_000 });
+  });
+
+  it('reads a pending record written before assets were named, and one with a malformed asset list', async () => {
+    const { kv, calls, purge } = setup({ incarnation: () => undefined });
+    const base = { sessionId: 'chat-1', incarnation: 'one', runIds: ['run-1'] };
+    await kv.set(`${PENDING_PREFIX}chat-1:one`, JSON.stringify(base));
+    await kv.set(
+      `${PENDING_PREFIX}chat-2:one`,
+      JSON.stringify({ ...base, sessionId: 'chat-2', assets: [{ assetId: 1 }] }),
+    );
+    expect(await purge.sweep()).toBe(2);
+    // Neither names an asset, so neither deletes one.
+    expect(calls.assets).toEqual([[], []]);
   });
 
   it('runs the whole purge a second time once the grace has passed, and then drops the record', async () => {

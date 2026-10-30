@@ -601,6 +601,38 @@ describe('a chat delete that fails after the chat is gone (COR-1934)', () => {
     });
   });
 
+  it('stays owed when the engine declines to purge a run’s workflow, and finishes once it does', async () => {
+    await withBureau(firstCallAnswers(), async (harness) => {
+      const { bureau, fixture } = harness;
+      const runId = await harness.chat('chat-1', INPUT);
+      await bureau.maintain();
+      // A finalizer still owed: the engine refuses to purge the workflow, and answers `false`.
+      const owed = `wf-teardown-needed:${encodeURIComponent(runId)}`;
+      await bureau.internals.kv!.set(owed, '1');
+
+      expect(await deletedChat(bureau, 'chat-1')).toBe(true);
+
+      expect(errorsOf(harness.diagnostics).join('\n')).toContain(
+        `The durable workflow of run "${runId}" was not purged`,
+      );
+      const stuck = await scan(fixture);
+      expect(stuck.has(`wf:${runId}`)).toBe(true);
+      const [pending] = await pendingRecords(fixture);
+      // Not settled: the pass failed, so the first pass is still owed.
+      expect(JSON.parse(stuck.get(pending!)!)).not.toHaveProperty('settledAt');
+
+      await bureau.internals.kv!.delete(owed);
+      harness.diagnostics.length = 0;
+      await bureau.maintain();
+      expect(errorsOf(harness.diagnostics)).toEqual([]);
+      const after = await scan(fixture);
+      expect(after.has(`wf:${runId}`)).toBe(false);
+      expect(holding(after, ANSWER)).toEqual([]);
+      await harness.afterGrace();
+      expect(await pendingRecords(fixture)).toEqual([]);
+    });
+  });
+
   it('does not purge a chat whose delete did not commit', async () => {
     await withBureau(firstCallAnswers(), async (harness) => {
       const { bureau, fixture } = harness;

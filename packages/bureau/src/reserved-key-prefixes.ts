@@ -17,7 +17,8 @@
  * classification, and the type refuses a family without one:
  *
  * - `purged`: the family holds a chat's content, and `contexts.delete` removes the keys of the
- *   chat and of its runs (`chat-content-purge.ts`);
+ *   chat and of its runs (`chat-content-purge.ts`). The class test must populate it, or the entry
+ *   says why it is `unexercised`;
  * - `content-free`: the family may name the chat or its runs, but holds nothing anyone wrote,
  *   so its keys may stay; the reason says what it holds;
  * - `kept`: the family is kept on purpose, with the reason: it is not the chat's (an agent's
@@ -34,7 +35,15 @@
 
 /** What `contexts.delete` does to a key family (see the module comment). */
 export type ChatDeleteClassification =
-  | { readonly onChatDelete: 'purged' }
+  | {
+      readonly onChatDelete: 'purged';
+      /**
+       * Why the class test (`chat-delete-purge-content.test.ts`) does not populate the family, when
+       * its chats do not. The test fails a `purged` family it did not populate unless this says why,
+       * and fails a family that carries this reason but was populated, so the reason cannot go stale.
+       */
+      readonly unexercised?: string;
+    }
   | { readonly onChatDelete: 'content-free'; readonly reason: string }
   | { readonly onChatDelete: 'kept'; readonly reason: string };
 
@@ -42,6 +51,12 @@ export type ChatDeleteClassification =
 export type ReservedKeyFamily = ChatDeleteClassification & { readonly prefix: string };
 
 const purged = (prefix: string): ReservedKeyFamily => ({ prefix, onChatDelete: 'purged' });
+/** A `purged` family the class test's chats do not write; the reason says what would. */
+const purgedButUnexercised = (prefix: string, unexercised: string): ReservedKeyFamily => ({
+  prefix,
+  onChatDelete: 'purged',
+  unexercised,
+});
 const contentFree = (prefix: string, reason: string): ReservedKeyFamily => ({
   prefix,
   onChatDelete: 'content-free',
@@ -55,9 +70,15 @@ const kept = (prefix: string, reason: string): ReservedKeyFamily => ({
 
 /** Every key family Bureau writes, with what a chat's delete does to it. */
 export const BUREAU_RESERVED_KEY_FAMILIES: readonly ReservedKeyFamily[] = [
+  // The asset service's own records (`assets/records.ts`): a managed asset is its owner's, so a
+  // chat delete deletes the assets it leaves unreferenced (`chat-asset-purge.ts`) and keeps one
+  // another chat, a hold or a retention claim still holds. A deleted asset's record stays as a
+  // tombstone until the asset policy purges it; it holds media facts and holders, and its bytes
+  // are collected with it.
+  purged('asset:v1:'),
   kept(
-    'asset:v1:',
-    'a managed asset is its principal’s, not a chat’s: its record holds media facts, holders and retention, and its bytes live in asset storage; the delete releases the chat’s claims (asset-claim-reconciliation.ts) and an asset nothing holds expires by its own retention',
+    'asset:v1:audit:',
+    'the asset service’s audit log: an event names the asset, the principal and a holder id (a session or run id), and never content or bytes; it is the proof the asset was claimed, released and deleted',
   ),
   kept(
     'audit:v1:',
@@ -84,14 +105,23 @@ export const BUREAU_RESERVED_KEY_FAMILIES: readonly ReservedKeyFamily[] = [
   ),
   kept('bureau-agent-version:v1:', 'an agent’s version record, not a chat’s'),
   purged('bureau-catalog-run:'),
-  purged('bureau-chat-spend:v1:'),
+  purgedButUnexercised(
+    'bureau-chat-spend:v1:',
+    'written once a run reports a price, which the scripted models of the class test do not',
+  ),
   purged('bureau-child:parent:'),
   purged('bureau-child:record:'),
   contentFree('bureau-delegation:grant:', 'a delegation’s ids and budget amounts'),
   contentFree('bureau-delegation:ledger:', 'a delegation’s ids and spent amounts'),
   kept('bureau-goal:record:', 'a goal’s record; a goal runs in its own session, never in a chat'),
-  purged('bureau-peer-call:record:'),
-  purged('bureau-removed-surfaces:v1:'),
+  purgedButUnexercised(
+    'bureau-peer-call:record:',
+    'written by a peer call (the A2A peer tool), which the class test’s chats do not make',
+  ),
+  purgedButUnexercised(
+    'bureau-removed-surfaces:v1:',
+    'written by a surface removal, which the purge itself performs and cleans up in the same pass',
+  ),
   purged('bureau-resolved-review:v1:'),
   kept('bureau-schedule-transition:', 'a schedule’s pending transition, not a chat’s'),
   purged('bureau-secret-answer:v1:'),
@@ -140,7 +170,10 @@ export const BUREAU_RESERVED_KEY_FAMILIES: readonly ReservedKeyFamily[] = [
     'session-input-identity:v1',
     'the binding of a caller’s input id to a session and incarnation; no payload',
   ),
-  purged('session-input-open:v2:'),
+  purgedButUnexercised(
+    'session-input-open:v2:',
+    'an open-input marker lives only until the input is settled, which the class test waits for',
+  ),
   kept('settings', 'the Bureau’s settings, not a chat’s'),
   kept('skill-source:', 'a skill’s source, not a chat’s'),
   kept('tool-source:', 'a tool’s source, not a chat’s'),
@@ -166,9 +199,11 @@ export const BUREAU_RESERVED_KEY_PREFIXES: readonly string[] = BUREAU_RESERVED_K
 );
 
 /**
- * The key families of the durable engine (Weft) and the session store (Operative) that a chat's
- * runs write into the storage a Bureau shares with them, with what a chat's delete does to each.
- * They are those packages' to reserve, not Bureau's (`WEFT_RESERVED_KEY_PREFIXES` names Weft's),
+ * The key families of the durable engine (Weft), the session store (Operative) and governed
+ * memory that a chat's runs write into the storage a Bureau shares with them, with what a chat's
+ * delete does to each. Every prefix Weft reserves (`WEFT_RESERVED_KEY_PREFIXES`) is here, whether
+ * or not a chat writes it, and `reserved-key-prefixes.test.ts` fails when Weft adds one that is
+ * not. They are those packages' to reserve, not Bureau's,
  * but the purge of a deleted chat reaches them too, so they are classified here. A family a chat
  * writes that is in neither list fails `chat-delete-purge-content.test.ts`.
  */
@@ -184,41 +219,125 @@ export const SHARED_KEY_FAMILIES_OF_A_CHAT: readonly ReservedKeyFamily[] = [
   // Weft: the run's workflow state, checkpoints, headers, indexes, signals and logs, purged by
   // exact id (`purgeWorkflow`'s delete set).
   purged('wf:'),
-  purged('wf-idx-'),
+  purgedButUnexercised(
+    'wf-idx-',
+    'Weft’s workflow visibility index: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
   purged('wf-cleanup:'),
   purged('wf-cleanup-needed:'),
-  purged('wf-headers:'),
+  purgedButUnexercised(
+    'wf-headers:',
+    'a workflow’s headers: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
   purged('wf-has-services:'),
   purged('wf-terminal:'),
-  purged('wf-deadline:'),
-  purged('wf-delayed:'),
-  purged('wf-finalizer-state:'),
-  purged('wf-teardown-needed:'),
-  purged('wf-teardown-succeeded:'),
-  purged('timer-idx:'),
+  purgedButUnexercised(
+    'wf-deadline:',
+    'a workflow’s deadline timer: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
+  purgedButUnexercised(
+    'wf-delayed:',
+    'a delayed workflow start: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
+  purgedButUnexercised(
+    'wf-finalizer-state:',
+    'an engine-driven finalizer’s input: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
+  purgedButUnexercised(
+    'wf-teardown-needed:',
+    'a finalizer’s owed-teardown marker: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
+  purgedButUnexercised(
+    'wf-teardown-succeeded:',
+    'a finalizer’s completion marker: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
+  purgedButUnexercised(
+    'timer-idx:',
+    'a workflow timer’s index entry: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
   purged('ev:'),
-  purged('log:'),
-  purged('log-counter:'),
-  purged('watch-event:'),
-  purged('sig:'),
+  purgedButUnexercised(
+    'log:',
+    'a workflow log line: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
+  purgedButUnexercised(
+    'log-counter:',
+    'a workflow log’s counter: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
+  purgedButUnexercised(
+    'watch-event:',
+    'a workflow watch’s event: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
+  purgedButUnexercised(
+    'sig:',
+    'a pending workflow signal: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
   purged('sigres:'),
-  purged('sigseq:'),
-  purged('review:'),
-  purged('offload:'),
-  purged('archive:'),
-  purged('blob:'),
-  purged('state:'),
-  purged('tool-effect:'),
-  purged('upk:'),
-  purged('upd:'),
-  purged('uph:'),
-  purged('upr:'),
-  purged('actrec:'),
-  purged('async-act:'),
-  purged('attr:'),
-  purged('idx:'),
+  purgedButUnexercised(
+    'sigseq:',
+    'a workflow signal sequence: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
+  purgedButUnexercised(
+    'review:',
+    'Weft’s own review record: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
+  purgedButUnexercised(
+    'offload:',
+    'a payload offloaded from a workflow record: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
+  purgedButUnexercised(
+    'archive:',
+    'an archived workflow payload: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
+  purgedButUnexercised(
+    'blob:',
+    'a workflow’s streamed blob: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
+  purgedButUnexercised(
+    'state:',
+    'a workflow’s scoped state: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
+  purgedButUnexercised(
+    'tool-effect:',
+    'a tool effect receipt: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
+  purgedButUnexercised(
+    'upk:',
+    'a workflow update’s request key: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
+  purgedButUnexercised(
+    'upd:',
+    'a workflow update’s record: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
+  purgedButUnexercised(
+    'uph:',
+    'a workflow update’s history: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
+  purgedButUnexercised(
+    'upr:',
+    'a workflow update’s result: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
+  purgedButUnexercised(
+    'actrec:',
+    'an activity record: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
+  purgedButUnexercised(
+    'async-act:',
+    'an asynchronous activity’s record: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
+  purgedButUnexercised(
+    'attr:',
+    'a workflow’s search attributes: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
+  purgedButUnexercised(
+    'idx:',
+    'a search attribute’s index entry: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
   purged('tag:'),
-  purged('child-by-parent:'),
+  purgedButUnexercised(
+    'child-by-parent:',
+    'Weft’s parent-child index: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
   contentFree(
     'wf-gen:',
     'Weft’s permanent generation fence of a run id, bumped at purge so the id is never reused',
@@ -238,17 +357,97 @@ export const SHARED_KEY_FAMILIES_OF_A_CHAT: readonly ReservedKeyFamily[] = [
   contentFree('fleet-event-watermark', 'the feed’s retention watermark'),
   // Weft: the chat's session-input mailbox, purged whole; its header stays sealed.
   purged('appcmd:'),
-  purged('appready:'),
+  purgedButUnexercised(
+    'appready:',
+    'a mailbox’s ready index: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
   purged('appseq:'),
   purged('appterm:'),
   purged('appidem:'),
-  purged('appprobe:'),
+  purgedButUnexercised(
+    'appprobe:',
+    'a mailbox’s sink probe: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
   contentFree(
     'appmbx:',
     'a mailbox’s header: its ids and counters; a purged mailbox keeps a sealed header that refuses admissions',
   ),
+  // Weft: families that belong to no chat's runs: the host's schedules and workers, the engine's
+  // own bookkeeping, and the A2A push-notification outbox, which only a host that configures push
+  // notifications writes.
+  kept(
+    'a2a:',
+    'Weft’s A2A stores: the push-notification configurations of a host that configures push (a caller’s URL and token fingerprint), and the task store Bureau does not use, since its A2A mount keeps `bureau-a2a-task:v1:`; the push projector’s sweep removes a configuration whose task is gone, and a chat delete does not',
+  ),
+  ...['appdidem:', 'appdlv:', 'appdseq:', 'appdterm:', 'appdue:', 'appobx:'].map((prefix) =>
+    kept(
+      prefix,
+      'Weft’s application delivery outbox, which carries A2A push notifications for a host that configures push; a delivery’s payload is a projection of the task’s events, kept until the push projector’s sweep and the outbox’s retention remove it, not by a chat delete (a known gap, named in external-control-plane.md)',
+    ),
+  ),
+  contentFree('audit:bulk:', 'Weft’s audit of a bulk operation: its request id, filter and counts'),
+  contentFree('budget:', 'Weft’s spending counters, by namespace and period'),
+  contentFree('budget-charged:', 'the marker that an operation was charged to a budget once'),
+  kept('catalog-removal-generation:', 'the engine’s activity catalog, shared by every run'),
+  kept('catalog-tombstone:', 'the engine’s activity catalog, shared by every run'),
+  contentFree('lease:', 'the engine’s ownership lease: an instance id and an epoch'),
+  contentFree('liveness:', 'an engine instance’s heartbeat'),
+  contentFree('ownership-mode-marker', 'the ownership mode the store was stamped with'),
+  kept(
+    'op:',
+    'Weft’s legacy task-ledger operations, read only by its doctor; Bureau’s chat runs write none',
+  ),
+  kept('schedule:', 'a schedule’s definition, not a chat’s'),
+  contentFree('schedule-due:', 'the time index of a schedule’s next fires'),
+  contentFree(
+    'schedule-missed:',
+    'a record that a schedule missed an occurrence: ids and a reason',
+  ),
+  contentFree(
+    'schedule-run-by-schedule:',
+    'the index from a schedule to the workflow ids of its fires',
+  ),
+  contentFree('schedule-run-link:', 'the link from a fire’s workflow id to its schedule'),
+  contentFree('schedule-run:', 'the record that a workflow was a schedule’s fire'),
+  contentFree(
+    'start-idem:',
+    'the binding of a caller’s start idempotency key to the workflow it created',
+  ),
+  contentFree('wf-teardown:', 'a finalizer’s teardown timer: a workflow id and a time'),
+  kept(
+    'wf-teardown-deadletter-history:',
+    'Weft’s record of every finalizer that leaked a resource, kept past purge as the operator’s evidence, like wf-teardown-deadletter:',
+  ),
+  kept('worker-deployment-binding:', 'a worker deployment’s record, not a chat’s'),
+  kept('worker-deployment-removed:', 'a worker deployment’s record, not a chat’s'),
+  kept('worker-deployment-routing:', 'a worker deployment’s record, not a chat’s'),
+  kept('worker-deployment-version:', 'a worker deployment’s record, not a chat’s'),
   // Weft: the activity catalog, shared by every run.
   kept('catalog-entry:', 'the engine’s activity catalog, shared by every run'),
   kept('catalog-active:', 'the engine’s active catalog set, shared by every run'),
   contentFree('weft:', 'Weft’s persisted schema version'),
+  // Operative: a goal's attempt artifacts, which a goal keeps in its own session.
+  kept(
+    'fresh-attempt-artifact:v1:',
+    'a goal attempt’s artifacts; a goal runs in its own session, never in a chat',
+  ),
+  // Governed memory (`@lostgradient/memory`): what a run remembers, partitioned by the Bureau and
+  // the run's owner, under the agent's collection (`createMemoryPersistHook`).
+  purged('app:agent-bureau:memory:v1:'),
+  kept(
+    'app:agent-bureau:memory-governance:v1:',
+    'governed memory’s ledger: its events, deletion receipts and scopes name the principal (a run id), the record ids and content digests of what was written, recalled or forgotten, and never the content; it is the proof a memory was deleted',
+  ),
+  kept(
+    'app:agent-bureau:memory-evidence:v1:',
+    'the evidence store of memory consolidation, which a host composes beside governed memory and a chat’s runs do not write; a source deletion reaches the projections derived from a record',
+  ),
+  kept(
+    'app:agent-bureau:memory-projection:v1:',
+    'the projection store of memory consolidation, which a host composes beside governed memory and a chat’s runs do not write; a source deletion reaches the projections derived from a record',
+  ),
+  kept(
+    'app:agent-bureau:memory-transition:v1:',
+    'the transition receipts of memory consolidation, which a host composes beside governed memory and a chat’s runs do not write',
+  ),
 ];

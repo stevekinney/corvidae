@@ -17,8 +17,15 @@ import {
   type GenerateFunction,
 } from '@lostgradient/operative';
 import type { AgentDefinitions } from './agent-catalog';
+import {
+  createGovernedMemory,
+  createMemoryGovernanceLedger,
+  createMemoryGovernancePolicy,
+  createMockEmbedder,
+  createWeftMemoryRecordStorage,
+} from '@lostgradient/memory';
 import { createBureau } from './create-bureau';
-import { createMemoryAssetStorage } from './assets/storage';
+import { createDurableAssetStorage } from './assets/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
@@ -27,7 +34,7 @@ import { message, type Json } from './http/a2a-mount.test-support.ts';
 import { authentication } from './http/management/management-fixtures.test-support.ts';
 import { waitForCondition } from './test';
 import { createSqliteStorageFixture, type BureauStorageFixture } from './test/storage-fixtures';
-import { base64Of, pngBytes } from './testing/asset-fixtures.test-support.ts';
+import { base64Of, pngBytes, textBytes } from './testing/asset-fixtures.test-support.ts';
 import type { Bureau } from './types';
 import { INTERACTIVE_SURFACE_CONTRACT_VERSION } from './interactive-surface/types';
 import {
@@ -48,6 +55,8 @@ function sentinelsOf(tag: string, kind: ChatKind): Sentinels {
     a2aFollowUp: `A2AFOLLOWUP${tag}`,
     /** The name of a file sent inline with the follow-up, which the send's receipt keeps. */
     fileName: `FILENAME${tag}`,
+    /** The bytes of that file, which the asset store keeps. */
+    fileBytes: `FILEBYTES${tag}`,
     input: `SESSIONINPUT${tag}`,
     surfaceSummary: `SURFACESUMMARY${tag}`,
     surfaceData: `SURFACEDATA${tag}`,
@@ -75,6 +84,10 @@ function sentinelsOf(tag: string, kind: ChatKind): Sentinels {
 /** The plaintext of a question chat's secret field, which must never be stored in clear. */
 const secretOf = (tag: string) => `PLAINTEXT-PASSWORD-${tag}`;
 
+const ASSET_BLOB_PREFIX = 'asset:v1:blob:';
+const ASSET_RECORD_PREFIX = 'asset:v1:record:';
+const MEMORY_RECORD_PREFIX = 'app:agent-bureau:memory:v1:';
+
 const ALICE = 'api-key:alice';
 const OPERATOR = 'api-key:operator';
 const disposables: Bureau[] = [];
@@ -89,7 +102,12 @@ afterEach(async () => {
 async function scan(fixture: BureauStorageFixture): Promise<Map<string, string>> {
   const entries = new Map<string, string>();
   for await (const [key, value] of fixture.storage.scan('')) {
-    entries.set(key, Buffer.from(value).toString('latin1'));
+    const text = Buffer.from(value).toString('latin1');
+    // An asset's bytes are stored base64: decoded, so a sentinel inside them is found.
+    entries.set(
+      key,
+      key.startsWith(ASSET_BLOB_PREFIX) ? Buffer.from(text, 'base64').toString('latin1') : text,
+    );
   }
   return entries;
 }
@@ -166,12 +184,69 @@ function classificationFindings(
   return findings;
 }
 
+/**
+ * The `purged` families the class test got wrong: a family its chats did not populate, which no
+ * clean scan afterwards can say anything about, unless the family says why it is not exercised;
+ * and a family that says so but was populated, whose reason has gone stale.
+ */
+function purgedFamilyFindings(entries: Map<string, string>): string[] {
+  const populated = new Set<string>();
+  for (const key of entries.keys()) {
+    const family = familyOf(key);
+    if (family !== undefined) populated.add(family.prefix);
+  }
+  const findings: string[] = [];
+  for (const family of FAMILIES) {
+    if (family.onChatDelete !== 'purged') continue;
+    const isPopulated = populated.has(family.prefix);
+    if (family.unexercised === undefined && !isPopulated) {
+      findings.push(`${family.prefix} was not populated, and says nothing about why`);
+    }
+    if (family.unexercised !== undefined && isPopulated) {
+      findings.push(`${family.prefix} was populated, but is declared unexercised`);
+    }
+  }
+  return findings;
+}
+
 interface World {
   readonly bureau: Bureau;
   readonly fixture: BureauStorageFixture;
   /** Which chat the scripted models are serving now. */
   readonly plan: { current: Sentinels };
   handle(request: Request): Promise<Response>;
+}
+
+/** The three agents a chat uses, named with `suffix`: one that calls tools, one that asks, one that is delegated to. */
+function agentsFor(
+  suffix: string,
+  helper: GenerateFunction,
+  asker: GenerateFunction,
+  vision: ReturnType<typeof createModelCatalog>['descriptors'],
+  tools: Parameters<typeof createToolbox>[0],
+  plan: { current: Sentinels },
+) {
+  return {
+    [`helper${suffix}`]: createAgent({
+      generate: withBackendDescriptors(helper, vision),
+      toolbox: createToolbox(tools, {
+        approvalSecret: 'chat-purge-secret',
+        approvalPolicy: { mode: 'on-mutation' },
+      }) as unknown as Toolbox,
+      stopWhen: stopWhen.some(stopWhen.toolOutcome('action_required'), stopWhen.noToolCalls()),
+    }),
+    // A plain toolbox: the question tool is only offered where no approval policy needs a
+    // versioned definition of it.
+    [`asker${suffix}`]: createAgent({
+      generate: withBackendDescriptors(asker, vision),
+      stopWhen: stopWhen.noToolCalls(),
+    }),
+    // The agent a chat delegates to.
+    [`worker${suffix}`]: createAgent({
+      generate: async () => ({ content: plan.current['childOutcome'] ?? '', toolCalls: [] }),
+      stopWhen: stopWhen.noToolCalls(),
+    }),
+  };
 }
 
 /** A Bureau over SQLite with two agents: one calls tools and is gated by approvals, one asks a person. */
@@ -228,25 +303,11 @@ async function openWorld(): Promise<World> {
   const bureau = await createBureau<AgentDefinitions>({
     id: 'chat-purge-content',
     agents: {
-      helper: createAgent({
-        generate: withBackendDescriptors(helper, vision),
-        toolbox: createToolbox([lookup, refund], {
-          approvalSecret: 'chat-purge-secret',
-          approvalPolicy: { mode: 'on-mutation' },
-        }) as unknown as Toolbox,
-        stopWhen: stopWhen.some(stopWhen.toolOutcome('action_required'), stopWhen.noToolCalls()),
-      }),
-      // A plain toolbox: the question tool is only offered where no approval policy needs a
-      // versioned definition of it.
-      asker: createAgent({
-        generate: withBackendDescriptors(asker, vision),
-        stopWhen: stopWhen.noToolCalls(),
-      }),
-      // The agent a chat delegates to.
-      worker: createAgent({
-        generate: async () => ({ content: plan.current['childOutcome'] ?? '', toolCalls: [] }),
-        stopWhen: stopWhen.noToolCalls(),
-      }),
+      ...agentsFor('', helper, asker, vision, [lookup, refund], plan),
+      // The chats that are kept have agents of their own: an agent remembers across its chats, so
+      // chats that share one would recall each other's answers into their conversations, a copy
+      // of a deleted chat's words that no purge of the deleted chat could reach.
+      ...agentsFor('-kept', helper, asker, vision, [lookup, refund], plan),
     },
     storage: fixture.storage,
     durable: true,
@@ -267,12 +328,25 @@ async function openWorld(): Promise<World> {
         },
       },
     },
-    assets: { storage: createMemoryAssetStorage() },
+    // Over the same store as everything else, so a scan of the store finds the bytes too.
+    assets: { storage: createDurableAssetStorage(fixture.storage) },
+    // Governed memory over the same store: each final answer is remembered under the agent.
+    memory: createGovernedMemory({
+      storage: createWeftMemoryRecordStorage(fixture.storage),
+      ledger: createMemoryGovernanceLedger(fixture.storage),
+      embedder: createMockEmbedder(64),
+      policy: createMemoryGovernancePolicy({ revision: 'governance:chat-purge' }),
+      propagation: {
+        caches: 'not-retained',
+        'managed-asset-bytes': 'not-retained',
+        'external-processors': 'not-retained',
+      },
+    }),
   });
   disposables.push(bureau);
   const handle = createBureauHandler(bureau, {
     authentication,
-    a2aAgents: ['helper', 'asker'],
+    a2aAgents: ['helper', 'asker', 'helper-kept', 'asker-kept'],
     publicUrl: 'http://localhost',
   });
   return { bureau, fixture, plan, handle };
@@ -360,10 +434,15 @@ async function sendInput(world: World, task: { id: string; contextId: string }, 
 }
 
 /** The chat's run hands work to another agent, whose input and outcome are the chat's words. */
-async function delegate(world: World, task: { id: string }, sentinels: Sentinels): Promise<string> {
+async function delegate(
+  world: World,
+  task: { id: string },
+  sentinels: Sentinels,
+  agentName: string,
+): Promise<string> {
   const dispatched = await world.bureau.children.dispatch({
     parentRunId: task.id,
-    agentName: 'worker',
+    agentName,
     input: sentinels['childInput']!,
   });
   if (dispatched.outcome !== 'started')
@@ -389,11 +468,17 @@ async function completed(world: World, runId: string) {
  * and an answer, a person's input reaches it, an interactive surface is opened on it, and the chat
  * goes on with a second message that the agent answers.
  */
-async function useEveryFeature(world: World, kind: ChatKind, tag: string) {
+async function useEveryFeature(
+  world: World,
+  kind: ChatKind,
+  tag: string,
+  options: { readonly kept?: boolean; readonly sharedAssetId?: string } = {},
+) {
   const { bureau } = world;
   const sentinels = sentinelsOf(tag, kind);
   world.plan.current = sentinels;
-  const agent = kind === 'approval' ? 'helper' : 'asker';
+  const suffix = options.kept === true ? '-kept' : '';
+  const agent = `${kind === 'approval' ? 'helper' : 'asker'}${suffix}`;
   const task = await a2aSend(world, agent, sentinels['a2aMessage']!);
   const reviewsOf = (runId: string) =>
     bureau.reviews.list().filter((entry) => entry.runId === runId);
@@ -423,7 +508,7 @@ async function useEveryFeature(world: World, kind: ChatKind, tag: string) {
   } else {
     if (review?.kind !== 'human-wait') throw new Error('Expected a question to a person.');
     // The run waits for the person, so it can hand work on.
-    runIds.push(await delegate(world, task, sentinels));
+    runIds.push(await delegate(world, task, sentinels, `worker${suffix}`));
     // Answered as a command with a structured answer: its receipt keeps the answer it admitted
     // (`TasksRespondClaim.submission`), in the `tasks.respond` ledger.
     // The secret field's plaintext is never stored in clear: it is sealed apart from the answer.
@@ -445,10 +530,20 @@ async function useEveryFeature(world: World, kind: ChatKind, tag: string) {
     parts: [
       { text: sentinels['a2aFollowUp'] },
       {
-        raw: base64Of(pngBytes(8, 8)),
+        raw: base64Of(fileBytes(sentinels['fileBytes']!)),
         filename: `${sentinels['fileName']}.png`,
         mediaType: 'image/png',
       },
+      // A file another chat sent, named by its route: this chat then holds a claim on it too.
+      ...(options.sharedAssetId === undefined
+        ? []
+        : [
+            {
+              url: `http://localhost/assets/${options.sharedAssetId}/content`,
+              mediaType: 'image/png',
+              filename: 'shared.png',
+            },
+          ]),
     ],
   });
   expect(followUp.contextId).toBe(task.contextId);
@@ -457,6 +552,31 @@ async function useEveryFeature(world: World, kind: ChatKind, tag: string) {
   await bureau.maintain();
   const ids: ChatIds = { contextId: task.contextId, runIds };
   return { task, sentinels, ids };
+}
+
+/** A PNG header with the sentinel after it, so the file's bytes are its own and findable. */
+function fileBytes(sentinel: string): Uint8Array {
+  const header = pngBytes(8, 8, 0);
+  const bytes = new Uint8Array(header.byteLength + sentinel.length);
+  bytes.set(header);
+  bytes.set(textBytes(sentinel), header.byteLength);
+  return bytes;
+}
+
+/** The asset ids of the store's records whose bytes hold `needle`. */
+function assetIdsHolding(entries: Map<string, string>, needle: string): string[] {
+  const digests = new Set(
+    [...entries]
+      .filter(([key, value]) => key.startsWith(ASSET_BLOB_PREFIX) && value.includes(needle))
+      .map(([key]) => key.slice(ASSET_BLOB_PREFIX.length)),
+  );
+  return [...entries]
+    .filter(([key, value]) => {
+      if (!key.startsWith(ASSET_RECORD_PREFIX)) return false;
+      const digest = (JSON.parse(value) as { digest?: string }).digest;
+      return digest !== undefined && digests.has(digest);
+    })
+    .map(([key]) => key.slice(ASSET_RECORD_PREFIX.length));
 }
 
 function allSentinels(...chats: Sentinels[]): [name: string, value: string][] {
@@ -470,9 +590,14 @@ describe('contexts.delete purges every content-bearing feature of a chat (COR-19
       await useEveryFeature(world, 'approval', 'DoomedA'),
       await useEveryFeature(world, 'question', 'DoomedQ'),
     ];
+    // A file of a doomed chat that a kept chat sends again by its route: the kept chat holds it too.
+    const sharedAssetId = assetIdsHolding(
+      await scan(world.fixture),
+      doomed[0]!.sentinels['fileBytes']!,
+    )[0]!;
     const kept = [
-      await useEveryFeature(world, 'approval', 'KeptA'),
-      await useEveryFeature(world, 'question', 'KeptQ'),
+      await useEveryFeature(world, 'approval', 'KeptA', { kept: true, sharedAssetId }),
+      await useEveryFeature(world, 'question', 'KeptQ', { kept: true }),
     ];
 
     const before = await scan(world.fixture);
@@ -482,6 +607,22 @@ describe('contexts.delete purges every content-bearing feature of a chat (COR-19
       .map(([name, value]) => `${name}:${value}`);
     expect(unstored).toEqual([]);
 
+    // Every `purged` family was populated before the delete: a family the chat never exercised
+    // proves nothing about the purge, however clean it looks afterwards.
+    expect(purgedFamilyFindings(before)).toEqual([]);
+
+    // Every chat's final answer was remembered, under its agent.
+    expect(
+      allSentinels(...[...doomed, ...kept].map((chat) => ({ answer: chat.sentinels['answer']! })))
+        .filter(
+          ([, value]) =>
+            !holding(before, value).some((key) => key.startsWith(MEMORY_RECORD_PREFIX)),
+        )
+        .map(([, value]) => value),
+    ).toEqual([]);
+    // The shared file is held by its own chat and by the kept chat that sent it again.
+    expect(assetIdsHolding(before, doomed[0]!.sentinels['fileBytes']!)).toEqual([sharedAssetId]);
+
     // The sealed answers of the two question chats are stored, one record each, and the plaintext
     // of neither is anywhere.
     const secretKeys = (entries: Map<string, string>) =>
@@ -490,12 +631,24 @@ describe('contexts.delete purges every content-bearing feature of a chat (COR-19
     expect(holding(before, secretOf('DoomedQ'))).toEqual([]);
     expect(holding(before, secretOf('KeptQ'))).toEqual([]);
 
+    // The file only the second doomed chat held: its record is all that remains of it afterwards.
+    const [unsharedAssetId] = assetIdsHolding(before, doomed[1]!.sentinels['fileBytes']!);
+    expect(unsharedAssetId).toBeDefined();
+
     for (const chat of doomed) await world.bureau.contexts.delete(chat.task.contextId);
     await world.bureau.maintain();
 
+    // The bytes of a file nothing holds any more go with their asset's record, at the next collection.
+    await world.bureau.assets!.collectGarbage().result();
     const after = await scan(world.fixture);
+    for (const [k, v] of after)
+      if (k.startsWith('app:agent-bureau:memory')) console.log(k, v.slice(0, 700));
     const surviving = Object.fromEntries(
       allSentinels(...doomed.map((chat) => chat.sentinels))
+        // The one file a kept chat also holds stays, with its bytes, as the kept chat's own.
+        .filter(
+          ([name, value]) => name !== 'fileBytes' || value !== doomed[0]!.sentinels['fileBytes'],
+        )
         .map(([name, value]) => [`${name}:${value}`, familiesHolding(after, value)] as const)
         .filter(([, families]) => families.length > 0),
     );
@@ -508,6 +661,18 @@ describe('contexts.delete purges every content-bearing feature of a chat (COR-19
       ),
     ).toEqual([]);
     expect(secretKeys(after)).toHaveLength(1);
+    // The kept chats’ answers are still remembered, and the file two chats held is still there.
+    expect(
+      kept
+        .map((chat) => chat.sentinels['answer']!)
+        .filter(
+          (value) => !holding(after, value).some((key) => key.startsWith(MEMORY_RECORD_PREFIX)),
+        ),
+    ).toEqual([]);
+    expect(assetIdsHolding(after, doomed[0]!.sentinels['fileBytes']!)).toEqual([sharedAssetId]);
+    expect(JSON.parse(after.get(`${ASSET_RECORD_PREFIX}${sharedAssetId}`)!).state).toBe(
+      'available',
+    );
     const lost = allSentinels(...kept.map((chat) => chat.sentinels))
       .filter(([, value]) => holding(after, value).length === 0)
       .map(([name, value]) => `${name}:${value}`);

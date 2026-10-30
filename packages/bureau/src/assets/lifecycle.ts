@@ -358,6 +358,7 @@ export function startDeletion(
   internals: AssetInternals,
   assetId: string,
   principal: AssetPrincipal,
+  options?: { readonly unlessReferenced?: boolean },
 ): AssetWorkHandle<AssetDescriptor> {
   return internals.registry.start<AssetDescriptor>(
     { kind: 'deletion', assetId, owner: principal.id, classify: (error) => classifyFailure(error) },
@@ -377,6 +378,8 @@ export function startDeletion(
           if (owned.state === 'pending') throw new AssetUnavailableError(assetId, owned.state);
           if (owned.holds.length > 0)
             throw new AssetAdmissionError('held', 'The asset is under a hold.');
+          if (options?.unlessReferenced === true && owned.references.length > 0)
+            throw new AssetAdmissionError('held', 'The asset is still referenced.');
           return owned;
         },
         async ({ record: current }) => {
