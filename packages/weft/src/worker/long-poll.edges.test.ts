@@ -83,6 +83,7 @@ describe('LongPollWorker registration', () => {
     });
     worker = createWorker(server, {
       artifactDigest: 'sha256:edge-artifact',
+      runtimeName: 'edge-runtime',
       runtimeVersion: '9.9.9',
       capabilities: { streaming: true },
     });
@@ -91,6 +92,7 @@ describe('LongPollWorker registration', () => {
     const body = await registered.promise;
 
     expect(body['manifest'].deployment.artifactDigest).toBe('sha256:edge-artifact');
+    expect(body['manifest'].runtime.name).toBe('edge-runtime');
     expect(body['manifest'].runtime.version).toBe('9.9.9');
     expect(body['manifest'].capabilities).toEqual({ streaming: true });
   });
