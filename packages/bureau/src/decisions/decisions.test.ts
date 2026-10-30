@@ -18,6 +18,7 @@ import { z } from 'zod';
 import { canonicalJson } from '../command-ledger.ts';
 import { BureauError, createBureau } from '../create-bureau.ts';
 import type { Bureau, BureauOptions } from '../types.ts';
+import { hosted } from './hosted-decisions.test-support.ts';
 import { MemoryStorage } from '@lostgradient/storage';
 
 const bureaus: Bureau[] = [];
@@ -127,7 +128,7 @@ async function rejection(promise: Promise<unknown>): Promise<unknown> {
 describe('routing a decision by kind', () => {
   it('sends a kind the configured model serves to that model and nothing else', async () => {
     const model = hostModel(['boolean']);
-    const { bureau, generate } = await open({ decisions: { model } });
+    const { bureau, generate } = await open({ decisions: hosted(model) });
 
     const decision = await bureau.decisions.decide({ kind: 'boolean', question: 'Is it?' });
 
@@ -139,7 +140,7 @@ describe('routing a decision by kind', () => {
   it('sends a kind absent from the configured model’s kinds to the fallback', async () => {
     const model = hostModel(['boolean']);
     const { bureau, generated } = await open({
-      decisions: { model },
+      decisions: hosted(model),
       replies: ['{"key":"b"}'],
     });
 
@@ -272,7 +273,7 @@ describe('a decision nothing can answer', () => {
   it('still answers a kind the configured model serves when the fallback cannot', async () => {
     const { bureau } = await open({
       withoutGenerate: true,
-      decisions: { model: hostModel(['boolean']) },
+      decisions: hosted(hostModel(['boolean'])),
     });
 
     const served = await bureau.decisions.decide({ kind: 'boolean', question: 'Is it?' });

@@ -34,6 +34,7 @@ export type NumberInputProps = Omit<
   | 'onfocus'
   | 'onkeydown'
   | 'class'
+  | 'size'
 > & {
   /** HTML `id` for the underlying input, used to associate the `<label>` and ARIA attributes. Required. */
   id: string;

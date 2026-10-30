@@ -725,6 +725,8 @@ export function serve(options: ServeOptions): WeftServer {
       },
       publishWatchMessage: (workflowId, sequence, message) => {
         publishWatchMessage(context, workflowId, sequence, message);
+        // The event is stored by now, so a feed subscriber may replay it.
+        context.watchEventFeed.notify(workflowId, sequence, message);
       },
       fleetEventFeed: context.fleetEventFeed,
     });

@@ -56,11 +56,17 @@
  * Input element
  * ---------------------------------------- */
 
+  /* Size: the frame's height is the shared `--cinder-control-height-*` step
+     for the size, and the block padding leaves the line box inside it
+     (1px border + padding + 14px × leading-normal), so the content never
+     pushes the field taller than its token. The private height is what the
+     input-group rule below subtracts the group's border from. */
   .cinder-input {
+    --_cinder-input-height: var(--cinder-control-height-md);
     display: block;
     width: 100%;
-    min-height: var(--cinder-control-height-md);
-    padding: var(--cinder-space-1-5) var(--cinder-space-3);
+    min-height: var(--_cinder-input-height);
+    padding: var(--cinder-space-1) var(--cinder-space-3);
     font-size: var(--cinder-text-sm);
     font-family: inherit;
     line-height: var(--cinder-leading-normal);
@@ -73,6 +79,16 @@
     transition:
       border-color var(--cinder-duration-fast) var(--cinder-ease-standard),
       box-shadow var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  .cinder-input[data-cinder-size='sm'] {
+    --_cinder-input-height: var(--cinder-control-height-sm);
+    padding-block: var(--cinder-space-0-5);
+  }
+
+  .cinder-input[data-cinder-size='lg'] {
+    --_cinder-input-height: var(--cinder-control-height-lg);
+    padding-block: var(--cinder-space-2);
   }
 
   .cinder-input::placeholder {
@@ -294,6 +310,9 @@
     background: transparent;
     flex: 1 1 auto;
     min-width: 0;
+    /* The group draws the 1px border the input dropped, so the input is two
+       pixels shorter and the group lands on the size's token height. */
+    min-height: calc(var(--_cinder-input-height) - 2px);
     padding-inline: var(--cinder-space-3);
     /* The input keeps its own focus ring VALUE inside the group and the clip
        hides it, rather than setting `box-shadow: none`: the input is the same

@@ -33,6 +33,7 @@ Single-line text input with support for labels, addons, validation states, and h
 | `labelVisible` | `boolean` | no | `true` | Whether the `label` is visibly rendered. Set `false` to visually hide it while keeping it programmatically associated. |
 | `leadingInteractive` | `boolean` | no | — | When true, the leading adornment is interactive and included in the accessibility tree. Default `false`. |
 | `required` | `boolean` | no | — | Marks the input as required for form validation, matching the native `required` attribute. |
+| `size` | `"sm"` \| `"md"` \| `"lg"` | no | `"md"` | Height step from the shared `--cinder-control-height-*` scale: `sm` 28px, `md` 32px, `lg` 40px, the same heights as a Button of that size. Replaces the native character-width `size` attribute, which Cinder does not forward; set a width with CSS instead. |
 | `trailingInteractive` | `boolean` | no | — | When true, the trailing adornment is interactive and included in the accessibility tree. Default `false`. |
 | `type` | `"number"` \| `"date"` \| `"email"` \| `"password"` \| `"search"` \| `"tel"` \| `"text"` \| `"time"` \| `"url"` | no | — | Input type controlling the browser's built-in validation and keyboard. Default `"text"`. |
 | `variant` | `"default"` \| `"code"` | no | `"default"` | Visual style. `"code"` applies a shared monospace metric set (font-family, font-size, line-height, tab-size) for source-like values such as regular expressions, URIs, or identifiers. |

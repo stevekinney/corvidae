@@ -77,12 +77,12 @@
     0 4px 6px -4px light-dark(oklch(0% 0 0 / 0.12), oklch(0% 0 0 / 0.32));
   /* Extra-small control height (24px). */
   --cinder-control-height-xs: 1.5rem;
-  /* Small control height; the toolbar default (32px). */
-  --cinder-control-height-sm: 2rem;
-  /* Medium control height; the form-field default (36px). */
-  --cinder-control-height-md: 2.25rem;
-  /* Large control height; clears the WCAG AAA touch target (44px). */
-  --cinder-control-height-lg: 2.75rem;
+  /* Small control height (28px); toolbar density uses it. */
+  --cinder-control-height-sm: 1.75rem;
+  /* Medium control height (32px); the default for every control. */
+  --cinder-control-height-md: 2rem;
+  /* Large control height (40px). */
+  --cinder-control-height-lg: 2.5rem;
   /* Control fill. */
   --cinder-control-background: var(--cinder-surface-raised);
   /* Disabled control fill: a flat neutral that reads as inert while staying inside the frame (a control never drops to `surface.inset`). */
@@ -514,18 +514,14 @@
   --cinder-button-radius-md: var(--cinder-radius-md);
   /* Large button corner radius. */
   --cinder-button-radius-lg: var(--cinder-radius-md);
-  /* Extra-large button corner radius. */
-  --cinder-button-radius-xl: var(--cinder-radius-md);
-  /* Extra-small button height (24px), aliasing the shared control-height tier. */
+  /* Extra-small button height: `control.height.xs` (24px). */
   --cinder-button-height-xs: var(--cinder-control-height-xs);
-  /* Small button height: `control.height.sm` (32px), so a small Button lines up with a toolbar SegmentedControl and a toolbar Chip. */
+  /* Small button height: `control.height.sm` (28px), so a small Button lines up with a toolbar SegmentedControl and a toolbar Chip. */
   --cinder-button-height-sm: var(--cinder-control-height-sm);
-  /* Medium button height (32px). */
-  --cinder-button-height-md: 2rem;
-  /* Large button height (36px). */
-  --cinder-button-height-lg: 2.25rem;
-  /* Extra-large button height (40px). */
-  --cinder-button-height-xl: 2.5rem;
+  /* Medium button height: `control.height.md` (32px). */
+  --cinder-button-height-md: var(--cinder-control-height-md);
+  /* Large button height: `control.height.lg` (40px). */
+  --cinder-button-height-lg: var(--cinder-control-height-lg);
   /* Extra-small button horizontal padding. */
   --cinder-button-padding-x-xs: var(--cinder-space-1-5);
   /* Small button horizontal padding. */
@@ -534,18 +530,14 @@
   --cinder-button-padding-x-md: var(--cinder-space-2-5);
   /* Large button horizontal padding. */
   --cinder-button-padding-x-lg: var(--cinder-space-3);
-  /* Extra-large button horizontal padding. */
-  --cinder-button-padding-x-xl: var(--cinder-space-3-5);
   /* Extra-small button vertical padding. */
   --cinder-button-padding-y-xs: var(--cinder-space-0-5);
-  /* Small button vertical padding: the same as `md`, since the two share a 32px height and the label centers within it. */
-  --cinder-button-padding-y-sm: var(--cinder-space-1-5);
+  /* Small button vertical padding (4px), so a 16px icon, the padding and the border fit inside the 28px `control.height.sm`. */
+  --cinder-button-padding-y-sm: var(--cinder-space-1);
   /* Medium button vertical padding. */
   --cinder-button-padding-y-md: var(--cinder-space-1-5);
   /* Large button vertical padding. */
   --cinder-button-padding-y-lg: var(--cinder-space-2);
-  /* Extra-large button vertical padding. */
-  --cinder-button-padding-y-xl: var(--cinder-space-2-5);
   /* Extra-small button label font size. */
   --cinder-button-font-size-xs: var(--cinder-text-xs);
   /* Small button label font size. */
@@ -554,8 +546,6 @@
   --cinder-button-font-size-md: var(--cinder-text-sm);
   /* Large button label font size. */
   --cinder-button-font-size-lg: var(--cinder-text-md);
-  /* Extra-large button label font size. */
-  --cinder-button-font-size-xl: var(--cinder-text-lg);
   /* Toggle track color in the off, resting state. The track is the switch's only visible shape, so the light arm is the 3:1 control tier (`border.control`); the dark arm raises lightness for >=3:1 shape contrast against the surface. */
   --cinder-toggle-track-off-resting: light-dark(var(--cinder-border-control), oklch(45% 0.02 245));
   /* Toggle track color in the off state on hover: `border.control.hover` in the light arm, one step heavier than `off-resting`. */

@@ -232,3 +232,59 @@ describe('border-on-surface contrast', () => {
     expect(() => readOklchToken('--cinder-border-faint')).not.toThrow();
   });
 });
+
+describe('field edges (COR-1814)', () => {
+  // A lighter hairline edge was on the table for fields; WCAG 1.4.11 wins
+  // over it. Every text-entry field draws its resting edge with
+  // `--cinder-control-border` (the 48% `border.control` tier) and its hover
+  // edge with `--cinder-control-border-hover` (58%), and both clear 3:1
+  // against the page and against the field's own fill in both themes.
+  const read = (path: string) => Bun.file(new URL(path, import.meta.url)).text();
+  const fieldStylesheets = {
+    input: '../components/input/input.css',
+    select: '../components/select/select.css',
+    combobox: '../components/combobox/combobox.css',
+    multiSelect: '../components/multi-select/multi-select.css',
+    textarea: '../components/textarea/textarea.css',
+    inputFrame: './components/_input-frame.css',
+  } as const;
+
+  it('the field edge tokens alias the control border tiers', async () => {
+    const tokens = await read('./tokens-base.css');
+    expect(tokens).toContain('--cinder-control-border: var(--cinder-border-control);');
+    expect(tokens).toContain('--cinder-control-border-hover: var(--cinder-border-control-hover);');
+    expect(tokens).toContain('--cinder-control-background: var(--cinder-surface-raised);');
+  });
+
+  for (const [name, path] of Object.entries(fieldStylesheets)) {
+    it(`${name} draws its resting edge with --cinder-control-border`, async () => {
+      expect(await read(path)).toMatch(/border: 1px solid var\(--cinder-control-border\);/);
+    });
+  }
+
+  for (const name of ['input', 'select', 'combobox', 'textarea'] as const) {
+    it(`${name} draws its hover edge with --cinder-control-border-hover`, async () => {
+      expect(await read(fieldStylesheets[name])).toContain(
+        'border-color: var(--cinder-control-border-hover);',
+      );
+    });
+  }
+
+  for (const arm of ['light', 'dark'] as const) {
+    for (const [edgeName, edge] of Object.entries({
+      'control.border': borderControl,
+      'control.border.hover': borderControlHover,
+    })) {
+      for (const [surfaceName, surfaceToken] of Object.entries({
+        page: bg,
+        'field fill': surfaceRaised,
+      })) {
+        it(`${arm}: ${edgeName} clears 3:1 against the ${surfaceName}`, () => {
+          expect(translucentContrastOn(edge[arm], surfaceToken[arm])).toBeGreaterThanOrEqual(
+            NON_TEXT,
+          );
+        });
+      }
+    }
+  }
+});

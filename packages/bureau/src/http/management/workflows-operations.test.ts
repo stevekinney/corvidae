@@ -406,6 +406,10 @@ describe('results', () => {
     expect(afterResume.result).toMatchObject({ paused: false, schedule: { status: 'active' } });
     const revisions = await ownerRpc(served.owner, 'bureau.workflows.revisions', { id: 'digest' });
     expect(listOf(revisions, 'revisions').length).toBe(1);
+    // The one revision that ran is the current one, and Weft's verdict says so on the wire.
+    expect(revisions.result?.['revisions']).toMatchObject([
+      { compatibility: { compatible: true } },
+    ]);
 
     const deleted = await ownerRpc(served.owner, 'bureau.workflows.delete', {
       id: 'digest',
@@ -419,6 +423,8 @@ describe('results', () => {
     // The revisions that ran are still there.
     const kept = await ownerRpc(served.owner, 'bureau.workflows.revisions', { id: 'digest' });
     expect(listOf(kept, 'revisions').length).toBe(1);
+    // With no file there is no current revision to judge it against.
+    expect(kept.result?.['revisions']).toMatchObject([{ compatibility: null }]);
   });
 
   it('lists the instances and reads one, with its trigger and result', async () => {

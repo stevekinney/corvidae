@@ -61,7 +61,7 @@ export function minimalServerContext(
       workers: 0,
     },
     refreshConnectionMetrics() {},
-    eventFeedBackend: null as never,
+    watchEventFeed: null as never,
     workflowEventFeed: null as never,
     fleetEventFeed: null as never,
     activeJsonRpcSessions: new Set(),

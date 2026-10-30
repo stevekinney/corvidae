@@ -26,7 +26,6 @@ describe('hash runtime shape guards', () => {
   test('rejects a malformed crypto module returned by the runtime loader', async () => {
     await withRuntimeOverride(
       {
-        Bun: undefined,
         require: () => ({ createHash: 'not-a-function' }),
       },
       () => {
@@ -40,7 +39,6 @@ describe('hash runtime shape guards', () => {
   test('rejects a malformed crypto module returned by getBuiltinModule', async () => {
     await withRuntimeOverride(
       {
-        Bun: undefined,
         getBuiltinModule: () => ({ createHash: 'not-a-function' }),
       },
       () => {
@@ -58,7 +56,6 @@ describe('hmacSha256HexSync', () => {
   test('rejects a malformed HMAC implementation from the runtime loader', async () => {
     await withRuntimeOverride(
       {
-        Bun: undefined,
         require: () => ({ createHmac: 'not-a-function' }),
       },
       () => {
@@ -78,7 +75,6 @@ describe('timingSafeEqualHex', () => {
 
     await withRuntimeOverride(
       {
-        Bun: undefined,
         require: () => ({ timingSafeEqual: 'not-a-function' }),
       },
       () => {

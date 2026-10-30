@@ -47,19 +47,19 @@ describe('Label rendering', () => {
     expect(label?.classList.contains('extra')).toBe(true);
   });
 
-  test('required prop renders a decorative asterisk', () => {
+  test('required prop renders a decorative dot', () => {
     const { container } = render(Label, {
       for: 'a',
       required: true,
       children: textSnippet('Email'),
     });
-    const star = container.querySelector('.cinder-_required-marker');
-    expect(star).not.toBeNull();
-    expect(star?.getAttribute('aria-hidden')).toBe('true');
-    expect(star?.textContent).toBe('*');
+    const dot = container.querySelector('.cinder-_required-marker');
+    expect(dot).not.toBeNull();
+    expect(dot?.getAttribute('aria-hidden')).toBe('true');
+    expect(dot?.textContent).toBe('');
   });
 
-  test('required false omits the asterisk', () => {
+  test('required false omits the dot', () => {
     const { container } = render(Label, {
       for: 'a',
       children: textSnippet('Email'),

@@ -469,11 +469,20 @@ describe('createBureauHandler authentication matrix', () => {
     });
   });
 
-  it('throws when authentication is combined with allow', async () => {
-    await withBureau({}, (bureau) => {
-      expect(() =>
-        createBureauHandler(bureau, { authentication: allScopes, unauthenticatedAccess: 'allow' }),
-      ).toThrow(/cannot be combined with unauthenticatedAccess: 'allow'/);
+  // COR-1904: the combination used to throw. Now a credential is authenticated by it and a request
+  // without one is the local caller, so a wrong key is refused rather than served as the owner.
+  it('combines authentication with allow: no credential is the local caller, a wrong one is 401', async () => {
+    await withBureau({}, async (bureau) => {
+      const handler = createBureauHandler(bureau, {
+        authentication: allScopes,
+        unauthenticatedAccess: 'allow',
+      });
+
+      expect(await statusOf(handler, get('/v1/health'))).toBe(200);
+      expect(await statusOf(handler, get('/v1/health', credentials))).toBe(200);
+      expect(await statusOf(handler, get('/v1/health', { 'X-API-Key': 'wrong' }))).toBe(401);
+      expect(await statusOf(handler, get('/v1/health', { 'X-API-Key': '' }))).toBe(401);
+      expect(await statusOf(handler, get('/v1/health', { Authorization: 'Basic eDp5' }))).toBe(401);
     });
   });
 
@@ -548,6 +557,8 @@ describe('createBureauHandler catalog', () => {
         'bureau.agents.definitions.update',
         'bureau.agents.list',
         'bureau.agents.models',
+        'bureau.agents.versions.list',
+        'bureau.agents.versions.restore',
         'bureau.assets.get',
         'bureau.assets.uploads.abort',
         'bureau.assets.uploads.append',
@@ -563,6 +574,10 @@ describe('createBureauHandler catalog', () => {
         'bureau.contexts.steer',
         'bureau.decisions.decide',
         'bureau.deployment.get',
+        'bureau.deployments.get',
+        'bureau.deployments.promote',
+        'bureau.deployments.ramp',
+        'bureau.deployments.rollback',
         'bureau.diagnostics.get',
         'bureau.events',
         'bureau.goals.cancel',
@@ -570,10 +585,16 @@ describe('createBureauHandler catalog', () => {
         'bureau.goals.get',
         'bureau.goals.list',
         'bureau.memory.correct',
+        'bureau.memory.export',
         'bureau.memory.forget',
         'bureau.memory.get',
+        'bureau.memory.hold',
+        'bureau.memory.hold.release',
         'bureau.memory.list',
+        'bureau.memory.quarantine',
         'bureau.memory.search',
+        'bureau.memory.share',
+        'bureau.memory.share.revoke',
         'bureau.reviews.get',
         'bureau.reviews.list',
         'bureau.reviews.resolve',
@@ -926,6 +947,9 @@ describe('the Bureau scope list', () => {
       'bureau.settings:read',
       'bureau.settings:write',
       'bureau.diagnostics:read',
+      'bureau.memory:govern',
+      'bureau.deployments:read',
+      'bureau.deployments:write',
     ]);
   });
 });

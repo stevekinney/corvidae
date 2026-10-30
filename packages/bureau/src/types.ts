@@ -1,4 +1,5 @@
 import type { BureauWorkflows } from './workflow-runtime';
+import type { BureauWorkerDeployments } from './worker-deployments';
 import type {
   EventIteratorOptions,
   EventObservableOptions,
@@ -63,6 +64,7 @@ import type {
   WorkflowLogRecord,
   WorkflowState,
   WorkflowSummary,
+  WorkerDeploymentCatalog,
 } from '@lostgradient/weft';
 import type { PendingToolApproval, SignedPendingToolApproval, ToolRequestContext } from 'armorer';
 import type { ConversationHistory, Message, MultiModalContent } from 'conversationalist';
@@ -347,6 +349,27 @@ export interface BureauRetentionOptions {
    * `createBureau` throws `BureauError(..., 'BAD_REQUEST')`.
    */
   tasks?: RetentionWindowOption;
+  /**
+   * COR-1809 — how long governed memory keeps an `episodic` memory (what a run writes about its
+   * chat), measured from when it was written on the runtime clock. Each maintenance pass sweeps
+   * governed memory under this window, in place of the 90 days the memory policy's `episodic` rule
+   * sets, without activating a policy revision; the sweep deletes an expired memory with a receipt
+   * and a `memory.retention.swept` event, and a legal hold keeps what it holds. Leave it out and
+   * the memory policy's own rule decides. The other classes keep the policy's rules. Has effect
+   * only on a Bureau composed with `memory`. `olderThan` must be a positive integer; otherwise
+   * `createBureau` throws `BureauError(..., 'BAD_REQUEST')`.
+   */
+  memory?: BureauMemoryRetentionOption | undefined;
+}
+
+/**
+ * COR-1809 — the window of {@link BureauRetentionOptions.memory}. Only `{ olderThan }` exists:
+ * keeping a memory forever is the memory policy's own decision, so a Bureau that wants no sweep
+ * simply does not set it.
+ */
+export interface BureauMemoryRetentionOption {
+  /** Milliseconds after an episodic memory is written; a positive integer. */
+  readonly olderThan: number;
 }
 
 /**
@@ -420,6 +443,15 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * `documentation/workflow-files.md`.
    */
   workflowSource?: WorkflowSource;
+  /**
+   * COR-1813 — Weft's worker deployment catalog, the durable store of worker builds and routing
+   * pointers. With it, {@link Bureau.deployments} reads a deployment's routing pointer and ramps,
+   * promotes, and rolls back its builds, and the `bureau.deployments.*` operations serve the same
+   * calls. Without it, `Bureau.deployments` is `undefined` and those operations answer
+   * `UnsupportedCapability`. Pass the catalog the Weft server routes with, built over the same
+   * storage, so a move here is the move the server routes by.
+   */
+  workerDeployments?: WorkerDeploymentCatalog;
   /**
    * COR-772 — configuration for {@link Bureau.children}, Bureau's durable
    * parent-child topology. Omit it and children still dispatch, persist, and
@@ -568,14 +600,15 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * COR-1709 — whether a durable Bureau offers the `decide` tool to a task: a typed question put
    * to a model (`boolean`, `choice`, `scale`, or `structured` against a JSON Schema). It is offered
    * by default, to the run kinds that are offered `requestHumanInput`, and only when something can
-   * answer: {@link BureauOptions.decisions}'s `model` or {@link ModelsOptions.generate}. The tool
+   * answer: a model registered in {@link DecisionsOptions.models} or {@link ModelsOptions.generate}. The tool
    * acts as the task's principal and is capped per task by {@link DecisionsOptions.maximumPerTask}.
    * Pass `false` to leave it out. Passing `true` throws `BureauError` `BAD_REQUEST`: the tool is
    * already the default.
    */
   decide?: false;
   /**
-   * COR-1709 — how `bureau.decisions.decide` and the `decide` tool are answered: a `model` for the
+   * COR-1709 — how `bureau.decisions.decide` and the `decide` tool are answered: `models` registered by
+   * name, of which the `decisions.model` setting (default `model`) names the one that answers the
    * kinds it serves, a `fallbackModel` row of the model catalog for the rest, and a
    * `maximumPerTask` cap on the tool. See {@link DecisionsOptions}.
    */
@@ -2172,6 +2205,12 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * the Bureau has none. Every workflow belongs to the deployment's owner of record.
    */
   readonly workflows: BureauWorkflows | undefined;
+  /**
+   * COR-1813 — the worker rollouts: `get` a deployment's routing pointer, and `ramp`, `promote`,
+   * and `rollBack` its builds. `undefined` when the Bureau has no {@link
+   * BureauOptions.workerDeployments}. See {@link BureauWorkerDeployments}.
+   */
+  readonly deployments: BureauWorkerDeployments | undefined;
 
   /**
    * COR-772 — Bureau's durable parent-child topology: dispatch a catalog

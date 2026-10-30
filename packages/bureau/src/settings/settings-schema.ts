@@ -12,7 +12,7 @@
  */
 
 import type { UserModelConfiguration } from '@lostgradient/operative';
-import { checkHumanInputSchemas } from '@lostgradient/operative';
+import { checkHumanInputSchemas, PROVIDER_NAME_PATTERN } from '@lostgradient/operative';
 import type { EnginePatch } from '@lostgradient/weft';
 import { z } from 'zod';
 
@@ -46,8 +46,11 @@ const humanInputSetting = z.union([
 
 const olderThanWindow = z.object({ olderThan: nonNegativeMilliseconds }).strict();
 const retentionWindow = z.union([z.literal('forever'), olderThanWindow]);
-/** Operative's `ProviderName`. */
-const providerName = z.enum(['anthropic', 'openai', 'gemini', 'voyage', 'ollama']);
+/**
+ * Operative's `ProviderName`: any name in the provider-name grammar. A stored name no loaded
+ * provider carries validates and resolves as unavailable.
+ */
+const providerName = z.string().regex(PROVIDER_NAME_PATTERN);
 /** Operative's `Effort`. */
 const effort = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
 const dataPolicy = z.enum(['no-retention', 'zero-day-retention', 'standard']);
@@ -111,7 +114,7 @@ const invariants = z
 export const settingsSchema = z
   .object({
     'tools.humanInput': humanInputSetting.describe(
-      '`false` withholds `requestHumanInput` from tasks started from now on; an object offers it, with optional answer schemas per signal. A started task keeps the grant it started with.',
+      '`false` withholds `requestHumanInput` from tasks started from now on; an object offers it, with optional answer schemas per signal. The tool teaches the agent the kinds of question it can ask (pick one, pick one or something else, pick several, free text, yes or no, a number, a date or time, a rating, a few fields, a secret, a file): each call may carry its own `answerSchema`, which replaces the signal’s schema for that call, and a signal’s schema applies only when a call gives none. A started task keeps the grant it started with.',
     ),
     'tools.wakeup': z
       .boolean()
@@ -126,6 +129,12 @@ export const settingsSchema = z
       })
       .strict()
       .describe('The model policy the next plan or step is selected under.'),
+    'decisions.model': z
+      .string()
+      .min(1)
+      .describe(
+        'The decision model that answers the kinds it serves: a name registered in `decisions.models`, or `catalog` for the language-model fallback alone. Resolved on every decision.',
+      ),
     'decisions.fallbackModel': z
       .string()
       .regex(/^[^/\s]+\/\S+$/, 'must be "<provider>/<model>"')
@@ -135,6 +144,12 @@ export const settingsSchema = z
     'decisions.maximumPerTask': positiveInteger.describe(
       'How many decisions one task may make through the `decide` tool.',
     ),
+    'context.summarizerModel': z
+      .string()
+      .regex(/^[^/\s]+\/\S+$/, 'must be "<provider>/<model>"')
+      .describe(
+        'The model-catalog row, `<provider>/<model>`, that summarizes a conversation when an agent compacts its context. Unset by default; a change must name an available row of the catalog as it is now.',
+      ),
     'retention.audit': retentionWindow.describe(
       'How long audit records are kept, swept by the next maintenance pass.',
     ),
@@ -146,6 +161,12 @@ export const settingsSchema = z
       .object({ olderThan: z.number().int().positive() })
       .strict()
       .describe('How long a run-creation receipt is kept.'),
+    'retention.memory': z
+      .object({ olderThan: z.number().int().positive() })
+      .strict()
+      .describe(
+        'How long governed memory keeps an episodic memory, in milliseconds, in place of the memory policy’s own window; the next maintenance pass sweeps by it. Unset, the policy decides.',
+      ),
     'retention.checkpoints': z
       .union([
         z.literal('keep-all'),
@@ -242,12 +263,15 @@ export const SETTING_APPLY: Readonly<Record<SettingKey, SettingApply>> = {
   'tools.wakeup': 'live',
   'tools.decide': 'live',
   modelPolicy: 'live',
+  'decisions.model': 'live',
   'decisions.fallbackModel': 'live',
   'decisions.maximumPerTask': 'live',
+  'context.summarizerModel': 'live',
   'retention.audit': 'live',
   'retention.events': 'live',
   'retention.tasks': 'live',
   'retention.receipts': 'live',
+  'retention.memory': 'live',
   'retention.checkpoints': 'live',
   // Live from the next session (owner decision, COR-1710 revision 2026-10-27): a running session
   // keeps the limit its Weft mailbox was built with, which keeps Weft's backlog check atomic.
@@ -281,6 +305,16 @@ export const ENGINE_PATCH_FIELDS = {
   'engine.checkpointSizeWarningThreshold': 'checkpointSizeWarningThreshold',
   'engine.schedulerPollIntervalMs': 'schedulerPollIntervalMs',
 } as const satisfies Partial<Record<SettingKey, keyof EnginePatch>>;
+
+/** Why a key is locked: the deployment chose it, or processes sharing one store must agree on it. */
+export const SETTING_LOCK_REASONS = ['deployment', 'shared-storage'] as const;
+
+/**
+ * Why a key is locked (`bureau.settings.get` reports it per key): `deployment` when the deployment's
+ * code or host holds the key to its code option, `shared-storage` when several processes share one
+ * store and must run the same value (a remote host's ownership and maintenance settings).
+ */
+export type SettingLockReason = (typeof SETTING_LOCK_REASONS)[number];
 
 /** Every key, in the schema's order. */
 export const SETTING_KEYS: readonly SettingKey[] = Object.keys(

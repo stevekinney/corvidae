@@ -88,6 +88,7 @@ describe('the page', () => {
       'Tools',
       'Model policy',
       'Decisions',
+      'Context',
       'Retention',
       'Session input',
       'Children',
@@ -118,6 +119,26 @@ describe('the page', () => {
     expect(locked?.textContent).toContain(SETTINGS_COPY.locked);
     expect(locked?.querySelector<HTMLInputElement>('input')?.disabled).toBe(true);
     expect(row(container, 'tools.wakeup')?.dataset['locked']).toBe('false');
+  });
+
+  test('says why a locked key is locked, by the reason the Bureau reports', async () => {
+    const { container, findByRole } = open(
+      servedSettings({
+        locked: new Set(['workflowVersion', 'maintenance']),
+        lockReasons: { maintenance: 'shared-storage' },
+      }),
+    );
+    await findByRole('form', { name: SETTINGS_COPY.formLabel });
+
+    expect(row(container, 'workflowVersion')?.textContent).toContain(
+      SETTINGS_COPY.lockedNote.deployment,
+    );
+    expect(row(container, 'maintenance')?.textContent).toContain(
+      SETTINGS_COPY.lockedNote['shared-storage'],
+    );
+    expect(row(container, 'maintenance')?.textContent).not.toContain(
+      SETTINGS_COPY.lockedNote.deployment,
+    );
   });
 
   test('shows the host’s paths, read-only', async () => {

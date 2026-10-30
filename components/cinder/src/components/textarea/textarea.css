@@ -67,6 +67,14 @@
     }
   }
 
+  .cinder-textarea[data-cinder-size='sm'] {
+    padding-block: var(--cinder-space-1-5);
+  }
+
+  .cinder-textarea[data-cinder-size='lg'] {
+    padding-block: var(--cinder-space-2-5);
+  }
+
   .cinder-textarea::placeholder {
     color: var(--cinder-text-muted);
   }

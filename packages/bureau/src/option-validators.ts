@@ -126,6 +126,18 @@ export function validateReceiptRetentionOption(value: unknown, badRequest: BadRe
   }
 }
 
+/** COR-1809 — `BureauRetentionOptions.memory` is `{ olderThan }`, a positive integer of milliseconds. */
+export function validateMemoryRetentionOption(value: unknown, badRequest: BadRequest): void {
+  if (value === undefined) return;
+  if (typeof value !== 'object' || value === null) {
+    badRequest('"options.retention.memory" must be { olderThan: number }');
+  }
+  const olderThan = (value as { readonly olderThan?: unknown }).olderThan;
+  if (typeof olderThan !== 'number' || !Number.isSafeInteger(olderThan) || olderThan <= 0) {
+    badRequest('"options.retention.memory.olderThan" must be a positive integer');
+  }
+}
+
 export function validateRetentionOptions(
   retention: BureauRetentionOptions | undefined,
   badRequest: BadRequest,
@@ -138,6 +150,7 @@ export function validateRetentionOptions(
   validateRetentionWindowOption(retention?.tasks, 'retention.tasks', badRequest);
   validateCheckpointRetentionOption(retention?.checkpoints, badRequest);
   validateReceiptRetentionOption(retention?.receipts, badRequest);
+  validateMemoryRetentionOption(retention?.memory, badRequest);
 }
 
 /**

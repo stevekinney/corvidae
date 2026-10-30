@@ -5,7 +5,8 @@
  * - **Version**, at `worker-deployment-version:<deployment>:<build>`: the MessagePack encoding of a
  *   `WorkerDeploymentVersion`. Its `state` is `ready`, `draining` or `removed`.
  * - **Routing pointer**, at `worker-deployment-routing:<deployment>`: the MessagePack encoding of a
- *   `WorkerDeploymentRouting`.
+ *   `WorkerDeploymentRouting`. `previousBuildId` is optional persisted format: a record written
+ *   before it existed has none and decodes without one, and a record that has one carries a string.
  * - **Binding stamp**, 64 shards per build, at
  *   `worker-deployment-binding:<deployment>:<build>:<k>`, where `<k>` is two lowercase hex digits,
  *   `00` to `3f`. A shard holds sixteen random bytes. Every commit that binds durable work to the
@@ -139,6 +140,7 @@ export function decodeRouting(value: Uint8Array): WorkerDeploymentRouting {
     (decoded.rampBasisPoints ?? -1) >= 0,
     (decoded.rampBasisPoints ?? 10_001) <= 10_000,
     typeof decoded.updatedAt === 'number',
+    decoded.previousBuildId === undefined || typeof decoded.previousBuildId === 'string',
   ].every(Boolean);
   if (!valid) throw new Error('Invalid worker deployment routing record.');
   return decoded as WorkerDeploymentRouting;

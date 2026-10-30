@@ -1,6 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 
-import { DEFAULT_PORT, resolvePort } from './environment-configuration.ts';
+import { resolve } from 'node:path';
+
+import {
+  DEFAULT_BUILD_DIRECTORY,
+  DEFAULT_PORT,
+  resolveBuildDirectory,
+  resolvePort,
+} from './environment-configuration.ts';
 
 describe('resolvePort', () => {
   test('uses the default port when the variable is absent or empty', () => {
@@ -20,4 +27,22 @@ describe('resolvePort', () => {
       expect(() => resolvePort({ INTERBOROUGH_PORT: value })).toThrow('INTERBOROUGH_PORT');
     },
   );
+});
+
+describe('resolveBuildDirectory', () => {
+  test('uses the fallback when the variable is absent or empty', () => {
+    expect(resolveBuildDirectory({})).toBe(DEFAULT_BUILD_DIRECTORY);
+    expect(resolveBuildDirectory({ INTERBOROUGH_BUILD_DIRECTORY: '' })).toBe(
+      DEFAULT_BUILD_DIRECTORY,
+    );
+  });
+
+  test('reads the named directory, resolving a relative one from the working directory', () => {
+    expect(resolveBuildDirectory({ INTERBOROUGH_BUILD_DIRECTORY: '/somewhere/else' })).toBe(
+      '/somewhere/else',
+    );
+    expect(resolveBuildDirectory({ INTERBOROUGH_BUILD_DIRECTORY: 'relative/build' })).toBe(
+      resolve('relative/build'),
+    );
+  });
 });

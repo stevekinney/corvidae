@@ -3,8 +3,8 @@ import type {
   SharedAffectedWorkersBuildIdDe_a9c15090,
   SharedAffectedWorkersHealthInF_c3f6ebcc,
   SharedBuildIdDeploymentNameExp_c4b280cb,
+  SharedCurrentBuildIdDeployment_80178fc9,
   SharedCurrentBuildIdDeployment_a9512ca3,
-  SharedCurrentBuildIdDeployment_d4467560,
 } from './shared-operation-types.generated.ts';
 export type SystemOperationTypes = {
   'weft.recover.all': {
@@ -118,7 +118,7 @@ export type SystemOperationTypes = {
   };
   'weft.worker.deployments.promote': {
     readonly input: SharedBuildIdDeploymentNameExp_c4b280cb;
-    readonly output: SharedCurrentBuildIdDeployment_d4467560;
+    readonly output: SharedCurrentBuildIdDeployment_80178fc9;
     readonly faults: 'Conflict' | 'InvalidParams' | 'NotFound';
   };
   'weft.worker.deployments.remove': {
@@ -138,7 +138,7 @@ export type SystemOperationTypes = {
   };
   'weft.worker.deployments.rollback': {
     readonly input: SharedBuildIdDeploymentNameExp_c4b280cb;
-    readonly output: SharedCurrentBuildIdDeployment_d4467560;
+    readonly output: SharedCurrentBuildIdDeployment_80178fc9;
     readonly faults: 'Conflict' | 'InvalidParams' | 'NotFound';
   };
   'weft.worker.deployments.setrouting': {
@@ -147,6 +147,7 @@ export type SystemOperationTypes = {
       readonly currentBuildId: string;
       readonly deploymentName: string;
       readonly generation: number;
+      readonly previousBuildId?: string;
       readonly rampBasisPoints: number;
       readonly rampingBuildId?: string;
       readonly updatedAt: number;

@@ -28,7 +28,7 @@ export type ButtonVariant =
  *
  * @default `"md"`
  */
-export type ButtonSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+export type ButtonSize = 'xs' | 'sm' | 'md' | 'lg';
 
 // COR-239: keyof Props became too complex for TypeScript to represent (TS2590) once a consumer
 // type-checked this published declaration under `skipLibCheck: false`. Root cause (measured):

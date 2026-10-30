@@ -1,9 +1,11 @@
+import { QueryClient } from '@tanstack/svelte-query';
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { flushSync } from 'svelte';
 
 import type { WorkflowEvent, WorkflowState, WorkflowTimelineEntry } from '@lostgradient/weft';
 
+import { workflowEventsKey } from '../../../lib/live-source/cache-integration.ts';
 import { installFetchImplementation } from '../../../lib/live-source/fetch.test-support.ts';
 import EventsTabHarness from './events-tab.test-harness.svelte';
 import {
@@ -176,6 +178,50 @@ describe('EventsTab', () => {
     });
 
     await waitFor(() => expect(getByText('workflow:started')).not.toBeNull());
+  });
+
+  test('a refetch after tail frames keeps the lifecycle rows and takes the fresh checkpoints', async () => {
+    restoreFetch();
+    restoreFetch = installFetchImplementation(async (_input, init) => {
+      const frames = [
+        `event: ping\ndata: ${JSON.stringify({ emittedAtMs: 0, replayComplete: true })}\n\n`,
+        `id: 0\ndata: ${JSON.stringify({
+          kind: 'workflow:started',
+          workflowId: 'wf_1',
+          selector: 'events',
+          sequence: 0,
+          cursor: '0',
+          emittedAtMs: 1_500,
+          payload: { reason: 'kickoff' },
+        })}\n\n`,
+      ];
+      const signal = init?.signal ?? undefined;
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (const frame of frames) controller.enqueue(new TextEncoder().encode(frame));
+          signal?.addEventListener('abort', () => controller.close(), { once: true });
+        },
+      });
+      return new Response(body, { headers: { 'Content-Type': 'text/event-stream' } });
+    });
+    const checkpoints: WorkflowEvent[] = [
+      { type: 'workflow:checkpoint', timestamp: 1_000, data: { step: 1 } },
+    ];
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    const { getByText } = render(EventsTabHarness, {
+      props: { client: client(checkpoints), workflow: workflow(), queryClient },
+    });
+    await waitFor(() => expect(getByText('workflow:started')).not.toBeNull());
+    expect(getByText('Checkpoint · step 1')).not.toBeNull();
+
+    // A window-focus or reconnect refetch, with a checkpoint committed in the meantime.
+    checkpoints.push({ type: 'workflow:checkpoint', timestamp: 2_000, data: { step: 2 } });
+    await queryClient.refetchQueries({ queryKey: workflowEventsKey('wf_1') });
+
+    await waitFor(() => expect(getByText('Checkpoint · step 2')).not.toBeNull());
+    expect(getByText('workflow:started')).not.toBeNull();
+    expect(getByText('Checkpoint · step 1')).not.toBeNull();
   });
 
   test('an event with a data payload renders a Details collapsible trigger', async () => {

@@ -259,6 +259,44 @@ function attemptEvaluatingEvent(record: GoalState): GoalLifecycleEvent | undefin
 }
 
 /**
+ * COR-1903 — what lets shutdown wait for the goal history writes already under way and keep
+ * the controller from starting another: `track` registers a write, and `close` stops the gate
+ * accepting writes and settles once every tracked write has.
+ */
+export interface HistoryWriteGate {
+  /** Whether `close()` has been called; a recorder skips its history write once it has. */
+  readonly closed: boolean;
+  /** Registers `write` so `close()` waits for it, and returns it unchanged. */
+  track<T>(write: Promise<T>): Promise<T>;
+  /** Refuses further writes, then resolves once the tracked ones have settled. Never rejects. */
+  close(): Promise<void>;
+}
+
+/** Builds a {@link HistoryWriteGate}. */
+export function createHistoryWriteGate(): HistoryWriteGate {
+  const inFlight = new Set<Promise<unknown>>();
+  let closed = false;
+  return {
+    get closed() {
+      return closed;
+    },
+    track(write) {
+      const settled = write.then(
+        () => undefined,
+        () => undefined,
+      );
+      inFlight.add(settled);
+      void settled.then(() => inFlight.delete(settled));
+      return write;
+    },
+    async close() {
+      closed = true;
+      await Promise.all(inFlight);
+    },
+  };
+}
+
+/**
  * The goal store's observer: records every projected event, in order. A failed
  * write is diagnosed and swallowed, because the record is the truth and a lost
  * projection is repaired by `projectGoalHistory` at the next boot; failing the
@@ -271,21 +309,27 @@ function attemptEvaluatingEvent(record: GoalState): GoalLifecycleEvent | undefin
  * Without `history`, it only dispatches. The boot pass builds its recorder with
  * neither dispatch nor a live observation, so a replay writes history and
  * dispatches nothing.
+ *
+ * With a `gate` (COR-1903), a closed gate skips the history write, silently: the record already
+ * holds the event in its audit log, so the next boot's `projectGoalHistory` repairs it, and a
+ * write the gate let through is one `gate.close()` waits for.
  */
 export function createGoalEventRecorder(
   history: Pick<DurableEventHistory, 'record'> | undefined,
   diagnose: DiagnosticSink,
   dispatch?: (event: GoalLifecycleEvent) => void,
+  gate?: HistoryWriteGate,
 ): (observation: GoalObservation) => Promise<void> {
   return async (observation) => {
     const owner = { kind: 'goal' as const, id: observation.record.goalRunId };
     for (const draft of projectGoalObservation(observation)) {
-      if (history !== undefined) {
+      if (history !== undefined && gate?.closed !== true) {
         try {
-          await history.record(owner, draft.kind, draft.payload, {
+          const write = history.record(owner, draft.kind, draft.payload, {
             dedupeKey: draft.dedupeKey,
             ...(draft.emittedAtMs === undefined ? {} : { emittedAtMs: draft.emittedAtMs }),
           });
+          await (gate === undefined ? write : gate.track(write));
         } catch (error) {
           diagnose({
             level: 'error',

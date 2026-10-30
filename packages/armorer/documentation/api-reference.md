@@ -71,6 +71,8 @@ import { createTool, createToolbox, createRegistry, defineTool } from 'armorer';
 - `ToolPolicyHooks`
 - `ToolProvider`
 - `ToolRepairHint`
+- `ToolResolution`
+- `ToolResolutionFailureReason`
 - `ToolResult`
 - `ToolResultInput`
 - `ToolResultLike`
@@ -102,6 +104,8 @@ import { createTool, createToolbox, createRegistry, defineTool } from 'armorer';
 - `toolbox.toAnthropicTools()`
 - `toolbox.toGeminiTools()`
 - `toolbox.getAvailable()`
+- `toolbox.getTool(nameOrId)`: the tool a reference names, or `undefined` when it names none or several.
+- `toolbox.resolveTool(idOrName)`: the one tool a reference names, or `{ ok: false, reason: 'missing' | 'ambiguous' | 'version-mismatch', candidates }`.
 - `toolbox.asExecuteResolver()`
 
 ## Core primitives
@@ -418,12 +422,15 @@ Import MCP integration helpers from `armorer`.
 ### Functions
 
 - `createNameMapper`
+- `createProviderToolNameMapper`
 - `formatOpenAIToolResults`
 - `formatOpenAIToolResultsAsync`
 - `fromOpenAITools`
 - `mapToOpenAIName`
 - `parseOpenAIToolCalls`
+- `PROVIDER_TOOL_NAME_LIMIT`
 - `toOpenAITools`
+- `toProviderToolName`
 
 ### Types
 
@@ -450,6 +457,7 @@ Import MCP integration helpers from `armorer`.
 
 ### Types
 
+- `AnthropicAdapterOptions`
 - `AnthropicContentBlock`
 - `AnthropicInputSchema`
 - `AnthropicTextBlock`
@@ -474,6 +482,7 @@ Import MCP integration helpers from `armorer`.
 
 ### Types
 
+- `GeminiAdapterOptions`
 - `GeminiFileDataPart`
 - `GeminiFormatToolResultsOptions`
 - `GeminiFunctionCallPart`

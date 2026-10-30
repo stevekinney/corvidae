@@ -41,9 +41,10 @@ export function withAddedTools(base: AnyToolbox, additions: AnyToolbox): AnyTool
   if (layer !== undefined) {
     return withToolboxLayer(withAddedTools(layer.inner, additions), layer.apply);
   }
-  const added = additions
-    .toJSON()
-    .filter((configuration) => base.getTool(configuration.name) === undefined);
+  const added = additions.toJSON().filter((configuration) => {
+    const existing = base.resolveTool(configuration.name);
+    return !existing.ok && existing.reason === 'missing';
+  });
   if (added.length === 0) return base;
   return base.extend(createToolbox(added));
 }

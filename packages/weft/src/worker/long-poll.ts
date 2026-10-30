@@ -32,6 +32,8 @@ export interface LongPollWorkerOptions {
   queue?: string;
   artifactDigest?: string;
   manifest?: WorkerManifest;
+  /** Runtime name reported in the manifest, such as `'bun'` or `'node'`. Defaults to `'unknown'`. */
+  runtimeName?: string;
   runtimeVersion?: string;
   startedAt?: number;
   capabilities?: RemoteWorkerOptions['capabilities'];
@@ -42,6 +44,11 @@ export interface LongPollWorkerOptions {
   disconnectTimeoutMs?: number;
   resultRetryBaseDelayMs?: number;
   resultRetryMaxDelayMs?: number;
+  /**
+   * Pause used between registration retries, polls at capacity, and failed polls.
+   * Defaults to the portable `sleep`; tests inject one to observe or skip a back-off.
+   */
+  sleep?: (milliseconds: number) => Promise<void>;
 }
 
 const WORKER_SESSION_CREDENTIAL_HEADER = 'Weft-Worker-Session-Token';
@@ -133,6 +140,7 @@ export class LongPollWorker implements Disposable {
     const deadline =
       Date.now() + (this.#options.disconnectTimeoutMs ?? DEFAULT_DISCONNECT_TIMEOUT_MS);
     while (this.#inFlight > 0 && Date.now() < deadline) {
+      // Not the abort-aware pause: this controller is already aborted, so that would not wait.
       await sleep(50);
     }
     if (this.#inFlight > 0) {
@@ -220,6 +228,9 @@ export class LongPollWorker implements Disposable {
           ? { artifactDigest: this.#options.artifactDigest }
           : {}),
         ...(this.#options.manifest !== undefined ? { manifest: this.#options.manifest } : {}),
+        ...(this.#options.runtimeName !== undefined
+          ? { runtimeName: this.#options.runtimeName }
+          : {}),
         ...(this.#options.runtimeVersion !== undefined
           ? { runtimeVersion: this.#options.runtimeVersion }
           : {}),
@@ -312,6 +323,10 @@ export class LongPollWorker implements Disposable {
     return this.#inFlight >= (this.#options.concurrency ?? DEFAULT_CONCURRENCY);
   }
 
+  #pause(milliseconds: number): Promise<void> {
+    return (this.#options.sleep ?? ((ms) => sleep(ms, this.#abortController.signal)))(milliseconds);
+  }
+
   async #pollOnce(pollUrl: string): Promise<void> {
     const headers = this.#sessionHeaders();
     const response = await fetch(pollUrl, {
@@ -320,7 +335,7 @@ export class LongPollWorker implements Disposable {
     });
     if (response.status === 204) return;
     if (!response.ok) {
-      await sleep(1000);
+      await this.#pause(1000);
       return;
     }
     void this.#executeTask((await response.json()) as PolledTask);
@@ -329,19 +344,19 @@ export class LongPollWorker implements Disposable {
   async #pollLoop(): Promise<void> {
     while (this.#running && !this.#abortController.signal.aborted) {
       if (!this.#ready && !(await this.#registerSession())) {
-        await sleep(1000);
+        await this.#pause(1000);
         continue;
       }
       const pollUrl = this.#buildPollUrl();
       if (this.#atCapacity()) {
-        await sleep(100);
+        await this.#pause(100);
         continue;
       }
 
       try {
         await this.#pollOnce(pollUrl);
       } catch {
-        if (this.#running) await sleep(1000);
+        if (this.#running) await this.#pause(1000);
       }
     }
   }

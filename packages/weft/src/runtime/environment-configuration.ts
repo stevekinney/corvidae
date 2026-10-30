@@ -3,10 +3,10 @@ import { environmentalist, secret } from '@lostgradient/environmentalist';
 import type { Source } from '@lostgradient/environmentalist/types';
 import { z } from 'zod';
 
+// `process.env` is the environment on Bun and Node alike; a browser or edge isolate has no
+// `process`, so it reads as empty.
 function rawRuntimeEnvironment(): Record<string, string | undefined> {
-  if (typeof Bun !== 'undefined') return Bun.env;
-  if (typeof process !== 'undefined') return process.env;
-  return {};
+  return typeof process === 'undefined' ? {} : process.env;
 }
 
 function selectedEnvironment(mapping: Readonly<Record<string, string>>): Record<string, string> {

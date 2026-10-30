@@ -26,23 +26,10 @@ export type InstrumentableGenerateOptions = {
  * pinned conventions version.
  */
 function toGenAiProviderName(provider: ProviderName): string {
-  switch (provider) {
-    case 'gemini':
-      // operative's `gemini` provider talks to the AI Studio endpoint
-      // (generativelanguage.googleapis.com) via @google/genai,
-      // which the conventions register as `gcp.gemini`.
-      return 'gcp.gemini';
-    case 'anthropic':
-    case 'openai':
-      return provider;
-    case 'voyage':
-    case 'ollama':
-      // No well-known value is registered for these providers; a custom
-      // value is explicitly permitted by the conventions.
-      return provider;
-    default:
-      return provider;
-  }
+  // operative's `gemini` provider talks to the AI Studio endpoint
+  // (generativelanguage.googleapis.com) via @google/genai, which the
+  // conventions register as `gcp.gemini`.
+  return provider === 'gemini' ? 'gcp.gemini' : provider;
 }
 
 /**

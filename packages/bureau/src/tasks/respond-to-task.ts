@@ -37,6 +37,12 @@ import { z } from 'zod';
 
 import { checkFormSubmission } from '../a2ui/input-form.ts';
 import {
+  answerFromText,
+  formatReviewAnswerIssues,
+  type ReviewAnswerIssue,
+  validateReviewAnswer,
+} from '../review-answer.ts';
+import {
   BureauLedgerConflictError,
   type CommandLedger,
   type CommandLedgerIdentity,
@@ -138,6 +144,11 @@ export type TaskRespondRefusal = {
   readonly message: string;
   readonly field?: string;
   readonly reason?: string;
+  /**
+   * Every way an answer failed the wait's schema (COR-1804), with `path` relative to the answer
+   * (rooted at `field` on the wire). Absent for a refusal that is about the request itself.
+   */
+  readonly issues?: readonly ReviewAnswerIssue[];
 };
 
 /** What {@link createTaskResponder} answers commands from. */
@@ -209,6 +220,8 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
   const conflict = (message: string): Error => refuse({ code: 'CONFLICT', message });
   const invalid = (field: string, message: string): Error =>
     refuse({ code: 'BAD_REQUEST', message, field });
+  const answerInvalid = (field: string, issues: readonly ReviewAnswerIssue[]): Error =>
+    refuse({ code: 'BAD_REQUEST', message: formatReviewAnswerIssues(issues), field, issues });
   const unprocessable = (message: string, reason: string): Error =>
     refuse({ code: 'BAD_REQUEST', message, reason });
 
@@ -263,10 +276,13 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
 
   /**
    * What a human wait with an input schema accepts, checked before anything is claimed or
-   * delivered (COR-1487). The answer is untrusted: structured `data` is validated against the
-   * schema the wait was parked with, text and a bare approval are refused for such a wait, and
-   * `data` is refused for a wait that has no schema. Returns the value to deliver as the signal's
-   * payload, or `undefined` when the command delivers the answer text or a decision as before.
+   * delivered (COR-1487, COR-1804). The answer is untrusted: structured `data` is validated against
+   * the schema the wait was parked with, and so is a text answer once it is read as the value it
+   * stands for (a person answers in text: the chat, the inbox and the wait page send nothing else),
+   * which {@link answerFromText} decides. A bare approval of a wait that needs an answer is refused
+   * as a missing one, and `data` is refused for a wait that has no schema. Returns the value to
+   * deliver as the signal's payload, or `undefined` when the command delivers the answer text or a
+   * decision as before. A refusal names every field that failed (`issues`).
    */
   async function checkedSubmission(
     reviewId: string,
@@ -278,13 +294,14 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
     if (input.data === undefined) {
       if (schema === undefined) return undefined;
       if (input.answer !== undefined) {
-        throw unprocessable(
-          'This wait expects structured data matching its schema; send `data`, not text',
-          'text answer to a wait with an input schema',
-        );
+        const text = Array.isArray(input.answer) ? input.answer.join('\n') : input.answer;
+        const value = answerFromText(schema, text);
+        const issues = validateReviewAnswer(schema, value);
+        if (issues.length > 0) throw answerInvalid('answer', issues);
+        return { value };
       }
       if ((input.decision ?? 'approve') === 'approve') {
-        throw invalid('data', 'This wait expects `data` matching its input schema');
+        throw answerInvalid('data', validateReviewAnswer(schema, undefined));
       }
       return undefined;
     }
@@ -296,6 +313,11 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
     }
     const checked = checkFormSubmission(schema, input.data);
     if (!checked.ok) throw invalid('data', checked.message);
+    // The form check does not assert `format`; the core of `reviews.resolve` does (COR-1804), and
+    // refuses with the same issues. Asked here too, so the refusal names the field (`data`) and
+    // is raised before the command claims anything.
+    const issues = validateReviewAnswer(schema, checked.value);
+    if (issues.length > 0) throw answerInvalid('data', issues);
     return { value: checked.value };
   }
 

@@ -69,7 +69,7 @@ describe('PostgresStorage conditionalBatch failures', () => {
         if (began === 1) throw abort;
       }
     });
-    const storage = new PostgresStorage({ pool });
+    const storage = new PostgresStorage({ pool, serializationRetry: { delay: async () => {} } });
     await pool.arm(storage);
 
     const committed = await storage.conditionalBatch(

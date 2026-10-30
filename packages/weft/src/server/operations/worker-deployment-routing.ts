@@ -3,6 +3,7 @@ import type {
   WorkerDeploymentCatalog,
   WorkerDeploymentRemovalOutcome,
   WorkerDeploymentRouting,
+  WorkerDeploymentRoutingWrite,
 } from '../../worker/deployment-routing.ts';
 import type { WorkerRegistry } from '../../worker/registry.ts';
 import { shapeOperationFaultAsJson, type OperationFault } from '../operation-fault.ts';
@@ -57,6 +58,12 @@ const routingResultSchema = z.object({
   currentBuildId: z.string(),
   rampingBuildId: z.string().optional(),
   rampBasisPoints: z.number(),
+  previousBuildId: z
+    .string()
+    .optional()
+    .describe(
+      'The build that was current before the latest change of `currentBuildId`, which a rollback returns to; absent until the current build has changed once.',
+    ),
   generation: z.number(),
   updatedAt: z.number(),
 });
@@ -360,7 +367,7 @@ async function requireReadyVersion(
 async function validateRoutingTargets(
   catalog: WorkerDeploymentCatalog,
   input: RoutingInput,
-): Promise<Omit<WorkerDeploymentRouting, 'generation'> & { expectedGeneration?: number }> {
+): Promise<WorkerDeploymentRoutingWrite> {
   if (input.rampingBuildId === input.currentBuildId) {
     throw invalidParamsFault('Ramping deployment build must differ from the current build.');
   }
@@ -382,7 +389,7 @@ async function validateRoutingTargets(
 
 async function setRoutingOrThrow(
   catalog: WorkerDeploymentCatalog,
-  input: Omit<WorkerDeploymentRouting, 'generation'> & { expectedGeneration?: number },
+  input: WorkerDeploymentRoutingWrite,
 ): Promise<WorkerDeploymentRouting> {
   const result = await catalog.setRouting(input);
   if (result === null) {

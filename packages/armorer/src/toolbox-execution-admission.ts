@@ -70,7 +70,15 @@ export async function admitToolCall(context: ExecutionAdmissionContext): Promise
 function resolveTool(context: ExecutionAdmissionContext): AdmittedToolCall | undefined {
   const { toolCall, getTool, resolutionEnabled, toolsByName, emit } = context;
   const tool = getTool(toolCall.name);
-  if (tool || !resolutionEnabled) return tool ? { tool, toolCall } : undefined;
+  // A call may name its tool by id or `namespace:name`; the tool only recognizes a call that
+  // carries its own bare name, so hand it that one.
+  if (tool || !resolutionEnabled) {
+    if (!tool) return undefined;
+    return {
+      tool,
+      toolCall: tool.name === toolCall.name ? toolCall : { ...toolCall, name: tool.name },
+    };
+  }
   const result = resolveFuzzyToolName(toolCall.name, [...toolsByName.keys()]);
   if (!result.resolved) return undefined;
   const resolved = getTool(result.resolved);

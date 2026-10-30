@@ -4,7 +4,7 @@
     align-items: center;
     justify-content: center;
     gap: var(--cinder-space-2);
-    min-block-size: var(--cinder-control-height-md, 2.25rem);
+    min-block-size: var(--cinder-control-height-md, 2rem);
     border: 1px solid transparent;
     border-radius: var(--cinder-radius-md);
     background: transparent;

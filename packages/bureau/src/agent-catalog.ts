@@ -26,10 +26,12 @@ import type {
   AgentCatalogChange,
   AgentFileCatalog,
   AgentFileDetail,
+  AgentFileVersions,
   AgentListing,
   AgentToolDescription,
 } from './agent-file-catalog';
 import type { AgentFileWriter } from './agent-file-writer';
+import type { AgentVersionRecord } from './agent-version-store';
 import type { AgentRevision, AgentSnapshotStore } from './agent-snapshot-store';
 import { ownerOrLocal } from './owner-of-record';
 
@@ -220,6 +222,23 @@ export interface BureauAgentCatalog<D extends AgentDefinitions> {
    */
   revisions(id: string): Promise<readonly AgentRevision[]>;
   /**
+   * The saved versions of file agents (COR-1815), which are kept apart from the runs that used
+   * them: every save, and every edit the directory watcher finds, is one version, whether or not
+   * the agent ever ran. {@link revisions} lists what has run; this lists what was saved.
+   */
+  readonly versions: {
+    /**
+     * The versions of `id`, newest revision first, at most 50 plus any a retained run references.
+     * Empty for a code-defined agent, an unknown identifier, or a Bureau with no agent source.
+     */
+    list(id: string): Promise<readonly AgentVersionRecord[]>;
+    /**
+     * Write the definition of version `revision` back as a new revision, if the file still hashes
+     * to `expectedHash`. See `AgentFileVersions.restore` for the failures.
+     */
+    restore: AgentFileVersions['restore'];
+  };
+  /**
    * Rescan the agent directory now, and when the model catalog has changed since the last scan,
    * revalidate against it. Resolves once the catalog reflects the directory. A no-op without
    * `BureauOptions.agentSource`.
@@ -394,6 +413,11 @@ export function createAgentCatalog<D extends AgentDefinitions>(
     revisions(id) {
       return snapshots?.revisions(id) ?? Promise.resolve([]);
     },
+    versions: {
+      list: async (id) => files?.versions.list(id) ?? [],
+      restore: async (id, revision, writeOptions) =>
+        requireFiles().versions.restore(id, revision, writeOptions),
+    },
     refresh() {
       return files?.refresh() ?? Promise.resolve();
     },
@@ -401,7 +425,8 @@ export function createAgentCatalog<D extends AgentDefinitions>(
       return files?.onChange(listener) ?? (() => undefined);
     },
     read: async (id) => requireFiles().read(id),
-    create: async (id, definition) => requireFiles().create(id, definition),
+    create: async (id, definition, writeOptions) =>
+      requireFiles().create(id, definition, writeOptions),
     update: async (id, definition, writeOptions) =>
       requireFiles().update(id, definition, writeOptions),
     delete: async (id, writeOptions) => requireFiles().delete(id, writeOptions),
