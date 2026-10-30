@@ -224,6 +224,10 @@ describe('resuming a tool approval', () => {
         });
         expect(charges).toEqual([500]);
         expect(listHeldTasks(bureau)).toHaveLength(2);
+        // COR-1867: the continuation is the chat's own, not an anonymous API start, so a listing
+        // filtered to chats finds it beside the run it continues.
+        const continuation = await bureau.internals.taskRegistry.record(nativeRunId);
+        expect(continuation?.origin).toMatchObject({ kind: 'chat', contextId: 'thread-1' });
         // The conversation the new run ended with answers the call once.
         const session = await bureau.contexts.get('thread-1');
         const history = session?.conversationHistory;

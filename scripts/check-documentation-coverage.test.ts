@@ -320,6 +320,15 @@ describe('--entries mode', () => {
     );
   });
 
+  test('fails when the exclusions remove every matching file', () => {
+    expect(() => expandEntries(applicationDirectory, ['src/host/**/*.ts', '!**/*.ts'])).toThrow(
+      'judges no file',
+    );
+    expect(() =>
+      expandEntries(applicationDirectory, ['src/host/**/*.ts', 'src/lib/**/*.ts', '!src/**']),
+    ).toThrow('judges no file');
+  });
+
   test('judges every export and member of the matching files under path keys', () => {
     const found = findUndocumented(
       applicationDirectory,

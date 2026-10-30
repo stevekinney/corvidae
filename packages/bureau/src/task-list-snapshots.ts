@@ -12,7 +12,7 @@
  * windows: each window is its own record, built fresh, strictly after the key of the previous
  * window's last entry, and all windows of one listing share one expiry.
  *
- * Keys are `bureau-task-listing:v2:<principal>:<expiry>:<listing>:<window>`, so the sweep that
+ * Keys are `bureau-task-listing:v3:<principal>:<expiry>:<listing>:<window>`, so the sweep that
  * deletes expired records and the per-principal cap read keys alone, never a record.
  *
  * @module task-list-snapshots
@@ -22,10 +22,11 @@ import { type ConditionalTextValueStore, encodeStorageKeyComponent } from '@lost
 
 /**
  * The key prefix of a task-listing snapshot. A snapshot stores whole task views, so the version
- * moves with the view's shape: `v2` (COR-1689) added `kind`, and a `v1` snapshot is never read as a
- * view that lacks it. A `v1` record left in storage is not read, and is not swept.
+ * moves with the view's shape: `v2` (COR-1689) added `kind` and `v3` (COR-1867) added `origin`, and a
+ * snapshot of an earlier version is never read as a view that lacks them. A record of an earlier
+ * version left in storage is not read, and is not swept.
  */
-export const TASK_LISTING_KEY_PREFIX = 'bureau-task-listing:v2:';
+export const TASK_LISTING_KEY_PREFIX = 'bureau-task-listing:v3:';
 
 /** How long a listing's tokens work, counted from the moment its first page was served. */
 export const TASK_LISTING_LIFETIME_MILLISECONDS = 15 * 60 * 1000;
@@ -67,6 +68,8 @@ export interface TaskListingFilters {
   readonly contextId: string | null;
   readonly agentName: string | null;
   readonly status: string | null;
+  /** The origin kind the listing was filtered to (COR-1867). */
+  readonly origin: string | null;
   readonly statusTimestampAfter: number | null;
 }
 
@@ -216,6 +219,7 @@ function sameFilters(left: TaskListingFilters, right: TaskListingFilters): boole
     left.contextId === right.contextId &&
     left.agentName === right.agentName &&
     left.status === right.status &&
+    left.origin === right.origin &&
     left.statusTimestampAfter === right.statusTimestampAfter
   );
 }
