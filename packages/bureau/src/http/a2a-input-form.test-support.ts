@@ -17,6 +17,7 @@ import { expect } from 'bun:test';
 import { A2UI_EXTENSION_URI } from '../a2ui/catalogs.ts';
 import { createCommandLedger } from '../command-ledger.ts';
 import type { TaskView } from '../task-registry.ts';
+import type { Bureau } from '../types.ts';
 import { createBureauAgentCard } from './a2a-agent-card.ts';
 import {
   A2A_SEND_LEDGER_KEY_PREFIX,
@@ -29,22 +30,6 @@ import { createA2ATaskRecords } from './a2a-task-record.ts';
 import { buildBureauHandlerHost } from './create-bureau-handler.ts';
 import { openBureau } from './management/management-fixtures.test-support.ts';
 import { respondToTask } from './management/tasks-respond-operation.ts';
-
-/** The blocking send's safety-net poll (`SETTLE_POLL_MS` in `a2a-request-handler.ts`). */
-const SETTLE_POLL_MILLISECONDS = 1_000;
-
-/**
- * The runtime timers with that safety-net poll shortened. A park announces nothing the send waits
- * on, so each blocking send in these tests sat out one whole poll (COR-1737); a faster poll only
- * reads the task sooner, and every other timer keeps its real delay.
- */
-function withFastSettlePoll(timers: RuntimeTimers): RuntimeTimers {
-  return {
-    ...timers,
-    setTimeout: (callback, milliseconds) =>
-      timers.setTimeout(callback, milliseconds === SETTLE_POLL_MILLISECONDS ? 10 : milliseconds),
-  };
-}
 
 export const deploySchema: HumanInputSchema = {
   type: 'object',
@@ -99,30 +84,19 @@ export function userMessage(
   return Message.fromJSON({ messageId, taskId, role: 'ROLE_USER', parts: [part] });
 }
 
-export async function open(
-  schema: HumanInputSchema | undefined,
-  signals: readonly string[] = ['deploy'],
-  formSignals: readonly string[] = signals,
+/**
+ * The A2A request handler and the calls a test makes through it, over a Bureau that publishes the
+ * agent `asker`. `wrap.timers` may wrap the runtime's timers, to hold the blocking send's
+ * safety-net poll.
+ */
+export function attachHandler(
+  opened: Awaited<ReturnType<typeof openBureau>>,
+  wrap: {
+    readonly timers?: (timers: RuntimeTimers) => RuntimeTimers;
+    /** The Bureau the request handler is given, when a test stands between it and the real one. */
+    readonly bureau?: (bureau: Bureau) => Bureau;
+  } = {},
 ) {
-  const seen: Seen = { resumed: [] };
-  const opened = await openBureau({
-    agents: {
-      asker: createAgent({
-        name: 'asker',
-        generate: parksThenAnswers(seen, signals),
-        maximumSteps: 100,
-      }),
-    },
-    publish: ['asker'],
-    // The schema is configured the way a host configures it: on the Bureau option, per signal.
-    ...(schema === undefined
-      ? {}
-      : {
-          humanInput: {
-            inputSchemas: Object.fromEntries(formSignals.map((signal) => [signal, schema])),
-          },
-        }),
-  });
   const bureau = opened.bureau;
   const runtime = createDefaultRuntimeServices();
   const host = buildBureauHandlerHost(bureau, ['asker']);
@@ -138,10 +112,10 @@ export async function open(
   });
   const handler = createBureauA2ARequestHandler({
     publicUrl: 'http://localhost',
-    timers: withFastSettlePoll(runtime.timers),
+    timers: wrap.timers?.(runtime.timers) ?? runtime.timers,
     agentName: 'asker',
     card: () => ({ ...card, supportedInterfaces: [], signatures: [] }),
-    bureau,
+    bureau: wrap.bureau?.(bureau) ?? bureau,
     records: createA2ATaskRecords(textValueStore(new MemoryStorage())),
     ledger: createCommandLedger<A2ASendClaim, A2ASendResult>({
       kv: textValueStore(new MemoryStorage()),
@@ -173,5 +147,33 @@ export async function open(
     expect(parked.status?.state).toBe(TaskState.TASK_STATE_INPUT_REQUIRED);
     return parked;
   };
-  return { opened, bureau, host, principal, handler, send, start, read, seen, context };
+  return { bureau, host, principal, handler, send, start, read, context };
+}
+
+export async function open(
+  schema: HumanInputSchema | undefined,
+  signals: readonly string[] = ['deploy'],
+  formSignals: readonly string[] = signals,
+) {
+  const seen: Seen = { resumed: [] };
+  const opened = await openBureau({
+    agents: {
+      asker: createAgent({
+        name: 'asker',
+        generate: parksThenAnswers(seen, signals),
+        maximumSteps: 100,
+      }),
+    },
+    publish: ['asker'],
+    // The schema is configured the way a host configures it: on the Bureau option, per signal.
+    ...(schema === undefined
+      ? {}
+      : {
+          humanInput: {
+            inputSchemas: Object.fromEntries(formSignals.map((signal) => [signal, schema])),
+          },
+        }),
+  });
+  const fixture = attachHandler(opened);
+  return { opened, ...fixture, seen };
 }
