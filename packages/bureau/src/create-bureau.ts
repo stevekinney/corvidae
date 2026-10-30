@@ -446,6 +446,7 @@ import {
   type SecretAnswerAuditEntry,
   SecretAnswerUnavailableError,
   secretFieldsOfReview,
+  secretResolverOf,
   unsealedSecretFields,
 } from './secret-answers';
 import {
@@ -2151,6 +2152,13 @@ async function constructBureau<const D extends AgentDefinitions>(
       );
     }
   }
+  // COR-1913: an empty secret would sign nothing, so a host that read it from an unset variable
+  // would raise approvals no one can approve, without knowing why.
+  if (options.agentApprovalSecret !== undefined && options.agentApprovalSecret.trim() === '') {
+    toBadRequest(
+      '"options.agentApprovalSecret" must not be empty: it signs the tool approvals file agents raise, so leave it out to raise unsigned ones',
+    );
+  }
   if (options.workflowSource !== undefined) {
     validateDefinitionSource('workflowSource', 'workflow', options.workflowSource, toBadRequest);
     // COR-1529: Bureau adds the workflow tools to the tool catalog itself, so a host tool that
@@ -2754,6 +2762,13 @@ async function constructBureau<const D extends AgentDefinitions>(
               tools: agentToolCatalog,
               models,
               resolveGenerate: (row) => models.generate(row),
+              ...(options.agentApprovalSecret === undefined
+                ? {}
+                : { approvalSecret: options.agentApprovalSecret }),
+              // COR-1920: a file agent's per-run toolbox resolves secret answers as the Bureau's does.
+              ...(runtime.secretAnswers === undefined
+                ? {}
+                : { secretResolver: secretResolverOf(runtime.secretAnswers) }),
               runtime: runtimeServices,
               // COR-1584: the revision records share the Bureau's store, so a revision survives a
               // restart and two Bureaus on one store agree on it.

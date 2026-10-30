@@ -55,10 +55,23 @@ export interface WorkflowToolsHarness {
     readonly outcome: unknown;
     readonly runId: string;
   }>;
+  /**
+   * Makes the model of every run from now on ask for `tool` once with `args`, until `plan` is
+   * called with `undefined`. For a run `callTool` does not start, such as a workflow's agent step.
+   */
+  plan(tool: string | undefined, args?: Record<string, unknown>): void;
   /** The names of the tools each model call was offered, in order. */
   readonly offered: string[][];
-  /** Writes an agent file under the identifier `id` that lists `tools` (the five workflow tools by default). */
-  putAgent(id: string, tools?: readonly string[]): Promise<void>;
+  /**
+   * Writes an agent file under the identifier `id` that lists `tools` (the five workflow tools by
+   * default). Each tool is set to `never`, so a call runs without waiting for a person; pass
+   * `approval: 'default'` to leave `toolApproval` out and take the agent default (COR-1913).
+   */
+  putAgent(
+    id: string,
+    tools?: readonly string[],
+    options?: { readonly approval?: 'never' | 'default' },
+  ): Promise<void>;
   dispose(): Promise<void>;
 }
 
@@ -113,10 +126,20 @@ export async function startWorkflowToolsBureau(
   const putAgent = async (
     id: string,
     tools: readonly string[] = WORKFLOW_TOOL_NAMES,
+    agentOptions: { readonly approval?: 'never' | 'default' } = {},
   ): Promise<void> => {
     await writeFile(
       join(agentsPath, `${id}.md`),
-      agentFileText({ name: id, model: KNOWN_MODEL, tools: `[${tools.join(', ')}]` }),
+      agentFileText({
+        name: id,
+        model: KNOWN_MODEL,
+        tools: `[${tools.join(', ')}]`,
+        // These tests are about what the tools do. A file agent asks before a tool that changes
+        // something (COR-1913), so each tool is set to run without asking.
+        ...(tools.length === 0 || agentOptions.approval === 'default'
+          ? {}
+          : { toolApproval: `{ ${tools.map((tool) => `${tool}: never`).join(', ')} }` }),
+      }),
     );
     await bureau.agents.refresh();
   };
@@ -129,6 +152,9 @@ export async function startWorkflowToolsBureau(
     agentsPath,
     offered,
     putAgent,
+    plan(tool, args = {}) {
+      plan = tool === undefined ? undefined : { tool, args };
+    },
     async callTool(tool, args, callOptions = {}) {
       plan = { tool, args };
       captured = undefined;

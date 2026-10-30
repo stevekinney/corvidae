@@ -16,6 +16,12 @@ export type {
 } from './agent-catalog';
 export { createAgentCatalog } from './agent-catalog';
 export { guardrailsOfPreset } from './guardrail-presets';
+export {
+  createToolApprovalHooks,
+  TOOL_APPROVAL_DEFAULT_MODE,
+  TOOL_APPROVAL_MODES,
+} from './tool-approval';
+export type { ToolApprovalHooksOptions, ToolApprovalMode } from './tool-approval';
 export type {
   AgentFileDefinition,
   AgentFileDefinitionInput,
@@ -35,6 +41,7 @@ export {
   AGENT_GUARDRAIL_PRESETS,
   AGENT_IDENTIFIER_PATTERN,
   agentFileFrontmatterSchema,
+  agentToolApprovalSchema,
   AgentFileConflictError,
   AgentFileError,
   AgentSnapshotError,

@@ -2229,6 +2229,40 @@ const agent = createAgent({
 
 The budget is measured against the cost the run already accumulates for its terminal `costEstimate`, each request priced at its own model's rate, so it belongs to one run and cannot be spent by another. After each step, a run that has spent `perRunUsd` ends with the finish reason `budget-exceeded` and a `BudgetExceededError` that names `perRunUsd`, and a step that crosses a `warnAt` fraction (each strictly between 0 and 1, at most `RUN_COST_BUDGET_MAXIMUM_WARNINGS`) dispatches one `budget.threshold` event, which the run event feed (`operative.runs.events`) publishes with the `step`, `threshold`, `currentCost`, `budget` and `model`. The check runs after the step that spent the money, so a run can pass its budget by up to one step's cost. A durable run keeps its accumulated cost in its cursor, so a recovered run counts what it spent before the restart and does not, as a rule, announce a fraction twice; a warning can repeat if the host crashes after it is sent but before the step is saved. The step's spend is measured from where the step began, so a billed response the step discarded (an `onError` skip, for one) still counts toward both the warnings and the limit. A step on a model a session was switched to is priced at that model when `costEstimation.pricing` knows it, and otherwise at `costEstimation.model`. `createAgent` throws for a `costBudget` with no `costEstimation`, with a model that has no price, or with a `perRunUsd` or `warnAt` that is not valid, because a limit that cannot be measured cannot be enforced.
 
+#### A toolbox of a run's own (COR-1913)
+
+A `toolbox` you hand `createAgent` is shared by every run of the agent, so what it keeps (a loop detector, a budget counter, a policy hook with state) is shared too. `tools` builds a new toolbox for each run but takes no toolbox options. `toolboxOptions` is the seam between them: a function that returns the `ToolboxOptions` of the toolbox built for one run, called once for each run (and again when a durable run's options are rebuilt on recovery), so whatever it creates belongs to that run alone.
+
+```typescript
+import { createAgent, type GenerateFunction } from '@lostgradient/operative';
+import { createApprovalPolicyHooks, createTool } from 'armorer';
+import { z } from 'zod';
+
+declare const generate: GenerateFunction;
+
+const agent = createAgent({
+  generate,
+  tools: {
+    refund: createTool({
+      name: 'refund',
+      description: 'Refund an order',
+      input: z.object({ orderId: z.string() }),
+      metadata: { mutates: true },
+      execute: async ({ orderId }) => ({ orderId }),
+    }),
+  },
+  // A hook, a budget and a secret for each run's toolbox. Give every process that resolves the
+  // approvals the same `approvalSecret`.
+  toolboxOptions: () => ({
+    approvalSecret: 'a-secret-the-host-keeps',
+    budget: { maxCalls: 20 },
+    policy: createApprovalPolicyHooks({ mode: 'on-mutation' }),
+  }),
+});
+```
+
+It is exclusive with `toolbox` (a type error, and `createAgent` throws for a cast) and with `permissions`, which sets the same `policy`: put `createHeadlessPermissionPolicyHooks(permissions)` in the function to have both. Bureau uses it for a file agent's `toolApproval`.
+
 ### Model Catalog (AB-64)
 
 `createModelCatalog` (`@lostgradient/operative`) builds a static, synchronous, side-effect-free `ModelCatalog`—one `BackendDescriptor` row per `(provider, endpoint, model)` this package ships a generate function for. Each descriptor names its `modalities` (an AB-70 `ModalityMatrix`, re-exported from `conversationalist`), context/output limits, effort support and degradation, parameter compatibility, pricing (derived from `defaultPricingTable`, never fabricated), and availability/health. `voyage` and `ollama` are embedding-only and get no row. `CreateModelCatalogOptions.runtime?: RuntimeServices` (AB-325) backs the default `now` when `options.now` is not supplied—defaults to the real implementation; an explicit `now` still takes precedence over `runtime` when both are given.

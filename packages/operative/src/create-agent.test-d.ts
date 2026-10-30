@@ -209,6 +209,22 @@ const optionsAllThree: CreateAgentOptions = {
 };
 void optionsAllThree;
 
+// --- COR-1913: `toolboxOptions` beside `tools`, never beside `toolbox`. -------
+const optionsToolboxOptions: CreateAgentOptions = {
+  generate: mockGenerate,
+  tools: someTools,
+  toolboxOptions: () => ({ approvalSecret: 'secret' }),
+};
+void optionsToolboxOptions;
+
+// @ts-expect-error — `toolboxOptions` configures a toolbox `createAgent` builds, not `toolbox`.
+const optionsToolboxAndToolboxOptions: CreateAgentOptions = {
+  generate: mockGenerate,
+  toolbox: concreteToolbox,
+  toolboxOptions: () => ({}),
+};
+void optionsToolboxAndToolboxOptions;
+
 // `createAgent(...)` itself rejects the same invalid combinations end-to-end,
 // not just the bare options object.
 // @ts-expect-error — `tools` and `toolbox` are mutually exclusive.

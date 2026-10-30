@@ -662,6 +662,84 @@ describe('createAgent — toolbox injection', () => {
     ).toThrow(/tools.*toolbox.*mutually exclusive/i);
   });
 
+  it('throws when `toolboxOptions` is supplied with `toolbox` or with `permissions`', () => {
+    const toolbox = createToolbox([]);
+
+    expect(() =>
+      createAgent({
+        generate: singleResponse('hello'),
+        toolbox,
+        toolboxOptions: () => ({}),
+      } as unknown as Parameters<typeof createAgent>[0]),
+    ).toThrow(/toolboxOptions.*toolbox/i);
+    expect(() =>
+      createAgent({
+        generate: singleResponse('hello'),
+        permissions: { allowList: [] },
+        toolboxOptions: () => ({}),
+      } as unknown as Parameters<typeof createAgent>[0]),
+    ).toThrow(/permissions.*toolboxOptions/i);
+  });
+
+  it('builds the options of each run’s toolbox from `toolboxOptions`, so two runs share no policy or counter (COR-1913)', async () => {
+    let built = 0;
+    const seenToolboxes: unknown[] = [];
+    const executed: string[] = [];
+    const agent = createAgent({
+      generate: async ({ toolbox: seen }) => {
+        // The first call of each run asks for the tool; the second answers.
+        const asked = seenToolboxes.includes(seen);
+        seenToolboxes.push(seen);
+        return asked
+          ? textResponse('done')
+          : toolCallResponse([
+              { id: `call-${String(seenToolboxes.length)}`, name: 'ping', arguments: {} },
+            ]);
+      },
+      tools: {
+        ping: createTool({
+          name: 'ping',
+          description: 'Ping',
+          input: z.object({}),
+          execute: async () => {
+            executed.push('ping');
+            return 'pong';
+          },
+        }),
+      },
+      // A budget of one call is per toolbox: a toolbox shared between the runs would refuse the
+      // second run's call.
+      toolboxOptions: () => {
+        built += 1;
+        return { budget: { maxCalls: 1 } };
+      },
+      stopWhen: noToolCalls(),
+    });
+
+    const first = agent.run('first');
+    const second = agent.run('second');
+    await Promise.all([first.result(), second.result()]);
+
+    expect(built).toBe(2);
+    expect(new Set(seenToolboxes).size).toBe(2);
+    expect(executed).toEqual(['ping', 'ping']);
+  });
+
+  it('hands `toolboxOptions` the run’s own context', async () => {
+    const contexts: unknown[] = [];
+    const agent = createAgent({
+      generate: singleResponse('hello'),
+      toolboxOptions: (context) => {
+        contexts.push(context?.runId);
+        return {};
+      },
+    });
+
+    await agent.run('hi', { runId: 'run-from-the-caller' }).result();
+
+    expect(contexts).toContain('run-from-the-caller');
+  });
+
   it('uses the caller-supplied Toolbox instance as-is, across multiple runs', async () => {
     const seenToolboxes: unknown[] = [];
 

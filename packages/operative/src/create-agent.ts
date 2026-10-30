@@ -1,6 +1,11 @@
 import type { HookRegistry, RuntimeServices } from '@lostgradient/lifecycle';
 import { createDefaultRuntimeServices, mergeHookRegistries } from '@lostgradient/lifecycle';
-import type { AnyToolbox, HeadlessPermissionPolicyConfiguration, Tool } from 'armorer';
+import type {
+  AnyToolbox,
+  HeadlessPermissionPolicyConfiguration,
+  Tool,
+  ToolboxOptions,
+} from 'armorer';
 import { createHeadlessPermissionPolicyHooks, createToolbox } from 'armorer';
 import { Conversation } from 'conversationalist';
 import type { ZodType } from 'zod';
@@ -348,8 +353,27 @@ export type CreateAgentToolConfiguration =
       tools?: Record<string, Tool> | undefined;
       toolbox?: undefined;
       permissions?: HeadlessPermissionPolicyConfiguration | undefined;
+      toolboxOptions?: CreateAgentToolboxOptions | undefined;
     }
-  | { tools?: undefined; toolbox: AnyToolbox; permissions?: undefined };
+  | {
+      tools?: undefined;
+      toolbox: AnyToolbox;
+      permissions?: undefined;
+      toolboxOptions?: undefined;
+    };
+
+/**
+ * Builds the options of the toolbox `createAgent` makes for one run (COR-1913). It is called once
+ * for each run, and again when a durable run's options are rebuilt on recovery, so a policy hook,
+ * a budget or a counter it creates belongs to that run alone: two runs of one agent never share
+ * it, which a supplied `toolbox` cannot promise. `context` is the run's own, or `undefined` for a
+ * call that has none. The result is handed to `createToolbox` with the agent's `tools`; give it
+ * the `approvalSecret` there, and every toolbox that is to resume the approvals it signs.
+ *
+ * Mutually exclusive with `toolbox` and with `permissions`, which sets the toolbox's `policy` and
+ * so would be silently replaced.
+ */
+export type CreateAgentToolboxOptions = (context: AgentRunContext | undefined) => ToolboxOptions;
 
 /**
  * Options for `createAgent({...})`. Distinct from the old `DefineAgentOptions`
@@ -383,6 +407,11 @@ export type CreateAgentToolConfiguration =
  *   budget/loop-detection counters — the same tradeoff as constructing the
  *   toolbox yourself and reusing it. If you don't need cross-run state
  *   (approvals, budgets), use `tools` instead for per-run isolation.
+ * - `toolboxOptions` — a function that returns the options of the toolbox this factory builds
+ *   for a run from `tools`, called once per run (COR-1913). Use it for what must belong to a run
+ *   alone and so cannot sit on a shared `toolbox`: a policy hook that keeps a count, a budget, an
+ *   `approvalSecret` with the approval policy that raises approvals. Mutually exclusive with
+ *   `toolbox` and with `permissions`.
  * - `permissions` — headless deny-by-default permission mode (AB-94,
  *   armorer's `createHeadlessPermissionPolicyHooks`). When set, every tool
  *   call is checked against an explicit allowlist/denylist and an optional
@@ -515,6 +544,22 @@ function validateCreateAgentOptions(options: CreateAgentOptions): void {
           'the budget is measured against the run’s priced cost. Without one it could not be enforced.',
       );
     }
+  }
+
+  if (options.toolbox && options.toolboxOptions) {
+    throw new Error(
+      'createAgent: `toolboxOptions` configures the toolbox this factory builds for each run and ' +
+        'cannot be combined with `toolbox` (a pre-built Toolbox instance already owns its own ' +
+        'options). Pass the options to `createToolbox` yourself instead.',
+    );
+  }
+
+  if (options.permissions && options.toolboxOptions) {
+    throw new Error(
+      'createAgent: `permissions` and `toolboxOptions` both set the policy of the toolbox built ' +
+        'for each run, so they cannot be combined. Put the permission hooks in `toolboxOptions` ' +
+        'with `createHeadlessPermissionPolicyHooks`.',
+    );
   }
 
   if (options.toolbox && options.permissions) {
@@ -792,6 +837,7 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
     toolbox: providedToolbox,
     instructions,
     permissions,
+    toolboxOptions,
     output,
     name: configuredName,
     description,
@@ -915,7 +961,11 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
       providedToolbox ??
       createToolbox(
         toolEntries,
-        permissions ? { policy: createHeadlessPermissionPolicyHooks(permissions) } : undefined,
+        toolboxOptions !== undefined
+          ? toolboxOptions(context)
+          : permissions
+            ? { policy: createHeadlessPermissionPolicyHooks(permissions) }
+            : undefined,
       );
 
     // COR-1367 — the agent's own declaration first, then whatever the host

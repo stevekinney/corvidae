@@ -190,6 +190,7 @@ The agent fields say what a Bureau can run and where the definitions come from.
 | --- | --- | --- |
 | `agents` | `AgentDefinitions` | The typed agent catalog, exposed as `bureau.agents` and started by name through `bureau.tasks.start`. Omitted means `{}`. |
 | `agentSource` | `AgentSource` | Where agent definitions are loaded from, watched in, and written back to. Requires `models.generate`. |
+| `agentApprovalSecret` | `string` | Signs the tool approvals file agents raise (a file's `toolApproval`); keep it the same across restarts. Without it an approval can only be denied. |
 | `workflowSource` | `WorkflowSource` | Where workflow definitions are loaded from, watched in, and written back to. Needs a durable engine. |
 | `children` | `BureauChildrenOptions` | Configures `bureau.children`: each child agent's typed signal contract and, optionally, signed delegation grants. |
 | `validators` | `readonly Validator[]` | The validators durable goals may name. Registered here and resolved by exact name and version every time one runs, including after a restart. |

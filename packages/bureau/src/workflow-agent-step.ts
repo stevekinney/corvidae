@@ -8,7 +8,11 @@
 
 import { createHash } from 'node:crypto';
 
-import { isFailureFinishReason, type RunResult } from '@lostgradient/operative';
+import {
+  isFailureFinishReason,
+  type RunResult,
+  toolNeedingApproval,
+} from '@lostgradient/operative';
 import type { JSONValue, WorkflowState } from '@lostgradient/weft';
 import { isJSONValue } from '@lostgradient/weft';
 
@@ -47,7 +51,21 @@ function jsonOrNull(value: unknown): JSONValue | null {
   return isJSONValue(value) ? value : (JSON.parse(JSON.stringify(value)) as JSONValue);
 }
 
-/** A step's result from the finished run, or the failure the run ended in. */
+/** The failure of a step whose agent called a tool that needed an approval no one can give. */
+function approvalUnavailable(agent: string, tool: string): WorkflowAgentStepError {
+  return new WorkflowAgentStepError(
+    'agent-run-failed',
+    agent,
+    `Agent "${agent}" called "${tool}", which needs a person's approval, and a workflow step has no one to ask, so the call did not run. Set "${tool}" to "never" in the agent file's toolApproval to let a workflow use it, or take the tool away from the agent.`,
+  );
+}
+
+/**
+ * A step's result from the finished run, or the failure the run ended in. A run in which a tool
+ * call needed an approval fails the step too (COR-1913): the model was told the call did not run
+ * and went on, so the run looks finished while the change it was started for was never made. A
+ * workflow step has no one to ask, so a tool it uses to change something has to say `never`.
+ */
 export function agentStepResultFromRun(
   agent: string,
   result: RunResult<unknown, true>,
@@ -60,6 +78,8 @@ export function agentStepResultFromRun(
       result.error === undefined ? undefined : serializeUnknownError(result.error),
     );
   }
+  const needing = toolNeedingApproval(result.steps.flatMap((step) => step.results));
+  if (needing !== undefined) throw approvalUnavailable(agent, needing);
   return {
     content: result.content,
     output: jsonOrNull((result as { output?: unknown }).output),
@@ -99,9 +119,18 @@ export function agentStepResultFromState(
       `The run of agent "${agent}" for this step did not record a result.`,
     );
   }
-  const recorded = summary as { content: string; finishReason: string; output?: unknown };
+  const recorded = summary as {
+    content: string;
+    finishReason: string;
+    output?: unknown;
+    toolNeedingApproval?: unknown;
+  };
   if (recorded.finishReason === 'aborted' || isFailureFinishReason(recorded.finishReason)) {
     throw failed(agent, recorded.finishReason, undefined);
+  }
+  // The same failure the live run raised, for a run a restart found finished (COR-1913).
+  if (typeof recorded.toolNeedingApproval === 'string') {
+    throw approvalUnavailable(agent, recorded.toolNeedingApproval);
   }
   return {
     content: recorded.content,
