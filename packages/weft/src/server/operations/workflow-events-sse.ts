@@ -87,7 +87,7 @@ export const workflowEventsSseOperation = defineOperation({
   kind: 'stream',
   summary: 'Stream workflow events as Server-Sent Events',
   description:
-    '`selector: "events"` requires `events:read`; `selector: "tokens"` requires `streams:read`. The stream replays from `fromCursor` or `Last-Event-ID`, then remains open for live events and `ping` keepalives.',
+    '`selector: "events"` requires `events:read` and streams the lifecycle events the `/watch` WebSocket delivers, with the same order and cursors under `serve()`; `selector: "tokens"` requires `streams:read`. The stream replays from `fromCursor` or `Last-Event-ID`, then remains open for live events and `ping` keepalives.',
   destructive: false,
   tags: ['Events'],
   inputSchema: workflowEventsSseInputSchema,

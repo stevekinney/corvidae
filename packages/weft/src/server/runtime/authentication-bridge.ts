@@ -300,7 +300,7 @@ function buildHandlerOptions(
       : {}),
     operationRegistry: context.liveOperationRegistry,
     restBindings: context.liveRestBindings,
-    workflowEventFeed: context.workflowEventFeed,
+    workflowEventFeed: context.watchEventFeed,
     fleetEventFeed: context.fleetEventFeed,
     acquireWorkflowStreamConnection: (workflowId) =>
       acquireWorkflowStreamConnection(context, workflowId),
