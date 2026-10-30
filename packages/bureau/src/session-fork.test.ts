@@ -836,6 +836,7 @@ describe('the parent’s model choice', () => {
     });
     expect(await bureau.contexts.steering(result.contextId)).toEqual({
       model: { provider: 'anthropic', model: 'claude-opus-5' },
+      effort: null,
       configVersion: 1,
     });
     // The parent keeps its own, and an exact retry returns the same pair.

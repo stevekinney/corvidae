@@ -97,7 +97,7 @@ export function contextDetailFixture(
   id: string,
   overrides: Partial<ContextDetail> = {},
 ): ContextDetail {
-  return { ...contextFixture(id), model: null, configVersion: 0, ...overrides };
+  return { ...contextFixture(id), model: null, effort: null, configVersion: 0, ...overrides };
 }
 
 /** A goal as `bureau.goals.list` shows it, with no attempts unless a test gives some. */

@@ -352,6 +352,7 @@ describe('the model picker in a session’s composer', () => {
       'bureau.contexts.get': () => ({
         ...CONTEXT,
         model: { provider: 'anthropic', model: 'claude-haiku-4-5' },
+        effort: null,
         configVersion: 4,
       }),
     });
@@ -377,6 +378,7 @@ describe('the model picker in a session’s composer', () => {
       'bureau.contexts.get': () => ({
         ...CONTEXT,
         model: switched ? { provider: 'anthropic', model: 'claude-haiku-4-5' } : null,
+        effort: null,
         configVersion: switched ? 2 : 1,
       }),
       'bureau.contexts.steer': () => {

@@ -14694,6 +14694,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         desired?.model === undefined
           ? null
           : { provider: desired.modelProvider ?? null, model: desired.model },
+      effort: desired?.effort ?? null,
       configVersion: gate?.getConfigVersion() ?? 0,
     };
   }
