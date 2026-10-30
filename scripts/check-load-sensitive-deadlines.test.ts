@@ -623,6 +623,54 @@ describe('a quiet window placed before an assertion that something happened', ()
   });
 });
 
+describe('a listener attached through an optional chain on a looked-up handle (COR-1938)', () => {
+  test.each([
+    [
+      'a const holding a store lookup',
+      "test('a', async () => {\n  const runState = store.getRun(id);\n  runState?.activeRun.addEventListener('tool.started', record);\n});",
+    ],
+    [
+      'a lookup call chained directly',
+      "test('a', async () => {\n  store.getRun(id)?.activeRun.on('tool.started', record);\n});",
+    ],
+    [
+      'an awaited lookup',
+      "test('a', async () => {\\n  const runState = await store.getRun(id);\\n  runState?.activeRun.on('tool.started', record);\\n});",
+    ],
+    [
+      'a once subscription',
+      "test('a', async () => {\n  const handle = bureau.find(id);\n  handle?.events.once('done', record);\n});",
+    ],
+  ])('reports %s', (_name, source) => {
+    expect(inspect(source)).toEqual(['optional-listener-attach']);
+  });
+
+  test.each([
+    [
+      'a definite handle',
+      "test('a', async () => {\n  const runState = store.getRun(id);\n  expect(runState).toBeDefined();\n  runState!.activeRun.addEventListener('tool.started', record);\n});",
+    ],
+    [
+      'a double that reads its own optional context parameter',
+      "test('a', async () => {\n  const run = async (context?: { signal: AbortSignal }) => {\n    context?.signal.addEventListener('abort', stop);\n  };\n});",
+    ],
+    [
+      'a document query, which answers from the markup as it stands',
+      "test('a', () => {\n  const link = container.querySelector('a');\n  link?.addEventListener('click', record);\n});",
+    ],
+    [
+      'an awaited document query',
+      "test('a', async () => {\\n  const el = await screen.findByRole('button');\\n  el?.addEventListener('click', record);\\n});",
+    ],
+    [
+      'a subscription under a load-proof marker',
+      "test('a', async () => {\n  const runState = store.getRun(id);\n  // load-proof: the run is registered synchronously before this statement\n  runState?.activeRun.on('tool.started', record);\n});",
+    ],
+  ])('accepts %s', (_name, source) => {
+    expect(inspect(source)).toEqual([]);
+  });
+});
+
 describe('a wait helper imported under the name waitFor', () => {
   test("is read for its timeoutMs budget as well as Testing Library's timeout", () => {
     expect(
