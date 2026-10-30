@@ -141,8 +141,10 @@ async function pruneAudit(
  * plan and receipt as a requested deletion, and a held record reports every
  * target exempt. A dry run reports what would expire without deleting, which is
  * how a candidate policy revision is inspected before it is activated; a
- * candidate is never applied outside a dry run, so only an activated revision
- * ever deletes. The sweep also prunes audit history older than the tenant's
+ * candidate is never applied outside a dry run, so deletion follows the activated
+ * retention policy or a per-sweep `retention` override the caller supplies (Bureau
+ * uses one for the episodic class through its `retention.memory` setting). A
+ * record under legal hold still waits for its release. The sweep also prunes audit history older than the tenant's
  * (one-year minimum) audit retention. `options.retention` overrides the policy's
  * per-class rules for this sweep alone (a host's operating setting, such as
  * Bureau's `retention.memory`); a rule that fails the policy's own validation
