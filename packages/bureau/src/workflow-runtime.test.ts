@@ -798,4 +798,28 @@ describe('the version a manual start reports (COR-1927)', () => {
     expect(result.workflowVersion).toBe('sha256:pinned');
     expect(result.workflowVersion).not.toBe(runtime.workflows.list()[0]?.version);
   });
+
+  it('still answers with the run, on the catalog’s revision, when the engine cannot read the run back', async () => {
+    const w = await world();
+    await w.put('lookup', parked('lookup', 'ask'));
+    const { engine, runtime } = await w.boot();
+    const started: string[] = [];
+    const start = engine.start.bind(engine) as (...args: unknown[]) => Promise<{ id: string }>;
+    (engine as unknown as { start: typeof start }).start = async (...args) => {
+      const handle = await start(...args);
+      started.push(handle.id);
+      return handle;
+    };
+    const get = engine.get.bind(engine);
+    engine.get = async (id: string) => {
+      if (started.includes(id)) throw new Error('storage unavailable');
+      return get(id);
+    };
+
+    const result = await runtime.workflows.start('lookup', { owner: 'anonymous:local' });
+
+    expect(started).toEqual([result.runId]);
+    expect(result.workflowVersion).toBe(runtime.workflows.list()[0]!.version!);
+    expect(w.diagnostics.join('\n')).toContain(result.runId);
+  });
 });

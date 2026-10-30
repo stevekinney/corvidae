@@ -17,7 +17,15 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import {
+  type Engine,
+  registerWorkflowDocuments,
+  validateWorkflowDocument,
+} from '@lostgradient/weft';
+
 import type { BureauDiagnostic } from './types';
+import { createWorkflowDocumentHost } from './workflow-host';
+import { parseWorkflowFile, workflowVersionOf } from './workflow-file';
 import { startWorkflowBureau } from './testing/workflow-bureau.test-support';
 import { workflowFileText } from './testing/workflow-file-fixtures.test-support';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
@@ -33,6 +41,7 @@ const SCHEDULE_ID = 'bureau-workflow-schedule:digest:1';
 /** The ways a file can carry a key this host does not know. */
 const UNRECOGNIZED: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['a top-level key', { ...HOURLY, futureOption: { anything: true } }],
+  ['a key on the schedule trigger', { trigger: { kind: 'schedule', spec: '1h', timezone: 'UTC' } }],
   [
     'a key on a step',
     {
@@ -161,8 +170,23 @@ describe('a file with an unrecognized key and no schedule', () => {
   });
 });
 
+const SCHEDULE_TRIGGER = { kind: 'schedule', spec: '1h' };
+
+/** The ways a stored revision and its file can carry a key this host does not know. */
+const IN_FLIGHT_ROWS: ReadonlyArray<
+  readonly [string, Record<string, unknown>, (document: Record<string, unknown>) => void]
+> = [
+  [
+    'a top-level key',
+    SCHEDULE_TRIGGER,
+    (document) => {
+      document['futureOption'] = true;
+    },
+  ],
+];
+
 const PARKED = {
-  trigger: { kind: 'schedule', spec: '1h' },
+  trigger: SCHEDULE_TRIGGER,
   steps: [
     { kind: 'await-signal', signal: 'go' },
     { kind: 'activity', handler: 'agent', input: { agent: 'writer', message: 'after the wait' } },
@@ -170,54 +194,124 @@ const PARKED = {
 };
 
 describe('an instance in flight on a revision with an unrecognized key', () => {
-  it('is left as it is at startup, with the instances of the workflow’s older revisions, and no reason is written', async () => {
-    const { directory, overrides, diagnostics } = await restartable();
-    const first = await startWorkflowBureau({ directory, overrides });
-    await first.putWorkflow('parked', PARKED);
-    const engine = first.bureau.durableEngine()!;
-    await engine.start('parked', null, { id: 'older-run' });
-    const newer = {
-      ...PARKED,
-      steps: [{ kind: 'await-signal', signal: 'later' }, ...PARKED.steps],
-    };
-    await first.putWorkflow('parked', newer);
-    await engine.start('parked', null, { id: 'newer-run' });
-    // The newer revision's stored document carries a key this host does not know, as a record a
-    // newer Bureau wrote does, and so does the file.
-    let rewritten = 0;
-    for (const key of await first.bureau.internals.kv!.list(
-      'bureau-workflow-snapshot:v1:parked:',
-    )) {
-      const stored = JSON.parse((await first.bureau.internals.kv!.get(key)) ?? '{}');
-      if (stored.document?.steps?.[0]?.signal === 'later') {
-        stored.document.futureOption = true;
-        await first.bureau.internals.kv!.set(key, JSON.stringify(stored));
-        rewritten += 1;
+  for (const [label, trigger, mark] of IN_FLIGHT_ROWS) {
+    it(`is left as it is at startup when its revision has ${label}, with the instances of the workflow’s older revisions, and no reason is written`, async () => {
+      const { directory, overrides, diagnostics } = await restartable();
+      const first = await startWorkflowBureau({ directory, overrides });
+      const parked = { ...PARKED, trigger };
+      await first.putWorkflow('parked', parked);
+      const engine = first.bureau.durableEngine()!;
+      await engine.start('parked', null, { id: 'older-run' });
+      const newer = {
+        ...parked,
+        steps: [{ kind: 'await-signal', signal: 'later' }, ...PARKED.steps],
+      };
+      await first.putWorkflow('parked', newer);
+      await engine.start('parked', null, { id: 'newer-run' });
+      // The newer revision's stored document carries a key this host does not know, as a record a
+      // newer Bureau wrote does, and so does the file.
+      let rewritten = 0;
+      for (const key of await first.bureau.internals.kv!.list(
+        'bureau-workflow-snapshot:v1:parked:',
+      )) {
+        const stored = JSON.parse((await first.bureau.internals.kv!.get(key)) ?? '{}');
+        if (stored.document?.steps?.[0]?.signal === 'later') {
+          mark(stored.document);
+          await first.bureau.internals.kv!.set(key, JSON.stringify(stored));
+          rewritten += 1;
+        }
       }
-    }
-    expect(rewritten).toBe(1);
-    await first.put('parked.json', workflowFileText('parked', { ...newer, futureOption: true }));
-    await first.dispose();
+      expect(rewritten).toBe(1);
+      const text = JSON.parse(workflowFileText('parked', newer));
+      mark(text);
+      await first.put('parked.json', `${JSON.stringify(text)}\n`);
+      await first.dispose();
 
-    const second = await startWorkflowBureau({ directory, overrides });
-    cleanups.push(() => second.dispose());
-    const report = await second.bureau.recovery();
-    // The engine skips and reports a type it has no trace of; nothing is stranded or cancelled.
-    expect(report?.perRunFailures).toEqual([]);
-    expect(report?.skippedRuns.map((run) => run.runId).toSorted()).toEqual([
-      'newer-run',
-      'older-run',
-    ]);
+      const second = await startWorkflowBureau({ directory, overrides });
+      cleanups.push(() => second.dispose());
+      const report = await second.bureau.recovery();
+      // The engine skips and reports a type it has no trace of; nothing is stranded or cancelled.
+      expect(report?.perRunFailures).toEqual([]);
+      expect(report?.skippedRuns.map((run) => run.runId).toSorted()).toEqual([
+        'newer-run',
+        'older-run',
+      ]);
 
-    const engineAgain = second.bureau.durableEngine()!;
-    for (const runId of ['older-run', 'newer-run']) {
-      const state = await engineAgain.get(runId);
-      expect(state?.status, runId).not.toBe('cancelled');
-      expect(state?.status, runId).not.toBe('failed');
-    }
-    expect(await second.bureau.internals.kv!.list('bureau-workflow-cancelled-run:v1:')).toEqual([]);
-    expect(diagnostics.map((entry) => entry.message).join('\n')).toContain('"parked"');
-  });
+      const engineAgain = second.bureau.durableEngine()!;
+      for (const runId of ['older-run', 'newer-run']) {
+        const state = await engineAgain.get(runId);
+        expect(state?.status, runId).not.toBe('cancelled');
+        expect(state?.status, runId).not.toBe('failed');
+      }
+      expect(await second.bureau.internals.kv!.list('bureau-workflow-cancelled-run:v1:')).toEqual(
+        [],
+      );
+      expect(diagnostics.map((entry) => entry.message).join('\n')).toContain('"parked"');
+    });
+  }
+
+  for (const [label, trigger] of [
+    ['a key on a schedule trigger', { kind: 'schedule', spec: '1h', timezone: 'UTC' }],
+    ['a key on a signal trigger', { kind: 'signal', name: 'go', replay: true }],
+  ] as const) {
+    it(`is left as it is at startup when its revision has ${label}`, async () => {
+      const { directory, overrides, diagnostics } = await restartable();
+      const first = await startWorkflowBureau({ directory, overrides });
+      await first.putWorkflow('parked', PARKED);
+      const engine = first.bureau.durableEngine()!;
+      await engine.start('parked', null, { id: 'older-run' });
+      // A newer Bureau registered a revision whose trigger carries an option this one does not
+      // validate. Register it as that Bureau would (a host that accepts the option), start a run
+      // on it, and store the revision's snapshot and file as that Bureau wrote them.
+      const permissive = createWorkflowDocumentHost({
+        runAgentStep: async () => ({ content: '', output: null, finishReason: 'stop-condition' }),
+      });
+      const future = {
+        name: 'parked',
+        trigger,
+        steps: [{ kind: 'await-signal', signal: 'later' }, ...PARKED.steps],
+      };
+      const lenient = {
+        ...permissive,
+        triggerKinds: { schedule: () => undefined, signal: () => undefined },
+      };
+      await registerWorkflowDocuments(engine as unknown as Engine, lenient, {
+        active: [validateWorkflowDocument(future, lenient)],
+      });
+      await engine.start('parked', null, { id: 'newer-run' });
+      const version = workflowVersionOf(validateWorkflowDocument(future, lenient));
+      await first.bureau.internals.kv!.set(
+        `bureau-workflow-snapshot:v1:parked:${version}`,
+        JSON.stringify({
+          schemaVersion: 1,
+          id: 'parked',
+          workflowVersion: version,
+          registeredAt: new Date().toISOString(),
+          document: future,
+        }),
+      );
+      await first.put('parked.json', `${JSON.stringify(future)}\n`);
+      await first.dispose();
+
+      const second = await startWorkflowBureau({ directory, overrides });
+      cleanups.push(() => second.dispose());
+      const report = await second.bureau.recovery();
+      expect(report?.perRunFailures).toEqual([]);
+      expect(report?.skippedRuns.map((run) => run.runId).toSorted()).toEqual([
+        'newer-run',
+        'older-run',
+      ]);
+      for (const runId of ['older-run', 'newer-run']) {
+        const state = await second.bureau.durableEngine()!.get(runId);
+        expect(state?.status, runId).not.toBe('cancelled');
+        expect(state?.status, runId).not.toBe('failed');
+      }
+      expect(await second.bureau.internals.kv!.list('bureau-workflow-cancelled-run:v1:')).toEqual(
+        [],
+      );
+      expect(diagnostics.map((entry) => entry.message).join('\n')).toContain('trigger key');
+    });
+  }
 
   it('is still cancelled, with its reason, when its stored revision is unusable for any other reason', async () => {
     const { directory, overrides } = await restartable();
@@ -240,5 +334,40 @@ describe('an instance in flight on a revision with an unrecognized key', () => {
     const run = await second.bureau.workflows?.getRun('parked-run');
     expect(run?.status).toBe('cancelled');
     expect(run?.error).toContain('cannot be used');
+  });
+});
+
+describe('what marks a file as unrecognized', () => {
+  const host = createWorkflowDocumentHost({
+    runAgentStep: async () => ({ content: '', output: null, finishReason: 'stop-condition' }),
+  });
+  const parse = (trigger: unknown) =>
+    parseWorkflowFile('digest', workflowFileText('digest', { trigger }), host);
+
+  it('includes a key on a schedule or signal trigger, which Weft’s schema leaves open', () => {
+    for (const trigger of [
+      { kind: 'schedule', spec: '1h', timezone: 'UTC' },
+      { kind: 'signal', name: 'go', replay: true },
+    ]) {
+      const parsed = parse(trigger);
+      expect(parsed.ok, JSON.stringify(trigger)).toBe(false);
+      expect(!parsed.ok && parsed.problem.unrecognizedKeys, JSON.stringify(trigger)).toBe(true);
+    }
+  });
+
+  it('leaves out a trigger that is wrong in any other way', () => {
+    for (const trigger of [
+      { kind: 'schedule' },
+      { kind: 'schedule', spec: 'not a schedule' },
+      { kind: 'signal', name: '' },
+      { kind: 'webhook', url: 'x' },
+    ]) {
+      const parsed = parse(trigger);
+      expect(parsed.ok, JSON.stringify(trigger)).toBe(false);
+      expect(
+        !parsed.ok && parsed.problem.unrecognizedKeys,
+        JSON.stringify(trigger),
+      ).toBeUndefined();
+    }
   });
 });

@@ -59,6 +59,30 @@ export const WORKFLOW_FILE_EXTENSION = '.json';
 /** The largest workflow file Bureau reads, in bytes. A larger one is `invalid`. */
 export const WORKFLOW_FILE_SIZE_LIMIT = 256 * 1024;
 
+/**
+ * The keys each trigger kind takes, besides `kind`. Weft's document schema leaves a trigger open,
+ * so the keys are Bureau's to know: the host's validators refuse any other, and
+ * {@link documentHasUnrecognizedTriggerKeys} reads the same table to tell a key this Bureau does
+ * not know from another fault (COR-1927).
+ */
+export const TRIGGER_KEYS: Readonly<Record<string, readonly string[]>> = {
+  schedule: ['spec', 'overlap'],
+  signal: ['name'],
+};
+
+/**
+ * Whether `trigger` is of a kind this Bureau knows and carries a key that kind does not take: what
+ * a newer Bureau writes when a trigger grows an option. A kind this Bureau does not know is not
+ * judged here.
+ */
+export function triggerHasUnrecognizedKeys(trigger: unknown): boolean {
+  if (!isPlainObject(trigger)) return false;
+  const kind = trigger['kind'];
+  if (typeof kind !== 'string' || !Object.hasOwn(TRIGGER_KEYS, kind)) return false;
+  const known = TRIGGER_KEYS[kind] ?? [];
+  return Object.keys(trigger).some((key) => key !== 'kind' && !known.includes(key));
+}
+
 /** The handler name of the activity every agent step names. */
 export const AGENT_STEP_HANDLER = 'agent';
 
@@ -289,7 +313,9 @@ export function parseWorkflowFile(
   } catch (error) {
     if (!(error instanceof WorkflowDocumentValidationError)) throw error;
     issues.push(...error.issues);
-    unrecognizedKeys = hasUnrecognizedDocumentKeys(documentInput);
+    unrecognizedKeys =
+      hasUnrecognizedDocumentKeys(documentInput) ||
+      triggerHasUnrecognizedKeys(documentInput['trigger']);
   }
   if (document !== undefined) {
     if (document.name !== id) {

@@ -22,7 +22,7 @@ import {
 } from '@lostgradient/weft';
 
 import { toScheduleSpec } from './schedule-spec';
-import { AGENT_STEP_HANDLER } from './workflow-file';
+import { AGENT_STEP_HANDLER, TRIGGER_KEYS } from './workflow-file';
 import { checkWorkflowSchema } from './workflow-schema';
 
 /** The overlap policies a `schedule` trigger may name; `skip` when it names none. */
@@ -32,7 +32,7 @@ export type ScheduleOverlapPolicy = (typeof SCHEDULE_OVERLAP_POLICIES)[number];
 /** Why `trigger` is not a valid `schedule` trigger, or `undefined` when it is. */
 export const validateScheduleTrigger: DocumentTriggerValidator = (trigger) => {
   const extra = Object.keys(trigger).filter(
-    (key) => key !== 'kind' && key !== 'spec' && key !== 'overlap',
+    (key) => key !== 'kind' && !TRIGGER_KEYS['schedule']!.includes(key),
   );
   if (extra.length > 0) {
     return `a schedule trigger takes only "spec" and "overlap"; unknown ${extra.map((key) => `"${key}"`).join(', ')}`;
@@ -65,7 +65,9 @@ export const SIGNAL_NAME_MAXIMUM_LENGTH = 256;
  * {@link SIGNAL_NAME_MAXIMUM_LENGTH} characters.
  */
 export const validateSignalTrigger: DocumentTriggerValidator = (trigger) => {
-  const extra = Object.keys(trigger).filter((key) => key !== 'kind' && key !== 'name');
+  const extra = Object.keys(trigger).filter(
+    (key) => key !== 'kind' && !TRIGGER_KEYS['signal']!.includes(key),
+  );
   if (extra.length > 0) {
     return `a signal trigger takes only "name"; unknown ${extra.map((key) => `"${key}"`).join(', ')}`;
   }

@@ -45,7 +45,7 @@ import { taskOriginTag, type TaskOrigin, type TaskPersonSurface } from './task-o
 import { ownerOrLocal } from './owner-of-record';
 import type { DefinitionChange, DefinitionScannerHealth } from './definition-scanner';
 import type { WorkflowSource } from './sources/definition-source';
-import type { WorkflowFileDefinition } from './workflow-file';
+import { triggerHasUnrecognizedKeys, type WorkflowFileDefinition } from './workflow-file';
 import {
   createWorkflowFileCatalog,
   type ReadyWorkflowFile,
@@ -661,6 +661,16 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
           });
         } catch (error) {
           if (!(error instanceof WorkflowDocumentValidationError)) throw error;
+          if (triggerHasUnrecognizedKeys(snapshot.document.trigger)) {
+            // The stored trigger carries an option a newer Bureau added: its instances are that
+            // Bureau's to resume, as with an unrecognized key in the snapshot itself (COR-1927).
+            leftAlone = true;
+            options.diagnose(
+              `The stored revision ${version} of workflow "${id}" has a trigger key this Bureau does not know, so its ${String(runIds.length)} instance(s) in flight are left as they are: ${error.message}`,
+              undefined,
+            );
+            continue;
+          }
           cannot(
             `the stored revision ${version} of workflow "${id}" no longer validates against this Bureau (${error.message})`,
           );
@@ -1286,12 +1296,18 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       // The revision the run is pinned to is the engine's to say: the catalog can already hold a
       // newer file than the one the engine registered (COR-1927). A run the engine cannot read
       // back is reported on the catalog's revision, the one it was started from.
-      const pinned = await engine.get(handle.id);
-      return {
-        runId: handle.id,
-        workflow: id,
-        workflowVersion: pinned?.versionTuple.workflowVersion ?? file.version,
-      };
+      let pinned: string | undefined;
+      try {
+        const state = await engine.get(handle.id);
+        pinned = state?.versionTuple.workflowVersion;
+      } catch (error) {
+        // The run exists: failing the call now would invite a retry that starts a second one.
+        options.diagnose(
+          `Could not read back the revision of started instance "${handle.id}" of workflow "${id}"; reporting the revision it was started from.`,
+          error,
+        );
+      }
+      return { runId: handle.id, workflow: id, workflowVersion: pinned ?? file.version };
     },
 
     getCode(id) {
