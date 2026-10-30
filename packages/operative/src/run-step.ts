@@ -16,7 +16,12 @@ import {
 } from './events';
 import { createStepGeneratedMediaAdmitter, type GeneratedMediaAdmission } from './generated-media';
 import { assistantMessageIdentifier } from './message-identifiers';
-import { checkCostBudget, openStepCostWindow, type StepCostWindow } from './run-step-cost-budget';
+import {
+  checkChatCostBudget,
+  checkCostBudget,
+  openStepCostWindow,
+  type StepCostWindow,
+} from './run-step-cost-budget';
 import { finalizeStep } from './run-step-finalization';
 import { executeGeneration } from './run-step-generation';
 import { prepareStep } from './run-step-preparation';
@@ -295,6 +300,16 @@ export async function runStep(
   // step discarded still counts. A step that reaches finalization is checked there; one that
   // moves on without (an `onError` skip, an aborted step) is checked here, and one that ends the
   // run is not: the run is over either way.
+  // COR-1915: a chat that had spent its budget before the run began stops it at its first step,
+  // before any model call. A run past its first step is never asked.
+  if (runState.steps.length === 0) {
+    try {
+      checkChatCostBudget(deps);
+    } catch (error) {
+      emitter?.dispatch(new RunErrorEvent(step, error, 'policy'));
+      return { kind: 'error', error, errorKind: 'policy' };
+    }
+  }
   const costWindow = openStepCostWindow(runState);
   const outcome = await runStepBody(deps, runState, conversation, step, emitter, costWindow);
   if (costWindow.checked || (outcome.kind !== 'continue' && outcome.kind !== 'next')) {

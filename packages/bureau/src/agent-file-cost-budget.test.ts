@@ -93,8 +93,20 @@ describe('costBudget in the frontmatter', () => {
     ]);
   });
 
-  it('leaves perChatUsd out of the format: it is refused, not ignored', () => {
-    expect(issuePaths('costBudget: { perRunUsd: 1, perChatUsd: 5 }')).toEqual(['costBudget']);
+  it('parses perChatUsd beside perRunUsd, and refuses one that is not a positive dollar amount', () => {
+    expect(
+      parsed('---\nmodel: a/b\ncostBudget: { perRunUsd: 1, perChatUsd: 5 }\n---\n').definition
+        .costBudget,
+    ).toEqual({ perRunUsd: 1, perChatUsd: 5 });
+    expect(issuePaths('costBudget: { perRunUsd: 1, perChatUsd: 0 }')).toEqual([
+      'costBudget.perChatUsd',
+    ]);
+    expect(issuePaths('costBudget: { perRunUsd: 1, perChatUsd: cheap }')).toEqual([
+      'costBudget.perChatUsd',
+    ]);
+    expect(issuePaths('costBudget: { perRunUsd: 1, perChatUsd: 2000000 }')).toEqual([
+      'costBudget.perChatUsd',
+    ]);
   });
 });
 

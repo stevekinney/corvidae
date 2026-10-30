@@ -32,6 +32,17 @@ export interface RunCostBudget {
    * Absent or empty, the run warns at none.
    */
   readonly warnAt?: readonly number[] | undefined;
+  /**
+   * The spend, in US dollars, at which a chat of runs is over its budget (COR-1915). Operative does
+   * not know chats: the host that does passes the total its earlier runs spent as
+   * `priorChatSpendUsd`, and a run that begins with that total at or above `perChatUsd` ends with
+   * `budget-exceeded` and an error naming `perChatUsd`, before it asks the model anything. A run
+   * already under way is never stopped by it: only the run that follows the one that passed the
+   * limit is.
+   */
+  readonly perChatUsd?: number | undefined;
+  /** The US dollars the chat's earlier runs spent; read only with `perChatUsd`. Absent counts as `0`. */
+  readonly priorChatSpendUsd?: number | undefined;
 }
 
 /** The sum of the cost components a run has accumulated; `0` for a run with no priced request. */
@@ -63,10 +74,27 @@ export function isRunCostBudgetExceeded(budget: RunCostBudget, cost: number): bo
   return cost >= budget.perRunUsd;
 }
 
+/** Whether the chat the run belongs to had already spent its budget when the run began. */
+export function isChatCostBudgetExhausted(budget: RunCostBudget): boolean {
+  return budget.perChatUsd !== undefined && (budget.priorChatSpendUsd ?? 0) >= budget.perChatUsd;
+}
+
 /** Why a {@link RunCostBudget} cannot be used, or `undefined` when it can. */
 export function validateRunCostBudget(budget: RunCostBudget): string | undefined {
   if (!Number.isFinite(budget.perRunUsd) || budget.perRunUsd <= 0) {
     return 'costBudget.perRunUsd must be a positive, finite number of US dollars.';
+  }
+  if (
+    budget.perChatUsd !== undefined &&
+    (!Number.isFinite(budget.perChatUsd) || budget.perChatUsd <= 0)
+  ) {
+    return 'costBudget.perChatUsd must be a positive, finite number of US dollars.';
+  }
+  if (
+    budget.priorChatSpendUsd !== undefined &&
+    (!Number.isFinite(budget.priorChatSpendUsd) || budget.priorChatSpendUsd < 0)
+  ) {
+    return 'costBudget.priorChatSpendUsd must be a finite number of US dollars, not below 0.';
   }
   const warnAt = budget.warnAt ?? [];
   if (warnAt.length > RUN_COST_BUDGET_MAXIMUM_WARNINGS) {

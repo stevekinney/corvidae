@@ -61,6 +61,7 @@ import {
   ScheduleAttemptedEvent,
   ScheduleCancelledEvent,
   ScheduleCompletedEvent,
+  type RunOptions,
   type ScheduledAgentRunInput,
   ScheduleFailedEvent,
   SchedulePausedEvent,
@@ -470,6 +471,7 @@ import {
   scheduleFireSettledDedupeKey,
   type ScheduleFireSettledPayload,
 } from './schedule-fire-settled-event';
+import { createChatSpendLedger } from './chat-spend-ledger';
 import { copyAgentOwnedRunOptions, sessionExecuteOptions } from './session-agent-options';
 import {
   admitSessionInput,
@@ -4662,6 +4664,9 @@ async function constructBureau<const D extends AgentDefinitions>(
     return undefined;
   }
 
+  // COR-1915: what each run of a chat spent, which a file agent's `costBudget.perChatUsd` is
+  // measured against. A Bureau with no key-value store keeps it in memory, as it does its tasks.
+  const chatSpendLedger = createChatSpendLedger({ kv: runtime.kv, diagnose });
   const tasks = createTaskRegistry({
     kv: runtime.kv,
     clock: runtimeServices.clock,
@@ -5366,16 +5371,85 @@ async function constructBureau<const D extends AgentDefinitions>(
   const { loadConversation, saveSession, persistSessionUpdate } = sessionPersistence;
 
   /**
+   * The run's `costBudget` with the chat's spend so far (COR-1915), or `undefined` when the agent
+   * limits no chat. A chat with no session yet has spent nothing.
+   */
+  async function chatCostBudgetOf(
+    sessionAgent: SessionAgentRun,
+    sessionId: string,
+    session: { readonly incarnation?: string | undefined } | undefined,
+  ): Promise<NonNullable<RunOptions['costBudget']> | undefined> {
+    const budget = sessionAgent?.options.costBudget;
+    if (budget?.perChatUsd === undefined) return undefined;
+    const spent =
+      session?.incarnation === undefined
+        ? 0
+        : await chatSpendLedger.totalOf(sessionId, session.incarnation);
+    return { ...budget, priorChatSpendUsd: spent };
+  }
+
+  /** What a chat run's terminal event reports about its spend and who ran it (COR-1915). */
+  type ChatRunSpend = {
+    readonly agentName: string;
+    readonly owner: string;
+    readonly costEstimate: { readonly totalCost: number } | undefined;
+  };
+
+  /**
+   * Writes a chat run's spend to the chat's ledger, once the session has recorded how the run
+   * ended (COR-1915). A run with no price on its requests spent nothing the ledger can count. The
+   * ledger writes a run's record once, so a terminal event a recovery replays records nothing
+   * more, and a write that fails is diagnosed by the ledger and never fails the run's settlement.
+   */
+  async function recordChatRunSpend(
+    runId: string,
+    sessionId: string,
+    incarnation: string | undefined,
+    spend: ChatRunSpend | undefined,
+  ): Promise<void> {
+    const usd = spend?.costEstimate?.totalCost;
+    if (spend === undefined || usd === undefined || !Number.isFinite(usd) || usd <= 0) return;
+    if (incarnation === undefined) return;
+    try {
+      await chatSpendLedger.record({
+        sessionId,
+        incarnation,
+        runId,
+        agentName: spend.agentName,
+        owner: spend.owner,
+        usd,
+        recordedAt: runtimeServices.clock.nowISO(),
+      });
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'chat-spend',
+        message: `[bureau] Could not record the spend of run "${runId}" in chat "${sessionId}": ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
+  }
+
+  /**
    * Persists a run's terminal session state, then settles the session's input
    * (COR-1476): the settlement reads the session as the run left it.
    */
   function persistTerminalSession(
     saveSessionUpdate: () => Promise<unknown>,
-    context: { runId: string; sessionId: string; status: 'completed' | 'error' | 'aborted' },
+    context: {
+      runId: string;
+      sessionId: string;
+      status: 'completed' | 'error' | 'aborted';
+      /** What the run spent, for the chat's ledger (COR-1915); written after the session's save. */
+      spend?: ChatRunSpend;
+    },
   ): void {
-    const recorded = persistSessionUpdate(saveSessionUpdate, context).then(() =>
-      settleSessionInputsAfterRunEnd(context.sessionId, context.runId),
-    );
+    // The incarnation is read now, with the terminal event, and not after the save: the map that
+    // holds it is dropped when the run's records are, which can be before the save finishes.
+    const spentIn = runSessionIncarnations.get(context.runId);
+    const recorded = persistSessionUpdate(saveSessionUpdate, context)
+      .then(() => recordChatRunSpend(context.runId, context.sessionId, spentIn, context.spend))
+      .then(() => settleSessionInputsAfterRunEnd(context.sessionId, context.runId));
     const settler = terminalSessionRecordSettlers.get(context.runId);
     terminalSessionRecordSettlers.delete(context.runId);
     if (settler !== undefined) {
@@ -7555,6 +7629,12 @@ async function constructBureau<const D extends AgentDefinitions>(
     const effectiveSystemPrompt = sessionAgent?.instructions ?? runtime.systemPrompt;
     const effectiveMaximumSteps = sessionAgent?.options.maximumSteps ?? runtime.maximumSteps;
     const effectiveMaximumTokens = sessionAgent?.options.maximumTokens;
+    // COR-1915 — the agent's `costBudget.perChatUsd` is measured against what the chat's earlier
+    // runs spent. It is read here, before anything is persisted, so a chat whose spend cannot be
+    // read refuses the run instead of starting it unmeasured. The run is told the total once and
+    // is stopped by it only before its first step. Two runs that start together both read the
+    // total as it is: the owner's decision is that the NEXT run stops, not one that has begun.
+    const chatCostBudget = await chatCostBudgetOf(sessionAgent, sessionId, session);
     const requestContext = normalizeRunRequestContext(
       request.requestContext,
       runId,
@@ -7990,6 +8070,7 @@ async function constructBureau<const D extends AgentDefinitions>(
             // COR-1577 — the named agent's own options (stop conditions, structured output and
             // its retries, …), before the ones Bureau sets below, which win.
             ...copyAgentOwnedRunOptions(sessionAgent?.options),
+            ...(chatCostBudget === undefined ? {} : { costBudget: chatCostBudget }),
             // COR-716 — a managed asset in this run's input (or in input admitted to
             // its session mid-run) resolves as the run's owner.
             ...sessionRunMediaOptions(sessionAgent, runtime.mediaOptionsFor(owner, rowHolder)),
@@ -8232,6 +8313,7 @@ async function constructBureau<const D extends AgentDefinitions>(
             runId,
             sessionId,
             status: lastRunStatus,
+            spend: { agentName, owner, costEstimate: event.costEstimate },
           },
         );
       });
@@ -8304,6 +8386,7 @@ async function constructBureau<const D extends AgentDefinitions>(
             runId,
             sessionId,
             status: 'aborted',
+            spend: { agentName, owner, costEstimate: event.costEstimate },
           },
         );
       });
@@ -8908,7 +8991,16 @@ async function constructBureau<const D extends AgentDefinitions>(
               ? { lastError: serializeUnknownError(lastError) }
               : {}),
           }),
-        { runId, sessionId, status: lastRunStatus },
+        {
+          runId,
+          sessionId,
+          status: lastRunStatus,
+          spend: {
+            agentName: recoveredAgentName ?? BUREAU_AGENT_NAME,
+            owner: recoveredOwner,
+            costEstimate: event.costEstimate,
+          },
+        },
       );
     });
 
@@ -8949,7 +9041,16 @@ async function constructBureau<const D extends AgentDefinitions>(
             lastFinishReason: 'aborted',
             lastError: serializeUnknownError(event.error),
           }),
-        { runId, sessionId, status: 'aborted' },
+        {
+          runId,
+          sessionId,
+          status: 'aborted',
+          spend: {
+            agentName: recoveredAgentName ?? BUREAU_AGENT_NAME,
+            owner: recoveredOwner,
+            costEstimate: event.costEstimate,
+          },
+        },
       );
     });
 
@@ -13748,6 +13849,19 @@ async function constructBureau<const D extends AgentDefinitions>(
           ? await sessionStore.delete(id)
           : await sessionStore.delete(id, { expectedIncarnation });
       onStoreDeletionCommitted();
+      // COR-1915 — the deleted chat's spend records go with it. A record left behind is ignored
+      // anyway, since a chat recreated under the id has another incarnation, so a failure here is
+      // diagnosed and never keeps the deletion from finishing.
+      if (removedLiveRecord) {
+        await chatSpendLedger.forget(id, session.incarnation).catch((error: unknown) => {
+          diagnose({
+            level: 'error',
+            scope: 'chat-spend',
+            message: `[bureau] Could not remove the spend records of deleted chat "${id}": ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        });
+      }
       if (removedLiveRecord) await releaseSessionGeneratedAssets(session);
       // AB-389 — drain right here, before anything below that can stall
       // (a genuinely stuck run's terminal await further down must never

@@ -91,7 +91,7 @@ import {
 } from './agent-reference-documents';
 import { createFileAgentCompactor } from './file-agent-compaction';
 import { createFileAgentGenerate } from './file-agent-generate';
-import { costBudgetOptions, usdPricingOfRow } from './file-agent-cost-budget';
+import { costBudgetOptions, toolboxBudgetOf, usdPricingOfRow } from './file-agent-cost-budget';
 import { guardrailsOfPreset } from './guardrail-presets';
 import { createToolApprovalHooks } from './tool-approval';
 import { type AgentRevisionRecord, createAgentRevisionStore } from './agent-revision-store';
@@ -391,7 +391,7 @@ function inputOf(definition: AgentFileDefinition): AgentFileDefinitionInput {
   // A rest, so a key the definition gains is carried into the input and not dropped here.
   const { examples: _examples, ...input } = definition;
   // An update that omits `stepLimit`, `retry`, `compaction`, `references`, `guardrails`,
-  // `costBudget` or `toolApproval` keeps the file's value, and a version that has none must remove
+  // `costBudget`, `toolBudget` or `toolApproval` keeps the file's value, and a version that has none must remove
   // it: `null` says so.
   return {
     ...input,
@@ -401,6 +401,7 @@ function inputOf(definition: AgentFileDefinition): AgentFileDefinitionInput {
     references: definition.references ?? null,
     guardrails: definition.guardrails ?? null,
     costBudget: definition.costBudget ?? null,
+    toolBudget: definition.toolBudget ?? null,
     toolApproval: definition.toolApproval ?? null,
   };
 }
@@ -631,6 +632,11 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       toolboxOptions: () => ({
         // Only the agent's own tools: the toolbox also holds the tools Bureau adds to a run.
         policy: createToolApprovalHooks(definition.toolApproval, { tools: definition.tools }),
+        // COR-1915: the toolbox is built for this run, so its counters are the run's own. It counts
+        // every call the run makes through it, the tools Bureau adds included.
+        ...(definition.toolBudget === undefined
+          ? {}
+          : { budget: toolboxBudgetOf(definition.toolBudget) }),
         ...(options.approvalSecret === undefined ? {} : { approvalSecret: options.approvalSecret }),
         ...(options.secretResolver === undefined ? {} : { secretResolver: options.secretResolver }),
       }),
