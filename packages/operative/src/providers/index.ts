@@ -48,6 +48,19 @@ export type {
   ModelAlias,
   ModelCatalog,
 } from './model-catalog.ts';
+export {
+  MAXIMUM_PLAN_REJECTIONS,
+  derivePlanReason,
+  planReasonForStep,
+  rejectionCodeOf,
+} from './plan-reason.ts';
+export type {
+  DerivePlanReasonInput,
+  PlanReason,
+  PlanReasonCode,
+  PlanRejection,
+  PlanRejectionCode,
+} from './plan-reason.ts';
 export { composePolicy } from './policy.ts';
 export type {
   BureauInvariants,

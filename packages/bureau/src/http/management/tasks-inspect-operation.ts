@@ -117,6 +117,60 @@ const livenessSchema = z.object({
 
 const inspectInput = z.object({
   taskId: z.string().min(1).describe('The identifier of the task to inspect.'),
+  step: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe(
+      'Only this step’s reply details in `steps`. Omitted, `steps` lists the newest 50 steps of the run.',
+    ),
+});
+
+const planReasonSchema = z.object({
+  /** Why the model was chosen. */
+  code: z.enum(['cost', 'latency', 'capability', 'policy', 'pinned', 'fallback']),
+  /** One line that says it in words. */
+  detail: z.string(),
+  /** The models the plan passed over, each with the code that passed it over. */
+  rejected: z.array(
+    z.object({
+      provider: z.string(),
+      model: z.string(),
+      code: z.enum(['capability', 'policy', 'fallback']),
+    }),
+  ),
+});
+
+const effectiveContextSchema = z.object({
+  epochId: z.string(),
+  supersedes: z.string().optional(),
+  baselineDigest: z.string(),
+  sources: z.array(
+    z.object({
+      sourceId: z.string(),
+      trust: z.string(),
+      disposition: z.enum(['included', 'excluded', 'absent-by-composition']),
+      reason: z.string().optional(),
+      revision: z.union([z.number(), z.string()]).optional(),
+      digest: z.string().optional(),
+    }),
+  ),
+  /** The conversation’s messages as an id, a role and a digest of the content; never the content. */
+  messages: z.array(z.object({ id: z.string(), role: z.string(), digest: z.string() })),
+  messageCount: z.number().int(),
+  /** Whether older messages were left out to keep the record within 256 KiB. */
+  truncated: z.boolean(),
+});
+
+const stepSchema = z.object({
+  step: z.number().int(),
+  messageId: z.string().nullable(),
+  contextEpochId: z.string().nullable(),
+  /** `null` for a step recorded without a model plan or steering override. */
+  planReason: planReasonSchema.nullable(),
+  /** `null` for a step recorded without an effective context. */
+  effectiveContext: effectiveContextSchema.nullable(),
 });
 const inspectOutput = z.object({
   schemaVersion: z.literal(TASK_INSPECTION_SCHEMA_VERSION),
@@ -136,6 +190,8 @@ const inspectOutput = z.object({
       assessment: z.string().nullable(),
     }),
   ),
+  /** The reply details of the run’s steps, oldest first: why each ran on its model and what it saw. */
+  steps: z.array(stepSchema),
 });
 
 export const tasksInspectOperation = defineOperation<
@@ -147,7 +203,7 @@ export const tasksInspectOperation = defineOperation<
   mcpExposable: true,
   summary: 'Inspect one task',
   description:
-    'Returns a versioned snapshot of one of the caller’s own tasks for the run inspector: the task, its liveness (status, assessment, reachability, progress, the declared wait and its reason, semantic progress, and the evidence entries by source and time), and the children it owns with each one’s assessment. `liveness` is `null` when this process holds no live run for the task. Transport heartbeat evidence is reported as its own source and is never semantic progress. The snapshot carries no transcript, prompt, tool argument, result, or checkpoint: read the answer and any gap on `bureau.tasks.events`, and cancel with `bureau.tasks.cancel`. A caller holding `bureau.tasks:read` inspects any owner’s; another owner’s task answers as a missing one does.',
+    'Returns a versioned snapshot of one of the caller’s own tasks for the run inspector: the task, its liveness (status, assessment, reachability, progress, the declared wait and its reason, semantic progress, and the evidence entries by source and time), and the children it owns with each one’s assessment. `liveness` is `null` when this process holds no live run for the task. Transport heartbeat evidence is reported as its own source and is never semantic progress. `steps` carries each step’s reply details: `planReason` (why it ran on its model: a code, one line, and the models passed over) and `effectiveContext` (what the model saw, as source digests and message ids, never message content; capped at 256 KiB, newest messages kept, `truncated` when older ones were left out), each `null` for a step recorded without one; pass `step` for one step. The snapshot carries no transcript, prompt, tool argument, result, or checkpoint: read the answer and any gap on `bureau.tasks.events`, and cancel with `bureau.tasks.cancel`. A caller holding `bureau.tasks:read` inspects any owner’s; another owner’s task answers as a missing one does.',
   destructive: false,
   tags: ['Tasks'],
   inputSchema: inspectInput,
@@ -161,7 +217,10 @@ export const tasksInspectOperation = defineOperation<
     if (!(await mayAccessTask(host, principal, input.taskId, 'bureau.tasks:read'))) {
       throw resourceNotFound('task', input.taskId);
     }
-    const inspection = await host.inspect(input.taskId);
+    const inspection = await host.inspect(
+      input.taskId,
+      input.step === undefined ? undefined : { step: input.step },
+    );
     if (inspection === undefined) throw resourceNotFound('task', input.taskId);
     const { task } = inspection;
     return {
@@ -177,6 +236,25 @@ export const tasksInspectOperation = defineOperation<
         parentCancellation: child.parentCancellation,
         revision: child.revision,
         assessment: child.liveness?.assessment ?? null,
+      })),
+      steps: inspection.steps.map((entry) => ({
+        step: entry.step,
+        messageId: entry.messageId,
+        contextEpochId: entry.contextEpochId,
+        planReason: entry.planReason && {
+          code: entry.planReason.code,
+          detail: entry.planReason.detail,
+          rejected: entry.planReason.rejected.map((rejection) => ({
+            provider: rejection.provider,
+            model: rejection.model,
+            code: rejection.code,
+          })),
+        },
+        effectiveContext: entry.effectiveContext && {
+          ...entry.effectiveContext,
+          sources: entry.effectiveContext.sources.map((source) => ({ ...source })),
+          messages: entry.effectiveContext.messages.map((message) => ({ ...message })),
+        },
       })),
     };
   },

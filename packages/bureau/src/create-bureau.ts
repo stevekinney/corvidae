@@ -18895,6 +18895,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     children: childTopology.children,
     eventHistory: readEventHistory,
     subscribeEventHistory: subscribeToEventHistory,
+    steps: async (runId) => (await runtime.durable?.checkpointStore.loadSteps(runId)) ?? [],
     notFound: (message) => new BureauError(message, 'NOT_FOUND'),
     responder: {
       reviews,

@@ -1,16 +1,17 @@
-import type { AgentRun, RunEvent, RunResult } from '@lostgradient/operative';
+import type { AgentRun, RunEvent, RunResult, StepRecord } from '@lostgradient/operative';
 
 import type { BureauChildren } from '../child-topology.ts';
 import type { RunCreationReceipt } from '../command-ledger.ts';
 import type { TaskRegistry } from '../task-registry.ts';
 import { createTaskResponder, type TaskResponderDependencies } from './respond-to-task.ts';
-import type {
-  BureauTasks,
-  DurableEventHistoryRead,
-  DurableEventHistorySubscribe,
-  TaskHandle,
-  TaskInput,
-  TaskInspection,
+import {
+  INSPECTED_STEP_LIMIT,
+  type BureauTasks,
+  type DurableEventHistoryRead,
+  type DurableEventHistorySubscribe,
+  type TaskHandle,
+  type TaskInput,
+  type TaskInspection,
 } from '../types.ts';
 
 /**
@@ -42,6 +43,8 @@ export type TasksDependencies = {
   readonly eventHistory: DurableEventHistoryRead;
   /** The durable event history subscription, which {@link BureauTasks.subscribeEvents} narrows to the run owner. */
   readonly subscribeEventHistory: DurableEventHistorySubscribe;
+  /** The run's step records from its checkpoint, oldest first; empty for a Bureau that keeps none. */
+  readonly steps: (runId: string) => Promise<readonly StepRecord[]>;
   /** The error a missing task is refused with. */
   readonly notFound: (message: string) => Error;
   /** The reviews, ledger, and refusals {@link BureauTasks.respond} answers with, over `registry`. */
@@ -76,10 +79,16 @@ export function createTasks(dependencies: TasksDependencies): BureauTasks {
     events: (id, options) => dependencies.eventHistory({ kind: 'run', id }, options),
     subscribeEvents: (id, listener, options) =>
       dependencies.subscribeEventHistory({ kind: 'run', id }, listener, options),
-    async inspect(id): Promise<TaskInspection | undefined> {
+    async inspect(id, options): Promise<TaskInspection | undefined> {
       const task = await registry.get(id);
       if (task === undefined) return undefined;
       const children = await dependencies.children.list(id);
+      const records = await dependencies.steps(id);
+      const asked = options?.step;
+      const wanted =
+        asked === undefined
+          ? records.slice(-INSPECTED_STEP_LIMIT)
+          : records.filter((record) => record.step === asked);
       return {
         task,
         liveness: dependencies.detail(id)?.liveness,
@@ -90,6 +99,14 @@ export function createTasks(dependencies: TasksDependencies): BureauTasks {
           parentCancellation: child.parentCancellation,
           revision: child.revision,
           liveness: dependencies.detail(child.childRunId)?.liveness,
+        })),
+        // A record written before the reply details existed carries neither, and reads as `null`.
+        steps: wanted.map((record) => ({
+          step: record.step,
+          messageId: record.messageId ?? null,
+          contextEpochId: record.contextEpochId ?? null,
+          planReason: record.planReason ?? null,
+          effectiveContext: record.effectiveContext ?? null,
         })),
       };
     },

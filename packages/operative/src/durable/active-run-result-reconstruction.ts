@@ -61,6 +61,10 @@ export async function readRunStateFromCheckpoint(
       parts: record.parts,
       messageId: record.messageId,
       ...(record.contextEpochId === undefined ? {} : { contextEpochId: record.contextEpochId }),
+      ...(record.planReason === undefined ? {} : { planReason: record.planReason }),
+      ...(record.effectiveContext === undefined
+        ? {}
+        : { effectiveContext: record.effectiveContext }),
       toolCalls: record.toolCalls,
       results: record.results,
       ...(record.usage ? { usage: record.usage } : {}),

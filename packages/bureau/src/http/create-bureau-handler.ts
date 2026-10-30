@@ -1022,7 +1022,7 @@ export function buildBureauHandlerHost(
       mayAccess: mayAccessOwnedResource,
     },
     tasks: bureau.internals.taskRegistry,
-    inspect: (id) => bureau.tasks.inspect(id),
+    inspect: (id, options) => bureau.tasks.inspect(id, options),
     taskHistory: bureau.tasks,
     contexts: {
       list: (listOptions) => bureau.contexts.list(listOptions),

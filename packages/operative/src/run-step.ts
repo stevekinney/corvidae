@@ -550,5 +550,7 @@ export async function runStep(
     materializedToolCalls,
     results,
     contextEpochId: generation.contextEpochId,
+    planReason: generation.planReason,
+    effectiveContext: generation.effectiveContext,
   });
 }

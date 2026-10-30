@@ -100,6 +100,27 @@ export function decodeAuditCursor(
   return match === null ? undefined : { timestampMs: Number(match[1]), sequence: Number(match[2]) };
 }
 
+/**
+ * Render audit records as JSON Lines: one JSON object per line, each terminated by a newline, with
+ * the keys of {@link AuditQueryRecord} in a fixed order. It takes the records {@link BureauAudit.query}
+ * already redacted, so an export carries exactly what the JSON read does and nothing else; an empty
+ * list renders as the empty string.
+ */
+export function auditRecordsToJsonLines(records: readonly AuditQueryRecord[]): string {
+  let body = '';
+  for (const record of records) {
+    body += `${JSON.stringify({
+      sequence: record.sequence,
+      timestamp: record.timestamp,
+      type: record.type,
+      resource: record.resource,
+      principal: record.principal,
+      detail: record.detail,
+    })}\n`;
+  }
+  return body;
+}
+
 /** What {@link createAudit} composes `bureau.audit` from. */
 export type AuditDependencies = {
   /** The Bureau's audit trail, read at each call, or `undefined` for a Bureau that keeps none. */
@@ -124,7 +145,15 @@ export function createAudit(dependencies: AuditDependencies): BureauAudit {
       throw dependencies.refusal('This Bureau keeps no audit trail', 'UNSUPPORTED_CAPABILITY');
     }
     // The caller owns `filter` and `options`; read them once, before the first await.
-    const { runId, type, since, cursor, limit = DEFAULT_AUDIT_PAGE_LIMIT } = filter;
+    const {
+      runId,
+      type,
+      since,
+      until,
+      principal,
+      cursor,
+      limit = DEFAULT_AUDIT_PAGE_LIMIT,
+    } = filter;
     const { owner } = options;
     const refuse = (message: string): Error => dependencies.refusal(message, 'BAD_REQUEST');
     if (!Number.isInteger(limit) || limit < 1 || limit > MAXIMUM_AUDIT_PAGE_LIMIT) {
@@ -132,6 +161,15 @@ export function createAudit(dependencies: AuditDependencies): BureauAudit {
     }
     if (since !== undefined && (!Number.isInteger(since) || since < 0)) {
       throw refuse('since must be a non-negative integer of epoch milliseconds');
+    }
+    if (until !== undefined && (!Number.isInteger(until) || until < 0)) {
+      throw refuse('until must be a non-negative integer of epoch milliseconds');
+    }
+    if (
+      principal !== undefined &&
+      (typeof principal !== 'string' || principal.length < 1 || principal.length > 512)
+    ) {
+      throw refuse('principal must be a string of 1 to 512 characters');
     }
     if (
       runId !== undefined &&
@@ -166,6 +204,15 @@ export function createAudit(dependencies: AuditDependencies): BureauAudit {
         limit: SCAN_CHUNK,
       });
       for (const record of chunk) {
+        // The trail is oldest first, so the first record past `until` ends the scan: no later one is in range.
+        if (until !== undefined && record.timestampMs > until) {
+          return { records: page.map(viewOf), nextCursor: null };
+        }
+        // The actor filter drops a record the way the owner filter does: the cursor moves past it.
+        if (principal !== undefined && record.principal !== principal) {
+          after = { timestampMs: record.timestampMs, sequence: record.sequence ?? -1 };
+          continue;
+        }
         if (!(await mayRead(record))) {
           after = { timestampMs: record.timestampMs, sequence: record.sequence ?? -1 };
           continue;

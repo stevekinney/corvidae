@@ -4,6 +4,10 @@ import { Conversation } from 'conversationalist';
 
 import type { SteeringDesiredState } from './durable/types';
 import {
+  composeEffectiveContextRecord,
+  type EffectiveContextRecord,
+} from './effective-context-record';
+import {
   GeneratedMediaNotAdmittedError,
   GuardrailTripwireError,
   MediaAdmissionError,
@@ -20,6 +24,7 @@ import { composeGenerationSelectionRecord } from './generation-selection-record'
 import type { ErrorRecoveryAction } from './hooks/types';
 import { assistantMessageIdentifier } from './message-identifiers';
 import { isProviderContractError } from './providers/errors';
+import { type PlanReason, planReasonForStep } from './providers/plan-reason';
 import { readDroppedReplayData } from './providers/shared/replay-data';
 import type { EventDispatcher, RunState, StepDeps, StepOutcome } from './run-step';
 import type { StepMediaAdmission } from './run-step-media';
@@ -68,6 +73,10 @@ export interface GenerationResult {
   generateDurationMilliseconds: number | undefined;
   /** The epoch the producing attempt sealed; a retried step reports its last attempt's. */
   contextEpochId: string | undefined;
+  /** Why this step's generation ran on the model it did (COR-1810), when the run has a plan or a steering override. */
+  planReason: PlanReason | undefined;
+  /** What the producing attempt's model saw (COR-1810); `undefined` when the run seals no epoch. */
+  effectiveContext: EffectiveContextRecord | undefined;
 }
 
 export async function executeGeneration(
@@ -95,6 +104,8 @@ export async function executeGeneration(
   let streamedRowId: string | undefined;
   let stepRetryCount = 0;
   let contextEpochId: string | undefined;
+  let effectiveContext: EffectiveContextRecord | undefined;
+  let planReason: PlanReason | undefined;
   let shouldRetryStep: boolean;
   let stepSkipped = false;
   // AB-302: hoisted out of the generate block below so `GenerateCompletedEvent`
@@ -277,6 +288,11 @@ export async function executeGeneration(
           consumer: { runId: deps.runId, step, attempt: stepRetryCount },
         });
         contextEpochId = sealedEpoch?.epochId;
+        effectiveContext =
+          sealedEpoch === undefined
+            ? undefined
+            : composeEffectiveContextRecord(sealedEpoch, generateContext.conversation);
+        planReason = planReasonForStep(deps.selection?.getPlan(), steeringDesiredState);
 
         // AB-68: record the configuration this call is issued under. Read
         // from the gate rather than re-planning — `prepareStep` already
@@ -308,7 +324,7 @@ export async function executeGeneration(
           deps.contextEpoch === undefined
             ? undefined
             : (mutatedContext: GenerateContext, providerAttempt: number): string => {
-                const mutatedEpochId = deps.contextEpoch!.seal({
+                const mutatedEpoch = deps.contextEpoch!.seal({
                   conversation: mutatedContext.conversation,
                   steering: steeringDesiredState,
                   plan: deps.selection?.getPlan(),
@@ -321,10 +337,15 @@ export async function executeGeneration(
                     // same step are never reported as the same attempt.
                     attempt: stepRetryCount + providerAttempt,
                   },
-                }).epochId;
-                // The mutated request is what a successful retry sends, so the step names its epoch.
-                contextEpochId = mutatedEpochId;
-                return mutatedEpochId;
+                });
+                // The mutated request is what a successful retry sends, so the step names its epoch
+                // and records what that request carried.
+                contextEpochId = mutatedEpoch.epochId;
+                effectiveContext = composeEffectiveContextRecord(
+                  mutatedEpoch,
+                  mutatedContext.conversation,
+                );
+                return mutatedEpoch.epochId;
               };
         try {
           response =
@@ -547,7 +568,15 @@ export async function executeGeneration(
     }
   } while (shouldRetryStep);
 
-  return { response, streamedRowId, stepSkipped, generateDurationMilliseconds, contextEpochId };
+  return {
+    response,
+    streamedRowId,
+    stepSkipped,
+    generateDurationMilliseconds,
+    contextEpochId,
+    planReason,
+    effectiveContext,
+  };
 }
 
 /**

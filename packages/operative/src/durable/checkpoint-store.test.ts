@@ -621,6 +621,58 @@ describe('createCheckpointStore', () => {
       expect(await store.loadSteps('run-1', { strict: true })).toEqual([record]);
     });
 
+    it('round-trips the plan reason and effective context a step ran under (COR-1810)', async () => {
+      const store = createCheckpointStore(createStore());
+      const record: StepRecord = {
+        schemaVersion: 2,
+        step: 0,
+        content: 'Done',
+        parts: [{ type: 'text', text: 'Done' }],
+        toolCalls: [],
+        results: [],
+        contextEpochId: 'epoch-1',
+        planReason: {
+          code: 'cost',
+          detail: 'a ranked ahead of b on cost',
+          rejected: [{ provider: 'openai', model: 'gpt-4o', code: 'policy' }],
+        },
+        effectiveContext: {
+          epochId: 'epoch-1',
+          baselineDigest: '0123456789abcdef',
+          sources: [{ sourceId: 'conversation', trust: 'per-message', disposition: 'included' }],
+          messages: [{ id: 'message-1', role: 'user', digest: 'fedcba9876543210' }],
+          messageCount: 1,
+          truncated: false,
+        },
+        final: true,
+      };
+      await store.saveStep('run-1', record);
+      expect(await store.loadSteps('run-1', { strict: true })).toEqual([record]);
+    });
+
+    it('reads a step record written before the plan reason and effective context existed, with neither', async () => {
+      const underlying = createStore();
+      const store = createCheckpointStore(underlying);
+      await store.saveStep('run-1', {
+        schemaVersion: 2,
+        step: 0,
+        content: 'Done',
+        parts: [{ type: 'text', text: 'Done' }],
+        toolCalls: [],
+        results: [],
+        contextEpochId: 'epoch-1',
+        final: true,
+      });
+
+      const [loaded] = await store.loadSteps('run-1', { strict: true });
+      const checkpoint = await store.loadCheckpoint('run-1', { strict: true });
+
+      expect(loaded?.planReason).toBeUndefined();
+      expect(loaded?.effectiveContext).toBeUndefined();
+      expect(loaded?.contextEpochId).toBe('epoch-1');
+      expect(checkpoint.steps).toEqual([loaded!]);
+    });
+
     it('round-trips a cursor with the final row parts and the replacement flag', async () => {
       const store = createCheckpointStore(createStore());
       const replaced: RunCursor = {

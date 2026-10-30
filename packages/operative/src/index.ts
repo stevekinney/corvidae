@@ -305,6 +305,16 @@ export type {
   SkillActivationBinding,
   SkillActivationContext,
 } from './context-epoch';
+// COR-1810 — what a reply's model saw
+export {
+  EFFECTIVE_CONTEXT_RECORD_LIMIT_BYTES,
+  composeEffectiveContextRecord,
+} from './effective-context-record';
+export type {
+  EffectiveContextMessage,
+  EffectiveContextRecord,
+  EffectiveContextSource,
+} from './effective-context-record';
 // COR-634 — in-memory GoalRun controller
 export { GoalConfigurationError, VALIDATOR_ERROR_KINDS } from './errors';
 export type { GoalConfigurationErrorReason, ValidatorError, ValidatorErrorKind } from './errors';

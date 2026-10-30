@@ -9,7 +9,9 @@ import type {
 import type { HumanInputSchema } from '../human-input-schema';
 
 import type { AccumulatedCost } from '../cost-estimation';
+import type { EffectiveContextRecord } from '../effective-context-record';
 import type { GeneratedMediaAdmission } from '../generated-media';
+import type { PlanReason } from '../providers/plan-reason';
 import type { Effort } from '../providers/types';
 import type { EventDispatcher } from '../run-step';
 import type { RunOptions } from '../types';
@@ -108,6 +110,18 @@ export interface StepRecord {
    * version: a record written without it reads as a step that named no epoch.
    */
   contextEpochId?: string | undefined;
+  /**
+   * Why the step's generation ran on the model it did (COR-1810, `StepResult.planReason`). Optional,
+   * so it adds no record version: a record written before it existed reads as a step with no reason.
+   */
+  planReason?: PlanReason | undefined;
+  /**
+   * What the step's model saw (COR-1810, `StepResult.effectiveContext`): digests and message ids,
+   * capped at 256 KiB, kept with the run's checkpoint and so for as long as the run's checkpoints
+   * are. Optional, so it adds no record version: a record written before it existed reads as a step
+   * with none.
+   */
+  effectiveContext?: EffectiveContextRecord | undefined;
   final: boolean;
 }
 
