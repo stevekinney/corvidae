@@ -181,21 +181,77 @@ describe('a local home', () => {
     ]);
   });
 
-  test('reads the file back when the write throws after replacing it, and reports the write', async () => {
+  test('a trail that is down never stops a source from being revoked, and the revoke says what was asked (COR-1926)', async () => {
+    const { options, writes, audited } = await fakeHome('local');
+    let down = true;
+    let time = 1_000;
+    const manager = await createSkillManager({
+      ...options,
+      now: () => time++,
+      audit: async (entry) => {
+        if (down) throw new Error('the trail is down');
+        audited.push(entry);
+      },
+    });
+    await manager.setTrust({ source: 'workspace', trusted: true }).catch(() => undefined);
+    expect(manager.standing().catalog.records[0]?.available).toBe(true);
+
+    const revoke = await manager
+      .setTrust({ source: 'workspace', trusted: false })
+      .catch((error: unknown) => error);
+
+    expect(revoke).toMatchObject({
+      name: 'SkillAuditError',
+      sourceId: 'workspace',
+      trusted: false,
+    });
+    expect(writes).toHaveLength(2);
+    expect(manager.standing().catalog.records[0]?.available).toBe(false);
+
+    down = false;
+    await manager.setTrust({ source: 'workspace', trusted: false });
+    // Both are recorded, in order, each with the time of its own change.
+    expect(audited.map((entry) => [entry.type, entry.timestampMs])).toEqual([
+      ['skill.source.trusted', 1_000],
+      ['skill.source.untrusted', 1_001],
+    ]);
+  });
+
+  test('records a write that threw after replacing the file, because the change took', async () => {
     const error = new Error('the directory could not be synced');
     const { options, audited } = await fakeHome('local', { replaces: true, error });
     const manager = await createSkillManager(options);
     expect(manager.standing().catalog.records[0]?.available).toBe(false);
 
+    const change = await manager.setTrust({ source: 'workspace', trusted: true });
+
+    // The file says trusted, so the host serves trusted, with a new revision, and records it.
+    expect(change).toMatchObject({ trusted: true, changed: true });
+    expect(manager.standing().catalog.records[0]?.available).toBe(true);
+    expect(audited.map((entry) => entry.type)).toEqual(['skill.source.trusted']);
+  });
+
+  test('owes the record of a write that threw after replacing the file when the trail is down', async () => {
+    const error = new Error('the directory could not be synced');
+    const { options, audited } = await fakeHome('local', { replaces: true, error });
+    let down = true;
+    const manager = await createSkillManager({
+      ...options,
+      audit: async (entry) => {
+        if (down) throw new Error('the trail is down');
+        audited.push(entry);
+      },
+    });
+
     const failure = await manager
       .setTrust({ source: 'workspace', trusted: true })
       .catch((caught: unknown) => caught);
 
-    expect(failure).toBe(error);
-    // The file says trusted, so the host serves trusted, with a new revision.
+    expect(failure).toMatchObject({ name: 'SkillAuditError', trusted: true });
     expect(manager.standing().catalog.records[0]?.available).toBe(true);
-    expect(manager.standing().sources[0]?.trust).toBe('trusted');
-    expect(audited).toEqual([]);
+    down = false;
+    await manager.setTrust({ source: 'workspace', trusted: true });
+    expect(audited.map((entry) => entry.type)).toEqual(['skill.source.trusted']);
   });
 
   test('keeps serving the file it read when the write throws without replacing it', async () => {
