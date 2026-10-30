@@ -19,6 +19,7 @@ import {
   SteeringAcceptedEvent,
 } from '@lostgradient/operative';
 
+import { runOfPayload } from './hooks/hook-origin.ts';
 import {
   BUREAU_EVENT_CATALOG,
   bureauEventCatalog,
@@ -312,6 +313,55 @@ describe('the Bureau event catalog', () => {
     }
   });
 
+  it('classifies every kind’s origin as run, external or unattributed, and nothing else', () => {
+    for (const entry of bureauEventCatalog()) {
+      expect(['run', 'external', 'unattributed']).toContain(entry.origin);
+    }
+    // A kind with no classification would read as `undefined`: none may.
+    expect(Object.values(BUREAU_EVENT_CATALOG).filter((entry) => !entry.origin)).toEqual([]);
+  });
+
+  it('classifies the kinds a run can raise without naming it as unattributed, so no start-workflow hook listens to them', () => {
+    const byOrigin = (origin: string) =>
+      bureauEventCatalog()
+        .filter((entry) => entry.origin === origin)
+        .map((entry): string => entry.kind)
+        .toSorted();
+    expect(byOrigin('unattributed')).toEqual(
+      [
+        'asset.blob.purged',
+        'asset.expired',
+        'asset.upload.purged',
+        'asset.upload.started',
+        'diagnostic',
+        'memory.governance',
+        'notification.created',
+        'schedule.cancelled',
+        'schedule.created',
+        'schedule.paused',
+        'schedule.resumed',
+        'session.created',
+        'session.deleted',
+        'session.saved',
+        'skill.activated',
+        'skill.deactivated',
+        'skill.failed',
+        'skill.loaded',
+        'skill.rejected',
+        'steering.accepted',
+      ].toSorted(),
+    );
+    expect(byOrigin('external')).toEqual(
+      [
+        'bureau.disposed',
+        'definitions.changed',
+        'schedule.attempted',
+        'schedule.missed',
+        'schedule.skipped',
+      ].toSorted(),
+    );
+  });
+
   it('has a builder for every published kind', () => {
     expect(Object.keys(EVENTS).toSorted()).toEqual([...PUBLISHED_BUREAU_EVENT_KINDS].toSorted());
   });
@@ -328,6 +378,23 @@ describe('the Bureau event catalog', () => {
       for (const [name, value] of Object.entries(payload)) {
         expect(declared.has(name)).toBe(true);
         expect(typeMatches(declared.get(name)!, value)).toBe(true);
+      }
+    });
+
+    it('names a run the hook guard reads, in every event of a run kind', () => {
+      // The guard follows the id `runOfPayload` returns, so a `run` kind must always carry one it
+      // reads; the sparsest event is the one a dispatch site builds with the least.
+      const sparsest = wirePayload(EVENTS[kind].sparsest(), kind);
+      const named = runOfPayload(sparsest);
+      if (entry.origin === 'run') {
+        expect(typeof named).toBe('string');
+        const requiredRunField = entry.payload.some(
+          (field) =>
+            !field.optional &&
+            field.type === 'string' &&
+            ['runId', 'goalRunId', 'taskId'].includes(field.name),
+        );
+        expect(requiredRunField).toBe(true);
       }
     });
 

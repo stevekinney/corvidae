@@ -24,6 +24,11 @@ const catalogOutput = z.object({
       z.object({
         kind: z.string().describe('The kind, as a hook’s `events` and `bureau.events` name it.'),
         description: z.string().describe('What the event means and when it is published.'),
+        origin: z
+          .enum(['run', 'external', 'unattributed'])
+          .describe(
+            'Where the event can come from. A `start-workflow` hook may list `run` kinds (the payload names a run) and `external` kinds (nothing in a run causes them), never `unattributed` ones.',
+          ),
         payload: z
           .array(
             z.object({
@@ -49,7 +54,7 @@ export const eventsCatalogOperation = defineOperation<
   mcpExposable: false,
   summary: 'List the published event kinds',
   description:
-    'Lists every Bureau event kind that `bureau.events` serves and a hook may match, each with a description and the fields of its `payload`. It lists exactly the published kinds: a kind the Bureau publishes is described here. Weft’s own events are not part of it: the feed carries Weft’s `ScheduleMissedFire` as `schedule.missed` and nothing else of Weft’s. Read-only and static; any authenticated caller may read it.',
+    'Lists every Bureau event kind that `bureau.events` serves and a hook may match, each with a description, its origin (`run`, `external` or `unattributed`, which decides whether a `start-workflow` hook may list it) and the fields of its `payload`. It lists exactly the published kinds: a kind the Bureau publishes is described here. Weft’s own events are not part of it: the feed carries Weft’s `ScheduleMissedFire` as `schedule.missed` and nothing else of Weft’s. Read-only and static; any authenticated caller may read it.',
   destructive: false,
   tags: ['Events'],
   inputSchema: catalogInput,
@@ -64,6 +69,7 @@ export const eventsCatalogOperation = defineOperation<
       events: bureauEventCatalog().map((entry) => ({
         kind: entry.kind,
         description: entry.description,
+        origin: entry.origin,
         payload: entry.payload.map((field) => ({ ...field })),
       })),
     }),

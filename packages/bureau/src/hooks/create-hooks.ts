@@ -26,9 +26,12 @@
  *   the hook is written and again for every delivery: in v1 only the deployment's owner of record
  *   (`anonymous:local`) may own such a hook, because the Bureau knows an owner but not the scopes
  *   its credential held, so it cannot re-check a scope when an event fires. The instance it
- *   starts is tagged (`hook-origin.ts`), and no `start-workflow` hook acts on an event about a run
- *   that carries the tag or lies beneath one, so hooks cannot chain: that delivery is written, ends
- *   `failed`, and says why.
+ *   starts is tagged (`hook-origin.ts`), and a `start-workflow` hook acts only on events it can
+ *   place: a kind that names a run, which it follows back to see whether a hook started it (then
+ *   that delivery is written, ends `failed`, and says why), or a kind no run causes. It cannot list
+ *   a kind that may come from a run without naming one (`notification.created`, `session.saved`);
+ *   this is refused when the hook is written and checked again as the event is dispatched. So
+ *   hooks cannot chain.
  * - `notify` writes a notification for the hook's owner, never for anyone else, keyed
  *   `hook:<hookId>:<deliveryId>` so a replayed delivery writes one. It cannot list
  *   `notification.created`, which the notification it writes would fire again; this is refused when
@@ -56,6 +59,7 @@ import type { BureauNotifications } from '../notifications/notification-types.ts
 import { NOTIFICATION_FIELD_LIMITS } from '../notifications/notification-types.ts';
 import type { BureauWorkflows } from '../workflow-runtime.ts';
 import { PUBLISHED_BUREAU_EVENT_KINDS, type BureauEventEnvelope } from '../bureau-event-feed.ts';
+import { BUREAU_EVENT_CATALOG, type BureauEventOrigin } from '../bureau-event-catalog.ts';
 import type { AnswerEncryptionKeys } from '../secret-answers.ts';
 import type { WebhookDeliveryEngine } from '../webhook-notifier.ts';
 import {
@@ -83,7 +87,7 @@ import {
   type HookSecretStore,
   type HookWorkflowInput,
 } from './hook-types.ts';
-import { hookOriginTag } from './hook-origin.ts';
+import { hookOriginTag, runOfPayload } from './hook-origin.ts';
 import { type HookUrlPolicy, hookUrlDefect } from './hook-url-policy.ts';
 import type { EncryptedValue } from '@lostgradient/cryptography';
 import type { ConditionalTextValueStore } from '@lostgradient/storage';
@@ -344,6 +348,31 @@ function assertNoNotificationLoop(action: HookAction, events: readonly string[])
     invalid(
       'events',
       `A notify hook cannot fire on ${NOTIFICATION_CREATED_EVENT_KIND}: the notification it writes would fire it again`,
+    );
+  }
+}
+
+/** Where an event of `kind` can come from: a kind the catalog does not describe is unattributed. */
+function originOfKind(kind: string): BureauEventOrigin {
+  return Object.hasOwn(BUREAU_EVENT_CATALOG, kind)
+    ? BUREAU_EVENT_CATALOG[kind as keyof typeof BUREAU_EVENT_CATALOG].origin
+    : 'unattributed';
+}
+
+/**
+ * A `start-workflow` hook may list only the kinds whose cause the Bureau can place: a `run` kind,
+ * which names a run to follow back to a hook, or an `external` one, which no run causes. An
+ * `unattributed` kind (the notification a `notify` hook writes, a session saved, a diagnostic) may
+ * be raised by the run the hook started and leads back to no run, so a hook listing it could start
+ * itself without end. See `hook-origin.ts`.
+ */
+function assertNoUnplacedStart(action: HookAction, events: readonly string[]): void {
+  if (action.type !== 'start-workflow') return;
+  const unplaced = events.filter((kind) => originOfKind(kind) === 'unattributed');
+  if (unplaced.length > 0) {
+    invalid(
+      'events',
+      `A start-workflow hook cannot fire on ${unplaced.join(', ')}: a run the hook started can raise ${unplaced.length === 1 ? 'it' : 'them'} and nothing on ${unplaced.length === 1 ? 'it' : 'them'} leads back to that run, so the hook could start itself again`,
     );
   }
 }
@@ -617,6 +646,7 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
       const owner = ownerFromPrincipal(input.principal, (message) => invalid('principal', message));
       const enabled = input.enabled ?? true;
       assertNoNotificationLoop(action, events);
+      assertNoUnplacedStart(action, events);
       await assertActionAllowed(action, owner);
       const now = engine.now();
       const record: HookRecord = {
@@ -689,6 +719,7 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
           replacement ?? (url === undefined ? before.action : { type: 'webhook', url });
         const nextEvents = events ?? before.events;
         assertNoNotificationLoop(action, nextEvents);
+        assertNoUnplacedStart(action, nextEvents);
         // Authority is asked again only when the action is rewritten, so a rename or a disable is
         // never held up by a workflow that has since been paused.
         if (replacement !== undefined) await assertActionAllowed(action, before.owner);
@@ -783,15 +814,6 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
     },
   };
 
-  /** The run an event is about, when its payload names one. */
-  function runOf(event: HookEventToDeliver): string | undefined {
-    for (const field of ['runId', 'goalRunId', 'taskId']) {
-      const value = Object.hasOwn(event.payload, field) ? event.payload[field] : undefined;
-      if (typeof value === 'string') return value;
-    }
-    return undefined;
-  }
-
   /**
    * The hook that started `runId` (or a run above it), or `'unknown'` when that cannot be read: a
    * lookup that fails is treated as a hook's own run, because the cost of a wrong guess is a chain
@@ -818,6 +840,28 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
       startedByHook === CHAIN_UNKNOWN
         ? 'Skipped: could not tell whether the run this event is about was started by a hook, and a hook does not start a workflow for the events of a run a hook started'
         : `Skipped: ${event.kind} is about a run that hook ${startedByHook} started, and a hook does not start a workflow for the events of a run a hook started`;
+    dependencies.notice?.(`[bureau] Hook ${hook.id} did not start a workflow: ${reason}`);
+    return reason;
+  }
+
+  /**
+   * Why a `start-workflow` hook starts nothing for an event whose kind is `origin`, decided without
+   * a lookup, or `undefined` when the run it names has to be followed (`run` kind) or nothing needs
+   * following (`external`). The same rule the hook was held to when it was written, applied again
+   * because a record can list a kind it should not.
+   */
+  function placementSkipReason(
+    origin: BureauEventOrigin,
+    runId: string | undefined,
+    hook: HookRecord,
+    event: HookEventToDeliver,
+  ): string | undefined {
+    if (origin === 'external') return undefined;
+    if (origin === 'run' && runId !== undefined) return undefined;
+    const reason =
+      origin === 'run'
+        ? `Skipped: this ${event.kind} event names no run, so it cannot be told from one about a run a hook started`
+        : `Skipped: ${event.kind} can be raised by a run a hook started and names no run, and a hook does not start a workflow for it`;
     dependencies.notice?.(`[bureau] Hook ${hook.id} did not start a workflow: ${reason}`);
     return reason;
   }
@@ -851,14 +895,18 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
       // the wait is in a `finally`.
       const driving: Promise<void>[] = [];
       try {
-        const runId = runOf(event);
+        const runId = runOfPayload(event.payload);
+        const origin = originOfKind(event.kind);
         let starter: Promise<string | undefined> | undefined;
         for (const hook of await matching(event.kind)) {
           let skip: string | undefined;
-          if (hook.action.type === 'start-workflow' && runId !== undefined) {
-            // Asked once per event, and only when a hook would start something.
-            starter ??= startedBy(runId);
-            skip = chainSkipReason(await starter, hook, event);
+          if (hook.action.type === 'start-workflow') {
+            skip = placementSkipReason(origin, runId, hook, event);
+            if (skip === undefined && origin === 'run' && runId !== undefined) {
+              // Asked once per event, and only when a hook would start something.
+              starter ??= startedBy(runId);
+              skip = chainSkipReason(await starter, hook, event);
+            }
           }
           driving.push(deliveries.drive(await deliveries.enqueue(hook, event, false, skip)));
         }

@@ -3,11 +3,13 @@
  * test and delete a hook and see its deliveries, the shapes returned, and the typed faults.
  */
 import { generateEncryptionKey } from '@lostgradient/cryptography';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { waitForCondition } from '../../test';
 import { createReceiver, SIGNING_SECRET } from '../../hooks/hooks.test-support.ts';
-import type { HookSecretStore } from '../../hooks/hook-types.ts';
+import { HOOK_DELIVERY_KEY_PREFIX } from '../../hooks/hook-store.ts';
+import type { HookDeliveryRecord, HookSecretStore } from '../../hooks/hook-types.ts';
 import { BUREAU_HANDLER_OPERATIONS } from '../create-bureau-handler.ts';
 import { bureauHooksOperations } from './hooks-operations.ts';
 import { openBureau, type OpenedBureau, rpc } from './management-fixtures.test-support.ts';
@@ -17,11 +19,14 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).toReversed()) await cleanup();
 });
 
-async function open(options: { secrets?: HookSecretStore; withoutHooks?: boolean } = {}) {
+async function open(
+  options: { secrets?: HookSecretStore; withoutHooks?: boolean; storage?: MemoryStorage } = {},
+) {
   const receiver = createReceiver((_call, index) =>
     index === 0 ? new Response('pong', { status: 200 }) : new Response('again'),
   );
   const opened: OpenedBureau = await openBureau({
+    ...(options.storage === undefined ? {} : { storage: options.storage }),
     bureauOptions: {
       ...(options.withoutHooks === true
         ? {}
@@ -404,7 +409,7 @@ describe('bureau.hooks.*', () => {
     expect(deliveries[0]).toMatchObject({
       actionType: 'notify',
       request: null,
-      work: { type: 'notify', title: 'A run began', workflowId: null },
+      work: { type: 'notify', title: 'A run began', workflowId: null, skip: null },
       attempts: [{ outcome: 'completed', receipt: { notificationId: expect.any(String) } }],
     });
     const notifications = await call(opened, 'bureau.notifications.list', {}, 'alice-key');
@@ -412,6 +417,56 @@ describe('bureau.hooks.*', () => {
       kind: string;
     }>;
     expect(listedNotifications.map((n) => n.kind)).toContain('hook');
+  });
+
+  it('shows why a start-workflow delivery started nothing as work.skip, and null where there is no skip', async () => {
+    const storage = new MemoryStorage();
+    const { opened } = await open({ storage });
+    const created = await call(opened, 'bureau.hooks.create', NEW_HOOK, 'alice-observer-key');
+    const hookId = (created.result as { id: string }).id;
+    const reason = 'Skipped: session.saved can be raised by a run a hook started';
+    const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
+    const delivery = (id: string, skip: string | undefined): HookDeliveryRecord => ({
+      version: 1,
+      id,
+      hookId,
+      owner: 'api-key:alice',
+      actionType: 'start-workflow',
+      kind: 'session.saved',
+      test: false,
+      status: 'failed',
+      work: {
+        type: 'start-workflow',
+        workflowId: 'digest',
+        input: {},
+        ...(skip === undefined ? {} : { skip }),
+      },
+      attempts: [],
+      maxAttempts: 3,
+      createdAt: id === 'delivery-skipped' ? 2 : 1,
+      updatedAt: 2,
+      leaseUntil: 0,
+      revision: 1,
+    });
+    await kv.set(
+      `${HOOK_DELIVERY_KEY_PREFIX}delivery-skipped`,
+      JSON.stringify(delivery('delivery-skipped', reason)),
+    );
+    await kv.set(
+      `${HOOK_DELIVERY_KEY_PREFIX}delivery-plain`,
+      JSON.stringify(delivery('delivery-plain', undefined)),
+    );
+
+    const listed = await call(opened, 'bureau.hooks.deliveries', { hookId }, 'alice-key');
+    expect(listed.error).toBeUndefined();
+    const deliveries = listed.result!['deliveries'] as Array<{
+      id: string;
+      work: { skip: string | null };
+    }>;
+    expect(deliveries.map((d) => [d.id, d.work.skip])).toEqual([
+      ['delivery-skipped', reason],
+      ['delivery-plain', null],
+    ]);
   });
 
   it('answers InvalidParams for an action that is malformed, mixed with a url, or loops, and for testing a notify hook', async () => {

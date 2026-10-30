@@ -37,6 +37,7 @@ describe('bureau.events.catalog', () => {
     const events = body.result!['events'] as Array<{
       kind: string;
       description: string;
+      origin: string;
       payload: Array<{ name: string; type: string; optional: boolean }>;
     }>;
 
@@ -45,8 +46,12 @@ describe('bureau.events.catalog', () => {
       bureauEventCatalog().map((entry) => ({
         kind: entry.kind,
         description: entry.description,
+        origin: entry.origin,
         payload: entry.payload.map((field) => ({ ...field })),
       })),
+    );
+    expect(events.find((event) => event.kind === 'notification.created')?.origin).toBe(
+      'unattributed',
     );
     expect(events.find((event) => event.kind === 'run.registered')?.payload).toEqual([
       { name: 'runId', type: 'string', optional: false },

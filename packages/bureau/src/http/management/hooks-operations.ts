@@ -192,6 +192,12 @@ const deliverySchema = z.object({
       type: z.enum(['start-workflow', 'notify']),
       workflowId: z.string().nullable(),
       input: z.unknown(),
+      skip: z
+        .string()
+        .nullable()
+        .describe(
+          'Why a `start-workflow` delivery starts nothing: the event is about a run a hook started, or cannot be placed. `null` otherwise.',
+        ),
       title: z.string().nullable(),
       body: z.string().nullable(),
     })
@@ -247,6 +253,7 @@ function deliveryViewOf(delivery: HookDelivery): z.infer<typeof deliverySchema> 
               type: 'start-workflow',
               workflowId: delivery.work.workflowId,
               input: delivery.work.input,
+              skip: delivery.work.skip ?? null,
               title: null,
               body: null,
             }
@@ -254,6 +261,7 @@ function deliveryViewOf(delivery: HookDelivery): z.infer<typeof deliverySchema> 
               type: 'notify',
               workflowId: null,
               input: null,
+              skip: null,
               title: delivery.work.title,
               body: delivery.work.body,
             },

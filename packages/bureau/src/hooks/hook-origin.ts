@@ -1,11 +1,41 @@
 /**
  * Which runs a hook started (COR-1940): the tag a `start-workflow` action puts on the workflow
  * instance it starts, and the walk from any run up to that instance. It is what keeps a hook from
- * chaining: a run a hook started, or any run beneath it (an agent step, a child), raises events
- * that no `start-workflow` hook acts on, so the chain is one start deep however the events loop.
+ * chaining.
+ *
+ * ## The rule
+ *
+ * A `start-workflow` hook acts only on an event whose cause the Bureau can place, and never on one
+ * about a run a hook started:
+ *
+ * - A `run` kind (`BureauEventOrigin` in `bureau-event-catalog.ts`) names a run in its payload
+ *   ({@link EVENT_RUN_FIELDS}). The walk follows it to the workflow instance it belongs to, and
+ *   the hook starts nothing if that instance carries a hook's tag or lies beneath one (an agent
+ *   step, a child, a goal attempt). An event of a `run` kind that names no run is skipped too.
+ * - An `external` kind is caused by something outside any run (a schedule's clock, a change to the
+ *   definition files), so there is nothing to follow and the hook acts on it.
+ * - An `unattributed` kind may be caused by a run and names none (`notification.created`, the
+ *   session events, `diagnostic`). A `start-workflow` hook may not list one: `hooks.create` and
+ *   `hooks.update` refuse it, and dispatch skips an event of one that a stored record lists anyway.
+ *
+ * The chain is therefore one start deep. What the rule cannot see is a start that carries no tag: a
+ * run that creates a schedule, whose later fires are runs no hook started, or a workflow that
+ * starts another workflow some other way.
  *
  * @module hook-origin
  */
+
+/** The payload fields that name the run an event is about, in the order they are read. */
+export const EVENT_RUN_FIELDS: readonly string[] = ['runId', 'goalRunId', 'taskId'];
+
+/** The run an event's payload names, or `undefined` when it names none. */
+export function runOfPayload(payload: Readonly<Record<string, unknown>>): string | undefined {
+  for (const field of EVENT_RUN_FIELDS) {
+    const value = Object.hasOwn(payload, field) ? payload[field] : undefined;
+    if (typeof value === 'string') return value;
+  }
+  return undefined;
+}
 
 /** The prefix of the Weft tag that marks a workflow instance a hook started; the hook's id follows. */
 export const HOOK_ORIGIN_TAG_HEAD = 'hook-origin:';

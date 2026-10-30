@@ -367,14 +367,25 @@ describe('a start-workflow hook', () => {
     expect(await instancesOf(second.harness, 'lookup')).toHaveLength(1);
   });
 
-  it('starts the workflow for an event the session outbox replays at boot, before the workflow files are loaded', async () => {
+  it('delivers an event the session outbox replays at boot, which the hooks hold until the workflow files are loaded', async () => {
     const database = createSqliteStorageFixture();
     cleanups.push(() => database.dispose());
     const { now } = createClock();
     const first = await openWorkflowHooks({ storage: database.storage, now });
     await first.harness.putWorkflow('lookup', { trigger: ON_GO });
+    // A start-workflow hook cannot listen to `session.saved`, which a run it started could raise
+    // without a trace back to it; a notify hook can. (The hold itself, for a start, is in
+    // `hooks-chain.test.ts`, over an allowed kind.)
+    expect(
+      await pathOf(
+        first.harness.bureau.hooks!.create({
+          action: { type: 'start-workflow', workflowId: 'lookup' },
+          events: ['session.saved'],
+        }),
+      ),
+    ).toEqual(['events']);
     const hook = await first.harness.bureau.hooks!.create({
-      action: { type: 'start-workflow', workflowId: 'lookup' },
+      action: { type: 'notify' },
       events: ['session.saved'],
     });
     const directory = first.harness.directory;
@@ -400,12 +411,8 @@ describe('a start-workflow hook', () => {
     const second = await openWorkflowHooks({ storage, directory, now });
     const [delivery] = await waitForSettledDeliveries(second.harness.bureau, hook.id, 1);
 
-    // Not refused as "does not exist": the hook held the event until the workflow was there.
     expect(delivery!.attempts.map((attempt) => attempt.error)).toEqual([undefined]);
     expect(delivery).toMatchObject({ status: 'delivered', kind: 'session.saved' });
-    const instances = await instancesOf(second.harness, 'lookup');
-    expect(instances).toHaveLength(1);
-    expect(instances[0]!.id).toBe(delivery!.attempts[0]!.receipt!.runId!);
   });
 
   it('is refused for an owner who may not start workflows, an unknown workflow, and a Bureau with none', async () => {
@@ -586,6 +593,64 @@ describe('a start-workflow hook on the events of its own runs', () => {
     // Webhook and notify actions are not chained actions: the notify hook saw both runs settle.
     const notified = await waitForSettledDeliveries(harness.bureau, notifier.id, 2);
     expect(notified.map((delivery) => delivery.status)).toEqual(['delivered', 'delivered']);
+  });
+});
+
+describe('a start-workflow hook on the events a notify hook raises', () => {
+  it('starts one run and one model call, not a chain, when a stored record listens to notification.created (COR-1940)', async () => {
+    const database = createSqliteStorageFixture();
+    cleanups.push(() => database.dispose());
+    const diagnostics: BureauDiagnostic[] = [];
+    const { harness } = await openWorkflowHooks({
+      storage: database.storage,
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+    });
+    await harness.putWorkflow('chain', { trigger: ON_GO });
+    const hooks = harness.bureau.hooks!;
+    const start = { type: 'start-workflow', workflowId: 'chain' } as const;
+
+    // Refused when written, at create and at update.
+    expect(await pathOf(hooks.create({ action: start, events: ['notification.created'] }))).toEqual(
+      ['events'],
+    );
+    const starter = await hooks.create({ action: start, events: ['run.settled'] });
+    expect(await pathOf(hooks.update(starter.id, { events: ['notification.created'] }))).toEqual([
+      'events',
+    ]);
+
+    // A record that lists it anyway (written by something that skipped the check): the notify hook
+    // below turns each settled run into a notification, and the notification is the event the
+    // starter would start a run from, with no run for the guard to follow.
+    const kv = textValueStore(database.storage, { disposeUnderlyingStorage: false });
+    const raw = JSON.parse((await kv.get(`${HOOK_KEY_PREFIX}${starter.id}`))!) as Record<
+      string,
+      unknown
+    >;
+    await kv.set(
+      `${HOOK_KEY_PREFIX}${starter.id}`,
+      JSON.stringify({ ...raw, events: ['notification.created'], revision: 3 }),
+    );
+    const notifier = await hooks.create({ action: { type: 'notify' }, events: ['run.settled'] });
+
+    const manual = await harness.bureau.workflows!.start('chain', {
+      input: {},
+      owner: 'anonymous:local',
+    });
+    const [skipped] = await waitForSettledDeliveries(harness.bureau, starter.id, 1);
+    await waitForSettledDeliveries(harness.bureau, notifier.id, 1);
+    await quietFor(250);
+
+    expect(skipped).toMatchObject({ status: 'failed', kind: 'notification.created' });
+    expect(skipped!.attempts[0]!.error).toContain('Skipped');
+    expect(skipped!.attempts[0]!.receipt).toBeUndefined();
+    expect(await deliveriesOf(harness.bureau, starter.id)).toHaveLength(1);
+    const instances = await instancesOf(harness, 'chain');
+    expect(instances.map((instance) => instance.id)).toEqual([manual.runId]);
+    expect(harness.calls).toHaveLength(1);
+    // The skip is reported, not silent.
+    expect(
+      diagnostics.filter((d) => d.scope === 'hooks' && d.message.includes('did not start')),
+    ).toMatchObject([{ level: 'warn', message: expect.stringContaining(starter.id) }]);
   });
 });
 
