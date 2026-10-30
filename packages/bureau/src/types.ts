@@ -392,6 +392,24 @@ export interface BureauRetentionOptions {
    * `createBureau` throws `BureauError(..., 'BAD_REQUEST')`.
    */
   notifications?: BureauNotificationsRetentionOption | undefined;
+  /**
+   * COR-1943 — how long a settled hook delivery record (delivered, exhausted, aborted, or failed
+   * for want of a secret) is kept after it was last written, swept by each maintenance pass. A
+   * pending delivery is never removed, whatever its age. Leave it out to keep delivery records until
+   * their hook is deleted. Has effect only on a Bureau composed with {@link BureauOptions.hooks}.
+   * `olderThan` must be a positive integer; otherwise `createBureau` throws
+   * `BureauError(..., 'BAD_REQUEST')`.
+   */
+  hookDeliveries?: BureauHookDeliveriesRetentionOption | undefined;
+}
+
+/**
+ * COR-1943 — the window of {@link BureauRetentionOptions.hookDeliveries}. Only `{ olderThan }`
+ * exists: keeping delivery records forever is leaving the option out.
+ */
+export interface BureauHookDeliveriesRetentionOption {
+  /** Milliseconds after a delivery was last written; a positive integer. */
+  readonly olderThan: number;
 }
 
 /**

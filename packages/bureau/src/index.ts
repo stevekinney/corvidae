@@ -576,6 +576,7 @@ export type {
   BureauLogsOptions,
   BureauLogsRetentionOption,
   BureauNotificationsRetentionOption,
+  BureauHookDeliveriesRetentionOption,
   BureauMemoryRetentionOption,
   BureauReceiptRetentionOption,
   BureauRetentionOptions,

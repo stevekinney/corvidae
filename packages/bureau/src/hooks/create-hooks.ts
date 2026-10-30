@@ -169,6 +169,8 @@ export interface CreatedHooks {
   dispatch(envelope: BureauEventEnvelope): void;
   /** Resumes every pending delivery whose lease has expired; resolves with how many. */
   resume(): Promise<number>;
+  /** Removes settled deliveries last written more than the given milliseconds ago; resolves with how many. */
+  prune(olderThanMilliseconds: number): Promise<number>;
 }
 
 function viewOf(record: HookRecord): Hook {
@@ -497,5 +499,10 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
     engine.track(work);
   }
 
-  return { hooks, dispatch, resume: () => deliveries.resume() };
+  return {
+    hooks,
+    dispatch,
+    resume: () => deliveries.resume(),
+    prune: (olderThanMilliseconds) => deliveries.prune(olderThanMilliseconds),
+  };
 }
