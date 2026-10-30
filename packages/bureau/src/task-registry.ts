@@ -59,12 +59,15 @@ import {
   type TaskListingKey,
   type TaskListingRecord,
   type TaskListingScope,
+  type TaskListingSiblings,
 } from './task-list-snapshots';
 import {
   isStoredTaskOrigin,
+  isTopLevelTaskOrigin,
   type StoredTaskOrigin,
   type TaskOrigin,
   type TaskOriginKind,
+  taskOriginParentOf,
   taskOriginView,
 } from './task-origin';
 import type { CancelDurableRunOutcome, PendingReview } from './types';
@@ -363,6 +366,16 @@ export interface TaskListQuery<T = TaskView> {
   readonly status?: TaskState | undefined;
   /** Only tasks recorded with an origin of this kind; a task with no recorded origin matches none. */
   readonly origin?: TaskOriginKind | undefined;
+  /** Only the subordinate tasks of this run (COR-1868); see {@link taskOriginParentOf}. */
+  readonly parentRunId?: string | undefined;
+  /**
+   * Only the tasks that share a parent run with this task, this task excluded. Matches nothing
+   * when the task is absent, outside the caller's reach (`owner`), or has no parent run. It is
+   * resolved once, when the listing starts.
+   */
+  readonly siblingsOf?: string | undefined;
+  /** Only top-level tasks ({@link isTopLevelTaskOrigin}). Internal: A2A's listing sets it. */
+  readonly topLevelOnly?: boolean | undefined;
   /** Only tasks whose status timestamp is strictly after this ISO 8601 instant. */
   readonly statusTimestampAfter?: string | undefined;
   /** Entries per page. It is not bound to the snapshot, so it may vary between pages. */
@@ -390,6 +403,12 @@ export interface TaskQuery {
   readonly status?: TaskState | undefined;
   /** See {@link TaskListQuery.origin}. */
   readonly origin?: TaskOriginKind | undefined;
+  /** See {@link TaskListQuery.parentRunId}. */
+  readonly parentRunId?: string | undefined;
+  /** See {@link TaskListQuery.siblingsOf}. */
+  readonly siblingsOf?: string | undefined;
+  /** See {@link TaskListQuery.topLevelOnly}. */
+  readonly topLevelOnly?: boolean | undefined;
   readonly limit: number;
   readonly offset: number;
 }
@@ -984,8 +1003,26 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     return records;
   }
 
+  /**
+   * What a `siblingsOf` filter names right now (callers skip the call without one, so a listing
+   * without the filter awaits exactly what it did before): the task's parent run, or `null` for a listing
+   * that matches nothing (the task is absent, outside `owner`'s reach, or has no parent run).
+   */
+  async function resolveSiblings(
+    owner: string | undefined,
+    siblingsOf: string,
+  ): Promise<TaskListingSiblings> {
+    const named = await read(siblingsOf);
+    const reachable = named !== undefined && (owner === undefined || named.owner === owner);
+    return { of: siblingsOf, parent: reachable ? taskOriginParentOf(named.origin) : null };
+  }
+
   async function matchingViews(
-    query: Pick<TaskQuery, 'owner' | 'contextId' | 'agentName' | 'status' | 'origin'>,
+    query: Pick<
+      TaskQuery,
+      'owner' | 'contextId' | 'agentName' | 'status' | 'origin' | 'parentRunId' | 'topLevelOnly'
+    >,
+    siblings: TaskListingSiblings | null,
   ): Promise<TaskView[]> {
     let records =
       query.contextId === undefined ? await allRecords() : await recordsOfContext(query.contextId);
@@ -1003,6 +1040,19 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     }
     if (query.origin !== undefined) {
       records = records.filter((record) => record.origin?.kind === query.origin);
+    }
+    if (query.parentRunId !== undefined) {
+      records = records.filter((record) => taskOriginParentOf(record.origin) === query.parentRunId);
+    }
+    if (siblings !== null) {
+      const { of, parent } = siblings;
+      records = records.filter(
+        (record) =>
+          parent !== null && record.taskId !== of && taskOriginParentOf(record.origin) === parent,
+      );
+    }
+    if (query.topLevelOnly === true) {
+      records = records.filter((record) => isTopLevelTaskOrigin(record.origin));
     }
     const grouped = reviewsByRun(host.pendingReviews());
     const views = records.map((record) => viewOf(record, grouped.get(record.taskId)));
@@ -1033,6 +1083,9 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       agentName: query.agentName ?? null,
       status: query.status ?? null,
       origin: query.origin ?? null,
+      parentRunId: query.parentRunId ?? null,
+      siblingsOf: query.siblingsOf ?? null,
+      topLevelOnly: query.topLevelOnly === true,
       statusTimestampAfter:
         query.statusTimestampAfter === undefined ? null : Date.parse(query.statusTimestampAfter),
     };
@@ -1043,13 +1096,14 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     query: TaskListQuery<T>,
     scope: TaskListingScope,
     after: TaskListingKey | null,
+    siblings: TaskListingSiblings | null,
   ): Promise<{
     entries: TaskListingEntry<T>[];
     continuation: TaskListingKey | null;
     matched: number;
   }> {
     const { statusTimestampAfter } = scope.filters;
-    const views = await matchingViews(query);
+    const views = await matchingViews(query, siblings);
     const keyed = views
       .map((view) => ({ view, key: listingKeyOf(view) }))
       .filter(
@@ -1110,12 +1164,15 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         ? null
         : ((await host.currentIncarnation(query.contextId)) ?? '');
     const createdAt = Date.parse(clock.nowISO());
-    const window = await buildWindow(query, scope, null);
+    const siblings =
+      query.siblingsOf === undefined ? null : await resolveSiblings(query.owner, query.siblingsOf);
+    const window = await buildWindow(query, scope, null, siblings);
     const record: TaskListingRecord<T> = {
       ...scope,
       listingId: identifiers.next('task-listing'),
       window: 0,
       incarnation,
+      siblings,
       createdAt,
       expiresAt: createdAt + TASK_LISTING_LIFETIME_MILLISECONDS,
       entries: window.entries,
@@ -1137,7 +1194,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     const window = previous.window + 1;
     const stored = await listings.find<T>(scope, previous.listingId, previous.expiresAt, window);
     if (stored !== undefined) return stored;
-    const built = await buildWindow(query, scope, previous.continuation);
+    const built = await buildWindow(query, scope, previous.continuation, previous.siblings);
     // A later window keeps the listing's total, counted once when its first page was read.
     const record: TaskListingRecord<T> = {
       ...previous,
@@ -1606,7 +1663,12 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     record: read,
 
     enumerate: async (query) => {
-      const views = await matchingViews(query);
+      const views = await matchingViews(
+        query,
+        query.siblingsOf === undefined
+          ? null
+          : await resolveSiblings(query.owner, query.siblingsOf),
+      );
       views.sort((left, right) =>
         left.createdAt === right.createdAt
           ? left.id < right.id

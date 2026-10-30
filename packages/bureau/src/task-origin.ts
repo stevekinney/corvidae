@@ -13,8 +13,18 @@
  * @module task-origin
  */
 
+import { sha256HexSync } from '@lostgradient/cryptography';
+
 /** Every kind of origin a task record can carry, in the order they are listed on the wire. */
-export const TASK_ORIGIN_KINDS = ['chat', 'person', 'schedule', 'api'] as const;
+export const TASK_ORIGIN_KINDS = [
+  'chat',
+  'person',
+  'schedule',
+  'api',
+  'agent',
+  'goal',
+  'parent',
+] as const;
 
 /** The kind of a {@link TaskOrigin}: what `bureau.tasks.list` filters by. */
 export type TaskOriginKind = (typeof TASK_ORIGIN_KINDS)[number];
@@ -68,8 +78,50 @@ export interface ApiTaskOrigin {
   readonly kind: 'api';
 }
 
+/**
+ * The task is a child run another run started (COR-1868): an agent's `bureau.children.dispatch`.
+ * The child belongs to the run that started it, not to a person, so it is a subordinate task.
+ */
+export interface AgentTaskOrigin {
+  /** Discriminant. */
+  readonly kind: 'agent';
+  /** The run that started the child. */
+  readonly parentRunId: string;
+  /** The parent's session, when it has one. */
+  readonly parentContextId?: string | undefined;
+  /** The agent that started the child: the parent run's agent. */
+  readonly agentName: string;
+  /** The tool call that started the child, when a tool call did. */
+  readonly toolCallId?: string | undefined;
+}
+
+/** The task is one attempt of a goal (COR-1868): a subordinate task of the goal's run. */
+export interface GoalTaskOrigin {
+  /** Discriminant. */
+  readonly kind: 'goal';
+  /** The goal's own run. */
+  readonly goalRunId: string;
+  /** The attempt this task is. */
+  readonly attemptId: string;
+}
+
+/** The task is a step of a workflow instance (COR-1868): a subordinate task of that instance. */
+export interface ParentTaskOrigin {
+  /** Discriminant. */
+  readonly kind: 'parent';
+  /** The workflow instance the step belongs to. */
+  readonly parentRunId: string;
+}
+
 /** Where a task came from. */
-export type TaskOrigin = ChatTaskOrigin | PersonTaskOrigin | ScheduleTaskOrigin | ApiTaskOrigin;
+export type TaskOrigin =
+  | ChatTaskOrigin
+  | PersonTaskOrigin
+  | ScheduleTaskOrigin
+  | ApiTaskOrigin
+  | AgentTaskOrigin
+  | GoalTaskOrigin
+  | ParentTaskOrigin;
 
 /**
  * What a caller of `bureau.tasks.start` may declare about where a task came from. Only the kind
@@ -123,6 +175,13 @@ const ORIGIN_CHECKS: Readonly<
     isNonEmptyString(value['fireId']) &&
     (value['manual'] === undefined || value['manual'] === true),
   api: () => true,
+  agent: (value) =>
+    isNonEmptyString(value['parentRunId']) &&
+    isNonEmptyString(value['agentName']) &&
+    (value['parentContextId'] === undefined || isNonEmptyString(value['parentContextId'])) &&
+    (value['toolCallId'] === undefined || isNonEmptyString(value['toolCallId'])),
+  goal: (value) => isNonEmptyString(value['goalRunId']) && isNonEmptyString(value['attemptId']),
+  parent: (value) => isNonEmptyString(value['parentRunId']),
 };
 
 /** Whether a stored value is a task origin of a kind this version knows, in every field. */
@@ -202,4 +261,44 @@ export function taskOriginOfStart(
     agentName: start.agentName,
     principal: start.owner,
   };
+}
+
+/**
+ * The run a subordinate task belongs to: an `agent` or `parent` origin's `parentRunId`, a `goal`
+ * origin's `goalRunId`. `null` for every other kind, for an absent origin, and for a stored origin
+ * this release cannot read, so a filter on a parent never matches what it cannot attribute.
+ */
+export function taskOriginParentOf(stored: StoredTaskOrigin | null | undefined): string | null {
+  if (stored === undefined || stored === null || !isTaskOrigin(stored)) return null;
+  if (stored.kind === 'agent' || stored.kind === 'parent') return stored.parentRunId;
+  if (stored.kind === 'goal') return stored.goalRunId;
+  return null;
+}
+
+/** The kinds a person or a peer can start a task from: every kind but the subordinate ones. */
+const TOP_LEVEL_ORIGIN_KINDS: readonly string[] = ['chat', 'person', 'schedule', 'api'];
+
+/**
+ * Whether a stored origin is a top-level task's: absent (a task recorded before origins were
+ * kept), or of a kind a person, a schedule or the API starts. An allowlist, so a kind this release
+ * does not know, or a subordinate kind ({@link taskOriginParentOf}), is not top level. A2A reaches
+ * a task only through this rule, so it can never see or reference a child, an attempt or a step.
+ */
+export function isTopLevelTaskOrigin(stored: StoredTaskOrigin | null | undefined): boolean {
+  if (stored === undefined || stored === null) return true;
+  return TOP_LEVEL_ORIGIN_KINDS.includes(stored.kind);
+}
+
+/** The longest Weft workflow tag, in UTF-8 bytes (Weft rejects a start with a longer one). */
+const MAX_WORKFLOW_TAG_BYTES = 128;
+
+/**
+ * The Weft tag that mirrors a subordinate task's parent: `origin-parent:<runId>`. A parent id that
+ * would push the tag past Weft's limit is spelled `origin-parent-sha256:<40 hex>` instead, the same
+ * way every time, so a reader recomputes it from the id.
+ */
+export function taskOriginParentTag(parentRunId: string): string {
+  const tag = `origin-parent:${parentRunId}`;
+  if (new TextEncoder().encode(tag).byteLength <= MAX_WORKFLOW_TAG_BYTES) return tag;
+  return `origin-parent-sha256:${sha256HexSync(parentRunId).slice(0, 40)}`;
 }
