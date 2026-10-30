@@ -192,25 +192,31 @@
 
   // Display order is the single source of truth: option ids, the active option
   // and keyboard navigation all index into this flat list, and the sections
-  // below render it in the same order. Promoting selected items happens first
-  // and the grouping pass is stable, so promotion stays within each group
-  // rather than moving an item across a heading.
+  // below render it in the same order. Sections are established first, from the
+  // items as filtered (ungrouped first, then groups by first appearance), and
+  // selected items are promoted only within their own section. Promoting before
+  // sectioning would let a selection in a later group pull that whole group
+  // ahead of earlier ones.
   const visibleItems = $derived.by(() => {
     const shouldPromoteSelected =
       selectionFeedback === 'top' ||
       (selectionFeedback === 'top-after-reopen' && reorderAfterReopen);
 
-    let list: readonly MultiSelectItem<T>[] = filteredItems;
-    if (shouldPromoteSelected) {
+    const promote = (section: readonly MultiSelectItem<T>[]): MultiSelectItem<T>[] => {
+      if (!shouldPromoteSelected) return [...section];
       const selected: MultiSelectItem<T>[] = [];
       const unselected: MultiSelectItem<T>[] = [];
-      for (const item of filteredItems) {
+      for (const item of section) {
         if (selectedSet.has(item.id)) selected.push(item);
         else unselected.push(item);
       }
-      list = [...selected, ...unselected];
-    }
-    return hasGroupedOptions(list, groupOf) ? groupOptions(list, groupOf).ordered : list;
+      return [...selected, ...unselected];
+    };
+
+    if (!hasGroupedOptions(filteredItems, groupOf)) return promote(filteredItems);
+    return groupOptions(filteredItems, groupOf).sections.flatMap((section) =>
+      promote(section.members.map((member) => member.option)),
+    );
   });
   const itemSections = $derived(groupOptions(visibleItems, groupOf).sections);
 

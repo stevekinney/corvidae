@@ -188,6 +188,57 @@ describe('MultiSelect grouped items', () => {
     ]);
   });
 
+  test.each(['top', 'top-after-reopen'] as const)(
+    'selectionFeedback="%s" keeps group order when only a later group has a selection',
+    async (selectionFeedback) => {
+      const ordered = [
+        { id: 'a1', label: 'Alpha one', group: 'A' },
+        { id: 'a2', label: 'Alpha two', group: 'A' },
+        { id: 'b1', label: 'Beta one', group: 'B' },
+        { id: 'b2', label: 'Beta two', group: 'B' },
+      ];
+      render(MultiSelect, {
+        id: 'tools',
+        items: ordered,
+        selectedIds: ['b2'],
+        selectionFeedback,
+      });
+      await open();
+      if (selectionFeedback === 'top-after-reopen') {
+        // The first open never reorders; close and reopen to promote.
+        await fireEvent.keyDown(document.body.querySelector('[role="listbox"]') as Element, {
+          key: 'Escape',
+        });
+        await waitFor(() => {
+          expect(document.body.querySelector('[role="listbox"]')?.outerHTML ?? null).toBeNull();
+        });
+        await open();
+      }
+
+      expect(headings().map((heading) => heading.name)).toEqual(['A', 'B']);
+      expect(optionLabels()).toEqual(['Alpha one', 'Alpha two', 'Beta two', 'Beta one']);
+    },
+  );
+
+  test('Home and End move the active option to the first and last option across groups', async () => {
+    render(MultiSelect, { id: 'tools', items: tools });
+    await open();
+    const listbox = document.body.querySelector('[role="listbox"]');
+    if (!listbox) throw new Error('listbox not found');
+
+    // Display order: clock, search, index, read, write.
+    await fireEvent.keyDown(listbox, { key: 'End' });
+    await waitFor(() => {
+      const active = document.body.querySelector('[role="option"][data-cinder-active]');
+      expect(active?.textContent?.trim()).toBe('Write file');
+    });
+    await fireEvent.keyDown(listbox, { key: 'Home' });
+    await waitFor(() => {
+      const active = document.body.querySelector('[role="option"][data-cinder-active]');
+      expect(active?.textContent?.trim()).toBe('Current time');
+    });
+  });
+
   test('renders no group markup when no item has a group', async () => {
     render(MultiSelect, {
       id: 'tools',
