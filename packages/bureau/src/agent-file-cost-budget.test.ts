@@ -4,7 +4,11 @@
  * `budget-exceeded` and a reason that names `perRunUsd`), and that a crossed `warnAt` fraction
  * shows once in the run's activity (the `operative.runs.events` feed and the audit trail).
  */
-import { createModelCatalog, type BackendDescriptor } from '@lostgradient/operative';
+import {
+  createModelCatalog,
+  getModelPricing,
+  type BackendDescriptor,
+} from '@lostgradient/operative';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -16,7 +20,7 @@ import {
   serializeUpdatedAgentFile,
   type ParsedAgentFile,
 } from './agent-file';
-import { costBudgetOptions, usdPricingOfRow } from './file-agent-cost-budget';
+import { costBudgetOptions, unpricedSwitchReason, usdPricingOfRow } from './file-agent-cost-budget';
 import { waitForTaskState } from './test';
 import {
   type AgentFileFixture,
@@ -268,15 +272,30 @@ describe('prices from the catalog', () => {
     ).toBeUndefined();
   });
 
-  it('counts a switched model with no price at the default model’s rate, even one Operative’s table knows', () => {
+  it('enters a switched model with no price as unpriced, even one Operative’s table knows (COR-1921)', () => {
     const catalog = createModelCatalog().descriptors;
     const known = catalog.find((row) => row.model === 'claude-opus-5')!;
     const { costEstimation } = costBudgetOptions({ perRunUsd: 1 }, opus, [
       { ...known, pricing: undefined },
     ]);
-    expect(costEstimation?.pricing?.customPricing?.['claude-opus-5']).toEqual(
-      costEstimation?.pricing?.customPricing?.['claude-opus-5-5'],
-    );
+    const pricing = costEstimation?.pricing;
+    // Left out, the built-in table would count it at its own rate, which is not the catalog's.
+    expect(Object.hasOwn(pricing?.customPricing ?? {}, 'claude-opus-5')).toBe(true);
+    expect(getModelPricing('claude-opus-5', pricing)).toBeUndefined();
+    expect(getModelPricing('claude-opus-5-5', pricing)).toMatchObject({
+      promptCostPerMillionTokens: 4,
+    });
+  });
+
+  it('prices a model from a second row when the first has no price', () => {
+    const other = createModelCatalog().descriptors.find((row) => row.model === 'claude-opus-5')!;
+    const { costEstimation } = costBudgetOptions({ perRunUsd: 1 }, opus, [
+      { ...other, provider: 'twin', pricing: undefined },
+      other,
+    ]);
+    expect(getModelPricing('claude-opus-5', costEstimation?.pricing)).toMatchObject({
+      promptCostPerMillionTokens: 5,
+    });
   });
 
   it('counts the default model first, and a switched model at its own price', () => {
@@ -294,6 +313,34 @@ describe('prices from the catalog', () => {
       promptCostPerMillionTokens: 5,
     });
     expect(costBudget).toEqual({ perRunUsd: 1, warnAt: [0.5] });
+  });
+});
+
+describe('unpricedSwitchReason', () => {
+  const rows = createModelCatalog().descriptors;
+  const unpriced = rows.map((row) =>
+    row.model === 'gpt-4.1' ? { ...row, pricing: undefined } : row,
+  );
+
+  it('names the model for a budgeted agent switched to a model with no price', () => {
+    expect(unpricedSwitchReason({ perRunUsd: 1 }, unpriced, { model: 'gpt-4.1' })).toContain(
+      'gpt-4.1',
+    );
+    expect(
+      unpricedSwitchReason({ perRunUsd: 1 }, unpriced, { model: 'gpt-4.1', provider: 'openai' }),
+    ).toContain('costBudget');
+  });
+
+  it('has no objection to a priced model, an agent with no budget, or a model no row serves', () => {
+    expect(
+      unpricedSwitchReason({ perRunUsd: 1 }, unpriced, { model: 'claude-opus-5' }),
+    ).toBeUndefined();
+    expect(unpricedSwitchReason(undefined, unpriced, { model: 'gpt-4.1' })).toBeUndefined();
+    expect(unpricedSwitchReason({ perRunUsd: 1 }, unpriced, { model: 'nope' })).toBeUndefined();
+    // Another provider's row of the same name is not the one asked for.
+    expect(
+      unpricedSwitchReason({ perRunUsd: 1 }, unpriced, { model: 'gpt-4.1', provider: 'other' }),
+    ).toBeUndefined();
   });
 });
 

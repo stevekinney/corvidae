@@ -16,6 +16,7 @@ import {
   isRunCostBudgetExceeded,
   totalAccumulatedCost,
 } from './cost-budget';
+import { getModelPricing } from './cost-estimation';
 import { BudgetExceededError } from './errors';
 import { BudgetThresholdEvent } from './events';
 import type { EventDispatcher, RunState, StepDeps } from './run-step';
@@ -68,6 +69,24 @@ export function checkCostBudget(input: {
       `The run spent $${costAfter.toFixed(6)}, which reached its cost budget (perRunUsd: $${budget.perRunUsd}).`,
     );
   }
+}
+
+/**
+ * Throws a {@link BudgetExceededError} naming the model when a run with a cost budget is about to
+ * take a step on a model its pricing does not know (COR-1921). A session can be switched to
+ * another model between steps; the step must cost what that model charges, and counting it at
+ * another model's rate would let the run spend past its budget unseen. The run stops before the
+ * step asks the model anything. A run with no budget, or no `costEstimation`, is never stopped by
+ * this, and neither is a step on the model the run's pricing was built for.
+ */
+export function checkSwitchedModelPriced(deps: StepDeps, stepModel: string | undefined): void {
+  const budget = deps.costBudget;
+  const { costEstimation } = deps;
+  if (budget === undefined || costEstimation === undefined || stepModel === undefined) return;
+  if (getModelPricing(stepModel, costEstimation.pricing) !== undefined) return;
+  throw new BudgetExceededError(
+    `The run was switched to the model "${stepModel}", which has no price, so its spend cannot be counted against the run's cost budget (perRunUsd: $${budget.perRunUsd}).`,
+  );
 }
 
 /**

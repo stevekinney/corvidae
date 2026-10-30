@@ -67,7 +67,9 @@ export function usdPricingOfRow(row: BackendDescriptor): ModelPricing | undefine
  * The `costBudget` and `costEstimation` a file agent is built with. `descriptor` is the agent's
  * default model, which must be priced; `allowed` are the rows a session may switch it to, whose
  * prices are included so a step on a switched model is counted at that model's rate. A switched
- * model with no price is counted at the default model's rate.
+ * model with no price is entered as unpriced, never counted at another model's rate (COR-1921): a
+ * steer to it is refused ({@link unpricedSwitchReason}), and a step that still reaches it stops
+ * the run with `budget-exceeded`.
  */
 export function costBudgetOptions(
   budget: AgentCostBudget,
@@ -75,16 +77,13 @@ export function costBudgetOptions(
   allowed: readonly BackendDescriptor[],
 ): Pick<RunOptions, 'costBudget' | 'costEstimation'> {
   const customPricing: NonNullable<CostEstimationOptions['customPricing']> = {};
-  const defaultPricing = usdPricingOfRow(descriptor);
   for (const row of [descriptor, ...allowed]) {
     // The default model first, so a second provider serving a model of the same name never
     // changes what the default is counted at.
-    if (Object.hasOwn(customPricing, row.model)) continue;
-    // A row with no USD price is counted at the default model's rate. It is entered explicitly:
-    // left out, a model Operative's built-in table happens to know would be counted at that
-    // table's rate instead, which is neither the catalog's nor the documented fallback.
-    const pricing = usdPricingOfRow(row) ?? defaultPricing;
-    if (pricing !== undefined) customPricing[row.model] = pricing;
+    if (Object.hasOwn(customPricing, row.model) && customPricing[row.model] !== null) continue;
+    // A model with no USD price is entered as unpriced: left out, a model Operative's built-in
+    // table happens to know would be counted at that table's rate, which is not the catalog's.
+    customPricing[row.model] = usdPricingOfRow(row) ?? null;
   }
   const runBudget: RunCostBudget = {
     perRunUsd: budget.perRunUsd,
@@ -115,4 +114,26 @@ export function toolboxBudgetOf(budget: AgentToolBudget): {
       ? {}
       : { maxDurationMs: Math.ceil(budget.maxDurationSeconds * 1000) }),
   };
+}
+
+/**
+ * Why a session of an agent with a `costBudget` may not be switched to `override`, or `undefined`
+ * when it may (COR-1921). A model with no price in US dollars in the catalog cannot be counted
+ * against the budget, and counting it at another model's rate would let the budget be spent
+ * unseen, so the switch is refused. An agent with no budget is never refused, and a model that no
+ * catalog row serves is for the caller's own catalog check to refuse.
+ */
+export function unpricedSwitchReason(
+  budget: AgentCostBudget | undefined,
+  descriptors: readonly BackendDescriptor[],
+  override: { readonly model: string; readonly provider?: string | undefined },
+): string | undefined {
+  if (budget === undefined) return undefined;
+  const rows = descriptors.filter(
+    (row) =>
+      row.model === override.model &&
+      (override.provider === undefined || row.provider === override.provider),
+  );
+  if (rows.length === 0 || rows.some((row) => usdPricingOfRow(row) !== undefined)) return undefined;
+  return `The model "${override.model}" has no price in US dollars in the model catalog, so the agent's costBudget could not count its spend. Choose a model that has one.`;
 }

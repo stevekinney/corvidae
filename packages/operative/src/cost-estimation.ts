@@ -58,7 +58,13 @@ export interface AccumulatedCost {
 }
 
 export interface CostEstimationOptions {
-  customPricing?: Record<string, ModelPricing> | undefined;
+  /**
+   * Prices that win over the built-in table, by model name. A name set to `null` states that the
+   * model has no price: the built-in table is not consulted for it, so a host that prices from its
+   * own catalog can say a model is unpriced even when the table happens to know it (COR-1921).
+   * `null`, not `undefined`, so the statement survives JSON.
+   */
+  customPricing?: Record<string, ModelPricing | null> | undefined;
 }
 
 /**
@@ -232,9 +238,7 @@ export function getModelPricing(
   options?: CostEstimationOptions,
 ): ModelPricing | undefined {
   const custom = options?.customPricing;
-  if (custom !== undefined && Object.hasOwn(custom, model) && custom[model] !== undefined) {
-    return custom[model];
-  }
+  if (custom !== undefined && Object.hasOwn(custom, model)) return custom[model] ?? undefined;
   return Object.hasOwn(defaultPricingTable, model) ? defaultPricingTable[model] : undefined;
 }
 

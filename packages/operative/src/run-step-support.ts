@@ -201,7 +201,9 @@ export function dispatchSettledResults(
  * The model a step's request is priced at (COR-1914). A session switched to another model runs a
  * step on it, and that step must cost what that model charges, not what the agent's default
  * charges, or a budget could be spent at a rate it never counted. The switched model is used when
- * the run's pricing knows it; otherwise the run's own `costEstimation.model` stands.
+ * the run's pricing knows it; otherwise the run's own `costEstimation.model` stands, which only a
+ * run with no cost budget reaches: a run with one stops before such a step
+ * ({@link checkSwitchedModelPriced}, COR-1921).
  */
 export function costModelOfStep(
   costEstimation: NonNullable<RunOptions['costEstimation']>,

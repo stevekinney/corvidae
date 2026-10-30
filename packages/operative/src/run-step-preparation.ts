@@ -14,6 +14,7 @@ import {
   StepStartedEvent,
 } from './events';
 import type { EventDispatcher, RunState, StepDeps, StepOutcome } from './run-step';
+import { checkSwitchedModelPriced } from './run-step-cost-budget';
 import {
   createStepMediaAdmission,
   describeStepInputMedia,
@@ -118,6 +119,14 @@ export async function prepareStep(
   // as aborted instead of being dropped until after a generate call.
   if (signal?.aborted) {
     return { kind: 'abort', reason: explicitAbortReason(signal) };
+  }
+
+  // COR-1921 — a run with a cost budget stops before a step on a model it cannot price.
+  try {
+    checkSwitchedModelPriced(deps, steeringDesiredState?.model);
+  } catch (error) {
+    emitter?.dispatch(new RunErrorEvent(step, error, 'policy'));
+    return { kind: 'error', error, errorKind: 'policy' };
   }
 
   // COR-716 — the step boundary's derivation of the media: resolve sources a
