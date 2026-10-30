@@ -139,7 +139,10 @@ function messageOf(error: ErrorObject): string {
 }
 
 /** The issues for one answer, with the summary errors (`anyOf`, `oneOf`, `if`) dropped wherever a more specific error shares their path. */
-function issuesOf(errors: readonly ErrorObject[]): ReviewAnswerIssue[] {
+function issuesOf(
+  errors: readonly ErrorObject[],
+  subjectName: string = 'The answer',
+): ReviewAnswerIssue[] {
   const issues: ReviewAnswerIssue[] = [];
   const seen = new Set<string>();
   const specificPaths = new Set(
@@ -151,7 +154,7 @@ function issuesOf(errors: readonly ErrorObject[]): ReviewAnswerIssue[] {
     const path = pathOf(error);
     const summary = ['anyOf', 'oneOf', 'if'].includes(error.keyword);
     if (summary && specificPaths.has(JSON.stringify(path))) continue;
-    const subject = path.length === 0 ? 'The answer' : `"${path.join('.')}"`;
+    const subject = path.length === 0 ? subjectName : `"${path.join('.')}"`;
     const issue = { path, message: `${subject} ${messageOf(error)}`, code: error.keyword };
     const key = JSON.stringify(issue);
     if (seen.has(key)) continue;
@@ -191,6 +194,34 @@ export function validateReviewAnswer(
       {
         path: [],
         message: `The question’s schema could not be used: ${error instanceof Error ? error.message : String(error)}`,
+        code: 'schema',
+      },
+    ];
+  }
+}
+
+/**
+ * Checks any `value` against `schema` and returns every way it fails, or `[]` when it satisfies the
+ * schema: the check {@link validateReviewAnswer} makes, for a value that is not an answer. `subject`
+ * names the value in a message about the whole of it (`The input must be an object`). `undefined`
+ * is checked as `null`, because JSON has no `undefined`, and a schema that cannot be used is a
+ * single `schema` issue.
+ */
+export function validateAgainstSchema(
+  schema: HumanInputSchema,
+  value: unknown,
+  subject: string,
+): readonly ReviewAnswerIssue[] {
+  if (value === undefined) {
+    return validateAgainstSchema(schema, null, subject);
+  }
+  try {
+    return issuesOf(answerChecker.errors(schema as InteractiveSurfaceJsonObject, value), subject);
+  } catch (error) {
+    return [
+      {
+        path: [],
+        message: `The schema could not be used: ${error instanceof Error ? error.message : String(error)}`,
         code: 'schema',
       },
     ];

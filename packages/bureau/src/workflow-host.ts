@@ -23,6 +23,7 @@ import {
 
 import { toScheduleSpec } from './schedule-spec';
 import { AGENT_STEP_HANDLER } from './workflow-file';
+import { checkWorkflowSchema } from './workflow-schema';
 
 /** The overlap policies a `schedule` trigger may name; `skip` when it names none. */
 export const SCHEDULE_OVERLAP_POLICIES = ['skip', 'queue', 'cancel-running', 'allow'] as const;
@@ -169,6 +170,7 @@ export function createWorkflowDocumentHost(
       },
     }),
     triggerKinds: Object.freeze({ ...WORKFLOW_TRIGGER_KINDS }),
+    checkSchema: checkWorkflowSchema,
   });
 }
 

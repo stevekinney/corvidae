@@ -159,15 +159,27 @@ describe('the operations', () => {
 
   test('signal sends a name and a payload, and answers who was started and who was reached', async () => {
     stub = installWorkflowWorld(emptyWorld());
-    stub.world.signalAnswer = { started: ['run-1'], delivered: ['run-2', 'run-3'] };
+    stub.world.signalAnswer = { started: ['run-1'], delivered: ['run-2', 'run-3'], rejected: [] };
     const answer = await signalWorkflows({ name: 'approve', payload: { ok: true } });
-    expect(answer).toEqual({ started: ['run-1'], delivered: ['run-2', 'run-3'] });
+    expect(answer).toEqual({ started: ['run-1'], delivered: ['run-2', 'run-3'], rejected: [] });
     expect(stub.callsTo('bureau.workflows.signal')[0]?.params).toEqual({
       name: 'approve',
       payload: { ok: true },
     });
     await signalWorkflows({ name: 'no-payload' });
     expect(stub.callsTo('bureau.workflows.signal')[1]?.params).toEqual({ name: 'no-payload' });
+  });
+
+  test('signal keeps the workflows whose input schema refused the payload, with their issues', async () => {
+    stub = installWorkflowWorld(emptyWorld());
+    const rejected = [
+      { id: 'lookup', issues: [{ path: ['city'], message: '"city" is required' }] },
+    ];
+    stub.world.signalAnswer = { started: [], delivered: [], rejected };
+
+    const answer = await signalWorkflows({ name: 'go', payload: {} });
+
+    expect(answer.rejected).toEqual(rejected);
   });
 });
 

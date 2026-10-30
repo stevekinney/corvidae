@@ -114,6 +114,8 @@ export const OPERATION_MAP = {
   'bureau.workflows.revisions': { member: 'workflows.revisions' },
   'bureau.workflows.runs.list': { member: 'workflows.listRuns' },
   'bureau.workflows.runs.get': { member: 'workflows.getRun' },
+  'bureau.workflows.start': { member: 'workflows.start' },
+  'bureau.workflows.internal.get': { member: 'workflows.getCode' },
   'bureau.workflows.signal': { member: 'workflows.signal' },
 
   'bureau.memory.list': { member: 'memory.list' },

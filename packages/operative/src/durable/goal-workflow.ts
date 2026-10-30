@@ -614,7 +614,12 @@ export function createGoalWorkflow(ports: GoalWorkflowPorts, options: GoalWorkfl
   }
 
   return (
-    workflow({ name: GOAL_WORKFLOW_TYPE, finalizer: activities.finalizeGoal })
+    workflow({
+      name: GOAL_WORKFLOW_TYPE,
+      description:
+        'Drives one goal through its attempts until a validator accepts the result or the goal ends.',
+      finalizer: activities.finalizeGoal,
+    })
       // eslint-disable-next-line @typescript-eslint/require-await -- Weft durable generator: async work flows through yield*, not a top-level await.
       .execute(async function* (
         ctx,

@@ -8,12 +8,19 @@
  *   "description": "Summarizes the night's activity for the team.",
  *   "agent": "writer",
  *   "paused": false,
+ *   "inputSchema": { "type": "null" },
+ *   "outputSchema": { "type": "string" },
  *   "trigger": { "kind": "schedule", "spec": "0 6 * * *" },
  *   "steps": [
  *     { "kind": "activity", "handler": "agent", "input": { "agent": "writer", "message": "..." } }
  *   ]
  * }
  * ```
+ *
+ * `inputSchema` and `outputSchema` are optional JSON Schemas for what an instance starts with and
+ * finishes with (see `workflow-schema.ts`). Unlike the three fields above they stay in the
+ * document Weft is handed, so they are part of a revision: a file that declares none keeps the
+ * version it always had, and one that declares either has a different version.
  *
  * The filename without `.json` is the workflow's identifier and the document's `name` must equal
  * it. `description` says in a sentence what the workflow is for (optional), `agent` records which
@@ -37,6 +44,7 @@ import {
 } from '@lostgradient/weft';
 
 import { AGENT_IDENTIFIER_PATTERN } from './agent-file';
+import { workflowSchemaIssues } from './workflow-schema';
 
 /** What a workflow's identifier must look like: a letter first, and it doubles as a path segment. */
 export const WORKFLOW_IDENTIFIER_PATTERN = /^[a-z](?:[a-z0-9-]*[a-z0-9])?$/;
@@ -84,7 +92,14 @@ export interface WorkflowFileContents {
   /** The identifier of the agent that wrote the file, or `null`. */
   readonly agent: string | null;
   readonly paused: boolean;
-  /** The document Weft is handed: `name`, `trigger`, and `steps` exactly as written. */
+  /** The JSON Schema the input of an instance must satisfy, or `null` when the file declares none. */
+  readonly inputSchema: Readonly<Record<string, unknown>> | null;
+  /** The JSON Schema the result of an instance must satisfy, or `null` when the file declares none. */
+  readonly outputSchema: Readonly<Record<string, unknown>> | null;
+  /**
+   * The document Weft is handed: `name`, `trigger`, `steps`, and the schemas, when there are any,
+   * exactly as written.
+   */
   readonly document: WorkflowDocument;
 }
 
@@ -93,6 +108,10 @@ export interface WorkflowFileDefinition {
   readonly description?: string | undefined;
   readonly agent?: string | undefined;
   readonly paused?: boolean | undefined;
+  /** See {@link WorkflowFileContents.inputSchema}. */
+  readonly inputSchema?: Readonly<Record<string, unknown>> | undefined;
+  /** See {@link WorkflowFileContents.outputSchema}. */
+  readonly outputSchema?: Readonly<Record<string, unknown>> | undefined;
   readonly trigger: Readonly<{ kind: string } & Record<string, unknown>>;
   readonly steps: readonly Readonly<Record<string, unknown>>[];
 }
@@ -228,6 +247,10 @@ export function parseWorkflowFile(
       issues.push({ path: 'name', message: `must equal the identifier "${id}"` });
     }
     issues.push(...agentStepIssues(document));
+    // The shape is Weft's to judge (a JSON object); the limits are the answer schemas'.
+    for (const key of ['inputSchema', 'outputSchema'] as const) {
+      if (document[key] !== undefined) issues.push(...workflowSchemaIssues(key, document[key]));
+    }
   }
   if (issues.length > 0 || document === undefined) {
     return {
@@ -247,6 +270,8 @@ export function parseWorkflowFile(
       description: typeof description === 'string' ? description : null,
       agent: typeof agent === 'string' ? agent : null,
       paused: paused === true,
+      inputSchema: document.inputSchema ?? null,
+      outputSchema: document.outputSchema ?? null,
       document,
     },
   };
@@ -254,13 +279,16 @@ export function parseWorkflowFile(
 
 /**
  * The text of a file for `definition`, as the workflow `id`: two-space JSON with a trailing
- * newline, keys in the order `name`, `description`, `agent`, `paused`, `trigger`, `steps`.
+ * newline, keys in the order `name`, `description`, `agent`, `paused`, `inputSchema`,
+ * `outputSchema`, `trigger`, `steps`.
  */
 export function serializeWorkflowFile(id: string, definition: WorkflowFileDefinition): string {
   const body: Record<string, unknown> = { name: id };
   if (definition.description !== undefined) body['description'] = definition.description;
   if (definition.agent !== undefined) body['agent'] = definition.agent;
   if (definition.paused !== undefined) body['paused'] = definition.paused;
+  if (definition.inputSchema !== undefined) body['inputSchema'] = definition.inputSchema;
+  if (definition.outputSchema !== undefined) body['outputSchema'] = definition.outputSchema;
   body['trigger'] = definition.trigger;
   body['steps'] = definition.steps;
   return `${JSON.stringify(body, null, 2)}\n`;

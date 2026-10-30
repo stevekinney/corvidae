@@ -90,6 +90,7 @@ import type {
   BureauContexts,
   BureauSchedules,
 } from '../types.ts';
+import { describeCodeWorkflow } from '../workflow-runtime.ts';
 import { bureauReviewsOperations } from './bureau-reviews-operations.ts';
 import { bureauRunEventsSubscriptionOperation } from './bureau-run-events-operation.ts';
 import { createAssetsMount } from './assets-mount.ts';
@@ -1148,6 +1149,11 @@ export function buildBureauHandlerHost(
     },
     skills: { standing: () => skills?.standing() },
     workflows: bureau.workflows,
+    codeWorkflow: (id) => {
+      if (bureau.workflows !== undefined) return bureau.workflows.getCode(id);
+      const engine = bureau.durableEngine();
+      return engine === undefined ? undefined : describeCodeWorkflow(engine, id);
+    },
     deployments: bureau.deployments,
     schedules: {
       create: bureau.schedules.create,

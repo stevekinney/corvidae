@@ -172,7 +172,7 @@ describe('delivering a signal to a waiting instance', () => {
 
     const result = await harness.bureau.workflows!.signal('approve', { ok: true });
 
-    expect(result).toEqual({ started: [], delivered: ['waiting-run'] });
+    expect(result).toEqual({ started: [], delivered: ['waiting-run'], rejected: [] });
     await settle(harness, 'waiting-run');
     expect(harness.calls[0]?.message).toContain('"ok": true');
     expect(await runField(harness.bureau.workflows!, 'waiting-run', 'status')).toBe('completed');
@@ -191,6 +191,7 @@ describe('delivering a signal to a waiting instance', () => {
     expect(await harness.bureau.workflows!.signal('reject', null)).toEqual({
       started: [],
       delivered: [],
+      rejected: [],
     });
     expect(await statusOf(harness, 'waiting-run')).toBe('running');
   });
