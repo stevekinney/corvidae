@@ -481,6 +481,7 @@ describe('bureau.contexts.get', () => {
         'agentName',
         'configVersion',
         'createdAt',
+        'effort',
         'forkedFromMessageId',
         'id',
         'lastMessagePreview',

@@ -47,6 +47,8 @@ export function twinModels(): ModelsOptions {
 export interface StepObservation {
   readonly model: string | undefined;
   readonly provider: string | undefined;
+  /** The effort the step's steering named (COR-1935); absent when it named none. */
+  readonly effort?: string | undefined;
 }
 
 export const noopTool = createTool({
@@ -70,6 +72,7 @@ export function createSteppedGenerate() {
     observed.push({
       model: context.steering?.model,
       provider: context.steering?.modelProvider,
+      effort: context.steering?.effort,
     });
     if (first) {
       entered.resolve();

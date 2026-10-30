@@ -14742,6 +14742,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       outcome = await forkLedger.claim(identity, digest, {
         contextId: runtimeServices.identifiers.next('session'),
         override: parentRequest ?? parentSteering?.model ?? null,
+        effort: parentSteering?.effort ?? null,
       });
     } catch (error) {
       if (error instanceof BureauLedgerConflictError) throw forkConflict(request);
@@ -14794,7 +14795,21 @@ async function constructBureau<const D extends AgentDefinitions>(
                   }
                 : { target: 'model', policyRef: claim.override.policyRef },
           });
-    const result: ForkSessionResult = { contextId: claim.contextId, carriedOverride: carried };
+    // COR-1935: the effort goes the same way. The claim keeps it, so a retry after a restart
+    // carries the one the first attempt read, and a claim from before the field carries none.
+    const carriedEffort =
+      claim.effort === undefined || claim.effort === null
+        ? null
+        : await submitSteeringCommand(claim.contextId, {
+            id: `${request.commandId}:effort`,
+            principal: request.owner,
+            requestedValue: { target: 'effort', override: claim.effort },
+          });
+    const result: ForkSessionResult = {
+      contextId: claim.contextId,
+      carriedOverride: carried,
+      carriedEffort,
+    };
     const completed = await forkLedger.complete(outcome.entry, result);
     return answerOfFork(completed.result);
   }
@@ -14888,6 +14903,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         desired?.model === undefined
           ? null
           : { provider: desired.modelProvider ?? null, model: desired.model },
+      effort: desired?.effort ?? null,
       configVersion: gate?.getConfigVersion() ?? 0,
     };
   }

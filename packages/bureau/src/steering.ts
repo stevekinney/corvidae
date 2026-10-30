@@ -181,13 +181,13 @@ const CONFIGURATION_TARGETS: ReadonlySet<string> = new Set<ConfigurationTargetKi
 ]);
 
 /**
- * Whether a command can be admitted to a session with no run in progress (COR-1559): a `model`
- * override sets what the session's next run starts with, so it needs no live run. Every other
- * target either binds to a live run (`pause`, `resume`) or is deferred to a run that exists, and
- * keeps its `session-terminal` for an idle session.
+ * Whether a command can be admitted to a session with no run in progress (COR-1559, COR-1935): a
+ * `model` or `effort` override sets what the session's next run starts with, so it needs no live
+ * run. Every other target either binds to a live run (`pause`, `resume`) or is deferred to a run
+ * that exists, and keeps its `session-terminal` for an idle session.
  */
 export function steersIdleSession(requestedValue: SteeringRequestedValue): boolean {
-  return requestedValue.target === 'model';
+  return requestedValue.target === 'model' || requestedValue.target === 'effort';
 }
 
 /** Narrows a target to one of the four configuration coordinates. */
@@ -219,7 +219,7 @@ export interface SteeringAdmissionContext {
 
 /**
  * What a session's steering has settled on, as `Bureau.contexts.steering` reports it (COR-1559):
- * the latest admitted `model` override, and the `configVersion` a later command's
+ * the latest admitted `model` and `effort` overrides, and the `configVersion` a later command's
  * `expectedRevision` is compared against.
  */
 export interface SessionSteeringState {
@@ -228,6 +228,11 @@ export interface SessionSteeringState {
    * its default. `provider` is `null` for an override that named none.
    */
   readonly model: { readonly provider: string | null; readonly model: string } | null;
+  /**
+   * The effort the session's latest `effort` override named (COR-1935), or `null` before any: the
+   * run uses the effort its agent's request carries.
+   */
+  readonly effort: Effort | null;
   /** The session's `configVersion`: how many steering commands it has accepted. */
   readonly configVersion: number;
 }

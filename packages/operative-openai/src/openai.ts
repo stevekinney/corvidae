@@ -138,6 +138,13 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): GenerateFu
   const generate: GenerateFunction = async (
     context: GenerateContext,
   ): Promise<GenerateResponse> => {
+    // The step's steered effort, read per call (COR-1935), not the construction-time one. A model
+    // that takes no `reasoning_effort` resolves it to `undefined`: the parameter is omitted, and
+    // the response's `effectiveEffort` says `'none'`.
+    const stepEffort =
+      context.steering?.effort === undefined
+        ? resolvedEffort
+        : resolveOpenAIEffort(context.steering.effort, resolvedModel);
     const client = await getClient();
     const { messages, lineage } = toOpenAIMessagesGrouped(context.conversation.current, {
       sources: context.resolvedSources,
@@ -152,7 +159,7 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): GenerateFu
 
     const effectiveMaxTokens = context.maximumTokens ?? common.maximumTokens;
     if (effectiveMaxTokens !== undefined) params['max_tokens'] = effectiveMaxTokens;
-    if (resolvedEffort !== undefined) params['reasoning_effort'] = resolvedEffort;
+    if (stepEffort !== undefined) params['reasoning_effort'] = stepEffort;
     if (hasTools && options.toolChoice !== 'none') params['tools'] = tools;
     if (hasTools && options.toolChoice && options.toolChoice !== 'none')
       params['tool_choice'] = toOpenAIToolChoice(options.toolChoice);
@@ -193,7 +200,7 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): GenerateFu
           metadata: {
             ...mapped.metadata,
             effectiveModel: resolvedModel,
-            effectiveEffort: resolvedEffort ?? 'none',
+            effectiveEffort: stepEffort ?? 'none',
           },
         },
         lineage,
@@ -246,6 +253,13 @@ export function createOpenAIProviderStream(
   const generate: StreamingGenerateFunction = async (
     context: GenerateContext & { streaming: StreamingHandle },
   ): Promise<GenerateResponse> => {
+    // The step's steered effort, read per call (COR-1935), not the construction-time one. A model
+    // that takes no `reasoning_effort` resolves it to `undefined`: the parameter is omitted, and
+    // the response's `effectiveEffort` says `'none'`.
+    const stepEffort =
+      context.steering?.effort === undefined
+        ? resolvedEffort
+        : resolveOpenAIEffort(context.steering.effort, resolvedModel);
     const client = await getClient();
     const { streaming } = context;
     const { messages, lineage } = toOpenAIMessagesGrouped(context.conversation.current, {
@@ -263,7 +277,7 @@ export function createOpenAIProviderStream(
 
     const effectiveMaxTokensStream = context.maximumTokens ?? common.maximumTokens;
     if (effectiveMaxTokensStream !== undefined) params['max_tokens'] = effectiveMaxTokensStream;
-    if (resolvedEffort !== undefined) params['reasoning_effort'] = resolvedEffort;
+    if (stepEffort !== undefined) params['reasoning_effort'] = stepEffort;
     if (hasTools && options.toolChoice !== 'none') params['tools'] = tools;
     if (hasTools && options.toolChoice && options.toolChoice !== 'none')
       params['tool_choice'] = toOpenAIToolChoice(options.toolChoice);
@@ -461,7 +475,7 @@ export function createOpenAIProviderStream(
           metadata: {
             ...mapped.metadata,
             effectiveModel: resolvedModel,
-            effectiveEffort: resolvedEffort ?? 'none',
+            effectiveEffort: stepEffort ?? 'none',
           },
         },
         lineage,

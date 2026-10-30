@@ -52,14 +52,21 @@ export const chatContextSchema = z.object({
  */
 export type ChatContext = z.infer<typeof chatContextSchema>;
 
+/** The reasoning efforts a session can be set to (`bureau.contexts.steer`'s `effort`). */
+const effortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
+
+/** A reasoning effort, as `bureau.contexts.steer` takes it and `bureau.contexts.get` reports it. */
+export type Effort = z.infer<typeof effortSchema>;
+
 /**
  * One session as `bureau.contexts.get` shows it: the summary, and what its steering has settled on.
  * `model` is the latest model the session was switched to, `null` before any, which means the
- * agent's default; `configVersion` is the version a later `bureau.contexts.steer`'s
- * `expectedRevision` is compared against.
+ * agent's default; `effort` is the latest effort it was set to, `null` before any; `configVersion` is
+ * the version a later `bureau.contexts.steer`'s `expectedRevision` is compared against.
  */
 export const contextDetailSchema = chatContextSchema.extend({
   model: z.object({ provider: z.string().nullable(), model: z.string() }).nullable(),
+  effort: effortSchema.nullable(),
   configVersion: z.number().int().nonnegative(),
 });
 
@@ -194,17 +201,23 @@ const steerOutcomeSchema = z.discriminatedUnion('outcome', [
 export type SteerOutcome = z.infer<typeof steerOutcomeSchema>;
 
 /**
- * Switches a session to another model its agent allows (`bureau.contexts.steer`). `commandId` is
- * the caller's own identifier: an exact retry of it is a replay. `expectedRevision` is the
- * `configVersion` the caller read.
+ * Changes one setting of a session (`bureau.contexts.steer`): `override` switches it to another
+ * model its agent allows, `effort` sets its reasoning effort, and a request carries exactly one.
+ * `commandId` is the caller's own identifier: an exact retry of it is a replay. `expectedRevision`
+ * is the `configVersion` the caller read.
  */
 export async function steerContext(
   input: {
     readonly contextId: string;
     readonly commandId: string;
-    readonly override: { readonly provider: string; readonly model: string };
     readonly expectedRevision?: number;
-  },
+  } & (
+    | {
+        readonly override: { readonly provider: string; readonly model: string };
+        readonly effort?: never;
+      }
+    | { readonly effort: Effort; readonly override?: never }
+  ),
   options?: { readonly signal?: AbortSignal },
 ): Promise<SteerOutcome> {
   return steerOutcomeSchema.parse(await callBureau('bureau.contexts.steer', input, options));
