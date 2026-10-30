@@ -339,6 +339,37 @@ describe('restore', () => {
     expect(detail?.definition).toMatchObject({ stepLimit: 10, retry: firstRetry });
   });
 
+  it('restores guardrails to the earlier version’s preset, and names it in changedKeys', async () => {
+    const fixture = await seeded();
+    await fixture.catalog.update(
+      'helper',
+      definition('Version one.\n', { guardrails: 'default' }),
+      {
+        expectedHash: hashOf(fixture),
+        savedBy: ALICE,
+      },
+    );
+    await fixture.catalog.update(
+      'helper',
+      definition('Version one.\n', { guardrails: 'tripwire' }),
+      {
+        expectedHash: hashOf(fixture),
+        savedBy: ALICE,
+      },
+    );
+
+    await fixture.catalog.versions.restore('helper', 2, {
+      expectedHash: hashOf(fixture),
+      savedBy: 'api-key:bob',
+    });
+
+    const [latest] = await fixture.catalog.versions.list('helper');
+    expect(latest?.definition.guardrails).toBe('default');
+    expect(latest?.changedKeys).toEqual(['guardrails']);
+    const detail = await fixture.catalog.detail('helper');
+    expect(detail?.definition?.guardrails).toBe('default');
+  });
+
   it('removes a stepLimit and retry the restored version does not have', async () => {
     const fixture = await seeded();
     await fixture.catalog.update(
