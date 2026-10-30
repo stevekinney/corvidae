@@ -74,8 +74,10 @@ export type EventSelector = 'events' | 'tokens';
 
 /**
  * A single committed record from a workflow's event feed — the `events`
- * (durable log entries, e.g. `workflow:checkpoint`) or `tokens` (streamed
- * output chunks) selector, distinguished by `selector`. Returned by
+ * (durable log entries such as `workflow:checkpoint` from the engine's own
+ * feed; the REST SSE route under `serve()` serves the lifecycle events
+ * `/watch` clients receive instead, e.g. `workflow:started`) or `tokens`
+ * (streamed output chunks) selector, distinguished by `selector`. Returned by
  * `WorkflowEventFeed.replay()` / `WorkflowEventFeed.subscribe()`, and
  * consumed directly by the `/v1/workflows/:id/events/sse` REST route.
  *
