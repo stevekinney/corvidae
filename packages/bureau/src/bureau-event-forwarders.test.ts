@@ -240,9 +240,9 @@ describe('the missed-fire buffer', () => {
   it('replays what the engine reported before the first listener, then forwards live events', () => {
     const engine = new EventTarget();
     const buffer = bufferMissedFires(engine);
-    engine.dispatchEvent(new ScheduleMissedFireEvent('early-1', 1, 0, 1));
+    engine.dispatchEvent(new ScheduleMissedFireEvent('early-1', 1, 0, 1, 'late'));
     engine.dispatchEvent(new Event('unrelated'));
-    engine.dispatchEvent(new ScheduleMissedFireEvent('early-2', 2, 0, 1));
+    engine.dispatchEvent(new ScheduleMissedFireEvent('early-2', 2, 0, 1, 'late'));
 
     const first: string[] = [];
     buffer.addEventListener(ScheduleMissedFireEvent.type, (event) => {
@@ -250,12 +250,12 @@ describe('the missed-fire buffer', () => {
     });
     expect(first).toEqual(['early-1', 'early-2']);
 
-    engine.dispatchEvent(new ScheduleMissedFireEvent('live', 1, 0, 1));
+    engine.dispatchEvent(new ScheduleMissedFireEvent('live', 1, 0, 1, 'late'));
     const second: string[] = [];
     buffer.addEventListener(ScheduleMissedFireEvent.type, (event) => {
       if (event instanceof ScheduleMissedFireEvent) second.push(event.scheduleId);
     });
-    engine.dispatchEvent(new ScheduleMissedFireEvent('later', 1, 0, 1));
+    engine.dispatchEvent(new ScheduleMissedFireEvent('later', 1, 0, 1, 'late'));
 
     expect(first).toEqual(['early-1', 'early-2', 'live', 'later']);
     expect(second).toEqual(['later']);
@@ -279,9 +279,9 @@ describe('the missed-fire forwarder', () => {
       (diagnostic) => sunk.push(diagnostic),
     );
 
-    engine.dispatchEvent(new ScheduleMissedFireEvent('foreign', 2, 100, 200));
-    engine.dispatchEvent(new ScheduleMissedFireEvent('broken', 1, 100, 200));
-    engine.dispatchEvent(new ScheduleMissedFireEvent('mine', 3, 1_000, 4_000));
+    engine.dispatchEvent(new ScheduleMissedFireEvent('foreign', 2, 100, 200, 'late'));
+    engine.dispatchEvent(new ScheduleMissedFireEvent('broken', 1, 100, 200, 'late'));
+    engine.dispatchEvent(new ScheduleMissedFireEvent('mine', 3, 1_000, 4_000, 'dst-gap'));
     await waitUntil(() => forwarded.length === 1 && sunk.length === 1);
 
     expect(forwarded[0]).toBeInstanceOf(ScheduleMissedEvent);
@@ -291,11 +291,12 @@ describe('the missed-fire forwarder', () => {
       missedCount: 3,
       windowStart: 1_000,
       windowEnd: 4_000,
+      reason: 'dst-gap',
     });
     expect(sunk[0]).toMatchObject({ level: 'warn', scope: 'schedules' });
 
     stop();
-    engine.dispatchEvent(new ScheduleMissedFireEvent('mine', 1, 5_000, 6_000));
+    engine.dispatchEvent(new ScheduleMissedFireEvent('mine', 1, 5_000, 6_000, 'late'));
     expect(lookups).toEqual(['foreign', 'broken', 'mine']);
   });
 
@@ -314,7 +315,7 @@ describe('the missed-fire forwarder', () => {
       () => undefined,
     );
 
-    engine.dispatchEvent(new ScheduleMissedFireEvent('mine', 1, 0, 1));
+    engine.dispatchEvent(new ScheduleMissedFireEvent('mine', 1, 0, 1, 'late'));
     expect(looked).toBe(true);
     stop();
     lookup.resolve({ id: 'mine' });

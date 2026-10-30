@@ -56,6 +56,12 @@ const createScheduleInput = z.object({
     .describe(
       'Deterministic delay spread over each occurrence, as milliseconds or a duration string such as "30s".',
     ),
+  timeZone: z
+    .unknown()
+    .optional()
+    .describe(
+      'IANA time zone the cron expression is read in, such as "America/Los_Angeles", or "UTC". Omitted, a new schedule runs in UTC and an update keeps the schedule\'s zone. Only a cronExpression schedule takes one. A wall-clock time the clock skips when it springs forward is recorded as a missed fire, and one it repeats when it falls back runs once.',
+    ),
   revisionPolicy: z
     .unknown()
     .optional()
@@ -79,6 +85,7 @@ type ValidatedCreateScheduleInput = {
   overlap: NonNullable<ScheduleOptions['overlap']> | undefined;
   backfill: boolean | undefined;
   jitter: ScheduleOptions['jitter'] | undefined;
+  timeZone: string | undefined;
   revisionPolicy: ScheduleOptions['revisionPolicy'] | undefined;
 };
 
@@ -109,6 +116,7 @@ function validateOptionalScheduleFields(input: CreateScheduleInput): {
   overlap: NonNullable<ScheduleOptions['overlap']> | undefined;
   backfill: boolean | undefined;
   jitter: ScheduleOptions['jitter'] | undefined;
+  timeZone: string | undefined;
   revisionPolicy: ScheduleOptions['revisionPolicy'] | undefined;
 } {
   const validatedId = validateScheduleId(input.id);
@@ -120,22 +128,23 @@ function validateOptionalScheduleFields(input: CreateScheduleInput): {
     overlap: validatedOptions.overlap,
     backfill: validatedOptions.backfill,
     jitter: validatedOptions.jitter,
+    timeZone: validatedOptions.timeZone,
     revisionPolicy: validatedOptions.revisionPolicy,
   };
 }
 
 /**
  * Validate `CreateScheduleInput` fields in order:
- * type → cadence (cronExpression or every) → id → description → overlap → backfill → jitter → revisionPolicy.
+ * type → cadence (cronExpression or every) → id → description → overlap → backfill → jitter → timeZone → revisionPolicy.
  *
  * Throws an `InvalidParams` fault on the first invalid field so both REST and
  * JSON-RPC callers receive the same error messages.
  */
 function validateCreateScheduleInput(input: CreateScheduleInput): ValidatedCreateScheduleInput {
   const { type, spec } = validateRequiredScheduleFields(input);
-  const { id, description, overlap, backfill, jitter, revisionPolicy } =
+  const { id, description, overlap, backfill, jitter, timeZone, revisionPolicy } =
     validateOptionalScheduleFields(input);
-  return { type, spec, id, description, overlap, backfill, jitter, revisionPolicy };
+  return { type, spec, id, description, overlap, backfill, jitter, timeZone, revisionPolicy };
 }
 
 export const createScheduleOperation = defineOperation({
@@ -145,9 +154,10 @@ export const createScheduleOperation = defineOperation({
   description:
     'Create a schedule that starts a workflow on a recurring cadence. Requires a schedule ' +
     '`id`, the target workflow `type`, and a recurrence specification (cron expression or ' +
-    'interval); accepts the workflow `input` and start options. Returns the created schedule ' +
+    'interval); accepts the workflow `input` and start options, and for a cron schedule the IANA ' +
+    '`timeZone` its wall-clock times are read in (UTC when omitted). Returns the created schedule ' +
     'id. Faults with Conflict when a schedule with the same id already exists and InvalidParams ' +
-    'for a malformed recurrence specification.',
+    'for a malformed recurrence specification or an unknown time zone.',
   destructive: false,
   tags: ['Schedules'],
   inputSchema: createScheduleInput,
@@ -172,6 +182,7 @@ export const createScheduleOperation = defineOperation({
       ...(validated.overlap !== undefined ? { overlap: validated.overlap } : {}),
       ...(validated.backfill !== undefined ? { backfill: validated.backfill } : {}),
       ...(validated.jitter !== undefined ? { jitter: validated.jitter } : {}),
+      ...(validated.timeZone !== undefined ? { timeZone: validated.timeZone } : {}),
       ...(validated.revisionPolicy !== undefined
         ? { revisionPolicy: validated.revisionPolicy }
         : {}),
@@ -208,6 +219,7 @@ export const createScheduleRestBinding: UnknownRestBinding = {
     overlap: { kind: 'body-field', bodyField: 'overlap' },
     backfill: { kind: 'body-field', bodyField: 'backfill' },
     jitter: { kind: 'body-field', bodyField: 'jitter' },
+    timeZone: { kind: 'body-field', bodyField: 'timeZone' },
     revisionPolicy: { kind: 'body-field', bodyField: 'revisionPolicy' },
   },
   extractInput: async (request, _pathParams, context) => {

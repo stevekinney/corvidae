@@ -504,6 +504,7 @@ export function updateScheduleRequest(
   setIfDefined(body, 'overlap', options?.overlap);
   setIfDefined(body, 'backfill', options?.backfill);
   setIfDefined(body, 'jitter', options?.jitter);
+  setIfDefined(body, 'timeZone', options?.timeZone);
   setIfDefined(body, 'revisionPolicy', options?.revisionPolicy);
 
   return request<void>(context.baseUrl, `/schedules/${encodeURIComponent(id)}`, context.headers, {

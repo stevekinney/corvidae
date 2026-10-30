@@ -11,6 +11,7 @@ export type InternalToolboxOptions = Pick<
   | 'policyContext'
   | 'approvalPolicy'
   | 'approvalSecret'
+  | 'secretResolver'
   | 'approvalStateStore'
   | 'grantStateStore'
   | 'approvalBindingTtlMs'

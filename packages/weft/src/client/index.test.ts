@@ -186,6 +186,7 @@ async function exerciseWorkflowHandleAndSchedule(httpClient: HttpClient): Promis
     overlap: 'queue',
     backfill: true,
     jitter: '10s',
+    timeZone: 'America/Los_Angeles',
     type: 'wrong-workflow',
     input: 'wrong-input',
     cronExpression: '*/5 * * * *',
@@ -252,6 +253,7 @@ async function exerciseWorkflowClientRequests(httpClient: HttpClient): Promise<v
     overlap: 'queue',
     backfill: true,
     jitter: '30s',
+    timeZone: 'Europe/Berlin',
   });
   await httpClient.cancelSchedule('schedule-1');
   await httpClient.signal('wf/1', 'status', { ok: true });
@@ -428,6 +430,7 @@ function assertScheduleCalls(fetchCalls: FetchCall[]): void {
     overlap: 'queue',
     backfill: true,
     jitter: '10s',
+    timeZone: 'America/Los_Angeles',
   });
 
   const scheduleListCall = fetchCalls[16]!;
@@ -469,6 +472,7 @@ function assertFilterAndFollowupCalls(fetchCalls: FetchCall[]): void {
     overlap: 'queue',
     backfill: true,
     jitter: '30s',
+    timeZone: 'Europe/Berlin',
   });
   expect(fetchCalls[7]?.init?.method).toBe('DELETE');
   expect(fetchCalls[8]?.init?.method).toBe('DELETE');

@@ -27,6 +27,7 @@ const SUMMARY: ScheduleSummary = {
   id: 'nightly-rollup',
   workflowType: 'report-gen',
   cronExpression: '0 2 * * *',
+  timeZone: 'UTC',
   status: 'active',
   overlap: 'skip',
   backfill: false,

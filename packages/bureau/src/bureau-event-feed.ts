@@ -403,6 +403,7 @@ const PROJECTIONS: readonly BureauEventProjection[] = [
     missedCount: event.missedCount,
     windowStart: event.windowStart,
     windowEnd: event.windowEnd,
+    reason: event.reason,
   })),
   projection(
     TaskCleanupAcknowledgedEvent.type,

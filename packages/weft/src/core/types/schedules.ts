@@ -147,6 +147,20 @@ export interface ScheduleOptions {
    */
   jitter?: Duration;
   /**
+   * The IANA time zone a cron schedule's wall-clock times are read in, such as
+   * `America/Los_Angeles`, or `UTC`. Omitted, the schedule runs in UTC. Only a cron schedule
+   * takes one: an interval counts elapsed time, and passing one with `every` throws.
+   *
+   * A wall-clock time happens once. A time the clock skips when it springs forward (a daily
+   * 02:30 on that day) does not fire: the schedule counts it in
+   * {@link ScheduleState.missedFireCount}, sets {@link ScheduleState.lastMissedFireAt}, and emits a
+   * `ScheduleMissedFireEvent` with `reason: 'dst-gap'` when the clock reaches the end of the gap.
+   * A time the clock repeats when it falls back fires only the first time, so an expression that
+   * matches every minute or hour has no second pass through the repeated hour; use `every` for
+   * work that must run on elapsed time.
+   */
+  timeZone?: string;
+  /**
    * Which revision future occurrences resolve against. Defaults to
    * `'active-at-fire'`. Passing `'pinned'` captures the revision that would
    * run right now — see {@link ScheduleRevisionPolicy}. This is a
@@ -182,7 +196,7 @@ export interface ScheduleOptions {
  */
 export type ScheduleUpdateOptions = Pick<
   ScheduleOptions,
-  'description' | 'overlap' | 'backfill' | 'jitter' | 'revisionPolicy'
+  'description' | 'overlap' | 'backfill' | 'jitter' | 'timeZone' | 'revisionPolicy'
 > & {
   /**
    * Apply the update only if the schedule's {@link ScheduleMetadata.revision} is still this
@@ -309,6 +323,8 @@ export type ScheduleDefinition<TInput = unknown> = ScheduleSpec & {
   overlapPolicy?: ScheduleOverlapPolicy;
   backfill?: boolean;
   jitter?: Duration;
+  /** The IANA time zone of a cron schedule; see {@link ScheduleOptions.timeZone}. */
+  timeZone?: string;
   revisionPolicy?: ScheduleRevisionPolicy;
 };
 
@@ -354,6 +370,18 @@ export interface ScheduleMetadata {
   backfill: boolean;
   /** Normalized deterministic jitter window in milliseconds. */
   jitterMs?: number;
+  /**
+   * The IANA time zone a cron schedule's wall-clock times are read in, or `UTC`. Every schedule
+   * has one: an interval schedule's is always `UTC` and does not change when it fires, and a
+   * stored schedule that predates the field reads as `UTC`. See {@link ScheduleOptions.timeZone}
+   * for how a daylight-saving transition treats a wall-clock time.
+   *
+   * While a cron schedule is in a zone whose clock is about to spring forward past one of its
+   * wall-clock times, {@link ScheduleState.nextFireAt} may name the instant the gap ends: the
+   * schedule wakes there, records the skipped time as missed, and fires only if the expression
+   * also matches that instant.
+   */
+  timeZone: string;
   /**
    * Which revision future occurrences resolve against. Required on every
    * record this package writes; a legacy record persisted before WFT-20

@@ -276,6 +276,7 @@ describe('engine callback creators', () => {
           nextFireAt: 60_000,
           overlap: 'skip',
           queuedRuns: [],
+          timeZone: 'UTC',
           revisionPolicy: 'active-at-fire',
           status: 'active',
           updatedAt: 1,

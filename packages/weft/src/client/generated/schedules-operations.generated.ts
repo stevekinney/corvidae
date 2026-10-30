@@ -17,6 +17,7 @@ export type SchedulesOperationTypes = {
       readonly jitter?: unknown;
       readonly overlap?: unknown;
       readonly revisionPolicy?: unknown;
+      readonly timeZone?: unknown;
       readonly type: unknown;
     };
     readonly output: { readonly id: string };
@@ -57,6 +58,7 @@ export type SchedulesOperationTypes = {
       readonly overlap?: unknown;
       readonly revisionPolicy?: unknown;
       readonly scheduleId: string;
+      readonly timeZone?: unknown;
     };
     readonly output: null;
     readonly faults: 'Conflict' | 'InvalidParams' | 'NotFound';

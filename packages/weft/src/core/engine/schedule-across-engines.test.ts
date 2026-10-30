@@ -276,7 +276,7 @@ describe('a timer tick that cannot make sense of a schedule', () => {
   it('leaves a schedule alone when the occurrence collector finds nothing due at its fire time', async () => {
     const { clock, shared, engineB } = await openEngines();
     const before = await stateOf(shared);
-    const due = spyOn(scheduleOccurrence, 'collectDueScheduleOccurrences').mockImplementationOnce(
+    const due = spyOn(scheduleOccurrence, 'collectDueScheduleTicks').mockImplementationOnce(
       () => [],
     );
     try {

@@ -14,6 +14,7 @@ import type {
   ToolPolicyContextProvider,
   ToolPolicyDecision,
   ToolPolicyHooks,
+  ToolSecretResolver,
 } from '../is-tool';
 import type { ToolCall, ToolExecutionResult } from '../types';
 import {
@@ -61,6 +62,7 @@ type ExecutionInnerContext<TInput, TOutput, E extends ToolEventsMap> = {
   emit: Emit;
   dispatch: (event: Event) => boolean;
   diagnostics?: ToolDiagnostics;
+  secretResolver?: ToolSecretResolver;
   telemetryEnabled: boolean;
 };
 
@@ -87,6 +89,7 @@ export function createExecuteInner<TInput, TOutput, E extends ToolEventsMap>(
     emit,
     dispatch,
     diagnostics,
+    secretResolver,
     telemetryEnabled,
   } = context;
   const executeInner = async (
@@ -165,6 +168,7 @@ export function createExecuteInner<TInput, TOutput, E extends ToolEventsMap>(
       ...(policyContextProvider !== undefined ? { policyContextProvider } : {}),
       ...(policyHooks !== undefined ? { policyHooks } : {}),
       ...(diagnostics !== undefined ? { diagnostics } : {}),
+      ...(secretResolver !== undefined ? { secretResolver } : {}),
       buildPolicyContext,
       resolvePolicyDecision,
       runPolicyAfter,

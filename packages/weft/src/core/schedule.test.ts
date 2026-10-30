@@ -332,6 +332,7 @@ function createScheduleState(overrides: Partial<ScheduleState> = {}): ScheduleSt
     status: 'active',
     overlap: 'skip',
     backfill: false,
+    timeZone: 'UTC',
     revisionPolicy: 'active-at-fire',
     missedFireCount: 0,
     skippedCount: 0,
@@ -3222,13 +3223,14 @@ describe('recurring schedules', () => {
     expect(nextFireAt).toBe(Date.parse('2026-03-09T06:30:00.000Z'));
   });
 
-  it('Tests cover: cron edge cases (DST transitions) by emitting both repeated fall-back wall-clock times.', () => {
+  it('Tests cover: cron edge cases (DST transitions) by firing a repeated fall-back wall-clock time once.', () => {
     const nextFireAt = getNextCronOccurrence(
       '0 30 1 * * *',
       Date.parse('2026-11-01T05:30:00.000Z'),
       { timeZone: 'America/New_York' },
     );
 
-    expect(nextFireAt).toBe(Date.parse('2026-11-01T06:30:00.000Z'));
+    // 05:30Z is the first 01:30 (EDT); the second (06:30Z, EST) is the same wall-clock time again.
+    expect(nextFireAt).toBe(Date.parse('2026-11-02T06:30:00.000Z'));
   });
 });

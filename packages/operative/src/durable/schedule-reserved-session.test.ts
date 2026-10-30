@@ -24,6 +24,7 @@ const summary: ScheduleSummary = {
   status: 'active',
   overlap: 'skip',
   backfill: false,
+  timeZone: 'UTC',
   revisionPolicy: 'active-at-fire',
   createdAt: 0,
   updatedAt: 0,

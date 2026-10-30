@@ -158,6 +158,16 @@ export type ToolMetadata = JsonObject & {
   readOnly?: boolean;
   dangerous?: boolean;
   concurrency?: number;
+  /**
+   * Declares that the tool may receive plaintext secrets. Off unless exactly `true`.
+   *
+   * A declaring tool has every `{ secretRef }` value anywhere in its arguments replaced by the
+   * plaintext the toolbox's `ToolboxOptions.secretResolver` returns, immediately before its
+   * `execute` runs, and may call {@link RuntimeToolContext.resolveSecret}. For any other tool a
+   * `{ secretRef }` argument fails the call with `secret-not-accepted`, the tool receives nothing,
+   * and `resolveSecret` rejects with the same code. See `documentation/secrets.md`.
+   */
+  acceptsSecrets?: boolean;
 };
 
 export type ToolPolicyDecision = {
@@ -413,7 +423,43 @@ export interface RuntimeToolContext extends CoreToolContext {
    * See {@link ToolExecuteOptions.executionContext} for why this exists.
    */
   executionContext?: Readonly<Record<string, unknown>>;
+  /**
+   * Resolves a secret reference to its plaintext through the toolbox's
+   * `ToolboxOptions.secretResolver`. Rejects with `secret-not-accepted` unless the tool
+   * declares {@link ToolMetadata.acceptsSecrets}, and with `secret-unavailable` when no resolver
+   * is configured or the resolver cannot produce the plaintext. The same reference resolves once
+   * per call.
+   */
+  resolveSecret: (reference: string) => Promise<string>;
 }
+
+/**
+ * What a {@link ToolSecretResolver} is told about the call that asked for a secret, so a resolver
+ * can refuse a reference that belongs to a different run, principal, or tool.
+ */
+export interface ToolSecretResolutionContext {
+  /** The name of the tool the secret is being resolved for. */
+  readonly toolName: string;
+  /** The id of the tool call, when it has one. */
+  readonly callId?: string;
+  /** The call's abort signal, so a slow resolver can stop when the call is cancelled. */
+  readonly signal?: MinimalAbortSignal;
+  /** The call's effective request context (authority and tenancy), frozen. */
+  readonly requestContext?: Readonly<ToolRequestContext>;
+  /** The call's {@link ToolExecuteOptions.executionContext}, such as the id of the asking run. */
+  readonly executionContext?: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * Turns a secret reference into its plaintext. The host supplies it as
+ * `createToolbox({ secretResolver })`; the toolbox never stores, decrypts, or logs a secret
+ * itself. Throw, or return a non-string, when the reference cannot be resolved: the call then
+ * fails with `secret-unavailable`, and the thrown error's message is not copied anywhere.
+ */
+export type ToolSecretResolver = (
+  reference: string,
+  context: ToolSecretResolutionContext,
+) => string | Promise<string>;
 
 export type ToolContext<_E extends ToolEventsMap = DefaultToolEvents> = RuntimeToolContext;
 

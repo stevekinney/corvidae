@@ -18,6 +18,7 @@ export function registerInternalToolboxOptions(
     registryPolicyContext: ToolboxOptions['policyContext'];
     approvalPolicy: ToolboxOptions['approvalPolicy'];
     approvalSecret: ToolboxOptions['approvalSecret'];
+    secretResolver: ToolboxOptions['secretResolver'];
     approvalStateStore: ToolboxOptions['approvalStateStore'];
     grantStateStore: ToolboxOptions['grantStateStore'];
     approvalBindingTtlMs: number;
@@ -45,6 +46,7 @@ export function registerInternalToolboxOptions(
     ...(values.registryPolicyContext ? { policyContext: values.registryPolicyContext } : {}),
     ...(values.approvalPolicy ? { approvalPolicy: values.approvalPolicy } : {}),
     ...(values.approvalSecret ? { approvalSecret: values.approvalSecret } : {}),
+    ...(values.secretResolver ? { secretResolver: values.secretResolver } : {}),
     ...(values.approvalStateStore ? { approvalStateStore: values.approvalStateStore } : {}),
     ...(values.grantStateStore ? { grantStateStore: values.grantStateStore } : {}),
   };
