@@ -38,6 +38,8 @@ import {
   typesOf,
 } from './ag-ui-stream.test-support.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
+import { agentFileText, KNOWN_MODEL } from '../testing/agent-file-fixtures.test-support.ts';
+import { startFileBureau } from '../testing/agent-file-bureau.test-support.ts';
 import { isReasoningEvent } from './ag-ui-vocabulary.ts';
 
 async function withHarness<T>(
@@ -258,6 +260,97 @@ describe('a validate-mode agent (guardrails that scan the output)', () => {
         expect(reasoningOf(frames)).toHaveLength(5);
       },
     );
+  });
+});
+
+describe('PII only in the thinking (the answer is clean)', () => {
+  const PII = 'jane.doe@example.com';
+  const thought = `her address is ${PII}`;
+  const script = [reasoned(thought, 'A clean answer.')];
+
+  /** Every frame that carries the PII, by type. */
+  const leaks = (frames: ReadonlyArray<ReceivedFrame>) =>
+    frames.filter((frame) => JSON.stringify(frame.event).includes(PII)).map((f) => f.event.type);
+
+  it('is redacted under validate mode: the thought is withheld and the answer streams', async () => {
+    await withHarness(
+      {
+        script,
+        guardrails: {
+          mode: 'validate',
+          output: { validators: [createOutputPIIValidator()], action: 'redact' },
+        },
+      },
+      async ({ handler }) => {
+        const frames = await new FrameReader(await handler(startRequest(runAgentInput()))).rest();
+
+        expect(leaks(frames)).toEqual([]);
+        expect(reasoningOf(frames)).toEqual([]);
+        expect(JSON.stringify(frames)).toContain('A clean answer.');
+        expect(typesOf(frames).at(-1)).toBe(EventType.RUN_FINISHED);
+      },
+    );
+  });
+
+  it('is blocked under validate mode: the response is replaced and nothing carries the thought', async () => {
+    await withHarness(
+      {
+        script,
+        guardrails: {
+          mode: 'validate',
+          output: { validators: [createOutputPIIValidator()], action: 'block' },
+        },
+      },
+      async ({ handler }) => {
+        const frames = await new FrameReader(await handler(startRequest(runAgentInput()))).rest();
+
+        expect(leaks(frames)).toEqual([]);
+        expect(reasoningOf(frames)).toEqual([]);
+        expect(JSON.stringify(frames)).toContain('blocked by output guardrail');
+        expect(typesOf(frames).at(-1)).toBe(EventType.RUN_FINISHED);
+      },
+    );
+  });
+
+  it('trips the shipped tripwire preset, which ends the run before anything is streamed', async () => {
+    await withHarness({ script }, async ({ handler }) => {
+      const frames = await new FrameReader(await handler(startRequest(runAgentInput()))).rest();
+
+      expect(leaks(frames)).toEqual([]);
+      expect(reasoningOf(frames)).toEqual([]);
+      expect(typesOf(frames).at(-1)).toBe(EventType.RUN_ERROR);
+    });
+  });
+
+  describe.each([
+    ['default', 'RUN_FINISHED'],
+    ['tripwire', 'RUN_ERROR'],
+  ] as const)('on a file agent with guardrails: %s', (preset, ending) => {
+    it(`streams no frame that carries it, and the run ends ${ending}`, async () => {
+      const files = await startFileBureau({
+        scripts: { 'claude-opus-5-5': () => 'A clean answer.' },
+        thinking: { 'claude-opus-5-5': thought },
+        overrides: { id: 'file-agent-stream' },
+      });
+      try {
+        await files.put('helper.md', agentFileText({ model: KNOWN_MODEL, guardrails: preset }));
+        await files.bureau.agents.refresh();
+        const handler = createBureauHandler(files.bureau, {
+          unauthenticatedAccess: 'allow',
+          agUi: {},
+        });
+
+        const frames = await new FrameReader(
+          await handler(startRequest(runAgentInput(), {}, 'helper')),
+        ).rest();
+
+        expect(leaks(frames)).toEqual([]);
+        expect(reasoningOf(frames)).toEqual([]);
+        expect(typesOf(frames).at(-1)).toBe(EventType[ending]);
+      } finally {
+        await files.dispose();
+      }
+    });
   });
 });
 
