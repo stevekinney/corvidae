@@ -12,6 +12,7 @@ import {
 } from '../events';
 import type { TaskView } from '../task-registry';
 import { notificationForSettledTask, startBuiltInNotifications } from './built-in-notifications';
+import { createNotificationStore } from './notification-store';
 import { NOTIFICATION_FIELD_LIMITS, type NotificationInput } from './notification-types';
 
 const task = (change: Partial<TaskView> = {}): TaskView => ({
@@ -176,6 +177,47 @@ describe('startBuiltInNotifications', () => {
     expect(key).toMatch(/^review\.waiting:human-wait:sha256:[0-9a-f]{64}$/);
     expect(key.length).toBeLessThan(NOTIFICATION_FIELD_LIMITS.dedupeKey);
     expect(dismissed).toEqual([key]);
+  });
+
+  it('writes a notification for a review with a long id into the real store, and closes it', async () => {
+    const reviewId = `human-wait:run-1:${'s'.repeat(600)}:0`;
+    const listeners = new Set<(event: Event) => void>();
+    const diagnostics: string[] = [];
+    let tick = 0;
+    const store = createNotificationStore({
+      clock: { nowISO: () => new Date(Date.UTC(2026, 9, 30, 12, 0, tick++)).toISOString() },
+      identifiers: { next: (kind) => `${kind}-${tick}` },
+      diagnose: (diagnostic) => diagnostics.push(diagnostic.message),
+      refusal: (message) => new Error(message),
+    });
+    const running = startBuiltInNotifications({
+      source: {
+        toObservable: () => ({
+          subscribe: (next) => {
+            listeners.add(next);
+            return { unsubscribe: () => listeners.delete(next) };
+          },
+        }),
+      },
+      store,
+      tasks: { get: async () => undefined },
+      diagnose: (diagnostic) => diagnostics.push(diagnostic.message),
+    });
+    const dispatch = (event: Event) => {
+      for (const listener of listeners) listener(event);
+    };
+
+    dispatch(new ReviewRequestedEvent(reviewId, 'run-1', 'api-key:alice', 'human-wait'));
+    await running.drain();
+    const waiting = await store.list({ owner: 'api-key:alice' });
+    dispatch(new ReviewApprovedEvent(reviewId, 'run-1', 'api-key:alice', 'human-wait'));
+    await running.drain();
+    const closed = await store.list({ owner: 'api-key:alice', includeDismissed: true });
+
+    expect(diagnostics).toEqual([]);
+    expect(waiting.notifications).toHaveLength(1);
+    expect(waiting.notifications[0]?.subject?.reviewId).toMatch(/^human-wait:sha256:[0-9a-f]{64}$/);
+    expect(closed.notifications[0]?.dismissedAt).not.toBeNull();
   });
 
   it('words a human wait as a question, and still writes when the run’s record is not found', async () => {

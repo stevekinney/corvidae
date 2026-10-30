@@ -181,6 +181,11 @@ export function startBuiltInNotifications(
     const task = await options.tasks.get(runId);
     const agent = task?.agentName ?? null;
     const who = agent ?? 'An agent';
+    // The subject is bounded like the key: a human wait on a long signal name carries its digest.
+    const boundedId = boundedReviewId(
+      reviewId,
+      reviewId.startsWith('approval:') ? 'approval' : 'human-wait',
+    );
     await options.store.create({
       owner: principal,
       kind: 'review.waiting',
@@ -188,7 +193,7 @@ export function startBuiltInNotifications(
       dedupeKey: reviewNotificationDedupeKey(reviewId),
       subject: {
         runId,
-        reviewId,
+        reviewId: reviewId.length <= NOTIFICATION_FIELD_LIMITS.subject ? reviewId : boundedId,
         reviewKind: kind,
         ...(task === undefined ? {} : { contextId: task.contextId }),
         ...(agent === null ? {} : { agentName: agent }),
