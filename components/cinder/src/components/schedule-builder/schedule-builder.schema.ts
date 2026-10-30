@@ -29,7 +29,8 @@ const schema = {
                   enum: ['minutes', 'hours'],
                 },
                 count: {
-                  type: 'number',
+                  type: 'integer',
+                  minimum: 1,
                 },
               },
               additionalProperties: false,

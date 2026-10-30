@@ -62,7 +62,7 @@ An omitted `value` opens on every day at 9:00 AM in the browser's time zone. The
 | `label` | `string` | no | — | Accessible label for the whole control. Defaults to "Schedule". |
 | `previewCount` | `integer` | no | — | How many upcoming fires to request from `computeNextFires`. Defaults to 5. |
 | `timeZones` | `string`[] | no | — | The time zones the Time zone field offers. Defaults to every zone the runtime knows. |
-| `value` | { cron: `string`; timeZone: `string` } \| { every: { count: `number`; unit: `"minutes"` \| `"hours"` }; timeZone: `string` } | no | — | The current recurrence value (controlled). When omitted, the component starts from every day at 9:00 AM (`0 9 * * *`) in the browser's time zone. |
+| `value` | { cron: `string`; timeZone: `string` } \| { every: { count: `integer`; unit: `"minutes"` \| `"hours"` }; timeZone: `string` } | no | — | The current recurrence value (controlled). When omitted, the component starts from every day at 9:00 AM (`0 9 * * *`) in the browser's time zone. |
 | `computeNextFires` | `(opaque)` | no | — | Injected next-fires computation. The component passes the current value and the requested count and renders whatever fires the consumer returns. When omitted, the preview list is hidden (the component ships no date logic). Not expressible in JSON Schema; see the component types for the signature. |
 | `onValueChange` | `(opaque)` | no | — | Called whenever the user edits the recurrence. Receives the next {@link ScheduleValue}; an invalid custom cron is not emitted. The consumer owns persistence. Not expressible in JSON Schema; see the component types for the signature. |
 
