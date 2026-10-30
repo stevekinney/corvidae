@@ -9,6 +9,7 @@ import { createMCP } from '../src/integrations/mcp';
 import { createInMemoryMcpOAuthTokenStorage } from '../src/integrations/mcp/oauth';
 import type { OpenAPISpec } from '../src/integrations/openapi';
 import {
+  completeToolSourceAuthorization,
   loadToolSource,
   loadToolSources,
   parseToolSourceDescription,
@@ -557,5 +558,62 @@ describe('loadToolSources', () => {
     expect(result.sources.map((source) => source.id)).toEqual(['good']);
     expect(result.failures.map((failure) => failure.id)).toEqual(['bad']);
     expect(result.failures[0]?.error).toBeInstanceOf(ToolSourceCredentialError);
+  });
+});
+
+describe('completeToolSourceAuthorization', () => {
+  const oauthSource: ToolSourceDescription = {
+    id: 'remote',
+    kind: 'mcp',
+    transport: {
+      type: 'http',
+      url: 'http://mcp.example.test/mcp',
+      authentication: { type: 'oauth' },
+    },
+  };
+
+  it('refuses a source that does not authenticate with OAuth, without naming a URL', async () => {
+    const storage = createInMemoryMcpOAuthTokenStorage();
+    const oauth = {
+      tokenStorage: () => storage,
+      redirectUrl: () => 'http://127.0.0.1:9/callback',
+      onAuthorizationRequired: () => undefined,
+    };
+    const bearer: ToolSourceDescription = {
+      ...oauthSource,
+      transport: {
+        type: 'http',
+        url: 'http://mcp.example.test/mcp',
+        authentication: { type: 'bearer', credential: 'token' },
+      },
+    };
+    await expectPromiseToReject(
+      completeToolSourceAuthorization(bearer, {
+        oauth,
+        callbackUrl: 'http://127.0.0.1:9/callback?code=a&state=b',
+      }),
+      (error) => {
+        expect(String(error)).toContain('does not authenticate with OAuth');
+        expect(String(error)).not.toContain('mcp.example.test');
+      },
+    );
+  });
+
+  it('discards a callback whose state is not the one the flow recorded', async () => {
+    const storage = createInMemoryMcpOAuthTokenStorage();
+    await storage.save({ state: 'recorded-state' });
+    await expectPromiseToReject(
+      completeToolSourceAuthorization(oauthSource, {
+        oauth: {
+          tokenStorage: () => storage,
+          redirectUrl: () => 'http://127.0.0.1:9/callback',
+          onAuthorizationRequired: () => undefined,
+        },
+        callbackUrl: 'http://127.0.0.1:9/callback?code=abc&state=forged-state',
+      }),
+      (error) => expect(String(error)).toContain('does not match'),
+    );
+    const afterwards = await storage.load();
+    expect(afterwards.tokens).toBeUndefined();
   });
 });

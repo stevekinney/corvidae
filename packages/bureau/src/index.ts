@@ -203,6 +203,7 @@ export type {
 export {
   AUDIT_EVENT_TYPES,
   auditTrailSkillSourceOwnerId,
+  auditTrailToolSourceOwnerId,
   computeInitialAuditSequence,
   createAuditTrail,
   encodeKey as encodeAuditEntryKey,

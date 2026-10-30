@@ -58,6 +58,12 @@
  *   provider's API key.
  * - `/host/providers`, `/host/providers/<name>`, `/host/providers/reload`, and `/host/catalog`:
  *   read and change the provider configuration (`provider-routes.ts`).
+ * - `/host/tool-sources`, `/host/tool-sources/<id>`, `/host/tool-sources/<id>/authorize`, and
+ *   `/host/oauth/callback/<id>`: the saved MCP and OpenAPI tool sources in `configuration.json`
+ *   (`toolSources`), their encrypted credentials, and the OAuth sign-in (`tool-source-routes.ts`).
+ *   The sources load before the Bureau is built, so an agent file lists their tools as
+ *   `<id>__<tool>` after the host starts again. A remote host refuses a change with the reason
+ *   `deployment`.
  * - `POST /host/restart`: asks the host to restart. It is registered only for a host started with
  *   `onRestartRequested` (the entries, which run under the supervisor), and answers `202` before
  *   the callback runs.
@@ -72,6 +78,7 @@ import { join, resolve as resolvePath, sep } from 'node:path';
 
 import { openBungalow, type Bungalow, type BungalowEnvironment } from '@lostgradient/bungalow';
 import {
+  ANONYMOUS_LOCAL_OWNER,
   createBureau,
   createBureauHandler,
   createDurableAssetStorage,
@@ -152,6 +159,8 @@ import {
 import { isShellNavigation } from './shell-request.ts';
 import { createSkillManager, type SkillManager } from './skill-manager.ts';
 import { skillRoutes } from './skill-routes.ts';
+import { createToolSourceManager, type ToolSourceManager } from './tool-source-manager.ts';
+import { toolSourceRoutes } from './tool-source-routes.ts';
 
 /** The application name Bungalow keys the state directory, `INTERBOROUGH_HOME`, and lock on. */
 export const APPLICATION_NAME = 'interborough';
@@ -335,6 +344,16 @@ export type Host = {
    */
   readonly skills: Pick<SkillManager, 'setTrust' | 'refresh' | 'standing'>;
   /**
+   * The saved MCP and OpenAPI tool sources: connect or remove one, start an OAuth sign-in, and
+   * read where each stands. Credentials are encrypted at rest and never returned. A change is
+   * listed after the host starts again; a remote host refuses one with
+   * {@link ToolSourceWriteLockedError}, reason `deployment`. See {@link ToolSourceManager}.
+   */
+  readonly toolSources: Pick<
+    ToolSourceManager,
+    'connect' | 'remove' | 'snapshot' | 'authorize' | 'completeAuthorization'
+  >;
+  /**
    * A point-in-time reading of the host's own state: the Bureau's diagnostics, the engine server's
    * lease, workers, and connections, the build it serves, and the providers it offers. It holds no
    * credential: a provider is its name and its models. The lock holder is left out, because it is
@@ -516,6 +535,24 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     held.providers = providers;
     const generateFor = (selection: ModelSelection): GenerateFunction =>
       providers.generateFor(selection);
+    // The saved tool sources load before the Bureau is built, because an agent file names a tool
+    // from the catalog the Bureau starts with. A source that fails is that source's own standing
+    // and never stops the host. The origin is known only once the listener is up; until then
+    // it fills the redirect URL of a source that already holds tokens, which starts no sign-in.
+    let hostOrigin: string | undefined;
+    const startPort = options.port ?? resolvePort(environment);
+    const toolSources = createToolSourceManager({
+      bungalow,
+      keys: answerKeys,
+      configurationQueue,
+      audit: async (entry) => {
+        await held.bureau?.internals.auditTrail?.record(entry);
+      },
+      origin: () => hostOrigin ?? `http://${LOOPBACK}:${startPort}`,
+      warn: options.warn ?? ((message) => console.warn(message)),
+    });
+    held.toolSources = toolSources;
+    await toolSources.start();
     const agentContent = bungalow.content(AGENT_DIRECTORY_NAME);
     const workflowContent = bungalow.content(WORKFLOW_DIRECTORY_NAME);
     // The TypeSafe key, when the secrets hold one, registers a decision model, `typesafe`, for the
@@ -583,7 +620,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       assets: { storage: createDurableAssetStorage(storage) },
       // Agent files: Markdown files in Bungalow's `agents/` directory are agents (COR-1524). A
       // file's `model` is a row of the `models` catalog.
-      agentSource: createAgentSource(bungalow, agentContent, createAgentFileTools()),
+      agentSource: createAgentSource(bungalow, agentContent, {
+        ...createAgentFileTools(),
+        ...toolSources.tools(),
+      }),
       // The approvals a file agent's tools raise are signed with the host's approval secret, so a
       // restart still resolves a pending one.
       agentApprovalSecret: approval,
@@ -701,6 +741,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         // a workflow's.
         ...providerRoutes(providers, refuse),
         ...skillRoutes(skills, refuse),
+        ...toolSourceRoutes(toolSources, refuse, { principal: () => ANONYMOUS_LOCAL_OWNER }),
         [HOST_PATHS_ROUTE]: {
           GET: (request: Request) =>
             refuse(request) ??
@@ -737,6 +778,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const publicPort = publicServer.port;
     if (publicPort === undefined) throw new Error('The public listener has no port.');
     const publicOrigin = `http://${LOOPBACK}:${publicPort}`;
+    hostOrigin = publicOrigin;
     // A2A push delivery is a restart-applied setting: the values read here are the ones this
     // process booted with (COR-1819).
     const { values: bootedSettings } = await bureau.settings.get();
@@ -798,6 +840,14 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       database,
       generateFor,
       configurationQueue,
+      toolSources: {
+        connect: (request) => toolSources.connect(request),
+        remove: (request) => toolSources.remove(request),
+        snapshot: () => toolSources.snapshot(),
+        authorize: (id) => toolSources.authorize(id),
+        completeAuthorization: (id, callbackUrl) =>
+          toolSources.completeAuthorization(id, callbackUrl),
+      },
       skills: {
         setTrust: (request) => skills.setTrust(request),
         refresh: () => skills.refresh(),
@@ -840,6 +890,7 @@ type Held = {
   bureau?: Bureau<SeededAgents>;
   providers?: ProviderManager;
   skills?: SkillManager;
+  toolSources?: ToolSourceManager;
   replacementEngine?: RegistryAgnosticEngine;
   server?: WeftServer;
   pushDelivery?: HostPushDelivery;
@@ -867,6 +918,8 @@ async function teardown(held: Held): Promise<void> {
   await step(held.server && (() => held.server?.stop()));
   await step(held.pushDelivery && (() => held.pushDelivery?.stop()));
   await step(held.bureau && (() => held.bureau?.shutdown({ policy: 'detach' })));
+  // After the Bureau: a run still in flight may be calling a source's tool.
+  await step(held.toolSources && (() => held.toolSources?.close()));
   await step(held.replacementEngine && (() => held.replacementEngine?.[Symbol.asyncDispose]()));
   const { storage } = held;
   await step(storage && (() => disposeHostStorage(storage)));
