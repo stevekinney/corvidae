@@ -58,8 +58,13 @@ export interface WorkflowToolsHarness {
   /**
    * Makes the model of every run from now on ask for `tool` once with `args`, until `plan` is
    * called with `undefined`. For a run `callTool` does not start, such as a workflow's agent step.
+   * `args` may be a function of the message the model was sent: it answers the arguments to call
+   * with, or `undefined` for a message the model should leave alone (COR-1952).
    */
-  plan(tool: string | undefined, args?: Record<string, unknown>): void;
+  plan(
+    tool: string | undefined,
+    args?: Record<string, unknown> | ((message: string) => Record<string, unknown> | undefined),
+  ): void;
   /** The names of the tools each model call was offered, in order. */
   readonly offered: string[][];
   /**
@@ -76,6 +81,8 @@ export interface WorkflowToolsHarness {
 }
 
 export interface WorkflowToolsOptions {
+  /** Awaited before each model call with the message it was sent, so a test can hold a run mid-step (COR-1952). */
+  readonly beforeGenerate?: ((message: string) => Promise<void>) | undefined;
   readonly overrides?: Partial<BureauOptions<AgentDefinitions>>;
   /** The file agents to create, by identifier. Defaults to `scribe`. */
   readonly agents?: readonly string[];
@@ -87,7 +94,12 @@ export async function startWorkflowToolsBureau(
   const root = await mkdtemp(join(tmpdir(), 'bureau-workflow-tools-'));
   const workflowsPath = join(root, 'workflows');
   const agentsPath = join(root, 'agents');
-  let plan: { tool: string; args: Record<string, unknown> } | undefined;
+  let plan:
+    | {
+        tool: string;
+        args: Record<string, unknown> | ((message: string) => Record<string, unknown> | undefined);
+      }
+    | undefined;
   let captured: unknown;
   const offered: string[][] = [];
   const generate: GenerateFunction = async ({ conversation, toolbox }) => {
@@ -98,15 +110,21 @@ export async function startWorkflowToolsBureau(
         .toSorted(),
     );
     const rows = conversation.getMessages();
+    const lastUser = rows.findLast((row) => row.role === 'user')?.content;
+    await options.beforeGenerate?.(typeof lastUser === 'string' ? lastUser : '');
     const answered = rows.findLast((row) => row.role === 'tool-result');
     if (answered !== undefined && rows.at(-1) === answered) {
       captured = (answered as { toolResult?: unknown }).toolResult;
       return { content: 'done', toolCalls: [] };
     }
     if (plan === undefined) return { content: 'nothing to do', toolCalls: [] };
+    const sent = rows.findLast((row) => row.role === 'user')?.content;
+    const args =
+      typeof plan.args === 'function' ? plan.args(typeof sent === 'string' ? sent : '') : plan.args;
+    if (args === undefined) return { content: 'nothing to do', toolCalls: [] };
     return {
       content: '',
-      toolCalls: [{ id: 'call-1', name: plan.tool, arguments: plan.args }],
+      toolCalls: [{ id: 'call-1', name: plan.tool, arguments: args }],
     };
   };
   const bureau = await createBureau<AgentDefinitions>({

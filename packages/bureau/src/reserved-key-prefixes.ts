@@ -127,6 +127,7 @@ export const BUREAU_RESERVED_KEY_FAMILIES: readonly ReservedKeyFamily[] = [
     'bureau-hook-delivery-pending:v1:',
     'the index of pending deliveries: a delivery id and an empty value',
   ),
+  kept('bureau-hook-schedule-origin:v1:', 'a hook id, no chat content'),
   kept('bureau-hook-secret:v1:', 'a hook’s sealed signing secret, not a chat’s'),
   kept('bureau-goal:record:', 'a goal’s record; a goal runs in its own session, never in a chat'),
   kept(
