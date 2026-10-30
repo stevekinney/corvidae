@@ -191,8 +191,9 @@ export function derivePlanReason(input: DerivePlanReasonInput): PlanReason {
 /**
  * The reason one step's generation ran on the model it did: the plan's own reason, replaced by
  * `pinned` when a steering command named the provider, model, or route the plan did not choose, and
- * by `fallback` when the plan records that the provider answered with another model. `undefined`
- * when the run has neither a plan reason nor a steering override.
+ * by `fallback` when the plan records that the provider answered with another model. A run with no
+ * plan and no steering override ran the model its agent names, which is `pinned`. `undefined` only
+ * when a plan carries no reason.
  */
 export function planReasonForStep(
   plan: SelectionPlan | undefined,
@@ -222,6 +223,14 @@ export function planReasonForStep(
       code: 'fallback',
       detail: bounded(plan.failure.reason),
       rejected: base.rejected,
+    };
+  }
+  // COR-1810: an agent that names its model runs with no selection plan; say so rather than nothing.
+  if (plan === undefined) {
+    return {
+      code: 'pinned',
+      detail: 'The agent names its model; no selection plan ran',
+      rejected: [],
     };
   }
   return base;

@@ -1,3 +1,4 @@
+import { HookRegistry } from '@lostgradient/lifecycle';
 import { createTestToolbox, createTool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
@@ -6,6 +7,7 @@ import { z } from 'zod';
 import { noToolCalls } from '../src/conditions/predicates';
 import { createContextEpochSealer } from '../src/context-epoch';
 import { createActiveRun } from '../src/create-run';
+import type { OperativeHookMap } from '../src/hooks';
 import { createModelCatalog } from '../src/providers/model-catalog.ts';
 import { createSelectionGate } from '../src/selection-gate';
 import { createMockGenerate } from '../src/test/index';
@@ -123,7 +125,7 @@ describe('StepResult.planReason and StepResult.effectiveContext', () => {
     );
   });
 
-  it('keeps the plan’s reason on the step, and none when the run has no plan', async () => {
+  it('keeps the plan’s reason on the step, and pinned when the run has no plan', async () => {
     const catalog = createModelCatalog({ now: () => NOW });
     const anthropic = catalog.descriptors.find((row) => row.provider === 'anthropic')!;
     const gate = createSelectionGate({
@@ -162,7 +164,41 @@ describe('StepResult.planReason and StepResult.effectiveContext', () => {
     }).result;
 
     expect(planned.steps.map((step) => step.planReason?.code)).toEqual(['policy', 'policy']);
-    expect(unplanned.steps.every((step) => !('planReason' in step))).toBe(true);
-    expect(unplanned.steps.every((step) => !('effectiveContext' in step))).toBe(true);
+    // No plan and no override: the agent names its model, and the context is recorded with no epoch.
+    expect(unplanned.steps.map((step) => step.planReason?.code)).toEqual(['pinned', 'pinned']);
+    expect(unplanned.steps.every((step) => !('contextEpochId' in step))).toBe(true);
+    for (const step of unplanned.steps) {
+      expect(step.effectiveContext).toBeDefined();
+      expect(step.effectiveContext?.epochId).toBeUndefined();
+    }
+  });
+
+  it('does not carry a failed attempt’s details into a reply a hook supplied on the retry', async () => {
+    const hooks = new HookRegistry<OperativeHookMap>();
+    let prepared = 0;
+    let recovered = false;
+    hooks.on('onError', async () => {
+      recovered = true;
+      return 'retry';
+    });
+    // The first iteration generates (and fails); the retry's reply comes from the hook.
+    hooks.on('prepareStep', async () => {
+      prepared += 1;
+      return recovered ? { content: 'From the hook.', toolCalls: [] } : undefined;
+    });
+    const result = await createActiveRun({
+      generate: async () => {
+        throw new Error('transient');
+      },
+      toolbox: createTestToolbox([lookup]),
+      conversation: new Conversation(),
+      stopWhen: noToolCalls(),
+      hooks,
+    }).result;
+
+    expect(prepared).toBe(2);
+    expect(result.content).toBe('From the hook.');
+    expect(result.steps.every((step) => !('planReason' in step))).toBe(true);
+    expect(result.steps.every((step) => !('effectiveContext' in step))).toBe(true);
   });
 });

@@ -1,7 +1,7 @@
 /**
  * COR-1810 — the reply details `bureau.tasks.inspect` returns for a run's steps: why each ran on its
- * model (`planReason`) and what that model saw (`effectiveContext`), each `null` for a step that
- * kept none.
+ * model (`planReason`) and what that model saw (`effectiveContext`, read one step at a time), each
+ * `null` for a step that kept none.
  */
 import {
   createAgent,
@@ -38,8 +38,9 @@ type InspectedStep = {
     detail: string;
     rejected: Array<{ provider: string; model: string; code: string }>;
   } | null;
+  hasEffectiveContext: boolean;
   effectiveContext: {
-    epochId: string;
+    epochId?: string;
     messages: Array<{ id: string; role: string; digest: string }>;
     sources: Array<{ sourceId: string; disposition: string }>;
     messageCount: number;
@@ -101,10 +102,20 @@ describe('bureau.tasks.inspect reply details', () => {
     });
     await task.result();
 
-    const body = await rpc(
+    // The list form is polled, so it carries a marker; the record comes with a read of one step.
+    const listed = await rpc(
       opened.handler,
       'bureau.tasks.inspect',
       { taskId: task.id },
+      'alice-key',
+    );
+    expect(stepsOf(listed).every((entry) => entry.effectiveContext === null)).toBe(true);
+    expect(stepsOf(listed).every((entry) => entry.hasEffectiveContext)).toBe(true);
+
+    const body = await rpc(
+      opened.handler,
+      'bureau.tasks.inspect',
+      { taskId: task.id, step: 0 },
       'alice-key',
     );
 
@@ -123,7 +134,7 @@ describe('bureau.tasks.inspect reply details', () => {
     expect(JSON.stringify(body)).not.toContain(QUESTION);
   });
 
-  it('returns null for a step recorded without either, as a record written before them reads', async () => {
+  it('reads pinned and an epoch-less context for a default agent that names its own model', async () => {
     const opened = await open();
     const task = await opened.bureau.tasks.start('default', QUESTION, {
       principal: 'api-key:alice',
@@ -133,17 +144,18 @@ describe('bureau.tasks.inspect reply details', () => {
     const body = await rpc(
       opened.handler,
       'bureau.tasks.inspect',
-      { taskId: task.id },
+      { taskId: task.id, step: 0 },
       'alice-key',
     );
 
     expect(body.error).toBeUndefined();
-    expect(stepsOf(body).length).toBeGreaterThan(0);
-    for (const step of stepsOf(body)) {
-      expect(step.planReason).toBeNull();
-      expect(step.effectiveContext).toBeNull();
-      expect(step.contextEpochId).toBeNull();
-    }
+    const [step] = stepsOf(body);
+    expect(step?.planReason).toMatchObject({ code: 'pinned', rejected: [] });
+    expect(step?.contextEpochId).toBeNull();
+    expect(step?.hasEffectiveContext).toBe(true);
+    expect(step?.effectiveContext?.epochId).toBeUndefined();
+    expect(step?.effectiveContext?.messages.map((message) => message.role)).toContain('user');
+    expect(JSON.stringify(body)).not.toContain(QUESTION);
   });
 
   it('returns only the step asked for', async () => {

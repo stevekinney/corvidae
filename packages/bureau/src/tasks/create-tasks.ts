@@ -101,12 +101,15 @@ export function createTasks(dependencies: TasksDependencies): BureauTasks {
           liveness: dependencies.detail(child.childRunId)?.liveness,
         })),
         // A record written before the reply details existed carries neither, and reads as `null`.
+        // The effective context runs to 256 KiB a step, so the list form carries a marker and only
+        // a read of one step carries the record.
         steps: wanted.map((record) => ({
           step: record.step,
           messageId: record.messageId ?? null,
           contextEpochId: record.contextEpochId ?? null,
           planReason: record.planReason ?? null,
-          effectiveContext: record.effectiveContext ?? null,
+          hasEffectiveContext: record.effectiveContext !== undefined,
+          effectiveContext: asked === undefined ? null : (record.effectiveContext ?? null),
         })),
       };
     },

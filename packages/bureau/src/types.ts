@@ -1373,7 +1373,12 @@ export interface TaskInspectionStep {
   readonly contextEpochId: string | null;
   /** Why the step ran on its model, or `null` when the run had no model plan and no steering override. */
   readonly planReason: PlanReason | null;
-  /** What the step's model saw, as digests and message ids capped at 256 KiB, or `null` when none was kept. */
+  /** Whether the step kept an effective context; the list form carries this in place of the record. */
+  readonly hasEffectiveContext: boolean;
+  /**
+   * What the step's model saw, as digests and message ids capped at 256 KiB. Read only when the
+   * inspection names one `step`; `null` in the list form and for a step that kept none.
+   */
   readonly effectiveContext: EffectiveContextRecord | null;
 }
 

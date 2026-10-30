@@ -2,6 +2,7 @@ import type { AnyToolbox } from 'armorer';
 import type { ResolvedMediaSources } from 'conversationalist';
 import { Conversation } from 'conversationalist';
 
+import { sealContextEpoch } from './context-epoch';
 import type { SteeringDesiredState } from './durable/types';
 import {
   composeEffectiveContextRecord,
@@ -123,6 +124,10 @@ export async function executeGeneration(
     shouldRetryStep = false;
     generateDurationMilliseconds = undefined;
     streamedRowId = undefined;
+    // COR-1810: a reply a hook supplies after a failed attempt was not produced by that attempt, so
+    // the attempt's reply details are not carried into it.
+    planReason = undefined;
+    effectiveContext = undefined;
     try {
       let prepareResult: GenerateResponse | void = undefined;
       if (hooks?.has('prepareStep')) {
@@ -288,10 +293,23 @@ export async function executeGeneration(
           consumer: { runId: deps.runId, step, attempt: stepRetryCount },
         });
         contextEpochId = sealedEpoch?.epochId;
-        effectiveContext =
-          sealedEpoch === undefined
-            ? undefined
-            : composeEffectiveContextRecord(sealedEpoch, generateContext.conversation);
+        // COR-1810: a run with no sealer still records what the model saw. The record is built with
+        // the pure sealer and names no epoch, so run events and memory correlation, which read only
+        // the sealer's epoch, are unchanged.
+        const recordedEpoch =
+          sealedEpoch ??
+          sealContextEpoch({
+            epochId: '',
+            conversation: generateContext.conversation,
+            steering: steeringDesiredState,
+            plan: deps.selection?.getPlan(),
+            toolNames: generateContext.toolbox.tools().map((tool) => tool.name),
+            consumer: { runId: deps.runId, step, attempt: stepRetryCount },
+          });
+        effectiveContext = composeEffectiveContextRecord(
+          sealedEpoch === undefined ? { ...recordedEpoch, epochId: undefined } : recordedEpoch,
+          generateContext.conversation,
+        );
         planReason = planReasonForStep(deps.selection?.getPlan(), steeringDesiredState);
 
         // AB-68: record the configuration this call is issued under. Read

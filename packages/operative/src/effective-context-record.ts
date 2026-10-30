@@ -49,8 +49,8 @@ export interface EffectiveContextSource {
 
 /** The effective context of the generate attempt that produced a step. */
 export interface EffectiveContextRecord {
-  /** The epoch this record flattens. */
-  readonly epochId: string;
+  /** The epoch this record flattens; absent for a run that seals no epochs, so the record names none. */
+  readonly epochId?: string | undefined;
   /** The epoch it replaced, when it replaced one. */
   readonly supersedes?: string | undefined;
   /** A digest of the rendered provider baseline. */
@@ -92,13 +92,13 @@ const byteLength = (value: unknown): number => encoder.encode(JSON.stringify(val
  * and `messageCount` still says how many the conversation held.
  */
 export function composeEffectiveContextRecord(
-  epoch: EffectiveContextEpoch,
+  epoch: Omit<EffectiveContextEpoch, 'epochId'> & { readonly epochId?: string | undefined },
   conversation: Conversation,
   limit: number = EFFECTIVE_CONTEXT_RECORD_LIMIT_BYTES,
 ): EffectiveContextRecord {
   const all = conversation.getMessages().map(messageOf);
   const base = {
-    epochId: epoch.epochId,
+    ...(epoch.epochId === undefined ? {} : { epochId: epoch.epochId }),
     ...(epoch.supersedes === undefined ? {} : { supersedes: epoch.supersedes }),
     baselineDigest: epoch.baselineDigest,
     sources: epoch.sources.map(sourceOf),

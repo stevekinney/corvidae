@@ -268,7 +268,12 @@ describe('the plan reason of a step', () => {
     expect(planReasonForStep(diverged, undefined)?.code).toBe('fallback');
   });
 
-  it('is absent when the run has no plan and no steering override', () => {
-    expect(planReasonForStep(undefined, undefined)).toBeUndefined();
+  it('is pinned when the run has no plan and no steering override: the agent names its model', () => {
+    expect(planReasonForStep(undefined, undefined)).toEqual({
+      code: 'pinned',
+      detail: 'The agent names its model; no selection plan ran',
+      rejected: [],
+    });
+    expect(planReasonForStep(undefined, steering({ paused: false }))?.code).toBe('pinned');
   });
 });

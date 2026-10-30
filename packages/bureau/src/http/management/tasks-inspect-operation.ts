@@ -143,7 +143,8 @@ const planReasonSchema = z.object({
 });
 
 const effectiveContextSchema = z.object({
-  epochId: z.string(),
+  /** Absent for a run that seals no epochs. */
+  epochId: z.string().optional(),
   supersedes: z.string().optional(),
   baselineDigest: z.string(),
   sources: z.array(
@@ -169,7 +170,9 @@ const stepSchema = z.object({
   contextEpochId: z.string().nullable(),
   /** `null` for a step recorded without a model plan or steering override. */
   planReason: planReasonSchema.nullable(),
-  /** `null` for a step recorded without an effective context. */
+  /** Whether the step kept an effective context; read it by passing `step`. */
+  hasEffectiveContext: z.boolean(),
+  /** `null` unless the call names one `step` that kept an effective context. */
   effectiveContext: effectiveContextSchema.nullable(),
 });
 const inspectOutput = z.object({
@@ -203,7 +206,7 @@ export const tasksInspectOperation = defineOperation<
   mcpExposable: true,
   summary: 'Inspect one task',
   description:
-    'Returns a versioned snapshot of one of the caller’s own tasks for the run inspector: the task, its liveness (status, assessment, reachability, progress, the declared wait and its reason, semantic progress, and the evidence entries by source and time), and the children it owns with each one’s assessment. `liveness` is `null` when this process holds no live run for the task. Transport heartbeat evidence is reported as its own source and is never semantic progress. `steps` carries each step’s reply details: `planReason` (why it ran on its model: a code, one line, and the models passed over) and `effectiveContext` (what the model saw, as source digests and message ids, never message content; capped at 256 KiB, newest messages kept, `truncated` when older ones were left out), each `null` for a step recorded without one; pass `step` for one step. The snapshot carries no transcript, prompt, tool argument, result, or checkpoint: read the answer and any gap on `bureau.tasks.events`, and cancel with `bureau.tasks.cancel`. A caller holding `bureau.tasks:read` inspects any owner’s; another owner’s task answers as a missing one does.',
+    'Returns a versioned snapshot of one of the caller’s own tasks for the run inspector: the task, its liveness (status, assessment, reachability, progress, the declared wait and its reason, semantic progress, and the evidence entries by source and time), and the children it owns with each one’s assessment. `liveness` is `null` when this process holds no live run for the task. Transport heartbeat evidence is reported as its own source and is never semantic progress. `steps` carries each step’s reply details: `planReason` (why it ran on its model: a code, one line, and the models passed over) and `effectiveContext` (what the model saw, as source digests and message ids, never message content; capped at 256 KiB, newest messages kept, `truncated` when older ones were left out), each `null` for a step recorded without one. `effectiveContext` is returned only when `step` names one step, because a record runs to 256 KiB and this snapshot is polled; the list form carries `hasEffectiveContext` in its place. A run that seals no context epochs records an `effectiveContext` with no `epochId`. The snapshot carries no transcript, prompt, tool argument, result, or checkpoint: read the answer and any gap on `bureau.tasks.events`, and cancel with `bureau.tasks.cancel`. A caller holding `bureau.tasks:read` inspects any owner’s; another owner’s task answers as a missing one does.',
   destructive: false,
   tags: ['Tasks'],
   inputSchema: inspectInput,
@@ -250,6 +253,7 @@ export const tasksInspectOperation = defineOperation<
             code: rejection.code,
           })),
         },
+        hasEffectiveContext: entry.hasEffectiveContext,
         effectiveContext: entry.effectiveContext && {
           ...entry.effectiveContext,
           sources: entry.effectiveContext.sources.map((source) => ({ ...source })),
