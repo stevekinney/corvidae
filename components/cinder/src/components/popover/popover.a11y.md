@@ -79,6 +79,15 @@ Run from `packages/playground/` with `bun run dev` and exercise the popover exam
 
 CSS Anchor Positioning is the future-stable replacement for the JS-driven `@floating-ui/dom` positioning used today. The swap is internal — public props and the focus contract do not change.
 
+## Bottom sheet below `sheetBelow`
+
+Below the `sheetBelow` viewport width (`640px` by default; `false` turns it off) Popover opens as a bottom sheet. The form is chosen when the popover opens and kept for that session.
+
+- With `focusManagement: 'panel'` the content renders inside a modal `Drawer` at its bottom placement. The Drawer is the dialog: it is named by `label` (or `ariaLabelledby`), traps focus, closes on Escape, its close button, or a backdrop click, and returns focus to the trigger. The content keeps the panel id, so the trigger's `aria-controls` still names it, and drops a second `dialog` role.
+- With `focusManagement: 'preserve'` (Combobox's listbox) a modal sheet would make the trigger inert, so the panel itself docks to the bottom edge with the bottom Drawer's geometry. Focus, Escape, outside dismissal, and every ARIA attribute are exactly as when anchored.
+
+Dropdown and MultiSelect dock their own menus the same way through their own `sheetBelow`.
+
 ## What `bun test` cannot verify
 
 happy-dom does not implement real layout, so the test suite cannot exercise:

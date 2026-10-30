@@ -108,6 +108,15 @@ export type TableProps = Omit<HTMLTableAttributes, 'class'> & {
    * named `region`; pass `role` or `tabindex` here to override those defaults.
    */
   scrollContainerProps?: TableScrollContainerProps;
+  /**
+   * Viewport width below which every body row stacks into a card: each cell
+   * becomes its column's header text above the cell's value, and the header
+   * row is hidden visually but kept for assistive technology. A simple CSS
+   * length such as `'640px'`, or `false` to keep the table layout at every
+   * width.
+   * @default "640px"
+   */
+  stackBelow?: string | false;
   /** Additional class names merged with `.cinder-table`. */
   class?: string;
   /** TableHeader, TableBody, etc. */

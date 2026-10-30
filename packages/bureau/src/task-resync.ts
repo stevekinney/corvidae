@@ -115,6 +115,13 @@ export interface TaskResyncOptions {
    * give, and the repair states the end without it.
    */
   readonly answerOf?: ((taskId: string) => TaskAnswer | undefined) | undefined;
+  /**
+   * COR-1934 — whether the context a task ran in still exists under the incarnation the task
+   * recorded. A deleted chat's content is purged, its events with it; a repair that restated its
+   * tasks would write the answer back. Omitted, every task is repaired.
+   */
+  readonly contextIsLive?:
+    ((contextId: string, incarnation: string) => Promise<boolean>) | undefined;
 }
 
 /** The repair. */
@@ -193,6 +200,13 @@ export function createTaskResync(options: TaskResyncOptions): TaskResync {
     const owner = { kind: 'run', id: taskId } as const;
     const record = await tasks.record(taskId);
     if (record === undefined || record.kind === 'schedule-fire' || record.incarnation === '') {
+      return false;
+    }
+    // The chat was deleted and its content purged: nothing of it is restated.
+    if (
+      options.contextIsLive !== undefined &&
+      !(await options.contextIsLive(record.contextId, record.incarnation))
+    ) {
       return false;
     }
     const events = await retainedEvents(owner);

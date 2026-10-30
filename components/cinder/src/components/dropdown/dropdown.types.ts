@@ -19,6 +19,11 @@ export type DropdownContext = {
   readonly fallbackPlacement?: Placement | undefined;
   readonly widthMode?: AnchoredOverlayWidthMode | undefined;
   readonly initialFocus?: 'first' | 'last' | 'none' | undefined;
+  /**
+   * `true` while the menu should dock to the bottom edge as a sheet instead of
+   * anchoring to its trigger. Only Dropdown sets it (from its `sheetBelow`).
+   */
+  readonly sheet?: boolean | undefined;
   close: () => void;
   focusTrigger: () => void;
 };
@@ -70,4 +75,12 @@ export type DropdownProps = SharedHtmlAttributes &
   PadUnion<DropdownDiscriminant> & {
     /** Additional class names merged with the component's root class. */
     class?: string;
+    /**
+     * Viewport width below which the menu docks to the bottom edge as a sheet,
+     * with the bottom Drawer's geometry, instead of anchoring to its trigger.
+     * Keyboard, focus, and dismissal behave exactly as when anchored. A simple
+     * CSS length such as `'640px'`, or `false` to always anchor. Default
+     * `'640px'`.
+     */
+    sheetBelow?: string | false;
   };

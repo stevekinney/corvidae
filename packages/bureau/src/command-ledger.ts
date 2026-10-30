@@ -98,7 +98,8 @@ import { getOwn } from 'conversationalist';
 export const RUN_CREATION_OPERATION_VERSION = 'bureau.task-start.v2';
 
 /** Key prefix for every command-ledger record in the Bureau's text-value store. */
-const COMMAND_LEDGER_KEY_PREFIX = 'command-ledger:v1';
+/** The key prefix of the run-creation ledger, the default `keyPrefix` of {@link createCommandLedger}. */
+export const COMMAND_LEDGER_KEY_PREFIX = 'command-ledger:v1';
 
 /** Bounds the compare-and-swap loop against concurrent claimants of one identity. */
 const COMMAND_LEDGER_MAX_CAS_ATTEMPTS = 10;
@@ -431,6 +432,41 @@ function parseEntry<TClaim, TResult>(
     throw new Error(`Command-ledger entry at "${key}" is unreadable.`);
   }
   return parsed as CommandLedgerEntry<TClaim, TResult>;
+}
+
+/**
+ * COR-1934 — deletes every entry of the ledger under `keyPrefix` that `select` accepts, with its
+ * conflict records, and resolves how many entries went. For the purge of a deleted chat: an
+ * entry's claim and result keep what a command carried (a structured answer, a message's files)
+ * for retries, and a retry of a command on a purged task is refused as not found instead. An entry
+ * is deleted only if it still reads as it was selected, so one a concurrent command rewrote stays;
+ * an unreadable entry is left in place. Works from the key prefix alone, so a ledger another
+ * module owns (the A2A mount's) is reached without its instance.
+ */
+export async function purgeCommandLedgerEntries(
+  kv: ConditionalTextValueStore,
+  keyPrefix: string,
+  select: (entry: CommandLedgerEntry<unknown, unknown>) => boolean,
+): Promise<number> {
+  const entryPrefix = `${keyPrefix}:entry:`;
+  const conflictPrefix = `${keyPrefix}:conflict:`;
+  let deleted = 0;
+  for (const key of await kv.list(entryPrefix)) {
+    const raw = await kv.get(key);
+    if (raw === null) continue;
+    const entry = readable(() => parseEntry<unknown, unknown>(key, raw));
+    if (entry === undefined || !select(entry)) continue;
+    const conflicts = await kv.list(`${conflictPrefix}${identityKeySuffix(entry.identity)}:`);
+    const committed = await kv.conditionalBatch(
+      [{ key, expectedValue: raw }],
+      [
+        { type: 'delete', key },
+        ...conflicts.map((conflict) => ({ type: 'delete' as const, key: conflict })),
+      ],
+    );
+    if (committed) deleted += 1;
+  }
+  return deleted;
 }
 
 /**

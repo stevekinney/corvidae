@@ -18,9 +18,12 @@ import {
   type AgentScheduleUpdate,
 } from '../../lib/bureau-schedules.ts';
 import {
+  browserTimeZone,
+  cadenceTimeZone,
   cadenceToWireSpec,
   describeCadence,
   isSubMinuteInterval,
+  scheduleValueTimeZone,
   scheduleValueToWireSpec,
   type ScheduleCadence,
 } from './cadence.ts';
@@ -50,12 +53,14 @@ export type AgentScheduleFormErrors = {
   readonly session?: string;
 };
 
-const DEFAULT_CADENCE: ScheduleValue = { mode: 'interval', every: 1, unit: 'hours' };
+function defaultCadence(): ScheduleValue {
+  return { every: { unit: 'hours', count: 1 }, timeZone: browserTimeZone() };
+}
 
 export class AgentScheduleFormState {
   readonly mode: 'create' | 'edit';
   agentName = $state('');
-  cadence = $state<ScheduleValue>(DEFAULT_CADENCE);
+  cadence = $state<ScheduleValue>(defaultCadence());
   description = $state('');
   input = $state('');
   sessionId = $state('');
@@ -68,6 +73,8 @@ export class AgentScheduleFormState {
   /** The revision the schedule was at when this draft was made. `undefined` for a new schedule. */
   readonly revision: number | undefined;
   private readonly initialSpec: string;
+  /** The zone the cadence was loaded in: a cron's own, or `undefined` for an interval or a new schedule. */
+  private readonly initialTimeZone: string | undefined;
   private readonly initialDescription: string;
   private readonly initialOverlap: AgentOverlap;
 
@@ -80,6 +87,8 @@ export class AgentScheduleFormState {
     this.revision = init.revision;
     this.originalCadence = init.originalCadence;
     this.initialSpec = this.spec;
+    this.initialTimeZone =
+      this.originalCadence === undefined ? undefined : cadenceTimeZone(this.originalCadence);
     this.initialDescription = this.description;
     this.initialOverlap = this.overlap;
   }
@@ -91,6 +100,14 @@ export class AgentScheduleFormState {
       if (original !== undefined) return bureauSpecOf(original);
     }
     return bureauSpecOf(scheduleValueToWireSpec(this.cadence));
+  }
+
+  /** The zone the cadence is read in: the stored one, until the operator changes the cadence, and then the builder's; `undefined` for an interval. */
+  get timeZone(): string | undefined {
+    if (!this.cadenceChanged && this.originalCadence !== undefined) {
+      return cadenceTimeZone(this.originalCadence);
+    }
+    return scheduleValueTimeZone(this.cadence);
   }
 
   /** What the edit drawer shows in place of the builder, for a cadence the builder cannot show exactly, until the operator asks to change it. */
@@ -138,6 +155,7 @@ export class AgentScheduleFormState {
   get isDirty(): boolean {
     return (
       this.spec !== this.initialSpec ||
+      this.timeZone !== this.initialTimeZone ||
       this.description !== this.initialDescription ||
       this.overlap !== this.initialOverlap
     );
@@ -147,6 +165,7 @@ export class AgentScheduleFormState {
   toCreateInput(): AgentScheduleInput {
     const description = this.description.trim();
     const sessionId = this.sessionId.trim();
+    const timeZone = this.timeZone;
     return {
       agentName: this.agentName.trim(),
       spec: this.spec,
@@ -154,18 +173,21 @@ export class AgentScheduleFormState {
       overlap: this.overlap,
       ...(description.length > 0 ? { description } : {}),
       ...(sessionId.length > 0 ? { sessionId } : {}),
+      ...(timeZone !== undefined ? { timeZone } : {}),
     };
   }
 
   /**
    * What `bureau.schedules.update` is sent: the cadence, which Weft replaces wholesale, and the
-   * description and overlap policy only when they changed, so an edit never resends what the
-   * person did not touch.
+   * description, overlap policy, and zone only when they changed, so an edit never resends what
+   * the person did not touch. The Bureau keeps a zone an update leaves out.
    */
   toUpdate(): AgentScheduleUpdate {
     const description = this.description.trim();
+    const timeZone = this.timeZone;
     return {
       spec: this.spec,
+      ...(timeZone !== undefined && timeZone !== this.initialTimeZone ? { timeZone } : {}),
       ...(description !== this.initialDescription.trim() ? { description } : {}),
       ...(this.overlap !== this.initialOverlap ? { overlap: this.overlap } : {}),
     };

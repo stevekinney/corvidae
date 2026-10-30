@@ -365,21 +365,23 @@ describe('deleting a tried chat (COR-1911)', () => {
 
   /**
    * What a deleted chat may leave in storage, by key prefix. The same as a deleted chat of any
-   * other origin leaves (COR-1934 tracks a purge):
+   * other origin leaves (COR-1934 purges its content):
    *
-   * - `audit:v1:` and `audit-sequence:v1:`: the audit trail's step and run entries and its counter.
-   *   The entries are evidence and hold the run's content, the agent's answer word for word, until
-   *   retention removes them.
-   * - `fleet-event:`, `fleet-event-by-workflow:` and `fleet-event-tail`: the durable event history
-   *   of the runs and the session, and its indexes. It holds run content until retention removes
-   *   it. A store opened as ephemeral writes none of it, so on MemoryStorage these are absent.
-   * - `outbox-dedupe:session:` and `bureau-removed-surfaces:v1:`: delivery markers of the session
-   *   outbox and of a run's removed surfaces, named by session or run id and holding no content.
+   * - `audit:v1:` and `audit-sequence:v1:`: the audit trail's entries and its counter. Its entries
+   *   stay, with their content redacted, and the `session.deleted` entry stays.
+   * - `fleet-event:`, `fleet-event-by-workflow:` and `fleet-event-tail`: on a persistent store
+   *   only the `session.deleted` event, which holds no content, and the feed's tail. A store
+   *   opened as ephemeral writes none of it, so on MemoryStorage these are absent.
+   * - `outbox-dedupe:session:`: the deletion marker of that one event.
    * - `agent-session-outbox:v1:ordinal`: the session outbox's counter.
    * - `wf-gen:` and `wf-owner-epoch:`: the engine's tombstones, which keep a run id from being
    *   used twice.
-   * - `session-input-open:v2:`: the sweep's index of a retired session's mailbox, removed once
-   *   retention has emptied it.
+   * - `chat-content-purge-pending:v1:`: the finished purge's record, kept settled until the second
+   *   pass takes a run admitted after the delete began.
+   * - `chat-content-purge-tombstone:v1:`: each run's fence, which a late write of its process is
+   *   refused by (the run id and when it was purged), kept as long as the audit retention.
+   * - `appmbx:`: the chat's purged input mailbox keeps its header, sealed, so an admission that
+   *   raced the purge is refused rather than recreating the mailbox.
    */
   const KEPT = [
     'audit:v1:',
@@ -388,11 +390,12 @@ describe('deleting a tried chat (COR-1911)', () => {
     'fleet-event-by-workflow:',
     'fleet-event-tail',
     'outbox-dedupe:session:',
-    'bureau-removed-surfaces:v1:',
     'agent-session-outbox:v1:ordinal',
     'wf-gen:',
     'wf-owner-epoch:',
-    'session-input-open:v2:',
+    'chat-content-purge-pending:v1:',
+    'chat-content-purge-tombstone:v1:',
+    'appmbx:',
   ];
 
   /** The prefixes of the keys that are the chat, its runs, its tasks, its workflow and its agent. */
@@ -448,7 +451,7 @@ describe('deleting a tried chat (COR-1911)', () => {
     await deleteAnsweredChat(new MemoryStorage());
   });
 
-  it('on a persistent store, leaves what any deleted chat leaves, and the run content stays until retention', async () => {
+  it('on a persistent store, leaves only redacted audit entries and the deletion marker of the chat', async () => {
     const fixture = createSqliteStorageFixture();
     cleanups.push(() => fixture.dispose());
     const { left, created } = await deleteAnsweredChat(fixture.storage);
@@ -456,10 +459,13 @@ describe('deleting a tried chat (COR-1911)', () => {
     // Every kind of key that is the chat was written, so its absence above is a deletion.
     for (const prefix of GONE) expect(created.some((key) => key.startsWith(prefix))).toBe(true);
 
-    // The durable event history and the audit trail are why a persistent store keeps more.
-    for (const prefix of ['audit:v1:', 'fleet-event:', 'fleet-event-by-workflow:']) {
-      expect(left.some((key) => key.startsWith(prefix))).toBe(true);
-    }
+    // The audit entries stay, and of the durable event history only the session's deletion marker.
+    expect(left.some((key) => key.startsWith('audit:v1:'))).toBe(true);
+    expect(left.filter((key) => key.startsWith('fleet-event:'))).toHaveLength(1);
+    expect(left.filter((key) => key.startsWith('fleet-event-by-workflow:'))).toHaveLength(1);
+    expect(left.filter((key) => key.startsWith('outbox-dedupe:session:'))).toEqual([
+      expect.stringContaining(':session.deleted:'),
+    ]);
   });
 
   it('writes no agent definition, snapshot, revision or version while it lives', async () => {

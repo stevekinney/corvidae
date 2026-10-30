@@ -18,7 +18,17 @@ for (const [decision, response] of [
   test(`resolves the tool approval once when ${decision} is selected`, async () => {
     render(WithToolApprovalExample);
 
-    await fireEvent.click(screen.getByRole('button', { name: decision }));
+    if (decision === 'Dismiss') {
+      // The one-row approval (COR-1832) has no Dismiss button; Escape dismisses it.
+      const approval = await waitFor(() => {
+        const element = document.querySelector('[data-cinder-tool-approval]');
+        expect(element).not.toBeNull();
+        return element as Element;
+      });
+      await fireEvent.keyDown(approval, { key: 'Escape' });
+    } else {
+      await fireEvent.click(screen.getByRole('button', { name: decision }));
+    }
 
     await waitFor(() => {
       const messages = screen.getAllByText((content) => content.includes(response));

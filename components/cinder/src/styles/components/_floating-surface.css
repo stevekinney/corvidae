@@ -25,6 +25,32 @@
     pointer-events: none;
   }
 
+  /* Docked sheet: below a component's `sheetBelow` viewport width, a floating
+   * surface whose trigger keeps focus (Popover with `focusManagement:
+   * 'preserve'`, Combobox, MultiSelect) or that already owns its own focus and
+   * dismissal (Dropdown) leaves its anchor and docks to the bottom edge with
+   * the bottom Drawer's geometry: full width, a 90dvh cap, a top border and
+   * rounded top corners. The component drops its anchored inline position
+   * while docked, so these insets are the only ones that apply. Physical
+   * properties, as in drawer.css, because the sheet is physically bottom
+   * anchored in every writing mode. */
+  .cinder-_floating-surface[data-cinder-sheet='docked'] {
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    max-height: 90dvh;
+    max-block-size: 90dvh;
+    overflow: auto;
+    padding-bottom: max(var(--cinder-space-1), env(safe-area-inset-bottom));
+    border-width: 1px 0 0;
+    border-radius: var(--cinder-radius-lg) var(--cinder-radius-lg) 0 0;
+    transform: none;
+  }
+
   @media (forced-colors: active) {
     .cinder-_floating-surface {
       border-color: CanvasText;

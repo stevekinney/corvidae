@@ -1,40 +1,42 @@
-import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 
 /**
- * The unit for an interval recurrence.
+ * The unit of an "Every N minutes or hours" schedule.
  */
-export type ScheduleIntervalUnit = 'minutes' | 'hours' | 'days' | 'weeks';
+export type ScheduleIntervalUnit = 'minutes' | 'hours';
 
 /**
- * The emitted, lossless recurrence value. There are only ever TWO value
- * variants — `cron` and `interval` — even though the UI offers a third
- * "presets" authoring mode. Presets are sugar that lower to one of these two
- * (e.g. "every 15 minutes" → `interval`; "daily at 09:00" → `cron`); there is
- * no `mode: 'preset'` in the value a consumer receives.
+ * The choices the Repeats field offers. Every choice but `interval` lowers to a cron expression;
+ * `interval` emits an `every` value instead, because a cron step such as `*\/7` restarts at the top
+ * of each hour or day and so cannot repeat an uneven interval exactly.
+ */
+export type ScheduleRepeats =
+  'daily' | 'weekdays' | 'weekends' | 'custom-days' | 'monthly' | 'interval' | 'cron';
+
+/**
+ * The emitted recurrence value. A cron value is read in `timeZone`. An interval value counts
+ * `count` units from the moment the schedule starts, matching the duration form Weft's and the
+ * Bureau's `schedules.create` take; it carries the zone the person chose so that switching back to
+ * a time of day keeps it, but the zone does not change when an interval fires.
  */
 export type ScheduleValue =
   | {
-      /** Discriminator: a 5-field cron recurrence. */
-      mode: 'cron';
       /** The 5-field cron expression, space-separated (minute hour day-of-month month day-of-week). */
-      expression: string;
+      cron: string;
+      /** The IANA time zone the expression's wall-clock times are read in, such as `America/Los_Angeles`. */
+      timeZone: string;
     }
   | {
-      /** Discriminator: a fixed-interval recurrence. */
-      mode: 'interval';
-      /** How many `unit`s between fires. A positive integer. */
-      every: number;
-      /** The interval unit. */
-      unit: ScheduleIntervalUnit;
+      /** How often the schedule fires, counted from its start. */
+      every: {
+        /** The interval unit. */
+        unit: ScheduleIntervalUnit;
+        /** How many units between fires. A positive integer. */
+        count: number;
+      };
+      /** The IANA time zone the person chose. An interval ignores it when it fires. */
+      timeZone: string;
     };
-
-/**
- * The authoring mode surfaced in the UI's SegmentedControl. Distinct from
- * {@link ScheduleValue}'s `mode` discriminator: `presets` is an authoring
- * convenience that emits a `cron` or `interval` value.
- */
-export type ScheduleAuthoringMode = 'presets' | 'cron' | 'interval';
 
 /**
  * A single computed upcoming fire, as returned by the injected
@@ -66,20 +68,15 @@ export type ScheduleBuilderProps = Omit<
   /**
    * The current recurrence value (controlled). Pass the value returned from
    * `onValueChange` back in to commit an edit. When omitted, the component starts
-   * from a sensible default (Presets, daily at 09:00: the cron value `0 9 * * *`).
+   * from every day at 9:00 AM (`0 9 * * *`) in the browser's time zone.
    */
   value?: ScheduleValue | undefined;
   /**
-   * Called whenever the user edits the recurrence. Receives the next lossless
-   * {@link ScheduleValue}. The consumer owns persistence and validation.
+   * Called whenever the user edits the recurrence. Receives the next
+   * {@link ScheduleValue}; an invalid custom cron is not emitted. The consumer owns
+   * persistence.
    */
   onValueChange?: ((value: ScheduleValue) => void) | undefined;
-  /**
-   * Authoring modes to expose. Defaults to `['presets', 'cron', 'interval']`.
-   * Use `['cron']` for cron-only consumers; the component then renders only
-   * cron fields and never emits an interval value.
-   */
-  allowedModes?: readonly ScheduleAuthoringMode[] | undefined;
   /**
    * Injected next-fires computation. The component passes the current value and
    * the requested count and renders whatever fires the consumer returns. When
@@ -91,18 +88,10 @@ export type ScheduleBuilderProps = Omit<
    */
   previewCount?: number | undefined;
   /**
-   * Timezone label rendered in the always-visible timezone display slot, e.g.
-   * "America/New_York" or "UTC". Purely presentational — the component does not
-   * interpret it. When omitted, provide the `timezone` snippet instead; if
-   * neither is supplied the slot shows a "Not set" placeholder (the slot itself
-   * is always rendered).
+   * The time zones the Time zone field offers. Defaults to every zone the runtime
+   * knows (`Intl.supportedValuesOf('timeZone')`). The value's zone is always offered.
    */
-  timezoneLabel?: string | undefined;
-  /**
-   * Custom content for the timezone display slot. Takes precedence over
-   * `timezoneLabel` when both are supplied.
-   */
-  timezone?: Snippet | undefined;
+  timeZones?: readonly string[] | undefined;
   /** Accessible label for the whole control. Defaults to "Schedule". */
   label?: string | undefined;
   /** Additional CSS classes applied to the root element. */
@@ -114,19 +103,19 @@ export type ScheduleBuilderProps = Omit<
  * @schemaObject
  */
 export type ScheduleValueSchema =
-  | { mode: 'cron'; expression: string }
-  | { mode: 'interval'; every: number; unit: ScheduleIntervalUnit };
+  | { cron: string; timeZone: string }
+  | { every: { unit: ScheduleIntervalUnit; count: number }; timeZone: string };
 
 /**
  * Cinder-specific schema surface for ScheduleBuilder.
  *
- * The `onValueChange`, `computeNextFires`, and `timezone` props are documented but
- * unsupported by JSON Schema because functions and snippets cannot be modeled.
+ * The `onValueChange` and `computeNextFires` props are documented but
+ * unsupported by JSON Schema because functions cannot be modeled.
  */
 export type ScheduleBuilderSchemaProps = {
   /**
    * The current recurrence value (controlled). When omitted, the component
-   * starts from a sensible default (Presets, daily at 09:00: the cron value `0 9 * * *`).
+   * starts from every day at 9:00 AM (`0 9 * * *`) in the browser's time zone.
    * @schemaObject
    */
   value?: ScheduleValueSchema | undefined;
@@ -135,13 +124,9 @@ export type ScheduleBuilderSchemaProps = {
    */
   previewCount?: number | undefined;
   /**
-   * Authoring modes to expose. Defaults to `['presets', 'cron', 'interval']`.
-   * Use `['cron']` for cron-only consumers; the component then renders only
-   * cron fields and never emits an interval value.
+   * The time zones the Time zone field offers. Defaults to every zone the runtime knows.
    */
-  allowedModes?: readonly ScheduleAuthoringMode[] | undefined;
-  /** Timezone label rendered in the always-visible timezone display slot. */
-  timezoneLabel?: string | undefined;
+  timeZones?: readonly string[] | undefined;
   /** Accessible label for the whole control. Defaults to "Schedule". */
   label?: string | undefined;
   /** Additional CSS classes applied to the root element. */

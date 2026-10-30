@@ -68,7 +68,7 @@
 
     <main style="flex: 1; padding: 1rem;">
       <p>Main content area.</p>
-      <p>Resize the viewport below ~767px to see the mobile drawer behavior.</p>
+      <p>Resize the viewport below 640px to see the mobile drawer behavior.</p>
     </main>
   </div>
 </div>

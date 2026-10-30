@@ -15,7 +15,7 @@
  */
 import { CronExpressionParser } from 'cron-parser';
 
-import type { ScheduleFire, ScheduleValue } from '@lostgradient/cinder';
+import type { ScheduleFire, ScheduleIntervalUnit, ScheduleValue } from '@lostgradient/cinder';
 
 const MINUTE_MS = 60_000;
 
@@ -33,22 +33,25 @@ const MINUTE_MS = 60_000;
  * propagate rather than swallowed, so an invalid schedule fails loudly
  * instead of silently previewing zero fires.
  */
-function nextCronFires(expression: string, count: number, from: Date): readonly Date[] {
-  const interval = CronExpressionParser.parse(expression, { currentDate: from });
+function nextCronFires(
+  expression: string,
+  timeZone: string,
+  count: number,
+  from: Date,
+): readonly Date[] {
+  const interval = CronExpressionParser.parse(expression, { currentDate: from, tz: timeZone });
   return interval.take(count).map((cronDate) => cronDate.toDate());
 }
 
 function nextIntervalFires(
   every: number,
-  unit: 'minutes' | 'hours' | 'days' | 'weeks',
+  unit: ScheduleIntervalUnit,
   count: number,
   from: Date,
 ): readonly Date[] {
-  const unitMs: Record<typeof unit, number> = {
+  const unitMs: Record<ScheduleIntervalUnit, number> = {
     minutes: MINUTE_MS,
     hours: 60 * MINUTE_MS,
-    days: 24 * 60 * MINUTE_MS,
-    weeks: 7 * 24 * 60 * MINUTE_MS,
   };
   const stepMs = every * unitMs[unit];
 
@@ -61,23 +64,28 @@ function nextIntervalFires(
   return fires;
 }
 
-const FIRE_LABEL_FORMATTER = new Intl.DateTimeFormat(undefined, {
-  weekday: 'short',
-  month: 'short',
-  day: 'numeric',
-  hour: '2-digit',
-  minute: '2-digit',
-});
+/** Formats a fire in the schedule's own zone, so "Weekdays at 9:00 AM Pacific Time" previews 9:00 AM. */
+function fireLabelFormatter(timeZone: string): Intl.DateTimeFormat {
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone,
+  });
+}
 
 /**
  * The `computeNextFires` callback injected into Cinder's `ScheduleBuilder`
  * (plan §7.1/§7.2 C3). Signature takes an optional `from` (defaulting to
  * `new Date()`) so it can be passed straight through as
  * `ScheduleBuilderProps['computeNextFires']`, which only ever calls it with
- * `(value, count)`. `cron` mode's field parsing/timezone handling is
- * `cron-parser`'s and throws on a malformed expression or an out-of-range
- * field; `interval` mode is a plain fixed-step walk and trusts `every` to be
- * the positive integer `ScheduleValue` documents.
+ * `(value, count)`. A cron's field parsing and time zone handling are
+ * `cron-parser`'s, in the value's `timeZone`, and it throws on a malformed
+ * expression or an out-of-range field; an interval is a plain fixed-step walk
+ * and trusts `count` to be the positive integer `ScheduleValue` documents.
+ * Labels are formatted in the value's zone.
  */
 export function computeNextFires(
   value: ScheduleValue,
@@ -85,12 +93,13 @@ export function computeNextFires(
   from: Date = new Date(),
 ): ScheduleFire[] {
   const dates =
-    value.mode === 'cron'
-      ? nextCronFires(value.expression, count, from)
-      : nextIntervalFires(value.every, value.unit, count, from);
+    'cron' in value
+      ? nextCronFires(value.cron, value.timeZone, count, from)
+      : nextIntervalFires(value.every.count, value.every.unit, count, from);
 
+  const formatter = fireLabelFormatter(value.timeZone);
   return dates.map((date) => ({
     id: date.toISOString(),
-    label: FIRE_LABEL_FORMATTER.format(date),
+    label: formatter.format(date),
   }));
 }

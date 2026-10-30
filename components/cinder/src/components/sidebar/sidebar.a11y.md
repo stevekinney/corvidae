@@ -1,6 +1,6 @@
 # Sidebar — Accessibility Notes
 
-Sidebar is a layout-level navigation container that combines a vertical nav region and an optional footer. On wide viewports it renders inline as a landmark; below the `md` breakpoint (~767px) it renders inside a `<Drawer>`.
+Sidebar is a layout-level navigation container that combines a vertical nav region and an optional footer. On wide viewports it renders inline as a landmark; below the phone breakpoint (639.98px; tablets keep the inline column and its icon rail) it renders inside a `<Drawer>`.
 
 ## Landmark structure
 

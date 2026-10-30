@@ -26,6 +26,18 @@
       "description": "When true, wraps the table in a `.cinder-table-scroll` container that\nenables horizontal overflow scrolling for dense or unknown-width tables.\nUse this instead of manually wrapping Table in `.cinder-table-scroll`.\n\nWhen combined with `stickyHeader`, the generated wrapper is the sticky\nheader's scroll container. Set a bounded block size on `scrollContainerProps`\nwhen the table should scroll vertically inside that wrapper.",
       "default": false
     },
+    "stackBelow": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "const": false
+        }
+      ],
+      "description": "Viewport width below which every body row stacks into a card: each cell\nbecomes its column's header text above the cell's value, and the header\nrow is hidden visually but kept for assistive technology. A simple CSS\nlength such as `'640px'`, or `false` to keep the table layout at every\nwidth.",
+      "default": "640px"
+    },
     "class": {
       "type": "string",
       "description": "Additional class names merged with `.cinder-table`."

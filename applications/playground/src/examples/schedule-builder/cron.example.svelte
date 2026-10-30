@@ -1,22 +1,23 @@
 <script lang="ts" module>
-  export const title = 'Cron mode';
+  export const title = 'Custom cron';
   export const description =
-    'Open the Cron tab to see five independently validated fields seeded losslessly from the initial value. Each field carries a numeric hint and surfaces an inline error the moment it falls outside its valid range.';
+    'Custom cron is the escape hatch for a schedule no other choice produces. Each of the five fields has a structured editor with an inline error, and an invalid expression is never emitted.';
 </script>
 
 <script lang="ts">
   import { ScheduleBuilder, type ScheduleFire, type ScheduleValue } from '@lostgradient/cinder';
 
-  // Weekdays at 09:00.
-  let value = $state<ScheduleValue>({ mode: 'cron', expression: '0 9 * * 1-5' });
+  // A step restarts at midnight, so it opens as Custom cron rather than as an interval.
+  let value = $state<ScheduleValue>({ cron: '0 */6 * * *', timeZone: 'UTC' });
 
-  // Static, illustrative fire labels — no date library involved.
+  // Cinder ships no date math — a real app would bring its own cron library here.
+  // Labels are illustrative static strings, not computed dates.
   function computeNextFires(current: ScheduleValue, count: number): ScheduleFire[] {
-    const description =
-      current.mode === 'cron' ? current.expression : `${current.every} ${current.unit}`;
+    const cadence =
+      'every' in current ? `every ${current.every.count} ${current.every.unit}` : current.cron;
     return Array.from({ length: count }, (_, index) => ({
       id: `fire-${index}`,
-      label: `Fire ${index + 1} — matches "${description}"`,
+      label: `Fire ${index + 1} — ${cadence}`,
     }));
   }
 
@@ -29,5 +30,5 @@
   {value}
   onValueChange={handleChange}
   {computeNextFires}
-  label="Weekday report job"
+  label="Report job schedule"
 />

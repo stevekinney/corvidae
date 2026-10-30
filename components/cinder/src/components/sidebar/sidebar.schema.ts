@@ -17,7 +17,7 @@ const schema = {
     mobileBreakpoint: {
       type: 'string',
       description:
-        "Viewport width below which the sidebar switches from the inline aside to\nthe mobile drawer. Accepts a simple CSS length such as `'47.99rem'` or\n`'1024px'`. Default `'47.99rem'`.",
+        "Viewport width below which the sidebar switches from the inline aside to\nthe mobile drawer. Accepts a simple CSS length such as `'639.98px'` or\n`'1024px'`. Default `'639.98px'`, so tablets keep the inline column and\nits icon rail.",
     },
     class: {
       type: 'string',

@@ -1909,6 +1909,12 @@ export interface BureauAudit {
   query(filter?: AuditQuery, options?: BureauAuditQueryOptions): Promise<AuditQueryPage>;
 }
 
+/** What {@link BureauSchedules.create} takes beside the definition. */
+export interface CreateScheduleOptions {
+  /** The run creating the schedule. See {@link BureauSchedules.create}. */
+  readonly createdByRun?: string | undefined;
+}
+
 /**
  * The durable schedules of a Bureau: registering, reading, and changing recurring schedules, and
  * the history of their definitions. Every operation that needs the durable engine resolves
@@ -1922,8 +1928,17 @@ export interface BureauSchedules {
    * but its summary could not be immediately retrieved — the schedule IS
    * registered in that case, only its locator failed. Returns `undefined`
    * when no durable engine is composed.
+   *
+   * `options.createdByRun` names the run that is creating the schedule, for a tool an agent calls
+   * (a `scheduleSelf` of a host's own). When that run was started by a hook, directly or through
+   * the runs above it, the schedule records the hook, and its fires are read as that hook's runs:
+   * they start no `start-workflow` hook (COR-1952). A schedule created without it, or by a run no
+   * hook started, is an owner's.
    */
-  create(definition: DurableScheduleDefinition): Promise<ScheduleSummary | undefined>;
+  create(
+    definition: DurableScheduleDefinition,
+    options?: CreateScheduleOptions,
+  ): Promise<ScheduleSummary | undefined>;
 
   /**
    * Retrieve a durable schedule by id. Returns `null` when the schedule does not

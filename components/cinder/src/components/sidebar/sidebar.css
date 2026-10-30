@@ -4,7 +4,7 @@
  * SIDEBAR
  * Layout-level vertical navigation container. Combines a nav region and an
  * optional footer. Delegates the actual list to
- * `side-navigation.svelte`. Below the default breakpoint (~767px) the consuming
+ * `side-navigation.svelte`. Below the default breakpoint (639.98px, so tablets keep the icon rail) the consuming
  * component swaps the inline <aside> for a <Drawer>; this stylesheet covers
  * both surfaces because the inner regions render the same elements.
  * ======================================== */
@@ -31,8 +31,8 @@
     border-inline-end: none;
   }
 
-  @media (max-width: 47.99rem) {
-    .cinder-sidebar--desktop[data-cinder-sidebar-mobile-breakpoint='47.99rem'] {
+  @media (max-width: 639.98px) {
+    .cinder-sidebar--desktop[data-cinder-sidebar-mobile-breakpoint='639.98px'] {
       display: flex;
       inline-size: 100%;
       block-size: 100%;
@@ -40,11 +40,11 @@
       border-inline-end: none;
     }
 
-    .cinder-sidebar--desktop[data-cinder-sidebar-mobile-breakpoint='47.99rem'][data-cinder-ssr-mobile-fallback] {
+    .cinder-sidebar--desktop[data-cinder-sidebar-mobile-breakpoint='639.98px'][data-cinder-ssr-mobile-fallback] {
       display: none;
     }
 
-    .cinder-sidebar--desktop[data-cinder-sidebar-mobile-breakpoint='47.99rem'][data-cinder-collapsed] {
+    .cinder-sidebar--desktop[data-cinder-sidebar-mobile-breakpoint='639.98px'][data-cinder-collapsed] {
       display: none;
     }
   }

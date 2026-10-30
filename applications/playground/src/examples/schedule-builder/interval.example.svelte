@@ -1,20 +1,25 @@
 <script lang="ts" module>
-  export const title = 'Interval mode';
+  export const title = 'Every few minutes or hours';
   export const description =
-    'Open the Interval tab to author a fixed-cadence schedule. The interval value round-trips losslessly through every mode that can represent it; a cadence with no exact cron equivalent (like every 5 hours) seeds a neutral default in Cron mode rather than silently changing meaning.';
+    'An interval counts from the start of the schedule, so an uneven one such as every 7 hours is exact. It emits an every value rather than a cron, and At is hidden.';
 </script>
 
 <script lang="ts">
   import { ScheduleBuilder, type ScheduleFire, type ScheduleValue } from '@lostgradient/cinder';
 
-  let value = $state<ScheduleValue>({ mode: 'interval', every: 5, unit: 'hours' });
+  let value = $state<ScheduleValue>({
+    every: { unit: 'hours', count: 7 },
+    timeZone: 'UTC',
+  });
 
-  // Static, illustrative fire labels — no date library involved.
+  // Cinder ships no date math — a real app would bring its own cron library here.
+  // Labels are illustrative static strings, not computed dates.
   function computeNextFires(current: ScheduleValue, count: number): ScheduleFire[] {
-    if (current.mode !== 'interval') return [];
+    const cadence =
+      'every' in current ? `every ${current.every.count} ${current.every.unit}` : current.cron;
     return Array.from({ length: count }, (_, index) => ({
       id: `fire-${index}`,
-      label: `Fire ${index + 1} — in ${(index + 1) * current.every} ${current.unit}`,
+      label: `Fire ${index + 1} — ${cadence}`,
     }));
   }
 
@@ -27,6 +32,5 @@
   {value}
   onValueChange={handleChange}
   {computeNextFires}
-  timezoneLabel="UTC"
   label="Health check schedule"
 />

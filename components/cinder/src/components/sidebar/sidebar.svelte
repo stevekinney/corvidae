@@ -20,6 +20,7 @@
   import type { SidebarProps } from './sidebar.types.ts';
 
   import { setSidebarContext, type SidebarContextValue } from '../../_internal/sidebar-context.ts';
+  import { isSimpleCssLength } from '../../_internal/viewport-below.svelte.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import { devWarn } from '../../utilities/dev-warn.ts';
   import Drawer from '../drawer/drawer.svelte';
@@ -61,11 +62,11 @@
 
   const validatedMobileBreakpoint = $derived.by(() => {
     if (typeof mobileBreakpoint !== 'string') {
-      throw new Error('Sidebar mobileBreakpoint must be a CSS length such as "47.99rem".');
+      throw new Error('Sidebar mobileBreakpoint must be a CSS length such as "639.98px".');
     }
     const value = mobileBreakpoint.trim();
     if (!isSimpleCssLength(value)) {
-      throw new Error('Sidebar mobileBreakpoint must be a CSS length such as "47.99rem".');
+      throw new Error('Sidebar mobileBreakpoint must be a CSS length such as "639.98px".');
     }
     return value;
   });
@@ -117,12 +118,6 @@
     },
   };
   setSidebarContext(context);
-
-  function isSimpleCssLength(value: string): boolean {
-    return /^(?:0|(?:\d+|\d*\.\d+)(?:px|rem|em|ch|vw|vh|vmin|vmax|svw|svh|lvw|lvh|dvw|dvh|cqw|cqh|cqi|cqb|cqmin|cqmax))$/.test(
-      value.trim(),
-    );
-  }
 </script>
 
 {#snippet sidebarContents(isMobile: boolean)}
