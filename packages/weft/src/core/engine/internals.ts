@@ -58,6 +58,7 @@ import type { LeaseManager } from './lease-manager.ts';
 import type { ScheduleHandleEngine } from './schedule-handle.ts';
 import type { SecondInstanceDetector } from './second-instance-detector.ts';
 import type { WorkflowSourceRuntimeState } from './source-runtime-state.ts';
+import type { StreamChunkAnnouncer } from './stream-chunk-announcer.ts';
 import type { WorkflowClaimMetricsRecorder } from './workflow-claim-metrics.ts';
 import type { WorkflowClaimRegistry } from './workflow-claim-registry.ts';
 import type { WorkflowClaimRenewalTask } from './workflow-claim-renewal-task.ts';
@@ -80,9 +81,6 @@ type EngineRuntime = WorkflowHandleEngine &
   ScheduleHandleEngine & {
     start(type: string, input: unknown, options?: StartWorkflowOptions): Promise<WorkflowHandle>;
   };
-// ---------------------------------------------------------------------------
-// EngineInternals
-// ---------------------------------------------------------------------------
 
 export interface EngineInternals {
   engine: EngineRuntime;
@@ -458,6 +456,8 @@ export interface EngineInternals {
    * against already-disposed storage.
    */
   pendingResultPollTimers: Set<ReturnType<typeof setTimeout>>;
+  /** Coalesces `stream:chunk` per stream key; terminal cleanup flushes it, disposal cancels it. */
+  streamChunkAnnouncer: StreamChunkAnnouncer;
   alertManager: AlertManager | null;
   eventLogHeads: Map<string, Readonly<EventHeadRecord>>;
   workflowFeedListeners: Map<string, Set<WorkflowFeedListener>>;

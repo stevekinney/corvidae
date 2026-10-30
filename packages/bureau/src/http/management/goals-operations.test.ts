@@ -32,6 +32,8 @@ afterEach(async () => {
 async function serve(): Promise<OpenedBureau> {
   const opened = await openBureau({
     agents: { worker: workerAgent(hangUntilAborted) },
+    // A key with no scope sets goals only for an agent that opts into A2A (COR-1904).
+    a2aAgents: ['worker'],
     generate: hangUntilAborted,
     validators: [createCheckValidator()],
   });
@@ -332,7 +334,7 @@ describe('the controller of a goal that was created', () => {
         };
       },
     });
-    const handler = createBureauHandler(failing, { authentication });
+    const handler = createBureauHandler(failing, { authentication, a2aAgents: ['worker'] });
 
     const created = await rpc(
       handler,

@@ -254,15 +254,18 @@ describe('PostgresKeyValueStorage transaction failures', () => {
         throw abort;
       }
     });
-    const storage = new PostgresKeyValueStorage({ pool: scripted }, refusePoolFactory);
+    const storage = new PostgresKeyValueStorage(
+      { pool: scripted, serializationRetry: { delay: async () => {} } },
+      refusePoolFactory,
+    );
     await scripted.arm(storage);
 
     expect(
       await throwingRejectionOf(
         storage.conditionalBatch([...conditionalPut[0]], [...conditionalPut[1]]),
       ),
-    ).toThrow('conditionalBatch exhausted 5 attempts after retryable transaction failures');
-    expect(began).toBe(5);
+    ).toThrow('conditionalBatch exhausted 12 attempts after retryable transaction failures');
+    expect(began).toBe(12);
   });
 
   it('keeps the original failure when the rollback after it also fails', async () => {

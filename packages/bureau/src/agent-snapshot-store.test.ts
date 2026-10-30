@@ -482,3 +482,39 @@ describe('a stored snapshot whose definition is not valid', () => {
     expect(revisions.map((revision) => revision.hash)).toEqual(['aa']);
   });
 });
+
+describe('referencedRevisions', () => {
+  it('lists the revisions of one agent that any retained run references, settled or not', async () => {
+    const { store } = setup();
+    await store.recordRun(
+      { id: 'helper', hash: 'aa', definition: definition('one'), definitionRevision: 1 },
+      'run-1',
+    );
+    await store.recordRun(
+      { id: 'helper', hash: 'bb', definition: definition('two'), definitionRevision: 4 },
+      'run-2',
+    );
+    await store.settleRun('run-2');
+    await store.recordRun(
+      { id: 'other', hash: 'cc', definition: definition('three'), definitionRevision: 9 },
+      'run-3',
+    );
+
+    expect(await store.referencedRevisions('helper')).toEqual(new Set([1, 4]));
+    expect(await store.referencedRevisions('nobody')).toEqual(new Set());
+  });
+
+  it('protects nothing for a reference with no recorded revision, and drops a revision when its run is released', async () => {
+    const { store } = setup();
+    await store.recordRun({ id: 'helper', hash: 'aa', definition: definition('one') }, 'run-1');
+    await store.recordRun(
+      { id: 'helper', hash: 'bb', definition: definition('two'), definitionRevision: 2 },
+      'run-2',
+    );
+    expect(await store.referencedRevisions('helper')).toEqual(new Set([2]));
+
+    await store.releaseRun('run-2');
+
+    expect(await store.referencedRevisions('helper')).toEqual(new Set());
+  });
+});

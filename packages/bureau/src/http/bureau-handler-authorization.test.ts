@@ -125,6 +125,8 @@ const WORKFLOW_PARAMETERS = {
  */
 const AGENT_DEFINITION_PARAMETERS = {
   expectedHash: 'x',
+  // `bureau.agents.versions.restore` names the version to restore beside the agent.
+  revision: 1,
   definition: { model: 'nobody/none', instructions: '' },
 } as const;
 
@@ -142,6 +144,16 @@ const GOAL_PARAMETERS = {
   identity: { name: 'goal', version: '1' },
   validator: { name: 'check', version: '1' },
   bounds: { maximumAttempts: 1, maximumTotalSteps: 1 },
+} as const;
+
+/**
+ * What the worker deployment operations (COR-1813) need: a deployment and a build nothing holds,
+ * and a ramp share, so a probe reaches its own check and can never move a real routing pointer.
+ */
+const DEPLOYMENT_PARAMETERS = {
+  deploymentName: 'x',
+  buildId: 'x',
+  rampBasisPoints: 1,
 } as const;
 
 /** What the memory operations need beside the identifier a probe varies. */
@@ -175,6 +187,14 @@ const CONTEXT_COMMAND_PARAMETERS = {
   throughMessageId: 'message-1',
 } as const;
 
+/** Whether `operation`'s `id` names an agent: a definition operation or a versions operation. */
+function namesAnAgent(operation: CatalogOperation): boolean {
+  return (
+    operation.name.startsWith('bureau.agents.definitions.') ||
+    operation.name.startsWith('bureau.agents.versions.')
+  );
+}
+
 /** The parameters beside an identifier that `operation` declares and needs to reach its own check. */
 function definitionParameters(operation: CatalogOperation) {
   // The one agent operation that names an agent and nothing else (COR-1559).
@@ -188,6 +208,7 @@ function definitionParameters(operation: CatalogOperation) {
   if (operation.name.startsWith('bureau.assets.')) return ASSET_PARAMETERS;
   if (operation.name.startsWith('bureau.schedules.')) return SCHEDULE_PARAMETERS;
   if (operation.name.startsWith('bureau.goals.')) return GOAL_PARAMETERS;
+  if (operation.name.startsWith('bureau.deployments.')) return DEPLOYMENT_PARAMETERS;
   return operation.name.startsWith('bureau.agents.')
     ? AGENT_DEFINITION_PARAMETERS
     : WORKFLOW_PARAMETERS;
@@ -831,9 +852,7 @@ describe('identifiers grant nothing', () => {
           };
 
           // An agent operation's identifier names an agent, not a review: the one this Bureau has.
-          const realId = operation.name.startsWith('bureau.agents.definitions.')
-            ? 'support'
-            : (realIds[parameter] ?? 'unmapped');
+          const realId = namesAnAgent(operation) ? 'support' : (realIds[parameter] ?? 'unmapped');
           const real = await send(realId);
           const random = await send(`random-${crypto.randomUUID()}`);
 
@@ -966,7 +985,7 @@ describe('transcripts stay inside the Bureau', () => {
       for (const operation of BUREAU_HANDLER_OPERATIONS) {
         const params = paramsFor(operation, {
           ...(operation.name === 'bureau.settings.events' ? { fromCursor: '0' } : {}),
-          id: operation.name.startsWith('bureau.agents.definitions.') ? 'support' : alice.reviewId,
+          id: namesAnAgent(operation) ? 'support' : alice.reviewId,
           runId: alice.run.id,
           taskId: alice.run.id,
           scheduleId: 'schedule-none',
@@ -1220,7 +1239,7 @@ describe('the AG-UI routes owner predicate', () => {
       const mount = createAgUiMount(
         harness.bureau,
         { mayAccess: counting, ownerOf: (resource) => harness.bureau.ownerOf(resource) },
-        ['assistant'],
+        { includes: (agentName) => agentName === 'assistant' },
         {},
       );
       const handler = createOperationHandler({

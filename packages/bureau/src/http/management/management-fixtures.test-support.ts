@@ -47,6 +47,14 @@ const credentials: Record<string, { subject: string; scopes: readonly Authorizat
     subject: 'diagnostics-reader',
     scopes: ['bureau.diagnostics:read'],
   },
+  'deployments-reader-key': {
+    subject: 'deployments-reader',
+    scopes: ['bureau.deployments:read'],
+  },
+  'deployments-writer-key': {
+    subject: 'deployments-writer',
+    scopes: ['bureau.deployments:write'],
+  },
   'settings-reader-key': { subject: 'settings-reader', scopes: ['bureau.settings:read'] },
   'settings-writer-key': {
     subject: 'settings-writer',
@@ -60,6 +68,9 @@ const credentials: Record<string, { subject: string; scopes: readonly Authorizat
   'assets-reader-key': { subject: 'assets-reader', scopes: ['bureau.assets:read'] },
   'assets-writer-key': { subject: 'assets-writer', scopes: ['bureau.assets:write'] },
   'operator-key': { subject: 'operator', scopes: [...BUREAU_SCOPES] },
+  // The credential a host hands A2A clients (COR-1904): the asset scopes a file part needs, and no
+  // operator scope, so it sees only what opts into A2A.
+  'a2a-key': { subject: 'a2a', scopes: ['bureau.assets:read', 'bureau.assets:write'] },
 };
 
 /** The owner string a caller owns resources as. */
@@ -265,6 +276,11 @@ export async function openBureau(
     assetPorts?: AssetPorts;
     /** Further `createBureau` options, such as a manual `runtime` and a `retention.tasks`. */
     bureauOptions?: Partial<Parameters<typeof createBureau>[0]>;
+    /**
+     * Also serve a request without a credential as the local caller (`unauthenticatedAccess:
+     * 'allow'` beside the authentication, COR-1904).
+     */
+    localAccess?: boolean;
     /** Passed to `createBureauHandler` beside the authentication. */
     handlerOptions?: Omit<
       Parameters<typeof createBureauHandler>[1],
@@ -314,6 +330,7 @@ export async function openBureau(
   try {
     handler = createBureauHandler(bureau, {
       authentication,
+      ...(options.localAccess === true ? { unauthenticatedAccess: 'allow' as const } : {}),
       ...(options.a2aAgents === undefined ? {} : { a2aAgents: options.a2aAgents }),
       ...options.handlerOptions,
     });

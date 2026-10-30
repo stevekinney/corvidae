@@ -43,7 +43,7 @@ describe('the engine’s own poller over a backfilled schedule whose runs outlas
         // Three runs of 120 ms in turn, with room for the polls in between.
         while (activityStarts < 3) await sleep(20);
         await quietFor(500);
-        engine.scheduler.stop();
+        await engine.scheduler.stop();
         await quietFor(200);
 
         const final = await handle.describe();
@@ -55,7 +55,7 @@ describe('the engine’s own poller over a backfilled schedule whose runs outlas
         expect(final).toMatchObject({ skippedCount: 0, nextFireAt: first + 3 * MINUTE });
         expect(final?.queuedRuns).toEqual([]);
       } finally {
-        engine.scheduler.stop();
+        await engine.scheduler.stop();
         engine[Symbol.dispose]();
       }
     });

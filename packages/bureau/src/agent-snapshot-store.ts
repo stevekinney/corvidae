@@ -134,6 +134,12 @@ export interface AgentSnapshotStore {
   /** Every reference that has not settled. */
   unsettledReferences(): Promise<readonly AgentRunReferenceEntry[]>;
   /**
+   * The definition revisions of `id` that any retained run references, settled or not (COR-1815):
+   * what the saved versions of an agent must not prune. A reference with no recorded revision
+   * (one written before revisions) protects none.
+   */
+  referencedRevisions(id: string): Promise<ReadonlySet<number>>;
+  /**
    * The snapshot for `id` at `hash`, or `undefined` when there is none. A stored snapshot whose
    * definition is not valid throws `AgentSnapshotError` (`snapshot-unresolvable`).
    */
@@ -394,6 +400,17 @@ export function createAgentSnapshotStore(options: AgentSnapshotStoreOptions): Ag
         open.push({ ...reference, runId: key.slice(AGENT_RUN_REFERENCE_KEY_PREFIX.length) });
       }
       return open;
+    },
+
+    async referencedRevisions(id) {
+      const revisions = new Set<number>();
+      for (const key of await store.list(AGENT_RUN_REFERENCE_KEY_PREFIX)) {
+        const reference = parseReference(await store.get(key));
+        if (reference?.id === id && reference.definitionRevision !== undefined) {
+          revisions.add(reference.definitionRevision);
+        }
+      }
+      return revisions;
     },
 
     async load(id, hash) {

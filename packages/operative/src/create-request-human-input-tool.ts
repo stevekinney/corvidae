@@ -3,8 +3,17 @@ import { z } from 'zod';
 import { DurableCapabilityUnavailableError } from './durable/durable-capability-unavailable-error';
 import type { PendingHumanWait, PendingWakeup } from './durable/types';
 import { HumanWaitParkedEvent } from './events';
-import { checkHumanInputSchemas, type HumanInputSchema } from './human-input-schema';
+import {
+  checkHumanInputSchema,
+  checkHumanInputSchemas,
+  HumanInputSchemaError,
+  type HumanInputSchema,
+  type HumanInputSchemaIssue,
+} from './human-input-schema';
 import { refuseIfStepIsParked, type RefusedParkRequest } from './park-refusal';
+
+/** The most issues one `invalid-answer-schema` result lists; a schema near the size limit could hold thousands. */
+const MAXIMUM_REPORTED_SCHEMA_ISSUES = 20;
 
 type HumanInputEventDispatcher = {
   dispatchEvent(event: Event): boolean;
@@ -30,6 +39,14 @@ export interface RequestHumanInputInput {
    * tool result and in the `HumanWaitParkedEvent` so callers can display it.
    */
   prompt?: string | undefined;
+  /**
+   * Optional JSON Schema (draft 2020-12) for the answer this question expects. The agent chooses
+   * the shape of each question as it asks, and the schema it gives replaces the one configured
+   * for the signal at tool creation (`inputSchemas`), which applies only when a call gives none.
+   * It is held to the same limits as a configured schema (see {@link checkHumanInputSchema}); one
+   * that breaks them returns an {@link InvalidAnswerSchemaResult} and nothing parks.
+   */
+  answerSchema?: Readonly<Record<string, unknown>> | undefined;
 }
 
 /** Output returned to the LLM when `requestHumanInput` is called. */
@@ -38,7 +55,8 @@ export interface RequestHumanInputResult {
   signalName: string;
   prompt?: string | undefined;
   /**
-   * The JSON Schema the author configured for this signal, when one is. It rides in the tool
+   * The JSON Schema of the answer, when there is one: the call's `answerSchema`, else the one the
+   * author configured for this signal. It rides in the tool
    * result so the step record the checkpoint commits carries it, and a restarted run reads the
    * wait's schema back from there. The model never reads it: the conversation row appended for
    * the model leaves it out (see `modelFacingToolResult`).
@@ -59,8 +77,31 @@ export interface RefusedHumanInputResult extends RefusedParkRequest {
   signalName: string;
 }
 
-/** Either outcome of a `requestHumanInput` call: the run parked, or the step's first park stands. */
-export type RequestHumanInputOutcome = RequestHumanInputResult | RefusedHumanInputResult;
+/**
+ * What `requestHumanInput` returns when the call's `answerSchema` is not acceptable: it breaks a
+ * limit (32 KiB, 8 levels, no `$id`, no `pattern`) or misuses an `x-` keyword. `parked: false`, no
+ * event, no review, no slot taken; the model reads `issues` and may ask again with a corrected
+ * schema. It is persisted in `StepRecord.results`, so its fields are a durable shape.
+ */
+export interface InvalidAnswerSchemaResult {
+  /** Always `false`: the call parked nothing. */
+  parked: false;
+  /** Always `'invalid-answer-schema'`: how a model or client tells this refusal from the others. */
+  error: 'invalid-answer-schema';
+  /** The signal name the rejected call asked for. */
+  signalName: string;
+  /** Every reason the schema was refused, each with its location inside the schema. */
+  issues: ReadonlyArray<HumanInputSchemaIssue>;
+  /** Human-readable message the LLM can use in its response. */
+  message: string;
+}
+
+/**
+ * Every outcome of a `requestHumanInput` call: the run parked, the step's first park stands, or
+ * the call's `answerSchema` was refused.
+ */
+export type RequestHumanInputOutcome =
+  RequestHumanInputResult | RefusedHumanInputResult | InvalidAnswerSchemaResult;
 
 /**
  * The interface the `requestHumanInput` tool needs from its context.
@@ -115,8 +156,9 @@ export interface CreateRequestHumanInputToolOptions {
   emitter?: HumanInputEventDispatcher | undefined;
   /**
    * A JSON Schema (draft 2020-12) per signal name, describing the answer that signal expects. The
-   * author configures these; the model-facing tool input stays `{ signalName, prompt }` and never
-   * carries a schema. A park on a configured signal records its schema on the pending wait, the
+   * author configures these. A call that gives its own `answerSchema` replaces the signal's schema
+   * for that call; this one applies only when a call gives none. A park on a configured signal
+   * records its schema on the pending wait, the
    * `HumanWaitParkedEvent`, and the tool result the checkpoint persists. Each schema is checked
    * when the tool is created: it must be a valid 2020-12 schema of at most 32 KiB serialized and 8
    * levels of nesting, or creation throws {@link HumanInputSchemaError}. The tool keeps its own
@@ -190,7 +232,20 @@ export function createRequestHumanInputTool(options: CreateRequestHumanInputTool
     description:
       'Request human input: park this run until a human sends the named signal. ' +
       'Use when the agent needs explicit human approval or a human decision before continuing. ' +
-      'Only the first human-input or wakeup request in a step is honored.',
+      'Only the first human-input or wakeup request in a step is honored. ' +
+      'Give answerSchema (a JSON Schema) to choose the shape of the answer; the person is shown the matching control. ' +
+      'Kinds: pick one {type:"string",enum:[...],"x-labels":{value:label}}; ' +
+      'pick one or something else {anyOf:[{enum:[...]},{type:"string",maxLength:500}],"x-allowOther":true}; ' +
+      'pick several {type:"array",uniqueItems:true,items:{enum:[...]},minItems,maxItems}; ' +
+      'free text {type:"string",maxLength}; yes or no {type:"boolean"}; ' +
+      'number {type:"number",minimum,maximum}; ' +
+      'date or time {type:"string",format:"date"|"time"|"date-time"} in RFC 3339 form; ' +
+      'rating {type:"integer",minimum:1,maximum:N,"x-kind":"rating","x-labels":{"1":label}}; ' +
+      'a few fields {type:"object",properties,required,additionalProperties:false}; ' +
+      'secret {type:"string",writeOnly:true,"x-secret":true}, for a password or token the person must not see echoed back; ' +
+      'file {type:"string",contentMediaType,"x-asset":true}, answered with an asset id. ' +
+      'No pattern or $id, at most 32 KiB and 8 levels deep. Without answerSchema the person answers in free text. ' +
+      'A refused schema returns {parked:false,error:"invalid-answer-schema",issues} and nothing parks: fix the issues and ask again.',
 
     /**
      * Zod schema for the tool's input arguments. Armorer's `createToolbox`
@@ -215,6 +270,15 @@ export function createRequestHumanInputTool(options: CreateRequestHumanInputTool
           'Optional prompt to surface to the human reviewer. Returned in the tool ' +
             'result and in the HumanWaitParkedEvent so callers can display it.',
         ),
+      answerSchema: z
+        .record(z.string(), z.unknown())
+        .optional()
+        .describe(
+          'Optional JSON Schema (draft 2020-12) for the answer: it picks the control the person ' +
+            'sees (choices, a number, a date, a rating, a few fields, a secret, a file) and the ' +
+            'answer is checked against it. Replaces any schema configured for the signal. See the ' +
+            'tool description for the shape of each kind.',
+        ),
     }),
 
     execute(input: RequestHumanInputInput): RequestHumanInputOutcome {
@@ -231,7 +295,33 @@ export function createRequestHumanInputTool(options: CreateRequestHumanInputTool
         return { parked: false, signalName: input.signalName, ...refusal };
       }
 
-      const inputSchema = schemas.get(input.signalName);
+      // The call's schema replaces the signal's configured one; the configured one applies only
+      // when the call gives none. A schema the call gives is checked here, per call, with the
+      // limits a configured one meets at creation, and a refusal parks nothing.
+      let inputSchema: HumanInputSchema | undefined;
+      if (input.answerSchema === undefined) {
+        inputSchema = schemas.get(input.signalName);
+      } else {
+        try {
+          inputSchema = checkHumanInputSchema(input.signalName, input.answerSchema);
+        } catch (error) {
+          if (!(error instanceof HumanInputSchemaError)) throw error;
+          return {
+            parked: false,
+            error: 'invalid-answer-schema',
+            signalName: input.signalName,
+            issues: error.issues.slice(0, MAXIMUM_REPORTED_SCHEMA_ISSUES),
+            message: `The answerSchema was not accepted, so nothing is parked: ${error.issues
+              .slice(0, MAXIMUM_REPORTED_SCHEMA_ISSUES)
+              .map((issue) =>
+                issue.path.length === 0
+                  ? issue.message
+                  : `${issue.path.join('.')}: ${issue.message}`,
+              )
+              .join(' ')} Ask again with a corrected answerSchema.`,
+          };
+        }
+      }
       context.pendingHumanWait = {
         signalName: input.signalName,
         ...(input.prompt !== undefined ? { prompt: input.prompt } : {}),

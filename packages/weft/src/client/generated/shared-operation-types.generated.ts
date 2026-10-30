@@ -177,19 +177,20 @@ export type SharedBuildIdDeploymentNameExp_c4b280cb = {
   readonly deploymentName: string;
   readonly expectedGeneration?: number;
 };
+export type SharedCurrentBuildIdDeployment_80178fc9 = {
+  readonly currentBuildId: string;
+  readonly deploymentName: string;
+  readonly generation: number;
+  readonly previousBuildId?: string;
+  readonly rampBasisPoints: number;
+  readonly updatedAt: number;
+};
 export type SharedCurrentBuildIdDeployment_a9512ca3 = {
   readonly currentBuildId: string;
   readonly deploymentName: string;
   readonly expectedGeneration?: number;
   readonly rampBasisPoints: number;
   readonly rampingBuildId?: string;
-};
-export type SharedCurrentBuildIdDeployment_d4467560 = {
-  readonly currentBuildId: string;
-  readonly deploymentName: string;
-  readonly generation: number;
-  readonly rampBasisPoints: number;
-  readonly updatedAt: number;
 };
 export type SharedCursorLimitWorkflowId_6c8c3edc = {
   readonly cursor?: string;

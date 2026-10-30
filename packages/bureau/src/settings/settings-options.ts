@@ -9,6 +9,7 @@
 import type { EnginePatch } from '@lostgradient/weft';
 import { type Storage, textValueStore } from '@lostgradient/storage';
 
+import { decisionModelNames } from '../decisions/create-decisions.ts';
 import type { AgentDefinitions } from '../agent-catalog.ts';
 import type { TaskToolGrant } from '../task-registry.ts';
 import type { BureauModelPolicyOptions } from '../model-policy.ts';
@@ -17,7 +18,9 @@ import { effectiveSettings, readSettingsRecord, type StoredSettings } from './cr
 import {
   ENGINE_PATCH_FIELDS,
   isSettingKey,
+  SETTING_LOCK_REASONS,
   type SettingKey,
+  type SettingLockReason,
   type SettingsValues,
 } from './settings-schema.ts';
 import { collidingSettingsToolName } from './settings-tools.ts';
@@ -36,6 +39,7 @@ export function settingsDefaultsOf<D extends AgentDefinitions>(
     'tools.wakeup': options.wakeup !== false,
     'tools.decide': options.decide !== false,
     modelPolicy: options.modelPolicy,
+    'decisions.model': options.decisions?.model,
     'decisions.fallbackModel': options.decisions?.fallbackModel,
     'decisions.maximumPerTask': options.decisions?.maximumPerTask,
     'retention.audit': options.retention?.audit,
@@ -118,12 +122,12 @@ export function enginePatchOf(
 
 /**
  * Refuses a `settings.locked` entry that names no setting, and a host tool named like a settings
- * tool, which Bureau adds to the tool catalog itself. Returns the locked keys.
+ * tool, which Bureau adds to the tool catalog itself. Returns the locked keys and why each is locked.
  */
 export function validateSettingsOptions<D extends AgentDefinitions>(
   options: Pick<BureauOptions<D>, 'settings' | 'agentSource'>,
   badRequest: (message: string) => never,
-): ReadonlySet<SettingKey> {
+): ReadonlyMap<SettingKey, SettingLockReason> {
   const colliding = collidingSettingsToolName(options.agentSource?.tools);
   if (colliding !== undefined) {
     badRequest(
@@ -131,21 +135,28 @@ export function validateSettingsOptions<D extends AgentDefinitions>(
     );
   }
   const { settings } = options;
-  if (settings === undefined) return new Set();
+  if (settings === undefined) return new Map();
   if (typeof settings !== 'object' || settings === null) {
     badRequest('"options.settings" must be an object');
   }
   const locked: unknown = settings.locked;
-  if (locked === undefined) return new Set();
-  if (!Array.isArray(locked)) {
-    badRequest('"options.settings.locked" must be an array of setting keys');
+  if (locked === undefined) return new Map();
+  if (typeof locked !== 'object' || locked === null || Array.isArray(locked)) {
+    badRequest('"options.settings.locked" must be an object of setting keys and lock reasons');
   }
-  for (const key of locked as unknown[]) {
-    if (typeof key !== 'string' || !isSettingKey(key)) {
-      badRequest(`"options.settings.locked" names "${String(key)}", which is not a setting`);
+  const reasons = new Map<SettingKey, SettingLockReason>();
+  for (const [key, reason] of Object.entries(locked as Record<string, unknown>)) {
+    if (!isSettingKey(key)) {
+      badRequest(`"options.settings.locked" names "${key}", which is not a setting`);
     }
+    if (!(SETTING_LOCK_REASONS as readonly unknown[]).includes(reason)) {
+      badRequest(
+        `"options.settings.locked.${key}" must be one of ${SETTING_LOCK_REASONS.join(', ')}`,
+      );
+    }
+    reasons.set(key, reason as SettingLockReason);
   }
-  return new Set(locked as SettingKey[]);
+  return reasons;
 }
 
 /**
@@ -189,16 +200,17 @@ export interface BootSettings<O> {
 export async function bootSettings<D extends AgentDefinitions, O extends BureauOptions<D>>(
   options: O,
   defaults: SettingsValues,
-  locked: ReadonlySet<SettingKey>,
+  locked: ReadonlyMap<SettingKey, SettingLockReason>,
   diagnose: (message: string) => void,
 ): Promise<BootSettings<O>> {
+  const decisionModels = decisionModelNames(options.decisions);
   const storage: Storage | undefined = options.storage;
   const stored =
     storage === undefined
       ? { record: undefined, storedValues: {}, raw: null }
       : await readSettingsRecord(
           textValueStore(storage, { disposeUnderlyingStorage: false }),
-          { defaults, locked },
+          { defaults, locked, decisionModels },
           diagnose,
         );
   return {

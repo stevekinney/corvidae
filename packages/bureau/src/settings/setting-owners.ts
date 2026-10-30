@@ -45,7 +45,13 @@ export const SETTING_OWNERS: readonly SettingOwner[] = [
   {
     name: 'decisions',
     module: 'decisions/create-decisions.ts',
-    keys: ['decisions.fallbackModel', 'decisions.maximumPerTask'],
+    keys: ['decisions.model', 'decisions.fallbackModel', 'decisions.maximumPerTask'],
+    reads: 'literal',
+  },
+  {
+    name: 'compaction summarizer',
+    module: 'models/create-models.ts',
+    keys: ['context.summarizerModel'],
     reads: 'literal',
   },
   {

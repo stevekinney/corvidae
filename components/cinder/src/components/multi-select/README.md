@@ -42,6 +42,7 @@ Multi-value dropdown that presents checkbox options inside an anchored floating 
 | `readonly` | `boolean` | no | — | Prevents changing selection while still allowing viewing current selections. |
 | `required` | `boolean` | no | — | Marks the field required and shows the required marker on the label. |
 | `selectionFeedback` | `"top"` \| `"fixed"` \| `"top-after-reopen"` | no | — | Selected-option ordering behavior when the menu is open. |
+| `size` | `"sm"` \| `"md"` \| `"lg"` | no | `"md"` | Height step from the shared `--cinder-control-height-*` scale: `sm` 28px, `md` 32px, `lg` 40px, the same heights as a Button of that size. |
 | `warning` | `string` | no | — | Warning text rendered below the control and included in aria-describedby. |
 | `filter` | `(opaque)` | no | — | Custom option filter callback. Defaults to case-insensitive label/description matching. Not expressible in JSON Schema; see the component types for the signature. |
 | `items` | `(opaque)` | yes | — | Full option set. The sole inference source for T. Not expressible in JSON Schema; see the component types for the signature. |

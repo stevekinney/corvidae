@@ -27,6 +27,7 @@ export const BUREAU_RESERVED_KEY_PREFIXES: readonly string[] = [
   'bureau-agent-revision:v1:',
   'bureau-agent-run:v1:',
   'bureau-agent-snapshot:v1:',
+  'bureau-agent-version:v1:',
   'bureau-catalog-run:',
   'bureau-child:parent:',
   'bureau-child:record:',
@@ -61,4 +62,5 @@ export const BUREAU_RESERVED_KEY_PREFIXES: readonly string[] = [
   'steering-key:v1',
   'steering-log:v1',
   'webhook-delivery:v1:',
+  'worker-deployment:',
 ];

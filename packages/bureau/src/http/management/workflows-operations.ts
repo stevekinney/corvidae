@@ -25,7 +25,12 @@
  * @module workflows-operations
  */
 
-import { defineOperation, type OperationFault, type Principal } from '@lostgradient/weft';
+import {
+  defineOperation,
+  type OperationFault,
+  type Principal,
+  type WorkflowCompatibilityReason,
+} from '@lostgradient/weft';
 import { z } from 'zod';
 
 import { ownerOrLocal } from '../../owner-of-record.ts';
@@ -522,6 +527,26 @@ export const workflowsListOperation = defineOperation<
   },
 });
 
+/** The five reasons Weft reports a revision incompatible; `satisfies` keeps the list equal to Weft's. */
+const compatibilityReasons = [
+  'name-mismatch',
+  'manifest-version-unsupported',
+  'contract-hash-mismatch',
+  'workflow-version-incompatible',
+  'artifact-revision-mismatch',
+] as const satisfies readonly WorkflowCompatibilityReason[];
+
+/** Weft's `WorkflowCompatibilityVerdict`, on the wire. */
+const compatibilitySchema = z.discriminatedUnion('compatible', [
+  z.object({ compatible: z.literal(true) }),
+  z.object({
+    compatible: z.literal(false),
+    reasons: z
+      .array(z.enum(compatibilityReasons))
+      .describe('Every reason the revision is not compatible, in Weft’s fixed order.'),
+  }),
+]);
+
 const revisionsOutput = z.object({
   revisions: z.array(
     z.object({
@@ -529,6 +554,11 @@ const revisionsOutput = z.object({
       firstRunAt: z.string(),
       lastRunAt: z.string(),
       document: documentSchema,
+      /**
+       * Weft's verdict for this revision against the workflow's current revision; `null` when the
+       * workflow has no valid file now.
+       */
+      compatibility: compatibilitySchema.nullable(),
     }),
   ),
 });
@@ -542,7 +572,7 @@ export const workflowsRevisionsOperation = defineOperation<
   mcpExposable: false,
   summary: 'List the revisions of a workflow that have run',
   description:
-    'Lists the revisions of the workflow’s document that have run, most recently run first, each with the document it ran. A revision is a document’s content, so pausing or resuming adds none, and a revision that was saved but never ran is not listed. Still answers for a deleted workflow whose revisions are stored. Requires `bureau.workflows:read` unless the caller owns the deployment’s workflows; anyone else, and an identifier with neither a file nor a stored revision, is answered `NotFound`.',
+    'Lists the revisions of the workflow’s document that have run, most recently run first, each with the document it ran and its `compatibility`: Weft’s verdict for that revision against the workflow’s current revision, `{ compatible: true }` or `{ compatible: false, reasons }` where `reasons` lists every applicable one of `name-mismatch`, `manifest-version-unsupported`, `contract-hash-mismatch`, `workflow-version-incompatible`, and `artifact-revision-mismatch`. The current revision is compatible with itself, and a revision whose document differs in any way carries at least `workflow-version-incompatible` and `artifact-revision-mismatch`, because a revision’s version and identity follow its content. `compatibility` is `null` when there is no current revision to compare against (the workflow was deleted, or its file is invalid). A revision is a document’s content, so pausing or resuming adds none, and a revision that was saved but never ran is not listed. Still answers for a deleted workflow whose revisions are stored. Requires `bureau.workflows:read` unless the caller owns the deployment’s workflows; anyone else, and an identifier with neither a file nor a stored revision, is answered `NotFound`.',
   destructive: false,
   tags: ['Workflows'],
   inputSchema: getInput,
@@ -566,6 +596,12 @@ export const workflowsRevisionsOperation = defineOperation<
           trigger: { ...revision.document.trigger },
           steps: revision.document.steps.map((step) => ({ ...step })),
         },
+        compatibility:
+          revision.compatibility === null
+            ? null
+            : revision.compatibility.compatible
+              ? { compatible: true as const }
+              : { compatible: false as const, reasons: [...revision.compatibility.reasons] },
       })),
     };
   },

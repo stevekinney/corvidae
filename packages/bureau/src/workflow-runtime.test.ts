@@ -280,6 +280,91 @@ describe('history', () => {
     expect(revisions?.some((revision) => revision.workflowVersion === listed)).toBe(false);
   });
 
+  it('judges each revision against the current one with Weft’s verdict (COR-1813)', async () => {
+    const w = await world();
+    await w.put('digest', parked('digest', 'a'));
+    const { engine, runtime } = await w.boot();
+    await engine.start('digest', null, { id: 'run-a' });
+    // An edit to a step's input: the contract is unchanged, but the version and revision are not.
+    await w.put('digest', parked('digest', 'b'));
+    await runtime.workflows.refresh();
+    await engine.start('digest', null, { id: 'run-b' });
+    // An edit to the signal the workflow waits for changes its contract too.
+    await w.put('digest', {
+      ...parked('digest', 'b'),
+      steps: [
+        { kind: 'await-signal', signal: 'stop' },
+        { kind: 'activity', handler: 'agent', input: { agent: 'writer', message: 'b' } },
+      ],
+    });
+    await runtime.workflows.refresh();
+    await engine.start('digest', null, { id: 'run-c' });
+
+    const reported = await runtime.workflows.revisions('digest');
+    const verdicts = reported?.map((revision) => [
+      JSON.stringify(revision.document.steps[0]),
+      revision.compatibility,
+    ]);
+
+    expect(verdicts).toEqual([
+      [JSON.stringify({ kind: 'await-signal', signal: 'stop' }), { compatible: true }],
+      [
+        JSON.stringify({ kind: 'await-signal', signal: 'go' }),
+        {
+          compatible: false,
+          reasons: [
+            'contract-hash-mismatch',
+            'workflow-version-incompatible',
+            'artifact-revision-mismatch',
+          ],
+        },
+      ],
+      [
+        JSON.stringify({ kind: 'await-signal', signal: 'go' }),
+        {
+          compatible: false,
+          reasons: [
+            'contract-hash-mismatch',
+            'workflow-version-incompatible',
+            'artifact-revision-mismatch',
+          ],
+        },
+      ],
+    ]);
+  });
+
+  it('names only the version and revision when a revision differs in a step’s input alone', async () => {
+    const w = await world();
+    await w.put('digest', parked('digest', 'a'));
+    const { engine, runtime } = await w.boot();
+    await engine.start('digest', null, { id: 'run-a' });
+    await w.put('digest', parked('digest', 'b'));
+    await runtime.workflows.refresh();
+
+    const revisions = await runtime.workflows.revisions('digest');
+
+    expect(revisions?.map((revision) => revision.compatibility)).toEqual([
+      {
+        compatible: false,
+        reasons: ['workflow-version-incompatible', 'artifact-revision-mismatch'],
+      },
+    ]);
+    expect(w.diagnostics).toEqual([]);
+  });
+
+  it('has no verdict for a revision of a workflow whose file is gone', async () => {
+    const w = await world();
+    await w.put('digest', parked('digest', 'a'));
+    const { engine, runtime } = await w.boot();
+    await engine.start('digest', null, { id: 'run-a' });
+    await w.remove('digest');
+    await runtime.workflows.refresh();
+
+    const revisions = await runtime.workflows.revisions('digest');
+
+    expect(revisions?.map((revision) => revision.compatibility)).toEqual([null]);
+  });
+
   it('is undefined for a workflow with neither a file nor a stored revision', async () => {
     const w = await world();
     const { runtime } = await w.boot();

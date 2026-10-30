@@ -37,10 +37,13 @@ describe('the host’s settings', () => {
   });
 
   test('hold a locked key to its code option, and refuse a change to it', async () => {
-    const host = await start({ settings: { locked: ['workflowVersion'] } });
+    const host = await start({ settings: { locked: { workflowVersion: 'deployment' } } });
 
     const snapshot = await host.bureau.settings.get();
-    expect(snapshot.keys['workflowVersion']?.locked).toBe(true);
+    expect(snapshot.keys['workflowVersion']).toMatchObject({
+      locked: true,
+      lockReason: 'deployment',
+    });
     expect(snapshot.keys['tools.wakeup']?.locked).toBe(false);
     const refused = await host.bureau.settings.update(
       { workflowVersion: 'v2' },

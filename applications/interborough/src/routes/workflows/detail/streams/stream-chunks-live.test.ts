@@ -124,6 +124,23 @@ describe('a stream’s chunks', () => {
     await until(() => expect(requests).toHaveLength(before + 1));
   });
 
+  test('show every chunk a coalesced announcement covers, through the final one it names', async () => {
+    const { container } = open();
+    await until(() => expect(requests).toHaveLength(1));
+    await feeds?.fleetGoesLive();
+
+    // Weft coalesces `stream:chunk` per key (COR-1863): one event names the latest stored sequence,
+    // and the chunks before it were never announced on their own.
+    stored = [1, 2, 3, 4, 5].reduce(
+      (chunks, sequence) => [...chunks, { sequence, value: `chunk-${sequence}` }],
+      stored,
+    );
+    await feeds?.fleetEvent('stream:chunk', chunkFrame('wf-1', 'progress', 5));
+
+    await until(() => expect(shown(container)).toEqual([0, 1, 2, 3, 4, 5]));
+    expect(requests.at(-1)?.after).toBe(0);
+  });
+
   test('are asked for once when two chunks arrive while a read is in flight, and the last is shown', async () => {
     const { container } = open();
     await until(() => expect(requests).toHaveLength(1));

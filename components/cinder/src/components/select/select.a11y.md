@@ -27,7 +27,7 @@ Consumer-supplied `aria-describedby` is composed, not replaced. Any id passed di
 
 The `required` prop maps directly to the native HTML `required` attribute on `<select>`. This is the WAI-ARIA–recommended technique for native form controls: the browser handles the built-in constraint validation and announces the field as required consistently across assistive technologies. `aria-required` is intentionally not used alongside native `required`.
 
-The visible label should also indicate required-ness textually (e.g., with an asterisk and a legend) so the requirement is communicated to users who cannot perceive the field's validation state until submission.
+The visible label should also indicate required-ness textually (e.g., with the required dot and a legend) so the requirement is communicated to users who cannot perceive the field's validation state until submission.
 
 ## Keyboard Interactions
 

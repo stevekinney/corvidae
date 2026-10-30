@@ -10,6 +10,7 @@
  * @module ag-ui-interrupts
  */
 
+import type { HumanInputSchema } from '@lostgradient/operative';
 import type { Interrupt, ResumeEntry } from '@ag-ui/core';
 
 import type { PendingReview } from '../types.ts';
@@ -43,6 +44,109 @@ export const RESUME_PAYLOAD_SCHEMA: Record<string, unknown> = {
   ],
 };
 
+/** Keywords whose value is one subschema. */
+const SUBSCHEMA_KEYWORDS: ReadonlySet<string> = new Set([
+  'items',
+  'additionalProperties',
+  'contains',
+  'propertyNames',
+  'not',
+  'if',
+  'then',
+  'else',
+  'unevaluatedItems',
+  'unevaluatedProperties',
+  'contentSchema',
+]);
+/** Keywords whose value is an array of subschemas. */
+const SUBSCHEMA_LIST_KEYWORDS: ReadonlySet<string> = new Set([
+  'allOf',
+  'anyOf',
+  'oneOf',
+  'prefixItems',
+]);
+/** Keywords whose value maps a name the schema's author chose (a property, a definition) to a subschema. */
+const SUBSCHEMA_MAP_KEYWORDS: ReadonlySet<string> = new Set([
+  'properties',
+  'patternProperties',
+  '$defs',
+  'definitions',
+  'dependentSchemas',
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * `schema` with every local reference (`#`, `#/...`) moved to where the schema now sits, so it
+ * resolves from the resume payload's root. A reference is relative to the document it is in; the
+ * answer schema is a document of its own until it is embedded as `properties.answer`.
+ *
+ * It walks only where JSON Schema puts a subschema, never by key name alone: a property or
+ * definition may be called `enum`, `const`, `default` or `examples`, and its subschema is still a
+ * schema, while the value of a real `enum` or `default` is data and is left as it is.
+ */
+function withReferencesRebasedUnder(schema: unknown, base: string): unknown {
+  if (!isRecord(schema)) return schema;
+  const rebase = (child: unknown): unknown => withReferencesRebasedUnder(child, base);
+  // Built with `fromEntries`, which defines each key, so a property named `__proto__` stays a key.
+  return Object.fromEntries(
+    Object.entries(schema).map(([key, entry]): [string, unknown] => {
+      if (
+        key === '$ref' &&
+        typeof entry === 'string' &&
+        (entry === '#' || entry.startsWith('#/'))
+      ) {
+        return [key, `${base}${entry.slice(1)}`];
+      }
+      if (SUBSCHEMA_KEYWORDS.has(key)) return [key, rebase(entry)];
+      if (SUBSCHEMA_LIST_KEYWORDS.has(key) && Array.isArray(entry)) return [key, entry.map(rebase)];
+      if (SUBSCHEMA_MAP_KEYWORDS.has(key) && isRecord(entry)) {
+        return [
+          key,
+          Object.fromEntries(Object.entries(entry).map(([name, child]) => [name, rebase(child)])),
+        ];
+      }
+      return [key, entry];
+    }),
+  );
+}
+
+/**
+ * The `responseSchema` of an interrupt (COR-1804). Without an `answerSchema` it is
+ * {@link RESUME_PAYLOAD_SCHEMA}. With one (a human wait that was parked with a schema, whether the
+ * model's per-call `answerSchema` or the author's per-signal one) it keeps `decision` and `reason`,
+ * which every answer needs, embeds the schema as `properties.answer`, and requires an `answer` to
+ * approve: replacing the payload schema with the answer schema would leave no way to deny or
+ * reject. The schema's own local `$ref`s are rebased to `#/properties/answer/...`. A client that
+ * renders a control from it reads `properties.answer`, with its `x-` keywords, as the question.
+ */
+export function responseSchemaFor(
+  answerSchema: HumanInputSchema | undefined,
+): Record<string, unknown> {
+  if (answerSchema === undefined) return RESUME_PAYLOAD_SCHEMA;
+  return {
+    type: 'object',
+    properties: {
+      decision: { enum: ['approve', 'deny', 'reject'] },
+      reason: { type: 'string' },
+      arguments: {},
+      answer: withReferencesRebasedUnder(answerSchema, '#/properties/answer'),
+    },
+    required: ['decision'],
+    additionalProperties: false,
+    anyOf: [
+      { properties: { decision: { const: 'approve' } }, required: ['answer'] },
+      { properties: { decision: { const: 'deny' } } },
+      {
+        properties: { decision: { const: 'reject' }, reason: { type: 'string', pattern: '\\S' } },
+        required: ['reason'],
+      },
+    ],
+  };
+}
+
 /** The answer to one interrupt, as the `payload` of a `resolved` resume entry. */
 export type AgUiResumePayload = {
   decision: 'approve' | 'deny' | 'reject';
@@ -75,7 +179,7 @@ export function toInterrupt(review: PendingReview): Interrupt {
       id: review.id,
       reason: 'human-wait',
       ...(review.prompt === undefined ? {} : { message: review.prompt }),
-      responseSchema: RESUME_PAYLOAD_SCHEMA,
+      responseSchema: responseSchemaFor(review.inputSchema),
       metadata: {
         [BUREAU_METADATA_KEY]: {
           kind: 'human-wait',

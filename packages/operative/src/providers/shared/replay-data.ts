@@ -32,7 +32,7 @@ export function readDroppedReplayData(
       (entry['field'] === 'thoughtSignature' || entry['field'] === 'thought')
     ) {
       entries.push({
-        provider: entry['provider'] as ProviderName,
+        provider: entry['provider'],
         providerPartIndex: entry['providerPartIndex'],
         field: entry['field'],
       });

@@ -227,7 +227,7 @@ describe('CheckboxGroup — required parity', () => {
     expect(fieldset?.getAttribute('aria-required')).toBe('true');
     const marker = container.querySelector('legend .cinder-_required-marker');
     expect(marker).not.toBeNull();
-    expect(marker?.textContent).toBe('*');
+    expect(marker?.textContent).toBe('');
   });
 });
 

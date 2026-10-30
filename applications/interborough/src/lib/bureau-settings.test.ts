@@ -17,6 +17,29 @@ afterEach(() => {
 });
 
 describe('the settings the Bureau shows', () => {
+  test('read a lock reason beside a locked key and none beside an unlocked one', async () => {
+    stub = installBureauStub({
+      'bureau.settings.get': () => ({
+        values: {},
+        revision: 1,
+        persisted: true,
+        keys: {
+          durable: {
+            apply: 'restart',
+            locked: true,
+            lockReason: 'shared-storage',
+            pendingRestart: false,
+          },
+          'tools.wakeup': { apply: 'live', locked: false, pendingRestart: false },
+        },
+      }),
+    });
+
+    const { keys } = await getSettings();
+    expect(keys['durable']?.lockReason).toBe('shared-storage');
+    expect(keys['tools.wakeup']).not.toHaveProperty('lockReason');
+  });
+
   test('are read with their revision and how each key stands', async () => {
     stub = installBureauStub({
       'bureau.settings.get': () => ({

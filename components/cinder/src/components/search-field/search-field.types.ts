@@ -12,7 +12,7 @@ import type { HTMLInputAttributes } from 'svelte/elements';
  */
 export type SearchFieldProps = Omit<
   HTMLInputAttributes,
-  'type' | 'value' | 'defaultValue' | 'oninput' | 'class'
+  'type' | 'value' | 'defaultValue' | 'oninput' | 'class' | 'size'
 > & {
   /** Stable id for the input element. Required when composing with `FormField`. */
   id?: string;
@@ -20,6 +20,12 @@ export type SearchFieldProps = Omit<
   value?: string;
   /** Placeholder text. */
   placeholder?: string;
+  /**
+   * Height step from the shared `--cinder-control-height-*` scale, forwarded to the inner
+   * Input: `sm` 28px, `md` 32px, `lg` 40px.
+   * @default "md"
+   */
+  size?: 'sm' | 'md' | 'lg';
   /**
    * Optional keyboard shortcut hint (e.g. `'⌘K'`). Rendered as a trailing
    * `<kbd aria-hidden="true">` badge. The shortcut itself is not wired by

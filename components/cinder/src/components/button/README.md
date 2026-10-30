@@ -26,7 +26,7 @@ When `href` is set, the component renders as `<a>`; otherwise it renders as `<bu
 | `iconOnly` | `boolean` | no | `false` | Render the button with only an icon. Requires an accessible name source. |
 | `label` | `string` | no | — | Visible text label. Must be non-empty if provided. |
 | `loading` | `boolean` | no | `false` | Disable the button and show a spinner. |
-| `size` | `"xs"` \| `"sm"` \| `"md"` \| `"lg"` \| `"xl"` | no | `"md"` | Size of the button. |
+| `size` | `"xs"` \| `"sm"` \| `"md"` \| `"lg"` | no | `"md"` | Size of the button. |
 | `variant` | `"primary"` \| `"secondary"` \| `"soft"` \| `"danger"` \| `"soft-danger"` \| `"ghost"` \| `"ghost-danger"` | no | `"secondary"` | Visual style. |
 | `children` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
 | `leadingIcon` | `(opaque)` | no | — | DECORATIVE icon rendered before the label/children. Always wrapped in aria-hidden. If the icon conveys meaning, supply accessible text via `label`/`aria-label` instead. Not expressible in JSON Schema; see the component types for the signature. |
@@ -47,29 +47,24 @@ Pass `aria-pressed="true"` or `"false"` to make a button a toggle. A pressed but
 - `--cinder-button-font-size-lg`
 - `--cinder-button-font-size-md`
 - `--cinder-button-font-size-sm`
-- `--cinder-button-font-size-xl`
 - `--cinder-button-font-size-xs`
 - `--cinder-button-foreground`
 - `--cinder-button-height-lg`
 - `--cinder-button-height-md`
 - `--cinder-button-height-sm`
-- `--cinder-button-height-xl`
 - `--cinder-button-height-xs`
 - `--cinder-button-padding-x-lg`
 - `--cinder-button-padding-x-md`
 - `--cinder-button-padding-x-sm`
-- `--cinder-button-padding-x-xl`
 - `--cinder-button-padding-x-xs`
 - `--cinder-button-padding-y-lg`
 - `--cinder-button-padding-y-md`
 - `--cinder-button-padding-y-sm`
-- `--cinder-button-padding-y-xl`
 - `--cinder-button-padding-y-xs`
 - `--cinder-button-radius`
 - `--cinder-button-radius-lg`
 - `--cinder-button-radius-md`
 - `--cinder-button-radius-sm`
-- `--cinder-button-radius-xl`
 - `--cinder-button-radius-xs`
 
 <!-- generated:variables:end -->

@@ -70,15 +70,19 @@ async function example(console: Recorder, storage: Storage): Promise<void> {
     assets: { storage: createMemoryAssetStorage() }, // the handler serves the asset operations
   });
 
-  // Authenticate: the host says which key stands for which principal. A principal with no scopes
-  // owns what it creates and reaches nothing of anyone else's.
+  // Authenticate: the host says which key stands for which principal. `bureau.agents:read` shows a
+  // caller every agent the deployment has (without it, only the agents offered over A2A); with no
+  // other scope, a principal owns what it creates and reaches nothing of anyone else's.
   const keys = { 'alice-key': 'alice', 'bob-key': 'bob' } as const;
   const handler = createBureauHandler(bureau, {
     authentication: {
       auditSink: () => undefined, // every authentication decision is passed here
       resolveApiKeyPrincipal: async (key) =>
         key in keys
-          ? principalFromApiKey({ subject: keys[key as keyof typeof keys], scopes: [] })
+          ? principalFromApiKey({
+              subject: keys[key as keyof typeof keys],
+              scopes: ['bureau.agents:read'],
+            })
           : null,
     },
   });

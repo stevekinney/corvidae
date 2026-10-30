@@ -24,6 +24,7 @@ import {
   type AgentFileProblem,
   checkAgentIdentifier,
   decodeAgentFile,
+  hashAgentFileBytes,
   parseAgentFile,
   resolveAgentFileDefinition,
   serializeNewAgentFile,
@@ -43,6 +44,23 @@ export interface AgentFileWriterDependencies {
   read(id: string): Promise<DefinitionEntry | undefined>;
   /** Reload the source after a write; resolves once the catalog reflects it, rejects if it cannot. */
   refresh(): Promise<void>;
+  /**
+   * Called before a write reaches the source, with the hash the bytes will have and who is saving
+   * them (COR-1815), so the version the catalog records for that hash names the saver and not the
+   * watcher that may see the file first. Returns the call that ends the declaration, which the
+   * writer makes once the write has settled, whatever its outcome.
+   */
+  expectSave?(id: string, hash: string, savedBy: string | undefined): () => void;
+}
+
+/** Who is saving a write, for the version it produces. */
+export interface AgentFileSaveOptions {
+  /**
+   * The principal saving the file, recorded as the version's `savedBy`. Omitted, the write is
+   * recorded as made by the deployment's anonymous local owner: a write through the writer is
+   * never recorded as an edit outside it.
+   */
+  readonly savedBy?: string | undefined;
 }
 
 /** What a successful write reports: the identifier and the hash of the file now on disk. */
@@ -54,11 +72,15 @@ export interface AgentFileWriteResult {
 export interface AgentFileWriter {
   /** The file's text and hash, or `undefined` when there is no such file. */
   read(id: string): Promise<{ readonly hash: string; readonly text: string } | undefined>;
-  create(id: string, definition: AgentFileDefinitionInput): Promise<AgentFileWriteResult>;
+  create(
+    id: string,
+    definition: AgentFileDefinitionInput,
+    options?: AgentFileSaveOptions,
+  ): Promise<AgentFileWriteResult>;
   update(
     id: string,
     definition: AgentFileDefinitionInput,
-    options: { readonly expectedHash: string },
+    options: { readonly expectedHash: string } & AgentFileSaveOptions,
   ): Promise<AgentFileWriteResult>;
   delete(id: string, options: { readonly expectedHash: string }): Promise<AgentFileWriteResult>;
 }
@@ -125,10 +147,18 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
     id: string,
     bytes: Uint8Array,
     expectedHash: string | null,
+    savedBy: string | undefined,
   ): Promise<AgentFileWriteResult> {
-    const written = await throughSource(() => source.write(id, bytes, { expectedHash }));
-    await dependencies.refresh();
-    return { id, hash: written.hash };
+    // Declared before the source sees the bytes: a watcher that scans the new file in the gap
+    // between the write and this call would otherwise record it as an edit made outside the writer.
+    const endSave = dependencies.expectSave?.(id, hashAgentFileBytes(bytes), savedBy);
+    try {
+      const written = await throughSource(() => source.write(id, bytes, { expectedHash }));
+      await dependencies.refresh();
+      return { id, hash: written.hash };
+    } finally {
+      endSave?.();
+    }
   }
 
   function checkIdentifier(id: string): void {
@@ -175,16 +205,16 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
       return { hash: entry.hash, text };
     },
 
-    create(id, definition) {
+    create(id, definition, saveOptions) {
       return exclusive(async () => {
         checkIdentifier(id);
         const bytes = serializeNewAgentFile(definition);
         checkWritable(id, bytes);
-        return replace(id, bytes, null);
+        return replace(id, bytes, null, saveOptions?.savedBy);
       });
     },
 
-    update(id, definition, { expectedHash }) {
+    update(id, definition, { expectedHash, savedBy }) {
       return exclusive(async () => {
         checkIdentifier(id);
         const current = await readExisting(id, expectedHash);
@@ -204,7 +234,7 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
         const next = serializeUpdatedAgentFile(id, parsed.file, definition);
         if (next === undefined) return { id, hash: expectedHash };
         checkWritable(id, next);
-        return replace(id, next, expectedHash);
+        return replace(id, next, expectedHash, savedBy);
       });
     },
 

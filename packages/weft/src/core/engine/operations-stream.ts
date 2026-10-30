@@ -7,8 +7,6 @@ import type {
   StreamSink,
 } from '../context.ts';
 import { cleanupPartialStreamChunks, createCleanupErrorReporter } from '../engine-helpers.ts';
-import { StreamChunkEvent } from '../events/fleet-state-events.ts';
-import { tagWorkflowEventGeneration } from '../events/workflow-event-generation.ts';
 import type { EngineInternals } from './internals.ts';
 import { workflowExecutionTokenForWorkflow } from './strategy-helpers.ts';
 import { encodeStoredStreamTailSequence, loadStoredStreamChunks } from './stream-chunk-loading.ts';
@@ -77,8 +75,12 @@ export async function createStreamReferenceFromInternals(
       totalSizeBytes: streamSummary.totalSizeBytes,
     };
     await internals.storage.put(KEYS.streamMetadata(workflowId, operation.key), encode(reference));
+    // The stream is complete: announce its last chunk now rather than at the end of the window.
+    internals.streamChunkAnnouncer.settle(workflowId, operation.key, workflowExecutionToken);
     return reference;
   } catch (error) {
+    // Its chunks are about to be removed, so a pending trailing event must not name one.
+    internals.streamChunkAnnouncer.discard(workflowId, operation.key, workflowExecutionToken);
     await cleanupStreamChunksFromInternals(
       internals,
       workflowId,
@@ -144,11 +146,12 @@ export async function writeStreamChunksFromInternals(
     } else {
       // Announce the stored chunk by key and sequence only, never its body. The `tokens` key is
       // skipped: it already reaches subscribers through the workflow feed and `stream:token`.
-      internals.engine.dispatchEvent(
-        tagWorkflowEventGeneration(
-          new StreamChunkEvent(workflowId, operation.key, sequence),
-          workflowExecutionToken,
-        ),
+      // Coalesced per key: a burst of chunks costs one immediate and at most one trailing event.
+      internals.streamChunkAnnouncer.stored(
+        workflowId,
+        operation.key,
+        sequence,
+        workflowExecutionToken,
       );
     }
   }

@@ -6,7 +6,10 @@ export type SelectOption<T extends string = string> = {
   disabled?: boolean;
 };
 
-export type SelectProps<T extends string = string> = Omit<HTMLSelectAttributes, 'class'> & {
+export type SelectProps<T extends string = string> = Omit<
+  HTMLSelectAttributes,
+  'class' | 'size'
+> & {
   /** Unique identifier — required for label association and ARIA wiring. */
   id: string;
   /** Bound selected value. `undefined` when nothing is selected. */
@@ -29,6 +32,12 @@ export type SelectProps<T extends string = string> = Omit<HTMLSelectAttributes, 
   required?: boolean;
   /** Disables the control. */
   disabled?: boolean;
+  /**
+   * Height step from the shared `--cinder-control-height-*` scale: `sm` 28px, `md` 32px,
+   * `lg` 40px. Replaces the native list-box `size` attribute, which Cinder does not forward.
+   * @default "md"
+   */
+  size?: 'sm' | 'md' | 'lg';
   /** Extra class names merged with `.cinder-select-field`. */
   class?: string;
 };

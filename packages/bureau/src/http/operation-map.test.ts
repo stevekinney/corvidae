@@ -18,6 +18,7 @@ import {
 } from '@lostgradient/memory';
 import { createAgent } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
+import { WorkerDeploymentCatalog } from '@lostgradient/weft';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from '../agent-catalog.ts';
@@ -30,7 +31,7 @@ import { OPERATION_MAP, type OperationBinding } from './operation-map.ts';
 
 /**
  * A Bureau with every optional namespace a row can name: durable storage (the audit trail and the
- * task registry), assets, governed memory, workflow files, and goals.
+ * task registry), assets, governed memory, workflow files, worker deployments, and goals.
  */
 async function openFullBureau(): Promise<{ bureau: Bureau; dispose: () => Promise<void> }> {
   const directory = await mkdtemp(join(tmpdir(), 'bureau-operation-map-'));
@@ -42,6 +43,7 @@ async function openFullBureau(): Promise<{ bureau: Bureau; dispose: () => Promis
     durable: true,
     assets: { storage: createMemoryAssetStorage() },
     workflowSource: workflowFileDirectory(directory),
+    workerDeployments: new WorkerDeploymentCatalog(new MemoryStorage()),
     memory: createGovernedMemory({
       storage: createInMemoryMemoryRecordStorage(),
       ledger: createMemoryGovernanceLedger(durable),

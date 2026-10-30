@@ -33,6 +33,7 @@ Native-style dropdown select for choosing a single option from a predefined list
 | `label` | `string` | no | — | Visible label rendered in a `<label>` associated via `for`. |
 | `labelVisible` | `boolean` | no | `true` | Whether the label is visibly rendered. Set `false` to visually hide it while keeping it available to assistive technology. |
 | `required` | `boolean` | no | — | Marks the control required and sets the native `required` attribute. |
+| `size` | `"sm"` \| `"md"` \| `"lg"` | no | `"md"` | Height step from the shared `--cinder-control-height-*` scale: `sm` 28px, `md` 32px, `lg` 40px. Replaces the native list-box `size` attribute, which Cinder does not forward. |
 | `options` | `(opaque)` | yes | — | Options to render as `<option>` children. The sole inference source for T. Not expressible in JSON Schema; see the component types for the signature. |
 | `value` | `(opaque)` | no | — | Bound selected value. `undefined` when nothing is selected. Not expressible in JSON Schema; see the component types for the signature. |
 

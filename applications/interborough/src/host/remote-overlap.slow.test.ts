@@ -235,17 +235,6 @@ describe.skipIf(database === null)('two hosts on one Postgres database and one b
     );
     const hostA = await startOverlapHost(environment, counter);
 
-    // The seeded goal's controller outlives a detach and records its last transitions to the event
-    // history after Bureau's shutdown returns, which is not what this test is about, so it finishes
-    // first.
-    await waitUntil(
-      async () => {
-        const goal = await hostA.bureau.goals.get(SEEDED_GOAL_RUN_IDENTIFIER);
-        return goal?.status === 'succeeded';
-      },
-      { message: 'the seeded goal to succeed' },
-    );
-
     // Every workflow event host A's engine dispatches, per workflow, from here on.
     const dispatched = new Map<string, number>();
     const abort = new AbortController();

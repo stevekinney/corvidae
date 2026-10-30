@@ -65,7 +65,8 @@ import {
 } from './events';
 import type { LivenessAssessment, LivenessObservable, LivenessSnapshot } from './liveness';
 import type { DelegatedAuthority } from './providers/policy.ts';
-import type { Effort, ProviderName } from './providers/types.ts';
+import { isProviderName } from './providers/provider-name.ts';
+import type { Effort } from './providers/types.ts';
 import type { AgentInput, RunnableAgent } from './runnable-agent';
 import type { CleanupAcknowledgement, RunResult } from './types';
 
@@ -327,31 +328,18 @@ const MUTABLE_REGISTRY_METHODS = [
 ] as const;
 
 /**
- * The complete, closed value sets for {@link DelegatedAuthority}'s two
- * literal-typed narrowing fields — kept local to this guard (not imported
- * from `providers/types.ts`, which declares no such runtime array for
- * either union) so {@link isDelegatedAuthority} can reject a value outside
- * either union rather than merely checking its JS type.
+ * The complete, closed value set for {@link DelegatedAuthority}'s `maximumEffort` — kept local to
+ * this guard (not imported from `providers/types.ts`, which declares no such runtime array) so
+ * {@link isDelegatedAuthority} can reject a value outside the union rather than merely checking its
+ * JS type. `grantedProviders` is open, so it is checked against the provider-name grammar instead.
  */
 const VALID_EFFORTS: readonly Effort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
-const VALID_PROVIDER_NAMES: readonly ProviderName[] = [
-  'anthropic',
-  'openai',
-  'gemini',
-  'voyage',
-  'ollama',
-];
 
 /** Type predicate over `unknown`, not a narrowed-but-unverified static type
  *  — see {@link isDelegatedAuthority}'s own doc comment for why checking
  *  against the closed value set (not just `typeof`) matters here. */
 function isEffort(value: unknown): value is Effort {
   return typeof value === 'string' && (VALID_EFFORTS as readonly string[]).includes(value);
-}
-
-/** Type predicate over `unknown` — see {@link isEffort}. */
-function isProviderName(value: unknown): value is ProviderName {
-  return typeof value === 'string' && (VALID_PROVIDER_NAMES as readonly string[]).includes(value);
 }
 
 /**

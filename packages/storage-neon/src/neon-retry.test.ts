@@ -14,6 +14,9 @@ import { NeonStorage } from './neon.ts';
  * times each condition key is read so a test can prove the loop re-runs the
  * whole `BEGIN → read → compare → write → COMMIT` cycle on every retry.
  */
+/** Retries wait on this instead of a real timer; the backoff itself is covered in `@lostgradient/storage`. */
+const noWait = { delay: async () => {} };
+
 class FaultInjectingPool implements PostgresPool {
   /** Number of COMMITs that should fail before one succeeds. */
   #commitFailuresRemaining: number;
@@ -99,7 +102,7 @@ class FaultInjectingPool implements PostgresPool {
 describe('NeonStorage conditionalBatch serialization retry', () => {
   it('retries the whole transaction on 40001 and succeeds, re-reading conditions each attempt', async () => {
     const pool = new FaultInjectingPool(2);
-    await using storage = new NeonStorage({ url: 'stub://', pool });
+    await using storage = new NeonStorage({ url: 'stub://', pool, serializationRetry: noWait });
     await pool.arm(storage);
 
     const applied = await storage.conditionalBatch(
@@ -117,11 +120,11 @@ describe('NeonStorage conditionalBatch serialization retry', () => {
   });
 
   it('throws after exhausting the retry cap instead of silently returning false', async () => {
-    // Five failures with a cap of five means every attempt's COMMIT fails. The
+    // Twelve failures with a cap of twelve means every attempt's COMMIT fails. The
     // call must throw — a silent false is indistinguishable from a precondition
     // mismatch and would corrupt compare-and-swap callers.
-    const pool = new FaultInjectingPool(5);
-    await using storage = new NeonStorage({ url: 'stub://', pool });
+    const pool = new FaultInjectingPool(12);
+    await using storage = new NeonStorage({ url: 'stub://', pool, serializationRetry: noWait });
     await pool.arm(storage);
 
     expect(
@@ -131,9 +134,9 @@ describe('NeonStorage conditionalBatch serialization retry', () => {
           [{ type: 'put', key: 'idem:k', value: encode('v') }],
         ),
       ),
-    ).toThrow('exhausted 5 attempts after retryable transaction failures');
+    ).toThrow('exhausted 12 attempts after retryable transaction failures');
 
-    expect(pool.beginCount).toBe(5);
+    expect(pool.beginCount).toBe(12);
   });
 
   it('retries on a 40P01 deadlock the same way as a serialization failure', async () => {
@@ -141,7 +144,7 @@ describe('NeonStorage conditionalBatch serialization retry', () => {
     // a 40P01 escaping as an engine error would break CAS convergence under
     // cross-key contention (which the single-key live test cannot reproduce).
     const pool = new FaultInjectingPool(1, '40P01');
-    await using storage = new NeonStorage({ url: 'stub://', pool });
+    await using storage = new NeonStorage({ url: 'stub://', pool, serializationRetry: noWait });
     await pool.arm(storage);
 
     const applied = await storage.conditionalBatch(
@@ -157,7 +160,7 @@ describe('NeonStorage conditionalBatch serialization retry', () => {
     // A genuine error (not 40001/40P01) must surface immediately — retrying would
     // mask a real failure and waste attempts.
     const pool = new FaultInjectingPool(1, '23502'); // not_null_violation
-    await using storage = new NeonStorage({ url: 'stub://', pool });
+    await using storage = new NeonStorage({ url: 'stub://', pool, serializationRetry: noWait });
     await pool.arm(storage);
 
     expect(
@@ -217,7 +220,7 @@ describe('NeonStorage conditionalBatch serialization retry', () => {
       }),
       end: async () => {},
     };
-    await using storage = new NeonStorage({ url: 'stub://', pool });
+    await using storage = new NeonStorage({ url: 'stub://', pool, serializationRetry: noWait });
     await storage.has('__setup__');
     beginCount = 0;
     commitCount = 0;

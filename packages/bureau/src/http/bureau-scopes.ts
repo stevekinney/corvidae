@@ -17,6 +17,11 @@ import type { PackageAuthorizationScope } from '@lostgradient/weft';
  * `bureau.events:observe-all` is the fleet-wide feed and is not implied by
  * `bureau.tasks:read`. The `bureau.deliveries:*` scopes are not registered.
  *
+ * The two `bureau.deployments` scopes (COR-1813) gate the worker rollout operations: the worker
+ * deployments belong to the deployment's owner of record, who reaches them without a scope, and the
+ * scopes let another caller read (`get`) or move (`ramp`, `promote`, `rollback`) them. Neither
+ * implies the other.
+ *
  * The three memory scopes are the exception to the rule above (COR-1546, COR-1809).
  * `bureau.memory:read`, `bureau.memory:write` and `bureau.memory:govern` do not grant cross-owner
  * access: a caller reaches `bureau.memory.*` only with the scope its operation needs, and then only
@@ -50,6 +55,8 @@ export const BUREAU_SCOPES = [
   'bureau.settings:write',
   'bureau.diagnostics:read',
   'bureau.memory:govern',
+  'bureau.deployments:read',
+  'bureau.deployments:write',
 ] as const satisfies readonly PackageAuthorizationScope[];
 
 /** One of the scopes in {@link BUREAU_SCOPES}. */

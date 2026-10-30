@@ -37,7 +37,9 @@ const SAMPLES: Readonly<Record<SettingKey, unknown>> = {
   'tools.wakeup': false,
   'tools.decide': false,
   modelPolicy: { policyRevision: 2, deployment: { deniedProviders: ['openai'] } },
+  'decisions.model': 'catalog',
   'decisions.fallbackModel': 'anthropic/claude-haiku',
+  'context.summarizerModel': 'anthropic/claude-haiku-5-5',
   'decisions.maximumPerTask': 3,
   'retention.audit': { olderThan: 86_400_000 },
   'retention.events': { olderThan: 3_600_000 },
@@ -68,7 +70,10 @@ const SAMPLES: Readonly<Record<SettingKey, unknown>> = {
 type Snapshot = {
   values: Record<string, unknown>;
   revision: number;
-  keys: Record<string, { apply: string; locked: boolean; pendingRestart: boolean }>;
+  keys: Record<
+    string,
+    { apply: string; locked: boolean; lockReason?: string; pendingRestart: boolean }
+  >;
 };
 
 async function snapshotOf(opened: OpenedBureau, key = 'settings-reader-key'): Promise<Snapshot> {
@@ -140,7 +145,7 @@ describe('bureau.settings operations', () => {
   });
 
   it('answers a locked key with Unprocessable', async () => {
-    const opened = await open({ locked: ['tools.humanInput'] });
+    const opened = await open({ locked: { 'tools.humanInput': 'deployment' } });
     const locked = await update(opened, {
       patch: { 'tools.humanInput': false },
       expectedRevision: 0,
@@ -150,7 +155,11 @@ describe('bureau.settings operations', () => {
       reason: 'locked',
     });
     const snapshot = await snapshotOf(opened);
-    expect(snapshot.keys['tools.humanInput']?.locked).toBe(true);
+    expect(snapshot.keys['tools.humanInput']).toMatchObject({
+      locked: true,
+      lockReason: 'deployment',
+    });
+    expect(snapshot.keys['tools.wakeup']).not.toHaveProperty('lockReason');
   });
 
   it('answers an unknown key and an invalid value with InvalidParams', async () => {

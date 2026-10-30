@@ -618,7 +618,7 @@
   "control": {
     "height": {
       "$type": "dimension",
-      "$description": "Shared height ladder for interactive controls. Form fields use `md`; toolbar and inline fields use `sm`, which is also `button.height.sm`, so a small Button, a toolbar SegmentedControl, and a toolbar Chip line up.",
+      "$description": "The one height scale every interactive control shares: Button, Input, Select, Combobox, MultiSelect, SearchField and SegmentedControl read the same step for the same `size`, so controls of one size line up in a row. `md` (32px) is the default everywhere; toolbar density uses `sm`.",
       "xs": {
         "$value": {
           "value": 1.5,
@@ -636,10 +636,10 @@
       },
       "sm": {
         "$value": {
-          "value": 2,
+          "value": 1.75,
           "unit": "rem"
         },
-        "$description": "Small control height; the toolbar default (32px).",
+        "$description": "Small control height (28px); toolbar density uses it.",
         "$extensions": {
           "com.lostgradient.cinder": {
             "cssProperty": "--cinder-control-height-sm",
@@ -651,10 +651,10 @@
       },
       "md": {
         "$value": {
-          "value": 2.25,
+          "value": 2,
           "unit": "rem"
         },
-        "$description": "Medium control height; the form-field default (36px).",
+        "$description": "Medium control height (32px); the default for every control.",
         "$extensions": {
           "com.lostgradient.cinder": {
             "cssProperty": "--cinder-control-height-md",
@@ -666,10 +666,10 @@
       },
       "lg": {
         "$value": {
-          "value": 2.75,
+          "value": 2.5,
           "unit": "rem"
         },
-        "$description": "Large control height; clears the WCAG AAA touch target (44px).",
+        "$description": "Large control height (40px).",
         "$extensions": {
           "com.lostgradient.cinder": {
             "cssProperty": "--cinder-control-height-lg",
