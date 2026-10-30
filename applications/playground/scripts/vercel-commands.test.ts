@@ -21,6 +21,7 @@ describe('vercel.json commands', () => {
   });
 
   it('install with a frozen lockfile', async () => {
-    expect((await commands())[0]).toContain('bun install --frozen-lockfile');
+    const [installCommand] = await commands();
+    expect(installCommand).toContain('bun install --frozen-lockfile');
   });
 });
