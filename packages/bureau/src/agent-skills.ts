@@ -19,6 +19,7 @@ import type { AnyToolbox } from 'armorer';
 import { createToolbox } from 'armorer';
 
 import {
+  availableRecords,
   createSkillArtifactLoader,
   createSkillClient,
   createSkillClientToolbox,
@@ -81,6 +82,20 @@ const runHandles = new WeakMap<object, AgentSkillsRunHandle>();
  */
 export function agentSkillsRun(hooks: object | undefined): AgentSkillsRunHandle | undefined {
   return hooks === undefined ? undefined : runHandles.get(hooks);
+}
+
+const skillCatalogs = new WeakMap<object, SkillCatalogRevision>();
+
+/**
+ * The names of the executable skills an agent's `skills` value (`createAgent({ skills })`) makes
+ * available: the available records of the catalog revision {@link createAgentSkills} was given,
+ * ordered by name. Empty for an agent with no skills, and for a `skills` value that did not come
+ * from {@link createAgentSkills}, whose catalog Bureau cannot read. An unavailable skill (an
+ * untrusted source, say) is not named: the agent cannot activate it.
+ */
+export function agentSkillNames(skills: object | undefined): readonly string[] {
+  const catalog = skills === undefined ? undefined : skillCatalogs.get(skills);
+  return catalog === undefined ? [] : availableRecords(catalog).map((record) => record.name);
 }
 
 /** Options for {@link createAgentSkills}. */
@@ -165,7 +180,7 @@ export function createSkillGuardrailOptions(
  * snapshot into and starts with an empty active set.
  */
 export function createAgentSkills(options: AgentSkillsOptions): AgentSkills {
-  return {
+  const skills: AgentSkills = {
     composeRun(run: AgentSkillsRun): AnyToolbox {
       const skillGuardrail =
         run.guardrails === undefined
@@ -243,4 +258,6 @@ export function createAgentSkills(options: AgentSkillsOptions): AgentSkills {
       return withToolboxLayer(toolbox, (rebuilt) => withActiveSkillToolPolicy(rebuilt, policy));
     },
   };
+  skillCatalogs.set(skills, options.catalog);
+  return skills;
 }

@@ -21,9 +21,11 @@ import type {
 import { projectDescriptor, readGenerationProfile } from '@lostgradient/operative';
 
 import { AgentFileError } from './agent-file';
+import { agentSkillNames } from './agent-skills';
 import { type AgentModels, describeAgentModels } from './agent-models';
 import type {
   AgentCatalogChange,
+  AgentCodeDefinition,
   AgentFileCatalog,
   AgentFileDetail,
   AgentFileVersions,
@@ -400,7 +402,14 @@ export function createAgentCatalog<D extends AgentDefinitions>(
     },
     async detail(id) {
       const code = byName.get(id);
-      if (code !== undefined) return { ...codeListing(code), text: null, definition: null };
+      if (code !== undefined) {
+        return {
+          ...codeListing(code),
+          text: null,
+          definition: null,
+          codeDefinition: describeCodeAgent(code.agent, descriptors()),
+        };
+      }
       return files?.detail(id);
     },
     models(name) {
@@ -408,7 +417,18 @@ export function createAgentCatalog<D extends AgentDefinitions>(
       return agent === undefined ? undefined : describeAgentModels(agent, descriptors());
     },
     tools() {
-      return files?.tools() ?? [];
+      // A code-defined agent that names a catalog tool uses it too. Its `toolNames` come from
+      // `createAgent`; an agent that states none uses none that can be told.
+      const codeUsers = new Map<string, string[]>();
+      for (const entry of entries) {
+        for (const name of codeToolNames(entry.agent)) {
+          codeUsers.set(name, [...(codeUsers.get(name) ?? []), entry.name]);
+        }
+      }
+      return (files?.tools() ?? []).map((tool) => ({
+        ...tool,
+        users: [...tool.users, ...(codeUsers.get(tool.name) ?? [])].toSorted(),
+      }));
     },
     revisions(id) {
       return snapshots?.revisions(id) ?? Promise.resolve([]);
@@ -433,6 +453,43 @@ export function createAgentCatalog<D extends AgentDefinitions>(
   };
 
   return Object.freeze(catalog);
+}
+
+/** What a code-defined agent states about itself, read from the agent object. See {@link AgentCodeDefinition}. */
+function describeCodeAgent(
+  agent: AnyRunnableAgent,
+  descriptors: readonly BackendDescriptor[],
+): AgentCodeDefinition {
+  const models = describeAgentModels(agent, descriptors);
+  const named = (choice: { readonly provider: string; readonly model: string }) =>
+    `${choice.provider}/${choice.model}`;
+  const stated = agent as {
+    readonly instructions?: unknown;
+    readonly skills?: object | undefined;
+  };
+  return {
+    name: agent.name,
+    description: agent.description ?? null,
+    model: models.default === null ? null : named(models.default),
+    models: models.models.map(named),
+    tools: codeToolNames(agent),
+    skills: agentSkillNames(stated.skills),
+    skillDescriptors: (agent.skillDescriptors ?? []).map((descriptor) => ({ ...descriptor })),
+    instructions:
+      typeof stated.instructions === 'string' && stated.instructions !== ''
+        ? stated.instructions
+        : null,
+  };
+}
+
+/**
+ * The tool names a code-defined agent states (`StandaloneAgent.toolNames`), or none for an agent
+ * that is not a `createAgent` result or states anything else. A runnable agent may be any object
+ * with a `run`, so the property is checked rather than trusted.
+ */
+export function codeToolNames(agent: object): readonly string[] {
+  const names = (agent as { readonly toolNames?: unknown }).toolNames;
+  return Array.isArray(names) && names.every((name) => typeof name === 'string') ? names : [];
 }
 
 /**

@@ -225,8 +225,23 @@ export const faults = {
     new StubFault('Unprocessable', 422, message, { reason: 'unknown-model' }),
 };
 
+/**
+ * A catalog tool as a test writes it: its name and descriptions. What the tool takes, its tier, its
+ * default approval, its source and its users default to a read-only host tool nobody uses.
+ */
+export type CatalogToolFixture = Pick<
+  AgentCatalog['tools'][number],
+  'name' | 'description' | 'shortDescription'
+> &
+  Partial<AgentCatalog['tools'][number]>;
+
 /** The catalog a deployment with one provider offers: two models, one with an alias, and one tool. */
-export function catalogFixture(overrides: Partial<AgentCatalog> = {}): AgentCatalog {
+export function catalogFixture(
+  overrides: Omit<Partial<AgentCatalog>, 'tools'> & {
+    readonly tools?: readonly CatalogToolFixture[];
+  } = {},
+): AgentCatalog {
+  const { tools: overriddenTools, ...rest } = overrides;
   return {
     models: [
       {
@@ -236,14 +251,23 @@ export function catalogFixture(overrides: Partial<AgentCatalog> = {}): AgentCata
       },
       { provider: 'anthropic', model: 'claude-haiku-5', aliases: [] },
     ],
-    tools: [
-      {
-        name: 'lookup-order',
-        description: 'Look an order up by its identifier.',
-        shortDescription: null,
-      },
-    ],
-    ...overrides,
+    tools: (
+      overriddenTools ?? [
+        {
+          name: 'lookup-order',
+          description: 'Look an order up by its identifier.',
+          shortDescription: null,
+        },
+      ]
+    ).map((tool) => ({
+      inputSchema: { type: 'object' },
+      tier: 'read-only' as const,
+      defaultApproval: 'allow' as const,
+      source: 'host' as const,
+      users: [],
+      ...tool,
+    })),
+    ...rest,
   };
 }
 
@@ -258,6 +282,7 @@ export function readyAgent(overrides: Partial<AgentDetail> = {}): AgentDetail {
     a2a: false,
     hash: 'hash-1',
     problem: null,
+    codeDefinition: null,
     definition: {
       name: 'Researcher',
       description: 'Finds and cites sources',

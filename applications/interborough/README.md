@@ -156,6 +156,33 @@ An allowlist (`providers.<name>.models`) may name an added row by its model, and
 
 **Remote mode refuses.** A remote home keeps its configuration in the bucket and its keys in the environment, which the host cannot write. `PUT` requests answer `403` with `{ "error": "locked", "reason": "deployment" }`, `/host/paths` reports `locked: { configuration: "deployment", providerKeys: "deployment" }` (the reason codes `settings.get` gives a locked key), and `host.providers.connect` and `.editCatalog` throw `ProviderWriteLockedError`. Reload still works, since it only reads.
 
+### Executable skills
+
+An executable Agent Skill is a directory with a `SKILL.md`; the descriptive skills an agent file declares (`skillDescriptors`) are another thing. The host finds skills in the directories `configuration.json` names under `skills`, and trusts only the ones it lists:
+
+```json
+{
+  "skills": {
+    "sources": [
+      { "id": "home", "kind": "user", "path": "/Users/me/.agents/skills" },
+      { "id": "workspace", "kind": "project", "path": "/Users/me/work/app/.agents/skills" }
+    ],
+    "trusted": ["home"]
+  }
+}
+```
+
+A source is a directory whose subdirectories are skills: `id` is letters, digits, `.`, `_` and `-`, `kind` is `user` or `project`, and `path` is absolute. Configuring a directory does not trust it, for either kind: a source is trusted only when `trusted` lists its `id`, and `trusted` may name only configured sources. The key is optional, so a file written before it existed loads with no skills, and every other key is left alone. A mistake stops the host and names the field, such as `skills.sources[0].path`.
+
+`bureau.skills.list` shows each skill with its source, trust and allowed tools. A skill from an untrusted source is listed and cannot be activated: the skill client answers `source-untrusted`.
+
+| Route | What it does |
+| --- | --- |
+| `PUT /host/skills/sources/<id>/trust` `{ "trusted": true }` | Trusts a configured source, or stops trusting it (`false`): writes `skills.trusted` to `configuration.json` through `host.configurationQueue`, applies it at once, and records `skill.source.trusted` or `skill.source.untrusted` in the audit trail, filed under `skill-source:<id>` with the owner. A source that already has the trust asked for changes and records nothing. `404` for a source the file does not list, `400` for a body or a file that cannot be used. |
+| `POST /host/skills/refresh` | Reads the configuration and the directories again, for a person who edited a file or added a skill by hand. |
+
+Remote mode refuses a trust change: `PUT` answers `403` with `{ "error": "locked", "reason": "deployment" }` and `host.skills.setTrust` throws `SkillWriteLockedError`, since the bucket's configuration belongs to the deployment. Listing and refreshing still work. If the change is applied but the audit trail cannot take the record, the answer is `500` with `{ "error": "partial" }` and the change stands.
+
 ### Decisions
 
 Bureau answers typed questions (`bureau.decisions.decide`, and the `decide` tool a task can call) with a language model from this catalog. An optional `typesafe-api-key` secret (a file in `secrets/`, mode `0600`, whitespace trimmed) registers TypeSafe's Jev as the decision model `typesafe`, the default of the `decisions.model` setting, for the kinds it serves: `boolean`, `choice`, and `scale`. Switching `decisions.model` to `catalog` on the Settings page sends every question to the fallback; the next decision uses the new choice. A `structured` question, and every question when the secret is absent, goes to the catalog's fallback row (`anthropic/claude-haiku-5-5`, else the cheapest priced row with structured output), which needs a configured provider. With neither, `decide` fails with `NOT_CONFIGURED`.

@@ -134,6 +134,21 @@ describe('the operations, against the real Bureau', () => {
     const offered = host.bureau.agents.tools().map((tool) => tool.name);
     expect(catalog.tools.map((tool) => tool.name)).toEqual(offered);
     expect(offered).toContain('lookup-order');
+    // Every tool states its input schema, Bureau's settings and workflow tools included, and who
+    // provides it. The seeded `tool-runner` agent's toolbox names `lookup-order`, so it uses it.
+    for (const tool of catalog.tools) {
+      expect(tool.inputSchema).not.toBeNull();
+      expect(tool.inputSchema).toMatchObject({ type: 'object' });
+    }
+    const byName = new Map(catalog.tools.map((tool) => [tool.name, tool]));
+    expect(byName.get('lookup-order')).toMatchObject({
+      tier: 'read-only',
+      defaultApproval: 'allow',
+      source: 'host',
+      users: ['tool-runner'],
+    });
+    expect(byName.get('workflows-create')).toMatchObject({ source: 'bureau' });
+    expect(byName.get('settings-update')).toMatchObject({ source: 'bureau' });
   });
 
   test('creates, reads, updates, opts into and out of A2A, and deletes an agent file', async () => {
@@ -255,6 +270,14 @@ describe('the operations, against the real Bureau', () => {
     const { host, home, fetcher } = await startConfigured();
     const code = await getAgentDefinition('assistant', { fetch: fetcher });
     expect(code).toMatchObject({ source: 'code', hash: null, definition: null });
+    expect(code.codeDefinition).toMatchObject({
+      name: 'assistant',
+      instructions: null,
+      tools: [],
+      skills: [],
+    });
+    const runner = await getAgentDefinition('tool-runner', { fetch: fetcher });
+    expect(runner.codeDefinition).toMatchObject({ tools: ['lookup-order', 'issue-refund'] });
 
     await writeFile(join(home, 'agents', 'broken.md'), '---\nmodel: openai/gpt-4.1\n---\nHi\n');
     await host.bureau.agents.refresh();

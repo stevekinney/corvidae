@@ -180,6 +180,7 @@ import {
   AUDIT_AGENT_OWNER_PREFIX,
   AUDIT_SCHEDULE_OWNER_PREFIX,
   AUDIT_SESSION_OWNER_PREFIX,
+  AUDIT_SKILL_SOURCE_OWNER_PREFIX,
   AUDIT_WORKER_DEPLOYMENT_OWNER_PREFIX,
   AUDIT_WORKFLOW_OWNER_PREFIX,
   type AuditTrail,
@@ -2733,20 +2734,22 @@ async function constructBureau<const D extends AgentDefinitions>(
       settings: () => settingsOf().settings,
       ownerOf: (runId) => ownerOf({ kind: 'run', id: runId }),
     });
-    agentToolCatalog =
+    const workflowTools =
       options.workflowSource === undefined
-        ? { ...options.agentSource?.tools, ...settingsTools }
-        : {
-            ...options.agentSource?.tools,
-            ...settingsTools,
-            ...createWorkflowTools({
-              workflows: () => workflowRuntime?.workflows,
-              runIdentity: async (runId) => ({
-                agent: runAttribution.get(runId)?.agentName,
-                owner: await ownerOf({ kind: 'run', id: runId }),
-              }),
+        ? {}
+        : createWorkflowTools({
+            workflows: () => workflowRuntime?.workflows,
+            runIdentity: async (runId) => ({
+              agent: runAttribution.get(runId)?.agentName,
+              owner: await ownerOf({ kind: 'run', id: runId }),
             }),
-          };
+          });
+    agentToolCatalog = { ...options.agentSource?.tools, ...settingsTools, ...workflowTools };
+    // COR-1818: the tools Bureau added itself, which the tool catalog reports as its own.
+    const bureauToolNames: ReadonlySet<string> = new Set([
+      ...Object.keys(settingsTools),
+      ...Object.keys(workflowTools),
+    ]);
     // COR-1815: built before the catalog, which asks it which revisions a retained run references.
     const agentSnapshots = createAgentSnapshotStore({
       store: runtime.kv,
@@ -2760,6 +2763,7 @@ async function constructBureau<const D extends AgentDefinitions>(
               source: options.agentSource,
               reservedIdentifiers: new Set(Object.keys(agentsSnapshot)),
               tools: agentToolCatalog,
+              bureauToolNames,
               models,
               resolveGenerate: (row) => models.generate(row),
               ...(options.agentApprovalSecret === undefined
@@ -10472,6 +10476,15 @@ async function constructBureau<const D extends AgentDefinitions>(
         if (runId.startsWith(AUDIT_WORKER_DEPLOYMENT_OWNER_PREFIX)) {
           // COR-1813 — a worker deployment has no owner field: it belongs to the deployment's owner.
           return ownerOrLocal(undefined);
+        }
+        if (runId.startsWith(AUDIT_SKILL_SOURCE_OWNER_PREFIX)) {
+          // COR-1818 — a skill source has no owner field: the owner who changed its trust is
+          // recorded on the entry, and a record without one belongs to the deployment's owner.
+          const recorded =
+            typeof detail === 'object' && detail !== null
+              ? (detail as { owner?: unknown }).owner
+              : undefined;
+          return typeof recorded === 'string' ? recorded : ownerOrLocal(undefined);
         }
         if (runId.startsWith(AUDIT_WORKFLOW_OWNER_PREFIX)) {
           // COR-1529 — a workflow file has no owner field: it belongs to the deployment's owner.

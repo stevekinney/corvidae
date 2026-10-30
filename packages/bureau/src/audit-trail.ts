@@ -959,6 +959,9 @@ export const AUDIT_WORKFLOW_OWNER_PREFIX = 'workflow:';
 /** The `runId` prefix of a worker deployment's synthetic audit owner, `worker-deployment:<name>` (COR-1813). */
 export const AUDIT_WORKER_DEPLOYMENT_OWNER_PREFIX = 'worker-deployment:';
 
+/** The `runId` prefix of a skill source's synthetic audit owner, `skill-source:<id>` (COR-1818). */
+export const AUDIT_SKILL_SOURCE_OWNER_PREFIX = 'skill-source:';
+
 /**
  * Every synthetic owner prefix above. A `runId` with one of these prefixes resolves to an owner
  * without a run, so `reservedWorkflowIdentifierReason` refuses each as the start of a run id a
@@ -970,6 +973,7 @@ export const AUDIT_SYNTHETIC_OWNER_PREFIXES: readonly string[] = [
   AUDIT_AGENT_OWNER_PREFIX,
   AUDIT_WORKFLOW_OWNER_PREFIX,
   AUDIT_WORKER_DEPLOYMENT_OWNER_PREFIX,
+  AUDIT_SKILL_SOURCE_OWNER_PREFIX,
 ];
 
 /**
@@ -997,6 +1001,17 @@ export function auditTrailWorkflowOwnerId(workflowId: string): string {
  */
 export function auditTrailWorkerDeploymentOwnerId(deploymentName: string): string {
   return `${AUDIT_WORKER_DEPLOYMENT_OWNER_PREFIX}${deploymentName}`;
+}
+
+/**
+ * The synthetic `runId` a trust change of a skill source is filed under, `skill-source:<id>`: the
+ * change belongs to no run. `query({ runId })` with it retrieves one source's changes, in order.
+ * The record's type is `skill.source.trusted` or `skill.source.untrusted`, its `principal` is the
+ * owner who made the change, and its detail names the source (`sourceId`) and the decision
+ * (`trusted`).
+ */
+export function auditTrailSkillSourceOwnerId(sourceId: string): string {
+  return `${AUDIT_SKILL_SOURCE_OWNER_PREFIX}${sourceId}`;
 }
 
 /** The `owner` field of a deletion entry's detail, or nothing when no owner was recorded. */
