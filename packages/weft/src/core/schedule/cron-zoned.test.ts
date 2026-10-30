@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { isValidTimeZone } from './cron-formatter.ts';
 import { collectDueCronTicks, getNextCronOccurrence, getNextCronTick } from './cron-occurrence.ts';
+import { nextZonedCronTick } from './cron-zoned.ts';
 
 const LOS_ANGELES = { timeZone: 'America/Los_Angeles' } as const;
 
@@ -122,6 +123,18 @@ describe('zoned cron occurrences', () => {
         timeZone: 'Asia/Tokyo',
       }),
     ).toBe(Date.parse('2026-03-08T00:00:00.000Z'));
+  });
+});
+
+describe('nextZonedCronTick', () => {
+  it('gives up when a repeated hour holds more second-pass matches than the search will skip', () => {
+    // Every second matches, so a search that starts inside the fall-back hour's second pass keeps
+    // landing on times that already ran once. A bound of two spends itself on the first two.
+    const everySecond = (afterLocal: number): number => afterLocal + 1000;
+    const insideSecondPass = Date.parse('2026-11-01T09:10:00.000Z');
+    expect(() =>
+      nextZonedCronTick(everySecond, insideSecondPass, 'America/Los_Angeles', 2),
+    ).toThrow('Could not find the next cron occurrence after a repeated hour');
   });
 });
 

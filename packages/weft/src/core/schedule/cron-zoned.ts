@@ -140,11 +140,12 @@ export function nextZonedCronTick(
   scan: NaiveCronScan,
   afterTimestamp: number,
   timeZone: string,
+  maximumSkipped: number = MAXIMUM_REPEATED_LOCAL_TIMES_SKIPPED,
 ): CronTick {
   const base = Math.floor(afterTimestamp / 1000) * 1000;
   const minimum = base + 1000;
   let cursor = toLocal(base, timeZone);
-  for (let skipped = 0; skipped < MAXIMUM_REPEATED_LOCAL_TIMES_SKIPPED; skipped += 1) {
+  for (let skipped = 0; skipped < maximumSkipped; skipped += 1) {
     const local = scan(cursor);
     const instant = firstInstantOf(local, timeZone);
     if (instant === null) {
