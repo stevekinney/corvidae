@@ -15704,7 +15704,8 @@ async function constructBureau<const D extends AgentDefinitions>(
 
     // COR-1921 — a budgeted agent is not switched to a model the catalog cannot price: counting
     // its steps at another model's rate would spend the budget unseen. A key the log already
-    // decided is answered from the log, so a retry never meets this check.
+    // decided is answered from the log and skips it. This refusal is a throw, so it is not logged:
+    // a retry of it is judged again, and is admitted if the catalog has since gained a price.
     if (
       resolvedRequestedValue.target === 'model' &&
       resolvedRequestedValue.override !== undefined &&
