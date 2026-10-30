@@ -474,3 +474,46 @@ describe('a record this release cannot parse', () => {
     ).toEqual(['Three', 'Two']);
   });
 });
+
+describe('retention racing a create under the same dedupe key', () => {
+  it('does not take away the index of the replacement the create wrote', async () => {
+    const storage = new MemoryStorage();
+    const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
+    let counter = 0;
+    let between: (() => Promise<void>) | undefined;
+    const store = createNotificationStore({
+      // The create runs right after retention deleted the record and before it deletes the index.
+      kv: new Proxy(kv, {
+        get(target, property, receiver) {
+          if (property !== 'delete') return Reflect.get(target, property, receiver);
+          return async (key: string) => {
+            await target.delete(key);
+            const run = between;
+            between = undefined;
+            await run?.();
+          };
+        },
+      }),
+      clock: { nowISO: () => new Date(Date.UTC(2026, 9, 30, 12, 0, counter)).toISOString() },
+      identifiers: { next: (kind) => `${kind}-${++counter}` },
+      diagnose: () => undefined,
+      refusal: (message) => new Error(message),
+    });
+    await store.create(input(ALICE, 'Old', { dedupeKey: 'k' }));
+    let replacementId = '';
+    between = async () => {
+      const replacement = await store.create(input(ALICE, 'New', { dedupeKey: 'k' }));
+      expect(replacement.created).toBe(true);
+      replacementId = replacement.notification.id;
+    };
+
+    expect(await store.prune(Date.now() + 60_000)).toBe(1);
+
+    const indexKeys = await kv.list(`${NOTIFICATION_KEY_PREFIX}d:`);
+    const indexKey = indexKeys[0]!;
+    expect(await kv.get(indexKey)).toBe(replacementId);
+    expect(
+      await store.create(input(ALICE, 'Again', { dedupeKey: 'k' })).then((value) => value.created),
+    ).toBe(false);
+  });
+});

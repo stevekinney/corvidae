@@ -354,6 +354,18 @@ export function createNotificationStore(
     return readKeys(await kv.list(ownerPrefix(owner)));
   }
 
+  /**
+   * Deletes the dedupe index at `indexKey` only while it still names `id`. A `create` that found the
+   * record gone may have repaired the index and written a replacement under it, which a retention
+   * pass resuming after that must not take away.
+   */
+  async function deleteIndexIf(indexKey: string, id: string): Promise<void> {
+    await kv.conditionalBatch(
+      [{ key: indexKey, expectedValue: id }],
+      [{ type: 'delete', key: indexKey }],
+    );
+  }
+
   async function readStamps(keys: readonly string[]): Promise<Stamp[]> {
     const stamps: Stamp[] = [];
     for (const key of keys) {
@@ -366,9 +378,9 @@ export function createNotificationStore(
 
   async function remove(entries: readonly Stamp[]): Promise<number> {
     let removed = 0;
-    for (const { key, owner, dedupeKey } of entries) {
+    for (const { key, id, owner, dedupeKey } of entries) {
       await kv.delete(key);
-      if (dedupeKey !== null) await kv.delete(dedupeIndexKey(owner, dedupeKey));
+      if (dedupeKey !== null) await deleteIndexIf(dedupeIndexKey(owner, dedupeKey), id);
       removed += 1;
     }
     return removed;
@@ -491,13 +503,14 @@ export function createNotificationStore(
     dedupeKey: string,
   ): Promise<
     | { readonly state: 'found'; readonly entry: HeldRecord }
-    | { readonly state: 'missing' | 'unreadable' }
+    | { readonly state: 'missing'; readonly indexedId: string | null }
+    | { readonly state: 'unreadable' }
   > {
     const id = await kv.get(dedupeIndexKey(owner, dedupeKey));
-    if (id === null) return { state: 'missing' };
+    if (id === null) return { state: 'missing', indexedId: null };
     const key = recordKey(owner, id);
     const raw = await kv.get(key);
-    if (raw === null) return { state: 'missing' };
+    if (raw === null) return { state: 'missing', indexedId: id };
     const entry = parse(key, raw);
     return entry === undefined ? { state: 'unreadable' } : { state: 'found', entry };
   }
@@ -526,8 +539,11 @@ export function createNotificationStore(
             `[bureau] A notification already exists under the dedupe key "${dedupeKey}" but this release cannot read it, so another is not written.`,
           );
         }
-        // An index whose record is gone (a pruned record, a torn write) is repaired, then tried again.
-        await kv.delete(dedupeIndexKey(owner, dedupeKey));
+        // An index whose record is gone (a pruned record, a torn write) is repaired, then tried
+        // again. The repair only takes away the index it saw, never one written meanwhile.
+        if (existing.indexedId !== null) {
+          await deleteIndexIf(dedupeIndexKey(owner, dedupeKey), existing.indexedId);
+        }
       }
       throw new Error('[bureau] Could not write the notification: its key was already taken.');
     },
