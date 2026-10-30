@@ -60,6 +60,7 @@ import {
   createAgent,
   type GenerateFunction,
   shouldRetryProviderError,
+  stopWhen,
 } from '@lostgradient/operative';
 import {
   type ConditionalTextValueStore,
@@ -69,10 +70,10 @@ import {
 import {
   type ApprovalStatus,
   type CapabilityTier,
-  evaluateApprovalStatus,
   readToolShortDescription,
   resolveCapabilityTier,
   type Tool,
+  type ToolSecretResolver,
 } from 'armorer';
 
 import type { AnyRunnableAgent } from './agent-catalog';
@@ -100,6 +101,7 @@ import { createFileAgentCompactor } from './file-agent-compaction';
 import { createFileAgentGenerate } from './file-agent-generate';
 import { costBudgetOptions, usdPricingOfRow } from './file-agent-cost-budget';
 import { guardrailsOfPreset } from './guardrail-presets';
+import { createToolApprovalHooks, defaultToolApproval } from './tool-approval';
 import { type AgentRevisionRecord, createAgentRevisionStore } from './agent-revision-store';
 import {
   type AgentFileSaveOptions,
@@ -186,11 +188,11 @@ export interface AgentToolDescription {
    */
   readonly tier: CapabilityTier | null;
   /**
-   * What happens by default when an agent calls the tool: Armorer's `on-mutation` rule applied to
-   * {@link AgentToolDescription.tier}, so `allow` for a read-only tool and `ask` for a tool that
-   * changes something, is dangerous, or declares nothing. This is the tier default only. It does
-   * not yet read a per-tool rule an agent file states (COR-1913), which can only tighten it, and a
-   * file agent's toolbox applies no approval policy until that lands.
+   * What happens by default when an agent calls the tool: the rule a file agent's tool follows
+   * when its `toolApproval` says nothing (COR-1913, `TOOL_APPROVAL_DEFAULT_MODE`, `on-changes`)
+   * applied to {@link AgentToolDescription.tier}, so `allow` for a read-only tool and `ask` for a
+   * tool that changes something, is dangerous, or declares nothing. A file's own `toolApproval`
+   * entry for the tool replaces it for that agent: this is the default, not any one agent's setting.
    */
   readonly defaultApproval: Exclude<ApprovalStatus, 'deny'>;
   /**
@@ -224,8 +226,7 @@ export function describeToolCapability(
   return {
     inputSchema,
     tier: tier ?? null,
-    // `on-mutation` never denies, so the status is `allow` or `ask`.
-    defaultApproval: evaluateApprovalStatus(tier, 'on-mutation') === 'allow' ? 'allow' : 'ask',
+    defaultApproval: defaultToolApproval(tier),
   };
 }
 
@@ -311,6 +312,18 @@ export interface AgentFileCatalogOptions {
   /** Turns a catalog model into the function a run calls. The host holds the credentials. */
   readonly resolveGenerate: (descriptor: BackendDescriptor) => GenerateFunction;
   readonly runtime: RuntimeServices;
+  /**
+   * The secret that signs the tool approvals a file agent raises (COR-1913), which must be the same
+   * across restarts and across the processes that resolve them. Without one an approval is raised
+   * unsigned and `reviews.resolve` refuses to approve it (`NOT_CONFIGURED`); it can only be denied.
+   */
+  readonly approvalSecret?: string | undefined;
+  /**
+   * Reads a secret answer back for a tool that declares `acceptsSecrets` (COR-1920). A file
+   * agent's per-run toolbox is built here, so it is handed the resolver the Bureau's own toolbox
+   * has; without one such a tool sees no secret.
+   */
+  readonly secretResolver?: ToolSecretResolver | undefined;
   /** Where watcher and scan failures are reported. */
   readonly diagnose: (message: string, cause: unknown) => void;
   /**
@@ -480,8 +493,9 @@ const DETAIL_SETTLE_ATTEMPTS = 3;
 function inputOf(definition: AgentFileDefinition): AgentFileDefinitionInput {
   // A rest, so a key the definition gains is carried into the input and not dropped here.
   const { examples: _examples, ...input } = definition;
-  // An update that omits `stepLimit`, `retry`, `compaction`, `references`, `guardrails` or
-  // `costBudget` keeps the file's value, and a version that has none must remove it: `null` says so.
+  // An update that omits `stepLimit`, `retry`, `compaction`, `references`, `guardrails`,
+  // `costBudget` or `toolApproval` keeps the file's value, and a version that has none must remove
+  // it: `null` says so.
   return {
     ...input,
     stepLimit: definition.stepLimit ?? null,
@@ -490,6 +504,7 @@ function inputOf(definition: AgentFileDefinition): AgentFileDefinitionInput {
     references: definition.references ?? null,
     guardrails: definition.guardrails ?? null,
     costBudget: definition.costBudget ?? null,
+    toolApproval: definition.toolApproval ?? null,
   };
 }
 
@@ -601,6 +616,21 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         },
       };
     }
+    const unlisted = Object.keys(definition.toolApproval ?? {}).filter(
+      (name) => !definition.tools.includes(name),
+    );
+    if (unlisted.length > 0) {
+      return {
+        problem: {
+          code: 'unknown-approval-tool',
+          message: `toolApproval names ${unlisted.map((name) => `"${name}"`).join(', ')}, which the file's tools do not list. Add the tool to tools, or remove its toolApproval entry.`,
+          issues: unlisted.map((name) => ({
+            path: `toolApproval.${name}`,
+            message: `"${name}" is not in tools`,
+          })),
+        },
+      };
+    }
     return { descriptor: resolved };
   }
 
@@ -699,6 +729,17 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         : { skillDescriptors: definition.skillDescriptors }),
       ...(instructions === '' ? {} : { instructions }),
       ...(Object.keys(tools).length === 0 ? {} : { tools }),
+      // Built for each run (COR-1913): the hook is the agent's per-tool approval, and the secret
+      // signs the approvals it raises, so a restart can still resolve one.
+      toolboxOptions: () => ({
+        // Only the agent's own tools: the toolbox also holds the tools Bureau adds to a run.
+        policy: createToolApprovalHooks(definition.toolApproval, { tools: definition.tools }),
+        ...(options.approvalSecret === undefined ? {} : { approvalSecret: options.approvalSecret }),
+        ...(options.secretResolver === undefined ? {} : { secretResolver: options.secretResolver }),
+      }),
+      // A call that asks parks the run on the approval: the answer comes from a person, not the
+      // model, and a model that is told "action required" would only ask again.
+      stopWhen: [stopWhen.pendingApproval(), stopWhen.noToolCalls()],
       ...(definition.guardrails === undefined
         ? {}
         : { guardrails: guardrailsOfPreset(definition.guardrails) }),

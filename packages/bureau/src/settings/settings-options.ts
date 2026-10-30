@@ -47,6 +47,8 @@ export function settingsDefaultsOf<D extends AgentDefinitions>(
     'retention.tasks': options.retention?.tasks,
     'retention.receipts': options.retention?.receipts,
     'retention.memory': options.retention?.memory,
+    'retention.logs': options.retention?.logs,
+    'logs.maximumLinesPerRun': options.logs?.maximumLinesPerRun,
     'retention.checkpoints': options.retention?.checkpoints,
     'sessionInput.sessionBacklogLimit': options.sessionInput?.sessionBacklogLimit,
     'sessionInput.principalBacklogLimit': options.sessionInput?.principalBacklogLimit,

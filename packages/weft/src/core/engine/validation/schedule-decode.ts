@@ -1,7 +1,7 @@
 import { decode } from '../../codec.ts';
 import { isRecord } from '../../debug-output.ts';
 import { isValidTimeZone } from '../../schedule.ts';
-import type { ScheduleState } from '../../types.ts';
+import type { ScheduleQueuedRun, ScheduleState } from '../../types.ts';
 import { decodeScheduleCadence } from './schedule-cadence.ts';
 import { decodeScheduleRevisionPolicyFields } from './schedule-revision.ts';
 import { rejectInvalidScheduleRecord } from './schedule-warnings.ts';
@@ -63,6 +63,7 @@ type ScheduleRuntimeFields = Pick<
   | 'lastFireAt'
   | 'lastMissedFireAt'
   | 'nextFireAt'
+  | 'skipUntil'
   | 'currentWorkflowId'
   | 'missedFireCount'
   | 'skippedCount'
@@ -177,6 +178,24 @@ function decodeScheduleNextFireAt(
   return { ok: true, value: nextFireAt };
 }
 
+/**
+ * The occurrence a person asked to skip. Absent on every record written before COR-1829 and on
+ * every schedule nothing is skipped on, and then reads as absent; any other value must be a valid
+ * timestamp.
+ */
+function decodeScheduleSkipUntil(
+  decoded: Record<string, unknown>,
+  scheduleId: string,
+): { ok: true; value: number | undefined } | { ok: false } {
+  const skipUntil = decoded['skipUntil'];
+  if (skipUntil === undefined) return { ok: true, value: undefined };
+  if (!isValidScheduleTimestamp(skipUntil)) {
+    rejectInvalidScheduleRecord(scheduleId, 'with invalid skipUntil');
+    return { ok: false };
+  }
+  return { ok: true, value: skipUntil };
+}
+
 function decodeScheduleCurrentWorkflowId(
   decoded: Record<string, unknown>,
   scheduleId: string,
@@ -192,6 +211,25 @@ function decodeScheduleCurrentWorkflowId(
   return { ok: true, value: currentWorkflowId };
 }
 
+/** One persisted queued run, or `null` when a field is invalid: `manual` is only ever `true`. */
+function decodeQueuedRun(queuedRun: Record<string, unknown>): ScheduleQueuedRun | null {
+  const { workflowId, queuedAt, occurrence, manual } = queuedRun;
+  if (
+    !isValidScheduleIdentifier(workflowId) ||
+    !isValidScheduleTimestamp(queuedAt) ||
+    (occurrence !== undefined && !isValidScheduleTimestamp(occurrence)) ||
+    (manual !== undefined && manual !== true)
+  ) {
+    return null;
+  }
+  return {
+    workflowId,
+    queuedAt,
+    ...(occurrence !== undefined && { occurrence }),
+    ...(manual === true && { manual }),
+  };
+}
+
 function decodeScheduleQueuedRuns(
   decoded: Record<string, unknown>,
   scheduleId: string,
@@ -205,26 +243,17 @@ function decodeScheduleQueuedRuns(
   const result: ScheduleState['queuedRuns'] = [];
   const workflowIds = new Set<string>();
   for (const queuedRun of queuedRuns) {
-    if (!isRecord(queuedRun)) {
+    const run = isRecord(queuedRun) ? decodeQueuedRun(queuedRun) : null;
+    if (run === null) {
       rejectInvalidScheduleRecord(scheduleId, 'with invalid queuedRuns');
       return null;
     }
-    const { workflowId, queuedAt, occurrence } = queuedRun;
-    if (
-      !isValidScheduleIdentifier(workflowId) ||
-      !isValidScheduleTimestamp(queuedAt) ||
-      (occurrence !== undefined && !isValidScheduleTimestamp(occurrence))
-    ) {
-      rejectInvalidScheduleRecord(scheduleId, 'with invalid queuedRuns');
-      return null;
-    }
-    if (workflowIds.has(workflowId)) {
+    if (workflowIds.has(run.workflowId)) {
       rejectInvalidScheduleRecord(scheduleId, 'with duplicate queued workflow ids');
       return null;
     }
-    workflowIds.add(workflowId);
-
-    result.push({ workflowId, queuedAt, ...(occurrence !== undefined && { occurrence }) });
+    workflowIds.add(run.workflowId);
+    result.push(run);
   }
   return result;
 }
@@ -291,16 +320,25 @@ function decodeScheduleRevision(
   return revision;
 }
 
-/** The counters a schedule keeps: what its overlap policy skipped, and its own revision. */
+/**
+ * The counters and marks a schedule keeps: what its overlap policy skipped, its own revision, and
+ * the occurrence a person asked to skip.
+ */
 function decodeScheduleCounterFields(
   decoded: Record<string, unknown>,
   scheduleId: string,
-): Pick<ScheduleRuntimeFields, 'skippedCount' | 'lastSkippedAt' | 'revision'> | null {
+): Pick<ScheduleRuntimeFields, 'skippedCount' | 'lastSkippedAt' | 'revision' | 'skipUntil'> | null {
   const skipFields = decodeScheduleSkipFields(decoded, scheduleId);
   if (skipFields === null) return null;
   const revision = decodeScheduleRevision(decoded, scheduleId);
   if (revision === null) return null;
-  return { ...skipFields, revision };
+  const skipUntil = decodeScheduleSkipUntil(decoded, scheduleId);
+  if (!skipUntil.ok) return null;
+  return {
+    ...skipFields,
+    revision,
+    ...(skipUntil.value !== undefined && { skipUntil: skipUntil.value }),
+  };
 }
 
 function decodeScheduleQueueFields(

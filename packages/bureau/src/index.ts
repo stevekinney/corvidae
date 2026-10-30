@@ -1,4 +1,9 @@
 export { BUREAU_RESERVED_KEY_PREFIXES } from './reserved-key-prefixes';
+export {
+  type AnswerEncryptionKeys,
+  createSecretAnswerResolver,
+  SECRET_ANSWER_KEY_PREFIX,
+} from './secret-answers';
 export type {
   AgentCatalogEntry,
   AgentDefinitions,
@@ -11,6 +16,12 @@ export type {
 } from './agent-catalog';
 export { createAgentCatalog } from './agent-catalog';
 export { guardrailsOfPreset } from './guardrail-presets';
+export {
+  createToolApprovalHooks,
+  TOOL_APPROVAL_DEFAULT_MODE,
+  TOOL_APPROVAL_MODES,
+} from './tool-approval';
+export type { ToolApprovalHooksOptions, ToolApprovalMode } from './tool-approval';
 export type {
   AgentFileDefinition,
   AgentFileDefinitionInput,
@@ -30,6 +41,7 @@ export {
   AGENT_GUARDRAIL_PRESETS,
   AGENT_IDENTIFIER_PATTERN,
   agentFileFrontmatterSchema,
+  agentToolApprovalSchema,
   AgentFileConflictError,
   AgentFileError,
   AgentSnapshotError,
@@ -519,6 +531,8 @@ export type {
   BureauInternals,
   BureauMemoryAuthorityOptions,
   BureauOptions,
+  BureauLogsOptions,
+  BureauLogsRetentionOption,
   BureauMemoryRetentionOption,
   BureauReceiptRetentionOption,
   BureauRetentionOptions,

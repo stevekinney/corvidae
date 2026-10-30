@@ -31,6 +31,8 @@ import { RUN_COST_BUDGET_MAXIMUM_WARNINGS } from '@lostgradient/operative';
 import { CORE_SCHEMA, load as loadYaml, YAMLException } from 'js-yaml';
 import { z } from 'zod';
 
+import { TOOL_APPROVAL_MODES, type ToolApprovalMode } from './tool-approval';
+
 import { agentExamplesSchema } from './agent-examples';
 import { emitMapping, rewriteFrontmatter } from './agent-file-frontmatter';
 
@@ -65,6 +67,7 @@ export const AGENT_FILE_KNOWN_KEYS = [
   'references',
   'guardrails',
   'costBudget',
+  'toolApproval',
 ] as const;
 
 /** Why a file cannot be used as an agent. Carried on the listing, and on a refused write. */
@@ -73,6 +76,7 @@ export type AgentFileProblemCode =
   | 'invalid-frontmatter'
   | 'unknown-model'
   | 'unknown-tool'
+  | 'unknown-approval-tool'
   | 'missing-reference'
   | 'reference-too-large'
   | 'shadows-code-agent'
@@ -92,7 +96,10 @@ export interface AgentFileIssue {
 export interface AgentFileProblem {
   readonly code: AgentFileProblemCode;
   readonly message: string;
-  /** Every schema failure, for `invalid-frontmatter`; the missing names, for `unknown-tool`. */
+  /**
+   * Every schema failure, for `invalid-frontmatter`; the missing names, for `unknown-tool`; the
+   * names `toolApproval` gives a value that `tools` does not list, for `unknown-approval-tool`.
+   */
   readonly issues?: readonly AgentFileIssue[];
 }
 
@@ -157,6 +164,14 @@ export const agentCostBudgetSchema = z.strictObject({
   perRunUsd: z.number().positive().max(AGENT_COST_BUDGET_MAXIMUM_USD),
   warnAt: z.array(z.number().gt(0).lt(1)).max(AGENT_COST_BUDGET_MAXIMUM_WARNINGS).optional(),
 });
+
+/**
+ * A file's `toolApproval` (COR-1913): a tool name mapped to when it asks a person before it runs,
+ * one of `never`, `on-changes`, `always` or `blocked` (see {@link ToolApprovalMode}). A name the
+ * file's `tools` does not list is `unknown-approval-tool`, which the catalog reports because it
+ * reads both keys; the schema alone cannot.
+ */
+export const agentToolApprovalSchema = z.record(z.string().min(1), z.enum(TOOL_APPROVAL_MODES));
 
 /** The fewest percent of the context window at which compaction may trigger (`compaction.thresholdPercent`). */
 export const AGENT_COMPACTION_THRESHOLD_MINIMUM_PERCENT = 50;
@@ -301,6 +316,11 @@ export const agentFileFrontmatterSchema = z
      */
     costBudget: agentCostBudgetSchema.nullish(),
     /**
+     * When each tool asks a person before it runs. A tool the map leaves out asks on changes. Each
+     * name must be one of `tools`.
+     */
+    toolApproval: agentToolApprovalSchema.nullish(),
+    /**
      * Prompts that show what a person might ask the agent, which a new chat offers as buttons. Read
      * only: it is not in {@link AGENT_FILE_KNOWN_KEYS}, so a rewrite of the file keeps it as it is.
      */
@@ -387,6 +407,8 @@ export const agentFileDefinitionSchema = z.object({
   guardrails: agentGuardrailPresetSchema.optional(),
   /** Absent from a snapshot written before the field existed, and from a file that has none. */
   costBudget: agentCostBudgetSchema.optional(),
+  /** Absent from a snapshot written before the field existed, and from a file that has none. */
+  toolApproval: agentToolApprovalSchema.optional(),
   /** Prompts a new chat offers (see the frontmatter's `examples`); absent for a file that has none. */
   examples: agentExamplesSchema.optional(),
   instructions: z.string(),
@@ -460,6 +482,13 @@ export interface AgentFileDefinition {
    */
   readonly costBudget?: AgentCostBudget;
   /**
+   * When each tool asks a person before it runs, as the file's `toolApproval` states it, with the
+   * names in alphabetical order. Absent when the file sets none, which asks on changes for every
+   * tool. Every name is one of `tools`; the catalog refuses the file otherwise
+   * (`unknown-approval-tool`).
+   */
+  readonly toolApproval?: Readonly<Record<string, ToolApprovalMode>>;
+  /**
    * Prompts that show what a person might ask the agent, as the file's `examples` lists them.
    * Absent when it lists none. A caller never supplies them: they stay in the file through a write.
    */
@@ -485,6 +514,7 @@ const definitionKeyTable: Record<keyof AgentFileDefinition, true> = {
   references: true,
   guardrails: true,
   costBudget: true,
+  toolApproval: true,
   examples: true,
   instructions: true,
 };
@@ -551,6 +581,11 @@ export interface AgentFileDefinitionInput {
    * `null` removes it.
    */
   readonly costBudget?: AgentCostBudget | null | undefined;
+  /**
+   * See {@link AgentFileDefinition.toolApproval}. An update that omits it keeps the file's value;
+   * `null`, or an empty map, removes it.
+   */
+  readonly toolApproval?: Readonly<Record<string, ToolApprovalMode>> | null | undefined;
   readonly instructions: string;
 }
 
@@ -651,6 +686,27 @@ function costBudgetOf(budget: AgentCostBudget): AgentCostBudget {
   };
 }
 
+/**
+ * A tool approval map as a definition holds it: names in alphabetical order, so two files that say
+ * the same thing are the same definition, and `undefined` for an empty map, which says nothing.
+ */
+function toolApprovalOf(
+  toolApproval: Readonly<Record<string, ToolApprovalMode>>,
+): Readonly<Record<string, ToolApprovalMode>> | undefined {
+  const entries = Object.entries(toolApproval).toSorted(([left], [right]) =>
+    left < right ? -1 : left > right ? 1 : 0,
+  );
+  return entries.length === 0 ? undefined : Object.fromEntries(entries);
+}
+
+/** `{ toolApproval }` for a map that says something, and nothing for one that does not. */
+function optionalToolApproval(
+  toolApproval: Readonly<Record<string, ToolApprovalMode>> | null | undefined,
+): { readonly toolApproval?: Readonly<Record<string, ToolApprovalMode>> } {
+  const held = toolApproval == null ? undefined : toolApprovalOf(toolApproval);
+  return held === undefined ? {} : { toolApproval: held };
+}
+
 /** A compaction without the keys it leaves out, so a definition holds exactly what a file wrote. */
 function compactionOf(compaction: AgentCompaction): AgentCompaction {
   return {
@@ -683,6 +739,7 @@ function toDefinition(
       ? {}
       : { references: [...frontmatter.references] }),
     ...(frontmatter.guardrails == null ? {} : { guardrails: frontmatter.guardrails }),
+    ...optionalToolApproval(frontmatter.toolApproval),
     ...(frontmatter.costBudget == null ? {} : { costBudget: costBudgetOf(frontmatter.costBudget) }),
     ...(frontmatter.examples == null ? {} : { examples: frontmatter.examples }),
     instructions,
@@ -789,6 +846,9 @@ function knownFrontmatter(definition: AgentFileDefinitionInput): Record<string, 
   }
   if (definition.guardrails != null) known['guardrails'] = definition.guardrails;
   if (definition.costBudget != null) known['costBudget'] = costBudgetOf(definition.costBudget);
+  const toolApproval =
+    definition.toolApproval == null ? undefined : toolApprovalOf(definition.toolApproval);
+  if (toolApproval !== undefined) known['toolApproval'] = toolApproval;
   return known;
 }
 
@@ -822,6 +882,7 @@ export function resolveAgentFileDefinition(
       : { references: [...input.references] }),
     ...(input.guardrails == null ? {} : { guardrails: input.guardrails }),
     ...(input.costBudget == null ? {} : { costBudget: costBudgetOf(input.costBudget) }),
+    ...optionalToolApproval(input.toolApproval),
     instructions: input.instructions,
   };
 }
@@ -842,7 +903,7 @@ export function serializeUpdatedAgentFile(
 ): Uint8Array | undefined {
   const before = existing.definition;
   // A key the caller leaves out (`a2a`, `stepLimit`, `retry`, `compaction`, `references`,
-  // `guardrails`, `costBudget`) is not a change to it: the file keeps the value it has, and a file
+  // `guardrails`, `costBudget`, `toolApproval`) is not a change to it: the file keeps the value it has, and a file
   // with no such key is not given one.
   const keptA2a = input.a2a === undefined;
   const next = resolveAgentFileDefinition(id, {
@@ -854,6 +915,7 @@ export function serializeUpdatedAgentFile(
     ...(input.references === undefined ? { references: before.references } : {}),
     ...(input.guardrails === undefined ? { guardrails: before.guardrails } : {}),
     ...(input.costBudget === undefined ? { costBudget: before.costBudget } : {}),
+    ...(input.toolApproval === undefined ? { toolApproval: before.toolApproval } : {}),
   });
   // `examples` is the file's own and an input never carries it, so it is not a change.
   const { examples: _kept, ...beforeKnown } = before;
@@ -877,6 +939,7 @@ export function serializeUpdatedAgentFile(
         ...(input.references === undefined ? { references: before.references } : {}),
         ...(input.guardrails === undefined ? { guardrails: before.guardrails } : {}),
         ...(input.costBudget === undefined ? { costBudget: before.costBudget } : {}),
+        ...(input.toolApproval === undefined ? { toolApproval: before.toolApproval } : {}),
       }),
       AGENT_FILE_KNOWN_KEYS,
       existing.lineEnding,

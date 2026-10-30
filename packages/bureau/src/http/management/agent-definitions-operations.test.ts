@@ -372,6 +372,34 @@ describe('results', () => {
     expect(afterwards.result).toMatchObject({ a2a: true });
   });
 
+  it('takes the definition a read answers back as an update, with a toolApproval added (COR-1913)', async () => {
+    const served = await serve();
+    const hash = await seed(served);
+    const read = await callAs(served.owner, 'bureau.agents.definitions.get', { id: 'researcher' });
+    const definition = read.result?.['definition'] as Record<string, unknown>;
+
+    const updated = await callAs(served.owner, 'bureau.agents.definitions.update', {
+      id: 'researcher',
+      expectedHash: hash,
+      definition: { ...definition, toolApproval: { 'lookup-order': 'never' } },
+    });
+
+    expect(updated.error).toBeUndefined();
+    const afterwards = await callAs(served.owner, 'bureau.agents.definitions.get', {
+      id: 'researcher',
+    });
+    expect(afterwards.result?.['definition']).toMatchObject({
+      tools: ['lookup-order'],
+      toolApproval: { 'lookup-order': 'never' },
+    });
+    const refused = await callAs(served.owner, 'bureau.agents.definitions.update', {
+      id: 'researcher',
+      expectedHash: served.hashOf('researcher'),
+      definition: { ...definition, toolApproval: { ghost: 'never' } },
+    });
+    expect(refused.error?.data).toMatchObject({ reason: 'unknown-approval-tool' });
+  });
+
   it('writes nothing for an update that changes nothing, and returns the same hash', async () => {
     const served = await serve();
     const hash = await seed(served);

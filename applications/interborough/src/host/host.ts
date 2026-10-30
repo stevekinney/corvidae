@@ -75,6 +75,7 @@ import {
   createBureau,
   createBureauHandler,
   createDurableAssetStorage,
+  createSecretAnswerResolver,
   resolveProviderGenerate,
   type Bureau,
   type SettingsOptions,
@@ -92,6 +93,7 @@ import {
 import { routes as clientRoutes } from '../app/routes.ts';
 import { HOST_PATHS_ROUTE } from '../lib/host-paths.ts';
 import { startHostPushDelivery, type HostPushDelivery } from './a2a-push.ts';
+import { answerEncryptionKeys } from './answer-encryption.ts';
 import { createConfigurationQueue, type ConfigurationQueue } from './configuration-queue.ts';
 import {
   createDevReload,
@@ -179,6 +181,19 @@ const REMOTE_LOCKED_SETTINGS = {
  * the `retention.audit` window the Bureau starts with; a value stored on the Settings page replaces it.
  */
 export const AUDIT_RETENTION_MILLISECONDS = 90 * 24 * 60 * 60 * 1000;
+
+/**
+ * How long the host keeps a finished run's workflow log lines after the run last wrote one: 7 days, in
+ * milliseconds (COR-1811). It is the `retention.logs` window the Bureau starts with; a value stored
+ * on the Settings page replaces it.
+ */
+export const WORKFLOW_LOG_RETENTION_MILLISECONDS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * How many workflow log lines a run keeps by default: 500, with the oldest evicted past it
+ * (COR-1811). It is the `logs.maximumLinesPerRun` setting the Bureau starts with.
+ */
+export const WORKFLOW_LOG_MAXIMUM_LINES_PER_RUN = 500;
 
 /** The directory of agent files under the Interborough home: `researcher.md` is the agent `researcher`. */
 export const AGENT_DIRECTORY_NAME = 'agents';
@@ -480,7 +495,12 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // anything connects to Postgres or listens.
     const database = redactDatabase(bungalow.database);
     const approval = approvalSecret(bungalow);
+    // The key secret answers are sealed with (COR-1920), read or created the same way and as early.
+    const answerKeys = await answerEncryptionKeys(bungalow);
     const storage = createHostStorage(bungalow.database);
+    // A toolbox the host builds reads secret answers through the Bureau's records and keys; Bureau
+    // supplies the same resolver to the toolbox it builds itself.
+    const secretResolver = createSecretAnswerResolver({ storage, keys: answerKeys });
     held.storage = storage;
     // The catalog holds the models of the providers `configuration.json` names that have a key in
     // the secrets, and nothing else. The Bureau is created with exactly these rows, so no boot step
@@ -520,7 +540,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       id: bungalow.deploymentId,
       agents: {
         ...options.extraAgents?.agents,
-        ...createSeededAgents(approval, options.generate),
+        ...createSeededAgents(approval, options.generate, secretResolver),
       },
       // A session run of a seeded agent is offered `requestHumanInput`, which `request-human-input`
       // calls to park for an operator's answer.
@@ -545,9 +565,16 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         },
       },
       storage,
+      answerEncryption: answerKeys,
       // The audit trail is kept 90 days (COR-1810); a person changes it on the Settings page, and
       // the stored value then replaces this default.
-      retention: { audit: { olderThan: AUDIT_RETENTION_MILLISECONDS } },
+      retention: {
+        audit: { olderThan: AUDIT_RETENTION_MILLISECONDS },
+        logs: { olderThan: WORKFLOW_LOG_RETENTION_MILLISECONDS },
+      },
+      // The `ctx.log` lines of a workflow are kept with its run (COR-1811), so the run page can show
+      // them: the newest 500 per run, for seven days, both changeable on the Settings page.
+      logs: { maximumLinesPerRun: WORKFLOW_LOG_MAXIMUM_LINES_PER_RUN },
       // Governed memory (COR-1546): an agent remembers across every chat its owner has with it, and
       // the Memory page lists, searches, forgets, and corrects what it remembers.
       memory: createHostMemory(storage),
@@ -557,6 +584,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // Agent files: Markdown files in Bungalow's `agents/` directory are agents (COR-1524). A
       // file's `model` is a row of the `models` catalog.
       agentSource: createAgentSource(bungalow, agentContent, createAgentFileTools()),
+      // The approvals a file agent's tools raise are signed with the host's approval secret, so a
+      // restart still resolves a pending one.
+      agentApprovalSecret: approval,
       // Workflow files: JSON files in Bungalow's `workflows/` directory are agent-authored
       // workflows (COR-1527), registered with the Bureau's engine and run on their schedules.
       workflowSource: createWorkflowSource(bungalow, workflowContent),

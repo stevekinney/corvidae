@@ -47,6 +47,7 @@ import {
   agentReferencesSchema,
   agentGuardrailPresetSchema,
   agentRetrySchema,
+  agentToolApprovalSchema,
   agentSkillDescriptorSchema,
   agentStepLimitSchema,
   AgentFileConflictError,
@@ -150,6 +151,8 @@ const definitionOutputSchema = z.object({
   guardrails: agentGuardrailPresetSchema.nullable(),
   /** What one run may spend; `null` when the file sets no limit. */
   costBudget: agentCostBudgetSchema.nullable(),
+  /** When each tool asks a person first; `null` when the file sets none and every tool asks on changes. */
+  toolApproval: agentToolApprovalSchema.nullable(),
   instructions: z.string(),
 });
 
@@ -177,10 +180,10 @@ const agentDetailSchema = agentListingSchema.extend({
 
 /**
  * What a caller supplies to `create` or `update`. An update keeps `a2a`, `stepLimit`, `retry`,
- * `compaction`, `references`, `guardrails` and `costBudget` when it leaves them out, so an editor
- * that rewrites a definition cannot turn an agent's A2A opt-in off, or drop its step limit, retry,
- * compaction, references, guardrails or spend limit, by omitting them; `null` removes any of them
- * but `a2a`.
+ * `compaction`, `references`, `guardrails`, `costBudget` and `toolApproval` when it leaves them out,
+ * so an editor that rewrites a definition cannot turn an agent's A2A opt-in off, or drop its step
+ * limit, retry, compaction, references, guardrails, spend limit or tool approvals, by omitting
+ * them; `null` removes any of them but `a2a`.
  */
 const definitionInputSchema = z
   .strictObject({
@@ -233,11 +236,17 @@ const definitionInputSchema = z
      * no limit and an update keeps the file's; `null` removes the file's.
      */
     costBudget: agentCostBudgetSchema.nullable().optional(),
+    /**
+     * When each tool asks a person before it runs: a tool name from `tools` mapped to `never`,
+     * `on-changes`, `always` or `blocked`. A tool left out asks on changes. Omitted, a create sets
+     * none and an update keeps the file's; `null` or an empty map removes the file's.
+     */
+    toolApproval: agentToolApprovalSchema.nullable().optional(),
     instructions: z.string(),
   })
   .superRefine((definition, context) => checkModelsList(definition, context))
   .describe(
-    'The agent’s definition: `name`, `description`, `model`, `models` (the models a session may be switched to), `tools`, `skillDescriptors`, `a2a` (whether the agent opts into A2A), `stepLimit` (the most steps a run takes, 1 to 1000), `retry` (`attempts` 1 to 10, `delayMilliseconds` 0 to 60000, `jitter`), `compaction` (`enabled`, `thresholdPercent` 50 to 95), `references` (paths of documents beside the file, whose text joins the instructions), `guardrails` (`default`, `tripwire` or `off`), `costBudget` (`perRunUsd`, and `warnAt` fractions) and `instructions`.',
+    'The agent’s definition: `name`, `description`, `model`, `models` (the models a session may be switched to), `tools`, `skillDescriptors`, `a2a` (whether the agent opts into A2A), `stepLimit` (the most steps a run takes, 1 to 1000), `retry` (`attempts` 1 to 10, `delayMilliseconds` 0 to 60000, `jitter`), `compaction` (`enabled`, `thresholdPercent` 50 to 95), `references` (paths of documents beside the file, whose text joins the instructions), `guardrails` (`default`, `tripwire` or `off`), `costBudget` (`perRunUsd`, and `warnAt` fractions), `toolApproval` (a tool from `tools` mapped to `never`, `on-changes`, `always` or `blocked`) and `instructions`.',
   );
 
 /**
@@ -311,6 +320,7 @@ function definitionView(definition: AgentFileDefinition) {
     compaction: definition.compaction === undefined ? null : { ...definition.compaction },
     references: definition.references === undefined ? null : [...definition.references],
     guardrails: definition.guardrails ?? null,
+    toolApproval: definition.toolApproval === undefined ? null : { ...definition.toolApproval },
     costBudget:
       definition.costBudget === undefined
         ? null
@@ -497,7 +507,7 @@ export const agentDefinitionsCreateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Create an agent definition',
   description:
-    'Writes a new agent file for `id`, the agent’s identifier: a lowercase letter or digit, then lowercase letters, digits, and hyphens, ending in a letter or digit. A caller derives it from the agent’s name; the name is only a label. `definition` is the file’s frontmatter (`name`, `description`, `model` written `<provider>/<model-or-alias>`, `tools`, `skillDescriptors`, `a2a`, `stepLimit`, `retry`, `compaction`, `references`, `guardrails`, `costBudget`) and its body (`instructions`). A new agent does not opt into A2A unless `a2a` is `true`. The file is written to a temporary file and renamed into place, and the agent is in the catalog before the call returns. Requires `bureau.agents:write` unless the caller owns the deployment’s agents. A taken identifier, including the key of a code-defined agent, is a `Conflict`; a definition that would not load is `Unprocessable`, and nothing is written.',
+    'Writes a new agent file for `id`, the agent’s identifier: a lowercase letter or digit, then lowercase letters, digits, and hyphens, ending in a letter or digit. A caller derives it from the agent’s name; the name is only a label. `definition` is the file’s frontmatter (`name`, `description`, `model` written `<provider>/<model-or-alias>`, `tools`, `skillDescriptors`, `a2a`, `stepLimit`, `retry`, `compaction`, `references`, `guardrails`, `costBudget`, `toolApproval`) and its body (`instructions`). A new agent does not opt into A2A unless `a2a` is `true`. The file is written to a temporary file and renamed into place, and the agent is in the catalog before the call returns. Requires `bureau.agents:write` unless the caller owns the deployment’s agents. A taken identifier, including the key of a code-defined agent, is a `Conflict`; a definition that would not load is `Unprocessable`, and nothing is written.',
   destructive: true,
   tags: ['Agents'],
   inputSchema: createInput,
@@ -542,7 +552,7 @@ export const agentDefinitionsUpdateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Replace an agent definition',
   description:
-    'Replaces the agent file for `id` with `definition`, if it still hashes to `expectedHash` (the `hash` a read returned). Frontmatter keys Bureau does not know stay in the file, and an omitted `a2a`, `stepLimit`, `retry`, `compaction`, `references`, `guardrails` or `costBudget` keeps the file’s value (`null` removes any but `a2a`). A `definition` that omits `models` removes the file’s list, as omitting `tools` removes its tools. A file that changed since is a `StaleRevision` fault whose `currentRevision` is the hash now on disk, and nothing is written. A definition that changes nothing writes nothing and returns the same hash. A run in progress keeps the definition it started with. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`, as is an update of a code-defined key, before any file is read.',
+    'Replaces the agent file for `id` with `definition`, if it still hashes to `expectedHash` (the `hash` a read returned). Frontmatter keys Bureau does not know stay in the file, and an omitted `a2a`, `stepLimit`, `retry`, `compaction`, `references`, `guardrails`, `costBudget` or `toolApproval` keeps the file’s value (`null` removes any but `a2a`). A `definition` that omits `models` removes the file’s list, as omitting `tools` removes its tools. A file that changed since is a `StaleRevision` fault whose `currentRevision` is the hash now on disk, and nothing is written. A definition that changes nothing writes nothing and returns the same hash. A run in progress keeps the definition it started with. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`, as is an update of a code-defined key, before any file is read.',
   destructive: true,
   tags: ['Agents'],
   inputSchema: updateInput,
@@ -561,7 +571,7 @@ export const agentDefinitionsUpdateOperation = defineOperation<
   invoke: async ({ input, host, principal }) => {
     const definitions = requireWritableAgent(host, principal, input.id);
     try {
-      // An omitted `a2a`, `stepLimit`, `retry`, `compaction`, `references`, `guardrails` or `costBudget` keeps the file's value: the catalog applies that rule itself.
+      // An omitted `a2a`, `stepLimit`, `retry`, `compaction`, `references`, `guardrails`, `costBudget` or `toolApproval` keeps the file's value: the catalog applies that rule itself.
       const result = await definitions.agents.update(input.id, definitionOf(input.definition), {
         expectedHash: input.expectedHash,
         savedBy: ownerOfPrincipal(principal),
@@ -933,7 +943,7 @@ const catalogOutput = z.object({
       inputSchema: z.record(z.string(), z.unknown()).nullable(),
       /** What the tool may technically do; `null` when it declares none, which is never read as read-only. */
       tier: z.enum(['read-only', 'mutating', 'dangerous']).nullable(),
-      /** What happens by default when an agent calls the tool: the tier's `on-mutation` rule. */
+      /** What happens by default when an agent calls the tool: the `on-changes` rule applied to the tier. */
       defaultApproval: z.enum(['allow', 'ask']),
       /** `bureau` for a tool Bureau adds itself, `host` for one the host passed in. */
       source: z.enum(['host', 'bureau']),
@@ -952,7 +962,7 @@ export const agentsCatalogOperation = defineOperation<
   mcpExposable: false,
   summary: 'List the models and tools an agent may name',
   description:
-    'Returns the deployment’s selectable `models`, the rows of its model catalog unfiltered and each reduced to the `general` audience whoever asks (pricing and `endpointAmbiguous` are never returned), and its `tools`, by the name an agent file lists them under, each with its model-facing `description`, a `shortDescription` (one line for a person, or `null` when the tool declares none), its `inputSchema` (JSON Schema, or `null`), its capability `tier` (`read-only`, `mutating` or `dangerous`; `null` when it declares none), its `defaultApproval` (`allow` for a read-only tool, `ask` for a tool that changes something, is dangerous or is unclassified: Armorer’s `on-mutation` rule applied to the tier; it does not read a per-tool rule an agent file states, which can only tighten it), its `source` (`bureau` for the settings and workflow tools Bureau adds, `host` for tools the host provides) and its `users`, the identifiers of the agents that use it now. A definition’s `model` is written `<provider>/<model-or-alias>` and its `tools` are names from this list. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is refused with `Forbidden`.',
+    'Returns the deployment’s selectable `models`, the rows of its model catalog unfiltered and each reduced to the `general` audience whoever asks (pricing and `endpointAmbiguous` are never returned), and its `tools`, by the name an agent file lists them under, each with its model-facing `description`, a `shortDescription` (one line for a person, or `null` when the tool declares none), its `inputSchema` (JSON Schema, or `null`), its capability `tier` (`read-only`, `mutating` or `dangerous`; `null` when it declares none), its `defaultApproval` (`allow` for a read-only tool, `ask` for a tool that changes something, is dangerous or is unclassified: the `on-changes` rule a file agent’s tool follows when its `toolApproval` says nothing (COR-1913), applied to the tier; a file’s own `toolApproval` entry replaces it for that agent), its `source` (`bureau` for the settings and workflow tools Bureau adds, `host` for tools the host provides) and its `users`, the identifiers of the agents that use it now. A definition’s `model` is written `<provider>/<model-or-alias>` and its `tools` are names from this list. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is refused with `Forbidden`.',
   destructive: false,
   tags: ['Agents'],
   inputSchema: catalogInput,

@@ -89,6 +89,8 @@ describe('KEYS insertion order', () => {
       'scheduleRunLink',
       'scheduleRunBySchedulePrefix',
       'scheduleRunBySchedule',
+      'scheduleMissedPrefix',
+      'scheduleMissed',
       'operation',
       'operationInflight',
       'operationQueued',
@@ -172,6 +174,10 @@ describe('KEYS insertion order', () => {
       'catalogTombstonePrefix',
       'catalogRemovalGeneration',
       'workflowGeneration',
+      'workflowLogPrefix',
+      'workflowLog',
+      'workflowLogCounterPrefix',
+      'workflowLogCounter',
       'budget',
       'review',
       'workflowHeaders',
@@ -314,6 +320,7 @@ describe('WEFT_RESERVED_KEY_PREFIXES', () => {
       KEYS.scheduleRun('workflow-id'),
       KEYS.scheduleRunLink('workflow-id'),
       KEYS.scheduleRunBySchedule('schedule-id', 'workflow-id'),
+      KEYS.scheduleMissed('schedule-id', 1, 'late'),
       KEYS.teardownSucceeded('workflow-id'),
       KEYS.operation('default', 1, 'operation-id'),
       KEYS.operationInflight('operation-id'),
@@ -381,6 +388,8 @@ describe('WEFT_RESERVED_KEY_PREFIXES', () => {
       KEYS.workflowOwnerHolder('workflow-id'),
       KEYS.ownershipModeMarker(),
       KEYS.workflowGeneration('workflow-id'),
+      KEYS.workflowLog('workflow-id', 1),
+      KEYS.workflowLogCounter('workflow-id'),
       KEYS.applicationMailbox('bureau', 'agent-7'),
       KEYS.applicationCommand('bureau', 'agent-7', 'command-id'),
       KEYS.applicationCommandReady('bureau', 'agent-7', 1),
@@ -1021,6 +1030,14 @@ describe('KEYS', () => {
     expect(KEYS.workflowVisibilityMetaBuiltAt()).toBe('wf-idx-meta:built-at');
     expect(KEYS.workflowVisibilityMetaCursor()).toBe('wf-idx-meta:cursor');
     expect(KEYS.workflowVisibilityMetaBuilding()).toBe('wf-idx-meta:building');
+  });
+
+  it('keys a missed-fire row by schedule, padded occurrence and reason', () => {
+    expect(KEYS.scheduleMissedPrefix('schedule:id')).toBe('schedule-missed:schedule%3Aid:');
+    expect(KEYS.scheduleMissed('schedule:id', 42, 'dst-gap')).toBe(
+      'schedule-missed:schedule%3Aid:0000000000000042:dst-gap',
+    );
+    expect(KEYS.scheduleMissed('s', 9, 'late') < KEYS.scheduleMissed('s', 10, 'late')).toBe(true);
   });
 
   it('encodes both dimensions of the schedule-run reverse index', () => {

@@ -13,7 +13,7 @@ import {
 import { WorkflowAgentStepError } from './workflow-host';
 
 function run(finishReason: string, extra: Record<string, unknown> = {}) {
-  return { content: 'text', finishReason, ...extra } as never;
+  return { content: 'text', finishReason, steps: [], ...extra } as never;
 }
 
 function stateOf(status: string, extra: Record<string, unknown> = {}): WorkflowState {
@@ -49,6 +49,80 @@ describe('workflowStepRunId', () => {
 });
 
 describe('agentStepResultFromRun', () => {
+  describe('a tool call that needed an approval (COR-1913)', () => {
+    const stepOf = (...results: Array<Record<string, unknown>>) => ({ steps: [{ results }] });
+
+    it('fails the step when a call ended action_required, naming the tool and the way out', () => {
+      const failure = thrown(() =>
+        agentStepResultFromRun(
+          'writer',
+          run(
+            'stop-condition',
+            stepOf(
+              { outcome: 'success', toolName: 'read' },
+              { outcome: 'action_required', toolName: 'refund' },
+            ),
+          ),
+        ),
+      );
+      expect(failure).toBeInstanceOf(WorkflowAgentStepError);
+      expect(failure.code).toBe('agent-run-failed');
+      expect(failure.message).toContain('"refund"');
+      expect(failure.message).toContain('toolApproval');
+    });
+
+    it('fails the step when Armorer could not issue the approval, as in a run with no requester', () => {
+      const failure = thrown(() =>
+        agentStepResultFromRun(
+          'writer',
+          run(
+            'stop-condition',
+            stepOf({
+              outcome: 'error',
+              toolName: 'settings-update',
+              error: {
+                message:
+                  'Approval authorization requires request principal, tenant, audience, agentId, and runId.',
+              },
+            }),
+          ),
+        ),
+      );
+      expect(failure.message).toContain('"settings-update"');
+    });
+
+    it('leaves a step whose tool errors were ordinary errors, or were refused outright, as it was', () => {
+      const result = agentStepResultFromRun(
+        'writer',
+        run(
+          'stop-condition',
+          stepOf(
+            { outcome: 'error', toolName: 'read', error: { message: 'not found' } },
+            {
+              outcome: 'error',
+              toolName: 'refund',
+              error: { code: 'POLICY_DENIED', message: 'blocked' },
+            },
+          ),
+        ),
+      );
+      expect(result.finishReason).toBe('stop-condition');
+    });
+
+    it('reports the run’s own failure first', () => {
+      const failure = thrown(() =>
+        agentStepResultFromRun(
+          'writer',
+          run('error', {
+            error: new Error('boom'),
+            ...stepOf({ outcome: 'action_required', toolName: 'refund' }),
+          }),
+        ),
+      );
+      expect(failure.message).toContain('boom');
+    });
+  });
+
   it('returns content, output, and finish reason, with null for an absent output', () => {
     expect(agentStepResultFromRun('writer', run('stop-condition'))).toEqual({
       content: 'text',
@@ -92,6 +166,22 @@ describe('agentStepResultFromRun', () => {
 });
 
 describe('agentStepResultFromState', () => {
+  it('fails a finished run whose summary names a tool that needed an approval (COR-1913)', () => {
+    const state = stateOf('completed', {
+      result: { content: 'done', finishReason: 'stop-condition', toolNeedingApproval: 'refund' },
+    });
+    const failure = thrown(() => agentStepResultFromState('writer', state));
+    expect(failure.code).toBe('agent-run-failed');
+    expect(failure.message).toContain('"refund"');
+    // A summary that names none is a success, as before.
+    expect(
+      agentStepResultFromState(
+        'writer',
+        stateOf('completed', { result: { content: 'done', finishReason: 'stop-condition' } }),
+      ).finishReason,
+    ).toBe('stop-condition');
+  });
+
   it('reads the summary the agentRun workflow recorded', () => {
     expect(
       agentStepResultFromState(

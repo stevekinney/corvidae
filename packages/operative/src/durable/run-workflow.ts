@@ -12,6 +12,7 @@ import { appendFinalAssistantMessage, inputMessageIdentifier } from '../message-
 import { deriveParts, runWideParts } from '../response-parts';
 import { DEFAULT_MAXIMUM_STEPS } from '../run-step';
 import { createStepMediaAdmission } from '../run-step-media';
+import { toolNeedingApproval } from '../tool-needing-approval';
 import type { FinishReason } from '../types';
 import type { CheckpointStore } from './checkpoint-store';
 import { assertCurrentStepMemo } from './checkpoint-version';
@@ -292,6 +293,10 @@ export function createRunWorkflow(
         // these, followed by the `onMaximumSteps` replacement row's parts when there is one.
         const stepParts: MultiModalContent[] = [];
 
+        // COR-1913 — the first tool call that needed an approval the run could not get, read from
+        // the memoized step records exactly as `stepParts` is, so a replay reaches the same answer.
+        let approvalNeededBy: string | undefined;
+
         // AB-44/AB-45 — outer resume loop. AB-41's decision record: a delivered
         // signal (this issue) or a fired wakeup (AB-45) CONTINUES the same run
         // with one more agent generation step, never merely delaying terminal
@@ -394,6 +399,7 @@ export function createRunWorkflow(
             if (stepResult.record !== null) {
               yield* ctx.run('recordStep', { runId, record: stepResult.record });
               stepParts.push(...stepResult.record.parts);
+              approvalNeededBy ??= toolNeedingApproval(stepResult.record.results);
             }
 
             const { outcome } = stepResult;
@@ -633,6 +639,7 @@ export function createRunWorkflow(
           // an outcome the continuation reaches AFTER a real park is not
           // "stale".
           ...(lastHumanWaitSignal !== undefined ? { humanWaitSignal: lastHumanWaitSignal } : {}),
+          ...(approvalNeededBy !== undefined ? { toolNeedingApproval: approvalNeededBy } : {}),
         } satisfies AgentRunWorkflowResult;
       })
   );

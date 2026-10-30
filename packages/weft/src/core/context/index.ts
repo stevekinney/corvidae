@@ -64,6 +64,17 @@ export type {
   StreamSink,
 } from './types.ts';
 
+/**
+ * End the replay of a relaunched run (`ContextOptions.resumed`): its body reached the operation it
+ * was parked on (or ended), so what it logs from here on is new. The inline strategy calls this
+ * each time the body hands back control.
+ *
+ * @internal
+ */
+export function endResumeReplay(context: Context): void {
+  getInternals(context).replayingToPark = false;
+}
+
 export function setContextWorkflowInterceptor(
   context: Context,
   workflowInterceptor: ComposedWorkflowInterceptor | null,

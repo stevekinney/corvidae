@@ -72,6 +72,14 @@ export interface AgentRunWorkflowResult {
    */
   output?: unknown;
   /**
+   * The name of the first tool whose call needed a person's approval that the run could not get
+   * (COR-1913): it ended `action_required`, or Armorer could not issue the approval in a run with
+   * no requester. Absent when no call did. A host that runs the agent unattended reads it to fail
+   * the step the run belongs to, also when it reads this summary after a restart and the step
+   * results are gone; an empty string means the result named no tool.
+   */
+  toolNeedingApproval?: string | undefined;
+  /**
    * D6/AB-45 — The note from the LAST `scheduleWakeup` call the run genuinely
    * parked on and woke from (`yield* ctx.sleep(duration)` completed). Mirrors
    * `humanWaitSignal`'s contract exactly: a historical fact ("this run did

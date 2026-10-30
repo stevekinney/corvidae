@@ -75,6 +75,7 @@ export async function applyScheduleOccurrence(
   state: ScheduleState,
   callbacks: ScheduleCallbacks,
   occurrence?: number,
+  manual?: true,
 ): Promise<ScheduleState> {
   // WFT-136/COR-105: the one observation point every occurrence passes through,
   // dispatched before the overlap policy is consulted so a consumer sees the
@@ -98,6 +99,7 @@ export async function applyScheduleOccurrence(
   if (stateForOccurrence.overlap === 'allow') {
     await callbacks.startScheduledRun(stateForOccurrence, {
       ...(occurrence !== undefined && { occurrence }),
+      ...(manual === true && { manual }),
     });
     return stateForOccurrence;
   }
@@ -108,7 +110,19 @@ export async function applyScheduleOccurrence(
     hasActiveWorkflow,
     callbacks,
     occurrence,
+    manual,
   );
+}
+
+/**
+ * Whether the end of the current run starts the run queued first. An active schedule drains its
+ * queue. A paused one keeps the occurrences its cadence queued until it is resumed, but still starts
+ * a run a person asked for (COR-1829): nothing else would, since a paused schedule has no timer.
+ */
+function drainsQueuedRun(state: ScheduleState): boolean {
+  const [next] = state.queuedRuns;
+  if (next === undefined) return false;
+  return state.status === 'active' || (state.status === 'paused' && next.manual === true);
 }
 
 /**
@@ -167,7 +181,7 @@ export async function handleScheduledWorkflowTerminal(
       };
       // Queue entries are accepted work. Keep draining them even if a later update
       // changes overlap; the new policy governs only future occurrences.
-      if (clearedState.status === 'active' && clearedState.queuedRuns.length > 0) {
+      if (drainsQueuedRun(clearedState)) {
         await drainQueuedScheduleRun({ ...clearedState, updatedAt: now }, callbacks, workflowId);
         return;
       }

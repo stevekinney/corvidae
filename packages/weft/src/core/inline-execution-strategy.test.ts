@@ -576,6 +576,72 @@ describe('InlineExecutionStrategy', () => {
   });
 
   // -------------------------------------------------------------------------
+  // A relaunched run replays up to the operation it was parked on (COR-1811)
+  // -------------------------------------------------------------------------
+
+  describe('replay of a relaunched run', () => {
+    function relaunchedContext(workflowId: string, logged: string[]): Context {
+      const abortController = new AbortController();
+      return new Context({
+        workflowId,
+        workflowType: 'relaunched',
+        startedAt: Date.now(),
+        abortController,
+        getNow: Date.now,
+        resumed: true,
+        logSink: (record) =>
+          logged.push(`${record.message}${record.replayed === true ? ' (replayed)' : ''}`),
+      });
+    }
+
+    it('marks what it logs in front of the first operation it yields, and nothing that follows it', async () => {
+      setup();
+      const logged: string[] = [];
+      const context = relaunchedContext('wf-relaunched', logged);
+      const generator = (async function* (): AsyncGenerator<unknown, void, unknown> {
+        context.log.info('in front of the park');
+        yield { type: 'activity', operationId: 'op-1' };
+        context.log.info('past the park');
+      })();
+      strategy.adoptWorkflow('wf-relaunched', generator, context, new AbortController());
+
+      strategy.continueWorkflow('wf-relaunched', undefined);
+      await waitForCondition(() => messages.length === 1, { label: 'the park was yielded' });
+      expect(logged).toEqual(['in front of the park (replayed)']);
+
+      strategy.continueWorkflow('wf-relaunched', undefined);
+      await waitForCondition(() => messages.length === 2, { label: 'the run completed' });
+      expect(logged).toEqual(['in front of the park (replayed)', 'past the park']);
+    });
+
+    it('is not ended by a superseded generation that settles after the context was replaced', async () => {
+      setup();
+      const logged: string[] = [];
+      const staleContext = relaunchedContext('wf-reclaimed', logged);
+      const { promise: staleMayYield, resolve: releaseStale } = Promise.withResolvers<void>();
+      const staleGenerator = (async function* (): AsyncGenerator<unknown, void, unknown> {
+        await staleMayYield;
+        yield { type: 'activity', operationId: 'stale-op' };
+      })();
+      strategy.adoptWorkflow('wf-reclaimed', staleGenerator, staleContext, new AbortController());
+      strategy.continueWorkflow('wf-reclaimed', undefined);
+
+      // A reclaim installs a fresh generation while the old one's advance is still in flight.
+      const freshContext = relaunchedContext('wf-reclaimed', logged);
+      const freshGenerator = (async function* (): AsyncGenerator<unknown, void, unknown> {
+        yield { type: 'activity', operationId: 'fresh-op' };
+      })();
+      strategy.adoptWorkflow('wf-reclaimed', freshGenerator, freshContext, new AbortController());
+
+      // The old generation settles now, with the fresh context still replaying to its park.
+      releaseStale();
+      await settleStrategy();
+      freshContext.log.info('in front of the fresh park');
+      expect(logged).toEqual(['in front of the fresh park (replayed)']);
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // parkWorkflow: retained parked context for query handlers
   // -------------------------------------------------------------------------
 

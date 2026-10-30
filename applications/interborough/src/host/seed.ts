@@ -32,7 +32,11 @@
  * There are no users and no webhook receiver.
  */
 
-import { ScheduleLocatorUnavailableError, type Bureau } from '@lostgradient/bureau';
+import {
+  createToolApprovalHooks,
+  ScheduleLocatorUnavailableError,
+  type Bureau,
+} from '@lostgradient/bureau';
 import {
   createAgent,
   createModelCatalog,
@@ -50,7 +54,7 @@ import {
   type ConditionalTextValueStore,
   type Storage,
 } from '@lostgradient/storage';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox, type ToolSecretResolver } from 'armorer';
 import { z } from 'zod';
 
 /** Every seeded agent, by name. */
@@ -235,14 +239,15 @@ function createLookupOrderTool() {
 
 /**
  * The tools an agent file may name in `tools`: the deployment's tool catalog. It holds the
- * read-only `lookup-order` tool and nothing that mutates, because an agent file's toolbox has no
- * approval policy to hold a refund for an operator.
+ * read-only `lookup-order` tool. Only the read-only tool is listed here, not because an agent
+ * file's tools cannot be held for an operator (a tool that changes something asks, unless the
+ * file's `toolApproval` says otherwise), but because the seeded agents do not need more.
  */
 export function createAgentFileTools() {
   return { 'lookup-order': createLookupOrderTool() };
 }
 
-function createToolRunnerToolbox(approvalSecret: string) {
+function createToolRunnerToolbox(approvalSecret: string, secretResolver?: ToolSecretResolver) {
   const lookupOrder = createLookupOrderTool();
   const issueRefund = createTool({
     name: 'issue-refund',
@@ -252,9 +257,13 @@ function createToolRunnerToolbox(approvalSecret: string) {
     metadata: { mutates: true, summary: 'Refund order {orderId} for {cents:usd-cents}' },
     execute: async ({ orderId, cents }) => ({ orderId, refundedCents: cents }),
   });
+  // The same rule a file agent's tools follow with no `toolApproval` (COR-1913): a tool that
+  // reads runs, and one that changes something waits for an operator.
   return createToolbox([lookupOrder, issueRefund], {
     approvalSecret,
-    approvalPolicy: { mode: 'on-mutation' },
+    // Its own two tools only: the Bureau adds `requestHumanInput` and the like to a run.
+    policy: createToolApprovalHooks(undefined, { tools: [lookupOrder.name, issueRefund.name] }),
+    ...(secretResolver === undefined ? {} : { secretResolver }),
   });
 }
 
@@ -262,9 +271,14 @@ function createToolRunnerToolbox(approvalSecret: string) {
  * The seeded agents. `assistantGenerate` replaces the `assistant`'s script, for a test that needs a
  * run to stay in flight. `approvalSecret` signs the refund approvals `tool-runner` raises; the host
  * keeps one per installation in Bungalow's secrets so a restart can still resolve a pending
- * review.
+ * review. `secretResolver` reads a secret answer back for a tool that declares `acceptsSecrets`
+ * (COR-1920); the host passes the one over its Bureau's storage and answer keys.
  */
-export function createSeededAgents(approvalSecret: string, assistantGenerate?: GenerateFunction) {
+export function createSeededAgents(
+  approvalSecret: string,
+  assistantGenerate?: GenerateFunction,
+  secretResolver?: ToolSecretResolver,
+) {
   return {
     assistant: createAgent({
       name: 'assistant',
@@ -284,7 +298,7 @@ export function createSeededAgents(approvalSecret: string, assistantGenerate?: G
       description: 'Looks an order up, then asks for approval to refund it.',
       examples: ['Refund order 1234'],
       generate: toolRunnerGenerate(),
-      toolbox: createToolRunnerToolbox(approvalSecret),
+      toolbox: createToolRunnerToolbox(approvalSecret, secretResolver),
       stopWhen: [stopWhen.pendingApproval(), stopWhen.noToolCalls()],
     }),
     'request-human-input': createAgent({

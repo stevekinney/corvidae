@@ -37,6 +37,7 @@ export const BUREAU_RESERVED_KEY_PREFIXES: readonly string[] = [
   'bureau-peer-call:record:',
   'bureau-removed-surfaces:v1:',
   'bureau-schedule-transition:',
+  'bureau-secret-answer:v1:',
   'bureau-surface:v1:',
   'bureau-task-context:v1:',
   'bureau-task-listing:v3:',

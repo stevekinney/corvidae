@@ -46,6 +46,15 @@ export const WORKFLOW_RECORD_KEYS_CORE = {
     `schedule-run-by-schedule:${encodeStorageKeyComponent(scheduleId)}:`,
   scheduleRunBySchedule: (scheduleId: string, workflowId: string) =>
     `schedule-run-by-schedule:${encodeStorageKeyComponent(scheduleId)}:${encodeStorageKeyComponent(workflowId)}`,
+  /** The prefix of a schedule's missed-fire rows (COR-1829), oldest occurrence first. */
+  scheduleMissedPrefix: (scheduleId: string) =>
+    `schedule-missed:${encodeStorageKeyComponent(scheduleId)}:`,
+  /**
+   * One missed-fire row: keyed by schedule, occurrence and reason, so a tick replayed after a crash
+   * writes the same key and not a second row. The occurrence is padded so rows sort oldest first.
+   */
+  scheduleMissed: (scheduleId: string, occurrence: number, reason: string) =>
+    `schedule-missed:${encodeStorageKeyComponent(scheduleId)}:${String(occurrence).padStart(16, '0')}:${encodeStorageKeyComponent(reason)}`,
   operation: (queue: string, scheduledAt: number, id: string) =>
     `op:${queue}:${formatSortableTimestamp(scheduledAt)}:${id}`,
   operationInflight: (id: string) => `op:inflight:${id}`,

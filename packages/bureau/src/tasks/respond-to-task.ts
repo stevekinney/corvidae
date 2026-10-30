@@ -48,9 +48,16 @@ import {
   type CommandLedgerIdentity,
   digestCommandPayload,
 } from '../command-ledger.ts';
+import {
+  gateSecretAnswer,
+  SecretAnswerRefusedError,
+  secretFieldsOfReview,
+  secretReferenceFormOfInput,
+} from '../secret-answers.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
 import type {
   BureauReviews,
+  PendingHumanWaitReview,
   ResolveReviewResult,
   TaskRespondRequest,
   TaskRespondResult,
@@ -89,6 +96,9 @@ export const tasksRespondInput = z
     signalName: z.string().min(1).optional().describe('Addresses the human wait with this signal.'),
     callId: z.string().min(1).optional().describe('Addresses the tool approval for this call.'),
   })
+  // COR-1920: a field the command does not define is refused, not dropped, so what is judged is
+  // what the command is.
+  .strict()
   .refine(
     (input) =>
       [input.answer, input.data, input.decision].filter((value) => value !== undefined).length ===
@@ -129,6 +139,12 @@ export type TasksRespondClaim = {
    * resolved by this command, without validating again.
    */
   readonly submission?: { readonly value: unknown };
+  /**
+   * COR-1920: the fields the addressed review marks secret, as JSON Pointers, when it marks any.
+   * The command was digested with them in reference form, so a retry digests it the same way
+   * without reading the review, which task retention may since have removed.
+   */
+  readonly secretFields?: readonly string[];
 };
 
 /** The ledger this command records its receipts in. */
@@ -166,6 +182,12 @@ export type TaskResponderDependencies = {
    * changed nothing, so the command's claim is released and a retry may claim afresh.
    */
   readonly isRefusal: (error: unknown) => error is Error & { readonly code: string };
+  /**
+   * COR-1920 — the answer with each field its question marks secret sealed, so the claim that
+   * keeps it for a retry never holds the plaintext. Throws the Bureau's refusal when a secret
+   * cannot be sealed.
+   */
+  readonly sealAnswer: (review: PendingHumanWaitReview, answer: unknown) => Promise<unknown>;
 };
 
 /** `bureau.tasks.respond`, over its own ledger and the commands in flight in this process. */
@@ -291,6 +313,10 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
     // A task's view names its waits by identifier only: the schema is on the review.
     const review = await reviews.get(reviewId);
     const schema = review?.kind === 'human-wait' ? review.inputSchema : undefined;
+    // COR-1920: what is kept and delivered has each secret field sealed.
+    const sealed = async (value: unknown): Promise<{ readonly value: unknown }> => ({
+      value: review?.kind === 'human-wait' ? await dependencies.sealAnswer(review, value) : value,
+    });
     if (input.data === undefined) {
       if (schema === undefined) return undefined;
       if (input.answer !== undefined) {
@@ -298,7 +324,7 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
         const value = answerFromText(schema, text);
         const issues = validateReviewAnswer(schema, value);
         if (issues.length > 0) throw answerInvalid('answer', issues);
-        return { value };
+        return sealed(value);
       }
       if ((input.decision ?? 'approve') === 'approve') {
         throw answerInvalid('data', validateReviewAnswer(schema, undefined));
@@ -318,7 +344,40 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
     // is raised before the command claims anything.
     const issues = validateReviewAnswer(schema, checked.value);
     if (issues.length > 0) throw answerInvalid('data', issues);
-    return { value: checked.value };
+    return sealed(checked.value);
+  }
+
+  /**
+   * The digest a command is known by in its ledger, for the review it addresses. A command to a
+   * wait whose question asks for a secret digests its answer in reference form (COR-1920), read
+   * from the fields the review marks secret, which a review that has closed still names: a retry
+   * digests alike, and no digest of a secret's plaintext is kept. Only a command whose review is
+   * known is digested: one that addresses none is refused before anything is written.
+   */
+  function digestOf(
+    input: TasksRespondInput,
+    answerText: string | undefined,
+    reviewId: string,
+    fields: readonly string[],
+  ): string {
+    if (fields.length === 0) {
+      return digestCommandPayload({
+        answer: answerText,
+        data: input.data === undefined ? undefined : canonicalJson(input.data),
+        decision: input.decision,
+        reason: input.reason,
+        signalName: input.signalName,
+        callId: input.callId,
+      });
+    }
+    const given = input.data ?? answerText;
+    return digestCommandPayload({
+      secretAnswer: canonicalJson(secretReferenceFormOfInput(given, fields, reviewId) ?? null),
+      decision: input.decision,
+      reason: input.reason,
+      signalName: input.signalName,
+      callId: input.callId,
+    });
   }
 
   /** The request, read once and checked: a malformed one is `BAD_REQUEST` before anything is read. */
@@ -354,14 +413,6 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
           ? input.answer.join('\n')
           : input.answer;
     const decision = input.decision ?? 'approve';
-    const digest = digestCommandPayload({
-      answer: answerText,
-      data: input.data === undefined ? undefined : canonicalJson(input.data),
-      decision: input.decision,
-      reason: input.reason,
-      signalName: input.signalName,
-      callId: input.callId,
-    });
     const identity: CommandLedgerIdentity = {
       callerId: actor,
       target: input.taskId,
@@ -371,10 +422,18 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
     // The caller's own receipt first: a retry of a command that was applied is owed its receipt
     // while the ledger retains it, whether or not the task still has a record.
     const located = await ledger.locate(identity);
+    const recordedReviewId =
+      located.state === 'retained' && located.entry.claim.reviewId !== ''
+        ? located.entry.claim.reviewId
+        : undefined;
+    // A completed command is compared with what its own claim kept, so its receipt does not depend
+    // on reading the review again: the claim names the secret fields it was digested with.
     if (
       located.state === 'retained' &&
       located.entry.state === 'completed' &&
-      located.entry.payloadDigest === digest
+      recordedReviewId !== undefined &&
+      located.entry.payloadDigest ===
+        digestOf(input, answerText, recordedReviewId, located.entry.claim.secretFields ?? [])
     ) {
       return located.entry.result;
     }
@@ -386,21 +445,55 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
     if (task === undefined) throw notFound(input.taskId);
     const isOwner = task.owner === actor;
 
+    // The wait is chosen first, so a command that addresses nothing claims nothing. A retry of a
+    // command that has since been answered finds no open wait, so the ledger is consulted before
+    // that is held against it.
+    let wait: OpenWait | undefined;
+    let notAwaiting: unknown;
+    try {
+      wait = selectWait(task, input, isOwner);
+    } catch (error) {
+      notAwaiting = error;
+    }
+    // An earlier attempt of this command names the review it meant to resolve; a fresh one, the
+    // wait. A command that addresses neither is refused here, before the ledger holds any digest
+    // of it: its answer could be a secret that no review says how to keep out of one (COR-1920).
+    const addressedReviewId = recordedReviewId ?? wait?.reviewId;
+    // The shared gate (COR-1920): an answer that could reach a secret question it does not name is
+    // refused before the ledger holds anything of it. A read error is the command's.
+    if (input.answer !== undefined || input.data !== undefined) {
+      const candidates =
+        addressedReviewId !== undefined
+          ? [addressedReviewId]
+          : task.openWaits
+              .filter(
+                (open) =>
+                  open.kind === 'human-wait' &&
+                  (input.signalName === undefined || open.signalName === input.signalName),
+              )
+              .map((open) => open.reviewId);
+      try {
+        await gateSecretAnswer({ candidates, read: (id) => reviews.get(id), seals: true });
+      } catch (error) {
+        if (error instanceof SecretAnswerRefusedError) throw invalid('signalName', error.message);
+        throw error;
+      }
+    }
+    if (addressedReviewId === undefined) {
+      throw notAwaiting ?? conflict('The task is not awaiting input');
+    }
+    // A review that cannot be read is not guessed at: its error is the command's, and a review that
+    // is not found is refused before anything is claimed.
+    const addressed = await reviews.get(addressedReviewId);
+    if (addressed === undefined) throw notFound(input.taskId);
+    const secretFields = addressed.kind === 'human-wait' ? secretFieldsOfReview(addressed) : [];
+    const digest = digestOf(input, answerText, addressedReviewId, secretFields);
+
     const flightKey = `${actor}\u0000${input.taskId}\u0000${input.messageId}\u0000${digest}`;
     const running = inFlight.get(flightKey);
     if (running !== undefined) return running;
 
     const answer = async (): Promise<TaskRespondResult> => {
-      // The wait is chosen first, so a command that addresses nothing claims nothing. A retry of a
-      // command that has since been answered finds no open wait, so the ledger is consulted before
-      // that is held against it.
-      let wait: OpenWait | undefined;
-      let notAwaiting: unknown;
-      try {
-        wait = selectWait(task, input, isOwner);
-      } catch (error) {
-        notAwaiting = error;
-      }
       // What the wait accepts is checked once it is chosen. A refusal is thrown after the ledger
       // is consulted, so a retry of a command that was applied still gets its receipt.
       let submission: { readonly value: unknown } | undefined;
@@ -424,6 +517,7 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
           reviewId: wait?.reviewId ?? '',
           ...(readRound === undefined ? {} : { round: readRound }),
           ...(submission === undefined || submissionRefusal !== undefined ? {} : { submission }),
+          ...(secretFields.length === 0 ? {} : { secretFields }),
         });
       } catch (error) {
         if (error instanceof BureauLedgerConflictError) {

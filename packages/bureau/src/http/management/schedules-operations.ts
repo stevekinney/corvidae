@@ -3,9 +3,9 @@
  * schedule methods.
  *
  * A schedule belongs to the principal that created it. A caller reads and changes its own
- * schedules without any scope; `bureau.schedules:read` grants every owner's to `list` and `get`,
- * and `bureau.schedules:write` grants `pause`, `resume`, `cancel`, and `update`, and neither
- * implies the other. A schedule the caller may not see, or change, is answered exactly as a
+ * schedules without any scope; `bureau.schedules:read` grants every owner's to `list`, `get`, and
+ * `missed`, and `bureau.schedules:write` grants `pause`, `resume`, `cancel`, `update`, `skipnext`,
+ * and `runnow`, and neither implies the other. A schedule the caller may not see, or change, is answered exactly as a
  * missing one. The schedule of a workflow file belongs to the deployment's owner of record and to
  * its file: it is read here like any schedule, and a write to it is refused as if it did not
  * exist, because `bureau.workflows.*` is the only way to change it. `create` makes a schedule the
@@ -69,6 +69,9 @@ export type BureauSchedulesOperationHost = BureauOwnershipHost &
       | 'resume'
       | 'cancel'
       | 'update'
+      | 'skipNext'
+      | 'runNow'
+      | 'missed'
       | 'agentName'
       | 'inputPreview'
     > & {
@@ -109,6 +112,12 @@ const scheduleViewSchema = z.object({
   overlap: z.enum(['skip', 'queue', 'cancel-running', 'allow']),
   revision: z.number().int(),
   nextFireAt: z.string().nullable(),
+  /**
+   * The fire a person asked to skip (`bureau.schedules.skipnext`), or `null` when none is. It is the
+   * next fire that would start a run, which is not always `nextFireAt`: in a time zone `nextFireAt`
+   * can be the end of a daylight-saving gap that starts nothing.
+   */
+  skipUntil: z.string().nullable(),
   lastFireAt: z.string().nullable(),
   missedFireCount: z.number().int(),
   skippedCount: z.number().int(),
@@ -149,6 +158,7 @@ function viewOf(
     overlap: summary.overlap,
     revision: summary.revision,
     nextFireAt: iso(summary.nextFireAt),
+    skipUntil: iso(summary.skipUntil),
     lastFireAt: iso(summary.lastFireAt),
     missedFireCount: summary.missedFireCount,
     skippedCount: summary.skippedCount,
@@ -232,11 +242,18 @@ function faultOf(error: unknown, scheduleId: string): never {
   if (error instanceof Error) {
     const message = error.message.toLowerCase();
     if (message.includes('not found')) throw resourceNotFound('schedule', scheduleId);
-    if (message.includes('cannot be resumed')) {
+    if (message.includes('cannot be resumed') || message.includes('cannot be run')) {
       throw {
         code: 'Conflict',
         message: error.message,
         data: { reason: 'schedule-cancelled' },
+      } satisfies OperationFault;
+    }
+    if (message.includes('has no next occurrence to skip')) {
+      throw {
+        code: 'Conflict',
+        message: error.message,
+        data: { reason: 'schedule-not-active' },
       } satisfies OperationFault;
     }
     // Weft words a zone it refuses with the option's name, and that message also says `must be` or
@@ -545,6 +562,132 @@ export const schedulesCancelOperation = defineGuardedWrite(
   (schedules, id, guard) => schedules.cancel(id, guard),
 );
 
+export const schedulesSkipNextOperation = defineGuardedWrite(
+  'bureau.schedules.skipnext',
+  'Skip the next fire of a schedule',
+  `Skips the next fire of an active schedule: the next fire that would start a task starts none, and the one after it runs as usual. That fire is the view’s \`skipUntil\` until the schedule moves past it; it is not always \`nextFireAt\`, which in a time zone can be the end of a daylight-saving gap that starts nothing. The skip leaves the schedule’s \`revision\` as it is, skipping again before that fire has passed changes nothing, and a pause, a cancel, or a new cadence ends the skip. A paused or cancelled schedule has no next fire and is a \`Conflict\`. ${STALE_NOTE}`,
+  (schedules, id, guard) => schedules.skipNext(id, guard),
+);
+
+const runNowInput = z.object({ scheduleId: scheduleIdentifier });
+const runNowOutput = z.discriminatedUnion('outcome', [
+  z.object({
+    outcome: z.literal('started'),
+    taskId: z.string().describe('The task the run started as; `bureau.tasks.get` reads it.'),
+  }),
+  z.object({
+    outcome: z.literal('queued'),
+    taskId: z.string().describe('The task the run will start as, once the running one ends.'),
+  }),
+  z.object({
+    outcome: z.literal('skipped'),
+    blockingTaskId: z
+      .string()
+      .nullable()
+      .describe('The task that was still running and kept this run from starting.'),
+  }),
+]);
+
+export const schedulesRunNowOperation = defineOperation<
+  typeof runNowInput,
+  typeof runNowOutput,
+  BureauSchedulesOperationHost
+>({
+  name: 'bureau.schedules.runnow',
+  mcpExposable: false,
+  summary: 'Run a schedule now',
+  description:
+    'Starts one run of a schedule now, under its overlap policy, and answers what the policy did: `started` (with the task it started as), `queued` behind the running one, or `skipped` because a run was still going and the policy is `skip`. The task’s origin is `schedule` with `manual: true`, and it belongs to the schedule’s owner. The run is not a fire of the cadence: the schedule’s `nextFireAt`, `lastFireAt`, and `revision` do not change. A paused schedule can be run; a cancelled one is a `Conflict`. Requires `bureau.schedules:write` unless the caller owns the schedule; anyone else is answered `NotFound`, as is the schedule of a workflow file, which only `bureau.workflows.*` changes.',
+  destructive: true,
+  tags: ['Schedules'],
+  inputSchema: runNowInput,
+  outputSchema: runNowOutput,
+  producibleFaults: ['InvalidParams', 'NotFound', 'Conflict', 'UnsupportedCapability'],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    await ownerFor(host, principal, input.scheduleId, 'bureau.schedules:write');
+    try {
+      const result = await host.schedules.runNow(input.scheduleId);
+      if (result === undefined) throw unsupported();
+      if (result.outcome === 'skipped') {
+        return { outcome: 'skipped', blockingTaskId: result.blockingWorkflowId ?? null };
+      }
+      return { outcome: result.outcome, taskId: result.workflowId };
+    } catch (error) {
+      return faultOf(error, input.scheduleId);
+    }
+  },
+});
+
+const missedInput = z.object({
+  scheduleId: scheduleIdentifier,
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .optional()
+    .describe('The most rows to return, newest first. Defaults to the 100 a schedule keeps.'),
+});
+const missedOutput = z.object({
+  missed: z.array(
+    z.object({
+      scheduleId: z.string(),
+      /** The schedule’s owner of record, who the row belongs to. */
+      owner: z.string(),
+      /** When the miss is recorded at: the occurrence’s time for `late`, the end of the gap for `dst-gap`. */
+      occurrence: z.string(),
+      reason: z.enum(['late', 'dst-gap']),
+      /** How many fires the row stands for. */
+      count: z.number().int(),
+      recordedAt: z.string(),
+    }),
+  ),
+});
+
+export const schedulesMissedOperation = defineOperation<
+  typeof missedInput,
+  typeof missedOutput,
+  BureauSchedulesOperationHost
+>({
+  name: 'bureau.schedules.missed',
+  mcpExposable: false,
+  summary: 'List the fires a schedule missed',
+  description:
+    'Lists the fires one of the caller’s own schedules missed, newest first; a caller holding `bureau.schedules:read` lists any owner’s. A row is `late` when the engine was down (or too slow) and the fire was dropped, or `dst-gap` when the clock sprang forward past the schedule’s time in its time zone. A schedule keeps its latest 100 rows, while its view’s `missedFireCount` keeps counting; a row carries the schedule’s `owner`. Another owner’s schedule answers as a missing one does.',
+  destructive: false,
+  tags: ['Schedules'],
+  inputSchema: missedInput,
+  outputSchema: missedOutput,
+  producibleFaults: ['InvalidParams', 'NotFound', 'UnsupportedCapability'],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    const owner = await ownerFor(host, principal, input.scheduleId, 'bureau.schedules:read');
+    const rows = await host.schedules.missed(
+      input.scheduleId,
+      input.limit === undefined ? undefined : { limit: input.limit },
+    );
+    if (rows === undefined) throw unsupported();
+    if (rows === null) throw resourceNotFound('schedule', input.scheduleId);
+    return {
+      missed: rows.map((row) => ({
+        scheduleId: row.scheduleId,
+        owner,
+        occurrence: iso(row.occurrence)!,
+        reason: row.reason,
+        count: row.count,
+        recordedAt: iso(row.recordedAt)!,
+      })),
+    };
+  },
+});
+
 const updateInput = z.object({
   scheduleId: scheduleIdentifier,
   spec: z
@@ -618,4 +761,7 @@ export const bureauSchedulesOperations = [
   schedulesResumeOperation,
   schedulesCancelOperation,
   schedulesUpdateOperation,
+  schedulesSkipNextOperation,
+  schedulesRunNowOperation,
+  schedulesMissedOperation,
 ] as const;

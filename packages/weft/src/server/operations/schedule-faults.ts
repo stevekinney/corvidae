@@ -111,7 +111,10 @@ function formatJitterValidationMessage(message: string): string {
 
 function isScheduleConflictMessage(normalizedMessage: string): boolean {
   return (
-    normalizedMessage.includes('already exists') || normalizedMessage.includes('cannot be resumed')
+    normalizedMessage.includes('already exists') ||
+    normalizedMessage.includes('cannot be resumed') ||
+    normalizedMessage.includes('cannot be run') ||
+    normalizedMessage.includes('has no next occurrence to skip')
   );
 }
 

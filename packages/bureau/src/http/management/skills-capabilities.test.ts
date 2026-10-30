@@ -343,13 +343,23 @@ describe('bureau.agents.catalog', () => {
   });
 
   it('never reads a tool that declares nothing as read-only', async () => {
-    const served = await serve();
+    const plain = createTool({
+      name: 'plain-tool',
+      description: 'Declares nothing',
+      input: z.object({}),
+      execute: async () => 'done',
+    });
+    const directory = await mkdtemp(join(tmpdir(), 'bureau-tool-catalog-plain-'));
+    roots.push(directory);
+    const served = await serve({
+      directory,
+      overrides: { agentSource: agentFileDirectory(directory, { tools: { 'plain-tool': plain } }) },
+    });
 
     const response = await callAs(served.local, 'bureau.agents.catalog', {});
 
-    const unclassified = listOf(response, 'tools').filter((tool) => tool['tier'] === null);
-    expect(unclassified.length).toBeGreaterThan(0);
-    for (const tool of unclassified) expect(tool['defaultApproval']).toBe('ask');
+    const tool = listOf(response, 'tools').find((entry) => entry['name'] === 'plain-tool');
+    expect(tool).toMatchObject({ tier: null, defaultApproval: 'ask' });
   });
 
   it('drops a user when the agent file is gone', async () => {
