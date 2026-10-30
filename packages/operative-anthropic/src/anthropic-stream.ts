@@ -137,13 +137,7 @@ export function createAnthropicProviderStream(
       const stream = await Promise.resolve(client.messages.create(params, requestOptions));
 
       return withInputLineage(
-        await consumeAnthropicStream(
-          stream,
-          streaming,
-          context.signal,
-          resolvedModel,
-          stepEffort,
-        ),
+        await consumeAnthropicStream(stream, streaming, context.signal, resolvedModel, stepEffort),
         lineage,
       );
     } catch (error) {

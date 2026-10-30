@@ -149,7 +149,8 @@ describe('bureau.contexts.steer effort', () => {
       expect(issuesOf(both)).toEqual([
         {
           path: ['effort'],
-          message: 'Exactly one of `override` and `effort` is allowed; `override` and `effort` were sent',
+          message:
+            'Exactly one of `override` and `effort` is allowed; `override` and `effort` were sent',
           code: 'custom',
         },
       ]);
