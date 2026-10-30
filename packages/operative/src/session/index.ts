@@ -41,6 +41,11 @@ export type { SessionOrigin } from './session-origin';
 export { LOCAL_SESSION_OWNER, SESSION_OWNER_METADATA_KEY, sessionOwnerOf } from './session-owner';
 export { resumeSession } from './session-resume';
 export type { ResumeSessionOptions, ResumeSessionResult } from './session-resume';
+export {
+  SESSION_TITLE_METADATA_KEY,
+  SESSION_TITLE_OVERRIDE_LIMIT,
+  sessionTitleOverrideOf,
+} from './session-title';
 export type {
   SessionCleanupOptions,
   SessionListOptions,

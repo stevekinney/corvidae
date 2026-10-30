@@ -6,6 +6,7 @@ import type { ZodType } from 'zod';
 
 import type { ContextEpochSealer } from './context-epoch';
 import type { AccumulatedCost } from './cost-estimation';
+import type { EffectiveContextTail, StoredEffectiveContext } from './effective-context-record';
 import { type AgentRunErrorKind, GeneratedMediaNotAdmittedError } from './errors';
 import {
   GenerateCompletedEvent,
@@ -22,7 +23,7 @@ import { partsOf, settleResponse } from './run-step-response';
 import { commitAssistantRow } from './run-step-row';
 import { accumulateUsage } from './run-step-support';
 import { executeTools } from './run-step-tools';
-import { explicitAbortReason } from './run-step-utilities';
+import { explicitAbortReason, guardrailReporter } from './run-step-utilities';
 import type { SelectionGate } from './selection-gate';
 import type { ToolChoice } from './structured-output/types';
 import type {
@@ -217,6 +218,17 @@ export interface RunState {
    * never fires: it means no command has ever been accepted.
    */
   lastAppliedConfigVersion: number;
+  /**
+   * COR-1810 — the conversation the run's previous stored step saw, which a durable run carries
+   * across steps (`RunCursor.effectiveContextTail`) so a step stores its effective context as a
+   * delta from it. `undefined` stores it whole.
+   */
+  effectiveContextTail?: EffectiveContextTail | undefined;
+  /**
+   * COR-1810 — the stored form of the effective context of the step generated last, set with
+   * `StepResult.effectiveContext`, for the durable writer to put on the step's record.
+   */
+  storedEffectiveContext?: StoredEffectiveContext | undefined;
 }
 
 /**
@@ -414,6 +426,7 @@ export async function runStep(
         signal: stepSignal,
         abortStep,
         elicit,
+        reportGuardrail: guardrailReporter(emitter, step),
       });
       // COR-713: the response the validation hooks leave is authoritative, whether a hook returned
       // a replacement or edited the one it was handed in place. Settle it either way, before the
@@ -550,5 +563,7 @@ export async function runStep(
     materializedToolCalls,
     results,
     contextEpochId: generation.contextEpochId,
+    planReason: generation.planReason,
+    effectiveContext: generation.effectiveContext,
   });
 }

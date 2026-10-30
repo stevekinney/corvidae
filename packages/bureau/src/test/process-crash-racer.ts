@@ -13,7 +13,16 @@ import { z } from 'zod';
 import { createBureau } from '../create-bureau';
 import type { AgentDefinitions } from '../agent-catalog';
 import type { Bureau } from '../types';
-import { CLAIM_RENEW_MS, CLAIM_TTL_MS } from './process-crash-work-integrity-fixtures';
+
+/**
+ * COR-1916 — the racers' claim TTL and renewal interval. The crashed child's claim keeps the
+ * fixtures' short TTL, so the parent's one claim-lapse wait stays short; the racers' own claims are
+ * long, because a racer starved of CPU for longer than its TTL loses the claim to its peer, which
+ * runs the step it had begun and leaves it reporting a partial recovery. Neither racer is ever
+ * killed in this scenario, so a long TTL costs no wait.
+ */
+const RACER_CLAIM_TTL_MS = 60_000;
+const RACER_CLAIM_RENEW_MS = 1_000;
 
 /** The file the child racer writes once its store is open. */
 export const RACER_READY_FILE = 'racer-ready';
@@ -69,8 +78,8 @@ export async function startRacer(storage: Storage): Promise<Racer> {
     durable: true,
     durableOwnership: {
       ownership: 'workflow-lease',
-      workflowClaimTtlMs: CLAIM_TTL_MS,
-      workflowClaimRenewIntervalMs: CLAIM_RENEW_MS,
+      workflowClaimTtlMs: RACER_CLAIM_TTL_MS,
+      workflowClaimRenewIntervalMs: RACER_CLAIM_RENEW_MS,
     },
   });
   return {

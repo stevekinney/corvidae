@@ -341,7 +341,11 @@ export interface ReusableApprovalGrant {
   readonly ownerId: string;
   /** The agent definition this grant applies to; '*' matches any agent under the same principal. */
   readonly agentId: string;
-  /** Tool name or a named operation family; exact match only. Pattern matching is scoped to `resourcePattern`. */
+  /**
+   * The tool this grant covers, as `namespace:name` or `namespace:name@version`; a bare name reads as the `default` namespace.
+   * It matches the called tool's identity exactly, so a grant for `a:search` never covers `b:search`, and one that pins
+   * `@version` covers that version only. Pattern matching is scoped to `resourcePattern`.
+   */
   readonly toolName: string;
   /** Glob-style pattern checked against a caller-declared resource field in the tool's arguments; absent means any resource. */
   readonly resourcePattern?: string;

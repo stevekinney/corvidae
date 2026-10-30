@@ -108,7 +108,7 @@ describe('registry internal ranking, cache, and resolver coverage', () => {
     const registry = {
       tools: () => [alpha, beta],
       register: () => registry,
-      getTool: (name: string) => (name === alpha.name ? alpha : undefined),
+      getTool: (name: string) => (name === alpha.id ? alpha : undefined),
     };
     const tagIndex = new Map([
       ['x', new Set([alpha])],
@@ -144,7 +144,7 @@ describe('registry internal ranking, cache, and resolver coverage', () => {
     const registry = {
       tools: () => [alpha, beta],
       register: () => registry,
-      getTool: (name: string) => (name === alpha.name ? alpha : undefined),
+      getTool: (name: string) => (name === alpha.id ? alpha : undefined),
     };
     registerRegistryEmbedder(registry, constantEmbedding);
 

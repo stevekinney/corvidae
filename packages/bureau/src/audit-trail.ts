@@ -155,6 +155,9 @@ export const AUDIT_EVENT_TYPES = [
   'run.error',
   'run.aborted',
   'run.tripwire',
+  // COR-1912 — a validate-mode guardrail that blocked or redacted and let the run go on: the
+  // counterpart of `run.tripwire`, which only a halting guardrail writes.
+  'run.guardrail',
   // COR-625 — the terminal-run checkpoint-retention step's own
   // acknowledgement, written out-of-band by `create-bureau.ts`'s
   // `runTerminalCheckpointCleanup` once per durable run. Distinct from the

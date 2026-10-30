@@ -23,6 +23,7 @@ import {
   validateAuditRetentionOption,
   validateCheckpointRetentionOption,
   validateDelegationTimeToLive,
+  validateMemoryRetentionOption,
   validateReceiptRetentionOption,
   validateRetentionWindowOption,
   validateSessionInputBacklogLimit,
@@ -72,6 +73,7 @@ export const OPTION_VALIDATORS: Readonly<Partial<Record<SettingKey, (value: unkn
       refuse,
     ),
   'retention.receipts': (value) => validateReceiptRetentionOption(value, refuse),
+  'retention.memory': (value) => validateMemoryRetentionOption(value, refuse),
   'sessionInput.sessionBacklogLimit': (value) =>
     validateSessionInputBacklogLimit(value as number, 'sessionBacklogLimit', refuse),
   'sessionInput.principalBacklogLimit': (value) =>

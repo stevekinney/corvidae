@@ -125,6 +125,8 @@ const WORKFLOW_PARAMETERS = {
  */
 const AGENT_DEFINITION_PARAMETERS = {
   expectedHash: 'x',
+  // `bureau.agents.versions.restore` names the version to restore beside the agent.
+  revision: 1,
   definition: { model: 'nobody/none', instructions: '' },
 } as const;
 
@@ -160,6 +162,8 @@ const MEMORY_PARAMETERS = {
   id: 'memory-1',
   query: 'x',
   content: 'x',
+  granteeOwnerId: 'x',
+  reason: 'x',
 } as const;
 
 /**
@@ -181,7 +185,18 @@ const CONTEXT_COMMAND_PARAMETERS = {
   commandId: 'command-1',
   override: { provider: 'anthropic', model: 'claude-opus-5-5' },
   throughMessageId: 'message-1',
+  // Clearing a title the context never had changes nothing, so the rename reaches its own check
+  // without altering the title the transcript scan looks for.
+  title: null,
 } as const;
+
+/** Whether `operation`'s `id` names an agent: a definition operation or a versions operation. */
+function namesAnAgent(operation: CatalogOperation): boolean {
+  return (
+    operation.name.startsWith('bureau.agents.definitions.') ||
+    operation.name.startsWith('bureau.agents.versions.')
+  );
+}
 
 /** The parameters beside an identifier that `operation` declares and needs to reach its own check. */
 function definitionParameters(operation: CatalogOperation) {
@@ -694,6 +709,8 @@ describe('credentials', () => {
           agentId: 'x',
           query: 'x',
           content: 'x',
+          granteeOwnerId: 'x',
+          reason: 'x',
           ...definitionParameters(operation),
         });
         const response = operation.transports.jsonRpcHttp
@@ -838,9 +855,7 @@ describe('identifiers grant nothing', () => {
           };
 
           // An agent operation's identifier names an agent, not a review: the one this Bureau has.
-          const realId = operation.name.startsWith('bureau.agents.definitions.')
-            ? 'support'
-            : (realIds[parameter] ?? 'unmapped');
+          const realId = namesAnAgent(operation) ? 'support' : (realIds[parameter] ?? 'unmapped');
           const real = await send(realId);
           const random = await send(`random-${crypto.randomUUID()}`);
 
@@ -973,7 +988,7 @@ describe('transcripts stay inside the Bureau', () => {
       for (const operation of BUREAU_HANDLER_OPERATIONS) {
         const params = paramsFor(operation, {
           ...(operation.name === 'bureau.settings.events' ? { fromCursor: '0' } : {}),
-          id: operation.name.startsWith('bureau.agents.definitions.') ? 'support' : alice.reviewId,
+          id: namesAnAgent(operation) ? 'support' : alice.reviewId,
           runId: alice.run.id,
           taskId: alice.run.id,
           scheduleId: 'schedule-none',
@@ -990,6 +1005,8 @@ describe('transcripts stay inside the Bureau', () => {
           agentId: 'x',
           query: 'x',
           content: 'x',
+          granteeOwnerId: 'x',
+          reason: 'x',
           ...definitionParameters(operation),
         });
         const response = operation.transports.jsonRpcHttp

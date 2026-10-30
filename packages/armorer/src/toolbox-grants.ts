@@ -4,6 +4,7 @@ import {
   type ReusableApprovalGrant,
   verifyGrantSignature,
 } from './approval-binding';
+import { parseToolId } from './core/identity';
 import { assertJsonValue, type JsonValue, stableStringifyJson } from './core/serialization/json';
 import type { ToolRequestContext } from './execution-context';
 import type { ToolPolicyContext } from './is-tool';
@@ -83,11 +84,34 @@ function matchesGrantIdentity(
   requestContext: ToolRequestContext,
 ): boolean {
   return (
-    grant.toolName === context.toolName &&
+    matchesGrantTool(grant.toolName, context) &&
     grant.principalId === authority.principalId &&
     grant.tenantId === authority.tenantId &&
     grant.ownerId === authority.ownerId &&
     (grant.agentId === '*' || grant.agentId === requestContext.agentId)
+  );
+}
+
+/**
+ * Whether a grant's `toolName` names the tool being called. A grant is a durable record, so it
+ * keys on tool identity, not the bare name two namespaces can share: a `namespace:name` grant
+ * covers that namespace's tool only, and a bare name is the `default` namespace's tool of that
+ * name (the namespace an unqualified tool is registered under). A grant that pins `@version`
+ * covers that version only; one that omits it covers whichever version is loaded. A name that
+ * cannot be read as an identity covers nothing.
+ */
+export function matchesGrantTool(grantToolName: string, context: ToolPolicyContext): boolean {
+  let granted: ReturnType<typeof parseToolId>;
+  try {
+    granted = parseToolId(grantToolName);
+  } catch {
+    return false;
+  }
+  const { identity } = context.configuration;
+  return (
+    granted.namespace === identity.namespace &&
+    granted.name === identity.name &&
+    (granted.version === undefined || granted.version === identity.version)
   );
 }
 

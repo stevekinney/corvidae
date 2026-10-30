@@ -3355,6 +3355,14 @@ describe('createBureau', () => {
         const lastError = session?.metadata['lastError'];
         expect(typeof lastError).toBe('string');
         expect(lastError as string).toContain('could not be reconstructed');
+        // COR-1916: this boot ended the run itself, so the report still names it. A terminal
+        // record under a settled session is skipped only when a peer finished the run.
+        const report = await bureauB.recovery();
+        expect(report?.outcome).toBe('partial');
+        expect(report?.perRunFailures).toContainEqual({
+          runId: run.id,
+          reason: 'session-not-running',
+        });
         // A run the resolver failed (session reconciled to `error`) must NOT be
         // reattached + store.register'd — otherwise its write-free-rejecting
         // handle would leave a store entry stuck `running` forever (committee/
