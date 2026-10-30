@@ -343,3 +343,134 @@ describe('persistence', () => {
     ).toBe(false);
   });
 });
+
+type StoredRecord = Record<string, unknown> & {
+  subject: object;
+  readAt: string | null;
+  dismissedAt: string | null;
+};
+
+/** The record key of the only record stored, and its parsed JSON. */
+async function onlyRecord(kv: ReturnType<typeof open>['kv']) {
+  const keys = await kv.list(`${NOTIFICATION_KEY_PREFIX}r:`);
+  expect(keys).toHaveLength(1);
+  const key = keys[0]!;
+  return { key, value: JSON.parse((await kv.get(key))!) as StoredRecord };
+}
+
+describe('a record a newer release wrote', () => {
+  const review = {
+    owner: ALICE,
+    kind: 'review.waiting',
+    title: 'Needs you',
+    dedupeKey: 'review.waiting:R1',
+  };
+
+  /** Writes a record, then gives its subject and its top level a key this release does not know. */
+  async function withNewerKeys() {
+    const opened = open();
+    const first = await opened.store.create({ ...review, subject: { reviewId: 'R1' } });
+    const { key, value } = await onlyRecord(opened.kv);
+    await opened.kv.set(
+      key,
+      JSON.stringify({
+        ...value,
+        urgency: 'high',
+        subject: { ...value.subject, toolName: 'deploy' },
+      }),
+    );
+    return { ...opened, first };
+  }
+
+  it('is found by a replay under its dedupe key, which writes nothing beside it', async () => {
+    const { store, kv, first, diagnostics } = await withNewerKeys();
+
+    const replay = await store.create({ ...review, subject: { reviewId: 'R1' } });
+
+    expect(replay.created).toBe(false);
+    expect(replay.notification.id).toBe(first.notification.id);
+    expect(await kv.list(`${NOTIFICATION_KEY_PREFIX}r:`)).toHaveLength(1);
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('is listed with the keys this release knows, and none of the newer ones', async () => {
+    const { store, first } = await withNewerKeys();
+
+    const page = await store.list({ owner: ALICE });
+
+    expect(page.notifications).toEqual([first.notification]);
+    expect(page.notifications[0]?.subject).toEqual({ reviewId: 'R1' });
+  });
+
+  it('keeps the newer keys when it is marked read, and when it is dismissed', async () => {
+    const { store, kv, first } = await withNewerKeys();
+
+    expect(await store.markRead({ owner: ALICE, ids: [first.notification.id] })).toBe(1);
+    const read = await onlyRecord(kv);
+    expect(read.value).toMatchObject({ urgency: 'high', subject: { toolName: 'deploy' } });
+    expect(read.value.readAt).not.toBeNull();
+
+    expect(await store.dismissByDedupeKey('review.waiting:R1')).toBe(1);
+    const dismissed = await onlyRecord(kv);
+    expect(dismissed.value).toMatchObject({ urgency: 'high', subject: { toolName: 'deploy' } });
+    expect(dismissed.value.dismissedAt).not.toBeNull();
+  });
+
+  it('is removed by retention with its dedupe key, so the event is written again afterwards', async () => {
+    const { store, kv } = await withNewerKeys();
+
+    expect(await store.prune(Date.now() + 60_000)).toBe(1);
+
+    expect(await kv.list(NOTIFICATION_KEY_PREFIX)).toEqual([]);
+    expect(await store.create({ ...review }).then((value) => value.created)).toBe(true);
+  });
+});
+
+describe('a record this release cannot parse', () => {
+  /** Replaces the only record with one whose `kind` is not a string, keeping the rest. */
+  async function unreadable() {
+    const opened = open();
+    await opened.store.create(input(ALICE, 'Old', { dedupeKey: 'k' }));
+    const { key, value } = await onlyRecord(opened.kv);
+    await opened.kv.set(key, JSON.stringify({ ...value, kind: 42 }));
+    return opened;
+  }
+
+  it('is skipped by a list with a diagnostic, and a replay does not write beside it', async () => {
+    const { store, kv, diagnostics } = await unreadable();
+
+    expect(await store.list({ owner: ALICE }).then((value) => value.notifications)).toEqual([]);
+    expect(diagnostics).toHaveLength(1);
+    const keysBefore = await kv.list(NOTIFICATION_KEY_PREFIX);
+
+    const error = await rejectionOf(store.create(input(ALICE, 'Again', { dedupeKey: 'k' })));
+
+    expect(String(error)).toContain('cannot read it');
+    expect(await kv.list(NOTIFICATION_KEY_PREFIX)).toEqual(keysBefore);
+  });
+
+  it('is still removed by retention, with its dedupe key', async () => {
+    const { store, kv } = await unreadable();
+
+    expect(await store.prune(Date.now() + 60_000)).toBe(1);
+
+    expect(await kv.list(NOTIFICATION_KEY_PREFIX)).toEqual([]);
+  });
+
+  it('still counts toward the cap, and is the oldest to go', async () => {
+    const opened = open({ limitPerOwner: 2 });
+    await opened.store.create(input(ALICE, 'Old'));
+    const { key, value } = await onlyRecord(opened.kv);
+    await opened.kv.set(key, JSON.stringify({ ...value, kind: 42 }));
+
+    await opened.store.create(input(ALICE, 'Two'));
+    await opened.store.create(input(ALICE, 'Three'));
+
+    expect(await opened.kv.list(`${NOTIFICATION_KEY_PREFIX}r:`)).not.toContain(key);
+    expect(
+      await opened.store
+        .list({ owner: ALICE })
+        .then((page) => page.notifications.map((n) => n.title)),
+    ).toEqual(['Three', 'Two']);
+  });
+});

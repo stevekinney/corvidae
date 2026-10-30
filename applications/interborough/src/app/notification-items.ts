@@ -15,9 +15,11 @@
  *   person, so it never counts. Opening the chat reads it, including one that finishes while the
  *   chat is open.
  *
- * A chat is one item: of the reviews waiting in it, the one waiting longest stands for them all
- * (an approval before a question when they asked at the same moment), a pending review wins over a
- * failure, and the latest run of a chat stands for all its earlier answers. The Bureau also writes a
+ * Of the reviews waiting in one chat, the one waiting longest stands for them all (an approval
+ * before a question when they asked at the same moment), and the latest run of a chat stands for
+ * all its earlier answers. A chat that is waiting on the person hides its failures and answers, so
+ * it is not listed twice. A failure is one item per notification, which is one per run, so a chat
+ * with two failed runs lists both until each is read. The Bureau also writes a
  * `review.waiting` notification for each pending review; the bell does not list it, because the
  * pending review above says the same thing and leaves the list the moment it is decided.
  * A run whose chat the Bureau does not list is not a chat to open, so it is not an item. The items

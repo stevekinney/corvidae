@@ -20,6 +20,16 @@
  * and tries again. Dismissing keeps the record (and its dedupe key), so an event that is replayed
  * after the owner dismissed the notification does not bring it back; retention removes both.
  *
+ * ## Newer records
+ *
+ * A record is read as the stored-versus-view rule of `task-origin.ts` reads one (COR-1867): what a
+ * caller writes is strict, but what is stored is read with its unknown keys, so a record a newer
+ * release wrote (a rolling deploy, a rollback) is listed, changed and replayed by this one. A
+ * change merges into the stored object and keeps the keys this release does not know; the view
+ * leaves them out. A record this release cannot parse at all is skipped, with one diagnostic per
+ * read; it still counts toward the cap, is still removed by retention, and its dedupe key is never
+ * repaired, so a replayed event does not write a second notification beside it.
+ *
  * ## Bounds
  *
  * An owner keeps at most {@link NOTIFICATION_LIMIT_PER_OWNER} notifications; writing one past it
@@ -70,19 +80,30 @@ const CHANGE_ATTEMPTS = 4;
 
 const boundedString = (limit: number) => z.string().min(1).max(limit);
 
-const subjectSchema = z
-  .object({
-    runId: boundedString(NOTIFICATION_FIELD_LIMITS.subject).optional(),
-    contextId: boundedString(NOTIFICATION_FIELD_LIMITS.subject).optional(),
-    reviewId: boundedString(NOTIFICATION_FIELD_LIMITS.subject).optional(),
-    reviewKind: z.enum(['tool-approval', 'human-wait']).optional(),
-    agentName: boundedString(NOTIFICATION_FIELD_LIMITS.subject).optional(),
-    scheduleId: boundedString(NOTIFICATION_FIELD_LIMITS.subject).optional(),
-  })
-  .strict();
+const subjectShape = {
+  runId: boundedString(NOTIFICATION_FIELD_LIMITS.subject).optional(),
+  contextId: boundedString(NOTIFICATION_FIELD_LIMITS.subject).optional(),
+  reviewId: boundedString(NOTIFICATION_FIELD_LIMITS.subject).optional(),
+  reviewKind: z.enum(['tool-approval', 'human-wait']).optional(),
+  agentName: boundedString(NOTIFICATION_FIELD_LIMITS.subject).optional(),
+  scheduleId: boundedString(NOTIFICATION_FIELD_LIMITS.subject).optional(),
+};
 
-/** The stored record. `owner` is on every one, so a later release can add users without migrating. */
-const recordSchema = z.object({
+/** The subject a caller may write: an unknown key is refused. */
+const subjectSchema = z.object(subjectShape).strict();
+
+/**
+ * The subject as stored (COR-1867's stored-versus-view rule): a newer release may add a key, and
+ * this release keeps it on a write-back and leaves it out of the view.
+ */
+const storedSubjectSchema = z.looseObject(subjectShape);
+
+/**
+ * The stored record. `owner` is on every one, so a later release can add users without migrating.
+ * Unknown keys, at the top level and in the subject, are kept: a record a newer release wrote (a
+ * rolling deploy, or a rollback) is read, changed and listed by this one without losing them.
+ */
+const recordSchema = z.looseObject({
   schemaVersion: z.literal(1),
   id: z.string().min(1),
   owner: z.string().min(1),
@@ -91,7 +112,7 @@ const recordSchema = z.object({
   body: z.string().max(NOTIFICATION_FIELD_LIMITS.body).nullable(),
   link: z.string().max(NOTIFICATION_FIELD_LIMITS.link).nullable(),
   dedupeKey: z.string().max(NOTIFICATION_FIELD_LIMITS.dedupeKey).nullable(),
-  subject: subjectSchema.nullable(),
+  subject: storedSubjectSchema.nullable(),
   createdAt: z.string().min(1),
   readAt: z.string().nullable(),
   dismissedAt: z.string().nullable(),
@@ -106,6 +127,44 @@ type HeldRecord = {
   readonly raw: string;
   readonly record: NotificationRecord;
 };
+
+/**
+ * What retention needs of a stored record, readable even when this release cannot parse the rest of
+ * it: a record a newer release wrote in a shape this one does not know is still removed with its
+ * dedupe key once it is old enough, or when its owner is over the cap.
+ */
+type Stamp = {
+  readonly key: string;
+  readonly id: string;
+  readonly owner: string;
+  readonly dedupeKey: string | null;
+  readonly createdAt: string;
+};
+
+function stampOf(key: string, raw: string): Stamp | undefined {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null) return undefined;
+    const { id, owner, dedupeKey, createdAt } = parsed as Record<string, unknown>;
+    if (
+      typeof id !== 'string' ||
+      typeof owner !== 'string' ||
+      typeof createdAt !== 'string' ||
+      !Number.isFinite(Date.parse(createdAt))
+    ) {
+      return undefined;
+    }
+    return {
+      key,
+      id,
+      owner,
+      createdAt,
+      dedupeKey: typeof dedupeKey === 'string' ? dedupeKey : null,
+    };
+  } catch {
+    return undefined;
+  }
+}
 
 /** The store, with the operations the built-in notifications need beside the public surface. */
 export interface NotificationStore extends BureauNotifications {
@@ -150,6 +209,17 @@ function dedupeIndexKey(owner: string, dedupeKey: string): string {
   return `${dedupeKeyPrefix(dedupeKey)}${encodeStorageKeyComponent(owner)}`;
 }
 
+/** The keys of a subject this release knows; a newer release's keys stay stored and out of the view. */
+const SUBJECT_KEYS = Object.keys(subjectShape) as (keyof typeof subjectShape)[];
+
+function subjectView(subject: NonNullable<NotificationRecord['subject']>): NotificationSubject {
+  const view: Record<string, unknown> = {};
+  for (const key of SUBJECT_KEYS) {
+    if (subject[key] !== undefined) view[key] = subject[key];
+  }
+  return view;
+}
+
 function viewOf(record: NotificationRecord): BureauNotification {
   return {
     id: record.id,
@@ -157,7 +227,7 @@ function viewOf(record: NotificationRecord): BureauNotification {
     title: record.title,
     body: record.body,
     link: record.link,
-    subject: record.subject === null ? null : { ...record.subject },
+    subject: record.subject === null ? null : subjectView(record.subject),
     createdAt: record.createdAt,
     readAt: record.readAt,
     dismissedAt: record.dismissedAt,
@@ -165,7 +235,10 @@ function viewOf(record: NotificationRecord): BureauNotification {
 }
 
 /** Newest first; the id breaks a tie so the order does not move between reads. */
-function newestFirst(left: NotificationRecord, right: NotificationRecord): number {
+function newestFirst(
+  left: Pick<NotificationRecord, 'createdAt' | 'id'>,
+  right: Pick<NotificationRecord, 'createdAt' | 'id'>,
+): number {
   if (left.createdAt !== right.createdAt) return left.createdAt < right.createdAt ? 1 : -1;
   return left.id < right.id ? 1 : left.id > right.id ? -1 : 0;
 }
@@ -281,13 +354,21 @@ export function createNotificationStore(
     return readKeys(await kv.list(ownerPrefix(owner)));
   }
 
-  async function remove(entries: readonly HeldRecord[]): Promise<number> {
+  async function readStamps(keys: readonly string[]): Promise<Stamp[]> {
+    const stamps: Stamp[] = [];
+    for (const key of keys) {
+      const raw = await kv.get(key);
+      const stamp = raw === null ? undefined : stampOf(key, raw);
+      if (stamp !== undefined) stamps.push(stamp);
+    }
+    return stamps;
+  }
+
+  async function remove(entries: readonly Stamp[]): Promise<number> {
     let removed = 0;
-    for (const { key, record } of entries) {
+    for (const { key, owner, dedupeKey } of entries) {
       await kv.delete(key);
-      if (record.dedupeKey !== null) {
-        await kv.delete(dedupeIndexKey(record.owner, record.dedupeKey));
-      }
+      if (dedupeKey !== null) await kv.delete(dedupeIndexKey(owner, dedupeKey));
       removed += 1;
     }
     return removed;
@@ -298,9 +379,10 @@ export function createNotificationStore(
     const keys = await kv.list(ownerPrefix(owner));
     const limit = options.limitPerOwner ?? NOTIFICATION_LIMIT_PER_OWNER;
     if (keys.length <= limit) return;
-    const read = await readKeys(keys);
-    const held = read.toSorted((left, right) => newestFirst(right.record, left.record));
-    await remove(held.slice(0, Math.max(0, held.length - limit)));
+    // A record this release cannot parse still counts, and is still the oldest to go.
+    const stamps = await readStamps(keys);
+    const held = stamps.toSorted((left, right) => newestFirst(right, left));
+    await remove(held.slice(0, keys.length - limit));
   }
 
   /** Applies `change` to a held record by compare-and-swap; resolves whether it changed one. */
@@ -399,12 +481,25 @@ export function createNotificationStore(
     return undefined;
   }
 
-  /** The notification already written under `dedupeKey` for `owner`, or `undefined`. */
-  async function existingUnder(owner: string, dedupeKey: string): Promise<HeldRecord | undefined> {
+  /**
+   * The notification already written under `dedupeKey` for `owner`: `missing` when its index or its
+   * record is gone (a pruned record, a torn write), `unreadable` when the record exists but this
+   * release cannot parse it, which is never a reason to write another.
+   */
+  async function existingUnder(
+    owner: string,
+    dedupeKey: string,
+  ): Promise<
+    | { readonly state: 'found'; readonly entry: HeldRecord }
+    | { readonly state: 'missing' | 'unreadable' }
+  > {
     const id = await kv.get(dedupeIndexKey(owner, dedupeKey));
-    if (id === null) return undefined;
-    const [entry] = await readKeys([recordKey(owner, id)]);
-    return entry;
+    if (id === null) return { state: 'missing' };
+    const key = recordKey(owner, id);
+    const raw = await kv.get(key);
+    if (raw === null) return { state: 'missing' };
+    const entry = parse(key, raw);
+    return entry === undefined ? { state: 'unreadable' } : { state: 'found', entry };
   }
 
   return {
@@ -423,8 +518,14 @@ export function createNotificationStore(
         if (written !== undefined) return { notification: written, created: true };
         if (dedupeKey === undefined) break;
         const existing = await existingUnder(owner, dedupeKey);
-        if (existing !== undefined)
-          return { notification: viewOf(existing.record), created: false };
+        if (existing.state === 'found') {
+          return { notification: viewOf(existing.entry.record), created: false };
+        }
+        if (existing.state === 'unreadable') {
+          throw new Error(
+            `[bureau] A notification already exists under the dedupe key "${dedupeKey}" but this release cannot read it, so another is not written.`,
+          );
+        }
         // An index whose record is gone (a pruned record, a torn write) is repaired, then tried again.
         await kv.delete(dedupeIndexKey(owner, dedupeKey));
       }
@@ -486,10 +587,8 @@ export function createNotificationStore(
     },
 
     async prune(cutoffMilliseconds) {
-      const stale: HeldRecord[] = [];
-      for (const entry of await readKeys(await kv.list(recordPrefix))) {
-        if (Date.parse(entry.record.createdAt) < cutoffMilliseconds) stale.push(entry);
-      }
+      const stamps = await readStamps(await kv.list(recordPrefix));
+      const stale = stamps.filter((stamp) => Date.parse(stamp.createdAt) < cutoffMilliseconds);
       return remove(stale);
     },
   };

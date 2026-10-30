@@ -473,6 +473,7 @@ import {
 import {
   REVIEW_CLOSING_EVENT_KINDS,
   reviewCanceledDedupeKey,
+  REPLAY_SUPERSEDING_PRINCIPAL,
   REVIEW_SUPERSEDED_EVENT_KIND,
   TERMINAL_REVIEW_STATUSES,
 } from './review-closing-events';
@@ -5149,7 +5150,9 @@ async function constructBureau<const D extends AgentDefinitions>(
     for (const reviewId of history.requested) {
       if (history.closed.has(reviewId) || committed.has(reviewId)) continue;
       const kind = reviewId.startsWith('human-wait:') ? 'human-wait' : 'tool-approval';
-      emitter.dispatch(new ReviewSupersededEvent(reviewId, runId, 'system:replay', kind));
+      emitter.dispatch(
+        new ReviewSupersededEvent(reviewId, runId, REPLAY_SUPERSEDING_PRINCIPAL, kind),
+      );
     }
   }
 

@@ -12,7 +12,7 @@ import {
 } from '../events';
 import type { TaskView } from '../task-registry';
 import { notificationForSettledTask, startBuiltInNotifications } from './built-in-notifications';
-import type { NotificationInput } from './notification-types';
+import { NOTIFICATION_FIELD_LIMITS, type NotificationInput } from './notification-types';
 
 const task = (change: Partial<TaskView> = {}): TaskView => ({
   id: 'run-1',
@@ -151,6 +151,31 @@ describe('startBuiltInNotifications', () => {
       },
     ]);
     expect(dismissed).toEqual(['review.waiting:approval:run-1:c1']);
+  });
+
+  it('dismisses the notification of a request the replay of a schedule fire ended, which no decision can reach', async () => {
+    const { running, dispatch, dismissed } = open();
+
+    dispatch(
+      new ReviewSupersededEvent('approval:run-1:c1', 'run-1', 'system:replay', 'tool-approval'),
+    );
+    await running.drain();
+
+    expect(dismissed).toEqual(['review.waiting:approval:run-1:c1']);
+  });
+
+  it('bounds the dedupe key of a review with a long id, the same for the write and the close', async () => {
+    const { running, dispatch, created, dismissed } = open();
+    const reviewId = `human-wait:run-1:${'s'.repeat(600)}:0`;
+
+    dispatch(new ReviewRequestedEvent(reviewId, 'run-1', 'api-key:alice', 'human-wait'));
+    dispatch(new ReviewApprovedEvent(reviewId, 'run-1', 'api-key:alice', 'human-wait'));
+    await running.drain();
+
+    const key = created[0]?.dedupeKey ?? '';
+    expect(key).toMatch(/^review\.waiting:human-wait:sha256:[0-9a-f]{64}$/);
+    expect(key.length).toBeLessThan(NOTIFICATION_FIELD_LIMITS.dedupeKey);
+    expect(dismissed).toEqual([key]);
   });
 
   it('words a human wait as a question, and still writes when the run’s record is not found', async () => {

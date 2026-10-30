@@ -179,6 +179,10 @@ export interface BureauNotifications {
    * Writes a notification for `input.owner`. With a `dedupeKey` it is idempotent: `created` is
    * `false` and `notification` is the existing one when the key was already used. Rejects with a
    * `BAD_REQUEST` error for a field that is empty, too long, or not of the documented shape.
+   *
+   * A hook that writes a notification must not do so in response to `notification.created`: that
+   * event is dispatched for the notification it writes, so the hook would loop. A hook that has
+   * to react to one filters on `kind` and carries a `dedupeKey`, so the second write is a no-op.
    */
   create(
     input: NotificationInput,

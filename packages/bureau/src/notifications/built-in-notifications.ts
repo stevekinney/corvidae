@@ -12,8 +12,10 @@
  *   into children notifies once, for itself.
  * - `review.requested` writes `review.waiting` for the run's owner.
  * - `review.approved`, `denied`, `rejected`, `expired`, `revoked` and `canceled` dismiss that
- *   `review.waiting`, because nothing waits on the owner any more. `review.superseded` does not:
- *   a re-gated approval stays pending.
+ *   `review.waiting`, because nothing waits on the owner any more. `review.superseded` does not
+ *   when it re-gates an approval, which stays pending, but it does when the replay of a schedule
+ *   fire (`system:replay`) closes a request whose attempt died before it committed its step
+ *   (COR-1613): no decision can reach that request, so nothing waits on the owner.
  *
  * Each notification carries a `dedupeKey` built from what happened (`run.settled:<runId>`,
  * `review.waiting:<reviewId>`), never from the event feed's sequence, which restarts with the
@@ -29,8 +31,12 @@
  */
 
 import { isTopLevelTaskOrigin } from '../task-origin.ts';
-import { RunSettledEvent, ReviewRequestedEvent } from '../events.ts';
-import { REVIEW_CLOSING_EVENT_KINDS } from '../review-closing-events.ts';
+import { RunSettledEvent, ReviewRequestedEvent, ReviewSupersededEvent } from '../events.ts';
+import {
+  REPLAY_SUPERSEDING_PRINCIPAL,
+  REVIEW_CLOSING_EVENT_KINDS,
+} from '../review-closing-events.ts';
+import { boundedReviewId } from '../review-decision-record.ts';
 import { serializeUnknownError } from '../serialization.ts';
 import type { TaskView } from '../task-registry.ts';
 import type { DiagnosticSink } from '../types.ts';
@@ -73,9 +79,14 @@ export function runNotificationDedupeKey(runId: string): string {
   return `run.settled:${runId}`;
 }
 
-/** The dedupe key of a review's waiting notification. */
+/**
+ * The dedupe key of a review's waiting notification. The key is stored, so the review id in it is
+ * bounded as `reviewCanceledDedupeKey` bounds its own: an id that fits in 128 UTF-8 bytes appears
+ * as is, and a longer one, such as a human wait on a long signal name, as a fixed-length digest.
+ */
 export function reviewNotificationDedupeKey(reviewId: string): string {
-  return `review.waiting:${reviewId}`;
+  const kind = reviewId.startsWith('approval:') ? 'approval' : 'human-wait';
+  return `review.waiting:${boundedReviewId(reviewId, kind)}`;
 }
 
 /**
@@ -191,7 +202,10 @@ export function startBuiltInNotifications(
       enqueue(`run "${runId}"`, () => onRunSettled(runId));
     } else if (event instanceof ReviewRequestedEvent) {
       enqueue(`review "${event.reviewId}"`, () => onReviewRequested(event));
-    } else if (REVIEW_CLOSING_EVENT_KINDS.has(event.type)) {
+    } else if (
+      REVIEW_CLOSING_EVENT_KINDS.has(event.type) ||
+      (event instanceof ReviewSupersededEvent && event.principal === REPLAY_SUPERSEDING_PRINCIPAL)
+    ) {
       const reviewId = (event as { reviewId?: unknown }).reviewId;
       if (typeof reviewId === 'string') {
         enqueue(`review "${reviewId}"`, async () => {
