@@ -324,10 +324,23 @@ function assertNoNotificationLoop(action: HookAction, events: readonly string[])
   }
 }
 
-/** Whether a failure of a workflow start is one a retry cannot change. */
+/**
+ * The error codes of a start that a retry cannot change: input the workflow refuses
+ * (`input-invalid`), a workflow that is missing or paused (`NOT_FOUND`), a value the engine cannot
+ * send (`BAD_REQUEST`), and a key whose run was purged by retention
+ * (`IdempotencyKeyPurgedError`, Weft's: the same key answers the same way). Anything else, such as
+ * `workflow-apply-failed` (the engine has not followed a file change yet), is retried.
+ */
+const PERMANENT_ACTION_FAILURES: ReadonlySet<unknown> = new Set([
+  'input-invalid',
+  'NOT_FOUND',
+  'BAD_REQUEST',
+  'IdempotencyKeyPurgedError',
+]);
+
+/** Whether a failure of a hook action is one a retry cannot change. */
 function isPermanentStartFailure(error: unknown): boolean {
-  const code = (error as { readonly code?: unknown } | null)?.code;
-  return code === 'input-invalid' || code === 'NOT_FOUND' || code === 'BAD_REQUEST';
+  return PERMANENT_ACTION_FAILURES.has((error as { readonly code?: unknown } | null)?.code);
 }
 
 function checkedEvents(events: readonly string[]): string[] {

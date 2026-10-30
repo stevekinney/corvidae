@@ -148,6 +148,37 @@ describe('a start-workflow delivery that fails', () => {
     expect(delivery.attempts.map((attempt) => attempt.outcome)).toEqual(['interrupted']);
   });
 
+  it('retries a file change the engine has not followed, and fails once on a purged idempotency key', async () => {
+    const applying = setup(() =>
+      Promise.reject(
+        Object.assign(new Error('not followed yet'), { code: 'workflow-apply-failed' }),
+      ),
+    );
+    const applyHook = await applying.hooks.create({
+      action: { type: 'start-workflow', workflowId: 'lookup' },
+      events: ['run.settled'],
+    });
+    await applying.fire();
+    const retried = await onlyDelivery(applying.hooks, applyHook.id);
+    expect(retried.attempts.map((attempt) => attempt.outcome)).toEqual(['error', 'error', 'error']);
+
+    const purged = setup(() =>
+      Promise.reject(
+        Object.assign(new Error('The idempotency key maps to a workflow that no longer exists'), {
+          code: 'IdempotencyKeyPurgedError',
+        }),
+      ),
+    );
+    const purgedHook = await purged.hooks.create({
+      action: { type: 'start-workflow', workflowId: 'lookup' },
+      events: ['run.settled'],
+    });
+    await purged.fire();
+    const failed = await onlyDelivery(purged.hooks, purgedHook.id);
+    expect(failed.status).toBe('failed');
+    expect(failed.attempts.map((attempt) => attempt.outcome)).toEqual(['rejected']);
+  });
+
   it('records a refusal the engine marks permanent as one attempt and a failed delivery', async () => {
     let calls = 0;
     const run = setup(() => {

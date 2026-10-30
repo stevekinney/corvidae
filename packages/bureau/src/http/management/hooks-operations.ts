@@ -21,7 +21,10 @@
  * existing fleet-wide hook into a reader of its own. A `start-workflow` action also needs the
  * caller to be allowed to start workflows (it owns the deployment's, or holds
  * `bureau.workflows:write`), and the Bureau checks the hook's owner again, in v1 the deployment's
- * owner of record alone, when the hook is written and for every delivery.
+ * owner of record alone, when the hook is written and for every delivery. The caller's authority
+ * is asked when an action is set, not when a hook that already has one is re-enabled or re-scoped:
+ * that needs `bureau.events:observe-all`, as for any hook, and the workflow still runs as the
+ * owner, whose authority is checked for each delivery.
  *
  * The signing secret is a write-only input of `create` and `update`: no operation, record, log or
  * audit entry returns it. A host that keeps secrets elsewhere (a remote home) refuses a write of
