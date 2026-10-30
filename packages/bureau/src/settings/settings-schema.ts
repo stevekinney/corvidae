@@ -174,7 +174,7 @@ export const settingsSchema = z
       .object({ olderThan: z.number().int().positive() })
       .strict()
       .describe(
-        'How long a run keeps its workflow log lines after it last wrote one, in milliseconds; the next maintenance pass sweeps by it. Has effect only on a Bureau that persists workflow logs.',
+        'How long a finished run keeps its workflow log lines after it last wrote one, in milliseconds; the next maintenance pass sweeps by it. A run that is still active keeps its lines. Has effect only on a Bureau that persists workflow logs.',
       ),
     'retention.checkpoints': z
       .union([

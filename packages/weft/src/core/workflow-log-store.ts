@@ -1,7 +1,7 @@
 /**
  * The persisted `ctx.log` lines of a workflow run (COR-1811): a bounded, buffered sink that writes
  * the lines the engine emits, a reader that serves them per run and per step, and a retention pass
- * that drops the lines of runs that went quiet.
+ * that drops the lines of finished runs that went quiet.
  *
  * The sink is the host's `EngineOptions.onLog`; the engine is handed the same store through
  * `EngineOptions.workflowLogs`, which is how `Engine.getLogs` reads (after flushing the buffered
@@ -9,8 +9,9 @@
  *
  * Bounds, all documented on {@link WorkflowLogStoreOptions}: a run keeps at most
  * `maximumLinesPerRun` lines (500 by default), evicting the oldest and counting each in
- * {@link WorkflowLogsResult.dropped}; a line's message and attributes are each cut to
- * `maximumLineBytes` (2 KiB by default), with a visible marker.
+ * {@link WorkflowLogsResult.dropped}; a line's message and attributes together are held to
+ * `maximumLineBytes` (2 KiB by default): a long message is cut with a visible marker, and
+ * attributes that do not fit beside it are dropped.
  *
  * Durability: the sink is asynchronous. A line is buffered in memory and written in a batch on the
  * next turn, on {@link WorkflowLogStore.flush}, and on engine shutdown (`shutdown()` or `await using`;
@@ -32,6 +33,7 @@ import {
 } from '@lostgradient/storage';
 
 import { KEYS } from '../storage/keys.ts';
+import { decode } from './codec.ts';
 import type { WorkflowLogRecord } from './types/workflow-log.ts';
 import {
   DEFAULT_MAXIMUM_LOG_LINES_PER_RUN,
@@ -52,6 +54,14 @@ import {
 
 /** The most batch operations one storage write carries when the eviction is large. */
 const EVICTION_CHUNK = 2000;
+
+/** The workflow statuses after which a run writes no more lines. */
+const FINISHED_STATUSES: ReadonlySet<string> = new Set([
+  'completed',
+  'failed',
+  'cancelled',
+  'timed-out',
+]);
 
 /**
  * Options for {@link createWorkflowLogStore}.
@@ -74,9 +84,9 @@ export interface WorkflowLogStoreOptions {
    */
   readonly maximumLinesPerRun?: number | (() => number | undefined);
   /**
-   * How many UTF-8 bytes a line's message, and separately its serialized attributes, may take;
-   * a longer message is cut and marked, longer attributes are dropped. Default
-   * {@link DEFAULT_MAXIMUM_LOG_LINE_BYTES}.
+   * How many UTF-8 bytes a whole line may take, its message plus its serialized attributes. A
+   * longer message is cut and marked; attributes that do not fit in what the message leaves are
+   * dropped (the line reports `truncated`). Default {@link DEFAULT_MAXIMUM_LOG_LINE_BYTES}.
    */
   readonly maximumLineBytes?: number;
   /** The clock the retention pass measures a run's last write against. Default `Date.now`. */
@@ -120,8 +130,12 @@ export interface WorkflowLogStore {
     options?: { readonly step?: number | undefined },
   ): Promise<WorkflowLogsResult>;
   /**
-   * Remove the lines and the counter of every run whose last line was written more than
-   * `olderThan` milliseconds ago, and answer how many runs that was.
+   * Remove the lines of every run that has finished (its workflow record is terminal, or gone)
+   * and wrote its last line more than `olderThan` milliseconds ago, and answer how many runs
+   * that was. A run that is still active (running, pending, suspended, or parked on a signal, a
+   * review, or a timer) keeps its lines whatever their age. A finished run whose record still
+   * exists keeps its counter, with `first` moved up to `next` and the removed lines added to
+   * `dropped`, so a sequence is never reused; a run whose record is gone loses both.
    */
   prune(options: { readonly olderThan: number }): Promise<{ readonly runs: number }>;
 }
@@ -190,6 +204,10 @@ export function createWorkflowLogStore(
   const writeRun = async (workflowId: string, buffer: RunBuffer): Promise<void> => {
     const cap = maximumLines();
     const counter = await loadCounter(workflowId);
+    // What the counter record says before the final batch commits: only the evictions that
+    // earlier batches already made, so a failure of the final batch leaves a count that matches
+    // the lines that are really gone.
+    const committed: Counter = { ...counter };
     // A batch longer than the cap would only be evicted again: keep its newest lines.
     const overflow = Math.max(0, buffer.lines.length - cap);
     const lines = buffer.lines.slice(overflow);
@@ -214,8 +232,9 @@ export function createWorkflowLogStore(
       counter.next += 1;
     }
     // The lines the cap no longer allows, oldest first. All but the last EVICTION_CHUNK go in
-    // batches of their own; the rest ride the batch that writes the new lines and moves the
-    // counter, so a crash there loses neither the eviction nor the count.
+    // batches of their own, each moving the counter past what it removed; the rest ride the batch
+    // that writes the new lines and finishes the counter, so a crash between batches loses no line
+    // without counting it.
     const evictBelow = Math.max(counter.first, counter.next - cap);
     const evicted = evictBelow - counter.first;
     const leading = Math.max(0, evicted - EVICTION_CHUNK);
@@ -225,6 +244,13 @@ export function createWorkflowLogStore(
       for (let sequence = start; sequence < stop; sequence++) {
         chunk.push({ type: 'delete', key: KEYS.workflowLog(workflowId, sequence) });
       }
+      committed.first = stop;
+      committed.dropped += stop - start;
+      chunk.push({
+        type: 'put',
+        key: KEYS.workflowLogCounter(workflowId),
+        value: ENCODER.encode(JSON.stringify(committed)),
+      });
       await storage.batch(chunk);
     }
     for (let sequence = counter.first + leading; sequence < evictBelow; sequence++) {
@@ -277,9 +303,15 @@ export function createWorkflowLogStore(
   const flush = (): Promise<void> => enqueue(drain);
 
   const sink = (record: WorkflowLogRecord): void => {
+    // A call a continued run repeats in front of the operation it was parked on: already stored.
+    if (record.replayed === true) return;
     try {
       const message = cutMessage(record.message, maximumLineBytes);
-      const attributes = serializeAttributes(record.attributes, maximumLineBytes);
+      // The whole line is held to the cap: the attributes get what the (cut) message leaves.
+      const attributes = serializeAttributes(
+        record.attributes,
+        Math.max(0, maximumLineBytes - ENCODER.encode(message.text).byteLength),
+      );
       const line: PendingLine = {
         step: isNonNegativeInteger(record.step) ? record.step : null,
         level: record.level,
@@ -320,24 +352,74 @@ export function createWorkflowLogStore(
     return { lines, dropped: counter?.dropped ?? 0 };
   };
 
+  /** Whether the run behind `workflowId` is over, still going, or no longer has a record. */
+  const runPhase = async (workflowId: string): Promise<'active' | 'finished' | 'missing'> => {
+    const bytes = await storage.get(KEYS.workflow(workflowId));
+    if (bytes === null) return 'missing';
+    try {
+      const state: unknown = decode(bytes);
+      const status =
+        typeof state === 'object' && state !== null ? Reflect.get(state, 'status') : undefined;
+      return typeof status === 'string' && FINISHED_STATUSES.has(status) ? 'finished' : 'active';
+    } catch {
+      // A record that cannot be read is not evidence that the run is over.
+      return 'active';
+    }
+  };
+
+  /**
+   * Remove every line of a finished run in batches, and move its counter past them in the last
+   * one, so a crash leaves either the lines and the old counter or neither.
+   */
+  const removeLines = async (workflowId: string, counter: Counter): Promise<void> => {
+    const keys: string[] = [];
+    for await (const [key] of storage.scan(KEYS.workflowLogPrefix(workflowId))) keys.push(key);
+    const leading = Math.max(0, keys.length - EVICTION_CHUNK);
+    for (let start = 0; start < leading; start += EVICTION_CHUNK) {
+      await storage.batch(
+        keys
+          .slice(start, Math.min(leading, start + EVICTION_CHUNK))
+          .map((key): BatchOperation => ({ type: 'delete', key })),
+      );
+    }
+    counter.first = counter.next;
+    counter.dropped += keys.length;
+    await storage.batch([
+      ...keys.slice(leading).map((key): BatchOperation => ({ type: 'delete', key })),
+      {
+        type: 'put',
+        key: KEYS.workflowLogCounter(workflowId),
+        value: ENCODER.encode(JSON.stringify(counter)),
+      },
+    ]);
+  };
+
   const prune: WorkflowLogStore['prune'] = (pruneOptions) =>
     enqueue(async () => {
       await drain();
       const cutoff = getNow() - pruneOptions.olderThan;
-      const expired: string[] = [];
+      const expired: Array<{ workflowId: string; counter: Counter }> = [];
       for await (const [key, bytes] of storage.scan(KEYS.workflowLogCounterPrefix())) {
         const counter = decodeCounter(bytes);
         const encoded = key.slice(KEYS.workflowLogCounterPrefix().length);
         const workflowId = tryDecodeStorageKeyComponent(encoded);
         if (counter !== undefined && workflowId !== null && counter.updatedAt < cutoff) {
-          expired.push(workflowId);
+          expired.push({ workflowId, counter });
         }
       }
       let runs = 0;
-      for (const workflowId of expired) {
+      for (const { workflowId, counter } of expired) {
         try {
-          await storageDeletePrefix(storage, KEYS.workflowLogPrefix(workflowId));
-          await storage.delete(KEYS.workflowLogCounter(workflowId));
+          const phase = await runPhase(workflowId);
+          if (phase === 'active') continue;
+          if (phase === 'missing') {
+            await storageDeletePrefix(storage, KEYS.workflowLogPrefix(workflowId));
+            await storage.delete(KEYS.workflowLogCounter(workflowId));
+          } else {
+            // Nothing left to remove: a pass that already emptied this run counts nothing.
+            if (counter.first >= counter.next) continue;
+            await removeLines(workflowId, counter);
+          }
           runs += 1;
         } catch (error) {
           report(error);

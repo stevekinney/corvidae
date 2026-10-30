@@ -363,8 +363,9 @@ export interface BureauRetentionOptions {
    */
   memory?: BureauMemoryRetentionOption | undefined;
   /**
-   * COR-1811 — how long a run's persisted `ctx.log` lines are kept after the run last wrote one,
-   * swept by each maintenance pass. Leave it out to keep them until the run is purged. Has effect
+   * COR-1811 — how long a finished run's persisted `ctx.log` lines are kept after the run last
+   * wrote one, swept by each maintenance pass. A run that is still active (running, suspended, or
+   * parked on a signal, a review, or a timer) keeps its lines whatever their age. Leave it out to keep them until the run is purged. Has effect
    * only on a Bureau composed with {@link BureauOptions.logs}. `olderThan` must be a positive
    * integer; otherwise `createBureau` throws `BureauError(..., 'BAD_REQUEST')`.
    */
@@ -662,8 +663,8 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * worker-forwarded, is written beside the run (the human-wait park marker excepted), and
    * `engine.getLogs` and `weft.workflows.logs.list` serve it per run and per step. {@link onLog}
    * still receives every line. A run keeps its newest `maximumLinesPerRun` lines (500 by default);
-   * each older line the cap evicts is counted as dropped. A message is cut at 2 KiB with a marker.
-   * Lines are kept {@link BureauRetentionOptions.logs} (unset keeps them until the run is purged),
+   * each older line the cap evicts is counted as dropped. A line's message and attributes together are held to
+   * 2 KiB: a long message is cut with a marker, and attributes that do not fit are dropped. Lines are kept {@link BureauRetentionOptions.logs} (unset keeps them until the run is purged),
    * and the `logs.maximumLinesPerRun` and `retention.logs` settings replace these at runtime. The
    * sink is buffered, so a crash can lose the last turn's lines; shutdown flushes it. Has effect
    * only when a durable engine is composed. A `maximumLinesPerRun` that is not a positive integer of

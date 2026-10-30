@@ -93,4 +93,17 @@ describe('weft.workflows.logs.list', () => {
     expect(negative.status).toBe(400);
     expect(notANumber.status).toBe(400);
   });
+
+  it('refuses an empty or non-decimal step instead of reading it as step 0', async () => {
+    engine = await start(true);
+
+    for (const query of ['?step=', '?step=%20', '?step=1.5', '?step=1e1', '?step=0x1']) {
+      const response = await get(engine, query);
+      expect(response.status).toBe(400);
+    }
+    // A real step 0 still reads.
+    const zeroResponse = await get(engine, '?step=0');
+    const zero = (await zeroResponse.json()) as { lines: Array<Record<string, unknown>> };
+    expect(zero.lines.map((line) => line['message'])).toEqual(['first']);
+  });
 });

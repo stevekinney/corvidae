@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import { MemoryStorage } from '@lostgradient/storage';
 
 import { KEYS } from '../storage/keys.ts';
+import { encode } from './codec.ts';
 import type { WorkflowLogRecord } from './types/workflow-log.ts';
 import {
   DEFAULT_MAXIMUM_LOG_LINES_PER_RUN,
@@ -250,7 +251,109 @@ describe('createWorkflowLogStore', () => {
     expect(linesOf(await store.read('recent'))).toEqual([]);
   });
 
-  it('writes a pruned run afresh from sequence zero', async () => {
+  it('counts the lines an earlier eviction batch removed when the batch that follows it fails', async () => {
+    await using storage = new MemoryStorage();
+    const errors: unknown[] = [];
+    const store = createWorkflowLogStore(storage, {
+      maximumLinesPerRun: 3_000,
+      onError: (error) => errors.push(error),
+    });
+    for (let line = 0; line < 3_000; line++) store.sink(record({ message: `old ${line}` }));
+    await store.flush();
+
+    // A burst of another 3000 lines evicts all 3000 old ones: 1000 in a batch of their own, then
+    // the last 2000 with the new lines and the counter. That last batch fails.
+    const batch = storage.batch.bind(storage);
+    let calls = 0;
+    const failure = new Error('disk full');
+    storage.batch = async (operations) => {
+      calls += 1;
+      if (calls === 2) throw failure;
+      return batch(operations);
+    };
+    for (let line = 0; line < 3_000; line++) store.sink(record({ message: `new ${line}` }));
+    await store.flush();
+    storage.batch = batch;
+
+    expect(errors).toEqual([failure]);
+    // What survives is the old lines the first batch did not remove, and the counter says so.
+    const restarted = createWorkflowLogStore(storage, { maximumLinesPerRun: 3_000 });
+    const after = await restarted.read('run-1');
+    expect(after.lines).toHaveLength(2_000);
+    expect(after.lines[0]?.sequence).toBe(1_000);
+    expect(after.dropped).toBe(1_000);
+  });
+
+  it('prunes only the runs whose workflow record is over, and keeps the counter of the ones it empties', async () => {
+    await using storage = new MemoryStorage();
+    let now = 0;
+    const store = createWorkflowLogStore(storage, { getNow: () => now });
+    const statuses = {
+      running: false,
+      pending: false,
+      suspended: false,
+      completed: true,
+      failed: true,
+      cancelled: true,
+      'timed-out': true,
+    } as const;
+    for (const [status] of Object.entries(statuses)) {
+      await storage.put(KEYS.workflow(status), encode({ id: status, status }));
+      store.sink(record({ workflowId: status, message: 'one' }));
+      store.sink(record({ workflowId: status, message: 'two' }));
+    }
+    await store.flush();
+    now = 8 * 24 * 60 * 60 * 1000;
+
+    expect(await store.prune({ olderThan: 7 * 24 * 60 * 60 * 1000 })).toEqual({ runs: 4 });
+    for (const [status, over] of Object.entries(statuses)) {
+      const result = await store.read(status);
+      expect(messagesOf(result)).toEqual(over ? [] : ['one', 'two']);
+      expect(droppedOf(result)).toBe(over ? 2 : 0);
+    }
+
+    // A run that is over keeps its counter, so a line it writes later takes the next sequence.
+    store.sink(record({ workflowId: 'completed', message: 'three' }));
+    expect(sequencedMessagesOf(await store.read('completed'))).toEqual([[2, 'three']]);
+    expect(await store.prune({ olderThan: 7 * 24 * 60 * 60 * 1000 })).toEqual({ runs: 0 });
+  });
+
+  it('keeps the lines of a run whose workflow record cannot be read', async () => {
+    await using storage = new MemoryStorage();
+    let now = 0;
+    const store = createWorkflowLogStore(storage, { getNow: () => now });
+    await storage.put(KEYS.workflow('run-1'), ENCODER.encode('not a workflow record'));
+    store.sink(record({ message: 'kept' }));
+    await store.flush();
+    now = 8 * 24 * 60 * 60 * 1000;
+
+    expect(await store.prune({ olderThan: 7 * 24 * 60 * 60 * 1000 })).toEqual({ runs: 0 });
+    expect(messagesOf(await store.read('run-1'))).toEqual(['kept']);
+  });
+
+  it('removes a finished run’s lines in several batches when it kept more than one batch of them', async () => {
+    await using storage = new MemoryStorage();
+    let now = 0;
+    const store = createWorkflowLogStore(storage, {
+      getNow: () => now,
+      maximumLinesPerRun: 4_500,
+    });
+    await storage.put(KEYS.workflow('run-1'), encode({ id: 'run-1', status: 'completed' }));
+    for (let line = 0; line < 4_500; line++) store.sink(record({ message: `line ${line}` }));
+    await store.flush();
+    expect(linesOf(await store.read('run-1'))).toHaveLength(4_500);
+    now = 8 * 24 * 60 * 60 * 1000;
+
+    expect(await store.prune({ olderThan: 7 * 24 * 60 * 60 * 1000 })).toEqual({ runs: 1 });
+
+    const after = await store.read('run-1');
+    expect(after.lines).toEqual([]);
+    expect(after.dropped).toBe(4_500);
+    store.sink(record({ message: 'next' }));
+    expect(sequencedMessagesOf(await store.read('run-1'))).toEqual([[4_500, 'next']]);
+  });
+
+  it('writes a run afresh from sequence zero once its workflow record is gone and its lines were pruned', async () => {
     await using storage = new MemoryStorage();
     let now = 0;
     const store = createWorkflowLogStore(storage, { getNow: () => now });
@@ -404,6 +507,46 @@ describe('createWorkflowLogStore', () => {
     expect(await store.prune({ olderThan: 10 })).toEqual({ runs: 1 });
     expect(errors).toEqual([failure]);
     expect(linesOf(await store.read('gone'))).toEqual([]);
+  });
+
+  it('stores nothing for a record marked as a repeat of an earlier execution', async () => {
+    await using storage = new MemoryStorage();
+    const store = createWorkflowLogStore(storage);
+    store.sink(record({ message: 'once' }));
+    store.sink(record({ message: 'once', replayed: true }));
+    store.sink(record({ message: 'next' }));
+    await store.flush();
+
+    expect(sequencedMessagesOf(await store.read('run-1'))).toEqual([
+      [0, 'once'],
+      [1, 'next'],
+    ]);
+  });
+
+  it('holds a line, its message and attributes together, to the byte cap', async () => {
+    await using storage = new MemoryStorage();
+    const store = createWorkflowLogStore(storage, { maximumLineBytes: 200 });
+    // Each part fits alone; together they would be 300 bytes.
+    store.sink(record({ message: 'm'.repeat(150), attributes: { note: 'n'.repeat(130) } }));
+    // Together they fit.
+    store.sink(record({ message: 'short', attributes: { note: 'n'.repeat(100) } }));
+    await store.flush();
+
+    const stored = await store.read('run-1');
+    const [crowded, fitting] = stored.lines;
+    expect(crowded?.attributes).toBeUndefined();
+    expect(crowded?.truncated).toBe(true);
+    expect(crowded?.message).toBe('m'.repeat(150));
+    expect(fitting?.attributes).toEqual({ note: 'n'.repeat(100) });
+    expect(fitting?.truncated).toBe(false);
+    for (const line of stored.lines) {
+      const size =
+        ENCODER.encode(line.message).byteLength +
+        (line.attributes === undefined
+          ? 0
+          : ENCODER.encode(JSON.stringify(line.attributes)).byteLength);
+      expect(size).toBeLessThanOrEqual(200);
+    }
   });
 
   it('never throws from the sink, whatever the record holds', async () => {

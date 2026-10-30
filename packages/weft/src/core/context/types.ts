@@ -168,6 +168,16 @@ export interface ContextOptions {
   deadline?: number;
   initialStep?: number;
   accumulatedResults?: Map<number, unknown>;
+  /**
+   * Set when the body is relaunched from its checkpoint to continue a run that already executed
+   * up to its next uncached operation (a signal, a review, a timer, or a recovery). The body
+   * replays its cached prefix and then reaches that operation, which is where the earlier
+   * execution parked; every `ctx.log` call before the operation yields was emitted by that
+   * earlier execution, so its record is delivered marked `replayed` (the log store skips those).
+   * Leave it out for
+   * a fresh run, and for a fork, which is a new run that logs from its start.
+   */
+  resumed?: boolean;
   locals?: Record<string, unknown>;
   searchAttributes?: Record<string, SearchAttributeValue>;
   searchAttributeSchema?: SearchAttributeSchema;

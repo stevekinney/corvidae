@@ -72,7 +72,7 @@ export interface WorkflowLogLine {
 export interface WorkflowLogsResult {
   /** The kept lines, oldest first, narrowed to one step when the read asked for it. */
   readonly lines: WorkflowLogLine[];
-  /** How many of the run's lines the cap evicted, whatever step the read narrowed to. */
+  /** How many of the run's lines the cap evicted or retention removed, whatever step the read narrowed to. */
   readonly dropped: number;
 }
 
@@ -82,7 +82,7 @@ export interface Counter {
   next: number;
   /** The sequence of the oldest line that may still be kept. */
   first: number;
-  /** Lines evicted by the cap. */
+  /** Lines evicted by the cap or removed by retention. */
   dropped: number;
   /** When the run last wrote a line, on the store's clock. */
   updatedAt: number;

@@ -12576,8 +12576,8 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
-   * COR-1811 — removes the persisted workflow log lines of runs that wrote nothing for longer than
-   * `retention.logs`, read per pass so a change applies to the next one. With the setting unset the
+   * COR-1811 — removes the persisted workflow log lines of finished runs that wrote nothing for longer
+   * than `retention.logs`, read per pass so a change applies to the next one. With the setting unset the
    * lines stay until their run is purged. A failure is reported and never stops the rest of a pass.
    */
   async function pruneWorkflowLogs(pass: 'Manual' | 'Automatic'): Promise<void> {

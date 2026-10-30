@@ -12,6 +12,7 @@ import {
   type WorkflowLogLine,
   type WorkflowLogsResult,
 } from '@lostgradient/weft';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog.ts';
@@ -115,7 +116,8 @@ describe('BureauOptions.logs', () => {
 
         at(8 * DAY_MS);
         await bureau.maintain();
-        expect(await engine.getLogs('run-d')).toEqual({ lines: [], dropped: 0 });
+        // The run is over: its lines go, and the count of what retention removed stays.
+        expect(await engine.getLogs('run-d')).toEqual({ lines: [], dropped: 2 });
 
         // A shorter window set at runtime applies to the next pass.
         const later = await engine.start('retained-run', null, { id: 'run-e' });
@@ -125,6 +127,50 @@ describe('BureauOptions.logs', () => {
         await change({ 'retention.logs': { olderThan: 60_000 } });
         await bureau.maintain();
         expect(linesOf(await engine.getLogs('run-e'))).toEqual([]);
+      },
+      { logs: {}, retention: { logs: { olderThan: 7 * DAY_MS } }, onLog: () => {} },
+    );
+  });
+
+  it('keeps the lines of a run that is still parked past retention.logs, and prunes them once it ends', async () => {
+    await withLiveSettingsBureau(
+      async ({ bureau, at }) => {
+        const engine = engineOf(bureau);
+        engine.register(
+          workflow({ name: 'parked-run' }).execute(async function* (ctx: WorkflowContext) {
+            ctx.log?.info('before the wait');
+            const answer = yield* ctx.waitForSignal<string>('go');
+            ctx.log?.info('after the wait');
+            return answer;
+          }),
+        );
+        const handle = await engine.start('parked-run', null, { id: 'run-parked' });
+        await waitUntil(
+          async () => {
+            const logged = await engine.getLogs('run-parked');
+            return logged.lines.length === 1;
+          },
+          {
+            message: 'the run to log its line and park',
+          },
+        );
+
+        at(8 * DAY_MS);
+        await bureau.maintain();
+        expect(linesOf(await engine.getLogs('run-parked')).map((line) => line.message)).toEqual([
+          'before the wait',
+        ]);
+
+        await engine.signal('run-parked', 'go', 'done');
+        await handle.result();
+        expect(linesOf(await engine.getLogs('run-parked')).map((line) => line.message)).toEqual([
+          'before the wait',
+          'after the wait',
+        ]);
+
+        at(16 * DAY_MS);
+        await bureau.maintain();
+        expect(await engine.getLogs('run-parked')).toEqual({ lines: [], dropped: 2 });
       },
       { logs: {}, retention: { logs: { olderThan: 7 * DAY_MS } }, onLog: () => {} },
     );

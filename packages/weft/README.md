@@ -748,7 +748,7 @@ engine.addInterceptor(interceptor);
 
 Spans go to the tracer from `@opentelemetry/api` when it is installed and to a no-op otherwise. For metrics on your own meter, `createOpenTelemetryMetrics(meterOrName)` creates Weft's standard instrument set—workflow and activity durations, activity attempts, and active workflows.
 
-Inside workflow code, `ctx.log` emits structured console records with `workflowId`, `workflowType`, `level`, and `timestamp` attached. Caller attributes are nested under `attributes`, so they cannot overwrite the envelope. Logs at already-restored checkpoint positions are suppressed on recovery; logs at the live frontier still emit, and in worker mode the destination is the worker process console. Each record also carries `step`, the index of the durable step the workflow was about to run.
+Inside workflow code, `ctx.log` emits structured console records with `workflowId`, `workflowType`, `level`, and `timestamp` attached. Caller attributes are nested under `attributes`, so they cannot overwrite the envelope. Logs at already-restored checkpoint positions are suppressed on recovery, ; the logs in front of the operation a parked run (a signal, a review, a timer) resumes at are delivered again with `replayed: true`, which the persisted log store skips, so a line logged before `waitForSignal` is stored once; logs past that operation carry no mark, and in worker mode the destination is the worker process console. Each record also carries `step`, the index of the durable step the workflow was about to run.
 
 To keep a run's lines with the run, create a log store over the engine's storage, pass its `sink` as `onLog`, and pass the store as `workflowLogs`:
 
@@ -764,7 +764,7 @@ const { lines, dropped } = await engine.getLogs('order-1', { step: 2 });
 console.log(lines.length, dropped);
 ```
 
-A run keeps its newest 500 lines (`maximumLinesPerRun`); each older line the cap evicts adds one to `dropped`. A message is cut at 2 KiB and ends in a truncation marker, and attributes over 2 KiB are dropped. `weft.workflows.logs.list` (`GET /v1/workflows/:id/logs?step=`) serves the same reads. The sink is buffered and written on the next turn, on `getLogs`, and on shutdown, so a crash can lose the last turn's lines. A purge removes a run's lines with it, and `logs.prune({ olderThan })` removes the lines of runs that have written nothing for that long.
+A run keeps its newest 500 lines (`maximumLinesPerRun`); each older line the cap evicts adds one to `dropped`. A line's message and attributes together are held to 2 KiB: a long message is cut and ends in a truncation marker, and attributes that do not fit beside it are dropped. `weft.workflows.logs.list` (`GET /v1/workflows/:id/logs?step=`) serves the same reads. The sink is buffered and written on the next turn, on `getLogs`, and on shutdown, so a crash can lose the last turn's lines. A purge removes a run's lines with it, and `logs.prune({ olderThan })` removes the lines of finished runs (a terminal workflow record, or none) that have written nothing for that long. A run that is still active, parked or not, keeps its lines whatever their age. A pruned run whose record still exists keeps its counter, so `dropped` counts the removed lines and a sequence is never reused.
 
 ### Testing
 

@@ -44,6 +44,20 @@ function isValidLogStep(step: unknown): boolean {
   );
 }
 
+/** Whether `replayed` is absent or a boolean, per the `WorkflowLogRecord.replayed` contract. */
+function isValidLogReplayedMark(replayed: unknown): boolean {
+  return replayed === undefined || typeof replayed === 'boolean';
+}
+
+/** Whether the optional fields of a log record (`step`, `replayed`, `attributes`) are absent or well formed. */
+function hasValidOptionalLogFields(candidate: Record<string, unknown>): boolean {
+  return (
+    isValidLogStep(candidate['step']) &&
+    isValidLogReplayedMark(candidate['replayed']) &&
+    isValidLogAttributes(candidate['attributes'])
+  );
+}
+
 /**
  * A candidate `log` outbound message: every field is `unknown` because this lane
  * accepts the message by `type` ALONE and validates the payload separately. Narrowing
@@ -80,8 +94,7 @@ export function isValidWorkerLogRecord(record: unknown): record is WorkflowLogRe
     typeof candidate['workflowType'] === 'string' &&
     typeof candidate['timestamp'] === 'number' &&
     Number.isFinite(candidate['timestamp']) &&
-    isValidLogStep(candidate['step']) &&
-    isValidLogAttributes(candidate['attributes'])
+    hasValidOptionalLogFields(candidate)
   );
 }
 

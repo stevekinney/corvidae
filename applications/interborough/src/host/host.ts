@@ -172,7 +172,7 @@ const REMOTE_LOCKED_SETTINGS = {
 export const AUDIT_RETENTION_MILLISECONDS = 90 * 24 * 60 * 60 * 1000;
 
 /**
- * How long the host keeps a run's workflow log lines after the run last wrote one: 7 days, in
+ * How long the host keeps a finished run's workflow log lines after the run last wrote one: 7 days, in
  * milliseconds (COR-1811). It is the `retention.logs` window the Bureau starts with; a value stored
  * on the Settings page replaces it.
  */

@@ -53,11 +53,14 @@ export const listWorkflowLogsOperation = defineOperation({
     'Read the `ctx.log` lines a workflow run wrote, oldest first, each with its sequence number, ' +
     'the durable step it was logged before (`null` for a line stored without one), level, ' +
     'message, timestamp, attributes, and whether it was cut. A run keeps its newest 500 lines ' +
-    '(the host sets the cap): `dropped` counts the older lines the cap evicted. A message ' +
-    'is cut at 2 KiB and ends in a truncation marker; attributes over 2 KiB are dropped. Lines are ' +
-    "kept with the run and pruned after the host's retention window. A line is written " +
-    'asynchronously, so a crash can lose the last moments of a run. A workflow that is unknown, ' +
-    'purged, or pruned lists no lines, and so does an engine that keeps none. Read-only.',
+    '(the host sets the cap): `dropped` counts the older lines the cap evicted or retention ' +
+    'removed. A line holds at most 2 KiB, its message and attributes together: a long message is ' +
+    'cut and ends in a truncation marker, and attributes that do not fit beside it are dropped ' +
+    '(`truncated` is true either way). Lines are kept with the run; once the run has finished they ' +
+    "are pruned after the host's retention window, and a run that is still active keeps its " +
+    'lines. A line is written asynchronously, so a crash can lose the last moments of a run. A ' +
+    'workflow that is unknown, purged, or pruned lists no lines, and so does an engine that ' +
+    'keeps none. Read-only.',
   destructive: false,
   tags: ['Logs'],
   inputSchema: listWorkflowLogsInput,
@@ -86,7 +89,9 @@ export const listWorkflowLogsRestBinding: UnknownRestBinding = {
     const step = new URL(request.url).searchParams.get('step');
     return {
       workflowId: pathParams['id'] ?? '',
-      ...(step === null ? {} : { step: Number(step) }),
+      // Digits only: `Number()` would read an empty value as step 0 and `1e1` as step 10. Anything
+      // else is NaN, which the input schema refuses as InvalidParams.
+      ...(step === null ? {} : { step: /^\d+$/.test(step) ? Number(step) : Number.NaN }),
     };
   },
   success: { kind: 'json', status: 200 },
