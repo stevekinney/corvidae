@@ -613,6 +613,7 @@ export { withStreaming } from './streaming';
 export * from './streaming/index';
 export * from './structured-output/index';
 export * from './test';
+export { toolNeedingApproval, type ApprovalCheckedResult } from './tool-needing-approval';
 export type {
   AfterGenerateHook,
   AfterToolExecutionHook,

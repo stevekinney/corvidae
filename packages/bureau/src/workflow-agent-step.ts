@@ -8,7 +8,11 @@
 
 import { createHash } from 'node:crypto';
 
-import { isFailureFinishReason, type RunResult } from '@lostgradient/operative';
+import {
+  isFailureFinishReason,
+  type RunResult,
+  toolNeedingApproval,
+} from '@lostgradient/operative';
 import type { JSONValue, WorkflowState } from '@lostgradient/weft';
 import { isJSONValue } from '@lostgradient/weft';
 
@@ -47,31 +51,13 @@ function jsonOrNull(value: unknown): JSONValue | null {
   return isJSONValue(value) ? value : (JSON.parse(JSON.stringify(value)) as JSONValue);
 }
 
-/**
- * Where Armorer's message begins when a call needed an approval it could not issue because the run
- * had no request context to bind it to (an unattended run: a workflow step has no requester). The
- * `workflow-agent-step-approval` test runs a real step, so a change to the text fails it.
- */
-const APPROVAL_UNAVAILABLE_MESSAGE_START = 'Approval authorization requires';
-
-/**
- * The first tool call of the run that needed a person's approval, which an unattended run cannot
- * get: it ended `action_required`, or Armorer could not issue the approval at all. `undefined` when
- * no call did.
- */
-function toolNeedingApproval(result: RunResult<unknown, true>): string | undefined {
-  for (const step of result.steps) {
-    for (const call of step.results) {
-      if (call.outcome === 'action_required') return call.toolName;
-      if (
-        call.outcome === 'error' &&
-        (call.error?.message ?? call.errorMessage)?.startsWith(APPROVAL_UNAVAILABLE_MESSAGE_START)
-      ) {
-        return call.toolName;
-      }
-    }
-  }
-  return undefined;
+/** The failure of a step whose agent called a tool that needed an approval no one can give. */
+function approvalUnavailable(agent: string, tool: string): WorkflowAgentStepError {
+  return new WorkflowAgentStepError(
+    'agent-run-failed',
+    agent,
+    `Agent "${agent}" called "${tool}", which needs a person's approval, and a workflow step has no one to ask, so the call did not run. Set "${tool}" to "never" in the agent file's toolApproval to let a workflow use it, or take the tool away from the agent.`,
+  );
 }
 
 /**
@@ -92,14 +78,8 @@ export function agentStepResultFromRun(
       result.error === undefined ? undefined : serializeUnknownError(result.error),
     );
   }
-  const needing = toolNeedingApproval(result);
-  if (needing !== undefined) {
-    throw new WorkflowAgentStepError(
-      'agent-run-failed',
-      agent,
-      `Agent "${agent}" called "${needing}", which needs a person's approval, and a workflow step has no one to ask, so the call did not run. Set "${needing}" to "never" in the agent file's toolApproval to let a workflow use it, or take the tool away from the agent.`,
-    );
-  }
+  const needing = toolNeedingApproval(result.steps.flatMap((step) => step.results));
+  if (needing !== undefined) throw approvalUnavailable(agent, needing);
   return {
     content: result.content,
     output: jsonOrNull((result as { output?: unknown }).output),
@@ -139,9 +119,18 @@ export function agentStepResultFromState(
       `The run of agent "${agent}" for this step did not record a result.`,
     );
   }
-  const recorded = summary as { content: string; finishReason: string; output?: unknown };
+  const recorded = summary as {
+    content: string;
+    finishReason: string;
+    output?: unknown;
+    toolNeedingApproval?: unknown;
+  };
   if (recorded.finishReason === 'aborted' || isFailureFinishReason(recorded.finishReason)) {
     throw failed(agent, recorded.finishReason, undefined);
+  }
+  // The same failure the live run raised, for a run a restart found finished (COR-1913).
+  if (typeof recorded.toolNeedingApproval === 'string') {
+    throw approvalUnavailable(agent, recorded.toolNeedingApproval);
   }
   return {
     content: recorded.content,

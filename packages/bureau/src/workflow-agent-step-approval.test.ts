@@ -9,6 +9,7 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { agentStepResultFromState, workflowStepRunId } from './workflow-agent-step';
 import {
   startWorkflowToolsBureau,
   type WorkflowToolsHarness,
@@ -74,6 +75,22 @@ describe('a workflow’s agent step that calls a tool that changes something', (
     expect(settings.values[FALLBACK_KEY]).not.toBe(FALLBACK_VALUE);
     // Nothing waits for a person either: no review was raised for a step no one can answer.
     expect(harness.bureau.reviews.list()).toEqual([]);
+  });
+
+  it('records the failure in the step run’s own result, so a restart that finds it finished fails the step the same way', async () => {
+    const harness = await start('default');
+
+    await instance(harness, 'recorded');
+
+    const engine = harness.bureau.durableEngine();
+    const stepRun = await engine?.get(workflowStepRunId('recorded', 0));
+    // The run itself finished as a success, as a restart will find it.
+    expect(stepRun?.status).toBe('completed');
+    expect(stepRun?.result).toMatchObject({
+      finishReason: 'stop-condition',
+      toolNeedingApproval: 'settings-update',
+    });
+    expect(() => agentStepResultFromState('tuner', stepRun)).toThrow(/"settings-update"/);
   });
 
   it('applies the change when the file sets the tool to never', async () => {

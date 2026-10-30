@@ -166,6 +166,22 @@ describe('agentStepResultFromRun', () => {
 });
 
 describe('agentStepResultFromState', () => {
+  it('fails a finished run whose summary names a tool that needed an approval (COR-1913)', () => {
+    const state = stateOf('completed', {
+      result: { content: 'done', finishReason: 'stop-condition', toolNeedingApproval: 'refund' },
+    });
+    const failure = thrown(() => agentStepResultFromState('writer', state));
+    expect(failure.code).toBe('agent-run-failed');
+    expect(failure.message).toContain('"refund"');
+    // A summary that names none is a success, as before.
+    expect(
+      agentStepResultFromState(
+        'writer',
+        stateOf('completed', { result: { content: 'done', finishReason: 'stop-condition' } }),
+      ).finishReason,
+    ).toBe('stop-condition');
+  });
+
   it('reads the summary the agentRun workflow recorded', () => {
     expect(
       agentStepResultFromState(
