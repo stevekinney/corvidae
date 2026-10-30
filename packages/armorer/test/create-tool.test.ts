@@ -217,6 +217,7 @@ describe('createTool', () => {
         toolCall,
         configuration: tool.configuration,
         progress: () => {},
+        resolveSecret: async () => '',
       },
     );
     expect(result).toBe('OK');
@@ -254,6 +255,7 @@ describe('createTool', () => {
           toolCall: createToolCall('transform-boundary', { value: 'raw' }),
           configuration: tool.configuration,
           progress: () => {},
+          resolveSecret: async () => '',
         },
       ),
     ).toBe('raw');
@@ -3085,6 +3087,7 @@ describe('isTool', () => {
         toolCall: createToolCall('run-tool', { value: 'ok' }),
         configuration: tool.configuration,
         progress: () => {},
+        resolveSecret: async () => '',
       },
     );
     expect(result).toBe('ok:run-tool');

@@ -1,10 +1,17 @@
-import { ScheduleMissedFireEvent } from '../events/schedule-events.ts';
+import {
+  ScheduleMissedFireEvent,
+  type ScheduleMissedFireReason,
+} from '../events/schedule-events.ts';
 import type { ScheduleState, TimerEntry } from '../types.ts';
 import { WeftError } from '../weft-error.ts';
 import type { EngineInternals } from './internals.ts';
 import { awaitScheduledRunTurn } from './schedule-current-run.ts';
 import { resolveEffectiveScheduleFireAt } from './schedule-jitter.ts';
-import { collectDueScheduleOccurrences, getNextScheduleOccurrence } from './schedule-occurrence.ts';
+import {
+  collectDueScheduleTicks,
+  getNextScheduleOccurrence,
+  type ScheduleTick,
+} from './schedule-occurrence.ts';
 import { drainQueuedScheduleRun } from './schedule-overlap.ts';
 import { loadScheduleState } from './schedule-state-read.ts';
 import {
@@ -29,6 +36,8 @@ const MAX_MISSED_FIRE_COUNT_PER_TICK = MAX_SCHEDULE_BACKFILL_OCCURRENCES_PER_TIC
 type ActiveScheduleTimerState = ScheduleState & { nextFireAt: number };
 
 type MissedScheduleOccurrences = {
+  /** Why these occurrences were missed: reached too late, or swallowed by a daylight-saving gap. */
+  reason: ScheduleMissedFireReason;
   count: number;
   lastMissedFireAt: number;
   windowStart: number;
@@ -36,10 +45,15 @@ type MissedScheduleOccurrences = {
 };
 
 type ScheduleTimerWork = {
-  dueOccurrences: number[];
-  missedOccurrences?: MissedScheduleOccurrences;
+  /** What this tick missed, one entry per reason; empty when it missed nothing. */
+  missed: MissedScheduleOccurrences[];
+  /** The occurrences that start a run. */
   occurrencesToProcess: number[];
-  skipMissedOccurrences: boolean;
+  /**
+   * The last instant this tick accounted for, fired or missed. The schedule's next occurrence is
+   * the one after it, so what was accounted for is never offered again.
+   */
+  anchor: number;
 };
 
 /**
@@ -178,30 +192,29 @@ async function beginScheduleTimer(
       const nextState: ScheduleState = {
         ...state,
         updatedAt: now,
-        nextFireAt: resolveNextScheduleFireAt(state, work, now),
-        ...(work.missedOccurrences && {
-          lastMissedFireAt: work.missedOccurrences.lastMissedFireAt,
-          missedFireCount: state.missedFireCount + work.missedOccurrences.count,
-        }),
+        nextFireAt: resolveNextScheduleFireAt(state, work),
+        ...recordedMisses(state, work.missed),
       };
       progress.state = nextState;
       if (!(await persistScheduleTimerState(internals, progress, nextState))) {
         return { kind: 'done' };
       }
-      if (work.missedOccurrences) {
-        internals.engine.dispatchEvent(
-          new ScheduleMissedFireEvent(
-            nextState.id,
-            work.missedOccurrences.count,
-            work.missedOccurrences.windowStart,
-            work.missedOccurrences.windowEnd,
-          ),
-        );
-      }
+      dispatchMissedFires(internals, nextState.id, work.missed);
       return { kind: 'done' };
     }
 
-    return processScheduleTimerOccurrences(internals, state, work, now, callbacks, 0, progress);
+    // What a tick missed is written with the first run it starts, in one write, and announced once
+    // that write has landed.
+    const stateWithMisses: ScheduleState = { ...state, ...recordedMisses(state, work.missed) };
+    return processScheduleTimerOccurrences(
+      internals,
+      stateWithMisses,
+      work,
+      now,
+      callbacks,
+      0,
+      progress,
+    );
   });
 }
 
@@ -247,7 +260,7 @@ async function resumeScheduleTimer(
       nextState = {
         ...nextState,
         updatedAt: now,
-        nextFireAt: resolveNextScheduleFireAt(nextState, work, now),
+        nextFireAt: resolveNextScheduleFireAt(nextState, work),
       };
       progress.state = nextState;
       if (!(await persistScheduleTimerState(internals, progress, nextState))) {
@@ -284,70 +297,134 @@ function planScheduleTimerWork(
   now: number,
   lateGraceMilliseconds: number,
 ): ScheduleTimerWork | null {
-  const dueOccurrences = collectDueScheduleOccurrences(
+  const dueTicks = collectDueScheduleTicks(
     state,
     state.nextFireAt,
     Math.max(now, entry.fireAt),
     state.backfill ? MAX_SCHEDULE_BACKFILL_OCCURRENCES_PER_TICK : 2,
   );
-  if (dueOccurrences.length === 0) return null;
+  if (dueTicks.length === 0) return null;
 
   if (!state.backfill && now - entry.fireAt > lateGraceMilliseconds) {
+    const missedTicks = collectMissedScheduleTicks(state, state.nextFireAt, now);
     return {
-      dueOccurrences,
-      missedOccurrences: countMissedScheduleOccurrences(state, state.nextFireAt, now),
+      missed: [
+        ...lateMisses(missedTicks.ticks, state.nextFireAt, missedTicks.windowEnd),
+        ...gapMisses(missedTicks.ticks),
+      ],
       occurrencesToProcess: [],
-      skipMissedOccurrences: true,
+      anchor: missedTicks.ticks.at(-1)?.at ?? state.nextFireAt,
     };
   }
 
-  const occurrencesToProcess = state.backfill ? dueOccurrences : dueOccurrences.slice(0, 1);
+  const handled = state.backfill ? dueTicks : dueTicks.slice(0, 1);
   return {
-    dueOccurrences,
-    occurrencesToProcess,
-    skipMissedOccurrences: false,
+    missed: gapMisses(handled),
+    occurrencesToProcess: handled.filter((tick) => tick.fires).map((tick) => tick.at),
+    anchor: handled.at(-1)!.at,
   };
 }
 
-function countMissedScheduleOccurrences(
+/**
+ * The ticks from `firstDueAt` through `throughTimestamp` that a late timer skips, at most
+ * {@link MAX_MISSED_FIRE_COUNT_PER_TICK}, and where the window they cover ends: `throughTimestamp`,
+ * or the last tick when the cap stopped short of it.
+ */
+function collectMissedScheduleTicks(
   state: ActiveScheduleTimerState,
   firstDueAt: number,
   throughTimestamp: number,
-): MissedScheduleOccurrences {
-  let count = 0;
-  let occurrence = firstDueAt;
-  let lastMissedFireAt = firstDueAt;
+): { ticks: ScheduleTick[]; windowEnd: number } {
+  const ticks = collectDueScheduleTicks(
+    state,
+    firstDueAt,
+    throughTimestamp,
+    MAX_MISSED_FIRE_COUNT_PER_TICK,
+  );
+  const last = ticks.at(-1);
+  const cappedBeforeThroughTimestamp =
+    last !== undefined &&
+    ticks.length === MAX_MISSED_FIRE_COUNT_PER_TICK &&
+    getNextScheduleOccurrence(state, last.at) <= throughTimestamp;
+  return { ticks, windowEnd: cappedBeforeThroughTimestamp ? last.at : throughTimestamp };
+}
 
-  while (occurrence <= throughTimestamp && count < MAX_MISSED_FIRE_COUNT_PER_TICK) {
-    count += 1;
-    lastMissedFireAt = occurrence;
-    const nextOccurrence = getNextScheduleOccurrence(state, occurrence);
-    if (nextOccurrence <= occurrence) {
-      throw new Error(`Schedule "${state.id}" produced a non-advancing occurrence`);
-    }
-    occurrence = nextOccurrence;
-  }
+/** The occurrences a late timer skips: every tick in the window that would have fired. */
+function lateMisses(
+  ticks: ScheduleTick[],
+  windowStart: number,
+  windowEnd: number,
+): MissedScheduleOccurrences[] {
+  const late = ticks.filter((tick) => tick.fires);
+  if (late.length === 0) return [];
+  return [
+    {
+      reason: 'late',
+      count: late.length,
+      lastMissedFireAt: late.at(-1)!.at,
+      windowStart,
+      windowEnd,
+    },
+  ];
+}
 
-  const cappedBeforeThroughTimestamp = occurrence <= throughTimestamp;
+/**
+ * The wall-clock times daylight-saving gaps swallowed in a run of ticks, which are missed whether
+ * the tick was reached on time or late: the time does not exist, so no run could have started at
+ * it. The window is the instant a gap ends, because that is when the clock passes it.
+ */
+function gapMisses(ticks: ScheduleTick[]): MissedScheduleOccurrences[] {
+  const gaps = ticks.filter((tick) => tick.dstGapSkipped > 0);
+  if (gaps.length === 0) return [];
+  return [
+    {
+      reason: 'dst-gap',
+      count: gaps.reduce((total, tick) => total + tick.dstGapSkipped, 0),
+      lastMissedFireAt: gaps.at(-1)!.at,
+      windowStart: gaps[0]!.at,
+      windowEnd: gaps.at(-1)!.at,
+    },
+  ];
+}
+
+/** The counters a schedule carries after it records what a tick missed. */
+function recordedMisses(
+  state: ScheduleState,
+  missed: readonly MissedScheduleOccurrences[],
+): Pick<ScheduleState, 'missedFireCount'> & Partial<Pick<ScheduleState, 'lastMissedFireAt'>> {
+  if (missed.length === 0) return { missedFireCount: state.missedFireCount };
   return {
-    count,
-    lastMissedFireAt,
-    windowStart: firstDueAt,
-    windowEnd: cappedBeforeThroughTimestamp ? lastMissedFireAt : throughTimestamp,
+    missedFireCount:
+      state.missedFireCount + missed.reduce((total, entry) => total + entry.count, 0),
+    lastMissedFireAt: Math.max(...missed.map((entry) => entry.lastMissedFireAt)),
   };
 }
 
-function resolveNextScheduleFireAt(
-  state: ScheduleState,
-  work: ScheduleTimerWork,
-  now: number,
-): number {
-  if (work.skipMissedOccurrences) {
-    return getNextScheduleOccurrence(state, work.missedOccurrences?.lastMissedFireAt ?? now);
+/** Announces what a tick missed, once the write that recorded it has landed. */
+function dispatchMissedFires(
+  internals: EngineInternals,
+  scheduleId: string,
+  missed: readonly MissedScheduleOccurrences[],
+): void {
+  for (const entry of missed) {
+    internals.engine.dispatchEvent(
+      new ScheduleMissedFireEvent(
+        scheduleId,
+        entry.count,
+        entry.windowStart,
+        entry.windowEnd,
+        entry.reason,
+      ),
+    );
   }
+}
 
-  const anchorOccurrence = work.occurrencesToProcess.at(-1) ?? work.dueOccurrences.at(-1)!;
-  return getNextScheduleOccurrence(state, anchorOccurrence);
+function resolveNextScheduleFireAt(state: ScheduleState, work: ScheduleTimerWork): number {
+  const next = getNextScheduleOccurrence(state, work.anchor);
+  if (next <= work.anchor) {
+    throw new Error(`Schedule "${state.id}" produced a non-advancing occurrence`);
+  }
+  return next;
 }
 
 /**
@@ -377,7 +454,7 @@ async function processScheduleTimerOccurrences(
     if (finalOccurrence) {
       nextState = {
         ...nextState,
-        nextFireAt: resolveNextScheduleFireAt(nextState, work, now),
+        nextFireAt: resolveNextScheduleFireAt(nextState, work),
       };
     }
     progress.state = nextState;
@@ -388,6 +465,7 @@ async function processScheduleTimerOccurrences(
     ) {
       return { kind: 'done' };
     }
+    if (index === 0) dispatchMissedFires(internals, nextState.id, work.missed);
     if (state.backfill && nextState.currentWorkflowId !== undefined) {
       return {
         kind: 'settle',

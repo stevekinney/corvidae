@@ -241,6 +241,7 @@ function createScheduleState(): ScheduleState {
     status: 'paused',
     overlap: 'skip',
     backfill: false,
+    timeZone: 'UTC',
     revisionPolicy: 'active-at-fire',
     createdAt: 0,
     updatedAt: 0,

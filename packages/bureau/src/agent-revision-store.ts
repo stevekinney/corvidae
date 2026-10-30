@@ -8,8 +8,11 @@
  * ## The record
  *
  * `bureau-agent-revision:v1:<identifier>` holds `{ "revision": <n>, "hash": "<hex>" }` as JSON, in
- * that key order: the revision, and the SHA-256 of the file's bytes (64 lowercase hex digits; any
- * other hash makes the record malformed) it was last raised for. An
+ * that key order: the revision, and the identity hash it was last raised for (64 lowercase hex
+ * digits; any other hash makes the record malformed). The identity hash is the SHA-256 of the file's
+ * bytes, or, for a file agent with `references`, the hash that also folds in the digest of each
+ * reference document (`agent-reference-documents.ts`), so an edit to a document raises the revision
+ * with the file unchanged. In what follows "the file's hash" is that identity hash. An
  * identifier cannot hold `:`, so the key needs no encoding. There is one record per identifier,
  * and nothing else is stored: not the history of hashes, and not the definition (the snapshot
  * store holds those).
@@ -175,7 +178,13 @@ export function createAgentRevisionStore(options: AgentRevisionStoreOptions): Ag
       savedBy: version.savedBy,
       owner: version.owner,
       definition: version.definition,
-      changedKeys: changedDefinitionKeys(previous?.definition, version.definition),
+      ...(version.referenceDigests === undefined
+        ? {}
+        : { referenceDigests: version.referenceDigests }),
+      changedKeys: changedDefinitionKeys(previous?.definition, version.definition, {
+        previous: previous?.referenceDigests,
+        next: version.referenceDigests,
+      }),
     };
     const doomed = versionKeysToPrune({
       id,

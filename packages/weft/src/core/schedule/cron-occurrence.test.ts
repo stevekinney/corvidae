@@ -33,4 +33,10 @@ describe('searchNextCronOccurrence', () => {
       expected,
     );
   });
+
+  it('searches in UTC when no options are given', () => {
+    expect(searchNextCronOccurrence('0 * * * * *', START, undefined, 100_000)).toBe(
+      Date.UTC(2026, 0, 1, 0, 1, 0),
+    );
+  });
 });

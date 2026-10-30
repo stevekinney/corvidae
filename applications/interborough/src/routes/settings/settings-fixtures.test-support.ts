@@ -51,6 +51,8 @@ export const SETTING_VALUES: Record<string, unknown> = {
   maintenance: 'automatic',
   'durableOwnership.ownership': 'none',
   workflowVersion: 'v1',
+  'a2a.push.enabled': false,
+  'a2a.push.sweepIntervalMs': 3_600_000,
 };
 
 /** What the Bureau holds: the values, the revision, and the keys the deployment locked. */

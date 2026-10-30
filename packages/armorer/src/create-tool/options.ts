@@ -16,6 +16,7 @@ import type {
   ToolMetadata,
   ToolPolicyContextProvider,
   ToolPolicyHooks,
+  ToolSecretResolver,
 } from '../is-tool';
 
 /**
@@ -72,6 +73,13 @@ export interface CreateToolOptions<
   concurrency?: number;
   telemetry?: boolean;
   diagnostics?: ToolDiagnostics;
+  /**
+   * Turns a `{ secretRef }` argument into plaintext for a tool that declares
+   * `metadata.acceptsSecrets`, and backs `context.resolveSecret`. `createToolbox` passes its own
+   * `secretResolver` here for every tool it builds. Without one, a declaring tool's secret
+   * requests fail with `secret-unavailable`.
+   */
+  secretResolver?: ToolSecretResolver;
   /**
    * Generates an idempotency key from the tool input. When set, the tool
    * can be wrapped with `withIdempotency()` to deduplicate executions.

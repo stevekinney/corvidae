@@ -1,5 +1,6 @@
 import { decode } from '../../codec.ts';
 import { isRecord } from '../../debug-output.ts';
+import { isValidTimeZone } from '../../schedule.ts';
 import type { ScheduleState } from '../../types.ts';
 import { decodeScheduleCadence } from './schedule-cadence.ts';
 import { decodeScheduleRevisionPolicyFields } from './schedule-revision.ts';
@@ -56,6 +57,7 @@ type ScheduleRuntimeFields = Pick<
   | 'description'
   | 'backfill'
   | 'jitterMs'
+  | 'timeZone'
   | 'createdAt'
   | 'updatedAt'
   | 'lastFireAt'
@@ -109,6 +111,26 @@ function decodeScheduleJitterMs(
     return null;
   }
   return jitterMs;
+}
+
+/**
+ * A record written before schedules had a time zone has none, and reads as `UTC`, the zone every
+ * such schedule was run in. A value that is not a zone the runtime knows rejects the record, as a
+ * cron expression that does not parse does: the schedule could not compute its next occurrence.
+ */
+function decodeScheduleTimeZone(
+  decoded: Record<string, unknown>,
+  scheduleId: string,
+): string | null {
+  const timeZone = decoded['timeZone'];
+  if (timeZone === undefined) {
+    return 'UTC';
+  }
+  if (!isValidTimeZone(timeZone)) {
+    rejectInvalidScheduleRecord(scheduleId, 'with invalid timeZone');
+    return null;
+  }
+  return timeZone;
 }
 
 function decodeScheduleTimestamps(
@@ -297,7 +319,7 @@ function decodeScheduleQueueFields(
 function decodeScheduleOptionFields(
   decoded: Record<string, unknown>,
   scheduleId: string,
-): Pick<ScheduleRuntimeFields, 'backfill' | 'description' | 'jitterMs'> | null {
+): Pick<ScheduleRuntimeFields, 'backfill' | 'description' | 'jitterMs' | 'timeZone'> | null {
   const description = decodeScheduleDescription(decoded, scheduleId);
   if (description === null) return null;
 
@@ -307,10 +329,14 @@ function decodeScheduleOptionFields(
   const jitterMs = decodeScheduleJitterMs(decoded, scheduleId);
   if (jitterMs === null) return null;
 
+  const timeZone = decodeScheduleTimeZone(decoded, scheduleId);
+  if (timeZone === null) return null;
+
   return {
     ...(description !== undefined && { description }),
     backfill,
     ...(jitterMs !== undefined && { jitterMs }),
+    timeZone,
   };
 }
 

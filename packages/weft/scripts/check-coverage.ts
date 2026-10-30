@@ -266,9 +266,8 @@ const BASE_COVERAGE_ALLOWANCES = buildAllowanceLayer('BASE_COVERAGE_ALLOWANCES',
     'src/core/schedule/cron-formatter.ts',
     {
       reason:
-        'Bun reports an aggregate formatter function miss even though valid cron fields and every invalid-field diagnostic are covered.',
-      functions: 1,
-      lines: new Set([187]),
+        'Bun reports the final `return matchesDayOfMonth || matchesDayOfWeek` line of `matchesDay` as uncovered even though every branch of it is exercised. Realigned from line 187 after the time zone work moved it to 213.',
+      lines: new Set([213]),
       requireUncoveredLines: true,
     },
   ],

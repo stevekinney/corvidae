@@ -4,6 +4,7 @@ import {
   isValidScheduleRevisionPolicy,
   normalizeScheduleUpdateOptions,
 } from '../../core/engine/validation/schedule.ts';
+import { isValidTimeZone } from '../../core/schedule.ts';
 import type { ScheduleSpec, ScheduleUpdateOptions } from '../../core/types.ts';
 import type { OperationFault } from '../operation-fault.ts';
 import { invalidParamsFault } from './operation-helpers.ts';
@@ -16,6 +17,7 @@ export type ScheduleMutableOptionsInput = {
   overlap?: unknown;
   backfill?: unknown;
   jitter?: unknown;
+  timeZone?: unknown;
   revisionPolicy?: unknown;
 };
 
@@ -27,6 +29,7 @@ export function validateScheduleMutableOptions(
   const overlap = validateScheduleOverlap(input.overlap);
   const backfill = validateScheduleBackfill(input.backfill);
   const jitter = validateScheduleJitter(input.jitter);
+  const timeZone = validateScheduleTimeZone(input.timeZone);
   const revisionPolicy = validateScheduleRevisionPolicy(input.revisionPolicy);
 
   return {
@@ -34,6 +37,7 @@ export function validateScheduleMutableOptions(
     ...(overlap !== undefined ? { overlap } : {}),
     ...(backfill !== undefined ? { backfill } : {}),
     ...(jitter !== undefined ? { jitter } : {}),
+    ...(timeZone !== undefined ? { timeZone } : {}),
     ...(revisionPolicy !== undefined ? { revisionPolicy } : {}),
   };
 }
@@ -58,6 +62,16 @@ function validateScheduleRevisionPolicy(value: unknown): ScheduleUpdateOptions['
   if (value === undefined) return undefined;
   if (!isValidScheduleRevisionPolicy(value)) {
     throw invalidParamsFault('Field "revisionPolicy" must be one of active-at-fire, pinned');
+  }
+  return value;
+}
+
+function validateScheduleTimeZone(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (!isValidTimeZone(value)) {
+    throw invalidParamsFault(
+      'Field "timeZone" must be an IANA time zone name such as "America/Los_Angeles", or "UTC"',
+    );
   }
   return value;
 }
@@ -105,6 +119,7 @@ function isScheduleInvalidParamsMessage(message: string, normalizedMessage: stri
   return (
     message.includes('Missing required field') ||
     normalizedMessage.includes('must be') ||
+    normalizedMessage.includes('applies only to a cron schedule') ||
     normalizedMessage.includes('no workflow registered') ||
     normalizedMessage.includes('cron') ||
     normalizedMessage.includes('interval')
