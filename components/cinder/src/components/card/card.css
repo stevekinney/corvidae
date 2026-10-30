@@ -11,24 +11,12 @@
     background: var(--cinder-surface-raised);
     border: 1px solid var(--cinder-border);
     color: var(--cinder-text-default);
-    box-shadow: var(--cinder-shadow-sm);
+    box-shadow: none;
     overflow: hidden;
     transition:
       border-color var(--cinder-duration-fast) var(--cinder-ease-standard),
       box-shadow var(--cinder-duration-fast) var(--cinder-ease-standard),
       background-color var(--cinder-duration-fast) var(--cinder-ease-standard);
-  }
-
-  .cinder-card[data-cinder-elevation='none'] {
-    box-shadow: none;
-  }
-
-  .cinder-card[data-cinder-elevation='md'] {
-    box-shadow: var(--cinder-shadow-md);
-  }
-
-  .cinder-card[data-cinder-elevation='lg'] {
-    box-shadow: var(--cinder-shadow-lg);
   }
 
   .cinder-card[data-cinder-interactive] {
@@ -55,20 +43,34 @@
     outline: none;
   }
 
+  /* One edge per surface (COR-1821): a card draws a border or a shadow, never both. The default
+   * edge is the border. The shadow edge keeps the 1px border in the box, so the card does not
+   * change size, and paints it transparent. These rules sit after the tone rules below so the
+   * danger border colour cannot bring a second edge back. */
   @media (hover: hover) {
-    .cinder-card[data-cinder-interactive]:hover {
+    .cinder-card[data-cinder-edge='border'][data-cinder-interactive]:hover {
       border-color: var(--cinder-border-strong);
+    }
+
+    .cinder-card[data-cinder-edge='shadow'][data-cinder-interactive]:hover {
       box-shadow: var(--cinder-shadow-md);
     }
   }
 
   .cinder-card[data-cinder-interactive]:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
-    box-shadow: var(--_cinder-focus-ring-shadow), var(--cinder-shadow-md);
+    box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
   .cinder-card[data-cinder-interactive]:has(.cinder-card__action:focus-visible) {
     outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  .cinder-card[data-cinder-edge='shadow'][data-cinder-interactive]:focus-visible,
+  .cinder-card[data-cinder-edge='shadow'][data-cinder-interactive]:has(
+      .cinder-card__action:focus-visible
+    ) {
     box-shadow: var(--_cinder-focus-ring-shadow), var(--cinder-shadow-md);
   }
 
@@ -88,34 +90,15 @@
     background: transparent;
   }
 
-  /*
-   * The flat well/danger baseline is scoped away from interactive cards.
-   *
-   * These rules sit after the :hover / :focus-visible rules above and carry the same
-   * specificity, so without the :not() they win the cascade and flatten an interactive
-   * card's hover and focus feedback back to none — the elevation range would be
-   * accepted and then silently discarded, which is the defect CIN-114 exists to fix,
-   * reintroduced one variant over.
-   *
-   * An interactive well or danger card therefore keeps the base resting shadow so its
-   * hover lift has something to lift from. Static wells and danger panels — the common
-   * case — are unchanged.
-   */
-  .cinder-card[data-cinder-variant='well'][data-cinder-elevation='sm']:not(
-      [data-cinder-interactive]
-    ) {
-    box-shadow: none;
-  }
-
   .cinder-card[data-cinder-tone='danger'] {
     background: var(--cinder-status-danger-background);
     border-color: var(--cinder-status-danger-border);
   }
 
-  .cinder-card[data-cinder-tone='danger'][data-cinder-elevation='sm']:not(
-      [data-cinder-interactive]
-    ) {
-    box-shadow: none;
+  /* The shadow edge: no visible border, one soft shadow. After the danger rule above so it wins. */
+  .cinder-card[data-cinder-edge='shadow'] {
+    border-color: transparent;
+    box-shadow: var(--cinder-shadow-sm);
   }
 
   .cinder-card[data-cinder-tone='danger'] > .cinder-card__header,
@@ -137,11 +120,15 @@
     flex-direction: column;
     gap: var(--cinder-space-1);
     padding: var(--cinder-space-3) var(--cinder-space-4);
-    border-bottom: 1px solid var(--cinder-border-muted);
     background: var(--cinder-surface);
   }
 
-  .cinder-card[data-cinder-tone='danger'] > .cinder-card__header {
+  /* The divider under the header is opt-in (`headerDivider`). */
+  .cinder-card__header[data-cinder-divider] {
+    border-bottom: 1px solid var(--cinder-border-muted);
+  }
+
+  .cinder-card[data-cinder-tone='danger'] > .cinder-card__header[data-cinder-divider] {
     border-bottom-color: var(--cinder-status-danger-border);
   }
 
@@ -239,6 +226,11 @@
   @media (forced-colors: active) {
     .cinder-card[data-cinder-tone='danger'] {
       background: Canvas;
+      border-color: CanvasText;
+    }
+
+    /* Forced colors drops box-shadow, so the shadow edge needs a border to stay visible. */
+    .cinder-card[data-cinder-edge='shadow'] {
       border-color: CanvasText;
     }
 

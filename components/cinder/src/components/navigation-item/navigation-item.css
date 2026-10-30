@@ -122,9 +122,9 @@
   /* ----------------------------------------
  * Vertical variant — sidebar / vertical-tab contexts
  *
- * Square row geometry for flush sidebar edges. The inline-start border is the
- * active indicator and is reserved at all times so toggling active state never
- * shifts the label.
+ * Square row geometry for flush sidebar edges. The active row is a tint (the
+ * inset surface), never an accent stripe (COR-1821), so toggling active state
+ * never shifts the label.
  * ---------------------------------------- */
 
   .cinder-navigation-item[data-variant='vertical'] {
@@ -133,12 +133,10 @@
     justify-content: flex-start;
     border-bottom: none;
     border-radius: 0;
-    border-inline-start: 2px solid transparent;
   }
 
   .cinder-navigation-item[data-variant='vertical'][data-active='true'] {
     border-bottom-color: transparent;
-    border-inline-start-color: var(--cinder-accent-solid);
     background-color: var(--cinder-surface-inset);
   }
 

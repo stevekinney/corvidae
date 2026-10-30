@@ -11,7 +11,8 @@ const schema = {
     },
     size: {
       enum: ['xs', 'sm', 'md', 'lg'],
-      description: 'Size of the button.',
+      description:
+        'Size of the button. `lg` is for page-level primary actions only; inline actions use `md`.',
       default: 'md',
     },
     fullWidth: {

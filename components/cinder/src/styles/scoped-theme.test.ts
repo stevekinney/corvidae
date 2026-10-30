@@ -120,7 +120,7 @@ describe('scoped theme tokens', () => {
       'var(--_cinder-navigation-item-ring, var(--cinder-ring-color))',
     );
     expect(navigationItemCss).toContain('border-bottom-color: var(--cinder-accent-solid);');
-    expect(navigationItemCss).toContain('border-inline-start-color: var(--cinder-accent-solid);');
+    expect(navigationItemCss).not.toContain('border-inline-start');
     expect(sideNavigationGroupCss).toContain(
       'var(--_cinder-side-navigation-group-trigger-ring, var(--cinder-ring-color))',
     );

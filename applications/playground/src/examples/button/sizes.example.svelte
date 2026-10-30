@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Button sizes';
   export const description =
-    'xs, sm, md, and lg sizes, on the shared 24/28/32/40px control height scale.';
+    'xs, sm, md, and lg sizes, on the shared 24/28/32/40px control height scale. Use md for inline actions and keep lg for a page-level primary action.';
 </script>
 
 <script lang="ts">

@@ -127,7 +127,7 @@
 {#if comments.length > 0}
   <section style="margin: 1rem 0 0;" aria-label="Submitted comments">
     <h3
-      style="margin: 0 0 0.5rem; font-size: var(--cinder-text-xs); font-weight: var(--cinder-font-medium); color: var(--cinder-text-muted); text-transform: uppercase; letter-spacing: 0.04em;"
+      style="margin: 0 0 0.5rem; font-size: var(--cinder-text-xs); font-weight: var(--cinder-font-medium); color: var(--cinder-text-muted);"
     >
       Submitted comments
     </h3>

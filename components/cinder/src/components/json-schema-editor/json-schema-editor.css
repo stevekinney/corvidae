@@ -71,8 +71,6 @@
     margin: 0;
     font-size: var(--cinder-text-2xs);
     font-weight: var(--cinder-font-semibold);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
     color: var(--cinder-text-subtle);
   }
 

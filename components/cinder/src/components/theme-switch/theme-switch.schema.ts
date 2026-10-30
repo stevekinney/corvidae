@@ -1,0 +1,45 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    id: {
+      type: 'string',
+      description: 'Native id placed on the radiogroup element.',
+    },
+    value: {
+      enum: ['light', 'system', 'dark'],
+      description: 'The selected position. Bindable.',
+      default: 'system',
+    },
+    label: {
+      type: 'string',
+      description:
+        'Accessible name of the radiogroup. The three positions are named Light, System and Dark.',
+      default: 'Theme',
+    },
+    disabled: {
+      type: 'boolean',
+      description: 'Prevents interaction when true. Sets `disabled` on each position.',
+    },
+    class: {
+      type: 'string',
+      description: 'Additional class names merged with `.cinder-theme-switch` on the radiogroup.',
+    },
+  },
+  additionalProperties: false,
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'onValueChange',
+        reason: 'function-or-snippet',
+        description:
+          'Notify after the user selects a position, with the position that was selected.',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+/** JSON Schema describing the props of this component. */
+export default schema as ComponentSchema;

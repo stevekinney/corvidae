@@ -147,7 +147,7 @@ export type { CalendarProps } from './components/calendar/index.ts';
 
 export { default as Card } from './components/card/index.ts';
 export type {
-  CardElevation,
+  CardEdge,
   CardPadding,
   CardProps,
   CardSurfaceTone,
@@ -1023,6 +1023,9 @@ export type {
 
 export { default as Timeline } from './components/timeline/index.ts';
 export type { TimelineProps } from './components/timeline/index.ts';
+
+export { default as ThemeSwitch } from './components/theme-switch/index.ts';
+export type { ThemeSwitchProps, ThemeSwitchValue } from './components/theme-switch/index.ts';
 
 export { default as Toggle } from './components/toggle/index.ts';
 export type { ToggleProps } from './components/toggle/index.ts';

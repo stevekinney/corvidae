@@ -118,7 +118,6 @@
     margin: 0;
     font-size: var(--cinder-text-xs);
     font-weight: var(--cinder-font-semibold);
-    text-transform: uppercase;
     color: var(--cinder-text-muted);
   }
 

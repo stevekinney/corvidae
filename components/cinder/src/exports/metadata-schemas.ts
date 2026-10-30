@@ -191,6 +191,7 @@ export { default as terminalFrameSchema } from '../components/terminal-frame/ter
 export { default as terminalOutputSchema } from '../components/terminal-output/terminal-output.schema.ts';
 export { default as textSchema } from '../components/text/text.schema.ts';
 export { default as textareaSchema } from '../components/textarea/textarea.schema.ts';
+export { default as themeSwitchSchema } from '../components/theme-switch/theme-switch.schema.ts';
 export { default as timeFieldSchema } from '../components/time-field/time-field.schema.ts';
 export { default as timelineSchema } from '../components/timeline/timeline.schema.ts';
 export { default as toastRegionSchema } from '../components/toast-region/toast-region.schema.ts';

@@ -62,6 +62,7 @@ import terminalFrameExamplesJson from '../components/terminal-frame/terminal-fra
 import terminalOutputExamplesJson from '../components/terminal-output/terminal-output.examples.json' with { type: 'json' };
 import textExamplesJson from '../components/text/text.examples.json' with { type: 'json' };
 import textareaExamplesJson from '../components/textarea/textarea.examples.json' with { type: 'json' };
+import themeSwitchExamplesJson from '../components/theme-switch/theme-switch.examples.json' with { type: 'json' };
 import timeFieldExamplesJson from '../components/time-field/time-field.examples.json' with { type: 'json' };
 import timelineExamplesJson from '../components/timeline/timeline.examples.json' with { type: 'json' };
 import toastRegionExamplesJson from '../components/toast-region/toast-region.examples.json' with { type: 'json' };
@@ -199,6 +200,8 @@ export const terminalOutputExamples = terminalOutputExamplesJson;
 export const textExamples = textExamplesJson;
 /** Code examples for this component. */
 export const textareaExamples = textareaExamplesJson;
+/** Code examples for this component. */
+export const themeSwitchExamples = themeSwitchExamplesJson;
 /** Code examples for this component. */
 export const timeFieldExamples = timeFieldExamplesJson;
 /** Code examples for this component. */

@@ -28,16 +28,16 @@ export type StatusDotConnectionState = 'connected' | 'connecting' | 'disconnecte
  *
  * The component manages the accessible name itself so the status is never
  * communicated by color alone (WCAG 1.4.1): the visible label text wins,
- * then a hidden but provided `label`, then the raw `status` token. A
- * consumer-supplied `aria-label` always takes priority over the automatic
- * fallback.
+ * then a hidden but provided `label`, then the word derived from `status`
+ * (a dot with only `status` renders that word). A consumer-supplied
+ * `aria-label` always takes priority over the automatic fallback.
  */
 export type StatusDotProps = Omit<HTMLAttributes<HTMLSpanElement>, 'class'> & {
   /** Semantic status. Drives color via `data-cinder-status`; defaults to a neutral dot or derives from `connectionState`. */
   status?: StatusDotStatus;
   /** Realtime connection preset. Sets status, default label, and live-region semantics. */
   connectionState?: StatusDotConnectionState;
-  /** Optional human label. Rendered visibly when `labelVisible` is true; used as the accessible name either way. */
+  /** Human label. Rendered visibly when `labelVisible` is true; used as the accessible name either way. Defaults to a word derived from `status` (for example "Online"), so a bare StatusDot is a dot and a word, never a dot alone. */
   label?: string;
   /** Use role="status" with polite live-region attributes. Defaults true when connectionState is provided. */
   live?: boolean;
@@ -57,7 +57,7 @@ export interface StatusDotSchemaProps {
   status?: StatusDotStatus;
   /** Realtime connection preset. Sets status, default label, and live-region semantics. */
   connectionState?: StatusDotConnectionState;
-  /** Optional human label. Rendered visibly when `labelVisible` is true; used as the accessible name either way. */
+  /** Human label. Rendered visibly when `labelVisible` is true; used as the accessible name either way. Defaults to a word derived from `status` (for example "Online"), so a bare StatusDot is a dot and a word, never a dot alone. */
   label?: string;
   /**
    * Whether to render the visible label.

@@ -26,7 +26,7 @@ const emptySnippet = createRawSnippet(() => ({
 describe('Card interaction and props', () => {
   test('renders the whole card as a link when href is provided', () => {
     const { container } = render(Card, {
-      props: { href: '/details', elevation: 'md', children: emptySnippet },
+      props: { href: '/details', edge: 'shadow', children: emptySnippet },
     });
     const root = container.querySelector('.cinder-card');
     expect(root?.tagName).toBe('A');
@@ -36,7 +36,7 @@ describe('Card interaction and props', () => {
     expect(css).toMatch(/\.cinder-card\[data-cinder-interactive\]\s*\{[^}]*display:\s*block/s);
     expect(css).toMatch(/\.cinder-card\[data-cinder-interactive\]\s*\{[^}]*text-align:\s*start/s);
     expect(root?.getAttribute('data-cinder-interactive')).toBe('');
-    expect(root?.getAttribute('data-cinder-elevation')).toBe('md');
+    expect(root?.getAttribute('data-cinder-edge')).toBe('shadow');
   });
 
   test('renders the whole card as a button when onclick is provided', () => {

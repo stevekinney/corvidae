@@ -63,8 +63,6 @@
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-xs);
     font-weight: var(--cinder-font-semibold);
-    letter-spacing: 0;
-    text-transform: uppercase;
   }
 
   /* Connecting line between items. It is anchored to the event row, not the

@@ -191,6 +191,7 @@ export { default as terminalFrameVariables } from '../components/terminal-frame/
 export { default as terminalOutputVariables } from '../components/terminal-output/terminal-output.variables.ts';
 export { default as textVariables } from '../components/text/text.variables.ts';
 export { default as textareaVariables } from '../components/textarea/textarea.variables.ts';
+export { default as themeSwitchVariables } from '../components/theme-switch/theme-switch.variables.ts';
 export { default as timeFieldVariables } from '../components/time-field/time-field.variables.ts';
 export { default as timelineVariables } from '../components/timeline/timeline.variables.ts';
 export { default as toastRegionVariables } from '../components/toast-region/toast-region.variables.ts';

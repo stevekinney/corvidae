@@ -108,7 +108,7 @@
 <CommandPalette bind:open bind:query label="Command palette" {triggerRef}>
   {#snippet items({ query: paletteQuery })}
     {@const headerBase =
-      'font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--cinder-text-muted); pointer-events: none;'}
+      'font-size: 0.6875rem; font-weight: 600; color: var(--cinder-text-muted); pointer-events: none;'}
     {@const headerFirst = 'padding: 0.625rem 1.25rem 0.375rem;'}
     {@const headerWithDivider =
       'padding: 0.625rem 1.25rem 0.375rem 1.25rem; padding-block-start: 0.625rem; margin-block-start: 0.25rem; border-block-start: 1px solid var(--cinder-border);'}
