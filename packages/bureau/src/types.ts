@@ -1097,7 +1097,7 @@ export interface ResolveReviewInput {
   reason?: string;
   /**
    * COR-1828 — `tool-approval` approve only: also allow this tool for the rest of the chat. The
-   * grant (`approvalGrants: [toolName]` on the session's metadata) is stored in the same commit as
+   * grant (`approvalGrants: [toolId]` on the session's metadata, COR-1950) is stored in the same commit as
    * the decision, and it ends with the chat: it is not carried into a fork, and a deleted session
    * takes it along. It only ever skips an `on-changes` ask. It never loosens a tool set to
    * `always` or `blocked`, an agent-wide always mode, or a read-only restriction, because those

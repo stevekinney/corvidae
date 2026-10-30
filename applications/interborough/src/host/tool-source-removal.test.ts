@@ -5,10 +5,12 @@
  */
 import type { AnswerEncryptionKeys } from '@lostgradient/bureau';
 import { waitUntil } from '@lostgradient/testing/wait-until';
+import { loadToolSource, parseToolSourceDescription } from 'armorer/tool-sources';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { z } from 'zod';
 
 import type { AgentToolUse } from './tool-source-agents.ts';
 import {
@@ -476,28 +478,32 @@ describe('the tools of a removed source', () => {
     }
   }
 
-  test('keep their name, description, input, tags and metadata behind the gate', async () => {
+  test('keep their name, description, input, tags, metadata and version behind the gate', async () => {
     const { home, keys } = await homeWithPets();
-    const ungated = createToolSourceManager({
-      bungalow: home.bungalow,
-      keys,
-      audit: async () => undefined,
-      origin: () => 'http://127.0.0.1:1',
-    });
-    closers.push(() => ungated.close());
-    await ungated.start();
     const { manager } = await started(home, { keys });
-    const gated = manager.tools()['pets__delete-pet'];
-    const original = ungated.tools()['pets__delete-pet'];
+    // What the loader makes of the same description, outside the gate and the manager.
+    const loader = await loadToolSource(parseToolSourceDescription(petsSource), {
+      resolveCredential: () => 'pets-key-fixture',
+    });
+    closers.push(() => loader.close());
+    const gatedTools = manager.tools();
 
-    expect(gated).toBeDefined();
-    expect(gated?.configuration.metadata).toEqual(original?.configuration.metadata);
-    expect(gated?.configuration.tags).toEqual(original?.configuration.tags);
-    expect(gated?.configuration.description).toBe(original?.configuration.description);
-    expect(gated?.name).toBe(original?.name);
-    expect(JSON.stringify(gated?.configuration.input)).toBe(
-      JSON.stringify(original?.configuration.input),
-    );
+    expect(loader.tools.length).toBeGreaterThan(0);
+    for (const original of loader.tools) {
+      const gated = gatedTools[`pets__${original.name}`];
+      expect(gated).toBeDefined();
+      expect(gated?.name).toBe(original.name);
+      expect(gated?.configuration.description).toBe(original.configuration.description);
+      expect(gated?.configuration.metadata).toEqual(original.configuration.metadata);
+      expect(gated?.configuration.tags).toEqual(original.configuration.tags);
+      expect(z.toJSONSchema(gated?.configuration.input as z.ZodType)).toEqual(
+        z.toJSONSchema(original.configuration.input),
+      );
+      // The version is what an approval is bound to (COR-1950), so the gate must not lose it.
+      expect(original.identity.version).toMatch(/^[0-9a-f]{32}$/);
+      expect(gated?.identity).toEqual(original.identity);
+      expect(gated?.id).toBe(original.id);
+    }
   });
 
   test('of a local command stop the child process and fail', async () => {

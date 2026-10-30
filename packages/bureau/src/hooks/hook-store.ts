@@ -15,6 +15,7 @@ import type {
 import { type AnswerEncryptionKeys, openSealedAnswer, sealValue } from '../secret-answers.ts';
 import {
   HookError,
+  type HookAction,
   type HookDeliveryRecord,
   type HookRecord,
   type HookSecretStore,
@@ -54,6 +55,52 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** The action a stored record names, or `undefined` when it names none this version knows. */
+function parseAction(value: Record<string, unknown>): HookAction | undefined {
+  const action = value['action'];
+  // A record written before actions existed: its top-level `url` is the webhook's.
+  if (action === undefined) {
+    return typeof value['url'] === 'string' ? { type: 'webhook', url: value['url'] } : undefined;
+  }
+  if (!isRecord(action)) return undefined;
+  if (action['type'] === 'webhook' && typeof action['url'] === 'string') {
+    // The top-level `url` is the one a release that predates actions writes, so when the two
+    // differ (a rollback, an update, a roll forward) it is the later of the two.
+    return {
+      type: 'webhook',
+      url: typeof value['url'] === 'string' ? value['url'] : action['url'],
+    };
+  }
+  if (
+    action['type'] === 'start-workflow' &&
+    typeof action['workflowId'] === 'string' &&
+    (action['input'] === 'payload' || action['input'] === 'event')
+  ) {
+    return { type: 'start-workflow', workflowId: action['workflowId'], input: action['input'] };
+  }
+  if (
+    action['type'] === 'notify' &&
+    (action['title'] === undefined || typeof action['title'] === 'string')
+  ) {
+    return action['title'] === undefined
+      ? { type: 'notify' }
+      : { type: 'notify', title: action['title'] };
+  }
+  return undefined;
+}
+
+/**
+ * The text a hook is stored as. A webhook hook also keeps its `url` at the top level, where a
+ * release that predates actions reads it: without it that release could not parse the record, and
+ * would delete the hook's pending deliveries as it does for any hook it cannot read. A hook of
+ * another action has no `url`, so it is not readable there (see `documentation/hooks.md`).
+ */
+function serializedHook(record: HookRecord): string {
+  return JSON.stringify(
+    record.action.type === 'webhook' ? { ...record, url: record.action.url } : record,
+  );
+}
+
 function parseHook(raw: string): HookRecord | undefined {
   let value: unknown;
   try {
@@ -66,14 +113,16 @@ function parseHook(raw: string): HookRecord | undefined {
     value['version'] !== 1 ||
     typeof value['id'] !== 'string' ||
     typeof value['owner'] !== 'string' ||
-    typeof value['url'] !== 'string' ||
     !Array.isArray(value['events']) ||
     typeof value['enabled'] !== 'boolean' ||
     typeof value['revision'] !== 'number'
   ) {
     return undefined;
   }
-  return value as unknown as HookRecord;
+  const action = parseAction(value);
+  if (action === undefined) return undefined;
+  const { url: _legacyUrl, ...rest } = value;
+  return { ...rest, action } as unknown as HookRecord;
 }
 
 function parseDelivery(raw: string): HookDeliveryRecord | undefined {
@@ -90,11 +139,19 @@ function parseDelivery(raw: string): HookDeliveryRecord | undefined {
     typeof value['hookId'] !== 'string' ||
     typeof value['owner'] !== 'string' ||
     typeof value['status'] !== 'string' ||
-    !isRecord(value['request']) ||
     !Array.isArray(value['attempts']) ||
     typeof value['revision'] !== 'number' ||
     typeof value['leaseUntil'] !== 'number'
   ) {
+    return undefined;
+  }
+  // A record written before actions existed has no `actionType`, and is a webhook delivery.
+  const actionType = value['actionType'] ?? 'webhook';
+  if (actionType === 'webhook') {
+    if (!isRecord(value['request'])) return undefined;
+    return { ...value, actionType } as unknown as HookDeliveryRecord;
+  }
+  if ((actionType !== 'start-workflow' && actionType !== 'notify') || !isRecord(value['work'])) {
     return undefined;
   }
   return value as unknown as HookDeliveryRecord;
@@ -180,7 +237,7 @@ export function createHookStore(kv: ConditionalTextValueStore): HookStore {
     createHook: (record) =>
       kv.conditionalBatch(
         [{ key: `${HOOK_KEY_PREFIX}${record.id}`, expectedValue: null }],
-        [{ type: 'set', key: `${HOOK_KEY_PREFIX}${record.id}`, value: JSON.stringify(record) }],
+        [{ type: 'set', key: `${HOOK_KEY_PREFIX}${record.id}`, value: serializedHook(record) }],
       ),
     replaceHook: (before, after) =>
       kv.conditionalBatch(
@@ -189,7 +246,7 @@ export function createHookStore(kv: ConditionalTextValueStore): HookStore {
           {
             type: 'set',
             key: `${HOOK_KEY_PREFIX}${before.record.id}`,
-            value: JSON.stringify(after),
+            value: serializedHook(after),
           },
         ],
       ),

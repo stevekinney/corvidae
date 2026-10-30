@@ -186,7 +186,7 @@ export const settingsSchema = z
       .object({ olderThan: z.number().int().positive() })
       .strict()
       .describe(
-        'How long a settled hook delivery record (delivered, exhausted, aborted, or failed for want of a secret) is kept after it was last written, in milliseconds; the next maintenance pass sweeps by it. A pending delivery is never removed. Unset, delivery records are kept until their hook is deleted.',
+        'How long a settled hook delivery record (delivered, exhausted, aborted, or failed) is kept after it was last written, in milliseconds; the next maintenance pass sweeps by it. A pending delivery is never removed. Unset, delivery records are kept until their hook is deleted.',
       ),
     'retention.checkpoints': z
       .union([

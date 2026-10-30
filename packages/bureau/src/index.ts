@@ -662,7 +662,12 @@ export type { WebhookDeliveryEngine } from './webhook-notifier';
  * User-defined hooks (COR-1939): `Bureau.hooks`, the `X-Signature` a receiver verifies, and the
  * port a host keeps the sealed signing secrets through.
  */
-export type { BureauHooks, HookCreateInput, HookUpdateInput } from './hooks/create-hooks';
+export type {
+  BureauHooks,
+  HookActionInput,
+  HookCreateInput,
+  HookUpdateInput,
+} from './hooks/create-hooks';
 export { HOOK_TEST_EVENT_KIND } from './hooks/create-hooks';
 export {
   HOOK_SIGNATURE_HEADER,
@@ -672,16 +677,28 @@ export {
 } from './hooks/hook-signature';
 export type { HookSignatureFailure, HookSignatureVerification } from './hooks/hook-signature';
 export { createKvHookSecretStore } from './hooks/hook-store';
-export { HookError, HOOK_RESPONSE_EXCERPT_BYTES } from './hooks/hook-types';
+export {
+  HookError,
+  HOOK_RESPONSE_EXCERPT_BYTES,
+  NOTIFICATION_CREATED_EVENT_KIND,
+} from './hooks/hook-types';
 export type {
   Hook,
+  HookAction,
+  HookActionReceipt,
+  HookActionType,
   HookAttemptOutcome,
   HookDelivery,
   HookDeliveryAttempt,
   HookDeliveryRequest,
   HookDeliveryStatus,
+  HookDeliveryWork,
   HookErrorCode,
   HookSecretStore,
+  HookWorkflowInput,
+  NotifyHookAction,
+  StartWorkflowHookAction,
+  WebhookHookAction,
 } from './hooks/hook-types';
 export { hookUrlDefect } from './hooks/hook-url-policy';
 export type { HookUrlPolicy } from './hooks/hook-url-policy';
@@ -702,6 +719,14 @@ export {
   type PublishedBureauEventKind,
   publishedBureauEventKinds,
 } from './bureau-event-feed';
+export {
+  BUREAU_EVENT_CATALOG,
+  bureauEventCatalog,
+  type BureauEventCatalogEntry,
+  type BureauEventField,
+  type BureauEventFieldType,
+  type BureauEventOrigin,
+} from './bureau-event-catalog';
 export {
   bureauEventEnvelopeSchema,
   type BureauEventRegistry,

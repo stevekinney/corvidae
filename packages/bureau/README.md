@@ -261,7 +261,7 @@ A bad value throws `BureauError` (`BAD_REQUEST`) at construction. Each key keeps
 - **`tasks`**: `'forever' | { olderThan }`, default 30 days.
 - **`receipts`**: `{ olderThan }` only, default 24 hours; `'forever'` is refused. See [run-creation receipts](#run-creation-receipts).
 - **`notifications`**: `{ olderThan }` only, in milliseconds, default unset (an owner keeps up to 1000). See [notifications](#notifications).
-- **`hookDeliveries`**: `{ olderThan }` only, in milliseconds, default unset (a hook keeps every delivery record until it is deleted). Removes settled deliveries (delivered, exhausted, aborted, failed for want of a secret) last written longer ago than the window; a pending delivery is never removed. Has effect only with `hooks`.
+- **`hookDeliveries`**: `{ olderThan }` only, in milliseconds, default unset (a hook keeps every delivery record until it is deleted). Removes settled deliveries (delivered, exhausted, aborted, failed) last written longer ago than the window; a pending delivery is never removed. Has effect only with `hooks`.
 
 The host fields attach memory, assets, and the sinks a host wants to hear from.
 

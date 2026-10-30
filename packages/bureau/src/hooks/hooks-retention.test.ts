@@ -84,6 +84,7 @@ function deliveryRecord(
     id,
     hookId,
     owner: 'api-key:alice',
+    actionType: 'webhook',
     kind: 'run.registered',
     test: false,
     status,
@@ -131,6 +132,7 @@ const LIFECYCLES: readonly Lifecycle[] = [
   { name: 'exhausted', status: 'exhausted' },
   { name: 'aborted', status: 'aborted' },
   { name: 'failed-secret', status: 'failed-secret' },
+  { name: 'failed', status: 'failed' },
 ];
 
 const AGES = [

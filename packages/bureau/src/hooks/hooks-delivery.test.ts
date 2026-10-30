@@ -133,9 +133,9 @@ describe('a hook on a published event', () => {
       status: 'delivered',
       request: { url: HOOK.url, body: receiver.calls[0]!.body },
     });
-    expect(delivery!.request.headers['Idempotency-Key']).toBe(delivery!.id);
+    expect(delivery!.request!.headers['Idempotency-Key']).toBe(delivery!.id);
     // The signature is made fresh for each attempt and is not part of the stored request.
-    expect(Object.keys(delivery!.request.headers).map((name) => name.toLowerCase())).not.toContain(
+    expect(Object.keys(delivery!.request!.headers).map((name) => name.toLowerCase())).not.toContain(
       'x-signature',
     );
     expect(delivery!.attempts).toHaveLength(1);
