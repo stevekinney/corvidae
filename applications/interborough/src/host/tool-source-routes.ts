@@ -7,7 +7,12 @@
  * - `PUT /host/tool-sources/<id>` with `{ "source": { … }, "credentials": { "<name>": "<value>" } }`
  *   connects a source, or replaces it. `source` is Armorer's description and its `id` must be `<id>`.
  *   A credential the description names and the host already holds may be left out.
- * - `DELETE /host/tool-sources/<id>` removes a source and clears its credentials.
+ * - `GET /host/tool-sources/<id>/affected-agents` lists the agent files that name the source's
+ *   tools, in `tools` or only in `toolApproval`, and changes nothing. A source the configuration
+ *   does not list answers 404.
+ * - `DELETE /host/tool-sources/<id>` removes a source and clears its credentials. It answers the
+ *   same list as `affectedAgents`: those agent files are not edited, and read `invalid` with
+ *   `unknown-tool` once the host starts again, until the owner detaches the tool.
  * - `POST /host/tool-sources/<id>/authorize` starts an MCP OAuth sign-in and answers with the
  *   authorization URL to open (`{ "authorized": false, "authorizationUrl": "…" }`), or
  *   `{ "authorized": true }` when the stored tokens already work.
@@ -15,7 +20,7 @@
  *   answers a small page, never JSON, and never repeats a parameter of the request.
  *
  * Every answer but the callback's is JSON. A change answers 200 with `{ id, changed,
- * restartRequired: true }`: the source's tools are listed when the host starts again. A refusal
+ * restartRequired: true }` (a removal adds `affectedAgents`): the source's tools are listed when the host starts again. A refusal
  * because the home is remote answers 403 with `reason: "deployment"`; a local command asked for by
  * anyone but the owner answers 403 with `error: "owner-only"`; a source the configuration does not
  * list answers 404; a request or configuration that cannot be used answers 400 naming the field;
@@ -42,6 +47,9 @@ export const HOST_TOOL_SOURCES_ROUTE = '/host/tool-sources';
 
 /** The route that connects or removes the source it names. */
 export const HOST_TOOL_SOURCE_ROUTE = `${HOST_TOOL_SOURCES_ROUTE}/:id`;
+
+/** The route that lists the agent files a removal of the source it names would leave invalid. */
+export const HOST_TOOL_SOURCE_AFFECTED_AGENTS_ROUTE = `${HOST_TOOL_SOURCES_ROUTE}/:id/affected-agents`;
 
 /** The route that starts the sign-in of the source it names. */
 export const HOST_TOOL_SOURCE_AUTHORIZE_ROUTE = `${HOST_TOOL_SOURCES_ROUTE}/:id/authorize`;
@@ -185,6 +193,10 @@ export function toolSourceRoutes(
         respond(() =>
           manager.remove({ id: request.params.id, principal: options.principal(request) }),
         ),
+    },
+    [HOST_TOOL_SOURCE_AFFECTED_AGENTS_ROUTE]: {
+      GET: (request: Bun.BunRequest<typeof HOST_TOOL_SOURCE_AFFECTED_AGENTS_ROUTE>) =>
+        refuse(request) ?? respond(() => manager.affectedAgents(request.params.id)),
     },
     [HOST_TOOL_SOURCE_AUTHORIZE_ROUTE]: {
       POST: (request: Bun.BunRequest<typeof HOST_TOOL_SOURCE_AUTHORIZE_ROUTE>) =>
