@@ -22,7 +22,7 @@
  * delay because a zero-delay poll starves LMDB's own completion callbacks (see
  * `event-history-run-ownership-recovery-lmdb.test.ts`).
  */
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -54,6 +54,7 @@ import {
 } from './test/storage-fixtures';
 import { startTaskFrom } from './test/task-start-request.ts';
 import type { Bureau } from './types';
+import { readChildJson } from './test/child-output-file';
 
 const CHILD = join(import.meta.dir, 'test', 'run-creation-crash-child.ts');
 
@@ -142,7 +143,7 @@ async function withScenario(
     scope.onHang(() => child.kill('SIGKILL'));
     const [stderr] = await Promise.all([new Response(child.stderr).text(), child.exited]);
     expect(child.signalCode ?? stderr).toBe('SIGKILL');
-    const marker = JSON.parse(readFileSync(markerPath, 'utf8')) as FaultMarker;
+    const marker = readChildJson<FaultMarker>(markerPath);
     // A dead process reports nothing, because its writes never settle; anything it did report is
     // a defect.
     expect(marker.diagnostics).toEqual([]);

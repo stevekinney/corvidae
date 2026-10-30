@@ -24,7 +24,7 @@
  *
  * Not a test file: it is spawned by `steering-crash-recovery.test.ts`.
  */
-import { writeFileSync } from 'node:fs';
+import { publishChildFile } from './child-output-file';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { createToolbox } from 'armorer';
@@ -124,10 +124,9 @@ for (const name of commandNames) {
 // The parent reads this to learn the session and the outcomes. Written
 // synchronously so it is on disk before the kill.
 const markedSession = await bureau.contexts.get(sessionId);
-writeFileSync(
+publishChildFile(
   markerPath,
   JSON.stringify({ sessionId, runId, incarnation: markedSession?.incarnation, outcomes }),
-  'utf8',
 );
 
 // No `bureau.dispose()`, deliberately. SIGKILL cannot be trapped, so no

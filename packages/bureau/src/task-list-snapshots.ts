@@ -12,7 +12,7 @@
  * windows: each window is its own record, built fresh, strictly after the key of the previous
  * window's last entry, and all windows of one listing share one expiry.
  *
- * Keys are `bureau-task-listing:v3:<principal>:<expiry>:<listing>:<window>`, so the sweep that
+ * Keys are `bureau-task-listing:v4:<principal>:<expiry>:<listing>:<window>`, so the sweep that
  * deletes expired records and the per-principal cap read keys alone, never a record.
  *
  * @module task-list-snapshots
@@ -22,11 +22,11 @@ import { type ConditionalTextValueStore, encodeStorageKeyComponent } from '@lost
 
 /**
  * The key prefix of a task-listing snapshot. A snapshot stores whole task views, so the version
- * moves with the view's shape: `v2` (COR-1689) added `kind` and `v3` (COR-1867) added `origin`, and a
+ * moves with the view's shape: `v2` (COR-1689) added `kind` and `v4` (COR-1867) added `origin`, and a
  * snapshot of an earlier version is never read as a view that lacks them. A record of an earlier
  * version left in storage is not read, and is not swept.
  */
-export const TASK_LISTING_KEY_PREFIX = 'bureau-task-listing:v3:';
+export const TASK_LISTING_KEY_PREFIX = 'bureau-task-listing:v4:';
 
 /** How long a listing's tokens work, counted from the moment its first page was served. */
 export const TASK_LISTING_LIFETIME_MILLISECONDS = 15 * 60 * 1000;
@@ -70,7 +70,25 @@ export interface TaskListingFilters {
   readonly status: string | null;
   /** The origin kind the listing was filtered to (COR-1867). */
   readonly origin: string | null;
+  /** Only the subordinate tasks of this run (COR-1868). */
+  readonly parentRunId: string | null;
+  /** Only the tasks sharing a parent run with this task (COR-1868). */
+  readonly siblingsOf: string | null;
+  /** Only top-level tasks: those a person, a schedule or the API started (COR-1868). */
+  readonly topLevelOnly: boolean;
   readonly statusTimestampAfter: number | null;
+}
+
+/**
+ * What a `siblingsOf` filter resolved to when its listing started. It is resolved once and kept,
+ * so the task it names expiring between pages cannot empty the later ones. `parent` is `null`
+ * when the task was absent, outside the caller's reach, or had no parent run: nothing matches.
+ */
+export interface TaskListingSiblings {
+  /** The task the filter named. */
+  readonly of: string;
+  /** The parent run the siblings share, or `null` when the listing matches nothing. */
+  readonly parent: string | null;
 }
 
 /** Who a listing belongs to, and how far its reach goes. */
@@ -102,6 +120,8 @@ export interface TaskListingRecord<T> extends TaskListingScope {
   readonly window: number;
   /** The incarnation `filters.contextId` resolved to (`''` for none), or `null` with no context. */
   readonly incarnation: string | null;
+  /** What `filters.siblingsOf` resolved to, or `null` with no such filter. */
+  readonly siblings: TaskListingSiblings | null;
   readonly createdAt: number;
   readonly expiresAt: number;
   readonly entries: readonly TaskListingEntry<T>[];
@@ -220,6 +240,9 @@ function sameFilters(left: TaskListingFilters, right: TaskListingFilters): boole
     left.agentName === right.agentName &&
     left.status === right.status &&
     left.origin === right.origin &&
+    left.parentRunId === right.parentRunId &&
+    left.siblingsOf === right.siblingsOf &&
+    left.topLevelOnly === right.topLevelOnly &&
     left.statusTimestampAfter === right.statusTimestampAfter
   );
 }

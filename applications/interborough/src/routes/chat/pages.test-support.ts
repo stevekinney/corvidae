@@ -17,6 +17,7 @@ export const CONTEXT = {
   parentContextId: null,
   forkedFromMessageId: null,
   model: null,
+  effort: null,
   configVersion: 0,
   messageCount: 2,
   createdAt: '2026-10-19T08:00:00.000Z',

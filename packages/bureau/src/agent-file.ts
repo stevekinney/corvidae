@@ -34,10 +34,22 @@ import { z } from 'zod';
 import { TOOL_APPROVAL_MODES, type ToolApprovalMode } from './tool-approval';
 
 import { agentExamplesSchema } from './agent-examples';
+import { NAMESPACED_IDENTIFIER_SOURCE } from './namespaced-identifier';
 import { emitMapping, rewriteFrontmatter } from './agent-file-frontmatter';
 
-/** What an agent's identifier must look like: it doubles as a path segment later. */
-export const AGENT_IDENTIFIER_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+/**
+ * What an owner's agent file stem must look like: it doubles as a path segment later. No colon, so
+ * an owner file cannot claim a plugin's namespace (COR-1871).
+ */
+export const AGENT_FILE_STEM_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+
+/**
+ * What an agent's identifier must look like: an owner's bare stem, or the `plugin:name` a plugin
+ * contributes. Percent-encode it where it becomes a URL path segment.
+ */
+export const AGENT_IDENTIFIER_PATTERN = new RegExp(
+  `^(?:${AGENT_FILE_STEM_PATTERN.source.slice(1, -1)}|${NAMESPACED_IDENTIFIER_SOURCE})$`,
+);
 
 /** The longest an agent's identifier may be, in characters: the same cap workflow identifiers have. */
 export const AGENT_IDENTIFIER_MAX_LENGTH = 64;
@@ -1026,7 +1038,7 @@ export function serializeUpdatedAgentFile(
 
 /** The identifier a filename stem names, or the reason it cannot be one. */
 export function checkAgentIdentifier(stem: string): AgentFileProblem | undefined {
-  if (AGENT_IDENTIFIER_PATTERN.test(stem) && stem.length <= AGENT_IDENTIFIER_MAX_LENGTH) {
+  if (AGENT_FILE_STEM_PATTERN.test(stem) && stem.length <= AGENT_IDENTIFIER_MAX_LENGTH) {
     return undefined;
   }
   return {

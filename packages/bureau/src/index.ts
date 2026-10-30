@@ -40,6 +40,7 @@ export {
   AGENT_COST_BUDGET_MAXIMUM_USD,
   AGENT_COST_BUDGET_MAXIMUM_WARNINGS,
   AGENT_GUARDRAIL_PRESETS,
+  AGENT_FILE_STEM_PATTERN,
   AGENT_IDENTIFIER_PATTERN,
   AGENT_TOOL_BUDGET_MAXIMUM_CALLS,
   AGENT_TOOL_BUDGET_MAXIMUM_DURATION_SECONDS,
@@ -93,6 +94,16 @@ export type {
   WorkflowFileProblemCode,
 } from './workflow-file';
 export {
+  fromWeftHandlerName,
+  handlerNameIssue,
+  IDENTIFIER_SEGMENT_SOURCE,
+  isNamespacedIdentifier,
+  NAMESPACED_IDENTIFIER_PATTERN,
+  RESERVED_NAMESPACES,
+  toWeftHandlerName,
+} from './namespaced-identifier';
+export {
+  WORKFLOW_FILE_STEM_PATTERN,
   WORKFLOW_IDENTIFIER_PATTERN,
   WorkflowFileConflictError,
   WorkflowFileError,
@@ -203,6 +214,7 @@ export type {
 export {
   AUDIT_EVENT_TYPES,
   auditTrailSkillSourceOwnerId,
+  auditTrailToolSourceOwnerId,
   computeInitialAuditSequence,
   createAuditTrail,
   encodeKey as encodeAuditEntryKey,
@@ -433,8 +445,11 @@ export type {
 export { SETTINGS_TOOL_NAMES } from './settings/settings-tools';
 export type { TaskToolGrant } from './task-registry';
 export type {
+  AgentTaskOrigin,
   ApiTaskOrigin,
   ChatTaskOrigin,
+  GoalTaskOrigin,
+  ParentTaskOrigin,
   PersonTaskOrigin,
   ScheduleTaskOrigin,
   StartTaskOrigin,
@@ -555,6 +570,7 @@ export type {
   AuditQueryRecord,
   BureauReviews,
   BureauContexts,
+  BureauAgents,
   BureauTasks,
   StartTaskOptions,
   TaskHandle,
@@ -562,6 +578,8 @@ export type {
   TaskInspection,
   TaskOutputOf,
   TaskReceiptQuery,
+  TryAgentOptions,
+  TryAgentResult,
   TaskRespondRequest,
   TaskRespondResult,
   BureauSchedules,

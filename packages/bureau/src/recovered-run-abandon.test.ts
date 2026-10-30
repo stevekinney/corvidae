@@ -12,7 +12,7 @@
  * and the scenario's hang guard fails it. Real processes are the behavior under test, so the
  * scenario runs once at module scope (see `test/hoisted-scenario.ts`).
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { stopWhen, createAgent } from '@lostgradient/operative';
@@ -31,6 +31,7 @@ import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test
 import type { Bureau } from './types';
 import type { AgentDefinitions } from './agent-catalog';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
+import { readChildJson } from './test/child-output-file';
 
 const CHILD = join(import.meta.dir, 'test', 'session-input-crash-child.ts');
 /** Matches the child's short workflow claim, so recovery can follow a kill quickly. */
@@ -107,7 +108,7 @@ async function recoveredAbandonScenario(scope: ScenarioScope): Promise<void> {
     const stderr = await new Response(child.stderr).text();
     expect(child.signalCode ?? stderr).toBe('SIGKILL');
     expect(existsSync(markerPath)).toBe(true);
-    const { runId } = JSON.parse(readFileSync(markerPath, 'utf8')) as { runId: string };
+    const { runId } = readChildJson<{ runId: string }>(markerPath);
     // The killed child's workflow claim must lapse before this process may recover its run; there
     // is no event for that, only its TTL.
     await scope.phase('claim lapse', () => Bun.sleep(CLAIM_TTL_MS * 10));

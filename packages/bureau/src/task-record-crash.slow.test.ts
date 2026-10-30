@@ -16,7 +16,7 @@
  * It spawns a process, so it lives in the `test:slow` lane, each scenario once at module
  * scope off Bun's per-test clock (see `test/hoisted-scenario.ts`).
  */
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -34,6 +34,7 @@ import type { Bureau, BureauReviews, BureauInternals, BureauOptions } from './ty
 import type { AgentDefinitions } from './agent-catalog';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 import { awakeTurns, waitUntil } from '@lostgradient/testing/wait-until';
+import { readChildJson } from './test/child-output-file';
 
 const CHILD = join(import.meta.dir, 'test', 'task-record-crash-child.ts');
 
@@ -88,7 +89,7 @@ async function crashScenario(
     const stderr = await new Response(child.stderr).text();
     expect(child.signalCode ?? stderr).toBe('SIGKILL');
     expect(unexpectedChildStderr(stderr)).toBe('');
-    const { runId } = JSON.parse(readFileSync(markerPath, 'utf8')) as { runId: string };
+    const { runId } = readChildJson<{ runId: string }>(markerPath);
 
     const bureau = await openBureau(store.storage, onEvent);
     scope.onHang(() => bureau.shutdown());
@@ -136,7 +137,7 @@ async function disposedScenario(scope: ScenarioScope): Promise<void> {
     const stderr = await new Response(child.stderr).text();
     expect(child.signalCode ?? stderr).toBe('SIGKILL');
     expect(unexpectedChildStderr(stderr)).toBe('');
-    const { runId } = JSON.parse(readFileSync(markerPath, 'utf8')) as { runId: string };
+    const { runId } = readChildJson<{ runId: string }>(markerPath);
 
     const second = await openBureau(store.storage);
     await second.recovery();

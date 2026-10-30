@@ -31,6 +31,7 @@ import {
   assertToolChoiceSupported,
   buildAnthropicMessageRequest,
   buildAnthropicUsage,
+  resolveAnthropicStepEffort,
 } from './anthropic-shared.ts';
 import type {
   AnthropicClient,
@@ -95,6 +96,13 @@ export function createAnthropicProvider(options: AnthropicProviderOptions): Gene
   ): Promise<GenerateResponse> => {
     const effectiveMaximumTokens = context.maximumTokens ?? maximumTokens;
     assertThinkingBudgetBelowMaximum(options.thinking, effectiveMaximumTokens);
+    // The step's steered effort, read per call (COR-1935), not the construction-time one.
+    const stepEffort = resolveAnthropicStepEffort(
+      context.steering?.effort,
+      resolvedEffort,
+      resolvedModel,
+      options.thinking,
+    );
     const client = await getClient();
     const conversationForRequest = cacheAwareAssembly
       ? cacheAwareAssembly(context)
@@ -109,7 +117,7 @@ export function createAnthropicProvider(options: AnthropicProviderOptions): Gene
       messages,
       maxTokens: effectiveMaximumTokens,
       system,
-      effort: resolvedEffort,
+      effort: stepEffort,
       thinking: options.thinking,
       metadata: options.requestMetadata,
       tools,
@@ -123,7 +131,7 @@ export function createAnthropicProvider(options: AnthropicProviderOptions): Gene
       const response = await client.messages.create(params, requestOptions);
 
       return withInputLineage(
-        createAnthropicResponse(response, resolvedModel, resolvedEffort),
+        createAnthropicResponse(response, resolvedModel, stepEffort),
         lineage,
       );
     } catch (error) {

@@ -22,7 +22,7 @@ export const BUILD_DIRECTORY_VARIABLE = 'INTERBOROUGH_BUILD_DIRECTORY';
 
 /**
  * The process environment, which the host reads for `INTERBOROUGH_HOME` (through Bungalow), for
- * `INTERBOROUGH_PORT`, and for `INTERBOROUGH_BUILD_DIRECTORY`. This is the only module in the application's source that touches
+ * `INTERBOROUGH_PORT`, for `INTERBOROUGH_BUILD_DIRECTORY`, and for `INTERBOROUGH_A2A_PUBLIC_ORIGIN`. This is the only module in the application's source that touches
  * `process.env`; everything else receives an environment as a value, which is also how tests
  * inject one.
  */
@@ -55,4 +55,43 @@ export function resolvePort(environment: BungalowEnvironment): number {
 export function resolveBuildDirectory(environment: BungalowEnvironment): string {
   const raw = environment[BUILD_DIRECTORY_VARIABLE];
   return raw === undefined || raw === '' ? DEFAULT_BUILD_DIRECTORY : resolve(raw);
+}
+
+/**
+ * The environment variable that names the public origin a reverse proxy serves A2A at, such as
+ * `https://agents.example.com` (COR-1904). Unset, A2A is reachable on loopback only.
+ */
+export const A2A_PUBLIC_ORIGIN_VARIABLE = 'INTERBOROUGH_A2A_PUBLIC_ORIGIN';
+
+/**
+ * The public origin `INTERBOROUGH_A2A_PUBLIC_ORIGIN` names, or `undefined` when it is unset or
+ * empty. It must be an `https` origin and nothing more (no path, query, fragment, or user name),
+ * because a remote A2A caller sends its key to it: a plain `http` origin would carry the key in
+ * the clear, and a path would name an address the host does not serve. Anything else stops the
+ * host rather than falling back to loopback in silence.
+ */
+export function resolveA2aPublicOrigin(environment: BungalowEnvironment): URL | undefined {
+  const raw = environment[A2A_PUBLIC_ORIGIN_VARIABLE];
+  if (raw === undefined || raw === '') return undefined;
+  let parsed: URL | undefined;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    parsed = undefined;
+  }
+  if (
+    parsed === undefined ||
+    parsed.protocol !== 'https:' ||
+    parsed.pathname !== '/' ||
+    parsed.search !== '' ||
+    parsed.hash !== '' ||
+    parsed.username !== '' ||
+    parsed.password !== ''
+  ) {
+    throw new Error(
+      // The value is not echoed: unlike a port, a URL can carry a credential.
+      `${A2A_PUBLIC_ORIGIN_VARIABLE} must be an https origin with no path, user name, or password, such as https://agents.example.com.`,
+    );
+  }
+  return new URL(parsed.origin);
 }

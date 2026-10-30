@@ -624,6 +624,347 @@ describe('a TaskRegistry.list page token', () => {
   });
 });
 
+/** Admits one task with the given origin, one millisecond after the previous admission. */
+async function admitOne(
+  harness: ReturnType<typeof build>,
+  taskId: string,
+  origin: TaskOrigin | { kind: string; [field: string]: unknown } | undefined,
+  owner = ALICE,
+): Promise<void> {
+  await harness.registry.recordAdmission({
+    taskId,
+    contextId: 'context-1',
+    incarnation: 'incarnation-1',
+    agentName: 'assistant',
+    owner,
+    origin: origin as TaskOrigin | undefined,
+    message: undefined,
+  });
+  await harness.runtime.advance(1);
+}
+
+/** Five children of `run-p`, four of `run-q`, one attempt of goal `goal-g`, and top-level noise. */
+async function admitFamilies(harness: ReturnType<typeof build>): Promise<void> {
+  for (let index = 0; index < 5; index += 1) {
+    await admitOne(harness, `p-child-${index}`, {
+      kind: 'agent',
+      parentRunId: 'run-p',
+      agentName: 'assistant',
+    });
+  }
+  for (let index = 0; index < 4; index += 1) {
+    await admitOne(harness, `q-step-${index}`, { kind: 'parent', parentRunId: 'run-q' });
+  }
+  await admitOne(harness, 'goal-g-a0', { kind: 'goal', goalRunId: 'goal-g', attemptId: 'a0' });
+  await admitOne(harness, 'top-api', { kind: 'api' });
+  await admitOne(harness, 'top-chat', CHAT_ORIGIN);
+  await admitOne(harness, 'top-old', undefined);
+}
+
+describe('TaskRegistry.list of subordinate tasks (COR-1868)', () => {
+  it('reads the origins of a child, an attempt and a step, and null for a record without one', async () => {
+    const harness = build();
+    await admitFamilies(harness);
+
+    const origins = new Map<string, TaskView['origin'] | undefined>();
+    for (const id of ['p-child-0', 'goal-g-a0', 'q-step-0', 'top-old']) {
+      const view = await harness.registry.get(id);
+      origins.set(id, view?.origin);
+    }
+
+    expect(origins.get('p-child-0')).toEqual({
+      kind: 'agent',
+      parentRunId: 'run-p',
+      agentName: 'assistant',
+    });
+    expect(origins.get('goal-g-a0')).toEqual({
+      kind: 'goal',
+      goalRunId: 'goal-g',
+      attemptId: 'a0',
+    });
+    expect(origins.get('q-step-0')).toEqual({ kind: 'parent', parentRunId: 'run-q' });
+    expect(origins.get('top-old')).toBeNull();
+  });
+
+  it('keeps subordinate tasks in the default listing and filters by their kind', async () => {
+    const harness = build();
+    await admitFamilies(harness);
+
+    const all = await listAll(harness.registry, { principal: ALICE, limit: 100 });
+    const agents = await listAll(harness.registry, { principal: ALICE, origin: 'agent', limit: 2 });
+    const goals = await listAll(harness.registry, { principal: ALICE, origin: 'goal', limit: 2 });
+
+    expect(all).toHaveLength(13);
+    expect(idsOf(agents).toSorted()).toEqual(
+      [0, 1, 2, 3, 4].map((index) => `p-child-${index}`).toSorted(),
+    );
+    expect(idsOf(goals)).toEqual(['goal-g-a0']);
+  });
+
+  it('lists only the subordinate tasks of a parent run across pages', async () => {
+    const harness = build();
+    await admitFamilies(harness);
+
+    const children = await listAll(harness.registry, {
+      principal: ALICE,
+      parentRunId: 'run-p',
+      limit: 2,
+    });
+    const steps = await listAll(harness.registry, {
+      principal: ALICE,
+      parentRunId: 'run-q',
+      limit: 3,
+    });
+    const attempts = await listAll(harness.registry, {
+      principal: ALICE,
+      parentRunId: 'goal-g',
+      limit: 1,
+    });
+    const nothing = await listAll(harness.registry, {
+      principal: ALICE,
+      parentRunId: 'missing',
+      limit: 2,
+    });
+
+    expect(idsOf(children)).toEqual([
+      'p-child-4',
+      'p-child-3',
+      'p-child-2',
+      'p-child-1',
+      'p-child-0',
+    ]);
+    expect(idsOf(steps)).toEqual(['q-step-3', 'q-step-2', 'q-step-1', 'q-step-0']);
+    expect(idsOf(attempts)).toEqual(['goal-g-a0']);
+    expect(nothing).toEqual([]);
+  });
+
+  it('never matches a top-level task, an unreadable origin, or an origin of an unknown kind', async () => {
+    const harness = build();
+    await admitFamilies(harness);
+    await admitOne(harness, 'future', { kind: 'teleport', parentRunId: 'run-p' });
+    await admitOne(harness, 'broken', { kind: 'agent', parentRunId: 'run-p' });
+
+    const children = await listAll(harness.registry, {
+      principal: ALICE,
+      parentRunId: 'run-p',
+      limit: 100,
+    });
+
+    expect(idsOf(children).toSorted()).toEqual(
+      [0, 1, 2, 3, 4].map((index) => `p-child-${index}`).toSorted(),
+    );
+  });
+
+  it('lists the siblings of a task across pages, the task itself excluded', async () => {
+    const harness = build();
+    await admitFamilies(harness);
+
+    const siblings = await listAll(harness.registry, {
+      principal: ALICE,
+      siblingsOf: 'p-child-2',
+      limit: 2,
+    });
+
+    expect(idsOf(siblings)).toEqual(['p-child-4', 'p-child-3', 'p-child-1', 'p-child-0']);
+  });
+
+  it('matches nothing for the siblings of a task that is absent, unreadable to the caller, or parentless', async () => {
+    const harness = build();
+    await admitFamilies(harness);
+    await admitOne(harness, 'bobs-child', { kind: 'parent', parentRunId: 'run-p' }, BOB);
+
+    const query = { principal: ALICE, owner: ALICE, limit: 100 } as const;
+    const absent = await listAll(harness.registry, { ...query, siblingsOf: 'nope' });
+    const topLevel = await listAll(harness.registry, { ...query, siblingsOf: 'top-chat' });
+    const legacy = await listAll(harness.registry, { ...query, siblingsOf: 'top-old' });
+    const foreign = await listAll(harness.registry, { ...query, siblingsOf: 'bobs-child' });
+    const everyOwner = await listAll(harness.registry, {
+      principal: ALICE,
+      siblingsOf: 'bobs-child',
+      limit: 100,
+    });
+
+    expect([absent, topLevel, legacy, foreign]).toEqual([[], [], [], []]);
+    expect(idsOf(everyOwner)).toHaveLength(5);
+  });
+
+  it('intersects parentRunId and siblingsOf', async () => {
+    const harness = build();
+    await admitFamilies(harness);
+
+    const same = await listAll(harness.registry, {
+      principal: ALICE,
+      parentRunId: 'run-p',
+      siblingsOf: 'p-child-0',
+      limit: 100,
+    });
+    const different = await listAll(harness.registry, {
+      principal: ALICE,
+      parentRunId: 'run-q',
+      siblingsOf: 'p-child-0',
+      limit: 100,
+    });
+
+    expect(idsOf(same)).toHaveLength(4);
+    expect(different).toEqual([]);
+  });
+
+  it('resolves siblingsOf once: the task expiring between pages does not empty the later ones', async () => {
+    const harness = build();
+    await admitFamilies(harness);
+    const first = await harness.registry.list({
+      principal: ALICE,
+      siblingsOf: 'p-child-2',
+      limit: 1,
+    });
+    expect(first.nextPageToken).not.toBeNull();
+    // The named task is gone: a fresh listing of its siblings is empty, a running one is not.
+    await harness.kv!.delete(`${TASK_RECORD_KEY_PREFIX}p-child-2`);
+
+    const rest = await listAll(harness.registry, {
+      principal: ALICE,
+      siblingsOf: 'p-child-2',
+      limit: 1,
+      pageToken: first.nextPageToken!,
+    });
+    const fresh = await listAll(harness.registry, {
+      principal: ALICE,
+      siblingsOf: 'p-child-2',
+      limit: 1,
+    });
+
+    expect(idsOf([...first.tasks, ...rest])).toEqual([
+      'p-child-4',
+      'p-child-3',
+      'p-child-1',
+      'p-child-0',
+    ]);
+    expect(fresh).toEqual([]);
+  });
+
+  it('refuses a token under other filters than it was minted for', async () => {
+    const harness = build();
+    await admitFamilies(harness);
+    const byParent = await harness.registry.list({
+      principal: ALICE,
+      parentRunId: 'run-p',
+      limit: 2,
+    });
+    const bySiblings = await harness.registry.list({
+      principal: ALICE,
+      siblingsOf: 'p-child-0',
+      limit: 2,
+    });
+    const topLevel = await harness.registry.list({
+      principal: ALICE,
+      topLevelOnly: true,
+      limit: 2,
+    });
+
+    const refusals = [
+      await refusal(
+        harness.registry.list({
+          principal: ALICE,
+          parentRunId: 'run-q',
+          limit: 2,
+          pageToken: byParent.nextPageToken!,
+        }),
+      ),
+      await refusal(
+        harness.registry.list({ principal: ALICE, limit: 2, pageToken: byParent.nextPageToken! }),
+      ),
+      await refusal(
+        harness.registry.list({
+          principal: ALICE,
+          siblingsOf: 'p-child-1',
+          limit: 2,
+          pageToken: bySiblings.nextPageToken!,
+        }),
+      ),
+      await refusal(
+        harness.registry.list({ principal: ALICE, limit: 2, pageToken: bySiblings.nextPageToken! }),
+      ),
+      await refusal(
+        harness.registry.list({ principal: ALICE, limit: 2, pageToken: topLevel.nextPageToken! }),
+      ),
+      await refusal(
+        harness.registry.list({
+          principal: ALICE,
+          parentRunId: 'run-p',
+          limit: 2,
+          pageToken: topLevel.nextPageToken!,
+        }),
+      ),
+    ];
+
+    expect(refusals).toEqual(['filters', 'filters', 'filters', 'filters', 'filters', 'filters']);
+  });
+
+  it('keeps only top-level tasks under topLevelOnly, an unknown kind excluded', async () => {
+    const harness = build();
+    await admitFamilies(harness);
+    await admitOne(harness, 'future', { kind: 'teleport' });
+    await admitOne(harness, 'scheduled', {
+      kind: 'schedule',
+      scheduleId: 's',
+      fireId: 'f',
+    });
+    await admitOne(harness, 'person', { kind: 'person', principal: ALICE, surface: 'web' });
+
+    const topLevel = await listAll(harness.registry, {
+      principal: ALICE,
+      topLevelOnly: true,
+      limit: 2,
+    });
+
+    expect(idsOf(topLevel).toSorted()).toEqual(
+      ['person', 'scheduled', 'top-api', 'top-chat', 'top-old'].toSorted(),
+    );
+  });
+
+  it('enumerates with the same filters', async () => {
+    const harness = build();
+    await admitFamilies(harness);
+
+    const children = await harness.registry.enumerate({
+      parentRunId: 'run-p',
+      limit: 100,
+      offset: 0,
+    });
+    const siblings = await harness.registry.enumerate({
+      siblingsOf: 'q-step-0',
+      limit: 100,
+      offset: 0,
+    });
+    const topLevel = await harness.registry.enumerate({
+      topLevelOnly: true,
+      limit: 100,
+      offset: 0,
+    });
+
+    expect(children.tasks).toHaveLength(5);
+    expect(siblings.tasks).toHaveLength(3);
+    expect(topLevel.tasks).toHaveLength(3);
+  });
+
+  it('does not read a v3 snapshot: the key prefix moved to v4 and the old keys are left alone', async () => {
+    const harness = build();
+    await admitFamilies(harness);
+    const first = await harness.registry.list({ principal: ALICE, limit: 2 });
+    const [key] = await snapshotKeys(harness.kv);
+    // The same listing, saved by the previous release under the v3 prefix.
+    await harness.kv!.set(key!.replace(':v4:', ':v3:'), (await harness.kv!.get(key!))!);
+    await harness.kv!.delete(key!);
+
+    const error = await refusal(
+      harness.registry.list({ principal: ALICE, limit: 2, pageToken: first.nextPageToken! }),
+    );
+
+    expect(error).toBe('not-found');
+    expect(await snapshotKeys(harness.kv)).toEqual([]);
+  });
+});
+
 describe('TaskRegistry.expireListings', () => {
   it('deletes an expired snapshot by its key alone, and keeps a live one', async () => {
     const harness = build();
@@ -646,7 +987,7 @@ describe('TaskRegistry.expireListings', () => {
 
   it('pins the key version to the task view’s shape, so a snapshot saved without `kind` is never read', () => {
     // Bump this with the view: a stored view is parsed as the current shape by the next page.
-    expect(TASK_LISTING_KEY_PREFIX).toBe('bureau-task-listing:v3:');
+    expect(TASK_LISTING_KEY_PREFIX).toBe('bureau-task-listing:v4:');
   });
 
   it('stores under a prefix disjoint from the task records and the context index', () => {

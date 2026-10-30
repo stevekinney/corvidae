@@ -146,6 +146,7 @@ describe('the Bureau’s context operations', () => {
         parentContextId: null,
         forkedFromMessageId: null,
         model: null,
+        effort: null,
         configVersion: 0,
         messageCount: 2,
         createdAt: '2026-10-19T00:00:00.000Z',
@@ -243,6 +244,21 @@ describe('switching a session’s model and branching it', () => {
         override: { provider: 'anthropic', model: 'claude-haiku-4-5' },
         expectedRevision: 4,
       },
+    });
+  });
+
+  test('steerContext sends an effort without an override', async () => {
+    const stub = answering(result({ outcome: 'accepted', command: {} }));
+
+    const outcome = await withStub(stub.fetch, () =>
+      steerContext({ contextId: 'c1', commandId: 'command-2', effort: 'high' }),
+    );
+
+    expect(outcome).toEqual({ outcome: 'accepted' });
+    expect(stub.calls[0]?.body.params).toEqual({
+      contextId: 'c1',
+      commandId: 'command-2',
+      effort: 'high',
     });
   });
 

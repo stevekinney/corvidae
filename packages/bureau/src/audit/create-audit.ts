@@ -76,6 +76,9 @@ const DETAIL_ALLOWLIST: readonly string[] = [
   // COR-1818: a skill source's trust change, which names the source and the decision.
   'sourceId',
   'trusted',
+  // COR-1930: a local-command tool source names the command line it runs, so the owner can see
+  // what was added. It never holds an environment value or a credential.
+  'commandLine',
 ];
 
 function detailOf(detail: unknown): AuditQueryRecord['detail'] {

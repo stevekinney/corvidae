@@ -860,6 +860,13 @@ export function createGeminiProvider(options: GeminiProviderOptions): GenerateFu
   const generate: GenerateFunction = async (
     context: GenerateContext,
   ): Promise<GenerateResponse> => {
+    // The step's steered effort, read per call (COR-1935), not the construction-time one. A model
+    // without a thinking mode resolves it to `undefined`: no `thinkingConfig`, and the response's
+    // `effectiveEffort` says `'none'`.
+    const stepEffort =
+      context.steering?.effort === undefined
+        ? resolvedEffort
+        : resolveGeminiEffort(context.steering.effort, resolvedModel);
     const client = await getClient();
     const tools = await context.toolbox.toGeminiTools();
 
@@ -883,7 +890,7 @@ export function createGeminiProvider(options: GeminiProviderOptions): GenerateFu
           temperature: common.temperature,
           topP: common.topP,
           stopSequences: common.stopSequences,
-          thinkingBudget: resolvedEffort?.thinkingBudget,
+          thinkingBudget: stepEffort?.thinkingBudget,
         });
 
         const request: GeminiGenerateContentRequest = {
@@ -917,7 +924,7 @@ export function createGeminiProvider(options: GeminiProviderOptions): GenerateFu
             metadata: {
               ...geminiMappingMetadata(mapped),
               effectiveModel: resolvedModel,
-              effectiveEffort: resolvedEffort ? resolvedEffort.effort : 'none',
+              effectiveEffort: stepEffort ? stepEffort.effort : 'none',
             },
           },
           content.lineage,
@@ -979,6 +986,13 @@ export function createGeminiProviderStream(
   const generate: StreamingGenerateFunction = async (
     context: GenerateContext & { streaming: StreamingHandle },
   ): Promise<GenerateResponse> => {
+    // The step's steered effort, read per call (COR-1935), not the construction-time one. A model
+    // without a thinking mode resolves it to `undefined`: no `thinkingConfig`, and the response's
+    // `effectiveEffort` says `'none'`.
+    const stepEffort =
+      context.steering?.effort === undefined
+        ? resolvedEffort
+        : resolveGeminiEffort(context.steering.effort, resolvedModel);
     const client = await getClient();
     const { streaming } = context;
     const tools = await context.toolbox.toGeminiTools();
@@ -1003,7 +1017,7 @@ export function createGeminiProviderStream(
           temperature: common.temperature,
           topP: common.topP,
           stopSequences: common.stopSequences,
-          thinkingBudget: resolvedEffort?.thinkingBudget,
+          thinkingBudget: stepEffort?.thinkingBudget,
         });
 
         const request: GeminiGenerateContentRequest = {
@@ -1070,7 +1084,7 @@ export function createGeminiProviderStream(
             metadata: {
               ...geminiMappingMetadata(mapped),
               effectiveModel: resolvedModel,
-              effectiveEffort: resolvedEffort ? resolvedEffort.effort : 'none',
+              effectiveEffort: stepEffort ? stepEffort.effort : 'none',
             },
           },
           content.lineage,

@@ -2,17 +2,21 @@ import type { JSONValue } from '../types';
 
 /**
  * The session metadata key holding what started the session (COR-1645). Written once, when the
- * session is created, by whatever creates it: a goal writes `goal` and a schedule's fire writes
- * `schedule`. A person's chat writes nothing, so the absence of the key is the chat. Like the
+ * session is created, by whatever creates it: a goal writes `goal`, a schedule's fire writes
+ * `schedule`, and a throwaway chat with an unsaved agent definition writes `try` (COR-1911). A
+ * person's chat writes nothing, so the absence of the key is the chat. Like the
  * owner key, the summary index carries it in the metadata it copies, so a listing can filter by it
  * before it pages.
  */
 export const SESSION_ORIGIN_METADATA_KEY = 'sessionOrigin';
 
 /** What can start a session. */
-export const SESSION_ORIGINS = ['chat', 'goal', 'schedule'] as const;
+export const SESSION_ORIGINS = ['chat', 'goal', 'schedule', 'try'] as const;
 
-/** What started a session: a person's chat, a goal, or a schedule's fire. */
+/**
+ * What started a session: a person's chat, a goal, a schedule's fire, or a throwaway chat with an
+ * agent definition that was never saved.
+ */
 export type SessionOrigin = (typeof SESSION_ORIGINS)[number];
 
 /**

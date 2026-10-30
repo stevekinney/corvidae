@@ -80,6 +80,7 @@ import {
   withEnhancedStreaming,
   WorkflowVersionMismatchEvent,
   SESSION_ORIGIN_METADATA_KEY,
+  sessionOriginOf,
   SESSION_OWNER_METADATA_KEY,
 } from '@lostgradient/operative';
 import {
@@ -143,6 +144,7 @@ import {
 
 import type { FileAgentBinding } from './agent-file-catalog';
 import { activeSkillToolPolicy, agentSkillsRun, createSkillGuardrailOptions } from './agent-skills';
+import { isTryAgentName } from './agent-try';
 import {
   type GoalAttemptFence,
   type GoalAttemptTarget,
@@ -2268,6 +2270,8 @@ export interface RuntimeComposition {
        * refused at approve under the snapshot read again.
        */
       skillPolicyUnverifiable?: boolean | undefined;
+      /** COR-1911 — the run neither recalls nor remembers: no memory hook is registered. */
+      withoutMemory?: boolean | undefined;
     },
   ): Promise<{
     generate: GenerateFunction;
@@ -3226,6 +3230,12 @@ async function buildRuntimeComposition(
        */
       memoryOwner?: string | undefined;
       skillPolicyUnverifiable?: boolean | undefined;
+      /**
+       * COR-1911 — the run neither recalls memory nor remembers its answers: no memory hook is
+       * registered. A run of an agent that is being tried is one; it is a throwaway, and leaves
+       * nothing in the memory its owner keeps.
+       */
+      withoutMemory?: boolean | undefined;
     },
   ) {
     const sessionAgent = runtimeOptions?.sessionAgent;
@@ -3294,7 +3304,7 @@ async function buildRuntimeComposition(
     // recovered run whose authority could not be restored gets none: no
     // conversation can reach memory outside the authority it was granted.
     const memoryAuthority =
-      memory && requestContext
+      memory && requestContext && runtimeOptions?.withoutMemory !== true
         ? createRunMemoryAuthority(
             requestContext,
             {
@@ -3406,6 +3416,9 @@ async function buildRuntimeComposition(
       // persistence of what the client decided.
       const skillClient = createSkillClient({
         catalog: skillCatalog,
+        ...(options.skills.currentCatalog === undefined
+          ? {}
+          : { currentCatalog: options.skills.currentCatalog }),
         // Routed by source kind rather than fixed to the filesystem: a catalog can mix a host's
         // filesystem roots with the bureau's own store, and a `storage` record's `sourceLocation`
         // is a store namespace that no filesystem read can follow.
@@ -3731,6 +3744,8 @@ async function buildRuntimeComposition(
         skillPolicyUnverifiable: skillSnapshot.status === 'unverifiable',
         sessionAgent,
         memoryOwner: resolveRunMemoryOwner(session.metadata, runId),
+        // COR-1911 — a run of a tried agent resumes as it began, without memory.
+        withoutMemory: sessionOriginOf(session.metadata) === 'try',
       },
     );
     const skillRecovery = await runRuntime.skillsRecovered;
@@ -5188,6 +5203,16 @@ async function buildRuntimeComposition(
       // detached write).
       const reason = error instanceof Error ? error.message : String(error);
       unrebuildableRecoveredRuns.add(info.workflowId);
+      // COR-1911 — a tried agent lives in memory and nowhere else, so a restart loses it and its
+      // run cannot be rebuilt. The recovery report lists the run; this names why.
+      if (isTryAgentName(info.input.agentName)) {
+        diagnose({
+          level: 'warn',
+          scope: 'agent-try',
+          message: `[bureau] Run "${info.workflowId}" (session ${sessionId}) of a tried agent cannot be recovered: try agent not reconstructable after restart. The agent was held in memory only; delete the chat.`,
+          cause: error,
+        });
+      }
       try {
         await sessionStore.updateMetadata(sessionId, {
           lastRunStatus: 'error',
