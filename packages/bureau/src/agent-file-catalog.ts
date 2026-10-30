@@ -39,6 +39,7 @@ import {
   type BackendDescriptor,
   createAgent,
   type GenerateFunction,
+  shouldRetryProviderError,
 } from '@lostgradient/operative';
 import {
   type ConditionalTextValueStore,
@@ -401,6 +402,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
               attempts: definition.retry.attempts,
               delay: definition.retry.delayMilliseconds ?? 0,
               jitter: definition.retry.jitter ?? false,
+              shouldRetry: shouldRetryProviderError,
             },
           }),
     }) as AnyRunnableAgent;

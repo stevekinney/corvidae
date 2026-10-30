@@ -2,7 +2,7 @@
  * COR-1865 — an agent file's `stepLimit` and `retry`: what they accept, how a write keeps them,
  * that a definition without them still loads, and that they reach the run.
  */
-import type { GenerateFunction } from '@lostgradient/operative';
+import { type GenerateFunction, ProviderError } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import {
@@ -258,14 +258,20 @@ describe('a file agent’s run', () => {
     expect(calls()).toBe(25);
   });
 
-  /** A generate that fails its first `failures` calls, then answers. */
+  /** A generate that fails its first `failures` calls with a transient provider error, then answers. */
   function flaky(failures: number): { generate: GenerateFunction; calls: () => number } {
     let calls = 0;
     return {
       calls: () => calls,
       generate: async () => {
         calls += 1;
-        if (calls <= failures) throw new Error('transient');
+        if (calls <= failures) {
+          throw new ProviderError({
+            provider: 'anthropic',
+            cause: new Error('busy'),
+            statusCode: 503,
+          });
+        }
         return { content: 'done', toolCalls: [] };
       },
     };
@@ -289,5 +295,23 @@ describe('a file agent’s run', () => {
 
     expect(result.finishReason).toBe('error');
     expect(calls()).toBe(1);
+  });
+
+  it('calls a non-transient provider error once, however many attempts the file allows', async () => {
+    let calls = 0;
+    const generate: GenerateFunction = async () => {
+      calls += 1;
+      throw new ProviderError({
+        provider: 'anthropic',
+        cause: new Error('bad request'),
+        statusCode: 400,
+      });
+    };
+    const { agent } = await agentOf({ retry: '{attempts: 3, delayMilliseconds: 0}' }, generate);
+
+    const result = await agent.run('go').result();
+
+    expect(result.finishReason).toBe('error');
+    expect(calls).toBe(1);
   });
 });

@@ -138,9 +138,9 @@ const agentDetailSchema = agentListingSchema.extend({
 });
 
 /**
- * What a caller supplies to `create` or `update`. `a2a` is the one field an update keeps when it
- * is left out, so an editor that rewrites a definition cannot turn an agent's A2A opt-in off by
- * omitting it.
+ * What a caller supplies to `create` or `update`. An update keeps `a2a`, `stepLimit` and `retry` when
+ * it leaves them out, so an editor that rewrites a definition cannot turn an agent's A2A opt-in
+ * off, or drop its step limit or retry, by omitting them; `null` removes `stepLimit` or `retry`.
  */
 const definitionInputSchema = z
   .strictObject({
