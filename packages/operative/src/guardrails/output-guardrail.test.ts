@@ -1,6 +1,7 @@
 import { describe, expect, it, mock } from 'bun:test';
 import { Conversation } from 'conversationalist';
 
+import { GuardrailTripwireError } from '../errors';
 import { createOutputGuardrail } from './output-guardrail';
 import type {
   OutputGuardrailTriggeredEvent,
@@ -362,9 +363,13 @@ describe('createOutputGuardrail over thinking parts (COR-1806)', () => {
       onTriggered,
     });
 
-    await expect(
-      hook(responseWithThought('the SECRET is x'), createMockStepContext()),
-    ).rejects.toThrow('Output guardrail tripwire');
+    let thrown: unknown;
+    try {
+      await hook(responseWithThought('the SECRET is x'), createMockStepContext());
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(GuardrailTripwireError);
     expect(onTriggered).toHaveBeenCalledTimes(1);
   });
 

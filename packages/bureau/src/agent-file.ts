@@ -331,6 +331,7 @@ const definitionKeyTable: Record<keyof AgentFileDefinition, true> = {
   a2a: true,
   stepLimit: true,
   retry: true,
+  guardrails: true,
   examples: true,
   instructions: true,
 };

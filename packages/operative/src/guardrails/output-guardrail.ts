@@ -19,7 +19,12 @@ function thinkingTextsOf(response: GenerateResponse): ThinkingText[] {
   );
 }
 
-type Failure = { readonly result: ValidationResult; readonly validatorName: string };
+type Failure = {
+  /** The index of the flagged thinking part among the response's parts, or -1 for the content. */
+  readonly target: number;
+  readonly result: ValidationResult;
+  readonly validatorName: string;
+};
 
 function highestConfidence(failures: readonly Failure[]): Failure | undefined {
   let top: Failure | undefined;
