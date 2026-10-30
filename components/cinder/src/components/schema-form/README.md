@@ -55,7 +55,7 @@ A form with more than eight fields (an object group counts as the fields inside 
 - Two columns for short fields (strings, numbers, booleans, selects, durations). Arrays, groups, chips, tags, records, choices and raw JSON take the whole row. The grid falls back to one column when the container is narrow.
 - Nested objects as collapsible groups. A required group starts open and an optional one closed. A closed group summarizes what is inside it: the values that differ from their defaults (`Damaged · whole order`), or else the first field names with `none set` or, when the schema supplies defaults, `defaults` (`Carrier, Tracking Number… · none set`). Groups come only from nested objects in the schema, never from guessing at field names.
 - A Find a field filter that matches labels, keys and descriptions, and opens the groups that hold a match.
-- Edit as JSON, a panel for pasting a whole input. Apply parses the text, requires an object when the schema is an object, fills in defaults for missing fields, and replaces every field and draft.
+- Edit as JSON, a panel for pasting a whole input. Apply parses the text, requires an object when the schema is an object, fills in defaults for missing fields, and replaces every field and draft. Pass `jsonEditable={false}` when the host already offers its own JSON entry point for the payload.
 
 A failed submit clears the filter and opens every group that holds an error, so focus always has a field to land on.
 
@@ -66,6 +66,7 @@ A failed submit clears the filter and opens every group that holds an error, so 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `class` | `string` | no | — | Custom class merged with `.cinder-schema-form`. |
+| `jsonEditable` | `boolean` | no | — | Whether a large form offers its own Edit as JSON panel. Defaults to `true`; set `false` when the host already provides a JSON entry point for the same payload, so the page does not show two. Find a field and the other large-form affordances are unaffected. |
 | `name` | `string` | no | — | Name of the hidden serialized output field. Defaults to `value`. |
 | `submitLabel` | `string` | no | — | Label for the built-in submit button. Defaults to `Submit`. |
 | `onDraftChange` | `(opaque)` | no | — | Called after each edit with the complete current draft, before schema validation. The draft can be schema-invalid and does not change the seed-only `value` contract. In-progress numeric editors and temporarily unparseable JSON fields are reported as their current raw text until the value commits or parses successfully. Not expressible in JSON Schema; see the component types for the signature. |

@@ -68,6 +68,9 @@ export class SchemaFormState {
   #rawDrafts = $state<Record<string, string>>({});
   #parsedRawDrafts = $state<Record<string, ParsedRawDraft>>({});
   #numericDrafts = $state<Record<string, string>>({});
+  // Text typed into a tag input but not yet committed as a tag. The tag input keeps it in its own
+  // state, which is lost when a filter or a closed group unmounts it, so it is mirrored here.
+  #tagDrafts = $state<Record<string, string>>({});
   #touchedValidationSequences = $state<Record<string, number>>({});
   #arrayKeys = $state<Record<string, string[]>>({});
   #arrayKeyCounter = 0;
@@ -146,6 +149,10 @@ export class SchemaFormState {
     if (ownEntry(this.#numericDrafts, key) !== undefined) {
       const { [key]: _removedDraft, ...remainingDrafts } = this.#numericDrafts;
       this.#numericDrafts = remainingDrafts;
+    }
+    if (ownEntry(this.#tagDrafts, key) !== undefined) {
+      const { [key]: _removedTagDraft, ...remainingTagDrafts } = this.#tagDrafts;
+      this.#tagDrafts = remainingTagDrafts;
     }
     this.#bumpTouchedValidationSequence(path);
     if (ownEntry(this.#errors, key)) {
@@ -231,11 +238,20 @@ export class SchemaFormState {
   handleFieldInput(field: SchemaFormField, event: Event): void {
     if (this.#options.getSubmitting()) return;
     this.#bumpTouchedValidationSequence(field.path);
+    if (field.kind === 'tags' && event.target instanceof HTMLInputElement) {
+      this.#tagDrafts = { ...this.#tagDrafts, [pathKey(field.path)]: event.target.value };
+      return;
+    }
     if (field.kind !== 'number' && field.kind !== 'integer') return;
     if (!(event.target instanceof HTMLInputElement)) return;
     this.#numericDrafts = { ...this.#numericDrafts, [pathKey(field.path)]: event.target.value };
     this.clearSerializedValue();
     this.#reportDraftChange();
+  }
+
+  /** The text of a tag field that was typed but not committed as a tag, or `''`. */
+  tagDraft(field: SchemaFormField): string {
+    return ownEntry(this.#tagDrafts, pathKey(field.path)) ?? '';
   }
 
   /** The key/value rows of a record field, stable between reads until the field is edited. */
@@ -284,6 +300,7 @@ export class SchemaFormState {
     this.#rawDrafts = keep(this.#rawDrafts);
     this.#parsedRawDrafts = keep(this.#parsedRawDrafts);
     this.#numericDrafts = keep(this.#numericDrafts);
+    this.#tagDrafts = keep(this.#tagDrafts);
     this.#errors = keep(this.#errors);
     this.#arrayKeys = keep(this.#arrayKeys);
     this.#recordEntries = keep(this.#recordEntries);
@@ -305,6 +322,7 @@ export class SchemaFormState {
     this.#arrayKeys = this.#seedArrayKeys(this.#model.field, value);
     this.#parsedRawDrafts = {};
     this.#numericDrafts = {};
+    this.#tagDrafts = {};
     this.#errors = {};
     this.#recordEntries = {};
     this.#derivedRecordEntries.clear();
@@ -360,6 +378,7 @@ export class SchemaFormState {
     this.#rawDrafts = this.#reindexArrayPathState(this.#rawDrafts, field.path, index);
     this.#parsedRawDrafts = this.#reindexArrayPathState(this.#parsedRawDrafts, field.path, index);
     this.#numericDrafts = this.#reindexArrayPathState(this.#numericDrafts, field.path, index);
+    this.#tagDrafts = this.#reindexArrayPathState(this.#tagDrafts, field.path, index);
     this.#errors = this.#reindexArrayPathState(this.#errors, field.path, index);
     this.#recordEntries = this.#reindexArrayPathState(this.#recordEntries, field.path, index);
     this.#derivedRecordEntries.clear();
@@ -540,7 +559,7 @@ export class SchemaFormState {
    * block assembly. Called by schema-form-body.svelte's `handleSubmit`
    * before running schema validation.
    */
-  buildSubmitCandidate(): SchemaFormSubmitCandidate {
+  buildSubmitCandidate(isRendered: (field: SchemaFormField) => boolean): SchemaFormSubmitCandidate {
     const raw = this.#rawJsonIssues();
     const recordIssues = this.#recordEntryIssues();
     if (raw.issues.length > 0 || recordIssues.length > 0) {
@@ -551,6 +570,20 @@ export class SchemaFormState {
     for (const field of this.#currentNumericFields(this.#model.field, this.formValue)) {
       const draft = ownEntry(this.#numericDrafts, pathKey(field.path));
       if (draft !== undefined) candidate = setValueAtPath(candidate, field.path, draft);
+    }
+    // A tag input on screen commits its own pending text before submit. Only the text of an input
+    // that is not rendered (filtered out, or in a closed group) is committed here.
+    for (const field of this.#currentFields(
+      this.#model.field,
+      this.formValue,
+      (tagsCandidate) => tagsCandidate.kind === 'tags',
+    )) {
+      const pending = ownEntry(this.#tagDrafts, pathKey(field.path))?.trim();
+      if (!pending || isRendered(field)) continue;
+      candidate = setValueAtPath(candidate, field.path, [
+        ...arrayValueAtPath(candidate, field.path),
+        pending,
+      ]);
     }
     return { ok: true, value: pruneUndefined(candidate) };
   }

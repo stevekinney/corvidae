@@ -326,7 +326,7 @@ export function defaultValueForField(field: SchemaFormField): unknown {
     return literalBranch ? defaultValueForField(literalBranch) : null;
   }
   if (field.kind === 'boolean') return false;
-  if (field.kind === 'enum') return field.options[0]?.value ?? '';
+  if (field.kind === 'enum') return field.options.length > 0 ? field.options[0]!.value : '';
   if (field.kind === 'string') return '';
   if (field.kind === 'json') return null;
   return undefined;

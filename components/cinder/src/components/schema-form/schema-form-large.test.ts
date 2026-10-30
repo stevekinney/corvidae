@@ -273,6 +273,102 @@ describe('SchemaForm large schemas', () => {
   });
 });
 
+describe('SchemaForm large schemas: review corrections', () => {
+  afterEach(() => cleanup());
+
+  test('picks a fresh duration unit when Edit as JSON replaces the value', async () => {
+    await mountLarge({ ...largeValue, timeoutMs: 90_000 });
+    const unit = () =>
+      requiredInstance(screen.getByRole('combobox', { name: 'Timeout unit' }), HTMLSelectElement);
+    expect(unit().value).toBe('s');
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Edit as JSON' }));
+    await fireEvent.input(screen.getByRole('textbox', { name: /Input as JSON/ }), {
+      target: { value: JSON.stringify({ ...largeValue, timeoutMs: 7_200_000 }) },
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Apply JSON' }));
+
+    expect(unit().value).toBe('h');
+    expect(
+      requiredInstance(screen.getByRole('spinbutton', { name: /Timeout/ }), HTMLInputElement).value,
+    ).toBe('2');
+  });
+
+  test('keeps the unit the person chose while they edit the number', async () => {
+    await mountLarge({ ...largeValue, timeoutMs: 90_000 });
+
+    await fireEvent.change(screen.getByRole('combobox', { name: 'Timeout unit' }), {
+      target: { value: 'min' },
+    });
+    const number = screen.getByRole('spinbutton', { name: /Timeout/ });
+    await fireEvent.input(number, { target: { value: '1.5' } });
+    await fireEvent.blur(number);
+
+    expect(
+      requiredInstance(screen.getByRole('combobox', { name: 'Timeout unit' }), HTMLSelectElement)
+        .value,
+    ).toBe('min');
+  });
+
+  test('a tag typed but not committed survives the field being filtered out', async () => {
+    const { submitted, container } = await mountLarge({
+      ...largeValue,
+      shipping: { carrier: 'UPS' },
+    });
+    const labels = () =>
+      requiredInstance(screen.getByRole('textbox', { name: /Labels/ }), HTMLInputElement);
+    const search = screen.getByRole('searchbox', { name: 'Find a field' });
+
+    await fireEvent.input(labels(), { target: { value: 'pending' } });
+    await fireEvent.input(search, { target: { value: 'note' } });
+    expect(screen.queryByRole('textbox', { name: /Labels/ })).toBeNull();
+
+    await fireEvent.input(search, { target: { value: '' } });
+    expect(labels().value).toBe('pending');
+
+    await fireEvent.input(search, { target: { value: 'note' } });
+    await submit(container);
+    expect(submitted.at(-1)).toMatchObject({ labels: ['pending'] });
+  });
+
+  test('a tag typed in a group that is then closed is still submitted', async () => {
+    const { submitted, container } = await mountLarge(
+      { ...largeValue, shipping: { carrier: 'UPS' } },
+      {
+        type: 'object',
+        properties: {
+          ...largeSchema.properties,
+          extras: {
+            type: 'object',
+            title: 'Extras',
+            properties: { aliases: { type: 'array', title: 'Aliases', items: { type: 'string' } } },
+            required: [],
+          },
+        },
+        required: ['orderId', 'reason', 'quantity', 'billing', 'extras'],
+      },
+    );
+
+    await fireEvent.input(screen.getByRole('textbox', { name: /Aliases/ }), {
+      target: { value: 'nickname' },
+    });
+    await fireEvent.click(screen.getByRole('button', { name: /Extras/ }));
+    expect(screen.queryByRole('textbox', { name: /Aliases/ })).toBeNull();
+    await submit(container);
+
+    expect(submitted.at(-1)).toMatchObject({ extras: { aliases: ['nickname'] } });
+  });
+
+  test('jsonEditable={false} hides the built-in Edit as JSON but keeps Find a field', async () => {
+    const view = render(SchemaForm, { props: { schema: largeSchema, jsonEditable: false } });
+    await flush();
+
+    expect(screen.queryByRole('button', { name: 'Edit as JSON' })).toBeNull();
+    expect(screen.getByRole('searchbox', { name: 'Find a field' })).toBeTruthy();
+    view.unmount();
+  });
+});
+
 describe('SchemaForm small schemas', () => {
   afterEach(() => cleanup());
 

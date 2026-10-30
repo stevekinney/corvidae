@@ -81,6 +81,7 @@
       {schema}
       name="start-input"
       submitLabel="Continue to review"
+      jsonEditable={false}
       onSubmit={onContinue}
     />
   {:else}

@@ -64,6 +64,13 @@
     'json',
   ]);
 
+  /** Kinds edited by one control that holds many values, so their descendants' issues show on it. */
+  const AGGREGATE_KINDS: ReadonlySet<SchemaFormField['kind']> = new Set([
+    'enumArray',
+    'tags',
+    'record',
+  ]);
+
   /**
    * SchemaFormBody receives the same props as SchemaForm. The schema prop is
    * fixed at mount — the outer {#key schema} wrapper in schema-form.svelte
@@ -78,6 +85,7 @@
     schema,
     value,
     name = 'value',
+    jsonEditable = true,
     submitLabel = 'Submit',
     class: customClassName,
     onSubmit,
@@ -142,8 +150,20 @@
     return `${formId}-${pathId(field.path)}`;
   }
 
+  /**
+   * The message shown on a field. A collection control has no per-item fields of its own, so an
+   * issue at one of its items (`labels/0`) is shown on the control, which is the only place the
+   * person can see and correct it.
+   */
   function fieldError(field: SchemaFormField): string | undefined {
-    return formState.errors[pathKey(field.path)];
+    return AGGREGATE_KINDS.has(field.kind)
+      ? formState.errorWithin(field)
+      : formState.errors[pathKey(field.path)];
+  }
+
+  /** Whether a field's control is in the document right now, as opposed to filtered or collapsed away. */
+  function isFieldRendered(field: SchemaFormField): boolean {
+    return formElement?.querySelector(`[id="${CSS.escape(fieldDomId(field))}"]`) != null;
   }
 
   function stringValue(field: SchemaFormField): string {
@@ -332,7 +352,7 @@
     activeSubmitId = submitId;
     submitting = true;
     try {
-      const draft = formState.buildSubmitCandidate();
+      const draft = formState.buildSubmitCandidate(isFieldRendered);
       if (!draft.ok) {
         await reportSubmitIssues(draft.issues, submitId);
         return;
@@ -481,7 +501,7 @@
       />
     </fieldset>
   {:else if field.kind === 'record'}
-    <fieldset class="cinder-schema-form__fieldset" data-cinder-span={span}>
+    <fieldset class="cinder-schema-form__fieldset" data-cinder-span={span} disabled={submitting}>
       {@render groupLegend(field)}
       <SchemaFormRecord
         label={field.label}
@@ -549,6 +569,7 @@
           required={field.required}
           disabled={submitting}
           value={stringArrayValue(field)}
+          draft={formState.tagDraft(field)}
           duplicateValuesAllowed={field.schema['uniqueItems'] !== true}
           onValueChange={(next) => formState.updateValue(field.path, next)}
           onblur={() => formState.validateTouchedField(field)}
@@ -563,7 +584,7 @@
           disabled={submitting}
           integer={field.kind === 'integer'}
           value={numberValue(field)}
-          onValueChange={(next) => formState.updateValue(field.path, next)}
+          onValueChange={(next) => formState.updateNumberValue(field, next)}
           onblur={() => formState.validateTouchedField(field)}
         />
       {:else if field.kind === 'number' || field.kind === 'integer'}
@@ -651,17 +672,19 @@
         bind:value={filterText}
         onkeydown={blockEnterSubmit}
       />
-      <button
-        type="button"
-        class="cinder-schema-form__secondary-button"
-        aria-expanded={jsonPanelOpen}
-        disabled={submitting}
-        onclick={toggleJsonPanel}
-      >
-        Edit as JSON
-      </button>
+      {#if jsonEditable}
+        <button
+          type="button"
+          class="cinder-schema-form__secondary-button"
+          aria-expanded={jsonPanelOpen}
+          disabled={submitting}
+          onclick={toggleJsonPanel}
+        >
+          Edit as JSON
+        </button>
+      {/if}
     </div>
-    {#if jsonPanelOpen}
+    {#if jsonEditable && jsonPanelOpen}
       <SchemaFormJsonPanel
         id="{formId}-json"
         text={jsonText}

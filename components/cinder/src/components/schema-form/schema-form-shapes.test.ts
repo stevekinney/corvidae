@@ -121,6 +121,29 @@ describe('SchemaForm shapes: string arrays as tag inputs', () => {
     expect(submitted).toEqual([{ labels: ['red', 'green', 'pending'] }]);
   });
 
+  test('shows an item-level validation error on the tag control and marks it invalid', async () => {
+    const { container, submitted } = await mount(
+      {
+        type: 'object',
+        properties: {
+          labels: { type: 'array', title: 'Labels', items: { type: 'string', minLength: 3 } },
+        },
+      },
+      { labels: [] },
+    );
+    const input = screen.getByRole('textbox', { name: /Labels/ });
+
+    await fireEvent.input(input, { target: { value: 'a' } });
+    await fireEvent.keyDown(input, { key: 'Enter' });
+    await submit(container);
+
+    expect(submitted).toEqual([]);
+    expect(container.querySelector('.cinder-form-field__error, [role="alert"]')).not.toBeNull();
+    expect(screen.getByRole('textbox', { name: /Labels/ }).getAttribute('aria-invalid')).toBe(
+      'true',
+    );
+  });
+
   test('allows repeated tags only when the schema does not demand unique items', async () => {
     const { container, submitted } = await mount(schema, { labels: ['red'] });
     const input = screen.getByRole('textbox', { name: /Labels/ });
@@ -188,6 +211,50 @@ describe('SchemaForm shapes: records as row lists', () => {
     await submit(container);
     expect(submitted).toEqual([]);
     expect(screen.getByText('Duplicate key "Accept".')).toBeTruthy();
+  });
+
+  test('shows an entry-level validation error on the record field', async () => {
+    const { container, submitted } = await mount(
+      {
+        type: 'object',
+        properties: {
+          headers: {
+            type: 'object',
+            title: 'Headers',
+            additionalProperties: { type: 'string', minLength: 3 },
+          },
+        },
+      },
+      { headers: { Accept: 'x' } },
+    );
+
+    await submit(container);
+
+    expect(submitted).toEqual([]);
+    expect(
+      within(screen.getByRole('group', { name: 'Headers' })).getByText(/too short/),
+    ).toBeTruthy();
+  });
+
+  test('disables the record rows while an asynchronous submit is pending', async () => {
+    const finish = Promise.withResolvers<void>();
+    const view = render(SchemaForm, {
+      props: { schema, value: { headers: { Accept: 'json' } }, onSubmit: () => finish.promise },
+    });
+    await flush();
+
+    const form = requiredInstance(view.container.querySelector('form'), HTMLFormElement);
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await flush();
+
+    const group = requiredInstance(
+      screen.getByRole('group', { name: 'Headers' }),
+      HTMLFieldSetElement,
+    );
+    expect(group.disabled).toBe(true);
+    finish.resolve();
+    await flush();
+    expect(group.disabled).toBe(false);
   });
 
   test('does not treat objects with declared properties or wider values as records', () => {
@@ -262,6 +329,28 @@ describe('SchemaForm shapes: literal-or-object as a choice then fields', () => {
     await flush();
     await submit(container);
     expect(submitted.at(-1)).toEqual({ refund: 'whole order' });
+  });
+
+  test('keeps a null literal branch null instead of an empty string', async () => {
+    const { container, submitted } = await mount(
+      {
+        type: 'object',
+        properties: {
+          limit: {
+            title: 'Limit',
+            oneOf: [
+              { const: null },
+              { type: 'object', title: 'Range', properties: { min: { type: 'integer' } } },
+            ],
+          },
+        },
+      },
+      {},
+    );
+
+    await submit(container);
+
+    expect(submitted).toEqual([{ limit: null }]);
   });
 
   test('a free literal branch gets its own control', async () => {
@@ -379,6 +468,37 @@ describe('SchemaForm shapes: milliseconds as a number plus unit', () => {
 
     expect(submitted).toEqual([]);
     expect(screen.getByText('Timeout Ms must be integer.')).toBeTruthy();
+  });
+
+  test('does not submit a stale value when malformed duration text is committed on blur', async () => {
+    const { container, submitted } = await mount(
+      { type: 'object', properties: { timeoutMs: { type: 'integer', title: 'Timeout' } } },
+      { timeoutMs: 90_000 },
+    );
+
+    const number = screen.getByRole('spinbutton', { name: /Timeout/ });
+    await fireEvent.focus(number);
+    await fireEvent.input(number, { target: { value: '2m' } });
+    await fireEvent.blur(number);
+    await submit(container);
+
+    expect(submitted).toEqual([]);
+    expect(number.getAttribute('aria-invalid')).toBe('true');
+  });
+
+  test('still clears an optional duration that is emptied on purpose', async () => {
+    const { container, submitted } = await mount(
+      { type: 'object', properties: { timeoutMs: { type: 'integer', title: 'Timeout' } } },
+      { timeoutMs: 90_000 },
+    );
+
+    const number = screen.getByRole('spinbutton', { name: /Timeout/ });
+    await fireEvent.focus(number);
+    await fireEvent.input(number, { target: { value: '' } });
+    await fireEvent.blur(number);
+    await submit(container);
+
+    expect(submitted).toEqual([{}]);
   });
 
   test('accepts a format-only duration schema without a schema error', async () => {
