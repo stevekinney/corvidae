@@ -38,12 +38,38 @@ export type SchedulesOperationTypes = {
     readonly output: unknown;
     readonly faults: 'Conflict';
   };
+  'weft.schedules.missed': {
+    readonly input: { readonly limit?: unknown; readonly scheduleId: string };
+    readonly output: {
+      readonly missed: ReadonlyArray<{
+        readonly count: number;
+        readonly occurrence: number;
+        readonly reason: 'late' | 'dst-gap';
+        readonly recordedAt: number;
+        readonly scheduleId: string;
+      }>;
+    };
+    readonly faults: 'Conflict' | 'NotFound';
+  };
   'weft.schedules.pause': {
     readonly input: { readonly scheduleId: string };
     readonly output: unknown;
     readonly faults: 'Conflict' | 'NotFound';
   };
   'weft.schedules.resume': {
+    readonly input: { readonly scheduleId: string };
+    readonly output: unknown;
+    readonly faults: 'Conflict' | 'NotFound';
+  };
+  'weft.schedules.runnow': {
+    readonly input: { readonly scheduleId: string };
+    readonly output:
+      | { readonly outcome: 'started'; readonly workflowId: string }
+      | { readonly outcome: 'queued'; readonly workflowId: string }
+      | { readonly blockingWorkflowId?: string; readonly outcome: 'skipped' };
+    readonly faults: 'Conflict' | 'NotFound';
+  };
+  'weft.schedules.skipnext': {
     readonly input: { readonly scheduleId: string };
     readonly output: unknown;
     readonly faults: 'Conflict' | 'NotFound';

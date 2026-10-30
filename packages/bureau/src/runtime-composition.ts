@@ -1627,6 +1627,8 @@ export type ScheduledFireNotice = {
   readonly owner: string;
   /** The text the fire delivers to its agent: the originating message of the fire's task. */
   readonly message: string;
+  /** `true` when a person started this fire with `schedules.runNow` instead of the cadence (COR-1829). */
+  readonly manual?: true | undefined;
 };
 
 /** What {@link RuntimeCompositionDependencies.onScheduledFireSettled} is told about one fire. */
@@ -4675,6 +4677,7 @@ async function buildRuntimeComposition(
       agentName,
       owner,
       message: payloadText(scheduledInput.input),
+      ...(info.schedule?.manual === true ? { manual: true as const } : {}),
     });
 
     // COR-323 — a fire runs as a named catalog agent: its own `generate`, tools, stop condition,

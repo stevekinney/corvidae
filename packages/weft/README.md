@@ -575,10 +575,10 @@ The scope each operation requires:
 | `weft.workflows.query` | `queries:read` |
 | `weft.workflows.events.list` | `events:read` |
 | `weft.workflows.events` (WebSocket subscription), `weft.workflows.events.sse` | an authenticated caller, then by selector: `events:read` for `events`, `streams:read` for `tokens` |
-| `weft.schedules.list`, `weft.schedules.get` | `schedules:read` |
+| `weft.schedules.list`, `weft.schedules.get`, `weft.schedules.missed` | `schedules:read` |
 | `weft.workflows.attributes.get`, `weft.workflows.attributes.set` | `attributes:read`, `attributes:write` |
 | `weft.workflows.streams.chunks`, `weft.workflows.streams.sse` | `streams:read` |
-| `weft.schedules.create`, `weft.schedules.update`, `weft.schedules.pause`, `weft.schedules.resume`, `weft.schedules.cancel` | `schedules:write` |
+| `weft.schedules.create`, `weft.schedules.update`, `weft.schedules.pause`, `weft.schedules.resume`, `weft.schedules.skipnext`, `weft.schedules.runnow`, `weft.schedules.cancel` | `schedules:write` |
 | `weft.reviews.get`, `weft.reviews.decision.submit` | `reviews:read`, `reviews:write` |
 | `weft.retention.get` | `system:read` |
 | `weft.workflows.definitions.list`, `weft.workflows.definitions.get` | `system:read` or `workflows:read` (either one) |
@@ -723,6 +723,31 @@ await engine.schedule('report', null, '0 9 * * 1-5', {
   id: 'weekday-report',
   timeZone: 'America/Los_Angeles',
 });
+engine[Symbol.dispose]();
+```
+
+### Skipping a run, running now, and missed runs
+
+`engine.skipNextScheduleOccurrence(id)` skips the next run of an active schedule: the next occurrence that would start a workflow starts none, and the one after it runs as usual. That occurrence is `skipUntil` on the schedule until the schedule moves past it, and it is not always `nextFireAt`: in a time zone `nextFireAt` can be the end of a daylight-saving gap that starts nothing, so the skip lands on the next real run. The skip leaves `revision` and `nextFireAt` as they are, and `expectedRevision` guards it as it does a pause; skipping again before that run has passed changes nothing, and a pause, a cancel, or a new cadence ends the skip.
+
+`engine.triggerSchedule(id)` starts one run now, under the schedule's overlap policy, and returns `started`, `queued`, or `skipped` (with the run that blocked it). The run is not an occurrence of the cadence: `nextFireAt`, `lastFireAt`, and `revision` do not change, and the run's schedule metadata (`WorkflowServicesResolverScheduleInfo`) is `manual: true` with no `occurrence`. A paused schedule can be run; a cancelled one cannot.
+
+A schedule keeps a row for each occurrence it missed, because the engine was down (`late`) or the clock sprang forward past the time (`dst-gap`): `engine.listScheduleMissedFires(id)` reads the latest `SCHEDULE_MISSED_FIRE_LIMIT` (100) of them, newest first, while `missedFireCount` keeps counting. A row is keyed by schedule, occurrence, and reason and is written in the same storage batch as the counter, so a tick replayed after a crash records a miss once. Over HTTP these are `weft.schedules.skipnext`, `weft.schedules.runnow` (both `schedules:write`), and `weft.schedules.missed` (`schedules:read`).
+
+```typescript
+import { Engine, workflow } from '@lostgradient/weft';
+
+const engine = new Engine();
+engine.register(
+  workflow({ name: 'report' }).execute(async function* () {
+    return 'sent';
+  }),
+);
+await engine.schedule('report', null, '0 9 * * 1-5', { id: 'weekday-report', overlap: 'skip' });
+await engine.skipNextScheduleOccurrence('weekday-report');
+const result = await engine.triggerSchedule('weekday-report');
+const missed = await engine.listScheduleMissedFires('weekday-report', { limit: 10 });
+console.log(result.outcome, missed?.length);
 engine[Symbol.dispose]();
 ```
 

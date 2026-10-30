@@ -47,6 +47,7 @@ import { listAlertsRestBinding } from './list-alerts.ts';
 import { listCatalogSourcesRestBinding } from './list-catalog-sources.ts';
 import { listCheckpointsRestBinding } from './list-checkpoints.ts';
 import { listReviewsRestBinding } from './list-reviews.ts';
+import { listScheduleMissedFiresRestBinding } from './list-schedule-missed-fires.ts';
 import { listSchedulesRestBinding } from './list-schedules.ts';
 import { listWorkflowDefinitionsRestBinding } from './list-workflow-definitions.ts';
 import { listWorkflowLogsRestBinding } from './list-workflow-logs.ts';
@@ -65,6 +66,7 @@ import { resumeScheduleRestBinding } from './resume-schedule.ts';
 import { resumeWorkflowRestBinding } from './resume-workflow.ts';
 import { setWorkflowAttributesRestBinding } from './set-workflow-attributes.ts';
 import { signalWorkflowRestBinding } from './signal-workflow.ts';
+import { skipNextScheduleRestBinding } from './skip-next-schedule.ts';
 import { startOrSignalWorkflowRestBinding } from './start-or-signal-workflow.ts';
 import { startWorkflowRestBinding } from './start-workflow.ts';
 import * as storageCapabilities from './storage-capabilities.ts';
@@ -80,6 +82,7 @@ import { streamWorkflowSseRestBinding } from './stream-workflow-sse.ts';
 import { submitReviewDecisionRestBinding } from './submit-review-decision.ts';
 import { suspendWorkflowRestBinding } from './suspend-workflow.ts';
 import { timeoutWorkflowRestBinding } from './timeout-workflow.ts';
+import { triggerScheduleRestBinding } from './trigger-schedule.ts';
 import { updateScheduleRestBinding } from './update-schedule.ts';
 import { updateWorkflowRestBinding } from './update-workflow.ts';
 import { workerStartOverridePreviewRestBinding } from './worker-start-override-preview.ts';
@@ -153,6 +156,9 @@ export const STATIC_REST_BINDINGS: ReadonlyArray<UnknownRestBinding> = [
   submitReviewDecisionRestBinding,
   cancelScheduleRestBinding,
   pauseScheduleRestBinding,
+  skipNextScheduleRestBinding,
+  triggerScheduleRestBinding,
+  listScheduleMissedFiresRestBinding,
   resumeScheduleRestBinding,
   getStreamChunksRestBinding,
   streamWorkflowSseRestBinding,

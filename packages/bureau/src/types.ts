@@ -62,7 +62,9 @@ import type {
   PaginatedResult,
   RegistryAgnosticEngine,
   ScheduleFilter,
+  ScheduleMissedFire,
   ScheduleSummary,
+  ScheduleTriggerResult,
   WorkflowLogRecord,
   WorkflowState,
   WorkflowSummary,
@@ -1720,6 +1722,42 @@ export interface BureauSchedules {
     update: DurableScheduleUpdate,
     guard?: ScheduleRevisionGuard,
   ): Promise<true | undefined>;
+
+  /**
+   * Skip the next run of an active durable schedule (COR-1829), by wrapping Weft's
+   * `skipNextScheduleOccurrence`: the next occurrence that would start a run starts none, and the one
+   * after it runs as usual. That occurrence is the summary's `skipUntil` until the schedule moves
+   * past it, and it is not always `nextFireAt`: in a time zone `nextFireAt` can be the end of a
+   * daylight-saving gap that fires nothing. The skip leaves the schedule's `revision` as it is,
+   * and skipping again before that run has passed changes nothing.
+   * Resolves `true`, or `undefined` when no durable engine is composed. A schedule that does not
+   * exist, and a workflow file's schedule, reject with `NOT_FOUND`; a schedule that is paused or
+   * cancelled has no next run and rejects. `guard` as for {@link BureauSchedules.pause}.
+   */
+  skipNext(scheduleId: string, guard?: ScheduleRevisionGuard): Promise<true | undefined>;
+
+  /**
+   * Start one run of a durable schedule now (COR-1829), by wrapping Weft's `triggerSchedule`, under
+   * the schedule's overlap policy: the result says whether the run `started` (with its run id, which
+   * is the id of the task it creates), was `queued`, or was `skipped` because a run was still going.
+   * The run is a task whose origin is `{ kind: 'schedule', manual: true }`; the schedule's
+   * `nextFireAt` and `revision` do not change. A paused schedule can be run. Resolves `undefined` when
+   * no durable engine is composed. A schedule that does not exist, and a workflow file's schedule,
+   * reject with `NOT_FOUND`; a cancelled one rejects.
+   */
+  runNow(scheduleId: string): Promise<ScheduleTriggerResult | undefined>;
+
+  /**
+   * The occurrences a durable schedule missed, newest first (COR-1829), at most `options.limit` of the
+   * schedule's most recent 100: a miss is `late` (the engine was down) or `dst-gap` (the clock
+   * sprang forward past the time). Resolves `null` when the schedule does not exist and `undefined`
+   * when no durable engine is composed. It does not check who may see the schedule, so a caller
+   * answers to {@link Bureau.ownerOf} first.
+   */
+  missed(
+    scheduleId: string,
+    options?: { readonly limit?: number | undefined },
+  ): Promise<ScheduleMissedFire[] | null | undefined>;
 
   /**
    * The name of the catalog agent an agent schedule runs, or `undefined` when there is no such

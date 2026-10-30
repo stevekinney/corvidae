@@ -45,8 +45,11 @@ Two dashboard issues own work that no `tracked` row can carry today. COR-162 (co
 | `weft.schedules.create` | exposed | `src/routes/schedules/schedule-queries.ts` | `schedule` | `src/routes/schedules/schedule-queries.test.ts` |  |  |
 | `weft.schedules.get` | exposed | `src/routes/schedules/schedule-queries.ts` | `getSchedule` | `src/routes/schedules/schedule-queries.test.ts` |  |  |
 | `weft.schedules.list` | exposed | `src/routes/schedules/schedule-queries.ts` | `listSchedules` | `src/routes/schedules/schedule-queries.test.ts` |  |  |
+| `weft.schedules.missed` | not-in-dashboard |  |  |  |  | A schedule's controls reach the engine through `bureau.schedules.missed`, which checks the schedule's owner, and not through this operation (COR-1829). |
 | `weft.schedules.pause` | exposed | `src/routes/schedules/schedule-queries.ts` | `pauseSchedule` | `src/routes/schedules/schedule-queries.test.ts` |  |  |
 | `weft.schedules.resume` | exposed | `src/routes/schedules/schedule-queries.ts` | `resumeSchedule` | `src/routes/schedules/schedule-queries.test.ts` |  |  |
+| `weft.schedules.runnow` | not-in-dashboard |  |  |  |  | A schedule's controls reach the engine through `bureau.schedules.runnow`, which checks the schedule's owner, and not through this operation (COR-1829). |
+| `weft.schedules.skipnext` | not-in-dashboard |  |  |  |  | A schedule's controls reach the engine through `bureau.schedules.skipnext`, which checks the schedule's owner, and not through this operation (COR-1829). |
 | `weft.schedules.update` | exposed | `src/routes/schedules/schedule-queries.ts` | `updateSchedule` | `src/routes/schedules/schedule-queries.test.ts` |  |  |
 | `weft.storage.capabilities` | exposed | `src/routes/storage/index.svelte` |  | `src/routes/storage/index.test.ts` | COR-1539 |  |
 | `weft.system.lease` | exposed | `src/lib/system-lease.ts` |  | `src/lib/system-lease.test.ts` | COR-124 |  |

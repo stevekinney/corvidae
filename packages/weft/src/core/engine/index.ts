@@ -72,10 +72,12 @@ import {
   type ReviewListFilter,
   type ScheduleDefinition,
   type ScheduleFilter,
+  type ScheduleMissedFire,
   type ScheduleOptions,
   type ScheduleSpec,
   type ScheduleSummary,
   type ScheduleTransitionOptions,
+  type ScheduleTriggerResult,
   type ScheduleUpdateOptions,
   type SearchAttributeValue,
   type SignalDefinition,
@@ -129,6 +131,7 @@ import {
 } from './bulk-operations.ts';
 import { createTimeOperationCallbacks as createTimeOperationCallbacksForEngine } from './callback-creators-bundles.ts';
 import { createPendingUpdateCallbacks as createPendingUpdateCallbacksForEngine } from './callback-creators-core.ts';
+import { createScheduleCallbacks as createScheduleCallbacksForEngine } from './callback-creators-schedule.ts';
 import {
   createBroadcastCallbacks as createBroadcastCallbacksForEngine,
   createInlineParkingCallbacks as createInlineParkingCallbacksForEngine,
@@ -298,7 +301,12 @@ import {
   listReviews as listReviewsFromInternals,
   submitReview as submitReviewFromInternals,
 } from './reviews.ts';
+import {
+  skipNextScheduleOccurrence as skipNextScheduleOccurrenceFromInternals,
+  triggerSchedule as triggerScheduleFromInternals,
+} from './schedule-controls.ts';
 import { ScheduleHandle } from './schedule-handle.ts';
+import { listScheduleMissedFires as listScheduleMissedFiresFromInternals } from './schedule-missed-fires.ts';
 import { decodeScheduleRunMetadata } from './schedule-run-metadata.ts';
 import { loadScheduleState } from './schedule-state-read.ts';
 import { recoverOrphanedScheduleTimers } from './schedule-timer-recovery.ts';
@@ -2490,6 +2498,91 @@ export class Engine<
     }
     return updateScheduleFromInternals(internals, scheduleId, newSpec, options);
   }
+  /**
+   * Skip the next run of an active schedule (COR-1829): the next occurrence that would start a run
+   * (not always {@link ScheduleSummary.nextFireAt}, which in a time zone can be the end of a
+   * daylight-saving gap that fires nothing) starts none, and the one after it fires as usual. The
+   * occurrence is {@link ScheduleSummary.skipUntil} until the schedule moves past it. An occurrence
+   * that is due but has not started a run (a jittered fire, one inside the poll window, the next of a
+   * backfill catching up) is the next run; one a late tick will count as missed is not. The skip is
+   * bookkeeping, as a fire is: `revision`, `nextFireAt` and the timer stay as they are, so a tick in
+   * flight honors it. `options.expectedRevision` guards it as it does a pause, and skipping again
+   * before that occurrence passes changes nothing. A schedule that is not active has no next run to
+   * skip and rejects.
+   *
+   * @example
+   * ```ts
+   * import { Engine, workflow } from '@lostgradient/weft';
+   *
+   * const engine = new Engine();
+   * engine.register(workflow({ name: 'report' }).execute(async function* () { return 'ok'; }));
+   * await engine.schedule('report', null, '0 9 * * *', { id: 'daily-report' });
+   * await engine.skipNextScheduleOccurrence('daily-report');
+   * engine[Symbol.dispose]();
+   * ```
+   */
+  async skipNextScheduleOccurrence(
+    scheduleId: string,
+    options?: Pick<ScheduleTransitionOptions, 'expectedRevision'>,
+  ): Promise<void> {
+    const internals = getInternals(this);
+    assertLeaseHeldForEngineWork(internals);
+    if (!isWorkflowCatalogReady(this as unknown as Engine)) {
+      await ensureWorkflowCatalogReady(this as unknown as Engine);
+    }
+    return skipNextScheduleOccurrenceFromInternals(internals, scheduleId, options);
+  }
+  /**
+   * Start one run of a schedule now (COR-1829), under its overlap policy: it starts, is queued behind
+   * the running one, or is skipped, and the result says which. The run is not an occurrence of the
+   * cadence, so `nextFireAt`, `lastFireAt` and `revision` stay as they are, and the run's schedule
+   * metadata (`WorkflowServicesResolverScheduleInfo`) is `manual: true` with no `occurrence`. A paused
+   * schedule can be run; a cancelled one rejects.
+   *
+   * @example
+   * ```ts
+   * import { Engine, workflow } from '@lostgradient/weft';
+   *
+   * const engine = new Engine();
+   * engine.register(workflow({ name: 'report' }).execute(async function* () { return 'ok'; }));
+   * await engine.schedule('report', null, '0 9 * * *', { id: 'daily-report' });
+   * const result = await engine.triggerSchedule('daily-report');
+   * console.log(result.outcome); // 'started'
+   * engine[Symbol.dispose]();
+   * ```
+   */
+  async triggerSchedule(scheduleId: string): Promise<ScheduleTriggerResult> {
+    const internals = getInternals(this);
+    assertLeaseHeldForEngineWork(internals);
+    if (!isWorkflowCatalogReady(this as unknown as Engine)) {
+      await ensureWorkflowCatalogReady(this as unknown as Engine);
+    }
+    return triggerScheduleFromInternals(
+      internals,
+      scheduleId,
+      createScheduleCallbacksForEngine(this),
+    );
+  }
+  /**
+   * The occurrences a schedule missed, newest first (COR-1829): at most `options.limit` of the
+   * {@link SCHEDULE_MISSED_FIRE_LIMIT} most recent. Resolves `null` when the schedule does not exist.
+   *
+   * @example
+   * ```ts
+   * import { Engine } from '@lostgradient/weft';
+   *
+   * const engine = new Engine();
+   * const rows = await engine.listScheduleMissedFires('daily-report', { limit: 10 });
+   * console.log(rows); // null: no such schedule
+   * engine[Symbol.dispose]();
+   * ```
+   */
+  async listScheduleMissedFires(
+    scheduleId: string,
+    options?: { limit?: number },
+  ): Promise<ScheduleMissedFire[] | null> {
+    return listScheduleMissedFiresFromInternals(getInternals(this), scheduleId, options?.limit);
+  }
   [HANDLE_RESULT_PROMISE](workflowId: string): Promise<unknown> {
     return getWorkflowResultPromiseFromInternals(getInternals(this), workflowId);
   }
@@ -2970,6 +3063,7 @@ export class Engine<
     return {
       scheduleId: metadata.id,
       ...(metadata.occurrence === undefined ? {} : { occurrence: metadata.occurrence }),
+      ...(metadata.manual === true ? { manual: true as const } : {}),
     };
   }
   /** Return durable post-terminal finalizer progress or outcome, when applicable. */

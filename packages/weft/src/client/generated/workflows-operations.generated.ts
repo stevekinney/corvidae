@@ -126,7 +126,11 @@ export type WorkflowsOperationTypes = {
   };
   'weft.workflows.scheduleprovenance.get': {
     readonly input: { readonly workflowId: string };
-    readonly output: { readonly occurrence?: number; readonly scheduleId: string } | null;
+    readonly output: {
+      readonly manual?: true;
+      readonly occurrence?: number;
+      readonly scheduleId: string;
+    } | null;
     readonly faults: never;
   };
   'weft.workflows.start': {

@@ -60,7 +60,7 @@ async function createdBy(opened: OpenedBureau, key: string, extra: object = {}):
 const status = (body: RpcBody) => body.error?.data?.httpStatus;
 
 describe('the operations list', () => {
-  it('serves the seven schedule operations, registered and listed in OpenRPC', async () => {
+  it('serves the ten schedule operations, registered and listed in OpenRPC', async () => {
     const names = [
       'bureau.schedules.list',
       'bureau.schedules.get',
@@ -69,6 +69,9 @@ describe('the operations list', () => {
       'bureau.schedules.resume',
       'bureau.schedules.cancel',
       'bureau.schedules.update',
+      'bureau.schedules.skipnext',
+      'bureau.schedules.runnow',
+      'bureau.schedules.missed',
     ];
     expect(bureauSchedulesOperations.map((operation) => operation.name)).toEqual(names);
     for (const operation of bureauSchedulesOperations) {
@@ -665,6 +668,8 @@ describe('a workflow file’s schedule', () => {
       ['resume', {}],
       ['cancel', {}],
       ['update', { spec: '2h' }],
+      ['skipnext', {}],
+      ['runnow', {}],
     ] as const) {
       const refused = await rpc(
         served.keyed,
