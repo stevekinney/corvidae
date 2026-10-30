@@ -535,6 +535,7 @@ export type AgentFileErrorCode =
   | 'agent-file-changed'
   | 'agent-file-not-found'
   | 'agent-file-unreadable'
+  | 'agent-version-not-found'
   | 'agent-directory-not-configured';
 
 /** A write or read of an agent file that was refused. `problem` carries the detail, when there is any. */

@@ -139,4 +139,6 @@ export const OPERATION_MAP = {
   'bureau.agents.definitions.get': { member: 'agents.detail' },
   'bureau.agents.definitions.list': { member: 'agents.list' },
   'bureau.agents.definitions.revisions': { member: 'agents.revisions' },
+  'bureau.agents.versions.list': { member: 'agents.versions.list' },
+  'bureau.agents.versions.restore': { member: 'agents.versions.restore' },
 } as const satisfies Readonly<Record<string, OperationBinding>>;
