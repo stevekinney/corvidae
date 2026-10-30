@@ -416,6 +416,15 @@ describe('internal workspace architecture', () => {
       );
     }
   });
+  test("Interborough's lint runs the documentation coverage check over src/host and src/lib", async () => {
+    // An application has no `exports` map, so its `lint` names the files the check judges.
+    const manifest = await readManifest('applications/interborough');
+    const lint = manifest.scripts?.['lint'] ?? '';
+    expect(lint).toContain(' && bun ../../scripts/check-documentation-coverage.ts --entries ');
+    const entries = lint.split('check-documentation-coverage.ts --entries ')[1] ?? '';
+    expect(entries).toContain("'src/host/**/*.ts'");
+    expect(entries).toContain("'src/lib/**/*.ts'");
+  });
   test('every library and component type-checks its documentation code blocks, keyed on the checker', async () => {
     // Verification workspaces are tooling for this repository, not a documented surface.
     const documented = libraries.filter((name) => !verificationLibraries.includes(name));
