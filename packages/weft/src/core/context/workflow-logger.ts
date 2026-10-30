@@ -183,6 +183,8 @@ export interface WorkerLoggerReplayState {
    */
   readonly signatures: ReadonlyMap<number, unknown>;
   readonly nextStepIndex: number;
+  /** The run's checkpoint, whose `forkCopiedSignatureSteps` a fork has not yet made its own. */
+  readonly checkpoint?: { readonly forkCopiedSignatureSteps?: readonly number[] | undefined };
 }
 
 /**
@@ -225,10 +227,16 @@ export function createWorkerWorkflowLogger(
       return replayState.accumulatedResults.has(step) || replayState.failedOutcomes.has(step);
     },
     // A signature without an outcome is the operation the previous execution parked on: it
-    // logged what sits in front of it before it parked, so a relaunch repeats those calls.
+    // logged what sits in front of it before it parked, so a relaunch repeats those calls. A
+    // signature a fork copied is the source's, not evidence about the fork's own execution.
     isRepeatOfEarlierExecution: () => {
       const replayState = getReplayState();
-      return replayState !== undefined && replayState.signatures.has(replayState.nextStepIndex);
+      return (
+        replayState !== undefined &&
+        replayState.signatures.has(replayState.nextStepIndex) &&
+        replayState.checkpoint?.forkCopiedSignatureSteps?.includes(replayState.nextStepIndex) !==
+          true
+      );
     },
     now: () => Date.now(),
     step: () => getReplayState()?.nextStepIndex ?? 0,

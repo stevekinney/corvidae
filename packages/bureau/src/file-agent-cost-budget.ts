@@ -16,6 +16,7 @@ import {
   type BackendDescriptor,
   type CostEstimationOptions,
   getModelPricing,
+  providerModelPricingKey,
   type ModelPricing,
   type RunCostBudget,
   type RunOptions,
@@ -67,7 +68,9 @@ export function usdPricingOfRow(row: BackendDescriptor): ModelPricing | undefine
  * The `costBudget` and `costEstimation` a file agent is built with. `descriptor` is the agent's
  * default model, which must be priced; `allowed` are the rows a session may switch it to, whose
  * prices are included so a step on a switched model is counted at that model's rate. A switched
- * model with no price is counted at the default model's rate.
+ * model with no price is entered as unpriced, never counted at another model's rate (COR-1921): a
+ * steer to it is refused ({@link unpricedSwitchReason}), and a step that still reaches it stops
+ * the run with `budget-exceeded`.
  */
 export function costBudgetOptions(
   budget: AgentCostBudget,
@@ -75,16 +78,17 @@ export function costBudgetOptions(
   allowed: readonly BackendDescriptor[],
 ): Pick<RunOptions, 'costBudget' | 'costEstimation'> {
   const customPricing: NonNullable<CostEstimationOptions['customPricing']> = {};
-  const defaultPricing = usdPricingOfRow(descriptor);
   for (const row of [descriptor, ...allowed]) {
-    // The default model first, so a second provider serving a model of the same name never
-    // changes what the default is counted at.
-    if (Object.hasOwn(customPricing, row.model)) continue;
-    // A row with no USD price is counted at the default model's rate. It is entered explicitly:
-    // left out, a model Operative's built-in table happens to know would be counted at that
-    // table's rate instead, which is neither the catalog's nor the documented fallback.
-    const pricing = usdPricingOfRow(row) ?? defaultPricing;
-    if (pricing !== undefined) customPricing[row.model] = pricing;
+    // A model with no USD price is entered as unpriced (`null`): left out, a model Operative's
+    // built-in table happens to know would be counted at that table's rate, not the catalog's.
+    const pricing = usdPricingOfRow(row) ?? null;
+    // Each provider's row by its own key, which a switch that names its provider reads first.
+    const providerKey = providerModelPricingKey(row.provider, row.model);
+    if (!Object.hasOwn(customPricing, providerKey)) customPricing[providerKey] = pricing;
+    // The bare name, for a switch that names no provider: the first row serving it decides, as
+    // `createFileAgentGenerate` runs the first allowed row, and the default model comes first, so
+    // a second provider serving the default's name never changes what the default is counted at.
+    if (!Object.hasOwn(customPricing, row.model)) customPricing[row.model] = pricing;
   }
   const runBudget: RunCostBudget = {
     perRunUsd: budget.perRunUsd,
@@ -115,4 +119,28 @@ export function toolboxBudgetOf(budget: AgentToolBudget): {
       ? {}
       : { maxDurationMs: Math.ceil(budget.maxDurationSeconds * 1000) }),
   };
+}
+
+/**
+ * Why a session of an agent with a `costBudget` may not be switched to `override`, or `undefined`
+ * when it may (COR-1921). `allowed` are the rows the agent allows, in the order it runs them: a
+ * switch that names no provider runs the first of them that serves the model
+ * (`createFileAgentGenerate`), so that row is the one judged. A model with no price in US dollars
+ * in the catalog cannot be counted against the budget, and counting it at another model's rate
+ * would let the budget be spent unseen, so the switch is refused. An agent with no budget is never
+ * refused, and a model that none of the rows serves is for the caller's own allowed-model check.
+ */
+export function unpricedSwitchReason(
+  budget: AgentCostBudget | undefined,
+  allowed: readonly BackendDescriptor[],
+  override: { readonly model: string; readonly provider?: string | undefined },
+): string | undefined {
+  if (budget === undefined) return undefined;
+  const row = allowed.find(
+    (candidate) =>
+      candidate.model === override.model &&
+      (override.provider === undefined || candidate.provider === override.provider),
+  );
+  if (row === undefined || usdPricingOfRow(row) !== undefined) return undefined;
+  return `The model "${override.model}" from "${row.provider}" has no price in US dollars in the model catalog, so the agent's costBudget could not count its spend. Choose a model that has one.`;
 }

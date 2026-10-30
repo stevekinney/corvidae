@@ -166,11 +166,13 @@ const agentModelChoiceSchema = z.object({
   provider: z.string(),
   model: z.string(),
   displayName: z.string(),
+  /** Present when the agent has a cost budget and the catalog has no price for the model, so a switch to it is refused. */
+  unpriced: z.literal(true).optional(),
 });
 
 /**
  * One model an agent allows a session to be switched to: its provider, model name, and display
- * name.
+ * name; `unpriced` when the agent's cost budget cannot count the model.
  */
 export type AgentModelChoice = z.infer<typeof agentModelChoiceSchema>;
 
@@ -272,6 +274,23 @@ export function forkRefusalReason(error: unknown): string | undefined {
   if (!(error instanceof HttpClientError)) return undefined;
   const reason = error.data?.['reason'];
   return typeof reason === 'string' ? reason : undefined;
+}
+
+/**
+ * Why `bureau.contexts.steer` refused a request with an `InvalidParams` fault, in the Bureau's own
+ * words (the message of the first issue it names, such as an agent whose cost budget cannot count
+ * the model), or `undefined` for any other fault or a failure that was not a fault.
+ */
+export function steerRefusalReason(error: unknown): string | undefined {
+  if (!(error instanceof HttpClientError) || error.data?.['weftCode'] !== 'InvalidParams') {
+    return undefined;
+  }
+  const issues = error.data['issues'];
+  if (!Array.isArray(issues)) return undefined;
+  const first: unknown = issues[0];
+  if (typeof first !== 'object' || first === null) return undefined;
+  const message = (first as { message?: unknown }).message;
+  return typeof message === 'string' && message !== '' ? message : undefined;
 }
 
 /** Sends an input to a session's run in flight (`bureau.contexts.input`, steer delivery). */

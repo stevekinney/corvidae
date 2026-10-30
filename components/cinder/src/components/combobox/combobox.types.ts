@@ -94,6 +94,13 @@ export type ComboboxProps<T extends string = string, AllowCustom extends boolean
    * @default "md"
    */
   size?: 'sm' | 'md' | 'lg';
+  /**
+   * Viewport width below which the options panel docks to the bottom edge as
+   * a sheet (Popover's `sheetBelow`, with focus kept in the input), instead of
+   * anchoring to the input. A simple CSS length such as `'640px'`, or `false`
+   * to always anchor. Default `'640px'`.
+   */
+  sheetBelow?: string | false;
   /** Additional class names merged with `.cinder-combobox`. */
   class?: string;
 };

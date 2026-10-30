@@ -42,6 +42,12 @@ export interface Notifications {
   readonly notifications: BureauNotifications;
   /** Removes the notifications older than `olderThanMilliseconds`. Resolves how many. */
   prune(olderThanMilliseconds: number): Promise<number>;
+  /**
+   * Removes everything about the given runs (COR-1953): their notifications, for every owner, and
+   * the outbox entries that would write a failure notification again. Waits for the writes already
+   * started, so one in flight does not land after the removal. Resolves how many notifications went.
+   */
+  purgeRuns(runIds: ReadonlySet<string>): Promise<number>;
   /** Stops writing the built-in notifications. */
   stop(): void;
   /** Resolves when every write the built-in notifications started has settled. */
@@ -72,12 +78,13 @@ export function createNotifications(options: CreateNotificationsOptions): Notifi
     }
     return written;
   };
+  const outbox = createNotificationOutbox(options.kv);
   const builtIn = startBuiltInNotifications({
     source: options.source,
     store: { create, dismissByDedupeKey: (dedupeKey) => store.dismissByDedupeKey(dedupeKey) },
     tasks: options.tasks,
     diagnose: options.diagnose,
-    outbox: createNotificationOutbox(options.kv),
+    outbox,
   });
   return {
     notifications: {
@@ -87,6 +94,11 @@ export function createNotifications(options: CreateNotificationsOptions): Notifi
       dismiss: (selection) => store.dismiss(selection),
     },
     prune: (olderThanMilliseconds) => store.prune(options.clock.now() - olderThanMilliseconds),
+    async purgeRuns(runIds) {
+      await builtIn.drain();
+      for (const runId of runIds) await outbox.clear(runId);
+      return store.purgeRuns(runIds);
+    },
     stop: () => builtIn.stop(),
     drain: () => builtIn.drain(),
     repair: () => builtIn.repair(),

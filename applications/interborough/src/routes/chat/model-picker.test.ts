@@ -34,7 +34,7 @@ afterEach(() => {
 });
 
 type Overrides = {
-  readonly models?: readonly (typeof SONNET)[];
+  readonly models?: readonly (typeof SONNET | (typeof SONNET & { unpriced: true }))[];
   readonly selectable?: boolean;
   readonly defaultModel?: { provider: string; model: string } | null;
   readonly steer?: (params: Record<string, unknown>) => unknown;
@@ -140,6 +140,19 @@ describe('which models the picker offers', () => {
       'claude-haiku-4-5',
     ]);
     expect(shownModel(container)).toBe('claude-sonnet-5');
+  });
+
+  test('shows a model the agent’s cost budget cannot count as disabled, and says why', async () => {
+    serve({ models: [SONNET, { ...HAIKU, unpriced: true }] });
+    const { container } = mount({ current: null });
+
+    await waitFor(() => expect(container.querySelector('select') === null).toBe(false));
+    const options = [...picker(container).options];
+    expect(options.map((option) => option.textContent)).toEqual([
+      'claude-sonnet-5',
+      `claude-haiku-4-5 (${COPY.unpriced})`,
+    ]);
+    expect(options.map((option) => option.disabled)).toEqual([false, true]);
   });
 
   test('shows the model the session was switched to, over the agent’s default', async () => {
@@ -322,6 +335,28 @@ describe('choosing a model', () => {
       expect(reloads).toHaveLength(0);
     });
   }
+
+  test('says why when the Bureau refuses the request itself, and does not claim the model may have changed', async () => {
+    const reason =
+      'The model "claude-haiku-4-5" from "anthropic" has no price in US dollars in the model catalog, so the agent\'s costBudget could not count its spend. Choose a model that has one.';
+    serve({
+      steer: () => {
+        throw new StubFault('InvalidParams', 400, 'invalid params', {
+          issues: [{ path: ['override'], message: reason, code: 'custom' }],
+        });
+      },
+    });
+    const { container, reloads, findByText } = mount();
+    await waitFor(() => expect(container.querySelector('select') === null).toBe(false));
+
+    await chooseModel(container, 'claude-haiku-4-5');
+
+    expect(await findByText(reason)).not.toBeNull();
+    expect(container.textContent).not.toContain(COPY.fault);
+    await waitFor(() => expect(shownModel(container)).toBe('claude-sonnet-5'));
+    expect(reloads).toHaveLength(0);
+    expect(picker(container).disabled).toBe(false);
+  });
 
   test('reads the session again when the request fails, and shows the model it has then, which the switch may have reached', async () => {
     serve({

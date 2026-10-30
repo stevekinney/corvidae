@@ -19,6 +19,8 @@
  * - its reviews' records: the resolved-review records, the decision records and the secret
  *   answers (see `chat-review-purge.ts`);
  * - the memories its runs wrote, which `chat-memory-purge.ts` forgets;
+ * - the owner notifications about its runs (a failed run's quotes its error) and the hook
+ *   deliveries of events about them (COR-1953);
  * - the managed assets it held that nothing else holds (`chat-asset-purge.ts`);
  * - the audit trail's entries of its runs, which hold the answer word for word, the arguments and
  *   results of every tool call, and what each review asked and was told. Those are kept, as proof
@@ -195,6 +197,22 @@ export interface ChatContentPurgeDependencies {
    * the records themselves stay. `undefined` without a task registry.
    */
   readonly redactTaskRecords: ((runIds: ReadonlySet<string>) => Promise<void>) | undefined;
+  /**
+   * Removes the owner notifications about the runs, and the outbox entries that would write them
+   * again (COR-1953): a failed run's notification quotes the first line of its error.
+   * `undefined` without notifications.
+   */
+  readonly purgeNotifications: ((runIds: ReadonlySet<string>) => Promise<void>) | undefined;
+  /**
+   * Removes the hook deliveries of events about the chat's runs and the deleted incarnation,
+   * pending ones included, so none is still sent (COR-1953). `undefined` without hooks.
+   */
+  readonly purgeHookDeliveries:
+    | ((
+        chat: { readonly sessionId: string; readonly incarnation: string },
+        runIds: ReadonlySet<string>,
+      ) => Promise<void>)
+    | undefined;
   /** Whether the chat has events still waiting in the session outbox to be recorded. */
   readonly hasUndrainedEvents: (sessionId: string, incarnation: string) => Promise<boolean>;
   /** The incarnation the session id holds now, or `undefined` when it holds none. */
@@ -432,6 +450,10 @@ export function createChatContentPurge(
     );
     await step(undefined, async () => dependencies.purgeLedgers?.(runIds));
     await step(undefined, async () => dependencies.redactTaskRecords?.(runIds));
+    // After the task records are redacted: a notification written from a record afterwards (the
+    // outbox repair, a late `run.settled`) reads no error text.
+    await step(undefined, async () => dependencies.purgeNotifications?.(runIds));
+    await step(undefined, async () => dependencies.purgeHookDeliveries?.(chat, runIds));
 
     // What belongs to the chat as a whole is left while one of its runs is still live: that run
     // reads the chat's input and writes its A2A history until it ends.

@@ -56,6 +56,18 @@ const schema = {
       enum: ['down', 'up'],
       description: 'Open direction for the floating panel.',
     },
+    sheetBelow: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          const: false,
+        },
+      ],
+      description:
+        "Viewport width below which the options panel docks to the bottom edge as\na sheet, with the bottom Drawer's geometry, instead of anchoring to the\ntrigger. Filtering, keyboard, and dismissal behave exactly as when\nanchored. A simple CSS length such as `'640px'`, or `false` to always\nanchor. Default `'640px'`.",
+    },
     size: {
       enum: ['sm', 'md', 'lg'],
       description:

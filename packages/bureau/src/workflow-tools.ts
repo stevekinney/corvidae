@@ -49,10 +49,16 @@ export function collidingWorkflowToolName(
 export interface WorkflowToolHost {
   /** The workflow files. Read on every call, because the tools exist before the runtime does. */
   readonly workflows: () => BureauWorkflows | undefined;
-  /** The agent identifier of a run and its owner of record, for the run that made a tool call. */
-  readonly runIdentity: (
-    runId: string,
-  ) => Promise<{ readonly agent: string | undefined; readonly owner: string | undefined }>;
+  /**
+   * The agent identifier of a run, its owner of record, and the hook that started it (or the run
+   * above it), for the run that made a tool call. `hookOrigin` is what a workflow the tool writes
+   * carries onto its schedule (COR-1952), so that schedule's fires start no `start-workflow` hook.
+   */
+  readonly runIdentity: (runId: string) => Promise<{
+    readonly agent: string | undefined;
+    readonly owner: string | undefined;
+    readonly hookOrigin?: string | undefined;
+  }>;
 }
 
 /** One failure in a document, located by a path such as `steps[0].handler`. */
@@ -230,6 +236,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
         readonly workflows: BureauWorkflows;
         readonly agent: string;
         readonly actor: string;
+        readonly hookOrigin: string | undefined;
       }
     | { readonly refusal: WorkflowToolResult }
   > {
@@ -254,7 +261,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
         },
       };
     }
-    return { workflows, agent, actor: `agent-run:${runId}` };
+    return { workflows, agent, actor: `agent-run:${runId}`, hookOrigin: identity.hookOrigin };
   }
 
   const definition = (
@@ -330,6 +337,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
           status: 'ok',
           ...(await calling.workflows.create(provisional, definition(calling.agent, input), {
             actor: calling.actor,
+            hookOrigin: calling.hookOrigin,
           })),
         };
       } catch (error) {
@@ -354,6 +362,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
           ...(await calling.workflows.update(input.id, definition(calling.agent, input), {
             expectedHash: input.expectedHash,
             actor: calling.actor,
+            hookOrigin: calling.hookOrigin,
           })),
         };
       } catch (error) {

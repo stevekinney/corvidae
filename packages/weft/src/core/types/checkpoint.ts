@@ -149,6 +149,17 @@ export interface Checkpoint {
    * for those, same as before this field existed.
    */
   workflowExecutionToken?: string;
+  /**
+   * Steps whose entry in {@link Checkpoint.workerReplaySignatures} a fork copied from the run it
+   * forked while that run had no outcome for them yet: the operation the source was parked on, and
+   * any step whose result is not kept, such as a completed `getVersion`. Such a signature is
+   * evidence about the SOURCE's execution, so a worker does not read it as proof that an earlier
+   * execution of this run already logged what sits in front of that step. The fork's own execution
+   * removes a step from this list when it yields that step's operation, which pins the signature as
+   * the fork's own. Absent on every other checkpoint, including every checkpoint persisted before
+   * this field existed, which reads as before.
+   */
+  forkCopiedSignatureSteps?: number[];
 }
 
 /**

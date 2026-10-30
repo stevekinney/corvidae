@@ -58,7 +58,13 @@ export interface AccumulatedCost {
 }
 
 export interface CostEstimationOptions {
-  customPricing?: Record<string, ModelPricing> | undefined;
+  /**
+   * Prices that win over the built-in table, by model name. A name set to `null` states that the
+   * model has no price: the built-in table is not consulted for it, so a host that prices from its
+   * own catalog can say a model is unpriced even when the table happens to know it (COR-1921).
+   * `null`, not `undefined`, so the statement survives JSON.
+   */
+  customPricing?: Record<string, ModelPricing | null> | undefined;
 }
 
 /**
@@ -227,14 +233,24 @@ export function estimateCacheHitRate(usage: TokenUsage): number | undefined {
   return denominator === 0 ? 0 : cacheReadTokens / denominator;
 }
 
+/**
+ * The `customPricing` key that prices a model as one provider serves it (COR-1921). Two providers
+ * can serve a model of the same name at different prices, or one of them at none, and a session
+ * switched to a model names its provider when the caller did. A host that prices from a catalog
+ * sets this key for each row; a step that names a provider reads it before the bare model name.
+ */
+export function providerModelPricingKey(provider: string, model: string): string {
+  // A pair, not a joined string: a gateway row named `anthropic/claude-opus-5` and the
+  // `claude-opus-5` row of the `anthropic` provider must not share a key.
+  return JSON.stringify([provider, model]);
+}
+
 export function getModelPricing(
   model: string,
   options?: CostEstimationOptions,
 ): ModelPricing | undefined {
   const custom = options?.customPricing;
-  if (custom !== undefined && Object.hasOwn(custom, model) && custom[model] !== undefined) {
-    return custom[model];
-  }
+  if (custom !== undefined && Object.hasOwn(custom, model)) return custom[model] ?? undefined;
   return Object.hasOwn(defaultPricingTable, model) ? defaultPricingTable[model] : undefined;
 }
 
