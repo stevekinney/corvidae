@@ -531,6 +531,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // Agent files: Markdown files in Bungalow's `agents/` directory are agents (COR-1524). A
       // file's `model` is a row of the `models` catalog.
       agentSource: createAgentSource(bungalow, agentContent, createAgentFileTools()),
+      // The approvals a file agent's tools raise are signed with the host's approval secret, so a
+      // restart still resolves a pending one.
+      agentApprovalSecret: approval,
       // Workflow files: JSON files in Bungalow's `workflows/` directory are agent-authored
       // workflows (COR-1527), registered with the Bureau's engine and run on their schedules.
       workflowSource: createWorkflowSource(bungalow, workflowContent),

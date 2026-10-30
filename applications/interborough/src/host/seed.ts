@@ -32,7 +32,11 @@
  * There are no users and no webhook receiver.
  */
 
-import { ScheduleLocatorUnavailableError, type Bureau } from '@lostgradient/bureau';
+import {
+  createToolApprovalHooks,
+  ScheduleLocatorUnavailableError,
+  type Bureau,
+} from '@lostgradient/bureau';
 import {
   createAgent,
   createModelCatalog,
@@ -235,8 +239,9 @@ function createLookupOrderTool() {
 
 /**
  * The tools an agent file may name in `tools`: the deployment's tool catalog. It holds the
- * read-only `lookup-order` tool and nothing that mutates, because an agent file's toolbox has no
- * approval policy to hold a refund for an operator.
+ * read-only `lookup-order` tool. Only the read-only tool is listed here, not because an agent
+ * file's tools cannot be held for an operator (a tool that changes something asks, unless the
+ * file's `toolApproval` says otherwise), but because the seeded agents do not need more.
  */
 export function createAgentFileTools() {
   return { 'lookup-order': createLookupOrderTool() };
@@ -252,9 +257,12 @@ function createToolRunnerToolbox(approvalSecret: string) {
     metadata: { mutates: true, summary: 'Refund order {orderId} for {cents:usd-cents}' },
     execute: async ({ orderId, cents }) => ({ orderId, refundedCents: cents }),
   });
+  // The same rule a file agent's tools follow with no `toolApproval` (COR-1913): a tool that
+  // reads runs, and one that changes something waits for an operator.
   return createToolbox([lookupOrder, issueRefund], {
     approvalSecret,
-    approvalPolicy: { mode: 'on-mutation' },
+    // Its own two tools only: the Bureau adds `requestHumanInput` and the like to a run.
+    policy: createToolApprovalHooks(undefined, { tools: [lookupOrder.name, issueRefund.name] }),
   });
 }
 

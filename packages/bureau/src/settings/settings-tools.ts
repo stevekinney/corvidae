@@ -40,15 +40,17 @@ export interface SettingsToolHost {
 export function createSettingsTools(host: SettingsToolHost): Record<string, Tool> {
   const get = createTool({
     name: 'settings-get',
+    version: '1.0.0',
     description:
       "Read the deployment's runtime settings: each setting's value by dotted key, the `revision` to pass to settings-update as `expectedRevision`, and per key whether it applies live or at restart and whether it is locked (with the `lockReason`).",
     input: z.object({}),
-    metadata: { shortDescription: "Read the deployment's runtime settings." },
+    metadata: { readOnly: true, shortDescription: "Read the deployment's runtime settings." },
     execute: async (): Promise<SettingsSnapshot> => host.settings().get(),
   });
 
   const update = createTool({
     name: 'settings-update',
+    version: '1.0.0',
     description:
       "Change the deployment's runtime settings. `patch` maps dotted keys (as settings-get names them) to new values; all of them change or none do. `expectedRevision` is the revision settings-get returned: if the settings changed since, the answer is `rejected` with reason `stale-revision` and the `currentRevision` to read again. A locked key, an unknown key, or an invalid value is also `rejected`, with the keys at fault.",
     input: z.object({
@@ -59,7 +61,7 @@ export function createSettingsTools(host: SettingsToolHost): Record<string, Tool
         .nonnegative()
         .describe('The revision settings-get returned.'),
     }),
-    metadata: { shortDescription: "Change the deployment's runtime settings." },
+    metadata: { mutates: true, shortDescription: "Change the deployment's runtime settings." },
     execute: async (input, context): Promise<SettingsUpdateResult> => {
       const runId = runIdOf(context);
       const principal = runId === undefined ? undefined : await host.ownerOf(runId);

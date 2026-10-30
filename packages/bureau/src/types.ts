@@ -435,6 +435,17 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    */
   agentSource?: AgentSource;
   /**
+   * COR-1913 — the secret that signs the tool approvals the file agents of
+   * {@link BureauOptions.agentSource} raise. A file agent's tools ask a person before they run
+   * according to the file's `toolApproval` (`on-changes` for a tool it does not name), and an
+   * approval is resolved by presenting the signed token that raised it, so the secret must be the
+   * same after a restart and in every process that resolves reviews of the same store. Keep it
+   * with the deployment's other secrets. Without one a file agent's approval is raised unsigned:
+   * `reviews.resolve` refuses to approve it (`NOT_CONFIGURED`) and it can only be denied. It does
+   * not reach the code agents in {@link BureauOptions.agents}, whose toolboxes carry their own.
+   */
+  agentApprovalSecret?: string;
+  /**
    * COR-1702 — where workflow definitions are loaded from, watched in, and written back to. Pass
    * `workflowFileDirectory(path)` from `@lostgradient/bureau/sources` for a directory of JSON
    * workflow files (COR-1527): every `*.json` file in it is an agent-authored workflow
