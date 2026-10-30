@@ -2,7 +2,8 @@
   /**
    * The versions of an agent that have run, most recently run first. A save does not make a
    * revision: a version appears here once a run starts on it, so the list is the history of what
-   * actually ran, and it outlives the agent's file while its runs are retained.
+   * actually ran, and it outlives the agent's file while its runs are retained. The saved
+   * versions of the agent, whether or not it ran, are `bureau.agents.versions.list`.
    */
   import { RelativeTime, Skeleton, Table } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';

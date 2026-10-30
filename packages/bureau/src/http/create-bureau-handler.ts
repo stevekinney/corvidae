@@ -280,7 +280,15 @@ export type BureauHandlerSource = Pick<
     find(name: string): AgentDescription | undefined;
   } & Pick<
     BureauAgentCatalog<AgentDefinitions>,
-    'list' | 'detail' | 'models' | 'tools' | 'revisions' | 'create' | 'update' | 'delete'
+    | 'list'
+    | 'detail'
+    | 'models'
+    | 'tools'
+    | 'revisions'
+    | 'versions'
+    | 'create'
+    | 'update'
+    | 'delete'
   >;
 };
 

@@ -139,6 +139,8 @@ export const OPERATION_MAP = {
   'bureau.agents.definitions.get': { member: 'agents.detail' },
   'bureau.agents.definitions.list': { member: 'agents.list' },
   'bureau.agents.definitions.revisions': { member: 'agents.revisions' },
+  'bureau.agents.versions.list': { member: 'agents.versions.list' },
+  'bureau.agents.versions.restore': { member: 'agents.versions.restore' },
 
   // COR-1813: the wire name is `rollback` because operation names are lowercase; the in-process
   // member keeps the camel-cased `rollBack`.

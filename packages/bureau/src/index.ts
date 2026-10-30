@@ -45,6 +45,7 @@ export type {
 } from './sources/definition-source';
 export { hashDefinitionBytes, SourceConflictError } from './sources/definition-source';
 export type { AgentRevision } from './agent-snapshot-store';
+export type { AgentVersionRecord } from './agent-version-store';
 export type {
   WorkflowDetail,
   WorkflowRunDetail,

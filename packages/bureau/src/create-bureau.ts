@@ -2648,6 +2648,11 @@ async function constructBureau<const D extends AgentDefinitions>(
               }),
             }),
           };
+    // COR-1815: built before the catalog, which asks it which revisions a retained run references.
+    const agentSnapshots = createAgentSnapshotStore({
+      store: runtime.kv,
+      nowISO: runtimeServices.clock.nowISO,
+    });
     fileAgents =
       options.agentSource === undefined || options.models?.generate === undefined
         ? undefined
@@ -2662,6 +2667,7 @@ async function constructBureau<const D extends AgentDefinitions>(
               // COR-1584: the revision records share the Bureau's store, so a revision survives a
               // restart and two Bureaus on one store agree on it.
               revisionStore: runtime.kv,
+              retainedRevisions: (id) => agentSnapshots.referencedRevisions(id),
               diagnose: (message, cause) =>
                 diagnose({
                   level: 'error',
@@ -2670,10 +2676,7 @@ async function constructBureau<const D extends AgentDefinitions>(
                   cause,
                 }),
             }),
-            snapshots: createAgentSnapshotStore({
-              store: runtime.kv,
-              nowISO: runtimeServices.clock.nowISO,
-            }),
+            snapshots: agentSnapshots,
             diagnose: (message, cause) =>
               diagnose({
                 level: 'error',
