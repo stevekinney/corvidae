@@ -55,13 +55,10 @@ import {
   type BureauEventsOperationHost,
   defineBureauEventsSubscriptionOperation,
 } from '../bureau-events-operation.ts';
-import {
-  type AgentDefinitions,
-  type BureauAgentCatalog,
-  mediaCapabilitiesOf,
-} from '../agent-catalog.ts';
+import { type AgentDefinitions, mediaCapabilitiesOf } from '../agent-catalog.ts';
 import { agentExamplesSchema } from '../agent-examples.ts';
 import { readFileAgentBinding } from '../agent-file-catalog.ts';
+import { isTryAgentName } from '../agent-try.ts';
 import {
   COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS,
   createPrunedCommandLedger,
@@ -83,6 +80,7 @@ import { mediaInputModesOf, mediaOutputModesOf } from './a2a-agent-card.ts';
 import { createTaskReader } from './a2a-task-reader.ts';
 import type {
   Bureau,
+  BureauAgents,
   BureauAudit,
   BureauInternals,
   BureauReviews,
@@ -293,7 +291,7 @@ export type BureauHandlerSource = Pick<
     has(name: string): boolean;
     find(name: string): AgentDescription | undefined;
   } & Pick<
-    BureauAgentCatalog<AgentDefinitions>,
+    BureauAgents<AgentDefinitions>,
     | 'list'
     | 'detail'
     | 'models'
@@ -303,6 +301,7 @@ export type BureauHandlerSource = Pick<
     | 'create'
     | 'update'
     | 'delete'
+    | 'try'
   >;
 };
 
@@ -925,6 +924,10 @@ function listedAgentsOf(
  * code-defined or persisted, and the caller may name it (`mayNameAgent`, COR-1904): any ready
  * agent with `bureau.agents:read`, only one that opts into A2A without it. Read when asked, so an
  * agent created or deleted takes effect on the next request.
+ *
+ * A tried agent (COR-1911) is in no catalog, so it is not decided here: its name is a way to a
+ * chat only in the context it was started with, by its owner, which Bureau checks when the run
+ * starts (a name held for no context, another context or another owner is `NOT_FOUND`).
  */
 function createStartable(
   bureau: BureauHandlerSource,
@@ -932,8 +935,9 @@ function createStartable(
 ): { readonly includes: (agentName: string, principal: Principal) => boolean } {
   return {
     includes: (agentName, principal) =>
-      bureau.agents.find(agentName) !== undefined &&
-      mayNameAgent(principal, agentName, () => listedAgentsOf(bureau, a2aAgents)),
+      isTryAgentName(agentName) ||
+      (bureau.agents.find(agentName) !== undefined &&
+        mayNameAgent(principal, agentName, () => listedAgentsOf(bureau, a2aAgents))),
   };
 }
 

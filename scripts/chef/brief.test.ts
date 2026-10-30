@@ -3,7 +3,14 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
-import { charterRules, pathsIn, renderBrief, run, sectionOf } from './brief.ts';
+import {
+  charterRules,
+  pathsIn,
+  renderBrief,
+  run,
+  sectionOf,
+  verificationCommands,
+} from './brief.ts';
 import type { FetchLike, IssueSummary } from './linear.ts';
 import { UsageError } from './process-runner.ts';
 
@@ -84,7 +91,17 @@ describe('renderBrief', () => {
     expect(text).toContain('- `a/b.ts`');
     expect(text).not.toContain('thing.test.ts');
     expect(text).toContain('- `bun test a`');
-    expect(text).not.toContain('- `bun run lint:root`');
+    expect(text).not.toContain('- `bun run typecheck:root`');
+  });
+
+  test('explicit verification commands always keep the root lint, once', () => {
+    expect(verificationCommands(['bun test a'])).toEqual(['bun test a', 'bun run lint:root']);
+    expect(verificationCommands(['bun run lint:root', 'bun test a'])).toEqual([
+      'bun run lint:root',
+      'bun test a',
+    ]);
+    const text = renderBrief(issue(description), { ...options, verify: ['bun test a'] });
+    expect(text).toContain('- `bun test a`\n- `bun run lint:root`');
   });
 
   test('a description with neither heading is included whole, and an empty one says so', () => {

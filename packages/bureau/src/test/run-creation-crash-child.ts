@@ -17,7 +17,7 @@
  *
  * Not a test file: it is spawned by `run-creation-fault-points.slow.test.ts`.
  */
-import { writeFileSync } from 'node:fs';
+import { publishChildFile } from './child-output-file';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
@@ -298,10 +298,9 @@ switch (scenarioName as FaultScenario) {
 }
 
 // Written synchronously so it is on disk before the kill.
-writeFileSync(
+publishChildFile(
   markerPath,
   JSON.stringify({ ...marker, diagnostics: diagnostics.map((diagnostic) => diagnostic.message) }),
-  'utf8',
 );
 // No `bureau.dispose()` / `shutdown()`, deliberately: SIGKILL cannot be trapped.
 process.kill(process.pid, 'SIGKILL');

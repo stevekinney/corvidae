@@ -6,7 +6,7 @@
  * a handshake, and writes anything the test asserts after exit to a marker
  * file synchronously, so the record is on disk before `process.exit`.
  */
-import { writeFileSync } from 'node:fs';
+import { publishChildFile } from '../child-output-file';
 import { join } from 'node:path';
 
 import { type Storage } from '@lostgradient/storage';
@@ -35,7 +35,7 @@ export function announce(event: string, detail: Record<string, unknown> = {}): v
 }
 
 export function writeMarker(directory: string, name: string, value: unknown): void {
-  writeFileSync(join(directory, `${name}.json`), JSON.stringify(value), 'utf8');
+  publishChildFile(join(directory, `${name}.json`), JSON.stringify(value));
 }
 
 /**

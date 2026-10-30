@@ -17,7 +17,7 @@
  * starve under a zero-delay macrotask loop; see
  * `event-history-run-ownership-recovery-lmdb.test.ts`).
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -43,6 +43,7 @@ import {
   createSqliteStorageFixture,
   type PersistentBureauStorageFixture,
 } from './test/storage-fixtures';
+import { readChildJson } from './test/child-output-file';
 
 const CHILD = join(import.meta.dir, 'test', 'process-crash-child.ts');
 
@@ -120,7 +121,7 @@ async function recoveryScenario(backend: Backend, scope: ScenarioScope): Promise
     const stderr = await new Response(crashed.stderr).text();
     expect(crashed.signalCode ?? stderr).toBe('SIGKILL');
     expect(existsSync(markerPath)).toBe(true);
-    const marker = JSON.parse(readFileSync(markerPath, 'utf8')) as CrashMarker;
+    const marker = readChildJson<CrashMarker>(markerPath);
     expect(typeof marker.maxAuditSequence).toBe('number');
     expect(typeof marker.sessionLastSequence).toBe('number');
 
@@ -142,9 +143,7 @@ async function recoveryScenario(backend: Backend, scope: ScenarioScope): Promise
       exitCode: c.exitCode,
       unexpectedStderr: unexpectedChildStderr(await cStderr),
     }).toEqual({ exitCode: 0, unexpectedStderr: '' });
-    const cReport = JSON.parse(
-      readFileSync(join(directory, RACER_REPORT_FILE), 'utf8'),
-    ) as RacerReport;
+    const cReport = readChildJson<RacerReport>(join(directory, RACER_REPORT_FILE));
 
     for (const report of [bReport, cReport]) {
       // One assertion, so a partial recovery prints the failures that made it partial.
@@ -290,7 +289,7 @@ async function relaunchScenario(backend: Backend, scope: ScenarioScope): Promise
     const crashed = spawnChild('park-after-step-0');
     await crashed.exited;
     expect(crashed.signalCode ?? (await new Response(crashed.stderr).text())).toBe('SIGKILL');
-    const { runId } = JSON.parse(readFileSync(markerPath, 'utf8')) as CrashMarker;
+    const { runId } = readChildJson<CrashMarker>(markerPath);
 
     const relaunched = spawnChild('relaunch-recover');
     // A relaunch that never recovers is killed here and reported as stuck,
@@ -312,9 +311,7 @@ async function relaunchScenario(backend: Backend, scope: ScenarioScope): Promise
       unexpectedStderr: unexpectedChildStderr(stderr),
     }).toEqual({ exitCode: 0, killedAtDeadline: false, unexpectedStderr: '' });
 
-    const marker = JSON.parse(
-      readFileSync(join(directory, 'relaunched.json'), 'utf8'),
-    ) as RelaunchMarker;
+    const marker = readChildJson<RelaunchMarker>(join(directory, 'relaunched.json'));
     expect(marker).toEqual({
       runId,
       recoveryOutcome: 'clean',

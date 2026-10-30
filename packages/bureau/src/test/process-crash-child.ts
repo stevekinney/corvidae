@@ -16,7 +16,7 @@
  * scenario is a named function below; the `scenarios` table is the extension
  * point for further crash scenarios.
  */
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
@@ -25,6 +25,7 @@ import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
 import { createBureau } from '../create-bureau';
+import { publishChildFile } from './child-output-file';
 import {
   chargeStatus,
   chargeToolCalls,
@@ -173,7 +174,7 @@ async function parkAfterStepZero(): Promise<void> {
   }
 
   // Written synchronously so it is on disk before the kill.
-  writeFileSync(
+  publishChildFile(
     markerPath as string,
     JSON.stringify({
       runId: run.id,
@@ -182,12 +183,11 @@ async function parkAfterStepZero(): Promise<void> {
       sessionCursor: last.cursor,
       sessionLastSequence: last.sequence,
     }),
-    'utf8',
   );
 }
 
 function writeMarker(marker: Record<string, unknown>): void {
-  writeFileSync(markerPath as string, JSON.stringify(marker), 'utf8');
+  publishChildFile(markerPath as string, JSON.stringify(marker));
 }
 
 function killSelf(): never {
@@ -407,7 +407,7 @@ async function relaunchRecover(): Promise<void> {
     );
     process.exit(5);
   }
-  writeFileSync(
+  publishChildFile(
     join(dirname(markerPath as string), 'relaunched.json'),
     JSON.stringify({
       runId,
@@ -417,7 +417,6 @@ async function relaunchRecover(): Promise<void> {
       stepZeroCalls,
       laterStepCalls,
     }),
-    'utf8',
   );
   const shutdown = await bureau.shutdown();
   process.exit(shutdown.unresolved === 0 ? 0 : 1);
@@ -435,11 +434,11 @@ async function raceRecover(): Promise<void> {
   const { runId } = JSON.parse(readFileSync(markerPath as string, 'utf8')) as { runId: string };
   const storage =
     backend === 'lmdb' ? new LMDBStorage(storagePath as string) : new BunSQLiteStorage(storagePath);
-  writeFileSync(join(directory, RACER_READY_FILE), '', 'utf8');
+  publishChildFile(join(directory, RACER_READY_FILE), '');
   await pollUntil('the parent to start the race', () => existsSync(join(directory, RACER_GO_FILE)));
   const racer = await startRacer(storage);
   const report = await settleRacer(racer, runId);
-  writeFileSync(join(directory, RACER_REPORT_FILE), JSON.stringify(report), 'utf8');
+  publishChildFile(join(directory, RACER_REPORT_FILE), JSON.stringify(report));
   const shutdown = await racer.bureau.shutdown();
   process.exit(shutdown.unresolved === 0 ? 0 : 1);
 }

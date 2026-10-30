@@ -19,7 +19,7 @@
  * It spawns a process, so it lives in the `test:slow` lane. Each backend runs
  * once at module scope, off Bun's per-test clock (see `test/hoisted-scenario.ts`).
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -38,6 +38,7 @@ import { unexpectedChildStderr } from './test/child-stderr';
 import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test/hoisted-scenario';
 import type { AgentDefinitions } from './agent-catalog';
 import { createLmdbStorageFixture, createSqliteStorageFixture } from './test/storage-fixtures';
+import { readChildJson } from './test/child-output-file';
 
 const CHILD = join(import.meta.dir, 'test', 'schedule-fire-crash-child.ts');
 const INTERVAL_MS = 60_000;
@@ -76,7 +77,7 @@ async function scheduleFireCrashScenario(backend: Backend, scope: ScenarioScope)
     expect(child.signalCode ?? stderr).toBe('SIGKILL');
     expect(unexpectedChildStderr(stderr)).toBe('');
     expect(existsSync(markerPath)).toBe(true);
-    const marker = JSON.parse(readFileSync(markerPath, 'utf8')) as Marker;
+    const marker = readChildJson<Marker>(markerPath);
 
     const conversations = new Set<string>();
     let generateCalls = 0;

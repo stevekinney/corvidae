@@ -71,6 +71,20 @@ const tasksListInput = z.object({
     .describe(
       'Only the tasks recorded with an origin of this kind. A task recorded before origins were kept has none and matches no kind.',
     ),
+  parentRunId: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      'Only the subordinate tasks of this run: the children an agent run started, the attempts of a goal run, or the steps of a workflow instance.',
+    ),
+  siblingsOf: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      'Only the tasks that share a parent run with this task, this task excluded. A task that does not exist, that is not yours to read, or that has no parent run matches nothing.',
+    ),
   statusTimestampAfter: z.iso
     .datetime({ offset: true })
     .optional()
@@ -113,7 +127,7 @@ export const tasksListOperation = defineOperation<
   mcpExposable: true,
   summary: 'List tasks',
   description:
-    'Lists the caller’s own tasks, most recently changed first (by status timestamp, then task id ascending); a caller holding `bureau.tasks:read` lists every owner’s. `contextId` returns only that context’s tasks in its current incarnation, `origin` only the tasks recorded with an origin of that kind (`chat`, `person`, `schedule`, or `api`), and `statusTimestampAfter` (ISO 8601) only tasks whose status timestamp is strictly later. Pages with `limit` (1 to 100, default 50, free to change between pages) and `pageToken`; `nextPageToken` is `null` when no entries remain. The first page of a listing with a next page records the listing, and every later page returns the tasks exactly as they matched then, so a task that changes mid-enumeration keeps its place and appears once; a task removed since is skipped, so a page can hold fewer than `limit` tasks. A token is opaque, valid for 15 minutes from the first page, and only with the principal, reach, wire projection (never the one of A2A `ListTasks`), and filters (`contextId`, `agentName`, `status`, `origin`, `statusTimestampAfter`) it was issued for, and only while the context is the incarnation it was issued for; any other token is `InvalidParams`. A principal holds at most 16 live listings, and starting another ends its oldest.',
+    'Lists the caller’s own tasks, most recently changed first (by status timestamp, then task id ascending); a caller holding `bureau.tasks:read` lists every owner’s. `contextId` returns only that context’s tasks in its current incarnation, `origin` only the tasks recorded with an origin of that kind (`chat`, `person`, `schedule`, `api`, `agent`, `goal`, or `parent`), `parentRunId` only the subordinate tasks of that run (the children it started, the attempts of a goal, the steps of a workflow instance), `siblingsOf` only the tasks that share a parent run with the named task, that task excluded, and `statusTimestampAfter` (ISO 8601) only tasks whose status timestamp is strictly later. Pages with `limit` (1 to 100, default 50, free to change between pages) and `pageToken`; `nextPageToken` is `null` when no entries remain. The first page of a listing with a next page records the listing, and every later page returns the tasks exactly as they matched then, so a task that changes mid-enumeration keeps its place and appears once; a task removed since is skipped, so a page can hold fewer than `limit` tasks. A token is opaque, valid for 15 minutes from the first page, and only with the principal, reach, wire projection (never the one of A2A `ListTasks`), and filters (`contextId`, `agentName`, `status`, `origin`, `parentRunId`, `siblingsOf`, `statusTimestampAfter`) it was issued for, and only while the context is the incarnation it was issued for; any other token is `InvalidParams`. A principal holds at most 16 live listings, and starting another ends its oldest.',
   destructive: false,
   tags: ['Tasks'],
   inputSchema: tasksListInput,
@@ -136,6 +150,8 @@ export const tasksListOperation = defineOperation<
         ...(input.agentName === undefined ? {} : { agentName: input.agentName }),
         ...(input.status === undefined ? {} : { status: input.status }),
         ...(input.origin === undefined ? {} : { origin: input.origin }),
+        ...(input.parentRunId === undefined ? {} : { parentRunId: input.parentRunId }),
+        ...(input.siblingsOf === undefined ? {} : { siblingsOf: input.siblingsOf }),
         ...(input.statusTimestampAfter === undefined
           ? {}
           : { statusTimestampAfter: input.statusTimestampAfter }),

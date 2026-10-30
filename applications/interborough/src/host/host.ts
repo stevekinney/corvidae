@@ -27,11 +27,15 @@
  * (`provider-manager.ts`, `provider-routes.ts`); a remote host refuses, reporting the reason
  * `deployment`.
  *
- * Every request acts as the one local caller, `anonymous:local`, holding every Weft scope and
- * every Bureau scope. There is no sign-in: the host binds `127.0.0.1` only, and the Bureau handler
- * (`unauthenticatedAccess: 'allow'`) serves every request as that caller. A host that listened on
- * anything but loopback would hand every operation to whoever could reach the port, which is why
- * the hostname is not an option.
+ * Every request without a credential acts as the one local caller, `anonymous:local`, holding
+ * every Weft scope and every Bureau scope. There is no sign-in: the host binds `127.0.0.1` only,
+ * and the Bureau handler (`unauthenticatedAccess: 'allow'`) serves every such request as that
+ * caller. A host that listened on anything but loopback would hand every operation to whoever could
+ * reach the port, which is why the hostname is not an option. The one credential the host knows is
+ * the operator's A2A key (COR-1904, `a2a-authentication.ts`): once it is stored, A2A requires it,
+ * and it is the only way a request from beyond loopback, through a reverse proxy serving the public
+ * origin `INTERBOROUGH_A2A_PUBLIC_ORIGIN` names, reaches anything, and then only `/bureau/a2a/*`
+ * and `/bureau/assets/*`.
  *
  * Weft's server would report its own shared `unauthenticated-local` caller for a request with no
  * credential, so it listens on a second, private loopback port that answers only a per-process
@@ -50,14 +54,25 @@
  * - `/bureau/a2a/<agent>`: the A2A 1.0.1 interface of every agent that opts in, and its public Agent
  *   Card at `/bureau/a2a/<agent>/.well-known/agent-card.json` (COR-1819). A file agent opts in with
  *   `a2a: true` in its own file; a code agent opts in by being named in {@link HostOptions.a2aAgents}.
- *   The URL a card names is derived from the origin the listener ended up on, and A2A is served
- *   under the same posture as the rest of the host: loopback only, every call as `anonymous:local`.
+ *   The URL a card names is derived from the origin the listener ended up on, or is the public
+ *   origin when one is set. With no A2A key, A2A is served under the same posture as the rest of
+ *   the host: loopback only, every call as `anonymous:local`. With the key (the Bungalow secret
+ *   `a2a-api-key`), every A2A JSON-RPC call must present it and acts as `api-key:a2a`, which sees
+ *   only the agents that opt in; with the public origin as well, the request guard lets that
+ *   origin's `Host` through for these paths and, with a credential, `/bureau/assets/*`, where the
+ *   media their tasks generate is read (`request-guard.ts`).
  * - `/host/paths`: where the host keeps the files a person edits by hand, so the agent editor and
  *   the Workflows pages can show an agent's file path and a workflow's, and the agent editor can
  *   say where to configure a model provider: the configuration file, and the file that holds each
  *   provider's API key.
  * - `/host/providers`, `/host/providers/<name>`, `/host/providers/reload`, and `/host/catalog`:
  *   read and change the provider configuration (`provider-routes.ts`).
+ * - `/host/tool-sources`, `/host/tool-sources/<id>`, `/host/tool-sources/<id>/authorize`, and
+ *   `/host/oauth/callback/<id>`: the saved MCP and OpenAPI tool sources in `configuration.json`
+ *   (`toolSources`), their encrypted credentials, and the OAuth sign-in (`tool-source-routes.ts`).
+ *   The sources load before the Bureau is built, so an agent file lists their tools as
+ *   `<id>__<tool>` after the host starts again. A remote host refuses a change with the reason
+ *   `deployment`.
  * - `POST /host/restart`: asks the host to restart. It is registered only for a host started with
  *   `onRestartRequested` (the entries, which run under the supervisor), and answers `202` before
  *   the callback runs.
@@ -72,6 +87,7 @@ import { join, resolve as resolvePath, sep } from 'node:path';
 
 import { openBungalow, type Bungalow, type BungalowEnvironment } from '@lostgradient/bungalow';
 import {
+  ANONYMOUS_LOCAL_OWNER,
   createBureau,
   createBureauHandler,
   createDurableAssetStorage,
@@ -92,6 +108,7 @@ import {
 
 import { routes as clientRoutes } from '../app/routes.ts';
 import { HOST_PATHS_ROUTE } from '../lib/host-paths.ts';
+import { resolveA2aExposure } from './a2a-authentication.ts';
 import { startHostPushDelivery, type HostPushDelivery } from './a2a-push.ts';
 import { answerEncryptionKeys } from './answer-encryption.ts';
 import { createConfigurationQueue, type ConfigurationQueue } from './configuration-queue.ts';
@@ -110,6 +127,7 @@ import {
 import {
   DEFAULT_BUILD_DIRECTORY,
   processEnvironment,
+  resolveA2aPublicOrigin,
   resolvePort,
 } from './environment-configuration.ts';
 import { buildDiagnostics, providerDiagnostics, type HostDiagnostics } from './host-diagnostics.ts';
@@ -152,6 +170,8 @@ import {
 import { isShellNavigation } from './shell-request.ts';
 import { createSkillManager, type SkillManager } from './skill-manager.ts';
 import { skillRoutes } from './skill-routes.ts';
+import { createToolSourceManager, type ToolSourceManager } from './tool-source-manager.ts';
+import { toolSourceRoutes } from './tool-source-routes.ts';
 
 /** The application name Bungalow keys the state directory, `INTERBOROUGH_HOME`, and lock on. */
 export const APPLICATION_NAME = 'interborough';
@@ -335,6 +355,16 @@ export type Host = {
    */
   readonly skills: Pick<SkillManager, 'setTrust' | 'refresh' | 'standing'>;
   /**
+   * The saved MCP and OpenAPI tool sources: connect or remove one, start an OAuth sign-in, and
+   * read where each stands. Credentials are encrypted at rest and never returned. A change is
+   * listed after the host starts again; a remote host refuses one with
+   * {@link ToolSourceWriteLockedError}, reason `deployment`. See {@link ToolSourceManager}.
+   */
+  readonly toolSources: Pick<
+    ToolSourceManager,
+    'connect' | 'remove' | 'snapshot' | 'authorize' | 'completeAuthorization'
+  >;
+  /**
    * A point-in-time reading of the host's own state: the Bureau's diagnostics, the engine server's
    * lease, workers, and connections, the build it serves, and the providers it offers. It holds no
    * credential: a provider is its name and its models. The lock holder is left out, because it is
@@ -488,6 +518,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
   const callerLocks = { ...options.settings?.locked };
   // The A2A allowlist is read the same way: after the first await it would be the caller's live array.
   const a2aAgents = options.a2aAgents === undefined ? undefined : [...options.a2aAgents];
+  // The A2A public origin (COR-1904) is read from the caller's environment before it can change,
+  // and a malformed one stops the host before anything opens.
+  const a2aPublicOrigin = resolveA2aPublicOrigin(environment);
   const bungalow: Bungalow = await openBungalow({ name: APPLICATION_NAME, environment });
   const held: Held = { bungalow };
   try {
@@ -495,6 +528,13 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // anything connects to Postgres or listens.
     const database = redactDatabase(bungalow.database);
     const approval = approvalSecret(bungalow);
+    // The A2A key and public origin (COR-1904), read as early, so a public origin without a key
+    // stops the host before anything listens.
+    const a2aExposure = resolveA2aExposure(
+      bungalow,
+      a2aPublicOrigin,
+      options.warn ?? ((message) => console.warn(message)),
+    );
     // The key secret answers are sealed with (COR-1920), read or created the same way and as early.
     const answerKeys = await answerEncryptionKeys(bungalow);
     const storage = createHostStorage(bungalow.database);
@@ -516,6 +556,24 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     held.providers = providers;
     const generateFor = (selection: ModelSelection): GenerateFunction =>
       providers.generateFor(selection);
+    // The saved tool sources load before the Bureau is built, because an agent file names a tool
+    // from the catalog the Bureau starts with. A source that fails is that source's own standing
+    // and never stops the host. The origin is known only once the listener is up; until then
+    // it fills the redirect URL of a source that already holds tokens, which starts no sign-in.
+    let hostOrigin: string | undefined;
+    const startPort = options.port ?? resolvePort(environment);
+    const toolSources = createToolSourceManager({
+      bungalow,
+      keys: answerKeys,
+      configurationQueue,
+      audit: async (entry) => {
+        await held.bureau?.internals.auditTrail?.record(entry);
+      },
+      origin: () => hostOrigin ?? `http://${LOOPBACK}:${startPort}`,
+      warn: options.warn ?? ((message) => console.warn(message)),
+    });
+    held.toolSources = toolSources;
+    await toolSources.start();
     const agentContent = bungalow.content(AGENT_DIRECTORY_NAME);
     const workflowContent = bungalow.content(WORKFLOW_DIRECTORY_NAME);
     // The TypeSafe key, when the secrets hold one, registers a decision model, `typesafe`, for the
@@ -583,7 +641,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       assets: { storage: createDurableAssetStorage(storage) },
       // Agent files: Markdown files in Bungalow's `agents/` directory are agents (COR-1524). A
       // file's `model` is a row of the `models` catalog.
-      agentSource: createAgentSource(bungalow, agentContent, createAgentFileTools()),
+      agentSource: createAgentSource(bungalow, agentContent, {
+        ...createAgentFileTools(),
+        ...toolSources.tools(),
+      }),
       // The approvals a file agent's tools raise are signed with the host's approval secret, so a
       // restart still resolves a pending one.
       agentApprovalSecret: approval,
@@ -643,6 +704,11 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // Every route, the relay, and every WebSocket upgrade go through one guard (`request-guard.ts`).
     let listening: Bun.Server<HostSocketData> | undefined;
     const refuse = createRequestGuard(() => listening?.port ?? 0);
+    // `/bureau/*` alone also answers the public origin, and only for its A2A paths (COR-1904).
+    const refuseBureau =
+      a2aExposure.publicOrigin === undefined
+        ? refuse
+        : createRequestGuard(() => listening?.port ?? 0, a2aExposure.publicOrigin);
     const buildDirectory = options.buildDirectory ?? DEFAULT_BUILD_DIRECTORY;
     const devReload = options.development === true ? createDevReload() : undefined;
     if (devReload !== undefined) held.devReload = devReload;
@@ -678,7 +744,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           request: Request,
           listener: Bun.Server<HostSocketData>,
         ) => {
-          const refusal = refuse(request);
+          const refusal = refuseBureau(request);
           if (refusal !== undefined) return refusal;
           if (bureauHandler === undefined) {
             return new Response('The Bureau is not serving yet.', { status: 503 });
@@ -701,6 +767,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         // a workflow's.
         ...providerRoutes(providers, refuse),
         ...skillRoutes(skills, refuse),
+        ...toolSourceRoutes(toolSources, refuse, { principal: () => ANONYMOUS_LOCAL_OWNER }),
         [HOST_PATHS_ROUTE]: {
           GET: (request: Request) =>
             refuse(request) ??
@@ -737,6 +804,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const publicPort = publicServer.port;
     if (publicPort === undefined) throw new Error('The public listener has no port.');
     const publicOrigin = `http://${LOOPBACK}:${publicPort}`;
+    hostOrigin = publicOrigin;
     // A2A push delivery is a restart-applied setting: the values read here are the ones this
     // process booted with (COR-1819).
     const { values: bootedSettings } = await bureau.settings.get();
@@ -748,7 +816,12 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     );
     if (pushDelivery !== undefined) held.pushDelivery = pushDelivery;
     bureauHandler = createBureauHandler(bureau, {
+      // The local caller, unless the request carries a credential. With an A2A key configured
+      // (COR-1904), a credential is checked against it, and A2A's JSON-RPC routes require one.
       unauthenticatedAccess: 'allow',
+      ...(a2aExposure.authentication === undefined
+        ? {}
+        : { authentication: a2aExposure.authentication }),
       // Chat runs over AG-UI: the mount starts, attaches to, and resumes a run, and takes the
       // `RunAgentInput` Chat's transport sends.
       agUi: {},
@@ -759,10 +832,11 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // handed to the adapter as an injected `ui://` resource linked to `bureau.tasks.inspect`.
       mcp: mcpMounts,
       // A2A (COR-1819): an agent that opts in is served at `<origin>/bureau/a2a/<name>`, which is
-      // where the `/bureau/*` route above sends it once the prefix is removed. The listener is
-      // loopback-only behind the request guard and every call acts as the owner, so A2A is no more
-      // reachable than the rest of the host.
-      publicUrl: `${publicOrigin}${BUREAU_PATH_PREFIX}`,
+      // where the `/bureau/*` route above sends it once the prefix is removed. Without an A2A key
+      // the listener is loopback-only behind the request guard and every call acts as the owner,
+      // so A2A is no more reachable than the rest of the host. With a public origin (COR-1904) the
+      // cards name it, because that is the address a remote caller reaches.
+      publicUrl: `${a2aExposure.publicOrigin?.origin ?? publicOrigin}${BUREAU_PATH_PREFIX}`,
       ...(a2aAgents === undefined ? {} : { a2aAgents }),
       // `bureau.skills.list` reads the host's standing on every request, so a trust change shows
       // on the next call.
@@ -798,6 +872,14 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       database,
       generateFor,
       configurationQueue,
+      toolSources: {
+        connect: (request) => toolSources.connect(request),
+        remove: (request) => toolSources.remove(request),
+        snapshot: () => toolSources.snapshot(),
+        authorize: (id) => toolSources.authorize(id),
+        completeAuthorization: (id, callbackUrl) =>
+          toolSources.completeAuthorization(id, callbackUrl),
+      },
       skills: {
         setTrust: (request) => skills.setTrust(request),
         refresh: () => skills.refresh(),
@@ -840,6 +922,7 @@ type Held = {
   bureau?: Bureau<SeededAgents>;
   providers?: ProviderManager;
   skills?: SkillManager;
+  toolSources?: ToolSourceManager;
   replacementEngine?: RegistryAgnosticEngine;
   server?: WeftServer;
   pushDelivery?: HostPushDelivery;
@@ -867,6 +950,8 @@ async function teardown(held: Held): Promise<void> {
   await step(held.server && (() => held.server?.stop()));
   await step(held.pushDelivery && (() => held.pushDelivery?.stop()));
   await step(held.bureau && (() => held.bureau?.shutdown({ policy: 'detach' })));
+  // After the Bureau: a run still in flight may be calling a source's tool.
+  await step(held.toolSources && (() => held.toolSources?.close()));
   await step(held.replacementEngine && (() => held.replacementEngine?.[Symbol.asyncDispose]()));
   const { storage } = held;
   await step(storage && (() => disposeHostStorage(storage)));

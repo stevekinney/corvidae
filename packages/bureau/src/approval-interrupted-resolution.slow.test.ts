@@ -27,6 +27,7 @@ import {
 import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test/hoisted-scenario';
 import type { Bureau } from './types';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
+import { readChildJson } from './test/child-output-file';
 
 const CHILD = join(import.meta.dir, 'test', 'process-crash-child.ts');
 const runtime = createDefaultRuntimeServices();
@@ -58,7 +59,7 @@ async function interruptedApprovalScenario(scope: ScenarioScope): Promise<void> 
       await child.exited;
       const stderr = await new Response(child.stderr).text();
       expect(child.signalCode ?? stderr).toBe('SIGKILL');
-      const { reviewId } = JSON.parse(readFileSync(markerPath, 'utf8')) as { reviewId: string };
+      const { reviewId } = readChildJson<{ reviewId: string }>(markerPath);
       const linesBeforeRestart = lineCount(toolFile);
       expect(linesBeforeRestart).toBe(1);
 

@@ -163,10 +163,11 @@ export const contextsDeleteOperation = defineOperation<
 const contextActivitySchema = z.enum(['running', 'awaiting-input', 'idle']);
 
 /**
- * What started a context (COR-1645): a person's `chat`, a `goal`, or a `schedule`'s fire. It is
- * read from the context's reserved origin metadata key, which a goal and a fire write when they
- * create the context and a chat never writes, so a context with no origin, as every one made before
- * origins existed, is a `chat`. Nothing outside these three is accepted or shown.
+ * What started a context (COR-1645): a person's `chat`, a `goal`, a `schedule`'s fire, or a `try`
+ * (COR-1911), a throwaway chat with an agent definition that was never saved. It is read from the
+ * context's reserved origin metadata key, which a goal, a fire and a try write when they create
+ * the context and a chat never writes, so a context with no origin, as every one made before
+ * origins existed, is a `chat`. Nothing outside these four is accepted or shown.
  */
 export const contextOriginSchema = z.enum(SESSION_ORIGINS);
 
@@ -254,7 +255,7 @@ const contextsListInput = z.object({
   origin: contextOriginSchema
     .optional()
     .describe(
-      'Only the contexts with this origin; `chat` includes every context that records none.',
+      'Only the contexts with this origin; `chat` includes every context that records none. Contexts of origin `try` are listed only when this is `try`.',
     ),
   allOwners: z
     .boolean()
@@ -284,7 +285,7 @@ export const contextsListOperation = defineOperation<
   mcpExposable: true,
   summary: 'List contexts',
   description:
-    'Lists the caller’s own contexts (chat sessions) with a title, a last-message preview, a message count, times and `activity` (`running`, `awaiting-input` or `idle`), newest update first by default. Each carries its `origin`: `chat` for a context a person started (and for every context that records no origin), `goal` for a goal’s session, `schedule` for a session a schedule’s fire created. `agentName` filters by agent, `origin` by origin, `titleContains` by a case-insensitive substring of the title (a title given by `bureau.contexts.rename` counts), and `activity` by what the context is doing right now, all before the page is cut, so a page of chats holds chats and `offset` counts matches. An `activity` filter classifies the contexts the other filters leave, a hundred at a time, until the page is full; a context’s activity can change between pages. `allOwners: true` lists every owner’s and requires `bureau.contexts:read`; without it the call is a `Forbidden` fault. Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. No transcript and no internal metadata is returned.',
+    'Lists the caller’s own contexts (chat sessions) with a title, a last-message preview, a message count, times and `activity` (`running`, `awaiting-input` or `idle`), newest update first by default. Each carries its `origin`: `chat` for a context a person started (and for every context that records no origin), `goal` for a goal’s session, `schedule` for a session a schedule’s fire created, `try` for a throwaway chat with an unsaved agent definition (`bureau.agents.try`), which is left out of the list unless `origin` is `try`. `agentName` filters by agent, `origin` by origin, `titleContains` by a case-insensitive substring of the title (a title given by `bureau.contexts.rename` counts), and `activity` by what the context is doing right now, all before the page is cut, so a page of chats holds chats and `offset` counts matches. An `activity` filter classifies the contexts the other filters leave, a hundred at a time, until the page is full; a context’s activity can change between pages. `allOwners: true` lists every owner’s and requires `bureau.contexts:read`; without it the call is a `Forbidden` fault. Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. No transcript and no internal metadata is returned.',
   destructive: false,
   tags: ['Contexts'],
   inputSchema: contextsListInput,

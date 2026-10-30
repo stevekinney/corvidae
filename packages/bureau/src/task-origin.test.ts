@@ -8,9 +8,12 @@ import { createRuntimeComposition } from './runtime-composition';
 import {
   isStoredTaskOrigin,
   isTaskOrigin,
+  isTopLevelTaskOrigin,
   parseStartTaskOrigin,
   TASK_ORIGIN_KINDS,
   taskOriginOfStart,
+  taskOriginParentOf,
+  taskOriginParentTag,
   taskOriginTag,
   taskOriginView,
 } from './task-origin';
@@ -28,6 +31,18 @@ describe('isTaskOrigin', () => {
     expect(isTaskOrigin({ kind: 'schedule', scheduleId: 's', fireId: 'f', manual: true })).toBe(
       true,
     );
+    expect(isTaskOrigin({ kind: 'agent', parentRunId: 'r', agentName: 'a' })).toBe(true);
+    expect(
+      isTaskOrigin({
+        kind: 'agent',
+        parentRunId: 'r',
+        parentContextId: 'c',
+        agentName: 'a',
+        toolCallId: 't',
+      }),
+    ).toBe(true);
+    expect(isTaskOrigin({ kind: 'goal', goalRunId: 'g', attemptId: 'goal-g-a0' })).toBe(true);
+    expect(isTaskOrigin({ kind: 'parent', parentRunId: 'r' })).toBe(true);
   });
 
   it('rejects what a reader could not use, and every name an object inherits', () => {
@@ -45,6 +60,13 @@ describe('isTaskOrigin', () => {
       { kind: 'person', principal: 'p', surface: 'fax' },
       { kind: 'schedule', scheduleId: 's', fireId: '' },
       { kind: 'schedule', scheduleId: 's', fireId: 'f', manual: false },
+      { kind: 'agent', parentRunId: 'r' },
+      { kind: 'agent', parentRunId: '', agentName: 'a' },
+      { kind: 'agent', parentRunId: 'r', agentName: 'a', toolCallId: '' },
+      { kind: 'agent', parentRunId: 'r', agentName: 'a', parentContextId: 1 },
+      { kind: 'goal', goalRunId: 'g' },
+      { kind: 'parent' },
+      { kind: 'parent', parentRunId: '' },
     ]) {
       expect(isTaskOrigin(value), JSON.stringify(value)).toBe(false);
     }
@@ -68,6 +90,10 @@ describe('parseStartTaskOrigin', () => {
       { kind: 'nope' },
       { kind: 'person' },
       { kind: 'person', surface: 'fax' },
+      // A caller can never declare a subordinate kind.
+      { kind: 'agent', parentRunId: 'r', agentName: 'a' },
+      { kind: 'goal', goalRunId: 'g', attemptId: 'a' },
+      { kind: 'parent', parentRunId: 'r' },
       'chat',
       null,
     ]) {
@@ -104,7 +130,62 @@ describe('taskOriginTag', () => {
       'origin:person',
       'origin:schedule',
       'origin:api',
+      'origin:agent',
+      'origin:goal',
+      'origin:parent',
     ]);
+  });
+});
+
+describe('taskOriginParentOf', () => {
+  it('names the run a subordinate task belongs to, and nothing for any other origin', () => {
+    expect(taskOriginParentOf({ kind: 'agent', parentRunId: 'r', agentName: 'a' })).toBe('r');
+    expect(taskOriginParentOf({ kind: 'parent', parentRunId: 'w' })).toBe('w');
+    expect(taskOriginParentOf({ kind: 'goal', goalRunId: 'g', attemptId: 'a0' })).toBe('g');
+    expect(taskOriginParentOf({ kind: 'api' })).toBeNull();
+    expect(
+      taskOriginParentOf({ kind: 'chat', contextId: 'c', agentName: 'a', principal: 'p' }),
+    ).toBeNull();
+    expect(taskOriginParentOf(undefined)).toBeNull();
+    expect(taskOriginParentOf(null)).toBeNull();
+    // A kind this release does not know, or a known kind it cannot read, is attributed to nobody.
+    expect(taskOriginParentOf({ kind: 'teleport', parentRunId: 'r' })).toBeNull();
+    expect(taskOriginParentOf({ kind: 'agent', parentRunId: 'r' })).toBeNull();
+  });
+});
+
+describe('isTopLevelTaskOrigin', () => {
+  it('admits an absent origin and the kinds a person, a schedule or the API starts', () => {
+    expect(isTopLevelTaskOrigin(undefined)).toBe(true);
+    expect(isTopLevelTaskOrigin({ kind: 'api' })).toBe(true);
+    expect(isTopLevelTaskOrigin({ kind: 'chat' })).toBe(true);
+    expect(isTopLevelTaskOrigin({ kind: 'person' })).toBe(true);
+    expect(isTopLevelTaskOrigin({ kind: 'schedule' })).toBe(true);
+  });
+
+  it('refuses the subordinate kinds, and every kind it does not know', () => {
+    for (const kind of ['agent', 'goal', 'parent', 'teleport', 'constructor', '__proto__']) {
+      expect(isTopLevelTaskOrigin({ kind }), kind).toBe(false);
+    }
+  });
+});
+
+describe('taskOriginParentTag', () => {
+  it('spells the parent run when the tag fits Weft’s limit', () => {
+    expect(taskOriginParentTag('agent-run-1')).toBe('origin-parent:agent-run-1');
+    expect(taskOriginParentTag('x'.repeat(114))).toBe(`origin-parent:${'x'.repeat(114)}`);
+  });
+
+  it('hashes a parent run that would not fit, the same way every time', () => {
+    const long = 'x'.repeat(115);
+    const tag = taskOriginParentTag(long);
+
+    expect(tag).toMatch(/^origin-parent-sha256:[0-9a-f]{40}$/);
+    expect(taskOriginParentTag(long)).toBe(tag);
+    expect(taskOriginParentTag(`${long}y`)).not.toBe(tag);
+    expect(new TextEncoder().encode(tag).byteLength).toBeLessThanOrEqual(128);
+    // Multi-byte ids count in bytes, not characters.
+    expect(taskOriginParentTag('é'.repeat(60))).toStartWith('origin-parent-sha256:');
   });
 });
 

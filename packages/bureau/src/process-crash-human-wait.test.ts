@@ -14,7 +14,7 @@
  * `child.exited`, the marker file, or a bounded condition poll with a tiny real
  * delay, because LMDB's completion callbacks starve under a zero-delay loop.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
@@ -43,6 +43,7 @@ import {
 } from './test/process-crash-work-integrity-fixtures';
 import type { Bureau } from './types';
 import { createLmdbStorageFixture, createSqliteStorageFixture } from './test/storage-fixtures';
+import { readChildJson } from './test/child-output-file';
 
 const CHILD = join(import.meta.dir, 'test', 'process-crash-child.ts');
 const runtime = createDefaultRuntimeServices();
@@ -95,10 +96,10 @@ async function humanWaitScenario(
     const stderr = await new Response(child.stderr).text();
     expect(child.signalCode ?? stderr).toBe('SIGKILL');
     expect(existsSync(markerPath)).toBe(true);
-    const { runId, honoredSignal } = JSON.parse(readFileSync(markerPath, 'utf8')) as {
+    const { runId, honoredSignal } = readChildJson<{
       runId: string;
       honoredSignal?: string;
-    };
+    }>(markerPath);
     // COR-1578: of the two requests in one step, the child's live review names the honored one.
     const expectedSignal = twoCalls ? honoredSignal : HUMAN_WAIT_SIGNAL;
     const expectedPrompt =

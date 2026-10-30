@@ -87,7 +87,9 @@ import {
   AgentSnapshotError,
   checkAgentIdentifier,
   decodeAgentFile,
+  hashAgentFileBytes,
   parseAgentFile,
+  serializeNewAgentFile,
 } from './agent-file';
 import {
   type AgentReferenceDocument,
@@ -386,6 +388,17 @@ export interface AgentFileCatalog extends AgentFileWriter {
   tools(): readonly AgentToolDescription[];
   /** The agent for a file whose state is `ready`. */
   find(id: string): AnyRunnableAgent | undefined;
+  /**
+   * Builds an agent from `definition` as `create` would, and writes nothing (COR-1911): the same
+   * serialization, size limit, frontmatter schema and deployment checks (reserved names, the model,
+   * the tools, `toolApproval`, compaction), so a definition that would not load as a file is
+   * refused with the same field-named {@link AgentFileError} and one that would is built. The
+   * agent is not in the catalog, is not tied to a file or a snapshot, and exists only as long as
+   * the caller holds it. `id` names the agent in the run records it makes; it is not checked as a
+   * file identifier, because no file is named for it. A definition that lists `references` is
+   * refused (`references`), since the documents are read from beside a file and there is none.
+   */
+  ephemeral(id: string, definition: AgentFileDefinitionInput): AnyRunnableAgent;
   /** Rescan the directory; resolves once the catalog reflects it. */
   refresh(): Promise<void>;
   /**
@@ -705,6 +718,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     descriptor: BackendDescriptor,
     revision: number | undefined,
     documents: readonly AgentReferenceDocument[] = [],
+    bind = true,
   ): AnyRunnableAgent {
     const tools: Record<string, Tool> = {};
     for (const name of definition.tools) {
@@ -794,14 +808,47 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
             },
           }),
     }) as AnyRunnableAgent;
-    fileAgentBindings.set(agent, {
-      id,
-      hash,
-      definition,
-      ...(documents.length === 0 ? {} : { referenceDocuments: documents }),
-      ...(revision === undefined ? {} : { definitionRevision: revision }),
-    });
+    // An agent that is not tied to a file (`ephemeral`) has no binding, so a run of it records no
+    // snapshot and no hash: nothing about it outlives the run's own records.
+    if (bind) {
+      fileAgentBindings.set(agent, {
+        id,
+        hash,
+        definition,
+        ...(documents.length === 0 ? {} : { referenceDocuments: documents }),
+        ...(revision === undefined ? {} : { definitionRevision: revision }),
+      });
+    }
     return agent;
+  }
+
+  /**
+   * `problem` with each issue naming the field at fault, as a person editing a definition needs:
+   * an unknown tool by its place in `tools` (`tools.1`), and an unknown model as `model`. A file's
+   * problem names `tools` as a whole, because a file has no list to point into.
+   */
+  function fieldNamed(
+    problem: AgentFileProblem,
+    definition: AgentFileDefinition,
+  ): AgentFileProblem {
+    const named = (issues: readonly { path: string; message: string }[]): AgentFileProblem => ({
+      ...problem,
+      message: `The definition cannot be used: ${issues.map((issue) => `${issue.path}: ${issue.message}`).join('; ')}`,
+      issues,
+    });
+    if (problem.code === 'unknown-model' && problem.issues === undefined) {
+      return named([{ path: 'model', message: problem.message }]);
+    }
+    if (problem.code === 'unknown-tool') {
+      return named(
+        definition.tools.flatMap((name, index) =>
+          missingTools([name]).length === 0
+            ? []
+            : [{ path: `tools.${index}`, message: `"${name}" is not a registered tool` }],
+        ),
+      );
+    }
+    return problem;
   }
 
   /** The problem a model that is in the catalog but cannot be set up leaves a file with. */
@@ -1248,6 +1295,50 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
 
     find(id) {
       return directoryWatcher.entries().get(id)?.agent;
+    },
+
+    ephemeral(id, definition) {
+      const refuse = (problem: AgentFileProblem): never => {
+        throw new AgentFileError(problem.code, problem.message, problem);
+      };
+      const bytes = serializeNewAgentFile({ ...definition, a2a: false });
+      if (bytes.length > AGENT_FILE_SIZE_LIMIT) {
+        return refuse({
+          code: 'file-too-large',
+          message: `An agent definition may be at most ${AGENT_FILE_SIZE_LIMIT} bytes.`,
+        });
+      }
+      const text = decodeAgentFile(bytes);
+      const parsed = text === undefined ? undefined : parseAgentFile(id, text);
+      if (parsed === undefined) {
+        return refuse({ code: 'not-utf8', message: 'The agent definition is not valid UTF-8.' });
+      }
+      if (!parsed.ok) return refuse(parsed.problem);
+      const { definition: parsedDefinition } = parsed.file;
+      if (parsedDefinition.references !== undefined) {
+        const message =
+          'A definition that is being tried cannot list references: they name documents beside an agent file, and a tried definition has none. Remove references, or save the agent first.';
+        return refuse({
+          code: 'invalid-frontmatter',
+          message,
+          issues: [{ path: 'references', message }],
+        });
+      }
+      const checked = checkDeployment(id, parsedDefinition);
+      if ('problem' in checked) return refuse(fieldNamed(checked.problem, parsedDefinition));
+      try {
+        return buildAgent(
+          id,
+          hashAgentFileBytes(bytes),
+          parsedDefinition,
+          checked.descriptor,
+          1,
+          [],
+          false,
+        );
+      } catch (error) {
+        return refuse(modelSetupProblem(parsedDefinition, error));
+      }
     },
 
     refresh,

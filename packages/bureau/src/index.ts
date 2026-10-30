@@ -203,6 +203,7 @@ export type {
 export {
   AUDIT_EVENT_TYPES,
   auditTrailSkillSourceOwnerId,
+  auditTrailToolSourceOwnerId,
   computeInitialAuditSequence,
   createAuditTrail,
   encodeKey as encodeAuditEntryKey,
@@ -433,8 +434,11 @@ export type {
 export { SETTINGS_TOOL_NAMES } from './settings/settings-tools';
 export type { TaskToolGrant } from './task-registry';
 export type {
+  AgentTaskOrigin,
   ApiTaskOrigin,
   ChatTaskOrigin,
+  GoalTaskOrigin,
+  ParentTaskOrigin,
   PersonTaskOrigin,
   ScheduleTaskOrigin,
   StartTaskOrigin,
@@ -555,6 +559,7 @@ export type {
   AuditQueryRecord,
   BureauReviews,
   BureauContexts,
+  BureauAgents,
   BureauTasks,
   StartTaskOptions,
   TaskHandle,
@@ -562,6 +567,8 @@ export type {
   TaskInspection,
   TaskOutputOf,
   TaskReceiptQuery,
+  TryAgentOptions,
+  TryAgentResult,
   TaskRespondRequest,
   TaskRespondResult,
   BureauSchedules,

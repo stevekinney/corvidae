@@ -17,7 +17,7 @@
  * marker file, or a bounded condition poll with a tiny real delay (LMDB's
  * completion callbacks starve under a zero-delay macrotask loop).
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -55,6 +55,7 @@ import type { Bureau } from './types';
 import { unexpectedChildStderr } from './test/child-stderr';
 import { createLmdbStorageFixture, createSqliteStorageFixture } from './test/storage-fixtures';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
+import { readChildJson } from './test/child-output-file';
 
 const CHILD = join(import.meta.dir, 'test', 'process-crash-child.ts');
 const runtime = createDefaultRuntimeServices();
@@ -163,7 +164,7 @@ function scenarioStorage(backend: Backend, scenario: Scenario): Storage {
 
 function readMarker<T>(scenario: Scenario): T {
   expect(existsSync(scenario.markerPath)).toBe(true);
-  return JSON.parse(readFileSync(scenario.markerPath, 'utf8')) as T;
+  return readChildJson<T>(scenario.markerPath);
 }
 
 /** Spawns a crashing scenario and asserts the premise: SIGKILL plus a marker. */
