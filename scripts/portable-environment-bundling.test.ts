@@ -53,7 +53,8 @@ globalThis.environmentProbe = { engine: resolveEngineEnvironment(), provider: { 
       Bun: { env: { NODE_ENV: 'production', GOOGLE_API_KEY: 'bun-key' } },
       process: { env: { NODE_ENV: 'development', GOOGLE_API_KEY: 'node-key' } },
     });
-    expect(bun.engine.nodeEnv).toBe('production');
+    // Weft reads `process.env` whatever globals exist; on Bun the two are one object.
+    expect(bun.engine.nodeEnv).toBe('development');
     expect(bun.provider.googleApiKey).toBe('bun-key');
     expect(bun.serializedProvider).not.toContain('bun-key');
   } finally {

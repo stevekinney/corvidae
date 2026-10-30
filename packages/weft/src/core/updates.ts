@@ -371,18 +371,26 @@ export class UpdateCoordinator {
     return decode(raw) as UpdateResponse;
   }
 
-  /** Wait for an update response with timeout. Uses polling. */
-  async waitForResponse(updateId: string, timeout: number): Promise<UpdateResponse> {
+  /**
+   * Wait for an update response with timeout. Uses polling. An aborted `signal` (the engine
+   * disposing) ends the wait early with the same timeout error, so no poll timer outlives it.
+   */
+  async waitForResponse(
+    updateId: string,
+    timeout: number,
+    signal?: AbortSignal,
+  ): Promise<UpdateResponse> {
     const deadline = Date.now() + timeout;
 
     while (Date.now() < deadline) {
       const response = await this.getResponse(updateId);
       if (response) return response;
+      if (signal?.aborted === true) break;
 
       const remaining = deadline - Date.now();
       if (remaining <= 0) break;
 
-      await sleep(Math.min(POLL_INTERVAL_MS, remaining));
+      await sleep(Math.min(POLL_INTERVAL_MS, remaining), signal);
     }
 
     throw new UpdateTimeoutError(updateId, timeout);

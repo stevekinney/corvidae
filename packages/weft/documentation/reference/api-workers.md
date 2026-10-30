@@ -170,7 +170,8 @@ const RemoteWorkerClass: new (options: RemoteWorkerOptions) => RemoteWorkerSurfa
 | `buildId` | `string` | (required) | Operator-visible release this worker instance is running, included in its manifest |
 | `artifactDigest` | `string` | derived | Trusted digest of the executable artifact. When omitted, a placeholder tagged `declared-shape:<hash>` is derived from the declared workflow and activity names. Ignored when `manifest` is supplied |
 | `manifest` | `WorkerManifest` | derived | A complete, real manifest—typically from [`buildWorkerManifestFromRegistry`](#buildworkermanifestfromregistryengine-options)—advertised verbatim instead of the `declared-shape:` placeholder. `manifest.workflows` must declare exactly the workflow types in `workflows`, checked at construction |
-| `runtimeVersion` | `string` | `detectRuntimeVersion()` | Runtime or SDK version reported during registration |
+| `runtimeName` | `string` | `'unknown'` | Runtime name reported in the manifest, such as `'bun'` or `'node'`. The worker does not inspect its host, so the caller declares it. Ignored when `manifest` is supplied |
+| `runtimeVersion` | `string` | `'unknown'` | Runtime or SDK version reported during registration |
 | `startedAt` | `number` | `Date.now()` | Worker process start time in epoch milliseconds |
 | `capabilities` | `Record<string, JSON value>` | `{}` | JSON metadata such as region, hardware class, or feature flags |
 

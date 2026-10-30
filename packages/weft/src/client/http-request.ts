@@ -48,6 +48,14 @@ export interface HttpClientOptions {
    * subscription protocol without a real socket.
    */
   webSocketFactory?: WebSocketFactory;
+  /**
+   * Declare that the global `WebSocket` accepts an options bag with upgrade
+   * headers (Bun's extension), so auth headers can ride the live event stream's
+   * WebSocket handshake. Defaults to `false`, the platform-neutral assumption:
+   * with headers configured, `eventTransport: 'auto'` then uses fetch-based SSE.
+   * Ignored when `webSocketFactory` is supplied.
+   */
+  webSocketCarriesHeaders?: boolean;
 }
 
 /**
