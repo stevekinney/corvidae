@@ -402,6 +402,13 @@ export interface StepContext {
   conversation: Conversation;
   step: number;
   /**
+   * Reports that a guardrail acted on this step and the run is going on, which the run publishes
+   * as a `run.guardrail` event. Called by the guardrail hooks in validate mode. A tripwire
+   * guardrail does not call it: the halt it causes is the `run.tripwire` event. Absent where the
+   * host dispatches no events.
+   */
+  reportGuardrail?: ((firing: GuardrailFiring) => void) | undefined;
+  /**
    * The media sources resolved so far (see {@link GenerateContext.resolvedSources}):
    * at a `prepareStep` hook, the step boundary's derivation, which the input
    * guardrail reads to inspect each resolved body; at `onMaximumSteps`, the
@@ -414,6 +421,28 @@ export interface StepContext {
   elicit?:
     | (<T>(message: string, schema: ZodType<T>, options?: ElicitationOptions) => Promise<T | null>)
     | undefined;
+}
+
+/**
+ * What a guardrail reports when it acts on a step without halting the run (see
+ * {@link StepContext.reportGuardrail}). It names the guardrail and how it acted; it never carries
+ * the flagged text or the guardrail's `detail`, which can quote it.
+ */
+export interface GuardrailFiring {
+  /** The detector or validator that fired. */
+  readonly guardrailName: string;
+  /** What it found, such as `prompt-injection` or `pii`. */
+  readonly category: string;
+  /** Whether it checked the request (`input`) or the reply (`output`). */
+  readonly phase: 'input' | 'output';
+  /** How sure the guardrail was, from 0 to 1. */
+  readonly confidence: number;
+  /**
+   * The action the guardrail is set to take: `block` and `sanitize` for an input, `block` and
+   * `redact` for an output, or `warn`, which lets the step through. A `redact` or `sanitize` that
+   * has nothing to substitute falls back to a block.
+   */
+  readonly action: 'block' | 'warn' | 'sanitize' | 'redact';
 }
 
 /**

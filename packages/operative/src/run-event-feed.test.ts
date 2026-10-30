@@ -5,7 +5,9 @@ import * as operativeEvents from './events.ts';
 import {
   RunAbortedEvent,
   RunErrorEvent,
+  RunGuardrailEvent,
   RunStartedEvent,
+  RunTripwireEvent,
   StepCompletedEvent,
   StepGeneratedEvent,
   StepStartedEvent,
@@ -133,6 +135,26 @@ describe('the agent run event feed', () => {
     // planted there is expected to survive; a canary in `name` is not.
     expect(JSON.stringify(envelope?.payload['error'])).toContain(CANARY);
     expect(envelope?.payload).toMatchObject({ reason: 'user stopped it' });
+  });
+
+  it('projects a guardrail that acted and a tripwire with the same fields, and never the text', () => {
+    const data = {
+      guardrailName: 'output-pii',
+      category: 'pii',
+      phase: 'output' as const,
+      confidence: 1,
+    };
+    const acted = projectRunEvent(new RunGuardrailEvent(2, { ...data, action: 'redact' }));
+    expect(acted).toEqual({
+      kind: 'run.guardrail',
+      payload: { step: 2, ...data, action: 'redact' },
+    });
+
+    const halted = projectRunEvent(
+      new RunTripwireEvent(2, { ...data, detail: `quotes ${CANARY}` }),
+    );
+    expect(halted?.kind).toBe('run.tripwire');
+    expect(JSON.stringify(halted)).not.toContain(CANARY);
   });
 
   it('projects tool calls to identity only, never their arguments', () => {

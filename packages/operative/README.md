@@ -2713,6 +2713,7 @@ Every detector/validator returns a `DetectionResult`/`ValidationResult` carrying
 
 - **`mode: 'validate'`** (default)—a tripped detector/validator substitutes a blocked/sanitized/redacted response and the run continues, per each guardrail's own `action`.
 - **`mode: 'tripwire'`**—overrides `input.action`/`output.action` to `'tripwire'` regardless of what they were set to. A tripped wire throws a `GuardrailTripwireError`, hard-halting the run with `finishReason: 'tripwire'` and a `run.tripwire` event identifying the guardrail, instead of substituting a blocked or redacted response. Use this where a false negative is unacceptable and a human should look at the transcript before the agent takes another step.
+- **A guardrail that acts and lets the run go on** (`mode: 'validate'`: a blocked or sanitized input, a blocked or redacted reply, or a `warn`) is a `run.guardrail` event on the run, published on the run event feed (`operative.runs.events`) with the `step`, `guardrailName`, `category`, `phase`, `confidence` and `action`. Like `run.tripwire` it leaves out the flagged text and the guardrail's `detail`. A tripwire fires `run.tripwire` and never `run.guardrail`. A guardrail hook reports through `StepContext.reportGuardrail`, which the run supplies.
 
 `withMinimumTripwireConfidence(detector, threshold)` wraps a detector so it only trips at or above a confidence floor, letting a broad detector stay quiet on low-confidence hits while still reaching the tripwire on high-confidence ones.
 
