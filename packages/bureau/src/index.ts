@@ -383,6 +383,16 @@ export type {
 export { SETTINGS_TOOL_NAMES } from './settings/settings-tools';
 export type { TaskToolGrant } from './task-registry';
 export type {
+  ApiTaskOrigin,
+  ChatTaskOrigin,
+  PersonTaskOrigin,
+  ScheduleTaskOrigin,
+  StartTaskOrigin,
+  TaskOrigin,
+  TaskOriginKind,
+  TaskPersonSurface,
+} from './task-origin';
+export type {
   EvalScore,
   OnlineEvalJudge,
   OnlineEvalSampler,

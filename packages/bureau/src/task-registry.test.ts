@@ -19,7 +19,8 @@ import {
   type TaskCleanupState,
   type TaskRegistryHost,
 } from './task-registry';
-import { rejectionOf } from '@lostgradient/testing/promise-outcome';
+import type { TaskOrigin } from './task-origin';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { CancelDurableRunOutcome, PendingReview } from './types';
 
 const OWNER = 'api-key:alice';
@@ -127,6 +128,7 @@ async function admit(
     incarnation: 'incarnation-1',
     agentName: 'assistant',
     owner: OWNER,
+    origin: { kind: 'api' },
     message: `message of ${taskId}`,
     ...overrides,
   });
@@ -1039,6 +1041,9 @@ describe('a task record with a malformed field', () => {
     ['a settlement with a numeric message', { settled: { ...settled, message: 4 } }],
     ['a settlement with a malformed answer', { settled: { ...settled, answer: { text: 1 } } }],
     ['an unknown cleanup state', { cleanup: 'tidy' }],
+    ['an origin that is not an object', { origin: 'chat' }],
+    ['an origin without a kind', { origin: { principal: 'p' } }],
+    ['an origin with an empty kind', { origin: { kind: '' } }],
   ];
 
   it.each(MALFORMED)(
@@ -1072,6 +1077,149 @@ describe('a task record with a malformed field', () => {
 
     const view = await registry.get('run-bad');
     expect(view?.status).toBe('completed');
+  });
+});
+
+describe('a task’s origin', () => {
+  const ORIGINS: ReadonlyArray<readonly [string, TaskOrigin]> = [
+    ['chat', { kind: 'chat', contextId: 'context-1', agentName: 'assistant', principal: OWNER }],
+    ['person', { kind: 'person', principal: OWNER, surface: 'palette' }],
+    ['schedule', { kind: 'schedule', scheduleId: 'schedule-1', fireId: 'fire-1' }],
+    [
+      'manual schedule',
+      { kind: 'schedule', scheduleId: 'schedule-1', fireId: 'fire-2', manual: true },
+    ],
+    ['api', { kind: 'api' }],
+  ];
+
+  it.each(ORIGINS)(
+    'reads back the %s origin it was admitted with, identifiers included',
+    async (_label, origin) => {
+      const { registry, kv } = build();
+      await admit(registry, 'run-1', { origin });
+
+      const view = await registry.get('run-1');
+      const record = await registry.record('run-1');
+      expect(view?.origin).toEqual(origin);
+      expect(record?.origin).toEqual(origin);
+      // A stored record is JSON, so what was read is what a restart reads.
+      const raw = await kv.get(`${TASK_RECORD_KEY_PREFIX}run-1`);
+      expect((JSON.parse(raw ?? '{}') as { origin?: unknown }).origin).toEqual(origin);
+    },
+  );
+
+  it('records no origin for an admission that has none, and reads it as null', async () => {
+    const { registry, kv } = build();
+    await admit(registry, 'run-1', { origin: undefined });
+
+    const view = await registry.get('run-1');
+    expect(view?.origin).toBeNull();
+    const raw = await kv.get(`${TASK_RECORD_KEY_PREFIX}run-1`);
+    expect(Object.hasOwn(JSON.parse(raw ?? '{}') as object, 'origin')).toBe(false);
+  });
+
+  it('reads a record stored before origins were kept as origin null, without a diagnostic', async () => {
+    const { registry, kv, diagnostics } = build();
+    // The shape every record had before COR-1867: no `origin` field at all.
+    await kv.set(
+      `${TASK_RECORD_KEY_PREFIX}run-old`,
+      JSON.stringify(storedRecord({ taskId: 'run-old' })),
+    );
+
+    const view = await registry.get('run-old');
+    const listed = await registry.enumerate({ limit: 50, offset: 0 });
+
+    expect(view?.origin).toBeNull();
+    expect(listed.tasks.map((task) => task.origin)).toEqual([null]);
+    expect(diagnostics).toEqual([]);
+  });
+});
+
+describe('a task record whose origin this release cannot read (COR-1867)', () => {
+  const UNREADABLE_ORIGINS: ReadonlyArray<readonly [string, unknown]> = [
+    ['a kind this release does not know', { kind: 'agent', parentRunId: 'run-0' }],
+    ['a chat without its context', { kind: 'chat', agentName: 'a', principal: 'p' }],
+    ['a person on an unknown surface', { kind: 'person', principal: 'p', surface: 'fax' }],
+    ['a person with an empty principal', { kind: 'person', principal: '', surface: 'web' }],
+    ['a schedule without its fire', { kind: 'schedule', scheduleId: 's' }],
+    [
+      'a schedule with manual false',
+      { kind: 'schedule', scheduleId: 's', fireId: 'f', manual: false },
+    ],
+  ];
+
+  it.each(UNREADABLE_ORIGINS)(
+    'stays readable, settles, lists, and is removed, and its view shows origin null: %s',
+    async (_label, origin) => {
+      const { registry, kv, diagnostics } = build();
+      const key = `${TASK_RECORD_KEY_PREFIX}run-other`;
+      await kv.set(key, JSON.stringify(storedRecord({ taskId: 'run-other', origin })));
+
+      const view = await registry.get('run-other');
+      const listed = await registry.enumerate({ limit: 50, offset: 0 });
+      const settled = await registry.recordSettled('run-other', {
+        at: '2026-09-01T00:00:00.000Z',
+        status: 'completed',
+        finishReason: 'stop-condition',
+        message: null,
+      });
+      const settledView = await registry.get('run-other');
+      const stored = JSON.parse((await kv.get(key)) ?? '{}') as { origin?: unknown };
+
+      expect(view?.origin).toBeNull();
+      expect(listed.tasks.map((task) => task.id)).toEqual(['run-other']);
+      expect(settled).toBe(true);
+      expect(settledView?.status).toBe('completed');
+      // Settling keeps the origin as written, so the release that wrote it still reads it.
+      expect(stored.origin).toEqual(origin);
+
+      await registry.remove('run-other');
+      expect(await registry.record('run-other')).toBeUndefined();
+      expect(diagnostics).toEqual([]);
+    },
+  );
+
+  it('filters by the kind as stored, whether or not this release knows it', async () => {
+    const { registry, kv } = build();
+    await kv.set(
+      `${TASK_RECORD_KEY_PREFIX}run-chat`,
+      JSON.stringify(
+        storedRecord({
+          taskId: 'run-chat',
+          origin: { kind: 'chat', agentName: 'a', principal: 'p' },
+        }),
+      ),
+    );
+    await admit(registry, 'run-api');
+
+    const chats = await registry.enumerate({ limit: 50, offset: 0, origin: 'chat' });
+
+    // The chat origin is malformed for this release, so it views null but still matches its kind.
+    expect(chats.tasks.map((task) => task.id)).toEqual(['run-chat']);
+    expect(chats.tasks[0]?.origin).toBeNull();
+  });
+
+  it('keeps a start that states an empty principal readable', async () => {
+    const { registry } = build();
+    const origin = { kind: 'person', principal: '', surface: 'web' } as const;
+    await admit(registry, 'run-empty', { owner: '', origin });
+
+    const view = await registry.get('run-empty');
+
+    expect(view).toBeDefined();
+    const record = await registry.record('run-empty');
+    expect(record?.origin).toEqual(origin);
+  });
+
+  it('refuses at admission an origin the reader could not store', async () => {
+    const { registry } = build();
+
+    expect(
+      await throwingRejectionOf(
+        admit(registry, 'run-bad', { origin: { kind: '' } as unknown as TaskOrigin }),
+      ),
+    ).toThrow('origin');
+    expect(await registry.record('run-bad')).toBeUndefined();
   });
 });
 

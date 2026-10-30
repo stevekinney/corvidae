@@ -113,6 +113,8 @@ describe('settling a catalog task from the hook', () => {
       taskId: 'agent-run-1',
       owner: 'api-key:alice',
       agentName: 'asker',
+      // The original start is gone with its record, so nothing names a surface (COR-1867).
+      origin: { kind: 'api' },
       createdAt: '2026-10-17T12:00:00.000Z',
       settled: { status: 'completed', answer: { text: 'the answer' } },
     });
@@ -129,6 +131,7 @@ describe('settling a catalog task from the hook', () => {
       incarnation: '',
       agentName: 'asker',
       owner: 'api-key:alice',
+      origin: { kind: 'api' },
       message: 'which environment?',
     });
 
@@ -144,6 +147,7 @@ describe('settling a catalog task from the hook', () => {
       incarnation: '',
       agentName: 'asker',
       owner: 'api-key:alice',
+      origin: { kind: 'api' },
       message: 'which environment?',
     });
 
