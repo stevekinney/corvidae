@@ -50,6 +50,7 @@ describe('the controls', () => {
       'retention.memory': 'fields',
       'retention.logs': 'fields',
       'retention.notifications': 'fields',
+      'retention.hookDeliveries': 'fields',
       'logs.maximumLinesPerRun': 'number',
       'retention.checkpoints': 'literal-or-fields',
       'sessionInput.sessionBacklogLimit': 'number',

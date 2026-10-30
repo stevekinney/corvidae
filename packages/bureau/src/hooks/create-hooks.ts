@@ -265,6 +265,8 @@ export interface CreatedHooks {
    * permanent failure that would end the delivery for good.
    */
   resume(): Promise<number>;
+  /** Removes settled deliveries last written more than the given milliseconds ago; resolves with how many. */
+  prune(olderThanMilliseconds: number): Promise<number>;
 }
 
 function viewOf(record: HookRecord): Hook {
@@ -927,5 +929,6 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
       for (const envelope of waiting) dispatch(envelope);
       return deliveries.resume();
     },
+    prune: (olderThanMilliseconds) => deliveries.prune(olderThanMilliseconds),
   };
 }

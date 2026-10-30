@@ -2122,7 +2122,7 @@ export function createScheduledFireApprovalHook(
 /**
  * Whether a maintenance pass had anything to drive: a durable engine, the audit trail, governed
  * memory (COR-1546, whose deletions advance only when asked to), a notification retention window
- * (COR-1941), or terminal tasks it removed.
+ * (COR-1941), a hook delivery retention window (COR-1943), or terminal tasks it removed.
  * Kept apart from `createBureau` so its complexity stays inside the repository's bound.
  */
 function hasMaintenanceSurface(surface: {
@@ -2130,6 +2130,7 @@ function hasMaintenanceSurface(surface: {
   readonly auditTrail: boolean;
   readonly memory: boolean;
   readonly notificationRetention: boolean;
+  readonly hookDeliveryRetention: boolean;
   readonly tasksRemoved: number;
 }): boolean {
   return (
@@ -2137,6 +2138,7 @@ function hasMaintenanceSurface(surface: {
     surface.auditTrail ||
     surface.memory ||
     surface.notificationRetention ||
+    surface.hookDeliveryRetention ||
     surface.tasksRemoved > 0
   );
 }
@@ -2171,12 +2173,15 @@ function needsAutomaticMaintenance(composed: {
   readonly keyValueStore: boolean;
   readonly activeAuditRetention: boolean;
   readonly activeNotificationRetention: boolean;
+  readonly activeHookDeliveryRetention: boolean;
 }): boolean {
   return (
     composed.durableEngine ||
     composed.memory ||
     (composed.keyValueStore &&
-      (composed.activeAuditRetention || composed.activeNotificationRetention))
+      (composed.activeAuditRetention ||
+        composed.activeNotificationRetention ||
+        composed.activeHookDeliveryRetention))
   );
 }
 
@@ -5398,6 +5403,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         keyValueStore: Boolean(runtime.kv),
         activeAuditRetention: auditRetention !== undefined && auditRetention !== 'forever',
         activeNotificationRetention: currentSettings()['retention.notifications'] !== undefined,
+        activeHookDeliveryRetention: currentSettings()['retention.hookDeliveries'] !== undefined,
       }) && options.maintenance !== 'manual'
     );
   }
@@ -13385,6 +13391,27 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
+   * COR-1943 — removes the settled hook deliveries last written longer ago than
+   * `retention.hookDeliveries`, read per pass so a change applies to the next one. With the setting
+   * unset, or no hooks, nothing is removed; a pending delivery never is. A failure is reported and
+   * never stops the rest of a pass.
+   */
+  async function pruneHookDeliveries(pass: 'Manual' | 'Automatic'): Promise<void> {
+    const window = currentSettings()['retention.hookDeliveries'];
+    if (window === undefined || hooksInstance === undefined) return;
+    try {
+      await hooksInstance.prune(window.olderThan);
+    } catch (error: unknown) {
+      diagnose({
+        level: 'error',
+        scope: 'durable-maintenance',
+        message: `[bureau] ${pass} hook delivery retention pass failed: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
+  }
+
+  /**
    * COR-1546 — advances every open governed-memory deletion: resumes an interrupted synchronous
    * lane and settles the bounded-async targets, which stay pending until something asks. Governed
    * memory runs nothing on a timer of its own, so a record forgotten through `bureau.memory.forget`
@@ -13584,6 +13611,8 @@ async function constructBureau<const D extends AgentDefinitions>(
       await pruneWorkflowLogs('Manual');
       // COR-1941 — notifications past `retention.notifications`.
       await pruneNotifications('Manual');
+      // COR-1943 — settled hook deliveries past `retention.hookDeliveries`.
+      await pruneHookDeliveries('Manual');
       // COR-1546 — governed memory's deletions advance only when asked to.
       try {
         await propagateMemoryDeletions();
@@ -13623,6 +13652,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       auditTrail: Boolean(auditTrailInstance),
       memory: runtime.memory !== undefined,
       notificationRetention: currentSettings()['retention.notifications'] !== undefined,
+      hookDeliveryRetention: currentSettings()['retention.hookDeliveries'] !== undefined,
       tasksRemoved,
     })
       ? true
@@ -13898,6 +13928,8 @@ async function constructBureau<const D extends AgentDefinitions>(
         await pruneWorkflowLogs('Automatic');
         // COR-1941 — notifications past `retention.notifications`.
         await pruneNotifications('Automatic');
+        // COR-1943 — settled hook deliveries past `retention.hookDeliveries`.
+        await pruneHookDeliveries('Automatic');
         // COR-1546 — governed memory's deletions advance only when asked to.
         try {
           await propagateMemoryDeletions();

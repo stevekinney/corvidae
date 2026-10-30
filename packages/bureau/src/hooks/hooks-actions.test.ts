@@ -359,19 +359,21 @@ describe('a start-workflow hook', () => {
     // `sending`, the delivery pending, its lease gone.
     const storage = await database.reopen();
     const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
+    const hookStore = createHookStore(kv);
     const [deliveryKey] = await kv.list(HOOK_DELIVERY_KEY_PREFIX);
-    const record = JSON.parse((await kv.get(deliveryKey!))!) as HookDeliveryRecord;
+    const stored = (await hookStore.getDelivery(
+      deliveryKey!.slice(HOOK_DELIVERY_KEY_PREFIX.length),
+    ))!;
+    const record = stored.record;
     const { finishedAt: _finished, receipt: _receipt, ...sending } = record.attempts[0]!;
-    await kv.set(
-      deliveryKey!,
-      JSON.stringify({
-        ...record,
-        status: 'pending',
-        attempts: [{ ...sending, outcome: 'sending' }],
-        leaseUntil: 0,
-        revision: record.revision + 1,
-      } satisfies HookDeliveryRecord),
-    );
+    // Through the store, so the pending index key comes back with the record, as a real write has it.
+    await hookStore.replaceDelivery(stored, {
+      ...record,
+      status: 'pending',
+      attempts: [{ ...sending, outcome: 'sending' }],
+      leaseUntil: 0,
+      revision: record.revision + 1,
+    } satisfies HookDeliveryRecord);
 
     const second = await openWorkflowHooks({ storage, directory, now });
     const [replayed] = await waitForSettledDeliveries(second.harness.bureau, hook.id, 1);
