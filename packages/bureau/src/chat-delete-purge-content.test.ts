@@ -641,8 +641,6 @@ describe('contexts.delete purges every content-bearing feature of a chat (COR-19
     // The bytes of a file nothing holds any more go with their asset's record, at the next collection.
     await world.bureau.assets!.collectGarbage().result();
     const after = await scan(world.fixture);
-    for (const [k, v] of after)
-      if (k.startsWith('app:agent-bureau:memory')) console.log(k, v.slice(0, 700));
     const surviving = Object.fromEntries(
       allSentinels(...doomed.map((chat) => chat.sentinels))
         // The one file a kept chat also holds stays, with its bytes, as the kept chat's own.
@@ -677,5 +675,75 @@ describe('contexts.delete purges every content-bearing feature of a chat (COR-19
       .filter(([, value]) => holding(after, value).length === 0)
       .map(([name, value]) => `${name}:${value}`);
     expect(lost).toEqual([]);
+  });
+});
+
+describe('what a chat delete leaves to others (COR-1934)', () => {
+  it('never deletes an asset another principal owns that the chat only read', async () => {
+    const world = await openWorld();
+    const assets = world.bureau.assets!;
+    const BOB = { id: 'api-key:bob', privileged: true } as const;
+    // Bob's file, readable by Alice, and held by nothing of Bob's own.
+    const admission = await assets.admit(
+      { source: { kind: 'inline', bytes: fileBytes('BOBSFILE') }, readers: [ALICE] },
+      BOB,
+    );
+    const admitted = await admission.work.result();
+    expect(admitted.outcome).toBe('completed');
+    world.plan.current = sentinelsOf('Reader', 'question');
+    const task = await a2aSend(world, 'asker', 'hello', {
+      parts: [
+        { text: 'hello' },
+        {
+          url: `http://localhost/assets/${admission.assetId}/content`,
+          mediaType: 'image/png',
+          filename: 'bobs.png',
+        },
+      ],
+    });
+    const claimed = async () => {
+      const descriptor = await assets.inspect(admission.assetId, BOB, { projection: 'privileged' });
+      return (
+        descriptor.projection === 'privileged' &&
+        descriptor.retention.references.some((reference) =>
+          reference.holderId.startsWith('session-row:'),
+        )
+      );
+    };
+    await waitForCondition(claimed, 'the chat never claimed the file it read');
+
+    const report = await world.bureau.contexts.delete(task.contextId);
+    expect(report.deleted).toBe(true);
+    await world.bureau.maintain();
+    await assets.collectGarbage().result();
+
+    // The chat's claim is released and the file is Bob's: it stays, bytes included.
+    const descriptor = await assets.inspect(admission.assetId, BOB);
+    expect(descriptor.state).toBe('available');
+    expect(assetIdsHolding(await scan(world.fixture), 'BOBSFILE')).toEqual([admission.assetId]);
+  });
+
+  it('forgets a chat’s memories although its task records are gone, since the chat names its owner and agent', async () => {
+    const world = await openWorld();
+    const chat = await useEveryFeature(world, 'approval', 'Orphaned');
+    // Task retention shorter than memory's: nothing left to say whose memory the runs wrote.
+    const registry = world.bureau.internals.kv!;
+    for (const key of await registry.list('bureau-task:v1:')) await registry.delete(key);
+    const before = await scan(world.fixture);
+    expect(
+      holding(before, chat.sentinels['answer']!).some((key) =>
+        key.startsWith(MEMORY_RECORD_PREFIX),
+      ),
+    ).toBe(true);
+
+    await world.bureau.contexts.delete(chat.task.contextId);
+    await world.bureau.maintain();
+
+    const after = await scan(world.fixture);
+    expect(
+      holding(after, chat.sentinels['answer']!).filter((key) =>
+        key.startsWith(MEMORY_RECORD_PREFIX),
+      ),
+    ).toEqual([]);
   });
 });

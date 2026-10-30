@@ -76,6 +76,7 @@ import {
 import type { DurableEventHistory, DurableEventProducer } from './durable-event-history';
 import { deletionMarkerKindFor } from './durable-event-history';
 import type { ChatAsset } from './chat-asset-purge';
+import type { RunMemoryPlacement } from './chat-memory-purge';
 import { serializeUnknownError } from './serialization';
 import type { DiagnosticSink } from './types';
 
@@ -110,6 +111,12 @@ export interface DeletedChat {
    * gone by the time the purge runs. Absent in a record written before they were named.
    */
   readonly assets?: readonly ChatAsset[] | undefined;
+  /**
+   * Whose memory, and under which agent, the chat's runs wrote, named before the delete because
+   * the task records that otherwise say so can be gone by the time the purge runs. Absent in a
+   * record written before they were named.
+   */
+  readonly memoryPlacements?: readonly RunMemoryPlacement[] | undefined;
 }
 
 /** What {@link createChatContentPurge} reaches out to. */
@@ -152,7 +159,12 @@ export interface ChatContentPurgeDependencies {
    * governed memory.
    */
   readonly purgeMemories:
-    ((sessionId: string, runIds: ReadonlySet<string>) => Promise<void>) | undefined;
+    | ((
+        sessionId: string,
+        runIds: ReadonlySet<string>,
+        placements: readonly RunMemoryPlacement[],
+      ) => Promise<void>)
+    | undefined;
   /**
    * Deletes the managed assets the chat held that nothing else holds (`chat-asset-purge.ts`);
    * `undefined` without an asset service.
@@ -232,7 +244,20 @@ function pendingValue(chat: DeletedChat): string {
     runIds: [...new Set(chat.runIds)],
     ...(chat.settledAt === undefined ? {} : { settledAt: chat.settledAt }),
     ...(chat.assets === undefined ? {} : { assets: chat.assets }),
+    ...(chat.memoryPlacements === undefined ? {} : { memoryPlacements: chat.memoryPlacements }),
   });
+}
+
+function parsePlacements(value: unknown): RunMemoryPlacement[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const placements: RunMemoryPlacement[] = [];
+  for (const entry of value as unknown[]) {
+    if (typeof entry !== 'object' || entry === null) return undefined;
+    const { owner, agentName } = entry as Record<string, unknown>;
+    if (typeof owner !== 'string' || typeof agentName !== 'string') return undefined;
+    placements.push({ owner, agentName });
+  }
+  return placements;
 }
 
 function parseAssets(value: unknown): ChatAsset[] | undefined {
@@ -251,7 +276,11 @@ function parsePending(text: string): DeletedChat | undefined {
   try {
     const value: unknown = JSON.parse(text);
     if (typeof value !== 'object' || value === null) return undefined;
-    const { sessionId, incarnation, runIds, settledAt, assets } = value as Record<string, unknown>;
+    const { sessionId, incarnation, runIds, settledAt, assets, memoryPlacements } = value as Record<
+      string,
+      unknown
+    >;
+    const parsedPlacements = parsePlacements(memoryPlacements);
     const parsedAssets = parseAssets(assets);
     if (
       typeof sessionId !== 'string' ||
@@ -267,6 +296,7 @@ function parsePending(text: string): DeletedChat | undefined {
       runIds,
       ...(typeof settledAt === 'number' && Number.isFinite(settledAt) ? { settledAt } : {}),
       ...(parsedAssets === undefined ? {} : { assets: parsedAssets }),
+      ...(parsedPlacements === undefined ? {} : { memoryPlacements: parsedPlacements }),
     };
   } catch {
     return undefined;
@@ -397,7 +427,9 @@ export function createChatContentPurge(
       await step(runId, () => dependencies.purgeRun?.(runId) ?? Promise.resolve());
     await step(undefined, async () => dependencies.audit()?.redact(runIds));
     await step(undefined, async () => dependencies.purgeReviews?.(runIds));
-    await step(undefined, async () => dependencies.purgeMemories?.(chat.sessionId, runIds));
+    await step(undefined, async () =>
+      dependencies.purgeMemories?.(chat.sessionId, runIds, chat.memoryPlacements ?? []),
+    );
     await step(undefined, async () => dependencies.purgeLedgers?.(runIds));
     await step(undefined, async () => dependencies.redactTaskRecords?.(runIds));
 

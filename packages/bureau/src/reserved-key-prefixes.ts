@@ -295,7 +295,11 @@ export const SHARED_KEY_FAMILIES_OF_A_CHAT: readonly ReservedKeyFamily[] = [
   ),
   purgedButUnexercised(
     'state:',
-    'a workflow’s scoped state: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+    'a workflow’s execution-scoped state (`state:execution:<run>:`): no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
+  kept(
+    'state:workflow-scope:',
+    'state shared by every run of a workflow type, written only by an application that uses `engine.atomicState().workflow`; neither Bureau nor Operative does, and it is not a chat’s, so the engine’s purge leaves it',
   ),
   purgedButUnexercised(
     'tool-effect:',
@@ -375,14 +379,24 @@ export const SHARED_KEY_FAMILIES_OF_A_CHAT: readonly ReservedKeyFamily[] = [
   // Weft: families that belong to no chat's runs: the host's schedules and workers, the engine's
   // own bookkeeping, and the A2A push-notification outbox, which only a host that configures push
   // notifications writes.
-  kept(
+  purgedButUnexercised(
     'a2a:',
-    'Weft’s A2A stores: the push-notification configurations of a host that configures push (a caller’s URL and token fingerprint), and the task store Bureau does not use, since its A2A mount keeps `bureau-a2a-task:v1:`; the push projector’s sweep removes a configuration whose task is gone, and a chat delete does not',
+    'Weft’s A2A stores: the push-notification configurations of a host that configures push (a caller’s URL and token fingerprint), which the class test does not; a chat delete deletes its tasks’ configurations through the sender (`create-bureau-handler.ts`, `session.deleted`), and Bureau’s own task store is `bureau-a2a-task:v1:`',
   ),
-  ...['appdidem:', 'appdlv:', 'appdseq:', 'appdterm:', 'appdue:', 'appobx:'].map((prefix) =>
-    kept(
-      prefix,
-      'Weft’s application delivery outbox, which carries A2A push notifications for a host that configures push; a delivery’s payload is a projection of the task’s events, kept until the push projector’s sweep and the outbox’s retention remove it, not by a chat delete (a known gap, named in external-control-plane.md)',
+  purgedButUnexercised(
+    'appdlv:',
+    'Weft’s delivery outbox record, which carries an A2A push notification (a projection of the task’s status message and terminal reply) for a host that configures push, which the class test does not; a chat delete cancels the task’s configurations and purges their deliveries by destination (`create-bureau-handler.ts`, `session.deleted`)',
+  ),
+  ...[
+    ['appdidem:', 'the binding of a delivery’s idempotency key to its delivery id'],
+    ['appdseq:', 'the listing index of the outbox’s deliveries: delivery ids in order'],
+    ['appdterm:', 'the index of the outbox’s settled deliveries: delivery ids by time'],
+    ['appdue:', 'the time index of the outbox’s deliveries: delivery ids by time'],
+    ['appobx:', 'the outbox header: its sequence allocator and open-delivery counter'],
+  ].map(([prefix, holds]) =>
+    contentFree(
+      prefix!,
+      `Weft’s delivery outbox, used for A2A push notifications: ${holds}; the delivery record (appdlv:) holds the payload and is purged`,
     ),
   ),
   contentFree('audit:bulk:', 'Weft’s audit of a bulk operation: its request id, filter and counts'),

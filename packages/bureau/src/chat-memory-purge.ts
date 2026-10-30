@@ -6,9 +6,11 @@
  * That record is the chat's words, kept for as long as memory's own retention keeps it, so a
  * chat's delete forgets it (owner decision: a chat delete deletes the chat's memories).
  *
- * The chat is gone by the time this runs, so it cannot say whose memory to read. Each run's task
- * record (kept past the delete, with its text dropped) names the agent that ran it and the owner
- * of record, which are the collection and the partition the record was written under. The records
+ * The chat is gone by the time this runs, so it cannot say whose memory to read. The chat names its
+ * session's owner and agent before it is deleted (`DeletedChat.memoryPlacements`), because the
+ * task records can be gone by then; each run's task record (kept past the delete, with its text
+ * dropped) adds the agent that ran it and the owner of record, which cover a child run. The owner
+ * and the agent are the partition and the collection the record was written under. The records
  * are then forgotten as a source deletion, as `bureau.memory.forget` does, so every derived copy
  * goes with them. A record under a legal hold is kept, as the hold requires; the deletion resumes
  * when the hold is released.
@@ -97,10 +99,18 @@ async function listWhole(
  */
 export async function purgeChatMemories(
   dependencies: ChatMemoryPurgeDependencies,
-  chat: { readonly sessionId: string; readonly runIds: ReadonlySet<string> },
+  chat: {
+    readonly sessionId: string;
+    readonly runIds: ReadonlySet<string>;
+    /** Where the chat named its runs' memory before it was deleted; read with each run's task record. */
+    readonly placements?: readonly RunMemoryPlacement[] | undefined;
+  },
 ): Promise<void> {
   const { memory, tenantId } = dependencies;
   const places = new Map<string, { owner: string; agentName: string }>();
+  for (const placement of chat.placements ?? []) {
+    places.set(`${placement.owner}\u0000${placement.agentName}`, placement);
+  }
   for (const runId of chat.runIds) {
     const placement = await dependencies.placementOf(runId);
     if (placement !== undefined) {

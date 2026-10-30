@@ -183,7 +183,7 @@ import type { AssetService } from './assets/types';
 import type { DefinitionScannerHealth } from './definition-scanner';
 import { createAssetClaimReconciler } from './asset-claim-reconciliation';
 import { purgeChatAssets, type ChatAsset } from './chat-asset-purge';
-import { purgeChatMemories } from './chat-memory-purge';
+import { purgeChatMemories, type RunMemoryPlacement } from './chat-memory-purge';
 import {
   AUDIT_AGENT_OWNER_PREFIX,
   AUDIT_SCHEDULE_OWNER_PREFIX,
@@ -13781,7 +13781,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     purgeMemories:
       runtime.memory === undefined
         ? undefined
-        : async (sessionId, runIds) => {
+        : async (sessionId, runIds, placements) => {
             await purgeChatMemories(
               {
                 memory: runtime.memory!,
@@ -13795,7 +13795,7 @@ async function constructBureau<const D extends AgentDefinitions>(
                     : { agentName: record.agentName, owner: record.owner };
                 },
               },
-              { sessionId, runIds },
+              { sessionId, runIds, placements },
             );
           },
     purgeSessionInput:
@@ -14192,9 +14192,29 @@ async function constructBureau<const D extends AgentDefinitions>(
       sessionRowHolderPrefix(session.id, session.incarnation),
     );
     for (const claim of claims) {
+      // An asset the chat's owner only read (another principal's, shared with them) is that
+      // principal's to keep or delete: the chat released its claim, and that is all it did.
+      if (claim.ownerId !== context.principalId) continue;
       found.set(claim.assetId, { assetId: claim.assetId, ownerId: claim.ownerId });
     }
     return [...found.values()];
+  }
+
+  /**
+   * COR-1934 — whose memory, and under which agent, the chat's runs wrote, named before the delete
+   * because the task records that otherwise say so can be gone by the time the purge runs (a
+   * `retention.tasks` shorter than memory's retention).
+   */
+  function chatMemoryPlacementsOf(
+    session: AgentSession,
+    runIds: readonly string[],
+  ): RunMemoryPlacement[] {
+    const placements = new Map<string, RunMemoryPlacement>();
+    for (const runId of runIds) {
+      const owner = resolveRunMemoryOwner(session.metadata, runId);
+      placements.set(`${owner}\u0000${session.agentName}`, { owner, agentName: session.agentName });
+    }
+    return [...placements.values()];
   }
 
   async function releaseSessionGeneratedAssets(session: AgentSession): Promise<void> {
@@ -14260,11 +14280,13 @@ async function constructBureau<const D extends AgentDefinitions>(
     if (session) {
       // COR-1934 — before anything is removed: the purge that follows the commit is owed from here,
       // and a delete that cannot record it is refused, so the chat is deleted again whole.
+      const runIds = await chatRunIdsOf(session);
       const deletedChat: DeletedChat = {
         sessionId: id,
         incarnation: session.incarnation,
-        runIds: await chatRunIdsOf(session),
+        runIds,
         assets: await chatAssetsOf(session),
+        memoryPlacements: chatMemoryPlacementsOf(session, runIds),
       };
       await chatContentPurge.record(deletedChat);
       await prepareSessionsForRemoval([session]);

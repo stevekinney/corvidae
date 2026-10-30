@@ -150,7 +150,22 @@ describe('purgeChatMemories', () => {
     expect(everything.map((record) => record.content)).not.toContain('original answer');
   });
 
-  it('does nothing for a chat whose runs left no placement, and rejects when a record cannot be forgotten', async () => {
+  it('forgets from the placements the chat named before it was deleted when its runs left no record', async () => {
+    const store = memory();
+    await remember(store, 'orphaned answer', { runId: 'run-1', sessionId: 'chat-1' });
+    await remember(store, 'another chat', { runId: 'run-3', sessionId: 'chat-2' });
+
+    // The task records are gone: only what the chat named says whose memory, and under which agent.
+    await purgeChatMemories(dependencies(store), {
+      sessionId: 'chat-1',
+      runIds: new Set(['run-unknown', 'run-1']),
+      placements: [{ owner: OWNER, agentName: 'helper' }],
+    });
+
+    expect(await contents(store)).toEqual(['another chat']);
+  });
+
+  it('forgets nothing it cannot place, and rejects when a record cannot be forgotten', async () => {
     const store = memory();
     await remember(store, 'kept', { runId: 'run-1', sessionId: 'chat-1' });
     await purgeChatMemories(dependencies(store), {

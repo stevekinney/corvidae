@@ -212,7 +212,9 @@ describe('BUREAU_RESERVED_KEY_PREFIXES', () => {
     const unknown = shared.filter(
       (prefix) =>
         !SHARED_PREFIXES_OUTSIDE_WEFTS_LIST.has(prefix) &&
-        !WEFT_RESERVED_KEY_PREFIXES.some((weft) => weft === prefix || weft.startsWith(prefix)),
+        !WEFT_RESERVED_KEY_PREFIXES.some(
+          (weft) => prefix.startsWith(weft) || weft.startsWith(prefix),
+        ),
     );
     expect(unknown).toEqual([]);
   });

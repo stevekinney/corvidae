@@ -114,8 +114,10 @@ function setup(
     purgeSessionInput: async (sessionId, incarnation) => {
       calls.sessionInput.push(`${sessionId}@${incarnation}`);
     },
-    purgeMemories: async (sessionId, runIds) => {
-      calls.memories.push(`${sessionId}:${[...runIds].join(',')}`);
+    purgeMemories: async (sessionId, runIds, placements) => {
+      calls.memories.push(
+        `${sessionId}:${[...runIds].join(',')}:${placements.map((place) => `${place.owner}/${place.agentName}`).join(',')}`,
+      );
     },
     purgeAssets: async (assets) => {
       calls.assets.push(assets.map((asset) => `${asset.ownerId}/${asset.assetId}`));
@@ -146,7 +148,7 @@ describe('createChatContentPurge (COR-1934)', () => {
     expect(calls.redacted).toEqual([['run-1', 'run-2']]);
     expect(calls.reviews).toEqual([['run-1', 'run-2']]);
     expect(calls.sessionInput).toEqual(['chat-1@one']);
-    expect(calls.memories).toEqual(['chat-1:run-1,run-2']);
+    expect(calls.memories).toEqual(['chat-1:run-1,run-2:']);
     // The record stays, settled, for the second pass.
     const [key] = await kv.list(PENDING_PREFIX);
     expect(JSON.parse((await kv.get(key!))!)).toMatchObject({ settledAt: 1_000 });
@@ -173,6 +175,24 @@ describe('createChatContentPurge (COR-1934)', () => {
     await purge.run(chat);
     expect(calls.assets).toEqual([['api-key:alice/asset-1'], ['api-key:alice/asset-1']]);
     expect(JSON.parse((await kv.get(key!))!)).toMatchObject({ settledAt: 1_000 });
+  });
+
+  it('names whose memory the chat’s runs wrote in its pending record, and hands it to the memory purge', async () => {
+    const { kv, calls, purge } = setup();
+    const chat = { ...CHAT, memoryPlacements: [{ owner: 'api-key:alice', agentName: 'helper' }] };
+    await purge.record(chat);
+    const [key] = await kv.list(PENDING_PREFIX);
+    expect(JSON.parse((await kv.get(key!))!)).toMatchObject({
+      memoryPlacements: chat.memoryPlacements,
+    });
+
+    await purge.run(chat);
+
+    expect(calls.memories).toEqual(['chat-1:run-1,run-2:api-key:alice/helper']);
+    // The second pass reads them from the settled record.
+    expect(JSON.parse((await kv.get(key!))!)).toMatchObject({
+      memoryPlacements: chat.memoryPlacements,
+    });
   });
 
   it('reads a pending record written before assets were named, and one with a malformed asset list', async () => {
