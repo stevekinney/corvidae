@@ -38,7 +38,7 @@ export const BUREAU_RESERVED_KEY_PREFIXES: readonly string[] = [
   'bureau-schedule-transition:',
   'bureau-surface:v1:',
   'bureau-task-context:v1:',
-  'bureau-task-listing:v2:',
+  'bureau-task-listing:v3:',
   'bureau-task:v1:',
   'bureau-workflow-cancelled-run:v1:',
   'bureau-workflow-schedule:',

@@ -11,8 +11,7 @@ const schema = z.object({
 });
 
 function loadEnvironment() {
-  const environment =
-    typeof Bun !== 'undefined' ? Bun.env : typeof process !== 'undefined' ? process.env : {};
+  const environment = typeof process !== 'undefined' ? process.env : {};
   const mapping = {
     keepDurabilityFixtures: 'WEFT_KEEP_DURABILITY_FIXTURES',
   };

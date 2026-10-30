@@ -211,7 +211,7 @@ describe('Engine.reconfigure', () => {
 
     it('arms no timer on a scheduler that was stopped', async () => {
       const engine = createArmedEngine();
-      engine.scheduler.stop();
+      await engine.scheduler.stop();
       const timersBefore = jest.getTimerCount();
 
       engine.reconfigure({ schedulerPollIntervalMs: 100 });

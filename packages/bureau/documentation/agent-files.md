@@ -22,6 +22,11 @@ skillDescriptors:
     description: Cites the sources it used
     tags: [research]
 a2a: false
+stepLimit: 25
+retry:
+  attempts: 3
+  delayMilliseconds: 500
+  jitter: true
 ---
 
 You are a careful researcher. Cite everything.
@@ -39,6 +44,10 @@ The frontmatter keys are:
 - `skillDescriptors`: descriptive Agent Card skills (`id`, `name`, `description`, `tags`, and optionally `examples`, `inputModes`, `outputModes`), never executable skills. Ids are unique within the agent.
 - `examples`: optional, a list of at most three non-blank strings, each at most 200 characters (Operative's `AGENT_EXAMPLE_LIMITS`, the bounds `createAgent` enforces), that show what a person might ask the agent, which a chat client offers as buttons on a new chat. `bureau.agents.list` carries them as `examples`. They never reach a run. Bureau reads them and does not write them: `bureau.agents.definitions.update` and `BureauAgentCatalog.update` keep the key in the file as it is, the way they keep any key they do not know, and a write that changes nothing else writes nothing. A value that is not such a list is `invalid-frontmatter`.
 - `a2a`: a strict boolean, default `false`. It opts the agent into A2A, the agent-to-agent protocol: only an agent that opts in is served at `<publicUrl>/a2a/<id>`. To a caller holding `bureau.agents:read`, which the deployment's owner does, chat over AG-UI, `bureau.agents.list`, and `bureau.deployment.get` serve any ready agent whatever this says; a caller without it sees, starts over AG-UI, and schedules or sets goals for only the agents that opt in, and any other answers as an unknown name does (COR-1904). A persisted agent opts in by this key and nothing else: the `a2aAgents` allowlist of `createBureauHandler` governs code-defined agents only. See [The A2A opt-in](#the-a2a-opt-in).
+- `stepLimit`: optional, an integer from 1 to 1000, the most steps one run of the agent may take (Operative's `maximumSteps`). Absent, Operative's default of 25 applies. A run that reaches it finishes with `maximum-steps`. A value outside the range, or one that is not an integer, is `invalid-frontmatter` with `problem.issues[].path` set to `stepLimit`.
+- `retry`: optional, how a run retries a generate call that failed (Operative's `RetryOptions`). `attempts` (required, an integer from 1 to 10) counts the first call, so `1` retries nothing; `delayMilliseconds` (an integer from 0 to 60000, default `0`) is the wait between attempts; `jitter` (a boolean, default `false`) randomises that wait. Retry applies to transient provider errors only: a provider error with status 429, 500, 502, 503 or 504 is retried, and any other error (a 400 or 401, say) ends the run after its first call. Absent, a failed call is not retried. An out-of-range value, or a key other than these three, is `invalid-frontmatter` with the path `retry.attempts`, `retry.delayMilliseconds`, `retry.jitter`, or `retry`.
+
+For both, an `update` that leaves the key out keeps the file's value, as it does for `a2a`, and a file with no such key is not given one; `null` removes the key, so `bureau.agents.definitions.get` answers `null` again. A snapshot written before the keys existed loads with neither.
 
 A file written for an earlier version of the format may carry keys it no longer knows (the offering flag it used to have, and `skills`, now `skillDescriptors`): Bureau ignores them like any other unknown key, leaves them in the file when it rewrites it, and does not read the old `skills` list as `skillDescriptors`.
 
@@ -144,7 +153,7 @@ A record that cannot be read or written, or that is not a valid record, never ma
 
 A write goes to a temporary dotfile in the same directory and is renamed into place, so nothing reads half a file. Writes are serialized in this process. `create` throws `AgentFileConflictError` (`agent-file-exists`) when the file exists. `update` and `delete` throw it (`agent-file-changed`, with `currentHash`) when the bytes no longer hash to `expectedHash`, and `AgentFileError` (`agent-file-not-found`) when the file is gone.
 
-`update` keeps the body byte for byte when the supplied instructions equal it, and a frontmatter whose meaning does not change keeps its original text. When the frontmatter does change, Bureau replaces the lines of the keys it knows (`name`, `description`, `model`, `models`, `tools`, `skillDescriptors`, `a2a`) and keeps every other line, comments included, byte for byte, so an unknown key keeps its value and its YAML type for other tools: a quoted `created: '2024-01-01'` stays a string and an unquoted date stays a date. Bureau reads the rewritten frontmatter back and requires it to hold exactly the keys and values asked for. If it does not (a quoted key, say, which a line edit does not recognise), the whole frontmatter is re-emitted with `js-yaml`, which keeps values and types but drops comments and layout. An update that changes nothing writes nothing. An update or delete of a symbolic-linked agent file replaces the link with a regular file and leaves its target alone.
+`update` keeps the body byte for byte when the supplied instructions equal it, and a frontmatter whose meaning does not change keeps its original text. When the frontmatter does change, Bureau replaces the lines of the keys it knows (`name`, `description`, `model`, `models`, `tools`, `skillDescriptors`, `a2a`, `stepLimit`, `retry`) and keeps every other line, comments included, byte for byte, so an unknown key keeps its value and its YAML type for other tools: a quoted `created: '2024-01-01'` stays a string and an unquoted date stays a date. Bureau reads the rewritten frontmatter back and requires it to hold exactly the keys and values asked for. If it does not (a quoted key, say, which a line edit does not recognise), the whole frontmatter is re-emitted with `js-yaml`, which keeps values and types but drops comments and layout. An update that changes nothing writes nothing. An update or delete of a symbolic-linked agent file replaces the link with a regular file and leaves its target alone.
 
 There is no cross-process file lock. A different process writing the same file in the instant between a write's last check and its `rename` is not detected, because `rename` replaces whatever is there and, for `create`, cannot refuse an existing target. The window is the time between two system calls.
 

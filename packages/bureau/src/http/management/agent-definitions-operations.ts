@@ -37,7 +37,9 @@ import { z } from 'zod';
 import type { AgentDefinitions, BureauAgentCatalog } from '../../agent-catalog.ts';
 import {
   AGENT_IDENTIFIER_MAX_LENGTH,
+  agentRetrySchema,
   agentSkillDescriptorSchema,
+  agentStepLimitSchema,
   AgentFileConflictError,
   AgentFileError,
   checkModelsList,
@@ -123,6 +125,10 @@ const definitionOutputSchema = z.object({
   tools: z.array(z.string()),
   skillDescriptors: z.array(agentSkillDescriptorSchema),
   a2a: z.boolean(),
+  /** The most steps one run may take; `null` when the file sets none and Operative's default applies. */
+  stepLimit: z.number().int().nullable(),
+  /** How a run retries a failed generate call; `null` when the file sets none and it does not. */
+  retry: agentRetrySchema.nullable(),
   instructions: z.string(),
 });
 
@@ -132,9 +138,9 @@ const agentDetailSchema = agentListingSchema.extend({
 });
 
 /**
- * What a caller supplies to `create` or `update`. `a2a` is the one field an update keeps when it
- * is left out, so an editor that rewrites a definition cannot turn an agent's A2A opt-in off by
- * omitting it.
+ * What a caller supplies to `create` or `update`. An update keeps `a2a`, `stepLimit` and `retry` when
+ * it leaves them out, so an editor that rewrites a definition cannot turn an agent's A2A opt-in
+ * off, or drop its step limit or retry, by omitting them; `null` removes `stepLimit` or `retry`.
  */
 const definitionInputSchema = z
   .strictObject({
@@ -153,11 +159,21 @@ const definitionInputSchema = z
     skillDescriptors: z.array(agentSkillDescriptorSchema).optional(),
     /** Whether the agent opts into A2A. Omitted, a create is `false` and an update keeps the file's value. */
     a2a: z.boolean().optional(),
+    /**
+     * The most steps one run may take, 1 to 1000. Omitted, a create sets none and an update keeps the
+     * file's value; `null` removes the file's, so Operative's default applies again.
+     */
+    stepLimit: agentStepLimitSchema.nullable().optional(),
+    /**
+     * How a run retries a failed generate call. Omitted, a create sets none and an update keeps the
+     * file's value; `null` removes the file's, so the run does not retry.
+     */
+    retry: agentRetrySchema.nullable().optional(),
     instructions: z.string(),
   })
   .superRefine((definition, context) => checkModelsList(definition, context))
   .describe(
-    'The agent’s definition: `name`, `description`, `model`, `models` (the models a session may be switched to), `tools`, `skillDescriptors`, `a2a` (whether the agent opts into A2A) and `instructions`.',
+    'The agent’s definition: `name`, `description`, `model`, `models` (the models a session may be switched to), `tools`, `skillDescriptors`, `a2a` (whether the agent opts into A2A), `stepLimit` (the most steps a run takes, 1 to 1000), `retry` (`attempts` 1 to 10, `delayMilliseconds` 0 to 60000, `jitter`) and `instructions`.',
   );
 
 /**
@@ -226,6 +242,8 @@ function definitionView(definition: AgentFileDefinition) {
     tools: [...definition.tools],
     skillDescriptors: definition.skillDescriptors.map(skillView),
     a2a: definition.a2a,
+    stepLimit: definition.stepLimit ?? null,
+    retry: definition.retry === undefined ? null : { ...definition.retry },
     instructions: definition.instructions,
   };
 }
@@ -381,7 +399,7 @@ export const agentDefinitionsCreateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Create an agent definition',
   description:
-    'Writes a new agent file for `id`, the agent’s identifier: a lowercase letter or digit, then lowercase letters, digits, and hyphens, ending in a letter or digit. A caller derives it from the agent’s name; the name is only a label. `definition` is the file’s frontmatter (`name`, `description`, `model` written `<provider>/<model-or-alias>`, `tools`, `skillDescriptors`, `a2a`) and its body (`instructions`). A new agent does not opt into A2A unless `a2a` is `true`. The file is written to a temporary file and renamed into place, and the agent is in the catalog before the call returns. Requires `bureau.agents:write` unless the caller owns the deployment’s agents. A taken identifier, including the key of a code-defined agent, is a `Conflict`; a definition that would not load is `Unprocessable`, and nothing is written.',
+    'Writes a new agent file for `id`, the agent’s identifier: a lowercase letter or digit, then lowercase letters, digits, and hyphens, ending in a letter or digit. A caller derives it from the agent’s name; the name is only a label. `definition` is the file’s frontmatter (`name`, `description`, `model` written `<provider>/<model-or-alias>`, `tools`, `skillDescriptors`, `a2a`, `stepLimit`, `retry`) and its body (`instructions`). A new agent does not opt into A2A unless `a2a` is `true`. The file is written to a temporary file and renamed into place, and the agent is in the catalog before the call returns. Requires `bureau.agents:write` unless the caller owns the deployment’s agents. A taken identifier, including the key of a code-defined agent, is a `Conflict`; a definition that would not load is `Unprocessable`, and nothing is written.',
   destructive: true,
   tags: ['Agents'],
   inputSchema: createInput,
@@ -424,7 +442,7 @@ export const agentDefinitionsUpdateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Replace an agent definition',
   description:
-    'Replaces the agent file for `id` with `definition`, if it still hashes to `expectedHash` (the `hash` a read returned). Frontmatter keys Bureau does not know stay in the file, and an omitted `a2a` keeps the file’s opt-in. A `definition` that omits `models` removes the file’s list, as omitting `tools` removes its tools. A file that changed since is a `StaleRevision` fault whose `currentRevision` is the hash now on disk, and nothing is written. A definition that changes nothing writes nothing and returns the same hash. A run in progress keeps the definition it started with. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`, as is an update of a code-defined key, before any file is read.',
+    'Replaces the agent file for `id` with `definition`, if it still hashes to `expectedHash` (the `hash` a read returned). Frontmatter keys Bureau does not know stay in the file, and an omitted `a2a`, `stepLimit` or `retry` keeps the file’s value (`null` removes a `stepLimit` or `retry`). A `definition` that omits `models` removes the file’s list, as omitting `tools` removes its tools. A file that changed since is a `StaleRevision` fault whose `currentRevision` is the hash now on disk, and nothing is written. A definition that changes nothing writes nothing and returns the same hash. A run in progress keeps the definition it started with. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`, as is an update of a code-defined key, before any file is read.',
   destructive: true,
   tags: ['Agents'],
   inputSchema: updateInput,
@@ -443,7 +461,7 @@ export const agentDefinitionsUpdateOperation = defineOperation<
   invoke: async ({ input, host, principal }) => {
     const definitions = requireWritableAgent(host, principal, input.id);
     try {
-      // An omitted `a2a` keeps the opt-in the file has: the catalog applies that rule itself.
+      // An omitted `a2a`, `stepLimit` or `retry` keeps the file's value: the catalog applies that rule itself.
       const result = await definitions.agents.update(input.id, definitionOf(input.definition), {
         expectedHash: input.expectedHash,
       });
