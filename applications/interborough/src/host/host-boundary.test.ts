@@ -107,6 +107,7 @@ describe('/host/paths', () => {
       'agentDirectory',
       'configurationFile',
       'database',
+      'locked',
       'mode',
       'providers',
       'workflowDirectory',
@@ -125,6 +126,7 @@ describe('/host/paths', () => {
       agentDirectory: join(home, 'agents'),
       workflowDirectory: join(home, 'workflows'),
       configurationFile: join(home, 'configuration.json'),
+      locked: {},
       providers: [
         { name: 'anthropic', secretFile: join(home, 'secrets', 'anthropic-api-key') },
         { name: 'openai', secretFile: join(home, 'secrets', 'openai-api-key') },

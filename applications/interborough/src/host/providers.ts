@@ -8,6 +8,9 @@
  * { "providers": { "anthropic": {}, "openai": { "models": ["gpt-4.1"] } } }
  * ```
  *
+ * A `catalog` list beside `providers` edits the rows (`catalog-edits.ts`): turn a model off,
+ * change its price or limits, or add a row.
+ *
  * A provider key is exactly one of the {@link InterboroughProviderName}s the host registers in
  * {@link PROVIDER_DEFINITIONS}: `anthropic`, `openai`, or `gemini`. A provider's `models` is an optional allowlist, matched on a row's `model` or one
  * of its aliases. A provider whose secret is missing is left out with a warning; an environment
@@ -26,6 +29,9 @@ import {
 import { anthropicProvider } from '@lostgradient/operative-anthropic';
 import { geminiProvider } from '@lostgradient/operative-gemini';
 import { openaiProvider } from '@lostgradient/operative-openai';
+
+import { applyCatalogEdits, parseCatalogEdits, type CatalogEdit } from './catalog-edits.ts';
+import { ProviderConfigurationError } from './provider-configuration-error.ts';
 
 /** The provider definitions the host registers with Bureau's `resolveProviderGenerate`. */
 export const PROVIDER_DEFINITIONS = [anthropicProvider, openaiProvider, geminiProvider] as const;
@@ -65,20 +71,9 @@ export type ProviderEntry = {
 /** The shape of the provider configuration file: an entry per provider the host may call. */
 export type ProviderConfigurationFile = {
   readonly providers: Readonly<Partial<Record<InterboroughProviderName, ProviderEntry>>>;
+  /** The edits to the catalog's rows. Absent means none. */
+  readonly catalog?: readonly CatalogEdit[];
 };
-
-/** A configuration that cannot be used. The message names the file and the field, never a value. */
-export class ProviderConfigurationError extends Error {
-  readonly path: string;
-  readonly field: string;
-
-  constructor(path: string, field: string, problem: string) {
-    super(`Invalid configuration in ${path}, ${field}: ${problem}`);
-    this.name = 'ProviderConfigurationError';
-    this.path = path;
-    this.field = field;
-  }
-}
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -127,8 +122,13 @@ export function parseProviderConfiguration(text: string, path: string): Provider
   if (!isPlainObject(parsed)) {
     throw new ProviderConfigurationError(path, 'the file', 'expected a JSON object.');
   }
+  const catalog =
+    parsed['catalog'] === undefined
+      ? undefined
+      : parseCatalogEdits(parsed['catalog'], path, PROVIDER_NAMES);
   const declared = parsed['providers'];
-  if (declared === undefined) return { providers: {} };
+  if (declared === undefined)
+    return catalog === undefined ? { providers: {} } : { providers: {}, catalog };
   if (!isPlainObject(declared)) {
     throw new ProviderConfigurationError(path, 'providers', 'expected an object.');
   }
@@ -154,7 +154,7 @@ export function parseProviderConfiguration(text: string, path: string): Provider
     providers[name] =
       models === undefined ? {} : { models: parseModels(models, path, `${field}.models`) };
   }
-  return { providers };
+  return catalog === undefined ? { providers } : { providers, catalog };
 }
 
 /**
@@ -184,7 +184,8 @@ function matchesEntry(row: BackendDescriptor, entry: string): boolean {
  * The catalog rows for a configuration. A row is kept when its provider is configured and has a
  * key (`available`), it is not retired, and the provider's allowlist, when it has one, names it.
  * An allowlist entry that names no non-retired row fails, whether or not the provider has a key,
- * so a stale entry does not wait for the key to appear. `descriptors` defaults to Operative's
+ * so a stale entry does not wait for the key to appear. The `catalog` edits apply last, and a
+ * stale one fails the same way. `descriptors` defaults to Operative's
  * static catalog.
  */
 export function selectCatalogRows(input: {
@@ -202,9 +203,18 @@ export function selectCatalogRows(input: {
       (row) => row.provider === provider && row.lifecycle !== 'retired',
     );
     const named = new Set<BackendDescriptor>();
+    // The allowlist may name a row the `catalog` list adds, which has no built-in match.
+    const addedModels = new Set(
+      (input.configuration.catalog ?? [])
+        .filter(
+          (edit) =>
+            edit.provider === provider && !candidates.some((row) => matchesEntry(row, edit.model)),
+        )
+        .map((edit) => edit.model),
+    );
     entry.models?.forEach((model, index) => {
       const matches = candidates.filter((row) => matchesEntry(row, model));
-      if (matches.length === 0) {
+      if (matches.length === 0 && !addedModels.has(model)) {
         throw new ProviderConfigurationError(
           input.path,
           `providers.${provider}.models[${index}]`,
@@ -218,7 +228,23 @@ export function selectCatalogRows(input: {
       ...(entry.models === undefined ? candidates : candidates.filter((row) => named.has(row))),
     );
   }
-  return selected;
+  const edits = input.configuration.catalog ?? [];
+  if (edits.length === 0) return selected;
+  return applyCatalogEdits({
+    edits,
+    path: input.path,
+    selected,
+    available: input.available,
+    candidates: (provider) =>
+      descriptors.filter((row) => row.provider === provider && row.lifecycle !== 'retired'),
+    matches: matchesEntry,
+    keepsAdded: (provider, model) => {
+      const models = isProviderName(provider)
+        ? input.configuration.providers[provider]?.models
+        : undefined;
+      return models === undefined || models.includes(model);
+    },
+  });
 }
 
 /** What the host offers: the rows to install and the key each offered provider is called with. */
@@ -294,6 +320,11 @@ export function createCatalogGenerate(
   if (row === undefined || apiKey === undefined) {
     throw new Error(
       `The model catalog holds no "${selection.model}" model for the ${selection.provider} provider.`,
+    );
+  }
+  if (row.availability === 'unavailable') {
+    throw new Error(
+      `The "${selection.model}" model of the ${selection.provider} provider is turned off in the model catalog.`,
     );
   }
   return dependencies.resolveProviderGenerate(

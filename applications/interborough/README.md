@@ -69,7 +69,7 @@ Interborough reads none of the `S3_*` variables itself. Bungalow builds the `Bun
 | Object or folder | What it is |
 | --- | --- |
 | `P` + `deployment-id` | The deployment's identifier, written once with `If-None-Match: *`. Hosts that start together agree on the one value the store kept. Do not edit it. |
-| `P` + `configuration.json` | The model providers (see "Model providers"). A missing object means no providers. Put it there yourself; the application cannot add a provider. |
+| `P` + `configuration.json` | The model providers (see "Model providers"). A missing object means no providers. Put it there yourself; a remote host cannot write it. |
 | `P` + `agents/<id>.md` | One agent per object, in the Markdown file format of "Agent files". The agent editor writes here. |
 | `P` + `workflows/<id>.json` | One workflow per object, in the format of "Workflow files". The Workflows pages write here. |
 
@@ -108,7 +108,51 @@ printf '%s' "$YOUR_KEY" > ~/.interborough/secrets/anthropic-api-key
 chmod 600 ~/.interborough/secrets/anthropic-api-key
 ```
 
-The host passes the catalog rows as `models.catalog` when it creates the Bureau, so no boot step plans against a provider that is not configured, and `bureau.models.replace(rows)` is the only way the rows change. `host.generateFor({ provider, model })` is the generate for an agent assigned a catalog model: it resolves through Bureau's `resolveProviderGenerate` with the host's provider definitions (`PROVIDER_DEFINITIONS`: Anthropic, OpenAI, and Gemini) and the provider's key, and refuses a model the catalog does not hold. A change to the configuration or a secret takes effect when the host restarts.
+The host passes the catalog rows as `models.catalog` when it creates the Bureau, so no boot step plans against a provider that is not configured, and `bureau.models.replace(rows)` is the only way the rows change. `host.generateFor({ provider, model })` is the generate for an agent assigned a catalog model: it resolves through Bureau's `resolveProviderGenerate` with the host's provider definitions (`PROVIDER_DEFINITIONS`: Anthropic, OpenAI, and Gemini) and the provider's key, and refuses a model the catalog does not hold or one that is turned off.
+
+### Changing providers without a restart
+
+A local host writes the configuration and a provider's key itself, and applies them at once. Editing the files by hand and asking the host to read them again works the same way.
+
+| Request | What it does |
+| --- | --- |
+| `GET /host/providers` | Each provider, whether `configuration.json` lists it and whether it has a key (never the key), its allowlist, and the catalog edits. Carries `lockReason` when writes are refused. |
+| `PUT /host/providers/<name>` `{ "apiKey", "models"? }` | Connects the provider, or replaces its key: the key goes to `secrets/<name>-api-key` (mode `0600`) and the provider into `configuration.json`. Without `models` an existing allowlist stays; `"models": null` clears it. |
+| `PUT /host/catalog` `{ "edits": [...] }` | Replaces the catalog edits (below). An empty list removes them. |
+| `POST /host/providers/reload` | Reads the configuration and the keys again, for a person who edited them by hand. |
+
+Every change is checked against the keys the host holds before any byte is written, so a request cannot leave a configuration the next start refuses. The files are then read back, the rows become the Bureau's catalog (`bureau.models.replace`), and the agent files are rebuilt before the request answers. A run that began earlier finishes with the key it started with. The first run that begins after the answer uses the new key. The same operations are `host.providers.connect`, `.editCatalog`, `.reload`, and `.snapshot`.
+
+The configuration is written atomically (Bungalow's `writeConfiguration`: a temporary file, synced, renamed over `configuration.json`, mode `0600`), so a crash mid-write leaves the previous file whole. An error names the field, such as `apiKey` or `providers.openai.models[0]`, and never a value. No response, warning, log line, or diagnostic holds a key.
+
+**Catalog edits.** A `catalog` list in `configuration.json` turns a model off, corrects its price or limits, or adds a row the built-in list lacks:
+
+```json
+{
+  "providers": { "openai": {} },
+  "catalog": [
+    { "provider": "openai", "model": "gpt-4.1", "off": true },
+    {
+      "provider": "openai",
+      "model": "o3",
+      "pricing": { "inputPerMillionTokens": 2, "outputPerMillionTokens": 8, "currency": "USD" },
+      "contextWindowTokens": 200000,
+      "maxOutputTokens": 100000
+    },
+    { "provider": "openai", "model": "gpt-next", "basedOn": "gpt-4.1" }
+  ]
+}
+```
+
+An edit that names a built-in model (by `model` or alias) changes that row. A price edit keeps the row's `longContext` rates unless its `pricing` names them: `"longContext": { "inputTokensAbove", "inputPerMillionTokens", "outputPerMillionTokens" }` replaces them and `"longContext": null` removes them. An off model stays listed as `unavailable`, which keeps it from agents and plans, and `host.generateFor` refuses it. An edit that names no built-in model adds a row: `basedOn` names a current model of the same provider whose capabilities it copies, and it may set its own price and limits. An edit with no match and no `basedOn`, a second edit for one model (under the same name or another, such as `claude-haiku-4-5` and `haiku`), or an output limit above the context window fails with the field, for example `catalog[0].model`.
+
+An allowlist (`providers.<name>.models`) may name an added row by its model, and applies to added rows as to built-in ones: an added row the allowlist does not name is left out.
+
+**Other writers of `configuration.json`.** A write reads the file, changes the part it owns, and writes the whole file back, so writers must not overlap. `host.configurationQueue.run(work)` is the one queue they share (`src/host/configuration-queue.ts`): run the whole read-change-write inside `work`. The provider manager uses it, and any other part of the host that writes the file must too.
+
+**A failed key change.** The key is written before the configuration. When the configuration cannot be written, the previous key is put back and the host keeps using it. If the key itself cannot be written, nothing changed and the answer is a plain `500` with `{ "error": "failed" }`. If the previous key cannot be put back either, the answer is `500` with `{ "error": "partial", "inUse": ... }`, where `inUse` is what the host loaded afterwards: `true` for a configured provider (the new key is in use), `false` for a new provider whose configuration was not written (the key is stored but not used).
+
+**Remote mode refuses.** A remote home keeps its configuration in the bucket and its keys in the environment, which the host cannot write. `PUT` requests answer `403` with `{ "error": "locked", "reason": "deployment" }`, `/host/paths` reports `locked: { configuration: "deployment", providerKeys: "deployment" }` (the reason codes `settings.get` gives a locked key), and `host.providers.connect` and `.editCatalog` throw `ProviderWriteLockedError`. Reload still works, since it only reads.
 
 ### Decisions
 
