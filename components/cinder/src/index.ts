@@ -536,6 +536,14 @@ export type {
 export { default as LocaleProvider } from './components/locale-provider/index.ts';
 export type { LocaleProviderProps, TextDirection } from './components/locale-provider/index.ts';
 
+export { default as ListDetail } from './components/list-detail/index.ts';
+export type {
+  ListDetailProps,
+  ListDetailRowContext,
+  ListDetailSelectionLocation,
+  ListDetailStorage,
+} from './components/list-detail/index.ts';
+
 export { default as LoadMore } from './components/load-more/index.ts';
 export type { LoadMoreProps } from './components/load-more/index.ts';
 

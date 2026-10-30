@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "label": {
+      "type": "string",
+      "description": "Accessible name of the list region, for example \"Chats\"."
+    },
+    "selectedKey": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Key of the open item, or `null` when none is open. Bindable. When it is `null` on mount, the\nitem named by the URL's search parameter opens.",
+      "default": null
+    },
+    "selectionParameter": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Name of the search parameter that holds the open item's key. Pass `null` to keep the\nselection out of the URL.",
+      "default": "selected"
+    },
+    "storageKey": {
+      "type": "string",
+      "description": "Storage key under which the divider width is remembered. Omit to not remember it. The key is\nthe caller's, so two ListDetails on one page do not share a width."
+    },
+    "pushBelow": {
+      "type": "number",
+      "description": "Width in pixels of the component below which it shows one pane at a time: the list, then the\ndetail with a Back button. It is measured on the component, not the viewport.",
+      "default": 900
+    },
+    "defaultListWidth": {
+      "type": "number",
+      "description": "Width in pixels of the list pane before the divider is moved.",
+      "default": 320
+    },
+    "backLabel": {
+      "type": "string",
+      "description": "Label of the Back button shown above the detail below `pushBelow`.",
+      "default": "Back"
+    },
+    "detailLabel": {
+      "type": "string",
+      "description": "Accessible name of the detail region.",
+      "default": "Details"
+    },
+    "emptyTitle": {
+      "type": "string",
+      "description": "Title of the default empty detail, used when `empty` is omitted.",
+      "default": "Nothing selected"
+    },
+    "emptyDescription": {
+      "type": "string",
+      "description": "Description of the default empty detail, used when `empty` is omitted.",
+      "default": "Choose an item from the list to see it here."
+    },
+    "class": {
+      "type": "string",
+      "description": "Additional class merged onto the `.cinder-list-detail` root element."
+    }
+  },
+  "additionalProperties": false,
+  "required": ["label"],
+  "metadata": {
+    "unsupportedProps": [
+      {
+        "name": "detail",
+        "reason": "function-or-snippet",
+        "required": true,
+        "description": "Detail renderer for the open item."
+      },
+      {
+        "name": "empty",
+        "reason": "function-or-snippet",
+        "description": "Rendered in the detail pane while no item is open. A default message is shown when omitted."
+      },
+      {
+        "name": "header",
+        "reason": "function-or-snippet",
+        "description": "List header, above the rows: the title, the count, the create action, the search and the\nfilter. Put the title and the create action on their own row and the filter below at full\nwidth, so the action never reads as the filter's submit button."
+      },
+      {
+        "name": "items",
+        "reason": "generic-type-parameter",
+        "required": true,
+        "description": "The records to list. Each is passed to `list` and, when selected, to `detail`."
+      },
+      {
+        "name": "key",
+        "reason": "function-or-snippet",
+        "required": true,
+        "description": "Key extractor. The key identifies an item in the keyboard cursor, the selection, and the URL."
+      },
+      {
+        "name": "list",
+        "reason": "function-or-snippet",
+        "required": true,
+        "description": "Row renderer, called once per item inside an `<li>` that ListDetail provides. Render a\n`SelectableRow` with `selected={row.selected}` and `selectedState=\"current\"`; activating its\nprimary action opens the item."
+      },
+      {
+        "name": "listEmpty",
+        "reason": "function-or-snippet",
+        "description": "Rendered in the list when `items` is empty."
+      },
+      {
+        "name": "onSelectedKeyChange",
+        "reason": "function-or-snippet",
+        "description": "Called with the new key when an item opens, and with `null` when the selection is cleared."
+      },
+      {
+        "name": "selectionLocation",
+        "reason": "unknown-shape",
+        "description": "Where the selection is read and written. Defaults to the address bar."
+      },
+      {
+        "name": "storage",
+        "reason": "unknown-shape",
+        "description": "Where the divider width is remembered. Defaults to `localStorage`."
+      }
+    ]
+  }
+}
