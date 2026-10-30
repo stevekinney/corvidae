@@ -121,6 +121,7 @@ function createToolFromValidatedInput<
     emit: surface.emit,
     dispatch: surface.dispatch,
     ...(options.diagnostics !== undefined ? { diagnostics: options.diagnostics } : {}),
+    ...(options.secretResolver !== undefined ? { secretResolver: options.secretResolver } : {}),
     telemetryEnabled: options.telemetry === true,
   });
   const concurrencyLimit = normalizeConcurrency(

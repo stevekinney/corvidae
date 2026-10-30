@@ -2989,6 +2989,11 @@ export interface DurableScheduleUpdate {
   readonly spec: string;
   readonly description?: string | undefined;
   readonly overlap?: 'skip' | 'allow' | undefined;
+  /**
+   * The schedule's new IANA time zone (see {@link DurableScheduleDefinition.timeZone}). Left as it
+   * was when omitted; an interval `spec` is always read as UTC.
+   */
+  readonly timeZone?: string | undefined;
 }
 
 export interface DurableScheduleDefinition {
@@ -3011,6 +3016,13 @@ export interface DurableScheduleDefinition {
   sessionId?: string;
   /** Overlap policy when a prior fire is still running. Defaults to `'skip'`. */
   overlap?: 'skip' | 'allow';
+  /**
+   * The IANA time zone a cron `spec` is read in, such as `America/Los_Angeles`, or `UTC`. Omitted, the
+   * schedule runs in UTC. A wall-clock time the clock skips when it springs forward (a daily 02:30 on
+   * that day) is counted as a missed fire with reason `dst-gap`, and one it repeats when it falls back
+   * runs once. Only a cron `spec` takes one; an interval with a zone is refused.
+   */
+  timeZone?: string;
   /**
    * The schedule's owner of record (COR-718), written once into the schedule's
    * `ScheduledAgentRunInput.principal`. Every fire's run is owned by it, and the

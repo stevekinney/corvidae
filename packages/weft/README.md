@@ -700,6 +700,32 @@ The core engine runs inside a Web Worker, with a Service Worker acting as the du
 
 Service Worker deployments can import `ServiceWorkerScheduler` from `@lostgradient/weft/service-worker` and wire timer wakeups through `onTimerFired: (entry) => engine.fireTimer(entry)`. See the [Service Worker guide](documentation/guides/service-worker.md) for the browser runtime wiring and Periodic Background Sync fallback pattern.
 
+### Schedule time zones
+
+A cron schedule reads its wall-clock times in UTC unless it names a time zone: pass `timeZone` (an IANA name such as `America/Los_Angeles`, or `UTC`) to `engine.schedule()` or `engine.updateSchedule()`, or `timeZone` on `weft.schedules.create` and `weft.schedules.update`. An unknown name is rejected, and so is a time zone on an interval (`every`) schedule, which counts elapsed time. A schedule stored before the field existed reads as UTC.
+
+A wall-clock time happens once. When the clock springs forward, a time it skips (a daily 02:30 on that day) does not run: the schedule adds it to `missedFireCount`, sets `lastMissedFireAt`, and emits `schedule:missed-fire` with `reason: 'dst-gap'` at the instant the gap ends, which is the schedule's `nextFireAt` until then. When the clock falls back, a time it repeats (01:30 on that day) runs only the first time. So a cron expression that matches every minute or hour has no second pass through the repeated hour; use `every` for work that must run on elapsed time.
+
+```typescript
+import { Engine, ScheduleMissedFireEvent, workflow } from '@lostgradient/weft';
+
+const engine = new Engine();
+engine.register(
+  workflow({ name: 'report' }).execute(async function* () {
+    return 'sent';
+  }),
+);
+engine.addEventListener(ScheduleMissedFireEvent.type, (event) => {
+  if (event.reason === 'dst-gap')
+    console.warn(`${event.scheduleId} skipped a time that did not exist`);
+});
+await engine.schedule('report', null, '0 9 * * 1-5', {
+  id: 'weekday-report',
+  timeZone: 'America/Los_Angeles',
+});
+engine[Symbol.dispose]();
+```
+
 ### Observability
 
 Built-in event system (`EventTarget`-based, so it composes with everything), W3C `traceparent` propagation, and OpenTelemetry-compatible metrics. Composable interceptors layer cross-cutting concerns—tracing, validation, encryption—without any of them knowing about each other.

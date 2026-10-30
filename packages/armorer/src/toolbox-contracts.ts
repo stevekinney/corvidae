@@ -36,6 +36,7 @@ import type {
   ToolParametersSchema,
   ToolPolicyContextProvider,
   ToolPolicyHooks,
+  ToolSecretResolver,
 } from './is-tool';
 import type { ToolSettledEvent } from './tool-lifecycle-events';
 import type { Toolbox } from './toolbox-contracts-advanced';
@@ -141,6 +142,18 @@ export interface ToolboxOptions {
    * processes that need to resume approvals created by this toolbox.
    */
   approvalSecret?: string;
+  /**
+   * Turns a `{ secretRef }` value into plaintext. The host supplies it; the toolbox never
+   * stores, decrypts, or logs a secret itself. It serves two paths, both only for a tool that
+   * declares `metadata.acceptsSecrets: true`: every `{ secretRef }` anywhere in that tool's
+   * arguments is replaced by the plaintext immediately before the tool runs (after the call is
+   * recorded, validated, and approved, in a fresh copy of the arguments), and the tool may call
+   * `context.resolveSecret(reference)`. A resolver that throws or returns a non-string makes the
+   * call fail with `secret-unavailable`; without a resolver every secret request does. The
+   * resolver receives the call's execution context so it can refuse a reference that belongs to
+   * another run. See `documentation/secrets.md`.
+   */
+  secretResolver?: ToolSecretResolver;
   approvalStateStore?: ApprovalStateStore;
   approvalBindingTtlMs?: number;
   approvalNow?: () => number;

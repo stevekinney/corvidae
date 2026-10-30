@@ -1626,6 +1626,7 @@ Longer-form docs live in `documentation/`:
 - [Common Patterns](documentation/patterns/) - Circuit breakers, session management, request deduplication, resource pooling, fallback tools, audit trails, cost tracking, and more
 - [Toolbox Registry](documentation/registry.md) - Registration, execution, querying, searching, middleware, and serialization
 - [Searching Tools](documentation/searching-tools.md) - Discover tools with `queryTools`
+- [Secrets](documentation/secrets.md) - `acceptsSecrets`, `{ secretRef }` substitution, `context.resolveSecret`, and the `secretResolver` toolbox option
 - [Eventing](documentation/eventing.md) - Tool and toolbox events, streaming APIs, and progress/status patterns
 - [Context and withContext](documentation/context.md) - Shared toolbox context, tool-local context injection, and runtime execution context
 - [Tool Composition](documentation/composition.md) - `pipe`, `bind`, `tap`, `when`, `parallel`, `retry`, `preprocess`, `postprocess`

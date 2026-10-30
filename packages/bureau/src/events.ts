@@ -1,4 +1,5 @@
 import type { EventMap } from '@lostgradient/lifecycle';
+import type { ScheduleMissedFireReason } from '@lostgradient/weft';
 import type {
   Action,
   AgentScheduledEvent,
@@ -564,8 +565,9 @@ export class DefinitionsChangedEvent extends Event {
 
 /**
  * Fired on the bureau emitter when the durable engine reports that one of this Bureau's schedules
- * skipped occurrences it was too late for (COR-1721), copied from Weft's `ScheduleMissedFireEvent`.
- * Dispatched only when `bureau.schedules.get(scheduleId)` still returns the schedule, so it arrives
+ * skipped occurrences (COR-1721), copied from Weft's `ScheduleMissedFireEvent`: `reason` `late` for
+ * occurrences the schedule was too late for, `dst-gap` for a wall-clock time its time zone's clock
+ * skipped when it sprang forward (COR-1820). Dispatched only when `bureau.schedules.get(scheduleId)` still returns the schedule, so it arrives
  * a turn after the engine's own event.
  */
 export class ScheduleMissedEvent extends Event {
@@ -575,13 +577,22 @@ export class ScheduleMissedEvent extends Event {
   readonly missedCount: number;
   readonly windowStart: number;
   readonly windowEnd: number;
+  /** Why the occurrences were missed, as Weft reports it. */
+  readonly reason: ScheduleMissedFireReason;
 
-  constructor(scheduleId: string, missedCount: number, windowStart: number, windowEnd: number) {
+  constructor(
+    scheduleId: string,
+    missedCount: number,
+    windowStart: number,
+    windowEnd: number,
+    reason: ScheduleMissedFireReason,
+  ) {
     super(ScheduleMissedEvent.type);
     this.scheduleId = scheduleId;
     this.missedCount = missedCount;
     this.windowStart = windowStart;
     this.windowEnd = windowEnd;
+    this.reason = reason;
   }
 }
 

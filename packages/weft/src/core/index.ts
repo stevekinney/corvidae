@@ -135,6 +135,7 @@ export {
 } from './events.ts';
 export type {
   LeaseHealthStatus,
+  ScheduleMissedFireReason,
   TypedEventTarget,
   WeftEventMap,
   WorkerDeploymentDrainState,
@@ -183,6 +184,7 @@ export type {
   ReviewOptions,
   ReviewRequest,
 } from './review/index.ts';
+export { canonicalTimeZone, isValidTimeZone } from './schedule.ts';
 export { Scheduler, calculateBackoff, parseDuration } from './scheduler.ts';
 export {
   buildIndexOperations,

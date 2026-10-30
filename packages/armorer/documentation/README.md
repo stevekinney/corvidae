@@ -6,6 +6,7 @@ Start with the [Armorer README](../README.md) for the package boundary and the [
 
 - [Public API Reference](api-reference.md)
 - [Approval Policy](approval-policy.md)
+- [Secrets](secrets.md)
 - [Context](context.md)
 - [Eventing](eventing.md)
 - [Registry](registry.md)
