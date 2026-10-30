@@ -1,6 +1,7 @@
 /**
- * The sidebar: two groups, Work and Engine, built from Cinder's `SideNavigationGroup`, with
- * Chat as the home screen and the badge counts the engine reports.
+ * The sidebar (COR-1834): one ordered list of destinations with Settings pinned to the bottom,
+ * Chat as the home screen, Health carrying the engine's status dot, the badge counts the engine
+ * reports, and a header button that folds it to its icon rail.
  */
 import { HttpClient } from '@lostgradient/weft';
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
@@ -73,26 +74,33 @@ function mount(scopes?: readonly AuthorizationScope[], engineStatus?: LiveSource
   });
 }
 
-const PRIMARY = ['Chat', 'Agents', 'Workflows', 'Settings', 'Runs', 'Schedules', 'Reviews'];
-const ENGINE = ['Overview', 'Workers', 'Storage', 'System', 'Audit'];
+const DESTINATIONS = [
+  'Chat',
+  'Reviews',
+  'Agents',
+  'Workflows',
+  'Runs',
+  'Schedules',
+  'Health',
+  'Settings',
+];
 
 describe('the sidebar', () => {
-  test('holds a Work group and an Engine group, in order', () => {
+  test('holds the destinations in one ordered list, Settings pinned last', () => {
     stubEngine();
     landAt('/chat');
     const { getByRole } = mount();
 
     const navigation = getByRole('navigation', { name: 'Views' });
-    const groups = Array.from(navigation.querySelectorAll('.cinder-side-navigation-group'));
-    expect(groups.length).toBe(2);
-    const labelsOf = (group: Element) =>
-      Array.from(group.querySelectorAll('a')).map(
-        (link) => link.textContent?.trim().split(/\s+/)[0],
-      );
-    expect(groups[0]?.querySelector('button')?.textContent?.trim()).toBe('Work');
-    expect(labelsOf(groups[0] as Element)).toEqual(PRIMARY);
-    expect(groups[1]?.querySelector('button')?.textContent?.trim()).toBe('Engine');
-    expect(labelsOf(groups[1] as Element)).toEqual(ENGINE);
+    expect(navigation.querySelectorAll('.cinder-side-navigation-group').length).toBe(0);
+    expect(navigation.querySelectorAll('ul').length).toBe(1);
+    const labels = Array.from(navigation.querySelectorAll('a')).map(
+      (link) => link.textContent?.trim().split(/\s+/)[0],
+    );
+    expect(labels).toEqual(DESTINATIONS);
+    const items = Array.from(navigation.querySelectorAll('li'));
+    expect(items.at(-1)?.classList.contains('weft-shell-nav-pinned')).toBe(true);
+    expect(items.filter((item) => item.classList.contains('weft-shell-nav-pinned')).length).toBe(1);
   });
 
   test('links each entry to its route', () => {
@@ -100,23 +108,19 @@ describe('the sidebar', () => {
     landAt('/chat');
     const { getByRole } = mount();
     const paths = Object.fromEntries(
-      [...PRIMARY, ...ENGINE].map((label) => [
+      DESTINATIONS.map((label) => [
         label,
         getByRole('link', { name: new RegExp(`^${label}`) }).getAttribute('href'),
       ]),
     );
     expect(paths).toEqual({
       Chat: '/chat',
+      Reviews: '/reviews',
       Agents: '/agents',
       Workflows: '/workflows',
       Runs: '/runs',
       Schedules: '/schedules',
-      Reviews: '/reviews',
-      Overview: '/engine',
-      Workers: '/workers',
-      Storage: '/storage',
-      System: '/system',
-      Audit: '/audit',
+      Health: '/engine',
       Settings: '/settings',
     });
   });
@@ -148,12 +152,12 @@ describe('the sidebar', () => {
     expect(router.pathname).toBe('/runs');
   });
 
-  test('shows the pending reviews on Reviews and the unhealthy workers on Workers', async () => {
+  test('shows the pending reviews on Reviews and the unhealthy workers on Health', async () => {
     stubEngine({ pendingReviews: 3, unhealthyWorkers: 2 });
     landAt('/chat');
     const { getByRole } = mount();
     await waitFor(() => expect(getByRole('link', { name: /^Reviews\s*3$/ })).not.toBeNull());
-    await waitFor(() => expect(getByRole('link', { name: /^Workers\s*2$/ })).not.toBeNull());
+    await waitFor(() => expect(getByRole('link', { name: /^Health.*\s2$/ })).not.toBeNull());
   });
 
   test('counts the Bureau’s pending reviews and the engine’s as one number', async () => {
@@ -170,22 +174,22 @@ describe('the sidebar', () => {
     await waitFor(() => expect(getByRole('link', { name: /^Reviews\s*2$/ })).not.toBeNull());
   });
 
-  test('points the engine status at the engine overview, and says the status in words', () => {
+  test('Health carries the engine status dot, and says the status in words', () => {
     stubEngine();
     landAt('/chat');
     const { getByRole } = mount();
-    const link = getByRole('link', { name: 'Engine healthy' });
+    const link = getByRole('link', { name: /^Health\s*Engine healthy/ });
     expect(link.getAttribute('href')).toBe('/engine');
     expect(link.querySelector('.cinder-status-dot')?.getAttribute('data-cinder-status')).toBe(
       'online',
     );
   });
 
-  test('turns the engine status red, and names the problem, when the engine is unreachable', () => {
+  test('turns the health dot red, and names the problem, when the engine is unreachable', () => {
     stubEngine();
     landAt('/chat');
     const { getByRole } = mount(undefined, 'closed');
-    const link = getByRole('link', { name: 'Engine unreachable' });
+    const link = getByRole('link', { name: /^Health\s*Engine unreachable/ });
     expect(link.querySelector('.cinder-status-dot')?.getAttribute('data-cinder-status')).toBe(
       'danger',
     );
@@ -196,19 +200,33 @@ describe('the sidebar', () => {
     landAt('/chat');
     const { getByRole } = mount();
     const titles = Object.fromEntries(
-      ['Chat', 'Agents', 'Reviews', 'Overview', 'Audit', 'Settings'].map((label) => [
+      DESTINATIONS.map((label) => [
         label,
         getByRole('link', { name: new RegExp(`^${label}`) }).getAttribute('title'),
       ]),
     );
     expect(titles).toEqual({
       Chat: 'Chat (g c)',
-      Agents: 'Agents (g a)',
       Reviews: 'Reviews (g v)',
-      Overview: 'Overview (g e)',
-      Audit: 'Audit (g u)',
+      Agents: 'Agents (g a)',
+      Workflows: 'Workflows (g w)',
+      Runs: 'Runs (g r)',
+      Schedules: 'Schedules (g s)',
+      Health: 'Health (g e)',
       Settings: 'Settings (g n)',
     });
+  });
+
+  test('folds to its icon rail from its header, and opens again', async () => {
+    stubEngine();
+    landAt('/chat');
+    const { getByRole } = mount();
+    await fireEvent.click(getByRole('button', { name: 'Collapse sidebar' }));
+    expect(document.querySelector('.weft-shell-sidebar--collapsed')).not.toBeNull();
+    const expand = getByRole('button', { name: 'Expand sidebar' });
+    expect(expand.getAttribute('aria-expanded')).toBe('false');
+    await fireEvent.click(expand);
+    expect(document.querySelector('.weft-shell-sidebar--collapsed')).toBeNull();
   });
 });
 

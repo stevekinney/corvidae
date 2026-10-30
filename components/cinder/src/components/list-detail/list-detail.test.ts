@@ -54,6 +54,7 @@ afterAll(() => {
 const { cleanup, fireEvent, render } = await import('@testing-library/svelte/pure');
 const { tick } = await import('svelte');
 const { default: ListDetailFixture } = await import('./list-detail.fixture.svelte');
+const { LIST_DETAIL_SHORTCUTS } = await import('./list-detail.constants.ts');
 
 afterEach(() => {
   cleanup();
@@ -135,6 +136,21 @@ describe('ListDetail', () => {
 
     expect(getByText('No chats yet')).toBeTruthy();
     expect(getByText('Pick a chat')).toBeTruthy();
+  });
+
+  test('the list region declares the keys LIST_DETAIL_SHORTCUTS describes', () => {
+    const { getByRole } = render(ListDetailFixture, {
+      props: { selectionLocation: memoryLocation() },
+    });
+
+    expect(LIST_DETAIL_SHORTCUTS.map((shortcut) => shortcut.keys.join('+'))).toEqual([
+      'J',
+      'K',
+      'Enter',
+    ]);
+    expect(getByRole('region', { name: 'Chats' }).getAttribute('aria-keyshortcuts')).toBe(
+      'J K Enter',
+    );
   });
 
   test('J and K move the cursor and focus, Enter opens, and the URL follows', async () => {

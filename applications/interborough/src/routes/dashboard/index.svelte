@@ -1,6 +1,8 @@
 <script lang="ts">
   /**
-   * Engine overview (`/engine`; plan §9.1; design `Weft UI.dc.html` dashboard screen).
+   * Health (`/engine`; plan §9.1; design `Weft UI.dc.html` dashboard screen), the engine's
+   * overview. The sidebar's Health item is the way in to it, and its links are the way in to the
+   * engine's other pages: Workers, Storage, System and the audit log.
    * Three bands — critical alerts, aggregate cards, recent-activity feed —
    * behind a page-level state machine matching the design's four states
    * (default/loading/empty/unreachable, Appendix B). Bands own their own
@@ -12,13 +14,14 @@
    * are disposed with the component.
    */
   import { ArrowRight, Rocket, WifiOff } from '@lucide/svelte';
-  import { Button, EmptyState, Skeleton } from '@lostgradient/cinder';
+  import { Button, EmptyState, Link, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { getClient } from '../../lib/client.ts';
   import { formatRelativeTime } from '../../lib/format/index.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
+  import { NAVIGATION_COPY, VIEW_COPY } from '../../app/copy.ts';
   import AggregateCardsBand from './aggregate-cards-band.svelte';
   import { parseWorkflowAggregateResult } from './aggregate-output.ts';
   import ActivityFeedBand from './activity-feed-band.svelte';
@@ -49,18 +52,41 @@
   );
   const isUnreachable = $derived(healthQuery.isError);
   const isEmpty = $derived(statusQuery.isSuccess && statusQuery.data.total === 0);
+
+  /** The engine's other pages, each opened from here. */
+  const SECTIONS = [
+    { label: VIEW_COPY.workers.label, path: '/workers' },
+    { label: VIEW_COPY.storage.label, path: '/storage' },
+    { label: VIEW_COPY.system.label, path: '/system' },
+    { label: VIEW_COPY.audit.label, path: '/audit' },
+  ] as const;
+
+  function openSection(event: MouseEvent, path: string): void {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    router.navigate(path);
+  }
 </script>
 
 <div class="weft-dashboard">
   <div class="weft-dashboard__header">
     <div>
-      <h1 class="weft-dashboard__title">Engine</h1>
+      <h1 class="weft-dashboard__title">{VIEW_COPY.engine.label}</h1>
       {#if healthQuery.dataUpdatedAt > 0}
         <p class="weft-dashboard__subtitle">
           Refreshed {formatRelativeTime(healthQuery.dataUpdatedAt)}
         </p>
       {/if}
     </div>
+    <nav class="weft-dashboard__sections" aria-label={NAVIGATION_COPY.healthSections}>
+      {#each SECTIONS as section (section.path)}
+        <Link href={router.href(section.path)} onclick={(event) => openSection(event, section.path)}
+          >{section.label}</Link
+        >
+      {/each}
+    </nav>
   </div>
 
   {#if isGateLoading}

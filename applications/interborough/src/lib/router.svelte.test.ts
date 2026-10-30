@@ -31,9 +31,13 @@ function resetLocation(path = '/'): void {
 
 describe('matchRoute', () => {
   const definitions = [
-    { pattern: '/', load: () => Promise.reject(new Error('unused')) },
-    { pattern: '/runs', load: () => Promise.reject(new Error('unused')) },
-    { pattern: '/runs/:id', load: () => Promise.reject(new Error('unused')) },
+    { pattern: '/', kind: 'reading' as const, load: () => Promise.reject(new Error('unused')) },
+    { pattern: '/runs', kind: 'reading' as const, load: () => Promise.reject(new Error('unused')) },
+    {
+      pattern: '/runs/:id',
+      kind: 'reading' as const,
+      load: () => Promise.reject(new Error('unused')),
+    },
   ];
 
   test('matches a static pattern exactly', () => {
@@ -59,14 +63,18 @@ describe('matchRoute', () => {
     expect(matchRoute('/runs/%E0', definitions)).toBeNull();
     expect(matchRoute('/runs/%', definitions)).toBeNull();
     // A later literal segment that would not match anyway must not let the decode throw first.
-    const nested = [{ pattern: '/workflows/:type/runs', load: definitions[1]!.load }];
+    const nested = [
+      { pattern: '/workflows/:type/runs', kind: 'reading' as const, load: definitions[1]!.load },
+    ];
     expect(matchRoute('/workflows/%E0/nope', nested)).toBeNull();
     expect(matchRoute('/workflows/%E0/runs', nested)).toBeNull();
   });
 
   test('returns null when segment counts differ', () => {
     expect(matchRoute('/runs/wf_1/timeline', definitions)).toBeNull();
-    expect(matchRoute('/', [{ pattern: '/runs', load: definitions[1]!.load }])).toBeNull();
+    expect(
+      matchRoute('/', [{ pattern: '/runs', kind: 'reading' as const, load: definitions[1]!.load }]),
+    ).toBeNull();
   });
 
   test('normalizes a trailing slash away (empty segments are filtered)', () => {
@@ -78,8 +86,8 @@ describe('matchRoute', () => {
 
   test('first definition wins when multiple patterns could match', () => {
     const ambiguous = [
-      { pattern: '/runs/:id', load: definitions[2]!.load },
-      { pattern: '/runs/new', load: definitions[1]!.load },
+      { pattern: '/runs/:id', kind: 'table' as const, load: definitions[2]!.load },
+      { pattern: '/runs/new', kind: 'table' as const, load: definitions[1]!.load },
     ];
     expect(matchRoute('/runs/new', ambiguous)?.pattern).toBe('/runs/:id');
   });
