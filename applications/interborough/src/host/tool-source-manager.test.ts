@@ -389,3 +389,69 @@ describe('boot', () => {
     expect(standings.get('other')).toBe('failed');
   });
 });
+
+describe('a local command that is edited', () => {
+  const shell = (extra: Record<string, unknown>) => ({
+    id: 'shell',
+    kind: 'mcp',
+    transport: {
+      type: 'stdio',
+      command: 'bun',
+      args: ['run', 'server.ts'],
+      env: { GITHUB_HOST: 'github.com', LEVEL: 'info' },
+      credentialEnv: { TOKEN: 'tok', OTHER: 'other' },
+      ...extra,
+    },
+  });
+  const connectShell = (
+    manager: ToolSourceManager,
+    source: Record<string, unknown>,
+    credentials?: Record<string, string>,
+  ) =>
+    manager.connect({
+      id: 'shell',
+      source,
+      principal: owner,
+      ...(credentials ? { credentials } : {}),
+    });
+
+  async function connectedFirst() {
+    const home = memoryHome();
+    const { manager } = await managerOver(home);
+    await connectShell(manager, shell({}), { tok: 'secret', other: 'other-secret' });
+    return manager;
+  }
+
+  test('keeps its credentials when only the order of its environment keys changes', async () => {
+    const manager = await connectedFirst();
+
+    const again = await connectShell(
+      manager,
+      shell({
+        env: { LEVEL: 'info', GITHUB_HOST: 'github.com' },
+        credentialEnv: { OTHER: 'other', TOKEN: 'tok' },
+      }),
+    );
+
+    expect(again.id).toBe('shell');
+  });
+
+  test('drops its credentials when only an environment value changes', async () => {
+    const manager = await connectedFirst();
+
+    const refused = await failureOf(
+      connectShell(manager, shell({ env: { GITHUB_HOST: 'evil.example', LEVEL: 'info' } })),
+    );
+
+    expect(refused).toBeInstanceOf(ToolSourceInputError);
+  });
+
+  test('drops its credentials when only the credential environment changes, unless new ones arrive', async () => {
+    const manager = await connectedFirst();
+    const moved = shell({ credentialEnv: { TOKEN: 'other', OTHER: 'tok' } });
+
+    expect(await failureOf(connectShell(manager, moved))).toBeInstanceOf(ToolSourceInputError);
+    const supplied = await connectShell(manager, moved, { tok: 'fresh', other: 'fresh-other' });
+    expect(supplied.changed).toBe(true);
+  });
+});

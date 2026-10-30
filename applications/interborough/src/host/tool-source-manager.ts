@@ -499,6 +499,11 @@ function revisionOf(source: ToolSourceDescription): string {
   return createHash('sha256').update(JSON.stringify(source)).digest('hex');
 }
 
+/** A record's entries ordered by key, so two records that differ only in key order compare equal. */
+function sortedEntries(record: Readonly<Record<string, string>> | undefined): [string, string][] {
+  return Object.entries(record ?? {}).sort(([left], [right]) => (left < right ? -1 : 1));
+}
+
 /**
  * Where a source's credentials are sent: its kind, and the address or command they reach. A change
  * to any of it is a change of recipient, so the credentials held for the old one are not carried
@@ -509,7 +514,17 @@ function recipientOf(source: ToolSourceDescription): string {
     const { transport } = source;
     return JSON.stringify(
       transport.type === 'stdio'
-        ? ['mcp', 'stdio', transport.command, transport.args ?? [], transport.cwd ?? null]
+        ? [
+            'mcp',
+            'stdio',
+            transport.command,
+            transport.args ?? [],
+            transport.cwd ?? null,
+            // The environment is part of where a command sends what it is given (a token goes to
+            // whichever host `GITHUB_HOST` names), so it is compared with its keys in order.
+            sortedEntries(transport.env),
+            sortedEntries(transport.credentialEnv),
+          ]
         : ['mcp', 'http', transport.url],
     );
   }
@@ -601,8 +616,19 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
   };
 
   /** The credentials of a source loaded at boot: none once that incarnation is {@link retired}. */
-  const resolveForLoaded: typeof resolveCredential = (request) =>
-    retired.has(request.sourceId) ? Promise.resolve(undefined) : resolveCredential(request);
+  const resolveForLoaded =
+    (loaded: ToolSourceDescription): typeof resolveCredential =>
+    async (request) => {
+      if (retired.has(request.sourceId)) return undefined;
+      // A file edited by hand can drop the source and add one of the same id elsewhere: the tools
+      // loaded under the old description are not given the new source's credentials.
+      const { sources } = await readDocument();
+      const current = sources.find((entry) => entry.source.id === request.sourceId);
+      if (current === undefined || recipientOf(current.source) !== recipientOf(loaded)) {
+        return undefined;
+      }
+      return resolveCredential(request);
+    };
 
   /** A source's sign-in state for a load at boot: empty and read-only once that incarnation is {@link retired}. */
   function storageForLoaded(sourceId: string): McpOAuthTokenStorage {
@@ -695,7 +721,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       // source reports `needs-authorization` for a person to start it.
       const loaded = await within((signal) =>
         loadToolSource(source, {
-          resolveCredential: resolveForLoaded,
+          resolveCredential: resolveForLoaded(source),
           oauth: oauthOptions(() => undefined, 'take', storageForLoaded),
           signal,
           ...fetchOption,

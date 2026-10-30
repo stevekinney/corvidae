@@ -421,6 +421,38 @@ describe('a source that is replaced while its tools are loaded', () => {
     expect(failed).toBeInstanceOf(Error);
     expect(await lookup?.execute({})).toBeDefined();
   });
+
+  test('never gives a source re-added by hand elsewhere under the same id to tools loaded for the old one', async () => {
+    const first = await startMcpServer('token-for-the-first');
+    const second = await startMcpServer('token-for-the-first');
+    servers.push(first, second);
+    const home = memoryHome();
+    const keys = await keysOf();
+    await managerOver(home, keys).connect({
+      id: 'files',
+      source: bearerSource(`${first.origin}/`),
+      credentials: { token: 'token-for-the-first' },
+      principal: owner,
+    });
+    const booted = managerOver(home, keys);
+    await booted.start();
+    const lookup = Object.values(booted.tools()).find((tool) => tool.name === 'lookup');
+    expect(await lookup?.execute({})).toBeDefined();
+
+    // The file is edited by hand: the source is dropped and one of the same id points elsewhere.
+    const edited = JSON.parse(home.state.configuration ?? '{}') as {
+      toolSources: { source: { transport: { url: string } } }[];
+    };
+    const [entry] = edited.toolSources;
+    if (entry === undefined) throw new Error('expected the saved source');
+    entry.source.transport.url = `${second.origin}/`;
+    home.state.configuration = JSON.stringify(edited);
+
+    const refused = await failureOf(Promise.resolve(lookup?.execute({})));
+
+    expect(refused).toBeDefined();
+    expect(second.authorizations).toEqual([]);
+  });
 });
 
 describe('a source whose stored secret cannot be read', () => {
