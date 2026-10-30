@@ -41,11 +41,6 @@ const allowlist: Allowed[] = [
     selector: '.cinder-code-block__language',
     reason: 'A language tag (TS, JSON) shown on a code block; COR-1823 reworks this file.',
   },
-  {
-    file: 'components/payload-inspector/payload-inspector.css',
-    selector: '.cinder-payload-inspector__label',
-    reason: 'COR-1823 replaces the payload inspector; drop this entry when that change merges.',
-  },
 ];
 
 function cssFiles(directory: string): string[] {
