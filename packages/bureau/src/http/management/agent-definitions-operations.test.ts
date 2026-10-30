@@ -400,6 +400,39 @@ describe('results', () => {
     expect(refused.error?.data).toMatchObject({ reason: 'unknown-approval-tool' });
   });
 
+  it('takes the definition a read answers back as an update, with a perChatUsd and a toolBudget added (COR-1915)', async () => {
+    const served = await serve();
+    const hash = await seed(served);
+    const read = await callAs(served.owner, 'bureau.agents.definitions.get', { id: 'researcher' });
+    const definition = read.result?.['definition'] as Record<string, unknown>;
+    expect(definition['toolBudget']).toBeNull();
+
+    const updated = await callAs(served.owner, 'bureau.agents.definitions.update', {
+      id: 'researcher',
+      expectedHash: hash,
+      definition: {
+        ...definition,
+        costBudget: { perRunUsd: 1, perChatUsd: 5 },
+        toolBudget: { maxCalls: 3, maxDurationSeconds: 60 },
+      },
+    });
+
+    expect(updated.error).toBeUndefined();
+    const afterwards = await callAs(served.owner, 'bureau.agents.definitions.get', {
+      id: 'researcher',
+    });
+    expect(afterwards.result?.['definition']).toMatchObject({
+      costBudget: { perRunUsd: 1, perChatUsd: 5 },
+      toolBudget: { maxCalls: 3, maxDurationSeconds: 60 },
+    });
+    const refused = await callAs(served.owner, 'bureau.agents.definitions.update', {
+      id: 'researcher',
+      expectedHash: served.hashOf('researcher'),
+      definition: { ...definition, toolBudget: {} },
+    });
+    expect(refused.error).toBeDefined();
+  });
+
   it('writes nothing for an update that changes nothing, and returns the same hash', async () => {
     const served = await serve();
     const hash = await seed(served);

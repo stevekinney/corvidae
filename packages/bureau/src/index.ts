@@ -34,14 +34,18 @@ export type {
   AgentCostBudget,
   AgentGuardrailPreset,
   AgentRetry,
+  AgentToolBudget,
 } from './agent-file';
 export {
   AGENT_COST_BUDGET_MAXIMUM_USD,
   AGENT_COST_BUDGET_MAXIMUM_WARNINGS,
   AGENT_GUARDRAIL_PRESETS,
   AGENT_IDENTIFIER_PATTERN,
+  AGENT_TOOL_BUDGET_MAXIMUM_CALLS,
+  AGENT_TOOL_BUDGET_MAXIMUM_DURATION_SECONDS,
   agentFileFrontmatterSchema,
   agentToolApprovalSchema,
+  agentToolBudgetSchema,
   AgentFileConflictError,
   AgentFileError,
   AgentSnapshotError,

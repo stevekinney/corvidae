@@ -1,4 +1,8 @@
-import type { AnyToolbox, ToolExecutionResult } from 'armorer';
+import {
+  isToolboxBudgetExceededToolError,
+  type AnyToolbox,
+  type ToolExecutionResult,
+} from 'armorer';
 import type { JSONValue, ToolCall } from 'armorer/protocol';
 import { Conversation, materializeToolCalls } from 'conversationalist';
 
@@ -447,6 +451,19 @@ export async function executeTools(
       }
 
       emitter?.dispatch(new ToolsExecutedEvent(step, callsToExecute, executedResults));
+
+      // COR-1915: a call the toolbox's own `budget` (calls or time) refused ends the run as
+      // `budget-exceeded`, as a failFast rejection does (AB-231). Every later call would be
+      // refused the same way, so letting the model carry on would only spend steps. The rows are
+      // committed above, so the conversation keeps a result for every call.
+      const refused = results.find(
+        (result) => result.outcome === 'error' && isToolboxBudgetExceededToolError(result.error),
+      );
+      if (refused !== undefined) {
+        const runError = reclassifyToolError(refused.error);
+        emitter?.dispatch(new RunErrorEvent(step, runError, 'tool'));
+        return { kind: 'error', error: runError, errorKind: 'tool' };
+      }
 
       if (stepSignal.aborted && !signal?.aborted) {
         emitter?.dispatch(

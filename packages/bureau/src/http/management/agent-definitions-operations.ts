@@ -48,6 +48,7 @@ import {
   agentGuardrailPresetSchema,
   agentRetrySchema,
   agentToolApprovalSchema,
+  agentToolBudgetSchema,
   agentSkillDescriptorSchema,
   agentStepLimitSchema,
   AgentFileConflictError,
@@ -151,6 +152,8 @@ const definitionOutputSchema = z.object({
   guardrails: agentGuardrailPresetSchema.nullable(),
   /** What one run may spend; `null` when the file sets no limit. */
   costBudget: agentCostBudgetSchema.nullable(),
+  /** What one run's tools may use; `null` when the file sets no limit. */
+  toolBudget: agentToolBudgetSchema.nullable(),
   /** When each tool asks a person first; `null` when the file sets none and every tool asks on changes. */
   toolApproval: agentToolApprovalSchema.nullable(),
   instructions: z.string(),
@@ -180,7 +183,7 @@ const agentDetailSchema = agentListingSchema.extend({
 
 /**
  * What a caller supplies to `create` or `update`. An update keeps `a2a`, `stepLimit`, `retry`,
- * `compaction`, `references`, `guardrails`, `costBudget` and `toolApproval` when it leaves them out,
+ * `compaction`, `references`, `guardrails`, `costBudget`, `toolBudget` and `toolApproval` when it leaves them out,
  * so an editor that rewrites a definition cannot turn an agent's A2A opt-in off, or drop its step
  * limit, retry, compaction, references, guardrails, spend limit or tool approvals, by omitting
  * them; `null` removes any of them but `a2a`.
@@ -230,12 +233,20 @@ const definitionInputSchema = z
      */
     guardrails: agentGuardrailPresetSchema.nullable().optional(),
     /**
-     * What one run may spend: `perRunUsd` (a positive number of US dollars) and `warnAt` (up to ten
+     * What one run may spend: `perRunUsd` (a positive number of US dollars), `perChatUsd` (the most a chat may spend across its runs: once its earlier runs have spent it, the next run ends `budget-exceeded` before it starts) and `warnAt` (up to ten
      * fractions of it, each between 0 and 1, at which the run's activity shows a warning). The
      * agent's model must have a price in US dollars in the model catalog. Omitted, a create sets
      * no limit and an update keeps the file's; `null` removes the file's.
      */
     costBudget: agentCostBudgetSchema.nullable().optional(),
+    /**
+     * What one run's tools may use: `maxCalls` (a whole number of tool calls) and
+     * `maxDurationSeconds` (how long, from the start of the run, its tools may be called); at
+     * least one. The first call after a limit is reached ends the run, finish reason
+     * `budget-exceeded`. Omitted, a create sets no limit and an update keeps the file's; `null`
+     * removes the file's.
+     */
+    toolBudget: agentToolBudgetSchema.nullable().optional(),
     /**
      * When each tool asks a person before it runs: a tool name from `tools` mapped to `never`,
      * `on-changes`, `always` or `blocked`. A tool left out asks on changes. Omitted, a create sets
@@ -246,7 +257,7 @@ const definitionInputSchema = z
   })
   .superRefine((definition, context) => checkModelsList(definition, context))
   .describe(
-    'The agent’s definition: `name`, `description`, `model`, `models` (the models a session may be switched to), `tools`, `skillDescriptors`, `a2a` (whether the agent opts into A2A), `stepLimit` (the most steps a run takes, 1 to 1000), `retry` (`attempts` 1 to 10, `delayMilliseconds` 0 to 60000, `jitter`), `compaction` (`enabled`, `thresholdPercent` 50 to 95), `references` (paths of documents beside the file, whose text joins the instructions), `guardrails` (`default`, `tripwire` or `off`), `costBudget` (`perRunUsd`, and `warnAt` fractions), `toolApproval` (a tool from `tools` mapped to `never`, `on-changes`, `always` or `blocked`) and `instructions`.',
+    'The agent’s definition: `name`, `description`, `model`, `models` (the models a session may be switched to), `tools`, `skillDescriptors`, `a2a` (whether the agent opts into A2A), `stepLimit` (the most steps a run takes, 1 to 1000), `retry` (`attempts` 1 to 10, `delayMilliseconds` 0 to 60000, `jitter`), `compaction` (`enabled`, `thresholdPercent` 50 to 95), `references` (paths of documents beside the file, whose text joins the instructions), `guardrails` (`default`, `tripwire` or `off`), `costBudget` (`perRunUsd`, `perChatUsd`, and `warnAt` fractions), `toolBudget` (`maxCalls`, `maxDurationSeconds`), `toolApproval` (a tool from `tools` mapped to `never`, `on-changes`, `always` or `blocked`) and `instructions`.',
   );
 
 /**
@@ -321,11 +332,15 @@ function definitionView(definition: AgentFileDefinition) {
     references: definition.references === undefined ? null : [...definition.references],
     guardrails: definition.guardrails ?? null,
     toolApproval: definition.toolApproval === undefined ? null : { ...definition.toolApproval },
+    toolBudget: definition.toolBudget === undefined ? null : { ...definition.toolBudget },
     costBudget:
       definition.costBudget === undefined
         ? null
         : {
             perRunUsd: definition.costBudget.perRunUsd,
+            ...(definition.costBudget.perChatUsd === undefined
+              ? {}
+              : { perChatUsd: definition.costBudget.perChatUsd }),
             ...(definition.costBudget.warnAt === undefined
               ? {}
               : { warnAt: [...definition.costBudget.warnAt] }),
@@ -507,7 +522,7 @@ export const agentDefinitionsCreateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Create an agent definition',
   description:
-    'Writes a new agent file for `id`, the agent’s identifier: a lowercase letter or digit, then lowercase letters, digits, and hyphens, ending in a letter or digit. A caller derives it from the agent’s name; the name is only a label. `definition` is the file’s frontmatter (`name`, `description`, `model` written `<provider>/<model-or-alias>`, `tools`, `skillDescriptors`, `a2a`, `stepLimit`, `retry`, `compaction`, `references`, `guardrails`, `costBudget`, `toolApproval`) and its body (`instructions`). A new agent does not opt into A2A unless `a2a` is `true`. The file is written to a temporary file and renamed into place, and the agent is in the catalog before the call returns. Requires `bureau.agents:write` unless the caller owns the deployment’s agents. A taken identifier, including the key of a code-defined agent, is a `Conflict`; a definition that would not load is `Unprocessable`, and nothing is written.',
+    'Writes a new agent file for `id`, the agent’s identifier: a lowercase letter or digit, then lowercase letters, digits, and hyphens, ending in a letter or digit. A caller derives it from the agent’s name; the name is only a label. `definition` is the file’s frontmatter (`name`, `description`, `model` written `<provider>/<model-or-alias>`, `tools`, `skillDescriptors`, `a2a`, `stepLimit`, `retry`, `compaction`, `references`, `guardrails`, `costBudget`, `toolBudget`, `toolApproval`) and its body (`instructions`). A new agent does not opt into A2A unless `a2a` is `true`. The file is written to a temporary file and renamed into place, and the agent is in the catalog before the call returns. Requires `bureau.agents:write` unless the caller owns the deployment’s agents. A taken identifier, including the key of a code-defined agent, is a `Conflict`; a definition that would not load is `Unprocessable`, and nothing is written.',
   destructive: true,
   tags: ['Agents'],
   inputSchema: createInput,
@@ -552,7 +567,7 @@ export const agentDefinitionsUpdateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Replace an agent definition',
   description:
-    'Replaces the agent file for `id` with `definition`, if it still hashes to `expectedHash` (the `hash` a read returned). Frontmatter keys Bureau does not know stay in the file, and an omitted `a2a`, `stepLimit`, `retry`, `compaction`, `references`, `guardrails`, `costBudget` or `toolApproval` keeps the file’s value (`null` removes any but `a2a`). A `definition` that omits `models` removes the file’s list, as omitting `tools` removes its tools. A file that changed since is a `StaleRevision` fault whose `currentRevision` is the hash now on disk, and nothing is written. A definition that changes nothing writes nothing and returns the same hash. A run in progress keeps the definition it started with. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`, as is an update of a code-defined key, before any file is read.',
+    'Replaces the agent file for `id` with `definition`, if it still hashes to `expectedHash` (the `hash` a read returned). Frontmatter keys Bureau does not know stay in the file, and an omitted `a2a`, `stepLimit`, `retry`, `compaction`, `references`, `guardrails`, `costBudget`, `toolBudget` or `toolApproval` keeps the file’s value (`null` removes any but `a2a`). A `definition` that omits `models` removes the file’s list, as omitting `tools` removes its tools. A file that changed since is a `StaleRevision` fault whose `currentRevision` is the hash now on disk, and nothing is written. A definition that changes nothing writes nothing and returns the same hash. A run in progress keeps the definition it started with. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`, as is an update of a code-defined key, before any file is read.',
   destructive: true,
   tags: ['Agents'],
   inputSchema: updateInput,
@@ -571,7 +586,7 @@ export const agentDefinitionsUpdateOperation = defineOperation<
   invoke: async ({ input, host, principal }) => {
     const definitions = requireWritableAgent(host, principal, input.id);
     try {
-      // An omitted `a2a`, `stepLimit`, `retry`, `compaction`, `references`, `guardrails`, `costBudget` or `toolApproval` keeps the file's value: the catalog applies that rule itself.
+      // An omitted `a2a`, `stepLimit`, `retry`, `compaction`, `references`, `guardrails`, `costBudget`, `toolBudget` or `toolApproval` keeps the file's value: the catalog applies that rule itself.
       const result = await definitions.agents.update(input.id, definitionOf(input.definition), {
         expectedHash: input.expectedHash,
         savedBy: ownerOfPrincipal(principal),
