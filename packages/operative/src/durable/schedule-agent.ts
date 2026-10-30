@@ -158,6 +158,11 @@ export interface CreateAgentScheduleOptions {
    */
   overlap?: AgentScheduleOverlapPolicy | undefined;
   /**
+   * The IANA time zone a cron `spec` is read in, such as `America/Los_Angeles`. Omitted, the
+   * schedule runs in UTC. Only a cron `spec` takes one; Weft refuses it with an interval.
+   */
+  timeZone?: string | undefined;
+  /**
    * The schedule's owner of record (maps to `ScheduledAgentRunInput.principal`).
    * Written into the scheduled input only when given.
    */
@@ -318,6 +323,11 @@ export interface AgentScheduleOptions {
    * `'skip' | 'allow'` — see {@link AgentScheduleOverlapPolicy}.
    */
   overlap?: AgentScheduleOverlapPolicy | undefined;
+  /**
+   * The IANA time zone a cron `spec` is read in, such as `America/Los_Angeles`. Omitted, the
+   * schedule runs in UTC. Only a cron `spec` takes one; Weft refuses it with an interval.
+   */
+  timeZone?: string | undefined;
   /** The schedule's owner of record; see {@link CreateAgentScheduleOptions.principal}. */
   principal?: string | undefined;
   /** Optional stable schedule id (defaults to Weft-assigned uuid). */
@@ -468,6 +478,7 @@ function assertCompatibleAgentSchedule(
   spec: ScheduleSpec,
   overlap: ScheduleOverlapPolicy | undefined,
   description: string | undefined,
+  timeZone: string | undefined,
 ): void {
   if (schedule.status === 'cancelled') {
     throw new Error(`Schedule ${scheduleId} already exists but is cancelled.`);
@@ -488,6 +499,10 @@ function assertCompatibleAgentSchedule(
 
   if (schedule.description !== description) {
     throw new Error(`Schedule ${scheduleId} already exists with a different description.`);
+  }
+
+  if (schedule.timeZone !== (timeZone ?? 'UTC')) {
+    throw new Error(`Schedule ${scheduleId} already exists with a different time zone.`);
   }
 
   if ('cron' in spec) {
@@ -535,6 +550,7 @@ export async function createAgentSchedule(
     description,
     session,
     overlap,
+    timeZone,
     id,
     idempotent,
     emitter,
@@ -595,6 +611,7 @@ export async function createAgentSchedule(
   const scheduleOptions: ScheduleOptions = {
     ...(description !== undefined ? { description } : {}),
     ...(overlap !== undefined ? { overlap } : {}),
+    ...(timeZone !== undefined ? { timeZone } : {}),
     id: scheduleId,
   };
 
@@ -609,6 +626,7 @@ export async function createAgentSchedule(
         spec,
         overlap,
         description,
+        timeZone,
       );
       return scheduleHandleFromEngine(engine, scheduleId, emitter);
     }
@@ -629,6 +647,7 @@ export async function createAgentSchedule(
           spec,
           overlap,
           description,
+          timeZone,
         );
         return scheduleHandleFromEngine(engine, scheduleId, emitter);
       }

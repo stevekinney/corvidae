@@ -28,6 +28,7 @@ const mockSummary: ScheduleSummary = {
   status: 'active',
   overlap: 'skip',
   backfill: false,
+  timeZone: 'UTC',
   revisionPolicy: 'active-at-fire',
   createdAt: 0,
   updatedAt: 0,
@@ -315,6 +316,58 @@ describe('createAgentSchedule', () => {
       overlap: 'skip',
       id: 'daily-digest-sched',
     });
+  });
+
+  it('threads the time zone through to the engine, and only when it is given', async () => {
+    const engine = makeSchedulingEngine();
+
+    await createAgentSchedule({
+      engine,
+      agentName: 'researcher',
+      spec: { cron: '0 9 * * 1-5' },
+      input: 'hello',
+      timeZone: 'America/Los_Angeles',
+    });
+    await createAgentSchedule({
+      engine,
+      agentName: 'researcher',
+      spec: { cron: '0 9 * * 1-5' },
+      input: 'hello',
+    });
+
+    expect(engine.calls[0]!.options).toMatchObject({ timeZone: 'America/Los_Angeles' });
+    expect(Object.hasOwn(engine.calls[1]!.options ?? {}, 'timeZone')).toBe(false);
+  });
+
+  it('does not treat an idempotent retry in another time zone as the same schedule', async () => {
+    const existingSummary: ScheduleSummary = {
+      ...mockSummary,
+      id: 'zoned-run',
+      cronExpression: '0 9 * * *',
+      timeZone: 'America/Los_Angeles',
+    };
+    const engine = makeSchedulingEngine({ summaries: [existingSummary] });
+    const retry = (timeZone: string | undefined) =>
+      createAgentSchedule({
+        engine,
+        agentName: 'researcher',
+        spec: { cron: '0 9 * * *' },
+        input: 'hello',
+        id: 'zoned-run',
+        idempotent: true,
+        ...(timeZone === undefined ? {} : { timeZone }),
+      });
+
+    expect((await retry('America/Los_Angeles')).id).toBe('zoned-run');
+    for (const other of ['Europe/Berlin', undefined]) {
+      let refusal: unknown;
+      try {
+        await retry(other);
+      } catch (error) {
+        refusal = error;
+      }
+      expect(String(refusal)).toContain('different time zone');
+    }
   });
 
   it('writes the principal into the scheduled input beside scheduleId, and only when it is given', async () => {
