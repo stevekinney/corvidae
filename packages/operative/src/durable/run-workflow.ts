@@ -313,6 +313,9 @@ export function createRunWorkflow(
               finalRowIsReplacement: cursor.finalRowIsReplacement,
               schemaAttempts: cursor.schemaAttempts,
               lastAppliedConfigVersion: cursor.lastAppliedConfigVersion,
+              ...(cursor.effectiveContextTail === undefined
+                ? {}
+                : { effectiveContextTail: cursor.effectiveContextTail }),
             };
             const stepResult = yield* runStepMemo(
               ctx,

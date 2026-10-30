@@ -9,7 +9,7 @@ import type {
 import type { HumanInputSchema } from '../human-input-schema';
 
 import type { AccumulatedCost } from '../cost-estimation';
-import type { EffectiveContextDelta } from '../effective-context-record';
+import type { EffectiveContextTail, StoredEffectiveContext } from '../effective-context-record';
 import type { GeneratedMediaAdmission } from '../generated-media';
 import type { PlanReason } from '../providers/plan-reason';
 import type { Effort } from '../providers/types';
@@ -71,6 +71,13 @@ export interface RunCursor {
    */
   lastAppliedConfigVersion: number;
   /**
+   * COR-1810 — the message count and conversation digest of the last step whose record stored an
+   * effective context, so the next step stores its own as a delta from it. Absent before the first
+   * such step and in a cursor written before it existed, in which case the next step stores its
+   * effective context whole.
+   */
+  effectiveContextTail?: EffectiveContextTail | undefined;
+  /**
    * The workflow version identifier this run was created under (see
    * {@link import('./run-workflow').createRunWorkflow}'s `version` option),
    * stamped once at run creation and carried unchanged across every subsequent
@@ -116,15 +123,17 @@ export interface StepRecord {
    */
   planReason?: PlanReason | undefined;
   /**
-   * What the step's model saw (COR-1810, `StepResult.effectiveContext`), as the delta from the
-   * previous step's: the epoch's sources and digest, and only the message digests and ids added
-   * since. A step's write is therefore the same size however long the conversation is (COR-1376);
+   * What the step's model saw (COR-1810, `StepResult.effectiveContext`), in the versioned stored
+   * form: a `delta` of the message digests and ids added since the previous stored step, tied to
+   * that step's conversation by `prefixDigest`, when this step's conversation extends it, and the
+   * capped record whole (`full`) otherwise, as after a compaction or a redaction. A step's write is
+   * therefore the same size however long an append-only conversation grows (COR-1376);
    * `rebuildEffectiveContexts` rebuilds each step's whole record, capped at 256 KiB, from the
    * run's records. Kept with the run's checkpoint and so for as long as the run's checkpoints are.
    * Optional, so it adds no record version: a record written before it existed reads as a step
    * with none.
    */
-  effectiveContext?: EffectiveContextDelta | undefined;
+  effectiveContext?: StoredEffectiveContext | undefined;
   final: boolean;
 }
 

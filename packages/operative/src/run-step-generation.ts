@@ -5,8 +5,9 @@ import { Conversation } from 'conversationalist';
 import { type ContextEpochSealInput, sealContextEpoch } from './context-epoch';
 import type { SteeringDesiredState } from './durable/types';
 import {
-  composeEffectiveContextRecord,
+  composeEffectiveContext,
   type EffectiveContextRecord,
+  type StoredEffectiveContext,
 } from './effective-context-record';
 import {
   GeneratedMediaNotAdmittedError,
@@ -106,11 +107,13 @@ export async function executeGeneration(
   } = input;
   const { hooks, hookTracker, backpressure, signal } = deps;
   const assistantMessageId = assistantMessageIdentifier(deps.runId, step);
+  runState.storedEffectiveContext = undefined;
   let response: GenerateResponse = undefined!;
   let streamedRowId: string | undefined;
   let stepRetryCount = 0;
   let contextEpochId: string | undefined;
   let effectiveContext: EffectiveContextRecord | undefined;
+  let storedEffectiveContext: StoredEffectiveContext | undefined;
   let planReason: PlanReason | undefined;
   let shouldRetryStep: boolean;
   let stepSkipped = false;
@@ -133,6 +136,7 @@ export async function executeGeneration(
     // the attempt's reply details are not carried into it.
     planReason = undefined;
     effectiveContext = undefined;
+    storedEffectiveContext = undefined;
     try {
       let prepareResult: GenerateResponse | void = undefined;
       if (hooks?.has('prepareStep')) {
@@ -310,10 +314,11 @@ export async function executeGeneration(
             toolNames: generateContext.toolbox.tools().map((tool) => tool.name),
             consumer: { runId: deps.runId, step, attempt: stepRetryCount },
           });
-        effectiveContext = composeEffectiveContextRecord(
+        ({ record: effectiveContext, stored: storedEffectiveContext } = composeEffectiveContext(
           sealedEpoch === undefined ? { ...recordedEpoch, epochId: undefined } : recordedEpoch,
           generateContext.conversation,
-        );
+          runState.effectiveContextTail,
+        ));
         planReason = planReasonForStep(deps.selection?.getPlan(), steeringDesiredState);
 
         // AB-68: record the configuration this call is issued under. Read
@@ -365,12 +370,13 @@ export async function executeGeneration(
           // The mutated request is what a successful retry sends, so the step names its epoch
           // and records what that request carried.
           contextEpochId = deps.contextEpoch === undefined ? undefined : mutatedEpoch.epochId;
-          effectiveContext = composeEffectiveContextRecord(
+          ({ record: effectiveContext, stored: storedEffectiveContext } = composeEffectiveContext(
             deps.contextEpoch === undefined
               ? { ...mutatedEpoch, epochId: undefined }
               : mutatedEpoch,
             mutatedContext.conversation,
-          );
+            runState.effectiveContextTail,
+          ));
           return contextEpochId;
         };
         try {
@@ -594,6 +600,8 @@ export async function executeGeneration(
     }
   } while (shouldRetryStep);
 
+  // COR-1810: the durable step writer stores this with the step it produced.
+  runState.storedEffectiveContext = storedEffectiveContext;
   return {
     response,
     streamedRowId,

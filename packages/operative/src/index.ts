@@ -308,15 +308,18 @@ export type {
 // COR-1810 — what a reply's model saw
 export {
   EFFECTIVE_CONTEXT_RECORD_LIMIT_BYTES,
+  STORED_EFFECTIVE_CONTEXT_VERSION,
   composeEffectiveContextRecord,
   rebuildEffectiveContexts,
-  toEffectiveContextDelta,
 } from './effective-context-record';
 export type {
-  EffectiveContextDelta,
   EffectiveContextMessage,
   EffectiveContextRecord,
   EffectiveContextSource,
+  EffectiveContextTail,
+  StoredEffectiveContext,
+  StoredEffectiveContextDelta,
+  StoredEffectiveContextFull,
 } from './effective-context-record';
 // COR-634 — in-memory GoalRun controller
 export { GoalConfigurationError, VALIDATOR_ERROR_KINDS } from './errors';
