@@ -53,6 +53,7 @@ describe('listing sessions by origin', () => {
     await store.save(sessionWith('goal-1', { [SESSION_ORIGIN_METADATA_KEY]: 'goal' }));
     await store.save(sessionWith('fire-1', { [SESSION_ORIGIN_METADATA_KEY]: 'schedule' }));
     await store.save(sessionWith('new-chat', {}));
+    await store.save(sessionWith('try-1', { [SESSION_ORIGIN_METADATA_KEY]: 'try' }));
     return store;
   }
 
@@ -74,10 +75,33 @@ describe('listing sessions by origin', () => {
     expect(fires.map((row) => row.id)).toEqual(['fire-1']);
   });
 
+  it('lists the sessions of an unsaved agent definition a person is trying (COR-1911)', async () => {
+    const store = await seededStore();
+
+    const tries = await store.list({ origin: 'try' });
+
+    expect(tries.map((row) => row.id)).toEqual(['try-1']);
+  });
+
   it('lists every session when no origin is asked for', async () => {
     const store = await seededStore();
 
-    expect(await store.list()).toHaveLength(4);
+    expect(await store.list()).toHaveLength(5);
+  });
+
+  it('leaves out the origins it is told to, unless an origin is asked for by name', async () => {
+    const store = await seededStore();
+
+    const withoutTries = await store.list({ excludeOrigins: ['try'] });
+    const triesAsked = await store.list({ origin: 'try', excludeOrigins: ['try'] });
+
+    expect(withoutTries.map((row) => row.id).toSorted()).toEqual([
+      'fire-1',
+      'goal-1',
+      'new-chat',
+      'old-chat',
+    ]);
+    expect(triesAsked.map((row) => row.id)).toEqual(['try-1']);
   });
 
   it('filters before it pages, so a page of chats is full of chats', async () => {
@@ -87,7 +111,7 @@ describe('listing sessions by origin', () => {
     const second = await store.list({ origin: 'chat', limit: 1, offset: 1 });
     const third = await store.list({ origin: 'chat', limit: 1, offset: 2 });
 
-    // Two goal and schedule sessions sit among the four, and neither takes a page.
+    // A goal, a schedule, and a try session sit among the five, and none takes a page.
     expect([...first, ...second].map((row) => row.id).toSorted()).toEqual(['new-chat', 'old-chat']);
     expect(third).toEqual([]);
   });

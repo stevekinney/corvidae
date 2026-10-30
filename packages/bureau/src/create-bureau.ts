@@ -88,6 +88,8 @@ import {
   type Store,
   StoreActionEvent,
   type Subscription,
+  SESSION_ORIGIN_METADATA_KEY,
+  sessionOriginOf,
   SESSION_OWNER_METADATA_KEY,
   SESSION_TITLE_METADATA_KEY,
   SESSION_TITLE_OVERRIDE_LIMIT,
@@ -144,7 +146,8 @@ import {
 
 import { shutdownThenRethrow } from './composition-failure';
 import { type AgentDefinitions, type AgentNames, createAgentCatalog } from './agent-catalog';
-import { AgentSnapshotError } from './agent-file';
+import { AgentFileError, AgentSnapshotError, type AgentFileDefinitionInput } from './agent-file';
+import { createTryAgents, isTryAgentName, TRY_AGENT_NAME_START, tryToolProblem } from './agent-try';
 import {
   createAgentFileCatalog,
   type FileAgentBinding,
@@ -557,6 +560,8 @@ import type {
   TaskHandle,
   TaskInput,
   TaskRespondResult,
+  TryAgentOptions,
+  TryAgentResult,
   OwnedResource,
   DiagnosticSink,
   DurableScheduleDefinition,
@@ -2571,6 +2576,8 @@ async function constructBureau<const D extends AgentDefinitions>(
   let models: Models;
   let agentToolCatalog: Readonly<Record<string, Tool>>;
   let fileAgents: FileAgentRuntime | undefined;
+  /** COR-1911 — the agents being tried, held in memory for the contexts that started them. */
+  const tryAgents = createTryAgents();
   let agentCatalog: ReturnType<typeof createAgentCatalog<D>>;
   let workflowRuntime: WorkflowRuntime | undefined;
   const abandonConstruction = async (error: unknown): Promise<never> => {
@@ -2916,7 +2923,11 @@ async function constructBureau<const D extends AgentDefinitions>(
         agent = rebuilt.agent;
         agentBinding = rebuilt.binding;
       } else {
-        agent = agentCatalog.find(name);
+        // COR-1911 — a tried agent is held for its context's owner and is in no catalog, so no
+        // schedule, goal, child or workflow can name it; a session run of it reaches it here.
+        agent = isTryAgentName(name)
+          ? tryAgents.find(name, ownerOrLocal(context.principal))
+          : agentCatalog.find(name);
         agentBinding = agent === undefined ? undefined : readFileAgentBinding(agent);
       }
     } catch (error) {
@@ -7560,6 +7571,143 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
+   * COR-1911 — a tried agent belongs to the one context that was started with it: a name that is
+   * held for another context, or for none, is an agent that does not exist.
+   */
+  function assertTriedAgentBelongsTo(agentName: string, sessionId: string): void {
+    if (tryAgents.contextOf(agentName) !== sessionId) {
+      throw new BureauError(`Unknown agent "${agentName}"`, 'NOT_FOUND');
+    }
+  }
+
+  /** COR-1911 — the origin a tried context records once, when its session is created. */
+  function triedOriginMetadata(
+    triedRun: boolean,
+    session: AgentSession | undefined,
+  ): Record<string, string> {
+    return triedRun && session === undefined ? { [SESSION_ORIGIN_METADATA_KEY]: 'try' } : {};
+  }
+
+  /**
+   * COR-1710, COR-1911 — the tools a task starting now is granted: the settings', less
+   * `scheduleWakeup` and `decide` for a tried agent, whatever the settings offer. The admission
+   * record keeps the grant, so the task's recovery offers the same tools.
+   */
+  function toolGrantFor(triedRun: boolean): TaskToolGrant {
+    return triedRun ? { ...toolGrantNow(), wakeup: false, decide: false } : toolGrantNow();
+  }
+
+  /**
+   * COR-1911 — removes the runs of a tried context that has been deleted: each run's task record,
+   * its place in the run store, its durable workflow and its checkpoints. A context a person chats
+   * in keeps these as history until retention ends them; a tried one is a throwaway, so it keeps
+   * none. Best-effort for each step, like the rest of a deletion that has already committed: a
+   * failure is diagnosed and the retention that ends every run's history ends this one's.
+   * What a deletion of any context leaves stays until retention removes it (a purge is COR-1934):
+   * the audit trail's entries, which hold what the agent answered; on a store that keeps durable
+   * event history, the fleet event records and their indexes, which hold the run's content too;
+   * delivery markers and counters; and the engine's tombstones (`wf-gen:` and
+   * `wf-owner-epoch:`), which keep a run id from being reused.
+   */
+  async function discardTriedRuns(
+    session: AgentSession,
+    knownRunIds: ReadonlySet<string>,
+  ): Promise<void> {
+    const runIds = new Set(knownRunIds);
+    const owners = session.metadata['lastRunOwningPrincipals'];
+    if (isPlainAuthorityRecord(owners)) for (const runId of Object.keys(owners)) runIds.add(runId);
+    // The run store holds only this process's runs, and the ownership map is pruned once a run's
+    // event history expires, while its task record stays longer: the durable context index is
+    // the complete list of the context's tasks.
+    try {
+      for (const taskId of await tasks.taskIdsOfContext(session.id, session.incarnation)) {
+        runIds.add(taskId);
+      }
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'agent-try',
+        message: `[bureau] Could not list the tasks of a deleted tried context "${session.id}": ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
+    const attempt = async (what: string, runId: string, work: () => Promise<unknown>) => {
+      try {
+        await work();
+      } catch (error) {
+        diagnose({
+          level: 'error',
+          scope: 'agent-try',
+          message: `[bureau] Could not remove the ${what} of run "${runId}" of a deleted tried context "${session.id}": ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      }
+    };
+    for (const runId of runIds) {
+      if (store.getRun(runId) !== undefined) await attempt('run', runId, () => deleteRun(runId));
+      await attempt('task record', runId, () => tasks.remove(runId));
+      const durable = runtime.durable;
+      if (durable === undefined) continue;
+      await attempt('workflow', runId, () => durable.engine.purge({ idPrefix: runId }));
+      await attempt('checkpoints', runId, () => durable.checkpointStore.clear(runId));
+    }
+  }
+
+  /**
+   * COR-1911 — builds an agent from `definition` as an agent file would be, writes nothing, and
+   * starts a new context with it over `input`. The agent is held in memory for that context alone
+   * and dropped with it; see `agent-try.ts` for what a run of it may not do.
+   */
+  async function tryAgent(
+    definition: AgentFileDefinitionInput,
+    input: TaskInput,
+    tryOptions: TryAgentOptions = {},
+  ): Promise<TryAgentResult> {
+    assertRunAdmissionOpen('run');
+    const owner = ownerFromPrincipal(tryOptions.principal, toBadRequest);
+    if (fileAgents === undefined) {
+      throw new AgentFileError(
+        'agent-directory-not-configured',
+        'This Bureau has no agent source or no models.generate, so it cannot build an agent to try.',
+      );
+    }
+    const refused = tryToolProblem(definition);
+    if (refused !== undefined) throw new AgentFileError(refused.code, refused.message, refused);
+    const contextId = runtimeServices.identifiers.next('session');
+    const agentName = `${TRY_AGENT_NAME_START}${runtimeServices.identifiers.next('try')}`;
+    // Built before it is held: a definition that would not load as a file is refused here with the
+    // file's own field-named problem, and nothing exists.
+    const agent = fileAgents.files.ephemeral(agentName, definition);
+    tryAgents.hold({ name: agentName, agent, owner, contextId });
+    try {
+      const handle = await startTask(agentName, input, {
+        contextId,
+        principal: owner,
+        origin: { kind: 'chat' },
+        ...(tryOptions.requestContext === undefined
+          ? {}
+          : { requestContext: tryOptions.requestContext }),
+        ...(tryOptions.signal === undefined ? {} : { signal: tryOptions.signal }),
+      });
+      return { contextId, agentName, taskId: handle.id };
+    } catch (error) {
+      // A start that failed may have saved the context before it did: take both away.
+      try {
+        await deleteSession(contextId);
+      } catch (cleanupError) {
+        diagnose({
+          level: 'error',
+          scope: 'agent-try',
+          message: `[bureau] A tried agent failed to start, and its context "${contextId}" could not be removed: ${serializeUnknownError(cleanupError)}`,
+          cause: cleanupError,
+        });
+      }
+      tryAgents.release(agentName, contextId);
+      throw error;
+    }
+  }
+
+  /**
    * Binds a task's start signal to the run this process holds under `id`: an aborted signal
    * aborts it now, a later abort when it fires. Once the run settles the signal has nothing left
    * to abort, so the listener goes with it, and a long-lived caller signal does not collect one
@@ -7659,6 +7807,10 @@ async function constructBureau<const D extends AgentDefinitions>(
       throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
     }
     const agentName = resolveRunAgentName(sessionId, session, request.agentName);
+    // COR-1911 — a tried agent belongs to the one context that was started with it: a name that
+    // is held for another context, or for none, is an agent that does not exist.
+    const triedRun = isTryAgentName(agentName);
+    if (triedRun) assertTriedAgentBelongsTo(agentName, sessionId);
     // COR-1867 — where the task came from, as its record and its run's `origin:<kind>` tag keep
     // it. A chat's identifiers are this start's own, never the caller's.
     const taskOrigin: TaskOrigin = taskOriginOfStart(request.origin, {
@@ -7818,7 +7970,7 @@ async function constructBureau<const D extends AgentDefinitions>(
           runId,
           requestContext,
         },
-        { sessionAgent, memoryOwner: owner },
+        { sessionAgent, memoryOwner: owner, withoutMemory: triedRun },
       );
       runRequestContexts.set(runId, requestContext);
 
@@ -7909,6 +8061,8 @@ async function constructBureau<const D extends AgentDefinitions>(
           // COR-718 — the session's owner, written once: `mergeMetadata` keeps the
           // stored owner when the session already has one.
           [SESSION_OWNER_METADATA_KEY]: owner,
+          // COR-1911 — the session of an agent being tried says so once, when it is created.
+          ...triedOriginMetadata(triedRun, session),
         },
         // Stamp a new session with the dispatched agent (PRRT_kwDORvupsc6MbUsN) so it
         // is not always recorded as the house default 'bureau'. An existing session keeps the
@@ -7948,7 +8102,9 @@ async function constructBureau<const D extends AgentDefinitions>(
       const servicesRef: { current?: DurableRunDeps } = {};
       // COR-1710 — the tools this task is granted, read from the settings once and recorded on its
       // admission record below, so its recovery offers the same ones.
-      const toolGrant = toolGrantNow();
+      // COR-1911 — a tried agent is granted neither `scheduleWakeup` nor `decide`, whatever the
+      // settings offer, and the admission record below keeps that grant for its recovery.
+      const toolGrant = toolGrantFor(triedRun);
       const wantsHumanInput = toolGrant.humanInput !== false && !!runtime.durable;
       const wantsWakeup = toolGrant.wakeup && !!runtime.durable;
       // COR-1709: offered to exactly the runs that are offered `requestHumanInput`.
@@ -13366,7 +13522,12 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   async function listSessions(requestOptions?: SessionListOptions) {
-    return requireSessionStore().list(requestOptions);
+    // COR-1911 — the contexts of agents being tried are not among a person's chats, goals and
+    // fires unless they are asked for by origin.
+    return requireSessionStore().list({
+      excludeOrigins: ['try'],
+      ...requestOptions,
+    });
   }
 
   async function getSession(id: string) {
@@ -13933,10 +14094,25 @@ async function constructBureau<const D extends AgentDefinitions>(
           cause: error,
         });
       });
-      const removedLiveRecord =
-        expectedIncarnation === undefined
-          ? await sessionStore.delete(id)
-          : await sessionStore.delete(id, { expectedIncarnation });
+      // COR-1911 — a tried context's agent goes BEFORE the store delete, not after it: once the
+      // delete commits, the id is free, and an owner who named the agent could start the id again
+      // with it, a context nothing would ever clean up. Without the agent the id answers
+      // NOT_FOUND. A delete that throws did not commit, so the context is still live and its
+      // agent is held again.
+      const triedAgent =
+        sessionOriginOf(session.metadata) === 'try'
+          ? tryAgents.take(session.agentName, id)
+          : undefined;
+      let removedLiveRecord: boolean;
+      try {
+        removedLiveRecord =
+          expectedIncarnation === undefined
+            ? await sessionStore.delete(id)
+            : await sessionStore.delete(id, { expectedIncarnation });
+      } catch (error) {
+        if (triedAgent !== undefined) tryAgents.hold(triedAgent);
+        throw error;
+      }
       onStoreDeletionCommitted();
       // COR-1915 — the deleted chat's spend records go with it. A record left behind is ignored
       // anyway, since a chat recreated under the id has another incarnation, so a failure here is
@@ -14050,6 +14226,11 @@ async function constructBureau<const D extends AgentDefinitions>(
         for (const [reviewId, cleanup] of reviewResolutionCleanupPending) {
           if (cleanup.runId === runId) reviewResolutionCleanupPending.delete(reviewId);
         }
+      }
+      // COR-1911 — a tried context takes the agent it was started with, and the runs it made,
+      // with it: the other contexts' runs are history that retention ends.
+      if (removedLiveRecord && sessionOriginOf(session.metadata) === 'try') {
+        await discardTriedRuns(session, sessionRunIds);
       }
       return { deleted: removedLiveRecord, tasks: liveTasks };
     }
@@ -14432,7 +14613,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     agentName: string,
     override: { readonly model: string; readonly provider?: string | undefined },
   ): boolean {
-    const agent = agentCatalog.find(agentName);
+    const agent = agentCatalog.find(agentName) ?? tryAgents.peek(agentName);
     if (agent === undefined) return true;
     const descriptors = models.catalog().descriptors;
     const allowed = describeAgentModels(agent, descriptors);
@@ -14524,8 +14705,11 @@ async function constructBureau<const D extends AgentDefinitions>(
       return answerOfFork(retained.result);
     }
     const session = await sessions.load(sessionId);
-    if (session === undefined)
+    // COR-1911 — a tried chat has no agent to continue a branch with: its agent is held for it
+    // alone, so a branch of it is a context that cannot run. It reads as one that does not exist.
+    if (session === undefined || sessionOriginOf(session.metadata) === 'try') {
       throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
+    }
     if (retained === undefined) {
       await assertBranchPoint(session, request.throughMessageId, {
         record: (runId) => tasks.record(runId),
@@ -19567,6 +19751,9 @@ async function constructBureau<const D extends AgentDefinitions>(
    */
   async function resolveChildParent(parentRunId: string): Promise<ChildTopologyParent | undefined> {
     const attribution = runAttribution.get(parentRunId);
+    // COR-1911 — a run of a tried agent starts no child, whatever tool asks: it is answered as a
+    // run that does not exist, as any parent that cannot own children is.
+    if (isTryAgentName(attribution?.agentName ?? '')) return undefined;
     const childParent = await childTopologyStore.get(parentRunId);
     if (childParent) {
       return {
@@ -19926,7 +20113,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     get lifecycle() {
       return bureau.completed ? 'stopped' : runAdmissionClosed ? 'draining' : 'ready';
     },
-    agents: agentCatalog,
+    agents: Object.freeze({ ...agentCatalog, try: tryAgent }),
     workflows: workflowRuntime?.workflows,
     deployments:
       options.workerDeployments === undefined

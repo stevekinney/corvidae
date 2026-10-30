@@ -1260,6 +1260,9 @@ export function createSessionStore(
             (listOptions?.owner === undefined || s.owner === listOptions.owner) &&
             (listOptions?.origin === undefined ||
               sessionOriginOf(s.metadata) === listOptions.origin) &&
+            (listOptions?.origin !== undefined ||
+              listOptions?.excludeOrigins === undefined ||
+              !listOptions.excludeOrigins.includes(sessionOriginOf(s.metadata))) &&
             (listOptions?.titleContains === undefined ||
               (s.title !== null &&
                 s.title.toLowerCase().includes(listOptions.titleContains.toLowerCase()))),

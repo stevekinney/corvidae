@@ -128,6 +128,8 @@ const AGENT_DEFINITION_PARAMETERS = {
   // `bureau.agents.versions.restore` names the version to restore beside the agent.
   revision: 1,
   definition: { model: 'nobody/none', instructions: '' },
+  // `bureau.agents.try` starts a chat with the definition; one that names no model never starts.
+  message: 'x',
 } as const;
 
 /**

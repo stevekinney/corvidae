@@ -60,6 +60,7 @@ import {
   type TaskListingRecord,
   type TaskListingScope,
 } from './task-list-snapshots';
+import { isTryAgentName } from './agent-try';
 import {
   isStoredTaskOrigin,
   type StoredTaskOrigin,
@@ -442,6 +443,13 @@ export interface TaskRegistry {
     contextId: string,
     incarnation: string | undefined,
   ): Promise<readonly TaskRecord[]>;
+  /**
+   * The ids of every task record of one incarnation of a context, read from the durable context
+   * index, so it names tasks of runs this process no longer holds (COR-1911). A task not yet
+   * bound to an incarnation is the context's whichever incarnation it has, as for
+   * {@link unsettledFiresOfContext}.
+   */
+  taskIdsOfContext(contextId: string, incarnation: string | undefined): Promise<readonly string[]>;
   /**
    * Calls `listener` with the task's view once it is settled, and once only, whether the
    * settlement was recorded by the run's end or by a cancellation. Returns the function that
@@ -1000,6 +1008,10 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     }
     if (query.agentName !== undefined) {
       records = records.filter((record) => record.agentName === query.agentName);
+    } else if (query.contextId === undefined) {
+      // COR-1911: the runs of a tried agent are listed when they are asked for, by their context
+      // or their agent, and not among the deployment's own work.
+      records = records.filter((record) => !isTryAgentName(record.agentName ?? ''));
     }
     if (query.origin !== undefined) {
       records = records.filter((record) => record.origin?.kind === query.origin);
@@ -1416,6 +1428,13 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       // The whole settlement is tracked, its announcement included, so `flush()` (and so
       // `idle()`) also waits for what a settlement listener starts, such as a surface freeze.
       return track(recordSettlement(taskId, settlement));
+    },
+
+    async taskIdsOfContext(contextId, incarnation) {
+      const records = await recordsOfContext(contextId);
+      return records
+        .filter((record) => record.incarnation === '' || belongsToIncarnation(record, incarnation))
+        .map((record) => record.taskId);
     },
 
     async unsettledFiresOfContext(contextId, incarnation) {

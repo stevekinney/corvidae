@@ -42,7 +42,7 @@ import { MemoryStorage } from '@lostgradient/storage';
 afterEach(disposeServed);
 
 describe('the operations list', () => {
-  it('serves the nine agent definition operations, with their scopes registered', () => {
+  it('serves the ten agent definition operations, with their scopes registered', () => {
     expect(bureauAgentDefinitionsOperations.map((operation) => operation.name)).toEqual([
       'bureau.agents.definitions.create',
       'bureau.agents.definitions.update',
@@ -53,6 +53,7 @@ describe('the operations list', () => {
       'bureau.agents.catalog',
       'bureau.agents.versions.list',
       'bureau.agents.versions.restore',
+      'bureau.agents.try',
     ]);
     expect(BUREAU_SCOPES).toContain('bureau.agents:read');
     expect(BUREAU_SCOPES).toContain('bureau.agents:write');
@@ -71,6 +72,12 @@ type Call = {
 };
 
 const CALLS: readonly Call[] = [
+  {
+    method: 'bureau.agents.try',
+    params: () => ({ definition: DEFINITION, message: 'hello' }),
+    scope: 'write',
+    denial: 'forbidden',
+  },
   {
     method: 'bureau.agents.definitions.get',
     params: () => ({ id: 'researcher' }),
