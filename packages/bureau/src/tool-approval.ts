@@ -186,7 +186,31 @@ interface ChatPermission {
   readonly mode: PermissionMode;
   /** The read failed, so `mode` is `read-only` and a denial says the mode could not be read. */
   readonly unreadable: boolean;
+  /** Why the read failed, when the reader said so in a {@link ChatPermissionUnavailableError}. */
+  readonly reason?: string | undefined;
+  /** Whether a person can be asked about a call; a child run has no chat to put the question to. */
+  readonly askable: boolean;
 }
+
+/**
+ * Thrown by a {@link ChatPermissionReader} whose chat cannot be read for a reason a denial should
+ * name (COR-1955): the chat the run belongs to was deleted. The call is held to `read-only` as for
+ * any read that fails, and the model is told `message`.
+ */
+export class ChatPermissionUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ChatPermissionUnavailableError';
+  }
+}
+
+/**
+ * What a {@link ChatPermissionReader} answers: a mode, or a mode with `askable: false` for a run no
+ * person can be asked about, as a child run is (COR-1955). In `always` such a run is denied by name
+ * rather than parked on an approval nobody could give.
+ */
+export type ChatPermissionReading =
+  PermissionMode | { readonly mode: PermissionMode; readonly askable: boolean };
 
 /** The `policyContext` key {@link withChatPermission} hands a call's {@link ChatPermission} under. */
 const CHAT_PERMISSION_FIELD = 'chatPermission';
@@ -197,15 +221,34 @@ function chatPermissionOf(context: ToolPolicyContext): ChatPermission | undefine
 }
 
 /** Reads the mode of a run's chat; `undefined` for a run that belongs to no chat. */
-export type ChatPermissionReader = () => Promise<PermissionMode | undefined>;
+export type ChatPermissionReader = () => Promise<ChatPermissionReading | undefined>;
 
-/** Reads the mode once; a read that fails is `read-only`, so no call goes through on a guess. */
-async function readChatPermission(read: ChatPermissionReader): Promise<ChatPermission | undefined> {
+/**
+ * Reads the mode once; a read that fails is `read-only`, so no call goes through on a guess, and is
+ * reported to `onUnreadable` so a host sees that its chats cannot be read.
+ */
+async function readChatPermission(
+  read: ChatPermissionReader,
+  onUnreadable: ((error: unknown) => void) | undefined,
+): Promise<ChatPermission | undefined> {
   try {
-    const mode = await read();
-    return mode === undefined ? undefined : { mode, unreadable: false };
-  } catch {
-    return { mode: 'read-only', unreadable: true };
+    const reading = await read();
+    if (reading === undefined) return undefined;
+    return typeof reading === 'string'
+      ? { mode: reading, unreadable: false, askable: true }
+      : { mode: reading.mode, unreadable: false, askable: reading.askable };
+  } catch (error) {
+    try {
+      onUnreadable?.(error);
+    } catch {
+      // A sink that throws must not turn a denial into a failure of the call.
+    }
+    return {
+      mode: 'read-only',
+      unreadable: true,
+      askable: true,
+      ...(error instanceof ChatPermissionUnavailableError ? { reason: error.message } : {}),
+    };
   }
 }
 
@@ -225,7 +268,22 @@ function chatPermissionDecision(
       reason: `Tool "${context.toolName}" is denied because this chat is in always mode, and the tool acts only inside its own step, so an approval could not run it.`,
     };
   }
-  return decisionOf(context, tier, TOOL_APPROVAL_DEFAULT_MODE, chat.mode, status, chat.unreadable);
+  if (status === 'ask' && chat.mode === 'always' && !chat.askable) {
+    return {
+      allow: false,
+      status: 'deny',
+      reason: `Tool "${context.toolName}" is denied because the chat this child run belongs to is in always mode, which asks a person about every call, and a child run has no one to ask.`,
+    };
+  }
+  return decisionOf(
+    context,
+    tier,
+    TOOL_APPROVAL_DEFAULT_MODE,
+    chat.mode,
+    status,
+    chat.unreadable,
+    chat.reason,
+  );
 }
 
 /**
@@ -261,7 +319,11 @@ function withChatPermissionDecision(
  * policy runs after the toolbox's, so a hook of the toolbox sees the same mode and never makes the
  * call ask a second time ({@link createToolApprovalHooks}).
  */
-export function withChatPermission(toolbox: AnyToolbox, read: ChatPermissionReader): AnyToolbox {
+export function withChatPermission(
+  toolbox: AnyToolbox,
+  read: ChatPermissionReader,
+  onUnreadable?: (error: unknown) => void,
+): AnyToolbox {
   return withToolboxLayer(toolbox, (inner) => {
     const held = inner.toJSON().filter((tool) => standingOf(tool) !== 'outside-the-mode');
     // Nothing to hold yet, and a toolbox that refuses every call keeps its refusal. A new object
@@ -273,7 +335,7 @@ export function withChatPermission(toolbox: AnyToolbox, read: ChatPermissionRead
         policy: withChatPermissionDecision(tool.policy, standingOf(tool)),
         policyContext: async (context: ToolPolicyContext) => ({
           ...(await tool.policyContext?.(context)),
-          [CHAT_PERMISSION_FIELD]: await readChatPermission(read),
+          [CHAT_PERMISSION_FIELD]: await readChatPermission(read, onUnreadable),
         }),
       })),
     );
@@ -327,6 +389,7 @@ function decisionOf(
   mode: PermissionMode,
   status: ApprovalStatus,
   modeUnreadable: boolean,
+  unreadableReason?: string,
 ): ToolPolicyDecision {
   if (status === 'allow') return { allow: true, status: 'allow' };
   const tierLabel = tier ?? 'unrecognized';
@@ -335,7 +398,9 @@ function decisionOf(
       allow: false,
       status: 'deny',
       reason: modeUnreadable
-        ? `Tool "${context.toolName}" (${tierLabel} tier) is denied because the chat's permission mode could not be read; denying.`
+        ? unreadableReason === undefined
+          ? `Tool "${context.toolName}" (${tierLabel} tier) is denied because the chat's permission mode could not be read; denying.`
+          : `Tool "${context.toolName}" (${tierLabel} tier) is denied because ${unreadableReason}`
         : `Tool "${context.toolName}" (${tierLabel} tier) is denied because this chat is in ${mode} mode, which allows only read-only tools.`,
     };
   }

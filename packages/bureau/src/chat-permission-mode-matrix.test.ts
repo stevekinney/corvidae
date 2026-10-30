@@ -32,10 +32,12 @@ import { agentFileDirectory } from './sources/agent-file-directory';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import { createToolApprovalHooks, decideChatPermission } from './tool-approval';
-import type { Bureau } from './types';
+import type { Bureau, BureauDiagnostic } from './types';
 
 const SECRET = 'permission-mode-matrix-secret';
 const executed: string[] = [];
+/** What Bureau reported about itself, so a report a row expects is not printed as an error. */
+const diagnostics: BureauDiagnostic[] = [];
 
 const orderTool = (name: string, metadata: { readOnly: true } | { mutates: true }) =>
   createTool({
@@ -245,6 +247,9 @@ beforeAll(async () => {
     agents: AGENTS,
     overrides: {
       id: 'permission-matrix-bureau',
+      onDiagnostic: (diagnostic) => void diagnostics.push(diagnostic),
+      // COR-1955: a task is kept for no time once it ends, so `maintain()` removes its records.
+      retention: { tasks: { olderThan: 0 } },
       agentApprovalSecret: SECRET,
       agentSource: agentFileDirectory(directory, {
         tools: { 'read-order': readOrder, 'issue-refund': issueRefund },
@@ -287,6 +292,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   executed.length = 0;
+  diagnostics.length = 0;
   steps.length = 0;
   lastToolResult = undefined;
 });
@@ -558,6 +564,29 @@ async function parkedParent(kind: 'coder' | 'helper' = 'coder') {
 }
 
 /**
+ * A chat in `on-changes` with one live run whose model is held at its first step, the root of a
+ * chain whose parent can then complete (`finish`), as a parked one cannot.
+ */
+async function finishingParent() {
+  const contextId = await openChat('coder', 'on-changes');
+  const entered = Promise.withResolvers<void>();
+  const released = Promise.withResolvers<void>();
+  steps.push(async () => {
+    entered.resolve();
+    await released.promise;
+    return { name: 'read-order', arguments: {} };
+  });
+  const parent = await bureau.tasks.start('coder', 'Hold.', { principal: OWNER.alice, contextId });
+  await entered.promise;
+  /** Lets the parent's step go, and waits until the parent has completed. */
+  const finish = async () => {
+    released.resolve();
+    await parent.result();
+  };
+  return { parent, contextId, finish };
+}
+
+/**
  * A child dispatched under `parentRunId` whose model is held at its first step, then calls `tool`
  * once the returned `release` is called. The child is running, with its call undecided, until then.
  */
@@ -583,18 +612,21 @@ async function gatedChild(
   });
   expect(dispatched.outcome).toBe('started');
   await entered.promise;
-  return { childRunId, release: () => released.resolve() };
+  return { parentRunId, childRunId, release: () => released.resolve() };
 }
 
 /**
- * Whether the child's one call ran. A child has no chat to put a question to, so a call its chat's
+ * Whether the child's one call ran, once the child has ended. A child has no chat to put a question to, so a call its chat's
  * mode would ask about is refused for want of anyone to approve it: in `always`, a child runs
  * nothing. Both that and a `read-only` denial are `held`, and neither runs the tool.
  */
-async function childOutcome(childRunId: string, tool: ToolName): Promise<'runs' | 'held'> {
-  await waitUntil(() => reviewsOf(childRunId).length > 0 || lastToolResult !== undefined, {
-    message: 'the child’s call to be decided',
-  });
+async function childOutcome(
+  child: { readonly parentRunId: string; readonly childRunId: string },
+  tool: ToolName,
+): Promise<'runs' | 'held'> {
+  // The child has ended once its call is decided and the model has been shown the result.
+  const waited = await bureau.children.wait(child);
+  expect(waited.outcome).toBe('settled');
   return executed.includes(tool) ? 'runs' : 'held';
 }
 
@@ -614,8 +646,10 @@ describe('a child run already running when its chat is steered (COR-1955)', () =
         await steer(contextId, `child-steer-${commands}`, mode);
         child.release();
 
-        expect(await childOutcome(child.childRunId, tool)).toBe(expected);
+        expect(await childOutcome(child, tool)).toBe(expected);
         expect(executed).toEqual(expected === 'runs' ? [tool] : []);
+        // A child has no one to ask, so `always` names the mode instead of parking on an approval.
+        if (mode === 'always') expect(lastToolResult).toContain('is in always mode');
         parent.abort();
       });
     }
@@ -629,7 +663,7 @@ describe('a child run already running when its chat is steered (COR-1955)', () =
     await steer(contextId, `child-file-${commands}`, 'read-only');
     child.release();
 
-    expect(await childOutcome(child.childRunId, 'issue-refund')).toBe('held');
+    expect(await childOutcome(child, 'issue-refund')).toBe('held');
     expect(executed).toEqual([]);
     parent.abort();
   });
@@ -644,7 +678,7 @@ describe('a child run already running when its chat is steered (COR-1955)', () =
     await steer(contextId, `grandchild-${commands}`, 'read-only');
     grandchild.release();
 
-    expect(await childOutcome(grandchild.childRunId, 'issue-refund')).toBe('held');
+    expect(await childOutcome(grandchild, 'issue-refund')).toBe('held');
     expect(executed).toEqual([]);
     middle.release();
     parent.abort();
@@ -660,8 +694,83 @@ describe('a child run already running when its chat is steered (COR-1955)', () =
     await steer(contextId, `detached-${commands}`, 'read-only');
     child.release();
 
-    expect(await childOutcome(child.childRunId, 'issue-refund')).toBe('held');
+    expect(await childOutcome(child, 'issue-refund')).toBe('held');
     expect(executed).toEqual([]);
+  });
+
+  it('holds a cascade child whose parent has completed', async () => {
+    const { parent, contextId, finish } = await finishingParent();
+    const child = await gatedChild(parent.id, 'issue-refund');
+    await finish();
+
+    commands += 1;
+    await steer(contextId, `completed-${commands}`, 'read-only');
+    child.release();
+
+    expect(await childOutcome(child, 'issue-refund')).toBe('held');
+    expect(executed).toEqual(['read-order']);
+  });
+
+  it('holds a detached child whose parent’s task and run records have expired', async () => {
+    const { parent, contextId, finish } = await finishingParent();
+    const child = await gatedChild(parent.id, 'issue-refund', { detach: true });
+    await finish();
+    await bureau.maintain();
+    // The records a mode used to be found by are gone, which is what this row is about.
+    expect(await bureau.tasks.get(parent.id)).toBeUndefined();
+
+    commands += 1;
+    await steer(contextId, `expired-${commands}`, 'read-only');
+    child.release();
+
+    expect(await childOutcome(child, 'issue-refund')).toBe('held');
+    expect(lastToolResult).toContain('denied');
+    expect(executed).toEqual(['read-order']);
+  });
+
+  it('holds a grandchild whose parent and grandparent have expired', async () => {
+    const { parent, contextId, finish } = await finishingParent();
+    const middle = await gatedChild(parent.id, 'read-order', { detach: true });
+    const grandchild = await gatedChild(middle.childRunId, 'issue-refund', { detach: true });
+    await finish();
+    middle.release();
+    await bureau.maintain();
+
+    commands += 1;
+    await steer(contextId, `grand-expired-${commands}`, 'read-only');
+    grandchild.release();
+    expect(await childOutcome(grandchild, 'issue-refund')).toBe('held');
+    expect(executed).not.toContain('issue-refund');
+  });
+
+  it('holds a detached child to read-only, naming the chat, once the chat is deleted', async () => {
+    const { parent, contextId, finish } = await finishingParent();
+    const child = await gatedChild(parent.id, 'issue-refund', { detach: true });
+    await finish();
+    await bureau.contexts.delete(contextId);
+
+    child.release();
+
+    expect(await childOutcome(child, 'issue-refund')).toBe('held');
+    expect(JSON.parse(lastToolResult ?? '""')).toContain(
+      `the chat "${contextId}" this child run belongs to was deleted`,
+    );
+    // The unreadable mode is reported, not only acted on.
+    expect(diagnostics.some((entry) => entry.scope === 'permission-mode')).toBe(true);
+    expect(executed).toEqual(['read-order']);
+  });
+
+  it('does not let allow-all loosen a file agent child’s own on-changes ask', async () => {
+    const { parent, contextId } = await parkedParent();
+    const child = await gatedChild(parent.id, 'issue-refund', { agentName: 'helper' });
+
+    commands += 1;
+    await steer(contextId, `child-allow-all-${commands}`, 'allow-all');
+    child.release();
+
+    expect(await childOutcome(child, 'issue-refund')).toBe('held');
+    expect(executed).toEqual([]);
+    parent.abort();
   });
 
   it('holds a child started after the chat was steered', async () => {
@@ -672,7 +781,7 @@ describe('a child run already running when its chat is steered (COR-1955)', () =
     const child = await gatedChild(parent.id, 'issue-refund');
     child.release();
 
-    expect(await childOutcome(child.childRunId, 'issue-refund')).toBe('held');
+    expect(await childOutcome(child, 'issue-refund')).toBe('held');
     expect(executed).toEqual([]);
     parent.abort();
   });

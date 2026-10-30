@@ -238,6 +238,8 @@ describe('createChildTopologyStore — child records', () => {
     ['an outcome with numeric content', { outcome: { content: 7 } }],
     ['an outcome whose parts are not an array', { outcome: { parts: 'done' } }],
     ['an outcome with a malformed part', { outcome: { parts: [{ type: 'hologram' }] } }],
+    ['a chat without an incarnation', { chat: { contextId: 'session-1' } }],
+    ['a chat that is not an object', { chat: 'session-1' }],
     ['a non-string parent agent', { parentAgentName: 7 }],
     ['a non-number createdAt', { createdAt: '0' }],
   ])('treats a stored record with %s as unreadable', async (_label, patch) => {
@@ -247,6 +249,15 @@ describe('createChildTopologyStore — child records', () => {
     await kv.set(`${CHILD_RECORD_KEY_PREFIX}child-1`, JSON.stringify(value));
 
     expect(await store.get('child-1')).toBeUndefined();
+  });
+
+  it('round-trips the chat a delegation chain started in (COR-1955)', async () => {
+    const store = createChildTopologyStore(createKv());
+    const record = childRecord({ chat: { contextId: 'session-1', incarnation: 'incarnation-1' } });
+
+    await store.register(record);
+
+    expect(await store.get('child-1')).toEqual(record);
   });
 
   it('round-trips an outcome with its parts and asset references', async () => {

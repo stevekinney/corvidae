@@ -103,6 +103,19 @@ export class UnsupportedChildRecordVersionError extends Error {
   }
 }
 
+/**
+ * COR-1955 — the chat a child's delegation chain started in, stamped on the child's record when it
+ * is dispatched, so the child's permission mode is read from the chat itself and never from an
+ * ancestor whose task and run records retention may have removed. A child inherits it from its
+ * parent's record; a root that belongs to no chat stamps nothing.
+ */
+export interface BureauChildChat {
+  /** The root chat's session identifier. */
+  readonly contextId: string;
+  /** The incarnation of that session the chain started in: a deleted or recreated chat differs. */
+  readonly incarnation: string;
+}
+
 /** The durable description of one parent-child relationship. */
 export interface BureauChildRecord {
   readonly schemaVersion: typeof CHILD_RECORD_SCHEMA_VERSION;
@@ -133,6 +146,11 @@ export interface BureauChildRecord {
   /** The parent's grant this child's budget was reserved against. */
   readonly parentGrantId?: string | undefined;
   readonly outcome?: BureauChildOutcome | undefined;
+  /**
+   * The chat the delegation chain started in (COR-1955), absent for a chain whose root belongs to no
+   * chat and for a record written before it was stamped. Optional, so the schema version stays.
+   */
+  readonly chat?: BureauChildChat | undefined;
 }
 
 /** The two grant dimensions a child dispatch reserves against its parent's grant. */
@@ -283,7 +301,16 @@ function isChildRecord(value: unknown): value is BureauChildRecord {
     isOptional(value['principal'], 'string') &&
     isOptional(value['grantId'], 'string') &&
     isOptional(value['parentGrantId'], 'string') &&
-    (value['outcome'] === undefined || isOutcome(value['outcome']))
+    (value['outcome'] === undefined || isOutcome(value['outcome'])) &&
+    (value['chat'] === undefined || isChildChat(value['chat']))
+  );
+}
+
+function isChildChat(value: unknown): value is BureauChildChat {
+  return (
+    isRecord(value) &&
+    typeof value['contextId'] === 'string' &&
+    typeof value['incarnation'] === 'string'
   );
 }
 
