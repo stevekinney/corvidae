@@ -5,6 +5,7 @@
  */
 import type { EncryptionKey } from '@lostgradient/cryptography';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, beforeAll, describe, expect, it } from 'bun:test';
 
 import { createSqliteStorageFixture } from '../test/storage-fixtures.ts';
@@ -25,6 +26,7 @@ import {
 } from './hooks.test-support.ts';
 import { createHookStore, HOOK_DELIVERY_KEY_PREFIX, HOOK_KEY_PREFIX } from './hook-store.ts';
 import { HookError, type HookDeliveryRecord } from './hook-types.ts';
+import type { BureauDiagnostic } from '../types.ts';
 import type { BureauWorkflows } from '../workflow-runtime.ts';
 
 let key: EncryptionKey;
@@ -79,6 +81,7 @@ async function openWorkflowHooks(
     storage?: Parameters<typeof openHooksBureau>[0]['storage'];
     directory?: string;
     now?: () => number;
+    onDiagnostic?: (diagnostic: BureauDiagnostic) => void;
   } = {},
 ): Promise<WorkflowHooksBureau> {
   const receiver = createReceiver();
@@ -88,6 +91,7 @@ async function openWorkflowHooks(
       ...(options.storage === undefined ? {} : { storage: options.storage }),
       durableOwnership: { ownership: 'none' },
       answerEncryption: { current: key },
+      ...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),
       hooks: {},
       webhooks: {
         targets: [],
@@ -184,6 +188,45 @@ describe('a hook record stored before actions existed', () => {
     expect(renamed).toMatchObject({ name: 'Renamed', revision: 4 });
     const listed = await hooks.list();
     expect(listed.map((hook) => hook.id)).toEqual(['hook-legacy']);
+  });
+
+  it('keeps a webhook hook’s url at the top level, where a release without actions reads it, and prefers it when the two differ', async () => {
+    const kv = textValueStore(new MemoryStorage(), { disposeUnderlyingStorage: false });
+    const store = createHookStore(kv);
+    const webhook = {
+      ...LEGACY_HOOK,
+      id: 'hook-web',
+      action: { type: 'webhook' as const, url: LEGACY_HOOK.url },
+    };
+    const { url: _url, ...base } = LEGACY_HOOK;
+    expect(await store.createHook({ ...base, ...webhook } as never)).toBe(true);
+    expect(
+      await store.createHook({
+        ...base,
+        id: 'hook-notify',
+        action: { type: 'notify' },
+      } as never),
+    ).toBe(true);
+
+    // What the previous release's parser needs of a hook: a string `url` beside the rest.
+    const rawOf = async (id: string) =>
+      JSON.parse((await kv.get(`${HOOK_KEY_PREFIX}${id}`))!) as Record<string, unknown>;
+    expect(await rawOf('hook-web')).toMatchObject({
+      url: LEGACY_HOOK.url,
+      action: { type: 'webhook' },
+    });
+    expect(await rawOf('hook-notify')).not.toHaveProperty('url');
+
+    // That release rewrites the `url` and leaves `action` as it was; this one reads the rewrite.
+    await kv.set(
+      `${HOOK_KEY_PREFIX}hook-web`,
+      JSON.stringify({ ...(await rawOf('hook-web')), url: 'https://receiver.example/moved' }),
+    );
+    const moved = await store.getHook('hook-web');
+    expect(moved?.record.action).toEqual({
+      type: 'webhook',
+      url: 'https://receiver.example/moved',
+    });
   });
 
   it('refuses a record whose action it does not know, as it refuses any unreadable record', async () => {
@@ -324,6 +367,47 @@ describe('a start-workflow hook', () => {
     expect(await instancesOf(second.harness, 'lookup')).toHaveLength(1);
   });
 
+  it('starts the workflow for an event the session outbox replays at boot, before the workflow files are loaded', async () => {
+    const database = createSqliteStorageFixture();
+    cleanups.push(() => database.dispose());
+    const { now } = createClock();
+    const first = await openWorkflowHooks({ storage: database.storage, now });
+    await first.harness.putWorkflow('lookup', { trigger: ON_GO });
+    const hook = await first.harness.bureau.hooks!.create({
+      action: { type: 'start-workflow', workflowId: 'lookup' },
+      events: ['session.saved'],
+    });
+    const directory = first.harness.directory;
+    await first.harness.bureau.dispose();
+
+    // What a crash between a session's commit and the publish of its event leaves: an outbox entry
+    // the next boot drains, which publishes `session.saved` before the workflow files are loaded.
+    const storage = await database.reopen();
+    const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
+    await kv.set(
+      `agent-session-outbox:v1:entry:${'1'.padStart(20, '0')}`,
+      JSON.stringify({
+        ordinal: 1,
+        kind: 'session.saved',
+        sessionId: 's-1',
+        agentName: 'writer',
+        incarnation: 'i-1',
+        committedAtMs: 1,
+      }),
+    );
+    await kv.set('agent-session-outbox:v1:ordinal', '1');
+
+    const second = await openWorkflowHooks({ storage, directory, now });
+    const [delivery] = await waitForSettledDeliveries(second.harness.bureau, hook.id, 1);
+
+    // Not refused as "does not exist": the hook held the event until the workflow was there.
+    expect(delivery!.attempts.map((attempt) => attempt.error)).toEqual([undefined]);
+    expect(delivery).toMatchObject({ status: 'delivered', kind: 'session.saved' });
+    const instances = await instancesOf(second.harness, 'lookup');
+    expect(instances).toHaveLength(1);
+    expect(instances[0]!.id).toBe(delivery!.attempts[0]!.receipt!.runId!);
+  });
+
   it('is refused for an owner who may not start workflows, an unknown workflow, and a Bureau with none', async () => {
     const { harness } = await openWorkflowHooks();
     await harness.putWorkflow('lookup', { trigger: ON_GO });
@@ -442,6 +526,66 @@ describe('a start-workflow hook', () => {
     ]);
     // A rename needs no authority and no live workflow.
     expect(await hooks.update(hook.id, { name: 'Renamed' })).toMatchObject({ name: 'Renamed' });
+  });
+});
+
+describe('a start-workflow hook on the events of its own runs', () => {
+  it('starts one run and no more, however the run settles: a run a hook started raises events no hook acts on', async () => {
+    const diagnostics: BureauDiagnostic[] = [];
+    const { harness } = await openWorkflowHooks({
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+    });
+    // An `agent` step: its run settles, which is the event the hook below lists.
+    await harness.putWorkflow('chain', { trigger: ON_GO });
+    const hooks = harness.bureau.hooks!;
+    const starter = await hooks.create({
+      action: { type: 'start-workflow', workflowId: 'chain' },
+      events: ['run.settled'],
+    });
+    const notifier = await hooks.create({ action: { type: 'notify' }, events: ['run.settled'] });
+
+    // Started by a person, not by the hook: its agent step settles and the hook starts one more.
+    const manual = await harness.bureau.workflows!.start('chain', {
+      input: {},
+      owner: 'anonymous:local',
+    });
+    // The second instance's own agent step settles too; the hook sees that event and declines it.
+    await waitUntil(async () => {
+      const listed = await deliveriesOf(harness.bureau, starter.id);
+      return listed.length === 2;
+    });
+    const deliveries = await waitForSettledDeliveries(harness.bureau, starter.id, 2);
+    await quietFor(250);
+
+    const [started, skipped] = deliveries;
+    expect(started).toMatchObject({ status: 'delivered' });
+    expect(skipped).toMatchObject({ status: 'failed', actionType: 'start-workflow' });
+    expect(skipped!.attempts).toHaveLength(1);
+    expect(skipped!.attempts[0]).toMatchObject({ outcome: 'rejected' });
+    expect(skipped!.attempts[0]!.receipt).toBeUndefined();
+    expect(skipped!.attempts[0]!.error).toContain(`hook ${starter.id} started`);
+    expect(skipped!.attempts[0]!.error).toContain('Skipped');
+
+    // Exactly one run the hook started, beside the one the person started; nothing further.
+    expect(await deliveriesOf(harness.bureau, starter.id)).toHaveLength(2);
+    const instances = await instancesOf(harness, 'chain');
+    expect(instances.map((instance) => instance.id).toSorted()).toEqual(
+      [manual.runId, started!.attempts[0]!.receipt!.runId!].toSorted(),
+    );
+    expect(harness.calls).toHaveLength(2);
+    const hookStarted = await harness.bureau
+      .durableEngine()!
+      .get(started!.attempts[0]!.receipt!.runId!);
+    expect(hookStarted!.tags).toContain(`hook-origin:${starter.id}`);
+
+    // A skipped start is reported, not silent.
+    expect(
+      diagnostics.filter((d) => d.scope === 'hooks' && d.message.includes('did not start')),
+    ).toMatchObject([{ level: 'warn', message: expect.stringContaining(starter.id) }]);
+
+    // Webhook and notify actions are not chained actions: the notify hook saw both runs settle.
+    const notified = await waitForSettledDeliveries(harness.bureau, notifier.id, 2);
+    expect(notified.map((delivery) => delivery.status)).toEqual(['delivered', 'delivered']);
   });
 });
 

@@ -151,6 +151,11 @@ export interface WorkflowStartOptions {
    * retried or resumed starts one instance.
    */
   readonly idempotencyKey?: string | undefined;
+  /**
+   * Tags the instance carries beside the one that mirrors its origin. A hook's `start-workflow`
+   * action marks the instance it starts, so the Bureau can tell that a hook started it.
+   */
+  readonly tags?: readonly string[] | undefined;
 }
 
 /**
@@ -1281,6 +1286,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     async start(id, startOptions) {
       // The caller owns `startOptions` and its input: snapshot them before the first await.
       const { owner: starter, surface, idempotencyKey } = startOptions;
+      const extraTags = [...(startOptions.tags ?? [])];
       const requested = startOptions.input ?? null;
       if (!z.json().safeParse(requested).success) {
         throw options.createError('The input must be a JSON value.', 'BAD_REQUEST');
@@ -1305,7 +1311,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       const trigger = { kind: 'manual', input, origin };
       assertSendable('input', trigger);
       const handle = await engine.start(id, trigger, {
-        tags: [taskOriginTag(origin)],
+        tags: [taskOriginTag(origin), ...extraTags],
         ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
       });
       // The revision the run is pinned to is the engine's to say: the catalog can already hold a

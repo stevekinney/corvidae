@@ -118,9 +118,15 @@ export interface HookDeliveries {
   /**
    * Writes the pending delivery of `event` to `hook`, and returns its id. A `start-workflow` or
    * `notify` hook's delivery holds the work its action will do, mapped from the event now.
-   * `test` is for a webhook only.
+   * `test` is for a webhook only. `skip` is for a `start-workflow` hook: the delivery is written,
+   * and fails at once with `skip` as its reason, without starting anything.
    */
-  enqueue(hook: HookRecord, event: HookEventToDeliver, test: boolean): Promise<string>;
+  enqueue(
+    hook: HookRecord,
+    event: HookEventToDeliver,
+    test: boolean,
+    skip?: string,
+  ): Promise<string>;
   /** Drives a delivery to a stop: delivered, exhausted, aborted, or released by a shutdown. Never rejects. */
   drive(deliveryId: string): Promise<void>;
   /**
@@ -209,6 +215,11 @@ function workOf(
       NOTIFICATION_BODY_LIMIT,
     ),
   };
+}
+
+/** `work` marked as not to be done, when a reason is given and the work is a workflow start. */
+function withSkip(work: HookDeliveryWork, skip: string | undefined): HookDeliveryWork {
+  return skip !== undefined && work.type === 'start-workflow' ? { ...work, skip } : work;
 }
 
 /** Builds the hook deliveries over the notifier's engine. */
@@ -519,7 +530,7 @@ export function createHookDeliveries(dependencies: HookDeliveryDependencies): Ho
   }
 
   return {
-    async enqueue(hook, event, test) {
+    async enqueue(hook, event, test, skip) {
       const id = dependencies.newId();
       const now = engine.now();
       const base = {
@@ -564,7 +575,11 @@ export function createHookDeliveries(dependencies: HookDeliveryDependencies): Ho
               },
               maxAttempts: test ? 1 : engine.maxAttempts,
             }
-          : { ...base, work: workOf(action, hook, event), maxAttempts: engine.maxAttempts };
+          : {
+              ...base,
+              work: withSkip(workOf(action, hook, event), skip),
+              maxAttempts: engine.maxAttempts,
+            };
       await store.createDelivery(record);
       return id;
     },

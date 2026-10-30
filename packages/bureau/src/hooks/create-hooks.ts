@@ -25,7 +25,10 @@
  *   resumed after an interrupted attempt starts one run. The hook owner's authority is checked when
  *   the hook is written and again for every delivery: in v1 only the deployment's owner of record
  *   (`anonymous:local`) may own such a hook, because the Bureau knows an owner but not the scopes
- *   its credential held, so it cannot re-check a scope when an event fires.
+ *   its credential held, so it cannot re-check a scope when an event fires. The instance it
+ *   starts is tagged (`hook-origin.ts`), and no `start-workflow` hook acts on an event about a run
+ *   that carries the tag or lies beneath one, so hooks cannot chain: that delivery is written, ends
+ *   `failed`, and says why.
  * - `notify` writes a notification for the hook's owner, never for anyone else, keyed
  *   `hook:<hookId>:<deliveryId>` so a replayed delivery writes one. It cannot list
  *   `notification.created`, which the notification it writes would fire again; this is refused when
@@ -80,6 +83,7 @@ import {
   type HookSecretStore,
   type HookWorkflowInput,
 } from './hook-types.ts';
+import { hookOriginTag } from './hook-origin.ts';
 import { type HookUrlPolicy, hookUrlDefect } from './hook-url-policy.ts';
 import type { EncryptedValue } from '@lostgradient/cryptography';
 import type { ConditionalTextValueStore } from '@lostgradient/storage';
@@ -100,6 +104,9 @@ const NAME_MAXIMUM_LENGTH = 100;
 const HOOK_CACHE_MILLISECONDS = 5_000;
 
 const PUBLISHED_KINDS: ReadonlySet<string> = new Set(PUBLISHED_BUREAU_EVENT_KINDS);
+
+/** Stands in for the hook that started a run when the lookup failed. */
+const CHAIN_UNKNOWN = '\u0000unknown';
 
 /** What a hook is asked to do, as `hooks.create` and `hooks.update` take it. */
 export type HookActionInput =
@@ -212,6 +219,12 @@ export interface HooksDependencies {
    * delivery. Defaults to the deployment's owner of record alone.
    */
   readonly mayStartWorkflows?: ((owner: string) => boolean) | undefined;
+  /**
+   * The hook that started the run `runId` names, or a run above it, or `undefined` when no hook
+   * did. A `start-workflow` hook does not start a workflow for an event whose run a hook started,
+   * so hooks cannot chain. It may throw; the event is then treated as a hook's own.
+   */
+  readonly startedByHook?: ((runId: string) => Promise<string | undefined>) | undefined;
   /** How long one request may take. */
   readonly requestTimeoutMilliseconds?: number | undefined;
   /** The Bureau's identifier, sent in each delivery. */
@@ -227,15 +240,26 @@ export interface HooksDependencies {
   }) => Promise<void>;
   /** Reports a failure; never carries a secret. */
   readonly diagnose: (message: string, cause?: unknown) => void;
+  /** Reports something that is not a failure but that a person may want to see, such as a skipped start. */
+  readonly notice?: ((message: string) => void) | undefined;
 }
 
 /** What {@link createHooks} returns: the public member, and the two entry points the Bureau drives. */
 export interface CreatedHooks {
   /** `Bureau.hooks`. */
   readonly hooks: BureauHooks;
-  /** Delivers a published event to every enabled hook that lists its kind. Never throws. */
+  /**
+   * Delivers a published event to every enabled hook that lists its kind. Never throws. Until
+   * {@link CreatedHooks.resume} is first called the event is held, not delivered (see `resume`).
+   */
   dispatch(envelope: BureauEventEnvelope): void;
-  /** Resumes every pending delivery whose lease has expired; resolves with how many. */
+  /**
+   * Opens the hooks to events and resumes every pending delivery whose lease has expired; resolves
+   * with how many. The Bureau calls it once its workflow files are loaded. Events published before
+   * then (the session outbox replayed at boot, for one) are held and dispatched here, because a
+   * `start-workflow` delivery made earlier would find no workflow, and "does not exist" is a
+   * permanent failure that would end the delivery for good.
+   */
   resume(): Promise<number>;
 }
 
@@ -435,6 +459,8 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
       // (a retry, or the one after an interrupted attempt) are the repeats the key makes harmless.
       const key = `hook:${context.hookId}:${context.deliveryId}`;
       if (work.type === 'start-workflow') {
+        // Decided as the event was dispatched; see `dispatch`.
+        if (work.skip !== undefined) throw new HookActionError(work.skip, true);
         // Asked again as the event fires: the authority is the owner's now, not at creation.
         if (!mayStartWorkflows(context.owner)) {
           throw new HookActionError('The hook’s owner may not start workflows', true);
@@ -449,6 +475,8 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
             owner: context.owner,
             surface: 'api',
             idempotencyKey: key,
+            // Marks the instance as a hook's, so the events of its runs start nothing (see `dispatch`).
+            tags: [hookOriginTag(context.hookId)],
           });
           return { runId: started.runId };
         } catch (error) {
@@ -755,7 +783,54 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
     },
   };
 
+  /** The run an event is about, when its payload names one. */
+  function runOf(event: HookEventToDeliver): string | undefined {
+    for (const field of ['runId', 'goalRunId', 'taskId']) {
+      const value = Object.hasOwn(event.payload, field) ? event.payload[field] : undefined;
+      if (typeof value === 'string') return value;
+    }
+    return undefined;
+  }
+
+  /**
+   * The hook that started `runId` (or a run above it), or `'unknown'` when that cannot be read: a
+   * lookup that fails is treated as a hook's own run, because the cost of a wrong guess is a chain
+   * with no end, and the skip is recorded on the delivery where a person can see it.
+   */
+  async function startedBy(runId: string): Promise<string | undefined> {
+    if (dependencies.startedByHook === undefined) return undefined;
+    try {
+      return await dependencies.startedByHook(runId);
+    } catch (cause) {
+      dependencies.diagnose('Could not tell whether a hook started a run', cause);
+      return CHAIN_UNKNOWN;
+    }
+  }
+
+  /** Why a `start-workflow` hook starts nothing for an event, or `undefined` when it starts it. */
+  function chainSkipReason(
+    startedByHook: string | undefined,
+    hook: HookRecord,
+    event: HookEventToDeliver,
+  ): string | undefined {
+    if (startedByHook === undefined) return undefined;
+    const reason =
+      startedByHook === CHAIN_UNKNOWN
+        ? 'Skipped: could not tell whether the run this event is about was started by a hook, and a hook does not start a workflow for the events of a run a hook started'
+        : `Skipped: ${event.kind} is about a run that hook ${startedByHook} started, and a hook does not start a workflow for the events of a run a hook started`;
+    dependencies.notice?.(`[bureau] Hook ${hook.id} did not start a workflow: ${reason}`);
+    return reason;
+  }
+
+  // Events published before `resume()` opens the hooks, in the order they happened. `undefined`
+  // once open.
+  let held: BureauEventEnvelope[] | undefined = [];
+
   function dispatch(envelope: BureauEventEnvelope): void {
+    if (held !== undefined) {
+      held.push(envelope);
+      return;
+    }
     // A Bureau that is shutting down starts no new delivery: its storage is about to close, and an
     // event that happens while it is down is not replayed.
     if (engine.shuttingDown()) return;
@@ -776,8 +851,16 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
       // the wait is in a `finally`.
       const driving: Promise<void>[] = [];
       try {
+        const runId = runOf(event);
+        let starter: Promise<string | undefined> | undefined;
         for (const hook of await matching(event.kind)) {
-          driving.push(deliveries.drive(await deliveries.enqueue(hook, event, false)));
+          let skip: string | undefined;
+          if (hook.action.type === 'start-workflow' && runId !== undefined) {
+            // Asked once per event, and only when a hook would start something.
+            starter ??= startedBy(runId);
+            skip = chainSkipReason(await starter, hook, event);
+          }
+          driving.push(deliveries.drive(await deliveries.enqueue(hook, event, false, skip)));
         }
       } finally {
         await Promise.allSettled(driving);
@@ -786,5 +869,15 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
     engine.track(work);
   }
 
-  return { hooks, dispatch, resume: () => deliveries.resume() };
+  return {
+    hooks,
+    dispatch,
+    async resume() {
+      // Opened first, so an event published while the held ones are dispatched is not held behind them.
+      const waiting = held ?? [];
+      held = undefined;
+      for (const envelope of waiting) dispatch(envelope);
+      return deliveries.resume();
+    },
+  };
 }

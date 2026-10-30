@@ -368,6 +368,7 @@ import {
   type StartTaskOrigin,
   type TaskOrigin,
   taskOriginOfStart,
+  taskOriginParentOf,
   taskOriginTag,
 } from './task-origin';
 import { createTaskResync, type TaskResync } from './task-resync';
@@ -619,6 +620,7 @@ import {
   type WebhookNotifierOptions,
 } from './webhook-notifier';
 import { createHooks, type CreatedHooks } from './hooks/create-hooks';
+import { createHookOriginLookup } from './hooks/hook-origin';
 import { scheduleInputPreview } from './schedule-input-preview';
 import { ownEntry } from './own-entry';
 
@@ -2212,6 +2214,8 @@ function composeHooks(input: {
   /** The Bureau's workflows and notifications, read when an action needs them (COR-1940). */
   readonly workflows: () => BureauWorkflows | undefined;
   readonly notifications: () => BureauNotifications | undefined;
+  /** Which hook started a run, directly or through the runs above it. */
+  readonly startedByHook: (runId: string) => Promise<string | undefined>;
 }): CreatedHooks | undefined {
   const { options, engine, kv, diagnose } = input;
   if (options === undefined || engine === undefined || kv === undefined) return undefined;
@@ -2224,6 +2228,7 @@ function composeHooks(input: {
     requestTimeoutMilliseconds: options.requestTimeoutMilliseconds,
     workflows: input.workflows,
     notifications: input.notifications,
+    startedByHook: input.startedByHook,
     bureauId: input.bureauId,
     newId: (kind) => input.runtimeServices.identifiers.next(kind),
     audit: async (entry) => {
@@ -2231,6 +2236,7 @@ function composeHooks(input: {
     },
     diagnose: (message, cause) =>
       diagnose({ level: 'error', scope: 'hooks', message: `[bureau] ${message}`, cause }),
+    notice: (message) => diagnose({ level: 'warn', scope: 'hooks', message }),
   });
   return created;
 }
@@ -20738,6 +20744,19 @@ async function constructBureau<const D extends AgentDefinitions>(
     diagnose,
     workflows: () => workflowRuntime?.workflows,
     notifications: () => notificationsComposition.notifications,
+    // COR-1940: a run a hook started, or any run beneath it, raises events no `start-workflow`
+    // hook acts on. The instance carries the hook's tag; a step, child or attempt reaches it
+    // through the parent its task records.
+    startedByHook: createHookOriginLookup({
+      workflowTags: async (runId) => {
+        const workflow = await runtime.durable?.engine.get(runId);
+        return workflow?.tags;
+      },
+      parentOf: async (runId) => {
+        const record = await tasks.record(runId);
+        return taskOriginParentOf(record?.origin);
+      },
+    }),
   });
 
   // COR-718: an expiry is a deletion, so each expiring session's owner is recorded for

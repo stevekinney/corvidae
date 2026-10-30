@@ -171,6 +171,12 @@ export type HookDeliveryWork =
       readonly workflowId: string;
       /** The input the workflow is started with, mapped from the event. */
       readonly input: unknown;
+      /**
+       * Why the workflow is not started: the event belongs to a run a hook started. Set when the
+       * delivery is created; the delivery then ends `failed` with this as the `rejected` attempt's
+       * error, and nothing is started.
+       */
+      readonly skip?: string;
     }
   | {
       readonly type: 'notify';

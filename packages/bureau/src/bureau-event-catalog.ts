@@ -56,10 +56,11 @@ function field(name: string, type: BureauEventFieldType): BureauEventField {
 type FieldList = readonly (readonly [name: string, type: BureauEventFieldType])[];
 
 const RUN: FieldList = [['runId', 'string']];
+// `dedupeKey` and `committedAtMs` are set only when an outbox carried the transition.
 const SCHEDULE_CHANGE: FieldList = [
   ['scheduleId', 'string'],
-  ['dedupeKey', 'unknown'],
-  ['committedAtMs', 'number'],
+  ['dedupeKey?', 'string'],
+  ['committedAtMs?', 'number'],
 ];
 const SESSION: FieldList = [
   ['sessionId', 'string'],
@@ -68,14 +69,15 @@ const SESSION: FieldList = [
   ['ordinal', 'number'],
   ['committedAtMs', 'number'],
 ];
+// Every correlation field is optional: a dispatch site stamps only what it knows.
 const SKILL: FieldList = [
   ['skillName', 'string'],
-  ['runId', 'string'],
-  ['sessionId', 'string'],
-  ['traceId', 'string'],
-  ['agentName', 'string'],
-  ['sourceId', 'string'],
-  ['artifactDigest', 'string'],
+  ['runId?', 'string'],
+  ['sessionId?', 'string'],
+  ['traceId?', 'string'],
+  ['agentName?', 'string'],
+  ['sourceId?', 'string'],
+  ['artifactDigest?', 'string'],
   ['status', 'string'],
 ];
 const REVIEW: FieldList = [
@@ -128,7 +130,7 @@ export const BUREAU_EVENT_CATALOG: Readonly<
       ['sequence', 'number'],
       ['runId', 'string'],
       ['actionType', 'string'],
-      ['timestamp', 'string'],
+      ['timestamp', 'number'],
     ],
   ),
   'run.registered': entry('run.registered', 'A run was registered with the Bureau.', RUN),
@@ -172,7 +174,7 @@ export const BUREAU_EVENT_CATALOG: Readonly<
   'schedule.created': entry('schedule.created', 'A schedule was created for an agent.', [
     ['agentName', 'string'],
     ['scheduleId', 'string'],
-    ['sessionId', 'string'],
+    ['sessionId?', 'string'],
   ]),
   'schedule.paused': entry('schedule.paused', 'A schedule was paused.', SCHEDULE_CHANGE),
   'schedule.resumed': entry('schedule.resumed', 'A paused schedule was resumed.', SCHEDULE_CHANGE),
@@ -189,15 +191,15 @@ export const BUREAU_EVENT_CATALOG: Readonly<
   ]),
   'schedule.attempted': entry('schedule.attempted', 'A schedule tried to fire an occurrence.', [
     ['scheduleId', 'string'],
-    ['occurrence', 'unknown'],
+    ['occurrence?', 'number'],
   ]),
   'schedule.skipped': entry(
     'schedule.skipped',
     'A schedule skipped an occurrence because an earlier run still held it, by the schedule’s overlap policy.',
     [
       ['scheduleId', 'string'],
-      ['occurrence', 'unknown'],
-      ['blockingRunId', 'string'],
+      ['occurrence?', 'number'],
+      ['blockingRunId?', 'string'],
       ['policy', 'string'],
     ],
   ),
@@ -207,7 +209,7 @@ export const BUREAU_EVENT_CATALOG: Readonly<
   'skill.rejected': entry(
     'skill.rejected',
     'A skill was refused by a rule; `reason` and `rule` say which.',
-    [...SKILL, ['reason', 'string'], ['rule', 'string']],
+    [...SKILL, ['reason', 'string'], ['rule?', 'string']],
   ),
   'skill.failed': entry('skill.failed', 'A skill failed while it was loading or running.', SKILL),
   'session.created': entry('session.created', 'A session was created.', SESSION.slice(0, 5)),
@@ -250,7 +252,7 @@ export const BUREAU_EVENT_CATALOG: Readonly<
   ]),
   'goal.started': entry('goal.started', 'A goal was started.', [
     ['goalRunId', 'string'],
-    ['goalIdentity?', 'string'],
+    ['goalIdentity?', 'object'],
   ]),
   'goal.attempt.started': entry('goal.attempt.started', 'A goal started an attempt.', GOAL_ATTEMPT),
   'goal.attempt.evaluating': entry(
@@ -264,7 +266,7 @@ export const BUREAU_EVENT_CATALOG: Readonly<
     [
       ['goalRunId', 'string'],
       ['attemptId?', 'string'],
-      ['validatorIdentity?', 'string'],
+      ['validatorIdentity?', 'object'],
       ['outcomeKind?', 'string'],
       ['feedbackDigest?', 'string'],
     ],
@@ -334,7 +336,7 @@ export const BUREAU_EVENT_CATALOG: Readonly<
     'A task’s cleanup was acknowledged.',
     [
       ['taskId', 'string'],
-      ['cleanup', 'unknown'],
+      ['cleanup', 'string'],
     ],
   ),
   'notification.created': entry(

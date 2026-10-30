@@ -48,7 +48,12 @@ function parseAction(value: Record<string, unknown>): HookAction | undefined {
   }
   if (!isRecord(action)) return undefined;
   if (action['type'] === 'webhook' && typeof action['url'] === 'string') {
-    return { type: 'webhook', url: action['url'] };
+    // The top-level `url` is the one a release that predates actions writes, so when the two
+    // differ (a rollback, an update, a roll forward) it is the later of the two.
+    return {
+      type: 'webhook',
+      url: typeof value['url'] === 'string' ? value['url'] : action['url'],
+    };
   }
   if (
     action['type'] === 'start-workflow' &&
@@ -66,6 +71,18 @@ function parseAction(value: Record<string, unknown>): HookAction | undefined {
       : { type: 'notify', title: action['title'] };
   }
   return undefined;
+}
+
+/**
+ * The text a hook is stored as. A webhook hook also keeps its `url` at the top level, where a
+ * release that predates actions reads it: without it that release could not parse the record, and
+ * would delete the hook's pending deliveries as it does for any hook it cannot read. A hook of
+ * another action has no `url`, so it is not readable there (see `documentation/hooks.md`).
+ */
+function serializedHook(record: HookRecord): string {
+  return JSON.stringify(
+    record.action.type === 'webhook' ? { ...record, url: record.action.url } : record,
+  );
 }
 
 function parseHook(raw: string): HookRecord | undefined {
@@ -181,7 +198,7 @@ export function createHookStore(kv: ConditionalTextValueStore): HookStore {
     createHook: (record) =>
       kv.conditionalBatch(
         [{ key: `${HOOK_KEY_PREFIX}${record.id}`, expectedValue: null }],
-        [{ type: 'set', key: `${HOOK_KEY_PREFIX}${record.id}`, value: JSON.stringify(record) }],
+        [{ type: 'set', key: `${HOOK_KEY_PREFIX}${record.id}`, value: serializedHook(record) }],
       ),
     replaceHook: (before, after) =>
       kv.conditionalBatch(
@@ -190,7 +207,7 @@ export function createHookStore(kv: ConditionalTextValueStore): HookStore {
           {
             type: 'set',
             key: `${HOOK_KEY_PREFIX}${before.record.id}`,
-            value: JSON.stringify(after),
+            value: serializedHook(after),
           },
         ],
       ),

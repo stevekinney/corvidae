@@ -66,6 +66,8 @@ function setup(start: Start) {
     state,
     diagnostics,
     async fire(): Promise<void> {
+      // The hooks hold events until the Bureau opens them, after its workflow files are loaded.
+      await created.resume();
       created.dispatch(envelope);
       await Promise.all(tracked.splice(0));
     },
