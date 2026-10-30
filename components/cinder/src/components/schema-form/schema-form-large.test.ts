@@ -143,6 +143,39 @@ describe('SchemaForm large schemas', () => {
     ).toBe('EUR · 5');
   });
 
+  test('summarizes the keys of a record and the branch a choice has taken', () => {
+    const model = createSchemaFormModel({
+      type: 'object',
+      properties: {
+        delivery: {
+          type: 'object',
+          properties: {
+            headers: { type: 'object', additionalProperties: { type: 'string' } },
+            refund: {
+              title: 'Refund',
+              oneOf: [
+                { const: 'whole' },
+                {
+                  title: 'Partial refund',
+                  type: 'object',
+                  properties: { amount: { type: 'integer' } },
+                },
+              ],
+            },
+          },
+        },
+      },
+    });
+    const delivery = model.field.fields[0]!;
+    expect(summarizeGroup(delivery, { delivery: { headers: { a: '1', b: '2' } } })).toBe('a, b');
+    expect(summarizeGroup(delivery, { delivery: { headers: {}, refund: { amount: 4 } } })).toBe(
+      'Partial refund',
+    );
+    expect(summarizeGroup(delivery, { delivery: { headers: {}, refund: 'whole' } })).toBe(
+      'Headers, Refund · none set',
+    );
+  });
+
   test('offers Find a field past eight fields and narrows to matches', async () => {
     await mountLarge();
 

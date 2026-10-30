@@ -54,9 +54,7 @@ function changedValueText(leaf: SchemaFormField, formValue: unknown): string | u
     return current.length === 0 ? undefined : current.map((entry) => String(entry)).join(', ');
   }
   if (leaf.kind === 'choice') return choiceBranchForValue(leaf, current).label;
-  if (isRecord(current)) {
-    const keys = Object.keys(current);
-    return keys.length === 0 ? undefined : keys.join(', ');
-  }
-  return undefined;
+  // Every other JSON value is an object, whose keys name what it holds.
+  const keys = isRecord(current) ? Object.keys(current) : [];
+  return keys.length === 0 ? undefined : keys.join(', ');
 }

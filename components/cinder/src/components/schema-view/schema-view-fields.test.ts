@@ -81,6 +81,13 @@ describe('readSchemaFields', () => {
     ]);
   });
 
+  test('describes an array with no usable items schema as a bare array', () => {
+    const fields = readSchemaFields({
+      properties: { open: { type: 'array' }, boolean: { type: 'array', items: true } },
+    });
+    expect(fields.map((field) => field.type)).toEqual(['array', 'array']);
+  });
+
   test('shows a self-reference as a recursive reference instead of expanding it again', () => {
     const fields = readSchemaFields({
       $ref: '#/$defs/node',
