@@ -634,7 +634,7 @@ export class UsageAccumulatedEvent extends Event {
 
 /**
  * Fired when a run's spend crosses one of its `RunOptions.costBudget.warnAt` fractions (COR-1914),
- * once per fraction per run. `threshold` is the fraction, `budget` the run's `perRunUsd`,
+ * once per fraction per run (a host that crashes after sending one and before saving the step can send it again). `threshold` is the fraction, `budget` the run's `perRunUsd`,
  * `currentCost` the run's spend after the step that crossed it, and `model` the model that step
  * ran on. It carries no request content.
  */

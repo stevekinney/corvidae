@@ -10,6 +10,7 @@ import { describe, expect, it } from 'bun:test';
 import { Conversation, createConversationHistory } from 'conversationalist';
 import { z } from 'zod';
 
+import { HookRegistry } from '@lostgradient/lifecycle';
 import { noToolCalls } from './conditions/predicates';
 import type { RunCostBudget } from './cost-budget';
 import { crossedThresholds, totalAccumulatedCost, validateRunCostBudget } from './cost-budget';
@@ -20,7 +21,9 @@ import { createRunEngine } from './durable/create-run-engine';
 import { createRunWorkflow } from './durable/run-workflow';
 import type { SteeringDesiredState } from './durable/types';
 import { BudgetThresholdEvent } from './events';
+import type { OperativeHookMap } from './hooks';
 import { buildStepDeps, createRunState, executeLoop } from './loop';
+import { ProviderContractError } from './providers/errors';
 import { projectRunEvent } from './run-event-feed';
 import { type EventDispatcher, runStep } from './run-step';
 import type {
@@ -270,6 +273,62 @@ describe('a step on a switched model', () => {
   it('is priced at the agent’s model when the switched model has no price', async () => {
     const result = await executeLoop(options({}, { steering: gate('unpriced'), runId: 'run-1' }));
     expect(result.steps).toHaveLength(5);
+  });
+});
+
+describe('spend a step folds in before it finishes', () => {
+  /** A generate whose every response is billed and then refused, so the step has no answer. */
+  const billedAndRefused: RunOptions['generate'] = async () => {
+    throw new ProviderContractError({
+      provider: 'test',
+      reason: 'unlisted-block',
+      blockType: 'mystery',
+      partIndex: 0,
+      usage: STEP_USAGE,
+    });
+  };
+
+  function skipping(): HookRegistry<OperativeHookMap> {
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('onError', async () => 'skip');
+    return hooks;
+  }
+
+  it('counts a billed response an onError hook skipped: it warns, then ends the run on the limit', async () => {
+    const events = recorder();
+    const result = await executeLoop(
+      options({ generate: billedAndRefused, hooks: skipping() }),
+      events,
+    );
+
+    expect(result.finishReason).toBe('budget-exceeded');
+    expect(messageOf(result.error)).toContain('perRunUsd');
+    // $0.10 a skipped step against $0.45: the fifth takes it to $0.50. 0.5 of $0.45 is passed by
+    // the third ($0.30) and 0.9 by the fifth, though no step ever finished.
+    expect(thresholds(events.events)).toEqual([
+      { step: 2, at: 0.5 },
+      { step: 4, at: 0.9 },
+    ]);
+  });
+
+  it('prices a billed response at the model the step ran on', async () => {
+    const result = await executeLoop(
+      options(
+        { generate: billedAndRefused, hooks: skipping() },
+        {
+          steering: {
+            sessionId: 'session',
+            getDesiredState: () => ({ paused: false, configVersion: 1, model: 'pricey' }),
+            awaitResume: async () => {},
+          },
+          runId: 'run-1',
+        },
+      ),
+    );
+
+    // $1.00 at `pricey`'s rate, not $0.10 at `cheap`'s: one skipped step passes the budget.
+    expect(result.finishReason).toBe('budget-exceeded');
+    expect(result.costEstimate?.totalCost).toBeCloseTo(1, 10);
   });
 });
 

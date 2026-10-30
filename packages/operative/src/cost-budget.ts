@@ -6,7 +6,7 @@
  * `costEstimate` and a durable run checkpoints in its cursor. Reading that, rather than keeping a
  * counter of its own, makes the budget per run by construction and keeps it across a recovery: a
  * resumed run starts from the cursor's cost, so a threshold it already crossed is behind it and is
- * not announced again. {@link createCostBudgetMonitor} is the other way to stop on spend; it is a
+ * not announced again, unless the host crashed after sending a warning and before saving the step. {@link createCostBudgetMonitor} is the other way to stop on spend; it is a
  * stop condition, which every run of an agent shares and which finishes a run with
  * `stop-condition`, so it can answer neither of those.
  *
@@ -28,7 +28,7 @@ export interface RunCostBudget {
   readonly perRunUsd: number;
   /**
    * Fractions of `perRunUsd`, each strictly between 0 and 1, at which the run publishes one
-   * `budget.threshold` event. A fraction is announced once per run, including across a recovery.
+   * `budget.threshold` event. A fraction is announced once per run, and a recovery does not repeat it, except that the host crashing after a warning is sent and before the step is saved can repeat it.
    * Absent or empty, the run warns at none.
    */
   readonly warnAt?: readonly number[] | undefined;

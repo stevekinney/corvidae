@@ -854,7 +854,7 @@ export interface RunOptionsBase {
    * reaches `perRunUsd` ends with the finish reason `budget-exceeded` and an error naming
    * `perRunUsd`, and each `warnAt` fraction publishes one `budget.threshold` event as the run
    * crosses it. A durable run keeps its spend across a recovery, so it neither forgets the cost
-   * already incurred nor announces a threshold twice.
+   * already incurred nor, as a rule, announces a threshold twice: a host that crashes after a warning is sent and before the step is saved can announce it again.
    */
   costBudget?: RunCostBudget | undefined;
   /**

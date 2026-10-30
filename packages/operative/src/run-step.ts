@@ -5,7 +5,6 @@ import { Conversation } from 'conversationalist';
 import type { ZodType } from 'zod';
 
 import type { ContextEpochSealer } from './context-epoch';
-import { totalAccumulatedCost } from './cost-budget';
 import type { AccumulatedCost } from './cost-estimation';
 import type { EffectiveContextTail, StoredEffectiveContext } from './effective-context-record';
 import { type AgentRunErrorKind, GeneratedMediaNotAdmittedError } from './errors';
@@ -17,6 +16,7 @@ import {
 } from './events';
 import { createStepGeneratedMediaAdmitter, type GeneratedMediaAdmission } from './generated-media';
 import { assistantMessageIdentifier } from './message-identifiers';
+import { checkCostBudget, openStepCostWindow, type StepCostWindow } from './run-step-cost-budget';
 import { finalizeStep } from './run-step-finalization';
 import { executeGeneration } from './run-step-generation';
 import { prepareStep } from './run-step-preparation';
@@ -291,6 +291,32 @@ export async function runStep(
   step: number,
   emitter: EventDispatcher | undefined,
 ): Promise<StepOutcome> {
+  // COR-1914: the budget is measured from the spend the step began with, so a billed response the
+  // step discarded still counts. A step that reaches finalization is checked there; one that
+  // moves on without (an `onError` skip, an aborted step) is checked here, and one that ends the
+  // run is not: the run is over either way.
+  const costWindow = openStepCostWindow(runState);
+  const outcome = await runStepBody(deps, runState, conversation, step, emitter, costWindow);
+  if (costWindow.checked || (outcome.kind !== 'continue' && outcome.kind !== 'next')) {
+    return outcome;
+  }
+  try {
+    checkCostBudget({ deps, runState, emitter, step, window: costWindow });
+  } catch (error) {
+    emitter?.dispatch(new RunErrorEvent(step, error, 'policy'));
+    return { kind: 'error', error, errorKind: 'policy' };
+  }
+  return outcome;
+}
+
+async function runStepBody(
+  deps: StepDeps,
+  runState: RunState,
+  conversation: Conversation,
+  step: number,
+  emitter: EventDispatcher | undefined,
+  costWindow: StepCostWindow,
+): Promise<StepOutcome> {
   const { signal, hooks } = deps;
   if (signal?.aborted) {
     return { kind: 'abort', reason: explicitAbortReason(signal) };
@@ -390,6 +416,9 @@ export async function runStep(
     resolvedSources,
     admission,
   } = preparation;
+  costWindow.model = deps.costEstimation
+    ? costModelOfStep(deps.costEstimation, steeringDesiredState?.model)
+    : undefined;
 
   const admitter = createStepGeneratedMediaAdmitter({
     port: deps.generatedMediaAdmitter,
@@ -508,7 +537,6 @@ export async function runStep(
   runState.lastContent = content;
   runState.lastParts = parts;
   runState.finalRowIsReplacement = false;
-  const costBefore = totalAccumulatedCost(runState.cost);
   accumulateUsage(runState, emitter, step, usage, deps.costEstimation, steeringDesiredState?.model);
 
   // COR-713: the row carries the settled parts, not only the text. A step that is a thinking block
@@ -579,9 +607,6 @@ export async function runStep(
     contextEpochId: generation.contextEpochId,
     planReason: generation.planReason,
     effectiveContext: generation.effectiveContext,
-    costBefore,
-    costModel: deps.costEstimation
-      ? costModelOfStep(deps.costEstimation, steeringDesiredState?.model)
-      : undefined,
+    costWindow,
   });
 }

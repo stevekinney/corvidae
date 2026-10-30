@@ -494,7 +494,14 @@ export async function executeGeneration(
       // error, before any recovery, so a refused or unmapped response never reports zero cost.
       const billedUsage = billedUsageOf(error);
       if (billedUsage !== undefined) {
-        accumulateUsage(runState, emitter, step, billedUsage, deps.costEstimation);
+        accumulateUsage(
+          runState,
+          emitter,
+          step,
+          billedUsage,
+          deps.costEstimation,
+          steeringDesiredState?.model,
+        );
       }
 
       // A tripwire guardrail (mode: 'tripwire') MUST hard-halt the run — it
