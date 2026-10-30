@@ -109,6 +109,7 @@ import type { WorkflowState } from '@lostgradient/weft';
 import type { MultiModalContent } from 'conversationalist';
 
 import {
+  type BureauChildChat,
   type BureauChildOutcome,
   type BureauChildParentCancellation,
   type BureauChildRecord,
@@ -308,6 +309,11 @@ export interface ChildTopologyParent {
   readonly live: boolean;
   /** The parent's session, when it has one; recorded on the child's task origin (COR-1868). */
   readonly contextId?: string | undefined;
+  /**
+   * The chat the parent runs in, stamped on its children (COR-1955); absent for a parent that
+   * belongs to no chat. A parent that is itself a child passes its own record's stamp on instead.
+   */
+  readonly chat?: BureauChildChat | undefined;
 }
 
 export interface ChildTopologyStart {
@@ -1438,6 +1444,9 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
       principal: ownerOrLocal(parent.principal),
       grantId: grant?.id,
       parentGrantId,
+      // COR-1955: a child of a child keeps its root's chat, so a mode is read from the chat and not
+      // from a parent whose records may be gone.
+      chat: parentRecord === undefined ? parent.chat : parentRecord.chat,
     });
 
     const registration = await store.register(record);

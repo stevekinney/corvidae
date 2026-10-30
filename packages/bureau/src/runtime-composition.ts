@@ -32,7 +32,6 @@ import type {
   JSONValue,
   OnStepHook,
   OperativeHookMap,
-  PermissionMode,
   PrepareStepHook,
   ProviderDefinition,
   RegistryAgnosticEngine,
@@ -102,7 +101,11 @@ import { createDecideToolbox, type DecideToolWiring } from './decisions/decide-t
 import { humanInputEnabled, humanInputSchemasOf } from './human-input-option';
 import { isStoredTaskOrigin, type StoredTaskOrigin } from './task-origin';
 import type { TaskToolGrant } from './task-registry';
-import { withChatPermission, withChatPermissionStanding } from './tool-approval';
+import {
+  type ChatPermissionReading,
+  withChatPermission,
+  withChatPermissionStanding,
+} from './tool-approval';
 import { withAddedTools, withToolboxLayer } from './toolbox-additions';
 import {
   type AnyWorkflowDefinition,
@@ -1619,7 +1622,7 @@ export type RuntimeCompositionDependencies = {
    * no chat. A rejection is read as `read-only`. Late-bound by `createBureau`, which holds the
    * steering.
    */
-  permissionModeOfRun?: (runId: string) => Promise<PermissionMode | undefined>;
+  permissionModeOfRun?: (runId: string) => Promise<ChatPermissionReading | undefined>;
   /**
    * COR-1710 — the tools task `taskId` was granted when it started, from its admission record;
    * for a task recorded before grants were, the settings now, recorded on it once. Without this,
@@ -3153,7 +3156,20 @@ async function buildRuntimeComposition(
   /** {@link RuntimeComposition.withChatPermission}. */
   function governedByChat(toolbox: BureauToolbox, runId: string): BureauToolbox {
     const read = dependencies.permissionModeOfRun;
-    return read === undefined ? toolbox : withChatPermission(toolbox, () => read(runId));
+    return read === undefined
+      ? toolbox
+      : withChatPermission(
+          toolbox,
+          () => read(runId),
+          // A chat whose mode cannot be read holds its runs to `read-only`: say so, once per call.
+          (error) =>
+            diagnose({
+              level: 'error',
+              scope: 'permission-mode',
+              message: `[bureau] The permission mode of the chat of run "${runId}" could not be read, so its tool calls are held to read-only: ${serializeUnknownError(error)}`,
+              cause: error,
+            }),
+        );
   }
 
   /**

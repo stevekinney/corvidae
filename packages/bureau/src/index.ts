@@ -280,6 +280,7 @@ export type {
 export { CHILD_AGENT_RUN_WORKFLOW_TYPE } from './child-topology';
 export { UnsupportedChildRecordVersionError } from './child-topology-store';
 export type {
+  BureauChildChat,
   BureauChildOutcome,
   BureauChildParentCancellation,
   BureauChildRecord,
