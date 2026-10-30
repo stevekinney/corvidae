@@ -14,6 +14,12 @@
       "title": "Filterable with warning",
       "description": "Enable filtering, warning helper text, and top-after-reopen selection feedback.",
       "code": "<script lang=\"ts\">\n  import { MultiSelect } from '@lostgradient/cinder';\n\n  const teams = [\n    { id: 'design', label: 'Design', description: 'Product and visual design' },\n    { id: 'engineering', label: 'Engineering', description: 'Frontend and backend' },\n    { id: 'qa', label: 'QA', description: 'Testing and release checks' },\n    { id: 'support', label: 'Support', description: 'Customer support and triage' },\n    { id: 'ops', label: 'Operations', description: 'SRE and infrastructure' },\n  ] as const;\n\n  let selectedTeams = $state<Array<(typeof teams)[number]['id']>>(['engineering', 'qa']);\n</script>\n\n<MultiSelect\n  id=\"teams\"\n  label=\"Teams\"\n  items={teams}\n  filterable\n  warning=\"Selections affect queue routing.\"\n  selectionFeedback=\"top-after-reopen\"\n  bind:selectedIds={selectedTeams}\n/>\n"
+    },
+    {
+      "id": "grouped",
+      "title": "Grouped items",
+      "description": "Give items a group to render them under headings with counts. Filtering keeps the headings of groups that still match.",
+      "code": "<script lang=\"ts\">\n  import { MultiSelect } from '@lostgradient/cinder';\n\n  const tools = [\n    { id: 'read', label: 'Read file', group: 'Built in' },\n    { id: 'write', label: 'Write file', group: 'Built in' },\n    { id: 'search', label: 'Search the web', group: 'Search server' },\n    { id: 'index', label: 'Index documents', group: 'Search server' },\n    { id: 'clock', label: 'Current time' },\n  ];\n\n  let selected = $state<string[]>(['read']);\n</script>\n\n<MultiSelect id=\"tools\" label=\"Tools\" items={tools} filterable bind:selectedIds={selected} />\n"
     }
   ]
 }

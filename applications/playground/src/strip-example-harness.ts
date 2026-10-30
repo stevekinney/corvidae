@@ -28,7 +28,7 @@
  *
  * The displayed literal is the suffix text: `-field` → `"field"`. Binding sites
  * are rewritten — `id={fieldId}` → `id="field"` (same for `name=` / `target=` /
- * `for=` / `aria-labelledby=` / `aria-controls=`), and template interpolation
+ * `for=` / `aria-labelledby=` / `aria-controls=` / the `ariaLabelledby` prop), and template interpolation
  * `` `#${mainId}` `` → `"#main"`.
  *
  * ## Fail-closed
@@ -126,10 +126,11 @@ export function stripExampleHarness(source: string, scenarioKey: string): string
       (_full, before: string, after: string) => `="${before}${literal}${after}"`,
     );
     // Plain attribute binding: `id={fieldId}` → `id="field"` (also name=/target=/for=/
-    // aria-labelledby=/aria-controls=, e.g. a `<label for={fieldId}>` paired with the field).
+    // aria-labelledby=/aria-controls=/ariaLabelledby=, e.g. a `<label for={fieldId}>` paired with the field,
+    // or the `ariaLabelledby` prop of a component that names itself by that label).
     stripped = stripped.replace(
       new RegExp(
-        `(\\b(?:id|name|target|for|aria-labelledby|aria-controls)=)\\{\\s*${escaped}\\s*\\}`,
+        `(\\b(?:id|name|target|for|aria-labelledby|aria-controls|ariaLabelledby)=)\\{\\s*${escaped}\\s*\\}`,
         'g',
       ),
       (_full, attribute: string) => `${attribute}"${literal}"`,

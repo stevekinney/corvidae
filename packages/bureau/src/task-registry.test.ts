@@ -20,6 +20,7 @@ import {
   type TaskRegistryHost,
 } from './task-registry';
 import type { TaskOrigin } from './task-origin';
+import { notificationOutboxKey } from './notifications/notification-outbox';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { CancelDurableRunOutcome, PendingReview } from './types';
 
@@ -366,6 +367,58 @@ describe('views', () => {
       finishReason: 'error',
       statusMessage: 'boom',
       updatedAt: '2026-10-18T01:00:00.000Z',
+    });
+  });
+
+  describe('the notification outbox (COR-1945)', () => {
+    const settlement = (status: 'failed' | 'completed' | 'canceled') => ({
+      at: '2026-10-18T01:00:00.000Z',
+      status,
+      finishReason: status === 'failed' ? 'error' : 'stop-condition',
+      message: status === 'failed' ? 'boom' : null,
+    });
+
+    it('commits the entry of a run that failed in the same batch as its settlement, once', async () => {
+      const batches: { keys: string[] }[] = [];
+      const memory = textValueStore(new MemoryStorage());
+      const kv: ConditionalTextValueStore = {
+        ...memory,
+        conditionalBatch: async (conditions, operations) => {
+          batches.push({ keys: operations.map((operation) => operation.key) });
+          return memory.conditionalBatch(conditions, operations);
+        },
+      };
+      const { registry } = build(undefined, { kv });
+      await admit(registry, 'run-1');
+      batches.length = 0;
+
+      await registry.recordSettled('run-1', settlement('failed'));
+      await registry.recordSettled('run-1', settlement('failed'));
+
+      const outboxKey = notificationOutboxKey('run-1');
+      const settledBatches = batches.filter((batch) => batch.keys.includes(outboxKey));
+      expect(settledBatches).toHaveLength(1);
+      expect(settledBatches[0]?.keys).toContain('bureau-task:v1:run-1');
+      expect(await kv.list('bureau-notification:v1:o:')).toEqual([outboxKey]);
+    });
+
+    it.each(['completed', 'canceled'] as const)(
+      'writes no entry for a run that %s',
+      async (status) => {
+        const { registry, kv } = build();
+        await admit(registry, 'run-1');
+
+        await registry.recordSettled('run-1', settlement(status));
+
+        expect(await kv.list('bureau-notification:v1:o:')).toEqual([]);
+      },
+    );
+
+    it('writes no entry when the settlement did not commit', async () => {
+      const { registry, kv } = build();
+
+      expect(await registry.recordSettled('absent', settlement('failed'))).toBe(false);
+      expect(await kv.list('bureau-notification:v1:o:')).toEqual([]);
     });
   });
 
