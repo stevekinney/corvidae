@@ -183,6 +183,8 @@ A delivery record keeps the request without its signature, each attempt's outcom
 
 Events that happen while the Bureau is down are not replayed.
 
+Deleting a chat (`bureau.contexts.delete`) deletes the deliveries of events about its runs (COR-1953), a `pending` one included, so its retry sends nothing; a request already in flight cannot be recalled. The record holds only identifiers, but it names the chat's runs. A delivery of the hook's other events, a `notify` delivery (it names no run), the hook and its secret stay. See `external-control-plane.md`.
+
 Rolling back to a release that predates actions is safe only for webhook hooks. A webhook hook's record also keeps its `url` at the top level, which that release reads, and a change it makes to the `url` is read back by this one. A `start-workflow` or `notify` hook has no `url`, so the older release cannot read it, treats it as unreadable, and deletes its pending deliveries when it resumes; delete those hooks, or disable them and let their deliveries finish, before a rollback.
 
 ## Which URLs

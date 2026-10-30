@@ -14261,6 +14261,13 @@ async function constructBureau<const D extends AgentDefinitions>(
     redactTaskRecords: async (runIds) => {
       for (const runId of runIds) await tasks.redactSettlement(runId);
     },
+    purgeNotifications: async (runIds) => {
+      await notificationsComposition.purgeRuns(runIds);
+    },
+    // Read when it runs: the hooks are built after the Bureau they listen to.
+    purgeHookDeliveries: async (chat, runIds) => {
+      await hooksInstance?.purgeChatDeliveries(chat, runIds);
+    },
     purgeAssets: async (assets) => {
       const service = assetServiceHolder.current;
       if (service !== undefined) await purgeChatAssets(service, assets);

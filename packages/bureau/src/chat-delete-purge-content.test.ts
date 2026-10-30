@@ -8,6 +8,7 @@
  * vacuously: the feature a list forgets is the feature the test chat never used.
  */
 import { generateEncryptionKey } from '@lostgradient/cryptography';
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { createTool, createToolbox, type Toolbox } from 'armorer';
 import {
   createAgent,
@@ -25,11 +26,18 @@ import {
   createWeftMemoryRecordStorage,
 } from '@lostgradient/memory';
 import { createBureau } from './create-bureau';
+import { notificationOutboxKey } from './notifications/notification-outbox';
 import { createDurableAssetStorage } from './assets/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { createBureauHandler } from './http/create-bureau-handler.ts';
+import {
+  createManualSleep,
+  createReceiver,
+  type ReceiverScript,
+  SIGNING_SECRET,
+} from './hooks/hooks.test-support.ts';
 import { message, type Json } from './http/a2a-mount.test-support.ts';
 import { authentication } from './http/management/management-fixtures.test-support.ts';
 import { waitForCondition } from './test';
@@ -46,10 +54,16 @@ import {
 /** What each content-bearing feature of a chat holds, by name; every chat has values of its own. */
 type Sentinels = Readonly<Record<string, string>>;
 
-/** The kind of chat: one that uses tools and reviews a tool's approval, or one that asks a person. */
-type ChatKind = 'approval' | 'question';
+/**
+ * The kind of chat: one that uses tools and reviews a tool's approval, one that asks a person, or
+ * one whose run fails (which writes an owner notification quoting the failure, COR-1953).
+ */
+type ChatKind = 'approval' | 'question' | 'failure';
 
 function sentinelsOf(tag: string, kind: ChatKind): Sentinels {
+  if (kind === 'failure') {
+    return { a2aMessage: `A2AMESSAGE${tag}`, failureMessage: `FAILUREMESSAGE${tag}` };
+  }
   const common = {
     a2aMessage: `A2AMESSAGE${tag}`,
     a2aFollowUp: `A2AFOLLOWUP${tag}`,
@@ -212,6 +226,9 @@ function purgedFamilyFindings(entries: Map<string, string>): string[] {
 interface World {
   readonly bureau: Bureau;
   readonly fixture: BureauStorageFixture;
+  /** The endpoint the world's webhook hook delivers to, and the id of that hook (COR-1953). */
+  readonly receiver: ReturnType<typeof createReceiver>;
+  readonly hookId: string;
   /** Which chat the scripted models are serving now. */
   readonly plan: { current: Sentinels };
   handle(request: Request): Promise<Response>;
@@ -246,13 +263,29 @@ function agentsFor(
       generate: async () => ({ content: plan.current['childOutcome'] ?? '', toolCalls: [] }),
       stopWhen: stopWhen.noToolCalls(),
     }),
+    // The agent whose run fails with the chat's failure message (COR-1953): the failure is quoted
+    // by the owner's notification.
+    [`breaker${suffix}`]: createAgent({
+      generate: async () => {
+        throw new Error(plan.current['failureMessage'] ?? 'failed');
+      },
+      stopWhen: stopWhen.noToolCalls(),
+    }),
   };
 }
 
 /** A Bureau over SQLite with two agents: one calls tools and is gated by approvals, one asks a person. */
-async function openWorld(): Promise<World> {
-  const fixture = createSqliteStorageFixture();
-  fixtures.push(fixture);
+async function openWorld(
+  hooks: {
+    readonly script?: ReceiverScript;
+    readonly sleep?: (milliseconds: number) => Promise<void>;
+    /** A fixture an earlier world used, reopened: the Bureau after a restart. */
+    readonly restartOf?: BureauStorageFixture;
+  } = {},
+): Promise<World> {
+  const receiver = createReceiver(hooks.script);
+  const fixture = hooks.restartOf ?? createSqliteStorageFixture();
+  if (hooks.restartOf === undefined) fixtures.push(fixture);
   const plan = { current: sentinelsOf('start', 'approval') };
   const lookup = createTool({
     name: 'lookup-order',
@@ -312,6 +345,14 @@ async function openWorld(): Promise<World> {
     storage: fixture.storage,
     durable: true,
     durableOwnership: { ownership: 'none' },
+    // A hook on the events of every run (COR-1953): its deliveries are records of the chats'
+    // runs, kept for the hook's owner, and a pending one is still to be sent.
+    hooks: {},
+    webhooks: {
+      targets: [],
+      fetch: receiver.fetch,
+      sleep: hooks.sleep ?? (() => Promise.resolve()),
+    },
     // The answer to the question has a field the person must not see echoed back: it is stored
     // sealed, apart from the answer.
     answerEncryption: { current: await generateEncryptionKey() },
@@ -346,10 +387,16 @@ async function openWorld(): Promise<World> {
   disposables.push(bureau);
   const handle = createBureauHandler(bureau, {
     authentication,
-    a2aAgents: ['helper', 'asker', 'helper-kept', 'asker-kept'],
+    a2aAgents: ['helper', 'asker', 'breaker', 'helper-kept', 'asker-kept', 'breaker-kept'],
     publicUrl: 'http://localhost',
   });
-  return { bureau, fixture, plan, handle };
+  const hook = await bureau.hooks!.create({
+    url: 'https://receiver.example/hook',
+    events: ['run.registered', 'run.settled', 'review.requested'],
+    signingSecret: SIGNING_SECRET,
+    principal: ALICE,
+  });
+  return { bureau, fixture, receiver, hookId: hook.id, plan, handle };
 }
 
 async function a2aSend(
@@ -554,6 +601,53 @@ async function useEveryFeature(
   return { task, sentinels, ids };
 }
 
+/**
+ * A chat whose run fails (COR-1953): the failure is quoted by the owner's notification, which the
+ * Bureau writes from the run's settlement, and every event of the run is a delivery to the
+ * world's hook.
+ */
+async function useFailingChat(
+  world: World,
+  tag: string,
+  options: { readonly kept?: boolean } = {},
+) {
+  const { bureau } = world;
+  const sentinels = sentinelsOf(tag, 'failure');
+  world.plan.current = sentinels;
+  const task = await a2aSend(
+    world,
+    options.kept === true ? 'breaker-kept' : 'breaker',
+    sentinels['a2aMessage']!,
+  );
+  await waitForCondition(
+    () => bureau.tasks.detail(task.id)?.status === 'error',
+    `run ${task.id} never failed`,
+  );
+  await waitForCondition(async () => {
+    const { notifications } = await bureau.notifications.list({ owner: ALICE });
+    return notifications.some((entry) => entry.body?.includes(sentinels['failureMessage']!));
+  }, `the failure of run ${task.id} was never notified`);
+  const ids: ChatIds = { contextId: task.contextId, runIds: [task.id] };
+  return { task, sentinels, ids };
+}
+
+/** Waits until every run is named by a settled delivery of the world's hook, and none is pending. */
+async function deliveriesSettledFor(world: World, runIds: readonly string[]) {
+  await waitForCondition(async () => {
+    const deliveries = await world.bureau.hooks!.deliveries(world.hookId);
+    return (
+      deliveries.every((delivery) => delivery.status !== 'pending') &&
+      runIds.every((runId) =>
+        deliveries.some((delivery) => delivery.request?.body.includes(runId) === true),
+      )
+    );
+  }, 'the hook never settled a delivery for every run');
+}
+
+/** A chat the test drove: its first task, the sentinels it said, and the ids it is known by. */
+type Chat =
+  Awaited<ReturnType<typeof useEveryFeature>> | Awaited<ReturnType<typeof useFailingChat>>;
+
 /** A PNG header with the sentinel after it, so the file's bytes are its own and findable. */
 function fileBytes(sentinel: string): Uint8Array {
   const header = pngBytes(8, 8, 0);
@@ -586,7 +680,7 @@ function allSentinels(...chats: Sentinels[]): [name: string, value: string][] {
 describe('contexts.delete purges every content-bearing feature of a chat (COR-1934)', () => {
   it('leaves none of the deleted chats’ sentinels anywhere in the store, and every one of another chat’s', async () => {
     const world = await openWorld();
-    const doomed = [
+    const doomed: Chat[] = [
       await useEveryFeature(world, 'approval', 'DoomedA'),
       await useEveryFeature(world, 'question', 'DoomedQ'),
     ];
@@ -595,10 +689,17 @@ describe('contexts.delete purges every content-bearing feature of a chat (COR-19
       await scan(world.fixture),
       doomed[0]!.sentinels['fileBytes']!,
     )[0]!;
+    doomed.push(await useFailingChat(world, 'DoomedF'));
     const kept = [
       await useEveryFeature(world, 'approval', 'KeptA', { kept: true, sharedAssetId }),
       await useEveryFeature(world, 'question', 'KeptQ', { kept: true }),
+      await useFailingChat(world, 'KeptF', { kept: true }),
     ];
+    // Every run's events were delivered to the hook, and the failed runs were notified.
+    await deliveriesSettledFor(
+      world,
+      [...doomed, ...kept].flatMap((chat) => chat.ids.runIds),
+    );
 
     const before = await scan(world.fixture);
     // The test chats really used every feature: each sentinel is stored, for every chat.
@@ -613,7 +714,11 @@ describe('contexts.delete purges every content-bearing feature of a chat (COR-19
 
     // Every chat's final answer was remembered, under its agent.
     expect(
-      allSentinels(...[...doomed, ...kept].map((chat) => ({ answer: chat.sentinels['answer']! })))
+      allSentinels(
+        ...[...doomed, ...kept]
+          .filter((chat) => chat.sentinels['answer'] !== undefined)
+          .map((chat) => ({ answer: chat.sentinels['answer']! })),
+      )
         .filter(
           ([, value]) =>
             !holding(before, value).some((key) => key.startsWith(MEMORY_RECORD_PREFIX)),
@@ -662,7 +767,8 @@ describe('contexts.delete purges every content-bearing feature of a chat (COR-19
     // The kept chats’ answers are still remembered, and the file two chats held is still there.
     expect(
       kept
-        .map((chat) => chat.sentinels['answer']!)
+        .map((chat) => chat.sentinels['answer'])
+        .filter((value): value is string => value !== undefined)
         .filter(
           (value) => !holding(after, value).some((key) => key.startsWith(MEMORY_RECORD_PREFIX)),
         ),
@@ -745,5 +851,128 @@ describe('what a chat delete leaves to others (COR-1934)', () => {
         key.startsWith(MEMORY_RECORD_PREFIX),
       ),
     ).toEqual([]);
+  });
+});
+
+describe('the hook deliveries and owner notifications of a deleted chat (COR-1953)', () => {
+  it('cancels a delivery still to be sent, so the deleted chat’s events are not delivered afterwards', async () => {
+    // Every request is refused, so each delivery waits for its retry: pending, with an attempt made.
+    const backoff = createManualSleep();
+    const world = await openWorld({
+      script: () => new Response('unavailable', { status: 503 }),
+      sleep: backoff.sleep,
+    });
+    try {
+      const chat = await useFailingChat(world, 'Pending');
+      let attempts = 0;
+      await waitForCondition(async () => {
+        const deliveries = await world.bureau.hooks!.deliveries(world.hookId);
+        attempts = world.receiver.calls.length;
+        return (
+          deliveries.length > 0 &&
+          deliveries.every(
+            (delivery) => delivery.status === 'pending' && delivery.attempts.length === 1,
+          )
+        );
+      }, 'the deliveries never waited for their retry');
+      const pendingIndex = () =>
+        world.bureau.internals.kv!.list('bureau-hook-delivery-pending:v1:');
+      expect(await pendingIndex()).not.toEqual([]);
+
+      await world.bureau.contexts.delete(chat.task.contextId);
+      await world.bureau.maintain();
+
+      expect(await world.bureau.hooks!.deliveries(world.hookId)).toEqual([]);
+      expect(await pendingIndex()).toEqual([]);
+
+      // The retries that were waiting find nothing to send.
+      backoff.release();
+      await quietFor(100);
+      expect(world.receiver.calls).toHaveLength(attempts);
+    } finally {
+      backoff.release();
+    }
+  });
+
+  it('leaves the deliveries of another chat’s events, and a delivery that names no run', async () => {
+    const world = await openWorld();
+    const doomed = await useFailingChat(world, 'DoomedD');
+    const kept = await useFailingChat(world, 'KeptD', { kept: true });
+    await deliveriesSettledFor(world, [...doomed.ids.runIds, ...kept.ids.runIds]);
+    const test = (await world.bureau.hooks!.test(world.hookId))!;
+    const namesRun = async (runId: string) => {
+      const all = await world.bureau.hooks!.deliveries(world.hookId);
+      return all.filter((delivery) => delivery.request?.body.includes(runId) === true);
+    };
+    expect(await namesRun(kept.ids.runIds[0]!)).not.toEqual([]);
+
+    await world.bureau.contexts.delete(doomed.task.contextId);
+    await world.bureau.maintain();
+
+    expect(await namesRun(doomed.ids.runIds[0]!)).toEqual([]);
+    expect(await namesRun(kept.ids.runIds[0]!)).not.toEqual([]);
+    const deliveries = await world.bureau.hooks!.deliveries(world.hookId);
+    expect(deliveries.map((delivery) => delivery.id)).toContain(test.id);
+  });
+
+  it('removes the failure notification and its outbox entry, for every owner, and keeps another chat’s', async () => {
+    const world = await openWorld();
+    const doomed = await useFailingChat(world, 'DoomedN');
+    const kept = await useFailingChat(world, 'KeptN', { kept: true });
+    // A notification of the same run for another owner, and one that names no run.
+    const runId = doomed.ids.runIds[0]!;
+    await world.bureau.notifications.create({
+      owner: OPERATOR,
+      kind: 'run.failed',
+      title: 'copy',
+      subject: { runId },
+    });
+    await world.bureau.notifications.create({ owner: ALICE, kind: 'note', title: 'unrelated' });
+    const kv = world.bureau.internals.kv!;
+    // A settlement that raced the purge left its outbox entry.
+    await kv.set(notificationOutboxKey(runId), '1');
+
+    await world.bureau.contexts.delete(doomed.task.contextId);
+    await world.bureau.maintain();
+
+    const alice = await world.bureau.notifications.list({ owner: ALICE });
+    expect(alice.notifications.map((entry) => entry.title).toSorted()).toEqual([
+      'breaker-kept failed',
+      'unrelated',
+    ]);
+    const operator = await world.bureau.notifications.list({ owner: OPERATOR });
+    expect(operator.notifications).toEqual([]);
+    expect(await kv.list('bureau-notification:v1:o:')).toEqual([]);
+    expect(
+      holding(await scan(world.fixture), runId).filter((key) =>
+        key.startsWith('bureau-notification'),
+      ),
+    ).toEqual([]);
+    expect(kept.ids.runIds).toHaveLength(1);
+  });
+
+  it('writes no run text when a notification is repaired after the delete', async () => {
+    const world = await openWorld();
+    const chat = await useFailingChat(world, 'Repaired');
+    const runId = chat.ids.runIds[0]!;
+    await world.bureau.contexts.delete(chat.task.contextId);
+    await world.bureau.maintain();
+    expect(holding(await scan(world.fixture), chat.sentinels['failureMessage']!)).toEqual([]);
+
+    // A settlement that raced the purge left its outbox entry, and the Bureau restarts: its boot
+    // repair builds the notification from the task record, whose failure text the purge dropped.
+    await world.bureau.internals.kv!.set(notificationOutboxKey(runId), '1');
+    await world.bureau.dispose();
+    await world.fixture.reopen();
+    const restarted = await openWorld({ restartOf: world.fixture });
+    await waitForCondition(async () => {
+      const { notifications } = await restarted.bureau.notifications.list({ owner: ALICE });
+      return notifications.some((entry) => entry.subject?.runId === runId);
+    }, 'the boot repair never wrote the notification');
+
+    const page = await restarted.bureau.notifications.list({ owner: ALICE });
+    const written = page.notifications.filter((entry) => entry.subject?.runId === runId);
+    expect(written.map((entry) => entry.body)).toEqual([null]);
+    expect(holding(await scan(restarted.fixture), chat.sentinels['failureMessage']!)).toEqual([]);
   });
 });
