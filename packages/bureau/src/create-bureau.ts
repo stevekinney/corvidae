@@ -438,6 +438,13 @@ import {
   validateReviewAnswer,
 } from './review-answer';
 import {
+  holdsSealedAnswer,
+  sealSecretAnswer,
+  type SecretAnswerAuditEntry,
+  SecretAnswerUnavailableError,
+  secretFieldsOfReview,
+} from './secret-answers';
+import {
   createRunHumanWaits,
   humanWaitDecisionPayload,
   humanWaitDecisionRequest,
@@ -1005,7 +1012,13 @@ export async function resolveCancelDurableRun(
  * is unconfigured, and the operator can fix it" (`generate`, `persistence`,
  * `approval` — a 503 case). Only set on `NOT_CONFIGURED` errors.
  */
-export type BureauErrorNotConfiguredSubject = 'generate' | 'durable' | 'persistence' | 'approval';
+export type BureauErrorNotConfiguredSubject =
+  | 'generate'
+  | 'durable'
+  | 'persistence'
+  | 'approval'
+  /** COR-1920: a secret answer arrived, and the Bureau has no `answerEncryption` key or no storage for it. */
+  | 'encryption';
 
 class BureauError extends Error {
   readonly code:
@@ -16254,6 +16267,8 @@ async function constructBureau<const D extends AgentDefinitions>(
     // Set once a step that cannot be shown not to have acted has begun: a throw before it is a
     // proven pre-execution failure, which releases an approval's claim.
     let actionStarted = false;
+    // COR-1920: what the audit entry says of each secret answer this delivery stored.
+    let secretAnswerAudit: readonly SecretAnswerAuditEntry[] = [];
 
     let result: unknown;
     let keepPending = false;
@@ -16448,7 +16463,14 @@ async function constructBureau<const D extends AgentDefinitions>(
         // same thing), keyed by the review id (COR-1579), so a same-decision
         // re-drive delivers once and nothing is left buffered for the next park.
         actionStarted = true;
-        await deliverHumanWaitDecision(review, humanWaitDecisionPayload(input));
+        // COR-1920: the sealed secrets are stored for the run before the signal names them.
+        const delivery = await prepareHumanWaitDelivery(
+          review,
+          humanWaitDecisionPayload(input),
+          input.principal,
+        );
+        secretAnswerAudit = delivery.audit;
+        await deliverHumanWaitDecision(review, delivery.payload);
       }
     } catch (error) {
       if (!actionStarted) await releaseApprovalClaim(claimRequest, heldApprovalClaim);
@@ -16468,6 +16490,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         input.decision,
         input.principal,
         input.reason,
+        secretAnswerAudit,
       );
       try {
         auditAlreadyAppended = await persistReviewResolutionWithRetry(
@@ -16572,7 +16595,9 @@ async function constructBureau<const D extends AgentDefinitions>(
     decision: 'approve' | 'deny' | 'reject',
     principal: string,
     reason?: string,
+    secretAnswers: readonly SecretAnswerAuditEntry[] = [],
   ): ReviewAuditAttachment {
+    const secretFields = review.kind === 'human-wait' ? secretFieldsOfReview(review) : [];
     const decisionSuffix =
       decision === 'approve' ? 'approved' : decision === 'reject' ? 'rejected' : 'denied';
     return {
@@ -16581,11 +16606,16 @@ async function constructBureau<const D extends AgentDefinitions>(
       detail: {
         // The audit record names the review as it was asked, not the schema it asked with (COR-1487):
         // that already lives in the checkpoint, and up to 32 KiB of it would repeat in every record.
+        // COR-1920: the fields it marked secret stay, so a retry after the review closed can still
+        // keep them out of a digest.
         review:
           review.kind === 'human-wait'
-            ? (Object.fromEntries(
-                Object.entries(review).filter(([key]) => key !== 'inputSchema'),
-              ) as unknown as PendingReview)
+            ? ({
+                ...Object.fromEntries(
+                  Object.entries(review).filter(([key]) => key !== 'inputSchema'),
+                ),
+                ...(secretFields.length > 0 ? { secretFields } : {}),
+              } as unknown as PendingReview)
             : review,
         // The schema's absence is not the form's: this marker is how a closed wait is known to
         // have shown a form (COR-1674).
@@ -16594,6 +16624,9 @@ async function constructBureau<const D extends AgentDefinitions>(
           : {}),
         decision,
         ...(reason !== undefined ? { reason } : {}),
+        // COR-1920: a secret answer is named by its field and a digest of its ciphertext, never
+        // by its value.
+        ...(secretAnswers.length > 0 ? { secretAnswers } : {}),
       },
       principal,
     };
@@ -16833,14 +16866,77 @@ async function constructBureau<const D extends AgentDefinitions>(
     } catch {
       // Not cloneable, so not JSON: a schema refuses it below, and a wait without one takes it as given.
     }
-    const review =
-      listPendingReviews().find((candidate) => candidate.id === input.id) ??
-      runHumanWaits.find(input.id) ??
-      (await derivedHumanWait(input.id));
-    if (review?.kind !== 'human-wait' || review.inputSchema === undefined) return input;
-    const issues = validateReviewAnswer(review.inputSchema, snapshot);
+    // COR-1920: a review that has closed is read back from the audit trail, which keeps the fields
+    // its schema marked secret, so a same-decision retry seals them and digests alike.
+    const review = await getReview(input.id);
+    if (review?.kind !== 'human-wait') return input;
+    const sealed = await sealHumanWaitAnswer(review, snapshot);
+    if (review.inputSchema === undefined) {
+      return sealed.sealed === snapshot ? input : { ...input, payload: sealed.sealed };
+    }
+    const issues = validateReviewAnswer(review.inputSchema, sealed.plaintext);
     if (issues.length > 0) throw new ReviewAnswerInvalidError(issues);
-    return snapshot === undefined ? input : { ...input, payload: snapshot };
+    return snapshot === undefined ? input : { ...input, payload: sealed.sealed };
+  }
+
+  /**
+   * COR-1920 — the answer to a human wait with each field its question marks secret sealed: the
+   * plaintext, to check against the schema, and the sealed answer, to deliver or keep. An answer
+   * with no secret field is both. Refused as `NOT_CONFIGURED` (`encryption`) when the Bureau has no
+   * key or no storage to keep a secret in, and as a {@link ReviewAnswerInvalidError} when a field
+   * holds a sealed answer that is not this question's.
+   */
+  async function sealHumanWaitAnswer(
+    review: PendingHumanWaitReview,
+    answer: unknown,
+  ): Promise<{ readonly plaintext: unknown; readonly sealed: unknown }> {
+    const fields = secretFieldsOfReview(review);
+    if (fields.length === 0) return { plaintext: answer, sealed: answer };
+    const keys = options.answerEncryption;
+    if (keys === undefined || runtime.secretAnswers === undefined) {
+      throw new BureauError(
+        'This question asks for a secret, and the Bureau has no key or storage to keep one in (set "answerEncryption" and "storage").',
+        'NOT_CONFIGURED',
+        'encryption',
+      );
+    }
+    const outcome = await sealSecretAnswer({ reviewId: review.id, fields, answer, keys });
+    if (!outcome.ok) throw new ReviewAnswerInvalidError(outcome.issues);
+    return outcome;
+  }
+
+  /**
+   * COR-1920 — stores the sealed secret answers a human-wait payload carries for the run that
+   * asked, and returns the payload to signal, each reduced to its `{ secretRef }`, with what the
+   * audit entry says of them. Both delivery paths call it after their decision is claimed and
+   * before the signal: the record is written once, so every same-decision re-drive signals the
+   * reference to the secret the first claimant stored.
+   */
+  async function prepareHumanWaitDelivery(
+    review: PendingHumanWaitReview,
+    payload: unknown,
+    principal: string,
+  ): Promise<{ readonly payload: unknown; readonly audit: readonly SecretAnswerAuditEntry[] }> {
+    if (!holdsSealedAnswer(payload)) return { payload, audit: [] };
+    if (runtime.secretAnswers === undefined) {
+      throw new BureauError(
+        'This answer holds a secret, and the Bureau has no key or storage to keep one in.',
+        'NOT_CONFIGURED',
+        'encryption',
+      );
+    }
+    try {
+      return await runtime.secretAnswers.store(
+        review,
+        payload,
+        runAttribution.get(review.runId)?.principal ?? principal,
+      );
+    } catch (error) {
+      if (error instanceof SecretAnswerUnavailableError) {
+        throw new BureauError(`Review "${review.id}" holds a secret it cannot store`, 'CONFLICT');
+      }
+      throw error;
+    }
   }
 
   /**
@@ -18613,14 +18709,14 @@ async function constructBureau<const D extends AgentDefinitions>(
     checkpointSteps: async (runId) =>
       (await runtime.durable?.checkpointStore.loadSteps(runId)) ?? [],
     now: runtimeServices.clock.now,
-    recordDecision: async (review, decision, principal, reason, writeAudit) => {
+    recordDecision: async (review, decision, principal, reason, writeAudit, secretAnswers) => {
       // COR-1622: a close follows the request it closes in the history.
       await fireReviewSeeds.pending(review.runId);
       // COR-1579: only the caller whose decision record turned `recorded` writes the entry, so
       // two processes deciding one park alike leave one.
       if (writeAudit) {
         await auditTrailInstance?.record(
-          buildReviewDecisionAuditRecord(review, decision, principal, reason),
+          buildReviewDecisionAuditRecord(review, decision, principal, reason, secretAnswers),
         );
       }
       if (decision === 'approve') {
@@ -18633,6 +18729,8 @@ async function constructBureau<const D extends AgentDefinitions>(
       // COR-1596: a fire answered is no longer waiting, which whoever follows its task is told.
       await tasks.announceChanged(review.runId);
     },
+    prepareDelivery: (review, payload, principal) =>
+      prepareHumanWaitDelivery(review, payload, principal),
     decisions: reviewDecisions,
     released: (runId) => unfollowFireReviewsWhenNoneRemain(runId),
     classifyRun: (runId) => runtime.classifyCatalogRecoveredRun(runId),
@@ -19144,6 +19242,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       ledger: createTasksRespondLedger(runtime.kv, runtimeServices),
       refusal: (refusal) => new TaskRespondError(refusal),
       isRefusal: (error): error is BureauError => error instanceof BureauError,
+      sealAnswer: async (review, answer) => (await sealHumanWaitAnswer(review, answer)).sealed,
     },
   }) as Bureau<D>['tasks'];
 

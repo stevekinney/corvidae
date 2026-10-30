@@ -53,6 +53,7 @@ import {
   type ReviewDecisionRecords,
   type ReviewDecisionRequest,
 } from './review-decision-record';
+import type { SecretAnswerAuditEntry } from './secret-answers';
 import type { RunAttribution } from './serialization';
 import type {
   DiagnosticSink,
@@ -131,7 +132,18 @@ export type RunHumanWaitsDependencies = {
     principal: string,
     reason: string | undefined,
     writeAudit: boolean,
+    secretAnswers: readonly SecretAnswerAuditEntry[],
   ) => Promise<void>;
+  /**
+   * Stores the sealed secret answers a payload carries for the run that asked, and returns the
+   * payload to deliver, each reduced to its `{ secretRef }`, with what the audit entry says of them
+   * (COR-1920). Called after the decision is claimed and before the signal is sent.
+   */
+  readonly prepareDelivery: (
+    review: PendingHumanWaitReview,
+    payload: unknown,
+    principal: string,
+  ) => Promise<{ readonly payload: unknown; readonly audit: readonly SecretAnswerAuditEntry[] }>;
   /**
    * The durable decision record every resolution claims before it delivers. Without one,
    * resolution is fenced by this process's own guards alone.
@@ -532,6 +544,7 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
     resolving.add(review.id);
     const payload = humanWaitDecisionPayload(input);
     const request = humanWaitDecisionRequest(review.id, input, payload);
+    let secretAnswers: readonly SecretAnswerAuditEntry[] = [];
     try {
       const engine = dependencies.engine();
       if (engine === undefined) {
@@ -561,7 +574,9 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
       // The delivery id is derived from the review id, so a retry after a failure, or a
       // same-decision caller re-driving a claim whose delivery threw, delivers once. A throw keeps
       // the claim (see `review-decision-record.ts`).
-      await engine.signal(review.runId, review.signalName, payload, {
+      const delivery = await dependencies.prepareDelivery(review, payload, input.principal);
+      secretAnswers = delivery.audit;
+      await engine.signal(review.runId, review.signalName, delivery.payload, {
         signalId: humanWaitDeliveryId(review.id),
       });
       resolved.add(review.id);
@@ -577,6 +592,7 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
       input.principal,
       input.reason,
       writeAudit,
+      secretAnswers,
     );
     return { id: review.id, kind: 'human-wait', decision: input.decision };
   }

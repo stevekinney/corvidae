@@ -39,6 +39,7 @@ function build(
     checkpointSteps: async () => steps,
     now: () => clock.now,
     recordDecision: async () => undefined,
+    prepareDelivery: async (_review, payload) => ({ payload, audit: [] }),
     createError: (message) => new Error(message),
     durableNotConfigured: () => new Error('no durable engine'),
     diagnose: (diagnostic) => {

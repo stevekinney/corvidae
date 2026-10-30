@@ -87,7 +87,8 @@ import {
 } from '../command-ledger.ts';
 import { BureauError } from '../create-bureau.ts';
 import { TaskListingTokenError } from '../task-list-snapshots.ts';
-import type { TaskRegistry, TaskView } from '../task-registry.ts';
+import type { TaskOpenWait, TaskRegistry, TaskView } from '../task-registry.ts';
+import { secretFieldsOfReview } from '../secret-answers.ts';
 import type { Bureau, BureauContexts, BureauReviews, BureauTasks } from '../types.ts';
 import { A2UI_EXTENSION_URI, supportedCatalogIdsOf } from '../a2ui/catalogs.ts';
 import { surfaceActionOf } from './a2a-surface-actions.ts';
@@ -624,6 +625,39 @@ async function surfaceAnswerOf(
     surfaceId: found.stale.surfaceId,
     currentRevision: String(found.stale.currentRevision),
   });
+}
+
+/**
+ * Refuses an answer that approves a wait whose question asks for a secret (COR-1920): A2A records
+ * the message that carries an answer, so a secret is answered in the chat alone, where it is sealed
+ * before anything holds it. The wait is the one the answer names, or the task's only open wait. A
+ * deny or a reject carries no answer and is let through.
+ */
+async function refuseSecretAnswer(
+  bureau: { readonly reviews: Pick<BureauReviews, 'get'> },
+  view: TaskView,
+  input: TasksRespondInput,
+): Promise<void> {
+  if ((input.decision ?? 'approve') !== 'approve') return;
+  const waits = view.openWaits.filter(
+    (wait): wait is Extract<TaskOpenWait, { kind: 'human-wait' }> => wait.kind === 'human-wait',
+  );
+  const addressed =
+    input.signalName !== undefined
+      ? waits.filter((wait) => wait.signalName === input.signalName)
+      : input.callId !== undefined
+        ? []
+        : view.openWaits.length === 1
+          ? waits
+          : [];
+  for (const wait of addressed) {
+    const review = await bureau.reviews.get(wait.reviewId).catch(() => undefined);
+    if (review?.kind === 'human-wait' && secretFieldsOfReview(review).length > 0) {
+      throw invalid(
+        'This question asks for a secret, which is answered only in the chat, never over A2A.',
+      );
+    }
+  }
 }
 
 /** A continuation as the boundary parsed it: everything it needs, validated before any effect. */
@@ -1685,6 +1719,11 @@ export function createBureauA2ARequestHandler(
               await formsOf(bureau, continued),
               inputModes,
             );
+    // COR-1920: an answer to a question that asks for a secret is refused here, before the send
+    // ledger or the task's history records the message that carries it.
+    if (command?.path === 'answer' && continued !== undefined) {
+      await refuseSecretAnswer(bureau, continued, command.input);
+    }
     // The message's parts, read and authorized before anything is admitted. An answer to a wait
     // reads no file, so only a new task and input to a working task plan any.
     const inboundContextOfCaller = inboundContext(user.principal, owner);

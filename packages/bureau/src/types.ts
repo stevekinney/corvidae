@@ -1,4 +1,5 @@
 import type { BureauWorkflows } from './workflow-runtime';
+import type { AnswerEncryptionKeys } from './secret-answers';
 import type { BureauWorkerDeployments } from './worker-deployments';
 import type {
   EventIteratorOptions,
@@ -498,6 +499,15 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    */
   storage?: Storage;
   /**
+   * COR-1920 — the keys a secret answer is sealed with: a question field marked `writeOnly` and
+   * `x-secret` is encrypted under `current` before anything holds it, and its ciphertext is kept in
+   * `storage`, readable only by a tool of the run that asked (see `secret-answers.md`). A key
+   * retired by a rotation stays readable through `retired`. Without this option, or without
+   * `storage`, an answer to a question that asks for a secret is refused (`NOT_CONFIGURED`,
+   * subject `encryption`) and nothing is delivered.
+   */
+  answerEncryption?: AnswerEncryptionKeys;
+  /**
    * Override for Weft-backed durable execution. Durable execution is **on by
    * default whenever a persistent `storage` backend (`sqlite`/`lmdb`) is
    * configured** — every task is then checkpointed on the same backend
@@ -916,6 +926,12 @@ export interface PendingHumanWaitReview {
    * shape of the answer the wait expects. An A2A task projects it as a form.
    */
   inputSchema?: HumanInputSchema | undefined;
+  /**
+   * COR-1920 — the fields of the answer the schema marks secret, as JSON Pointers (`""` for the
+   * answer itself). Set on a review read back from the audit trail, which keeps these and not the
+   * schema, so a retry after the review closed can still tell which fields to keep out of a digest.
+   */
+  secretFields?: readonly string[] | undefined;
   /** Epoch-ms timestamp the run parked. */
   requestedAt: number;
   /** Milliseconds elapsed since `requestedAt`, computed at read time. */

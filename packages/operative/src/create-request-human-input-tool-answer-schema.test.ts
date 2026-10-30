@@ -371,7 +371,7 @@ describe('requestHumanInput answerSchema: x- keywords', () => {
             tags: { type: 'array', items: { type: 'number', 'x-asset': true } },
             other: {
               anyOf: [
-                { type: 'string', 'x-secret': true, writeOnly: true },
+                { type: 'string', 'x-asset': true },
                 { type: 'null', 'x-asset': true },
               ],
             },
@@ -384,7 +384,31 @@ describe('requestHumanInput answerSchema: x- keywords', () => {
     expect(paths).toContain('properties.token.x-secret');
     expect(paths).toContain('properties.tags.items.x-asset');
     expect(paths).toContain('properties.other.anyOf.1.x-asset');
-    expect(paths).not.toContain('properties.other.anyOf.0.x-secret');
+    expect(paths).not.toContain('properties.other.anyOf.0.x-asset');
+  });
+
+  it('refuses x-secret anywhere but the answer itself or a field reached through properties', () => {
+    const tool = createRequestHumanInputTool({ context: makeContext() });
+    const secret = { type: 'string', writeOnly: true, 'x-secret': true };
+
+    const result = invalidSchema(
+      tool.execute({
+        signalName: 'ask',
+        answerSchema: {
+          type: 'object',
+          properties: {
+            tokens: { type: 'array', items: secret },
+            either: { anyOf: [secret, { type: 'number' }] },
+          },
+          $defs: { hidden: secret },
+        },
+      }),
+    );
+
+    const paths = result.issues.map((issue) => issue.path.join('.'));
+    expect(paths).toContain('properties.tokens.items.x-secret');
+    expect(paths).toContain('properties.either.anyOf.0.x-secret');
+    expect(paths).toContain('$defs.hidden.x-secret');
   });
 
   it('reads x- keys in data a schema holds (enum, const, default) as data, not as keywords', () => {

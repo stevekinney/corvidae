@@ -536,6 +536,7 @@ export {
 export {
   HUMAN_INPUT_LABEL_MAXIMUM_LENGTH,
   humanInputSchemaExtensionIssues,
+  humanInputSecretFields,
 } from './human-input-schema-extensions';
 export type { RefusedParkRequest } from './park-refusal';
 // F3/D6 — thrown by scheduleWakeup/requestHumanInput when invoked outside a

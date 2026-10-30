@@ -119,6 +119,7 @@ function hostOver(
     ledger,
     refusal: (refusal) => new TaskRespondError(refusal),
     isRefusal: (error): error is BureauError => error instanceof BureauError,
+    sealAnswer: async (_review, answer) => answer,
   });
   return {
     ownership: { runOwner: async () => owner, mayAccess: mayAccessOwnedResource },

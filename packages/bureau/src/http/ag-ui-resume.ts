@@ -62,6 +62,11 @@ import {
   formatReviewAnswerIssues,
   validateReviewAnswer,
 } from '../review-answer.ts';
+import {
+  secretFieldsOfReview,
+  secretReferenceForm,
+  secretReferenceFormOfInput,
+} from '../secret-answers.ts';
 import { type AgUiResumePayload, interruptKey, roundOfEntry } from './ag-ui-interrupts.ts';
 import {
   RESUME_ATTEMPT_FAILED_MESSAGES,
@@ -301,9 +306,19 @@ export function createResume(context: ResumeContext) {
       const id = humanWaitAnswerRowIdentifier(review);
       if (id === undefined) continue;
       const resolution = resolutionFor(entry, review, request.owner);
+      // COR-1920: the row shows each secret as the reference the run was given, as the run's own
+      // conversation does: a value the schema read is in its reference form, and text a retry
+      // carries (read without the schema) is read the way the command's digest reads it.
+      const fields = secretFieldsOfReview(review);
+      const answer =
+        fields.length === 0
+          ? resolution.payload
+          : typeof resolution.payload === 'string' && !fields.includes('')
+            ? secretReferenceFormOfInput(resolution.payload, fields, review.id)
+            : secretReferenceForm(resolution.payload, fields, review.id);
       const payload =
         resolution.decision === 'approve'
-          ? resolution.payload
+          ? answer
           : humanWaitDenialPayload(resolution.decision, resolution.reason);
       rows.push({
         id,
@@ -450,13 +465,26 @@ export function createResume(context: ResumeContext) {
       requestId: interruptKey([...reviews.values()]),
       operationVersion: AG_UI_OPERATION_VERSION,
     };
+    // COR-1920: the answer to a question that asks for a secret is digested in reference form, read
+    // from the fields its review marks secret (which a closed review still names), so a retry
+    // digests alike and no digest of a secret's plaintext is kept.
+    const digestedPayload = (entry: ResumeEntry): unknown => {
+      if (entry.status !== 'resolved') return null;
+      const review = reviews.get(entry.interruptId);
+      const fields = review?.kind === 'human-wait' ? secretFieldsOfReview(review) : [];
+      const payload = entry.payload as AgUiResumePayload;
+      if (review === undefined || fields.length === 0 || payload.answer === undefined) {
+        return entry.payload;
+      }
+      return { ...payload, answer: secretReferenceFormOfInput(payload.answer, fields, review.id) };
+    };
     const digest = digestCommandPayload({
       entries: canonicalJson(
         entries
           .map((entry) => ({
             interruptId: entry.interruptId,
             status: entry.status,
-            payload: entry.status === 'resolved' ? entry.payload : null,
+            payload: digestedPayload(entry),
           }))
           .toSorted((left, right) => (left.interruptId < right.interruptId ? -1 : 1)),
       ),

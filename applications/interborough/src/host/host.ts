@@ -69,6 +69,7 @@ import {
   createBureau,
   createBureauHandler,
   createDurableAssetStorage,
+  createSecretAnswerResolver,
   resolveProviderGenerate,
   type Bureau,
   type SettingsOptions,
@@ -86,6 +87,7 @@ import {
 import { routes as clientRoutes } from '../app/routes.ts';
 import { HOST_PATHS_ROUTE } from '../lib/host-paths.ts';
 import { startHostPushDelivery, type HostPushDelivery } from './a2a-push.ts';
+import { answerEncryptionKeys } from './answer-encryption.ts';
 import {
   createDevReload,
   DEV_RELOAD_ROUTE,
@@ -452,7 +454,12 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // anything connects to Postgres or listens.
     const database = redactDatabase(bungalow.database);
     const approval = approvalSecret(bungalow);
+    // The key secret answers are sealed with (COR-1920), read or created the same way and as early.
+    const answerKeys = await answerEncryptionKeys(bungalow);
     const storage = createHostStorage(bungalow.database);
+    // A toolbox the host builds reads secret answers through the Bureau's records and keys; Bureau
+    // supplies the same resolver to the toolbox it builds itself.
+    const secretResolver = createSecretAnswerResolver({ storage, keys: answerKeys });
     held.storage = storage;
     // The catalog holds the models of the providers `configuration.json` names that have a key in
     // the secrets, and nothing else. The Bureau is created with exactly these rows, so no boot step
@@ -494,7 +501,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       id: bungalow.deploymentId,
       agents: {
         ...options.extraAgents?.agents,
-        ...createSeededAgents(approval, options.generate),
+        ...createSeededAgents(approval, options.generate, secretResolver),
       },
       // A session run of a seeded agent is offered `requestHumanInput`, which `request-human-input`
       // calls to park for an operator's answer.
@@ -519,6 +526,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         },
       },
       storage,
+      answerEncryption: answerKeys,
       // The audit trail is kept 90 days (COR-1810); a person changes it on the Settings page, and
       // the stored value then replaces this default.
       retention: { audit: { olderThan: AUDIT_RETENTION_MILLISECONDS } },

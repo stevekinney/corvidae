@@ -23,6 +23,7 @@
     "@lostgradient/bureau": "workspace:*",
     "@lostgradient/chat": "workspace:*",
     "@lostgradient/cinder": "workspace:*",
+    "@lostgradient/cryptography": "workspace:*",
     "@lostgradient/markdown": "workspace:*",
     "@lostgradient/memory": "workspace:*",
     "@lostgradient/operative": "workspace:*",

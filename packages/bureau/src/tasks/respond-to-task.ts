@@ -48,9 +48,11 @@ import {
   type CommandLedgerIdentity,
   digestCommandPayload,
 } from '../command-ledger.ts';
+import { secretFieldsOfReview, secretReferenceFormOfInput } from '../secret-answers.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
 import type {
   BureauReviews,
+  PendingHumanWaitReview,
   ResolveReviewResult,
   TaskRespondRequest,
   TaskRespondResult,
@@ -166,6 +168,12 @@ export type TaskResponderDependencies = {
    * changed nothing, so the command's claim is released and a retry may claim afresh.
    */
   readonly isRefusal: (error: unknown) => error is Error & { readonly code: string };
+  /**
+   * COR-1920 — the answer with each field its question marks secret sealed, so the claim that
+   * keeps it for a retry never holds the plaintext. Throws the Bureau's refusal when a secret
+   * cannot be sealed.
+   */
+  readonly sealAnswer: (review: PendingHumanWaitReview, answer: unknown) => Promise<unknown>;
 };
 
 /** `bureau.tasks.respond`, over its own ledger and the commands in flight in this process. */
@@ -291,6 +299,10 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
     // A task's view names its waits by identifier only: the schema is on the review.
     const review = await reviews.get(reviewId);
     const schema = review?.kind === 'human-wait' ? review.inputSchema : undefined;
+    // COR-1920: what is kept and delivered has each secret field sealed.
+    const sealed = async (value: unknown): Promise<{ readonly value: unknown }> => ({
+      value: review?.kind === 'human-wait' ? await dependencies.sealAnswer(review, value) : value,
+    });
     if (input.data === undefined) {
       if (schema === undefined) return undefined;
       if (input.answer !== undefined) {
@@ -298,7 +310,7 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
         const value = answerFromText(schema, text);
         const issues = validateReviewAnswer(schema, value);
         if (issues.length > 0) throw answerInvalid('answer', issues);
-        return { value };
+        return sealed(value);
       }
       if ((input.decision ?? 'approve') === 'approve') {
         throw answerInvalid('data', validateReviewAnswer(schema, undefined));
@@ -318,7 +330,43 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
     // is raised before the command claims anything.
     const issues = validateReviewAnswer(schema, checked.value);
     if (issues.length > 0) throw answerInvalid('data', issues);
-    return { value: checked.value };
+    return sealed(checked.value);
+  }
+
+  /**
+   * The digest a command is known by in its ledger. A command to a wait whose question asks for a
+   * secret digests its answer in reference form (COR-1920), read from the fields the review marks
+   * secret, which a review that has closed still names: a retry digests alike, and no digest of a
+   * secret's plaintext is kept.
+   */
+  async function digestOf(
+    input: TasksRespondInput,
+    answerText: string | undefined,
+    reviewId: string | undefined,
+  ): Promise<string> {
+    const review =
+      reviewId === undefined || reviewId === ''
+        ? undefined
+        : await reviews.get(reviewId).catch(() => undefined);
+    const fields = review?.kind === 'human-wait' ? secretFieldsOfReview(review) : [];
+    if (review === undefined || fields.length === 0) {
+      return digestCommandPayload({
+        answer: answerText,
+        data: input.data === undefined ? undefined : canonicalJson(input.data),
+        decision: input.decision,
+        reason: input.reason,
+        signalName: input.signalName,
+        callId: input.callId,
+      });
+    }
+    const given = input.data ?? answerText;
+    return digestCommandPayload({
+      secretAnswer: canonicalJson(secretReferenceFormOfInput(given, fields, review.id) ?? null),
+      decision: input.decision,
+      reason: input.reason,
+      signalName: input.signalName,
+      callId: input.callId,
+    });
   }
 
   /** The request, read once and checked: a malformed one is `BAD_REQUEST` before anything is read. */
@@ -354,14 +402,6 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
           ? input.answer.join('\n')
           : input.answer;
     const decision = input.decision ?? 'approve';
-    const digest = digestCommandPayload({
-      answer: answerText,
-      data: input.data === undefined ? undefined : canonicalJson(input.data),
-      decision: input.decision,
-      reason: input.reason,
-      signalName: input.signalName,
-      callId: input.callId,
-    });
     const identity: CommandLedgerIdentity = {
       callerId: actor,
       target: input.taskId,
@@ -374,7 +414,8 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
     if (
       located.state === 'retained' &&
       located.entry.state === 'completed' &&
-      located.entry.payloadDigest === digest
+      located.entry.payloadDigest ===
+        (await digestOf(input, answerText, located.entry.claim.reviewId))
     ) {
       return located.entry.result;
     }
@@ -386,21 +427,30 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
     if (task === undefined) throw notFound(input.taskId);
     const isOwner = task.owner === actor;
 
+    // The wait is chosen first, so a command that addresses nothing claims nothing. A retry of a
+    // command that has since been answered finds no open wait, so the ledger is consulted before
+    // that is held against it.
+    let wait: OpenWait | undefined;
+    let notAwaiting: unknown;
+    try {
+      wait = selectWait(task, input, isOwner);
+    } catch (error) {
+      notAwaiting = error;
+    }
+    // An earlier attempt of this command names the review it meant to resolve; a fresh one, the wait.
+    const digest = await digestOf(
+      input,
+      answerText,
+      located.state === 'retained' && located.entry.claim.reviewId !== ''
+        ? located.entry.claim.reviewId
+        : wait?.reviewId,
+    );
+
     const flightKey = `${actor}\u0000${input.taskId}\u0000${input.messageId}\u0000${digest}`;
     const running = inFlight.get(flightKey);
     if (running !== undefined) return running;
 
     const answer = async (): Promise<TaskRespondResult> => {
-      // The wait is chosen first, so a command that addresses nothing claims nothing. A retry of a
-      // command that has since been answered finds no open wait, so the ledger is consulted before
-      // that is held against it.
-      let wait: OpenWait | undefined;
-      let notAwaiting: unknown;
-      try {
-        wait = selectWait(task, input, isOwner);
-      } catch (error) {
-        notAwaiting = error;
-      }
       // What the wait accepts is checked once it is chosen. A refusal is thrown after the ledger
       // is consulted, so a retry of a command that was applied still gets its receipt.
       let submission: { readonly value: unknown } | undefined;
