@@ -1160,6 +1160,54 @@ class ApprovalOutcomeNotWrittenError extends BureauError {
 }
 
 /**
+ * A tool call waiting for approval names a tool version the toolbox no longer holds (COR-1872). A
+ * durable record pins `namespace:name@version` and runs only that version: `reason` is
+ * `version-mismatch` when other versions of the tool are loaded, which `candidates` lists, and
+ * `missing` when none is. Recovery reports it as the cause of the review it cannot restore, and
+ * `resolveReview` throws it rather than run another version; either way the tool does not run.
+ */
+class PinnedToolUnavailableError extends BureauError {
+  /** Why the pinned id did not resolve. */
+  readonly reason: 'missing' | 'ambiguous' | 'version-mismatch';
+  /** The `namespace:name@version` the run recorded. */
+  readonly toolId: string;
+  /** The ids of the loaded tools that came closest; empty for `missing`. */
+  readonly candidates: readonly string[];
+  constructor(
+    toolId: string,
+    reason: 'missing' | 'ambiguous' | 'version-mismatch',
+    candidates: readonly string[],
+  ) {
+    super(
+      `The run recorded tool "${toolId}", and the toolbox ${
+        candidates.length === 0 ? 'holds no version of it' : `holds ${candidates.join(', ')}`
+      } (${reason}).`,
+      'CONFLICT',
+    );
+    this.name = 'PinnedToolUnavailableError';
+    this.reason = reason;
+    this.toolId = toolId;
+    this.candidates = candidates;
+  }
+}
+
+/**
+ * The error for an approval whose binding pins a tool id `toolbox` no longer resolves, or
+ * `undefined` when it resolves or the approval pins none.
+ */
+function pinnedToolUnavailable(
+  toolbox: Pick<BureauToolbox, 'resolveTool'>,
+  approval: Pick<SignedPendingToolApproval, 'approvalBinding'>,
+): PinnedToolUnavailableError | undefined {
+  const toolId = approval.approvalBinding?.toolDefinitionRevision;
+  if (typeof toolId !== 'string') return undefined;
+  const resolution = toolbox.resolveTool(toolId);
+  return resolution.ok
+    ? undefined
+    : new PinnedToolUnavailableError(toolId, resolution.reason, resolution.candidates);
+}
+
+/**
  * `resolveReview` was given the round the caller read, and the review has moved past it: another
  * resolver superseded the approval, which replaces it under the same id with the next round
  * (COR-1659). Nothing took effect, so it is a `CONFLICT` the caller answers by reading the review
@@ -1233,6 +1281,7 @@ export {
   ApprovalOutcomeNotWrittenError,
   BureauError,
   BureauShuttingDownError,
+  PinnedToolUnavailableError,
   ReviewAnswerInvalidError,
   ReviewRoundChangedError,
   TaskRespondError,
@@ -7426,9 +7475,17 @@ async function constructBureau<const D extends AgentDefinitions>(
       if (approval && typeof approval === 'object' && !Array.isArray(approval)) {
         if (!(approval as { approvalBinding?: unknown }).approvalBinding) continue;
         try {
+          // COR-1872: the call resumes at the tool version its run recorded, or not at all.
+          const unavailable = pinnedToolUnavailable(toolbox, approval);
+          if (unavailable !== undefined) throw unavailable;
           await restoreApproval(approval as SignedPendingToolApproval);
         } catch (error) {
-          if (!isTerminalApprovalBindingError(error)) throw error;
+          if (
+            !(error instanceof PinnedToolUnavailableError) &&
+            !isTerminalApprovalBindingError(error)
+          ) {
+            throw error;
+          }
           if (scheduledFireApprovalRuns.has(runId)) {
             await releaseScheduledFireApproval(runId, reviewId, 'invalid', { sessionId });
           } else {
@@ -7440,8 +7497,11 @@ async function constructBureau<const D extends AgentDefinitions>(
             level: 'warn',
             scope: 'approval-recovery',
             message:
-              `[bureau] Failed to restore approval binding for "${reviewId}"; ` +
-              'the affected review will remain unavailable while other runs recover.',
+              `[bureau] Failed to restore approval binding for "${reviewId}"` +
+              (error instanceof PinnedToolUnavailableError
+                ? ` (${error.reason}: ${error.toolId})`
+                : '') +
+              '; the affected review will remain unavailable while other runs recover.',
             cause: error,
           });
         }

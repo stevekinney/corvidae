@@ -27,6 +27,7 @@ export { default as ApprovalCard } from './components/approval-card/index.ts';
 export type {
   ApprovalCardCallbacks,
   ApprovalCardHeadingLevel,
+  ApprovalCardLayout,
   ApprovalCardProps,
   ApprovalCardSchemaProps,
   ApprovalOperation,
@@ -541,11 +542,12 @@ export type {
 export { default as LocaleProvider } from './components/locale-provider/index.ts';
 export type { LocaleProviderProps, TextDirection } from './components/locale-provider/index.ts';
 
-export { default as ListDetail } from './components/list-detail/index.ts';
+export { LIST_DETAIL_SHORTCUTS, default as ListDetail } from './components/list-detail/index.ts';
 export type {
   ListDetailProps,
   ListDetailRowContext,
   ListDetailSelectionLocation,
+  ListDetailShortcut,
   ListDetailStorage,
 } from './components/list-detail/index.ts';
 

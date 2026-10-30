@@ -23,7 +23,7 @@
 
 /* Theme contract: `color-scheme: light dark` lets the browser/OS pick a
  * default; an explicit `data-theme="light" | "dark"` attribute on <html>
- * (set by the shell's theme toggle) overrides it via Cinder's
+ * (set by the theme switch in the shell's quick settings) overrides it via Cinder's
  * `light-dark()`-based tokens. See design/README.md "Theming". */
 :root {
   color-scheme: light dark;

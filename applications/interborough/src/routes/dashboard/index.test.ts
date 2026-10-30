@@ -21,7 +21,7 @@ afterEach(() => {
 });
 
 describe('Dashboard', () => {
-  test('is the engine’s page: one level-1 heading, Engine', async () => {
+  test('is the engine’s page: one level-1 heading, Health', async () => {
     scripted = new ScriptedFetch();
     scripted.routeUrlStatus('/v1/health', 503);
 
@@ -30,7 +30,7 @@ describe('Dashboard', () => {
     });
 
     const heading = await findByRole('heading', { level: 1 });
-    expect(heading.textContent).toBe('Engine');
+    expect(heading.textContent).toBe('Health');
     expect(queryByText('Operations overview')).toBeNull();
     expect(queryByText(/Cross-domain/)).toBeNull();
   });
@@ -130,7 +130,30 @@ describe('Dashboard', () => {
     // The engine runs its work in-process, so no card counts remote workers, and failures are one
     // count among the statuses rather than a chart of their own.
     expect(queryByText('Failures by category')).toBeNull();
-    expect(queryByText('Workers')).toBeNull();
+    // The one mention of workers is the link to their page, beside the heading.
+    expect(getByText('Workers').closest('nav')?.getAttribute('aria-label')).toBe('Health sections');
+  });
+
+  test('links the engine’s other pages beside its heading, each opened in place', async () => {
+    scripted = new ScriptedFetch();
+    scripted.routeUrlStatus('/v1/health', 503);
+
+    const { findByRole } = render(DashboardIndexHarness, { props: { client: realClient() } });
+
+    const sections = await findByRole('navigation', { name: 'Health sections' });
+    const links = Array.from(sections.querySelectorAll('a')).map((link) => [
+      link.textContent?.trim(),
+      link.getAttribute('href'),
+    ]);
+    expect(links).toEqual([
+      ['Workers', '/workers'],
+      ['Storage', '/storage'],
+      ['System', '/system'],
+      ['Audit', '/audit'],
+    ]);
+    const audit = sections.querySelector('a[href="/audit"]') as HTMLAnchorElement;
+    expect(await fireEvent.click(audit, { button: 0 })).toBe(false);
+    expect(router.pathname).toBe('/audit');
   });
 
   // COR-124 admits a critical-alerts chip only when it is backed by

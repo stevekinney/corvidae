@@ -439,12 +439,17 @@ test('starts a run it does not release, reaches it from the chat’s run sentenc
   await expectWaiting(request, 0);
 });
 
-test('opens the workers screen from the sidebar’s Engine group', async ({ page }) => {
+test('opens the workers screen from Health, which the sidebar opens', async ({ page }) => {
   await page.goto('/agents');
-  const engine = page.getByRole('navigation', { name: 'Views' }).getByRole('list', {
-    name: 'Engine',
-  });
-  await engine.getByRole('link', { name: /^Workers/ }).click();
+  await page
+    .getByRole('navigation', { name: 'Views' })
+    .getByRole('link', { name: /^Health/ })
+    .click();
+  await expect(page).toHaveURL(/\/engine$/);
+  await page
+    .getByRole('navigation', { name: 'Health sections' })
+    .getByRole('link', { name: 'Workers' })
+    .click();
 
   await expect(page).toHaveURL(/\/workers$/);
   await expect(page.locator('[data-view="workers"]')).toHaveAttribute('data-state', 'ready');

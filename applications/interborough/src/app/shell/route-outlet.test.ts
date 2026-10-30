@@ -64,14 +64,14 @@ describe('the route outlet', () => {
     expect(frame?.getAttribute('data-state')).toBe('empty');
   });
 
-  test('carries the density and the width its view declares, so a page chooses neither', async () => {
+  test('carries its view’s density and its kind of page’s width, so a page chooses neither', async () => {
     restore = installFetchImplementation(emptyTrail());
     landAt('/audit');
     const { findByRole, container } = mount();
     await findByRole('heading', { level: 1, name: VIEW_COPY.audit.empty?.title ?? '' });
     const outlet = container.querySelector('main.weft-shell-outlet');
     expect(outlet?.getAttribute('data-density')).toBe(VIEWS.audit.density);
-    expect(outlet?.getAttribute('data-width')).toBe(VIEWS.audit.width);
+    expect(outlet?.getAttribute('data-width')).toBe('full');
     expect(VIEWS.audit.density).toBe('compact');
   });
 

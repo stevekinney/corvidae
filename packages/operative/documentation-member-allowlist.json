@@ -1469,7 +1469,6 @@
     ". StepRecord.metadata",
     ". StepRecord.results",
     ". StepRecord.step",
-    ". StepRecord.toolCalls",
     ". StepRecord.usage",
     ". StepResult.conversation",
     ". StepResult.final",

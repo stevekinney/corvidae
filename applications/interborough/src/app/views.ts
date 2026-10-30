@@ -45,19 +45,35 @@ export const VIEW_DENSITIES = ['comfortable', 'compact'] as const;
 export type ViewDensity = (typeof VIEW_DENSITIES)[number];
 
 /**
- * How wide a view's page is: `reading` centres it in Cinder's 760px reading column, and `full`
- * gives a table the whole width of the outlet. The shell writes it to the outlet as `data-width`.
+ * What kind of page a route is (design row 17f). A page's width follows its kind, not its area:
+ * `list-detail` is a list with the open item beside it, `table` is a page of rows read across,
+ * `editor` is an editor with a side panel, `form` is a form filled in from top to bottom, and
+ * `reading` is prose and cards read down the page.
+ */
+export const PAGE_KINDS = ['list-detail', 'table', 'editor', 'form', 'reading'] as const;
+
+export type PageKind = (typeof PAGE_KINDS)[number];
+
+/**
+ * How wide a page is: `reading` centres it in Cinder's 760px reading column, and `full` gives it
+ * the whole width of the outlet. The shell writes it to the outlet as `data-width`.
  */
 export const VIEW_WIDTHS = ['reading', 'full'] as const;
 
 export type ViewWidth = (typeof VIEW_WIDTHS)[number];
 
+/**
+ * The width of a kind of page: a list with its detail, a table and an editor with a side panel
+ * need the room, and a form or prose keeps the reading width.
+ */
+export function pageWidth(kind: PageKind): ViewWidth {
+  return kind === 'form' || kind === 'reading' ? 'reading' : 'full';
+}
+
 /** What a view needs from the principal before it asks the server anything. */
 export type ViewDefinition = {
   /** How tightly the view lays out its rows and cards. */
   readonly density: ViewDensity;
-  /** How wide the view's page is. */
-  readonly width: ViewWidth;
   /** The scopes the engine console gates the view on; none for a view Bureau serves. */
   readonly scopes: readonly AuthorizationScope[];
   /**
@@ -74,15 +90,14 @@ export type ViewDefinition = {
 };
 
 export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
-  chat: { density: 'comfortable', width: 'reading', scopes: [], canBeEmpty: true },
-  agents: { density: 'comfortable', width: 'reading', scopes: [], canBeEmpty: true },
+  chat: { density: 'comfortable', scopes: [], canBeEmpty: true },
+  agents: { density: 'comfortable', scopes: [], canBeEmpty: true },
   // `/agents/new` and `/agents/:id/edit`. Never empty: it is where an agent is made.
-  'agent-editor': { density: 'comfortable', width: 'reading', scopes: [], canBeEmpty: false },
+  'agent-editor': { density: 'comfortable', scopes: [], canBeEmpty: false },
   // The catalog of definitions, and under it one type's page, its runs, and its editor. It can be
   // empty when neither the engine nor the Bureau lists a workflow, and a type's runs can be empty.
   workflows: {
     density: 'comfortable',
-    width: 'reading',
     scopes: ['workflows:read'],
     canBeEmpty: true,
   },
@@ -91,14 +106,12 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
   // so themselves when the caller may not.
   runs: {
     density: 'compact',
-    width: 'full',
     scopes: [],
     canBeEmpty: true,
     creating: (search) => search.get('view') === 'start',
   },
   schedules: {
     density: 'comfortable',
-    width: 'reading',
     scopes: ['schedules:read'],
     canBeEmpty: true,
     creating: (search) => search.get('create') === '1',
@@ -106,24 +119,23 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
   // What is waiting on the caller. It holds no console scope: the console drops the Bureau's, and
   // the Bureau answers the caller its own reviews. The page shows its own empty state, because
   // the engine's reviews are listed beside the Bureau's and the probe asks only the Bureau.
-  reviews: { density: 'comfortable', width: 'reading', scopes: [], canBeEmpty: false },
-  workers: { density: 'compact', width: 'full', scopes: ['system:read'], canBeEmpty: false },
-  storage: { density: 'compact', width: 'full', scopes: ['storage:admin'], canBeEmpty: false },
-  system: { density: 'compact', width: 'full', scopes: ['system:read'], canBeEmpty: false },
+  reviews: { density: 'comfortable', scopes: [], canBeEmpty: false },
+  workers: { density: 'compact', scopes: ['system:read'], canBeEmpty: false },
+  storage: { density: 'compact', scopes: ['storage:admin'], canBeEmpty: false },
+  system: { density: 'compact', scopes: ['system:read'], canBeEmpty: false },
   // Holds no console scope: the Bureau shows each caller the records about what it owns, and a
   // principal that may see none is answered with an empty page, so owner scoping is the gate.
-  audit: { density: 'compact', width: 'full', scopes: [], canBeEmpty: true },
+  audit: { density: 'compact', scopes: [], canBeEmpty: true },
   // The Bureau's runtime settings. They are deployment-wide, so no owner scopes them, and the view
   // holds no console scope: the Bureau answers the scopes it declares. It always has something to show.
-  settings: { density: 'comfortable', width: 'reading', scopes: [], canBeEmpty: false },
+  settings: { density: 'comfortable', scopes: [], canBeEmpty: false },
   // Reached by address and by the empty states that link to it, and not from the sidebar. Holds no
   // console scope, as the audit trail holds none: a caller sees the goals it owns.
   goals: {
     density: 'comfortable',
-    width: 'reading',
     scopes: [],
     canBeEmpty: true,
     creating: (search) => search.get('create') === '1',
   },
-  engine: { density: 'compact', width: 'full', scopes: ['workflows:read'], canBeEmpty: false },
+  engine: { density: 'compact', scopes: ['workflows:read'], canBeEmpty: false },
 };
