@@ -31,7 +31,7 @@
   }
 
   /* The required marker is the shared `.cinder-_required-marker` partial
-     (styles/components/_field-label.css) so the asterisk can never drift
+     (styles/components/_field-label.css) so the dot can never drift
      between FormField, Label, and the inline control labels. */
 
   /* ----------------------------------------

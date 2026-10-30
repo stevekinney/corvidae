@@ -25,11 +25,11 @@
     },
     "size": {
       "enum": ["sm", "md", "lg"],
-      "description": "Requested visual size of the control. Defaults to `\"md\"`. The resolved\nsize is reflected as `data-cinder-size` on the root; when\n`density=\"toolbar\"` is set, the resolved size is forced to `\"sm\"` and any\nexplicit `size` value is ignored. `size=\"md\"` option text uses\n`--cinder-text-sm`; `size=\"sm\"` and `density=\"toolbar\"` use\n`--cinder-text-xs`; `size=\"lg\"` uses `--cinder-text-sm`."
+      "description": "Requested visual size of the control. Defaults to `\"md\"`. The control's\nouter height is the shared `--cinder-control-height-*` step for the size\n(`sm` 28px, `md` 32px, `lg` 40px), the same as a Button or Input of that\nsize. The resolved size is reflected as `data-cinder-size` on the root; when\n`density=\"toolbar\"` is set, the resolved size is forced to `\"sm\"` and any\nexplicit `size` value is ignored. `size=\"md\"` option text uses\n`--cinder-text-sm`; `size=\"sm\"` and `density=\"toolbar\"` use\n`--cinder-text-xs`; `size=\"lg\"` uses `--cinder-text-sm`."
     },
     "density": {
       "const": "toolbar",
-      "description": "Opt the control into compact toolbar sizing so it lines up cleanly with\nsibling `Button` (size=\"sm\"), `Chip` (density=\"toolbar\"), and other\ntoolbar elements. Toolbar density resolves to the compact `\"sm\"` font and\npadding scale — when set, any explicit `size` value is ignored and the\nresolved size (`data-cinder-size`) is `\"sm\"` — while pinning the option\n`min-block-size` to `--cinder-control-height-sm` so the bounding height\nmatches sibling toolbar controls."
+      "description": "Opt the control into compact toolbar sizing so it lines up cleanly with\nsibling `Button` (size=\"sm\"), `Chip` (density=\"toolbar\"), and other\ntoolbar elements. Toolbar density resolves to the compact `\"sm\"` font and\npadding scale — when set, any explicit `size` value is ignored and the\nresolved size (`data-cinder-size`) is `\"sm\"`, so the control's outer\nheight is `--cinder-control-height-sm` and matches sibling toolbar controls."
     },
     "orientation": {
       "enum": ["horizontal", "vertical"],

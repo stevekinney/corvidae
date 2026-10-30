@@ -30,8 +30,10 @@ type CommonProps<T extends string> = Omit<HTMLAttributes<HTMLElement>, Component
   /** Disable the whole control. */
   disabled?: boolean | undefined;
   /**
-   * Requested visual size of the control. Defaults to `"md"`. The resolved
-   * size is reflected as `data-cinder-size` on the root; when
+   * Requested visual size of the control. Defaults to `"md"`. The control's
+   * outer height is the shared `--cinder-control-height-*` step for the size
+   * (`sm` 28px, `md` 32px, `lg` 40px), the same as a Button or Input of that
+   * size. The resolved size is reflected as `data-cinder-size` on the root; when
    * `density="toolbar"` is set, the resolved size is forced to `"sm"` and any
    * explicit `size` value is ignored. `size="md"` option text uses
    * `--cinder-text-sm`; `size="sm"` and `density="toolbar"` use
@@ -43,9 +45,8 @@ type CommonProps<T extends string> = Omit<HTMLAttributes<HTMLElement>, Component
    * sibling `Button` (size="sm"), `Chip` (density="toolbar"), and other
    * toolbar elements. Toolbar density resolves to the compact `"sm"` font and
    * padding scale — when set, any explicit `size` value is ignored and the
-   * resolved size (`data-cinder-size`) is `"sm"` — while pinning the option
-   * `min-block-size` to `--cinder-control-height-sm` so the bounding height
-   * matches sibling toolbar controls.
+   * resolved size (`data-cinder-size`) is `"sm"`, so the control's outer
+   * height is `--cinder-control-height-sm` and matches sibling toolbar controls.
    */
   density?: 'toolbar' | undefined;
   /** Layout orientation. */

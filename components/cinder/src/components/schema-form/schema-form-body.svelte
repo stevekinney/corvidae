@@ -230,7 +230,7 @@
   <legend class="cinder-schema-form__legend">
     {field.label}
     {#if field.required}
-      <span class="cinder-_required-marker" aria-hidden="true">*</span>
+      <span class="cinder-_required-marker" aria-hidden="true"></span>
     {/if}
   </legend>
   {#if field.description}

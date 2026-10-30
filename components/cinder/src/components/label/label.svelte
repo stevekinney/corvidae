@@ -36,9 +36,9 @@
 >
   {@render children()}
   {#if required}
-    <!-- Visible asterisk conveys "required" by shape, not color alone (WCAG
-         1.4.1). aria-hidden so the accessible name stays clean — the field's
-         own `required`/`aria-required` attribute is the single AT signal. -->
-    <span class="cinder-_required-marker" aria-hidden="true">*</span>
+    <!-- An empty red dot after the label (_field-label.css). aria-hidden so
+         the accessible name stays clean: the field's own
+         `required`/`aria-required` attribute is the single AT signal. -->
+    <span class="cinder-_required-marker" aria-hidden="true"></span>
   {/if}
 </label>

@@ -92,16 +92,16 @@ Shadow tokens wrap each color argument in `light-dark()` so dark mode paints a l
 
 ## Control heights
 
-Shared height tier for any interactive control that needs to align with its siblings in a toolbar, button group, or form row. Per-component height tokens alias this family where their values match, so the tiers stay in sync: `--cinder-button-height-sm` is `--cinder-control-height-sm`, which is what lets a small Button, a toolbar SegmentedControl, and a toolbar Chip line up.
+The one height scale every interactive control shares, so controls of one size line up in a toolbar, button group, or form row. Button, Input, SearchField, Select, Combobox, MultiSelect, and SegmentedControl read the same step for the same `size` (`md`, 32px, is the default), and each `--cinder-button-height-*` aliases its step, which is also what lets a small Button, a toolbar SegmentedControl, and a toolbar Chip line up at 28px. `src/styles/toolbar-height-parity.test.ts` keeps them equal.
 
 <!-- BEGIN GENERATED TOKEN TABLE: control-heights -->
 
 | Token | Default | Description |
 | --- | --- | --- |
 | `--cinder-control-height-xs` | `1.5rem` | Extra-small control height (24px). |
-| `--cinder-control-height-sm` | `2rem` | Small control height; the toolbar default (32px). |
-| `--cinder-control-height-md` | `2.25rem` | Medium control height; the form-field default (36px). |
-| `--cinder-control-height-lg` | `2.75rem` | Large control height; clears the WCAG AAA touch target (44px). |
+| `--cinder-control-height-sm` | `1.75rem` | Small control height (28px); toolbar density uses it. |
+| `--cinder-control-height-md` | `2rem` | Medium control height (32px); the default for every control. |
+| `--cinder-control-height-lg` | `2.5rem` | Large control height (40px). |
 
 <!-- END GENERATED TOKEN TABLE -->
 
@@ -612,7 +612,7 @@ Component-specific tokens for [`Button`](../src/components/button/button.svelte)
 | --- | --- | --- |
 | `--cinder-button-padding-x-xs` | `var(--cinder-space-1-5)` | Extra-small button horizontal padding. |
 | `--cinder-button-padding-y-xs` | `var(--cinder-space-0-5)` | Extra-small button vertical padding. |
-| `--cinder-button-height-xs` | `var(--cinder-control-height-xs)` | Extra-small button height (24px), aliasing the shared control-height tier. |
+| `--cinder-button-height-xs` | `var(--cinder-control-height-xs)` | Extra-small button height: `control.height.xs` (24px). |
 | `--cinder-button-font-size-xs` | `var(--cinder-text-xs)` | Extra-small button label font size. |
 | `--cinder-button-radius-xs` | `var(--cinder-radius-sm)` | Extra-small button corner radius. |
 
@@ -626,7 +626,7 @@ Component-specific tokens for [`Button`](../src/components/button/button.svelte)
 | --- | --- | --- |
 | `--cinder-button-padding-x-sm` | `var(--cinder-space-2)` | Small button horizontal padding. |
 | `--cinder-button-padding-y-sm` | `var(--cinder-space-1-5)` | Small button vertical padding: the same as `md`, since the two share a 32px height and the label centers within it. |
-| `--cinder-button-height-sm` | `var(--cinder-control-height-sm)` | Small button height: `control.height.sm` (32px), so a small Button lines up with a toolbar SegmentedControl and a toolbar Chip. |
+| `--cinder-button-height-sm` | `var(--cinder-control-height-sm)` | Small button height: `control.height.sm` (28px), so a small Button lines up with a toolbar SegmentedControl and a toolbar Chip. |
 | `--cinder-button-font-size-sm` | `var(--cinder-text-sm)` | Small button label font size. |
 | `--cinder-button-radius-sm` | `var(--cinder-radius-sm)` | Small button corner radius. |
 
@@ -636,13 +636,13 @@ Component-specific tokens for [`Button`](../src/components/button/button.svelte)
 
 <!-- BEGIN GENERATED TOKEN TABLE: button-size-md -->
 
-| Token                          | Default                   | Description                       |
-| ------------------------------ | ------------------------- | --------------------------------- |
+| Token | Default | Description |
+| --- | --- | --- |
 | `--cinder-button-padding-x-md` | `var(--cinder-space-2-5)` | Medium button horizontal padding. |
-| `--cinder-button-padding-y-md` | `var(--cinder-space-1-5)` | Medium button vertical padding.   |
-| `--cinder-button-height-md`    | `2rem`                    | Medium button height (32px).      |
-| `--cinder-button-font-size-md` | `var(--cinder-text-sm)`   | Medium button label font size.    |
-| `--cinder-button-radius-md`    | `var(--cinder-radius-md)` | Medium button corner radius.      |
+| `--cinder-button-padding-y-md` | `var(--cinder-space-1-5)` | Medium button vertical padding. |
+| `--cinder-button-height-md` | `var(--cinder-control-height-md)` | Medium button height: `control.height.md` (32px). |
+| `--cinder-button-font-size-md` | `var(--cinder-text-sm)` | Medium button label font size. |
+| `--cinder-button-radius-md` | `var(--cinder-radius-md)` | Medium button corner radius. |
 
 <!-- END GENERATED TOKEN TABLE -->
 
@@ -650,27 +650,13 @@ Component-specific tokens for [`Button`](../src/components/button/button.svelte)
 
 <!-- BEGIN GENERATED TOKEN TABLE: button-size-lg -->
 
-| Token                          | Default                   | Description                      |
-| ------------------------------ | ------------------------- | -------------------------------- |
-| `--cinder-button-padding-x-lg` | `var(--cinder-space-3)`   | Large button horizontal padding. |
-| `--cinder-button-padding-y-lg` | `var(--cinder-space-2)`   | Large button vertical padding.   |
-| `--cinder-button-height-lg`    | `2.25rem`                 | Large button height (36px).      |
-| `--cinder-button-font-size-lg` | `var(--cinder-text-md)`   | Large button label font size.    |
-| `--cinder-button-radius-lg`    | `var(--cinder-radius-md)` | Large button corner radius.      |
-
-<!-- END GENERATED TOKEN TABLE -->
-
-### Size: xl
-
-<!-- BEGIN GENERATED TOKEN TABLE: button-size-xl -->
-
 | Token | Default | Description |
 | --- | --- | --- |
-| `--cinder-button-padding-x-xl` | `var(--cinder-space-3-5)` | Extra-large button horizontal padding. |
-| `--cinder-button-padding-y-xl` | `var(--cinder-space-2-5)` | Extra-large button vertical padding. |
-| `--cinder-button-height-xl` | `2.5rem` | Extra-large button height (40px). |
-| `--cinder-button-font-size-xl` | `var(--cinder-text-lg)` | Extra-large button label font size. |
-| `--cinder-button-radius-xl` | `var(--cinder-radius-md)` | Extra-large button corner radius. |
+| `--cinder-button-padding-x-lg` | `var(--cinder-space-3)` | Large button horizontal padding. |
+| `--cinder-button-padding-y-lg` | `var(--cinder-space-2)` | Large button vertical padding. |
+| `--cinder-button-height-lg` | `var(--cinder-control-height-lg)` | Large button height: `control.height.lg` (40px). |
+| `--cinder-button-font-size-lg` | `var(--cinder-text-md)` | Large button label font size. |
+| `--cinder-button-radius-lg` | `var(--cinder-radius-md)` | Large button corner radius. |
 
 <!-- END GENERATED TOKEN TABLE -->
 

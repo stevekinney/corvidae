@@ -13,11 +13,12 @@
     NumberInput,
     Select,
     Toggle,
+    humanizeIdentifier,
   } from '@lostgradient/cinder';
 
   import { SETTINGS_COPY } from '../../app/copy.ts';
   import type { SchemaNode, SettingKeyState } from '../../lib/bureau-settings.ts';
-  import { fieldWords, isDuration, type Control, type NumberField } from './settings-controls.ts';
+  import { isDuration, type Control, type NumberField } from './settings-controls.ts';
   import type { SettingsForm } from './settings-form.svelte.ts';
 
   interface Props {
@@ -56,16 +57,14 @@
   }
 
   function fieldLabel(field: NumberField): string {
-    const words = fieldWords(field.name);
-    const label = `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
+    const label = humanizeIdentifier(field.name);
     return isDuration(field.name) ? `${label} (${SETTINGS_COPY.milliseconds})` : label;
   }
 
   /** The label of the option that stands for the object: its first required field in words. */
   function fieldsOptionLabel(fields: readonly NumberField[]): string {
     const first = fields.find((field) => field.required) ?? fields[0];
-    const words = first === undefined ? '' : fieldWords(first.name);
-    return `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
+    return first === undefined ? '' : humanizeIdentifier(first.name);
   }
 
   function chooseMode(value: string): void {

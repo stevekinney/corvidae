@@ -168,11 +168,6 @@ export function groupsOf(keys: readonly string[]): readonly string[] {
   return [...known, ...other];
 }
 
-/** A property name as words: `olderThan` is "older than". */
-export function fieldWords(name: string): string {
-  return name.replaceAll(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase();
-}
-
 /** Whether a property of an object-valued setting is a duration, which every setting takes in milliseconds. */
 export function isDuration(name: string): boolean {
   return name === 'olderThan' || name.endsWith('Milliseconds');

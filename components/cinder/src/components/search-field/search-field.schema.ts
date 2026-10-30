@@ -28,6 +28,12 @@ const schema = {
       type: 'string',
       description: 'Bindable search value.',
     },
+    size: {
+      enum: ['sm', 'md', 'lg'],
+      description:
+        'Height step from the shared `--cinder-control-height-*` scale, forwarded to the inner\nInput: `sm` 28px, `md` 32px, `lg` 40px.',
+      default: 'md',
+    },
     shortcut: {
       type: 'string',
       description:
