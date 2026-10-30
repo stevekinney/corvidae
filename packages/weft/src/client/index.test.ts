@@ -534,6 +534,8 @@ beforeAll(() => {
   client = new HttpClient({
     baseUrl: server.url,
     headers: { Authorization: `Bearer ${CONTRACT_API_KEY}` },
+    // The contract server runs under Bun, whose global WebSocket carries the auth header.
+    webSocketCarriesHeaders: true,
   });
 });
 

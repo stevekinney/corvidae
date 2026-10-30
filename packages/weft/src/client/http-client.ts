@@ -180,6 +180,9 @@ export class HttpClient implements WeftClient {
       ...(options.webSocketFactory === undefined
         ? {}
         : { webSocketFactory: options.webSocketFactory }),
+      ...(options.webSocketCarriesHeaders === undefined
+        ? {}
+        : { webSocketCarriesHeaders: options.webSocketCarriesHeaders }),
     };
   }
 

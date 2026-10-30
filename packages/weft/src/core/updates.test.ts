@@ -217,6 +217,16 @@ describe('UpdateCoordinator', () => {
     });
   });
 
+  describe('waitForResponse with a signal', () => {
+    it('ends the wait with the timeout error as soon as the signal aborts, without waiting out the timeout', async () => {
+      const controller = new AbortController();
+      const waiting = coordinator.waitForResponse('upd-aborted', 600_000, controller.signal);
+      controller.abort();
+      // load-proof: the abort ends the wait directly; the 10-minute timeout is never waited out
+      await expect(waiting).rejects.toBeInstanceOf(UpdateTimeoutError);
+    });
+  });
+
   describe('UpdateTimeoutError', () => {
     it('has correct updateId', () => {
       const error = new UpdateTimeoutError('upd-42', 5000);

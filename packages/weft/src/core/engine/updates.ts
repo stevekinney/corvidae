@@ -256,7 +256,11 @@ async function runCoordinatedUpdate(
   callbacks.dispatchEvent(new UpdateReceivedEvent(updateId, workflowId, name, payload));
   await callbacks.deliverCoordinatedUpdateToWaiterIfAvailable(workflowId, updateRequest);
 
-  const response = await internals.updateCoordinator.waitForResponse(updateId, timeout);
+  const response = await internals.updateCoordinator.waitForResponse(
+    updateId,
+    timeout,
+    internals.abortController.signal,
+  );
   if (response.error) {
     throw new Error(response.error);
   }
@@ -330,7 +334,11 @@ export async function submitCoordinatedUpdate(
 
   await callbacks.deliverCoordinatedUpdateToWaiterIfAvailable(workflowId, updateRequest, true);
 
-  const response = await internals.updateCoordinator.waitForResponse(updateId, timeout);
+  const response = await internals.updateCoordinator.waitForResponse(
+    updateId,
+    timeout,
+    internals.abortController.signal,
+  );
 
   const result: CoordinatedUpdateResult = {
     updateId: response.updateId,
