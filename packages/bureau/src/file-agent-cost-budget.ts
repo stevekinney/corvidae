@@ -75,11 +75,15 @@ export function costBudgetOptions(
   allowed: readonly BackendDescriptor[],
 ): Pick<RunOptions, 'costBudget' | 'costEstimation'> {
   const customPricing: NonNullable<CostEstimationOptions['customPricing']> = {};
+  const defaultPricing = usdPricingOfRow(descriptor);
   for (const row of [descriptor, ...allowed]) {
     // The default model first, so a second provider serving a model of the same name never
     // changes what the default is counted at.
     if (Object.hasOwn(customPricing, row.model)) continue;
-    const pricing = usdPricingOfRow(row);
+    // A row with no USD price is counted at the default model's rate. It is entered explicitly:
+    // left out, a model Operative's built-in table happens to know would be counted at that
+    // table's rate instead, which is neither the catalog's nor the documented fallback.
+    const pricing = usdPricingOfRow(row) ?? defaultPricing;
     if (pricing !== undefined) customPricing[row.model] = pricing;
   }
   const runBudget: RunCostBudget = {

@@ -42,7 +42,7 @@ export function totalAccumulatedCost(cost: AccumulatedCost | undefined): number 
 
 /**
  * The `warnAt` thresholds a step's spend crossed: those at or below the cost after the step and
- * above the cost before it, ascending. Because a run's cost only rises and a recovered run starts
+ * above the cost before it, ascending and each once, however `warnAt` repeats a fraction. Because a run's cost only rises and a recovered run starts
  * from its checkpointed cost, each threshold falls in exactly one step's range.
  */
 export function crossedThresholds(
@@ -51,7 +51,7 @@ export function crossedThresholds(
   costAfter: number,
 ): number[] {
   const crossed: number[] = [];
-  for (const threshold of [...(budget.warnAt ?? [])].toSorted((a, b) => a - b)) {
+  for (const threshold of [...new Set(budget.warnAt ?? [])].toSorted((a, b) => a - b)) {
     const limit = threshold * budget.perRunUsd;
     if (costBefore < limit && costAfter >= limit) crossed.push(threshold);
   }

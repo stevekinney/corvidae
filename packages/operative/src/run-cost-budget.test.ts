@@ -380,6 +380,8 @@ describe('crossedThresholds and validateRunCostBudget', () => {
     expect(crossedThresholds(budget, 2.5, 5)).toEqual([0.5]);
     expect(crossedThresholds(budget, 5, 9)).toEqual([]);
     expect(crossedThresholds({ perRunUsd: 10 }, 0, 9)).toEqual([]);
+    // A fraction listed twice is announced once.
+    expect(crossedThresholds({ perRunUsd: 10, warnAt: [0.5, 0.5] }, 0, 9)).toEqual([0.5]);
   });
 
   it('accepts a good budget', () => {

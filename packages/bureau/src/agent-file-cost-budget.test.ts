@@ -256,6 +256,17 @@ describe('prices from the catalog', () => {
     ).toBeUndefined();
   });
 
+  it('counts a switched model with no price at the default model’s rate, even one Operative’s table knows', () => {
+    const catalog = createModelCatalog().descriptors;
+    const known = catalog.find((row) => row.model === 'claude-opus-5')!;
+    const { costEstimation } = costBudgetOptions({ perRunUsd: 1 }, opus, [
+      { ...known, pricing: undefined },
+    ]);
+    expect(costEstimation?.pricing?.customPricing?.['claude-opus-5']).toEqual(
+      costEstimation?.pricing?.customPricing?.['claude-opus-5-5'],
+    );
+  });
+
   it('counts the default model first, and a switched model at its own price', () => {
     const other = createModelCatalog().descriptors.find((row) => row.model === 'claude-opus-5')!;
     const { costEstimation, costBudget } = costBudgetOptions(
