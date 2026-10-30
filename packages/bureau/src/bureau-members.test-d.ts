@@ -301,7 +301,9 @@ type TopLevelMembers =
   // COR-1813: the worker rollouts.
   | 'deployments'
   // COR-1939: the user-defined hooks.
-  | 'hooks';
+  | 'hooks'
+  // COR-1941: the owner's notifications.
+  | 'notifications';
 
 export type BureauTopLevelMembersAreExact = AssertTrue<Equals<keyof Bureau, TopLevelMembers>>;
 

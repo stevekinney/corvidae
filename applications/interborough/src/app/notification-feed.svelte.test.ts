@@ -88,6 +88,10 @@ function served(overrides: Record<string, (params: Record<string, unknown>) => u
     'bureau.reviews.list': () => ({ reviews }),
     'bureau.tasks.list': () => ({ tasks: [ECHO_TASK], nextPageToken: null }),
     'bureau.contexts.list': () => CONTEXTS,
+    'bureau.notifications.list': () => ({ notifications: [], nextPageToken: null }),
+    'bureau.notifications.markread': (params) => ({
+      updated: (params['ids'] as string[]).length,
+    }),
     ...overrides,
   });
   restore = bureauStub.restore;
@@ -97,6 +101,10 @@ function served(overrides: Record<string, (params: Record<string, unknown>) => u
       reviews = [];
     },
   };
+}
+
+function callsTo(stub: { calls: readonly { method: string; params: unknown }[] }, method: string) {
+  return stub.calls.filter((call) => call.method === method);
 }
 
 function mount(client: QueryClient = createQueryClient()) {
@@ -193,22 +201,131 @@ describe('connectNotificationFeed', () => {
     expect(store.unreadCount).toBe(1);
   });
 
-  test('a failed schedule fire is named by its schedule, with the first line of its error', async () => {
-    const failed = {
-      ...ECHO_TASK,
-      id: 'run-3',
-      contextId: 'session-fire',
-      agentName: 'assistant',
-      actor: 'service:scheduler',
-      status: 'failed',
-      statusMessage: 'Provider quota exceeded\nat generate',
+  function failure(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'notification-1',
+      kind: 'run.failed',
+      title: 'assistant failed',
+      body: 'Provider quota exceeded',
+      link: null,
+      subject: { runId: 'run-3', contextId: 'session-fire', agentName: 'assistant' },
+      createdAt: new Date(NOW - 30_000).toISOString(),
+      readAt: null,
+      dismissedAt: null,
+      ...overrides,
     };
+  }
+
+  const FIRE_CONTEXTS = {
+    contexts: [context('session-fire', 'Nightly digest')],
+    nextOffset: null,
+  };
+
+  test('a failed run is the Bureau’s notification, named by its agent and its chat', async () => {
     served({
       'bureau.reviews.list': () => ({ reviews: [] }),
-      'bureau.tasks.list': () => ({ tasks: [failed], nextPageToken: null }),
-      'bureau.contexts.list': () => ({
-        contexts: [context('session-fire', 'Nightly digest')],
-        nextOffset: null,
+      'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
+      'bureau.contexts.list': () => FIRE_CONTEXTS,
+      'bureau.notifications.list': () => ({ notifications: [failure()], nextPageToken: null }),
+    });
+    landAt('/agents');
+
+    const { store } = mount();
+
+    await waitFor(() => expect(store.items).toHaveLength(1));
+    expect(store.items[0]).toMatchObject({
+      kind: 'failed',
+      title: 'assistant failed',
+      detail: 'Nightly digest',
+      read: false,
+    });
+    expect(store.unreadCount).toBe(1);
+  });
+
+  test('a notification the Bureau holds as read is read, and a run over its budget says so', async () => {
+    served({
+      'bureau.reviews.list': () => ({ reviews: [] }),
+      'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
+      'bureau.contexts.list': () => FIRE_CONTEXTS,
+      'bureau.notifications.list': () => ({
+        notifications: [
+          failure({ kind: 'run.budget-exceeded', readAt: new Date(NOW - 1_000).toISOString() }),
+        ],
+        nextPageToken: null,
+      }),
+    });
+    landAt('/agents');
+
+    const { store } = mount();
+
+    await waitFor(() => expect(store.items).toHaveLength(1));
+    expect(store.items[0]).toMatchObject({
+      kind: 'budget',
+      title: 'assistant exceeded its budget',
+      read: true,
+    });
+    expect(store.unreadCount).toBe(0);
+  });
+
+  test('reading a notification in the bell reads it in the Bureau, and asks for the list again', async () => {
+    const bureauStub = served({
+      'bureau.reviews.list': () => ({ reviews: [] }),
+      'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
+      'bureau.contexts.list': () => FIRE_CONTEXTS,
+      'bureau.notifications.list': () => ({ notifications: [failure()], nextPageToken: null }),
+    });
+    landAt('/agents');
+    const { store } = mount();
+    await waitFor(() => expect(store.unreadCount).toBe(1));
+    const listed = callsTo(bureauStub, 'bureau.notifications.list').length;
+
+    store.markRead('notification:notification-1');
+
+    await waitFor(() => {
+      expect(callsTo(bureauStub, 'bureau.notifications.markread')[0]?.params).toEqual({
+        ids: ['notification-1'],
+      });
+      expect(callsTo(bureauStub, 'bureau.notifications.list').length).toBeGreaterThan(listed);
+    });
+    expect(store.unreadCount).toBe(0);
+  });
+
+  test('opening the chat of a failure reads it in the Bureau', async () => {
+    const bureauStub = served({
+      'bureau.reviews.list': () => ({ reviews: [] }),
+      'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
+      'bureau.contexts.list': () => FIRE_CONTEXTS,
+      'bureau.notifications.list': () => ({ notifications: [failure()], nextPageToken: null }),
+    });
+    landAt('/chat/session-fire');
+
+    const { store } = mount();
+
+    await waitFor(() => expect(store.items[0]?.read).toBe(true));
+    await waitFor(() =>
+      expect(callsTo(bureauStub, 'bureau.notifications.markread')[0]?.params).toEqual({
+        ids: ['notification-1'],
+      }),
+    );
+  });
+
+  test('a failed schedule fire is named by its schedule, with the Bureau’s first line of its error', async () => {
+    served({
+      'bureau.reviews.list': () => ({ reviews: [] }),
+      'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
+      'bureau.contexts.list': () => FIRE_CONTEXTS,
+      'bureau.notifications.list': () => ({
+        notifications: [
+          failure({
+            subject: {
+              runId: 'run-3',
+              contextId: 'session-fire',
+              agentName: 'assistant',
+              scheduleId: 's-1',
+            },
+          }),
+        ],
+        nextPageToken: null,
       }),
       'bureau.schedules.list': () => ({
         schedules: [
@@ -234,19 +351,6 @@ describe('connectNotificationFeed', () => {
         ],
         nextOffset: null,
       }),
-      'bureau.audit.query': () => ({
-        records: [
-          {
-            sequence: 1,
-            timestamp: new Date(NOW).toISOString(),
-            type: 'schedule.fired',
-            resource: 'run-3',
-            principal: 'service:scheduler',
-            detail: { scheduleId: 's-1' },
-          },
-        ],
-        nextCursor: null,
-      }),
     });
     landAt('/agents');
 
@@ -270,7 +374,12 @@ describe('connectNotificationFeed', () => {
     await waitFor(() => {
       const asked = new Set(bureauStub.calls.map((call) => call.method));
       expect(asked).toEqual(
-        new Set(['bureau.reviews.list', 'bureau.tasks.list', 'bureau.contexts.list']),
+        new Set([
+          'bureau.reviews.list',
+          'bureau.tasks.list',
+          'bureau.contexts.list',
+          'bureau.notifications.list',
+        ]),
       );
     });
     expect(store.items).toEqual([]);

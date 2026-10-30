@@ -44,7 +44,7 @@ import { taskOriginTag, type TaskOrigin, type TaskPersonSurface } from './task-o
 import { ownerOrLocal } from './owner-of-record';
 import type { DefinitionChange, DefinitionScannerHealth } from './definition-scanner';
 import type { WorkflowSource } from './sources/definition-source';
-import type { WorkflowFileDefinition } from './workflow-file';
+import { triggerHasUnrecognizedKeys, type WorkflowFileDefinition } from './workflow-file';
 import {
   createWorkflowFileCatalog,
   type ReadyWorkflowFile,
@@ -72,6 +72,7 @@ import {
 } from './workflow-schema';
 import {
   createWorkflowSnapshotStore,
+  WorkflowSnapshotError,
   type WorkflowRevision,
   type WorkflowSnapshot,
   type WorkflowSnapshotStore,
@@ -131,7 +132,7 @@ export interface WorkflowStartResult {
   readonly runId: string;
   /** The workflow that was started. */
   readonly workflow: string;
-  /** The revision the instance runs: the file's current one. */
+  /** The revision the instance is pinned to, as the started run reports it. */
   readonly workflowVersion: string;
 }
 
@@ -507,6 +508,35 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     });
   }
 
+  /** The `id:hash` of every unreadable file already reported, so a rescan does not repeat it. */
+  const reportedUnreadable = new Set<string>();
+
+  /**
+   * The workflows whose file holds a key this host does not know (COR-1927): written by a newer
+   * Bureau, as a rolling deploy shows an older one. This host cannot judge such a file, so it
+   * leaves the file's schedule and instances as they are, and says so once per version of the file.
+   */
+  function unreadableWorkflows(): Set<string> {
+    const unreadable = new Set<string>();
+    for (const listing of catalog.list()) {
+      if (listing.problem?.unrecognizedKeys !== true) continue;
+      unreadable.add(listing.id);
+      const reported = `${listing.id}:${listing.hash ?? ''}`;
+      if (reportedUnreadable.has(reported)) continue;
+      reportedUnreadable.add(reported);
+      options.diagnose(
+        `Workflow "${listing.id}" has a key this Bureau does not know, so its schedule and its instances in flight are left as they are until a Bureau that knows it reads the file: ${listing.problem.message}`,
+        undefined,
+      );
+    }
+    return unreadable;
+  }
+
+  /** Put the schedules in line with the files, leaving the unreadable ones as they are. */
+  async function reconcileSchedules(): Promise<void> {
+    await reconcileWorkflowSchedules(engine, desiredSchedules(), unreadableWorkflows());
+  }
+
   function desiredSchedules(): Map<string, DesiredWorkflowSchedule> {
     const desired = new Map<string, DesiredWorkflowSchedule>();
     for (const file of readyFiles()) {
@@ -590,6 +620,9 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         ? new Set(storedRevisions.map((snapshot) => snapshot.workflowVersion))
         : undefined;
       const inFlight = await inFlightRuns(id);
+      const retainedBefore = retained.length;
+      const unrecoverableBefore = unrecoverable.length;
+      let leftAlone = false;
       for (const [version, { startedAt, runIds }] of inFlight) {
         if (stored !== undefined && !stored.has(version)) continue;
         // An instance that started before a crash can have lost its history stamp: restore it.
@@ -606,6 +639,16 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         try {
           snapshot = await snapshots.load(id, version);
         } catch (error) {
+          if (error instanceof WorkflowSnapshotError && error.unrecognizedKeys) {
+            // A newer Bureau wrote this revision: its instances are that Bureau's to resume, and
+            // cancelling them here would end runs this Bureau cannot even read (COR-1927).
+            leftAlone = true;
+            options.diagnose(
+              `The stored revision ${version} of workflow "${id}" has a key this Bureau does not know, so its ${String(runIds.length)} instance(s) in flight are left as they are: ${error.message}`,
+              undefined,
+            );
+            continue;
+          }
           cannot(
             `the stored revision ${version} of workflow "${id}" cannot be used (${error instanceof Error ? error.message : String(error)})`,
           );
@@ -623,10 +666,28 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
           });
         } catch (error) {
           if (!(error instanceof WorkflowDocumentValidationError)) throw error;
+          if (triggerHasUnrecognizedKeys(snapshot.document.trigger)) {
+            // The stored trigger carries an option a newer Bureau added: its instances are that
+            // Bureau's to resume, as with an unrecognized key in the snapshot itself (COR-1927).
+            leftAlone = true;
+            options.diagnose(
+              `The stored revision ${version} of workflow "${id}" has a trigger key this Bureau does not know, so its ${String(runIds.length)} instance(s) in flight are left as they are: ${error.message}`,
+              undefined,
+            );
+            continue;
+          }
           cannot(
             `the stored revision ${version} of workflow "${id}" no longer validates against this Bureau (${error.message})`,
           );
         }
+      }
+      if (leftAlone && current === undefined) {
+        // No file of this workflow is readable here, so registering an older revision of it would
+        // have the engine fail the instances pinned to the one this Bureau cannot read. Register
+        // nothing and cancel nothing: the engine skips and reports a type it has no trace of, and a
+        // Bureau that reads the workflow resumes every instance.
+        retained.length = retainedBefore;
+        unrecoverable.length = unrecoverableBefore;
       }
     }
     return { retained, unrecoverable };
@@ -678,7 +739,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     if (closed) return;
     try {
       await register([]);
-      await reconcileWorkflowSchedules(engine, desiredSchedules());
+      await reconcileSchedules();
       applyFailure = undefined;
       applyPending = false;
     } catch (error) {
@@ -744,7 +805,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       const { retained, unrecoverable } = await planRecovery();
       await register(retained.map((entry) => entry.document));
       await cancelUnrecoverable(unrecoverable);
-      await reconcileWorkflowSchedules(engine, desiredSchedules());
+      await reconcileSchedules();
       return {
         retained: retained.map((entry) => ({ id: entry.id, workflowVersion: entry.version })),
       };
@@ -1160,7 +1221,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         trigger: state.input,
         ...(state.result === undefined ? {} : { result: state.result }),
         ...(error === undefined ? {} : { error }),
-        finishReason: state.status === 'failed' ? finishReasonOf(error) : null,
+        finishReason: state.status === 'failed' ? finishReasonOf(state.errorStack) : null,
       };
     },
 
@@ -1237,7 +1298,21 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       const trigger = { kind: 'manual', input, origin };
       assertSendable('input', trigger);
       const handle = await engine.start(id, trigger, { tags: [taskOriginTag(origin)] });
-      return { runId: handle.id, workflow: id, workflowVersion: file.version };
+      // The revision the run is pinned to is the engine's to say: the catalog can already hold a
+      // newer file than the one the engine registered (COR-1927). A run the engine cannot read
+      // back is reported on the catalog's revision, the one it was started from.
+      let pinned: string | undefined;
+      try {
+        const state = await engine.get(handle.id);
+        pinned = state?.versionTuple.workflowVersion;
+      } catch (error) {
+        // The run exists: failing the call now would invite a retry that starts a second one.
+        options.diagnose(
+          `Could not read back the revision of started instance "${handle.id}" of workflow "${id}"; reporting the revision it was started from.`,
+          error,
+        );
+      }
+      return { runId: handle.id, workflow: id, workflowVersion: pinned ?? file.version };
     },
 
     getCode(id) {

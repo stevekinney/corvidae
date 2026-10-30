@@ -616,6 +616,30 @@ export class TaskCleanupAcknowledgedEvent extends Event {
 }
 
 /**
+ * Fired on the bureau emitter once a notification is written (COR-1941), whoever wrote it: Bureau
+ * for a failed run, a review waiting or a budget exceeded, or the host through
+ * `bureau.notifications.create`. It names the notification and its kind and nothing else, not its
+ * owner and not its text; a client that watches the feed reads its own notifications with
+ * `bureau.notifications.list`. A `create` that finds its `dedupeKey` already used writes nothing and
+ * dispatches nothing.
+ */
+export class NotificationCreatedEvent extends Event {
+  /** The event kind, as the event feed publishes it. */
+  static readonly type = 'notification.created' as const;
+
+  /** The identifier of the notification that was written. */
+  readonly notificationId: string;
+  /** Its kind, such as `run.failed`. */
+  readonly notificationKind: string;
+
+  constructor(notificationId: string, notificationKind: string) {
+    super(NotificationCreatedEvent.type);
+    this.notificationId = notificationId;
+    this.notificationKind = notificationKind;
+  }
+}
+
+/**
  * Fired on the bureau emitter for each diagnostic the Bureau reports through `onDiagnostic` (or the
  * console, when that is unset), carrying its `level` and `scope` and never its message or cause
  * (COR-1721). A diagnostic raised before the emitter exists, by the event feed's own recorder, or
@@ -764,6 +788,8 @@ export interface BureauEventMap extends EventMap {
   [DefinitionsChangedEvent.type]: DefinitionsChangedEvent;
   [ScheduleMissedEvent.type]: ScheduleMissedEvent;
   [TaskCleanupAcknowledgedEvent.type]: TaskCleanupAcknowledgedEvent;
+  /** A notification was written (COR-1941). */
+  [NotificationCreatedEvent.type]: NotificationCreatedEvent;
   [DiagnosticEvent.type]: DiagnosticEvent;
   [MemoryGovernanceEvent.type]: MemoryGovernanceEvent;
 }

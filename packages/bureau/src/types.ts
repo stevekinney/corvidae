@@ -99,6 +99,7 @@ import type { BureauModelPolicyOptions } from './model-policy';
 import type { BureauDecisions, DecisionsOptions } from './decisions/types';
 import type { BureauSettings, SettingsOptions } from './settings/types';
 import type { Models, ModelsOptions } from './models/create-models';
+import type { BureauNotifications } from './notifications/notification-types';
 import type { OnlineEvalSampler, OnlineEvalSamplerOptions } from './online-evals';
 import type { ForkSessionRequest, ForkSessionResult } from './session-fork';
 import type {
@@ -384,6 +385,22 @@ export interface BureauRetentionOptions {
    * integer; otherwise `createBureau` throws `BureauError(..., 'BAD_REQUEST')`.
    */
   logs?: BureauLogsRetentionOption | undefined;
+  /**
+   * COR-1941 — how long a notification is kept after it was written, swept by each maintenance
+   * pass whether or not it was read. Leave it out to keep notifications until the owner holds
+   * more than 1000, when the oldest go. `olderThan` must be a positive integer; otherwise
+   * `createBureau` throws `BureauError(..., 'BAD_REQUEST')`.
+   */
+  notifications?: BureauNotificationsRetentionOption | undefined;
+}
+
+/**
+ * COR-1941 — the window of {@link BureauRetentionOptions.notifications}. Only `{ olderThan }`
+ * exists: keeping notifications forever is leaving the option out.
+ */
+export interface BureauNotificationsRetentionOption {
+  /** Milliseconds after a notification was written; a positive integer. */
+  readonly olderThan: number;
 }
 
 /**
@@ -2478,6 +2495,12 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * The audit trail read as redacted metadata: `query(filter, options?)`. See {@link BureauAudit}.
    */
   readonly audit: BureauAudit;
+  /**
+   * COR-1941 — the owner's notifications: what Bureau tells them needs their attention (a failed
+   * run, a review waiting, a budget exceeded) and whatever else the host writes through
+   * `notifications.create`. Persisted and owner-scoped. See {@link BureauNotifications}.
+   */
+  readonly notifications: BureauNotifications;
   /**
    * The seam the handler and the test harness read: stores, event feeds, and the task registry.
    * It is not part of the surface an application builds on. See {@link BureauInternals}.

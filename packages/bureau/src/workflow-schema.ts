@@ -8,8 +8,8 @@
  * under. A manual start (`bureau.workflows.start`) supplies `input`; a signal trigger supplies the
  * signal's `payload`; a schedule fire supplies nothing, which is `null`. A raw start through the
  * engine (`weft.workflows.start`) supplies whatever it was given, taken as the input as it is. A
- * schedule-triggered workflow whose `inputSchema` does not accept `null` therefore fails every fire
- * with `input-invalid`.
+ * schedule-triggered workflow whose `inputSchema` does not accept `null` would therefore fail every
+ * fire with `input-invalid`, so `parseWorkflowFile` refuses such a file when it is written.
  *
  * ## Where it is enforced
  *
@@ -18,8 +18,8 @@
  * the instance begins, which is what catches a schedule fire (Weft makes it, not Bureau) and a raw
  * engine start: that instance exists and fails with `input-invalid`. The output is checked when
  * the last step is done, and an instance whose result breaks the schema fails with
- * `output-invalid`. Both codes begin the failed run's `error` text, which
- * {@link finishReasonOf} reads back.
+ * `output-invalid`. Both codes begin the failed run's `error` text, but {@link finishReasonOf} reads
+ * the reason from the class of the error the check threw, not from that text.
  *
  * Schemas are held to the limits of a human-input answer schema (`checkHumanInputSchema`): a JSON
  * object, at most 32 KiB, nested at most 8 levels, with no `$id`, `pattern`, or `patternProperties`.
@@ -28,14 +28,18 @@
  */
 
 import { checkHumanInputSchema, HumanInputSchemaError } from '@lostgradient/operative';
-import type { DocumentSchemaChecker, WorkflowDocumentIssue } from '@lostgradient/weft';
+import {
+  type DocumentSchemaChecker,
+  type WorkflowDocumentIssue,
+  WorkflowDocumentSchemaError,
+} from '@lostgradient/weft';
 
 import { validateAgainstSchema } from './review-answer';
 
 /** The two schemas a workflow file may declare, by the key each has in the file. */
 export type WorkflowSchemaKey = 'inputSchema' | 'outputSchema';
 
-/** Why a run failed because of its schemas: the code its failed run's `error` text begins with. */
+/** Why a run failed because of its schemas: the code of the error the schema check threw. */
 export type WorkflowFinishReason = 'input-invalid' | 'output-invalid';
 
 /** One way a value breaks a workflow's schema: where in the value, and what is wrong. */
@@ -161,12 +165,27 @@ export const checkWorkflowSchema: DocumentSchemaChecker = (point, schema, value)
 };
 
 /**
- * Why a failed run failed, when it failed on a schema: `input-invalid` or `output-invalid`, read
- * from the start of the run's `error` text. `null` for any other error, or none.
+ * The class name Weft gives the error it throws when a value breaks a schema. A failed run keeps no
+ * error object, only its message and the stack the error carried, and that stack opens with the
+ * error's class name (COR-1927).
  */
-export function finishReasonOf(error: string | undefined): WorkflowFinishReason | null {
-  if (error === undefined) return null;
-  if (error.startsWith('input-invalid: ')) return 'input-invalid';
-  if (error.startsWith('output-invalid: ')) return 'output-invalid';
+const SCHEMA_ERROR_NAME = new WorkflowDocumentSchemaError('input-invalid', []).name;
+
+/**
+ * Why a failed run failed, when it failed on a schema: `input-invalid` or `output-invalid`. `stack`
+ * is the `errorStack` the run kept.
+ *
+ * It is read from the class and code of the error the schema check threw, which the run's stored
+ * `errorStack` opens with (`WorkflowDocumentSchemaError: input-invalid: …`), and never from the
+ * message alone: a message is whatever any activity, a contributed one included, chose to throw, so
+ * `new Error('input-invalid: …')` is not a schema failure. A run that kept no stack, or failed for
+ * any other reason, has `null`. (The durable fix is for Weft to keep the thrown error's class on the
+ * run's state, which would make the stack unnecessary.)
+ */
+export function finishReasonOf(stack: string | undefined): WorkflowFinishReason | null {
+  if (stack === undefined) return null;
+  for (const reason of ['input-invalid', 'output-invalid'] as const) {
+    if (stack.startsWith(`${SCHEMA_ERROR_NAME}: ${reason}: `)) return reason;
+  }
   return null;
 }

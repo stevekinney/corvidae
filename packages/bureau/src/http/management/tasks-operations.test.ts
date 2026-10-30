@@ -602,6 +602,7 @@ describe('bureau.tasks.cancel receipts that depend on the cleanup acknowledgemen
           });
           return 'requested';
         },
+        cancelChild: async () => 'not-found',
         cancelDurable: async () => ({ status: scripted.durable ?? 'requested' }),
         sleep: (milliseconds) =>
           new Promise<void>((resolve) => {

@@ -7,6 +7,20 @@
 - Generated descriptions and errors are connected to their controls with `aria-describedby`.
 - Failed validation sets `aria-invalid="true"` on the invalid field. Boolean fields render as `button role="switch"` with `aria-checked` and use `aria-required="true"` when the schema marks them required.
 
+## Control Shapes
+
+- Enum arrays render as a `fieldset` whose legend is the field label; each option is a toggle button with `aria-pressed`.
+- String arrays render a tag input named by the field label; committed tags can be removed with the keyboard like any tag input.
+- Records render a key/value row list. Each input is named `Key` or `Value`, and the add and remove buttons carry the field label so several records on one page stay distinguishable.
+- A choice renders a `radiogroup` with one radio per branch inside a `fieldset` named by the field label.
+- A millisecond field renders a labelled number input and a select named `<label> unit`.
+
+## Large Forms
+
+- Collapsible groups are disclosure buttons with `aria-expanded`; the closed-group summary is part of the button's name.
+- Find a field is a search input. Enter does not submit the form from it, and a result with no matches is announced through a `status` region.
+- Edit as JSON is a button with `aria-expanded` that reveals a labelled JSON textarea; a refused paste is reported as that field's error.
+
 ## Keyboard Interactions
 
 | Key         | Behaviour                                                           |

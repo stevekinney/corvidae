@@ -46,24 +46,28 @@
  *
  * ## Who publishes, and what a subscriber filters
  *
- * The hook publishes for every run that goes through the recovery path, and for fresh
- * `bureau.run()` dispatches, which is not the same set as "every top-level task":
+ * The hook publishes for every run that goes through the recovery path, and for the fresh runs
+ * Bureau follows to their end, which is not the same set as "every top-level task":
  *
- * - a fresh dispatch publishes with `recovered: false`; a child run or a goal attempt that is
- *   dispatched fresh does not go through `bureau.run()` and does not publish;
- * - a run recovered after a restart publishes with `recovered: true`, and that includes a
- *   recovered child run (one the child topology holds) and a recovered goal attempt, which are
- *   not tasks.
+ * - a fresh `bureau.run()` dispatch is settled from its run store's terminal action, not from here;
+ * - a fresh child run, goal attempt or workflow step is followed here (`publishFreshCatalogRun`,
+ *   called from `create-bureau.ts`'s `trackSubordinateRun`) once its start committed, and publishes
+ *   with `recovered: false`; the task settler is the only subscriber that acts on it, because the
+ *   others filter on `recovered`;
+ * - a run recovered after a restart publishes with `recovered: true`, and that includes a recovered
+ *   child run, goal attempt and workflow step.
  *
  * A subscriber therefore filters what it needs. The snapshot-reference subscriber (in
- * `create-bureau.ts`) filters on `recovered`, because a fresh dispatch settles its own
- * reference where it is dispatched; it settles a child run's or a goal attempt's reference too,
- * which is right, as those hold a snapshot as well. The task settler
- * (`catalog-task-settlement.ts`) settles a record that exists for any run, and writes one only
- * for a recovered top-level run: it skips a run the child topology holds and a goal attempt.
+ * `create-bureau.ts`) filters on `recovered`, because a fresh dispatch settles its own reference
+ * where it is dispatched; it settles a child run's or a goal attempt's reference too, which is
+ * right, as those hold a snapshot as well. The task settler (`catalog-task-settlement.ts`) settles
+ * a record that exists for any run, and writes one for a recovered run only when the run's claim
+ * stores a `taskOrigin` (a child, an attempt or a step started since COR-1868) or the run is a
+ * recovered top-level run.
  *
  * @module catalog-run-settlement
  */
+import type { CleanupAcknowledgement } from '@lostgradient/operative';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 
 import { serializeUnknownError } from './serialization';
@@ -209,7 +213,7 @@ export interface FreshCatalogRunHandle {
     readonly error?: unknown;
     readonly content: string;
   }>;
-  closed(): Promise<unknown>;
+  closed(): Promise<CleanupAcknowledgement>;
 }
 
 /**
@@ -227,7 +231,7 @@ export async function publishFreshCatalogRun(options: {
   readonly agentName: string;
   readonly admit: () => Promise<void>;
   readonly hook: Pick<CatalogRunSettlementHook, 'publish'>;
-  readonly followCleanup: (closed: Promise<unknown>) => void;
+  readonly followCleanup: (closed: Promise<CleanupAcknowledgement>) => void;
   readonly diagnose: DiagnosticSink;
   /** Reads the durable run when the handle rejects. Omit for a Bureau without a durable engine. */
   readonly durableEnd?: DurableEndReader | undefined;

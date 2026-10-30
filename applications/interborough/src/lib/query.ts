@@ -156,6 +156,10 @@ export const queryKeys = {
     /** The tasks of one chat session, paged, under the session's own entry. */
     ofSession: (contextId: string) => ['bureau-tasks', 'session', contextId] as const,
   },
+  /** The caller's notifications (`bureau.notifications.*`, COR-1941). */
+  bureauNotifications: {
+    list: () => ['bureau-notifications', 'list'] as const,
+  },
   /** The Bureau's reviews (`bureau.reviews.*`), apart from `reviews`, which is the engine's. */
   bureauReviews: {
     list: () => ['bureau-reviews', 'list'] as const,

@@ -728,6 +728,8 @@ describe('credentials', () => {
           query: 'x',
           content: 'x',
           granteeOwnerId: 'x',
+          // The notification operations name the notifications they act on.
+          ids: ['x'],
           reason: 'x',
           ...definitionParameters(operation),
         });
@@ -1032,6 +1034,8 @@ describe('transcripts stay inside the Bureau', () => {
           query: 'x',
           content: 'x',
           granteeOwnerId: 'x',
+          // The notification operations name the notifications they act on.
+          ids: ['x'],
           reason: 'x',
           ...definitionParameters(operation),
         });

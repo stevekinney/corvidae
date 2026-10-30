@@ -90,6 +90,7 @@ const start = {
       childRunId: 'child-1',
     },
   },
+  taskOrigin: { kind: 'agent' as const, parentRunId: 'parent-1', agentName: 'planner' },
 };
 
 describe('createCatalogDispatcher — startChildRun', () => {

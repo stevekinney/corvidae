@@ -203,6 +203,13 @@ const REMOTE_LOCKED_SETTINGS = {
 export const AUDIT_RETENTION_MILLISECONDS = 90 * 24 * 60 * 60 * 1000;
 
 /**
+ * How long the host keeps a notification by default: 30 days, in milliseconds (COR-1941). It is the
+ * `retention.notifications` window the Bureau starts with; a value stored on the Settings page
+ * replaces it.
+ */
+export const NOTIFICATION_RETENTION_MILLISECONDS = 30 * 24 * 60 * 60 * 1000;
+
+/**
  * How long the host keeps a finished run's workflow log lines after the run last wrote one: 7 days, in
  * milliseconds (COR-1811). It is the `retention.logs` window the Bureau starts with; a value stored
  * on the Settings page replaces it.
@@ -629,6 +636,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       retention: {
         audit: { olderThan: AUDIT_RETENTION_MILLISECONDS },
         logs: { olderThan: WORKFLOW_LOG_RETENTION_MILLISECONDS },
+        notifications: { olderThan: NOTIFICATION_RETENTION_MILLISECONDS },
       },
       // The `ctx.log` lines of a workflow are kept with its run (COR-1811), so the run page can show
       // them: the newest 500 per run, for seven days, both changeable on the Settings page.

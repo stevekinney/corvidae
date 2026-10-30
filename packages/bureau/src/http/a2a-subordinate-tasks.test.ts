@@ -1,11 +1,13 @@
 /**
  * A2A reaches top-level tasks only (COR-1868): a child run, a goal attempt or a workflow step is a
  * subordinate task, and a peer can neither read, list, continue, cancel nor reference one, though
- * the native task API shows it. Nothing admits these records yet, so the tests seed them.
+ * the native task API shows it. Most tests seed records of the three origins; the last one runs a
+ * real child of a peer's own task.
  */
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { describe, expect, it } from 'bun:test';
 
-import { call, message, send, withA2A } from './a2a-mount.test-support.ts';
+import { call, message, send, taskOf, withA2A } from './a2a-mount.test-support.ts';
 import { OWNER, rpc } from './management/management-fixtures.test-support.ts';
 import type { OpenedBureau } from './management/management-fixtures.test-support.ts';
 import type { TaskOrigin } from '../task-origin.ts';
@@ -112,6 +114,51 @@ describe('A2A and subordinate tasks', () => {
       const ids = tasks.map((task) => task.id);
 
       expect(ids).toEqual(expect.arrayContaining(Object.keys(SUBORDINATE)));
+    });
+  });
+
+  it('hides a real child of the peer’s own task, which the native task API shows', async () => {
+    await withA2A({ asker: parked }, async (opened) => {
+      const sent = await send(opened, 'asker', {
+        message: message('start something'),
+        configuration: { returnImmediately: true },
+      });
+      const parentId = String(taskOf(sent.body).id);
+      // The same agent, owner and principal as the peer’s task: only the origin tells them apart.
+      const dispatched = await opened.bureau.children.dispatch({
+        parentRunId: parentId,
+        agentName: 'asker',
+        input: 'sub-task',
+        principal: OWNER.alice,
+        childRunId: 'real-child',
+      });
+      expect(dispatched).toMatchObject({ outcome: 'started' });
+      await waitUntil(async () => (await opened.bureau.tasks.get('real-child')) !== undefined, {
+        message: 'the child task is admitted',
+      });
+      expect(await opened.bureau.tasks.get('real-child')).toMatchObject({
+        owner: OWNER.alice,
+        agentName: 'asker',
+        origin: { kind: 'agent', parentRunId: parentId },
+      });
+
+      const listed = await call(opened, 'asker', 'ListTasks', { pageSize: 50 });
+      const read = await call(opened, 'asker', 'GetTask', { id: 'real-child' });
+      const cancel = await call(opened, 'asker', 'CancelTask', { id: 'real-child' });
+      const referenced = await send(opened, 'asker', {
+        message: message('new work', { referenceTaskIds: ['real-child'] }),
+        configuration: { returnImmediately: true },
+      });
+
+      expect((listed.body.result.tasks as { id: string }[]).map((task) => task.id)).toEqual([
+        parentId,
+      ]);
+      expect(read.body.error?.code).toBe(-32001);
+      expect(cancel.body.error?.code).toBe(-32001);
+      expect(referenced.body.error?.message).toContain('referenceTaskIds');
+      // The native API still shows it, and the peer's cancel left it running.
+      const still = await opened.bureau.tasks.get('real-child');
+      expect(still?.status).toBe('working');
     });
   });
 });

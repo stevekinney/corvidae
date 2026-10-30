@@ -91,6 +91,8 @@ export async function inspect(storage: Storage) {
         definitionRevision: number;
         input: string;
         goalAttempt?: { goalRunId: string; attemptIndex: number };
+        /** The task origin the start recorded (COR-1868); absent for a claim written before it. */
+        taskOrigin?: { kind: string; [field: string]: unknown };
         /** The persisted estimator selection; a goal attempt's claim carries `null` unless one is given. */
         costEstimation?: unknown;
       },

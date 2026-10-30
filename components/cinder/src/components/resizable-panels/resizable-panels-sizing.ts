@@ -167,14 +167,23 @@ function distributeDelta(
 
     if (availableIndexes.length === 0) break;
 
+    // A pane with no maximum can take any amount, so the delta is shared among the unbounded panes.
+    // Weighting by an infinite capacity would divide by infinity, give every pane a zero share,
+    // and hand the whole delta to whichever pane came first, even one with a small cap.
+    const unbounded = availableIndexes.filter((item) => !Number.isFinite(item.capacity));
+    const sharing = unbounded.length > 0 ? unbounded : availableIndexes;
+    const passDelta = Math.abs(remaining);
     let totalCapacity = 0;
-    for (const item of availableIndexes) {
+    for (const item of sharing) {
       totalCapacity += item.capacity;
     }
     let consumedThisPass = 0;
 
-    for (const { capacity, index } of availableIndexes) {
-      const proportional = (Math.abs(remaining) * capacity) / totalCapacity;
+    for (const { capacity, index } of sharing) {
+      const proportional =
+        unbounded.length > 0
+          ? passDelta / unbounded.length
+          : (Math.abs(remaining) * capacity) / totalCapacity;
       const slice = Math.min(capacity, proportional || Math.abs(remaining));
       nextSizes[index]! += slice * sign;
       capacities[index]! -= slice;

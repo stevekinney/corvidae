@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, mock, test } from 'bun:test';
 
 import { setupHappyDom } from '@lostgradient/testing';
 import { declarationsFor } from '../../test/css.ts';
@@ -9,11 +9,16 @@ import { declarationsFor } from '../../test/css.ts';
 // so we register happy-dom's globals first and then dynamic-import testing-library below.
 setupHappyDom();
 
-const { render } = await import('@testing-library/svelte');
+const { cleanup, fireEvent, render } = await import('@testing-library/svelte');
 const { createRawSnippet } = await import('svelte');
 const { default: EmptyState } = await import('./empty-state.svelte');
 
 const emptyStateCss = await Bun.file(new URL('./empty-state.css', import.meta.url)).text();
+
+afterEach(() => {
+  cleanup();
+  document.body.replaceChildren();
+});
 
 describe('EmptyState rendering', () => {
   test('renders with required title prop', () => {
@@ -201,5 +206,138 @@ describe('EmptyState align', () => {
     const base = declarationsFor(emptyStateCss, '.cinder-empty-state');
     expect(base.get('align-items')).toBe('center');
     expect(base.get('text-align')).toBe('center');
+  });
+});
+
+const actionSnippet = createRawSnippet(() => ({
+  render: () => `<button data-testid="custom-action">Add item</button>`,
+}));
+
+function rootOf(container: HTMLElement) {
+  return container.querySelector('.cinder-empty-state');
+}
+
+describe('EmptyState kind', () => {
+  test('defaults to first-use and renders the action snippet', () => {
+    const { container } = render(EmptyState, { props: { title: 'Empty', action: actionSnippet } });
+    expect(rootOf(container)?.getAttribute('data-cinder-kind')).toBe('first-use');
+    expect(container.querySelector('[data-testid="custom-action"]')).not.toBeNull();
+    expect(container.textContent).not.toContain('Clear filters');
+  });
+
+  test('first-use ignores onClearFilters', () => {
+    const { container } = render(EmptyState, {
+      props: { title: 'Empty', onClearFilters: () => {} },
+    });
+    expect(container.querySelector('.cinder-empty-state-action')).toBeNull();
+  });
+
+  test('filtered renders a Clear filters button that calls onClearFilters', async () => {
+    const onClearFilters = mock(() => {});
+    const { container, getByRole } = render(EmptyState, {
+      props: { title: 'No matches', kind: 'filtered', onClearFilters },
+    });
+    expect(rootOf(container)?.getAttribute('data-cinder-kind')).toBe('filtered');
+    await fireEvent.click(getByRole('button', { name: 'Clear filters' }));
+    expect(onClearFilters).toHaveBeenCalledTimes(1);
+  });
+
+  test('filtered renders no action region without onClearFilters or an action snippet', () => {
+    const { container } = render(EmptyState, { props: { title: 'No matches', kind: 'filtered' } });
+    expect(container.querySelector('.cinder-empty-state-action')).toBeNull();
+  });
+
+  test('filtered puts Clear filters before a custom action and honours clearFiltersLabel', () => {
+    const { container } = render(EmptyState, {
+      props: {
+        title: 'No matches',
+        kind: 'filtered',
+        onClearFilters: () => {},
+        clearFiltersLabel: 'Reset',
+        action: actionSnippet,
+      },
+    });
+    const buttons = [...container.querySelectorAll('.cinder-empty-state-action button')];
+    expect(buttons.map((button) => button.textContent?.trim())).toEqual(['Reset', 'Add item']);
+  });
+
+  test('done renders no action even when action and onClearFilters are passed', () => {
+    const { container } = render(EmptyState, {
+      props: { title: 'All done', kind: 'done', action: actionSnippet, onClearFilters: () => {} },
+    });
+    expect(rootOf(container)?.getAttribute('data-cinder-kind')).toBe('done');
+    expect(container.querySelector('.cinder-empty-state-action')).toBeNull();
+    expect(container.querySelector('button')).toBeNull();
+  });
+
+  test('an unknown kind falls back to first-use', () => {
+    const { container } = render(EmptyState, {
+      props: { title: 'Empty', kind: 'bogus' as never, action: actionSnippet },
+    });
+    expect(rootOf(container)?.getAttribute('data-cinder-kind')).toBe('first-use');
+    expect(container.querySelector('[data-testid="custom-action"]')).not.toBeNull();
+  });
+
+  test('each kind tints the icon disc in the stylesheet', () => {
+    const firstUse = declarationsFor(
+      emptyStateCss,
+      ".cinder-empty-state[data-cinder-kind='first-use'] .cinder-empty-state-icon",
+    );
+    const done = declarationsFor(
+      emptyStateCss,
+      ".cinder-empty-state[data-cinder-kind='done'] .cinder-empty-state-icon",
+    );
+    expect(firstUse.get('background')).toBe('var(--cinder-accent-background)');
+    expect(done.get('background')).toBe('var(--cinder-status-success-background)');
+    const disc = declarationsFor(emptyStateCss, '.cinder-empty-state-icon');
+    expect(disc.get('border-radius')).toBe('var(--cinder-radius-full)');
+  });
+});
+
+describe('EmptyState size', () => {
+  test('defaults to the default size', () => {
+    const { container } = render(EmptyState, { props: { title: 'Empty' } });
+    expect(rootOf(container)?.getAttribute('data-cinder-size')).toBe('default');
+  });
+
+  test('compact marks the root and shrinks padding, disc, and title in the stylesheet', () => {
+    const { container } = render(EmptyState, { props: { title: 'Empty', size: 'compact' } });
+    expect(rootOf(container)?.getAttribute('data-cinder-size')).toBe('compact');
+    const root = declarationsFor(emptyStateCss, ".cinder-empty-state[data-cinder-size='compact']");
+    expect(root.get('padding-block')).toBe('var(--cinder-space-6)');
+    const base = declarationsFor(emptyStateCss, '.cinder-empty-state');
+    expect(base.get('padding-block')).toBe('var(--cinder-space-12)');
+    const title = declarationsFor(
+      emptyStateCss,
+      ".cinder-empty-state[data-cinder-size='compact'] .cinder-empty-state-title",
+    );
+    expect(title.get('font-size')).toBe('var(--cinder-text-base)');
+  });
+
+  test('compact makes the Clear filters button small', () => {
+    const { getByRole } = render(EmptyState, {
+      props: { title: 'No matches', kind: 'filtered', size: 'compact', onClearFilters: () => {} },
+    });
+    expect(getByRole('button', { name: 'Clear filters' }).getAttribute('data-cinder-size')).toBe(
+      'sm',
+    );
+  });
+
+  test('an unknown size falls back to default', () => {
+    const { container } = render(EmptyState, { props: { title: 'Empty', size: 'huge' as never } });
+    expect(rootOf(container)?.getAttribute('data-cinder-size')).toBe('default');
+  });
+});
+
+describe('EmptyState restyle', () => {
+  test('title is larger and semibold, description has a measure and the actions row is spaced', () => {
+    const title = declarationsFor(emptyStateCss, '.cinder-empty-state-title');
+    expect(title.get('font-size')).toBe('var(--cinder-text-xl)');
+    expect(title.get('font-weight')).toBe('var(--cinder-font-semibold)');
+    const description = declarationsFor(emptyStateCss, '.cinder-empty-state-description');
+    expect(description.get('max-inline-size')).toBe('42ch');
+    const action = declarationsFor(emptyStateCss, '.cinder-empty-state-action');
+    expect(action.get('gap')).toBe('var(--cinder-space-3)');
+    expect(action.get('flex-wrap')).toBe('wrap');
   });
 });

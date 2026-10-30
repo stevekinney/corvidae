@@ -48,6 +48,7 @@ function build(options: { kv?: ConditionalTextValueStore | 'none'; runtime?: Run
       pendingReviews: () => [],
       currentIncarnation: async (contextId) => incarnations.get(contextId),
       abort: () => 'not-found',
+      cancelChild: async () => 'not-found',
       cancelDurable: async () => ({ status: 'requested' }),
       sleep: async () => {},
     },
@@ -637,7 +638,7 @@ async function admitOne(
     incarnation: 'incarnation-1',
     agentName: 'assistant',
     owner,
-    origin: origin as TaskOrigin | undefined,
+    origin,
     message: undefined,
   });
   await harness.runtime.advance(1);

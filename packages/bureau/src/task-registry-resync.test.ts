@@ -18,6 +18,7 @@ function build() {
       pendingReviews: () => [],
       currentIncarnation: async () => 'incarnation-1',
       abort: () => 'not-found',
+      cancelChild: async () => 'not-found',
       cancelDurable: async () => ({ status: 'requested' }),
       sleep: async () => undefined,
     },

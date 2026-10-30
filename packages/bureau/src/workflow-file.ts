@@ -37,6 +37,7 @@ import { createHash } from 'node:crypto';
 import {
   canonicalWorkflowDocumentJson,
   type DocumentWorkflowHost,
+  workflowDocumentSchema,
   WorkflowDocumentValidationError,
   type WorkflowDocument,
   type WorkflowDocumentIssue,
@@ -45,7 +46,7 @@ import {
 import { AGENT_IDENTIFIER_PATTERN } from './agent-file';
 import { NAMESPACED_IDENTIFIER_SOURCE } from './namespaced-identifier';
 import { toWeftDocument, validateBureauWorkflowDocument } from './workflow-document-handlers';
-import { workflowSchemaIssues } from './workflow-schema';
+import { inputSchemaIssues, workflowSchemaIssues } from './workflow-schema';
 
 /**
  * What an owner's workflow file stem must look like: a letter first, and it doubles as a path
@@ -70,6 +71,30 @@ export const WORKFLOW_FILE_EXTENSION = '.json';
 /** The largest workflow file Bureau reads, in bytes. A larger one is `invalid`. */
 export const WORKFLOW_FILE_SIZE_LIMIT = 256 * 1024;
 
+/**
+ * The keys each trigger kind takes, besides `kind`. Weft's document schema leaves a trigger open,
+ * so the keys are Bureau's to know: the host's validators refuse any other, and
+ * {@link documentHasUnrecognizedTriggerKeys} reads the same table to tell a key this Bureau does
+ * not know from another fault (COR-1927).
+ */
+export const TRIGGER_KEYS: Readonly<Record<string, readonly string[]>> = {
+  schedule: ['spec', 'overlap'],
+  signal: ['name'],
+};
+
+/**
+ * Whether `trigger` is of a kind this Bureau knows and carries a key that kind does not take: what
+ * a newer Bureau writes when a trigger grows an option. A kind this Bureau does not know is not
+ * judged here.
+ */
+export function triggerHasUnrecognizedKeys(trigger: unknown): boolean {
+  if (!isPlainObject(trigger)) return false;
+  const kind = trigger['kind'];
+  if (typeof kind !== 'string' || !Object.hasOwn(TRIGGER_KEYS, kind)) return false;
+  const known = TRIGGER_KEYS[kind] ?? [];
+  return Object.keys(trigger).some((key) => key !== 'kind' && !known.includes(key));
+}
+
 /** The handler name of the activity every agent step names. */
 export const AGENT_STEP_HANDLER = 'agent';
 
@@ -92,6 +117,14 @@ export interface WorkflowFileProblem {
   readonly message: string;
   /** Every failure found, for `invalid-document`. */
   readonly issues?: readonly WorkflowFileIssue[];
+  /**
+   * Present, and `true`, when the document holds a key this host does not know (COR-1927): the
+   * mark of a file written by a newer Bureau, which this one cannot read but must not treat as
+   * broken. A host that cannot read a file this way leaves the file's schedule and instances alone
+   * instead of cancelling them; a revision it had already registered stays registered, and may
+   * keep launching from the schedule until a restart. It says nothing about other failures a file may also have.
+   */
+  readonly unrecognizedKeys?: true;
 }
 
 /** The longest `description`, in characters: a sentence for a list row, not a document. */
@@ -173,9 +206,16 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** The issues with an `agent` step's `input`, which Weft's document schema leaves to the host. */
-function agentStepIssues(document: WorkflowDocument): WorkflowFileIssue[] {
+/**
+ * The issues with an `agent` step's `input`, which Weft's document schema leaves to the host, and
+ * whether any of them is a key this host does not know.
+ */
+function agentStepIssues(document: WorkflowDocument): {
+  issues: WorkflowFileIssue[];
+  unrecognizedKeys: boolean;
+} {
   const issues: WorkflowFileIssue[] = [];
+  let unrecognizedKeys = false;
   for (const [index, step] of document.steps.entries()) {
     if (step.kind !== 'activity' || step.handler !== AGENT_STEP_HANDLER) continue;
     const path = `steps[${String(index)}].input`;
@@ -186,6 +226,7 @@ function agentStepIssues(document: WorkflowDocument): WorkflowFileIssue[] {
     }
     const extra = Object.keys(input).filter((key) => key !== 'agent' && key !== 'message');
     if (extra.length > 0) {
+      unrecognizedKeys = true;
       issues.push({ path, message: `unknown key ${extra.map((key) => `"${key}"`).join(', ')}` });
     }
     const agent = input['agent'];
@@ -196,7 +237,38 @@ function agentStepIssues(document: WorkflowDocument): WorkflowFileIssue[] {
       issues.push({ path, message: '"message" must be a string' });
     }
   }
-  return issues;
+  return { issues, unrecognizedKeys };
+}
+
+/**
+ * The issue with a schedule-triggered file whose `inputSchema` refuses `null` (COR-1927). A fire
+ * starts its instance with no input, which is `null`, so such a file would fail every fire with
+ * `input-invalid`; it is refused when it is written instead. A schema the limits already refused
+ * is judged by those, and a file with no schema accepts anything.
+ */
+function scheduleInputIssues(document: WorkflowDocument): WorkflowFileIssue[] {
+  const schema = document.inputSchema;
+  if (document.trigger.kind !== 'schedule' || schema === undefined) return [];
+  if (workflowSchemaIssues('inputSchema', schema).length > 0) return [];
+  const refused = inputSchemaIssues(schema, null);
+  if (refused.length === 0) return [];
+  return [
+    {
+      path: 'inputSchema',
+      message: `a schedule fire starts the workflow with no input, which is null, and this schema refuses it (${refused
+        .map((issue) => issue.message)
+        .join('; ')}); accept null, or use another trigger`,
+    },
+  ];
+}
+
+/**
+ * Whether Weft's structural schema refuses `documentInput` for a key it does not know, read from
+ * the validator's own issue codes and not from its message text.
+ */
+function hasUnrecognizedDocumentKeys(documentInput: unknown): boolean {
+  const result = workflowDocumentSchema.safeParse(documentInput);
+  return !result.success && result.error.issues.some((issue) => issue.code === 'unrecognized_keys');
 }
 
 /**
@@ -251,21 +323,28 @@ export function parseWorkflowFile(
     issues.push({ path: 'paused', message: 'must be true or false' });
   }
   let document: WorkflowDocument | undefined;
+  let unrecognizedKeys = false;
   try {
     document = validateBureauWorkflowDocument(documentInput, host);
   } catch (error) {
     if (!(error instanceof WorkflowDocumentValidationError)) throw error;
     issues.push(...error.issues);
+    unrecognizedKeys =
+      hasUnrecognizedDocumentKeys(documentInput) ||
+      triggerHasUnrecognizedKeys(documentInput['trigger']);
   }
   if (document !== undefined) {
     if (document.name !== id) {
       issues.push({ path: 'name', message: `must equal the identifier "${id}"` });
     }
-    issues.push(...agentStepIssues(document));
+    const agentSteps = agentStepIssues(document);
+    issues.push(...agentSteps.issues);
+    unrecognizedKeys ||= agentSteps.unrecognizedKeys;
     // The shape is Weft's to judge (a JSON object); the limits are the answer schemas'.
     for (const key of ['inputSchema', 'outputSchema'] as const) {
       if (document[key] !== undefined) issues.push(...workflowSchemaIssues(key, document[key]));
     }
+    issues.push(...scheduleInputIssues(document));
   }
   if (issues.length > 0 || document === undefined) {
     return {
@@ -276,6 +355,7 @@ export function parseWorkflowFile(
           .map((issue) => (issue.path === '' ? issue.message : `${issue.path}: ${issue.message}`))
           .join('; ')}`,
         issues,
+        ...(unrecognizedKeys ? { unrecognizedKeys: true as const } : {}),
       },
     };
   }

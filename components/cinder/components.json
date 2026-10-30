@@ -611,6 +611,7 @@
       "tags": ["feedback", "notice"],
       "useWhen": [
         "Communicating a persistent page-level status the user can dismiss, such as a maintenance window or trial expiry.",
+        "Reporting that the server or connection is unreachable with the unreachable preset, a Retry action, and the age of the data still shown.",
         "Pinning a non-urgent message above page content that should remain readable until acknowledged."
       ],
       "avoidWhen": [
@@ -2095,7 +2096,8 @@
       "tags": ["feedback", "empty"],
       "useWhen": [
         "Communicating that a list, table, or workspace has no items yet and suggesting a next step.",
-        "Replacing a primary content region after a filter or search returns no results."
+        "Replacing a primary content region after a filter or search returns no results.",
+        "Confirming that all work is finished with the done kind, or that a filter hid every item with the filtered kind."
       ],
       "avoidWhen": [
         {
@@ -3096,6 +3098,58 @@
         "schema": "src/components/link/link.schema.json",
         "variables": "src/components/link/link.variables.json",
         "examples": "src/components/link/link.examples.json"
+      }
+    },
+    {
+      "name": "ListDetail",
+      "id": "list-detail",
+      "import": "@lostgradient/cinder",
+      "exportName": "ListDetail",
+      "category": "layout",
+      "status": "beta",
+      "purpose": "Resizable list-and-detail layout with a list header, keyboard selection, the open item kept in the URL, a remembered divider width, and a one-pane-at-a-time layout on narrow containers.",
+      "tags": ["layout", "list", "detail", "selection", "master-detail"],
+      "useWhen": [
+        "Browsing a collection of records where choosing one shows it beside the list, such as chats, runs, or memories.",
+        "The open record must survive a reload and be shareable as a link."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Each record has its own page and the list is only a way to navigate there.",
+          "alternative": "stacked-list-item"
+        },
+        {
+          "reason": "You need the resizable layout alone, with no list.",
+          "alternative": "resizable-panels"
+        }
+      ],
+      "related": ["resizable-panels", "data-list", "selectable-row", "empty-state"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/list-detail/list-detail.schema.json",
+        "variables": "src/components/list-detail/list-detail.variables.json",
+        "examples": "src/components/list-detail/list-detail.examples.json"
+      },
+      "a11y": {
+        "pattern": "Region landmarks with a native button or link row action",
+        "keyboard": [
+          {
+            "keys": "J",
+            "action": "Moves the keyboard cursor to the next row."
+          },
+          {
+            "keys": "K",
+            "action": "Moves the keyboard cursor to the previous row."
+          },
+          {
+            "keys": "Enter",
+            "action": "Opens the row the cursor is on."
+          }
+        ],
+        "notes": [
+          "J and K are ignored while focus is in a text field, a menu, a listbox, a combobox or a dialog, so typing is never taken."
+        ]
       }
     },
     {
@@ -4793,7 +4847,7 @@
       "exportName": "Skeleton",
       "category": "feedback",
       "status": "stable",
-      "purpose": "Decorative placeholder block that reserves layout space while real content loads.",
+      "purpose": "Decorative placeholder that reserves layout space while real content loads, as a single block or a group of lines or a card, with optional delayed appearance and a \"Still loading\" status.",
       "tags": ["feedback", "loading"],
       "useWhen": [
         "Reserving the rough shape of incoming content during an initial fetch to avoid layout shift.",
