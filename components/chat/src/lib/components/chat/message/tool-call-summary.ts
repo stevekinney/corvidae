@@ -4,7 +4,8 @@ import { toolResultText } from '../../../utilities/tool-result-text.ts';
 import type { ToolCallPair } from '../conversation-model.ts';
 
 /** Where one tool call stands, as the quiet timeline shows it. */
-export type ToolCallRowStatus = 'pending' | 'succeeded' | 'failed' | 'denied' | 'waiting';
+export type ToolCallRowStatus =
+  'pending' | 'succeeded' | 'failed' | 'denied' | 'waiting' | 'waiting-input';
 
 const STATUS_TEXT: Record<ToolCallRowStatus, string> = {
   pending: 'Pending',
@@ -12,6 +13,7 @@ const STATUS_TEXT: Record<ToolCallRowStatus, string> = {
   failed: 'Failed',
   denied: 'Denied',
   waiting: 'Waiting for approval',
+  'waiting-input': 'Waiting for input',
 };
 
 const ONE_LINE_LIMIT = 80;
@@ -27,7 +29,9 @@ export function toolCallRowStatus(
   if (approvalState === 'denied') return 'denied';
   const outcome = pair.result?.outcome;
   if (outcome === 'error') return 'failed';
-  if (outcome === 'action_required') return 'waiting';
+  if (outcome === 'action_required') {
+    return pair.result?.action?.type === 'approval' ? 'waiting' : 'waiting-input';
+  }
   if (outcome === 'success') return 'succeeded';
   return 'pending';
 }
@@ -67,8 +71,12 @@ export function toolCallResultLine(pair: ToolCallPair): string | undefined {
   if (result.outcome === 'error') {
     return oneLine(result.error?.message ?? stringify(result.content));
   }
-  // A call waiting on the user has no result yet; its approval or input row asks.
-  if (result.outcome === 'action_required') return undefined;
+  // An approval row asks for itself; any other request keeps its prompt here.
+  if (result.outcome === 'action_required') {
+    if (result.action?.type === 'approval' || result.action?.message === undefined)
+      return undefined;
+    return oneLine(result.action.message);
+  }
   const text =
     result.parts !== undefined
       ? toolResultText(result)
@@ -109,9 +117,11 @@ export function toolCallSummarySegments(
   const failed = count('failed');
   const denied = count('denied');
   const waiting = count('waiting');
+  const waitingInput = count('waiting-input');
   if (failed > 0) segments.push(`${failed} failed`);
   if (denied > 0) segments.push(`${denied} denied`);
   if (waiting > 0) segments.push(`${waiting} waiting for approval`);
+  if (waitingInput > 0) segments.push(`${waitingInput} waiting for input`);
   if (durations.length > 0 && durations.every((duration) => duration !== undefined)) {
     const total = durations.reduce<number>((sum, duration) => sum + (duration ?? 0), 0);
     segments.push(formatToolCallDuration(total));
