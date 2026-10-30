@@ -1400,7 +1400,10 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     taskId: string,
     settlement: Parameters<TaskRegistry['recordSettled']>[1],
   ): Promise<boolean> {
-    const captured: { settled?: TaskRecord; newlySettled: boolean } = { newlySettled: false };
+    const captured: { settled?: TaskRecord; newlySettled: boolean; replacedInference: boolean } = {
+      newlySettled: false,
+      replacedInference: false,
+    };
     const recorded = await track(
       update(
         taskId,
@@ -1408,16 +1411,16 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
           const next = withSettlement(record, settlement);
           // COR-1946 — `owner-lost` is an inference, so the owner's real settlement of the task
           // replaces it and is announced as the settlement; any other earlier one is not.
-          captured.newlySettled =
-            record.settled === undefined ||
-            record.settled.finishReason === TASK_OWNER_LOST_FINISH_REASON;
+          captured.replacedInference =
+            record.settled?.finishReason === TASK_OWNER_LOST_FINISH_REASON;
+          captured.newlySettled = record.settled === undefined || captured.replacedInference;
           captured.settled = next;
           return next;
         },
         true,
         () =>
           captured.newlySettled && captured.settled !== undefined
-            ? settlementOutbox(taskId, settlement)
+            ? settlementOutbox(taskId, settlement, captured.replacedInference)
             : [],
       ),
     );
@@ -1445,13 +1448,17 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
   /**
    * COR-1945 — a run that ends `failed` owes a notification. The entry commits with the settlement
    * or not at all, so a process that dies before the notification is written finds the debt at its
-   * next boot. Only a store that outlives the process is written to.
+   * next boot. COR-1946: so does a settlement that replaces `owner-lost` (`replacedInference`),
+   * whatever it says: a failure was notified for the inference, and the repair reads the task and
+   * dismisses that notification when the real result was not a failure. Only a store that outlives
+   * the process is written to.
    */
   function settlementOutbox(
     taskId: string,
     settlement: TaskSettlement,
+    replacedInference = false,
   ): readonly TextValueStoreBatchOperation[] {
-    return settlement.status === 'failed' && options.kv !== undefined
+    return (settlement.status === 'failed' || replacedInference) && options.kv !== undefined
       ? [{ type: 'set', key: notificationOutboxKey(taskId), value: '1' }]
       : [];
   }

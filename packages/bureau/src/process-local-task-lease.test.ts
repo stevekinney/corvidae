@@ -22,7 +22,7 @@
  */
 import { createManualRuntimeServices, type ManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { MemoryStorage, type Storage, textValueStore } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
@@ -67,11 +67,32 @@ function parkedUntil(finish: Promise<void>, outcome: 'completed' | 'failed'): Ge
     });
 }
 
+/** A storage that rejects every write to a notification record while `plan.armed`. */
+function failingNotificationWrites(real: Storage, plan: { armed: boolean }): Storage {
+  const reads = new Set(['get', 'scan', 'has', 'capabilities', 'list', 'keys']);
+  return new Proxy(real, {
+    get(target, property) {
+      const member = Reflect.get(target, property, target) as unknown;
+      if (typeof member !== 'function' || typeof property !== 'string') return member;
+      return (...args: unknown[]) => {
+        const text = JSON.stringify(args, (_key, value: unknown) =>
+          value instanceof Uint8Array ? new TextDecoder().decode(value) : value,
+        );
+        if (plan.armed && !reads.has(property) && text.includes('bureau-notification:v1:r:')) {
+          return Promise.reject(new Error('the notification write failed'));
+        }
+        return (member as (...a: unknown[]) => unknown).apply(target, args);
+      };
+    },
+  });
+}
+
 async function boot(
   database: ReturnType<typeof createSqliteStorageFixture>,
   atMilliseconds: number,
   maintenance: 'automatic' | 'manual' = 'automatic',
   outcome: 'completed' | 'failed' = 'completed',
+  failNotificationWrites?: { armed: boolean },
 ): Promise<Process> {
   const runtime = createManualRuntimeServices({ origin: new Date(atMilliseconds).toISOString() });
   let finishRuns = (): void => undefined;
@@ -92,7 +113,10 @@ async function boot(
         stopWhen: stopWhen.noToolCalls(),
       }),
     },
-    storage,
+    storage:
+      failNotificationWrites === undefined
+        ? storage
+        : failingNotificationWrites(storage, failNotificationWrites),
     durable: false,
     runtime,
     maintenance,
@@ -324,6 +348,53 @@ describe('a crashed process’s local tasks are settled by the next boot', () =>
       expect(open.notifications).toHaveLength(notified);
     },
   );
+
+  it('repairs at the next boot a false failure whose dismissal write failed', async () => {
+    const database = createSqliteStorageFixture();
+    cleanups.push(() => database.dispose());
+    const plan = { armed: false };
+    const stalled = await boot(database, ORIGIN_MS, 'automatic', 'completed', plan);
+    const taskId = await startTask(stalled);
+    const peer = await boot(database, ORIGIN_MS + 31 * SECOND);
+    await peer.bureau.recovery();
+    await waitUntil(
+      async () => {
+        const page = await peer.bureau.notifications.list({ owner: PRINCIPAL });
+        return page.notifications.length === 1;
+      },
+      { message: 'the inferred failure was notified' },
+    );
+
+    // The owner really completes, but the write that dismisses the false failure is rejected.
+    plan.armed = true;
+    stalled.finishRuns();
+    await waitUntil(
+      async () => {
+        const settled = await settledOf(peer, taskId);
+        return settled?.status === 'completed';
+      },
+      { message: 'the owner’s real settlement replaced owner-lost' },
+    );
+    await stalled.bureau.shutdown();
+    const stale = await peer.bureau.notifications.list({ owner: PRINCIPAL });
+    expect(stale.notifications).toHaveLength(1);
+    const owed = await textValueStore(peer.storage).list('bureau-notification:v1:o:');
+    expect(owed).toHaveLength(1);
+
+    // The next boot reads the task, finds it did not fail, and closes the debt.
+    const next = await boot(database, ORIGIN_MS + 120 * SECOND);
+    await next.bureau.recovery();
+    await waitUntil(
+      async () => {
+        const page = await next.bureau.notifications.list({ owner: PRINCIPAL });
+        const left = await textValueStore(next.storage).list('bureau-notification:v1:o:');
+        return page.notifications.length === 0 && left.length === 0;
+      },
+      { message: 'the boot dismissed the false failure and cleared the debt' },
+    );
+    const ever = await next.bureau.notifications.list({ owner: PRINCIPAL, includeDismissed: true });
+    expect(ever.notifications).toHaveLength(1);
+  });
 
   it('removes the lapsed lease of a stopped process once it owes no task, and keeps a live one', async () => {
     const database = createSqliteStorageFixture();
