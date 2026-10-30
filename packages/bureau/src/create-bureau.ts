@@ -16573,6 +16573,28 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
+   * COR-1942: a review this process no longer lists may be one someone decided. The peer's
+   * follower drops its copy once it reads the decision from the shared history, so whether a late,
+   * different decision answers `CONFLICT` (the decision record's answer while the peer still lists
+   * the review) or `NOT_FOUND` must not depend on when that read lands. The resolved-review record
+   * is keyed by the review id alone and outlives the task and the session's own fence, so it names
+   * the decision. Only a decision that differs is refused as lost; repeating the decision made is
+   * the documented `NOT_FOUND` of a resolved review. A review nothing recorded (expired, never
+   * asked, or swept by `retention.audit`) has no decision to conflict with.
+   */
+  async function refuseLostDecisionOfGoneReview(input: ResolveReviewInput): Promise<void> {
+    const decided = await resolvedReviewStore.get(input.id);
+    if (
+      decided !== undefined &&
+      (decided.decision !== input.decision ||
+        decided.decidedBy !== input.principal ||
+        decided.reason !== input.reason)
+    ) {
+      throw new BureauError(`Review with id "${input.id}" is already resolved`, 'CONFLICT');
+    }
+  }
+
+  /**
    * COR-1828 — what a decision's records keep beyond the decision itself. A human wait's approved
    * answer is kept as the digest the decision fence already took over its reference form
    * (`answerDigest`); a tool approval approved with `remember` names the tool its grant allows
@@ -16712,6 +16734,7 @@ async function constructBureau<const D extends AgentDefinitions>(
           resolvingReviewIds.delete(input.id);
         }
       }
+      await refuseLostDecisionOfGoneReview(input);
       throw new BureauError(`No pending review with id "${input.id}"`, 'NOT_FOUND');
     }
 
