@@ -81,7 +81,12 @@ async function withParentAndChild<T>(
     durable: true,
     children: {},
   });
-  const handler = createBureauHandler(bureau, { authentication, agUi: {} });
+  // Every agent opts into A2A, so a key with no scope may start it (COR-1904).
+  const handler = createBureauHandler(bureau, {
+    authentication,
+    a2aAgents: ['assistant', 'worker', 'default'],
+    agUi: {},
+  });
   try {
     const parent = new FrameReader(await handler(startRequest(runAgentInput(), as('alice-key'))));
     await parent.until(EventType.STEP_STARTED);

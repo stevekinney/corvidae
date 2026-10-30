@@ -32,6 +32,7 @@ import {
   type OperationHandlerMount,
   type Outbox,
   type AuthenticatedPrincipal,
+  type Principal,
   unauthenticatedLocalAuthContext,
 } from '@lostgradient/weft';
 import {
@@ -132,6 +133,7 @@ import {
   type DeploymentRecovery,
   describeOperations,
   type ListedAgent,
+  mayNameAgent,
 } from './management/deployment-operations.ts';
 import {
   type BureauWorkflowsOperationHost,
@@ -312,10 +314,11 @@ export type BureauHandlerOptions = {
    * code-defined agents and match {@link A2A_AGENT_NAME_PATTERN}, because a name served over A2A
    * becomes a URL path segment. Omitted, no code-defined agent opts in.
    *
-   * It governs code-defined agents only, and the A2A mount and what `bureau.agents.list` shows a
-   * caller without `bureau.agents:read` (COR-1904): every ready agent, code-defined or persisted,
-   * is listed to a caller holding that scope and can be started over AG-UI. A persisted agent (an
-   * agent file, COR-1524) opts in with `a2a: true` in its own frontmatter and is never named here.
+   * It governs code-defined agents only, and the A2A mount and what a caller without
+   * `bureau.agents:read` may list, start, schedule, or set goals for (COR-1904): every ready agent,
+   * code-defined or persisted, is listed to a caller holding that scope and can be started by it
+   * over AG-UI. A persisted agent (an agent file, COR-1524) opts in with `a2a: true` in its own
+   * frontmatter and is never named here.
    *
    * `bureau.agents.list`, `bureau.deployment.get`, and the A2A mount read the opt-in on every
    * request.
@@ -401,7 +404,10 @@ export type BureauHandlerOptions = {
    * one, and cancel one, as AG-UI 1.0 Server-Sent Events. Omitted, nothing is
    * mounted and those paths are the handler's ordinary 404.
    *
-   * Any ready agent can be started. The mount needs
+   * Any ready agent can be started by a caller holding `bureau.agents:read`; a
+   * caller without it starts only an agent that opts into A2A, and any other is
+   * `THREAD_NOT_FOUND`, as an unknown name is (COR-1904). Resuming a run does not
+   * ask. The mount needs
    * a Bureau with a durable engine, because its human-wait parks and its
    * run-creation receipts both do, and `createBureauHandler` throws at
    * construction without one. It is prepended to `mounts`, so Weft still refuses a
@@ -871,13 +877,20 @@ function listedAgentsOf(
 }
 
 /**
- * Whether an adapter may start `name`: the Bureau has a ready agent by that name, code-defined or
- * persisted. Read when asked, so an agent created or deleted takes effect on the next request.
+ * Whether a caller may start `name` through an adapter: the Bureau has a ready agent by that name,
+ * code-defined or persisted, and the caller may name it (`mayNameAgent`, COR-1904): any ready
+ * agent with `bureau.agents:read`, only one that opts into A2A without it. Read when asked, so an
+ * agent created or deleted takes effect on the next request.
  */
-function createStartable(bureau: BureauHandlerSource): {
-  readonly includes: (agentName: string) => boolean;
-} {
-  return { includes: (agentName) => bureau.agents.find(agentName) !== undefined };
+function createStartable(
+  bureau: BureauHandlerSource,
+  a2aAgents: readonly string[],
+): { readonly includes: (agentName: string, principal: Principal) => boolean } {
+  return {
+    includes: (agentName, principal) =>
+      bureau.agents.find(agentName) !== undefined &&
+      mayNameAgent(principal, agentName, () => listedAgentsOf(bureau, a2aAgents)),
+  };
 }
 
 /**
@@ -1103,6 +1116,10 @@ export function buildBureauHandlerHost(
       hasAgent: (name) => bureau.agents.find(name) !== undefined,
     },
     goals: bureau.goals,
+    agentVisibility: {
+      mayName: (principal, agentName) =>
+        mayNameAgent(principal, agentName, () => listedAgentsOf(bureau, a2aAgents)),
+    },
     memory: { governed: bureau.memory, tenantId: bureau.id },
     audit: {
       keepsTrail: () => bureau.internals.auditTrail !== undefined,
@@ -1182,7 +1199,7 @@ export function createBureauHandler(
                 mayAccess: host.ownership.mayAccess,
                 ownerOf: (resource) => bureau.ownerOf(resource),
               },
-              createStartable(bureau),
+              createStartable(bureau, options.a2aAgents ?? []),
               options.agUi,
             ),
           ]),

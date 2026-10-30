@@ -37,12 +37,17 @@ type Outcome =
   | { readonly kind: 'agents'; readonly names: readonly string[] }
   | { readonly kind: 'models' }
   | { readonly kind: 'deployment'; readonly agents: readonly string[] }
-  | { readonly kind: 'card'; readonly schemes: readonly string[] };
+  | { readonly kind: 'card'; readonly schemes: readonly string[] }
+  | { readonly kind: 'run-started' }
+  | { readonly kind: 'thread-not-found' }
+  | { readonly kind: 'schedule'; readonly agent: string }
+  | { readonly kind: 'unprocessable' };
 
 type Operation =
   | { readonly kind: 'send'; readonly agent: string }
   | { readonly kind: 'get-task' }
   | { readonly kind: 'card'; readonly agent: string }
+  | { readonly kind: 'ag-ui-start'; readonly agent: string }
   | { readonly kind: 'rpc'; readonly method: string; readonly params: unknown };
 
 type Row = {
@@ -53,6 +58,54 @@ type Row = {
   /** The row reads the local caller, which only a handler with `unauthenticatedAccess` serves. */
   readonly localCaller?: true;
 };
+
+function scheduleOf(agentName: string) {
+  return { agentName, spec: '1h', input: 'Hello' };
+}
+
+function goalOf(agentName: string) {
+  return {
+    agentName,
+    prompt: 'Hello',
+    identity: { name: 'goal', version: '1' },
+    validator: { name: 'unregistered', version: '1' },
+    bounds: { maximumAttempts: 1, maximumTotalSteps: 5 },
+  };
+}
+
+let threads = 0;
+
+/** A new AG-UI run of `agent`, answered with whether it started or was refused as missing. */
+async function startOverAgUi(
+  opened: OpenedBureau,
+  agent: string,
+  credential: Credential,
+): Promise<Outcome> {
+  threads += 1;
+  const response = await opened.handler(
+    new Request(`${PUBLIC_URL}/ag-ui/agents/${agent}/run`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        Accept: 'text/event-stream',
+        ...headersOf(credential),
+      },
+      body: JSON.stringify({
+        threadId: `thread-${threads}`,
+        runId: `run-${threads}`,
+        messages: [{ id: `message-${threads}`, role: 'user', content: 'Hello' }],
+        tools: [],
+        context: [],
+        state: {},
+        forwardedProps: {},
+      }),
+    }),
+  );
+  const text = await response.text();
+  if (text.includes('THREAD_NOT_FOUND')) return { kind: 'thread-not-found' };
+  if (text.includes('RUN_STARTED')) return { kind: 'run-started' };
+  throw new Error(`unexpected AG-UI answer ${response.status}: ${text.slice(0, 200)}`);
+}
 
 const EVERY_AGENT = ['closed', 'default', 'open'];
 
@@ -173,6 +226,59 @@ const ROWS: readonly Row[] = [
     operation: { kind: 'rpc', method: 'bureau.deployment.get', params: {} },
     expected: { kind: 'deployment', agents: EVERY_AGENT },
   },
+  // Starting an agent is seeing it: chat, schedules and goals name an agent too, so a caller
+  // without `bureau.agents:read` starts only the agents it is listed, and a hidden one answers as
+  // an unknown name does. The owner still starts any ready agent (COR-1864).
+  {
+    caller: 'A2A credential',
+    credential: A2A_KEY,
+    operation: { kind: 'ag-ui-start', agent: 'closed' },
+    expected: { kind: 'thread-not-found' },
+  },
+  {
+    caller: 'A2A credential',
+    credential: A2A_KEY,
+    operation: { kind: 'ag-ui-start', agent: 'open' },
+    expected: { kind: 'run-started' },
+  },
+  {
+    caller: 'A2A credential',
+    credential: A2A_KEY,
+    operation: { kind: 'rpc', method: 'bureau.schedules.create', params: scheduleOf('closed') },
+    expected: { kind: 'not-found' },
+  },
+  {
+    caller: 'A2A credential',
+    credential: A2A_KEY,
+    operation: { kind: 'rpc', method: 'bureau.goals.create', params: goalOf('closed') },
+    expected: { kind: 'not-found' },
+  },
+  {
+    caller: 'owner (local)',
+    credential: NONE,
+    operation: { kind: 'ag-ui-start', agent: 'closed' },
+    expected: { kind: 'run-started' },
+    localCaller: true,
+  },
+  {
+    caller: 'operator credential',
+    credential: OPERATOR_KEY,
+    operation: { kind: 'ag-ui-start', agent: 'closed' },
+    expected: { kind: 'run-started' },
+  },
+  {
+    caller: 'operator credential',
+    credential: OPERATOR_KEY,
+    operation: { kind: 'rpc', method: 'bureau.schedules.create', params: scheduleOf('closed') },
+    expected: { kind: 'schedule', agent: 'closed' },
+  },
+  {
+    // Past the visibility check, the goal is refused for its unregistered validator.
+    caller: 'operator credential',
+    credential: OPERATOR_KEY,
+    operation: { kind: 'rpc', method: 'bureau.goals.create', params: goalOf('closed') },
+    expected: { kind: 'unprocessable' },
+  },
 ];
 
 function headersOf(credential: Credential): Record<string, string> {
@@ -191,9 +297,11 @@ function managementOutcome(status: number, body: any): Outcome {
     const httpStatus = error.data?.httpStatus;
     if (httpStatus === 404) return { kind: 'not-found' };
     if (httpStatus === 403) return { kind: 'forbidden' };
+    if (httpStatus === 422) return { kind: 'unprocessable' };
     throw new Error(`unexpected error ${JSON.stringify(error)}`);
   }
   const result = body.result;
+  if (typeof result.agentName === 'string') return { kind: 'schedule', agent: result.agentName };
   if (Array.isArray(result.agents) && result.id !== undefined) {
     return { kind: 'deployment', agents: sortedNames(result.agents) };
   }
@@ -215,6 +323,7 @@ async function outcomeOf(opened: OpenedBureau, row: Row): Promise<Outcome> {
     expect(card.securityRequirements.length).toBeGreaterThan(0);
     return { kind: 'card', schemes: sortedNames(Object.keys(card.securitySchemes)) };
   }
+  if (operation.kind === 'ag-ui-start') return startOverAgUi(opened, operation.agent, credential);
   if (operation.kind === 'rpc') {
     const response = await opened.handler(
       new Request(`${PUBLIC_URL}/jsonrpc`, {
@@ -261,7 +370,7 @@ for (const variant of VARIANTS)
         },
         a2aAgents: ['open'],
         localAccess: variant.localAccess,
-        handlerOptions: { publicUrl: PUBLIC_URL },
+        handlerOptions: { publicUrl: PUBLIC_URL, agUi: {} },
       });
     });
     afterAll(async () => {

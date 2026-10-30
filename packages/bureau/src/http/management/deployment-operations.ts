@@ -71,9 +71,35 @@ export function agentsVisibleTo(
   principal: Principal,
   agents: readonly ListedAgent[],
 ): readonly ListedAgent[] {
-  const wide = principal.method !== 'unauthenticated' && principal.hasScope(AGENTS_WIDE_VIEW_SCOPE);
-  return wide ? agents : agents.filter((agent) => agent.a2a);
+  return holdsWideView(principal) ? agents : agents.filter((agent) => agent.a2a);
 }
+
+function holdsWideView(principal: Principal): boolean {
+  return principal.method !== 'unauthenticated' && principal.hasScope(AGENTS_WIDE_VIEW_SCOPE);
+}
+
+/**
+ * Whether `principal` may name `agentName` where an operation starts or schedules it (COR-1904):
+ * always with `bureau.agents:read`, so the owner starts any ready agent as before (COR-1864), and
+ * otherwise only when {@link agentsVisibleTo} lists it. A caller that may not name an agent is
+ * answered as if it did not exist. Whether the agent exists is the caller's own check.
+ */
+export function mayNameAgent(
+  principal: Principal,
+  agentName: string,
+  agents: () => readonly ListedAgent[],
+): boolean {
+  if (holdsWideView(principal)) return true;
+  return agentsVisibleTo(principal, agents()).some((agent) => agent.name === agentName);
+}
+
+/** What the operations that start or schedule an agent read to decide who may name it. */
+export type BureauAgentVisibilityHost = {
+  readonly agentVisibility: {
+    /** {@link mayNameAgent} over the deployment's listed agents. */
+    readonly mayName: (principal: Principal, agentName: string) => boolean;
+  };
+};
 
 /**
  * Every operation's schema version today. An operation's wire contract changing
