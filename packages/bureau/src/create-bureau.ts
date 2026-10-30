@@ -17446,6 +17446,26 @@ async function constructBureau<const D extends AgentDefinitions>(
     if (sessionId === undefined) return undefined;
     // Read through the log catch-up, not the gate alone: another process on a shared durable
     // backend may have admitted a mode since this process last polled.
+    const incarnation = runSessionIncarnations.get(runId);
+    const kv = durableSteeringStore();
+    if (incarnation !== undefined && kv !== undefined) {
+      // Pinned to the incarnation the run started in: a chat deleted, or deleted and recreated,
+      // by another process rejects (the hook counts that as `read-only`) instead of reading
+      // the replacement's mode, or none.
+      const current = await runtime.sessionStore.load(sessionId);
+      if (current?.incarnation !== incarnation) {
+        throw new BureauError(
+          `Session "${sessionId}" no longer has incarnation "${incarnation}".`,
+          'CONFLICT',
+        );
+      }
+      const cursor = await enqueueSteering(sessionId, () =>
+        catchUpSteering(kv, sessionId, incarnation),
+      );
+      return cursor.gate.getDesiredState().permissionMode ?? 'on-changes';
+    }
+    // A run with no incarnation yet (a fresh schedule fire whose session does not exist) has no
+    // chat to steer.
     const steering = await getSessionSteering(sessionId);
     return steering?.permissionMode ?? 'on-changes';
   }

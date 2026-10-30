@@ -382,3 +382,76 @@ describe('the steer request (COR-1936)', () => {
     expect(outcome).toMatchObject({ outcome: 'rejected', failure: { reason: 'policy-denied' } });
   });
 });
+
+describe('two Bureau processes on one backend (COR-1936)', () => {
+  /** A and B share storage; A's run of `contextId` is held inside its second model step. */
+  async function twoProcesses() {
+    const storage = new MemoryStorage();
+    const directory = await mkdtemp(join(tmpdir(), 'bureau-permission-mode-shared-'));
+    roots.push(directory);
+    const a = await open('{ issue-refund: never }', { directory, storage });
+    const b = await open('{ issue-refund: never }', { directory, storage });
+    return { a, b };
+  }
+
+  /** Starts a second run of the chat in A and holds it while it generates its refund call. */
+  async function generating(a: Opened, contextId: string, orderId: string) {
+    const entered = Promise.withResolvers<void>();
+    const released = Promise.withResolvers<void>();
+    steps.push(async () => {
+      entered.resolve();
+      await released.promise;
+      return call('issue-refund', orderId);
+    });
+    const task = await a.bureau.tasks.start('helper', 'Again.', {
+      principal: OWNER.alice,
+      contextId,
+    });
+    await entered.promise;
+    return { task, release: () => released.resolve() };
+  }
+
+  it('denies the call when another process admits read-only during the generation', async () => {
+    const { a, b } = await twoProcesses();
+    const first = await ask(a.bureau, 'read-order', 'Y1');
+    const run = await generating(a, first.contextId, 'Y2');
+    const body = await b.steer(first.contextId, 'b-live', { permissionMode: 'read-only' });
+    expect(body.result).toMatchObject({ outcome: 'accepted' });
+    run.release();
+    await run.task.result();
+    expect(executed).toEqual(['read-order:Y1']);
+    expect(pendingOf(a.bureau, run.task.id)).toHaveLength(0);
+  });
+
+  it('denies the call when another process deletes the chat during the generation', async () => {
+    const { a, b } = await twoProcesses();
+    const first = await ask(a.bureau, 'read-order', 'Z1');
+    await b.steer(first.contextId, 'b-read-only', { permissionMode: 'read-only' });
+    const run = await generating(a, first.contextId, 'Z2');
+    await b.bureau.contexts.delete(first.contextId);
+    run.release();
+    await run.task.result().catch(() => undefined);
+    expect(executed).toEqual(['read-order:Z1']);
+  });
+
+  it('denies the call when another process deletes and recreates the chat during the generation', async () => {
+    const { a, b } = await twoProcesses();
+    const first = await ask(a.bureau, 'read-order', 'W1');
+    await b.steer(first.contextId, 'b-read-only', { permissionMode: 'read-only' });
+    const run = await generating(a, first.contextId, 'W2');
+    await b.bureau.contexts.delete(first.contextId);
+    const recreated = await ask(b.bureau, 'read-order', 'W3', first.contextId);
+    expect(recreated.contextId).toBe(first.contextId);
+    run.release();
+    await run.task.result().catch(() => undefined);
+    expect(executed).toEqual(['read-order:W1', 'read-order:W3']);
+  });
+
+  it('does not deny a run that has no session yet', async () => {
+    const { a } = await twoProcesses();
+    const fresh = await ask(a.bureau, 'issue-refund', 'V1');
+    // A fresh chat is on-changes: the never-set refund runs; it was not denied as unreadable.
+    expect(executed).toEqual(['issue-refund:V1']);
+    expect(pendingOf(a.bureau, fresh.id)).toHaveLength(0);
+  });
+});
