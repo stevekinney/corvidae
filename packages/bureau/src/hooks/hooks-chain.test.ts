@@ -49,6 +49,7 @@ function setup(startedByHook: (runId: string) => Promise<string | undefined>) {
     startedByHook,
     workflows: () => ({
       assertStartable: () => undefined,
+      findStart: () => Promise.resolve(undefined),
       start: (_id, options) => {
         if (!loaded.ready) {
           return Promise.reject(

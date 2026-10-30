@@ -323,6 +323,15 @@ export interface BureauWorkflows {
    */
   readonly start: (id: string, options: WorkflowStartOptions) => Promise<WorkflowStartResult>;
   /**
+   * The instance a {@link start} with this `idempotencyKey` created, or `undefined` when no start
+   * with it has committed (COR-1951). Read-only, and it does not look at the workflow file: it
+   * answers even after the file was edited, paused, or deleted, so a caller that cannot tell
+   * whether its start committed (a crash before its own receipt) can find out before it
+   * validates or starts anything. Throws Weft's `IdempotencyKeyPurgedError` when the key was used
+   * but its instance has been purged, as `start` does.
+   */
+  readonly findStart: (idempotencyKey: string) => Promise<WorkflowStartResult | undefined>;
+  /**
    * The source of the code-defined workflow `id`, or `undefined` when the engine has no such
    * workflow or `id` is a workflow Bureau registered from a file (read those with `get`).
    */
@@ -1329,6 +1338,16 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         );
       }
       return { runId: handle.id, workflow: id, workflowVersion: pinned ?? file.version };
+    },
+
+    async findStart(idempotencyKey) {
+      const state = await engine.getByIdempotencyKey(idempotencyKey);
+      if (state === null) return undefined;
+      return {
+        runId: state.id,
+        workflow: state.type,
+        workflowVersion: state.versionTuple.workflowVersion,
+      };
     },
 
     getCode(id) {

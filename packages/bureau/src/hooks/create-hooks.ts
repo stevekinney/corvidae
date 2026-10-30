@@ -22,8 +22,10 @@
  *   Input the workflow's `inputSchema` refuses is recorded on the delivery as a `rejected` attempt
  *   and ends it `failed`: it is not retried, because the same event gives the same input. A start
  *   is keyed `hook:<hookId>:<deliveryId>` (Weft's `idempotencyKey`), so a delivery retried or
- *   resumed after an interrupted attempt starts one run. The hook owner's authority is checked when
- *   the hook is written and again for every delivery: in v1 only the deployment's owner of record
+ *   resumed after an interrupted attempt starts one run, and one whose start had already committed
+ *   is delivered with that run, whatever the workflow file says by then
+ *   (`BureauWorkflows.findStart`). The hook owner's authority is checked when the hook is written
+ *   and again for every delivery: in v1 only the deployment's owner of record
  *   (`anonymous:local`) may own such a hook, because the Bureau knows an owner but not the scopes
  *   its credential held, so it cannot re-check a scope when an event fires. The instance it
  *   starts is tagged (`hook-origin.ts`), and a `start-workflow` hook acts only on events it can
@@ -215,7 +217,8 @@ export interface HooksDependencies {
   readonly urlPolicy?: HookUrlPolicy | undefined;
   /** The Bureau's workflows, read when needed; `undefined` while it has none. */
   readonly workflows?:
-    (() => Pick<BureauWorkflows, 'start' | 'assertStartable'> | undefined) | undefined;
+    | (() => Pick<BureauWorkflows, 'start' | 'assertStartable' | 'findStart'> | undefined)
+    | undefined;
   /** The Bureau's notifications, read when needed. */
   readonly notifications?: (() => Pick<BureauNotifications, 'create'> | undefined) | undefined;
   /**
@@ -499,6 +502,19 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         const workflows = dependencies.workflows?.();
         if (workflows === undefined) {
           throw new HookActionError('This Bureau has no workflow directory', true);
+        }
+        // A start may have committed before the delivery's receipt was written (a crash, or a lost
+        // response). Its run is the answer whatever the workflow file says now: the file may since
+        // have been edited, paused, or deleted, and validating against it would end a delivery
+        // `failed` for a run that did start. Only a lookup that cannot answer is an error, and it is
+        // retried: it says nothing about whether a run exists.
+        try {
+          const committed = await workflows.findStart(key);
+          if (committed !== undefined) return { runId: committed.runId };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const purged = (error as { readonly code?: unknown } | null)?.code;
+          throw new HookActionError(message, purged === 'IdempotencyKeyPurgedError');
         }
         try {
           const started = await workflows.start(work.workflowId, {
