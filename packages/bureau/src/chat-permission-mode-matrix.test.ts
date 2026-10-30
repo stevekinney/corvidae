@@ -11,7 +11,12 @@ import { join } from 'node:path';
 
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { createTool, createToolbox } from 'armorer';
+import {
+  createProcessLocalGrantStateStore,
+  createTool,
+  createToolbox,
+  type ToolRequestContext,
+} from 'armorer';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
@@ -64,6 +69,20 @@ const generate: GenerateFunction = async ({ conversation }) => {
 
 const parksOnApproval = [stopWhen.pendingApproval(), stopWhen.noToolCalls()];
 
+/** Where a code agent's toolbox keeps its reusable grants, and the authority its runs carry. */
+const grants = createProcessLocalGrantStateStore();
+let grantedAuthority: ToolRequestContext | undefined;
+const grantedToolbox = createToolbox(OWN_TOOLS, {
+  approvalSecret: SECRET,
+  approvalPolicy: { mode: 'on-mutation' },
+  grantStateStore: grants,
+  policy: {
+    beforeExecute(context) {
+      grantedAuthority = context.policyContext?.['requestContext'] as ToolRequestContext;
+    },
+  },
+});
+
 const AGENTS = {
   // A code agent whose toolbox has no opinion of its own about approvals.
   coder: createAgent({
@@ -90,6 +109,13 @@ const AGENTS = {
       approvalSecret: SECRET,
       approvalPolicy: { mode: 'on-mutation' },
     }),
+    stopWhen: parksOnApproval,
+  }),
+  // A toolbox a reusable grant can answer an `approvalPolicy` ask of.
+  granted: createAgent({
+    name: 'granted',
+    generate,
+    toolbox: grantedToolbox,
     stopWhen: parksOnApproval,
   }),
   // A code agent that does not stop on an approval.
@@ -411,6 +437,68 @@ describe('asking in always (COR-1947)', () => {
 
     expect(executed).toEqual([]);
     expect(approvalOf(asked.id).approval.toolName).toBe('issue-refund');
+  });
+});
+
+describe('a reusable grant (COR-1947)', () => {
+  /** A grant for the refund, issued to the authority `granted`'s runs carry. */
+  async function issueGrant(): Promise<string> {
+    const probe = await openChat('granted', 'on-changes');
+    await callIn('granted', probe, 'read-order');
+    executed.length = 0;
+    if (grantedAuthority === undefined) throw new Error('Expected a run to carry an authority.');
+    const { authority, agentId } = grantedAuthority;
+    const grant = await grantedToolbox.issueGrant({
+      principalId: authority.principalId,
+      tenantId: authority.tenantId,
+      ownerId: authority.ownerId,
+      agentId: agentId ?? 'granted',
+      toolName: 'issue-refund',
+      scope: 'principal',
+      expiresAt: Number.MAX_SAFE_INTEGER,
+      maxUses: 5,
+      delegationBehavior: 'does-not-propagate',
+    });
+    return grant.id;
+  }
+
+  const usesLeft = async (id: string) => {
+    const grant = await grants.get(id);
+    return grant?.usesRemaining;
+  };
+
+  it('answers the ask of a chat the mode leaves to the toolbox', async () => {
+    const id = await issueGrant();
+    const contextId = await openChat('granted', 'on-changes');
+
+    const task = await callIn('granted', contextId, 'issue-refund');
+
+    expect(reviewsOf(task.id)).toHaveLength(0);
+    expect(executed).toEqual(['issue-refund']);
+    expect(await usesLeft(id)).toBe(4);
+  });
+
+  it('does not run a call a chat in read-only denies, and is not spent on it', async () => {
+    const id = await issueGrant();
+    const contextId = await openChat('granted', 'read-only');
+
+    const task = await callIn('granted', contextId, 'issue-refund');
+
+    expect(reviewsOf(task.id)).toHaveLength(0);
+    expect(lastToolResult).toContain('denied');
+    expect(executed).toEqual([]);
+    expect(await usesLeft(id)).toBe(5);
+  });
+
+  it('does not answer the ask of a chat in always, and is not spent on it', async () => {
+    const id = await issueGrant();
+    const contextId = await openChat('granted', 'always');
+
+    const task = await callIn('granted', contextId, 'issue-refund');
+
+    expect(approvalOf(task.id).approval.toolName).toBe('issue-refund');
+    expect(executed).toEqual([]);
+    expect(await usesLeft(id)).toBe(5);
   });
 });
 

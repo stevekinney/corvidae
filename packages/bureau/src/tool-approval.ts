@@ -60,7 +60,6 @@ import {
   type ToolPolicyHooks,
   type AnyToolbox,
   createApprovalPolicyHooks,
-  resolveToolPolicyAllow,
 } from 'armorer';
 
 import { withToolboxLayer } from './toolbox-additions';
@@ -230,9 +229,9 @@ function chatPermissionDecision(
 }
 
 /**
- * A tool's own policy with the chat's mode in front of it. A single decision, because a call that
- * two policies each paused on would be put to a person twice: a denial wins, and a tool that already
- * asks asks once.
+ * A tool's own policy with the chat's mode in front of it. The mode decides in `beforeAdmission`, so
+ * no reusable grant can answer or be spent on a call it stops. A call the mode asks about is put to
+ * a person once, so an approval the tool's own policy would ask for as well is dropped.
  */
 function withChatPermissionDecision(
   policy: ToolConfiguration['policy'],
@@ -240,14 +239,17 @@ function withChatPermissionDecision(
 ): NonNullable<ToolConfiguration['policy']> {
   return {
     ...policy,
-    async beforeExecute(context) {
+    async beforeAdmission(context) {
       const chat = chatPermissionDecision(context, standing);
-      if (chat.status === 'deny') return chat;
+      return chat.status === 'allow' ? await policy?.beforeAdmission?.(context) : chat;
+    },
+    async beforeExecute(context) {
       const own = await policy?.beforeExecute?.(context);
-      if (chat.status === 'allow') return own;
-      if (own === false) return own;
-      const decision = typeof own === 'object' ? resolveToolPolicyAllow(own) : { allow: true };
-      return decision.allow ? { ...decision, ...chat } : decision;
+      const asksTwice =
+        typeof own === 'object' &&
+        own.status === 'needs_approval' &&
+        chatPermissionDecision(context, standing).status === 'needs_approval';
+      return asksTwice ? { allow: true, status: 'allow' } : own;
     },
   };
 }

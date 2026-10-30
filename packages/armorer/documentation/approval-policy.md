@@ -47,11 +47,12 @@ combineApprovalStatuses('allow', 'allow'); // 'allow'
 In `createToolbox`, this precedence is enforced by evaluation order:
 
 1. The legacy boolean gates (`readOnly` / `allowMutation` / `allowDangerous`) run first. Any denial here is terminal — nothing downstream can be more restrictive than `deny`, so it's safe to short-circuit immediately.
-2. The capability policy runs next. A `deny` is likewise terminal and short-circuits immediately. A capability `ask`, however, does **not** short-circuit — it's remembered, but registry- and tool-level `policy.beforeExecute` hooks still run.
-3. The registry-level hook, then the tool-level hook, each run and can deny outright, regardless of what the capability policy decided.
-4. Only if neither hook denies is the remembered capability `ask` returned.
+2. Each `beforeAdmission` hook runs next, the registry's and then the tool's. A denial is terminal, and a pause is remembered and keeps any reusable grant from being looked up or spent on the call, so a host can state a rule no grant answers.
+3. The capability policy runs next. A `deny` is likewise terminal and short-circuits immediately. A capability `ask`, however, does **not** short-circuit — it's remembered, but registry- and tool-level `policy.beforeExecute` hooks still run.
+4. The registry-level hook, then the tool-level hook, each run and can deny outright, regardless of what the capability policy decided.
+5. Only if neither hook denies is a remembered pause returned.
 
-Step 2 not short-circuiting on `ask` matters specifically for approval resume: a capability `ask` pauses the call as a `needs_approval` action, and the _same_ `beforeExecute` chain runs again once a human approves it. If an `ask` had short-circuited past the registry/tool hooks on that first call, approving the capability ask would silently skip whatever those hooks might have denied — a human approving "this tool needs approval because it mutates" would unknowingly also be approving past a registry policy that would have denied the call outright. Running the hooks on every evaluation (not just re-checking the remembered `ask`) closes that gap.
+Step 3 not short-circuiting on `ask` matters specifically for approval resume: a capability `ask` pauses the call as a `needs_approval` action, and the _same_ `beforeExecute` chain runs again once a human approves it. If an `ask` had short-circuited past the registry/tool hooks on that first call, approving the capability ask would silently skip whatever those hooks might have denied — a human approving "this tool needs approval because it mutates" would unknowingly also be approving past a registry policy that would have denied the call outright. Running the hooks on every evaluation (not just re-checking the remembered `ask`) closes that gap.
 
 That ordering is what makes composition with persona/skill layers safe: a persona's tool policy (see `operative`'s `createPolicyEnforcementHook`) can make a dangerous tool _visible_ to the model by allow-listing its name, but it can never make armorer _execute_ it — the capability tier's `deny` is decided before any hook a persona or skill could influence ever runs, and even a capability `ask` still routes through every other layer before it's honored.
 

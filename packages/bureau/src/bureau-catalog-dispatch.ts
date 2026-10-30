@@ -630,7 +630,8 @@ export function createCatalogDispatcher({
         : undefined;
     const composeResolvedOptions = (resolved: RunOptions): RunOptions => {
       const withRuntime: RunOptions = { runtime: runtimeServices, ...resolved };
-      // COR-1947: a dispatch can name a chat, so it runs under the chat's mode as a session run does.
+      // COR-1947: held as every run's toolbox is. A run that belongs to no chat, as a child and a
+      // workflow step do not, has no mode, and is left to its toolbox.
       const toolbox = runtime.withChatPermission(withRuntime.toolbox, runId);
       return {
         ...withRuntime,
