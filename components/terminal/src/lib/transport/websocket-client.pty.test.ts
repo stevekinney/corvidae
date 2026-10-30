@@ -137,7 +137,8 @@ const scenario = await outcomeOf(async () => {
     }
     expect(accepted).toBe(true);
     const stopped = await client.stop();
-    expect(stopped.outcome).toBe('complete');
+    // The source names who reported it: `host` is the server's cleanup, `local` a transport that ended first.
+    expect(`${stopped.outcome} from ${stopped.source}`).toBe('complete from host');
   } finally {
     await terminal.close();
     await server.stop(true);

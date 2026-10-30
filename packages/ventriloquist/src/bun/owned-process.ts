@@ -12,6 +12,14 @@ import type { ProcessExit, SpawnedProcess } from './process-types.ts';
 /** How often a terminating group is probed for remaining members. */
 const POLL_MILLISECONDS = 20;
 
+/**
+ * How many times the process table is read before the owned scope is reported `unknown` for want of
+ * a readable table. A read that fails once on a busy host (`ps` exiting nonzero, a row torn by a
+ * process that exited mid-listing) says nothing about the scope; a table that stays unreadable does.
+ * Counted by attempts, never by a timer.
+ */
+const TABLE_READ_ATTEMPTS = 3;
+
 export type OwnedProcessOptions = {
   readonly operations: ProcessGroupOperations;
   readonly clock: SessionClock;
@@ -176,11 +184,14 @@ export class OwnedProcess {
   }
 
   async #observeScope(root: number): Promise<CleanupOutcome> {
-    try {
-      const table = await this.#options.readProcessTable();
-      return descendantsOutsideGroup(table, root, root).length === 0 ? 'complete' : 'unknown';
-    } catch {
-      return 'unknown';
+    for (let attempt = 1; attempt <= TABLE_READ_ATTEMPTS; attempt += 1) {
+      try {
+        const table = await this.#options.readProcessTable();
+        return descendantsOutsideGroup(table, root, root).length === 0 ? 'complete' : 'unknown';
+      } catch {
+        // Read again: only a table that stays unreadable leaves the scope unobserved.
+      }
     }
+    return 'unknown';
   }
 }
