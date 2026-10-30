@@ -24,6 +24,7 @@
 <script lang="ts">
   import type { PopoverProps } from './popover.types.ts';
   import { onDestroy, untrack } from 'svelte';
+  import type { Attachment } from 'svelte/attachments';
   import type { Placement } from '@floating-ui/dom';
   import { createAnchoredOverlay } from '../../_internal/anchored-overlay.svelte.ts';
   import { createAnchoredOverlayExitState } from '../../_internal/anchored-overlay-exit.svelte.ts';
@@ -100,6 +101,19 @@
     });
   });
   const drawerTitle = $derived(label ?? 'Popover');
+
+  // The Drawer owns initial focus in the sheet, and it honors an autofocused
+  // child over its body, so the caller's `initialFocus` choice (a calendar's
+  // selected day, say) is marked `autofocus` as the sheet content mounts. The
+  // content remounts with each open, so the choice is made per session.
+  const markInitialSheetFocus: Attachment<HTMLDivElement> = (content) => {
+    const target = initialFocus?.(content);
+    if (!target || !content.contains(target)) return;
+    target.autofocus = true;
+    return () => {
+      target.autofocus = false;
+    };
+  };
 
   let triggerWrapper: HTMLDivElement | undefined = $state();
   let portalScopeElement: HTMLDivElement | undefined = $state();
@@ -314,6 +328,9 @@
       lastAnchorElement = null;
       lastResolvedPortalTarget = null;
       lastPositionStyle = '';
+      // The bottom Drawer reports its own exit (below): this anchored
+      // lifecycle had no panel to wait on, so it finished at once.
+      if (sheetForm === 'drawer') return;
       // Lets a consumer composing Popover (e.g. Combobox's listbox/empty-state
       // panels) decouple its own wrapping `{#if}` from the live open state
       // (CIN-376 round 20 review): a composed `{#if listboxVisible}` keyed
@@ -593,6 +610,7 @@
     triggerRef={resolvedAnchorElement}
     dragHandleVisible
     class="cinder-popover__sheet"
+    onExitComplete={() => onExitComplete?.()}
   >
     <!-- The Drawer is the dialog, so a dialog popover's content needs no
          second dialog role; the id stays so the trigger's aria-controls
@@ -604,6 +622,7 @@
       aria-labelledby={role === 'dialog' ? undefined : ariaLabelledby}
       class={classNames('cinder-popover__sheet-content', className)}
       data-cinder-sheet="drawer"
+      {@attach markInitialSheetFocus}
     >
       {@render children()}
     </div>

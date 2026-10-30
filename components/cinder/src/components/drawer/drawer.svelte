@@ -45,6 +45,7 @@
     header,
     children,
     footer,
+    onExitComplete,
     ...rest
   }: DrawerProps = $props();
 
@@ -90,6 +91,7 @@
     getTriggerRef: () => triggerRef,
     onClosed: () => {
       activePlacement = undefined;
+      onExitComplete?.();
     },
     // Host-managed initial focus (the Modal policy, via the trap's
     // `manageInitialFocus: false` opt-out): focus the body container unless a
@@ -178,6 +180,7 @@
         restoreFocusTo(returnTarget);
       }
       activePlacement = undefined;
+      onExitComplete?.();
     }
   });
 

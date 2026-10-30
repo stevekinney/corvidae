@@ -132,6 +132,47 @@ describe('Popover sheetBelow', () => {
     expect(document.body.querySelector('dialog.cinder-drawer')).toBeNull();
   });
 
+  test("the bottom Drawer focuses the caller's initialFocus choice", async () => {
+    setTestViewportWidth(375);
+    const twoButtons = createRawSnippet(() => ({
+      render: () =>
+        `<div><button type="button">First day</button><button type="button" data-selected>Selected day</button></div>`,
+      setup: () => {},
+    }));
+    openPopover({
+      children: twoButtons,
+      initialFocus: (panel: HTMLElement) => panel.querySelector<HTMLElement>('[data-selected]'),
+    });
+
+    await waitFor(() => {
+      if (document.activeElement?.textContent !== 'Selected day') {
+        throw new Error(`focus is on ${document.activeElement?.className ?? 'nothing'}`);
+      }
+    });
+  });
+
+  test('onExitComplete waits for the bottom Drawer to finish closing', async () => {
+    setTestViewportWidth(375);
+    const panelPresentAtExit: boolean[] = [];
+    openPopover({
+      onExitComplete: () => {
+        panelPresentAtExit.push(document.body.querySelector('.cinder-drawer__panel') !== null);
+      },
+    });
+    let close: HTMLButtonElement | null = null;
+    await waitFor(() => {
+      close = document.body.querySelector<HTMLButtonElement>('.cinder-drawer__close');
+      if (!close) throw new Error('close button not rendered');
+    });
+    expect(panelPresentAtExit).toEqual([]);
+
+    await fireEvent.click(close!);
+    await waitFor(() => {
+      if (panelPresentAtExit.length === 0) throw new Error('exit not reported');
+    });
+    expect(panelPresentAtExit).toEqual([false]);
+  });
+
   test('rejects a sheetBelow that is not a CSS length', () => {
     expect(() => openPopover({ sheetBelow: 'small' })).toThrow(
       'Popover sheetBelow must be a CSS length such as "640px", or false.',

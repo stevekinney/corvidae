@@ -64,6 +64,13 @@ export type DrawerProps = {
   children: Snippet;
   /** Optional footer (e.g. action buttons). */
   footer?: Snippet;
+  /**
+   * Called once a close has fully finished: after the modal drawer's exit
+   * transition and unmount, or as soon as a non-modal drawer closes. A
+   * consumer that wraps Drawer in its own `{#if}` clears that gate here, so
+   * the exit transition plays before the instance is destroyed.
+   */
+  onExitComplete?: () => void;
 } & Omit<
   HTMLDialogAttributes,
   | 'open'

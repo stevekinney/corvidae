@@ -67,6 +67,12 @@ const schema = {
         description: 'Custom header. Falls back to a default header that renders `title`.',
       },
       {
+        name: 'onExitComplete',
+        reason: 'function-or-snippet',
+        description:
+          "Called once a close has fully finished: after the modal drawer's exit\ntransition and unmount, or as soon as a non-modal drawer closes. A\nconsumer that wraps Drawer in its own `{#if}` clears that gate here, so\nthe exit transition plays before the instance is destroyed.",
+      },
+      {
         name: 'triggerRef',
         reason: 'unknown-shape',
         description:
