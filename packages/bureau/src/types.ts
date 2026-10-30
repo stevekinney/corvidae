@@ -49,6 +49,7 @@ import type {
   TaskRegistry,
   TaskView,
 } from './task-registry';
+import type { StartTaskOrigin } from './task-origin';
 import type { InteractiveSurfaces } from './interactive-surface/store';
 import type { ToolPolicy } from 'armorer/protocol';
 import type { AgentSource, WorkflowSource } from './sources/definition-source';
@@ -1311,6 +1312,14 @@ export interface StartTaskOptions {
   readonly commandId?: string;
   /** Authenticated, request-scoped authority forwarded to Armorer tool execution. */
   readonly requestContext?: ToolRequestContext;
+  /**
+   * Where the task came from, recorded on its record and mirrored as the run's `origin:<kind>`
+   * tag (COR-1867). Only the kind, and for a person the surface, is declared; a chat's context,
+   * agent, and principal are the ones this start resolved. Omitted, the task's origin is
+   * `{ kind: 'api' }`. It is not part of the command a `commandId` identifies: a retry from
+   * another surface replays the original task and its origin.
+   */
+  readonly origin?: StartTaskOrigin;
   /** Aborts the task when it fires, from the moment the task starts executing. */
   readonly signal?: AbortSignal;
   /** The caller's trace context, the parent of the task's spans. */

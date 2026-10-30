@@ -445,6 +445,7 @@ describe('a message that is not a branch point', () => {
       incarnation: saved.incarnation,
       agentName: 'agent',
       owner: ALICE,
+      origin: { kind: 'api' },
       message: 'go',
     });
     await bureau.internals.taskRegistry.recordSettled(runId, {

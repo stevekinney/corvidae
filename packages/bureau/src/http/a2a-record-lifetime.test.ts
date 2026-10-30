@@ -183,6 +183,27 @@ describe('a deadline-expired task, which no run backs', () => {
   });
 });
 
+describe('where an A2A task came from (COR-1867)', () => {
+  it('is the API, for a task a peer’s message started and for one expired before it started', async () => {
+    await withBureau(async ({ bureau, handle }) => {
+      const handler = handle();
+      const started = await sendOn(handler, 'hello');
+      const expired = await sendOn(
+        handler,
+        'too late',
+        { metadata: { [COMMAND_RECEIPTS_EXTENSION_URI]: { deadline: '2000-01-01T00:00:00Z' } } },
+        { 'A2A-Extensions': COMMAND_RECEIPTS_EXTENSION_URI },
+      );
+
+      const startedRecord = await bureau.internals.taskRegistry.record(started.id);
+      const expiredRecord = await bureau.internals.taskRegistry.record(expired.id);
+
+      expect(startedRecord?.origin).toEqual({ kind: 'api' });
+      expect(expiredRecord?.origin).toEqual({ kind: 'api' });
+    });
+  });
+});
+
 describe('retention removing a task whose run the Bureau no longer holds', () => {
   it('deletes the task’s A2A record, as removing its run does', async () => {
     await withBureau(async ({ bureau, handle, runtime }) => {
@@ -194,6 +215,7 @@ describe('retention removing a task whose run the Bureau no longer holds', () =>
         incarnation: '',
         agentName: 'asker',
         owner: 'api-key:alice',
+        origin: { kind: 'api' },
         message: 'private words',
       });
       await bureau.internals.taskRegistry.recordSettled('runless-task', {

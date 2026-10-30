@@ -41,6 +41,7 @@ async function admitted() {
     incarnation: 'incarnation-1',
     agentName: 'assistant',
     owner: 'api-key:alice',
+    origin: { kind: 'api' },
     message: 'hello',
   });
   return built;
