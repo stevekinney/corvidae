@@ -223,10 +223,9 @@ describe('a signal trigger and an inputSchema', () => {
 describe('a start the engine makes itself, which is what a schedule fire is', () => {
   it('creates the instance and fails it with input-invalid and the issues, before any step runs', async () => {
     const harness = await start();
-    await harness.putWorkflow('nightly', {
-      trigger: { kind: 'schedule', spec: '1h' },
-      inputSchema: CITY_INPUT,
-    });
+    // A file with a schedule trigger cannot declare a schema that refuses null (COR-1927), so this
+    // is a file with another trigger that the engine is handed a schedule fire's trigger for.
+    await harness.putWorkflow('nightly', { trigger: ON_GO, inputSchema: CITY_INPUT });
 
     // The trigger a fire starts the instance with.
     const handle = await harness.bureau
@@ -245,9 +244,6 @@ describe('a start the engine makes itself, which is what a schedule fire is', ()
     const run = await workflowsOf(harness).getRun('fire-1');
     expect(run?.finishReason).toBe('input-invalid');
     expect(run?.error).toBe('input-invalid: The input must be object');
-    // The schedule is untouched: a failed fire is one failed instance, not a paused schedule.
-    const schedule = await harness.bureau.schedules.get('bureau-workflow-schedule:nightly:1');
-    expect(schedule?.status).toBe('active');
   });
 
   it('judges a raw start’s input as it is, so a start nobody validated still cannot run on bad input', async () => {

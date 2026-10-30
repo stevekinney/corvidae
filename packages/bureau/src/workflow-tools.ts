@@ -157,7 +157,7 @@ const inputSchemaSchema = z
   .record(z.string(), z.unknown())
   .optional()
   .describe(
-    'A JSON Schema (draft 2020-12) for the input an instance starts with: what a signal carries as its payload or a person gives when they start it; a schedule starts with null. At most 32 KiB and 8 levels deep, with no $id, pattern, or patternProperties. Leave it out for none. An input that breaks it starts nothing.',
+    'A JSON Schema (draft 2020-12) for the input an instance starts with: what a signal carries as its payload or a person gives when they start it; a schedule starts with null, so a workflow with a schedule trigger needs a schema that accepts null or none at all. At most 32 KiB and 8 levels deep, with no $id, pattern, or patternProperties. Leave it out for none. An input that breaks it starts nothing.',
   );
 
 const outputSchemaSchema = z

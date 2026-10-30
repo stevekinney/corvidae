@@ -2,7 +2,7 @@
  * COR-1812 — the input and output schemas of a workflow file: how the file format carries them,
  * what they do to a revision's version, the limits they are held to, and how an input is judged.
  */
-import { workflowDocumentVersion } from '@lostgradient/weft';
+import { workflowDocumentVersion, WorkflowDocumentSchemaError } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createWorkflowDocumentHost } from './workflow-host';
@@ -153,6 +153,37 @@ describe('a workflow file with schemas', () => {
     }
   });
 
+  it('refuses a schedule-triggered file whose inputSchema refuses null, which every fire would fail on (COR-1927)', () => {
+    const problem = problemOf({
+      trigger: { kind: 'schedule', spec: '1h' },
+      inputSchema: INPUT_SCHEMA,
+    });
+    expect(problem.code).toBe('invalid-document');
+    expect(problem.issues?.map((issue) => issue.path)).toEqual(['inputSchema']);
+    expect(problem.issues?.[0]?.message).toContain('schedule fire');
+    expect(problem.issues?.[0]?.message).toContain('null');
+  });
+
+  it('accepts a schedule-triggered file whose inputSchema accepts null, and any other trigger’s schema', () => {
+    const schedule = { kind: 'schedule', spec: '1h' };
+    for (const schema of [
+      { type: 'null' },
+      { type: ['object', 'null'] },
+      { anyOf: [{ type: 'null' }, INPUT_SCHEMA] },
+      {},
+    ]) {
+      expect(
+        parseWorkflowFile('digest', file({ trigger: schedule, inputSchema: schema }), host).ok,
+        JSON.stringify(schema),
+      ).toBe(true);
+    }
+    expect(parseWorkflowFile('digest', file({ inputSchema: INPUT_SCHEMA }), host).ok).toBe(true);
+    expect(
+      parseWorkflowFile('digest', file({ trigger: schedule, outputSchema: OUTPUT_SCHEMA }), host)
+        .ok,
+    ).toBe(true);
+  });
+
   it('accepts a schema at the depth limit', () => {
     expect(parseWorkflowFile('digest', file({ inputSchema: nested(8) }), host).ok).toBe(true);
   });
@@ -238,11 +269,27 @@ describe('judging an input', () => {
 });
 
 describe('the finish reason of a failed run', () => {
-  it('is read from the start of its error', () => {
-    expect(finishReasonOf('input-invalid: city: "city" is required')).toBe('input-invalid');
-    expect(finishReasonOf('output-invalid: The output must be string')).toBe('output-invalid');
-    expect(finishReasonOf('the agent step failed')).toBeNull();
-    expect(finishReasonOf('a step said output-invalid: later')).toBeNull();
+  const schemaFailure = (code: 'input-invalid' | 'output-invalid', summary: string) =>
+    new WorkflowDocumentSchemaError(code, [{ path: '', message: summary }]).stack;
+
+  it('is read from the class of the error the schema check threw, not from its text', () => {
+    expect(finishReasonOf(schemaFailure('input-invalid', 'The input must be object'))).toBe(
+      'input-invalid',
+    );
+    expect(finishReasonOf(schemaFailure('output-invalid', 'The output must be string'))).toBe(
+      'output-invalid',
+    );
+  });
+
+  it('is null for any other failure, including one whose text merely reads like a schema failure', () => {
+    for (const forged of [
+      new Error('input-invalid: a plugin said so'),
+      new Error('output-invalid: a plugin said so'),
+      new Error('\nWorkflowDocumentSchemaError: input-invalid: a plugin said so'),
+    ]) {
+      expect(finishReasonOf(forged.stack), forged.message).toBeNull();
+    }
+    expect(finishReasonOf(new Error('the agent step failed').stack)).toBeNull();
     expect(finishReasonOf(undefined)).toBeNull();
   });
 });
