@@ -91,7 +91,12 @@ async function respond(work: () => Promise<unknown>): Promise<Response> {
     }
     if (error instanceof ProviderPartialChangeError) {
       return Response.json(
-        { error: 'partial', provider: error.provider, message: error.message },
+        {
+          error: 'partial',
+          provider: error.provider,
+          inUse: error.inUse,
+          message: error.message,
+        },
         { status: 500 },
       );
     }

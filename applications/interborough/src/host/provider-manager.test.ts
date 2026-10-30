@@ -32,7 +32,11 @@ type FakeHome = Pick<
 
 function fakeHome(
   mode: 'local' | 'remote',
-  options: { readonly failConfiguration?: boolean; readonly failRestore?: boolean } = {},
+  options: {
+    readonly failConfiguration?: boolean;
+    readonly failRestore?: boolean;
+    readonly failEverySecret?: boolean;
+  } = {},
 ): FakeHome {
   const home: FakeHome = {
     mode,
@@ -49,6 +53,7 @@ function fakeHome(
     readSecret: (key) => home.secrets.get(key),
     writeSecret: (key, value) => {
       home.writes.push(`secret ${key}`);
+      if (options.failEverySecret === true) throw new Error('The disk is full.');
       // The second write of one secret is the restore.
       if (
         options.failRestore === true &&
@@ -182,8 +187,51 @@ describe('a write that fails', () => {
     const failure = await failureOf(manager.connect({ provider: 'anthropic', apiKey: KEY }));
 
     expect(failure).toBeInstanceOf(ProviderPartialChangeError);
+    expect((failure as ProviderPartialChangeError).inUse).toBe(true);
+    expect(String(failure)).toContain('is in use');
     // The host serves what the disk holds, which is the new key.
     expect(manager.current().apiKeys.get('anthropic')).toBe(KEY);
+    // A fresh home, since the fake counts writes per secret.
+    const routed = await managerFor(
+      fakeHome('local', { failConfiguration: true, failRestore: true }),
+    );
+    using server = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      routes: providerRoutes(routed.manager, () => undefined),
+    });
+    const response = await fetch(new URL('/host/providers/anthropic', server.url), {
+      method: 'PUT',
+      body: JSON.stringify({ apiKey: KEY }),
+    });
+    expect(response.status).toBe(500);
+    const text = await response.text();
+    expect(JSON.parse(text)).toMatchObject({
+      error: 'partial',
+      provider: 'anthropic',
+      inUse: true,
+    });
+    expect(text.includes(KEY)).toBe(false);
+  });
+
+  test('a key that cannot be written at all is a plain failure: disk and host stay on the old key', async () => {
+    const home = fakeHome('local', { failEverySecret: true });
+    const { manager, revisions } = await managerFor(home);
+    const before = home.configuration;
+    const loadedBefore = manager.current();
+
+    const failure = await failureOf(manager.connect({ provider: 'anthropic', apiKey: KEY }));
+
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure).not.toBeInstanceOf(ProviderPartialChangeError);
+    expect(String(failure).includes(KEY)).toBe(false);
+    // Only the first write was tried: there was nothing to undo.
+    expect(home.writes).toEqual(['secret anthropic-api-key']);
+    expect(home.secrets.get('anthropic-api-key')).toBe('fixture-existing-key');
+    expect(home.configuration).toBe(before);
+    expect(manager.current()).toBe(loadedBefore);
+    expect(revisions).toEqual([]);
+
     using server = Bun.serve({
       port: 0,
       hostname: '127.0.0.1',
@@ -195,8 +243,24 @@ describe('a write that fails', () => {
     });
     expect(response.status).toBe(500);
     const text = await response.text();
-    expect(JSON.parse(text)).toMatchObject({ error: 'partial', provider: 'anthropic' });
-    expect(text.includes(KEY)).toBe(false);
+    expect(JSON.parse(text).error).toBe('failed');
+    expect(text.includes('is in use')).toBe(false);
+  });
+
+  test('a new provider whose configuration cannot be written is stored but not in use, and the message says so', async () => {
+    const home = fakeHome('local', { failConfiguration: true, failRestore: true });
+    const { manager } = await managerFor(home);
+
+    const failure = await failureOf(manager.connect({ provider: 'openai', apiKey: KEY }));
+
+    expect(failure).toBeInstanceOf(ProviderPartialChangeError);
+    expect((failure as ProviderPartialChangeError).inUse).toBe(false);
+    expect(String(failure)).toContain('not in use');
+    expect(String(failure).includes(KEY)).toBe(false);
+    // The key is on the disk, and the host does not call the provider with it.
+    expect(home.secrets.get('openai-api-key')).toBe(KEY);
+    expect(manager.current().apiKeys.has('openai')).toBe(false);
+    expect([...manager.current().apiKeys.keys()]).toEqual(['anthropic']);
   });
 
   test('a change after close is refused', async () => {

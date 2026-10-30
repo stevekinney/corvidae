@@ -61,18 +61,25 @@ export class ProviderWriteLockedError extends Error {
 
 /**
  * A change that stored a provider's new key but could not write the configuration, and could not
- * put the old key back. The host is using the new key. The message says so and names no value.
+ * put the old key back. `inUse` is what the host actually loaded afterwards: a rotation of a
+ * configured provider uses the new key, while a new provider whose configuration was not written
+ * is not loaded, so its stored key is not used. The message says which and names no value.
  */
 export class ProviderPartialChangeError extends Error {
   /** The provider whose key was stored. */
   readonly provider: InterboroughProviderName;
+  /** Whether the host is calling the provider with the stored key, as the host loaded it. */
+  readonly inUse: boolean;
 
-  constructor(provider: InterboroughProviderName) {
+  constructor(provider: InterboroughProviderName, inUse: boolean) {
     super(
-      `The ${provider} key was stored and is in use, but the configuration could not be written and the previous key could not be put back.`,
+      inUse
+        ? `The ${provider} key was stored and is in use, but the configuration could not be written and the previous key could not be put back.`
+        : `The ${provider} key was stored but is not in use, because the configuration could not be written, so the provider is not configured. The previous key could not be put back.`,
     );
     this.name = 'ProviderPartialChangeError';
     this.provider = provider;
+    this.inUse = inUse;
   }
 }
 
@@ -337,10 +344,16 @@ export async function createProviderManager(
         );
         const secretKey = PROVIDER_SECRET_KEYS[provider];
         const previousKey = bungalow.readSecret(secretKey);
+        // Set only once the new key is on the disk, so a failure of that very write is not
+        // mistaken for one that needs undoing.
+        let keyWritten = false;
         try {
           bungalow.writeSecret(secretKey, key);
+          keyWritten = true;
           bungalow.writeConfiguration(text);
         } catch (error) {
+          // Nothing was written: the disk and the host are as they were.
+          if (!keyWritten) throw error;
           // The key went first. Put the old one back (an empty value reads as no key), so a change
           // that did not happen leaves the host on the key it had.
           let restored = true;
@@ -351,7 +364,9 @@ export async function createProviderManager(
           }
           // Whatever is on the disk now is what the host should serve.
           await apply().catch(() => undefined);
-          if (!restored) throw new ProviderPartialChangeError(provider);
+          if (!restored) {
+            throw new ProviderPartialChangeError(provider, loaded.apiKeys.get(provider) === key);
+          }
           throw error;
         }
         return apply();
