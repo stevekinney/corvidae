@@ -2196,7 +2196,7 @@
       "public": true,
       "themeAware": false,
       "deprecated": false,
-      "description": "Small button vertical padding: the same as `md`, since the two share a 32px height and the label centers within it."
+      "description": "Small button vertical padding (4px), so a 16px icon, the padding and the border fit inside the 28px `control.height.sm`."
     },
     {
       "path": "button.padding.y.md",

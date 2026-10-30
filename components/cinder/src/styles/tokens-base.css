@@ -532,8 +532,8 @@
   --cinder-button-padding-x-lg: var(--cinder-space-3);
   /* Extra-small button vertical padding. */
   --cinder-button-padding-y-xs: var(--cinder-space-0-5);
-  /* Small button vertical padding: the same as `md`, since the two share a 32px height and the label centers within it. */
-  --cinder-button-padding-y-sm: var(--cinder-space-1-5);
+  /* Small button vertical padding (4px), so a 16px icon, the padding and the border fit inside the 28px `control.height.sm`. */
+  --cinder-button-padding-y-sm: var(--cinder-space-1);
   /* Medium button vertical padding. */
   --cinder-button-padding-y-md: var(--cinder-space-1-5);
   /* Large button vertical padding. */

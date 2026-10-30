@@ -213,7 +213,7 @@ describe('one control height scale', () => {
 });
 
 describe('field content fits inside the step', () => {
-  /** The tallest thing on a field's single line: its text line box, or MultiSelect's count badge. */
+  /** The tallest thing on a control's single line: its text line box, MultiSelect's count badge, or a Button's icon. */
   const fields = {
     input: { row: input, lineBox: 'calc(var(--cinder-text-sm) * var(--cinder-leading-normal))' },
     select: { row: select, lineBox: 'calc(var(--cinder-text-sm) * var(--cinder-leading-normal))' },
@@ -222,6 +222,8 @@ describe('field content fits inside the step', () => {
       lineBox: 'calc(var(--cinder-text-sm) * var(--cinder-leading-normal))',
     },
     multiSelect: { row: multiSelect, lineBox: '1.25rem' },
+    // A Button's tallest content is a `cinder-icon-sm` (16px) leading or trailing icon.
+    button: { row: button, lineBox: '1rem' },
   } as const;
 
   function lineBoxPixels(value: string): number {

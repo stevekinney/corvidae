@@ -15903,7 +15903,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'spacing',
       component: 'button',
       description:
-        'Small button vertical padding: the same as `md`, since the two share a 32px height and the label centers within it.',
+        'Small button vertical padding (4px), so a 16px icon, the padding and the border fit inside the 28px `control.height.sm`.',
       themeAware: false,
       deprecated: false,
       profile: 'padding',
@@ -15939,7 +15939,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
               origin: 'inherited',
               declaredAt: { document: 'sets/components.tokens.json', path: 'button.padding' },
             },
-            inputs: { aliases: ['space.1-5'], refs: [], extends: [], recipes: [] },
+            inputs: { aliases: ['space.one'], refs: [], extends: [], recipes: [] },
           },
         },
       ],

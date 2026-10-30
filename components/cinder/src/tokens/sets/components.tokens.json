@@ -243,8 +243,8 @@
           }
         },
         "sm": {
-          "$value": "{space.1-5}",
-          "$description": "Small button vertical padding: the same as `md`, since the two share a 32px height and the label centers within it.",
+          "$value": "{space.one}",
+          "$description": "Small button vertical padding (4px), so a 16px icon, the padding and the border fit inside the 28px `control.height.sm`.",
           "$extensions": {
             "com.lostgradient.cinder": {
               "cssProperty": "--cinder-button-padding-y-sm",
