@@ -1,3 +1,4 @@
+import { isValidTimeZone } from '../../schedule.ts';
 import { parseDuration } from '../../scheduler.ts';
 import { coerceStartWorkflowId } from '../../start-workflow-validation.ts';
 import type {
@@ -23,6 +24,7 @@ type NormalizedScheduleOptions = Required<Pick<ScheduleOptions, 'overlap' | 'bac
   id?: string;
   description?: string;
   jitterMs?: number;
+  timeZone?: string;
   revisionPolicy?: ScheduleRevisionPolicy;
 };
 
@@ -31,6 +33,7 @@ type NormalizedScheduleUpdateOptions = {
   overlap?: ScheduleOverlapPolicy;
   backfill?: boolean;
   jitterMs?: number;
+  timeZone?: string;
   revisionPolicy?: ScheduleRevisionPolicy;
 };
 
@@ -51,6 +54,9 @@ export function normalizeScheduleOptions(
     }),
     ...(options.jitter !== undefined && {
       jitterMs: normalizeScheduleJitter(options.jitter, 'options.jitter'),
+    }),
+    ...(options.timeZone !== undefined && {
+      timeZone: normalizeScheduleTimeZone(options.timeZone),
     }),
     ...(options.revisionPolicy !== undefined && {
       revisionPolicy: normalizeScheduleRevisionPolicy(
@@ -80,6 +86,9 @@ export function normalizeScheduleUpdateOptions(
     ...(options.jitter !== undefined && {
       jitterMs: normalizeScheduleJitter(options.jitter, 'options.jitter'),
     }),
+    ...(options.timeZone !== undefined && {
+      timeZone: normalizeScheduleTimeZone(options.timeZone),
+    }),
     ...(options.revisionPolicy !== undefined && {
       revisionPolicy: normalizeScheduleRevisionPolicy(
         options.revisionPolicy,
@@ -97,6 +106,19 @@ function normalizeScheduleRevisionPolicy(
     throw new Error(`${fieldName} must be one of ${[...SCHEDULE_REVISION_POLICIES].join(', ')}`);
   }
   return value as ScheduleRevisionPolicy;
+}
+
+/**
+ * A schedule's time zone: `UTC` or an IANA name the runtime knows. The message names the field as
+ * `options.timeZone` so a caller that maps errors to a wire fault can tell it from a bad cadence.
+ */
+function normalizeScheduleTimeZone(timeZone: unknown): string {
+  if (!isValidTimeZone(timeZone)) {
+    throw new Error(
+      'options.timeZone must be a valid IANA time zone name such as "America/Los_Angeles", or "UTC"',
+    );
+  }
+  return timeZone;
 }
 
 function normalizeScheduleDescription(description: unknown): string {

@@ -332,6 +332,7 @@ function createScheduleState(overrides: Partial<ScheduleState> = {}): ScheduleSt
     status: 'active',
     overlap: 'skip',
     backfill: false,
+    timeZone: 'UTC',
     revisionPolicy: 'active-at-fire',
     missedFireCount: 0,
     skippedCount: 0,

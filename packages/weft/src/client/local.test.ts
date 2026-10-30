@@ -631,6 +631,7 @@ describe('LocalClient delegation surface', () => {
       status: 'active',
       overlap: 'skip',
       backfill: false,
+      timeZone: 'UTC',
       revisionPolicy: 'active-at-fire',
       createdAt: 1,
       updatedAt: 1,

@@ -34,6 +34,7 @@ import {
   normalizeScheduleOptions,
   normalizeScheduleSpec,
   normalizeScheduleUpdateOptions,
+  type NormalizedScheduleSpec,
 } from './validation/schedule.ts';
 
 export { startScheduledRun } from './schedule-run.ts';
@@ -79,6 +80,27 @@ export type ScheduleCallbacks = {
   handleCleanupError: (source: string, error: unknown, workflowId: string) => void;
 };
 
+/**
+ * The time zone a schedule is read in: the one the caller named, else the one it keeps
+ * (`current`), else UTC. An interval schedule counts elapsed time, so it has no zone to name and is
+ * always read as UTC.
+ */
+function resolveScheduleTimeZone(
+  spec: NormalizedScheduleSpec,
+  named: string | undefined,
+  current: string | undefined,
+): string {
+  if (spec.kind === 'interval') {
+    if (named !== undefined) {
+      throw new Error(
+        'options.timeZone applies only to a cron schedule; an interval schedule counts elapsed time',
+      );
+    }
+    return 'UTC';
+  }
+  return named ?? current ?? 'UTC';
+}
+
 export async function schedule(
   internals: EngineInternals,
   type: string,
@@ -110,6 +132,7 @@ export async function schedule(
       normalizedSpec.kind === 'interval'
         ? { intervalMs: normalizedSpec.intervalMs }
         : { cronExpression: normalizedSpec.cronExpression };
+    const timeZone = resolveScheduleTimeZone(normalizedSpec, normalizedOptions.timeZone, undefined);
     const state: ScheduleState = {
       id: scheduleId,
       workflowType: type,
@@ -118,6 +141,7 @@ export async function schedule(
         description: normalizedOptions.description,
       }),
       ...cadenceFields,
+      timeZone,
       status: 'active',
       overlap: normalizedOptions.overlap,
       backfill: normalizedOptions.backfill,
@@ -127,7 +151,7 @@ export async function schedule(
       revision: 1,
       createdAt: now,
       updatedAt: now,
-      nextFireAt: getNextScheduleOccurrence({ ...cadenceFields, createdAt: now }, now),
+      nextFireAt: getNextScheduleOccurrence({ ...cadenceFields, timeZone, createdAt: now }, now),
       missedFireCount: 0,
       skippedCount: 0,
       queuedRuns: [],
@@ -370,6 +394,12 @@ export async function updateSchedule(
         normalizedSpec.kind === 'interval'
           ? { intervalMs: normalizedSpec.intervalMs }
           : { cronExpression: normalizedSpec.cronExpression };
+      // Omitting `timeZone` keeps the schedule's zone; a new interval cadence has none to keep.
+      const timeZone = resolveScheduleTimeZone(
+        normalizedSpec,
+        normalizedOptions.timeZone,
+        state.timeZone,
+      );
       // For interval specs the occurrence grid is anchored at `createdAt`. Re-anchor
       // to `now` (the update time) so the timer's subsequent `getNextScheduleOccurrence`
       // calls use the same origin as the `nextFireAt` computed here. Without this,
@@ -402,6 +432,7 @@ export async function updateSchedule(
         ...stateWithoutCadenceOrPin,
         ...normalizedOptions,
         ...cadenceFields,
+        timeZone,
         ...anchorFields,
         ...revisionFields,
         revision: state.revision + 1,
@@ -409,7 +440,7 @@ export async function updateSchedule(
         nextFireAt:
           state.status === 'cancelled'
             ? null
-            : getNextScheduleOccurrence({ ...cadenceFields, createdAt: now }, now),
+            : getNextScheduleOccurrence({ ...cadenceFields, timeZone, createdAt: now }, now),
       };
       await writeScheduleState(internals, updatedState, {
         includeTimer: state.status === 'active',
