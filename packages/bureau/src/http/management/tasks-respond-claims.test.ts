@@ -7,6 +7,7 @@
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { Principal } from '@lostgradient/weft';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
 
 import { BureauError, TaskRespondError } from '../../create-bureau.ts';
@@ -532,5 +533,87 @@ describe('bureau.tasks.respond completes a form submission from its claim', () =
     expect(await ledger.read({ ...identity })).toMatchObject({
       claim: { reviewId, submission: { value: { name: ' x' } } },
     });
+  });
+});
+
+/** A ledger over a store that keeps every value ever written to it, claims released since included. */
+function recordingLedger() {
+  const written: string[] = [];
+  const kv = textValueStore(new MemoryStorage());
+  const recorded: typeof kv = {
+    ...kv,
+    get: (key) => kv.get(key),
+    set: async (key, value) => {
+      written.push(value);
+      return kv.set(key, value);
+    },
+    conditionalBatch: async (conditions, operations) => {
+      for (const operation of operations)
+        if (operation.type !== 'delete') written.push(operation.value);
+      return kv.conditionalBatch(conditions, operations);
+    },
+  };
+  const runtime = createDefaultRuntimeServices();
+  const ledger = createCommandLedger<TasksRespondClaim, TasksRespondResult>({
+    kv: recorded,
+    keyPrefix: TASKS_RESPOND_LEDGER_KEY_PREFIX,
+    clock: runtime.clock,
+    nextConflictId: () => runtime.identifiers.next('respond-conflict'),
+  });
+  return { ledger, written };
+}
+
+describe('bureau.tasks.respond writes no digest of an answer it cannot place (COR-1920)', () => {
+  const secretData = { password: 'pw-plaintext-sentinel' };
+  const secretIdentity: CommandLedgerIdentity = { ...identity, requestId: 'm-secret' };
+  const command = { principal: owner, taskId: 'run-1', messageId: 'm-secret', data: secretData };
+  const secondWait = {
+    kind: 'human-wait' as const,
+    reviewId: `${reviewId}-2`,
+    signalName: 'other',
+  };
+
+  it('refuses an answer to two open waits that names neither, before anything is claimed', async () => {
+    const { ledger, written } = recordingLedger();
+    const host = hostOver(ledger, {
+      openWaits: [openWait, secondWait],
+      getReview: async () => resolved('pending', undefined),
+    });
+
+    const refused = await rejectionOf(host.respond(command));
+
+    expect(String(refused)).toContain('several open waits');
+    expect(written).toEqual([]);
+    expect(await ledger.read(secretIdentity)).toBeUndefined();
+    expect(await ledger.listConflicts(secretIdentity)).toEqual([]);
+  });
+
+  it('refuses an answer to a task that is not waiting, before anything is claimed', async () => {
+    const { ledger, written } = recordingLedger();
+    const host = hostOver(ledger, {
+      openWaits: [],
+      getReview: async () => resolved('pending', undefined),
+    });
+
+    const refused = await rejectionOf(host.respond(command));
+
+    expect(String(refused)).toContain('not awaiting input');
+    expect(written).toEqual([]);
+    expect(await ledger.read(secretIdentity)).toBeUndefined();
+  });
+
+  it('passes on an error reading the review instead of digesting the answer', async () => {
+    const { ledger, written } = recordingLedger();
+    const failure = new Error('the review store is unavailable');
+    const host = hostOver(ledger, {
+      openWaits: [openWait],
+      getReview: async () => {
+        throw failure;
+      },
+    });
+
+    expect(await rejectionOf(host.respond(command))).toBe(failure);
+    expect(written).toEqual([]);
+    expect(await ledger.read(secretIdentity)).toBeUndefined();
   });
 });

@@ -443,6 +443,7 @@ import {
   type SecretAnswerAuditEntry,
   SecretAnswerUnavailableError,
   secretFieldsOfReview,
+  unsealedSecretFields,
 } from './secret-answers';
 import {
   createRunHumanWaits,
@@ -2978,6 +2979,8 @@ async function constructBureau<const D extends AgentDefinitions>(
       reason?: string;
       /** What the approved tool returned, so a retry can still write the outcome into the conversation. */
       result?: unknown;
+      /** COR-1920: what the decision's audit entry says of each secret answer it delivered. */
+      secretAnswers?: readonly SecretAnswerAuditEntry[];
     }
   >();
   const pendingApprovalOverrides = new Map<
@@ -16105,6 +16108,7 @@ async function constructBureau<const D extends AgentDefinitions>(
             cleanup.decision,
             cleanup.principal,
             cleanup.reason,
+            cleanup.secretAnswers,
           );
           const cleanupAuditAppended = await persistReviewResolutionWithRetry(
             cleanup.sessionId,
@@ -16368,6 +16372,9 @@ async function constructBureau<const D extends AgentDefinitions>(
                 ? { arguments: input.arguments }
                 : {}),
               ...(approvalRequestContext ? { requestContext: approvalRequestContext } : {}),
+              // COR-1920: the approved call is the run's, so a secret answer it names resolves for
+              // that run, as it would have had the call not waited for approval.
+              executionContext: { parentRunId: review.runId },
             },
           );
 
@@ -16484,6 +16491,7 @@ async function constructBureau<const D extends AgentDefinitions>(
           review,
           humanWaitDecisionPayload(input),
           input.principal,
+          input.decision,
         );
         secretAnswerAudit = delivery.audit;
         await deliverHumanWaitDecision(review, delivery.payload);
@@ -16543,6 +16551,7 @@ async function constructBureau<const D extends AgentDefinitions>(
             principal: input.principal,
             ...(input.reason !== undefined ? { reason: input.reason } : {}),
             ...(result === undefined ? {} : { result }),
+            ...(secretAnswerAudit.length === 0 ? {} : { secretAnswers: secretAnswerAudit }),
           });
         }
         resolvingReviewIds.delete(review.id);
@@ -16933,7 +16942,19 @@ async function constructBureau<const D extends AgentDefinitions>(
     review: PendingHumanWaitReview,
     payload: unknown,
     principal: string,
+    decision: ResolveReviewInput['decision'],
   ): Promise<{ readonly payload: unknown; readonly audit: readonly SecretAnswerAuditEntry[] }> {
+    // A secret field that reaches delivery unsealed is refused: nothing may signal its plaintext.
+    // A deny or a reject delivers its own marker, which carries no answer.
+    if (
+      decision === 'approve' &&
+      unsealedSecretFields(payload, secretFieldsOfReview(review)).length > 0
+    ) {
+      throw new BureauError(
+        `Review "${review.id}" was answered with a secret that was not sealed`,
+        'BAD_REQUEST',
+      );
+    }
     if (!holdsSealedAnswer(payload)) return { payload, audit: [] };
     if (runtime.secretAnswers === undefined) {
       throw new BureauError(
@@ -18746,8 +18767,8 @@ async function constructBureau<const D extends AgentDefinitions>(
       // COR-1596: a fire answered is no longer waiting, which whoever follows its task is told.
       await tasks.announceChanged(review.runId);
     },
-    prepareDelivery: (review, payload, principal) =>
-      prepareHumanWaitDelivery(review, payload, principal),
+    prepareDelivery: (review, payload, principal, decision) =>
+      prepareHumanWaitDelivery(review, payload, principal, decision),
     decisions: reviewDecisions,
     released: (runId) => unfollowFireReviewsWhenNoneRemain(runId),
     classifyRun: (runId) => runtime.classifyCatalogRecoveredRun(runId),

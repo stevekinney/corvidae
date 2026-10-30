@@ -235,6 +235,28 @@ function sealedAnswersIn(value: unknown, found: SealedSecretAnswer[] = []): Seal
   return found;
 }
 
+/**
+ * The secret fields (named by `fields`) that hold anything but a sealed answer: a value that would
+ * reach a signal, or a store, as plaintext. An absent field is not listed.
+ */
+export function unsealedSecretFields(answer: unknown, fields: readonly string[]): string[] {
+  return fields.filter((field) => {
+    const held = readField(answer, field);
+    return held.found && held.value !== undefined && !isSealedSecretAnswer(held.value);
+  });
+}
+
+/**
+ * The fields of an answer to `reviewId` that a sealed answer stands in, read from the references
+ * the sealed answers carry: what a kept, sealed answer says about which of its fields are secret.
+ */
+export function sealedSecretFields(value: unknown, reviewId: string): string[] {
+  return sealedAnswersIn(value)
+    .map((answer) => answer.secretRef)
+    .filter((secretRef) => secretRef === reviewId || secretRef.startsWith(`${reviewId}/`))
+    .map((secretRef) => secretRef.slice(reviewId.length));
+}
+
 /** Whether `value` holds a {@link SealedSecretAnswer} anywhere. */
 export function holdsSealedAnswer(value: unknown): boolean {
   return sealedAnswersIn(value).length > 0;

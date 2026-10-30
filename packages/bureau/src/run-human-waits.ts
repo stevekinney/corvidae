@@ -143,6 +143,7 @@ export type RunHumanWaitsDependencies = {
     review: PendingHumanWaitReview,
     payload: unknown,
     principal: string,
+    decision: ResolveReviewInput['decision'],
   ) => Promise<{ readonly payload: unknown; readonly audit: readonly SecretAnswerAuditEntry[] }>;
   /**
    * The durable decision record every resolution claims before it delivers. Without one,
@@ -574,7 +575,12 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
       // The delivery id is derived from the review id, so a retry after a failure, or a
       // same-decision caller re-driving a claim whose delivery threw, delivers once. A throw keeps
       // the claim (see `review-decision-record.ts`).
-      const delivery = await dependencies.prepareDelivery(review, payload, input.principal);
+      const delivery = await dependencies.prepareDelivery(
+        review,
+        payload,
+        input.principal,
+        input.decision,
+      );
       secretAnswers = delivery.audit;
       await engine.signal(review.runId, review.signalName, delivery.payload, {
         signalId: humanWaitDeliveryId(review.id),

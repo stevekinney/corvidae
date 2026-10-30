@@ -85,14 +85,51 @@ async function everyStoredKey(storage: Storage): Promise<Array<[string, string]>
   return entries;
 }
 
+const writtenText = new TextDecoder('utf-8', { fatal: false });
+
+/** A storage that keeps every value ever written, so a value written and later deleted is scanned too. */
+class RecordingStorage extends MemoryStorage {
+  readonly written: string[] = [];
+
+  override async put(key: string, value: Uint8Array): Promise<void> {
+    this.written.push(`${key}=${writtenText.decode(value)}`);
+    return super.put(key, value);
+  }
+
+  override async batch(operations: Parameters<MemoryStorage['batch']>[0]): Promise<void> {
+    this.record(operations);
+    return super.batch(operations);
+  }
+
+  override async conditionalBatch(
+    ...[conditions, operations]: Parameters<MemoryStorage['conditionalBatch']>
+  ): ReturnType<MemoryStorage['conditionalBatch']> {
+    this.record(operations);
+    return super.conditionalBatch(conditions, operations);
+  }
+
+  private record(
+    operations: ReadonlyArray<{ readonly key: string; readonly value?: unknown }>,
+  ): void {
+    for (const operation of operations) {
+      if (operation.value instanceof Uint8Array) {
+        this.written.push(`${operation.key}=${writtenText.decode(operation.value)}`);
+      }
+    }
+  }
+}
+
 type Plan =
   | { readonly kind: 'ask' }
   /** Another run that tries to read a reference it was handed. */
   | { readonly kind: 'borrow'; readonly secretRef: string };
 
-/** A Bureau whose agent asks for a secret, then hands the reference it was given to three tools. */
-async function secretBureau() {
-  const storage = new MemoryStorage();
+/**
+ * A Bureau whose agent asks for a secret, then hands the reference it was given to three tools; with
+ * `guarded`, to one tool that needs an approval before it runs.
+ */
+async function secretBureau(options: { readonly guarded?: boolean } = {}) {
+  const storage = new RecordingStorage();
   const keys: AnswerEncryptionKeys = { current: await generateEncryptionKey() };
   const seen = {
     plan: { kind: 'ask' } as Plan,
@@ -136,8 +173,36 @@ async function secretBureau() {
       return { peeked: true };
     },
   });
-  const toolbox = createToolbox([useSecret, signIn, peek], {
+  const guardedUse = createTool({
+    name: 'guarded-use',
+    version: '1.0.0',
+    description: 'Uses a credential once an operator approves.',
+    input: z.object({ credential: z.string() }),
+    metadata: { acceptsSecrets: true },
+    async execute({ credential }) {
+      seen.received.push(credential);
+      return { used: true };
+    },
+  });
+  const toolbox = createToolbox([useSecret, signIn, peek, guardedUse], {
     secretResolver: createSecretAnswerResolver({ storage, keys }),
+    ...(options.guarded === true
+      ? {
+          approvalSecret: 'secret-answers-approval-secret-0123456789',
+          // Only the guarded tool waits; the question itself must still park.
+          policy: {
+            beforeExecute: ({ toolName }: { toolName: string }) =>
+              toolName === 'guarded-use'
+                ? {
+                    allow: false,
+                    status: 'needs_approval' as const,
+                    reason: 'Operator approval required',
+                    action: { message: 'Approve the credential use' },
+                  }
+                : { allow: true },
+          },
+        }
+      : {}),
   });
 
   const generate: GenerateFunction = async ({ step, conversation }) => {
@@ -170,7 +235,9 @@ async function secretBureau() {
       };
     }
     const results = messages.filter((message) => message.toolResult !== undefined);
-    if (results.some((message) => message.toolResult?.callId === 'use-1')) {
+    if (
+      results.some((message) => ['use-1', 'guard-1'].includes(message.toolResult?.callId ?? ''))
+    ) {
       seen.toolResults.push(JSON.stringify(results.map((message) => message.toolResult)));
       return { content: 'thanks', toolCalls: [] };
     }
@@ -181,6 +248,14 @@ async function secretBureau() {
       password: { secretRef: string };
     };
     seen.secretRef = parsed.password.secretRef;
+    if (options.guarded === true) {
+      return {
+        content: '',
+        toolCalls: [
+          { id: 'guard-1', name: 'guarded-use', arguments: { credential: parsed.password } },
+        ],
+      };
+    }
     return {
       content: '',
       toolCalls: [
@@ -199,7 +274,11 @@ async function secretBureau() {
         name: AGENT,
         generate,
         toolbox: toolbox as unknown as Toolbox,
-        stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+        stopWhen: stopWhen.some(
+          stopWhen.toolCalled('requestHumanInput'),
+          stopWhen.pendingApproval(),
+          stopWhen.noToolCalls(),
+        ),
       }),
     },
     storage,
@@ -239,6 +318,8 @@ async function secretBureau() {
   async function scan(runId: string, extra: Record<string, string> = {}): Promise<void> {
     const stored = await everyStoredKey(storage);
     for (const [key, value] of stored) expectNoLeak(`storage key ${key}`, `${key}\n${value}`);
+    // A value written and then deleted (a released claim, a pruned record) was still written.
+    expectNoLeak('a value ever written to storage', storage.written.join('\n'));
     // The scan reads what was stored: the reference the run was given is there to be found.
     expect(stored.some(([, value]) => value.includes(seen.secretRef ?? '\u0000'))).toBe(true);
     const audit = (await bureau.internals.auditTrail?.query({ runId })) ?? [];
@@ -529,9 +610,15 @@ describe('a secret answer through bureau.tasks.respond', () => {
       const receipt = await harness.bureau.tasks.respond(command);
       expect(receipt).toMatchObject({ kind: 'human-wait', receipt: 'applied' });
       await harness.settled(runId);
-      // A retry after the review closed reads its secret fields from the audit trail and digests
-      // the command the same way.
+      // A retry after the review closed reads its secret fields from what its claim kept and
+      // digests the command the same way.
       expect(await harness.bureau.tasks.respond(command)).toEqual(receipt);
+      // The same answer under a new message id addresses no open wait: it is refused before the
+      // ledger holds any digest of it.
+      const again = await rejectionOf(
+        harness.bureau.tasks.respond({ ...command, messageId: 'answer-2' }),
+      );
+      expect(String(again)).toContain('not awaiting input');
 
       harness.expectToolOutcomes();
       await harness.expectRecords(runId);
@@ -556,6 +643,38 @@ describe('a secret answer through bureau.tasks.respond', () => {
       await harness.settled(runId);
 
       harness.expectToolOutcomes();
+      await harness.scan(runId);
+    } finally {
+      await harness.dispose();
+    }
+  });
+});
+
+describe('a secret answer to a tool that waits for approval', () => {
+  it('resolves for the run once the approval is given', async () => {
+    const harness = await secretBureau({ guarded: true });
+    try {
+      const { runId, review } = await harness.park();
+      await harness.bureau.reviews.resolve({
+        id: review.id,
+        decision: 'approve',
+        principal: PRINCIPAL,
+        payload: { user: 'ada', password: SECRET },
+      });
+      await waitForCondition(
+        () => harness.bureau.reviews.list().some((pending) => pending.kind === 'tool-approval'),
+        'expected the guarded tool to wait for approval',
+      );
+      const approval = harness.bureau.reviews.list().find((pending) => pending.runId === runId)!;
+      expect(JSON.stringify(approval)).toContain(harness.seen.secretRef!);
+
+      await harness.bureau.reviews.resolve({
+        id: approval.id,
+        decision: 'approve',
+        principal: PRINCIPAL,
+      });
+
+      expect(harness.seen.received).toEqual([SECRET]);
       await harness.scan(runId);
     } finally {
       await harness.dispose();
