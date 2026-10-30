@@ -555,13 +555,23 @@ function pruneWorkerCheckpoint(
   pendingOperationStep: number,
 ): Checkpoint {
   const workerReplayFailures = [...replayState.failedOutcomes];
-  const { workerReplayFailures: _oldWorkerReplayFailures, ...checkpointWithoutFailures } =
-    checkpoint;
+  const {
+    workerReplayFailures: _oldWorkerReplayFailures,
+    forkCopiedSignatureSteps: copiedSignatureSteps,
+    ...checkpointWithoutFailures
+  } = checkpoint;
+  // Yielding this step's operation pins its signature as this run's own.
+  const forkCopiedSignatureSteps = copiedSignatureSteps?.filter(
+    (step) => step !== pendingOperationStep,
+  );
   const workerCheckpoint: Checkpoint = {
     ...checkpointWithoutFailures,
     accumulatedResults: [...replayState.accumulatedResults],
     workerReplaySignatures: [...replayState.signatures],
     ...(workerReplayFailures.length === 0 ? {} : { workerReplayFailures }),
+    ...(forkCopiedSignatureSteps === undefined || forkCopiedSignatureSteps.length === 0
+      ? {}
+      : { forkCopiedSignatureSteps }),
   };
   const pruned = pruneCheckpointReplayState(workerCheckpoint, pendingOperationStep);
   return attachTransientCheckpointReplayPayload(pruned.checkpoint, pruned.replayPayload);

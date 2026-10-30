@@ -15,7 +15,6 @@ import type { EngineInternals } from '../internals.ts';
 import { WorkflowRevisionUnavailableError } from '../revision-errors.ts';
 import { encodeWorkflowStartHeaders } from '../state-utilities.ts';
 import { visibilityIndexOperations } from '../workflow-visibility-maintenance.ts';
-import { signaturesOfSettledSteps } from './fork-checkpoint-signatures.ts';
 import { EMPTY_STORAGE_VALUE, FORK_LINEAGE_ATTRIBUTE, type LifecycleCallbacks } from './shared.ts';
 import { buildCatalogEntryRevisionCondition } from './start-commit.ts';
 
@@ -469,13 +468,21 @@ export function buildForkCheckpoint(
 ): Checkpoint {
   const {
     accumulatedResultReplayWatermark: _sourceReplayWatermark,
-    workerReplaySignatures: _sourceSignatures,
+    forkCopiedSignatureSteps: _sourceCopiedSignatureSteps,
     ...sourceCheckpointForFork
   } = sourceCheckpoint;
-  const forkSignatures = signaturesOfSettledSteps(sourceCheckpoint);
+  const settledSteps = new Set(
+    [...sourceCheckpoint.accumulatedResults, ...(sourceCheckpoint.workerReplayFailures ?? [])].map(
+      ([step]) => step,
+    ),
+  );
+  const copiedSignatureSteps = (sourceCheckpoint.workerReplaySignatures ?? [])
+    .map(([step]) => step)
+    .filter((step) => !settledSteps.has(step));
   return {
     ...sourceCheckpointForFork,
-    ...(forkSignatures.length > 0 && { workerReplaySignatures: forkSignatures }),
+    // The signatures the source had no outcome for are evidence about the source's execution.
+    ...(copiedSignatureSteps.length > 0 && { forkCopiedSignatureSteps: copiedSignatureSteps }),
     createdAt: forkedAt,
     workflowId,
     // The fork's own fresh token, never the source's.
