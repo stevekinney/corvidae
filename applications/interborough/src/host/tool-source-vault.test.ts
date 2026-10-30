@@ -28,6 +28,12 @@ async function vaultOver(home = memory()) {
   return { home, keys, vault: createToolSourceVault({ bungalow: home.bungalow, keys }) };
 }
 
+/** The sign-in the vault holds for `files`. */
+async function signInOf(vault: Awaited<ReturnType<typeof vaultOver>>['vault']) {
+  const secrets = await vault.read('files');
+  return secrets.signIn;
+}
+
 describe('the tool-source vault', () => {
   test('stores every value and the whole OAuth state as ciphertext, and reads them back', async () => {
     const { home, vault } = await vaultOver();
@@ -109,6 +115,46 @@ describe('the tool-source vault', () => {
     const cleared = await storage.load();
     expect(cleared.codeVerifier).toBeUndefined();
     expect(cleared.tokens?.access_token).toBe('a');
+  });
+
+  test('keeps when a sign-in began and for which description inside the ciphertext, and voids it when a new state is recorded or cleared', async () => {
+    const { home, vault } = await vaultOver();
+    const storage = vault.tokenStorage('files');
+    await storage.save({ state: 'first-state', codeVerifier: 'verifier' });
+    expect(
+      await vault.beginSignIn('files', { startedAt: 42, revision: 'revision-for-first' }),
+    ).toBe(true);
+
+    const stored = home.secrets.get(toolSourceSecretKey('files')) ?? '';
+    expect(stored).not.toContain('revision-for-first');
+    expect(await signInOf(vault)).toEqual({ startedAt: 42, revision: 'revision-for-first' });
+    // Saving tokens leaves the sign-in alone; a new state is a different sign-in.
+    await storage.save({ tokens: { access_token: 'a', token_type: 'Bearer' } });
+    const waiting = await signInOf(vault);
+    expect(waiting?.startedAt).toBe(42);
+    await storage.save({ state: 'second-state' });
+    expect(await signInOf(vault)).toBeUndefined();
+
+    await vault.beginSignIn('files', { startedAt: 43, revision: 'revision-for-second' });
+    await storage.clear?.(['codeVerifier', 'state']);
+    expect(await signInOf(vault)).toBeUndefined();
+  });
+
+  test('records no sign-in for a source that holds no state to attach it to', async () => {
+    const { vault } = await vaultOver();
+    expect(await vault.beginSignIn('files', { startedAt: 1, revision: 'r' })).toBe(false);
+    expect(await signInOf(vault)).toBeUndefined();
+  });
+
+  test('lets a caller that holds the source’s turn use the storage without waiting for it', async () => {
+    const { vault } = await vaultOver();
+    await vault.exclusive('files', async () => {
+      const held = vault.tokenStorage('files', 'held');
+      await held.save({ state: 'state' });
+      await held.clear?.(['state']);
+    });
+    const afterwards = await vault.read('files');
+    expect(afterwards.oauth?.state).toBeUndefined();
   });
 
   test('reads a source with no secret as having none, and clearing it removes what it held', async () => {

@@ -1,4 +1,8 @@
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { describe, expect, it } from 'bun:test';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { z } from 'zod';
 
 import { resolveCapabilityTier } from '../src/approval-policy';
@@ -541,6 +545,89 @@ describe('loadToolSource for MCP over stdio', () => {
     } finally {
       delete process.env['CHILD_TOKEN'];
       await loaded.close();
+    }
+  });
+});
+
+describe('loadToolSource with an abort signal', () => {
+  const hangingSource = (file: string): ToolSourceDescription => ({
+    id: 'hang',
+    kind: 'mcp',
+    transport: {
+      type: 'stdio',
+      command: process.execPath,
+      args: [
+        '--no-install',
+        new URL('./fixtures/tool-source-stdio-hang.ts', import.meta.url).pathname,
+        file,
+      ],
+    },
+  });
+
+  /** The process ids the hanging server has recorded so far. */
+  async function startedBy(file: string): Promise<number[]> {
+    const text = await readFile(file, 'utf8').catch(() => '');
+    return text.split('\n').filter(Boolean).map(Number);
+  }
+
+  function isRunning(pid: number): boolean {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  it('stops the child of a stdio server that never answers, and rejects the load', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'armorer-hang-'));
+    const file = join(directory, 'pids');
+    const controller = new AbortController();
+    try {
+      const loading = loadToolSource(hangingSource(file), {
+        resolveCredential: () => undefined,
+        signal: controller.signal,
+      });
+      const rejected = expectPromiseToReject(loading, (error) =>
+        expect(error).toBeInstanceOf(Error),
+      );
+      await waitUntil(
+        async () => {
+          const found = await startedBy(file);
+          return found.length > 0;
+        },
+        { message: 'the server to start' },
+      );
+      controller.abort();
+      await rejected;
+      const started = await startedBy(file);
+      await waitUntil(() => started.every((pid) => !isRunning(pid)), {
+        message: 'every process the load started to stop',
+      });
+    } finally {
+      for (const pid of await startedBy(file)) {
+        if (isRunning(pid)) process.kill(pid, 'SIGKILL');
+      }
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('starts nothing when the signal has already aborted', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'armorer-hang-'));
+    const file = join(directory, 'pids');
+    const controller = new AbortController();
+    controller.abort();
+    try {
+      await expectPromiseToReject(
+        loadToolSource(hangingSource(file), {
+          resolveCredential: () => undefined,
+          signal: controller.signal,
+        }),
+        (error) => expect(error).toBeInstanceOf(Error),
+      );
+      expect(await startedBy(file)).toEqual([]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
     }
   });
 });

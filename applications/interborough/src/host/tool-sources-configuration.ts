@@ -30,20 +30,37 @@
  * ## Tool names
  *
  * An agent file names a source's tool as `<id>__<tool>`: the source's `id`, two underscores, and
- * the tool's own name with any character outside letters, digits, `_` and `-` replaced by `_`
- * ({@link qualifiedToolName}). An `id` is lowercase letters, digits and hyphens, so it never holds
- * `_`, and the first `__` always ends it: two sources, or a source and a built-in tool, can never
- * produce the same name, and Bureau's own tools (`workflows-…`, `settings-…`) hold no `__`. The
- * whole name stays within 64 characters, the shortest limit a model provider sets. A tool that
- * cannot be named that way, or whose name another tool of the same source has already taken, is
- * skipped and reported on the source; the rest still load. The name is a persisted contract: an
- * agent file stores it.
+ * the tool's own name ({@link qualifiedToolName}). An `id` is lowercase letters, digits and
+ * hyphens, so it never holds `_`, and the first `__` always ends it: two sources, or a source and a
+ * built-in tool, can never produce the same name, and Bureau's own tools (`workflows-…`,
+ * `settings-…`) hold no `__`. The whole name stays within 64 characters, the shortest limit a model
+ * provider sets.
+ *
+ * The name is a persisted contract: an agent file stores it, and a tool approval hangs on it. So
+ * the mapping from a tool's own name to the name an agent file uses is a function of that name
+ * alone, never of what else the server lists or in which order:
+ *
+ * - A name that is already made of letters, digits, `_` and `-`, fits, and does not end in a
+ *   digest suffix is used as it is: `<id>__<tool>`.
+ * - Any other name (a character outside that set, a name too long, or one that ends in `-` and
+ *   eight hex digits) is `<id>__<readable>-<digest>`: `readable` is the name with each unsafe
+ *   character replaced by `_`, cut so the whole stays within 64 characters, and `digest` is the
+ *   first eight hex digits of the SHA-256 of the tool's own, raw name. `foo.bar` and `foo_bar`
+ *   therefore never share a name, and neither changes when the other is added, dropped, or listed
+ *   first. Every name made this way ends in the digest suffix and no name made the first way does,
+ *   so the two forms never meet.
+ * - Should two raw names still land on one name (a repeated name, or a digest collision), every one
+ *   of them is skipped and reported on the source, never the first: whichever the server lists
+ *   first must not decide which tool a stored name means. A tool with no name is skipped too. The
+ *   rest still load.
  *
  * The key is optional and an absent key means no sources, so a file written before the key
  * existed loads unchanged. Every other key of the file is left alone.
  *
  * @module tool-sources-configuration
  */
+
+import { createHash } from 'node:crypto';
 
 import { parseToolSourceDescription, type ToolSourceDescription } from 'armorer/tool-sources';
 
@@ -81,23 +98,75 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** A digest suffix: `-` and the eight hex digits {@link qualifiedToolName} appends to a name it changed. */
+const DIGEST_SUFFIX = /-[0-9a-f]{8}$/;
+
+/** How many characters of the SHA-256 of a tool's raw name its qualified name carries. */
+const DIGEST_LENGTH = 8;
+
 /**
  * The name an agent file uses for `toolName` of source `sourceId`, or the reason the tool cannot
- * be offered.
+ * be offered. The mapping depends on `toolName` alone (see the module comment); it does not detect
+ * a collision, which {@link qualifyToolNames} does across a source's tools.
  */
 export function qualifiedToolName(
   sourceId: string,
   toolName: string,
 ): { readonly name: string } | { readonly skipped: string } {
-  const own = toolName.replace(/[^A-Za-z0-9_-]/g, '_');
-  const name = `${sourceId}${TOOL_NAME_SEPARATOR}${own}`;
   if (toolName === '') return { skipped: 'the tool has no name.' };
-  if (name.length > MAXIMUM_TOOL_NAME_LENGTH) {
-    return {
-      skipped: `its name is longer than ${MAXIMUM_TOOL_NAME_LENGTH} characters once qualified.`,
-    };
+  const prefix = `${sourceId}${TOOL_NAME_SEPARATOR}`;
+  const readable = toolName.replace(/[^A-Za-z0-9_-]/g, '_');
+  if (
+    readable === toolName &&
+    prefix.length + toolName.length <= MAXIMUM_TOOL_NAME_LENGTH &&
+    !DIGEST_SUFFIX.test(toolName)
+  ) {
+    return { name: `${prefix}${toolName}` };
   }
-  return { name };
+  const digest = createHash('sha256').update(toolName).digest('hex').slice(0, DIGEST_LENGTH);
+  // The readable part is cut, never the digest: a cut name must still be told from its siblings.
+  const room = MAXIMUM_TOOL_NAME_LENGTH - prefix.length - 1 - DIGEST_LENGTH;
+  return { name: `${prefix}${readable.slice(0, room)}-${digest}` };
+}
+
+/** What {@link qualifyToolNames} makes of a source's tools. */
+export type QualifiedToolNames = {
+  /** The tools offered, each with the name an agent file uses, in the order given. */
+  readonly named: readonly { readonly tool: string; readonly name: string }[];
+  /** The tools not offered, each with the reason. */
+  readonly skipped: readonly { readonly tool: string; readonly reason: string }[];
+};
+
+/**
+ * The names an agent file uses for all the tools `toolNames` a source lists. A name taken by more
+ * than one tool is given to none of them, so the result does not depend on the order the server
+ * lists its tools in.
+ */
+export function qualifyToolNames(
+  sourceId: string,
+  toolNames: readonly string[],
+  qualify: typeof qualifiedToolName = qualifiedToolName,
+): QualifiedToolNames {
+  const qualified = toolNames.map((tool) => ({ tool, result: qualify(sourceId, tool) }));
+  const holders = new Map<string, number>();
+  for (const { result } of qualified) {
+    if ('name' in result) holders.set(result.name, (holders.get(result.name) ?? 0) + 1);
+  }
+  const named: { tool: string; name: string }[] = [];
+  const skipped: { tool: string; reason: string }[] = [];
+  for (const { tool, result } of qualified) {
+    if ('skipped' in result) {
+      skipped.push({ tool, reason: result.skipped });
+    } else if ((holders.get(result.name) ?? 0) > 1) {
+      skipped.push({
+        tool,
+        reason: `more than one tool of this source would be named ${result.name}, so none of them is offered.`,
+      });
+    } else {
+      named.push({ tool, name: result.name });
+    }
+  }
+  return { named, skipped };
 }
 
 function parseEntry(entry: unknown, location: string, field: string): ConfiguredToolSource {

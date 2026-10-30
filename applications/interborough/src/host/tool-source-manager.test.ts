@@ -16,40 +16,10 @@ import {
   type ToolSourceAuditEntry,
   type ToolSourceManager,
 } from './tool-source-manager.ts';
+import { keysOf, memoryHome } from './tool-source-memory-home.test-support.ts';
 import { toolSourceRoutes } from './tool-source-routes.ts';
 import { petsDocument } from './tool-source-servers.test-support.ts';
 import { toolSourceSecretKey } from './tool-source-vault.ts';
-
-type Failure = 'none' | 'before-replacing' | 'after-replacing';
-
-/** A home that holds its configuration and secrets in memory and fails the way a test says. */
-function memoryHome(mode: 'local' | 'remote' = 'local') {
-  const state = {
-    configuration: undefined as string | undefined,
-    secrets: new Map<string, string>(),
-    configurationFailure: 'none' as Failure,
-    secretWritesBeforeFailing: Number.POSITIVE_INFINITY,
-    secretWrites: 0,
-  };
-  const bungalow = {
-    mode,
-    configurationLocation: '/home/configuration.json',
-    readConfiguration: async () => state.configuration,
-    writeConfiguration: (text: string) => {
-      if (state.configurationFailure === 'before-replacing') throw new Error('disk full');
-      state.configuration = text;
-      if (state.configurationFailure === 'after-replacing')
-        throw new Error('directory sync failed');
-    },
-    readSecret: (key: string) => state.secrets.get(key),
-    writeSecret: (key: string, value: string) => {
-      state.secretWrites += 1;
-      if (state.secretWrites > state.secretWritesBeforeFailing) throw new Error('secret disk full');
-      state.secrets.set(key, value);
-    },
-  };
-  return { state, bungalow };
-}
 
 const petsSource = (id = 'pets') => ({
   id,
@@ -61,10 +31,6 @@ const petsSource = (id = 'pets') => ({
 
 /** The same source with a restriction added, so connecting it changes the configuration too. */
 const changedPets = { ...petsSource(), allowOperations: ['listPets'] };
-
-async function keysOf(): Promise<AnswerEncryptionKeys> {
-  return { current: await generateEncryptionKey() };
-}
 
 const closers: ToolSourceManager[] = [];
 

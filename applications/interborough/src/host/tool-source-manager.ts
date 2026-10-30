@@ -33,7 +33,15 @@
  * - **The sign-in.** {@link ToolSourceManager.authorize} starts an MCP OAuth flow and returns the
  *   authorization URL; the person's browser comes back to `/host/oauth/callback/<id>`
  *   ({@link ToolSourceManager.completeAuthorization}), which accepts only the `state` the flow
- *   recorded and only while a flow is waiting.
+ *   recorded, only while a flow is waiting, only within {@link SIGN_IN_TIME_TO_LIVE_MILLISECONDS}
+ *   of the URL being handed out, and only for the description the flow began for. It takes its
+ *   turn in the configuration queue and on the source's secret, like every other change, so a
+ *   removal that arrives during the token exchange waits for it.
+ * - **Credentials go only where they were given.** A stored credential is carried over only for
+ *   the same source going to the same place ({@link recipientOf}); a changed address drops it and
+ *   the OAuth state, and a new source never inherits a secret an earlier one left behind. The tools
+ *   a replaced or removed source loaded are connected to the old address until a restart, so they
+ *   are denied the credentials and sign-in the source now holds ({@link retired} in the manager).
  *
  * @module tool-source-manager
  */
@@ -45,7 +53,7 @@ import {
   type AnswerEncryptionKeys,
   type SettingLockReason,
 } from '@lostgradient/bureau';
-import { resolveCapabilityTier, type Tool } from 'armorer';
+import { resolveCapabilityTier, type McpOAuthTokenStorage, type Tool } from 'armorer';
 import {
   completeToolSourceAuthorization,
   loadToolSource,
@@ -58,6 +66,7 @@ import {
   type ToolSourceDescription,
   type ToolSourceOAuthOptions,
 } from 'armorer/tool-sources';
+import { createHash } from 'node:crypto';
 
 import { createConfigurationQueue, type ConfigurationQueue } from './configuration-queue.ts';
 import { hostWriteLocks } from './locations.ts';
@@ -68,12 +77,13 @@ import {
   NO_SECRETS,
   ToolSourceSecretsLockedError,
   ToolSourceSecretsUnreadableError,
+  type TokenStorageTurn,
   type ToolSourceSecrets,
   type ToolSourceVault,
 } from './tool-source-vault.ts';
 import {
   parseToolSourcesConfiguration,
-  qualifiedToolName,
+  qualifyToolNames,
   readToolSourcesConfiguration,
   serializeToolSources,
   TOOL_SOURCE_IDENTIFIER,
@@ -90,6 +100,12 @@ export function oauthCallbackPath(sourceId: string): string {
 
 /** How long one source may take to connect and list its tools at boot, and when a sign-in starts, by default. */
 export const DEFAULT_LOAD_TIMEOUT_MILLISECONDS = 30_000;
+
+/**
+ * How long a sign-in stays good after the host hands out its authorization URL: a person who has
+ * not finished by then starts again, and a callback that arrives later is refused.
+ */
+export const SIGN_IN_TIME_TO_LIVE_MILLISECONDS = 10 * 60_000;
 
 /** The longest credential value the host stores. Real tokens are far shorter; the limit bounds a request. */
 const MAXIMUM_CREDENTIAL_LENGTH = 4096;
@@ -319,6 +335,14 @@ export type ToolSourceManagerOptions = {
   readonly fetch?: typeof fetch;
   /** How long one source may take to load. Defaults to {@link DEFAULT_LOAD_TIMEOUT_MILLISECONDS}. */
   readonly loadTimeoutMilliseconds?: number;
+  /** The clock a sign-in's age is read from. Defaults to `Date.now`. */
+  readonly now?: () => number;
+  /**
+   * Runs `expire` after `milliseconds` and returns the function that cancels it: the deadline of a
+   * load and of a token exchange. Defaults to `setTimeout`; a test supplies its own to expire one
+   * at a moment it chooses.
+   */
+  readonly schedule?: (expire: () => void, milliseconds: number) => () => void;
 };
 
 /** A source that did not answer in time. */
@@ -470,26 +494,32 @@ async function closeLate(work: Promise<LoadedToolSource>): Promise<void> {
   }
 }
 
-/** Wait for `work`, or reject with a {@link LoadTimeoutError} after `milliseconds`; a source that arrives late is closed. */
-async function within(
-  work: Promise<LoadedToolSource>,
-  milliseconds: number,
-): Promise<LoadedToolSource> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let timedOut = false;
-  const deadline = new Promise<never>((_resolve, reject) => {
-    // poll-reason: timer
-    timer = setTimeout(() => {
-      timedOut = true;
-      reject(new LoadTimeoutError());
-    }, milliseconds);
-  });
-  try {
-    return await Promise.race([work, deadline]);
-  } finally {
-    clearTimeout(timer);
-    if (timedOut) void closeLate(work);
+/** A digest of a description, to tell whether the source a sign-in began for is the one that stands. */
+function revisionOf(source: ToolSourceDescription): string {
+  return createHash('sha256').update(JSON.stringify(source)).digest('hex');
+}
+
+/**
+ * Where a source's credentials are sent: its kind, and the address or command they reach. A change
+ * to any of it is a change of recipient, so the credentials held for the old one are not carried
+ * over. Changing anything else (an operation filter, a scope, a header name) keeps them.
+ */
+function recipientOf(source: ToolSourceDescription): string {
+  if (source.kind === 'mcp') {
+    const { transport } = source;
+    return JSON.stringify(
+      transport.type === 'stdio'
+        ? ['mcp', 'stdio', transport.command, transport.args ?? [], transport.cwd ?? null]
+        : ['mcp', 'http', transport.url],
+    );
   }
+  const { specification } = source;
+  return JSON.stringify([
+    'openapi',
+    source.baseUrl ?? null,
+    // An inline document names its servers itself; one fetched from a URL is wherever the URL says.
+    specification.type === 'url' ? specification.url : (specification.document.servers ?? null),
+  ]);
 }
 
 /** Create the manager. It loads nothing until {@link ToolSourceManager.start}. */
@@ -501,13 +531,30 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
   const vault: ToolSourceVault = createToolSourceVault({ bungalow, keys: options.keys });
   const timeout = options.loadTimeoutMilliseconds ?? DEFAULT_LOAD_TIMEOUT_MILLISECONDS;
   const warn = options.warn ?? (() => undefined);
+  const now = options.now ?? Date.now;
+  const schedule =
+    options.schedule ??
+    ((expire: () => void, milliseconds: number) => {
+      // poll-reason: timer
+      const timer = setTimeout(expire, milliseconds);
+      return () => clearTimeout(timer);
+    });
   const fetchOption = options.fetch === undefined ? {} : { fetch: options.fetch };
   let closed = false;
+  /** The loads that have not settled, which closing the host abandons. */
+  const loading = new Set<AbortController>();
 
   /** What the last start made of each source: its standing, and the description it loaded. */
   const booted = new Map<string, { standing: ToolSourceStanding; description: string }>();
   const loadedSources: LoadedToolSource[] = [];
   const catalog: Record<string, Tool> = {};
+  /**
+   * The sources whose loaded incarnation was removed, or replaced by one that goes somewhere
+   * else, since the host started. Their tools stay connected to the old address until a restart,
+   * so they are denied the credentials and sign-in the source now holds, which belong to the new
+   * address.
+   */
+  const retired = new Set<string>();
 
   const lockReason = (): SettingLockReason | undefined => hostWriteLocks(bungalow).configuration;
   const assertWritable = (): void => {
@@ -553,12 +600,29 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
     return secrets.credentials.get(credential);
   };
 
+  /** The credentials of a source loaded at boot: none once that incarnation is {@link retired}. */
+  const resolveForLoaded: typeof resolveCredential = (request) =>
+    retired.has(request.sourceId) ? Promise.resolve(undefined) : resolveCredential(request);
+
+  /** A source's sign-in state for a load at boot: empty and read-only once that incarnation is {@link retired}. */
+  function storageForLoaded(sourceId: string): McpOAuthTokenStorage {
+    const storage = vault.tokenStorage(sourceId);
+    return {
+      load: () => (retired.has(sourceId) ? Promise.resolve({}) : storage.load()),
+      save: (patch) => (retired.has(sourceId) ? undefined : storage.save(patch)),
+      clear: (names) => (retired.has(sourceId) ? undefined : storage.clear?.(names)),
+    };
+  }
+
   /** The OAuth pieces for a load or a completion: storage in the vault, and the callback on this host's origin. */
   function oauthOptions(
     onAuthorizationRequired: ToolSourceOAuthOptions['onAuthorizationRequired'],
+    turn: TokenStorageTurn = 'take',
+    storage: (sourceId: string) => McpOAuthTokenStorage = (sourceId) =>
+      vault.tokenStorage(sourceId, turn),
   ): ToolSourceOAuthOptions {
     return {
-      tokenStorage: (sourceId) => vault.tokenStorage(sourceId),
+      tokenStorage: storage,
       redirectUrl: (sourceId) => `${options.origin()}${oauthCallbackPath(sourceId)}`,
       onAuthorizationRequired,
     };
@@ -581,6 +645,36 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
     };
   }
 
+  /**
+   * Load a source, or reject with a {@link LoadTimeoutError} after the load timeout. At the
+   * deadline the load is aborted, which stops the child process or connection it opened rather
+   * than leaving it to the SDK's own, much longer, timeout; a source that arrives late is closed.
+   * Closing the host aborts it too.
+   */
+  async function within(
+    start: (signal: AbortSignal) => Promise<LoadedToolSource>,
+  ): Promise<LoadedToolSource> {
+    const controller = new AbortController();
+    loading.add(controller);
+    const work = start(controller.signal);
+    let timedOut = false;
+    let cancel = (): void => undefined;
+    const deadline = new Promise<never>((_resolve, reject) => {
+      cancel = schedule(() => {
+        timedOut = true;
+        reject(new LoadTimeoutError());
+        controller.abort();
+      }, timeout);
+    });
+    try {
+      return await Promise.race([work, deadline]);
+    } finally {
+      cancel();
+      loading.delete(controller);
+      if (timedOut || controller.signal.aborted) void closeLate(work);
+    }
+  }
+
   /** Load one source at boot. Never throws: a failure is the source's own standing. */
   async function loadOne(entry: ConfiguredToolSource): Promise<void> {
     const { source } = entry;
@@ -599,13 +693,13 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       }
       // A sign-in is never started here: the URL the loader hands over is dropped, and the
       // source reports `needs-authorization` for a person to start it.
-      const loaded = await within(
+      const loaded = await within((signal) =>
         loadToolSource(source, {
-          resolveCredential,
-          oauth: oauthOptions(() => undefined),
+          resolveCredential: resolveForLoaded,
+          oauth: oauthOptions(() => undefined, 'take', storageForLoaded),
+          signal,
           ...fetchOption,
         }),
-        timeout,
       );
       if (closed) {
         await loaded.close().catch(() => undefined);
@@ -614,23 +708,23 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       loadedSources.push(loaded);
       const tools: ToolSourceToolStanding[] = [];
       const skipped: { tool: string; reason: string }[] = [];
+      // The names are settled for the whole listing before any is taken, so the order the
+      // server lists its tools in never decides which tool a stored name means.
+      const names = qualifyToolNames(
+        source.id,
+        loaded.tools.map((tool) => tool.name),
+      );
+      skipped.push(...names.skipped);
+      const byName = new Map(names.named.map(({ tool, name }) => [tool, name]));
       for (const tool of loaded.tools) {
-        const qualified = qualifiedToolName(source.id, tool.name);
-        if ('skipped' in qualified) {
-          skipped.push({ tool: tool.name, reason: qualified.skipped });
-        } else if (Object.hasOwn(catalog, qualified.name)) {
-          skipped.push({
-            tool: tool.name,
-            reason: `another tool of this source already has the name ${qualified.name}.`,
-          });
-        } else {
-          catalog[qualified.name] = tool;
-          tools.push({
-            name: qualified.name,
-            tool: tool.name,
-            tier: resolveCapabilityTier(tool.metadata, tool.tags) ?? null,
-          });
-        }
+        const name = byName.get(tool.name);
+        if (name === undefined) continue;
+        catalog[name] = tool;
+        tools.push({
+          name,
+          tool: tool.name,
+          tier: resolveCapabilityTier(tool.metadata, tool.tags) ?? null,
+        });
       }
       remember(standingOf(entry, 'loaded', { tools, skipped }));
     } catch (error) {
@@ -765,18 +859,32 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
         vault.exclusive(id, async () => {
           const { text: currentText, document, sources } = await readDocument();
           const existing = sources.find((entry) => entry.source.id === id);
+          // What is held is carried over only for the same source going to the same place. A new
+          // source starts with nothing, whatever an earlier source of the same id left in its
+          // secret, and a source that now points elsewhere does not send the old credentials there.
+          const sameRecipient =
+            existing !== undefined && recipientOf(existing.source) === recipientOf(source);
           let previous: ToolSourceSecrets = NO_SECRETS;
-          try {
-            previous = await vault.read(id);
-          } catch (error) {
-            // Credentials that cannot be read are replaced, so every one must be supplied again.
-            if (!(error instanceof ToolSourceSecretsUnreadableError)) throw error;
+          let unreadable = false;
+          if (sameRecipient) {
+            try {
+              previous = await vault.read(id);
+            } catch (error) {
+              // Credentials that cannot be read are replaced, so every one must be supplied again.
+              if (!(error instanceof ToolSourceSecretsUnreadableError)) throw error;
+              unreadable = true;
+            }
           }
           const credentials = new Map<string, string>();
           for (const name of referenced) {
             const value = supplied.get(name) ?? previous.credentials.get(name);
             if (value === undefined) {
-              throw new ToolSourceInputError(`credentials.${name}`, 'a value is required.');
+              throw new ToolSourceInputError(
+                `credentials.${name}`,
+                existing !== undefined && !sameRecipient
+                  ? 'a value is required, because the source now goes somewhere else.'
+                  : 'a value is required.',
+              );
             }
             credentials.set(name, value);
           }
@@ -799,23 +907,34 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
           const unchanged =
             existing !== undefined &&
             JSON.stringify(existing.source) === JSON.stringify(source) &&
-            supplied.size === 0;
+            supplied.size === 0 &&
+            // A secret that cannot be read is replaced by this request, even one that names no credential.
+            !unreadable;
           if (unchanged) return { id, changed: false, restartRequired: true as const };
 
-          const previousText = vault.stored(id);
+          // A new source has no previous text to put back: writing it replaces any orphan, and a
+          // failed change leaves the orphan cleared rather than restored.
+          const previousText = existing === undefined ? undefined : vault.stored(id);
           // A write that throws may still have replaced the secret, so both steps put the previous
           // text back (an empty value reads as no secret) when the change does not complete.
+          // The loaded incarnation stops being given credentials before the new ones are stored,
+          // since it is still connected to the old address; a change that does not complete
+          // puts the previous ones back and lifts the fence with them.
+          const fences = existing !== undefined && !sameRecipient && !retired.has(id);
+          if (fences) retired.add(id);
           const putPreviousBack = (): void => {
             try {
               vault.restore(id, previousText);
             } catch {
               throw new ToolSourcePartialChangeError(id, 'credentials-not-restored');
             }
+            if (fences) retired.delete(id);
           };
           try {
             await vault.write(id, {
               credentials,
               oauth: keepsSignIn ? previous.oauth : undefined,
+              signIn: keepsSignIn ? previous.signIn : undefined,
             });
           } catch (error) {
             putPreviousBack();
@@ -853,6 +972,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
           if (!(await writeConfiguration(text))) {
             throw new Error('The tool-source configuration could not be written.');
           }
+          retired.add(id);
           try {
             vault.clear(id);
           } catch {
@@ -872,15 +992,15 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       }
       let authorizationUrl: URL | undefined;
       try {
-        const loaded = await within(
+        const loaded = await within((signal) =>
           loadToolSource(entry.source, {
             resolveCredential,
             oauth: oauthOptions((_sourceId, url) => {
               authorizationUrl = url;
             }),
+            signal,
             ...fetchOption,
           }),
-          timeout,
         );
         // The tokens already work: there is nothing to sign in to.
         await loaded.close().catch(() => undefined);
@@ -890,42 +1010,95 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
           error instanceof ToolSourceAuthorizationRequiredError &&
           authorizationUrl !== undefined
         ) {
+          // The sign-in is good for this description and for a while: the callback checks both.
+          const recorded = await vault.beginSignIn(id, {
+            startedAt: now(),
+            revision: revisionOf(entry.source),
+          });
+          if (!recorded) {
+            throw new ToolSourceInputError('source', 'changed while the sign-in was starting.');
+          }
           return { authorized: false, authorizationUrl: authorizationUrl.href };
         }
         throw error;
       }
     },
+    // Taken in turn with every other change to the configuration and to this source's secret: a
+    // removal or a change that arrives during the token exchange waits for it, and one that came
+    // first is seen here, so the tokens are never written for a source that is gone or different.
     async completeAuthorization(rawId, callbackUrl) {
       assertWritable();
       const id = checkedIdentifier(rawId, 'source');
-      const entry = await configured(id);
-      if (!isOAuth(entry.source)) {
-        throw new ToolSourceInputError('source', 'does not sign in with OAuth.');
-      }
-      const { oauth: waiting } = await vault.read(id);
-      // Armorer skips the `state` check when none was recorded, so a callback with no flow in
-      // progress is refused here before it can reach the token endpoint.
-      if (waiting?.state === undefined || waiting.codeVerifier === undefined) {
-        throw new ToolSourceInputError('callback', 'no sign-in is waiting for this source.');
-      }
-      try {
-        await completeToolSourceAuthorization(entry.source, {
-          oauth: oauthOptions(() => undefined),
-          callbackUrl,
-          ...fetchOption,
-        });
-      } catch {
-        // Nothing from the failure is repeated: it may hold a URL, a code, or the server's words.
-        throw new ToolSourceInputError('callback', 'the sign-in could not be completed.');
-      }
-      // The recorded state and verifier are good for one sign-in. Clearing them makes the next
-      // start a new one, and a replayed callback finds none waiting.
-      await vault.tokenStorage(id).clear?.(['codeVerifier', 'state']);
-      await record('tool.source.authorized', entry.source);
-      return { id, changed: true, restartRequired: true as const };
+      return serialized(() =>
+        vault.exclusive(id, async () => {
+          const entry = await configured(id);
+          if (!isOAuth(entry.source)) {
+            throw new ToolSourceInputError('source', 'does not sign in with OAuth.');
+          }
+          const { oauth: waiting, signIn } = await vault.read(id);
+          // Armorer skips the `state` check when none was recorded, so a callback with no flow in
+          // progress is refused here before it can reach the token endpoint.
+          if (
+            waiting?.state === undefined ||
+            waiting.codeVerifier === undefined ||
+            signIn === undefined
+          ) {
+            throw new ToolSourceInputError('callback', 'no sign-in is waiting for this source.');
+          }
+          // This call holds the source's turn, so the loader's storage must not wait for it.
+          const storage = vault.tokenStorage(id, 'held');
+          const elapsed = now() - signIn.startedAt;
+          const refusal =
+            signIn.revision !== revisionOf(entry.source)
+              ? 'the source changed since the sign-in started.'
+              : !(elapsed >= 0 && elapsed <= SIGN_IN_TIME_TO_LIVE_MILLISECONDS)
+                ? 'the sign-in has expired.'
+                : undefined;
+          if (refusal !== undefined) {
+            // A sign-in that cannot finish is dropped, so a replay finds none waiting.
+            await storage.clear?.(['codeVerifier', 'state']);
+            throw new ToolSourceInputError('callback', refusal);
+          }
+          // The exchange holds the configuration queue, so it is bounded: at the deadline the
+          // request is cancelled and the exchange fails, instead of stalling every writer.
+          const controller = new AbortController();
+          const cancel = schedule(() => controller.abort(), timeout);
+          const baseFetch = options.fetch ?? fetch;
+          const bounded: typeof fetch = Object.assign(
+            (input: RequestInfo | URL, init?: RequestInit) =>
+              baseFetch(input, {
+                ...init,
+                signal:
+                  init?.signal === undefined || init.signal === null
+                    ? controller.signal
+                    : AbortSignal.any([init.signal, controller.signal]),
+              }),
+            baseFetch,
+          );
+          try {
+            await completeToolSourceAuthorization(entry.source, {
+              oauth: oauthOptions(() => undefined, 'held'),
+              callbackUrl,
+              fetch: bounded,
+            });
+          } catch {
+            // Nothing from the failure is repeated: it may hold a URL, a code, or the server's words.
+            throw new ToolSourceInputError('callback', 'the sign-in could not be completed.');
+          } finally {
+            cancel();
+          }
+          // The recorded state and verifier are good for one sign-in. Clearing them makes the next
+          // start a new one, and a replayed callback finds none waiting.
+          await storage.clear?.(['codeVerifier', 'state']);
+          await record('tool.source.authorized', entry.source);
+          return { id, changed: true, restartRequired: true as const };
+        }),
+      );
     },
     async close() {
       closed = true;
+      // A source still connecting holds a child process or a socket nobody is waiting for.
+      for (const controller of loading) controller.abort();
       await Promise.allSettled(startedSources().map((loaded) => loaded.close()));
     },
   };

@@ -10,6 +10,7 @@ import {
   NO_TOOL_SOURCES,
   parseToolSourcesConfiguration,
   qualifiedToolName,
+  qualifyToolNames,
   readToolSourcesConfiguration,
   serializeToolSources,
   TOOL_NAME_SEPARATOR,
@@ -87,11 +88,66 @@ describe('toolSources', () => {
   });
 });
 
+/** The `name` of a qualified tool, failing the test when it was skipped. */
+function nameOf(sourceId: string, tool: string): string {
+  const result = qualifiedToolName(sourceId, tool);
+  if (!('name' in result)) throw new Error(`Expected ${tool} to be named.`);
+  return result.name;
+}
+
 describe('the name an agent file uses for a tool', () => {
-  test('is the source, two underscores, and the tool’s own name with unsafe characters replaced', () => {
+  test('is the source, two underscores, and the tool’s own name when that name is already safe', () => {
     expect(qualifiedToolName('files', 'read_file')).toEqual({ name: 'files__read_file' });
     expect(qualifiedToolName('files', 'list-pets')).toEqual({ name: 'files__list-pets' });
-    expect(qualifiedToolName('files', 'repo.search/v2')).toEqual({ name: 'files__repo_search_v2' });
+  });
+
+  test('keeps the readable name and adds a digest of the raw name when a character is replaced', () => {
+    const dotted = nameOf('files', 'repo.search/v2');
+    expect(dotted).toMatch(/^files__repo_search_v2-[0-9a-f]{8}$/);
+    // The digest is of the raw name: stable across calls, and not of the sanitized one.
+    expect(nameOf('files', 'repo.search/v2')).toBe(dotted);
+    expect(nameOf('files', 'repo_search_v2')).toBe('files__repo_search_v2');
+  });
+
+  test('gives `foo.bar` and `foo_bar` different names, whichever is asked about first or alone', () => {
+    const underscored = nameOf('files', 'foo_bar');
+    const dotted = nameOf('files', 'foo.bar');
+    expect(underscored).toBe('files__foo_bar');
+    expect(dotted).not.toBe(underscored);
+    expect(dotted).toMatch(/^files__foo_bar-[0-9a-f]{8}$/);
+    // Neither depends on the other being listed, dropped, or first.
+    for (const listing of [
+      ['foo_bar', 'foo.bar'],
+      ['foo.bar', 'foo_bar'],
+      ['foo.bar'],
+      ['foo_bar'],
+    ]) {
+      const { named, skipped } = qualifyToolNames('files', listing);
+      expect(skipped).toEqual([]);
+      for (const { tool, name } of named) {
+        expect(name).toBe(tool === 'foo_bar' ? underscored : dotted);
+      }
+    }
+  });
+
+  test('never lets a name that already looks like a digested one meet a digested name', () => {
+    const lookalike = 'foo_bar-' + nameOf('files', 'foo.bar').slice(-8);
+    expect(nameOf('files', lookalike)).not.toBe(`files__${lookalike}`);
+    expect(nameOf('files', lookalike)).toMatch(/-[0-9a-f]{8}$/);
+    expect(nameOf('files', lookalike)).not.toBe(nameOf('files', 'foo.bar'));
+  });
+
+  test('cuts a name that would pass the limit to the readable part, keeping the whole digest', () => {
+    const fits = 'x'.repeat(MAXIMUM_TOOL_NAME_LENGTH - 'files__'.length);
+    expect(qualifiedToolName('files', fits)).toEqual({ name: `files__${fits}` });
+    const long = nameOf('files', `${fits}x`);
+    expect(long.length).toBe(MAXIMUM_TOOL_NAME_LENGTH);
+    expect(long).toMatch(/^files__x+-[0-9a-f]{8}$/);
+    // Two long names with the same cut readable part still differ by their digest.
+    expect(nameOf('files', `${fits}y`)).not.toBe(long);
+    // The longest source id leaves room for a readable part.
+    const longest = nameOf('a'.repeat(20), 'y'.repeat(200));
+    expect(longest.length).toBe(MAXIMUM_TOOL_NAME_LENGTH);
   });
 
   test('cannot collide across sources, because an identifier never holds an underscore', () => {
@@ -108,10 +164,47 @@ describe('the name an agent file uses for a tool', () => {
     }
   });
 
-  test('skips a tool whose qualified name would exceed what a model provider allows, or that has no name', () => {
-    const longest = 'x'.repeat(MAXIMUM_TOOL_NAME_LENGTH - 'files__'.length);
-    expect(qualifiedToolName('files', longest)).toEqual({ name: `files__${longest}` });
-    expect(qualifiedToolName('files', `${longest}x`)).toHaveProperty('skipped');
+  test('skips a tool that has no name', () => {
     expect(qualifiedToolName('files', '')).toHaveProperty('skipped');
+  });
+});
+
+describe('the names of all the tools a source lists', () => {
+  test('are the same whatever order the server lists the tools in', () => {
+    const tools = ['a.b', 'a_b', 'a b', 'plain', 'x'.repeat(80)];
+    const forward = qualifyToolNames('files', tools);
+    const backward = qualifyToolNames('files', [...tools].reverse());
+    expect(forward.skipped).toEqual([]);
+    expect(new Map(backward.named.map(({ tool, name }) => [tool, name]))).toEqual(
+      new Map(forward.named.map(({ tool, name }) => [tool, name])),
+    );
+    expect(new Set(forward.named.map(({ name }) => name)).size).toBe(tools.length);
+  });
+
+  test('give a name two tools would share to neither, so listing order cannot choose', () => {
+    // A server that lists the same name twice, and a stand-in for a digest collision.
+    const repeated = qualifyToolNames('files', ['dup', 'ok', 'dup']);
+    expect(repeated.named).toEqual([{ tool: 'ok', name: 'files__ok' }]);
+    expect(repeated.skipped.map(({ tool }) => tool)).toEqual(['dup', 'dup']);
+    const collide = (sourceId: string, tool: string) =>
+      tool === 'p' || tool === 'q'
+        ? { name: `${sourceId}__same` }
+        : qualifiedToolName(sourceId, tool);
+    for (const order of [
+      ['p', 'q', 'r'],
+      ['q', 'p', 'r'],
+      ['r', 'q', 'p'],
+    ]) {
+      const result = qualifyToolNames('files', order, collide);
+      expect(result.named).toEqual([{ tool: 'r', name: 'files__r' }]);
+      expect(result.skipped.map(({ tool }) => tool).sort()).toEqual(['p', 'q']);
+      expect(result.skipped[0]?.reason).toContain('files__same');
+    }
+  });
+
+  test('report a tool with no name beside the others that load', () => {
+    const result = qualifyToolNames('files', ['', 'ok']);
+    expect(result.named).toEqual([{ tool: 'ok', name: 'files__ok' }]);
+    expect(result.skipped).toEqual([{ tool: '', reason: 'the tool has no name.' }]);
   });
 });

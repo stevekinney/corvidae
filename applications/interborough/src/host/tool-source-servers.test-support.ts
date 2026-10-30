@@ -41,11 +41,44 @@ const wipe = createTool({
   },
 });
 
+/** A read-only tool named `name`, for a server whose tool names a test chooses. */
+function namedTool(name: string) {
+  return createTool({
+    name,
+    description: `reads something called ${name}`,
+    input: z.object({}),
+    metadata: { readOnly: true },
+    async execute() {
+      return { found: true };
+    },
+  });
+}
+
+/**
+ * An MCP server that serves only the read-only tools `toolNames`, in that order, to
+ * `Authorization: Bearer <token>`.
+ */
+export function startMcpServerListing(
+  token: string,
+  toolNames: readonly string[],
+): Promise<TestServer> {
+  return serveMcp(token, toolNames.map(namedTool), () => ({}));
+}
+
 /** An MCP server that serves its tools only to `Authorization: Bearer <token>`. */
-export async function startMcpServer(token: string): Promise<TestServer> {
-  const mcp = await createMCP(createToolbox([lookup, wipe]), {
-    toolConfiguration: (tool) =>
-      tool.name === 'wipe' ? { annotations: { destructiveHint: true } } : {},
+export function startMcpServer(token: string): Promise<TestServer> {
+  return serveMcp(token, [lookup, wipe], (tool) =>
+    tool.name === 'wipe' ? { annotations: { destructiveHint: true } } : {},
+  );
+}
+
+async function serveMcp(
+  token: string,
+  tools: Parameters<typeof createToolbox>[0],
+  toolConfiguration: (tool: { name: string }) => Record<string, unknown>,
+): Promise<TestServer> {
+  const mcp = await createMCP(createToolbox(tools), {
+    toolConfiguration,
   });
   const authorizations: (string | null)[] = [];
   const server = Bun.serve({
