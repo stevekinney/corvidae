@@ -31,6 +31,7 @@
 
 import {
   defineOperation,
+  isValidTimeZone,
   type OperationFault,
   type Principal,
   type ScheduleSummary,
@@ -100,6 +101,8 @@ const scheduleViewSchema = z.object({
   cronExpression: z.string().nullable(),
   /** Set for an interval schedule, `null` for a cron one. */
   intervalMs: z.number().nullable(),
+  /** The IANA time zone a cron schedule is read in; `UTC` for an interval one and for a schedule created without one. */
+  timeZone: z.string(),
   status: scheduleStatus,
   overlap: z.enum(['skip', 'queue', 'cancel-running', 'allow']),
   revision: z.number().int(),
@@ -139,6 +142,7 @@ function viewOf(
     description: summary.description ?? null,
     cronExpression: summary.cronExpression ?? null,
     intervalMs: summary.intervalMs ?? null,
+    timeZone: summary.timeZone,
     status: summary.status,
     overlap: summary.overlap,
     revision: summary.revision,
@@ -149,6 +153,24 @@ function viewOf(
     createdAt: iso(summary.createdAt)!,
     updatedAt: iso(summary.updatedAt)!,
   };
+}
+
+const timeZoneField = z
+  .string()
+  .min(1)
+  .max(100)
+  .describe(
+    'The IANA time zone a cron `spec` is read in, such as `America/Los_Angeles`, or `UTC`. Without one a schedule runs in UTC. A time the clock skips when it springs forward is counted as a missed fire (reason `dst-gap`), and a time it repeats when it falls back runs once. An interval `spec` takes none.',
+  );
+
+/** `InvalidParams` on `timeZone` for a zone the runtime does not know, before anything is written. */
+function assertKnownTimeZone(timeZone: string | undefined): void {
+  if (timeZone !== undefined && !isValidTimeZone(timeZone)) {
+    throw invalidParams(
+      'timeZone',
+      `\`timeZone\` must be an IANA time zone name such as "America/Los_Angeles", or "UTC"; "${timeZone}" is not one`,
+    );
+  }
 }
 
 function unsupported(): OperationFault {
@@ -214,6 +236,11 @@ function faultOf(error: unknown, scheduleId: string): never {
         message: error.message,
         data: { reason: 'schedule-cancelled' },
       } satisfies OperationFault;
+    }
+    // Weft words a zone it refuses with the option's name, and that message also says `must be` or
+    // `interval`, so the zone is told apart first.
+    if (message.includes('options.timezone')) {
+      throw invalidParams('timeZone', error.message);
     }
     if (message.includes('cron') || message.includes('interval') || message.includes('must be')) {
       throw invalidParams('spec', error.message);
@@ -377,6 +404,7 @@ const createInput = z.object({
     .describe(
       'Whether a fire starts while the previous one is still running: `skip` does not, `allow` does (refused with a `sessionId`). Defaults to `skip`.',
     ),
+  timeZone: timeZoneField.optional(),
 });
 
 export const schedulesCreateOperation = defineOperation<
@@ -388,7 +416,7 @@ export const schedulesCreateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Create a schedule',
   description:
-    'Creates a schedule that runs the catalog agent `agentName` with the text `input` on `spec`, a cron expression or a duration. The caller owns it, so no scope is needed; every fire is a task the owner can list, read, observe, and cancel. `sessionId` makes each fire continue one session (`overlap: "allow"` is then refused), and `overlap` defaults to `skip`. An agent that is not in the catalog is `NotFound`; a `spec` that is not a cadence, or a combination Bureau refuses, is `InvalidParams`. Answers the schedule’s view, whose `revision` is `1`.',
+    'Creates a schedule that runs the catalog agent `agentName` with the text `input` on `spec`, a cron expression or a duration. The caller owns it, so no scope is needed; every fire is a task the owner can list, read, observe, and cancel. `sessionId` makes each fire continue one session (`overlap: "allow"` is then refused), and `overlap` defaults to `skip`. An agent that is not in the catalog is `NotFound`; a `spec` that is not a cadence, a `timeZone` that is not an IANA zone (or is given with an interval), or a combination Bureau refuses, is `InvalidParams`. Answers the schedule’s view, whose `revision` is `1`.',
   destructive: true,
   tags: ['Schedules'],
   inputSchema: createInput,
@@ -414,6 +442,7 @@ export const schedulesCreateOperation = defineOperation<
       } satisfies OperationFault;
     }
     if (!host.schedules.hasAgent(input.agentName)) throw resourceNotFound('agent', input.agentName);
+    assertKnownTimeZone(input.timeZone);
     try {
       const summary = await host.schedules.create({
         agentName: input.agentName,
@@ -422,6 +451,7 @@ export const schedulesCreateOperation = defineOperation<
         ...(input.description === undefined ? {} : { description: input.description }),
         ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
         ...(input.overlap === undefined ? {} : { overlap: input.overlap }),
+        ...(input.timeZone === undefined ? {} : { timeZone: input.timeZone }),
         principal: owner,
       });
       if (summary === undefined) throw unsupported();
@@ -527,6 +557,7 @@ const updateInput = z.object({
     .describe(
       'The schedule’s new overlap policy: `skip` or `allow` (refused for a schedule with a recurring session); left as it was when omitted.',
     ),
+  timeZone: timeZoneField.optional(),
   expectedRevision,
 });
 
@@ -537,8 +568,8 @@ export const schedulesUpdateOperation = defineOperation<
 >({
   name: 'bureau.schedules.update',
   mcpExposable: false,
-  summary: 'Change a schedule’s cadence, description, or overlap policy',
-  description: `Replaces a schedule’s cadence with \`spec\` (a cron expression or a duration; an interval counts from now), and changes its \`description\` and \`overlap\` when they are given. Its agent, input, owner, and session are not changed, and \`overlap: "allow"\` is refused for a schedule with a recurring session. An update always counts as a change. ${STALE_NOTE}`,
+  summary: 'Change a schedule’s cadence, description, overlap policy, or time zone',
+  description: `Replaces a schedule’s cadence with \`spec\` (a cron expression or a duration; an interval counts from now), and changes its \`description\`, \`overlap\`, and \`timeZone\` when they are given (a zone left out is kept; an unknown one, or one given with an interval, is \`InvalidParams\` on \`timeZone\`). Its agent, input, owner, and session are not changed, and \`overlap: "allow"\` is refused for a schedule with a recurring session. An update always counts as a change. ${STALE_NOTE}`,
   destructive: true,
   tags: ['Schedules'],
   inputSchema: updateInput,
@@ -550,6 +581,7 @@ export const schedulesUpdateOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
     await ownerFor(host, principal, input.scheduleId, 'bureau.schedules:write');
+    assertKnownTimeZone(input.timeZone);
     try {
       const done = await host.schedules.update(
         input.scheduleId,
@@ -557,6 +589,7 @@ export const schedulesUpdateOperation = defineOperation<
           spec: input.spec,
           ...(input.description === undefined ? {} : { description: input.description }),
           ...(input.overlap === undefined ? {} : { overlap: input.overlap }),
+          ...(input.timeZone === undefined ? {} : { timeZone: input.timeZone }),
         },
         { expectedRevision: input.expectedRevision },
       );

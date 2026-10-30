@@ -175,6 +175,105 @@ describe('each schedule operation, as the owner', () => {
   });
 });
 
+describe('a schedule’s time zone (COR-1820)', () => {
+  const WEEKDAYS = { ...NEW_SCHEDULE, spec: '0 9 * * 1-5' };
+
+  it('creates a schedule in the zone it names, keeps it through an update that omits it, and changes it when given', async () => {
+    const opened = await serve();
+    const created = await rpc(
+      opened.handler,
+      'bureau.schedules.create',
+      { ...WEEKDAYS, timeZone: 'America/Los_Angeles' },
+      'alice-key',
+    );
+    expect(created.result).toMatchObject({
+      cronExpression: '0 9 * * 1-5',
+      timeZone: 'America/Los_Angeles',
+    });
+    const id = created.result!['id'] as string;
+    const read = async () =>
+      (await rpc(opened.handler, 'bureau.schedules.get', { scheduleId: id }, 'alice-key')).result;
+
+    await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: id, spec: '0 10 * * 1-5' },
+      'alice-key',
+    );
+    expect(await read()).toMatchObject({
+      cronExpression: '0 10 * * 1-5',
+      timeZone: 'America/Los_Angeles',
+    });
+
+    const changed = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      { scheduleId: id, spec: '0 10 * * 1-5', timeZone: 'Europe/Berlin' },
+      'alice-key',
+    );
+    expect(changed.error).toBeUndefined();
+    expect(await read()).toMatchObject({ timeZone: 'Europe/Berlin' });
+  });
+
+  it('shows a schedule created without a zone, and an interval one, in UTC', async () => {
+    const opened = await serve();
+    const cron = await rpc(opened.handler, 'bureau.schedules.create', WEEKDAYS, 'alice-key');
+    const interval = await rpc(
+      opened.handler,
+      'bureau.schedules.create',
+      NEW_SCHEDULE,
+      'alice-key',
+    );
+    expect(cron.result).toMatchObject({ timeZone: 'UTC' });
+    expect(interval.result).toMatchObject({ timeZone: 'UTC' });
+  });
+
+  it('answers a zone that is not an IANA name as InvalidParams on timeZone, on create and on update, and writes nothing', async () => {
+    const opened = await serve();
+    const refusals = [
+      await rpc(
+        opened.handler,
+        'bureau.schedules.create',
+        { ...WEEKDAYS, timeZone: 'Mars/Olympus' },
+        'alice-key',
+      ),
+    ];
+    const id = await createdBy(opened, 'alice-key', { spec: '0 9 * * 1-5' });
+    refusals.push(
+      await rpc(
+        opened.handler,
+        'bureau.schedules.update',
+        { scheduleId: id, spec: '0 9 * * 1-5', timeZone: 'Mars/Olympus' },
+        'alice-key',
+      ),
+    );
+    for (const refusal of refusals) {
+      expect(status(refusal)).toBe(400);
+      expect(refusal.error?.data?.['issues']).toContainEqual(
+        expect.objectContaining({ path: ['timeZone'] }),
+      );
+    }
+    const listed = await rpc(opened.handler, 'bureau.schedules.list', {}, 'alice-key');
+    expect(listed.result!['schedules']).toHaveLength(1);
+    const read = await rpc(opened.handler, 'bureau.schedules.get', { scheduleId: id }, 'alice-key');
+    expect(read.result).toMatchObject({ revision: 1, timeZone: 'UTC' });
+  });
+
+  it('answers a zone given with an interval as InvalidParams on timeZone', async () => {
+    const opened = await serve();
+    const refusal = await rpc(
+      opened.handler,
+      'bureau.schedules.create',
+      { ...NEW_SCHEDULE, timeZone: 'America/Los_Angeles' },
+      'alice-key',
+    );
+    expect(status(refusal)).toBe(400);
+    expect(refusal.error?.data?.['issues']).toContainEqual(
+      expect.objectContaining({ path: ['timeZone'] }),
+    );
+  });
+});
+
 describe('the agent a schedule runs', () => {
   it('is named by the view of every read, and the view carries only the start of the input', async () => {
     const opened = await serve();

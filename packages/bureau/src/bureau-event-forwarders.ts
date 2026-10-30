@@ -191,7 +191,7 @@ export function forwardMissedFires(
 ): () => void {
   let stopped = false;
   const forward = async (missed: ScheduleMissedFireEvent): Promise<void> => {
-    const { scheduleId, missedCount, windowStart, windowEnd } = missed;
+    const { scheduleId, missedCount, windowStart, windowEnd, reason } = missed;
     let schedule: unknown;
     try {
       schedule = await getSchedule(scheduleId);
@@ -206,7 +206,7 @@ export function forwardMissedFires(
       return;
     }
     if (stopped || schedule === null || schedule === undefined) return;
-    dispatch(new ScheduleMissedEvent(scheduleId, missedCount, windowStart, windowEnd));
+    dispatch(new ScheduleMissedEvent(scheduleId, missedCount, windowStart, windowEnd, reason));
   };
   const listener = (event: Event): void => {
     if (!(event instanceof ScheduleMissedFireEvent)) return;
