@@ -11,6 +11,7 @@ import { SessionOutboxAppendedEvent } from '../events';
 import { sessionLineageOf } from './session-lineage';
 import { sessionOriginOf } from './session-origin';
 import { sessionOwnerOf } from './session-owner';
+import { sessionTitleOverrideOf } from './session-title';
 import type {
   SessionCleanupOptions,
   SessionListOptions,
@@ -317,6 +318,11 @@ function describeConversation(history: ConversationHistory): {
   return { title, lastMessagePreview };
 }
 
+function titleOverrideFields(metadata: Record<string, JSONValue>): { title?: string } {
+  const override = sessionTitleOverrideOf(metadata);
+  return override === null ? {} : { title: override };
+}
+
 /**
  * Extracts a lightweight summary from a full session, avoiding the need
  * to expose the entire conversation history in list responses.
@@ -329,6 +335,8 @@ export function summarizeSession(session: AgentSession): SessionSummary {
     id: session.id,
     agentName: session.agentName,
     ...describeConversation(history),
+    // A title a person gave the session wins over the one derived from its first message.
+    ...titleOverrideFields(session.metadata),
     owner: sessionOwnerOf(session.metadata),
     ...sessionLineageOf(session.metadata),
     messageCount,
@@ -1243,7 +1251,7 @@ export function createSessionStore(
         }
 
         // Filter by agentName when requested
-        // The owner and origin filters are applied here, to the index, before `offset` and
+        // The owner, origin and title filters are applied here, to the index, before `offset` and
         // `limit`, so every page is full of the owner's own sessions. The index keeps each
         // session's metadata, so the origin needs no summary field of its own.
         const filtered = [...summaries.values()].filter(
@@ -1251,7 +1259,10 @@ export function createSessionStore(
             (!listOptions?.agentName || s.agentName === listOptions.agentName) &&
             (listOptions?.owner === undefined || s.owner === listOptions.owner) &&
             (listOptions?.origin === undefined ||
-              sessionOriginOf(s.metadata) === listOptions.origin),
+              sessionOriginOf(s.metadata) === listOptions.origin) &&
+            (listOptions?.titleContains === undefined ||
+              (s.title !== null &&
+                s.title.toLowerCase().includes(listOptions.titleContains.toLowerCase()))),
         );
 
         // Sort
