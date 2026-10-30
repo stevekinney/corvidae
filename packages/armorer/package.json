@@ -6,7 +6,8 @@
     ".": "./src/index.ts",
     "./protocol": "./src/protocol/index.ts",
     "./open-ai/agents": "./src/adapters/open-ai/agents/index.ts",
-    "./coding": "./src/coding/index.ts"
+    "./coding": "./src/coding/index.ts",
+    "./tool-sources": "./src/integrations/tool-sources/index.ts"
   },
   "scripts": {
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json && bun ../../scripts/check-inherited-key-reads.ts && bun ../../scripts/check-documentation-coverage.ts",

@@ -614,11 +614,29 @@ function toArmorerProgress(update: Progress): {
   };
 }
 
-function metadataFromMcpTool(tool: MCPToolSource): Tool['metadata'] {
-  const metadata: NonNullable<Tool['metadata']> = {};
-  if (tool.annotations?.readOnlyHint === true) {
-    metadata['readOnly'] = true;
+/**
+ * Maps a remote tool's MCP annotations onto the capability flags `resolveCapabilityTier` reads.
+ * `destructiveHint: true` is `dangerous` (and wins over `readOnlyHint: true`, a contradiction that
+ * a remote server should not be able to use to loosen the tier), `readOnlyHint: true` is
+ * `read-only`, and everything else, unannotated tools included, is `mutating`: a tool the server
+ * does not vouch for is never treated as safe.
+ */
+function capabilityMetadataFromMcpAnnotations(
+  annotations: ToolAnnotations | undefined,
+): Pick<NonNullable<Tool['metadata']>, 'readOnly' | 'mutates' | 'dangerous'> {
+  if (annotations?.destructiveHint === true) {
+    return { readOnly: false, mutates: true, dangerous: true };
   }
+  if (annotations?.readOnlyHint === true) {
+    return { readOnly: true, mutates: false, dangerous: false };
+  }
+  return { readOnly: false, mutates: true, dangerous: false };
+}
+
+function metadataFromMcpTool(tool: MCPToolSource): Tool['metadata'] {
+  const metadata: NonNullable<Tool['metadata']> = {
+    ...capabilityMetadataFromMcpAnnotations(tool.annotations),
+  };
   const mcp: { title?: string; description?: string; meta?: JsonObject } = {};
   if (tool.title !== undefined) mcp['title'] = tool.title;
   if (tool.description !== undefined) mcp['description'] = tool.description;
