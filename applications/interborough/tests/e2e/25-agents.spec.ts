@@ -1,7 +1,7 @@
 /**
  * `/agents` and `/agents/:id`: the agents the Bureau tells the caller of, each with what it is made
- * of (its model when the Bureau can tell, its tools), how much it has been used, the one badge an agent can
- * carry ("Not published"), a New chat action for a published one, and the chats had with one agent.
+ * of (its model when the Bureau can tell, its tools), how much it has been used, a New chat action
+ * for each, and the chats had with one agent.
  */
 import type { Page } from '@playwright/test';
 
@@ -22,7 +22,7 @@ async function chatsOf(page: Page, agent: string): Promise<number> {
 }
 
 test.describe('the list of agents', () => {
-  test('shows each agent’s model and tools, badges only one that is not published, and offers New chat only for a published one', async ({
+  test('shows each agent’s model and tools, and offers New chat for every agent', async ({
     page,
   }) => {
     await page.goto('/agents');
@@ -32,9 +32,8 @@ test.describe('the list of agents', () => {
     // An absence proves nothing until the rows it is about have rendered.
     await expect(row(page, 'assistant')).toBeVisible();
     await expect(row(page, 'internal')).toBeVisible();
-    // Where an agent is defined is for the developer, and published is the normal state: neither is said.
+    // Where an agent is defined is for the developer, so it is not said.
     await expect(frame).not.toContainText('Defined in');
-    await expect(frame).not.toContainText('Published');
     // Its generator is opaque to the Bureau, which cannot say whether it is a script: no model line.
     await expect(row(page, 'assistant')).not.toContainText('Scripted');
     // A code-defined agent's tools are counted as a file agent's are: the Bureau names them.
@@ -42,20 +41,8 @@ test.describe('the list of agents', () => {
     await expect(row(page, 'assistant')).toContainText('No tools');
     await expect(row(page, 'assistant').getByRole('link', { name: 'New chat' })).toBeVisible();
     await expect(row(page, 'assistant').getByRole('link', { name: 'Memory' })).toBeVisible();
-    // The unpublished agent is listed to the one local caller, with its badge and no chat action.
-    await expect(row(page, 'internal')).toContainText('Not published');
-    await expect(row(page, 'internal').getByRole('link', { name: 'New chat' })).toHaveCount(0);
-    await expect(page.getByTestId('agent-not-published')).toHaveCount(1);
-  });
-
-  test('says what the Not published badge costs, to a keyboard as well as a pointer', async ({
-    page,
-  }) => {
-    await page.goto('/agents');
-
-    await row(page, 'internal').getByTestId('agent-not-published').focus();
-
-    await expect(page.getByRole('tooltip')).toHaveText(/no one can start a chat/);
+    // The seeded agent the host once kept private takes a chat as the others do.
+    await expect(row(page, 'internal').getByRole('link', { name: 'New chat' })).toBeVisible();
   });
 
   test('counts each agent’s chats and dates the last, and shows a chat had since on the next visit', async ({
@@ -116,7 +103,6 @@ test.describe('one agent', () => {
     await expect(frame).not.toContainText('Scripted');
     await expect(frame).not.toContainText('Model');
     await expect(frame).not.toContainText('Defined in');
-    await expect(frame).not.toContainText('Published');
     await expect(frame).not.toContainText('Revision');
     const memory = frame.getByRole('link', { name: /^Memory \(\d+\+?\)$/ });
     await expect(memory).toHaveCount(1);
@@ -159,14 +145,11 @@ test.describe('one agent', () => {
     await expect(page).toHaveURL(new RegExp(`/chat/${threadId}$`));
   });
 
-  test('says an agent that is not published is not, and offers no chat with it', async ({
-    page,
-  }) => {
+  test('offers a chat with the agent the host once kept private', async ({ page }) => {
     await page.goto('/agents/internal');
 
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('internal');
-    await expect(page.getByText('Not published').first()).toBeVisible();
-    await expect(page.getByRole('link', { name: 'New chat' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'New chat' }).first()).toBeVisible();
   });
 
   test('is not found for an identifier the Bureau does not list', async ({ page }) => {
@@ -186,7 +169,7 @@ for (const width of WIDTHS) {
       await page.setViewportSize({ width, height: 900 });
     });
 
-    test('the list of agents passes axe, with a chat count, a model, and the Not published badge', async ({
+    test('the list of agents passes axe, with a chat count and a model', async ({
       page,
       request,
       checkA11y,
@@ -195,7 +178,6 @@ for (const width of WIDTHS) {
       await page.goto('/agents');
       await expect(page.locator('[data-view="agents"]')).toHaveAttribute('data-state', 'ready');
       await expect(chatCount(page, 'tool-runner')).toHaveText(/^\d+ chats?$/);
-      await expect(page.getByTestId('agent-not-published')).toHaveCount(1);
       await checkA11y(`the list of agents at ${width}px`);
       // No row makes the page scroll sideways.
       expect(
@@ -243,16 +225,16 @@ for (const width of WIDTHS) {
                 state: 'ready',
                 name: withSkills,
                 description: null,
-                published: true,
+                a2a: false,
                 hash: 'a'.repeat(64),
                 problem: null,
                 definition: {
                   name: withSkills,
                   description: null,
-                  published: true,
+                  a2a: false,
                   model: `provider/${'m'.repeat(55)}`,
                   tools: [longTool, longTool],
-                  skills: [
+                  skillDescriptors: [
                     { id: 'skill-a', name: longSkill, description: '', tags: [] },
                     { id: 'skill-b', name: longSkill, description: '', tags: [] },
                   ],
@@ -279,7 +261,7 @@ for (const width of WIDTHS) {
           description: null,
           definitionRevision: 1,
           kind: 'code',
-          publishState: 'published',
+          a2a: false,
           media: null,
           tools: [],
           ...extra,
@@ -320,10 +302,13 @@ for (const width of WIDTHS) {
       expect(await fits()).toBe(true);
     });
 
-    test('an unpublished agent’s page passes axe', async ({ page, checkA11y }) => {
+    test('the page of the agent the host once kept private passes axe', async ({
+      page,
+      checkA11y,
+    }) => {
       await page.goto('/agents/internal');
       await expect(page.getByRole('heading', { level: 1 })).toHaveText('internal');
-      await checkA11y(`an unpublished agent's page at ${width}px`);
+      await checkA11y(`the internal agent's page at ${width}px`);
     });
 
     test('a missing agent is not found, and passes axe', async ({ page, checkA11y }) => {

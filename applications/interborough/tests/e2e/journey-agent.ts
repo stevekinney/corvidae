@@ -90,7 +90,7 @@ export function createJourneyProviderResolver(fallback: ProviderResolver): Provi
   };
 }
 
-/** The name the journey host publishes the recall echo under. */
+/** The name the journey host serves the recall echo under. */
 export const RECALL_AGENT_NAME = 'echo-recall';
 
 /** What the recall echo says when it was sent nothing it can echo. */

@@ -3,8 +3,7 @@
    * `/agents`: every agent the Bureau tells the caller of, one flat row each: its name (and its
    * identifier beside it when they differ), its description, its model when the Bureau can tell, its tools,
    * how many chats it has had and when the last was, and the actions that are open to it. New chat
-   * is the main one and is offered only for a published agent, which is also the only one that
-   * carries a badge: an agent that is not published says so.
+   * is the main one and is offered for every agent.
    *
    * An agent file the Bureau cannot use is not an agent that can run, so `bureau.agents.list`
    * leaves it out. The list also reads `bureau.agents.definitions.list` and shows each invalid file
@@ -28,9 +27,7 @@
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import AgentFacts from './agent-facts.svelte';
-  import AgentNotPublished from './agent-not-published.svelte';
   import {
-    canChat,
     chatCountText,
     chatUsageByAgent,
     lastChatText,
@@ -105,9 +102,6 @@
             {#if agent.displayName !== agent.name}
               <code class="ib-agent-id">{agent.name}</code>
             {/if}
-            {#if !canChat(agent)}
-              <AgentNotPublished />
-            {/if}
           </div>
           {#if agent.description}
             <p class="ib-agent-row__description">{agent.description}</p>
@@ -139,14 +133,12 @@
             size="sm"
             onclick={(event) => go(event, agentMemoryPath(agent.name))}>{MEMORY_COPY.link}</Button
           >
-          {#if canChat(agent)}
-            <Button
-              href={router.href(newChatPath(agent.name))}
-              variant="primary"
-              size="sm"
-              onclick={(event) => go(event, newChatPath(agent.name))}>{CHAT_COPY.newChat}</Button
-            >
-          {/if}
+          <Button
+            href={router.href(newChatPath(agent.name))}
+            variant="primary"
+            size="sm"
+            onclick={(event) => go(event, newChatPath(agent.name))}>{CHAT_COPY.newChat}</Button
+          >
         </div>
       </li>
     {/each}

@@ -63,7 +63,7 @@ async function openPeer() {
         },
       }),
     },
-    publish: ['asker'],
+    a2aAgents: ['asker'],
     handlerOptions: { publicUrl: ORIGIN },
   });
   peers.push(opened);

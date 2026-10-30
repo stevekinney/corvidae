@@ -16,7 +16,7 @@ import { openPostgresTestDatabase } from '@lostgradient/testing/postgres-server'
 import { createS3TestServer, type S3TestServer } from '@lostgradient/testing/s3-server';
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { createTool, createToolbox } from 'armorer';
-import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeAll, describe, expect, mock, spyOn, test } from 'bun:test';
 import { z } from 'zod';
 
 import { startHost, type Host } from './host.ts';
@@ -94,7 +94,7 @@ function startOverlapHost(environment: Record<string, string>, counter: { count:
   return startHost({
     environment,
     port: 0,
-    extraAgents: { agents: createOverlapAgents(counter), published: [] },
+    extraAgents: { agents: createOverlapAgents(counter) },
   }).then((host) => {
     hosts.push(host);
     return host;
@@ -109,6 +109,7 @@ describe.skipIf(database === null)('two hosts on one Postgres database and one b
   });
 
   afterEach(async () => {
+    mock.restore();
     for (const host of hosts.splice(0)) await host.close();
   });
 
@@ -118,6 +119,14 @@ describe.skipIf(database === null)('two hosts on one Postgres database and one b
 
   test('share one deployment and one schedule, and B completes the run A parked', async () => {
     const counter = { count: 0 };
+    // Bureau reports a goal controller that did not start on the console. Only one host may create
+    // the seeded goal (COR-1799), so neither may report it as lost to the other.
+    const reported: string[] = [];
+    for (const level of ['error', 'warn'] as const) {
+      spyOn(console, level).mockImplementation((...parts: unknown[]) => {
+        reported.push(parts.map(String).join(' '));
+      });
+    }
     const environment = remoteEnvironment(
       await createFreshDatabaseUrl(database),
       server,
@@ -181,5 +190,12 @@ describe.skipIf(database === null)('two hosts on one Postgres database and one b
     await quietFor(250);
     expect(counter.count).toBe(1);
     expect(hostB.bureau.reviews.list()).toEqual([]);
+    expect(
+      reported.filter(
+        (line) =>
+          line.includes('WorkflowClaimUnavailableError') &&
+          line.includes(`goal:${SEEDED_GOAL_RUN_IDENTIFIER}`),
+      ),
+    ).toEqual([]);
   });
 });

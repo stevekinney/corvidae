@@ -125,7 +125,7 @@ describe('definitionRevision on the wire', () => {
       state: 'ready',
       name: 'x',
       description: null,
-      published: false,
+      a2a: false,
       owner: 'anonymous:local',
       hash: 'a'.repeat(64),
       problem: null,
@@ -154,7 +154,7 @@ describe('definitionRevision on the wire', () => {
       displayName: 'x',
       description: null,
       kind: 'file',
-      publishState: 'published',
+      a2a: true,
       media: null,
     };
     const accepts = (definitionRevision: unknown) =>

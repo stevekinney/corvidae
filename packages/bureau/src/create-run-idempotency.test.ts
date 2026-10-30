@@ -213,7 +213,7 @@ describe('tasks.start with a run-creation request id', () => {
     });
   });
 
-  it('creates one run per published agent for one request id', async () => {
+  it('creates one run per agent for one request id', async () => {
     await withDurableBureau(async (bureau) => {
       const forBureau = await startTaskFrom(bureau, REQUEST);
       const forResearcher = await startTaskFrom(bureau, { ...REQUEST, agentName: 'researcher' });

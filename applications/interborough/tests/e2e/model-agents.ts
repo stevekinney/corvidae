@@ -6,7 +6,7 @@
  */
 import { createAgent, createScriptedGenerate, stopWhen } from '@lostgradient/operative';
 
-/** The name the e2e host publishes the one-model agent under. */
+/** The name the e2e host serves the one-model agent under. */
 export const SINGLE_MODEL_AGENT_NAME = 'single-model';
 
 export function createModelAgents() {

@@ -82,7 +82,7 @@ async function withBureau(
             : (Object.create(bureau, {
                 internals: { value: { ...bureau.internals, kv } },
               }) as typeof bureau),
-          { authentication, publish: ['asker'], publicUrl: 'http://localhost' },
+          { authentication, a2aAgents: ['asker'], publicUrl: 'http://localhost' },
         ),
     });
   } finally {

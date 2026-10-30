@@ -26,21 +26,8 @@ export type BureauRunEventsOperationHost = RunEventsOperationHost & BureauOwners
 
 const noRuns: RunEventsOperationHost = { runFeeds: { get: () => undefined } };
 
-// Operative's definition leaves its parameters undescribed, and it is not changed here, so the
-// wrapper publishes the same fields with their descriptions.
-const inputShape = runEventsSubscriptionOperation.inputSchema.shape;
-const runEventsInput = runEventsSubscriptionOperation.inputSchema.extend({
-  runId: inputShape.runId.describe('The identifier of the run whose events to follow.'),
-  kinds: inputShape.kinds.describe(
-    'One event kind, or several. Omitting it delivers every published kind.',
-  ),
-  fromCursor: inputShape.fromCursor.describe(
-    'The cursor of the last event already seen; the replay continues after it. Omitting it replays from the beginning of what the feed retains. An opaque value taken from an event or the subscription’s envelope.',
-  ),
-});
-
 export const bureauRunEventsSubscriptionOperation = defineOperation<
-  typeof runEventsInput,
+  (typeof runEventsSubscriptionOperation)['inputSchema'],
   (typeof runEventsSubscriptionOperation)['outputSchema'],
   (typeof runEventsSubscriptionOperation)['eventSchema'],
   BureauRunEventsOperationHost
@@ -53,7 +40,7 @@ export const bureauRunEventsSubscriptionOperation = defineOperation<
     'Replays the run’s events from `fromCursor` (or the beginning) and then follows live. The run’s owner may subscribe; any other principal needs `bureau.tasks:read`, and a subscription to another owner’s run answers as an unknown run does. The grant is checked when the subscription starts and remains active until unsubscribe, socket close, or feed termination.',
   destructive: false,
   tags: runEventsSubscriptionOperation.tags,
-  inputSchema: runEventsInput,
+  inputSchema: runEventsSubscriptionOperation.inputSchema,
   outputSchema: runEventsSubscriptionOperation.outputSchema,
   producibleFaults: ['InvalidParams', 'NotFound'],
   eventSchema: runEventsSubscriptionOperation.eventSchema,

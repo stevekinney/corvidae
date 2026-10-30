@@ -587,7 +587,7 @@ export {
   type BureauHandlerSource,
   type BureauHandlerOptions,
   createBureauHandler,
-  PUBLISHED_AGENT_NAME_PATTERN,
+  A2A_AGENT_NAME_PATTERN,
 } from './http/create-bureau-handler';
 export { BUREAU_SCOPES, type BureauScope } from './http/bureau-scopes';
 export {

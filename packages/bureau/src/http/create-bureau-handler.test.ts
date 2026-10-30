@@ -352,13 +352,13 @@ describe('createBureauHandler options', () => {
   });
 });
 
-describe('createBureauHandler publish', () => {
+describe('createBureauHandler a2aAgents', () => {
   it('accepts names that exist in the agent catalog', async () => {
     await withBureau({ agents: ['support', 'triage-2'] }, (bureau) => {
       expect(
         typeof createBureauHandler(bureau, {
           unauthenticatedAccess: 'allow',
-          publish: ['support', 'triage-2'],
+          a2aAgents: ['support', 'triage-2'],
         }),
       ).toBe('function');
     });
@@ -367,7 +367,7 @@ describe('createBureauHandler publish', () => {
   it('throws for a name that is not in the agent catalog', async () => {
     await withBureau({ agents: ['support'] }, (bureau) => {
       expect(() =>
-        createBureauHandler(bureau, { unauthenticatedAccess: 'allow', publish: ['ghost'] }),
+        createBureauHandler(bureau, { unauthenticatedAccess: 'allow', a2aAgents: ['ghost'] }),
       ).toThrow(/"ghost", which is not in the Bureau's agent catalog/);
     });
   });
@@ -377,20 +377,20 @@ describe('createBureauHandler publish', () => {
     async (name) => {
       await withBureau({}, (bureau) => {
         expect(() =>
-          createBureauHandler(bureau, { unauthenticatedAccess: 'allow', publish: [name] }),
+          createBureauHandler(bureau, { unauthenticatedAccess: 'allow', a2aAgents: [name] }),
         ).toThrow(/must match/);
       });
     },
   );
 
-  it('throws when publish is not an array', async () => {
+  it('throws when a2aAgents is not an array', async () => {
     await withBureau({}, (bureau) => {
       expect(() =>
         createBureauHandler(bureau, {
           unauthenticatedAccess: 'allow',
-          publish: 'support' as never,
+          a2aAgents: 'support' as never,
         }),
-      ).toThrow(/publish must be an array/);
+      ).toThrow(/a2aAgents must be an array/);
     });
   });
 });
@@ -544,10 +544,8 @@ describe('createBureauHandler catalog', () => {
         'bureau.agents.definitions.delete',
         'bureau.agents.definitions.get',
         'bureau.agents.definitions.list',
-        'bureau.agents.definitions.publish',
         'bureau.agents.definitions.revisions',
         'bureau.agents.definitions.update',
-        'bureau.agents.definitions.withdraw',
         'bureau.agents.list',
         'bureau.agents.models',
         'bureau.assets.get',

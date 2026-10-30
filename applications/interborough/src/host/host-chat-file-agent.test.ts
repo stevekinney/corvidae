@@ -1,8 +1,8 @@
 /**
- * COR-1490's real-provider bullet: in development, a published file agent whose model is a
+ * COR-1490's real-provider bullet: in development, a file agent whose model is a
  * configured provider's can be chatted with. The provider path is a fake client (a test never
  * calls a model, and holds no real key); everything between the page's request and that client is
- * the real host: the AG-UI mount honouring the file's own publish state (COR-1526), the Bureau
+ * the real host: the AG-UI mount starting any ready file agent whatever its A2A opt-in (COR-1526), the Bureau
  * running the file agent with the key from the secrets, and the management operations the agents
  * and chat views read.
  */
@@ -26,13 +26,13 @@ afterEach(async () => {
   }
 });
 
-const agentFile = (name: string, published: boolean) =>
+const agentFile = (name: string, a2a: boolean) =>
   [
     '---',
     `name: ${name}`,
     'description: A file agent the page can chat with.',
     'model: anthropic/sonnet',
-    `published: ${published}`,
+    `a2a: ${a2a}`,
     '---',
     'You are a careful researcher.',
     '',
@@ -124,7 +124,7 @@ async function operation(host: Host, method: string, params: unknown) {
   return body.result;
 }
 
-describe('chatting with a published file agent whose model is a configured provider’s', () => {
+describe('chatting with a file agent whose model is a configured provider’s', () => {
   test('streams the provider’s answer over AG-UI, with the key from the secrets', async () => {
     const { host, handed } = await startWithFileAgents({
       'researcher.md': agentFile('Researcher', true),
@@ -144,7 +144,7 @@ describe('chatting with a published file agent whose model is a configured provi
     ]);
   });
 
-  test('is listed as a published file agent, and its model is what the agent’s page shows', async () => {
+  test('is listed as a file agent, and its model is what the agent’s page shows', async () => {
     const { host } = await startWithFileAgents({ 'researcher.md': agentFile('Researcher', true) });
 
     const agents = await operation(host, 'bureau.agents.list', {});
@@ -153,21 +153,21 @@ describe('chatting with a published file agent whose model is a configured provi
     const researcher = (agents['agents'] as Array<Record<string, unknown>>).find(
       (agent) => agent['name'] === 'researcher',
     );
-    expect(researcher).toMatchObject({ kind: 'file', publishState: 'published' });
+    expect(researcher).toMatchObject({ kind: 'file', a2a: true });
     expect(detail['definition']).toMatchObject({ model: 'anthropic/sonnet' });
   });
 
-  test('is refused over AG-UI while its file withdraws it, and is listed as withdrawn', async () => {
+  test('streams the provider’s answer for a file agent that has not opted into A2A, and lists it as such', async () => {
     const { host } = await startWithFileAgents({ 'quiet.md': agentFile('Quiet', false) });
 
-    const stream = await chat(host, 'quiet', 'thread-withdrawn');
+    const stream = await chat(host, 'quiet', 'thread-quiet');
     const agents = await operation(host, 'bureau.agents.list', {});
 
-    expect(stream).toContain('"type":"RUN_ERROR"');
-    expect(stream).not.toContain('Answered by the provider.');
+    expect(stream).toContain('Answered by the provider.');
+    expect(stream).toContain('"type":"RUN_FINISHED"');
     const quiet = (agents['agents'] as Array<Record<string, unknown>>).find(
       (agent) => agent['name'] === 'quiet',
     );
-    expect(quiet).toMatchObject({ kind: 'file', publishState: 'withdrawn' });
+    expect(quiet).toMatchObject({ kind: 'file', a2a: false });
   });
 });

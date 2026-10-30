@@ -313,7 +313,8 @@ export const agentSummarySchema = z.object({
   description: z.string().nullable(),
   definitionRevision: z.number(),
   kind: z.enum(['code', 'file']),
-  publishState: z.enum(['published', 'withdrawn', 'unpublished']),
+  /** Whether the agent opts into A2A. Every listed agent can take a chat whatever this says. */
+  a2a: z.boolean(),
   /** `null` for an agent that names no model, which can take no attachment. */
   media: agentMediaSchema.nullable().default(null),
   /**
@@ -329,12 +330,12 @@ export const agentSummarySchema = z.object({
 });
 
 /**
- * An agent as the agent list shows it: its name, description, kind, publish state, attachment
+ * An agent as the agent list shows it: its name, description, kind, A2A opt-in, attachment
  * support, tools, and example prompts.
  */
 export type AgentSummary = z.infer<typeof agentSummarySchema>;
 
-/** The agents the caller may see, with whether each is published (`bureau.agents.list`). */
+/** The agents the Bureau lists, each of which can take a chat (`bureau.agents.list`). */
 export async function listAgents(options?: {
   readonly signal?: AbortSignal;
 }): Promise<readonly AgentSummary[]> {

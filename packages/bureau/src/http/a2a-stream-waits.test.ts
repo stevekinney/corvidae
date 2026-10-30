@@ -84,7 +84,7 @@ describe('an INPUT_REQUIRED update on a stream', () => {
     };
     const opened = await openBureau({
       agents: { asker: createAgent({ name: 'asker', generate }) },
-      publish: ['asker'],
+      a2aAgents: ['asker'],
       durableHistory: true,
       handlerOptions: { publicUrl: 'http://localhost' },
     });
@@ -116,7 +116,7 @@ describe('an INPUT_REQUIRED update on a stream', () => {
     });
     const handler = createBureauHandler(lagging, {
       authentication,
-      publish: ['asker'],
+      a2aAgents: ['asker'],
       publicUrl: 'http://localhost',
     });
 

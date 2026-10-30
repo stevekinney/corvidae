@@ -129,7 +129,7 @@ describe('a refused continuation’s history slot', () => {
               },
             },
           }),
-          { authentication, publish: ['asker'], publicUrl: PUBLIC_URL },
+          { authentication, a2aAgents: ['asker'], publicUrl: PUBLIC_URL },
         ),
       };
 
@@ -190,7 +190,7 @@ describe('a reservation whose write committed with its response lost', () => {
               },
             },
           }),
-          { authentication, publish: ['seer'], publicUrl: PUBLIC_URL },
+          { authentication, a2aAgents: ['seer'], publicUrl: PUBLIC_URL },
         ),
       };
 

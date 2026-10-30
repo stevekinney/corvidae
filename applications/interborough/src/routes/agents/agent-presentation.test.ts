@@ -1,9 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { AgentSummary } from '../../lib/bureau-client.ts';
 import {
   agentFacts,
-  canChat,
   chatCountText,
   chatUsageByAgent,
   lastChatText,
@@ -13,25 +11,9 @@ import {
   toolCountText,
 } from './agent-presentation.ts';
 
-const agent = (publishState: AgentSummary['publishState']): AgentSummary => ({
-  name: 'research bot',
-  displayName: 'Research bot',
-  description: null,
-  definitionRevision: 1,
-  kind: 'file',
-  publishState,
-  media: null,
-});
-
 const MEDIA = { modalities: {}, mimeFamilies: [], mediaLimits: [] };
 
 describe('an agent as the agents views show it', () => {
-  test('can be chatted with only when it is published', () => {
-    expect(canChat(agent('published'))).toBe(true);
-    expect(canChat(agent('withdrawn'))).toBe(false);
-    expect(canChat(agent('unpublished'))).toBe(false);
-  });
-
   test('opens a new chat at an address that names it, encoded', () => {
     expect(newChatPath('research bot')).toBe('/chat/new?agent=research%20bot');
   });
@@ -102,8 +84,8 @@ describe('an agent’s facts', () => {
     model: 'anthropic/sonnet',
     models: null,
     tools: [...tools],
-    skills: [{ id: 'cite', name: 'Cite', description: '', tags: [] }],
-    published: true,
+    skillDescriptors: [{ id: 'cite', name: 'Cite', description: '', tags: [] }],
+    a2a: true,
     instructions: '',
   });
 
@@ -126,7 +108,7 @@ describe('an agent’s facts', () => {
     const twin = (id: string) => ({ id, name: 'Cite', description: '', tags: [] });
     const facts = agentFacts(
       { kind: 'file', media: null },
-      { ...definition([]), skills: [twin('cite-a'), twin('cite-b')] },
+      { ...definition([]), skillDescriptors: [twin('cite-a'), twin('cite-b')] },
       undefined,
     );
 

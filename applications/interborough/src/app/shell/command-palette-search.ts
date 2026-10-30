@@ -23,14 +23,13 @@ import {
 } from '../../lib/bureau-client.ts';
 import { scheduleDetailPath } from '../../lib/router.svelte.ts';
 import type { ScopeGate } from '../../lib/scopes.svelte.ts';
-import { canChat } from '../../routes/agents/agent-presentation.ts';
 import { VIEW_COPY } from '../copy.ts';
 import type { ViewName } from '../views.ts';
 
 export interface ConsoleSearchResults {
   readonly chats: ChatContext[];
   readonly agents: AgentSummary[];
-  /** The published agents whose name matches, each of which a new chat can be opened with. */
+  /** The agents whose name matches, each of which a new chat can be opened with. */
   readonly newChats: AgentSummary[];
   readonly workflows: WorkflowSummary[];
   readonly schedules: ScheduleSummary[];
@@ -117,10 +116,10 @@ export function newChatLabel(name: string): string {
   return `New chat with ${name}`;
 }
 
-/** The agents a chat can be opened with whose command holds `query`: only a published agent is offered. */
+/** The agents a chat can be opened with whose command holds `query`. */
 export function matchNewChats(agents: readonly AgentSummary[], query: string): AgentSummary[] {
   return agents
-    .filter((agent) => canChat(agent) && containsQuery(query, newChatLabel(agent.name)))
+    .filter((agent) => containsQuery(query, newChatLabel(agent.name)))
     .slice(0, RESULTS_PER_GROUP);
 }
 

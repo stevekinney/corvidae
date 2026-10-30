@@ -1,7 +1,7 @@
 /**
  * The agent editor's form: what it offers from the catalog, how the identifier follows the name,
  * which models and tools a save may name, and what a save sends. A save carries the loaded
- * `skills` through untouched, never carries `published`, and writes an unchanged model back
+ * `skillDescriptors` through untouched, sends its A2A opt-in, and writes an unchanged model back
  * exactly as the file wrote it.
  */
 import { describe, expect, test } from 'bun:test';
@@ -144,7 +144,7 @@ describe('a new agent', () => {
     expect(form.canSave).toBe(false);
   });
 
-  test('sends its fields, no skills of its own, and no published key', () => {
+  test('sends its fields, no skill descriptors of its own, and its A2A opt-in', () => {
     const form = AgentEditorState.create(catalogFixture());
     form.name = '  Researcher ';
     form.description = '';
@@ -155,10 +155,12 @@ describe('a new agent', () => {
       description: null,
       model: 'anthropic/claude-sonnet-5',
       tools: ['lookup-order'],
-      skills: [],
+      skillDescriptors: [],
+      a2a: false,
       instructions: 'Cite everything.',
     });
-    expect(Object.keys(form.toDefinition())).not.toContain('published');
+    form.a2a = true;
+    expect(form.toDefinition().a2a).toBe(true);
   });
 
   test('leaves the name out when it is blank, so the file takes the identifier', () => {
@@ -185,7 +187,7 @@ describe('an agent that exists', () => {
     expect(form.tools).toEqual(['lookup-order']);
     expect(form.instructions).toBe('You are a careful researcher.');
     expect(form.hash).toBe('hash-1');
-    expect(form.published).toBe(false);
+    expect(form.a2a).toBe(false);
     expect(form.canSave).toBe(true);
   });
 
@@ -193,10 +195,13 @@ describe('an agent that exists', () => {
     const detail = readyAgent();
     const skill = { id: 'cite', name: 'Cite', description: 'Cites', tags: [], futureKey: { a: 1 } };
     const form = AgentEditorState.edit(
-      { ...detail, definition: detail.definition && { ...detail.definition, skills: [skill] } },
+      {
+        ...detail,
+        definition: detail.definition && { ...detail.definition, skillDescriptors: [skill] },
+      },
       catalogFixture(),
     );
-    expect(form.toDefinition().skills).toEqual([skill]);
+    expect(form.toDefinition().skillDescriptors).toEqual([skill]);
   });
 
   test('carries the loaded skills through a save unchanged, and writes an unchanged alias back as written', () => {
@@ -204,7 +209,7 @@ describe('an agent that exists', () => {
     const form = AgentEditorState.edit(detail, catalogFixture());
     form.instructions = 'Changed.';
     const sent = form.toDefinition();
-    expect(sent.skills).toEqual(detail.definition?.skills ?? []);
+    expect(sent.skillDescriptors).toEqual(detail.definition?.skillDescriptors ?? []);
     expect(sent.model).toBe('anthropic/sonnet');
     expect(sent.instructions).toBe('Changed.');
   });
@@ -286,14 +291,14 @@ describe('an agent that exists', () => {
     expect(form.tools).toEqual(['lookup-order']);
   });
 
-  test('takes the new hash, and the new publication, after a write', () => {
-    const form = AgentEditorState.edit(readyAgent(), catalogFixture());
-    form.adopt({ hash: 'hash-2' }, true);
-    expect(form.hash).toBe('hash-2');
-    expect(form.published).toBe(true);
-    form.adopt({ hash: 'hash-3' });
-    expect(form.hash).toBe('hash-3');
-    expect(form.published).toBe(true);
+  test('is filled with the A2A opt-in its file states, and sends it back', () => {
+    const detail = readyAgent();
+    const form = AgentEditorState.edit(
+      { ...detail, definition: detail.definition && { ...detail.definition, a2a: true } },
+      catalogFixture(),
+    );
+    expect(form.a2a).toBe(true);
+    expect(form.toDefinition().a2a).toBe(true);
   });
 
   test('has no identifier error, whatever the name', () => {

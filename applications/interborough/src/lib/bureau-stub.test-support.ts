@@ -245,7 +245,7 @@ export function readyAgent(overrides: Partial<AgentDetail> = {}): AgentDetail {
     state: 'ready',
     name: 'Researcher',
     description: 'Finds and cites sources',
-    published: false,
+    a2a: false,
     hash: 'hash-1',
     problem: null,
     definition: {
@@ -254,7 +254,7 @@ export function readyAgent(overrides: Partial<AgentDetail> = {}): AgentDetail {
       model: 'anthropic/sonnet',
       models: null,
       tools: ['lookup-order'],
-      skills: [
+      skillDescriptors: [
         {
           id: 'cite',
           name: 'Cite',
@@ -262,7 +262,7 @@ export function readyAgent(overrides: Partial<AgentDetail> = {}): AgentDetail {
           tags: ['research'],
         },
       ],
-      published: false,
+      a2a: false,
       instructions: 'You are a careful researcher.',
     },
     ...overrides,

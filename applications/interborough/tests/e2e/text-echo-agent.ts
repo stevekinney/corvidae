@@ -8,7 +8,7 @@
  */
 import { createAgent, stopWhen, type GenerateFunction } from '@lostgradient/operative';
 
-/** The name the e2e host publishes the text echo agent under. */
+/** The name the e2e host serves the text echo agent under. */
 export const TEXT_ECHO_AGENT_NAME = 'echo-text';
 /**
  * A second text echo agent that only one case chats with, so that case can forget the agent's only

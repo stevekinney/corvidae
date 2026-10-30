@@ -1,11 +1,11 @@
 /**
- * Who may see and manage the deployment's agents (COR-1526): one predicate, so every surface that
- * could disclose an agent the deployment has not published answers by the same rule.
+ * Who may read and manage the deployment's agent definitions (COR-1526): one predicate, so every
+ * surface that discloses a definition answers by the same rule.
  *
  * An agent file has no owner field, so every persisted agent belongs to the deployment's owner of
  * record, and the rule is the owner predicate's (`owner-predicate.ts`) over that owner: the owner
- * of the deployment's agents, or a caller holding the operator scope. An agent that is not
- * published is invisible to a caller who fails it, in the same words as one that does not exist.
+ * of the deployment's agents, or a caller holding the operator scope. A definition is invisible to
+ * a caller who fails it, in the same words as one that does not exist.
  *
  * @module agent-access
  */
@@ -30,17 +30,4 @@ export function mayAccessAgents(
     resourceOwner: DEPLOYMENT_AGENT_OWNER,
     operatorScope,
   });
-}
-
-/**
- * Whether `principal` may be told that an agent exists although the deployment does not publish
- * it: the rule `bureau.agents.definitions.list` applies. Every listing that names agents
- * filters by it, so an unpublished agent's name, label, and description reach only a caller who
- * could read its definition.
- */
-export function mayDiscloseUnpublishedAgents(
-  ownership: BureauOwnershipHost['ownership'],
-  principal: Principal,
-): boolean {
-  return mayAccessAgents(ownership, principal, 'bureau.agents:read');
 }

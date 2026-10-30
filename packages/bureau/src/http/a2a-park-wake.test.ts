@@ -99,7 +99,7 @@ async function openFixture(
           : {}),
       }),
     },
-    publish: ['asker'],
+    a2aAgents: ['asker'],
   });
   const fixture = attachHandler(opened, {
     timers: (timers) => {
