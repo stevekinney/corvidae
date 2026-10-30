@@ -4911,6 +4911,9 @@ async function constructBureau<const D extends AgentDefinitions>(
     if (kind === 'tool-approval') ensureLazyExpirySweep();
     const owner = runAttribution.get(runId)?.principal ?? ANONYMOUS_LOCAL_OWNER;
     emitter.dispatch(new ReviewRequestedEvent(reviewId, runId, owner, kind, target));
+    // COR-1754 — a park changes the task's view (it now waits on its requester) without writing
+    // its record, so whoever waits on the task is told here, the one place a park is noticed.
+    detachBestEffortPromise(tasks.announceChanged(runId));
   }
 
   /**
