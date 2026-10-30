@@ -1,6 +1,7 @@
 import { createDefaultRuntimeServices, type RuntimeClock } from '@lostgradient/lifecycle';
 import type {
   Effort,
+  PermissionMode,
   SteeringCommand,
   SteeringCommandFailure,
   SteeringCommandState,
@@ -171,23 +172,28 @@ export type ImplementedSteeringCommand = SteeringCommand & {
  * therefore defers to the next run) and from `pause`/`resume` (which carry
  * no value and bind to one run).
  */
-export type ConfigurationTargetKind = 'route' | 'model' | 'provider' | 'effort';
+export type ConfigurationTargetKind = 'route' | 'model' | 'provider' | 'effort' | 'permission-mode';
 
 const CONFIGURATION_TARGETS: ReadonlySet<string> = new Set<ConfigurationTargetKind>([
   'route',
   'model',
   'provider',
   'effort',
+  'permission-mode',
 ]);
 
 /**
- * Whether a command can be admitted to a session with no run in progress (COR-1559, COR-1935): a
- * `model` or `effort` override sets what the session's next run starts with, so it needs no live
- * run. Every other target either binds to a live run (`pause`, `resume`) or is deferred to a run
+ * Whether a command can be admitted to a session with no run in progress (COR-1559, COR-1935,
+ * COR-1936): a `model`, `effort` or `permission-mode` override sets what the session's next run
+ * starts with, so it needs no live run. Every other target either binds to a live run (`pause`, `resume`) or is deferred to a run
  * that exists, and keeps its `session-terminal` for an idle session.
  */
 export function steersIdleSession(requestedValue: SteeringRequestedValue): boolean {
-  return requestedValue.target === 'model' || requestedValue.target === 'effort';
+  return (
+    requestedValue.target === 'model' ||
+    requestedValue.target === 'effort' ||
+    requestedValue.target === 'permission-mode'
+  );
 }
 
 /** Narrows a target to one of the four configuration coordinates. */
@@ -233,6 +239,11 @@ export interface SessionSteeringState {
    * run uses the effort its agent's request carries.
    */
   readonly effort: Effort | null;
+  /**
+   * The permission mode the session's latest `permission-mode` override named (COR-1936), or `null`
+   * before any, which is `on-changes`.
+   */
+  readonly permissionMode: PermissionMode | null;
   /** The session's `configVersion`: how many steering commands it has accepted. */
   readonly configVersion: number;
 }
@@ -771,6 +782,8 @@ export function createSteeringGate(
     modelProvider?: string;
     provider?: string;
     effort?: Effort;
+    /** The latest `permission-mode` override (COR-1936). Not a generation coordinate. */
+    permissionMode?: PermissionMode;
   } = {};
   /**
    * The ledger key of the currently-pending, not-yet-applied command for
@@ -1069,6 +1082,13 @@ export function createSteeringGate(
     return stored;
   }
 
+  /** The value `desiredConfiguration` holds for a configuration target. */
+  function desiredConfigurationValue(target: ConfigurationTargetKind): string | undefined {
+    return target === 'permission-mode'
+      ? desiredConfiguration.permissionMode
+      : desiredConfiguration[target];
+  }
+
   const gate: BureauSteeringGate = {
     sessionId,
 
@@ -1316,7 +1336,7 @@ export function createSteeringGate(
         // client that retries with a fresh command id cannot inflate the
         // version and invalidate every other caller's `expectedRevision`.
         if (
-          desiredConfiguration[target] === requested &&
+          desiredConfigurationValue(target) === requested &&
           (target !== 'model' || desiredConfiguration.modelProvider === requestedProvider)
         ) {
           const stored = record(command, undefined, effectiveConfigVersion, context.now);
@@ -1337,6 +1357,8 @@ export function createSteeringGate(
         clearConfigurationOwners(target, context.now, command.id);
         if (target === 'effort') {
           desiredConfiguration.effort = requested as Effort;
+        } else if (target === 'permission-mode') {
+          desiredConfiguration.permissionMode = requested as PermissionMode;
         } else {
           desiredConfiguration[target] = requested;
         }

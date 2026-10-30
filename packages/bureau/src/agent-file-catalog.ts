@@ -59,6 +59,7 @@ import {
   type ContextManagementOptions,
   createAgent,
   type GenerateFunction,
+  type PermissionMode,
   shouldRetryProviderError,
   stopWhen,
 } from '@lostgradient/operative';
@@ -326,6 +327,14 @@ export interface AgentFileCatalogOptions {
    * has no chat to read, so its calls ask as the agent file says.
    */
   readonly rememberedTools?: ((runId: string) => Promise<ReadonlySet<string>>) | undefined;
+  /**
+   * The permission mode of the chat a run belongs to (COR-1936), read when the run's tool call is
+   * decided, so a steer applies from the next call; `undefined` for a run that belongs to no chat.
+   * A rejection is read as `read-only`. Omitted, no run has a mode and each tool's own setting
+   * decides.
+   */
+  readonly permissionModeOfRun?:
+    ((runId: string) => Promise<PermissionMode | undefined>) | undefined;
   /**
    * Reads a secret answer back for a tool that declares `acceptsSecrets` (COR-1920). A file
    * agent's per-run toolbox is built here, so it is handed the resolver the Bureau's own toolbox
@@ -755,6 +764,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       toolboxOptions: (context) => {
         const runId = context?.runId;
         const rememberedTools = options.rememberedTools;
+        const permissionModeOfRun = options.permissionModeOfRun;
         return {
           // Only the agent's own tools: the toolbox also holds the tools Bureau adds to a run.
           policy: createToolApprovalHooks(definition.toolApproval, {
@@ -767,6 +777,12 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
                     const granted = await rememberedTools(runId);
                     return granted.has(toolName);
                   },
+                }),
+            // The chat's permission mode, read for each call so a steer applies from the next.
+            ...(permissionModeOfRun === undefined || runId === undefined
+              ? {}
+              : {
+                  permissionMode: async () => (await permissionModeOfRun(runId)) ?? 'on-changes',
                 }),
           }),
           // COR-1915: the toolbox is built for this run, so its counters are the run's own. It

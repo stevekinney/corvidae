@@ -1,17 +1,24 @@
 /**
  * `bureau.contexts.steer`: change one setting of a context (a Bureau session) through
- * `Bureau.contexts.steer` (COR-1559, COR-1935).
+ * `Bureau.contexts.steer` (COR-1559, COR-1935, COR-1936).
  *
  * A request names exactly one setting, as exactly one of its keys: `override` switches the model
- * to a model the agent allows, and `effort` sets the reasoning effort (`low`, `medium`, `high`,
- * `xhigh` or `max`). Another setting is another key of the same kind, so the input grows by a key
+ * to a model the agent allows, `effort` sets the reasoning effort (`low`, `medium`, `high`,
+ * `xhigh` or `max`), and `permissionMode` sets how readily the chat's tool calls ask a person
+ * (`always`, `on-changes`, `allow-all` or `read-only`; a tool call reads it when it is decided,
+ * so it is in force from the next tool call, and it only ever tightens except
+ * `allow-all`, which skips the asks `on-changes` would raise). The mode reaches a call only through
+ * a hook that reads it: a file agent's own listed tools, and a toolbox built with
+ * `createToolApprovalHooks({ permissionMode })`. A code agent's tools (for example Interborough's
+ * seeded `tool-runner`) and Bureau's built-in run tools (`requestHumanInput`, `scheduleWakeup`,
+ * `decide`) do not read it yet (COR-1947). Another setting is another key of the same kind, so the input grows by a key
  * and not by a new operation. A request that names none, or more than one, is `InvalidParams`
  * naming the field.
  *
  * The model override is `{ provider, model }`, a catalog row's own coordinates. Bureau decides it
  * when it is admitted: a model the agent does not allow is refused then, with the reason
  * `model-not-allowed`, and no desired state changes. An effort no catalog row holds is refused
- * with `policy-denied`. Either is used from the context's live run's next step, and by every later
+ * with `policy-denied`. Each is used from the context's live run's next step, and by every later
  * run of the context, across a restart; a context with no run in progress takes it for its next
  * run.
  *
@@ -27,7 +34,11 @@
  * @module contexts-steer-operation
  */
 
-import { sessionOwnerOf, type SteeringRequestedValue } from '@lostgradient/operative';
+import {
+  PERMISSION_MODES,
+  sessionOwnerOf,
+  type SteeringRequestedValue,
+} from '@lostgradient/operative';
 import { defineOperation, type OperationFault } from '@lostgradient/weft';
 import { z } from 'zod';
 
@@ -55,7 +66,7 @@ const effortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
  * The keys of {@link contextsSteerInput} that each name one setting to change. A request carries
  * exactly one of them; a later setting adds its key here and to the object below.
  */
-const STEERED_SETTING_KEYS = ['override', 'effort'] as const;
+const STEERED_SETTING_KEYS = ['override', 'effort', 'permissionMode'] as const;
 
 /** A key of {@link STEERED_SETTING_KEYS}. */
 type SteeredSettingKey = (typeof STEERED_SETTING_KEYS)[number];
@@ -112,12 +123,18 @@ const contextsSteerInput = z
       .strict()
       .optional()
       .describe(
-        'The catalog row to switch to: both coordinates, so a model name two providers serve is exact. Exactly one of `override` and `effort` is sent.',
+        'The catalog row to switch to: both coordinates, so a model name two providers serve is exact. Exactly one of `override`, `effort` and `permissionMode` is sent.',
       ),
     effort: effortSchema
       .optional()
       .describe(
-        'The reasoning effort to set: `low`, `medium`, `high`, `xhigh` or `max`. Exactly one of `override` and `effort` is sent.',
+        'The reasoning effort to set: `low`, `medium`, `high`, `xhigh` or `max`. Exactly one of `override`, `effort` and `permissionMode` is sent.',
+      ),
+    permissionMode: z
+      .enum(PERMISSION_MODES)
+      .optional()
+      .describe(
+        'The permission mode to set: `always` asks on every call, `on-changes` (the default) asks as each tool’s own setting says, `allow-all` skips the asks `on-changes` would raise, and `read-only` denies every tool that is not read-only. It governs only a file agent’s own listed tools and a toolbox built with `createToolApprovalHooks({ permissionMode })`; code agents’ tools and Bureau’s built-in run tools (`requestHumanInput`, `scheduleWakeup`, `decide`) do not read it yet (COR-1947). Exactly one of `override`, `effort` and `permissionMode` is sent.',
       ),
     expectedRevision: z
       .number()
@@ -139,10 +156,11 @@ type SteerInput = z.infer<typeof contextsSteerInput>;
  * The settings {@link requestedValueOf} has a branch for. Typed over {@link STEERED_SETTING_KEYS},
  * so a key added to that list without a branch there fails to compile here.
  */
-const SETTINGS_WITH_A_BRANCH = { override: true, effort: true } satisfies Record<
-  SteeredSettingKey,
-  true
->;
+const SETTINGS_WITH_A_BRANCH = {
+  override: true,
+  effort: true,
+  permissionMode: true,
+} satisfies Record<SteeredSettingKey, true>;
 
 /**
  * The steering target a request that names exactly one setting asks for. Each key is handled by
@@ -157,6 +175,9 @@ export function requestedValueOf(input: SteerInput): SteeringRequestedValue {
   }
   if (key === 'effort' && input.effort !== undefined) {
     return { target: 'effort', override: input.effort };
+  }
+  if (key === 'permissionMode' && input.permissionMode !== undefined) {
+    return { target: 'permission-mode', override: input.permissionMode };
   }
   throw new Error('A steering request names none of the settings it can change.');
 }
@@ -289,9 +310,9 @@ export const contextsSteerOperation = defineOperation<
 >({
   name: 'bureau.contexts.steer',
   mcpExposable: false,
-  summary: 'Switch a context’s model or effort',
+  summary: 'Switch a context’s model, effort or permission mode',
   description:
-    'Changes one setting of one of the caller’s own contexts; the request carries exactly one of `override` and `effort`, and one with none or both is `InvalidParams` naming the field. `override` (`{ provider, model }`) switches the context to a model, which must be one `bureau.agents.models` lists for the context’s agent. `effort` (`low`, `medium`, `high`, `xhigh` or `max`) sets the reasoning effort, which must be one the deployment’s model catalog holds, and `bureau.contexts.get` reads the settled one back. Either is used from the live run’s next step and by the context’s later runs, across a restart; a context with no run in progress takes it for its next run. `commandId` is the caller’s own identifier for the command, `expectedRevision` the `configVersion` (`bureau.contexts.get`) the caller read. The answer is Bureau’s admission outcome as data: `accepted` with the command and its `configVersion`; `replayed` for an exact retry of a `commandId`; `conflict` for a `commandId` used for another request; `rejected` with a `failure.reason`: `model-not-allowed` for a model the context’s agent does not allow (decided now, with nothing changed, and the same answer to every retry), `stale-revision` for an `expectedRevision` behind the context’s `configVersion`, `shutting-down` when Bureau is closing and nothing was decided (a retry after a restart is admitted normally), or `policy-denied` for a model or effort the deployment’s catalog does not hold; and `unsupported-capability` with its `reason`. Another owner’s context, a missing one, and an operator that does not own the context answer `NotFound`, since Bureau admits steering only under the session’s own authority. Requires `bureau.contexts:write` to act for any other owner; no scope is needed for the caller’s own. The call writes no audit entry.',
+    'Changes one setting of one of the caller’s own contexts; the request carries exactly one of `override`, `effort` and `permissionMode`, and one with none or more than one is `InvalidParams` naming the field. `override` (`{ provider, model }`) switches the context to a model, which must be one `bureau.agents.models` lists for the context’s agent. `effort` (`low`, `medium`, `high`, `xhigh` or `max`) sets the reasoning effort, which must be one the deployment’s model catalog holds, and `bureau.contexts.get` reads the settled one back. `permissionMode` (`always`, `on-changes`, `allow-all` or `read-only`) sets how readily the tool calls it governs ask a person: `read-only` denies every governed tool that is not read-only, `always` asks on every governed call, `allow-all` skips the asks `on-changes` would raise (never a tool set to `always` or `blocked`), and the default `on-changes` asks as each tool’s own setting says; `bureau.contexts.get` reads it back. The mode governs only a file agent’s own listed tools and a toolbox built with `createToolApprovalHooks({ permissionMode })`; the tools of a code agent (for example Interborough’s seeded `tool-runner`) and Bureau’s built-in run tools (`requestHumanInput`, `scheduleWakeup`, `decide`) do not read it yet (COR-1947). A mode is read at each governed tool call, so it is in force from the next tool call; the model and effort are used from the live run’s next step. Each is kept for the context’s later runs, across a restart; a context with no run in progress takes it for its next run. `commandId` is the caller’s own identifier for the command, `expectedRevision` the `configVersion` (`bureau.contexts.get`) the caller read. The answer is Bureau’s admission outcome as data: `accepted` with the command and its `configVersion`; `replayed` for an exact retry of a `commandId`; `conflict` for a `commandId` used for another request; `rejected` with a `failure.reason`: `model-not-allowed` for a model the context’s agent does not allow (decided now, with nothing changed, and the same answer to every retry), `stale-revision` for an `expectedRevision` behind the context’s `configVersion`, `shutting-down` when Bureau is closing and nothing was decided (a retry after a restart is admitted normally), or `policy-denied` for a model or effort the deployment’s catalog does not hold; and `unsupported-capability` with its `reason`. Another owner’s context, a missing one, and an operator that does not own the context answer `NotFound`, since Bureau admits steering only under the session’s own authority. Requires `bureau.contexts:write` to act for any other owner; no scope is needed for the caller’s own. The call writes no audit entry.',
   destructive: true,
   tags: ['Contexts'],
   inputSchema: contextsSteerInput,

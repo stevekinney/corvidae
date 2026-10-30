@@ -837,6 +837,7 @@ describe('the parent’s model choice', () => {
     expect(await bureau.contexts.steering(result.contextId)).toEqual({
       model: { provider: 'anthropic', model: 'claude-opus-5' },
       effort: null,
+      permissionMode: null,
       configVersion: 1,
     });
     // The parent keeps its own, and an exact retry returns the same pair.
@@ -955,6 +956,7 @@ describe('the parent’s effort (COR-1935)', () => {
     expect(await bureau.contexts.steering(result.contextId)).toEqual({
       model: null,
       effort: 'high',
+      permissionMode: null,
       configVersion: 1,
     });
     expect(await fork(bureau, run.contextId, finalAssistantOf(run.id), 'fork-effort')).toEqual(
@@ -983,6 +985,7 @@ describe('the parent’s effort (COR-1935)', () => {
     expect(await bureau.contexts.steering(result.contextId)).toEqual({
       model: { provider: 'anthropic', model: 'claude-opus-5' },
       effort: 'low',
+      permissionMode: null,
       configVersion: 2,
     });
   });

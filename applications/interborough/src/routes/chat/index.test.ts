@@ -70,6 +70,7 @@ describe('a session whose page could not read it', () => {
               forkedFromMessageId: null,
               model: null,
               effort: null,
+              permissionMode: 'on-changes',
               configVersion: 0,
               messageCount: 0,
               createdAt: '2026-10-19T08:00:00.000Z',
