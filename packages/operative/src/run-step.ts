@@ -23,7 +23,7 @@ import { partsOf, settleResponse } from './run-step-response';
 import { commitAssistantRow } from './run-step-row';
 import { accumulateUsage } from './run-step-support';
 import { executeTools } from './run-step-tools';
-import { explicitAbortReason } from './run-step-utilities';
+import { explicitAbortReason, guardrailReporter } from './run-step-utilities';
 import type { SelectionGate } from './selection-gate';
 import type { ToolChoice } from './structured-output/types';
 import type {
@@ -426,6 +426,7 @@ export async function runStep(
         signal: stepSignal,
         abortStep,
         elicit,
+        reportGuardrail: guardrailReporter(emitter, step),
       });
       // COR-713: the response the validation hooks leave is authoritative, whether a hook returned
       // a replacement or edited the one it was handed in place. Settle it either way, before the

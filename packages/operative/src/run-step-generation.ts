@@ -36,6 +36,7 @@ import {
   applyWaterfallHandlerErrorPolicy,
   callGenerateWithRetry,
   explicitAbortReason,
+  guardrailReporter,
   isNonRetryableGenerateError,
   runHookSilently,
 } from './run-step-utilities';
@@ -147,6 +148,7 @@ export async function executeGeneration(
           abortStep,
           elicit,
           resolvedSources,
+          reportGuardrail: guardrailReporter(emitter, step),
         };
         // `runFirst`, not `run`: a `prepareStep` handler returns a
         // `GenerateResponse` but receives a `StepContext`, so the waterfall

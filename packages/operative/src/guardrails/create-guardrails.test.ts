@@ -2,6 +2,7 @@ import { describe, expect, it, mock } from 'bun:test';
 import { Conversation } from 'conversationalist';
 
 import { GuardrailTripwireError } from '../errors';
+import type { GuardrailFiring } from '../types';
 import { createGuardrails } from './create-guardrails';
 import type {
   DetectionResult,
@@ -335,5 +336,101 @@ describe('createGuardrails', () => {
       const result = await validateResponse(response, context);
       expect(result).toBeUndefined();
     });
+  });
+});
+
+describe('createGuardrails reporting to the run', () => {
+  function reporter() {
+    const firings: GuardrailFiring[] = [];
+    return { firings, reportGuardrail: (firing: GuardrailFiring) => void firings.push(firing) };
+  }
+
+  it('reports a validate-mode input block, naming the detector and neither text nor detail', async () => {
+    const { prepareStep } = createGuardrails({
+      mode: 'validate',
+      input: { detectors: [createMockDetector('injection-detector', triggeredDetection)] },
+    });
+    const { firings, reportGuardrail } = reporter();
+
+    const result = await prepareStep({ ...createTestContext('secret-canary'), reportGuardrail });
+
+    expect(result?.content).toContain('blocked by input guardrail');
+    expect(firings).toEqual([
+      {
+        guardrailName: 'injection-detector',
+        category: 'prompt-injection',
+        phase: 'input',
+        confidence: 0.95,
+        action: 'block',
+      },
+    ]);
+    expect(JSON.stringify(firings)).not.toContain('secret-canary');
+    expect(JSON.stringify(firings)).not.toContain('Injection detected');
+  });
+
+  it('reports a validate-mode output redaction', async () => {
+    const { validateResponse } = createGuardrails({
+      mode: 'validate',
+      output: {
+        action: 'redact',
+        validators: [createMockValidator('output-pii', invalidValidation)],
+      },
+    });
+    const { firings, reportGuardrail } = reporter();
+
+    const result = await validateResponse(
+      { content: 'jane@example.com', toolCalls: [] },
+      { ...createTestContext(), reportGuardrail },
+    );
+
+    expect(result?.content).toBe('Redacted text');
+    expect(firings).toEqual([
+      {
+        guardrailName: 'output-pii',
+        category: 'pii',
+        phase: 'output',
+        confidence: 0.9,
+        action: 'redact',
+      },
+    ]);
+  });
+
+  it('reports nothing for a tripwire, whose halt is the run.tripwire event', async () => {
+    const { prepareStep, validateResponse } = createGuardrails({
+      mode: 'tripwire',
+      input: { detectors: [createMockDetector('injection-detector', triggeredDetection)] },
+      output: { validators: [createMockValidator('output-pii', invalidValidation)] },
+    });
+    const { firings, reportGuardrail } = reporter();
+
+    const halts: unknown[] = [];
+    for (const attempt of [
+      () => prepareStep({ ...createTestContext(), reportGuardrail }),
+      () =>
+        validateResponse(
+          { content: 'x', toolCalls: [] },
+          { ...createTestContext(), reportGuardrail },
+        ),
+    ]) {
+      try {
+        await attempt();
+      } catch (error) {
+        halts.push(error);
+      }
+    }
+
+    expect(halts).toHaveLength(2);
+    expect(halts.every((error) => error instanceof GuardrailTripwireError)).toBe(true);
+    expect(firings).toEqual([]);
+  });
+
+  it('reports nothing when nothing trips', async () => {
+    const { prepareStep } = createGuardrails({
+      mode: 'validate',
+      input: { detectors: [createMockDetector('d', safeDetection)] },
+    });
+    const { firings, reportGuardrail } = reporter();
+    await prepareStep({ ...createTestContext(), reportGuardrail });
+    expect(firings).toEqual([]);
   });
 });
