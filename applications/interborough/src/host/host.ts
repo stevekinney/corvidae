@@ -47,6 +47,9 @@
  *   the Workflows pages can show an agent's file path and a workflow's, and the agent editor can
  *   say where to configure a model provider: the configuration file, and the file that holds each
  *   provider's API key.
+ * - `POST /host/restart`: asks the host to restart. It is registered only for a host started with
+ *   `onRestartRequested` (the entries, which run under the supervisor), and answers `202` before
+ *   the callback runs.
  * - `/assets/*` and the client routes: the built application, with `index.html` for every route
  *   the client router owns.
  *
@@ -54,8 +57,7 @@
  */
 
 import { createHash, randomBytes } from 'node:crypto';
-import { dirname, join, resolve as resolvePath, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, resolve as resolvePath, sep } from 'node:path';
 
 import { openBungalow, type Bungalow, type BungalowEnvironment } from '@lostgradient/bungalow';
 import {
@@ -90,7 +92,11 @@ import {
   relayRequest,
   webSocketRelayData,
 } from './engine-proxy.ts';
-import { processEnvironment, resolvePort } from './environment-configuration.ts';
+import {
+  DEFAULT_BUILD_DIRECTORY,
+  processEnvironment,
+  resolvePort,
+} from './environment-configuration.ts';
 import { buildDiagnostics, providerDiagnostics, type HostDiagnostics } from './host-diagnostics.ts';
 import {
   bureauUpgradeServer,
@@ -118,6 +124,7 @@ import {
   type ModelSelection,
 } from './providers.ts';
 import { allowedHosts, createRequestGuard } from './request-guard.ts';
+import { HOST_RESTART_ROUTE } from './restart.ts';
 import {
   createAgentFileTools,
   createSeededAgents,
@@ -162,14 +169,6 @@ export const WORKFLOW_DIRECTORY_NAME = 'workflows';
 
 /** The path prefix under which the Bureau handler is mounted. */
 export const BUREAU_PATH_PREFIX = '/bureau';
-
-/** Where `bun scripts/build.ts` writes the application: `build/` at the package root. */
-export const DEFAULT_BUILD_DIRECTORY = join(
-  dirname(fileURLToPath(import.meta.url)),
-  '..',
-  '..',
-  'build',
-);
 
 /** Agents a host serves beside the seeded ones. */
 export type ExtraAgents = {
@@ -232,6 +231,14 @@ export type HostOptions = {
    * to `false`.
    */
   readonly development?: boolean;
+  /**
+   * What to do when a person asks the host to restart (`POST /host/restart`). The entry that owns
+   * the process stops the host and exits with `RESTART_EXIT_CODE`, which its supervisor answers by
+   * starting the host again. The host calls it once, after it has answered the request, so a second
+   * request while the first is in flight is answered and ignored. A host without it registers no
+   * such route, so the path is a 404.
+   */
+  readonly onRestartRequested?: () => void | Promise<void>;
 };
 
 /**
@@ -366,6 +373,31 @@ function applicationRoutes(
     table[route.pattern] = { GET: (request) => refuse(request) ?? shell() };
   }
   return table;
+}
+
+/**
+ * The handler of `POST /host/restart` for a host that restarts through `restart`: answer `202`,
+ * then run `restart` once. The callback stops the host, which closes its connections, so it runs in
+ * a later turn of the event loop rather than before the answer is written. A second request while
+ * one is in flight changes nothing. A failure is reported and clears the request, so the person
+ * can ask again; the entry's callback exits the process itself.
+ */
+function restartHandler(restart: () => void | Promise<void>): () => Response {
+  let requested = false;
+  return () => {
+    if (!requested) {
+      requested = true;
+      setImmediate(() => {
+        void Promise.resolve()
+          .then(restart)
+          .catch((error: unknown) => {
+            requested = false;
+            console.error('The restart failed.', error);
+          });
+      });
+    }
+    return Response.json({ restarting: true }, { status: 202 });
+  };
 }
 
 /** A request guard: the refusal to send, or `undefined` to let the request through. */
@@ -506,6 +538,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const devReload = options.development === true ? createDevReload() : undefined;
     if (devReload !== undefined) held.devReload = devReload;
     const shell = shellResponder(buildDirectory, devReload !== undefined);
+    const restart =
+      options.onRestartRequested === undefined
+        ? undefined
+        : restartHandler(options.onRestartRequested);
     const publicServer = Bun.serve<HostSocketData>({
       hostname: LOOPBACK,
       port: options.port ?? resolvePort(environment),
@@ -544,6 +580,11 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           }
           return bureauHandler(bureauRequest);
         },
+        // The restart request. The guard answers first, so a page on another origin cannot restart
+        // the host.
+        ...(restart === undefined
+          ? {}
+          : { [HOST_RESTART_ROUTE]: { POST: (request: Request) => refuse(request) ?? restart() } }),
         // Where a person edits what the host keeps by hand. The pages show an agent's file path and
         // a workflow's.
         [HOST_PATHS_ROUTE]: {
