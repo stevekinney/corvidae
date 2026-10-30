@@ -14,7 +14,7 @@ import {
   type WorkflowDefinition,
 } from '../core/types.ts';
 import type { DocumentWorkflowHost, WorkflowDocument } from './document.ts';
-import { workflowDocumentVersion } from './document.ts';
+import { WorkflowDocumentSchemaError, workflowDocumentVersion } from './document.ts';
 
 /** The distinct values `pick` selects from the document's steps, in first-seen order. */
 function distinctStepValues(
@@ -55,8 +55,18 @@ export async function buildDocumentWorkflowDefinition(
     step.kind === 'await-signal' ? step.signal : undefined,
   );
 
+  /** Throws when the host finds `value` outside the schema; a no-op for a document with none. */
+  const checkSchema = (point: 'input' | 'output', value: unknown): void => {
+    const schema = point === 'input' ? document.inputSchema : document.outputSchema;
+    if (schema === undefined || host.checkSchema === undefined) return;
+    const issues = host.checkSchema(point, schema, value);
+    if (issues.length > 0) throw new WorkflowDocumentSchemaError(`${point}-invalid`, issues);
+  };
+
   const run = async function* (context: WorkflowContext, trigger: unknown) {
     const firedBy = trigger === undefined ? null : trigger;
+    // Pure, and the same on a replay: it reads the recorded input and yields nothing.
+    checkSchema('input', firedBy);
     let previous: unknown = null;
     for (const [index, step] of document.steps.entries()) {
       switch (step.kind) {
@@ -78,6 +88,7 @@ export async function buildDocumentWorkflowDefinition(
           break;
       }
     }
+    checkSchema('output', previous);
     return previous;
   };
 

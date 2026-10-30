@@ -18,6 +18,16 @@
  * but whose effect on the engine or the schedule failed is `Unavailable` (`data.reason` is
  * `workflow-apply-failed`): the file holds the change and the next rescan applies it again.
  *
+ * A workflow file may declare an `inputSchema` and an `outputSchema` (COR-1812), JSON Schemas for
+ * what an instance starts with and finishes with. `bureau.workflows.start` starts one instance of
+ * a named workflow and refuses an input that breaks the schema with `InvalidParams` and the
+ * issues, creating nothing; `bureau.workflows.signal` starts nothing for a workflow whose schema
+ * the payload breaks and reports it in `rejected`; an instance whose result breaks the
+ * `outputSchema` fails with `finishReason: "output-invalid"`. A raw `weft.workflows.start` is not
+ * checked before the instance exists, but the instance then fails with `input-invalid` as it
+ * begins. `bureau.workflows.internal.get` reads a code-defined workflow's description and
+ * source (its description and registered contract), under the same read rule as `get`.
+ *
  * `bureau.workflows.signal` (COR-1528) is the one operation that names no workflow: it delivers a
  * signal to the running instances waiting for it and starts the workflows whose signal trigger
  * has that name, and a caller who may not write is answered as if nothing matched.
@@ -43,6 +53,8 @@ import {
   WorkflowApplyError,
   WorkflowSignalFailure,
 } from '../../workflow-runtime.ts';
+import { TASK_PERSON_SURFACES } from '../../task-origin.ts';
+import { WorkflowInputInvalidError } from '../../workflow-schema.ts';
 import type { BureauScope } from '../bureau-scopes.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
 import {
@@ -73,6 +85,9 @@ const problemSchema = z.object({
   issues: z.array(z.object({ path: z.string(), message: z.string() })).nullable(),
 });
 
+/** A JSON Schema as it is written in a workflow file. */
+const jsonSchemaField = z.record(z.string(), z.unknown());
+
 const workflowListingSchema = z.object({
   id: z.string(),
   state: z.enum(['ready', 'invalid']),
@@ -81,6 +96,10 @@ const workflowListingSchema = z.object({
   description: z.string().nullable(),
   agent: z.string().nullable(),
   paused: z.boolean(),
+  /** The JSON Schema an instance's input must satisfy, or `null` when the file declares none. */
+  inputSchema: jsonSchemaField.nullable(),
+  /** The JSON Schema an instance's result must satisfy, or `null` when the file declares none. */
+  outputSchema: jsonSchemaField.nullable(),
   version: z.string().nullable(),
   /** The file's trigger as written, `{ kind, ... }`, for a `ready` file, else `null`. */
   trigger: z.record(z.string(), z.unknown()).nullable(),
@@ -116,11 +135,21 @@ const definitionSchema = z
     description: z.string().optional(),
     agent: z.string().optional(),
     paused: z.boolean().optional(),
+    inputSchema: jsonSchemaField
+      .optional()
+      .describe(
+        'A JSON Schema (draft 2020-12) for the input an instance starts with: the `input` of `bureau.workflows.start` or the `payload` of a signal; a schedule fire starts with `null`. At most 32 KiB, 8 levels deep, with no `$id`, `pattern`, or `patternProperties`.',
+      ),
+    outputSchema: jsonSchemaField
+      .optional()
+      .describe(
+        'A JSON Schema (draft 2020-12) for the value an instance finishes with, under the same limits. An instance whose result breaks it fails with `output-invalid`.',
+      ),
     trigger: z.looseObject({ kind: z.string() }),
     steps: z.array(z.record(z.string(), z.unknown())),
   })
   .describe(
-    'The workflow file’s contents: an optional `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), and the `steps`.',
+    'The workflow file’s contents: an optional `description`, `agent` and `paused`, optional `inputSchema` and `outputSchema`, the `trigger` (an object with a `kind`), and the `steps`.',
   );
 
 const writeResultSchema = z.object({ id: z.string(), hash: z.string() });
@@ -148,12 +177,19 @@ const runDetailSchema = runSummarySchema.extend({
   trigger: z.json().nullable(),
   result: z.json().nullable(),
   error: z.string().nullable(),
+  /**
+   * `input-invalid` or `output-invalid` when the instance failed because its input or result broke
+   * the workflow’s schema (`error` lists the issues), else `null`.
+   */
+  finishReason: z.enum(['input-invalid', 'output-invalid']).nullable(),
 });
 
 const documentSchema = z.object({
   name: z.string(),
   trigger: z.record(z.string(), z.unknown()),
   steps: z.array(z.record(z.string(), z.unknown())),
+  inputSchema: jsonSchemaField.nullable(),
+  outputSchema: jsonSchemaField.nullable(),
 });
 
 function unsupported(): OperationFault {
@@ -206,6 +242,8 @@ function listingView(listing: ReturnType<BureauWorkflows['list']>[number]) {
     description: listing.description,
     agent: listing.agent,
     paused: listing.paused,
+    inputSchema: listing.inputSchema === null ? null : { ...listing.inputSchema },
+    outputSchema: listing.outputSchema === null ? null : { ...listing.outputSchema },
     version: listing.version ?? null,
     trigger: listing.trigger === null ? null : { ...listing.trigger },
     problem:
@@ -595,6 +633,14 @@ export const workflowsRevisionsOperation = defineOperation<
           name: revision.document.name,
           trigger: { ...revision.document.trigger },
           steps: revision.document.steps.map((step) => ({ ...step })),
+          inputSchema:
+            revision.document.inputSchema === undefined
+              ? null
+              : { ...revision.document.inputSchema },
+          outputSchema:
+            revision.document.outputSchema === undefined
+              ? null
+              : { ...revision.document.outputSchema },
         },
         compatibility:
           revision.compatibility === null
@@ -664,7 +710,7 @@ export const workflowsRunsGetOperation = defineOperation<
   mcpExposable: true,
   summary: 'Read one instance of a workflow',
   description:
-    'Returns one instance: its workflow and revision, its status, what started it (`trigger`), its `result`, and, for an instance that failed, its `error`, including a failed `agent` step’s. Only an instance of a workflow file is readable here; any other run is answered `NotFound`, as is a caller who does not own the deployment’s workflows and lacks `bureau.workflows:read`.',
+    'Returns one instance: its workflow and revision, its status, what started it (`trigger`), its `result`, and, for an instance that failed, its `error`, including a failed `agent` step’s. `finishReason` is `input-invalid` or `output-invalid` for an instance that failed because its input or its result broke the workflow’s schema, and `null` for any other; the failed instance’s `error` lists the issues. Only an instance of a workflow file is readable here; any other run is answered `NotFound`, as is a caller who does not own the deployment’s workflows and lacks `bureau.workflows:read`.',
   destructive: false,
   tags: ['Workflows'],
   inputSchema: runsGetInput,
@@ -688,7 +734,124 @@ export const workflowsRunsGetOperation = defineOperation<
       trigger: (run.trigger ?? null) as never,
       result: (run.result ?? null) as never,
       error: run.error ?? null,
+      finishReason: run.finishReason,
     };
+  },
+});
+
+const startInput = z.object({
+  id: workflowId,
+  input: z
+    .json()
+    .optional()
+    .describe(
+      'The input the workflow’s `inputSchema` describes; `null` when omitted. An input that breaks the schema is `InvalidParams`, its `data.issues` locating every failure, and no instance is created.',
+    ),
+  surface: z
+    .enum(TASK_PERSON_SURFACES)
+    .optional()
+    .describe('Where the person started it from, recorded in the origin; `api` when omitted.'),
+});
+const startOutput = z.object({
+  runId: z
+    .string()
+    .describe('The identifier of the new instance, for `bureau.workflows.runs.get`.'),
+  workflow: z.string(),
+  workflowVersion: z.string().describe('The revision the instance runs.'),
+});
+
+export const workflowsStartOperation = defineOperation<
+  typeof startInput,
+  typeof startOutput,
+  BureauWorkflowsOperationHost
+>({
+  name: 'bureau.workflows.start',
+  mcpExposable: false,
+  summary: 'Start a workflow',
+  description:
+    'Starts one instance of the ready, unpaused workflow `id` with `input` and returns its `runId`. The instance’s `trigger` is `{ kind: "manual", input, origin }`, where `origin` is `{ kind: "person", principal, surface }` (the caller’s owner string and `surface`), and the run is tagged `origin:person`. An `input` that does not satisfy the workflow’s `inputSchema` is `InvalidParams` whose `data.issues` locates every failure, and nothing is created; a raw `weft.workflows.start` is not checked first. A workflow that is missing, invalid, or paused is `NotFound`. An earlier file change the engine has not followed is `Unavailable` (`workflow-apply-failed`). Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`.',
+  destructive: true,
+  tags: ['Workflows'],
+  inputSchema: startInput,
+  outputSchema: startOutput,
+  producibleFaults: ['InvalidParams', 'NotFound', 'Unavailable', 'UnsupportedCapability'],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    const workflows = workflowsFor(host, principal, 'bureau.workflows:write', 'workflow', input.id);
+    try {
+      return await workflows.start(input.id, {
+        input: input.input,
+        // v1 has one user: a caller with no owner string of its own starts it as the deployment's.
+        owner: ownerOfPrincipal(principal) ?? DEPLOYMENT_OWNER,
+        surface: input.surface,
+      });
+    } catch (error) {
+      if (error instanceof WorkflowInputInvalidError) {
+        throw {
+          code: 'InvalidParams',
+          message: error.message,
+          data: {
+            issues: error.issues.map((issue) => ({
+              path: ['input', ...issue.path],
+              message: issue.message,
+              code: 'custom',
+            })),
+          },
+        } satisfies OperationFault;
+      }
+      if (error instanceof WorkflowApplyError) return faultOf(error, input.id);
+      if (error instanceof BureauError && error.code === 'NOT_FOUND') {
+        throw resourceNotFound('workflow', input.id);
+      }
+      if (error instanceof BureauError && error.code === 'BAD_REQUEST') {
+        throw {
+          code: 'InvalidParams',
+          message: error.message,
+          data: { issues: [{ path: ['input'], message: error.message, code: 'custom' }] },
+        } satisfies OperationFault;
+      }
+      throw error;
+    }
+  },
+});
+
+const internalGetOutput = z.object({
+  id: z.string(),
+  description: z.string().nullable(),
+  version: z.string().nullable(),
+  source: z.object({
+    kind: z.literal('code'),
+    text: z.string().describe('The workflow’s description and its registered contract, as JSON.'),
+  }),
+});
+
+export const workflowsInternalGetOperation = defineOperation<
+  typeof getInput,
+  typeof internalGetOutput,
+  BureauWorkflowsOperationHost
+>({
+  name: 'bureau.workflows.internal.get',
+  mcpExposable: false,
+  summary: 'Read a code-defined workflow',
+  description:
+    'Returns a workflow that code registered with the engine, rather than one a file defines: the Bureau’s agent run, goal, and heartbeat tick among them. `description` is the one sentence the code gives it (`null` when it gives none), and `source` is `{ kind: "code", text }` where `text` is that description followed by the workflow’s registered contract as JSON; the code itself is not exposed. A workflow that has a file is read with `bureau.workflows.get`, and an identifier the engine does not know as code is `NotFound`. Requires `bureau.workflows:read` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`.',
+  destructive: false,
+  tags: ['Workflows'],
+  inputSchema: getInput,
+  outputSchema: internalGetOutput,
+  producibleFaults: ['InvalidParams', 'NotFound', 'UnsupportedCapability'],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    const workflows = workflowsFor(host, principal, 'bureau.workflows:read', 'workflow', input.id);
+    const detail = workflows.getCode(input.id);
+    if (detail === undefined) throw resourceNotFound('workflow', input.id);
+    return { ...detail, source: { ...detail.source } };
   },
 });
 
@@ -710,9 +873,19 @@ const signalInput = z.object({
     .describe('Makes a retried delivery apply once; starts are never deduplicated.'),
 });
 
+const schemaIssueSchema = z.object({
+  path: z.array(z.union([z.string(), z.number()])),
+  message: z.string(),
+});
+
 const signalOutput = z.object({
   started: z.array(z.string()),
   delivered: z.array(z.string()),
+  /**
+   * The workflows whose signal trigger matched but whose `inputSchema` the payload does not
+   * satisfy: nothing was started for them.
+   */
+  rejected: z.array(z.object({ id: z.string(), issues: z.array(schemaIssueSchema) })),
 });
 
 export const workflowsSignalOperation = defineOperation<
@@ -724,7 +897,7 @@ export const workflowsSignalOperation = defineOperation<
   mcpExposable: false,
   summary: 'Signal workflows',
   description:
-    'Delivers `payload` to every running workflow instance that waits at an `await-signal` step named `name`, then starts one instance of every ready, unpaused workflow whose trigger is `{ kind: "signal", name }`, with `{ kind: "signal", name, payload }` as its `trigger`. Returns the `delivered` instance identifiers and the `started` ones. Delivery happens first, so an instance this call starts is never satisfied by this call. A paused or deleted workflow starts nothing, and its running instances still receive the signal. `signalId` (at most 128 bytes) makes a retried delivery apply once; starts are not deduplicated. A payload the engine would refuse is `InvalidParams`, and nothing is delivered. An engine error during delivery, or an earlier file change the engine has not followed, is `Unavailable` (`data.reason` is `signal-delivery-failed` or `workflow-apply-failed`) and starts nothing; its message names the instances already reached. Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else gets `{ started: [], delivered: [] }`.',
+    'Delivers `payload` to every running workflow instance that waits at an `await-signal` step named `name`, then starts one instance of every ready, unpaused workflow whose trigger is `{ kind: "signal", name }`, with `{ kind: "signal", name, payload }` as its `trigger`. Returns the `delivered` instance identifiers and the `started` ones. A matching workflow whose `inputSchema` the payload does not satisfy starts nothing and is listed in `rejected` with the issues. Delivery happens first, so an instance this call starts is never satisfied by this call. A paused or deleted workflow starts nothing, and its running instances still receive the signal. `signalId` (at most 128 bytes) makes a retried delivery apply once; starts are not deduplicated. A payload the engine would refuse is `InvalidParams`, and nothing is delivered. An engine error during delivery, or an earlier file change the engine has not followed, is `Unavailable` (`data.reason` is `signal-delivery-failed` or `workflow-apply-failed`) and starts nothing; its message names the instances already reached. Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else gets `{ started: [], delivered: [], rejected: [] }`.',
   destructive: true,
   tags: ['Workflows'],
   inputSchema: signalInput,
@@ -736,13 +909,21 @@ export const workflowsSignalOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
     if (!mayAccessWorkflows(host, principal, 'bureau.workflows:write')) {
-      return { started: [], delivered: [] };
+      return { started: [], delivered: [], rejected: [] };
     }
     const workflows = workflowsOf(host);
     try {
-      return await workflows.signal(input.name, input.payload ?? null, {
+      const result = await workflows.signal(input.name, input.payload ?? null, {
         signalId: input.signalId,
       });
+      return {
+        started: result.started,
+        delivered: result.delivered,
+        rejected: result.rejected.map((entry) => ({
+          id: entry.id,
+          issues: entry.issues.map((issue) => ({ path: [...issue.path], message: issue.message })),
+        })),
+      };
     } catch (error) {
       if (error instanceof WorkflowSignalFailure) {
         // Weft's `Unavailable` carries only `reason` and `retryAfterSeconds` on the wire, so the
@@ -778,5 +959,7 @@ export const bureauWorkflowsOperations = [
   workflowsRevisionsOperation,
   workflowsRunsListOperation,
   workflowsRunsGetOperation,
+  workflowsStartOperation,
+  workflowsInternalGetOperation,
   workflowsSignalOperation,
 ] as const;

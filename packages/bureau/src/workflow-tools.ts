@@ -92,6 +92,14 @@ export interface WorkflowToolListing {
    * definition, so an agent that updates a workflow passes this back to keep it.
    */
   readonly description: string | null;
+  /**
+   * The JSON Schema the workflow’s input must satisfy, or `null` when it declares none.
+   * `workflows-update` replaces the whole definition, so an agent that updates a workflow passes
+   * this back to keep it.
+   */
+  readonly inputSchema: Readonly<Record<string, unknown>> | null;
+  /** The JSON Schema the workflow’s result must satisfy, or `null`; passed back like `inputSchema`. */
+  readonly outputSchema: Readonly<Record<string, unknown>> | null;
   /** Why an `invalid` file cannot run, so its author can fix it; `null` for a ready one. */
   readonly problem: string | null;
 }
@@ -143,6 +151,20 @@ const descriptionSchema = z
   .optional()
   .describe(
     'One sentence on what the workflow is for, shown beside its name in the workflow list. Leave it out for none.',
+  );
+
+const inputSchemaSchema = z
+  .record(z.string(), z.unknown())
+  .optional()
+  .describe(
+    'A JSON Schema (draft 2020-12) for the input an instance starts with: what a signal carries as its payload or a person gives when they start it; a schedule starts with null. At most 32 KiB and 8 levels deep, with no $id, pattern, or patternProperties. Leave it out for none. An input that breaks it starts nothing.',
+  );
+
+const outputSchemaSchema = z
+  .record(z.string(), z.unknown())
+  .optional()
+  .describe(
+    'A JSON Schema (draft 2020-12) for the value an instance finishes with, under the same limits. The result of the last step is an agent step’s { content, output, finishReason }. An instance whose result breaks it fails with output-invalid. Leave it out for none.',
   );
 
 const pausedSchema = z
@@ -242,11 +264,15 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
       steps: Record<string, unknown>[];
       description?: string | undefined;
       paused?: boolean | undefined;
+      inputSchema?: Record<string, unknown> | undefined;
+      outputSchema?: Record<string, unknown> | undefined;
     },
   ): WorkflowFileDefinition => ({
     ...(input.description === undefined ? {} : { description: input.description }),
     agent,
     ...(input.paused === undefined ? {} : { paused: input.paused }),
+    ...(input.inputSchema === undefined ? {} : { inputSchema: input.inputSchema }),
+    ...(input.outputSchema === undefined ? {} : { outputSchema: input.outputSchema }),
     trigger: input.trigger as WorkflowFileDefinition['trigger'],
     steps: input.steps,
   });
@@ -261,12 +287,16 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
         'The identifier, lowercase letters, digits, and hyphens, starting with a letter and at most 64 characters. Derived from `name` when you leave it out.',
       ),
     description: descriptionSchema,
+    inputSchema: inputSchemaSchema,
+    outputSchema: outputSchemaSchema,
     trigger: triggerSchema,
     steps: stepsSchema,
     paused: pausedSchema,
   });
   const updateInput = guardedInput.extend({
     description: descriptionSchema,
+    inputSchema: inputSchemaSchema,
+    outputSchema: outputSchemaSchema,
     trigger: triggerSchema,
     steps: stepsSchema,
     paused: pausedSchema,
@@ -309,7 +339,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
   const update = createTool({
     name: 'workflows-update',
     description:
-      'Replace a workflow with a new trigger and steps, if its file still has the `hash` workflows-list returned. The whole definition is replaced, description included, and you become the agent that wrote it. Pass back the `description` workflows-list returned to keep it; leave it out for none, and `paused` out to leave the workflow running.',
+      'Replace a workflow with a new trigger and steps, if its file still has the `hash` workflows-list returned. The whole definition is replaced, description and schemas included, and you become the agent that wrote it. Pass back the `description`, `inputSchema`, and `outputSchema` workflows-list returned to keep them; leave one out for none, and `paused` out to leave the workflow running.',
     input: updateInput,
     metadata: { shortDescription: 'Replace a workflow’s trigger and steps.' },
     execute: async (input, context): Promise<WorkflowToolResult> => {
@@ -362,7 +392,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
   const list = createTool({
     name: 'workflows-list',
     description:
-      'List the workflows: each one’s identifier, the `hash` the other workflow tools take as `expectedHash`, its state, whether it is paused, its trigger kind, and its description (pass it back to workflows-update to keep it, because an update replaces the whole definition). A file that cannot run is listed with a null trigger kind and the problem, so you can fix it.',
+      'List the workflows: each one’s identifier, the `hash` the other workflow tools take as `expectedHash`, its state, whether it is paused, its trigger kind, its description, and its `inputSchema` and `outputSchema` (pass them back to workflows-update to keep them, because an update replaces the whole definition). A file that cannot run is listed with a null trigger kind and the problem, so you can fix it.',
     input: z.object({}),
     metadata: { shortDescription: 'List the workflows and their state.' },
     execute: async (_input, context): Promise<WorkflowToolResult | WorkflowToolListResult> => {
@@ -383,6 +413,8 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
           paused: listing.paused,
           triggerKind: listing.triggerKind,
           description: listing.description,
+          inputSchema: listing.inputSchema,
+          outputSchema: listing.outputSchema,
           problem: listing.problem?.code ?? null,
         })),
       };

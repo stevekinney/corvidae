@@ -78,7 +78,7 @@ describe('bureau.workflows.signal', () => {
     );
 
     expect(response.error).toBeUndefined();
-    expect(response.result).toEqual({ started: [], delivered: [] });
+    expect(response.result).toEqual({ started: [], delivered: [], rejected: [] });
     expect(await instancesOf(harness, 'starter')).toEqual([]);
     const waiting = await harness.bureau.durableEngine()!.get('waiting-run');
     expect(waiting?.status).toBe('running');
@@ -94,7 +94,7 @@ describe('bureau.workflows.signal', () => {
       { name: 'go' },
       'workflows-reader-key',
     );
-    expect(reader.result).toEqual({ started: [], delivered: [] });
+    expect(reader.result).toEqual({ started: [], delivered: [], rejected: [] });
     expect(await instancesOf(harness, 'starter')).toEqual([]);
 
     const writer = await rpc(

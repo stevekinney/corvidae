@@ -56,12 +56,18 @@ export type { AgentRevision } from './agent-snapshot-store';
 export type { AgentVersionRecord } from './agent-version-store';
 export type { AgentReferenceDigest, AgentReferenceDocument } from './agent-reference-documents';
 export type {
+  WorkflowCodeDetail,
   WorkflowDetail,
   WorkflowRunDetail,
   WorkflowRunFilter,
   WorkflowRunSummary,
+  WorkflowSignalResult,
+  WorkflowStartOptions,
+  WorkflowStartResult,
   BureauWorkflows,
 } from './workflow-runtime';
+export type { WorkflowFinishReason, WorkflowSchemaIssue } from './workflow-schema';
+export { WorkflowInputInvalidError } from './workflow-schema';
 export type {
   WorkflowFileDefinition,
   WorkflowFileErrorCode,

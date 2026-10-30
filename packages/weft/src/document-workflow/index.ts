@@ -9,6 +9,7 @@
 export { normalizeScheduleSpec } from '../core/engine/validation/schedule.ts';
 export type { NormalizedScheduleSpec } from '../core/engine/validation/schedule.ts';
 export {
+  WorkflowDocumentSchemaError,
   WorkflowDocumentValidationError,
   canonicalWorkflowDocumentJson,
   validateWorkflowDocument,
@@ -18,6 +19,8 @@ export {
 export type {
   DocumentActivityArgument,
   DocumentActivityHandler,
+  DocumentSchemaChecker,
+  DocumentSchemaPoint,
   DocumentTriggerValidator,
   DocumentWorkflowHost,
   WorkflowDocument,

@@ -54,6 +54,10 @@ export interface WorkflowListing {
   /** The identifier of the agent that wrote the file, or `null`. */
   readonly agent: string | null;
   readonly paused: boolean;
+  /** The JSON Schema an instance's input must satisfy, or `null` when the file declares none or is invalid. */
+  readonly inputSchema: Readonly<Record<string, unknown>> | null;
+  /** The JSON Schema an instance's result must satisfy, or `null` when the file declares none or is invalid. */
+  readonly outputSchema: Readonly<Record<string, unknown>> | null;
   /** The `kind` of the file's trigger, for a ready file, and `null` for an invalid one. */
   readonly triggerKind: string | null;
   /** The file's trigger as written (`kind` and the keys of that kind), for a ready file, else `null`. */
@@ -316,6 +320,8 @@ export function createWorkflowFileCatalog(
             description: entry.file?.description ?? null,
             agent: entry.file?.agent ?? null,
             paused: entry.file?.paused ?? false,
+            inputSchema: entry.file?.inputSchema ?? null,
+            outputSchema: entry.file?.outputSchema ?? null,
             triggerKind: entry.file?.document.trigger.kind ?? null,
             trigger: entry.file?.document.trigger ?? null,
             ...(entry.hash === undefined ? {} : { hash: entry.hash }),
@@ -381,6 +387,9 @@ export function createWorkflowFileCatalog(
           ...(parsed.file.description === null ? {} : { description: parsed.file.description }),
           ...(parsed.file.agent === null ? {} : { agent: parsed.file.agent }),
           paused,
+          // Pausing changes nothing else in the file, schemas included.
+          ...(parsed.file.inputSchema === null ? {} : { inputSchema: parsed.file.inputSchema }),
+          ...(parsed.file.outputSchema === null ? {} : { outputSchema: parsed.file.outputSchema }),
           trigger: document.trigger,
           steps: document.steps,
         });
