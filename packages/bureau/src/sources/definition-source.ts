@@ -126,8 +126,26 @@ export class SourceConflictError extends Error {
   }
 }
 
+/** What {@link AgentSource.readSibling} found at a path. */
+export type SiblingRead =
+  | {
+      readonly kind: 'found';
+      readonly bytes: Uint8Array;
+      /**
+       * An opaque token that changes when the document does (an ETag, or a file's size, inode and
+       * modification time). A caller that kept the bytes passes it back as `unlessStamp`. Absent
+       * when the source cannot tell.
+       */
+      readonly stamp?: string | undefined;
+    }
+  | { readonly kind: 'unchanged' }
+  | { readonly kind: 'missing' }
+  | { readonly kind: 'too-large'; readonly size: number };
+
 /**
- * The source of agent definitions. `tools` is the deployment's tool catalog: the tools an agent
+ * The source of agent definitions. Beyond the definitions themselves it reads the documents an
+ * agent file's `references` name, which sit beside the definitions: see
+ * {@link AgentSource.readSibling}. `tools` is the deployment's tool catalog: the tools an agent
  * definition may name, by the name it uses. Defaults to none. With a workflow source Bureau adds
  * `workflows-create`, `workflows-update`, `workflows-pause`, `workflows-resume`, and
  * `workflows-list`; a tool of the host's with one of those names is refused with `BureauError`
@@ -136,6 +154,30 @@ export class SourceConflictError extends Error {
 export type AgentSource = DefinitionSource & {
   readonly kind: 'agent';
   readonly tools?: Readonly<Record<string, Tool>>;
+  /**
+   * Read the document at `path`, which is relative to the place the agent files live (the
+   * directory, or the key prefix) and written with `/`. A path that is not a valid reference
+   * path (`agentReferencePathProblem`: absolute, a `..` or dotfile segment, a backslash) is
+   * refused with a `TypeError` before anything is read, so a source never reads outside its own
+   * location. A document larger than `options.limit` bytes is reported as `too-large` without
+   * being read in full where the source can tell; a document that is not there is `missing`.
+   * Rejects when the document exists and cannot be read.
+   *
+   * With `options.unlessStamp` set to the `stamp` of an earlier `found`, a document whose stamp is
+   * still that one is answered `unchanged` without its content being read: the caller keeps the
+   * bytes it has. A source that cannot stamp a document ignores the option and reads it.
+   */
+  readSibling(
+    path: string,
+    options: { readonly limit: number; readonly unlessStamp?: string | undefined },
+  ): Promise<SiblingRead>;
+  /**
+   * How often, in milliseconds, the source looks for changes on its own: its poll interval. The
+   * catalog reads an agent's reference documents again at this period, because nothing else
+   * reports an edit to one. Absent when the source does not watch (`watch: false`), in which case
+   * a document is read again by the next scan only.
+   */
+  readonly referencePollMilliseconds?: number | undefined;
 };
 
 /** The source of workflow definitions. */

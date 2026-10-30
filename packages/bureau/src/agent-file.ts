@@ -60,6 +60,8 @@ export const AGENT_FILE_KNOWN_KEYS = [
   'a2a',
   'stepLimit',
   'retry',
+  'compaction',
+  'references',
   'guardrails',
 ] as const;
 
@@ -69,6 +71,8 @@ export type AgentFileProblemCode =
   | 'invalid-frontmatter'
   | 'unknown-model'
   | 'unknown-tool'
+  | 'missing-reference'
+  | 'reference-too-large'
   | 'shadows-code-agent'
   | 'missing-frontmatter'
   | 'invalid-yaml'
@@ -135,6 +139,79 @@ export const agentRetrySchema = z.strictObject({
   jitter: z.boolean().optional(),
 });
 
+/** The fewest percent of the context window at which compaction may trigger (`compaction.thresholdPercent`). */
+export const AGENT_COMPACTION_THRESHOLD_MINIMUM_PERCENT = 50;
+/** The most percent of the context window at which compaction may trigger. */
+export const AGENT_COMPACTION_THRESHOLD_MAXIMUM_PERCENT = 95;
+/** The percent a file's `compaction` uses when it names none: Operative's own default of 80%. */
+export const AGENT_COMPACTION_DEFAULT_THRESHOLD_PERCENT = 80;
+
+/**
+ * Whether a run compacts its conversation, and when. `thresholdPercent` is the share of the model's
+ * context window, from 50 to 95, at which compaction triggers; absent, 80. Compaction summarizes
+ * the older messages with the deployment's summarizer model (the `context.summarizerModel`
+ * setting), so an enabled `compaction` is only valid while one is configured.
+ */
+export const agentCompactionSchema = z.strictObject({
+  enabled: z.boolean(),
+  thresholdPercent: z
+    .number()
+    .int()
+    .min(AGENT_COMPACTION_THRESHOLD_MINIMUM_PERCENT)
+    .max(AGENT_COMPACTION_THRESHOLD_MAXIMUM_PERCENT)
+    .optional(),
+});
+
+/** The most reference documents one agent file may list. */
+export const AGENT_REFERENCE_COUNT_LIMIT = 16;
+/** The largest one reference document may be, in bytes. A larger one makes the agent `invalid`. */
+export const AGENT_REFERENCE_SIZE_LIMIT = 64 * 1024;
+/** The most the reference documents of one agent may add up to, in bytes. */
+export const AGENT_REFERENCES_TOTAL_SIZE_LIMIT = 256 * 1024;
+/** The longest a reference path may be, in characters. */
+export const AGENT_REFERENCE_PATH_MAX_LENGTH = 255;
+
+/**
+ * Why `path` cannot name a reference document, or `undefined` when it can. A reference is a path
+ * relative to the agent file's directory, written with `/`: no empty, `.` or `..` segment, no
+ * absolute path or drive letter, no backslash or control character, and no segment that starts
+ * with `.` (a dotfile, which is where a source keeps its temporary files). The sources check the
+ * same rule again before they read.
+ */
+export function agentReferencePathProblem(path: string): string | undefined {
+  if (path === '') return 'must not be empty';
+  if (path.length > AGENT_REFERENCE_PATH_MAX_LENGTH) {
+    return `must be at most ${AGENT_REFERENCE_PATH_MAX_LENGTH} characters`;
+  }
+  if (path.startsWith('/') || /^[A-Za-z]:/u.test(path)) {
+    return 'must be relative to the agent file’s directory, not absolute';
+  }
+  if (path.includes('\\')) return 'must use "/" as its separator, not a backslash';
+  // eslint-disable-next-line no-control-regex -- control characters are exactly what is refused
+  if (/[\u0000-\u001f\u007f]/u.test(path)) return 'must not contain control characters';
+  for (const segment of path.split('/')) {
+    if (segment === '') return 'must not contain an empty segment';
+    if (segment === '..') return 'must not leave the agent file’s directory ("..")';
+    if (segment.startsWith('.')) return 'must not name a dotfile or a "." segment';
+  }
+  return undefined;
+}
+
+/** One path of a file's `references`: the reference documents the agent reads alongside its instructions. */
+const agentReferencePathSchema = z.string().superRefine((path, context) => {
+  const problem = agentReferencePathProblem(path);
+  if (problem !== undefined) context.addIssue({ code: 'custom', message: problem });
+});
+
+/**
+ * A file's `references`: paths, relative to the agent file's directory, of documents whose text
+ * becomes part of the agent's instructions. At most {@link AGENT_REFERENCE_COUNT_LIMIT}, unique.
+ */
+export const agentReferencesSchema = z
+  .array(agentReferencePathSchema)
+  .max(AGENT_REFERENCE_COUNT_LIMIT)
+  .refine((paths) => unique(paths), { message: 'reference paths must be unique' });
+
 function unique(values: readonly string[]): boolean {
   return new Set(values).size === values.length;
 }
@@ -183,6 +260,17 @@ export const agentFileFrontmatterSchema = z
     stepLimit: agentStepLimitSchema.nullish(),
     /** How a run retries a failed generate call. Absent, it does not. */
     retry: agentRetrySchema.nullish(),
+    /**
+     * Whether the run compacts its conversation as it nears the model's context window, and at what
+     * percent. Absent, it does not. Enabling it needs a configured summarizer model; the catalog
+     * checks that, because a file's text cannot.
+     */
+    compaction: agentCompactionSchema.nullish(),
+    /**
+     * Documents, as paths relative to the file's directory, whose text joins the agent's
+     * instructions. The catalog reads them; a missing or oversized one makes the agent `invalid`.
+     */
+    references: agentReferencesSchema.nullish(),
     /**
      * The guardrail preset the agent runs under. Absent, the agent runs Operative's own default,
      * which is the `tripwire` preset.
@@ -265,6 +353,13 @@ export const agentFileDefinitionSchema = z.object({
   /** Absent from a snapshot written before the field existed, and from a file that has none. */
   retry: agentRetrySchema.optional(),
   /** Absent from a snapshot written before the field existed, and from a file that has none. */
+  compaction: agentCompactionSchema.optional(),
+  /**
+   * The reference paths, never their text: the documents a run read are stored beside the
+   * definition (`agent-snapshot-store.ts`). Absent from a snapshot written before the field
+   * existed, and from a file that has none.
+   */
+  references: agentReferencesSchema.optional(),
   guardrails: agentGuardrailPresetSchema.optional(),
   /** Prompts a new chat offers (see the frontmatter's `examples`); absent for a file that has none. */
   examples: agentExamplesSchema.optional(),
@@ -279,6 +374,14 @@ export interface AgentRetry {
   readonly delayMilliseconds?: number | undefined;
   /** Whether the wait is jittered. Absent, `false`. */
   readonly jitter?: boolean | undefined;
+}
+
+/** A file's `compaction`, as written. */
+export interface AgentCompaction {
+  /** Whether a run compacts its conversation. */
+  readonly enabled: boolean;
+  /** The percent of the context window at which it triggers, 50 to 95. Absent, 80. */
+  readonly thresholdPercent?: number | undefined;
 }
 
 /** The frontmatter as written, before defaults. */
@@ -304,6 +407,14 @@ export interface AgentFileDefinition {
   readonly stepLimit?: number;
   /** How a run retries a failed generate call. Absent when the file sets none: it does not retry. */
   readonly retry?: AgentRetry;
+  /** Whether and when a run compacts its conversation. Absent when the file sets none: it does not. */
+  readonly compaction?: AgentCompaction;
+  /**
+   * Paths, relative to the file's directory, of the documents whose text joins the agent's
+   * instructions. Absent when the file lists none. The paths are the definition; the text and the
+   * digests of what the paths named are not (`agent-reference-documents.ts`).
+   */
+  readonly references?: readonly string[];
   /**
    * The guardrail preset the agent runs under. Absent when the file sets none: the agent runs
    * Operative's own default, which is the `tripwire` preset.
@@ -331,6 +442,8 @@ const definitionKeyTable: Record<keyof AgentFileDefinition, true> = {
   a2a: true,
   stepLimit: true,
   retry: true,
+  compaction: true,
+  references: true,
   guardrails: true,
   examples: true,
   instructions: true,
@@ -378,6 +491,16 @@ export interface AgentFileDefinitionInput {
    * removes it.
    */
   readonly retry?: AgentRetry | null | undefined;
+  /**
+   * See {@link AgentFileDefinition.compaction}. An update that omits it keeps the file's value;
+   * `null` removes it.
+   */
+  readonly compaction?: AgentCompaction | null | undefined;
+  /**
+   * See {@link AgentFileDefinition.references}. An update that omits it keeps the file's value;
+   * `null`, or an empty list, removes it.
+   */
+  readonly references?: readonly string[] | null | undefined;
   /**
    * See {@link AgentFileDefinition.guardrails}. An update that omits it keeps the file's value;
    * `null` removes it.
@@ -471,6 +594,16 @@ function retryOf(retry: AgentRetry): AgentRetry {
   };
 }
 
+/** A compaction without the keys it leaves out, so a definition holds exactly what a file wrote. */
+function compactionOf(compaction: AgentCompaction): AgentCompaction {
+  return {
+    enabled: compaction.enabled,
+    ...(compaction.thresholdPercent === undefined
+      ? {}
+      : { thresholdPercent: compaction.thresholdPercent }),
+  };
+}
+
 /** Apply the schema's defaults to validated frontmatter. */
 function toDefinition(
   id: string,
@@ -488,6 +621,10 @@ function toDefinition(
     a2a: frontmatter.a2a ?? false,
     ...(frontmatter.stepLimit == null ? {} : { stepLimit: frontmatter.stepLimit }),
     ...(frontmatter.retry == null ? {} : { retry: retryOf(frontmatter.retry) }),
+    ...(frontmatter.compaction == null ? {} : { compaction: compactionOf(frontmatter.compaction) }),
+    ...(frontmatter.references == null || frontmatter.references.length === 0
+      ? {}
+      : { references: [...frontmatter.references] }),
     ...(frontmatter.guardrails == null ? {} : { guardrails: frontmatter.guardrails }),
     ...(frontmatter.examples == null ? {} : { examples: frontmatter.examples }),
     instructions,
@@ -588,6 +725,10 @@ function knownFrontmatter(definition: AgentFileDefinitionInput): Record<string, 
   if (definition.a2a !== undefined) known['a2a'] = definition.a2a;
   if (definition.stepLimit != null) known['stepLimit'] = definition.stepLimit;
   if (definition.retry != null) known['retry'] = retryOf(definition.retry);
+  if (definition.compaction != null) known['compaction'] = compactionOf(definition.compaction);
+  if (definition.references != null && definition.references.length > 0) {
+    known['references'] = [...definition.references];
+  }
   if (definition.guardrails != null) known['guardrails'] = definition.guardrails;
   return known;
 }
@@ -616,6 +757,10 @@ export function resolveAgentFileDefinition(
     a2a: input.a2a ?? false,
     ...(input.stepLimit == null ? {} : { stepLimit: input.stepLimit }),
     ...(input.retry == null ? {} : { retry: retryOf(input.retry) }),
+    ...(input.compaction == null ? {} : { compaction: compactionOf(input.compaction) }),
+    ...(input.references == null || input.references.length === 0
+      ? {}
+      : { references: [...input.references] }),
     ...(input.guardrails == null ? {} : { guardrails: input.guardrails }),
     instructions: input.instructions,
   };
@@ -636,14 +781,17 @@ export function serializeUpdatedAgentFile(
   input: AgentFileDefinitionInput,
 ): Uint8Array | undefined {
   const before = existing.definition;
-  // A key the caller leaves out (`a2a`, `stepLimit`, `retry`, `guardrails`) is not a change to it: the file keeps
-  // the value it has, and a file with no such key is not given one.
+  // A key the caller leaves out (`a2a`, `stepLimit`, `retry`, `compaction`, `references`,
+  // `guardrails`) is not a change to it: the file keeps the value it has, and a file with no such
+  // key is not given one.
   const keptA2a = input.a2a === undefined;
   const next = resolveAgentFileDefinition(id, {
     ...input,
     ...(keptA2a ? { a2a: before.a2a } : {}),
     ...(input.stepLimit === undefined ? { stepLimit: before.stepLimit } : {}),
     ...(input.retry === undefined ? { retry: before.retry } : {}),
+    ...(input.compaction === undefined ? { compaction: before.compaction } : {}),
+    ...(input.references === undefined ? { references: before.references } : {}),
     ...(input.guardrails === undefined ? { guardrails: before.guardrails } : {}),
   });
   // `examples` is the file's own and an input never carries it, so it is not a change.
@@ -664,6 +812,8 @@ export function serializeUpdatedAgentFile(
         ...(keptA2a && Object.hasOwn(existing.raw, 'a2a') ? { a2a: before.a2a } : {}),
         ...(input.stepLimit === undefined ? { stepLimit: before.stepLimit } : {}),
         ...(input.retry === undefined ? { retry: before.retry } : {}),
+        ...(input.compaction === undefined ? { compaction: before.compaction } : {}),
+        ...(input.references === undefined ? { references: before.references } : {}),
         ...(input.guardrails === undefined ? { guardrails: before.guardrails } : {}),
       }),
       AGENT_FILE_KNOWN_KEYS,

@@ -39,7 +39,10 @@ import {
 export interface AgentFileWriterDependencies {
   readonly source: AgentSource;
   /** The checks that depend on the deployment: a reserved identifier, the model, the tools. */
-  validate(id: string, definition: AgentFileDefinition): AgentFileProblem | undefined;
+  validate(
+    id: string,
+    definition: AgentFileDefinition,
+  ): AgentFileProblem | undefined | Promise<AgentFileProblem | undefined>;
   /** The definition as the source holds it now, read from the source and not from the last scan. */
   read(id: string): Promise<DefinitionEntry | undefined>;
   /** Reload the source after a write; resolves once the catalog reflects it, rejects if it cannot. */
@@ -167,7 +170,7 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
   }
 
   /** Refuse unless `bytes` would load as a usable agent named `id`. */
-  function checkWritable(id: string, bytes: Uint8Array): void {
+  async function checkWritable(id: string, bytes: Uint8Array): Promise<void> {
     if (bytes.length > AGENT_FILE_SIZE_LIMIT) {
       refuse({
         code: 'file-too-large',
@@ -183,7 +186,7 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
           : { code: 'not-utf8', message: 'The agent file is not valid UTF-8.' },
       );
     }
-    const problem = dependencies.validate(id, parsed.file.definition);
+    const problem = await dependencies.validate(id, parsed.file.definition);
     if (problem !== undefined) refuse(problem);
   }
 
@@ -209,7 +212,7 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
       return exclusive(async () => {
         checkIdentifier(id);
         const bytes = serializeNewAgentFile(definition);
-        checkWritable(id, bytes);
+        await checkWritable(id, bytes);
         return replace(id, bytes, null, saveOptions?.savedBy);
       });
     },
@@ -229,11 +232,20 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
         }
         // The definition is checked even when it changes nothing: an update never reports a
         // success for a file that would not load.
-        const problem = dependencies.validate(id, resolveAgentFileDefinition(id, definition));
+        const { definition: before } = parsed.file;
+        const problem = await dependencies.validate(
+          id,
+          resolveAgentFileDefinition(id, {
+            ...definition,
+            // A key the update leaves out keeps the file's value, and is checked as the file has it.
+            ...(definition.compaction === undefined ? { compaction: before.compaction } : {}),
+            ...(definition.references === undefined ? { references: before.references } : {}),
+          }),
+        );
         if (problem !== undefined) refuse(problem);
         const next = serializeUpdatedAgentFile(id, parsed.file, definition);
         if (next === undefined) return { id, hash: expectedHash };
-        checkWritable(id, next);
+        await checkWritable(id, next);
         return replace(id, next, expectedHash, savedBy);
       });
     },

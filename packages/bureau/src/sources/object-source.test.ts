@@ -6,12 +6,14 @@
  */
 import { createManualRuntimeServices, type ManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createS3TestServer, type S3TestServer } from '@lostgradient/testing/s3-server';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { AGENT_FILE_SIZE_LIMIT } from '../agent-file';
 import { agentObjectSource } from './agent-object-source';
 import {
+  type AgentSource,
   type DefinitionSource,
   type DefinitionSourceChange,
   hashDefinitionBytes,
@@ -209,6 +211,69 @@ describe('what a listing counts as a definition', () => {
     const failure = await source.load().catch((thrown: unknown) => thrown);
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toBe('store unavailable');
+  });
+});
+
+describe('reading a reference beside the definitions', () => {
+  it('lists the key for its size first, and reads an object over the limit never', async () => {
+    const { server, source, calls } = setup();
+    server.put(`${PREFIX}docs/style.md`, 'Be brief.');
+    server.put(`${PREFIX}docs/style.md.bak`, 'a sibling that shares the key as a prefix');
+    const agentSource = source as AgentSource;
+    expect(await agentSource.readSibling('docs/style.md', { limit: 9 })).toMatchObject({
+      kind: 'found',
+    });
+    expect(calls.reads).toEqual([`${PREFIX}docs/style.md`]);
+    calls.reads.length = 0;
+    expect(await agentSource.readSibling('docs/style.md', { limit: 8 })).toEqual({
+      kind: 'too-large',
+      size: 9,
+    });
+    expect(calls.reads).toEqual([]);
+    expect(await agentSource.readSibling('docs/other.md', { limit: 100 })).toEqual({
+      kind: 'missing',
+    });
+  });
+
+  it('answers unchanged from the listing’s ETag without a GET, and reads again once the object changed', async () => {
+    const { server, source, calls } = setup();
+    server.put(`${PREFIX}docs/style.md`, 'Be brief.');
+    const agentSource = source as AgentSource;
+    const first = await agentSource.readSibling('docs/style.md', { limit: 100 });
+    if (first.kind !== 'found' || first.stamp === undefined) throw new Error('Expected a stamp.');
+    expect(calls.reads).toHaveLength(1);
+
+    const lists = calls.lists;
+    expect(
+      await agentSource.readSibling('docs/style.md', { limit: 100, unlessStamp: first.stamp }),
+    ).toEqual({ kind: 'unchanged' });
+    expect(calls.reads).toHaveLength(1);
+    expect(calls.lists).toBe(lists + 1);
+
+    server.put(`${PREFIX}docs/style.md`, 'Be thorough.');
+    const second = await agentSource.readSibling('docs/style.md', {
+      limit: 100,
+      unlessStamp: first.stamp,
+    });
+    expect(second.kind).toBe('found');
+    expect(calls.reads).toHaveLength(2);
+  });
+
+  it('states its poll interval as the interval references are read again, and none under watch: false', () => {
+    const polling = setup({ pollIntervalMilliseconds: 30_000 }).source as AgentSource;
+    expect(polling.referencePollMilliseconds).toBe(30_000);
+    const quiet = setup({ watch: false }).source as AgentSource;
+    expect(quiet.referencePollMilliseconds).toBeUndefined();
+  });
+
+  it('is not shown the objects of another prefix, whatever the path', async () => {
+    const { server, source } = setup();
+    server.put('elsewhere/secret.md', 'not yours');
+    const agentSource = source as AgentSource;
+    expect(await agentSource.readSibling('secret.md', { limit: 100 })).toEqual({ kind: 'missing' });
+    expect(
+      await rejectionOf(agentSource.readSibling('../elsewhere/secret.md', { limit: 100 })),
+    ).toBeInstanceOf(TypeError);
   });
 });
 
