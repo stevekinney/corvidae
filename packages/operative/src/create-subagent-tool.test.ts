@@ -1721,13 +1721,13 @@ describe('createSubagentTool', () => {
         { policyVersion: 'v1', grantedModels: 'claude-fable-5' }, // not an array
         { policyVersion: 'v1', maximumEffort: 3 }, // not a string
         // A "looks-valid" string that is nonetheless outside the closed
-        // `Effort`/`ProviderName` unions must be rejected too — otherwise
+        // `Effort` union or the provider-name grammar must be rejected too — otherwise
         // `attenuateDelegatedAuthority`'s `narrowerEffort` would compare an
         // unknown tier's `EFFORT_ORDER.indexOf(-1)` as "lower" than every
         // real tier, silently WIDENING authority instead of narrowing it.
         { policyVersion: 'v1', maximumEffort: 'supermax' }, // not a real Effort tier
         { policyVersion: 'v1', grantedProviders: ['anthropic', 42] }, // non-string element
-        { policyVersion: 'v1', grantedProviders: ['not-a-real-provider'] }, // not a ProviderName
+        { policyVersion: 'v1', grantedProviders: ['Not A Provider'] }, // outside the provider-name grammar
         { policyVersion: 'v1', grantedModels: ['claude-fable-5', 42] }, // non-string element
       ];
 

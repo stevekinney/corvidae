@@ -59,6 +59,15 @@ const DETAIL_ALLOWLIST: readonly string[] = [
   'sessionId',
   'status',
   'toolName',
+  // COR-1813: a worker deployment's rollout moves, which name the builds and the routing
+  // generation they produced and carry no content.
+  'deploymentName',
+  'fromBuildId',
+  'currentBuildId',
+  'rampingBuildId',
+  'previousBuildId',
+  'rampBasisPoints',
+  'generation',
 ];
 
 function detailOf(detail: unknown): AuditQueryRecord['detail'] {

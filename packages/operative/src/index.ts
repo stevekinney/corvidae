@@ -510,10 +510,16 @@ export {
   HUMAN_INPUT_SCHEMA_MAXIMUM_BYTES,
   HUMAN_INPUT_SCHEMA_MAXIMUM_DEPTH,
   HumanInputSchemaError,
+  checkHumanInputSchema,
   checkHumanInputSchemas,
   humanInputSchemaOf,
   type HumanInputSchema,
+  type HumanInputSchemaIssue,
 } from './human-input-schema';
+export {
+  HUMAN_INPUT_LABEL_MAXIMUM_LENGTH,
+  humanInputSchemaExtensionIssues,
+} from './human-input-schema-extensions';
 export type { RefusedParkRequest } from './park-refusal';
 // F3/D6 — thrown by scheduleWakeup/requestHumanInput when invoked outside a
 // durable run (AB-41's decision record, implemented by AB-43).

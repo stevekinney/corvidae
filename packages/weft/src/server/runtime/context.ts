@@ -7,7 +7,6 @@ import type { WorkerManifest } from '../../worker/manifest/index.ts';
 import type { WorkerRegistry } from '../../worker/registry.ts';
 import type { Authenticator, RateLimiter } from '../authentication.ts';
 import type { DeadlineTracker } from '../deadline-tracker.ts';
-import type { createEngineEventFeedBackend } from '../engine-event-feed-backend.ts';
 import type { FleetEventFeed } from '../fleet-event-feed.ts';
 import type { WebSocketData } from '../json-rpc-websocket-runtime.ts';
 import type { JsonRpcWebSocketSession } from '../json-rpc-websocket.ts';
@@ -15,6 +14,7 @@ import type { OpenApiSecuritySchemeName } from '../openapi.ts';
 import type { Principal } from '../principal.ts';
 import type { createLiveOperationRegistry, createLiveRestBindings } from '../rest-bindings.ts';
 import type { TaskQueue } from '../task-queue.ts';
+import type { WatchEventFeed } from '../watch-event-feed-backend.ts';
 import type { WorkflowEventFeed } from '../workflow-event-feed.ts';
 import type { ResolvedCorsPolicy } from './cors.ts';
 
@@ -97,7 +97,9 @@ export interface ServerContext {
   readonly metricsCollector: MetricsCollector;
   readonly connectionCounts: ServerConnectionCounts;
   readonly refreshConnectionMetrics: () => void;
-  readonly eventFeedBackend: ReturnType<typeof createEngineEventFeedBackend>;
+  /** Serves the REST `/events/sse` route from the watch events `/watch` clients read. */
+  readonly watchEventFeed: WatchEventFeed;
+  /** Serves the JSON-RPC subscriptions from the engine's own event log. */
   readonly workflowEventFeed: WorkflowEventFeed;
   readonly fleetEventFeed: FleetEventFeed;
   readonly activeJsonRpcSessions: Set<JsonRpcWebSocketSession>;

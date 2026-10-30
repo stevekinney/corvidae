@@ -30,7 +30,11 @@ import type { DurableEventHistory } from './durable-event-history';
 import { createGoalAttemptFence, type GoalAttemptFenceHost } from './goal-attempt-fence';
 import { createGoalConversations } from './goal-conversation';
 import type { GoalLifecycleEvent } from './events';
-import { createGoalEventRecorder, projectGoalHistory } from './goal-event-projection';
+import {
+  createGoalEventRecorder,
+  createHistoryWriteGate,
+  projectGoalHistory,
+} from './goal-event-projection';
 import { createAttemptForwarder } from './goal-forwarder';
 import {
   createOwnedGoalEngine,
@@ -118,7 +122,8 @@ export interface GoalsComposition {
   /**
    * Aborts the starts of recoveries still running past the boot sweep's budget,
    * and resolves once they have settled and every forwarded signal already being
-   * sent has been delivered.
+   * sent has been delivered. Also stops the goal event history taking writes and
+   * waits for the ones under way (COR-1903).
    */
   drain(): Promise<void>;
 }
@@ -144,10 +149,13 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
     );
   // The boot pass's recorder writes history only; the store's observer also dispatches each event
   // live (COR-1721), so a goal re-projected at boot is never announced again.
+  // COR-1903: shutdown closes this gate, so no history write starts after it and the ones under
+  // way land before `shutdown()` goes on to dispose storage.
+  const historyWrites = createHistoryWriteGate();
   const recordEvents =
     dependencies.eventHistory === undefined
       ? undefined
-      : createGoalEventRecorder(dependencies.eventHistory, diagnose);
+      : createGoalEventRecorder(dependencies.eventHistory, diagnose, undefined, historyWrites);
   const observeEvents =
     dependencies.eventHistory === undefined && dependencies.dispatchGoalEvent === undefined
       ? undefined
@@ -155,6 +163,7 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
           dependencies.eventHistory,
           diagnose,
           dependencies.dispatchGoalEvent,
+          historyWrites,
         );
   const store = createGoalStore(dependencies.kv ?? textValueStore(new MemoryStorage()), {
     ...(observeEvents === undefined ? {} : { observe: observeEvents }),
@@ -339,6 +348,7 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
       // background: abort their starts and wait for them to settle, so none
       // touches the engine or storage once the bureau disposes them.
       shutdown.abort();
+      const historyDrained = historyWrites.close();
       // Only the attempt start honours the signal; a recovery blocked in a read
       // of the engine or the store does not. Waiting for it forever would hang
       // `close()` before storage is disposed, so the wait is bounded: past the
@@ -368,6 +378,9 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
         }
       }
       await forwarder.drain();
+      // COR-1903: a controller's event-history write already under way lands before shutdown
+      // returns, and the controller starts no other (a skipped one is re-projected at boot).
+      await historyDrained;
     },
   };
 }

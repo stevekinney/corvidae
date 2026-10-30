@@ -106,6 +106,7 @@ describe('/host/paths', () => {
     expect(Object.keys(paths).toSorted()).toEqual([
       'agentDirectory',
       'configurationFile',
+      'database',
       'mode',
       'providers',
       'workflowDirectory',
@@ -120,6 +121,7 @@ describe('/host/paths', () => {
     const response = await fetch(new URL('/host/paths', host.url));
     expect(await response.json()).toEqual({
       mode: 'local',
+      database: { kind: 'sqlite', path: join(home, 'database.sqlite') },
       agentDirectory: join(home, 'agents'),
       workflowDirectory: join(home, 'workflows'),
       configurationFile: join(home, 'configuration.json'),

@@ -907,6 +907,26 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
     interrupts = [];
   }
 
+  /**
+   * The mount refused a resume as `INVALID_INPUT` (COR-1804): an answer typed to a question does not
+   * fit the schema the question carries. Sending the same text again is refused the same way for
+   * ever, so the answers a refused resume carried are dropped, and the questions are asked again;
+   * the person's next message answers the first of them, and any approval already decided stays
+   * held. The rows that held the typed answers go with them, so the agent is not sent them as a
+   * message of their own.
+   */
+  function unfittingAnswers(sent: readonly ResumeEntry[]): void {
+    unanswered = undefined;
+    for (const entry of sent) {
+      const answer = answers.get(entry.interruptId);
+      if (answer?.entry !== entry) continue;
+      answers.delete(entry.interruptId);
+      settledAnswerRows.push(answer.rowId);
+    }
+    if (decisions.size === 0 && answers.size === 0) refusedResume = false;
+    options.onHumanRequests?.(unansweredRequests());
+  }
+
   async function* untilAnswered(
     events: AsyncIterable<unknown>,
     sent: readonly ResumeEntry[],
@@ -921,6 +941,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         // A refusal is the mount's answer to a start, but not to a resume: the entries it carried
         // are still owed, and what is still pending is read again before they are sent.
         if (refused === undefined || sent.length === 0) acknowledged(sent);
+        else if (refused.resume && refused.code === 'INVALID_INPUT') unfittingAnswers(sent);
       }
       yield event;
     }

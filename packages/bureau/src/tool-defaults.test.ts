@@ -185,7 +185,7 @@ describe('a durable Bureau offers the tools by default', () => {
     };
 
     it('is offered to a session task and to a schedule fire, and left out under decide: false', async () => {
-      const decisions = { model: DECISION_MODEL };
+      const decisions = { models: { host: DECISION_MODEL }, model: 'host' };
       expect(await sessionTaskTools({ decisions })).toContain('decide');
       expect(await scheduleFireTools({ decisions })).toContain('decide');
       expect(await sessionTaskTools({ decisions, decide: false })).not.toContain('decide');
@@ -194,7 +194,7 @@ describe('a durable Bureau offers the tools by default', () => {
 
     it('is offered when requestHumanInput is not', async () => {
       const tools = await sessionTaskTools({
-        decisions: { model: DECISION_MODEL },
+        decisions: { models: { host: DECISION_MODEL }, model: 'host' },
         humanInput: false,
       });
       expect(tools).toContain('decide');
@@ -205,7 +205,7 @@ describe('a durable Bureau offers the tools by default', () => {
       const childOffered: Offered = [];
       const bureau = await start(
         { parent: parkingAgent([]), child: recordingAgent(childOffered) },
-        { decisions: { model: DECISION_MODEL } },
+        { decisions: { models: { host: DECISION_MODEL }, model: 'host' } },
       );
       const parent = await bureau.tasks.start('parent', 'go');
       await pollUntil(() => bureau.reviews.list().some((review) => review.runId === parent.id));

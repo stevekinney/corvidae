@@ -36,7 +36,7 @@ export type CheckboxGroupProps = Omit<HTMLFieldsetAttributes, 'disabled' | 'clas
   disabled?: boolean;
   /**
    * Marks the group required: sets `aria-required="true"` and
-   * `data-cinder-required` on the fieldset and renders the required asterisk in
+   * `data-cinder-required` on the fieldset and renders the required dot in
    * the legend.
    *
    * It does NOT set `required` on any child `<input>` and does NOT enforce

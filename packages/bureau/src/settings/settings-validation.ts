@@ -11,16 +11,19 @@
  * @module settings-validation
  */
 
+import type { BackendDescriptor } from '@lostgradient/operative';
 import { Engine } from '@lostgradient/weft';
 import { MemoryStorage } from '@lostgradient/storage';
 
 import { validateDecisionsOptions } from '../decisions/create-decisions.ts';
+import { findCatalogRow } from '../models/create-models.ts';
 import { validateHumanInputOption } from '../human-input-option.ts';
 import {
   type BadRequest,
   validateAuditRetentionOption,
   validateCheckpointRetentionOption,
   validateDelegationTimeToLive,
+  validateMemoryRetentionOption,
   validateReceiptRetentionOption,
   validateRetentionWindowOption,
   validateSessionInputBacklogLimit,
@@ -70,6 +73,7 @@ export const OPTION_VALIDATORS: Readonly<Partial<Record<SettingKey, (value: unkn
       refuse,
     ),
   'retention.receipts': (value) => validateReceiptRetentionOption(value, refuse),
+  'retention.memory': (value) => validateMemoryRetentionOption(value, refuse),
   'sessionInput.sessionBacklogLimit': (value) =>
     validateSessionInputBacklogLimit(value as number, 'sessionBacklogLimit', refuse),
   'sessionInput.principalBacklogLimit': (value) =>
@@ -94,6 +98,19 @@ export const SCHEMA_CHECKED_KEYS = [
   'workflowVersion',
   'engine.checkpointHistory',
   'engine.maxNestingDepth',
+] as const satisfies readonly SettingKey[];
+
+/**
+ * The keys checked against state only the running Bureau holds, so no option validator can judge
+ * them from the value alone: `decisions.model` against the registered decision models (in
+ * {@link settingsFailures}, so a stored value this process cannot serve is dropped at read and
+ * refused at write), and `context.summarizerModel` against the model catalog as it is now (at
+ * write only, in {@link summarizerFailures}, because `models.replace` changes the catalog under a
+ * stored value and {@link Models.summarizer} checks the row at each use).
+ */
+export const CONTEXT_CHECKED_KEYS = [
+  'decisions.model',
+  'context.summarizerModel',
 ] as const satisfies readonly SettingKey[];
 
 /** The keys Weft checks together when it builds an engine: the workflow-claim timing. */
@@ -150,12 +167,46 @@ function engineFailures(values: SettingsValues): SettingsFailure[] {
 }
 
 /**
+ * The check `context.summarizerModel` gets at write: it names a row of `catalog` that is not
+ * `unavailable`.
+ */
+export function summarizerFailures(
+  values: SettingsValues,
+  catalog: readonly BackendDescriptor[],
+): SettingsFailure[] {
+  const name = values['context.summarizerModel'];
+  if (name === undefined) return [];
+  const row = findCatalogRow(catalog, name);
+  if (row === undefined) {
+    return [
+      {
+        keys: ['context.summarizerModel'],
+        message: `The model catalog has no row "${name}"`,
+      },
+    ];
+  }
+  return row.availability === 'unavailable'
+    ? [{ keys: ['context.summarizerModel'], message: `The catalog row "${name}" is unavailable` }]
+    : [];
+}
+
+/**
  * Every check a consumer of `values` would fail: Bureau's option validator for each key, and
  * Weft's engine options. `values` are the settings in force, code defaults included, so a check
  * across keys sees the value each one would really have.
  */
-export function settingsFailures(values: SettingsValues): SettingsFailure[] {
+export function settingsFailures(
+  values: SettingsValues,
+  decisionModels?: ReadonlySet<string>,
+): SettingsFailure[] {
   const failures: SettingsFailure[] = [];
+  const model = values['decisions.model'];
+  if (decisionModels !== undefined && model !== undefined && !decisionModels.has(model)) {
+    failures.push({
+      keys: ['decisions.model'],
+      message: `No decision model is registered as "${model}"; the names are ${[...decisionModels].join(', ')}`,
+    });
+  }
   for (const [key, validate] of Object.entries(OPTION_VALIDATORS)) {
     const value = values[key as SettingKey];
     if (value === undefined || validate === undefined) continue;

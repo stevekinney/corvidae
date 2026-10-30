@@ -31,6 +31,8 @@ import type {
   ReviewListEntry,
 } from '@lostgradient/weft';
 
+import { humanizeIdentifier } from '@lostgradient/cinder';
+
 import { formatDuration } from '../../lib/format/index.ts';
 
 /** Reactive query properties consumed by the review views. */
@@ -226,20 +228,14 @@ export function classifyArtifactValue(value: unknown): ArtifactRenderKind {
 // ---------------------------------------------------------------------------
 
 /**
- * Turns a `camelCase`/`snake_case`/`kebab-case` object key into a sentence-
- * case label — `callToAction` → "Call to action", `annual_value` →
- * "Annual value". Shallow (top-level keys only): `PayloadInspector` owns
- * rendering of nested structure once past the first level, and re-labeling
- * every depth would fight its own tree/summary rendering.
+ * Turns an object key into a label through Cinder's shared formatter —
+ * `callToAction` → "Call To Action", `annual_value` → "Annual Value",
+ * `orderId` → "Order ID". Shallow (top-level keys only): `PayloadInspector`
+ * owns rendering of nested structure once past the first level, and
+ * re-labeling every depth would fight its own tree/summary rendering.
  */
 export function humanizeKey(key: string): string {
-  const spaced = key
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/[_-]+/g, ' ')
-    .trim()
-    .toLowerCase();
-  if (spaced.length === 0) return key;
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+  return humanizeIdentifier(key);
 }
 
 /** Shallow-maps an object's top-level keys through `humanizeKey`, preserving values and key order. */

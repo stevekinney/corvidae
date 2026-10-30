@@ -8,6 +8,28 @@ These adapters are **schema-only converters**. They serialize your tool definiti
 
 If tools define `availability` hooks, prefer the async toolbox exporters (`await toolbox.toOpenAITools()`, `await toolbox.toAnthropicTools()`, `await toolbox.toGeminiTools()`, or `await toolbox.toProvider(...)`). Those methods evaluate availability against the toolbox context and omit unavailable tools from provider manifests. The direct adapter functions remain synchronous schema converters and do not evaluate runtime hooks.
 
+### Tool names and namespaces
+
+By default an adapter sends a tool's bare name (`search`). Two tools from different namespaces can share one, so `toolbox.getTool('search')` returns `undefined` for them and a provider call to `search` is not run. Pass `naming: 'safe-id'` to send each tool's full id, encoded as a name every provider accepts (letters, digits, `_`, `-`, at most 64 characters, with a digest of the id so two ids never collide), and give the parser the matching mapper to recover the id from the call. A call that carries the id runs exactly that tool.
+
+```typescript
+import {
+  createProviderToolNameMapper,
+  parseAnthropicToolCalls,
+  toAnthropicTools,
+  type AnyToolbox,
+} from 'armorer';
+
+declare const toolbox: AnyToolbox;
+declare const content: unknown;
+
+const tools = toAnthropicTools(toolbox, { naming: 'safe-id' });
+const calls = parseAnthropicToolCalls(content, createProviderToolNameMapper(toolbox));
+const results = await toolbox.execute(calls);
+```
+
+`naming` also works on `toOpenAITools`, `toGeminiTools`, `toolbox.toProvider(provider, { naming })`, and `toOpenAIAgentTools`. For Gemini, answer each call under the encoded name with `formatGeminiToolResults(results, { toolNameByCallId })`. `toolbox.resolveTool(reference)` tells you why a reference matched nothing, or several tools, or only another version.
+
 ### OpenAI
 
 ```typescript

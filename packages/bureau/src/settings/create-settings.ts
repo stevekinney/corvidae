@@ -24,12 +24,13 @@ import {
   SETTING_APPLY,
   SETTING_KEYS,
   type SettingKey,
+  type SettingLockReason,
   SETTINGS_RECORD_KEY,
   type SettingsRecord,
   settingsSchema,
   type SettingsValues,
 } from './settings-schema.ts';
-import { settingsFailures } from './settings-validation.ts';
+import { type SettingsFailure, settingsFailures } from './settings-validation.ts';
 import type {
   BureauSettings,
   SettingKeyState,
@@ -61,7 +62,12 @@ export interface StoredSettings {
 /** What a stored value is judged against: the code defaults it overrides, and the locked keys. */
 export interface SettingsContext {
   readonly defaults: SettingsValues;
-  readonly locked: ReadonlySet<SettingKey>;
+  readonly locked: ReadonlyMap<SettingKey, SettingLockReason>;
+  /**
+   * The names a `decisions.model` may take (`catalog` and each registered decision model). When
+   * given, a stored name outside it is dropped and a write naming one is refused.
+   */
+  readonly decisionModels?: ReadonlySet<string>;
 }
 
 /** A stored key this build does not apply, and why. */
@@ -92,7 +98,10 @@ export function admissibleSettings(
     else dropped.push({ key, message: checked.message });
   }
   for (;;) {
-    const failures = settingsFailures(effectiveSettings(context.defaults, values, context.locked));
+    const failures = settingsFailures(
+      effectiveSettings(context.defaults, values, context.locked),
+      context.decisionModels,
+    );
     const offending = failures.flatMap((failure) =>
       failure.keys
         .filter((key) => Object.hasOwn(values, key) && !context.locked.has(key))
@@ -201,7 +210,7 @@ export function parseSettingsRecord(
 export function effectiveSettings(
   defaults: SettingsValues,
   stored: SettingsValues | undefined,
-  locked: ReadonlySet<SettingKey>,
+  locked: ReadonlyMap<SettingKey, SettingLockReason>,
 ): SettingsValues {
   const values: Record<string, unknown> = { ...defaults };
   for (const [key, value] of Object.entries(stored ?? {})) {
@@ -218,7 +227,14 @@ export interface SettingsDependencies {
   readonly persisted: boolean;
   /** The code options, as settings. */
   readonly defaults: SettingsValues;
-  readonly locked: ReadonlySet<SettingKey>;
+  readonly locked: ReadonlyMap<SettingKey, SettingLockReason>;
+  /** The names a `decisions.model` may take; see {@link SettingsContext.decisionModels}. */
+  readonly decisionModels?: ReadonlySet<string>;
+  /**
+   * Checks a patch's parsed values against state only the running Bureau holds (the model catalog
+   * as it is now), before it is written. A failure refuses the write as `invalid-value`.
+   */
+  readonly checkPatch?: (values: SettingsValues) => readonly SettingsFailure[];
   /** The record as `createBureau` read it at boot, before it applied the `restart` keys. */
   readonly boot: StoredSettings;
   readonly nowISO: () => string;
@@ -252,7 +268,13 @@ export function createSettings(dependencies: SettingsDependencies): SettingsComp
   const store =
     dependencies.store ?? textValueStore(new MemoryStorage(), { disposeUnderlyingStorage: true });
   const { defaults, locked } = dependencies;
-  const context: SettingsContext = { defaults, locked };
+  const context: SettingsContext = {
+    defaults,
+    locked,
+    ...(dependencies.decisionModels === undefined
+      ? {}
+      : { decisionModels: dependencies.decisionModels }),
+  };
   const bootValues = effectiveSettings(defaults, dependencies.boot.record?.values, locked);
   let stored: StoredSettings = dependencies.boot;
   let configured = bootValues;
@@ -326,15 +348,19 @@ export function createSettings(dependencies: SettingsDependencies): SettingsComp
         revision: revisionOf(stored),
         persisted: dependencies.persisted,
         keys: Object.fromEntries(
-          SETTING_KEYS.map((key): [SettingKey, SettingKeyState] => [
-            key,
-            {
-              apply: SETTING_APPLY[key],
-              locked: locked.has(key),
-              pendingRestart:
-                SETTING_APPLY[key] === 'restart' && !sameValue(configured[key], bootValues[key]),
-            },
-          ]),
+          SETTING_KEYS.map((key): [SettingKey, SettingKeyState] => {
+            const lockReason = locked.get(key);
+            return [
+              key,
+              {
+                apply: SETTING_APPLY[key],
+                locked: lockReason !== undefined,
+                ...(lockReason === undefined ? {} : { lockReason }),
+                pendingRestart:
+                  SETTING_APPLY[key] === 'restart' && !sameValue(configured[key], bootValues[key]),
+              },
+            ];
+          }),
         ) as Record<SettingKey, SettingKeyState>,
       }),
     schema: () => z.toJSONSchema(settingsSchema, { io: 'input' }),
@@ -377,6 +403,17 @@ export function createSettings(dependencies: SettingsDependencies): SettingsComp
         }
         if (invalid.length > 0) {
           return reject('invalid-value', invalid, messages.join('; '), known);
+        }
+        const checked = dependencies.checkPatch?.(values) ?? [];
+        if (checked.length > 0) {
+          return reject(
+            'invalid-value',
+            [...new Set(checked.flatMap(({ keys: failed }) => failed))],
+            checked
+              .map(({ keys: failed, message }) => `${failed.join(', ')}: ${message}`)
+              .join('; '),
+            known,
+          );
         }
         const current = await readSettingsRecord(store, context, (message) =>
           dependencies.diagnose(message),

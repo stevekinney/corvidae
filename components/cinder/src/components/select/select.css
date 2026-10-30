@@ -43,8 +43,8 @@
     display: block;
     width: 100%;
     min-height: var(--cinder-control-height-md);
-    padding: var(--cinder-space-1-5) var(--cinder-space-8) var(--cinder-space-1-5)
-      var(--cinder-space-3);
+    padding-block: var(--cinder-space-1);
+    padding-inline: var(--cinder-space-3) var(--cinder-space-8);
 
     font-size: var(--cinder-text-sm);
     line-height: var(--cinder-leading-normal);
@@ -61,6 +61,18 @@
     transition:
       border-color var(--cinder-duration-fast) var(--cinder-ease-standard),
       box-shadow var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  /* Size: the shared control height for the step, with block padding that
+     keeps the 14px line box inside it. */
+  .cinder-select[data-cinder-size='sm'] {
+    min-height: var(--cinder-control-height-sm);
+    padding-block: var(--cinder-space-0-5);
+  }
+
+  .cinder-select[data-cinder-size='lg'] {
+    min-height: var(--cinder-control-height-lg);
+    padding-block: var(--cinder-space-2);
   }
 
   @media (hover: hover) {

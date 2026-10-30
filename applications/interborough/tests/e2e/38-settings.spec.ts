@@ -98,7 +98,7 @@ test('shows the key the host locked read-only, with the reason', async ({ page, 
   const row = settingRow(page, E2E_LOCKED_SETTING);
   await expect(row).toHaveAttribute('data-locked', 'true');
   await expect(row).toContainText(SETTINGS_COPY.locked);
-  await expect(row).toContainText(SETTINGS_COPY.lockedNote);
+  await expect(row).toContainText(SETTINGS_COPY.lockedNote.deployment);
   const field = row.getByRole('textbox', { name: E2E_LOCKED_SETTING });
   await expect(field).toBeDisabled();
   // Every other key stays editable.

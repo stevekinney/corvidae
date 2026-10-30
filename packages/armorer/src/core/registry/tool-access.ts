@@ -110,7 +110,7 @@ export function resolveTools(input: ToolQueryInput): {
 
 export function isToolRegistered(registry: ToolRegistryLike, tool: ToolDefinition): boolean {
   if (hasGetTool(registry)) {
-    return registry.getTool(tool.name) === tool;
+    return registry.getTool(tool.id) === tool;
   }
   return false;
 }

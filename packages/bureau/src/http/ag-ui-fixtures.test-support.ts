@@ -221,6 +221,10 @@ async function build(
       ...(options.authentication === undefined
         ? { unauthenticatedAccess: 'allow' as const }
         : { authentication: options.authentication }),
+      // Every agent here opts into A2A, so a key with no scope may start it: a caller without
+      // `bureau.agents:read` starts only the agents that opt in (COR-1904), and these tests are
+      // about who owns a run, not about which agents a caller is offered.
+      a2aAgents: [AGENT, ...(options.otherAgents ?? [])],
       agUi: agUi ?? {},
     });
   let restarted = false;
@@ -322,7 +326,12 @@ export function aliceHandlerOver(bureau: AgUiBureau): Handler {
     mayAccess: mayAccessOwnedResource,
     ownerOf: async () => 'api-key:alice',
   };
-  const mount = createAgUiMount(bureau, authorization, ['assistant'], {});
+  const mount = createAgUiMount(
+    bureau,
+    authorization,
+    { includes: (agentName) => agentName === 'assistant' },
+    {},
+  );
   return createOperationHandler({
     operations: [],
     host: {} as never,

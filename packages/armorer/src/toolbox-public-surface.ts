@@ -39,6 +39,7 @@ type ToolboxSurfaceInput<TEntries extends ToolboxEntries> = {
   listGrants: Toolbox<ToolsFromEntries<TEntries>>['listGrants'];
   extend: Toolbox<ToolsFromEntries<TEntries>>['extend'];
   getTool: Toolbox<ToolsFromEntries<TEntries>>['getTool'];
+  resolveTool: Toolbox<ToolsFromEntries<TEntries>>['resolveTool'];
   addEventListener: Toolbox<ToolsFromEntries<TEntries>>['addEventListener'];
   dispatchEvent: ToolboxEventDispatcher;
   emit: {
@@ -70,6 +71,7 @@ export function createToolboxPublicSurface<const TEntries extends ToolboxEntries
     tools: views.tools,
     getAvailable: views.getAvailable,
     getTool: input.getTool,
+    resolveTool: input.resolveTool,
     getMissingTools: views.getMissingTools,
     hasAllTools: views.hasAllTools,
     inspect: views.inspect,

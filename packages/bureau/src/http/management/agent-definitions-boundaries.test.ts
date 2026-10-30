@@ -38,7 +38,9 @@ const sorted = (values: string[]): string[] =>
   values.toSorted((left, right) => (left < right ? -1 : left > right ? 1 : 0));
 
 describe('who is told an agent exists', () => {
-  it('shows every ready persisted agent in bureau.agents.list to any authenticated caller, opted in or not, and an invalid file to none', async () => {
+  // COR-1904: every authenticated caller used to see every ready agent. Now `bureau.agents:read`
+  // shows them all, and a caller without it sees only the ones that opt into A2A.
+  it('shows every ready persisted agent in bureau.agents.list to a caller holding bureau.agents:read, the A2A ones to any other, and an invalid file to none', async () => {
     const served = await serve();
     const draft = await callAs(served.local, 'bureau.agents.definitions.create', {
       id: 'secret-launch',
@@ -55,12 +57,18 @@ describe('who is told an agent exists', () => {
 
     const asKey = async (key: string) =>
       names(await rpc(served.keyed, 'bureau.agents.list', {}, key));
-    // No scope and no ownership is enough to list, and to start, an agent.
     const all = ['alpha', 'open-agent', 'secret-launch'];
-    for (const key of ['alice-key', 'agents-reader-key', 'agents-writer-key', 'operator-key']) {
+    for (const key of ['agents-reader-key', 'operator-key']) {
       expect([key, sorted(await asKey(key))]).toEqual([key, all]);
     }
-    expect(sorted(names(await callAs(served.owner, 'bureau.agents.list', {})))).toEqual(all);
+    const offeredOverA2A = ['alpha', 'open-agent'];
+    for (const key of ['alice-key', 'agents-writer-key']) {
+      expect([key, sorted(await asKey(key))]).toEqual([key, offeredOverA2A]);
+    }
+    expect(sorted(names(await callAs(served.owner, 'bureau.agents.list', {})))).toEqual(
+      offeredOverA2A,
+    );
+    expect(sorted(names(await callAs(served.local, 'bureau.agents.list', {})))).toEqual(all);
     // What the definition operations disclose is still gated by the read scope.
     const denied = await rpc(
       served.keyed,

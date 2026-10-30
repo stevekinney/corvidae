@@ -21,6 +21,8 @@ type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
 const keyStateSchema = z.object({
   apply: z.enum(['live', 'restart']),
   locked: z.boolean(),
+  /** Why the key is locked; present exactly when `locked` is `true`. */
+  lockReason: z.enum(['deployment', 'shared-storage']).optional(),
   pendingRestart: z.boolean(),
 });
 

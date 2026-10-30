@@ -1,6 +1,5 @@
 import type { AnthropicTool } from './adapters/anthropic/types';
 import type { GeminiTool } from './adapters/gemini/types';
-import type { OpenAIAdapterOptions } from './adapters/openai';
 import type { OpenAITool } from './adapters/openai/types';
 import type { InspectorDetailLevel, RegistryInspection } from './core/inspect';
 import { inspectRegistry } from './core/inspect';
@@ -84,15 +83,24 @@ export function createToolboxViews<const TEntries extends ToolboxEntries>(
     switch (provider) {
       case 'openai': {
         const { openAIToolAdapter } = await import('./adapters/openai');
-        return openAIToolAdapter.export(availableTools, normalizeOpenAIOptions(adapterOptions));
+        return openAIToolAdapter.export(
+          availableTools,
+          normalizeNamingOptions(adapterOptions, 'OpenAI'),
+        );
       }
       case 'anthropic': {
         const { anthropicToolAdapter } = await import('./adapters/anthropic');
-        return anthropicToolAdapter.export(availableTools);
+        return anthropicToolAdapter.export(
+          availableTools,
+          normalizeNamingOptions(adapterOptions, 'Anthropic'),
+        );
       }
       case 'gemini': {
         const { geminiToolAdapter } = await import('./adapters/gemini');
-        return geminiToolAdapter.export(availableTools);
+        return geminiToolAdapter.export(
+          availableTools,
+          normalizeNamingOptions(adapterOptions, 'Gemini'),
+        );
       }
       default:
         return Promise.reject(new Error('Unsupported provider.'));
@@ -101,7 +109,9 @@ export function createToolboxViews<const TEntries extends ToolboxEntries>(
 
   function asExecuteResolver(): NonNullable<ToolboxOptions['getTool']> {
     return (configuration) => {
-      const sourceTool = context.getTool(configuration.name);
+      const sourceTool =
+        (configuration.id === undefined ? undefined : context.getTool(configuration.id)) ??
+        context.getTool(configuration.name);
       if (!sourceTool) return context.createImportedExecute(configuration.name);
       return async (parameters, toolContext) => {
         return context.runTool(
@@ -174,12 +184,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-function normalizeOpenAIOptions(value: unknown): OpenAIAdapterOptions | undefined {
+function normalizeNamingOptions(
+  value: unknown,
+  provider: string,
+): { naming?: 'default' | 'safe-id' } | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== 'object' || value === null) {
-    throw new TypeError('OpenAI adapter options must be an object.');
+    throw new TypeError(`${provider} adapter options must be an object.`);
   }
   if (!('naming' in value) || value.naming === undefined) return {};
   if (value.naming === 'default' || value.naming === 'safe-id') return { naming: value.naming };
-  throw new TypeError('OpenAI adapter option naming must be "default" or "safe-id".');
+  throw new TypeError(`${provider} adapter option naming must be "default" or "safe-id".`);
 }

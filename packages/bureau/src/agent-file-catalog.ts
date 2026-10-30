@@ -39,6 +39,7 @@ import {
   type BackendDescriptor,
   createAgent,
   type GenerateFunction,
+  shouldRetryProviderError,
 } from '@lostgradient/operative';
 import {
   type ConditionalTextValueStore,
@@ -53,6 +54,7 @@ import {
   type AgentFileDefinition,
   type AgentFileDefinitionInput,
   type AgentFileProblem,
+  AgentFileError,
   AgentSnapshotError,
   checkAgentIdentifier,
   decodeAgentFile,
@@ -61,10 +63,16 @@ import {
 import { createFileAgentGenerate } from './file-agent-generate';
 import { type AgentRevisionRecord, createAgentRevisionStore } from './agent-revision-store';
 import {
+  type AgentFileSaveOptions,
   type AgentFileWriter,
   type AgentFileWriteResult,
   createAgentFileWriter,
 } from './agent-file-writer';
+import {
+  type AgentVersionInput,
+  type AgentVersionRecord,
+  createAgentVersionStore,
+} from './agent-version-store';
 import type { AgentSnapshot } from './agent-snapshot-store';
 import type { Models } from './models/create-models';
 import { ownerOrLocal } from './owner-of-record';
@@ -170,9 +178,37 @@ export interface AgentFileCatalogOptions {
    * store. Defaults to a store that lasts as long as the catalog.
    */
   readonly revisionStore?: ConditionalTextValueStore | undefined;
+  /**
+   * The definition revisions of an agent that a retained run references (COR-1815), which the
+   * pruning of saved versions must keep. Omitted, no revision is protected.
+   */
+  readonly retainedRevisions?: ((id: string) => Promise<ReadonlySet<number>>) | undefined;
+}
+
+/** What the saved versions of file agents offer (COR-1815). */
+export interface AgentFileVersions {
+  /** The stored versions of `id`, newest revision first. Empty for an agent with none. */
+  list(id: string): Promise<readonly AgentVersionRecord[]>;
+  /**
+   * Write the definition of the version of `id` at `revision` back through the writer, as a new
+   * revision (and so a new version) saved by `options.savedBy`, if the file still hashes to
+   * `options.expectedHash`. The version's reference documents and `examples` are not restored:
+   * they stay as the file has them. Fails with `AgentFileError` `agent-version-not-found` when no
+   * such version is stored, with `AgentFileConflictError` when the file has moved, and with
+   * `AgentFileError` `unknown-model` or `unknown-tool` when the definition no longer resolves
+   * against the deployment; each writes nothing. Restoring the definition the file already has
+   * writes nothing and returns the file's current hash.
+   */
+  restore(
+    id: string,
+    revision: number,
+    options: { readonly expectedHash: string } & AgentFileSaveOptions,
+  ): Promise<AgentFileWriteResult>;
 }
 
 export interface AgentFileCatalog extends AgentFileWriter {
+  /** The saved versions of the file agents (COR-1815). */
+  readonly versions: AgentFileVersions;
   /** Every file in the directory that is an agent file, ready or invalid, by identifier. */
   list(): readonly AgentListing[];
   /**
@@ -277,11 +313,27 @@ function sameSignature(left: FileEntry, right: FileEntry): boolean {
 /** How many times `detail` settles a file that changed under it before it serves the read as it is. */
 const DETAIL_SETTLE_ATTEMPTS = 3;
 
+/** The definition as a caller supplies it. `examples` are not part of the input: the file keeps them. */
+function inputOf(definition: AgentFileDefinition): AgentFileDefinitionInput {
+  // A rest, so a key the definition gains is carried into the input and not dropped here.
+  const { examples: _examples, ...input } = definition;
+  // An update that omits `stepLimit` or `retry` keeps the file's value, and a version that has
+  // none must remove it: `null` says so.
+  return { ...input, stepLimit: definition.stepLimit ?? null, retry: definition.retry ?? null };
+}
+
 export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentFileCatalog {
   const owner = ownerOrLocal(undefined);
-  const revisions = createAgentRevisionStore({
-    store: options.revisionStore ?? textValueStore(new MemoryStorage()),
-  });
+  const revisionRecords = options.revisionStore ?? textValueStore(new MemoryStorage());
+  const revisions = createAgentRevisionStore({ store: revisionRecords });
+  const versionStore = createAgentVersionStore({ store: revisionRecords });
+  /**
+   * Who is saving a file through the writer, by identifier and the hash its bytes will have, from
+   * before the bytes reach the source until the write has settled. The scan that raises the
+   * revision reads it to name the saver on the version; a hash with no entry was written outside
+   * the writer.
+   */
+  const savers = new Map<string, string>();
   /**
    * The last record this catalog read or wrote for each identifier: what a file keeps while its
    * record cannot be read or written, and what an agent is first built at before a scan settles it.
@@ -393,6 +445,17 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         : { skillDescriptors: definition.skillDescriptors }),
       ...(instructions === '' ? {} : { instructions }),
       ...(Object.keys(tools).length === 0 ? {} : { tools }),
+      ...(definition.stepLimit === undefined ? {} : { maximumSteps: definition.stepLimit }),
+      ...(definition.retry === undefined
+        ? {}
+        : {
+            retry: {
+              attempts: definition.retry.attempts,
+              delay: definition.retry.delayMilliseconds ?? 0,
+              jitter: definition.retry.jitter ?? false,
+              shouldRetry: shouldRetryProviderError,
+            },
+          }),
     }) as AnyRunnableAgent;
     fileAgentBindings.set(agent, {
       id,
@@ -490,10 +553,15 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
    * first after a success, or at a different hash), not on every scan that finds the store still
    * down.
    */
-  async function revisionOf(id: string, hash: string): Promise<number> {
+  async function revisionOf(
+    id: string,
+    hash: string,
+    definition: AgentFileDefinition,
+  ): Promise<number> {
     const known = recorded.get(id);
     try {
       const record = await revisions.advance(id, hash, {
+        version: versionOf(id, hash, definition),
         // Only a catalog whose own last-recorded hash is the file's can tell a stale reading from
         // a change: a reading that matches what it last recorded is the one a peer may have
         // overtaken. Once per record hash.
@@ -521,6 +589,23 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       }
       return kept;
     }
+  }
+
+  /**
+   * The version to record if the revision is raised for `hash`: the definition, when, and by whom.
+   * A hash no writer declared is an edit made outside it, and has no saver.
+   */
+  function versionOf(id: string, hash: string, definition: AgentFileDefinition): AgentVersionInput {
+    const { retainedRevisions } = options;
+    return {
+      definition,
+      savedAt: options.runtime.clock.nowISO(),
+      savedBy: savers.get(`${id}:${hash}`) ?? null,
+      owner,
+      ...(retainedRevisions === undefined
+        ? {}
+        : { retainedRevisions: () => retainedRevisions(id) }),
+    };
   }
 
   /** The entry for a ready file, rebuilt at `revision`. */
@@ -552,7 +637,8 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     const settled = new Map(loaded);
     for (const [id, entry] of loaded) {
       if (entry.problem !== undefined || entry.hash === undefined) continue;
-      const revision = await revisionOf(id, entry.hash);
+      if (entry.definition === undefined) continue; // A ready entry always has one.
+      const revision = await revisionOf(id, entry.hash, entry.definition);
       if (revision !== entry.definitionRevision) settled.set(id, atRevision(entry, revision));
     }
     return settled;
@@ -595,10 +681,33 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       return undefined;
     },
     refresh: directoryWatcher.reload,
+    expectSave(id, hash, savedBy) {
+      const key = `${id}:${hash}`;
+      savers.set(key, ownerOrLocal(savedBy));
+      return () => {
+        savers.delete(key);
+      };
+    },
   });
+
+  const versions: AgentFileVersions = {
+    list: (id) => versionStore.list(id),
+
+    async restore(id, revision, restoreOptions) {
+      const version = await versionStore.read(id, revision);
+      if (version === undefined) {
+        throw new AgentFileError(
+          'agent-version-not-found',
+          `Agent "${id}" has no stored version ${revision}.`,
+        );
+      }
+      return writer.update(id, inputOf(version.definition), restoreOptions);
+    },
+  };
 
   return {
     ...writer,
+    versions,
 
     list() {
       return [...directoryWatcher.entries().values()]

@@ -42,7 +42,7 @@ import { MemoryStorage } from '@lostgradient/storage';
 afterEach(disposeServed);
 
 describe('the operations list', () => {
-  it('serves the seven agent definition operations, with their scopes registered', () => {
+  it('serves the nine agent definition operations, with their scopes registered', () => {
     expect(bureauAgentDefinitionsOperations.map((operation) => operation.name)).toEqual([
       'bureau.agents.definitions.create',
       'bureau.agents.definitions.update',
@@ -51,6 +51,8 @@ describe('the operations list', () => {
       'bureau.agents.definitions.list',
       'bureau.agents.definitions.revisions',
       'bureau.agents.catalog',
+      'bureau.agents.versions.list',
+      'bureau.agents.versions.restore',
     ]);
     expect(BUREAU_SCOPES).toContain('bureau.agents:read');
     expect(BUREAU_SCOPES).toContain('bureau.agents:write');
@@ -88,6 +90,18 @@ const CALLS: readonly Call[] = [
     denial: 'not-found',
   },
   { method: 'bureau.agents.catalog', params: () => ({}), scope: 'read', denial: 'forbidden' },
+  {
+    method: 'bureau.agents.versions.list',
+    params: () => ({ id: 'researcher' }),
+    scope: 'read',
+    denial: 'not-found',
+  },
+  {
+    method: 'bureau.agents.versions.restore',
+    params: (hash) => ({ id: 'researcher', revision: 1, expectedHash: hash }),
+    scope: 'write',
+    denial: 'not-found',
+  },
   {
     method: 'bureau.agents.definitions.create',
     params: () => ({ id: 'another', definition: DEFINITION }),

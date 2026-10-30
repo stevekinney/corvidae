@@ -14,7 +14,12 @@ import type {
   MemoryDeletionTargetStatus,
   MemoryGovernanceEvent,
 } from './ledger-types';
-import type { MemoryClass, MemoryGovernancePolicy, MemorySourceKind } from './policy';
+import type {
+  MemoryClass,
+  MemoryGovernancePolicy,
+  MemoryRetentionRule,
+  MemorySourceKind,
+} from './policy';
 import type { MemoryRedaction, MemoryVisibility } from './predicate';
 import type { DerivedRecordKind, GovernedMemoryRecord } from './record-governance';
 import type {
@@ -537,10 +542,17 @@ export interface GovernedMemory {
   /**
    * A background retention sweep. `dryRun` reports without deleting; `policy`
    * previews a candidate revision and is rejected outside a dry run.
+   * `retention` replaces the policy's rule for the classes it names, for this
+   * sweep only (it activates nothing); a rule the policy would refuse is
+   * rejected as `invalid-retention`.
    */
   sweepRetention(
     authority: MemoryAuthority,
-    options?: { readonly dryRun?: boolean; readonly policy?: MemoryGovernancePolicy },
+    options?: {
+      readonly dryRun?: boolean;
+      readonly policy?: MemoryGovernancePolicy;
+      readonly retention?: Partial<Record<MemoryClass, MemoryRetentionRule>>;
+    },
   ): Promise<MemoryRetentionSweep>;
   /**
    * Activates a new instance-wide policy revision; requires `memory:policy`

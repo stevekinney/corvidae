@@ -642,10 +642,14 @@ export function withToolboxIdempotency(
     if (!tool) {
       return originalExecute(call, executeOptions);
     }
+    // The entry is keyed on the resolved tool's full id, so a call that names the tool by id, by
+    // `namespace:name`, or by bare name shares one entry, and the key never depends on which other
+    // tools happen to be registered. The recorded name stays the bare name.
+    const toolName = tool.name;
     const revision = toolRevision ?? formatToolRevision(tool);
-    const baseKey = namespacedKey(fields.name, externalKey ?? keyFn!(fields.arguments));
+    const baseKey = namespacedKey(tool.id, externalKey ?? keyFn!(fields.arguments));
     if (!revision) {
-      throw new Error(`Idempotency requires a complete revision for tool ${fields.name}.`);
+      throw new Error(`Idempotency requires a complete revision for tool ${toolName}.`);
     }
     const executionIdempotencyOptions = executeOptions as
       ToolboxExecuteOptionsWithIdempotencyKey | undefined;
@@ -662,7 +666,7 @@ export function withToolboxIdempotency(
     const cachedRead = await awaitBeforeExecution(
       () => getCacheEntry(cache, cacheKey),
       fields,
-      fields.name,
+      toolName,
       executeOptions,
     );
     if (cachedRead.outcome === 'interrupted') {
@@ -722,7 +726,7 @@ export function withToolboxIdempotency(
             legacyStartedAt: cached.startedAt,
           });
         }
-        execution = createStartedExecution(fields.name, startedAt, inputDigest);
+        execution = createStartedExecution(toolName, startedAt, inputDigest);
         const replacement = cache.replaceLegacyStarted(
           cacheKey,
           { toolName: cached.toolName, startedAt: cached.startedAt },
@@ -793,7 +797,7 @@ export function withToolboxIdempotency(
           });
         }
         const cachedAttemptId = cached.attemptId;
-        execution = createStartedExecution(fields.name, startedAt, inputDigest, cachedAttemptId);
+        execution = createStartedExecution(toolName, startedAt, inputDigest, cachedAttemptId);
         const replacement = cache.replaceUnknownStarted(
           cacheKey,
           cachedAttemptId,
@@ -825,12 +829,12 @@ export function withToolboxIdempotency(
       }
     } else {
       const startedAt = now();
-      execution = createStartedExecution(fields.name, startedAt, inputDigest);
+      execution = createStartedExecution(toolName, startedAt, inputDigest);
       const claim = claimCacheStarted(cache, cacheKey, execution);
       const startedResult = await awaitBeforeExecution(
         () => claim,
         fields,
-        fields.name,
+        toolName,
         executeOptions,
       );
       if (startedResult.outcome === 'interrupted') {
@@ -865,7 +869,7 @@ export function withToolboxIdempotency(
       await cache.deleteStarted(cacheKey, execution.attemptId!);
       return createInterruptedResult(
         fields,
-        fields.name,
+        toolName,
         'timeout',
         'Idempotency execution duration exceeded',
         'TIMEOUT',
@@ -882,11 +886,11 @@ export function withToolboxIdempotency(
       initialRenewalResult = await awaitBeforeExecution(
         () => initialRenewal,
         fields,
-        fields.name,
+        toolName,
         executeOptions,
       );
     } catch {
-      return createUnknownOutcomeResult(fields, cacheKey, fields.name, {
+      return createUnknownOutcomeResult(fields, cacheKey, toolName, {
         ...(execution.attemptId !== undefined ? { attemptId: execution.attemptId } : {}),
         ...(execution.inputDigest !== undefined ? { inputDigest: execution.inputDigest } : {}),
       });
@@ -897,7 +901,7 @@ export function withToolboxIdempotency(
     }
     let leaseOwned = initialRenewalResult.value;
     if (!leaseOwned) {
-      return createUnknownOutcomeResult(fields, cacheKey, fields.name, {
+      return createUnknownOutcomeResult(fields, cacheKey, toolName, {
         ...(execution.attemptId !== undefined ? { attemptId: execution.attemptId } : {}),
         ...(execution.inputDigest !== undefined ? { inputDigest: execution.inputDigest } : {}),
       });
@@ -959,7 +963,7 @@ export function withToolboxIdempotency(
       const renewalWait = await awaitBeforeExecution(
         () => pendingRenewal,
         fields,
-        fields.name,
+        toolName,
         executeOptions,
       );
       if (renewalWait.outcome === 'interrupted') leaseOwned = false;

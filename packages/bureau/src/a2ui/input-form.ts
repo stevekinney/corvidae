@@ -300,7 +300,7 @@ const schemaChecker = new InteractiveSurfaceSchemaCompiler();
  * Whether the schema asks only for a string (`type: "string"`, or `enum`/`const` of strings), so
  * the person's text is the answer as typed and not JSON to parse.
  */
-function takesPlainText(schema: HumanInputSchema): boolean {
+export function takesPlainText(schema: HumanInputSchema): boolean {
   const { type, enum: choices, const: constant } = schema;
   if (type === 'string' || typeof constant === 'string') return true;
   return (

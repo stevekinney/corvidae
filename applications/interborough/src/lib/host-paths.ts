@@ -17,6 +17,14 @@ const hostPathsSchema = z.object({
    * bucket (`remote`). The words that name a place to look change with it.
    */
   mode: z.enum(['local', 'remote']),
+  /**
+   * Where the host keeps its state: a SQLite file's `path`, or a Postgres server's `location`
+   * (host, port, and database name). Never a user name or password.
+   */
+  database: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('sqlite'), path: z.string() }),
+    z.object({ kind: z.literal('postgres'), location: z.string() }),
+  ]),
   /** The agent files: a directory's path, or `s3://<bucket>/<prefix>` in remote mode. */
   agentDirectory: z.string(),
   /** The workflow files: a directory's path, or `s3://<bucket>/<prefix>` in remote mode. */

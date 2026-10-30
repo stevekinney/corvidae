@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import type { WorkflowEvent } from '../core/types.ts';
-import { setPortableRuntimeTestOverridesForTesting } from '../runtime/portable.ts';
+import { WorkflowEventSubscription } from './event-stream.ts';
 import {
   openClientEventSubscription,
   type WorkflowEventStreamHost,
@@ -17,7 +17,6 @@ const originalFetch = globalThis.fetch;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
-  setPortableRuntimeTestOverridesForTesting();
 });
 
 function eventStreamResponse(body: string): Response {
@@ -451,13 +450,7 @@ describe('SseWorkflowEventSubscription', () => {
     subscription.close();
   });
 
-  it('auto transport prefers SSE on non-Bun runtimes when auth headers would be dropped', async () => {
-    setPortableRuntimeTestOverridesForTesting({
-      bun: undefined,
-      process: undefined,
-      window: {} as typeof globalThis.window,
-      document: undefined,
-    });
+  it('auto transport prefers SSE when auth headers are configured and the WebSocket is not declared header-carrying', async () => {
     const requests: Array<{ url: string; headers: Headers }> = [];
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       requests.push({ url: requestUrl(input), headers: new Headers(init?.headers) });
@@ -482,7 +475,7 @@ describe('SseWorkflowEventSubscription', () => {
 
     await subscription.whenConnected();
     await waitForCondition(() => received.length > 0, {
-      label: 'non-Bun SSE auto fallback event delivered',
+      label: 'undeclared-WebSocket SSE auto fallback event delivered',
     });
 
     expect(requests).toHaveLength(1);
@@ -490,6 +483,55 @@ describe('SseWorkflowEventSubscription', () => {
     expect(requests[0]?.headers.get('authorization')).toBe('Bearer token');
     expect(received.map((event) => event.type)).toEqual(['workflow:completed']);
     subscription.close();
+  });
+
+  it('auto transport keeps the WebSocket channel when the caller declares it header-carrying', () => {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'WebSocket');
+    const constructed: Array<{ url: string; options: unknown }> = [];
+    Object.defineProperty(globalThis, 'WebSocket', {
+      configurable: true,
+      value: class {
+        constructor(url: string, options?: unknown) {
+          constructed.push({ url, options });
+        }
+        addEventListener(): void {}
+        close(): void {}
+      },
+    });
+    globalThis.fetch = (async () => {
+      throw new Error('a declared header-carrying WebSocket must not fall back to SSE');
+    }) as unknown as typeof fetch;
+    const host: WorkflowEventStreamHost = {
+      baseUrl: 'http://localhost:7233',
+      headers: { Authorization: 'Bearer token' },
+      async getEvents() {
+        return [];
+      },
+    };
+
+    try {
+      const subscription = openClientEventSubscription(
+        host,
+        { eventTransport: 'auto', webSocketCarriesHeaders: true },
+        'wf-ws',
+        () => {},
+        true,
+      );
+      expect(subscription).toBeInstanceOf(WorkflowEventSubscription);
+      expect(constructed).toEqual([
+        {
+          url: 'ws://localhost:7233/v1/workflows/wf-ws/watch',
+          options: { headers: { Authorization: 'Bearer token' } },
+        },
+      ]);
+      subscription.close();
+    } finally {
+      if (descriptor === undefined) {
+        delete (globalThis as { WebSocket?: unknown }).WebSocket;
+      } else {
+        Object.defineProperty(globalThis, 'WebSocket', descriptor);
+      }
+    }
   });
 
   it('exhausts reconnects for repeated empty event-stream responses', async () => {

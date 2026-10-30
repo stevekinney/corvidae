@@ -83,6 +83,8 @@ export interface AgentFileFixtureOptions {
   readonly directory?: string;
   /** Where the revision records live. Share one between fixtures to model one store. */
   readonly revisionStore?: ConditionalTextValueStore;
+  /** The revisions of an agent that a retained run references, which saved versions keep. */
+  readonly retainedRevisions?: AgentFileCatalogOptions['retainedRevisions'];
   /** Where scan, watcher, and record failures are reported. Defaults to throwing. */
   readonly diagnose?: (message: string, cause: unknown) => void;
   /** A subdirectory of the temporary root that does not exist yet, to use as the agent directory. */
@@ -149,6 +151,9 @@ export async function createAgentFileFixture(
     runtime,
     diagnose,
     ...(options.revisionStore === undefined ? {} : { revisionStore: options.revisionStore }),
+    ...(options.retainedRevisions === undefined
+      ? {}
+      : { retainedRevisions: options.retainedRevisions }),
   });
   return {
     directory,

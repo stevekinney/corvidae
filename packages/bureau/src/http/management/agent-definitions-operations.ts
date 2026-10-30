@@ -3,6 +3,11 @@
  * (COR-1526), written, read, and deleted through the same Markdown files a
  * person edits by hand (COR-1524), and the models and tools those files may name.
  *
+ * `bureau.agents.versions.list` and `bureau.agents.versions.restore` (COR-1815) keep the saved
+ * versions of an agent apart from its runs: `list` is read like `revisions`, and `restore` is
+ * written like `update`. A `savedBy` on a version is the caller's owner string, so a save through
+ * these operations is distinguishable from an edit made to the file by hand, which has none.
+ *
  * Every agent belongs to the deployment's owner of record, and there is no owner field in a file.
  * A caller reaches the definitions it owns without any scope; `bureau.agents:read` grants `get`,
  * `list`, `revisions`, and `catalog` to any caller, and `bureau.agents:write` grants `create`,
@@ -37,7 +42,9 @@ import { z } from 'zod';
 import type { AgentDefinitions, BureauAgentCatalog } from '../../agent-catalog.ts';
 import {
   AGENT_IDENTIFIER_MAX_LENGTH,
+  agentRetrySchema,
   agentSkillDescriptorSchema,
+  agentStepLimitSchema,
   AgentFileConflictError,
   AgentFileError,
   checkModelsList,
@@ -71,7 +78,7 @@ export type BureauAgentDefinitionsOperationHost = BureauOwnershipHost & {
   readonly agentDefinitions: {
     readonly agents: Pick<
       BureauAgentCatalog<AgentDefinitions>,
-      'list' | 'detail' | 'tools' | 'revisions' | 'create' | 'update' | 'delete'
+      'list' | 'detail' | 'tools' | 'revisions' | 'versions' | 'create' | 'update' | 'delete'
     >;
     /** Whether the `a2a` allowlist of `createBureauHandler` names the code-defined agent `id`. */
     readonly optsCodeAgentIntoA2A: (id: string) => boolean;
@@ -123,6 +130,10 @@ const definitionOutputSchema = z.object({
   tools: z.array(z.string()),
   skillDescriptors: z.array(agentSkillDescriptorSchema),
   a2a: z.boolean(),
+  /** The most steps one run may take; `null` when the file sets none and Operative's default applies. */
+  stepLimit: z.number().int().nullable(),
+  /** How a run retries a failed generate call; `null` when the file sets none and it does not. */
+  retry: agentRetrySchema.nullable(),
   instructions: z.string(),
 });
 
@@ -132,9 +143,9 @@ const agentDetailSchema = agentListingSchema.extend({
 });
 
 /**
- * What a caller supplies to `create` or `update`. `a2a` is the one field an update keeps when it
- * is left out, so an editor that rewrites a definition cannot turn an agent's A2A opt-in off by
- * omitting it.
+ * What a caller supplies to `create` or `update`. An update keeps `a2a`, `stepLimit` and `retry` when
+ * it leaves them out, so an editor that rewrites a definition cannot turn an agent's A2A opt-in
+ * off, or drop its step limit or retry, by omitting them; `null` removes `stepLimit` or `retry`.
  */
 const definitionInputSchema = z
   .strictObject({
@@ -153,11 +164,21 @@ const definitionInputSchema = z
     skillDescriptors: z.array(agentSkillDescriptorSchema).optional(),
     /** Whether the agent opts into A2A. Omitted, a create is `false` and an update keeps the file's value. */
     a2a: z.boolean().optional(),
+    /**
+     * The most steps one run may take, 1 to 1000. Omitted, a create sets none and an update keeps the
+     * file's value; `null` removes the file's, so Operative's default applies again.
+     */
+    stepLimit: agentStepLimitSchema.nullable().optional(),
+    /**
+     * How a run retries a failed generate call. Omitted, a create sets none and an update keeps the
+     * file's value; `null` removes the file's, so the run does not retry.
+     */
+    retry: agentRetrySchema.nullable().optional(),
     instructions: z.string(),
   })
   .superRefine((definition, context) => checkModelsList(definition, context))
   .describe(
-    'The agent’s definition: `name`, `description`, `model`, `models` (the models a session may be switched to), `tools`, `skillDescriptors`, `a2a` (whether the agent opts into A2A) and `instructions`.',
+    'The agent’s definition: `name`, `description`, `model`, `models` (the models a session may be switched to), `tools`, `skillDescriptors`, `a2a` (whether the agent opts into A2A), `stepLimit` (the most steps a run takes, 1 to 1000), `retry` (`attempts` 1 to 10, `delayMilliseconds` 0 to 60000, `jitter`) and `instructions`.',
   );
 
 /**
@@ -226,6 +247,8 @@ function definitionView(definition: AgentFileDefinition) {
     tools: [...definition.tools],
     skillDescriptors: definition.skillDescriptors.map(skillView),
     a2a: definition.a2a,
+    stepLimit: definition.stepLimit ?? null,
+    retry: definition.retry === undefined ? null : { ...definition.retry },
     instructions: definition.instructions,
   };
 }
@@ -321,6 +344,12 @@ function faultOf(error: unknown, id: string, expectedHash?: string): never {
     switch (error.code) {
       case 'agent-file-not-found':
         throw resourceNotFound('agent', id);
+      case 'agent-version-not-found':
+        throw {
+          code: 'NotFound',
+          message: error.message,
+          data: { resource: 'agent-version', identifier: id },
+        } satisfies OperationFault;
       case 'invalid-identifier':
         throw {
           code: 'InvalidParams',
@@ -381,7 +410,7 @@ export const agentDefinitionsCreateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Create an agent definition',
   description:
-    'Writes a new agent file for `id`, the agent’s identifier: a lowercase letter or digit, then lowercase letters, digits, and hyphens, ending in a letter or digit. A caller derives it from the agent’s name; the name is only a label. `definition` is the file’s frontmatter (`name`, `description`, `model` written `<provider>/<model-or-alias>`, `tools`, `skillDescriptors`, `a2a`) and its body (`instructions`). A new agent does not opt into A2A unless `a2a` is `true`. The file is written to a temporary file and renamed into place, and the agent is in the catalog before the call returns. Requires `bureau.agents:write` unless the caller owns the deployment’s agents. A taken identifier, including the key of a code-defined agent, is a `Conflict`; a definition that would not load is `Unprocessable`, and nothing is written.',
+    'Writes a new agent file for `id`, the agent’s identifier: a lowercase letter or digit, then lowercase letters, digits, and hyphens, ending in a letter or digit. A caller derives it from the agent’s name; the name is only a label. `definition` is the file’s frontmatter (`name`, `description`, `model` written `<provider>/<model-or-alias>`, `tools`, `skillDescriptors`, `a2a`, `stepLimit`, `retry`) and its body (`instructions`). A new agent does not opt into A2A unless `a2a` is `true`. The file is written to a temporary file and renamed into place, and the agent is in the catalog before the call returns. Requires `bureau.agents:write` unless the caller owns the deployment’s agents. A taken identifier, including the key of a code-defined agent, is a `Conflict`; a definition that would not load is `Unprocessable`, and nothing is written.',
   destructive: true,
   tags: ['Agents'],
   inputSchema: createInput,
@@ -400,7 +429,9 @@ export const agentDefinitionsCreateOperation = defineOperation<
   invoke: async ({ input, host, principal }) => {
     const definitions = requireScope(host, principal, 'bureau.agents:write', 'Creating an agent');
     try {
-      const result = await definitions.agents.create(input.id, definitionOf(input.definition));
+      const result = await definitions.agents.create(input.id, definitionOf(input.definition), {
+        savedBy: ownerOfPrincipal(principal),
+      });
       await audit(host, principal, 'agent.created', result);
       return result;
     } catch (error) {
@@ -424,7 +455,7 @@ export const agentDefinitionsUpdateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Replace an agent definition',
   description:
-    'Replaces the agent file for `id` with `definition`, if it still hashes to `expectedHash` (the `hash` a read returned). Frontmatter keys Bureau does not know stay in the file, and an omitted `a2a` keeps the file’s opt-in. A `definition` that omits `models` removes the file’s list, as omitting `tools` removes its tools. A file that changed since is a `StaleRevision` fault whose `currentRevision` is the hash now on disk, and nothing is written. A definition that changes nothing writes nothing and returns the same hash. A run in progress keeps the definition it started with. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`, as is an update of a code-defined key, before any file is read.',
+    'Replaces the agent file for `id` with `definition`, if it still hashes to `expectedHash` (the `hash` a read returned). Frontmatter keys Bureau does not know stay in the file, and an omitted `a2a`, `stepLimit` or `retry` keeps the file’s value (`null` removes a `stepLimit` or `retry`). A `definition` that omits `models` removes the file’s list, as omitting `tools` removes its tools. A file that changed since is a `StaleRevision` fault whose `currentRevision` is the hash now on disk, and nothing is written. A definition that changes nothing writes nothing and returns the same hash. A run in progress keeps the definition it started with. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`, as is an update of a code-defined key, before any file is read.',
   destructive: true,
   tags: ['Agents'],
   inputSchema: updateInput,
@@ -443,9 +474,10 @@ export const agentDefinitionsUpdateOperation = defineOperation<
   invoke: async ({ input, host, principal }) => {
     const definitions = requireWritableAgent(host, principal, input.id);
     try {
-      // An omitted `a2a` keeps the opt-in the file has: the catalog applies that rule itself.
+      // An omitted `a2a`, `stepLimit` or `retry` keeps the file's value: the catalog applies that rule itself.
       const result = await definitions.agents.update(input.id, definitionOf(input.definition), {
         expectedHash: input.expectedHash,
+        savedBy: ownerOfPrincipal(principal),
       });
       if (result.hash !== input.expectedHash) {
         await audit(host, principal, 'agent.updated', result, input.expectedHash);
@@ -601,9 +633,9 @@ export const agentDefinitionsRevisionsOperation = defineOperation<
 >({
   name: 'bureau.agents.definitions.revisions',
   mcpExposable: false,
-  summary: 'List the revisions of an agent that have run',
+  summary: 'List the revisions of an agent that have run (not the saved versions)',
   description:
-    'Lists the snapshots of the agent’s definition that have run, most recently run first, each with the definition it ran. A snapshot is kept while any run that references it is retained, so a deleted agent still lists the revisions of its retained runs, and a revision that was saved but never ran is not listed. A code-defined agent has none. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else, and an identifier with neither an agent nor a retained revision, is answered `NotFound`.',
+    'Lists the snapshots of the agent’s definition that have run, most recently run first, each with the definition it ran. A snapshot is kept while any run that references it is retained, so a deleted agent still lists the revisions of its retained runs, and a revision that was saved but never ran is not listed. A code-defined agent has none. This is the history of the runs; `bureau.agents.versions.list` is the history of the saves, which includes a version that never ran. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else, and an identifier with neither an agent nor a retained revision, is answered `NotFound`.',
   destructive: false,
   tags: ['Agents'],
   inputSchema: getInput,
@@ -628,6 +660,113 @@ export const agentDefinitionsRevisionsOperation = defineOperation<
         definition: definitionView(revision.definition),
       })),
     };
+  },
+});
+
+const versionSchema = z.object({
+  revision: z.number().int().positive(),
+  hash: z.string(),
+  savedAt: z.string(),
+  /** Who saved it through these operations, or `null` for an edit made to the file directly. */
+  savedBy: z.string().nullable(),
+  owner: z.string(),
+  definition: definitionOutputSchema,
+  /** The definition keys that differ from the previous version's, such as `["instructions"]`. */
+  changedKeys: z.array(z.string()),
+});
+
+const versionsListOutput = z.object({ versions: z.array(versionSchema) });
+
+export const agentVersionsListOperation = defineOperation<
+  typeof getInput,
+  typeof versionsListOutput,
+  BureauAgentDefinitionsOperationHost
+>({
+  name: 'bureau.agents.versions.list',
+  mcpExposable: false,
+  summary: 'List the saved versions of an agent',
+  description:
+    'Lists the versions of the agent’s definition, newest first, each with its `revision`, the file `hash`, when it was saved (`savedAt`), who saved it (`savedBy`, or `null` for an edit made to the file directly), the whole `definition`, and the `changedKeys` that differ from the version before it (a change to the instructions alone gives `["instructions"]`). Every save and every direct edit is one version, whether or not the agent ran, and a version outlives the runs that used it. Bureau keeps the newest 50 and any older version a retained run still references. A code-defined agent has none. `bureau.agents.definitions.revisions` is the history of the runs, not of the saves. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else, and an identifier with neither an agent nor a stored version, is answered `NotFound`; a deleted agent still lists the versions it kept.',
+  destructive: false,
+  tags: ['Agents'],
+  inputSchema: getInput,
+  outputSchema: versionsListOutput,
+  producibleFaults: ['InvalidParams', 'NotFound', 'UnsupportedCapability'],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    const definitions = requireAccess(host, principal, 'bureau.agents:read', input.id);
+    const known = definitions.agents.list().some((listing) => listing.id === input.id);
+    const versions = await definitions.agents.versions.list(input.id);
+    if (versions.length === 0 && !known) throw resourceNotFound('agent', input.id);
+    return {
+      versions: versions.map((version) => ({
+        revision: version.revision,
+        hash: version.hash,
+        savedAt: version.savedAt,
+        savedBy: version.savedBy,
+        owner: version.owner,
+        definition: definitionView(version.definition),
+        changedKeys: [...version.changedKeys],
+      })),
+    };
+  },
+});
+
+const restoreInput = z.object({
+  id: agentIdentifier,
+  revision: z.number().int().positive().describe('The `revision` of the version to restore.'),
+  expectedHash: hash,
+});
+const restoreOutput = writeResultSchema.extend({
+  /** The definition revision the file is at now; `null` if the catalog does not list it. */
+  revision: z.number().int().positive().nullable(),
+});
+
+export const agentVersionsRestoreOperation = defineOperation<
+  typeof restoreInput,
+  typeof restoreOutput,
+  BureauAgentDefinitionsOperationHost
+>({
+  name: 'bureau.agents.versions.restore',
+  mcpExposable: false,
+  summary: 'Restore a saved version of an agent',
+  description:
+    'Writes the definition of version `revision` back to the agent’s file as a new revision, if the file still hashes to `expectedHash` (the `hash` a read returned), and returns the new `hash` and `revision`. The restore is itself a save, so it appends a new version equal in content to the one restored and leaves the older versions as they were. Reference documents and `examples` are not restored; the file keeps what it has. A file that moved since is a `StaleRevision` fault whose `currentRevision` is the hash now on disk; a definition that no longer resolves (its model or a tool is gone from the deployment) is `Unprocessable`; an unknown version is `NotFound`; each writes nothing. Restoring the definition the file already has writes nothing and returns the same hash. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`.',
+  destructive: true,
+  tags: ['Agents'],
+  inputSchema: restoreInput,
+  outputSchema: restoreOutput,
+  producibleFaults: [
+    'InvalidParams',
+    'NotFound',
+    'StaleRevision',
+    'Unprocessable',
+    'UnsupportedCapability',
+  ],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    const definitions = requireWritableAgent(host, principal, input.id);
+    try {
+      const result = await definitions.agents.versions.restore(input.id, input.revision, {
+        expectedHash: input.expectedHash,
+        savedBy: ownerOfPrincipal(principal),
+      });
+      // Read before the audit write is awaited, so a save that settles during it is not reported
+      // as this restore's revision.
+      const listing = definitions.agents.list().find((candidate) => candidate.id === input.id);
+      if (result.hash !== input.expectedHash) {
+        await audit(host, principal, 'agent.updated', result, input.expectedHash);
+      }
+      return { ...result, revision: listing?.definitionRevision ?? null };
+    } catch (error) {
+      return faultOf(error, input.id, input.expectedHash);
+    }
   },
 });
 
@@ -744,4 +883,6 @@ export const bureauAgentDefinitionsOperations = [
   agentDefinitionsListOperation,
   agentDefinitionsRevisionsOperation,
   agentsCatalogOperation,
+  agentVersionsListOperation,
+  agentVersionsRestoreOperation,
 ] as const;

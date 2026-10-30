@@ -156,49 +156,52 @@
 
   /* ── Size variants ──────────────────────────────────────────────────────── */
 
-  /* sm: 1.5rem = 24px @ 16px base — WCAG 2.5.8 minimum touch target.
- * Note: 2.5.8 also requires >=24px of offset space between adjacent targets
- * smaller than 24px in either dimension. Attached options sit flush against
- * each other so the bounding box must stay >= 24px; do not reduce this. */
+  /* The control's outer box is the shared `--cinder-control-height-*` step for
+ * its size, so a SegmentedControl lines up with a Button, Input, or Select of
+ * the same size. An attached control wraps its options in a 1px border and
+ * 1px padding, so each attached option is 4px shorter than the step; a
+ * detached option carries its own 1px border and takes the full step.
+ * density="toolbar" resolves to data-cinder-size="sm" in the component, so a
+ * toolbar SegmentedControl is the same height as a toolbar Chip and a
+ * size="sm" Button. At `sm` an attached option is 24px, the WCAG 2.5.8
+ * minimum target for options that sit flush against each other; do not
+ * shrink `sm` below 28px. */
+  .cinder-segmented-control {
+    --_cinder-segmented-control-height: var(--cinder-control-height-md);
+  }
+
+  .cinder-segmented-control .cinder-segmented-control-option {
+    min-block-size: calc(var(--_cinder-segmented-control-height) - 4px);
+  }
+
+  .cinder-segmented-control[data-cinder-detached] .cinder-segmented-control-option {
+    min-block-size: var(--_cinder-segmented-control-height);
+  }
+
+  .cinder-segmented-control[data-cinder-size='sm'] {
+    --_cinder-segmented-control-height: var(--cinder-control-height-sm);
+  }
+
+  .cinder-segmented-control[data-cinder-size='lg'] {
+    --_cinder-segmented-control-height: var(--cinder-control-height-lg);
+  }
+
   .cinder-segmented-control[data-cinder-size='sm'] .cinder-segmented-control-option {
-    min-block-size: 1.5rem;
     padding-block: var(--cinder-space-1);
     padding-inline: var(--cinder-space-2);
     font-size: var(--cinder-text-xs);
   }
 
-  /* md: 2rem = 32px — comfortable middle ground */
   .cinder-segmented-control[data-cinder-size='md'] .cinder-segmented-control-option {
-    min-block-size: 2rem;
     padding-block: var(--cinder-space-1);
     padding-inline: var(--cinder-space-2);
     font-size: var(--cinder-text-sm);
   }
 
-  /* lg: 2.75rem = 44px — recommended pointer/touch target per WCAG 2.5.5 */
   .cinder-segmented-control[data-cinder-size='lg'] .cinder-segmented-control-option {
-    min-block-size: 2.75rem;
     padding-block: var(--cinder-space-2);
     padding-inline: var(--cinder-space-3, 0.75rem);
     font-size: var(--cinder-text-sm);
-  }
-
-  /* density="toolbar" resolves through the component to data-cinder-size="sm",
- * so font and (for detached or vertical toolbars) inline padding flow from
- * the `sm` rule above; attached horizontal toolbars pick up the 12px inline
- * padding from the override block below because they match the
- * `[data-cinder-size='sm']` arm of that rule. The only declaration this
- * block owns is the cross-component height contract:
- * Chip[density=toolbar], DiffStatistics[variant=compact][density=toolbar],
- * and Button (size="sm") all pin to --cinder-control-height-sm so they line
- * up in editor toolbars. We do the same here so the SegmentedControl in a
- * toolbar row matches its siblings' bounding height even though its
- * effective `sm` typography stays compact. The height pin is currently
- * unscoped by orientation — vertical toolbar density is not a supported
- * combination, since stacking 32px options vertically would defeat the
- * row-alignment contract; treat vertical + toolbar as undefined. */
-  .cinder-segmented-control[data-cinder-density='toolbar'] .cinder-segmented-control-option {
-    min-block-size: var(--cinder-control-height-sm);
   }
 
   /* Attached horizontal options need at least 12px between the inter-segment

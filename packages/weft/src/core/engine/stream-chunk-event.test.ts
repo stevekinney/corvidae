@@ -5,11 +5,12 @@ import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { StreamChunkEvent } from '../events/fleet-state-events.ts';
 import { workflow } from '../types.ts';
 import { Engine } from './index.ts';
+import { getInternals } from './internals.ts';
 
 const SECRET_BODY = 'chunk-body-that-must-not-leave-the-engine';
 
 describe('stream:chunk on the Engine', () => {
-  it('announces each stored chunk of a non-token key by key and sequence, never by body', async () => {
+  it('announces a stream by key and sequence, never by body, ending with its last stored chunk', async () => {
     await using engine = new Engine({ storage: new MemoryStorage() });
     const seen: StreamChunkEvent[] = [];
     engine.addEventListener(StreamChunkEvent.type, (event) => {
@@ -30,8 +31,9 @@ describe('stream:chunk on the Engine', () => {
 
     const handle = await engine.start('progress-stream', {});
     await handle.result();
-    await waitUntil(() => seen.length >= 2, { message: 'both progress chunks announced' });
 
+    // The first chunk is announced at once and the stream's completion announces its last one, so
+    // both are dispatched before the result resolves.
     expect(seen.map((event) => [event.workflowId, event.key, event.sequence])).toEqual([
       [handle.id, 'progress', 0],
       [handle.id, 'progress', 1],
@@ -40,6 +42,33 @@ describe('stream:chunk on the Engine', () => {
       expect(Object.keys(event).toSorted()).toEqual(['isTrusted', 'key', 'sequence', 'workflowId']);
       expect(JSON.stringify(event)).not.toContain(SECRET_BODY);
     }
+  });
+
+  it('coalesces a long stream instead of announcing every chunk, and leaves no window open', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const sequences: number[] = [];
+    engine.addEventListener(StreamChunkEvent.type, (event) => {
+      sequences.push(event.sequence);
+    });
+    engine.register(
+      workflow({ name: 'long-stream' }).execute(async function* (ctx) {
+        yield* ctx.stream('progress', async function* () {
+          for (let step = 0; step < 200; step++) yield step;
+        });
+        return 'done';
+      }),
+    );
+
+    const handle = await engine.start('long-stream', {});
+    await handle.result();
+
+    // How many windows the stream spans depends on host speed, so only the shape is asserted here;
+    // the per-window bound is pinned under fake timers in `stream-chunk-announcer.test.ts`.
+    expect(sequences[0]).toBe(0);
+    expect(sequences.at(-1)).toBe(199);
+    expect(sequences).toEqual(sequences.toSorted((left, right) => left - right));
+    expect(new Set(sequences).size).toBe(sequences.length);
+    expect(getInternals(engine).streamChunkAnnouncer.openWindowCount).toBe(0);
   });
 
   it('does not announce a chunk of the tokens key, which already reaches subscribers through the feed', async () => {
@@ -80,7 +109,9 @@ describe('stream:chunk on the Engine', () => {
           yield* ctx.stream('progress', async function* () {
             producerEntered = true;
             await producerGate.promise;
+            // Two chunks, so the second is held for a trailing event that must be fenced too.
             yield 'stale-chunk';
+            yield 'stale-trailing-chunk';
           });
           return 'old';
         }
@@ -105,7 +136,7 @@ describe('stream:chunk on the Engine', () => {
     await waitUntil(
       async () => {
         const stored = await engine.getStreamChunks('restarted-stream-1', 'progress');
-        return stored.length > 0;
+        return stored.length > 1;
       },
       { message: 'old producer stored its late chunk' },
     );

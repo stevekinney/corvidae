@@ -10,7 +10,7 @@ const schema = {
       default: 'secondary',
     },
     size: {
-      enum: ['xs', 'sm', 'md', 'lg', 'xl'],
+      enum: ['xs', 'sm', 'md', 'lg'],
       description: 'Size of the button.',
       default: 'md',
     },

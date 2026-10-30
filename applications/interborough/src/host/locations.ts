@@ -42,6 +42,44 @@ export function redactDatabase(database: DatabaseLocation): HostDatabase {
   return { kind: 'postgres', location: `${url.host}${url.pathname}` };
 }
 
+/** What `/host/paths` answers: where the host keeps its state, with no credential in any of it. */
+export type HostPathsReport = {
+  /** `local` for a state directory and a SQLite file, `remote` for Postgres and an S3 bucket. */
+  readonly mode: 'local' | 'remote';
+  /** The database as {@link redactDatabase} reports it: a SQLite path, or a Postgres server and database name. */
+  readonly database: HostDatabase;
+  /** The agent files, as {@link describeContent} reports them. */
+  readonly agentDirectory: string;
+  /** The workflow files, as {@link describeContent} reports them. */
+  readonly workflowDirectory: string;
+  /** `configuration.json`: a path, or an `s3://` location. */
+  readonly configurationFile: string;
+  /** Each provider and where its API key lives (a file's path, or an environment variable's name), never the key. */
+  readonly providers: readonly { readonly name: string; readonly secretFile: string }[];
+};
+
+/**
+ * The report `/host/paths` serves, built from the open home. The database goes through
+ * {@link redactDatabase}, so a Postgres URL's user name, password, and query string never reach it.
+ */
+export function hostPathsReport(
+  bungalow: Pick<Bungalow, 'mode' | 'database' | 'configurationLocation' | 'secretLocation'>,
+  content: { readonly agents: ContentLocation; readonly workflows: ContentLocation },
+  providers: readonly { readonly name: string; readonly secretKey: string }[],
+): HostPathsReport {
+  return {
+    mode: bungalow.mode,
+    database: redactDatabase(bungalow.database),
+    agentDirectory: describeContent(content.agents),
+    workflowDirectory: describeContent(content.workflows),
+    configurationFile: bungalow.configurationLocation,
+    providers: providers.map(({ name, secretKey }) => ({
+      name,
+      secretFile: bungalow.secretLocation(secretKey),
+    })),
+  };
+}
+
 /**
  * The storage for the host's database: a SQLite file on this machine, or a Postgres server. The
  * Postgres pool connects when first used, and it is the only place the URL is read.

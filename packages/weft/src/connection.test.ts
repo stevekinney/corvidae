@@ -332,7 +332,7 @@ describe('resolveConnection', () => {
 });
 
 describe('writeRunLockfile / removeRunLockfile', () => {
-  it('round-trips through Bun.write: a written lockfile is picked up by resolveConnection, and removal drops it', async () => {
+  it('round-trips through the lockfile: a written lockfile is picked up by resolveConnection, and removal drops it', async () => {
     const snapshot = snapshotEnv('WEFT_ADDR', 'WEFT_TOKEN', 'WEFT_PROFILE', 'WEFT_HOME');
     const home = makeHome();
     Bun.env['WEFT_HOME'] = home;
@@ -352,11 +352,10 @@ describe('writeRunLockfile / removeRunLockfile', () => {
     }
   });
 
-  it('falls back to fsPromises.writeFile when Bun is unavailable (Node-only runtime)', async () => {
+  it('writes the lockfile as JSON holding the server address', async () => {
     const snapshot = snapshotEnv('WEFT_HOME');
     const home = makeHome();
     Bun.env['WEFT_HOME'] = home;
-    setPortableRuntimeTestOverridesForTesting({ bun: undefined });
     try {
       await writeRunLockfile('http://127.0.0.1:8888');
       const lockfilePath = join(home, 'run');
@@ -365,7 +364,6 @@ describe('writeRunLockfile / removeRunLockfile', () => {
         server: 'http://127.0.0.1:8888',
       });
     } finally {
-      setPortableRuntimeTestOverridesForTesting(undefined);
       restoreEnv(snapshot);
     }
   });
@@ -378,34 +376,6 @@ describe('writeRunLockfile / removeRunLockfile', () => {
       );
     } finally {
       setPortableRuntimeTestOverridesForTesting(undefined);
-    }
-  });
-});
-
-describe('~/.weft/config resolution outside Bun', () => {
-  it('ignores an on-disk config file when Bun is unavailable, because Bun.TOML cannot parse it', () => {
-    const snapshot = snapshotEnv('WEFT_ADDR', 'WEFT_TOKEN', 'WEFT_PROFILE', 'WEFT_HOME');
-    const home = makeHome();
-    Bun.env['WEFT_HOME'] = home;
-    delete Bun.env['WEFT_ADDR'];
-    delete Bun.env['WEFT_TOKEN'];
-    delete Bun.env['WEFT_PROFILE'];
-    writeConfig(
-      home,
-      [
-        'default_profile = "main"',
-        '',
-        '[profiles.main]',
-        'server = "https://profile.example.com"',
-      ].join('\n'),
-    );
-    setPortableRuntimeTestOverridesForTesting({ bun: undefined });
-    try {
-      const connection = resolveConnection();
-      expect(connection.server.toString()).toBe(`${DEFAULT_WEFT_ADDRESS}/`);
-    } finally {
-      setPortableRuntimeTestOverridesForTesting(undefined);
-      restoreEnv(snapshot);
     }
   });
 });

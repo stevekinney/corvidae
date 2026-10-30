@@ -34,7 +34,12 @@ const writer = createAgent({
 });
 
 async function serve(): Promise<OpenedBureau> {
-  const opened = await openBureau({ agents: { writer }, generate: answering() });
+  // A key with no scope schedules only an agent that opts into A2A (COR-1904).
+  const opened = await openBureau({
+    agents: { writer },
+    a2aAgents: ['writer'],
+    generate: answering(),
+  });
   cleanups.push(() => opened.dispose());
   return opened;
 }
@@ -389,7 +394,7 @@ describe('the agent a schedule runs', () => {
         };
       },
     });
-    const handler = createBureauHandler(watched, { authentication });
+    const handler = createBureauHandler(watched, { authentication, a2aAgents: ['writer'] });
 
     const created = await rpc(handler, 'bureau.schedules.create', NEW_SCHEDULE, 'alice-key');
 
@@ -689,7 +694,7 @@ describe('a schedule whose creation lost its locator', () => {
         };
       },
     });
-    const handler = createBureauHandler(losing, { authentication });
+    const handler = createBureauHandler(losing, { authentication, a2aAgents: ['writer'] });
 
     const lost = await rpc(handler, 'bureau.schedules.create', NEW_SCHEDULE, 'alice-key');
 

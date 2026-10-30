@@ -31,7 +31,7 @@
  * time. Nothing here dispatches a plan: this package only evaluates plans.
  */
 import { sha256Hex } from '@lostgradient/cryptography';
-import type { DelegatedAuthority, ProviderName } from '@lostgradient/operative';
+import { type DelegatedAuthority, PROVIDER_NAME_PATTERN } from '@lostgradient/operative';
 import { z } from 'zod';
 
 import {
@@ -90,21 +90,8 @@ export const PARTICIPANT_ROLES = [
 
 export type ParticipantRole = (typeof PARTICIPANT_ROLES)[number];
 
-const PROVIDER_NAMES = [
-  'anthropic',
-  'openai',
-  'gemini',
-  'voyage',
-  'ollama',
-] as const satisfies readonly ProviderName[];
-// Fails to compile if operative adds a provider this list does not name.
-const PROVIDER_NAMES_ARE_EXHAUSTIVE: Exclude<
-  ProviderName,
-  (typeof PROVIDER_NAMES)[number]
-> extends never
-  ? true
-  : never = true;
-void PROVIDER_NAMES_ARE_EXHAUSTIVE;
+/** A provider name in operative's grammar; one no loaded provider carries is unavailable, not invalid. */
+const providerName = z.string().regex(PROVIDER_NAME_PATTERN);
 
 export const taskClassSchema = z.union([
   z.enum(TASK_CLASSES),
@@ -127,7 +114,7 @@ export function taskClassKey(taskClass: TaskClass): string {
 
 /** Operative's `DelegatedAuthority`, as a plan serializes it. */
 const delegatedAuthoritySchema = z.strictObject({
-  grantedProviders: z.array(z.enum(PROVIDER_NAMES)).optional(),
+  grantedProviders: z.array(providerName).optional(),
   grantedModels: z.array(identifier).optional(),
   maximumEffort: z.enum(EFFORTS).optional(),
   policyVersion: identifier,

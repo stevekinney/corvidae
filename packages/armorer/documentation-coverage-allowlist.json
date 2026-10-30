@@ -322,7 +322,6 @@
     ". normalizeTags",
     ". normalizeTextQuery",
     ". openAIToolAdapter",
-    ". parseAnthropicToolCalls",
     ". parseToolId",
     ". projectExecutionSnapshot",
     ". queryTools",

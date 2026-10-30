@@ -58,6 +58,8 @@ export const AGENT_FILE_KNOWN_KEYS = [
   'tools',
   'skillDescriptors',
   'a2a',
+  'stepLimit',
+  'retry',
 ] as const;
 
 /** Why a file cannot be used as an agent. Carried on the listing, and on a refused write. */
@@ -95,6 +97,27 @@ export const agentSkillDescriptorSchema = z.strictObject({
   examples: z.array(z.string()).optional(),
   inputModes: z.array(z.string()).optional(),
   outputModes: z.array(z.string()).optional(),
+});
+
+/** The most steps an agent file may allow a run (`stepLimit`). */
+export const AGENT_STEP_LIMIT_MAXIMUM = 1000;
+/** The most attempts a file's `retry` may allow one generate call, the first included. */
+export const AGENT_RETRY_ATTEMPTS_MAXIMUM = 10;
+/** The longest a file's `retry` may wait between attempts, in milliseconds. */
+export const AGENT_RETRY_DELAY_MAXIMUM_MILLISECONDS = 60_000;
+
+/** An agent's step limit: the cap on the steps of one run, which Operative calls `maximumSteps`. */
+export const agentStepLimitSchema = z.number().int().min(1).max(AGENT_STEP_LIMIT_MAXIMUM);
+
+/**
+ * How a run retries a failed generate call: Operative's `RetryOptions`, narrowed to what a file
+ * may say. `attempts` counts the first call, so `1` retries nothing. Omitted, the wait is `0` and
+ * `jitter` is `false`.
+ */
+export const agentRetrySchema = z.strictObject({
+  attempts: z.number().int().min(1).max(AGENT_RETRY_ATTEMPTS_MAXIMUM),
+  delayMilliseconds: z.number().int().min(0).max(AGENT_RETRY_DELAY_MAXIMUM_MILLISECONDS).optional(),
+  jitter: z.boolean().optional(),
 });
 
 function unique(values: readonly string[]): boolean {
@@ -141,6 +164,10 @@ export const agentFileFrontmatterSchema = z
      * `false`. Chat and every other surface serve a ready agent whatever this says.
      */
     a2a: z.boolean().nullish(),
+    /** The most steps one run may take. An integer from 1 to 1000; absent, Operative's default. */
+    stepLimit: agentStepLimitSchema.nullish(),
+    /** How a run retries a failed generate call. Absent, it does not. */
+    retry: agentRetrySchema.nullish(),
     /**
      * Prompts that show what a person might ask the agent, which a new chat offers as buttons. Read
      * only: it is not in {@link AGENT_FILE_KNOWN_KEYS}, so a rewrite of the file keeps it as it is.
@@ -213,10 +240,24 @@ export const agentFileDefinitionSchema = z.object({
   skillDescriptors: z.array(agentSkillDescriptorSchema).default([]),
   /** Absent from a snapshot written before the A2A opt-in existed; read as `false`. */
   a2a: z.boolean().default(false),
+  /** Absent from a snapshot written before the field existed, and from a file that has none. */
+  stepLimit: agentStepLimitSchema.optional(),
+  /** Absent from a snapshot written before the field existed, and from a file that has none. */
+  retry: agentRetrySchema.optional(),
   /** Prompts a new chat offers (see the frontmatter's `examples`); absent for a file that has none. */
   examples: agentExamplesSchema.optional(),
   instructions: z.string(),
 });
+
+/** A file's `retry`, as written. */
+export interface AgentRetry {
+  /** The attempts one generate call gets, the first included, so `1` retries nothing. */
+  readonly attempts: number;
+  /** The wait before each retry, in milliseconds. Absent, `0`. */
+  readonly delayMilliseconds?: number | undefined;
+  /** Whether the wait is jittered. Absent, `false`. */
+  readonly jitter?: boolean | undefined;
+}
 
 /** The frontmatter as written, before defaults. */
 export type AgentFileFrontmatter = z.infer<typeof agentFileFrontmatterSchema>;
@@ -237,6 +278,10 @@ export interface AgentFileDefinition {
   readonly skillDescriptors: readonly AgentSkillDescriptor[];
   /** Whether the agent opts into A2A. This part only records it; the A2A mount reads it. */
   readonly a2a: boolean;
+  /** The most steps one run may take. Absent when the file sets none: Operative's default applies. */
+  readonly stepLimit?: number;
+  /** How a run retries a failed generate call. Absent when the file sets none: it does not retry. */
+  readonly retry?: AgentRetry;
   /**
    * Prompts that show what a person might ask the agent, as the file's `examples` lists them.
    * Absent when it lists none. A caller never supplies them: they stay in the file through a write.
@@ -244,6 +289,44 @@ export interface AgentFileDefinition {
   readonly examples?: readonly string[];
   readonly instructions: string;
 }
+
+/**
+ * Every key of {@link AgentFileDefinition}, in the order a version's `changedKeys` lists them.
+ * Typed as a `Record`, so a key added to the interface and left out here fails the type-check.
+ */
+const definitionKeyTable: Record<keyof AgentFileDefinition, true> = {
+  name: true,
+  description: true,
+  model: true,
+  models: true,
+  tools: true,
+  skillDescriptors: true,
+  a2a: true,
+  stepLimit: true,
+  retry: true,
+  examples: true,
+  instructions: true,
+};
+
+/** The keys of {@link AgentFileDefinition}, which a copy or a comparison of one walks. */
+export const AGENT_FILE_DEFINITION_KEYS = Object.freeze(
+  Object.keys(definitionKeyTable) as (keyof AgentFileDefinition)[],
+);
+
+type AssertTrue<Condition extends true> = Condition;
+
+/**
+ * Compiles only while {@link agentFileDefinitionSchema} names exactly the keys of
+ * {@link AgentFileDefinition}: a stored definition is parsed through the schema, which drops a key
+ * it does not name, so a key missing from it would be lost from every version read back.
+ */
+export type AgentFileDefinitionSchemaIsExhaustive = AssertTrue<
+  [keyof AgentFileDefinition] extends [keyof z.output<typeof agentFileDefinitionSchema>]
+    ? [keyof z.output<typeof agentFileDefinitionSchema>] extends [keyof AgentFileDefinition]
+      ? true
+      : false
+    : false
+>;
 
 /** What a caller supplies to `create` or `update`; the defaults are the file's. */
 export interface AgentFileDefinitionInput {
@@ -257,6 +340,16 @@ export interface AgentFileDefinitionInput {
   readonly skillDescriptors?: readonly AgentSkillDescriptor[] | undefined;
   /** See {@link AgentFileDefinition.a2a}. An update that omits it keeps the file's value. */
   readonly a2a?: boolean | undefined;
+  /**
+   * See {@link AgentFileDefinition.stepLimit}. An update that omits it keeps the file's value; `null`
+   * removes it.
+   */
+  readonly stepLimit?: number | null | undefined;
+  /**
+   * See {@link AgentFileDefinition.retry}. An update that omits it keeps the file's value; `null`
+   * removes it.
+   */
+  readonly retry?: AgentRetry | null | undefined;
   readonly instructions: string;
 }
 
@@ -334,6 +427,17 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** A retry without the keys it leaves out, so a definition holds exactly what a file wrote. */
+function retryOf(retry: AgentRetry): AgentRetry {
+  return {
+    attempts: retry.attempts,
+    ...(retry.delayMilliseconds === undefined
+      ? {}
+      : { delayMilliseconds: retry.delayMilliseconds }),
+    ...(retry.jitter === undefined ? {} : { jitter: retry.jitter }),
+  };
+}
+
 /** Apply the schema's defaults to validated frontmatter. */
 function toDefinition(
   id: string,
@@ -349,6 +453,8 @@ function toDefinition(
     // Zod types an absent optional key as possibly `undefined`; it is never present as one.
     skillDescriptors: (frontmatter.skillDescriptors ?? []) as readonly AgentSkillDescriptor[],
     a2a: frontmatter.a2a ?? false,
+    ...(frontmatter.stepLimit == null ? {} : { stepLimit: frontmatter.stepLimit }),
+    ...(frontmatter.retry == null ? {} : { retry: retryOf(frontmatter.retry) }),
     ...(frontmatter.examples == null ? {} : { examples: frontmatter.examples }),
     instructions,
   };
@@ -446,6 +552,8 @@ function knownFrontmatter(definition: AgentFileDefinitionInput): Record<string, 
     }));
   }
   if (definition.a2a !== undefined) known['a2a'] = definition.a2a;
+  if (definition.stepLimit != null) known['stepLimit'] = definition.stepLimit;
+  if (definition.retry != null) known['retry'] = retryOf(definition.retry);
   return known;
 }
 
@@ -471,6 +579,8 @@ export function resolveAgentFileDefinition(
     tools: input.tools ?? [],
     skillDescriptors: input.skillDescriptors ?? [],
     a2a: input.a2a ?? false,
+    ...(input.stepLimit == null ? {} : { stepLimit: input.stepLimit }),
+    ...(input.retry == null ? {} : { retry: retryOf(input.retry) }),
     instructions: input.instructions,
   };
 }
@@ -490,10 +600,15 @@ export function serializeUpdatedAgentFile(
   input: AgentFileDefinitionInput,
 ): Uint8Array | undefined {
   const before = existing.definition;
-  // An `a2a` the caller leaves out is not a change to it: the file keeps the value it has, and a
-  // file with no such key is not given one.
+  // A key the caller leaves out (`a2a`, `stepLimit`, `retry`) is not a change to it: the file keeps
+  // the value it has, and a file with no such key is not given one.
   const keptA2a = input.a2a === undefined;
-  const next = resolveAgentFileDefinition(id, keptA2a ? { ...input, a2a: before.a2a } : input);
+  const next = resolveAgentFileDefinition(id, {
+    ...input,
+    ...(keptA2a ? { a2a: before.a2a } : {}),
+    ...(input.stepLimit === undefined ? { stepLimit: before.stepLimit } : {}),
+    ...(input.retry === undefined ? { retry: before.retry } : {}),
+  });
   // `examples` is the file's own and an input never carries it, so it is not a change.
   const { examples: _kept, ...beforeKnown } = before;
   const frontmatterChanged = !isDeepStrictEqual(
@@ -507,9 +622,12 @@ export function serializeUpdatedAgentFile(
   if (frontmatterChanged) {
     frontmatter = rewriteFrontmatter(
       existing,
-      knownFrontmatter(
-        keptA2a && Object.hasOwn(existing.raw, 'a2a') ? { ...input, a2a: before.a2a } : input,
-      ),
+      knownFrontmatter({
+        ...input,
+        ...(keptA2a && Object.hasOwn(existing.raw, 'a2a') ? { a2a: before.a2a } : {}),
+        ...(input.stepLimit === undefined ? { stepLimit: before.stepLimit } : {}),
+        ...(input.retry === undefined ? { retry: before.retry } : {}),
+      }),
       AGENT_FILE_KNOWN_KEYS,
       existing.lineEnding,
     );
@@ -535,6 +653,7 @@ export type AgentFileErrorCode =
   | 'agent-file-changed'
   | 'agent-file-not-found'
   | 'agent-file-unreadable'
+  | 'agent-version-not-found'
   | 'agent-directory-not-configured';
 
 /** A write or read of an agent file that was refused. `problem` carries the detail, when there is any. */
