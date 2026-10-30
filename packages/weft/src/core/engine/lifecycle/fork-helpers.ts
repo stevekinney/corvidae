@@ -466,10 +466,23 @@ export function buildForkCheckpoint(
   lineage: ForkLineage,
   callbacks: LifecycleCallbacks,
 ): Checkpoint {
-  const { accumulatedResultReplayWatermark: _sourceReplayWatermark, ...sourceCheckpointForFork } =
-    sourceCheckpoint;
+  const {
+    accumulatedResultReplayWatermark: _sourceReplayWatermark,
+    forkCopiedSignatureSteps: _sourceCopiedSignatureSteps,
+    ...sourceCheckpointForFork
+  } = sourceCheckpoint;
+  const settledSteps = new Set(
+    [...sourceCheckpoint.accumulatedResults, ...(sourceCheckpoint.workerReplayFailures ?? [])].map(
+      ([step]) => step,
+    ),
+  );
+  const copiedSignatureSteps = (sourceCheckpoint.workerReplaySignatures ?? [])
+    .map(([step]) => step)
+    .filter((step) => !settledSteps.has(step));
   return {
     ...sourceCheckpointForFork,
+    // The signatures the source had no outcome for are evidence about the source's execution.
+    ...(copiedSignatureSteps.length > 0 && { forkCopiedSignatureSteps: copiedSignatureSteps }),
     createdAt: forkedAt,
     workflowId,
     // The fork's own fresh token, never the source's.
