@@ -17,7 +17,11 @@ import type {
   ToolPolicyHooks,
   ToolSecretResolver,
 } from '../is-tool';
-import { createToolCallSecrets, snapshotSecretBearingArguments } from '../secrets';
+import {
+  createToolCallSecrets,
+  findSecretReferences,
+  snapshotSecretBearingArguments,
+} from '../secrets';
 import {
   type ToolCall,
   type ToolExecutionResult,
@@ -270,7 +274,11 @@ async function runReadyExecution<TInput, TOutput, E extends ToolEventsMap>(
               secrets.substitute(secretBearingArguments),
               options.signal,
             );
-            const params = (await parseSubstitutedArguments(schema, substituted)) as TInput;
+            const params = (await parseSubstitutedArguments(
+              schema,
+              substituted,
+              findSecretReferences(secretBearingArguments).map((location) => location.path),
+            )) as TInput;
             if (options.signal?.aborted) throw createAbortRejection(options.signal.reason);
             return resolvedExecute(params, toolContext);
           }

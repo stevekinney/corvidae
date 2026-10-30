@@ -72,12 +72,15 @@ export async function safeParseArgumentsWithSecretReferences(
  * Validates the substituted arguments, right before the tool runs. Any failure, whether an issue
  * the schema reports or an error a transform or refinement throws, is replaced by a validation
  * error with a fixed message and no `cause`, because a message written by a schema, a refinement
- * or a parser can quote the value it rejected, and the value here is a secret. Issue paths survive;
- * the plaintext does not.
+ * or a parser can quote the value it rejected, and the value here is a secret. An issue path at or
+ * below a reference is clipped to the reference's own path, because a schema that parses the
+ * plaintext into a keyed structure reports keys taken from the secret. `referencePaths` are the
+ * positions of the references in the arguments before substitution.
  */
 export async function parseSubstitutedArguments(
   schema: z.ZodType,
   substituted: unknown,
+  referencePaths: readonly Path[],
 ): Promise<unknown> {
   let result: z.ZodSafeParseResult<unknown>;
   try {
@@ -87,12 +90,27 @@ export async function parseSubstitutedArguments(
     throw substitutedFailure([[]]);
   }
   if (result.success) return result.data;
-  throw substitutedFailure(result.error.issues.map((issue) => issue.path));
+  throw substitutedFailure(
+    result.error.issues.map((issue) => clipToReference(issue.path, referencePaths)),
+  );
+}
+
+/** `path`, or the path of the reference it sits at or below. */
+function clipToReference(path: readonly PropertyKey[], referencePaths: readonly Path[]) {
+  return (
+    referencePaths.find(
+      (reference) =>
+        path.length >= reference.length &&
+        reference.every((segment, index) => path[index] === segment),
+    ) ?? path
+  );
 }
 
 function substitutedFailure(paths: readonly (readonly PropertyKey[])[]): z.ZodError {
+  // Clipping can fold several issues onto one reference; report each path once.
+  const unique = new Map(paths.map((path) => [JSON.stringify(path.map(String)), path]));
   return new z.ZodRealError(
-    paths.map((path) => ({
+    [...unique.values()].map((path) => ({
       code: 'custom' as const,
       path: [...path],
       message: substitutedFailureMessage,

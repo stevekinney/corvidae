@@ -84,6 +84,42 @@ describe('a schema check that throws on the plaintext', () => {
   }
 });
 
+describe('an issue path below a reference', () => {
+  it('is clipped to the reference, so a key parsed out of the plaintext never shows', async () => {
+    const secretKey = 'SECRETKEY7b21';
+    const tool = createTool({
+      name: 'keyed-credential',
+      description: 'parses a credential into a keyed structure',
+      input: z.object({
+        label: z.string(),
+        cred: z
+          .string()
+          .transform((value): unknown => JSON.parse(value))
+          .pipe(z.record(z.string(), z.number())),
+      }),
+      metadata: { acceptsSecrets: true },
+      async execute() {
+        return 'ok';
+      },
+    });
+    const toolbox = createToolbox([tool], {
+      secretResolver: () => JSON.stringify({ [secretKey]: 'not a number' }),
+    });
+    const events = recordEveryEvent(toolbox);
+    const result = await toolbox.execute({
+      id: 'keyed-1',
+      name: 'keyed-credential',
+      arguments: { label: 'primary', cred: reference },
+    });
+
+    expect(result.error?.code).toBe('VALIDATION_ERROR');
+    expect(result.error?.details).toEqual({
+      issues: [expect.objectContaining({ path: ['cred'] })],
+    });
+    expectNoPlaintext({ result, events }, secretKey);
+  });
+});
+
 describe('policy sees what a literal call would show it', () => {
   function sendTool(executed: unknown[]) {
     return createTool({
