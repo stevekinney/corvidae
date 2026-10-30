@@ -26,7 +26,7 @@
  *   names the model that answered, so a session switched with `bureau.contexts.steer` shows which
  *   model each message ran on. It is offered the models the host's catalog holds: the two models
  *   need a configured provider, and a host with none offers no choice, so Chat shows no picker.
- * - `internal`: a plain agent the host does not publish.
+ * - `internal`: a plain agent that answers with a scripted bookkeeping reply.
  *
  * A schedule's fire runs its named agent too, so the seeded schedule runs `assistant`'s script.
  * There are no users and no webhook receiver.
@@ -61,15 +61,6 @@ export const SEEDED_AGENT_NAMES = [
   'echo',
   'model-switcher',
   'internal',
-] as const;
-
-/** The agents the host publishes through the Bureau handler; `internal` stays private. */
-export const PUBLISHED_AGENT_NAMES = [
-  'assistant',
-  'tool-runner',
-  'request-human-input',
-  'echo',
-  'model-switcher',
 ] as const;
 
 /** How many times a script repeats before it runs out. */
@@ -322,7 +313,8 @@ export function createSeededAgents(approvalSecret: string, assistantGenerate?: G
     }),
     internal: createAgent({
       name: 'internal',
-      description: 'An agent the host does not publish.',
+      description: 'Answers with a scripted bookkeeping reply.',
+      examples: ['Run the bookkeeping'],
       generate: createScriptedGenerate(
         repeated([reply('Internal bookkeeping is done. This reply is scripted.')]),
       ),

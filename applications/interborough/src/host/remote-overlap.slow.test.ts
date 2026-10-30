@@ -94,7 +94,7 @@ function startOverlapHost(environment: Record<string, string>, counter: { count:
   return startHost({
     environment,
     port: 0,
-    extraAgents: { agents: createOverlapAgents(counter), published: [] },
+    extraAgents: { agents: createOverlapAgents(counter) },
   }).then((host) => {
     hosts.push(host);
     return host;

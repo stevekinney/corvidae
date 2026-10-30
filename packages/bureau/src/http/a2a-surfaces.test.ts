@@ -61,7 +61,7 @@ function parksThenFinishes(): GenerateFunction {
 async function open() {
   const opened = await openBureau({
     agents: { asker: createAgent({ name: 'asker', generate: parksThenFinishes() }) },
-    publish: ['asker'],
+    a2aAgents: ['asker'],
   });
   let store: InteractiveSurfaces | undefined;
   const bureau = Object.create(opened.bureau, {

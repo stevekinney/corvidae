@@ -14,7 +14,9 @@ export const BASE_DEFINITION = {
   description: 'Made by a specification',
   model: 'anthropic/sonnet',
   tools: ['lookup-order'],
-  skills: [{ id: 'cite', name: 'Cite', description: 'Cites the sources', tags: ['research'] }],
+  skillDescriptors: [
+    { id: 'cite', name: 'Cite', description: 'Cites the sources', tags: ['research'] },
+  ],
   instructions: 'You are an end-to-end agent.',
 } as const;
 
@@ -43,15 +45,15 @@ export type AgentDetailResult = {
   id: string;
   source: 'code' | 'file';
   state: 'ready' | 'invalid';
-  published: boolean;
+  a2a: boolean;
   hash: string | null;
   problem: { code: string; message: string } | null;
   definition: {
     name: string;
     model: string;
     tools: string[];
-    skills: unknown[];
-    published: boolean;
+    skillDescriptors: unknown[];
+    a2a: boolean;
     instructions: string;
   } | null;
 };

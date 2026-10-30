@@ -53,8 +53,8 @@ describe('a pending approval restored after a restart', () => {
       description: null,
       model: KNOWN_MODEL,
       tools: [],
-      skills: [],
-      published: false,
+      skillDescriptors: [],
+      a2a: false,
       instructions,
     });
     const olderRunId = 'run-older-approval';

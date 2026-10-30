@@ -1,6 +1,6 @@
 /**
  * The Bureau system under test for the official A2A Technology Compatibility Kit (COR-1543): one
- * published agent, `tck-agent`, served at `<publicUrl>/a2a/tck-agent` over a Bureau with a
+ * opted-in agent, `tck-agent`, served at `<publicUrl>/a2a/tck-agent` over a Bureau with a
  * durable event history and push delivery.
  *
  * The TCK picks an agent's behavior by the prefix of a message's `messageId` (its
@@ -255,7 +255,7 @@ export async function startTckHost(port = 0): Promise<TckHost> {
   const publicUrl = `http://127.0.0.1:${server.port}`;
   handler = createBureauHandler(bureau, {
     unauthenticatedAccess: 'allow',
-    publish: [TCK_AGENT],
+    a2aAgents: [TCK_AGENT],
     publicUrl,
     pushNotifications: { sender, outbox },
   });

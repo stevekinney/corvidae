@@ -385,18 +385,14 @@ test.describe('a new chat', () => {
     await expect(page).toHaveURL(/\/agents$/);
   });
 
-  test('is not found for an agent that does not exist, and for one that is not published', async ({
-    page,
-  }) => {
-    for (const agent of ['no-such-agent', 'internal']) {
-      await page.goto(`/chat/new?agent=${agent}`);
-      const frame = page.locator('[data-view="chat"]');
-      await expect(frame).toHaveAttribute('data-state', 'not-found');
-      // It is the agent that is missing, so the page says so and not that a conversation is.
-      await expect(frame.getByRole('heading', { level: 1 })).toHaveText(
-        VIEW_COPY.chat.notFoundByPattern?.['/chat/new']?.title ?? '',
-      );
-    }
+  test('is not found for an agent that does not exist', async ({ page }) => {
+    await page.goto('/chat/new?agent=no-such-agent');
+    const frame = page.locator('[data-view="chat"]');
+    await expect(frame).toHaveAttribute('data-state', 'not-found');
+    // It is the agent that is missing, so the page says so and not that a conversation is.
+    await expect(frame.getByRole('heading', { level: 1 })).toHaveText(
+      VIEW_COPY.chat.notFoundByPattern?.['/chat/new']?.title ?? '',
+    );
   });
 
   test('stays on /chat/new with the row failed and a retry when the first run is refused', async ({

@@ -65,16 +65,16 @@ describe('bureau.deployment.get', () => {
       const body = await rpc(handler, 'bureau.deployment.get', {}, 'alice-key');
 
       expect(Object.keys(body.result ?? {}).toSorted()).toEqual([
+        'agents',
         'id',
         'operations',
-        'publishedAgents',
         'recovery',
         'state',
       ]);
       expect(body.result).toMatchObject({
         id: 'deployment-one',
         state: 'ready',
-        publishedAgents: [],
+        agents: ['default'],
       });
     });
   });
@@ -122,11 +122,11 @@ describe('bureau.deployment.get', () => {
     ).toEqual(['query', 'command', 'subscription', 'subscription']);
   });
 
-  it('reports a recovery that did not need to run, and the published agents by name', async () => {
-    await withBureau({ agents: { writer, hidden }, publish: ['writer'] }, async ({ handler }) => {
+  it('reports a recovery that did not need to run, and the agents by name', async () => {
+    await withBureau({ agents: { writer, hidden }, a2aAgents: ['writer'] }, async ({ handler }) => {
       const body = await rpc(handler, 'bureau.deployment.get', {}, 'alice-key');
 
-      expect(body.result?.['publishedAgents']).toEqual(['writer']);
+      expect(body.result?.['agents']).toEqual(['writer', 'hidden', 'default']);
       expect(body.result?.['recovery']).toEqual({
         status: expect.stringMatching(/^(clean|not-applicable)$/) as unknown,
         failedRunCount: 0,
@@ -183,9 +183,9 @@ describe('bureau.deployment.get', () => {
 });
 
 describe('bureau.agents.list', () => {
-  it('requires only authentication and lists published agents with name, display name, description, revision and state', async () => {
+  it('requires only authentication and lists every agent with name, display name, description, revision and A2A opt-in', async () => {
     await withBureau(
-      { agents: { writer, hidden, 'plain-agent': unnamed }, publish: ['writer', 'plain-agent'] },
+      { agents: { writer, 'plain-agent': unnamed }, a2aAgents: ['writer'] },
       async ({ handler }) => {
         const body = await rpc(handler, 'bureau.agents.list', {}, 'alice-key');
 
@@ -197,7 +197,7 @@ describe('bureau.agents.list', () => {
               description: 'Drafts documents',
               definitionRevision: expect.any(Number) as unknown,
               kind: 'code',
-              publishState: 'published',
+              a2a: true,
               media: null,
               tools: [],
             },
@@ -207,23 +207,37 @@ describe('bureau.agents.list', () => {
               description: null,
               definitionRevision: expect.any(Number) as unknown,
               kind: 'code',
-              publishState: 'published',
+              a2a: false,
+              media: null,
+              tools: [],
+            },
+            {
+              name: 'default',
+              displayName: 'default',
+              description: null,
+              definitionRevision: expect.any(Number) as unknown,
+              kind: 'code',
+              a2a: false,
               media: null,
               tools: [],
             },
           ],
         });
-        expect(JSON.stringify(body)).not.toContain('hidden');
         // The Agent Card URL is dropped until A2A arrives.
         expect(JSON.stringify(body)).not.toMatch(/https?:|agent-card/);
       },
     );
   });
 
-  it('lists nothing when the deployment publishes nothing', async () => {
+  it('lists an agent outside the A2A allowlist to a caller with no scope, with a2a false', async () => {
     await withBureau({ agents: { writer } }, async ({ handler }) => {
       const body = await rpc(handler, 'bureau.agents.list', {}, 'bob-key');
-      expect(body.result).toEqual({ agents: [] });
+      const agents = (body.result?.['agents'] ?? []) as Array<{ name: string; a2a: boolean }>;
+      const listed = agents.map((agent) => [agent.name, agent.a2a]);
+      expect(listed).toEqual([
+        ['writer', false],
+        ['default', false],
+      ]);
     });
   });
 });

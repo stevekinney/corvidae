@@ -5,8 +5,7 @@
  *
  * An agent is a Markdown file, and its identifier is the filename without `.md`. Every write names
  * the `hash` of the file the caller read, so a file that changed since is refused instead of
- * overwritten. `published` is changed only by {@link publishAgent} and {@link withdrawAgent}; an
- * update never carries it.
+ * overwritten. `a2a` (whether the agent opts into A2A) is part of the definition a save sends.
  */
 import { HttpClientError } from '@lostgradient/weft';
 import { z } from 'zod';
@@ -25,7 +24,7 @@ export const AGENT_IDENTIFIER_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 export const AGENT_IDENTIFIER_MAX_LENGTH = 64;
 
 /**
- * The agent's `skills` entry. The editor never edits one, but a save sends them back unchanged, so
+ * The agent's `skillDescriptors` entry. The editor never edits one, but a save sends them back unchanged, so
  * a key this page does not know is kept as it was read and never stripped.
  */
 const skillSchema = z.looseObject({
@@ -38,7 +37,7 @@ const skillSchema = z.looseObject({
   outputModes: z.array(z.string()).optional(),
 });
 
-/** An agent definition's `skills` entry, as the Bureau reads it back. */
+/** An agent definition's `skillDescriptors` entry, as the Bureau reads it back. */
 export type AgentSkill = z.infer<typeof skillSchema>;
 
 const definitionSchema = z.object({
@@ -47,13 +46,13 @@ const definitionSchema = z.object({
   model: z.string(),
   /**
    * The models a session of the agent may be switched to (COR-1559), or `null` when the file lists
-   * none. The editor never edits it, but a save sends it back unchanged, as it does `skills`: an
+   * none. The editor never edits it, but a save sends it back unchanged, as it does `skillDescriptors`: an
    * update that omits it removes the list.
    */
   models: z.array(z.string()).nullable().default(null),
   tools: z.array(z.string()),
-  skills: z.array(skillSchema),
-  published: z.boolean(),
+  skillDescriptors: z.array(skillSchema),
+  a2a: z.boolean(),
   instructions: z.string(),
 });
 
@@ -75,7 +74,7 @@ const detailSchema = z.object({
   state: z.enum(['ready', 'invalid']),
   name: z.string(),
   description: z.string().nullable(),
-  published: z.boolean(),
+  a2a: z.boolean(),
   hash: z.string().nullable(),
   problem: problemSchema.nullable(),
   definition: definitionSchema.nullable(),
@@ -119,8 +118,8 @@ const writeResultSchema = z.object({ id: z.string(), hash: z.string() });
 export type AgentWriteResult = z.infer<typeof writeResultSchema>;
 
 /**
- * What a caller supplies to create or update an agent. `published` is not part of it. An optional
- * key is left out, never sent as `undefined`.
+ * What a caller supplies to create or update an agent. An optional key is left out, never sent as
+ * `undefined`.
  */
 export type AgentDefinitionInput = {
   readonly name?: string;
@@ -132,7 +131,10 @@ export type AgentDefinitionInput = {
    */
   readonly models?: readonly string[] | null;
   readonly tools: readonly string[];
-  readonly skills: readonly AgentSkill[];
+  /** Carried through a save unchanged: the editor shows no control for them. */
+  readonly skillDescriptors: readonly AgentSkill[];
+  /** Whether the agent opts into A2A. Left out, an update keeps the file's value. */
+  readonly a2a?: boolean;
   readonly instructions: string;
 };
 
@@ -161,7 +163,7 @@ const listingSchema = z.object({
   state: z.enum(['ready', 'invalid']),
   name: z.string(),
   description: z.string().nullable(),
-  published: z.boolean(),
+  a2a: z.boolean(),
   hash: z.string().nullable(),
   problem: problemSchema.nullable(),
 });
@@ -224,28 +226,6 @@ export async function updateAgent(
 ): Promise<AgentWriteResult> {
   return writeResultSchema.parse(
     await callBureau('bureau.agents.definitions.update', { id, expectedHash, definition }, options),
-  );
-}
-
-/** Sets `published: true` in the agent's file, if it still hashes to `expectedHash`. */
-export async function publishAgent(
-  id: string,
-  expectedHash: string,
-  options?: Options,
-): Promise<AgentWriteResult> {
-  return writeResultSchema.parse(
-    await callBureau('bureau.agents.definitions.publish', { id, expectedHash }, options),
-  );
-}
-
-/** Sets `published: false` in the agent's file, if it still hashes to `expectedHash`. */
-export async function withdrawAgent(
-  id: string,
-  expectedHash: string,
-  options?: Options,
-): Promise<AgentWriteResult> {
-  return writeResultSchema.parse(
-    await callBureau('bureau.agents.definitions.withdraw', { id, expectedHash }, options),
   );
 }
 

@@ -393,14 +393,14 @@ describe('the lists and details the chat and agents views read', () => {
     expect(String(error)).toContain('contexts');
   });
 
-  test('listAgents returns the agents with their kind and publish state', async () => {
+  test('listAgents returns the agents with their kind and A2A opt-in', async () => {
     const agent = {
       name: 'internal',
       displayName: 'internal',
       description: null,
       definitionRevision: 1,
       kind: 'code',
-      publishState: 'unpublished',
+      a2a: false,
     };
     const stub = answering(result({ agents: [agent] }));
 
@@ -418,7 +418,7 @@ describe('the lists and details the chat and agents views read', () => {
       description: null,
       definitionRevision: 1,
       kind: 'code',
-      publishState: 'published',
+      a2a: false,
       media: {
         modalities: {},
         mimeFamilies: [],
@@ -445,7 +445,7 @@ describe('the lists and details the chat and agents views read', () => {
       description: null,
       definitionRevision: 1,
       kind: 'code',
-      publishState: 'published',
+      a2a: false,
       media,
     };
 
@@ -460,7 +460,7 @@ describe('the lists and details the chat and agents views read', () => {
       description: null,
       definitionRevision: 1,
       kind: 'code',
-      publishState: 'published',
+      a2a: false,
     };
     const wire = [
       { ...base, name: 'busy', tools: ['search-web', 'send-mail'] },
@@ -484,7 +484,7 @@ describe('the lists and details the chat and agents views read', () => {
       description: null,
       definitionRevision: 1,
       kind: 'code',
-      publishState: 'published',
+      a2a: false,
       tools,
     };
 

@@ -1095,14 +1095,11 @@ describe('door refusals are one-event streams', () => {
     return frames[0]!.event as { code: string; message: string };
   };
 
-  it('answers an agent that is not published like an unknown thread', async () => {
+  it('answers an agent the Bureau does not have like an unknown thread', async () => {
     await withHarness({ script: [say('x')] }, async (harness) => {
-      const unpublished = await refusal(
-        harness,
-        startRequest(runAgentInput(), {}, 'not-published'),
-      );
+      const missing = await refusal(harness, startRequest(runAgentInput(), {}, 'no-such-agent'));
 
-      expect(unpublished.code).toBe('THREAD_NOT_FOUND');
+      expect(missing.code).toBe('THREAD_NOT_FOUND');
     });
   });
 

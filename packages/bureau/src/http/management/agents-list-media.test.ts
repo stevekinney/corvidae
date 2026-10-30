@@ -31,7 +31,7 @@ describe('bureau.agents.list media', () => {
       },
     });
     const response = await callAs(served.local, 'bureau.agents.list', {});
-    // Only `alpha` is in the fixture's `publish` allowlist; the local caller sees the rest too.
+    // Only `alpha` is in the fixture's A2A allowlist; the list holds the rest too.
     const byName = new Map(listOf(response, 'agents').map((entry) => [entry['name'], entry]));
 
     expect(byName.get('alpha')?.['media']).toBeNull();
@@ -53,7 +53,7 @@ describe('the bureau.agents.list output schema (COR-1548)', () => {
     description: null,
     definitionRevision: 1,
     kind: 'code',
-    publishState: 'published',
+    a2a: true,
     media: {
       modalities: { image: { input: true, output: false } },
       mimeFamilies: ['image'],

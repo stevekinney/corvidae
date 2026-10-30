@@ -1366,7 +1366,7 @@ describe('two requests that answer the same interrupts differently at once', () 
   });
 });
 
-describe('a resume through the route of another published agent', () => {
+describe('a resume through the route of another agent', () => {
   const throughOther = (entries: ResumeEntry[], runId: string) =>
     startRequest(runAgentInput({ runId, messages: [], resume: entries }), {}, 'other');
 

@@ -1,7 +1,28 @@
 /** Shared fixtures for the Bureau A2A mount tests: a Bureau serving agents, and JSON-RPC calls. */
 import { createAgent, type GenerateFunction } from '@lostgradient/operative';
 
+import type { AgentDefinitions, BureauAgentCatalog } from '../agent-catalog.ts';
 import { type OpenedBureau, openBureau } from './management/management-fixtures.test-support.ts';
+
+/**
+ * Rewrites a persisted agent's file with `a2a: false`, the way an editor turns the opt-in off,
+ * and rescans so the mount sees it. Throws when the agent has no readable file.
+ */
+export async function optOutOfA2A(
+  agents: Pick<BureauAgentCatalog<AgentDefinitions>, 'detail' | 'update' | 'refresh'>,
+  id: string,
+): Promise<void> {
+  const detail = await agents.detail(id);
+  if (detail?.definition == null || detail.definitionHash === undefined) {
+    throw new Error(`expected the file of agent "${id}"`);
+  }
+  await agents.update(
+    id,
+    { ...detail.definition, a2a: false },
+    { expectedHash: detail.definitionHash },
+  );
+  await agents.refresh();
+}
 
 export const PUBLIC_URL = 'http://localhost';
 export const BUREAU_ID = 'management-bureau';
@@ -37,7 +58,7 @@ export async function withA2A<T>(
   agents: Record<string, GenerateFunction>,
   body: (opened: OpenedBureau) => Promise<T>,
   options: {
-    publish?: readonly string[];
+    a2aAgents?: readonly string[];
     handlerOptions?: NonNullable<Parameters<typeof openBureau>[0]>['handlerOptions'];
   } = {},
 ): Promise<T> {
@@ -48,7 +69,7 @@ export async function withA2A<T>(
         createAgent({ name, description: `The ${name} agent`, generate }),
       ]),
     ),
-    publish: options.publish ?? Object.keys(agents),
+    a2aAgents: options.a2aAgents ?? Object.keys(agents),
     handlerOptions: { publicUrl: PUBLIC_URL, ...options.handlerOptions },
   });
   try {

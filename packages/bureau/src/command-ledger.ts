@@ -4,7 +4,7 @@
  * ## The ledger
  *
  * A command ledger entry is keyed by `(callerId, target, requestId,
- * operationVersion)`: the authenticated caller, the published agent the
+ * operationVersion)`: the authenticated caller, the agent the
  * command addresses, the idempotency key that caller supplied on the request
  * itself, and the version of the operation's contract. One request id sent to
  * two agents is therefore two commands, not a conflict. Each entry stores a
@@ -42,7 +42,7 @@
  * ## Run creation
  *
  * {@link createRunCreationLedger} applies the ledger to `tasks.start`. The
- * identity's target is the published agent the run is for, and its request
+ * identity's target is the agent the run is for, and its request
  * id is the caller-supplied `commandId`, because no run exists to
  * key on until the command has run. A claim carries the run and session
  * identifiers minted for the attempt, so a retry that finds a pending entry
@@ -112,7 +112,7 @@ export const COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS = 86_400_000;
 /** Who issued a command, which command it was, and under which contract version. */
 export interface CommandLedgerIdentity {
   readonly callerId: string;
-  /** The resource the command addresses: for run creation, the published agent's name. */
+  /** The resource the command addresses: for run creation, the agent's name. */
   readonly target: string;
   readonly requestId: string;
   readonly operationVersion: string;
@@ -797,7 +797,7 @@ export function digestCommandPayload(
 
 /**
  * What decides which run a run-creation request creates, with every default
- * already resolved to the value the run will use. The caller, the published
+ * already resolved to the value the run will use. The caller, the
  * agent, and the request id are the identity, not the payload, and the
  * request context carries per-attempt credentials and tracing that
  * legitimately differ between retries, so none of them belong here.
@@ -958,7 +958,7 @@ export interface RunCreationObservation {
 /** One run-creation request's identity and payload, with what it would claim. */
 export interface BeginRunCreationInput {
   readonly callerId: string;
-  /** The published agent the run is for: part of the identity, not the payload. */
+  /** The agent the run is for: part of the identity, not the payload. */
   readonly agentName: string;
   readonly requestId: string;
   readonly payloadDigest: string;

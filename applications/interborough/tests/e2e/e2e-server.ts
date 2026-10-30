@@ -29,12 +29,7 @@ import { seed, workflows } from '../../fixtures/workflows.ts';
 import { buildApplication } from '../../scripts/build.ts';
 import { fakeProvider, writeProviderHome } from '../../src/host/fake-provider.test-support.ts';
 import { startHost } from '../../src/host/host.ts';
-import {
-  BARRIER_AGENT_NAME,
-  BARRIER_SHORT_AGENT_NAME,
-  createBarrier,
-  createBarrierAgents,
-} from './barrier-agent.ts';
+import { createBarrier, createBarrierAgents } from './barrier-agent.ts';
 import {
   E2E_BARRIER_PORT,
   E2E_BUREAU_PORT,
@@ -49,25 +44,13 @@ import {
   E2E_RECONNECT_GRACE_PERIOD_MS,
   E2E_TASK_OPERATION_ID,
 } from './e2e-constants.ts';
-import { createEchoAgents, IMAGE_ECHO_AGENT_NAME } from './echo-agent.ts';
-import {
-  createJourneyProviderResolver,
-  createRecallAgents,
-  RECALL_AGENT_NAME,
-} from './journey-agent.ts';
+import { createEchoAgents } from './echo-agent.ts';
+import { createJourneyProviderResolver, createRecallAgents } from './journey-agent.ts';
 import { seedLedgerEvidence } from './ledger-evidence-seed.ts';
-import { createModelAgents, SINGLE_MODEL_AGENT_NAME } from './model-agents.ts';
-import {
-  createQuestionAgents,
-  QUESTION_AND_APPROVAL_AGENT_NAME,
-  TWO_QUESTIONS_AGENT_NAME,
-} from './question-agents.ts';
+import { createModelAgents } from './model-agents.ts';
+import { createQuestionAgents } from './question-agents.ts';
 import { SEEDED_WORKFLOW_FILES } from './seeded-workflow-files.ts';
-import {
-  createTextEchoAgents,
-  TEXT_ECHO_AGENT_NAME,
-  TEXT_ECHO_SOLO_AGENT_NAME,
-} from './text-echo-agent.ts';
+import { createTextEchoAgents } from './text-echo-agent.ts';
 import { seedVersionedRuns } from './versioned-run-seed.ts';
 
 const scratch = await mkdtemp(join(tmpdir(), 'interborough-e2e-'));
@@ -104,7 +87,7 @@ function createFixtureEngine() {
 
 // The host takes any engine; the fixtures want the typed one, so it is kept as it is created.
 let fixtureEngine: Awaited<ReturnType<typeof createFixtureEngine>> | undefined;
-// Two agents whose first step waits until a spec releases it (`barrier-agent.ts`), published
+// Two agents whose first step waits until a spec releases it (`barrier-agent.ts`), added
 // beside the seeded ones. Every chat case that needs a run still in progress uses them. A third,
 // the image echo (`echo-agent.ts`), takes an attached image and sends it back. Two more, the text echoes
 // (`text-echo-agent.ts`), answer with what they were sent, so a memory spec can store a memory that
@@ -119,16 +102,6 @@ const host = await startHost({
       ...createQuestionAgents(),
       ...createModelAgents(),
     },
-    published: [
-      BARRIER_AGENT_NAME,
-      BARRIER_SHORT_AGENT_NAME,
-      IMAGE_ECHO_AGENT_NAME,
-      SINGLE_MODEL_AGENT_NAME,
-      TEXT_ECHO_AGENT_NAME,
-      TEXT_ECHO_SOLO_AGENT_NAME,
-      TWO_QUESTIONS_AGENT_NAME,
-      QUESTION_AND_APPROVAL_AGENT_NAME,
-    ],
   },
   environment: { INTERBOROUGH_HOME: home },
   resolveProviderGenerate: provider.resolver,
@@ -279,12 +252,6 @@ const journeyHost = await startHost({
       ...createEchoAgents(),
       ...createRecallAgents(),
     },
-    published: [
-      BARRIER_AGENT_NAME,
-      BARRIER_SHORT_AGENT_NAME,
-      IMAGE_ECHO_AGENT_NAME,
-      RECALL_AGENT_NAME,
-    ],
   },
   environment: { INTERBOROUGH_HOME: journeyHome },
   resolveProviderGenerate: createJourneyProviderResolver(
