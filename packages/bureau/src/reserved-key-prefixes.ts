@@ -1,10 +1,18 @@
 /**
  * Every storage key prefix Bureau writes, so a storage explorer or an
- * embedding application can tell Bureau-owned keys from its own. Each value is
- * the literal a source constant declares, so a prefix that omits its trailing
- * separator here omits it there. `reserved-key-prefixes.test.ts` scans the
- * source and fails when a key-prefix constant is missing from this list or a
- * listed prefix is no longer written, so a new prefix cannot ship unlisted.
+ * embedding application can tell Bureau-owned keys from its own. An entry
+ * matches a key by `startsWith`, so a few entries are whole keys rather than
+ * prefixes: `settings`, `outbox-dedupe-reconciliation-pending`, and
+ * `bureau-a2a-push-fingerprint-key:v1`. Each value is the literal a source
+ * constant or call declares, so a prefix that omits its trailing separator here
+ * omits it there. The keys the durable engine and the session store write into
+ * the same storage (`wf:`, `ev:`, `agent-session:`, and the like) belong to
+ * Weft and Operative and are not listed.
+ *
+ * `reserved-key-prefixes.test.ts` guards the list from both sides. A scan of the
+ * source fails when a key constant or a `keyPrefix` argument is missing from
+ * this list or a listed entry is no longer written, and a run of a real Bureau
+ * fails when it writes a key that no entry covers.
  */
 export const BUREAU_RESERVED_KEY_PREFIXES: readonly string[] = [
   'asset:v1:',
@@ -14,6 +22,7 @@ export const BUREAU_RESERVED_KEY_PREFIXES: readonly string[] = [
   'audit-sequence:v1:',
   'bureau-a2a-context:v1:',
   'bureau-a2a-push:v1:',
+  'bureau-a2a-push-fingerprint-key:v1',
   'bureau-a2a-task:v1:',
   'bureau-agent-revision:v1:',
   'bureau-agent-run:v1:',
@@ -36,15 +45,18 @@ export const BUREAU_RESERVED_KEY_PREFIXES: readonly string[] = [
   'bureau-workflow-snapshot:v1:',
   'ag-ui-lease:v1',
   'command-ledger:a2a-send:v1',
+  'command-ledger:ag-ui-resume:v1',
   'command-ledger:fork:v1',
   'command-ledger:tasks-respond:v1',
   'command-ledger:v1',
   'outbox-dedupe:',
+  'outbox-dedupe-reconciliation-pending',
   'proposal:',
   'review-decision:v1',
   'session-deletion-owner:v1:',
   'session-input-identity:v1',
   'session-input-open:v2:',
+  'settings',
   'skill:',
   'steering-key:v1',
   'steering-log:v1',
