@@ -23,9 +23,13 @@
  * `source` is Armorer's `ToolSourceDescription` (`armorer/tool-sources`): plain JSON that names a
  * credential and never holds one. The credential's value is kept encrypted, apart from this file
  * (`tool-source-vault.ts`). Fields of the host's own sit beside `source`, never inside it, because
- * Armorer parses a description strictly. `tools` is reserved for them, keyed by the tool's own
- * (unqualified) name; it holds no field yet, and a field it does not know is refused rather than
- * ignored.
+ * Armorer parses a description strictly. `tools` holds them per tool, keyed by the tool's own
+ * (raw, unqualified) name as the server lists it, never by the `<id>__<tool>` name an agent file
+ * uses: the raw name is stable across the naming rules below, which a later change may alter. It
+ * has one field, `acceptsSecrets` (a boolean, off unless `true`): the host sets the tool's
+ * `metadata.acceptsSecrets` from it when the source loads, which is what lets Armorer give the tool
+ * the plaintext of a secret answer (COR-1816). A field it does not know is refused rather than
+ * ignored. A name the server does not list is not an error: the source reports it as a diagnostic.
  *
  * ## Tool names
  *
@@ -80,8 +84,14 @@ export const TOOL_NAME_SEPARATOR = '__';
 /** The longest tool name the host offers: the shortest limit among the model providers. */
 export const MAXIMUM_TOOL_NAME_LENGTH = 64;
 
-/** The host's own settings for one tool of a source. It holds no field yet. */
-export type ConfiguredToolSettings = Readonly<Record<never, never>>;
+/** The host's own settings for one tool of a source. */
+export type ConfiguredToolSettings = {
+  /**
+   * Whether the tool may receive the plaintext of a secret answer. Off unless `true`; the host
+   * sets `metadata.acceptsSecrets` on the tool from it (COR-1816).
+   */
+  readonly acceptsSecrets?: boolean;
+};
 
 /** One saved tool source. */
 export type ConfiguredToolSource = {
@@ -211,13 +221,23 @@ function parseEntry(entry: unknown, location: string, field: string): Configured
         );
       }
       for (const key of Object.keys(settings)) {
+        if (key !== 'acceptsSecrets') {
+          throw new ProviderConfigurationError(
+            location,
+            `${field}.tools.${name}.${key}`,
+            'not a known field.',
+          );
+        }
+      }
+      const acceptsSecrets = settings['acceptsSecrets'];
+      if (acceptsSecrets !== undefined && typeof acceptsSecrets !== 'boolean') {
         throw new ProviderConfigurationError(
           location,
-          `${field}.tools.${name}.${key}`,
-          'not a known field.',
+          `${field}.tools.${name}.acceptsSecrets`,
+          'expected true or false.',
         );
       }
-      tools.set(name, Object.freeze({}));
+      tools.set(name, Object.freeze(acceptsSecrets === undefined ? {} : { acceptsSecrets }));
     }
   }
   return { source, tools };

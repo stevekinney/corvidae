@@ -51,6 +51,27 @@ describe('toolSources', () => {
     expect(parseToolSourcesConfiguration(serializeToolSources(parsed), location)).toEqual(parsed);
   });
 
+  test('reads acceptsSecrets per tool by its raw name, off unless true, and writes it back', () => {
+    const parsed = parseToolSourcesConfiguration(
+      [
+        {
+          source: pets,
+          tools: {
+            'list-pets': { acceptsSecrets: true },
+            'get.pet': { acceptsSecrets: false },
+            plain: {},
+          },
+        },
+      ],
+      location,
+    );
+    const tools = parsed[0]?.tools;
+    expect(tools?.get('list-pets')?.acceptsSecrets).toBe(true);
+    expect(tools?.get('get.pet')?.acceptsSecrets).toBe(false);
+    expect(tools?.get('plain')?.acceptsSecrets).toBeUndefined();
+    expect(parseToolSourcesConfiguration(serializeToolSources(parsed), location)).toEqual(parsed);
+  });
+
   test('refuses what it cannot use, naming the field and never a value', () => {
     const cases: [unknown, string][] = [
       [{}, 'toolSources'],
@@ -65,9 +86,14 @@ describe('toolSources', () => {
       [[{ source: pets }, { source: pets }], 'toolSources[1].source.id'],
       [[{ source: pets, tools: [] }], 'toolSources[0].tools'],
       [[{ source: pets, tools: { 'list-pets': 1 } }], 'toolSources[0].tools.list-pets'],
-      // A field no tool setting has yet: refused rather than ignored.
+      // A field no tool setting has: refused rather than ignored.
       [
-        [{ source: pets, tools: { 'list-pets': { acceptsSecrets: true } } }],
+        [{ source: pets, tools: { 'list-pets': { acceptsSecret: true } } }],
+        'toolSources[0].tools.list-pets.acceptsSecret',
+      ],
+      // `acceptsSecrets` is a boolean and nothing else: a string like "false" must not read as on.
+      [
+        [{ source: pets, tools: { 'list-pets': { acceptsSecrets: 'false' } } }],
         'toolSources[0].tools.list-pets.acceptsSecrets',
       ],
       [
