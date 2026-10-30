@@ -4,6 +4,7 @@ import type { ImportedToolConfiguration } from '../../toolbox-type-inference';
 import { isAsyncIterable } from '../../type-guards';
 import type { ToolCallInput, ToolResultLike } from '../../types';
 import { importToolSchema } from '../imported-schema';
+import { toProviderToolName } from '../provider-tool-names';
 import {
   type AdapterInput,
   isSingleInput,
@@ -22,6 +23,18 @@ export type {
   AnthropicToolUseBlock,
   JSONSchemaProperty,
 } from './types';
+
+/** Options for {@link toAnthropicTools}. */
+export interface AnthropicAdapterOptions {
+  /**
+   * Strategy for naming tools in Anthropic format.
+   * - 'default': Use the tool name (identity.name).
+   * - 'safe-id': Use the tool ID (`namespace:name@version`) encoded as a legal provider name,
+   *   which keeps same-named tools from different namespaces apart. Pass
+   *   `createProviderToolNameMapper(tools)` to `parseAnthropicToolCalls` to map a call back to the id.
+   */
+  naming?: 'default' | 'safe-id';
+}
 
 /**
  * Converts Toolbox tools to Anthropic Messages API format.
@@ -47,15 +60,28 @@ export type {
  * });
  * ```
  */
-export function toAnthropicTools(tool: SerializedToolDefinition | AnyToolDefinition): AnthropicTool;
+export function toAnthropicTools(
+  tool: SerializedToolDefinition | AnyToolDefinition,
+  options?: AnthropicAdapterOptions,
+): AnthropicTool;
 export function toAnthropicTools(
   tools: (SerializedToolDefinition | AnyToolDefinition)[],
+  options?: AnthropicAdapterOptions,
 ): AnthropicTool[];
-export function toAnthropicTools(registry: ToolRegistryLike): AnthropicTool[];
-export function toAnthropicTools(input: AdapterInput): AnthropicTool | AnthropicTool[];
-export function toAnthropicTools(input: AdapterInput): AnthropicTool | AnthropicTool[] {
+export function toAnthropicTools(
+  registry: ToolRegistryLike,
+  options?: AnthropicAdapterOptions,
+): AnthropicTool[];
+export function toAnthropicTools(
+  input: AdapterInput,
+  options?: AnthropicAdapterOptions,
+): AnthropicTool | AnthropicTool[];
+export function toAnthropicTools(
+  input: AdapterInput,
+  options?: AnthropicAdapterOptions,
+): AnthropicTool | AnthropicTool[] {
   const definitions = normalizeToSerializedDefinitions(input);
-  const converted = definitions.map(convertToAnthropic);
+  const converted = definitions.map((definition) => convertToAnthropic(definition, options));
 
   return isSingleInput(input) ? converted[0]! : converted;
 }
@@ -70,7 +96,14 @@ export function fromAnthropicTools(
   return Array.isArray(input) ? converted : converted[0]!;
 }
 
-export function parseAnthropicToolCalls(contentBlocks: unknown): ToolCallInput[] {
+/**
+ * Parses Anthropic `tool_use` blocks into tool calls. Pass `mapName` (from
+ * `createProviderToolNameMapper`) when the tools were exported with `naming: 'safe-id'`.
+ */
+export function parseAnthropicToolCalls(
+  contentBlocks: unknown,
+  mapName?: (name: string) => string,
+): ToolCallInput[] {
   const resolvedContentBlocks = extractAnthropicContentBlocks(contentBlocks);
   if (!resolvedContentBlocks || !Array.isArray(resolvedContentBlocks)) {
     return [];
@@ -78,7 +111,7 @@ export function parseAnthropicToolCalls(contentBlocks: unknown): ToolCallInput[]
 
   return resolvedContentBlocks.flatMap((contentBlock: unknown) => {
     if (!isAnthropicToolUseBlock(contentBlock)) return [];
-    return [convertToolUseBlock(contentBlock)];
+    return [convertToolUseBlock(contentBlock, mapName)];
   });
 }
 
@@ -116,7 +149,10 @@ export async function formatAnthropicToolResultsAsync(
   );
 }
 
-function convertToAnthropic(tool: SerializedToolDefinition): AnthropicTool {
+function convertToAnthropic(
+  tool: SerializedToolDefinition,
+  options?: AnthropicAdapterOptions,
+): AnthropicTool {
   const params = tool.input as Record<string, unknown>;
 
   const inputSchema: AnthropicTool['input_schema'] = {
@@ -133,7 +169,7 @@ function convertToAnthropic(tool: SerializedToolDefinition): AnthropicTool {
   }
 
   return {
-    name: tool.identity.name,
+    name: options?.naming === 'safe-id' ? toProviderToolName(tool.id) : tool.identity.name,
     description: tool.display.description,
     input_schema: inputSchema,
   };
@@ -147,10 +183,13 @@ function convertFromAnthropic(tool: AnthropicTool): ImportedToolConfiguration {
   };
 }
 
-function convertToolUseBlock(contentBlock: AnthropicToolUseBlock): ToolCallInput {
+function convertToolUseBlock(
+  contentBlock: AnthropicToolUseBlock,
+  mapName: ((name: string) => string) | undefined,
+): ToolCallInput {
   return {
     id: contentBlock.id,
-    name: contentBlock.name,
+    name: mapName ? mapName(contentBlock.name) : contentBlock.name,
     arguments: normalizeToolArguments(contentBlock.input),
   };
 }

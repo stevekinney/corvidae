@@ -119,7 +119,7 @@ describe('registry internal coverage', () => {
     const registry = {
       tools: () => [tool],
       register: () => registry,
-      getTool: (name: string) => (name === tool.name ? tool : undefined),
+      getTool: (name: string) => (name === tool.id ? tool : undefined),
     };
 
     registerRegistryEmbedder(
@@ -151,8 +151,7 @@ describe('registry internal coverage', () => {
     const registry = {
       tools: () => [existing, added],
       register: () => registry,
-      getTool: (name: string) =>
-        name === existing.name || name === added.name ? added : undefined,
+      getTool: (name: string) => (name === existing.id || name === added.id ? added : undefined),
     };
     warmToolEmbeddings(existing, constantEmbedding);
     warmToolEmbeddings(added, constantEmbedding);
