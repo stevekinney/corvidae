@@ -60,7 +60,7 @@ describe('bureau.contexts.rename', () => {
 
       const renamed = await rename(opened, 'alice-key', run.contextId, '  Trip planning  ');
 
-      expect(renamed.result).toMatchObject({ id: run.contextId, title: 'Trip planning' });
+      expect(renamed.result).toEqual({ contextId: run.contextId, title: 'Trip planning' });
       const listed = await rpc(opened.handler, 'bureau.contexts.list', {}, 'alice-key');
       const contexts = (listed.result?.['contexts'] ?? []) as { title: string }[];
       const titles = contexts.map((context) => context.title);
@@ -74,7 +74,7 @@ describe('bureau.contexts.rename', () => {
 
       const cleared = await rename(opened, 'alice-key', run.contextId, null);
 
-      expect(cleared.result).toMatchObject({ title: 'the opening question' });
+      expect(cleared.result).toEqual({ contextId: run.contextId, title: null });
       expect(await readContext(opened, 'alice-key', run.contextId)).toMatchObject({
         title: 'the opening question',
       });
@@ -112,7 +112,9 @@ describe('bureau.contexts.rename', () => {
       ];
 
       expect(second.result).toEqual(first.result);
-      for (const body of clearedTwice) expect(body.result).toMatchObject({ title: 'q' });
+      for (const body of clearedTwice)
+        expect(body.result).toEqual({ contextId: run.contextId, title: null });
+      expect(await readContext(opened, 'alice-key', run.contextId)).toMatchObject({ title: 'q' });
     });
   });
 
@@ -128,10 +130,10 @@ describe('bureau.contexts.rename', () => {
         title: 'q',
       });
       const longest = await rename(opened, 'alice-key', run.contextId, 'x'.repeat(200));
-      expect(longest.result).toMatchObject({ title: 'x'.repeat(200) });
+      expect(longest.result).toEqual({ contextId: run.contextId, title: 'x'.repeat(200) });
       // Trimmed before the length is judged on the wire, as `Bureau.contexts.rename` does.
       const padded = await rename(opened, 'alice-key', run.contextId, `  ${'y'.repeat(200)}  `);
-      expect(padded.result).toMatchObject({ title: 'y'.repeat(200) });
+      expect(padded.result).toEqual({ contextId: run.contextId, title: 'y'.repeat(200) });
     });
   });
 
@@ -160,8 +162,15 @@ describe('bureau.contexts.rename', () => {
 
       const renamed = await rename(opened, 'contexts-writer-key', run.contextId, 'by an operator');
 
-      expect(renamed.result).toMatchObject({ id: run.contextId, owner: OWNER.alice });
-      expect(renamed.result?.['title']).toBe('by an operator');
+      // A receipt and nothing of the context: the writer holds no read scope, so it is not shown
+      // the preview, the owner, or the title the first message derived.
+      expect(renamed.result).toEqual({ contextId: run.contextId, title: 'by an operator' });
+      const cleared = await rename(opened, 'contexts-writer-key', run.contextId, null);
+      expect(cleared.result).toEqual({ contextId: run.contextId, title: null });
+      expect(JSON.stringify(cleared)).not.toContain('alice’s');
+      expect(JSON.stringify(cleared)).not.toContain('Done.');
+      const read = await getOf(opened, 'contexts-writer-key', run.contextId);
+      expect(read.error?.data?.httpStatus).toBe(404);
     });
   });
 

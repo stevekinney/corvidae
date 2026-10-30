@@ -1020,13 +1020,8 @@ describe('transcripts stay inside the Bureau', () => {
           expect(status).toBe(200);
           expect(await response.clone().text()).toContain(alice.reviewId);
         }
-        if (
-          operation.name === 'bureau.contexts.list' ||
-          operation.name === 'bureau.contexts.get' ||
-          operation.name === 'bureau.contexts.rename'
-        ) {
-          // The title is the first user message, the one place a context carries its text; a
-          // rename answers the renamed context's summary, so it carries it too.
+        if (operation.name === 'bureau.contexts.list' || operation.name === 'bureau.contexts.get') {
+          // The title is the first user message, the one place a context carries its text.
           const text = await response.text();
           expect(text).toContain(`alice ${SENTINEL}`);
           bodies.push(text.replaceAll(`alice ${SENTINEL}`, '<title>'));

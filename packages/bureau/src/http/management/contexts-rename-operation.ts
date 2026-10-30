@@ -6,6 +6,9 @@
  * a title of the caller's choosing in the session's metadata, and every summary shows it in place
  * of the derived one until it is cleared. Authorization is the delete operation's: the owner, or a
  * caller holding `bureau.contexts:write`, and anyone else is answered as for a missing context.
+ * Because `bureau.contexts:write` does not imply `bureau.contexts:read`, the answer is a receipt of
+ * what was stored and never the context's summary, which would show a write-only caller the
+ * preview and the title derived from another owner's messages.
  *
  * @module contexts-rename-operation
  */
@@ -13,16 +16,15 @@
 import {
   SESSION_TITLE_OVERRIDE_LIMIT,
   sessionOwnerOf,
-  summarizeSession,
+  sessionTitleOverrideOf,
 } from '@lostgradient/operative';
 import { defineOperation, type OperationFault } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import { BureauError, BureauShuttingDownError } from '../../create-bureau.ts';
-import type { TaskRegistry } from '../../task-registry.ts';
 import type { BureauContexts, BureauInternals } from '../../types.ts';
 import { type BureauOwnershipHost } from '../owner-predicate.ts';
-import { contextSummarySchema, noSessions, projectContext } from './contexts-operations.ts';
+import { noSessions } from './contexts-operations.ts';
 import {
   resourceNotFound,
   unaryTransports as transports,
@@ -34,7 +36,6 @@ export type BureauContextsRenameOperationHost = BureauOwnershipHost & {
   readonly contexts: Pick<BureauContexts, 'get' | 'rename'> & {
     readonly internals: Pick<BureauInternals, 'sessionStore'>;
   };
-  readonly tasks: Pick<TaskRegistry, 'activityOf'>;
 };
 
 const contextsRenameInput = z.object({
@@ -50,20 +51,27 @@ const contextsRenameInput = z.object({
     ),
 });
 
+/** What `bureau.contexts.rename` answers with: the identifier, and the title now stored. */
+export const contextRenameReceiptSchema = z.object({
+  contextId: z.string(),
+  /** The title now stored, or `null` when it was removed and the derived title shows again. */
+  title: z.string().nullable(),
+});
+
 export const contextsRenameOperation = defineOperation<
   typeof contextsRenameInput,
-  typeof contextSummarySchema,
+  typeof contextRenameReceiptSchema,
   BureauContextsRenameOperationHost
 >({
   name: 'bureau.contexts.rename',
   mcpExposable: false,
   summary: 'Rename a context',
   description:
-    'Gives one of the caller’s own contexts a `title`, which `bureau.contexts.list` and `get` show in place of the one derived from its first message, and which `titleContains` matches; a caller holding `bureau.contexts:write` renames any owner’s. `title: null` removes it, and the derived title returns. A rename is not activity: the context’s `updatedAt`, and so its place in a listing, does not move. Setting the title a context already has is not an error, so a retry is safe. A blank title and one over 200 characters are `InvalidParams`. Another owner’s context and a missing one answer `NotFound`. A Bureau that is shutting down is `Unavailable` with reason `shutting-down`. Answers the renamed context’s summary. The call writes no audit entry.',
+    'Gives one of the caller’s own contexts a `title`, which `bureau.contexts.list` and `get` show in place of the one derived from its first message, and which `titleContains` matches; a caller holding `bureau.contexts:write` renames any owner’s. `title: null` removes it, and the derived title returns. A rename is not activity: the context’s `updatedAt`, and so its place in a listing, does not move. Setting the title a context already has is not an error, so a retry is safe. A blank title and one over 200 characters are `InvalidParams`. Another owner’s context and a missing one answer `NotFound`. A Bureau that is shutting down is `Unavailable` with reason `shutting-down`. Answers a receipt, `{ contextId, title }`, with the title now stored (`null` once removed) and nothing else of the context: read it with `bureau.contexts.get`, which needs `bureau.contexts:read` for another owner’s. The call writes no audit entry.',
   destructive: false,
   tags: ['Contexts'],
   inputSchema: contextsRenameInput,
-  outputSchema: contextSummarySchema,
+  outputSchema: contextRenameReceiptSchema,
   producibleFaults: ['InvalidParams', 'NotFound', 'UnsupportedCapability', 'Unavailable'],
   access: { kind: 'authenticated' },
   discoverable: true,
@@ -108,10 +116,6 @@ export const contextsRenameOperation = defineOperation<
     }
     // The id holds another incarnation now (or none): the context authorized is gone.
     if (renamed === undefined) throw resourceNotFound('context', contextId);
-    const activity = await host.tasks.activityOf(
-      [contextId],
-      new Map([[contextId, renamed.incarnation]]),
-    );
-    return projectContext(summarizeSession(renamed), activity.get(contextId));
+    return { contextId, title: sessionTitleOverrideOf(renamed.metadata) };
   },
 });

@@ -206,7 +206,7 @@ export const contextDetailSchema = contextSummarySchema.extend({
   configVersion: z.number().int().nonnegative(),
 });
 
-export function projectContext(
+function projectContext(
   summary: SessionSummary,
   activity: ContextActivity | undefined,
 ): z.infer<typeof contextSummarySchema> {
