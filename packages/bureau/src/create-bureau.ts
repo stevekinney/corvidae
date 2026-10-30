@@ -14260,11 +14260,11 @@ async function constructBureau<const D extends AgentDefinitions>(
       // command settles to that failure rather than staying pending, so a retry is refused alike.
       if (!(error instanceof ForkThroughMessageError)) throw error;
       // A fork before the first message names no message: the parent itself is what went away.
-      if (error.messageId === null) {
-        throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
-      }
       const failure: ForkLedgerFailure = {
-        failure: { reason: 'message-not-found', message: error.message },
+        failure:
+          error.messageId === null
+            ? { reason: 'context-not-found', message: error.message }
+            : { reason: 'message-not-found', message: error.message },
       };
       await forkLedger.complete(outcome.entry, failure);
       return answerOfFork(failure);
@@ -14348,6 +14348,9 @@ async function constructBureau<const D extends AgentDefinitions>(
   /** What a ledger result answers: the fork, or the refusal the command settled to. */
   function answerOfFork(result: ForkLedgerResult): ForkSessionResult {
     if ('failure' in result) {
+      if (result.failure.reason === 'context-not-found') {
+        throw new BureauError(result.failure.message, 'NOT_FOUND');
+      }
       throw new SessionForkRefusedError(result.failure.reason, result.failure.message);
     }
     return structuredClone(result);

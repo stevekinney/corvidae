@@ -281,6 +281,24 @@ describe('editing a sent message: a fork before it, then the new input', () => {
     expect(error).toMatchObject({ code: 'NOT_FOUND' });
     expect(await bureau.contexts.get(run.contextId)).toBeUndefined();
     expect(await sessionCount(bureau)).toBe(0);
+    // The command settled instead of staying pending, so a retry is answered the same way.
+    const ledger = createForkLedger(bureau.internals.kv, {
+      clock: { now: () => Date.now(), nowISO: () => new Date().toISOString() },
+      identifiers: { next: () => crypto.randomUUID() },
+    });
+    const located = await ledger.locate({
+      callerId: ALICE,
+      target: run.contextId,
+      requestId: 'fork-1',
+      operationVersion: FORK_OPERATION_VERSION,
+    });
+    expect(located.state === 'retained' ? located.entry.state : located.state).toBe('completed');
+    const retry = await fork(bureau, run.contextId, null).then(
+      () => undefined,
+      (thrown: unknown) => thrown,
+    );
+    expect(retry).toMatchObject({ code: 'NOT_FOUND' });
+    expect(await sessionCount(bureau)).toBe(0);
   });
 
   it('edits the first message: a root fork, then the edited text runs, and the original is unchanged', async () => {
@@ -537,6 +555,8 @@ describe('a message that is not a branch point', () => {
     readonly id: string;
     readonly role: 'user' | 'assistant' | 'tool-call' | 'tool-result';
     readonly content?: string;
+    /** Content parts instead of text, as a step that only thought stores. */
+    readonly parts?: readonly Record<string, unknown>[];
     readonly call?: string;
   };
 
@@ -551,7 +571,7 @@ describe('a message that is not a branch point', () => {
     for (const row of rows) {
       conversation.appendMessages({
         role: row.role,
-        content: row.content ?? '',
+        content: row.parts ?? row.content ?? '',
         id: row.id,
         ...(row.role === 'tool-call' && row.call !== undefined
           ? { toolCall: { id: row.call, name: 'noop', arguments: {} } }
@@ -730,6 +750,45 @@ describe('a message that is not a branch point', () => {
       expect(child?.conversationHistory.ids.at(-1)).toBe(`${R}:step:0`);
     },
   );
+
+  it('does not count a step that only thought as a reply: the last step with visible text is where a failed run ends', async () => {
+    const bureau = await openBureau();
+    const thinking = [{ type: 'thinking', thinking: 'hmm', signature: 'sig' }];
+    await craftRun(
+      bureau,
+      R,
+      [
+        user,
+        { id: `${R}:step:0`, role: 'assistant', parts: [{ type: 'text', text: 'Visible reply' }] },
+        { id: `${R}:step:0:call:c-1`, role: 'tool-call', call: 'c-1' },
+        { id: `${R}:step:0:result:c-1`, role: 'tool-result', call: 'c-1' },
+        { id: `${R}:step:1`, role: 'assistant', parts: thinking },
+      ],
+      'failed',
+    );
+
+    expect(await refusalOf(fork(bureau, 'crafted', `${R}:step:1`, 'thought'))).toBe(
+      'not-a-branch-point',
+    );
+    const result = await fork(bureau, 'crafted', `${R}:step:0`, 'visible');
+    const child = await bureau.contexts.get(result.contextId);
+    expect(child?.conversationHistory.ids.at(-1)).toBe(`${R}:step:0`);
+  });
+
+  it('refuses a completed run whose final step only thought', async () => {
+    const bureau = await openBureau();
+    await craftRun(bureau, R, [
+      user,
+      { id: `${R}:step:0`, role: 'assistant', content: 'a reply' },
+      {
+        id: `${R}:step:1`,
+        role: 'assistant',
+        parts: [{ type: 'thinking', thinking: 'hmm', signature: 'sig' }],
+      },
+    ]);
+
+    expect(await refusalOf(fork(bureau, 'crafted', `${R}:step:1`))).toBe('not-a-branch-point');
+  });
 
   it('still refuses an earlier reply of a run that errored: only the last one ends the turn', async () => {
     const bureau = await openBureau();

@@ -24,6 +24,7 @@
  */
 
 import { type AgentSession, parseStepRowIdentifier } from '@lostgradient/operative';
+import type { ConversationHistory } from 'conversationalist';
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import {
@@ -94,11 +95,19 @@ export interface ForkSessionResult {
 
 /**
  * How an attempt ended when the branch could not be made after it had been claimed: the parent
- * session or the message went away between the checks and the fork. The ledger keeps it as the
+ * session or the message went away between the checks and the fork (a fork before the first message
+ * names no message, so only the parent can). The ledger keeps it as the
  * entry's result, so the command does not stay pending and an exact retry is refused the same way.
  */
 export interface ForkLedgerFailure {
-  readonly failure: { readonly reason: 'message-not-found'; readonly message: string };
+  readonly failure: {
+    /**
+     * `message-not-found` when the message went away; `context-not-found` when the parent did,
+     * which a fork before the first message (no message to name) settles to.
+     */
+    readonly reason: 'message-not-found' | 'context-not-found';
+    readonly message: string;
+  };
 }
 
 /** What the fork ledger keeps for a command: the answer it gave, or the failure it settled to. */
@@ -212,9 +221,22 @@ interface StepRows {
 }
 
 /**
+ * Whether a stored row is a step's reply: an assistant row holding visible text, as a string or as
+ * a `text` part. A step that only thought (a `thinking` or redacted part) or only used a server
+ * tool stores an assistant row too, but it has said nothing a turn could end at.
+ */
+function isReplyRow(row: ConversationHistory['messages'][string]): boolean {
+  if (row.role !== 'assistant') return false;
+  if (typeof row.content === 'string') return row.content.length > 0;
+  return row.content.some((part) => part.type === 'text');
+}
+
+/**
  * The rows of every step of `runId` in `history`, by step number, read through Operative's own
  * row identifier parser. A step with no text stores its first tool call under the step's own id,
- * so a `tool-call` row at a step id is a call, and an `assistant` row there is the text. Results
+ * so a `tool-call` row at a step id is a call, and an `assistant` row there is the step's reply
+ * only when it holds visible text (`isReplyRow`): a step that only thought has an assistant row and
+ * no reply. Results
  * are matched by the call they answer, from the row itself. With `throughMessageId`, only the rows
  * up to and including it are read, which is what a fork ending there carries.
  */
@@ -234,7 +256,7 @@ function stepsOfRun(
       rows = { hasText: false, calls: new Set(), answered: new Set() };
       steps.set(parsed.step, rows);
     }
-    if (row.role === 'assistant' && parsed.kind === 'step') rows.hasText = true;
+    if (parsed.kind === 'step' && isReplyRow(row)) rows.hasText = true;
     if (row.role === 'tool-call' && row.toolCall !== undefined) rows.calls.add(row.toolCall.id);
     if (row.role === 'tool-result' && row.toolResult !== undefined) {
       rows.answered.add(row.toolResult.callId);
