@@ -1,4 +1,4 @@
-import { isValidTimeZone } from '../../schedule.ts';
+import { canonicalTimeZone, isValidTimeZone } from '../../schedule.ts';
 import { parseDuration } from '../../scheduler.ts';
 import { coerceStartWorkflowId } from '../../start-workflow-validation.ts';
 import type {
@@ -118,7 +118,7 @@ function normalizeScheduleTimeZone(timeZone: unknown): string {
       'options.timeZone must be a valid IANA time zone name such as "America/Los_Angeles", or "UTC"',
     );
   }
-  return timeZone;
+  return canonicalTimeZone(timeZone);
 }
 
 function normalizeScheduleDescription(description: unknown): string {

@@ -274,6 +274,18 @@ describe('schedule time zones', () => {
     expect(await zoneOf(engine, 'good')).toBe(LOS_ANGELES);
   });
 
+  it('stores the canonical spelling of a zone the runtime reads case-insensitively', async () => {
+    const opened = openEngine('2026-03-05T20:00:00.000Z');
+    engine = opened.engine;
+    await engine.schedule('report', null, '0 9 * * *', { id: 'lower', timeZone: 'utc' });
+    await engine.schedule('report', null, '0 9 * * *', {
+      id: 'mixed',
+      timeZone: 'america/los_angeles',
+    });
+    expect(await zoneOf(engine, 'lower')).toBe('UTC');
+    expect(await zoneOf(engine, 'mixed')).toBe(LOS_ANGELES);
+  });
+
   it('refuses a zone on an interval schedule, which counts elapsed time', async () => {
     const opened = openEngine('2026-03-05T20:00:00.000Z');
     engine = opened.engine;

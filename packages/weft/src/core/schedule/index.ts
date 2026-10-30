@@ -1,4 +1,4 @@
-export { isValidTimeZone } from './cron-formatter.ts';
+export { canonicalTimeZone, isValidTimeZone } from './cron-formatter.ts';
 export {
   collectDueCronOccurrences,
   collectDueCronTicks,

@@ -360,6 +360,8 @@ describe('createAgentSchedule', () => {
 
     const same = await retry('America/Los_Angeles');
     expect(same.id).toBe('zoned-run');
+    const respelled = await retry('america/los_angeles');
+    expect(respelled.id).toBe('zoned-run');
     for (const other of ['Europe/Berlin', undefined]) {
       let refusal: unknown;
       try {

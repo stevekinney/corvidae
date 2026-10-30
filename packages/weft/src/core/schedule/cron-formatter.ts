@@ -32,6 +32,15 @@ export function isValidTimeZone(value: unknown): value is string {
   }
 }
 
+/**
+ * The canonical spelling of a valid time zone, which is the one a schedule stores: the runtime
+ * reads `utc` and `america/los_angeles` as the zones `UTC` and `America/Los_Angeles`, and two
+ * spellings of one zone must not read as two zones.
+ */
+export function canonicalTimeZone(timeZone: string): string {
+  return getFormatter(timeZone).resolvedOptions().timeZone;
+}
+
 function getFormatter(timeZone: string): Intl.DateTimeFormat {
   const cached = formatterCache.get(timeZone);
   if (cached) {

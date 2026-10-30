@@ -501,7 +501,8 @@ function assertCompatibleAgentSchedule(
     throw new Error(`Schedule ${scheduleId} already exists with a different description.`);
   }
 
-  if (schedule.timeZone !== (timeZone ?? 'UTC')) {
+  // Weft stores the canonical spelling of a zone, and the caller may have written `utc`.
+  if (schedule.timeZone.toLowerCase() !== (timeZone ?? 'UTC').toLowerCase()) {
     throw new Error(`Schedule ${scheduleId} already exists with a different time zone.`);
   }
 
