@@ -73,6 +73,12 @@ export const taskViewSchema = z.object({
    * otherwise: a dispatch's handle, or a run in a Bureau without a session store.
    */
   kind: z.enum(['chat', 'schedule-fire', 'catalog']),
+  /**
+   * Where the task came from (COR-1867), when the Bureau recorded it. Only its `kind` is read, to
+   * tell a run a person or a schedule started from one a parent run, a goal or an agent tool call
+   * started.
+   */
+  origin: z.looseObject({ kind: z.string() }).nullable().optional(),
   status: taskStateSchema,
   finishReason: z.string().nullable(),
   statusMessage: z.string().nullable(),

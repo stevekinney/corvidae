@@ -139,6 +139,10 @@ export const OPERATION_MAP = {
 
   'bureau.audit.query': { member: 'audit.query' },
 
+  'bureau.notifications.list': { member: 'notifications.list' },
+  'bureau.notifications.markread': { member: 'notifications.markRead' },
+  'bureau.notifications.dismiss': { member: 'notifications.dismiss' },
+
   'bureau.decisions.decide': { member: 'decisions.decide' },
 
   'bureau.settings.get': { member: 'settings.get' },

@@ -263,6 +263,7 @@ import {
   RunRegisteredEvent,
   RunSettledEvent,
   RunRemovedEvent,
+  NotificationCreatedEvent,
   TaskCleanupAcknowledgedEvent,
   DiagnosticEvent,
 } from './events';
@@ -482,6 +483,7 @@ import {
 import {
   REVIEW_CLOSING_EVENT_KINDS,
   reviewCanceledDedupeKey,
+  REPLAY_SUPERSEDING_PRINCIPAL,
   REVIEW_SUPERSEDED_EVENT_KIND,
   TERMINAL_REVIEW_STATUSES,
 } from './review-closing-events';
@@ -597,6 +599,7 @@ import {
 } from './types';
 import { isSettlingRunAction, settledActionTimestamp } from './run-settlement';
 import { createAudit } from './audit/create-audit';
+import { createNotifications } from './notifications/create-notifications';
 import { createContexts } from './contexts/create-contexts';
 import { createTaskHandle, createTasks, seedsConversation } from './tasks/create-tasks';
 import {
@@ -2055,16 +2058,24 @@ export function createScheduledFireApprovalHook(
 
 /**
  * Whether a maintenance pass had anything to drive: a durable engine, the audit trail, governed
- * memory (COR-1546, whose deletions advance only when asked to), or terminal tasks it removed.
+ * memory (COR-1546, whose deletions advance only when asked to), a notification retention window
+ * (COR-1941), or terminal tasks it removed.
  * Kept apart from `createBureau` so its complexity stays inside the repository's bound.
  */
 function hasMaintenanceSurface(surface: {
   readonly durableEngine: boolean;
   readonly auditTrail: boolean;
   readonly memory: boolean;
+  readonly notificationRetention: boolean;
   readonly tasksRemoved: number;
 }): boolean {
-  return surface.durableEngine || surface.auditTrail || surface.memory || surface.tasksRemoved > 0;
+  return (
+    surface.durableEngine ||
+    surface.auditTrail ||
+    surface.memory ||
+    surface.notificationRetention ||
+    surface.tasksRemoved > 0
+  );
 }
 
 /**
@@ -2088,7 +2099,7 @@ function resumeRefusedBeforeExecution(result: object): boolean {
 
 /**
  * Whether the automatic maintenance timer starts: there is a durable engine, governed memory
- * with a deletion to advance (COR-1546), or a key-value store whose audit trail has a retention
+ * with a deletion to advance (COR-1546), or a key-value store whose audit trail or notifications have a retention
  * policy to apply. A key-value store with no retention has nothing for the timer to do.
  */
 function needsAutomaticMaintenance(composed: {
@@ -2096,11 +2107,13 @@ function needsAutomaticMaintenance(composed: {
   readonly memory: boolean;
   readonly keyValueStore: boolean;
   readonly activeAuditRetention: boolean;
+  readonly activeNotificationRetention: boolean;
 }): boolean {
   return (
     composed.durableEngine ||
     composed.memory ||
-    (composed.keyValueStore && composed.activeAuditRetention)
+    (composed.keyValueStore &&
+      (composed.activeAuditRetention || composed.activeNotificationRetention))
   );
 }
 
@@ -4819,6 +4832,21 @@ async function constructBureau<const D extends AgentDefinitions>(
     },
   });
   taskRegistryHolder.current = tasks;
+  // COR-1941 — the owner's notifications. The built-in kinds are written from the events this
+  // emitter dispatches, after the task record they read is committed; the writes are drained at
+  // shutdown, before the storage closes.
+  const notificationsComposition = createNotifications({
+    kv: runtime.kv,
+    clock: runtimeServices.clock,
+    identifiers: runtimeServices.identifiers,
+    diagnose,
+    refusal: (message) => new BureauError(message, 'BAD_REQUEST'),
+    source: emitter,
+    tasks,
+    onCreated: (notification) => {
+      emitter.dispatch(new NotificationCreatedEvent(notification.id, notification.kind));
+    },
+  });
 
   /**
    * COR-1481 — the catalog-run settlement hook (`catalog-run-settlement.ts`): every `bureau.run()`
@@ -5143,7 +5171,9 @@ async function constructBureau<const D extends AgentDefinitions>(
     for (const reviewId of history.requested) {
       if (history.closed.has(reviewId) || committed.has(reviewId)) continue;
       const kind = reviewId.startsWith('human-wait:') ? 'human-wait' : 'tool-approval';
-      emitter.dispatch(new ReviewSupersededEvent(reviewId, runId, 'system:replay', kind));
+      emitter.dispatch(
+        new ReviewSupersededEvent(reviewId, runId, REPLAY_SUPERSEDING_PRINCIPAL, kind),
+      );
     }
   }
 
@@ -5179,6 +5209,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         memory: runtime.memory !== undefined,
         keyValueStore: Boolean(runtime.kv),
         activeAuditRetention: auditRetention !== undefined && auditRetention !== 'forever',
+        activeNotificationRetention: currentSettings()['retention.notifications'] !== undefined,
       }) && options.maintenance !== 'manual'
     );
   }
@@ -13091,6 +13122,26 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
+   * COR-1941 — removes the notifications written longer ago than `retention.notifications`, read per
+   * pass so a change applies to the next one. With the setting unset an owner keeps up to 1000. A
+   * failure is reported and never stops the rest of a pass.
+   */
+  async function pruneNotifications(pass: 'Manual' | 'Automatic'): Promise<void> {
+    const window = currentSettings()['retention.notifications'];
+    if (window === undefined) return;
+    try {
+      await notificationsComposition.prune(window.olderThan);
+    } catch (error: unknown) {
+      diagnose({
+        level: 'error',
+        scope: 'durable-maintenance',
+        message: `[bureau] ${pass} notification retention pass failed: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
+  }
+
+  /**
    * COR-1546 — advances every open governed-memory deletion: resumes an interrupted synchronous
    * lane and settles the bounded-async targets, which stay pending until something asks. Governed
    * memory runs nothing on a timer of its own, so a record forgotten through `bureau.memory.forget`
@@ -13273,6 +13324,8 @@ async function constructBureau<const D extends AgentDefinitions>(
       await sweepMemoryRetention('Manual');
       // COR-1811 — persisted workflow log lines past `retention.logs`.
       await pruneWorkflowLogs('Manual');
+      // COR-1941 — notifications past `retention.notifications`.
+      await pruneNotifications('Manual');
       // COR-1546 — governed memory's deletions advance only when asked to.
       try {
         await propagateMemoryDeletions();
@@ -13311,6 +13364,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       durableEngine: hasDurableEngine,
       auditTrail: Boolean(auditTrailInstance),
       memory: runtime.memory !== undefined,
+      notificationRetention: currentSettings()['retention.notifications'] !== undefined,
       tasksRemoved,
     })
       ? true
@@ -13584,6 +13638,8 @@ async function constructBureau<const D extends AgentDefinitions>(
         await sweepMemoryRetention('Automatic');
         // COR-1811 — persisted workflow log lines past `retention.logs`.
         await pruneWorkflowLogs('Automatic');
+        // COR-1941 — notifications past `retention.notifications`.
+        await pruneNotifications('Automatic');
         // COR-1546 — governed memory's deletions advance only when asked to.
         try {
           await propagateMemoryDeletions();
@@ -18807,6 +18863,8 @@ async function constructBureau<const D extends AgentDefinitions>(
           await tasks.flush();
           // COR-1631 — so do the freezes of the surfaces those settlements started.
           await surfaces?.flush();
+          // COR-1941 — so do the notifications those settlements wrote.
+          await notificationsComposition.drain();
 
           for (const stop of stopForwarding) stop();
           emitter.dispatch(new BureauDisposedEvent());
@@ -18816,6 +18874,7 @@ async function constructBureau<const D extends AgentDefinitions>(
           // first, then disposing, ends every watcher: disposal aborts the
           // feed's lifetime signal, which each subscription is bound to.
           eventFeedSubscription.unsubscribe();
+          notificationsComposition.stop();
           // Any run feed still registered goes with it — `run.removed` reaps
           // the runs a host deleted, and this covers the rest.
           for (const feedRunId of runEventFeeds.runIds()) {
@@ -20251,6 +20310,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     contexts,
     tasks: bureauTasks,
     audit,
+    notifications: notificationsComposition.notifications,
     internals: {
       hasExplicitId: options.id !== undefined,
       get taskRetention() {

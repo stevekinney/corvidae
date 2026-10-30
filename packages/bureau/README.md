@@ -28,6 +28,7 @@ Declare `"@lostgradient/bureau": "workspace:*"` in the consuming workspace's dep
   - [Decisions (`bureau.decisions`)](#decisions-bureaudecisions)
   - [Settings (`bureau.settings`)](#settings-bureausettings)
   - [`resolveProviderGenerate`](#resolveprovidergenerate)
+  - [Notifications](#notifications)
   - [The Audit Trail](#the-audit-trail)
   - [`AuditRecord` schema versioning](#auditrecord-schema-versioning)
   - [Audit trail retention](#audit-trail-retention)
@@ -250,7 +251,7 @@ One option bounds how long each kind of history is kept.
 
 | Field | Type | Purpose |
 | --- | --- | --- |
-| `retention` | `{ audit?; checkpoints?; events?; tasks?; receipts? }` | How long each kind of history is kept. Every window is read at the next maintenance pass. |
+| `retention` | `{ audit?; checkpoints?; events?; tasks?; receipts?; notifications? }` | How long each kind of history is kept. Every window is read at the next maintenance pass. |
 
 A bad value throws `BureauError` (`BAD_REQUEST`) at construction. Each key keeps its own type and default:
 
@@ -259,6 +260,7 @@ A bad value throws `BureauError` (`BAD_REQUEST`) at construction. Each key keeps
 - **`events`**: `'forever' | { olderThan }`, default 7 days. See [the durable event history](#the-durable-event-history-store).
 - **`tasks`**: `'forever' | { olderThan }`, default 30 days.
 - **`receipts`**: `{ olderThan }` only, default 24 hours; `'forever'` is refused. See [run-creation receipts](#run-creation-receipts).
+- **`notifications`**: `{ olderThan }` only, in milliseconds, default unset (an owner keeps up to 1000). See [notifications](#notifications).
 
 The host fields attach memory, assets, and the sinks a host wants to hear from.
 
@@ -355,6 +357,7 @@ const agent = createAgent({ generate, skills: createAgentSkills({ catalog }) });
 | `decisions` | `BureauDecisions` | Puts a typed question to a model. See [Decisions](#decisions-bureaudecisions). |
 | `settings` | `BureauSettings` | Reads and edits the settings that can change at runtime. See [Settings](#settings-bureausettings). |
 | `models` | `Models` | The frozen model catalog, `replace(rows)`, `generate(row)`, and `plan(request)`. Present whatever `D` is. |
+| `notifications` | `BureauNotifications` | The owner's notifications: `create`, `list`, `markRead`, `dismiss`. See [Notifications](#notifications). |
 | `audit` | `BureauAudit` | The audit trail read as redacted metadata: `query(filter?, options?)`. See [The Audit Trail](#the-audit-trail). |
 | `agents` | `BureauAgentCatalog<D>` | The typed agent catalog. See [`AgentDefinitions` and the Agent Catalog](#agentdefinitions-and-the-agent-catalog). |
 | `children` | `BureauChildren` | Dispatches a catalog agent as the child of a known run. See [Parent-child topology](#parent-child-topology-cor-772). |
@@ -382,6 +385,7 @@ COR-1721 adds six families and COR-1723 a seventh, each published on `bureau.eve
 - `definitions.changed` (`DefinitionsChangedEvent`) reports a rescan of the agent or workflow files (`source: 'agents' | 'workflows'`) by identifier: `added`, `changed`, `removed`, and `rejected`, the identifiers of `added` and `changed` whose file is invalid now. The first scan at construction is not reported.
 - `schedule.missed` (`ScheduleMissedEvent`) copies `scheduleId`, `missedCount`, `windowStart`, `windowEnd`, and `reason` (`late`, or `dst-gap` for a wall-clock time a schedule's time zone skipped when its clock sprang forward) from Weft's `ScheduleMissedFireEvent`, dispatched once `bureau.schedules.get(scheduleId)` returns the schedule, including a miss the first poll finds while the Bureau is still being built.
 - `task.cleanup-acknowledged` (`TaskCleanupAcknowledgedEvent`) carries `taskId` and the `cleanup` state `bureau.tasks.get(taskId)` reads once the run's cleanup acknowledgement is written, for a canceled task or one that ended on its own.
+- `notification.created` (`NotificationCreatedEvent`) carries `notificationId` and its `kind` once a notification is written, by Bureau or through `bureau.notifications.create`; it names neither the owner nor the text, so a client reads its own with `bureau.notifications.list`. A `create` that finds its `dedupeKey` used dispatches nothing.
 - `diagnostic` (`DiagnosticEvent`) carries the `level` and `scope` of each diagnostic `onDiagnostic` (or the console) receives, never its message or cause. A diagnostic raised before the emitter exists, by the event feed's own recorder, or while a `diagnostic` event is being dispatched reaches the sink only.
 - `memory.governance` (`MemoryGovernanceEvent`) reports each notification the governed memory in `BureauOptions.memory` hands its `subscribe` listeners (the same ones its `onEvent` receives), whoever constructed that memory: `type` (the ledger event's type, such as `memory.write.admitted`), `outcome`, `tenantId`, `at`, `recordIds`, and `operationId` when the notification has one. It never carries record content, a protected reason, a detector diagnostic, or the acting principal. Bureau stops listening at shutdown.
 
@@ -750,6 +754,24 @@ const streaming = resolveProviderGenerate(definitions, configuration, streamEven
 `resolveProviderGenerate(definitions, configuration, streamEventTarget, streamingConfiguration)` builds the `GenerateFunction` for one configured provider from the `ProviderDefinition`s a host registers. Bureau ships no provider and depends on no provider package: the host passes the definitions it wants, and the one whose `name` equals `configuration.provider` serves the configuration. With a `streamEventTarget` it calls that definition's `stream` and wraps the result in enhanced streaming (`streamingConfiguration.onTextDelta` receives each text delta); without one it calls the definition's `generate`.
 
 The configuration reaches the definition whole, so a field `ProviderConfiguration` (`provider`, `model`, `maximumTokens`, `temperature`, `apiKey`) does not name, such as an injected `client`, arrives unchanged. A `provider` no definition carries throws an `Error` naming the missing provider and the registered names. Two definitions with one name throw at the call, whether or not the configuration selects that name.
+
+### Notifications
+
+`bureau.notifications` is the owner's notification inbox (COR-1941): persisted, owner-scoped, built in, and never sent anywhere (v1 has no email). Every record carries its `owner`, and every read and change names the owner it acts for, so a principal reaches its own notifications and nobody else's. They live under the `bureau-notification:v1:` key prefix.
+
+Bureau writes three kinds from events it already publishes (`BUILT_IN_NOTIFICATION_KINDS`):
+
+| Kind | Written when | Source event |
+| --- | --- | --- |
+| `run.failed` | a top-level task ends `failed` | `run.settled` |
+| `run.budget-exceeded` | a top-level task ends on the `budget-exceeded` finish reason (instead of `run.failed`) | `run.settled` |
+| `review.waiting` | a tool approval or a human wait waits on the owner; dismissed when the review closes | `review.requested`, then `review.approved`, `denied`, `rejected`, `expired`, `revoked` or `canceled` |
+
+A task that a parent run, a goal or an agent tool call started (origin `agent`, `goal` or `parent`) notifies nothing for its outcome; its parent's outcome does. A review notifies whoever owns the run, whatever its origin, because a pending approval blocks the person either way. Each write carries a `dedupeKey` built from what happened (`run.settled:<runId>`, `review.waiting:<reviewId>`), so an event dispatched again after a restart writes nothing. The body of a failure is the first line of the error's message, cut at 200 characters.
+
+`bureau.notifications.create({ owner, kind, title, body?, link?, dedupeKey?, subject? })` is the in-process way to write another kind (a hook action, the host); it has no wire operation. A `link` is an application path starting with one `/`, or an `http(s)` URL. `list({ owner, unread?, kind?, includeDismissed?, limit?, pageToken? })` pages newest first with a token bound to the owner and the filters (`NotificationPageTokenError` otherwise). `markRead` and `dismiss` take `{ owner, ids }` or `{ owner, all: true }` and count what they changed; dismissing keeps the record, so a replayed event cannot bring the notification back. The wire operations are `bureau.notifications.list`, `markread` and `dismiss`, with the caller's own owner; no scope reaches another owner's notifications.
+
+An owner keeps at most 1000; writing one more removes the oldest. `retention.notifications` (`{ olderThan }` in milliseconds, a live setting) removes older ones at the next maintenance pass, read or not; unset, only the cap applies.
 
 ### The Audit Trail
 
