@@ -282,7 +282,7 @@ export const contextsListOperation = defineOperation<
   mcpExposable: true,
   summary: 'List contexts',
   description:
-    'Lists the caller’s own contexts (chat sessions) with a title, a last-message preview, a message count, times and `activity` (`running`, `awaiting-input` or `idle`), newest update first by default. Each carries its `origin`: `chat` for a context a person started (and for every context that records no origin), `goal` for a goal’s session, `schedule` for a session a schedule’s fire created. `agentName` filters by agent, `origin` by origin, `titleContains` by a case-insensitive substring of the title (a title given by `bureau.contexts.rename` counts), and `activity` by what the context is doing right now, all before the page is cut, so a page of chats holds chats and `offset` counts matches. An `activity` filter classifies the contexts the other filters leave, a hundred at a time, until the page is full, so it reads further the rarer its matches are; a context’s activity can change between pages. `allOwners: true` lists every owner’s and requires `bureau.contexts:read`; without it the call is a `Forbidden` fault. Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. No transcript and no internal metadata is returned.',
+    'Lists the caller’s own contexts (chat sessions) with a title, a last-message preview, a message count, times and `activity` (`running`, `awaiting-input` or `idle`), newest update first by default. Each carries its `origin`: `chat` for a context a person started (and for every context that records no origin), `goal` for a goal’s session, `schedule` for a session a schedule’s fire created. `agentName` filters by agent, `origin` by origin, `titleContains` by a case-insensitive substring of the title (a title given by `bureau.contexts.rename` counts), and `activity` by what the context is doing right now, all before the page is cut, so a page of chats holds chats and `offset` counts matches. An `activity` filter classifies the contexts the other filters leave, a hundred at a time, until the page is full; a context’s activity can change between pages. `allOwners: true` lists every owner’s and requires `bureau.contexts:read`; without it the call is a `Forbidden` fault. Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. No transcript and no internal metadata is returned.',
   destructive: false,
   tags: ['Contexts'],
   inputSchema: contextsListInput,
@@ -332,9 +332,11 @@ export const contextsListOperation = defineOperation<
 
 /**
  * One page of the contexts `filters` leave that are `wanted`. Activity derives from live tasks, so
- * it is not on the summary index and cannot be filtered there: the index is read in chunks of
- * {@link ACTIVITY_SCAN_CHUNK}, each chunk's activity is one task query, and the scan stops as soon
- * as one match past the page proves another page follows, or when the index ends. `offset` counts
+ * it is not on the summary index and cannot be filtered there. The filtered index is read once, so
+ * the order the page is cut from cannot change under the scan (a session committing meanwhile
+ * would otherwise appear in two chunks, or in none), and the store is not re-read for each chunk.
+ * That array is classified {@link ACTIVITY_SCAN_CHUNK} at a time, one task query per chunk, and the
+ * scan stops as soon as one match past the page proves another page follows. `offset` counts
  * matches.
  */
 async function listByActivity(
@@ -344,16 +346,11 @@ async function listByActivity(
   offset: number,
   limit: number,
 ): Promise<z.infer<typeof contextsListOutput>> {
+  const candidates = await host.contexts.list({ ...filters, limit: Number.MAX_SAFE_INTEGER });
   const contexts: z.infer<typeof contextSummarySchema>[] = [];
   let skipped = 0;
-  let scanned = 0;
-  for (;;) {
-    const chunk = await host.contexts.list({
-      ...filters,
-      limit: ACTIVITY_SCAN_CHUNK,
-      offset: scanned,
-    });
-    scanned += chunk.length;
+  for (let start = 0; start < candidates.length; start += ACTIVITY_SCAN_CHUNK) {
+    const chunk = candidates.slice(start, start + ACTIVITY_SCAN_CHUNK);
     const activity = await host.tasks.activityOf(chunk.map((summary) => summary.id));
     for (const summary of chunk) {
       if ((activity.get(summary.id) ?? 'idle') !== wanted) continue;
@@ -365,8 +362,8 @@ async function listByActivity(
       if (contexts.length === limit) return { contexts, nextOffset: offset + limit };
       contexts.push(projectContext(summary, wanted));
     }
-    if (chunk.length < ACTIVITY_SCAN_CHUNK) return { contexts, nextOffset: null };
   }
+  return { contexts, nextOffset: null };
 }
 
 const contextsGetInput = z.object({

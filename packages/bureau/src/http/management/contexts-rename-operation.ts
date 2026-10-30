@@ -41,8 +41,9 @@ const contextsRenameInput = z.object({
   contextId: z.string().min(1).describe('The identifier of the context to rename.'),
   title: z
     .string()
+    .trim()
+    .min(1)
     .max(SESSION_TITLE_OVERRIDE_LIMIT)
-    .refine((title) => title.trim() !== '', 'title must not be blank')
     .nullable()
     .describe(
       'The new title, trimmed, 1 to 200 characters; or `null` to remove the title and show the one derived from the first message again.',

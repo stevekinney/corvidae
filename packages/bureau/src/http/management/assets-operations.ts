@@ -330,6 +330,10 @@ export const assetsUploadsAbortOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
     const { uploadId } = input;
+    // A credential that can own nothing holds no session: nothing to discard, like any other miss.
+    if (host.assets !== undefined && ownerOfPrincipal(principal) === undefined) {
+      return { uploadId, aborted: false };
+    }
     const { service, caller } = assetPrincipalOf(host, principal, 'upload', uploadId);
     try {
       await asFault('upload', uploadId, () =>

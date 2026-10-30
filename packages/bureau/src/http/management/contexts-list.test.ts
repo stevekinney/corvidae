@@ -1,4 +1,12 @@
-import { createAgent, type GenerateFunction } from '@lostgradient/operative';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import {
+  createAgent,
+  createAgentSession,
+  createSessionStore,
+  type GenerateFunction,
+} from '@lostgradient/operative';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { Conversation, createConversationHistory } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
 
 import { waitForCondition } from '../../test';
@@ -684,7 +692,8 @@ describe('bureau.contexts.list by activity across chunks', () => {
       updatedAt: '2026-10-29T00:00:00.000Z',
       metadata: {},
     });
-    const reads: { offset: number; limit: number }[] = [];
+    const reads: { offset: number | undefined; limit: number | undefined }[] = [];
+    const queries: number[] = [];
     const host = {
       ownership: { mayAccess: () => true, runOwner: async () => undefined },
       contexts: {
@@ -692,21 +701,23 @@ describe('bureau.contexts.list by activity across chunks', () => {
         list: async (options: { offset?: number; limit?: number }) => {
           const offset = options.offset ?? 0;
           const limit = options.limit ?? 100;
-          reads.push({ offset, limit });
+          reads.push({ offset: options.offset, limit: options.limit });
           return ids.slice(offset, offset + limit).map(summary);
         },
       },
       tasks: {
-        activityOf: async (contextIds: readonly string[]) =>
-          new Map(
+        activityOf: async (contextIds: readonly string[]) => {
+          queries.push(contextIds.length);
+          return new Map(
             contextIds.map((id) => [
               id,
               Number(id.slice(4)) % period === 0 ? ('running' as const) : ('idle' as const),
             ]),
-          ),
+          );
+        },
       },
     };
-    return { host, reads, ids };
+    return { host, reads, queries, ids };
   }
 
   const principal = { method: 'unauthenticated-local', scopes: new Set<string>() };
@@ -716,15 +727,20 @@ describe('bureau.contexts.list by activity across chunks', () => {
       nextOffset: number | null;
     }>;
 
-  it('pages matches that sit far apart in the index, reading it in bounded chunks', async () => {
-    const { host, reads } = syntheticHost(450, 150);
+  it('pages matches that sit far apart in the index, reading it once and classifying it in bounded chunks', async () => {
+    const { host, reads, queries } = syntheticHost(450, 150);
 
     const first = await callList(host, { activity: 'running', limit: 2 });
 
     // ctx-0000, ctx-0150, ctx-0300 are running: two on the page, a third proves another follows.
     expect(first.contexts.map((context) => context.id)).toEqual(['ctx-0000', 'ctx-0150']);
     expect(first.nextOffset).toBe(2);
-    expect(Math.max(...reads.map((read) => read.limit))).toBeLessThanOrEqual(100);
+    // One read of the filtered index, with no offset to drift under a concurrent write, and the
+    // task queries are bounded chunks of it.
+    expect(reads).toHaveLength(1);
+    expect(reads[0]?.offset).toBeUndefined();
+    expect(queries.length).toBeGreaterThan(1);
+    expect(Math.max(...queries)).toBeLessThanOrEqual(100);
 
     const second = await callList(host, { activity: 'running', limit: 2, offset: 2 });
 
@@ -733,22 +749,81 @@ describe('bureau.contexts.list by activity across chunks', () => {
   });
 
   it('ends at the last chunk, even a full one, with no further page', async () => {
-    const { host } = syntheticHost(200, 1000);
+    const { host, queries } = syntheticHost(200, 1000);
 
     const body = await callList(host, { activity: 'running' });
 
-    // Only ctx-0000 matches; the scan read both full chunks and found nothing more.
+    // Only ctx-0000 matches; the scan classified both full chunks and found nothing more.
+    expect(queries).toEqual([100, 100]);
     expect(body.contexts.map((context) => context.id)).toEqual(['ctx-0000']);
     expect(body.nextOffset).toBeNull();
   });
 
-  it('stops reading once the page is full and one more match is found', async () => {
-    const { host, reads } = syntheticHost(1000, 1);
+  it('stops classifying once the page is full and one more match is found', async () => {
+    const { host, reads, queries } = syntheticHost(1000, 1);
 
     const body = await callList(host, { activity: 'running', limit: 3 });
 
     expect(body.contexts).toHaveLength(3);
     expect(body.nextOffset).toBe(3);
     expect(reads).toHaveLength(1);
+    // The first chunk already held the page and the match that proves another follows.
+    expect(queries).toEqual([100]);
+  });
+});
+
+describe('bureau.contexts.list by activity while the index changes', () => {
+  it('never shows a session twice in one page when one is reordered between chunk classifications', async () => {
+    const runtime = createManualRuntimeServices({ origin: '2026-10-29T00:00:00.000Z' });
+    const store = createSessionStore(textValueStore(new MemoryStorage()), { runtime });
+    for (let index = 0; index < 250; index += 1) {
+      const conversation = new Conversation(createConversationHistory());
+      conversation.appendMessages({ role: 'user', content: `message ${index}` });
+      runtime.setTime(Date.parse('2026-10-29T00:00:00.000Z') + index * 1000);
+      await store.save(
+        createAgentSession({
+          id: `s${String(index).padStart(3, '0')}`,
+          agentName: 'a',
+          conversationHistory: conversation.current,
+          metadata: {},
+          runs: [],
+        }),
+      );
+    }
+    const indexed = await store.list({ limit: 1000 });
+    const order = indexed.map((summary) => summary.id);
+    const mover = order[200]!;
+    let moved = false;
+    const host = {
+      ownership: { mayAccess: () => true, runOwner: async () => undefined },
+      contexts: {
+        internals: { sessionStore: store },
+        list: (options: never) => store.list(options),
+      },
+      tasks: {
+        activityOf: async (contextIds: readonly string[]) => {
+          if (!moved) {
+            moved = true;
+            // A run on an older session commits between the scan's chunk classifications: it
+            // moves to the top of the index.
+            runtime.setTime(Date.parse('2027-01-01T00:00:00.000Z'));
+            await store.update(mover, (session) => (session ? { ...session } : undefined));
+          }
+          return new Map(contextIds.map((id) => [id, 'running' as const]));
+        },
+      },
+    };
+    const principal = { method: 'unauthenticated-local', scopes: new Set<string>() };
+
+    const body = (await contextsListOperation.invoke({
+      input: { activity: 'running', offset: 50, limit: 100 },
+      host,
+      principal,
+    } as never)) as { contexts: { id: string }[] };
+
+    const ids = body.contexts.map((context) => context.id);
+    // The page is cut from the index as it was read: the same hundred, none twice.
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toEqual(order.slice(50, 150));
   });
 });

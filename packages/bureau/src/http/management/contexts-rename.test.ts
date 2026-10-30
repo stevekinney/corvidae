@@ -120,7 +120,7 @@ describe('bureau.contexts.rename', () => {
     await withBureau(async (opened) => {
       const run = await finishedSession(opened, 'q', OWNER.alice);
 
-      for (const title of ['', '   ', 'x'.repeat(201)]) {
+      for (const title of ['', '   ', 'x'.repeat(201), ` ${'x'.repeat(201)} `]) {
         const body = await rename(opened, 'alice-key', run.contextId, title);
         expect(body.error?.data).toMatchObject({ weftCode: 'InvalidParams' });
       }
@@ -129,6 +129,9 @@ describe('bureau.contexts.rename', () => {
       });
       const longest = await rename(opened, 'alice-key', run.contextId, 'x'.repeat(200));
       expect(longest.result).toMatchObject({ title: 'x'.repeat(200) });
+      // Trimmed before the length is judged on the wire, as `Bureau.contexts.rename` does.
+      const padded = await rename(opened, 'alice-key', run.contextId, `  ${'y'.repeat(200)}  `);
+      expect(padded.result).toMatchObject({ title: 'y'.repeat(200) });
     });
   });
 

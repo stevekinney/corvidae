@@ -537,6 +537,31 @@ describe('bureau.assets.uploads.abort', () => {
     });
   });
 
+  it('answers a credential that can own nothing as it answers any other miss, without reaching the service', async () => {
+    let reached = false;
+    const host = {
+      assets: {
+        abortUpload: async () => {
+          reached = true;
+        },
+      },
+    };
+    const principal = {
+      method: 'api-key',
+      subject: undefined,
+      scopes: new Set(['bureau.assets:write']),
+    };
+
+    const answer = await assetsUploadsAbortOperation.invoke({
+      input: { uploadId: 'upload-1' },
+      host,
+      principal,
+    } as never);
+
+    expect(answer).toEqual({ uploadId: 'upload-1', aborted: false });
+    expect(reached).toBe(false);
+  });
+
   it('is destructive, needs the write scope, and names Conflict among its faults', () => {
     expect(assetsUploadsAbortOperation.destructive).toBe(true);
     expect(assetsUploadsAbortOperation.producibleFaults).toContain('Conflict');
