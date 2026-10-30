@@ -595,6 +595,12 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * default `'automatic'` profile uses in-process intervals. Cloudflare
    * Durable Objects and other serverless hosts should use `'manual'`, then
    * call {@link Bureau.maintain} from each alarm or Cron wake-up.
+   *
+   * COR-1946: over persistent storage a Bureau holds a 30-second process lease that other
+   * processes read to tell a task whose process stopped from one still running. `'automatic'`
+   * renews it on a timer; `'manual'` renews it only inside {@link Bureau.maintain}, so a manual host
+   * should call `maintain()` at least every 30 seconds while it runs process-local tasks that
+   * another Bureau over the same storage may boot beside.
    */
   maintenance?: 'automatic' | 'manual';
   /**

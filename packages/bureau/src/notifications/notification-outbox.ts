@@ -12,6 +12,10 @@
  * outbox and writes each one. The write is idempotent by the run's dedupe key, so a repair that
  * runs twice, or beside the live write, produces one notification.
  *
+ * COR-1946: a settlement that replaces `owner-lost` writes an entry too, whatever its status. The
+ * boot's repair reads the task: a failure keeps its one notification, and any other result dismisses
+ * the failure notification the inference wrote.
+ *
  * An entry is the run id in the key, under `bureau-notification:v1:o:` (outside the `r:` and `d:`
  * prefixes the store scans), and carries no content: the notification is built from the task record
  * at repair time, as the live write builds it.

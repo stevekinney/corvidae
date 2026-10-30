@@ -279,6 +279,7 @@ import type { BureauGoals } from './goal-types';
 import { createGoalValidatorCatalog } from './goal-validator-catalog';
 import { composeBureauGoals } from './goals-composition';
 import { leaseEvidenceFromLostHealth } from './liveness-projection';
+import { createAbandonedTaskSweeper, openProcessLease } from './process-lease';
 import {
   createDecisions,
   decisionModelNames,
@@ -4674,6 +4675,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   let recoveryPassActive = false;
   /** The boot repair of task histories (COR-1669), which `shutdown()` awaits before storage closes. */
   let taskResyncBootPass: Promise<void> | undefined;
+
   const bootFrameRunIds = new Set<string>();
   let liveFramesSubscribed = false;
   const bootFrameBuffer: ServerFrame[] = [];
@@ -4885,10 +4887,23 @@ async function constructBureau<const D extends AgentDefinitions>(
   // COR-1915: what each run of a chat spent, which a file agent's `costBudget.perChatUsd` is
   // measured against. A Bureau with no key-value store keeps it in memory, as it does its tasks.
   const chatSpendLedger = createChatSpendLedger({ kv: runtime.kv, diagnose });
+  // COR-1946: a Bureau over a store that outlives the process names itself on every task it admits
+  // and holds a lease under that name, which is how a later boot tells a task whose process is gone
+  // from one whose process is another Bureau still running over the same store.
+  const processLease = openProcessLease({
+    kv: runtime.kv,
+    persistence: options.storage?.capabilities().persistence,
+    clock: runtimeServices.clock,
+    timers: runtimeServices.timers,
+    identifiers: runtimeServices.identifiers,
+    diagnose: (message, cause) =>
+      diagnose({ level: 'error', scope: 'task-registry', message: `[bureau] ${message}`, cause }),
+  });
   const tasks = createTaskRegistry({
     kv: runtime.kv,
     clock: runtimeServices.clock,
     identifiers: runtimeServices.identifiers,
+    processId: processLease.processId,
     // COR-1594: the end of a fire reaches a stream another process serves through the fire's
     // durable history. A Bureau with no persistent storage has none, and no second process.
     onFireSettled: appendFireSettledEvent,
@@ -9979,6 +9994,29 @@ async function constructBureau<const D extends AgentDefinitions>(
    * `createBureau()` never rejects on it, in whole or in part).
    */
   /**
+   * COR-1946 — settles the tasks of a process that is gone (see `process-lease.ts`). A lease that is
+   * still current is left alone and looked at again when it would lapse, so a process restarted
+   * inside its predecessor's lease still settles what the predecessor left. Never rejects.
+   */
+  const abandonedTaskSweeper = createAbandonedTaskSweeper({
+    lease: processLease,
+    kv: runtime.kv,
+    timers: runtimeServices.timers,
+    // A manual host has no timer of the Bureau's: its next `maintain()` looks again.
+    rearm: options.maintenance !== 'manual',
+    now: runtimeServices.clock.now,
+    nowISO: runtimeServices.clock.nowISO,
+    unsettled: () => tasks.unsettled(),
+    hasLiveRun: (taskId) => store.getRun(taskId) !== undefined,
+    isDurablyRecorded: async (taskId) =>
+      runtime.durable !== undefined && (await runtime.durable.engine.get(taskId)) !== null,
+    settleAbandoned: (taskId, ownerProcess, lease, settlement) =>
+      tasks.settleAbandoned(taskId, ownerProcess, lease, settlement),
+    diagnose: (message, cause) =>
+      diagnose({ level: 'error', scope: 'recovery', message: `[bureau] ${message}`, cause }),
+  });
+
+  /**
    * COR-1481 — a crash can land between a run reaching its terminal state and the task record
    * saying so, or between a catalog run's durable start and its task record being written. At
    * boot, a task record whose durable run is terminal is settled from the durable state, and a
@@ -9987,7 +10025,11 @@ async function constructBureau<const D extends AgentDefinitions>(
    */
   async function reconcileTaskRecords(): Promise<void> {
     const durable = runtime.durable;
-    if (!durable) return;
+    if (!durable) {
+      // COR-1946: with no durable engine every run is process-local, and only the lease rule applies.
+      await abandonedTaskSweeper.run();
+      return;
+    }
     const settle = async (
       taskId: string,
       state: Awaited<ReturnType<typeof durable.engine.get>>,
@@ -10050,6 +10092,9 @@ async function constructBureau<const D extends AgentDefinitions>(
       if (store.getRun(record.taskId) !== undefined) continue;
       await settle(record.taskId, await durable.engine.get(record.taskId));
     }
+    // COR-1946: what the durable state did not settle, and no durable workflow records, belongs to
+    // the process that admitted it.
+    await abandonedTaskSweeper.run();
     // COR-1594: a fire whose settlement was written but whose history event never was, because its
     // process died between the two, would leave a stream open on another process for ever. The
     // event is deduplicated per fire, so the ones that were appended are skipped by their marker.
@@ -13345,6 +13390,21 @@ async function constructBureau<const D extends AgentDefinitions>(
           `[bureau] Manual settings re-read failed: ${serializeUnknownError(error)}`,
           error,
         );
+      }
+      // COR-1946 — a manual host's lease is renewed here, and what a stopped process left is looked
+      // for again, since the Bureau runs no timer of its own for either.
+      if (options.maintenance === 'manual') {
+        try {
+          await processLease.renew();
+        } catch (error: unknown) {
+          diagnose({
+            level: 'error',
+            scope: 'durable-maintenance',
+            message: `[bureau] Could not renew the process lease: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        }
+        await abandonedTaskSweeper.run();
       }
       if (hasDurableEngine) {
         try {
@@ -19096,6 +19156,9 @@ async function constructBureau<const D extends AgentDefinitions>(
         await automaticRunOwnershipPruneCurrentPass;
       }
       if (taskResyncBootPass) await taskResyncBootPass;
+      // COR-1946: no further lease renewals or sweeps; the lease itself is removed last.
+      processLease.halt();
+      await abandonedTaskSweeper.close();
       // AB-388: drain any manual `maintain()` call(s) still in
       // flight — see `manualDurableMaintenancePasses`'s own doc comment
       // above. `allSettled` (never `all`): a rejection here is either
@@ -19307,6 +19370,16 @@ async function constructBureau<const D extends AgentDefinitions>(
               // watcher stops and drains before storage closes under it (COR-1669).
               await fileAgents?.files.close();
             } finally {
+              // COR-1946: removed after every task write of this shutdown, so a peer need not wait
+              // for it to lapse; a failure only means the peer waits.
+              await processLease.release().catch((error: unknown) => {
+                diagnose({
+                  level: 'error',
+                  scope: 'shutdown',
+                  message: `[bureau] Could not remove the process lease: ${serializeUnknownError(error)}`,
+                  cause: error,
+                });
+              });
               try {
                 // Bureau stops using the caller's storage, which the caller closes (COR-1767).
                 runtime.stopUsingStorage();
@@ -21297,6 +21370,9 @@ async function constructBureau<const D extends AgentDefinitions>(
       cause: error,
     });
   });
+  // COR-1946: the lease exists before the first task is admitted and before recovery looks at
+  // what a stopped process left, so a peer that boots now finds this process alive.
+  await processLease.start(options.maintenance === 'manual' ? 'manual' : 'timer');
   // Orphaned steering logs are independent of run recovery, so they are
   // swept at boot even when that recovery is deferred; in the background,
   // and awaited by shutdown before the backend closes.
