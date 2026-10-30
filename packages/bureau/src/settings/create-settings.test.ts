@@ -8,14 +8,19 @@ import {
   SETTINGS_CHANGED_AUDIT_TYPE,
   type SettingsDependencies,
 } from './create-settings.ts';
-import { SETTING_KEYS, type SettingKey, SETTINGS_RECORD_KEY } from './settings-schema.ts';
+import {
+  SETTING_KEYS,
+  type SettingKey,
+  type SettingLockReason,
+  SETTINGS_RECORD_KEY,
+} from './settings-schema.ts';
 
 type AuditEntry = Parameters<SettingsDependencies['audit']>[0];
 
 async function compose(
   options: {
     readonly storage?: MemoryStorage;
-    readonly locked?: readonly SettingKey[];
+    readonly locked?: Readonly<Partial<Record<SettingKey, SettingLockReason>>>;
     readonly defaults?: SettingsDependencies['defaults'];
     readonly persisted?: boolean;
   } = {},
@@ -31,7 +36,7 @@ async function compose(
     diagnostics.push(message);
   };
   const defaults = options.defaults ?? { 'tools.wakeup': true, maintenance: 'automatic' };
-  const locked = new Set(options.locked ?? []);
+  const locked = new Map(Object.entries(options.locked ?? {}) as [SettingKey, SettingLockReason][]);
   const boot =
     store === undefined
       ? { record: undefined, storedValues: {}, raw: null }
@@ -116,7 +121,7 @@ describe('bureau.settings update outcomes', () => {
     );
     const { settings, current } = await compose({
       storage,
-      locked: ['tools.humanInput'],
+      locked: { 'tools.humanInput': 'shared-storage' },
       defaults: { 'tools.humanInput': {} },
     });
     expect(current()['tools.humanInput']).toEqual({});
@@ -129,7 +134,11 @@ describe('bureau.settings update outcomes', () => {
       currentRevision: 3,
     });
     const snapshot = await settings.get();
-    expect(snapshot.keys['tools.humanInput'].locked).toBe(true);
+    expect(snapshot.keys['tools.humanInput']).toMatchObject({
+      locked: true,
+      lockReason: 'shared-storage',
+    });
+    expect(snapshot.keys['tools.wakeup']).not.toHaveProperty('lockReason');
   });
 
   test('an unknown key is refused', async () => {

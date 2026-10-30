@@ -204,12 +204,12 @@ The model fields say which models a deployment offers and who answers a typed qu
 | --- | --- | --- |
 | `models` | `{ catalog?; generate? }` | The model rows the deployment offers and how a row becomes a `generate`, exposed as `bureau.models`. |
 | `modelPolicy` | `{ deployment?; bureau?; users?; policyRevision }` | Deployment and Bureau model-policy invariants and per-principal user configuration, which `bureau.models.plan` and a run's selection gate use. |
-| `decisions` | `{ model?; fallbackModel?; maximumPerTask? }` | Who answers `bureau.decisions.decide` and the `decide` tool, and how many decisions one task may ask for. |
-| `settings` | `{ locked?: readonly SettingKey[] }` | The settings the store may not override. See [Settings](#settings-bureausettings). |
+| `decisions` | `{ models?; model?; fallbackModel?; maximumPerTask? }` | Who answers `bureau.decisions.decide` and the `decide` tool, and how many decisions one task may ask for. |
+| `settings` | `{ locked?: Partial<Record<SettingKey, SettingLockReason>> }` | The settings the store may not override, each with the reason it is held. See [Settings](#settings-bureausettings). |
 
 `models.catalog` defaults to `@lostgradient/operative`'s static `createModelCatalog()` rows, and rows a host supplies are stamped `source: 'operator-override'`. `models.generate` turns the catalog row an agent file's `model` resolved to into the `generate` that file runs with, because the host holds the credentials; it is required with `agentSource`, and without it `bureau.models.generate` and `decide` reject with `NOT_CONFIGURED` at call time. See [`create-models.ts`](./src/models/create-models.ts).
 
-`modelPolicy` is held in memory for the Bureau's lifetime. Named policy profiles are keys of `users` and of each configuration's own `fallbackOrder`; there is no storage schema, and `StartTaskOptions` gains no field for any of this. See [`model-policy.ts`](./src/model-policy.ts). `decisions.fallbackModel` defaults to `anthropic/claude-haiku-5-5` and `maximumPerTask` to 20; see [Decisions](#decisions-bureaudecisions). `settings.locked` makes `bureau.settings.update` refuse those keys with `locked` and ignores a stored value for them.
+`modelPolicy` is held in memory for the Bureau's lifetime. Named policy profiles are keys of `users` and of each configuration's own `fallbackOrder`; there is no storage schema, and `StartTaskOptions` gains no field for any of this. See [`model-policy.ts`](./src/model-policy.ts). `decisions.fallbackModel` defaults to `anthropic/claude-haiku-5-5` and `maximumPerTask` to 20; see [Decisions](#decisions-bureaudecisions). `settings.locked` maps keys to a reason (`deployment` or `shared-storage`), makes `bureau.settings.update` refuse those keys with `locked`, and ignores a stored value for them.
 
 Three tools are offered to a task unless a host turns them off.
 
@@ -608,7 +608,7 @@ if (schedule !== undefined) {
 
 `bureau.decisions.decide` puts a typed question to a model and returns a typed answer. A request is one of four kinds: `boolean` (the value is a `boolean`), `choice` (pick one of at least two `options`; the value is the option's `key`), `scale` (rate on ordered `levels`; the value is the level's index), and `structured` (answer with an object that satisfies a Zod or Standard Schema; the value is the validated object). Each answer carries the `provider` and `model` that gave it, and its `usage`, `probability` and `rationale` when the model reports them. No decision value is stored.
 
-`decisions: { model?, fallbackModel?, maximumPerTask? }` on `createBureau` decides who answers. A `model` (a `DecisionModel`, such as `typesafeJev` from `@lostgradient/operative-typesafe`) answers the kinds in its `kinds`; every other kind goes to a language-model row of the model catalog, which needs `models.generate`. The fallback row is `fallbackModel` (`<provider>/<model>`, default `anthropic/claude-haiku-5-5`) when the catalog holds it, it is not `unavailable`, and it has structured output; otherwise it is the cheapest priced row with structured output that is not `unavailable` (ties by output price, then catalog order). With no such row, or when `models.generate` is absent or throws for it, `decide` rejects `BureauError` `NOT_CONFIGURED`. An answer that fails validation after one retry rejects with `DecisionSchemaError`.
+`decisions: { models?, model?, fallbackModel?, maximumPerTask? }` on `createBureau` decides who answers. `models` registers decision models by name (a `DecisionModel`, such as `typesafeJev` from `@lostgradient/operative-typesafe`), and the `decisions.model` setting, whose code default is `model`, names the one that answers, looked up again on every decision, so the next `decide` after a change uses the new model. It answers the kinds in its `kinds`; `catalog` is a reserved name for no registered model at all, which sends every kind to the fallback, and `decisions.model` refuses a name that is neither `catalog` nor registered. Every other kind goes to a language-model row of the model catalog, which needs `models.generate`. The fallback row is `fallbackModel` (`<provider>/<model>`, default `anthropic/claude-haiku-5-5`) when the catalog holds it, it is not `unavailable`, and it has structured output; otherwise it is the cheapest priced row with structured output that is not `unavailable` (ties by output price, then catalog order). With no such row, or when `models.generate` is absent or throws for it, `decide` rejects `BureauError` `NOT_CONFIGURED`. An answer that fails validation after one retry rejects with `DecisionSchemaError`.
 
 ```ts
 import type { Bureau } from '@lostgradient/bureau';
@@ -677,9 +677,11 @@ console.log(supervisor !== undefined);
 
 ### Settings (`bureau.settings`)
 
-`bureau.settings` is the part of a deployment's configuration you can change while it runs, by a person through a control-plane caller or by an agent through a tool. The code options you pass to `createBureau` are the defaults; a stored value overrides them, and `settings: { locked: [...] }` names the keys the store may not override. Each key is a dotted name and takes the value its code option takes, except that every duration is a number of milliseconds.
+`bureau.settings` is the part of a deployment's configuration you can change while it runs, by a person through a control-plane caller or by an agent through a tool. The code options you pass to `createBureau` are the defaults; a stored value overrides them, and `settings: { locked: { key: reason } }` names the keys the store may not override and why: `deployment` for a key the deployment's own code holds, `shared-storage` for a key that processes sharing one store must agree on (Interborough's remote mode locks its ownership and maintenance settings so). `get()` reports each key's `locked` state and, for a locked one, its `lockReason`. Each key is a dotted name and takes the value its code option takes, except that every duration is a number of milliseconds.
 
 A key is one of two kinds. A _live_ key takes effect at its next point of use: the next task start (`tools.*`), plan or step (`modelPolicy`), decision (`decisions.*`), maintenance pass (`retention.*`), admission (`sessionInput.principalBacklogLimit`), session (`sessionInput.sessionBacklogLimit`, which a running session keeps until it ends), dispatch (`children.delegation.defaultTimeToLiveMilliseconds`), or `engine.reconfigure` (the `engine.*` keys Weft reads at its point of use). A _restart_ key (`durable`, `maintenance`, `durableOwnership.ownership`, `workflowVersion`, and the engine's construction options) is stored and reported `pendingRestart` until a new `createBureau` over the same store reads it at boot. `flowControl`, `webhooks`, `storage`, and anything that is a function are not settings.
+
+Two keys name a model. `decisions.model` is the decision model that answers (see [Decisions](#decisions-bureaudecisions)): `catalog`, or a name registered in `decisions.models`; the code option `decisions.model` is its default. `context.summarizerModel` is the catalog row, `<provider>/<model>`, that summarizes a conversation when an agent compacts its context. It is unset by default, so there is no summarizer until a person or an agent sets one. `update` refuses a row the catalog as it is now does not hold, or holds as `unavailable`, with `invalid-value`; the catalog can change after the write (`bureau.models.replace`), so `bureau.models.summarizer()` re-checks on every call and returns the row, or `undefined` when the setting is unset or its row is gone or turned off. Agent compaction reads the summarizer through that method.
 
 ```ts
 import { createBureau } from '@lostgradient/bureau';
@@ -687,11 +689,15 @@ import { MemoryStorage } from '@lostgradient/storage';
 
 const bureau = await createBureau({
   storage: new MemoryStorage(),
-  settings: { locked: ['tools.humanInput'] },
+  settings: { locked: { 'tools.humanInput': 'deployment' } },
 });
 
 const { values, revision, keys } = await bureau.settings.get();
-console.log(values['tools.wakeup'], keys['tools.wakeup'].apply, keys['tools.humanInput'].locked);
+console.log(
+  values['tools.wakeup'],
+  keys['tools.wakeup'].apply,
+  keys['tools.humanInput'].lockReason,
+);
 
 const result = await bureau.settings.update(
   { 'retention.tasks': { olderThan: 7 * 86_400_000 }, maintenance: 'manual' },

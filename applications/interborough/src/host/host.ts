@@ -108,8 +108,8 @@ import {
   createAgentSource,
   createHostStorage,
   createWorkflowSource,
-  describeContent,
   disposeHostStorage,
+  hostPathsReport,
   redactDatabase,
   type HostDatabase,
 } from './locations.ts';
@@ -147,15 +147,16 @@ export const APPROVAL_SECRET_KEY = 'approval-secret';
 /**
  * The restart-applied settings a remote host holds to their code options (COR-1797): ownership,
  * maintenance, the durable engine, and the claim TTL and renew interval, whose code defaults keep
- * renew below TTL. Hosts that share a database must all run the same overlap-safe configuration.
+ * renew below TTL. Hosts that share a database must all run the same overlap-safe configuration,
+ * so the Bureau reports each as locked for the reason `shared-storage`.
  */
-const REMOTE_LOCKED_SETTINGS = [
-  'durableOwnership.ownership',
-  'maintenance',
-  'durable',
-  'engine.workflowClaimTtl',
-  'engine.workflowClaimRenewInterval',
-] as const satisfies NonNullable<SettingsOptions['locked']>;
+const REMOTE_LOCKED_SETTINGS = {
+  'durableOwnership.ownership': 'shared-storage',
+  maintenance: 'shared-storage',
+  durable: 'shared-storage',
+  'engine.workflowClaimTtl': 'shared-storage',
+  'engine.workflowClaimRenewInterval': 'shared-storage',
+} as const satisfies NonNullable<SettingsOptions['locked']>;
 
 /** The directory of agent files under the Interborough home: `researcher.md` is the agent `researcher`. */
 export const AGENT_DIRECTORY_NAME = 'agents';
@@ -219,9 +220,10 @@ export type HostOptions = {
   /** Receives the host's startup warnings. Defaults to `console.warn`. */
   readonly warn?: (message: string) => void;
   /**
-   * Which runtime settings the Bureau holds to their code options (`settings.locked`), so the
-   * settings page shows them read-only. A person's host locks none; the end-to-end host locks one,
-   * so the page's locked state is exercised against the real Bureau.
+   * Which runtime settings the Bureau holds to their code options (`settings.locked`, each with
+   * the reason it is held), so the settings page shows them read-only and says why. A person's
+   * host locks none; the end-to-end host locks one, so the page's locked state is exercised
+   * against the real Bureau. A remote host adds the settings its shared storage requires.
    */
   readonly settings?: SettingsOptions;
   /**
@@ -419,7 +421,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
   }
   const environment = options.environment ?? processEnvironment();
   // The caller's lock list is read before the first await, so a later change to it cannot reach the Bureau.
-  const callerLocks = [...(options.settings?.locked ?? [])];
+  const callerLocks = { ...options.settings?.locked };
   const bungalow: Bungalow = await openBungalow({ name: APPLICATION_NAME, environment });
   const held: Held = { bungalow };
   try {
@@ -447,8 +449,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       });
     const agentContent = bungalow.content(AGENT_DIRECTORY_NAME);
     const workflowContent = bungalow.content(WORKFLOW_DIRECTORY_NAME);
-    // The TypeSafe key, when the secrets hold one, gives Bureau a decision model for the kinds Jev
-    // serves. It is read here and handed to the model, which keeps it in memory.
+    // The TypeSafe key, when the secrets hold one, registers a decision model, `typesafe`, for the
+    // kinds Jev serves, and makes it the default of the `decisions.model` setting. The other choice
+    // is Bureau's own `catalog`, the language-model fallback. The key is read here and handed to the
+    // model, which keeps it in memory.
     const typesafeKey = bungalow.readSecret(TYPESAFE_SECRET_KEY)?.trim();
     // Hosts that share a database must agree on who owns a run, so a remote host holds ownership
     // to Bureau's lease default and the Settings page cannot store `none`: two hosts would then
@@ -460,7 +464,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       bungalow.mode === 'remote'
         ? {
             ...options.settings,
-            locked: [...callerLocks, ...REMOTE_LOCKED_SETTINGS],
+            locked: { ...callerLocks, ...REMOTE_LOCKED_SETTINGS },
           }
         : options.settings;
     const bureau = await createBureau({
@@ -474,7 +478,12 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       validators: createSeededValidators(),
       ...(typesafeKey === undefined || typesafeKey === ''
         ? {}
-        : { decisions: { model: typesafeJev({ apiKey: typesafeKey }) } }),
+        : {
+            decisions: {
+              models: { typesafe: typesafeJev({ apiKey: typesafeKey }) },
+              model: 'typesafe',
+            },
+          }),
       // A file's `model` is a row of this catalog, so it runs with the key in the secrets.
       models: {
         catalog: providers.rows,
@@ -590,16 +599,13 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         [HOST_PATHS_ROUTE]: {
           GET: (request: Request) =>
             refuse(request) ??
-            Response.json({
-              mode: bungalow.mode,
-              agentDirectory: describeContent(agentContent),
-              workflowDirectory: describeContent(workflowContent),
-              configurationFile: bungalow.configurationLocation,
-              providers: PROVIDER_NAMES.map((name) => ({
-                name,
-                secretFile: bungalow.secretLocation(PROVIDER_SECRET_KEYS[name]),
-              })),
-            }),
+            Response.json(
+              hostPathsReport(
+                bungalow,
+                { agents: agentContent, workflows: workflowContent },
+                PROVIDER_NAMES.map((name) => ({ name, secretKey: PROVIDER_SECRET_KEYS[name] })),
+              ),
+            ),
         },
       },
       async fetch(request, listener) {

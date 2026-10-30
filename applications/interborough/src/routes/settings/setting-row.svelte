@@ -215,7 +215,9 @@
     {/if}
   </div>
   {#if locked}
-    <p class="weft-setting__locked">{SETTINGS_COPY.lockedNote}</p>
+    <p class="weft-setting__locked">
+      {SETTINGS_COPY.lockedNote[state.lockReason ?? 'deployment']}
+    </p>
   {/if}
 </div>
 

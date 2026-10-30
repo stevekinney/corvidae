@@ -368,9 +368,11 @@ export type { DecideRefusalReason, DecideToolResult } from './decisions/decide-t
 export {
   SETTING_APPLY,
   SETTING_KEYS,
+  SETTING_LOCK_REASONS,
   settingsSchema,
   type SettingApply,
   type SettingKey,
+  type SettingLockReason,
   type SettingsValues,
 } from './settings/settings-schema';
 export type {
