@@ -111,4 +111,5 @@ const schema = {
   },
 } satisfies ComponentSchema;
 
+/** JSON Schema describing the props of this component. */
 export default schema as ComponentSchema;

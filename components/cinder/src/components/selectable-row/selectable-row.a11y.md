@@ -12,6 +12,8 @@
 
 Trailing controls never trigger the primary action because they are not descendants of it. Consumers do not need `stopPropagation()` for Rename, menu, or external-link controls. Do not put another interactive element inside the `leading`, `title`, `description`, or `meta` snippets; those regions are deliberately inside the primary native action.
 
+Trailing controls are always visible and focusable. `SelectableRow` applies no `opacity`, `visibility`, or `:hover` rule to them, and a consumer must not add one: a row action revealed only on hover is invisible on a touch screen and easy to miss by keyboard. When there are too many actions to show, keep at least one visible control, such as a `⋯` menu trigger with an accessible name like "More actions".
+
 Button rows expose `aria-pressed` from `selected` by default. Use `selectedState="current"` when a button row represents the current item in a set; selected rows then expose `aria-current` using `currentValue` (default `"true"`) and omit `aria-pressed`. Linked rows always expose `aria-current` from `selected` and `currentValue`; pass `currentValue="page"` when the link represents the current page. Use a linked row only when the primary action really navigates.
 
 Choose `ActionRow` when the whole row is one button and its trailing content is non-interactive. Choose `StackedListItem` when the row is mostly static and only its title links. Choose `SelectableRow` when the full main body must activate while sibling trailing controls remain independent.

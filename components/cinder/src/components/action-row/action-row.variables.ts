@@ -1,3 +1,4 @@
+/** CSS custom properties this component reads, which a consumer can override. */
 const variables: readonly string[] = [
   '--cinder-action-row-body-gap',
   '--cinder-action-row-description-font-size',

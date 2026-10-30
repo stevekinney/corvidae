@@ -3099,6 +3099,58 @@
       }
     },
     {
+      "name": "ListDetail",
+      "id": "list-detail",
+      "import": "@lostgradient/cinder",
+      "exportName": "ListDetail",
+      "category": "layout",
+      "status": "beta",
+      "purpose": "Resizable list-and-detail layout with a list header, keyboard selection, the open item kept in the URL, a remembered divider width, and a one-pane-at-a-time layout on narrow containers.",
+      "tags": ["layout", "list", "detail", "selection", "master-detail"],
+      "useWhen": [
+        "Browsing a collection of records where choosing one shows it beside the list, such as chats, runs, or memories.",
+        "The open record must survive a reload and be shareable as a link."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Each record has its own page and the list is only a way to navigate there.",
+          "alternative": "stacked-list-item"
+        },
+        {
+          "reason": "You need the resizable layout alone, with no list.",
+          "alternative": "resizable-panels"
+        }
+      ],
+      "related": ["resizable-panels", "data-list", "selectable-row", "empty-state"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/list-detail/list-detail.schema.json",
+        "variables": "src/components/list-detail/list-detail.variables.json",
+        "examples": "src/components/list-detail/list-detail.examples.json"
+      },
+      "a11y": {
+        "pattern": "Region landmarks with a native button or link row action",
+        "keyboard": [
+          {
+            "keys": "J",
+            "action": "Moves the keyboard cursor to the next row."
+          },
+          {
+            "keys": "K",
+            "action": "Moves the keyboard cursor to the previous row."
+          },
+          {
+            "keys": "Enter",
+            "action": "Opens the row the cursor is on."
+          }
+        ],
+        "notes": [
+          "J and K are ignored while focus is in a text field, a menu, a listbox, a combobox or a dialog, so typing is never taken."
+        ]
+      }
+    },
+    {
       "name": "LoadMore",
       "id": "load-more",
       "import": "@lostgradient/cinder",
