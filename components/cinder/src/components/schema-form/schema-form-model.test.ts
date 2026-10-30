@@ -71,7 +71,7 @@ describe('schema-form model', () => {
       ['count', 'integer'],
       ['active', 'boolean'],
       ['mode', 'enum'],
-      ['tags', 'array'],
+      ['tags', 'tags'],
       ['nested', 'object'],
       ['raw', 'json'],
     ]);

@@ -245,7 +245,7 @@ describe('SchemaForm', () => {
             count: { type: 'integer', title: 'Count' },
             active: { type: 'boolean', title: 'Active' },
             mode: { type: 'string', title: 'Mode', enum: ['fast', 'safe'] },
-            tags: { type: 'array', title: 'Tags', items: { type: 'string', title: 'Tag' } },
+            scores: { type: 'array', title: 'Scores', items: { type: 'integer', title: 'Score' } },
             nested: {
               type: 'object',
               title: 'Nested',
@@ -254,7 +254,7 @@ describe('SchemaForm', () => {
             },
             raw: { title: 'Raw payload' },
           },
-          required: ['name', 'ratio', 'count', 'active', 'mode', 'tags', 'nested', 'raw'],
+          required: ['name', 'ratio', 'count', 'active', 'mode', 'scores', 'nested', 'raw'],
         },
         value: {
           name: 'Initial',
@@ -262,7 +262,7 @@ describe('SchemaForm', () => {
           count: 1,
           active: false,
           mode: 'fast',
-          tags: ['one'],
+          scores: [1],
           nested: { owner: 'Ada' },
           raw: { ok: false },
         },
@@ -290,12 +290,13 @@ describe('SchemaForm', () => {
     await fireEvent.click(activeCheckbox);
     await fireEvent.change(screen.getByLabelText(/Mode/), { target: { value: '"safe"' } });
 
-    await fireEvent.click(screen.getByRole('button', { name: /Add Tags/ }));
-    expect(screen.getByRole('button', { name: 'Remove Tags item 1' })).toBeTruthy();
-    const tagInputs = screen.getAllByRole('textbox', { name: /Tag/ });
-    expect(tagInputs).toHaveLength(2);
-    await fireEvent.input(tagInputs[1]!, { target: { value: 'two' } });
-    expect(screen.getByRole('button', { name: 'Remove Tags item 2' })).toBeTruthy();
+    await fireEvent.click(screen.getByRole('button', { name: /Add Scores/ }));
+    expect(screen.getByRole('button', { name: 'Remove Scores item 1' })).toBeTruthy();
+    const scoreInputs = screen.getAllByRole('spinbutton', { name: /Score/ });
+    expect(scoreInputs).toHaveLength(2);
+    await fireEvent.input(scoreInputs[1]!, { target: { value: '7' } });
+    await fireEvent.blur(scoreInputs[1]!);
+    expect(screen.getByRole('button', { name: 'Remove Scores item 2' })).toBeTruthy();
 
     await fireEvent.input(screen.getByLabelText(/Owner/), { target: { value: 'Grace' } });
     await fireEvent.input(screen.getByLabelText(/Raw payload/), {
@@ -310,7 +311,7 @@ describe('SchemaForm', () => {
       count: 4,
       active: true,
       mode: 'safe',
-      tags: ['one', 'two'],
+      scores: [1, 7],
       nested: { owner: 'Grace' },
       raw: { ok: true, level: 2 },
     });
@@ -446,11 +447,11 @@ describe('SchemaForm', () => {
         schema: {
           type: 'object',
           properties: {
-            tags: { type: 'array', title: 'Tags', items: { type: 'string', title: 'Tag' } },
+            scores: { type: 'array', title: 'Scores', items: { type: 'integer', title: 'Score' } },
           },
-          required: ['tags'],
+          required: ['scores'],
         },
-        value: { tags: ['one', 'two'] },
+        value: { scores: [1, 2] },
         onSubmit: (value: unknown) => {
           submitted = value;
         },
@@ -458,10 +459,10 @@ describe('SchemaForm', () => {
     });
     await flush();
 
-    await fireEvent.click(within(container).getByRole('button', { name: 'Remove Tags item 1' }));
+    await fireEvent.click(within(container).getByRole('button', { name: 'Remove Scores item 1' }));
     await submit(formFrom(container));
 
-    expect(submitted).toEqual({ tags: ['two'] });
+    expect(submitted).toEqual({ scores: [2] });
   });
 });
 
