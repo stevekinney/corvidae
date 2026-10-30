@@ -71,7 +71,25 @@ describe('public API contract', () => {
       './protocol': './src/protocol/index.ts',
       './open-ai/agents': './src/adapters/open-ai/agents/index.ts',
       './coding': './src/coding/index.ts',
+      './tool-sources': './src/integrations/tool-sources/index.ts',
     });
+  });
+
+  it('bundles the root entry for the browser without Node builtins', async () => {
+    const build = await Bun.build({
+      entrypoints: [new URL('../src/index.ts', import.meta.url).pathname],
+      define: { 'import.meta.env': '{}' },
+      format: 'esm',
+      target: 'browser',
+    });
+    expect(build.logs.map(String)).toEqual([]);
+    expect(build.success).toBe(true);
+    const output = await Promise.all(build.outputs.map((artifact) => artifact.text()));
+    const bundled = output.join('\n');
+    // The stdio transport and its child-process dependencies belong behind `armorer/tool-sources`.
+    expect(bundled).not.toContain('child_process');
+    expect(bundled).not.toContain('cross-spawn');
+    expect(bundled).not.toMatch(/from\s*["']node:/);
   });
 
   it('exposes lazy provider import helpers on createToolbox', () => {

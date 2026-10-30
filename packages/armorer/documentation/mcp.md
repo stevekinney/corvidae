@@ -401,10 +401,12 @@ await completeMcpOAuthAuthorization(provider, {
 
 ## Saved tool sources
 
+The loader is exported from `armorer/tool-sources`, not the root entry: it can spawn a stdio MCP server, so it imports Node modules that a browser bundle of `armorer` must not reach.
+
 A host that saves "this MCP server" or "this OpenAPI service" in its configuration describes it as a `ToolSourceDescription`, which is plain JSON: it holds no function and no secret, and names a credential only by the name the host stores it under. `loadToolSource(description, { resolveCredential })` connects and returns the source's tools plus a `close()`; `loadToolSources` loads many and reports the failures apart from the sources that loaded. `parseToolSourceDescription` validates a value read back from configuration and rejects unknown fields.
 
 ```typescript
-import { loadToolSource, parseToolSourceDescription } from 'armorer';
+import { loadToolSource, parseToolSourceDescription } from 'armorer/tool-sources';
 
 const description = parseToolSourceDescription({
   id: 'tracker',
