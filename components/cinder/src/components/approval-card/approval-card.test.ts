@@ -1249,6 +1249,24 @@ describe('ApprovalCard row layout', () => {
     expect(region.textContent).toContain('bun run --filter=@lostgradient/cinder test');
   });
 
+  test('View input lists touched files and is absent when there is nothing to show', async () => {
+    const withFiles = render(ApprovalCard, {
+      props: approvalCardProps({
+        layout: 'row',
+        operation: { kind: 'file-write', filesTouched: ['notes/plan.md'] },
+      }),
+    });
+    await fireEvent.click(withFiles.getByRole('button', { name: 'View input' }));
+    expect(withFiles.container.textContent).toContain('notes/plan.md');
+    cleanup();
+
+    const empty = render(ApprovalCard, {
+      props: approvalCardProps({ layout: 'row', operation: { kind: 'other' } }),
+    });
+    expect(empty.queryByRole('button', { name: 'View input' })).toBeNull();
+    expect(empty.getByRole('button', { name: 'Approve' })).not.toBeNull();
+  });
+
   test('a resolved row shows its state instead of the decision buttons', () => {
     const { container, queryByRole } = render(ApprovalCard, {
       props: approvalCardProps({ layout: 'row', state: 'denied' }),

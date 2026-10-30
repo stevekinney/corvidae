@@ -158,6 +158,13 @@
     `${filesTouched.length} file${filesTouched.length === 1 ? '' : 's'}`,
   );
   const environmentNames = $derived(sanitizeEnvironmentNames(env));
+  // The row's View input discloses only what the operation carries.
+  const hasRowInput = $derived(
+    (operation.kind === 'command' && Boolean(operation.command)) ||
+      (operation.kind === 'patch' && Boolean(operation.diff)) ||
+      filesTouched.length > 0 ||
+      hasArgumentsPreview,
+  );
 
   $effect(() => {
     clearExpirationTimer();
@@ -214,6 +221,33 @@
   {/if}
 {/snippet}
 
+{#snippet filesTouchedSection()}
+  {#if filesTouched.length > 0}
+    <div class="cinder-approval-card__section">
+      <div class="cinder-approval-card__section-heading">
+        <svelte:element this={sectionTag} class="cinder-approval-card__section-title">
+          Files touched
+        </svelte:element>
+        <Badge size="sm">{filesTouchedLabel}</Badge>
+      </div>
+      <ul class="cinder-approval-card__file-list">
+        {#each filesTouched as file (file)}
+          <li class="cinder-approval-card__file">
+            <span class="cinder-approval-card__file-path">{file}</span>
+            <CopyButton
+              value={file}
+              label={`Copy path ${file}`}
+              copiedLabel="Path copied"
+              class="cinder-approval-card__file-copy"
+              iconOnly
+            />
+          </li>
+        {/each}
+      </ul>
+    </div>
+  {/if}
+{/snippet}
+
 {#snippet argumentsPreviewSection()}
   {#if hasArgumentsPreview}
     <div class="cinder-approval-card__section">
@@ -252,16 +286,18 @@
       {#if !isActionable || !hasResolutionCallback}
         <StatusDot status={STATE_DOT_STATUS[effectiveState]} label={stateText} size="sm" />
       {/if}
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        aria-expanded={rowInputOpen}
-        aria-controls={rowInputId}
-        onclick={() => (rowInputOpen = !rowInputOpen)}
-      >
-        View input
-      </Button>
+      {#if hasRowInput}
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-expanded={rowInputOpen}
+          aria-controls={rowInputId}
+          onclick={() => (rowInputOpen = !rowInputOpen)}
+        >
+          View input
+        </Button>
+      {/if}
       {#if isActionable && hasResolutionCallback}
         <Button
           type="button"
@@ -283,6 +319,7 @@
     </div>
     <div id={rowInputId} class="cinder-approval-card__row-input" hidden={!rowInputOpen}>
       {@render operationPreview()}
+      {@render filesTouchedSection()}
       {@render argumentsPreviewSection()}
     </div>
   </article>
@@ -330,30 +367,7 @@
       <div class="cinder-approval-card__body">
         {@render operationPreview()}
 
-        {#if filesTouched.length > 0}
-          <div class="cinder-approval-card__section">
-            <div class="cinder-approval-card__section-heading">
-              <svelte:element this={sectionTag} class="cinder-approval-card__section-title">
-                Files touched
-              </svelte:element>
-              <Badge size="sm">{filesTouchedLabel}</Badge>
-            </div>
-            <ul class="cinder-approval-card__file-list">
-              {#each filesTouched as file (file)}
-                <li class="cinder-approval-card__file">
-                  <span class="cinder-approval-card__file-path">{file}</span>
-                  <CopyButton
-                    value={file}
-                    label={`Copy path ${file}`}
-                    copiedLabel="Path copied"
-                    class="cinder-approval-card__file-copy"
-                    iconOnly
-                  />
-                </li>
-              {/each}
-            </ul>
-          </div>
-        {/if}
+        {@render filesTouchedSection()}
 
         {@render argumentsPreviewSection()}
 
