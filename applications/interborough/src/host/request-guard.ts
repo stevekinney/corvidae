@@ -21,6 +21,10 @@
  * dot segments are resolved. Every other path refuses that `Host`, and the Bureau then requires
  * the key on every A2A JSON-RPC call.
  *
+ * The guard reads `Host`, so the reverse proxy in front of a public origin must forward it. One
+ * that rewrites it to `127.0.0.1:<port>` makes every request it forwards look local, and so
+ * exposes every route as the owner; nothing here can tell the difference.
+ *
  * @module request-guard
  */
 

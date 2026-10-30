@@ -89,7 +89,8 @@ export function resolveA2aPublicOrigin(environment: BungalowEnvironment): URL | 
     parsed.password !== ''
   ) {
     throw new Error(
-      `${A2A_PUBLIC_ORIGIN_VARIABLE} must be an https origin with no path, such as https://agents.example.com (got "${raw}").`,
+      // The value is not echoed: unlike a port, a URL can carry a credential.
+      `${A2A_PUBLIC_ORIGIN_VARIABLE} must be an https origin with no path, user name, or password, such as https://agents.example.com.`,
     );
   }
   return new URL(parsed.origin);
