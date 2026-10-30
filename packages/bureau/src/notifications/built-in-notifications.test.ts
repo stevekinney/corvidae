@@ -283,3 +283,95 @@ describe('startBuiltInNotifications', () => {
     expect(created).toHaveLength(1);
   });
 });
+
+describe('the notification outbox (COR-1945)', () => {
+  function open(tasks: Record<string, TaskView>, owed: string[]) {
+    const created: string[] = [];
+    const cleared: string[] = [];
+    const diagnostics: string[] = [];
+    let failWrites = 0;
+    const running = startBuiltInNotifications({
+      source: { toObservable: () => ({ subscribe: () => ({ unsubscribe: () => undefined }) }) },
+      store: {
+        create: async (input) => {
+          if (failWrites > 0) {
+            failWrites -= 1;
+            throw new Error('storage unavailable');
+          }
+          // A dedupe key found is a no-op, as in the real store.
+          const fresh = !created.includes(input.dedupeKey ?? '');
+          if (fresh) created.push(input.dedupeKey ?? '');
+          return { notification: {} as never, created: fresh };
+        },
+        dismissByDedupeKey: async () => 0,
+      },
+      tasks: { get: async (taskId) => tasks[taskId] },
+      diagnose: (diagnostic) => diagnostics.push(diagnostic.message),
+      outbox: {
+        pending: async () => owed.filter((runId) => !cleared.includes(runId)),
+        clear: async (runId) => {
+          cleared.push(runId);
+        },
+      },
+    });
+    return {
+      running,
+      created,
+      cleared,
+      diagnostics,
+      failNextWrites: (count: number) => (failWrites = count),
+    };
+  }
+
+  it('writes what the outbox owes and clears each entry once its notification exists', async () => {
+    const { running, created, cleared } = open(
+      { 'run-1': task({ id: 'run-1' }), 'run-2': task({ id: 'run-2' }) },
+      ['run-1', 'run-2'],
+    );
+
+    await running.repair();
+
+    expect(created).toEqual(['run.settled:run-1', 'run.settled:run-2']);
+    expect(cleared).toEqual(['run-1', 'run-2']);
+  });
+
+  it('keeps the entry when the write fails, and the next repair writes it', async () => {
+    const { running, created, cleared, diagnostics, failNextWrites } = open(
+      { 'run-1': task({ id: 'run-1' }) },
+      ['run-1'],
+    );
+    failNextWrites(1);
+
+    await running.repair();
+
+    expect(created).toEqual([]);
+    expect(cleared).toEqual([]);
+    expect(diagnostics.join('\n')).toContain('storage unavailable');
+
+    await running.repair();
+
+    expect(created).toEqual(['run.settled:run-1']);
+    expect(cleared).toEqual(['run-1']);
+  });
+
+  it('repairing twice, or after the live write, writes one notification', async () => {
+    const { running, created } = open({ 'run-1': task({ id: 'run-1' }) }, ['run-1', 'run-1']);
+
+    await running.repair();
+    await running.repair();
+
+    expect(created).toEqual(['run.settled:run-1']);
+  });
+
+  it('clears the entry of a run that calls for no notification, or whose record is gone', async () => {
+    const { running, created, cleared } = open(
+      { 'run-1': task({ id: 'run-1', status: 'completed' }) },
+      ['run-1', 'run-gone'],
+    );
+
+    await running.repair();
+
+    expect(created).toEqual([]);
+    expect(cleared).toEqual(['run-1', 'run-gone']);
+  });
+});

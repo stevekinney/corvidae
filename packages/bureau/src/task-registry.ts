@@ -41,6 +41,7 @@ import {
   encodeStorageKeyComponent,
   MemoryStorage,
   textValueStore,
+  type TextValueStoreBatchOperation,
 } from '@lostgradient/storage';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 
@@ -62,6 +63,7 @@ import {
   type TaskListingSiblings,
 } from './task-list-snapshots';
 import { isTryAgentName } from './agent-try';
+import { notificationOutboxKey } from './notifications/notification-outbox';
 import {
   isStoredTaskOrigin,
   isTopLevelTaskOrigin,
@@ -903,6 +905,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     taskId: string,
     mutate: (record: TaskRecord) => TaskRecord | undefined,
     counted = true,
+    alsoWrite?: (next: TaskRecord) => readonly TextValueStoreBatchOperation[],
   ): Promise<boolean> {
     const key = recordKey(taskId);
     for (let attempt = 0; attempt < MAX_UPDATE_ATTEMPTS; attempt += 1) {
@@ -923,6 +926,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
               counted ? { ...next, revision: (current.revision ?? 0) + 1 } : next,
             ),
           },
+          ...(alsoWrite?.(next) ?? []),
         ],
       );
       if (committed) return true;
@@ -1358,24 +1362,35 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
   ): Promise<boolean> {
     const captured: { settled?: TaskRecord; newlySettled: boolean } = { newlySettled: false };
     const recorded = await track(
-      update(taskId, (record) => {
-        // A task has more than one writer of its settlement (the action that ended the run,
-        // and the catalog hook that carries the answer), so the answer is never lost to
-        // whichever lands last. Only a catalog task and a schedule fire record one: a session
-        // run's answer lives in its durable history, and a fire writes none there.
-        const answer =
-          record.incarnation === '' || record.kind === 'schedule-fire'
-            ? (settlement.answer ?? record.settled?.answer)
-            : undefined;
-        const { answer: _ignored, ...rest } = settlement;
-        captured.newlySettled = record.settled === undefined;
-        const next: TaskRecord = {
-          ...record,
-          settled: { ...rest, ...(answer === undefined ? {} : { answer }) },
-        };
-        captured.settled = next;
-        return next;
-      }),
+      update(
+        taskId,
+        (record) => {
+          // A task has more than one writer of its settlement (the action that ended the run,
+          // and the catalog hook that carries the answer), so the answer is never lost to
+          // whichever lands last. Only a catalog task and a schedule fire record one: a session
+          // run's answer lives in its durable history, and a fire writes none there.
+          const answer =
+            record.incarnation === '' || record.kind === 'schedule-fire'
+              ? (settlement.answer ?? record.settled?.answer)
+              : undefined;
+          const { answer: _ignored, ...rest } = settlement;
+          captured.newlySettled = record.settled === undefined;
+          const next: TaskRecord = {
+            ...record,
+            settled: { ...rest, ...(answer === undefined ? {} : { answer }) },
+          };
+          captured.settled = next;
+          return next;
+        },
+        true,
+        () =>
+          // COR-1945 — a run that ends `failed` owes a notification. The entry commits with the
+          // settlement or not at all, so a process that dies before the notification is written
+          // finds the debt at its next boot. Only a store that outlives the process is written to.
+          captured.newlySettled && settlement.status === 'failed' && options.kv !== undefined
+            ? [{ type: 'set', key: notificationOutboxKey(taskId), value: '1' }]
+            : [],
+      ),
     );
     if (recorded && captured.settled !== undefined) {
       await announceRecordedSettlement(taskId, captured.settled, captured.newlySettled);
