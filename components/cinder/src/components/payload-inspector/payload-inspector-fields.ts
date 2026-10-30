@@ -2,7 +2,7 @@
 export type PayloadEntry = {
   /** The property name, or the 1-based position for an array entry. */
   key: string;
-  /** The value. A `Date` is already written as its ISO string. */
+  /** The value. A `Date` is already written as its ISO string, or `Invalid Date` when it holds no time. */
   value: unknown;
   /** True when the value is an object or array, which the Fields view nests. */
   nested: boolean;
@@ -18,8 +18,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return isNested(value) && !Array.isArray(value);
 }
 
+/** A `Date` as its ISO string. An invalid one has none, and `toISOString` would throw. */
+function writeDate(value: Date): string {
+  return Number.isNaN(value.getTime()) ? 'Invalid Date' : value.toISOString();
+}
+
 function toEntry(key: string, value: unknown, isIndex: boolean): PayloadEntry {
-  const written = value instanceof Date ? value.toISOString() : value;
+  const written = value instanceof Date ? writeDate(value) : value;
   return { key, value: written, nested: isNested(written), isIndex };
 }
 

@@ -100,6 +100,11 @@ describe('PayloadInspector', () => {
   });
 
   describe('object and array payloads', () => {
+    test('renders a payload holding an invalid Date in the Fields view', () => {
+      const { container } = renderInspector({ value: { at: new Date('not a date') } });
+      expect(container.textContent).toContain('Invalid Date');
+    });
+
     test('renders objects as a JSON tree in the JSON view', () => {
       const { container } = renderInspector({ value: { key: 'value' }, view: 'json' });
       expect(container.querySelector('.cinder-json-viewer')).not.toBeNull();

@@ -2,7 +2,7 @@
 
 A read-only view of a JSON Schema. It shows one line per field: the field's label, a red dot when the field is required, its type in small monospace, and its description. Nested objects are indented under their field, and the raw schema document sits behind a _View JSON Schema_ disclosure, so the schema is never dumped as raw JSON.
 
-Labels come from Cinder's identifier formatter, so `orderId` reads "Order ID". Local `$ref`s into `$defs` or `definitions` are followed and `allOf` members are merged. A schema that is not an object with properties shows one _Value_ line that names its type.
+Labels come from Cinder's identifier formatter, so `orderId` reads "Order ID". Local `$ref`s into `$defs` or `definitions` are followed and `allOf` members are merged, including properties that more than one member declares. A reference that points back into the object being shown is not expanded again; its line reads, for example, `node (recursive)`. The view lists at most 500 expanded fields, and an object it did not open past that shows the same note as one beyond `maxDepth`. A schema that is not an object with properties shows one _Value_ line that names its type.
 
 Use it wherever a schema is shown for reading: a workflow's input and output, a tool's input, the payload of a signal or an update, a question's answer. Use `JsonSchemaEditor` when the schema must be edited, and `PayloadInspector` when you are showing a value rather than the shape it must have.
 

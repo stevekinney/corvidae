@@ -24,6 +24,11 @@ describe('readPayloadEntries', () => {
     expect(entry).toMatchObject({ value: '2026-10-30T14:15:07.000Z', nested: false });
   });
 
+  test('writes an invalid Date as text instead of throwing', () => {
+    const [entry] = readPayloadEntries({ at: new Date('not a date') });
+    expect(entry).toMatchObject({ value: 'Invalid Date', nested: false });
+  });
+
   test('has no entries for a scalar', () => {
     expect(readPayloadEntries('text')).toEqual([]);
     expect(readPayloadEntries(null)).toEqual([]);

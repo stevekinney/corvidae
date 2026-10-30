@@ -23,6 +23,13 @@ type SchemaRecord = Record<string, unknown>;
 /** How many levels of `array of` and alternatives a type string spells out before it ends. */
 const TYPE_DEPTH_LIMIT = 4;
 
+/**
+ * How many fields one schema expands to, in total. Expansion stops there and
+ * marks the fields it did not open as truncated, so a schema whose references
+ * fan out cannot grow the list past what a person could read.
+ */
+const FIELD_BUDGET = 500;
+
 /** How many enum values a type string lists before it ends with an ellipsis. */
 const ENUM_VALUES_SHOWN = 4;
 
@@ -58,42 +65,78 @@ function resolveReference(root: SchemaRecord, reference: string): SchemaRecord |
 }
 
 /**
+ * Combines the `properties` of two schemas. A property both declare keeps both
+ * definitions, joined under `allOf`, so the walk merges them when it reads the
+ * property, instead of one definition replacing the other.
+ */
+function mergeProperties(base: unknown, incoming: unknown): SchemaRecord | undefined {
+  if (!isRecord(base)) return isRecord(incoming) ? { ...incoming } : undefined;
+  if (!isRecord(incoming)) return { ...base };
+  const entries = new Map(Object.entries(base));
+  for (const [key, definition] of Object.entries(incoming)) {
+    const existing = entries.get(key);
+    if (existing === undefined || !isRecord(existing)) {
+      entries.set(key, definition);
+    } else if (isRecord(definition)) {
+      entries.set(key, { allOf: [existing, definition] });
+    }
+  }
+  return Object.fromEntries(entries);
+}
+
+/**
+ * Lays `over` on top of `base`: its keywords win, except that `properties` and
+ * `required` from both are kept.
+ */
+function overlay(base: SchemaRecord, over: SchemaRecord): SchemaRecord {
+  const result: SchemaRecord = { ...base, ...over };
+  const properties = mergeProperties(base['properties'], over['properties']);
+  if (properties) result['properties'] = properties;
+  const required = [...stringList(base['required']), ...stringList(over['required'])];
+  if (required.length > 0) result['required'] = [...new Set(required)];
+  return result;
+}
+
+/**
  * Resolves `$ref` chains and merges `allOf` members into one flat schema, so
  * the rest of the walk reads `properties` and `required` from a single place.
- * `seen` holds the references on the current path and stops a cycle.
+ * `seen` holds the references on the current path: one of them is left
+ * unresolved, which stops a cycle. Every reference this call follows is added
+ * to `followed`, so the caller can extend the path beneath the schema.
  */
-function flatten(root: SchemaRecord, schema: SchemaRecord, seen: readonly string[]): SchemaRecord {
+function flatten(
+  root: SchemaRecord,
+  schema: SchemaRecord,
+  seen: readonly string[],
+  followed: string[] = [],
+): SchemaRecord {
   let result: SchemaRecord = { ...schema };
   const reference = result['$ref'];
   if (typeof reference === 'string' && !seen.includes(reference)) {
     const target = resolveReference(root, reference);
     if (target) {
       delete result['$ref'];
-      result = { ...flatten(root, target, [...seen, reference]), ...result };
+      followed.push(reference);
+      result = overlay(flatten(root, target, [...seen, reference], followed), result);
     }
   }
   const members = result['allOf'];
   if (Array.isArray(members)) {
-    const properties: SchemaRecord = isRecord(result['properties'])
-      ? { ...result['properties'] }
-      : {};
-    const required = stringList(result['required']);
+    delete result['allOf'];
     for (const member of members) {
       if (!isRecord(member)) continue;
-      const merged = flatten(root, member, seen);
-      if (isRecord(merged['properties'])) Object.assign(properties, merged['properties']);
-      required.push(...stringList(merged['required']));
-      for (const keyword of ['type', 'description', 'items', 'enum', 'format'] as const) {
-        if (result[keyword] === undefined && merged[keyword] !== undefined) {
-          result[keyword] = merged[keyword];
-        }
-      }
+      // The schema's own keywords, and those of earlier members, win.
+      result = overlay(flatten(root, member, seen, followed), result);
     }
-    delete result['allOf'];
-    if (Object.keys(properties).length > 0) result['properties'] = properties;
-    if (required.length > 0) result['required'] = [...new Set(required)];
   }
   return result;
+}
+
+/** The name a reference ends in, for example `node` for `#/$defs/node`. */
+function referenceName(reference: string): string {
+  const last = reference.split('/').pop() ?? '';
+  const name = last.replaceAll('~1', '/').replaceAll('~0', '~');
+  return reference === '#' || name === '' || name === '#' ? 'schema' : name;
 }
 
 function literal(value: unknown): string {
@@ -118,6 +161,11 @@ function describeType(
   depth = 0,
 ): string {
   if (depth >= TYPE_DEPTH_LIMIT) return '…';
+  const reference = schema['$ref'];
+  if (typeof reference === 'string' && resolveReference(root, reference)) {
+    // Left unresolved only because it is already being expanded above.
+    return `${referenceName(reference)} (recursive)`;
+  }
   if (Array.isArray(schema['enum'])) {
     const values = schema['enum'].map(literal);
     const shown = values.slice(0, ENUM_VALUES_SHOWN).join(' | ');
@@ -158,37 +206,47 @@ function nestedObject(
   root: SchemaRecord,
   schema: SchemaRecord,
   seen: readonly string[],
+  followed: string[],
 ): SchemaRecord | undefined {
   if (isRecord(schema['properties'])) return schema;
   if (isRecord(schema['items'])) {
-    const items = flatten(root, schema['items'], seen);
+    const items = flatten(root, schema['items'], seen, followed);
     if (isRecord(items['properties'])) return items;
   }
   return undefined;
 }
 
+/** What is left to spend on fields, shared by every level of one walk. */
+type FieldBudget = { remaining: number };
+
 function buildFields(
   root: SchemaRecord,
   parent: SchemaRecord,
-  seen: readonly string[],
+  path: readonly string[],
   depth: number,
   maxDepth: number,
+  budget: FieldBudget,
 ): SchemaViewField[] {
   const properties = parent['properties'];
   if (!isRecord(properties)) return [];
   const required = new Set(stringList(parent['required']));
   const fields: SchemaViewField[] = [];
   for (const [key, definition] of Object.entries(properties)) {
-    const schema = isRecord(definition) ? flatten(root, definition, seen) : {};
-    const nested = nestedObject(root, schema, seen);
-    const withinDepth = depth < maxDepth;
+    // `path` holds the references being expanded above this field. A reference
+    // on it is not followed again: the field shows the reference's name instead.
+    const followed: string[] = [];
+    const schema = isRecord(definition) ? flatten(root, definition, path, followed) : {};
+    const nested = nestedObject(root, schema, path, followed);
+    const below = [...path, ...followed];
+    budget.remaining -= 1;
+    const expand = nested !== undefined && depth < maxDepth && budget.remaining > 0;
     const field: SchemaViewField = {
       key,
       label: humanizeIdentifier(key),
-      type: describeType(root, schema, seen),
+      type: describeType(root, schema, below),
       required: required.has(key),
-      fields: nested && withinDepth ? buildFields(root, nested, seen, depth + 1, maxDepth) : [],
-      truncated: nested !== undefined && !withinDepth,
+      fields: expand ? buildFields(root, nested, below, depth + 1, maxDepth, budget) : [],
+      truncated: nested !== undefined && !expand,
     };
     if (typeof schema['description'] === 'string' && schema['description'] !== '') {
       field.description = schema['description'];
@@ -206,20 +264,27 @@ function buildFields(
  * yields one `Value` field, so the view still names the type; `true`, `{}`
  * and anything unreadable yield no fields.
  *
- * `maxDepth` bounds how many levels of nested objects are expanded.
+ * `maxDepth` bounds how many levels of nested objects are expanded. A schema
+ * that refers to itself shows the reference, for example `node (recursive)`,
+ * rather than expanding it again, and the walk stops opening nested objects
+ * once it has listed `FIELD_BUDGET` fields; the ones it did not open are marked
+ * `truncated`.
  */
 export function readSchemaFields(schema: unknown, requestedDepth = 8): SchemaViewField[] {
   if (!isRecord(schema)) return [];
   // A caller can pass anything despite the types: a non-finite depth falls back.
   const maxDepth = Number.isFinite(requestedDepth) ? requestedDepth : 8;
-  const root = flatten(schema, schema, []);
-  const nested = nestedObject(schema, root, []);
-  if (nested) return buildFields(schema, nested, [], 0, maxDepth);
+  const followed: string[] = [];
+  const root = flatten(schema, schema, [], followed);
+  const nested = nestedObject(schema, root, [], followed);
+  // `#` is the document itself, which is being expanded from the start.
+  const path = ['#', ...followed];
+  if (nested) return buildFields(schema, nested, path, 0, maxDepth, { remaining: FIELD_BUDGET });
   if (Object.keys(root).length === 0) return [];
   const field: SchemaViewField = {
     key: 'value',
     label: 'Value',
-    type: describeType(schema, root, []),
+    type: describeType(schema, root, path),
     required: false,
     fields: [],
     truncated: false,
