@@ -2,7 +2,7 @@ import { storageHas } from '@lostgradient/storage';
 import { KEYS } from '../../storage/keys.ts';
 import { deserializeCheckpoint } from '../checkpoint.ts';
 import type { ContextOperationRequest } from '../context.ts';
-import { normalizeStorageTimestamp } from '../scheduler.ts';
+import { normalizeStorageTimestamp, type TimerFiredOutcome } from '../scheduler.ts';
 import type { Checkpoint, StartOptions, TimerEntry, WorkflowState } from '../types.ts';
 import { adoptLaunchCheckpoint } from './checkpoint-commit-snapshots.ts';
 import { notifyConditionWaiters, notifyConditionWaitersForTimerFire } from './condition-waiters.ts';
@@ -348,7 +348,7 @@ export async function handleTimerFired(
     | 'resolveExecutableRegistrationForRevision'
     | 'workflowVersionTupleFromState'
   >,
-): Promise<void> {
+): Promise<TimerFiredOutcome> {
   if (isReviewTimerEntry(entry)) {
     await handleReviewTimer(internals, entry, callbacks);
     return;
@@ -370,8 +370,7 @@ export async function handleTimerFired(
   }
 
   if (entry.kind === 'schedule') {
-    await callbacks.handleScheduleTimer(entry);
-    return;
+    return callbacks.handleScheduleTimer(entry);
   }
 
   if (entry.kind === 'sleep') {

@@ -20,9 +20,16 @@ import {
   shouldDeleteTimerIndexWithoutLookup,
 } from './timer-sources.ts';
 
+/**
+ * What a timer callback resolves. `'retain'` keeps the entry in storage, without a log, for the
+ * next scan to deliver again: the callback stood aside for another process that is still going,
+ * and nothing it left behind would wake the timer's owner if that process died (COR-1925).
+ */
+export type TimerFiredOutcome = void | 'retain';
+
 export interface SchedulerOptions {
   storage: Storage;
-  onTimerFired: (entry: TimerEntry) => void | Promise<void>;
+  onTimerFired: (entry: TimerEntry) => TimerFiredOutcome | Promise<TimerFiredOutcome>;
   pollIntervalMs?: number;
   getNow?: () => number;
   /**
@@ -93,7 +100,7 @@ const EXPIRED_TIMER_SCAN_LIMIT_PER_SOURCE = 1_000;
  */
 export class Scheduler implements Disposable {
   readonly #storage: Storage;
-  readonly #onTimerFired: (entry: TimerEntry) => void | Promise<void>;
+  readonly #onTimerFired: (entry: TimerEntry) => TimerFiredOutcome | Promise<TimerFiredOutcome>;
   #pollIntervalMs: number;
   readonly #getNow: () => number;
   readonly #commitTimerCleanup: (operations: BatchOperation[]) => Promise<void>;
@@ -380,7 +387,8 @@ export class Scheduler implements Disposable {
       claim.owners.push(owner);
     }
     try {
-      await this.#onTimerFired(nextEntry.entry);
+      const outcome = await this.#onTimerFired(nextEntry.entry);
+      if (outcome === 'retain') return 'retry';
     } catch (error) {
       // Callback failed — leave the timer in storage so it retries on the
       // next tick. Do not fall through to the delete below.

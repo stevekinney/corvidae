@@ -83,9 +83,9 @@ export type ScheduleCallbacks = {
   startScheduledRun: (state: ScheduleState, options?: ScheduledRunStartOptions) => Promise<string>;
   applyScheduleOccurrence: (
     state: ScheduleState,
-    occurrence?: number,
-    manual?: true,
-    commit?: OccurrenceCommit,
+    occurrence: number | undefined,
+    manual: true | undefined,
+    commit: OccurrenceCommit,
   ) => Promise<ScheduleState>;
   flushQueuedInlineWorkflowStartsDirectly: () => Promise<void>;
   failWorkflow: (workflowId: string, error: Error) => Promise<void>;

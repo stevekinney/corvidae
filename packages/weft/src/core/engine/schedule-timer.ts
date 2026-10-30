@@ -1,3 +1,4 @@
+import type { TimerFiredOutcome } from '../scheduler.ts';
 import type { ScheduleState, TimerEntry } from '../types.ts';
 import { WeftError } from '../weft-error.ts';
 import type { EngineInternals } from './internals.ts';
@@ -69,7 +70,7 @@ export async function handleScheduleTimer(
   internals: EngineInternals,
   entry: TimerEntry,
   callbacks: ScheduleCallbacks,
-): Promise<void> {
+): Promise<TimerFiredOutcome> {
   let step = await runSerializedScheduleStateOperation(internals, entry.workflowId, () =>
     beginScheduleTimer(internals, entry, callbacks),
   );
@@ -85,6 +86,33 @@ export async function handleScheduleTimer(
       resumeScheduleTimer(internals, entry.workflowId, pending, callbacks),
     );
   }
+  return (await catchUpStillOwed(internals, entry)) ? 'retain' : undefined;
+}
+
+/**
+ * Whether the tick that fired `entry` has left a catch-up behind that nothing else would wake. A
+ * backfill commits each occurrence it starts (`lastFireAt`) and moves `nextFireAt`, and so replaces
+ * the entry, only with the last. A tick that stands aside because another engine went on with the
+ * catch-up (its start or write lost) leaves the schedule with `lastFireAt` at or past `nextFireAt`
+ * and the fired entry as its only timer; if that engine then dies before its last write, deleting
+ * the entry would leave an active schedule that no timer wakes until some engine boots
+ * (COR-1925). So the entry is kept, and delivered again, until the stored schedule shows the
+ * catch-up finished (`nextFireAt` moved, and the last write armed the next timer) or no longer
+ * active. A delivery that finds the remaining occurrences already started by the other engine
+ * starts none of them again: it resumes after `lastFireAt`, and its starts are conditioned on the
+ * schedule it read.
+ */
+async function catchUpStillOwed(internals: EngineInternals, entry: TimerEntry): Promise<boolean> {
+  if (internals.disposed) return false;
+  const loaded = await loadScheduleState(internals, entry.workflowId);
+  const state = loaded?.state;
+  return (
+    state?.status === 'active' &&
+    state.nextFireAt !== null &&
+    state.lastFireAt !== undefined &&
+    state.lastFireAt >= state.nextFireAt &&
+    resolveEffectiveScheduleFireAt(state, state.nextFireAt) === entry.fireAt
+  );
 }
 
 /**

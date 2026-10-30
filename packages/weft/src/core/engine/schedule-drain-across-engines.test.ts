@@ -6,10 +6,10 @@
  */
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
-import { KEYS } from '../../storage/keys.ts';
 import {
   closeOpenedEngines,
   openEngines,
+  parkResumedSectionDrain,
   SCHEDULE_ID,
   stateOf,
 } from './schedule-across-engines.test-support.ts';
@@ -49,31 +49,7 @@ describe('a resumed backfill drains the queue while another engine changes the s
   it('keeps the skip the other engine recorded and starts the queued run once', async () => {
     const errors = spyOn(console, 'error').mockImplementation(() => {});
     try {
-      const { clock, shared, a, engineA, engineB } = await openEngines({
-        overlap: 'queue',
-        backfill: true,
-      });
-      const triggered = await engineA.triggerSchedule(SCHEDULE_ID);
-      if (triggered.outcome !== 'started') throw new Error('The run now should start.');
-      const { nextFireAt } = await stateOf(shared);
-      const first = nextFireAt!;
-      // The run's schedule record is gone, as when the other engine's terminal handler or tick
-      // refreshed it first, so this engine's own terminal handler has nothing left to do.
-      await shared.delete(KEYS.scheduleRun(triggered.workflowId));
-
-      // Three occurrences are overdue. The first finds the run still going and queues, and that
-      // write is parked.
-      const queuing = a.holdScheduleWrite();
-      clock.now = first + 2 * MINUTE;
-      const tickingA = engineA.scheduler.tick(clock.now);
-      await queuing.reached;
-      await engineA.signal(triggered.workflowId, 'release');
-      await drainEngine();
-      // Armed in the same turn as the release, so it parks the drain the resumed section makes.
-      const draining = a.holdScheduleWrite();
-      queuing.release();
-      await draining.reached;
-
+      const { shared, engineB, first, tickingA, draining } = await parkResumedSectionDrain();
       await engineB.skipNextScheduleOccurrence(SCHEDULE_ID);
       const skippedState = await stateOf(shared);
       expect(skippedState.skipUntil).toBe(first + MINUTE);

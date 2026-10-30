@@ -79,9 +79,9 @@ export async function applyScheduleOccurrence(
   internals: EngineInternals,
   state: ScheduleState,
   callbacks: ScheduleCallbacks,
-  occurrence?: number,
-  manual?: true,
-  commit?: OccurrenceCommit,
+  occurrence: number | undefined,
+  manual: true | undefined,
+  commit: OccurrenceCommit,
 ): Promise<ScheduleState> {
   // WFT-136/COR-105: the one observation point every occurrence passes through,
   // dispatched before the overlap policy is consulted so a consumer sees the
@@ -89,7 +89,7 @@ export async function applyScheduleOccurrence(
   // policies deliberately do not emit `schedule:fired`, so without this a
   // `skip` collision and a stopped schedule look identical from outside. A tick that decides
   // the occurrence again after losing a start to another engine (COR-1925) is the same attempt.
-  if (commit?.retry !== true) {
+  if (!commit.retry) {
     internals.engine.dispatchEvent(
       new ScheduleAttemptedEvent(state.id, internals.options.getNow(), occurrence),
     );
@@ -101,12 +101,7 @@ export async function applyScheduleOccurrence(
   let hasActiveWorkflow = hasActiveScheduledWorkflow(currentWorkflowState);
 
   if (!hasActiveWorkflow && stateForOccurrence.queuedRuns.length > 0) {
-    stateForOccurrence = await drainQueuedScheduleRun(
-      stateForOccurrence,
-      callbacks,
-      undefined,
-      commit,
-    );
+    stateForOccurrence = await drainQueuedScheduleRun(stateForOccurrence, callbacks, commit);
     hasActiveWorkflow = true;
   }
 
@@ -115,18 +110,14 @@ export async function applyScheduleOccurrence(
       ...(occurrence !== undefined && { occurrence }),
       ...(manual === true && { manual }),
     };
-    if (commit === undefined) {
-      await callbacks.startScheduledRun(stateForOccurrence, options);
-    } else {
-      await startOccurrenceRun(
-        commit,
-        callbacks,
-        stateForOccurrence,
-        stateForOccurrence,
-        options,
-        true,
-      );
-    }
+    await startOccurrenceRun(
+      commit,
+      callbacks,
+      stateForOccurrence,
+      stateForOccurrence,
+      options,
+      true,
+    );
     return stateForOccurrence;
   }
 

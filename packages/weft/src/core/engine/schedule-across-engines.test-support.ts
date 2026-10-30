@@ -8,7 +8,13 @@ import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { KEYS } from '../../storage/keys.ts';
 import type { Engine } from '../engine.ts';
 import type { ScheduleOptions, ScheduleState } from '../types.ts';
-import { createEngine, registerWorkflow, START } from './schedule.test-support.ts';
+import {
+  createEngine,
+  drainEngine,
+  MINUTE,
+  registerWorkflow,
+  START,
+} from './schedule.test-support.ts';
 import { decodeScheduleState } from './validation/schedule-decode.ts';
 
 export const SCHEDULE_ID = 'across-engines';
@@ -176,4 +182,40 @@ export async function tickB(
   const { nextFireAt } = await stateOf(shared);
   clock.now = nextFireAt! + lateByMilliseconds;
   return engineB.scheduler.tick(clock.now);
+}
+
+/**
+ * A backfilled `queue` schedule with three occurrences overdue, and engine A's tick parked at the
+ * drain its resumed section makes (COR-1925): the run now that held the slot has ended, the first
+ * occurrence queued behind it, and the run's schedule record is gone, as when another engine's
+ * terminal handler or tick refreshed it first. `first` is the first occurrence.
+ */
+export async function parkResumedSectionDrain() {
+  const opened = await openEngines({ overlap: 'queue', backfill: true });
+  const { clock, shared, a, engineA } = opened;
+  const triggered = await engineA.triggerSchedule(SCHEDULE_ID);
+  if (triggered.outcome !== 'started') throw new Error('The run now should start.');
+  const { nextFireAt } = await stateOf(shared);
+  const first = nextFireAt!;
+  await shared.delete(KEYS.scheduleRun(triggered.workflowId));
+  // The first occurrence finds the run still going and queues, and that write is parked.
+  const queuing = a.holdScheduleWrite();
+  clock.now = first + 2 * MINUTE;
+  const tickingA = engineA.scheduler.tick(clock.now);
+  await queuing.reached;
+  await engineA.signal(triggered.workflowId, 'release');
+  await drainEngine();
+  // Armed in the same turn as the release, so it parks the drain the resumed section makes.
+  const draining = a.holdScheduleWrite();
+  queuing.release();
+  await draining.reached;
+  return { ...opened, first, tickingA, draining };
+}
+
+/** Whether the schedule's next occurrence has a timer entry in the store. */
+export async function nextTimerArmed(shared: Storage): Promise<boolean> {
+  const { nextFireAt } = await stateOf(shared);
+  return (
+    nextFireAt !== null && (await shared.get(KEYS.scheduleTick(nextFireAt, SCHEDULE_ID))) !== null
+  );
 }

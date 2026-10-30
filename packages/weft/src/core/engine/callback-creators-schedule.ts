@@ -1,3 +1,4 @@
+import type { TimerFiredOutcome } from '../scheduler.ts';
 import type { ScheduleState, TimerEntry } from '../types.ts';
 import {
   createInlineLaunchQueueCallbacks,
@@ -137,9 +138,9 @@ export async function applyScheduleOccurrenceForEngine<
 >(
   engine: Engine<TWorkflows, TActivities>,
   state: ScheduleState,
-  occurrence?: number,
-  manual?: true,
-  commit?: OccurrenceCommit,
+  occurrence: number | undefined,
+  manual: true | undefined,
+  commit: OccurrenceCommit,
 ): Promise<ScheduleState> {
   return applyScheduleOccurrence(
     getInternals(engine),
@@ -153,7 +154,7 @@ export async function applyScheduleOccurrenceForEngine<
 export async function handleScheduleTimerForEngine<
   TWorkflows extends object,
   TActivities extends object,
->(engine: Engine<TWorkflows, TActivities>, entry: TimerEntry): Promise<void> {
+>(engine: Engine<TWorkflows, TActivities>, entry: TimerEntry): Promise<TimerFiredOutcome> {
   return handleScheduleTimer(getInternals(engine), entry, createScheduleCallbacks(engine));
 }
 export async function handleScheduledWorkflowTerminalForEngine<

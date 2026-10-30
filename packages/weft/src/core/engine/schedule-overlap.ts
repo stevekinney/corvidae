@@ -131,20 +131,12 @@ function planQueuedRunStart(
 export async function drainQueuedScheduleRun(
   state: ScheduleState,
   callbacks: Pick<ScheduleOverlapCallbacks, 'startScheduledRun'>,
-  completedWorkflowId?: string,
-  commit?: OccurrenceCommit,
+  commit: OccurrenceCommit,
 ): Promise<ScheduleState> {
-  const plan = planQueuedRunStart(state, completedWorkflowId);
+  const plan = planQueuedRunStart(state);
   if (plan === null) return state;
-  if (commit === undefined) {
-    await callbacks.startScheduledRun(state, {
-      ...plan.options,
-      scheduleStateAfterStart: plan.after,
-    });
-  } else {
-    // Ahead of this occurrence's own run, so it commits the schedule as the drain leaves it.
-    await startOccurrenceRun(commit, callbacks, state, plan.after, plan.options, false);
-  }
+  // Ahead of this occurrence's own run, so it commits the schedule as the drain leaves it.
+  await startOccurrenceRun(commit, callbacks, state, plan.after, plan.options, false);
   return plan.after;
 }
 
