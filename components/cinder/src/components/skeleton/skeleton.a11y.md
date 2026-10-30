@@ -16,6 +16,12 @@ Purpose: Decorative placeholder block that reserves layout space while real cont
 - Indicating indeterminate background work without a known target shape — use spinner.
 - Communicating that a view has no data at all — use empty-state.
 
+## Loading status
+
+The bars are decorative and sit in an `aria-hidden` wrapper. The "Still loading" status is a sibling of that wrapper with `role="status"`. The status element is in the DOM from the moment the skeleton appears and is empty until `stillLoadingAfter` elapses, so the text is announced politely when it is inserted. Nothing is announced when `delay` ends, because a placeholder alone carries no information for assistive technology. Give the surrounding region `aria-busy="true"` while loading if it needs a busy state.
+
+The Cancel button is a native `<button>` in the normal tab order. It renders only when `onCancel` is set, and the caller owns what happens to focus once the skeleton is unmounted.
+
 ## Keyboard and focus
 
 Keyboard behavior follows the rendered native elements and any ARIA pattern documented by the component. Avoid adding handlers that change focus order without a matching visible and programmatic state update.

@@ -8,6 +8,18 @@
       "title": "Skeleton placeholders",
       "description": "Animated loading placeholders for text and avatars.",
       "code": "<script lang=\"ts\">\n  import { Skeleton } from '@lostgradient/cinder';\n</script>\n\n<div style=\"display: flex; flex-direction: column; gap: 0.75rem;\">\n  <Skeleton height=\"1rem\" width=\"60%\" />\n  <Skeleton height=\"1rem\" width=\"80%\" />\n  <Skeleton height=\"1rem\" width=\"40%\" />\n  <div style=\"display: flex; align-items: center; gap: 1rem; margin-top: 0.5rem;\">\n    <Skeleton width=\"3rem\" height=\"3rem\" radius=\"50%\" />\n    <div style=\"flex: 1; display: flex; flex-direction: column; gap: 0.5rem;\">\n      <Skeleton height=\"0.875rem\" width=\"50%\" />\n      <Skeleton height=\"0.875rem\" width=\"30%\" />\n    </div>\n  </div>\n</div>\n"
+    },
+    {
+      "id": "lines-and-card",
+      "title": "Lines and card",
+      "description": "lines stacks text bars; variant=\"card\" draws a heading bar and lines inside a card.",
+      "code": "<script lang=\"ts\">\n  import { Skeleton } from '@lostgradient/cinder';\n</script>\n\n<div style=\"display: grid; gap: 1.5rem; max-inline-size: 24rem;\">\n  <Skeleton lines={4} />\n  <Skeleton variant=\"card\" lines={3} />\n</div>\n"
+    },
+    {
+      "id": "loading-rules",
+      "title": "Loading rules",
+      "description": "Nothing for 300 ms, the skeleton until 10 seconds, then Still loading with Cancel.",
+      "code": "<script lang=\"ts\">\n  import { Button, Skeleton } from '@lostgradient/cinder';\n\n  let loading = $state(false);\n</script>\n\n<Button label=\"Start loading\" onclick={() => (loading = true)} disabled={loading} />\n\n{#if loading}\n  <Skeleton lines={5} delay={300} stillLoadingAfter={10000} onCancel={() => (loading = false)} />\n{/if}\n"
     }
   ]
 }

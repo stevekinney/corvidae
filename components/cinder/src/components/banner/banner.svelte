@@ -7,6 +7,7 @@
    * @tag feedback
    * @tag notice
    * @useWhen Communicating a persistent page-level status the user can dismiss, such as a maintenance window or trial expiry.
+   * @useWhen Reporting that the server or connection is unreachable with the unreachable preset, a Retry action, and the age of the data still shown.
    * @useWhen Pinning a non-urgent message above page content that should remain readable until acknowledged.
    * @avoidWhen Announcing an urgent, time-sensitive message — use alert so assistive tech reads it immediately.
    * @avoidWhen Highlighting an inline aside next to related prose — use callout instead.
@@ -19,12 +20,14 @@
     danger: 'Error',
   } as const;
 
-  export type { BannerProps, BannerVariant } from './banner.types.ts';
+  export type { BannerPreset, BannerProps, BannerVariant } from './banner.types.ts';
 </script>
 
 <script lang="ts">
   import type { BannerProps } from './banner.types.ts';
   import { tick } from 'svelte';
+  import Button from '../button/button.svelte';
+  import RelativeTime from '../relative-time/relative-time.svelte';
   import { classNames } from '../../utilities/class-names.ts';
 
   const FOCUSABLE_SELECTOR =
@@ -34,6 +37,11 @@
     variant = 'info',
     dismissible = true,
     onDismiss,
+    preset,
+    onRetry,
+    retryLabel = 'Retry',
+    dataUpdatedAt,
+    staleDataLabel = 'Showing data from',
     class: className,
     children,
     actions,
@@ -103,8 +111,15 @@
     return filtered;
   });
 
+  const unreachable = $derived(preset === 'unreachable');
+  const resolvedVariant = $derived(unreachable ? 'warning' : variant);
   const ariaLabel = $derived(
-    rest['aria-labelledby'] ? undefined : (rest['aria-label'] ?? VARIANT_LABEL[variant]),
+    rest['aria-labelledby']
+      ? undefined
+      : (rest['aria-label'] ??
+          (unreachable
+            ? 'Connection problem'
+            : (VARIANT_LABEL[resolvedVariant] ?? VARIANT_LABEL.info))),
   );
 </script>
 
@@ -118,17 +133,28 @@
       'cinder-_status-surface-border',
       className,
     )}
-    data-cinder-variant={variant}
+    data-cinder-variant={resolvedVariant}
+    data-cinder-preset={unreachable ? 'unreachable' : undefined}
     role="region"
     aria-label={ariaLabel}
   >
     <div class="cinder-banner__content">
       {@render children()}
+      {#if dataUpdatedAt !== undefined}
+        <span class="cinder-banner__stale"
+          >{staleDataLabel} <RelativeTime date={dataUpdatedAt} /></span
+        >
+      {/if}
     </div>
 
-    {#if actions}
+    {#if onRetry || actions}
       <div class="cinder-banner__actions">
-        {@render actions()}
+        {#if onRetry}
+          <Button variant="secondary" size="sm" label={retryLabel} onclick={() => onRetry()} />
+        {/if}
+        {#if actions}
+          {@render actions()}
+        {/if}
       </div>
     {/if}
 
