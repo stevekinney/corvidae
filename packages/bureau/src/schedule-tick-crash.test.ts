@@ -56,6 +56,10 @@ describe('a process that dies after a tick committed and before Bureau recorded 
     if (fireId === undefined) throw new Error('The tick committed no run.');
     expect(committed?.lastFireAt).toBe(occurrence);
     expect(await first.tasks.get(fireId)).toBeUndefined();
+    // COR-1902: the tag was committed with the run, so it is there before Bureau has recorded
+    // anything about the fire.
+    const tagged = await first.durableEngine()?.list({ tags: ['origin:schedule'] });
+    expect(tagged?.items.map((item) => item.id)).toEqual([fireId]);
 
     const recovered = await harness.open({
       storage: await harness.sqliteStorage(path),
