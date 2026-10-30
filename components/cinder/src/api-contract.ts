@@ -318,6 +318,41 @@ export const CONTRACT: Record<string, ComponentContract> = {
     snippets: {},
   },
 
+  'list-detail': {
+    kind: 'intersection',
+    html_attrs: 'HTMLAttributes',
+    generics: [{ name: 'T' }],
+    props: {
+      items: { optional: false, type_kind: 'TSArrayType', default: REQUIRED },
+      key: { optional: false, type_kind: 'TSFunctionType', default: REQUIRED },
+      label: { optional: false, type_kind: 'TSStringKeyword', default: REQUIRED },
+      selectedKey: { optional: true, type_kind: 'TSUnionType', default: B(null) },
+      onSelectedKeyChange: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
+      selectionParameter: { optional: true, type_kind: 'TSUnionType', default: L('selected') },
+      selectionLocation: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
+      storageKey: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      storage: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
+      pushBelow: { optional: true, type_kind: 'TSNumberKeyword', default: L(900) },
+      defaultListWidth: { optional: true, type_kind: 'TSNumberKeyword', default: L(320) },
+      backLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Back') },
+      detailLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Details') },
+      emptyTitle: { optional: true, type_kind: 'TSStringKeyword', default: L('Nothing selected') },
+      emptyDescription: {
+        optional: true,
+        type_kind: 'TSStringKeyword',
+        default: L('Choose an item from the list to see it here.'),
+      },
+      class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
+    },
+    snippets: {
+      list: sp(2, false),
+      detail: sp(1, false),
+      empty: s0(true),
+      listEmpty: s0(true),
+      header: s0(true),
+    },
+  },
+
   modal: {
     kind: 'union',
     // ModalProps is a discriminated union of named aliases so TypeScript can require

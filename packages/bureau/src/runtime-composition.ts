@@ -99,6 +99,7 @@ import {
 import { fenceStorage } from './storage-fence';
 import { createDecideToolbox, type DecideToolWiring } from './decisions/decide-tool';
 import { humanInputEnabled, humanInputSchemasOf } from './human-input-option';
+import { isStoredTaskOrigin, type StoredTaskOrigin } from './task-origin';
 import type { TaskToolGrant } from './task-registry';
 import { withAddedTools, withToolboxLayer } from './toolbox-additions';
 import {
@@ -920,8 +921,7 @@ export interface CatalogRunRecoveryRecord {
   /**
    * COR-1527 — set only on the run an `agent` step of a workflow file started: which instance and
    * which step it was started for. The run's id is a function of the pair, so the id alone does
-   * not prove the run is the step's; this marker, written by the step's own start, does. Like a
-   * goal attempt, the run is not a task.
+   * not prove the run is the step's; this marker, written by the step's own start, does.
    */
   readonly workflowStep?: {
     readonly workflowId: string;
@@ -948,6 +948,20 @@ export interface CatalogRunRecoveryRecord {
    * that predates it ignores it.
    */
   readonly contextId?: string;
+  /**
+   * COR-1868 — set only on the run a child dispatch, a goal attempt, or a workflow `agent` step
+   * started, by that start and by nothing else: the origin its task record carries. The run is a
+   * task exactly when its claim holds this, so a task record lost in a crash is rebuilt from it
+   * rather than from a recomputation, and a run claimed before the field existed stays a non-task
+   * for its whole life. Read with {@link isStoredTaskOrigin}, not {@link isTaskOrigin}: a claim a
+   * newer release wrote with a kind this one does not know must stay readable, or that run could
+   * never be recovered or adopted. Admission stores such an origin as written, and the view shows
+   * it as `null`.
+   *
+   * The record stays at `schemaVersion` 1, as `contextId` did: additive, and a reader that
+   * predates it ignores it.
+   */
+  readonly taskOrigin?: StoredTaskOrigin;
 }
 
 // Exported for tests only — lets `runtime-composition.test.ts` construct the
@@ -990,6 +1004,8 @@ function isCatalogRunRecoveryRecord(value: unknown): value is CatalogRunRecovery
   if (agentDefinitionHash !== undefined && typeof agentDefinitionHash !== 'string') return false;
   const contextId = value['contextId'];
   if (contextId !== undefined && typeof contextId !== 'string') return false;
+  const taskOrigin = value['taskOrigin'];
+  if (taskOrigin !== undefined && !isStoredTaskOrigin(taskOrigin)) return false;
   const goalAttempt = value['goalAttempt'];
   if (
     goalAttempt !== undefined &&
@@ -3416,6 +3432,9 @@ async function buildRuntimeComposition(
       // persistence of what the client decided.
       const skillClient = createSkillClient({
         catalog: skillCatalog,
+        ...(options.skills.currentCatalog === undefined
+          ? {}
+          : { currentCatalog: options.skills.currentCatalog }),
         // Routed by source kind rather than fixed to the filesystem: a catalog can mix a host's
         // filesystem roots with the bureau's own store, and a `storage` record's `sourceLocation`
         // is a store namespace that no filesystem read can follow.

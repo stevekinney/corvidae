@@ -1929,6 +1929,14 @@ export class Engine<
   getActivityDefinition(name: string): ActivityMetadata | undefined {
     return getInternals(this).activityRegistry.getDefinition(name);
   }
+  /**
+   * The function registered under `name` in the engine's global activity registry, or `undefined`
+   * when none is. A host that runs activities it did not register itself (a document workflow host
+   * bridging to the engine's activities) calls it; it reads the registry only and runs nothing.
+   */
+  getActivityFunction(name: string): RegisteredActivityFunction | undefined {
+    return getInternals(this).activityRegistry.resolve(name);
+  }
   listActivityDefinitions(): ActivityMetadata[] {
     return getInternals(this).activityRegistry.listDefinitions();
   }

@@ -276,6 +276,7 @@ const SIDEBAR_BASELINE = [
   'keyboard-shortcuts',
   'line-chart',
   'link',
+  'list-detail',
   'load-more',
   'markdown-editor',
   'marquee',

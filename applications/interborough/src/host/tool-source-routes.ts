@@ -7,6 +7,13 @@
  * - `PUT /host/tool-sources/<id>` with `{ "source": { … }, "credentials": { "<name>": "<value>" } }`
  *   connects a source, or replaces it. `source` is Armorer's description and its `id` must be `<id>`.
  *   A credential the description names and the host already holds may be left out.
+ * - `PUT /host/tool-sources/<id>/tools` with `{ "tools": { "<tool>": { "acceptsSecrets": true } } }`
+ *   sets the host's own settings for the named tools of a configured source (COR-1932). `<tool>` is
+ *   the tool's own name as the server lists it, not the `<id>__<tool>` name. Each named tool's
+ *   settings are replaced and the others kept; `false` (or `{}`) removes the entry, since off is
+ *   the default. A name the server does not list is accepted and reported by `GET` under the
+ *   source's `unmatchedSettings`. The change loads at the next start; remote mode answers 403
+ *   `deployment` like every other change here.
  * - `DELETE /host/tool-sources/<id>` removes a source and clears its credentials.
  * - `POST /host/tool-sources/<id>/authorize` starts an MCP OAuth sign-in and answers with the
  *   authorization URL to open (`{ "authorized": false, "authorizationUrl": "…" }`), or
@@ -42,6 +49,9 @@ export const HOST_TOOL_SOURCES_ROUTE = '/host/tool-sources';
 
 /** The route that connects or removes the source it names. */
 export const HOST_TOOL_SOURCE_ROUTE = `${HOST_TOOL_SOURCES_ROUTE}/:id`;
+
+/** The route that sets the host's per-tool settings of the source it names. */
+export const HOST_TOOL_SOURCE_TOOLS_ROUTE = `${HOST_TOOL_SOURCES_ROUTE}/:id/tools`;
 
 /** The route that starts the sign-in of the source it names. */
 export const HOST_TOOL_SOURCE_AUTHORIZE_ROUTE = `${HOST_TOOL_SOURCES_ROUTE}/:id/authorize`;
@@ -185,6 +195,14 @@ export function toolSourceRoutes(
         respond(() =>
           manager.remove({ id: request.params.id, principal: options.principal(request) }),
         ),
+    },
+    [HOST_TOOL_SOURCE_TOOLS_ROUTE]: {
+      PUT: (request: Bun.BunRequest<typeof HOST_TOOL_SOURCE_TOOLS_ROUTE>) =>
+        refuse(request) ??
+        respond(async () => {
+          const body = await readObject(request);
+          return manager.configureTools({ id: request.params.id, tools: body['tools'] });
+        }),
     },
     [HOST_TOOL_SOURCE_AUTHORIZE_ROUTE]: {
       POST: (request: Bun.BunRequest<typeof HOST_TOOL_SOURCE_AUTHORIZE_ROUTE>) =>

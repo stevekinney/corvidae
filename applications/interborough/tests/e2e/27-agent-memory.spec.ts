@@ -38,7 +38,6 @@ const rowAction = (row: Locator, action: string) =>
 /** Forgets the memory whose text is `text` from its row, and confirms the question. */
 async function forgetFromRow(page: Page, text: string) {
   const row = rowOf(page, text);
-  await row.hover();
   await rowAction(row, MEMORY_COPY.forget.action).click();
   const dialog = page.getByRole('dialog', { name: MEMORY_COPY.forget.dialog.title });
   await expect(dialog).toBeVisible();
@@ -146,7 +145,7 @@ test.describe('the memory page', () => {
     await expect(frame(page)).toHaveAttribute('data-state', 'empty');
   });
 
-  test('opens a row on click, shows its actions on hover, and has no Details button', async ({
+  test('opens a row on click, shows its actions without hover, and has no Details button', async ({
     page,
     request,
   }) => {
@@ -158,17 +157,11 @@ test.describe('the memory page', () => {
     await expect(row).toHaveCount(1);
 
     await expect(page.getByRole('button', { name: /^Details/ })).toHaveCount(0);
-    // Hovering the row shows Forget and Correct, and so does holding focus in it.
+    // Forget and Correct are visible at rest: nothing reveals them on hover or focus.
     await page.setViewportSize({ width: 1280, height: 900 });
-    await expect(actions).toHaveCSS('opacity', '0');
-    await row.hover();
     await expect(actions).toHaveCSS('opacity', '1');
     await expect(rowAction(row, MEMORY_COPY.forget.action)).toBeVisible();
     await expect(rowAction(row, MEMORY_COPY.correct.action)).toBeVisible();
-    await page.mouse.move(0, 0);
-    await expect(actions).toHaveCSS('opacity', '0');
-    await rowAction(row, MEMORY_COPY.correct.action).focus();
-    await expect(actions).toHaveCSS('opacity', '1');
 
     // The kind reads in plain words, is part of the opener, and says what it means to a screen
     // reader; a keyboard user who focuses the row sees the same sentence.
@@ -268,7 +261,6 @@ for (const width of WIDTHS) {
       await checkA11y(`a memory's details at ${width}px`);
       // A correction starts from the row itself, with no need to open the details first.
       const row = rowOf(page, original);
-      await row.hover();
       await checkA11y(`a memory's row with its actions at ${width}px`);
       await rowAction(row, MEMORY_COPY.correct.action).click();
       const dialog = page.getByRole('dialog', { name: MEMORY_COPY.correct.dialog.title });

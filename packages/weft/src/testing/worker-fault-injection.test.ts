@@ -18,6 +18,8 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).toReversed()) await cleanup();
 });
 
+const LOOPBACK = '127.0.0.1';
+
 const SHUTDOWN = { type: 'shutdown' } as const;
 
 function protocolError(message: string): ServerToWorkerMessage {
@@ -33,6 +35,8 @@ function protocolError(message: string): ServerToWorkerMessage {
 async function connectToScriptedServer(): Promise<{
   worker: FaultInjectingWorker;
   serverSocket: ServerSocket;
+  /** The loopback port the scripted server listens on. */
+  port: number;
   /** Resolves once one more frame has been parsed and buffered. */
   nextArrival: () => Promise<void>;
 }> {
@@ -40,7 +44,12 @@ async function connectToScriptedServer(): Promise<{
   const socketReady = new Promise<ServerSocket>((resolve) => {
     resolveSocket = resolve;
   });
+  // Bind the exact address the worker dials. A wildcard listener can share its
+  // port with a later 127.0.0.1 listener from another process (a close-then-
+  // rebind port picker, for one) and the kernel routes loopback connections to
+  // the more specific one, so the handshake would come back from a stranger.
   const server = Bun.serve({
+    hostname: LOOPBACK,
     port: 0,
     fetch(request, running) {
       return running.upgrade(request)
@@ -59,7 +68,7 @@ async function connectToScriptedServer(): Promise<{
 
   const waiters: Array<() => void> = [];
   const worker = await connectFaultInjectingWorker({
-    url: `ws://127.0.0.1:${String(server.port)}/`,
+    url: `ws://${LOOPBACK}:${String(server.port)}/`,
     workerId: 'scripted',
     onAnyInbound() {
       for (const waiter of waiters.splice(0)) waiter();
@@ -70,6 +79,7 @@ async function connectToScriptedServer(): Promise<{
   return {
     worker,
     serverSocket: await socketReady,
+    port: Number(server.port),
     // `onAnyInbound` runs just before the frame is buffered; the promise
     // continuation runs after the synchronous frame handler has returned.
     nextArrival: () =>
@@ -128,6 +138,20 @@ describe('nextServerMessage buffer scan', () => {
     expect(await worker.nextServerMessage((message) => message.type === 'shutdown')).toEqual(
       SHUTDOWN,
     );
+  });
+});
+
+describe('scripted server address', () => {
+  // Regression test for COR-1922: the server used to listen on the wildcard
+  // address while the worker dialed 127.0.0.1, so another process could claim
+  // 127.0.0.1 on the same port and answer the handshake (a 401 in the coverage
+  // lane). Owning the loopback address itself makes that bind fail.
+  it('owns the loopback address the worker dials, so no later listener can shadow it', async () => {
+    const { port } = await connectToScriptedServer();
+
+    expect(() =>
+      Bun.serve({ hostname: LOOPBACK, port, fetch: () => new Response('shadow') }),
+    ).toThrow();
   });
 });
 
@@ -302,7 +326,7 @@ describe('connection failures', () => {
 
     expect(
       await throwingRejectionOf(
-        connectFaultInjectingWorker({ url: `ws://127.0.0.1:${String(server.port)}/` }),
+        connectFaultInjectingWorker({ url: `ws://${LOOPBACK}:${String(server.port)}/` }),
       ),
     ).toThrow('WebSocket handshake failed: HTTP/1.1 200');
   });
@@ -314,7 +338,7 @@ describe('connection failures', () => {
 
     expect(
       await throwingRejectionOf(
-        connectFaultInjectingWorker({ url: `ws://127.0.0.1:${String(server.port)}/` }),
+        connectFaultInjectingWorker({ url: `ws://${LOOPBACK}:${String(server.port)}/` }),
       ),
     ).toThrow('WebSocket handshake failed: HTTP/1.1 200');
   });

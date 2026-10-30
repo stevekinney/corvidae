@@ -81,6 +81,18 @@
  *     happened (`toBe(true)`, `toContain`, `toBeDefined`, `toBeGreaterThan`...). `quietFor` proves an
  *     absence; before a positive assertion it is a fixed pause that passes the sleep rule by name.
  *     Counts (`toHaveLength(1)`) read as "still one" and are not here.
+ *   - `optional-listener-attach`: an `addEventListener`, `on`, `once` or `addListener` call inside an
+ *     optional chain (`getRun(id)?.activeRun.addEventListener(...)`). When the handle is not there
+ *     yet the chain short-circuits and nothing is attached, so the test passes or fails by how many
+ *     async turns lie between boot (or recovery) and the handle appearing, which is turn order, not
+ *     time, and no deadline rule can see it (COR-1938). Wait for the handle, assert it is defined,
+ *     attach, and only then let the code under test emit (a gate its `generate` awaits), or subscribe
+ *     through an API that replays what was delivered before the subscription. This is the one
+ *     syntactic proxy for turn-order dependence the guard reads: the receiver must be a call
+ *     (awaited or not) or a `const` the file initialises from one, and document queries
+ *     (`querySelector`, `getBy*`, `findBy*`) are not read. The `const` is resolved by name across
+ *     the whole file, last declaration wins, so two same-named `const`s in different tests read as
+ *     the later one; a handle taken from a parameter, a property, or a `let` is not read.
  *
  * A budget is read through numeric literals, `+ - * /`, parentheses, the hang-guard constants, and
  * a `const` declared in the file. A budget the guard cannot resolve is not a `wait-budget`
@@ -138,7 +150,8 @@
  *     no condition to flake on but is not a wait either;
  *   - sleeps inside helper functions and test doubles, and a negative window written as
  *     `quietFor`: its length is never checked against what it must outlast;
- *   - the order in which independent events happen to arrive, races between two timers armed at
+ *   - the order in which independent events happen to arrive (bar the one proxy
+ *     `optional-listener-attach` reads), races between two timers armed at
  *     different times, and I/O ordering: nothing syntactic distinguishes a deterministic order from
  *     a lucky one;
  *   - the number of microtask turns a promise chain needs, which is deterministic by construction;
@@ -188,6 +201,7 @@ export type DeadlineRule =
   | 'timer-rejection'
   | 'timer-race'
   | 'quiet-window'
+  | 'optional-listener-attach'
   | 'single-turn-settle'
   | 'real-timer-double'
   | 'fixed-count-yield-loop'
@@ -202,6 +216,72 @@ export type DeadlineViolation = {
   removal?: { start: number; end: number };
 };
 
+const LISTENER_ATTACHERS = new Set(['addEventListener', 'on', 'once', 'addListener']);
+
+/**
+ * The expression a call's first `?.` guards: `getRun(id)` in `getRun(id)?.activeRun.on(...)`, or
+ * `undefined` when the call's callee chain holds no optional link.
+ */
+function optionalReceiver(call: ts.CallExpression): ts.Expression | undefined {
+  let current: ts.Expression = call.expression;
+  let receiver: ts.Expression | undefined;
+  for (;;) {
+    if (
+      (ts.isPropertyAccessExpression(current) ||
+        ts.isElementAccessExpression(current) ||
+        ts.isCallExpression(current)) &&
+      current.questionDotToken !== undefined
+    ) {
+      receiver = current.expression;
+    }
+    if (
+      ts.isPropertyAccessExpression(current) ||
+      ts.isElementAccessExpression(current) ||
+      ts.isCallExpression(current) ||
+      ts.isNonNullExpression(current) ||
+      ts.isParenthesizedExpression(current)
+    ) {
+      current = current.expression;
+    } else {
+      return receiver;
+    }
+  }
+}
+
+/**
+ * Whether an optional chain's receiver is a handle this test looked up: a call (`getRun(id)`) or an
+ * identifier that a `const` in the file initialises from one (`const runState = store.getRun(id)`).
+ * A parameter (`context?.signal`, `options.signal?.`) is the double's own optional input, whose
+ * absence is a fact about the call and not a race, so it is not read.
+ */
+function isLookedUpHandle(
+  receiver: ts.Expression | undefined,
+  constants: ReadonlyMap<string, ts.Expression>,
+): boolean {
+  if (receiver === undefined) return false;
+  const unwrapped = withoutAwait(receiver);
+  if (ts.isCallExpression(unwrapped)) return !isSynchronousDomLookup(unwrapped);
+  if (!ts.isIdentifier(unwrapped)) return false;
+  const initializer = constants.get(unwrapped.text);
+  if (initializer === undefined) return false;
+  const lookup = withoutAwait(initializer);
+  return ts.isCallExpression(lookup) && !isSynchronousDomLookup(lookup);
+}
+
+function withoutAwait(expression: ts.Expression): ts.Expression {
+  const unwrapped = unwrap(expression);
+  return ts.isAwaitExpression(unwrapped) ? withoutAwait(unwrapped.expression) : unwrapped;
+}
+
+// A document query answers from the tree as it is at that statement, so a null result is a fact
+// about the markup and not about how many turns have passed.
+const DOM_LOOKUP =
+  /^(querySelector(All)?|getElement(s)?By\w+|closest|item|(get|query|find)(All)?By\w+)$/;
+
+function isSynchronousDomLookup(call: ts.CallExpression): boolean {
+  const name = calleeName(call);
+  return name !== null && DOM_LOOKUP.test(name);
+}
 const REGISTRATION_ROOTS = new Set([
   'test',
   'it',
@@ -683,6 +763,16 @@ export function findDeadlineViolations(
 
     // A callee with no name (a computed or parenthesised call) is none of what follows.
     if (name === null) return;
+
+    // A listener attached through an optional chain attaches nothing when the handle is missing.
+    if (
+      LISTENER_ATTACHERS.has(name) &&
+      isLookedUpHandle(optionalReceiver(node), constants) &&
+      !isLoadProof(sourceFile, node)
+    ) {
+      violations.push(violation(sourceFile, node, 'optional-listener-attach'));
+      return;
+    }
 
     // A budget handed to a wait helper by position: `waitForMessage(ws, matches, 1_000)`.
     const positions = helperBudgets.get(name);
@@ -2084,7 +2174,9 @@ async function main(): Promise<void> {
   }
 
   process.stderr.write(
-    'check-load-sensitive-deadlines — a blocking test names a deadline below the hang guard.\n' +
+    'check-load-sensitive-deadlines — a blocking test names a deadline below the hang guard, or\n' +
+      'attaches a listener through an optional chain on a handle it looked up (attach nothing when\n' +
+      'the handle is not there yet: assert it is defined, attach, then release the code under test).\n' +
       'A deadline a loaded host can overrun makes the test flake, and it passes alone. Delete the\n' +
       'timeout so the shared hang guard applies (Bun: `--timeout` through scripts/bun-test.ts;\n' +
       'Testing Library: configureAsyncUtilityDeadline), or make the wait deterministic. A test of\n' +

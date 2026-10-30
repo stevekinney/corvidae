@@ -42,7 +42,7 @@ export function holdsScope(principal: Principal, scope: BureauScope): boolean {
  * Whether `principal` may act on the task `taskId` with `operatorScope`: it owns
  * it, or holds the scope. The owner is the one the task's record was written with,
  * which outlives the run store and a restart; a task with no record (an id that is
- * not a task at all, such as a child run) has no owner, so only
+ * not a task at all, such as a workflow-file instance) has no owner, so only
  * the scope reaches it, and the operation then finds no task to act on.
  */
 export async function mayAccessTask(
@@ -228,7 +228,7 @@ const tasksCancelInput = z.object({
 const tasksCancelOutput = z.object({
   taskId: z.string(),
   receipt: taskCancelReceiptSchema,
-  reason: z.literal('already-terminal').optional(),
+  reason: z.enum(['already-terminal', 'owned-by-goal', 'owned-by-workflow']).optional(),
   /**
    * The task as it stands. Present only for a caller that may read it (its owner, or
    * `bureau.tasks:read`): a caller that can only write is given the receipt and nothing else.
@@ -245,7 +245,7 @@ export const tasksCancelOperation = defineOperation<
   mcpExposable: true,
   summary: 'Cancel a task',
   description:
-    'Cancels one of the caller’s own tasks; a caller holding `bureau.tasks:write` cancels any owner’s. The receipt says where the cancellation stands: `cancel-requested` (the run has not stopped), `canceled` (a durable run stopped with no cleanup evidence to report), `cleanup-pending`, `cleaned-up`, `cleanup-failed`, `cleanup-unresolved` (cleanup could not be confirmed and may still be running, so nothing is promised about external effects), `unknown-outcome` (an external effect may or may not have happened), or `rejected` (the task had already finished without being canceled; nothing is applied). `waitMilliseconds` (default 0) waits that long for the cleanup acknowledgement; `bureau.tasks.get` carries the same state afterwards. A repeated cancel has the same effect.',
+    'Cancels one of the caller’s own tasks; a caller holding `bureau.tasks:write` cancels any owner’s. The receipt says where the cancellation stands: `cancel-requested` (the run has not stopped), `canceled` (a durable run stopped with no cleanup evidence to report), `cleanup-pending`, `cleaned-up`, `cleanup-failed`, `cleanup-unresolved` (cleanup could not be confirmed and may still be running, so nothing is promised about external effects), `unknown-outcome` (an external effect may or may not have happened), or `rejected` (nothing is applied). A rejection carries a `reason`: `already-terminal` (the task had already finished without being canceled), `owned-by-goal` (the task is one attempt of a goal, which only cancelling the goal stops) or `owned-by-workflow` (the task is a step of a workflow instance, which is not cancelled on its own). Cancelling the task of a child run stops the child as `bureau.children.cancel` does. `waitMilliseconds` (default 0) waits that long for the cleanup acknowledgement; `bureau.tasks.get` carries the same state afterwards. A repeated cancel has the same effect.',
   destructive: true,
   tags: ['Tasks'],
   inputSchema: tasksCancelInput,

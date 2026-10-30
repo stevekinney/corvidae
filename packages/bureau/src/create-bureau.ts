@@ -194,7 +194,11 @@ import {
   createAuditTrail,
 } from './audit-trail';
 import { agentSkillsRun } from './agent-skills';
-import { catalogRunGuardrailsContext, createCatalogDispatcher } from './bureau-catalog-dispatch';
+import {
+  catalogRunGuardrailsContext,
+  createCatalogDispatcher,
+  type SubordinateRun,
+} from './bureau-catalog-dispatch';
 import { createBureauEventFeed } from './bureau-event-feed.ts';
 import {
   createDiagnosticDispatcher,
@@ -327,7 +331,11 @@ import {
   serializeRunState,
   serializeUnknownError,
 } from './serialization';
-import { createCatalogTaskSettler } from './catalog-task-settlement';
+import {
+  createCatalogTaskSettler,
+  type SubordinateClaim,
+  subordinateTaskAdmission,
+} from './catalog-task-settlement';
 import {
   createCatalogRunAssetReleaser,
   createRecoveredRunReleaseListener,
@@ -339,6 +347,7 @@ import {
   type DurableEnd,
   type DurableEndReader,
   createCatalogSettlementTracker,
+  publishFreshCatalogRun,
   settlementForRejection,
 } from './catalog-run-settlement';
 import {
@@ -1070,7 +1079,8 @@ class BureauError extends Error {
     | 'NOT_CONFIGURED'
     | 'BAD_REQUEST'
     | 'RATE_LIMITED'
-    | 'UNSUPPORTED_CAPABILITY';
+    | 'UNSUPPORTED_CAPABILITY'
+    | 'STORAGE_UNAVAILABLE';
   readonly subject: BureauErrorNotConfiguredSubject | undefined;
 
   // `subject` is required for NOT_CONFIGURED and disallowed for every other
@@ -1086,7 +1096,8 @@ class BureauError extends Error {
       | 'NOT_CONFIGURED'
       | 'BAD_REQUEST'
       | 'RATE_LIMITED'
-      | 'UNSUPPORTED_CAPABILITY',
+      | 'UNSUPPORTED_CAPABILITY'
+      | 'STORAGE_UNAVAILABLE',
     subject?: BureauErrorNotConfiguredSubject,
   ) {
     super(message);
@@ -4795,6 +4806,12 @@ async function constructBureau<const D extends AgentDefinitions>(
         }
       },
       cancelDurable: (taskId) => cancelDurableRun(taskId),
+      // COR-1868: a child run's task is stopped by the topology that owns the child.
+      cancelChild: async (child) => {
+        const cancelled = await childTopology.children.cancel(child);
+        if (cancelled.outcome === 'failed') throw new BureauError(cancelled.reason, 'CONFLICT');
+        return cancelled.outcome;
+      },
       sleep: (milliseconds) =>
         new Promise<void>((resolve) => {
           runtimeServices.timers.setTimeout(resolve, milliseconds);
@@ -4877,8 +4894,9 @@ async function constructBureau<const D extends AgentDefinitions>(
     }),
   );
   /**
-   * Whether a run is a child run rather than a task: the child topology holds it, or, failing
-   * that, its identifier is not a catalog run's.
+   * Whether a run whose claim stores no `taskOrigin` is a child run rather than a task: the child
+   * topology holds it, or, failing that, its identifier is not a catalog run's. Only a run claimed
+   * before COR-1868 is classified this way; a later child, attempt or step is a task by its claim.
    */
   const isChildRun = async (runId: string): Promise<boolean> =>
     (await childTopologyStore.get(runId)) !== undefined || !runId.startsWith('agent-run-');
@@ -4891,16 +4909,18 @@ async function constructBureau<const D extends AgentDefinitions>(
       await fileAgents.settleRun(settlement.runId);
     }
   });
+  /** When the durable run was created (ISO 8601), or `undefined` when the engine has no record of it. */
+  const durableRunCreatedAt = async (runId: string): Promise<string | undefined> => {
+    const state = await runtime.durable?.engine.get(runId);
+    return state === null || state === undefined
+      ? undefined
+      : new Date(state.createdAt).toISOString();
+  };
   catalogRunSettlements.subscribe(
     createCatalogTaskSettler({
       tasks,
       loadRecoveryRecord: (runId) => runtime.loadCatalogRunRecoveryRecord(runId),
-      durableCreatedAt: async (runId) => {
-        const state = await runtime.durable?.engine.get(runId);
-        return state === null || state === undefined
-          ? undefined
-          : new Date(state.createdAt).toISOString();
-      },
+      durableCreatedAt: durableRunCreatedAt,
       isChildRun,
       now: runtimeServices.clock.nowISO,
       ownerOf: ownerOrLocal,
@@ -5437,10 +5457,24 @@ async function constructBureau<const D extends AgentDefinitions>(
   ): Promise<NonNullable<RunOptions['costBudget']> | undefined> {
     const budget = sessionAgent?.options.costBudget;
     if (budget?.perChatUsd === undefined) return undefined;
-    const spent =
-      session?.incarnation === undefined
-        ? 0
-        : await chatSpendLedger.totalOf(sessionId, session.incarnation);
+    let spent = 0;
+    if (session?.incarnation !== undefined) {
+      try {
+        spent = await chatSpendLedger.totalOf(sessionId, session.incarnation);
+      } catch (error) {
+        // COR-1933 — a typed refusal, not the store's own error: the caller branches on the code.
+        diagnose({
+          level: 'error',
+          scope: 'chat-spend',
+          message: `[bureau] Could not read the spend of chat "${sessionId}": ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+        throw new BureauError(
+          `The spend of chat "${sessionId}" could not be read, so its run was not started: ${serializeUnknownError(error)}`,
+          'STORAGE_UNAVAILABLE',
+        );
+      }
+    }
     return { ...budget, priorChatSpendUsd: spent };
   }
 
@@ -5452,10 +5486,12 @@ async function constructBureau<const D extends AgentDefinitions>(
   };
 
   /**
-   * Writes a chat run's spend to the chat's ledger, once the session has recorded how the run
-   * ended (COR-1915). A run with no price on its requests spent nothing the ledger can count. The
-   * ledger writes a run's record once, so a terminal event a recovery replays records nothing
-   * more, and a write that fails is diagnosed by the ledger and never fails the run's settlement.
+   * Writes a chat run's spend to the chat's ledger (COR-1915), before the session records how the
+   * run ended (COR-1933): a crash in between then leaves a session that still says `running`, which
+   * recovery reattaches and replays into a ledger that already holds the record. A run with no
+   * price on its requests spent nothing the ledger can count. The ledger writes a run's record
+   * once, so a terminal event a recovery replays records nothing more, and a write that fails is
+   * diagnosed by the ledger and never fails the run's settlement.
    */
   async function recordChatRunSpend(
     runId: string,
@@ -5467,7 +5503,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     if (spend === undefined || usd === undefined || !Number.isFinite(usd) || usd <= 0) return;
     if (incarnation === undefined) return;
     try {
-      await chatSpendLedger.record({
+      const written = await chatSpendLedger.record({
         sessionId,
         incarnation,
         runId,
@@ -5476,6 +5512,16 @@ async function constructBureau<const D extends AgentDefinitions>(
         usd,
         recordedAt: runtimeServices.clock.nowISO(),
       });
+      // COR-1933 — a chat deleted while this run ran has had its records forgotten already, so
+      // the one just written would stay behind. Checked AFTER the write: either the deletion
+      // committed before this read and the record is removed here, or after it, and the
+      // deletion's own `forget` runs after the write and removes it.
+      if (written && runtime.sessionStore) {
+        const session = await runtime.sessionStore.load(sessionId);
+        if (session?.incarnation !== incarnation) {
+          await chatSpendLedger.forget(sessionId, incarnation);
+        }
+      }
     } catch (error) {
       diagnose({
         level: 'error',
@@ -5496,16 +5542,26 @@ async function constructBureau<const D extends AgentDefinitions>(
       runId: string;
       sessionId: string;
       status: 'completed' | 'error' | 'aborted';
-      /** What the run spent, for the chat's ledger (COR-1915); written after the session's save. */
+      /** What the run spent, for the chat's ledger (COR-1915); written before the session's save. */
       spend?: ChatRunSpend;
     },
   ): void {
     // The incarnation is read now, with the terminal event, and not after the save: the map that
     // holds it is dropped when the run's records are, which can be before the save finishes.
     const spentIn = runSessionIncarnations.get(context.runId);
-    const recorded = persistSessionUpdate(saveSessionUpdate, context)
-      .then(() => recordChatRunSpend(context.runId, context.sessionId, spentIn, context.spend))
-      .then(() => settleSessionInputsAfterRunEnd(context.sessionId, context.runId));
+    // The spend is recorded BEFORE the session's end record (COR-1933), inside the tracked save,
+    // so `drain()` waits for both and a crash between them is repaired by recovery's replay.
+    // `recordChatRunSpend` never rejects, and a save retry finds the record already written.
+    const spendRecorded = recordChatRunSpend(
+      context.runId,
+      context.sessionId,
+      spentIn,
+      context.spend,
+    );
+    const recorded = persistSessionUpdate(async () => {
+      await spendRecorded;
+      return saveSessionUpdate();
+    }, context).then(() => settleSessionInputsAfterRunEnd(context.sessionId, context.runId));
     const settler = terminalSessionRecordSettlers.get(context.runId);
     terminalSessionRecordSettlers.delete(context.runId);
     if (settler !== undefined) {
@@ -9882,18 +9938,34 @@ async function constructBureau<const D extends AgentDefinitions>(
     // settled and has since been removed by retention, or never existed, and recreating it at
     // every boot would resurrect expired tasks, message text included. The record is dated
     // from the durable run, and the run settles it through the catalog settlement hook.
+    // COR-1868: a child run, a goal attempt and a workflow step are listed too, so no id prefix
+    // narrows the list; the claim says what each one is.
     for (let offset = 0; ;) {
       const page = await durable.engine.list({
         type: 'agentRun',
-        idPrefix: 'agent-run-',
         status: ['pending', 'running', 'suspended'],
         limit: 100,
         offset,
       });
       for (const summary of page.items) {
         if ((await tasks.record(summary.id)) !== undefined) continue;
-        if (await isChildRun(summary.id)) continue;
         const loaded = await runtime.loadCatalogRunRecoveryRecord(summary.id);
+        const createdAt = new Date(summary.createdAt).toISOString();
+        if (loaded.status === 'found' && loaded.record.taskOrigin !== undefined) {
+          // The claim stores the origin the run's start recorded: the task is rebuilt from it.
+          await tasks.recordAdmission(
+            subordinateTaskAdmission(
+              summary.id,
+              { ...loaded.record, taskOrigin: loaded.record.taskOrigin },
+              { ownerOf: ownerOrLocal, originatingMessage: originatingMessageText, createdAt },
+            ),
+          );
+          continue;
+        }
+        // A run claimed before COR-1868 is classified as it always was: only a top-level
+        // `bureau.run()` run is a task.
+        if (!summary.id.startsWith('agent-run-')) continue;
+        if (await isChildRun(summary.id)) continue;
         if (
           loaded.status !== 'found' ||
           loaded.record.goalAttempt !== undefined ||
@@ -9910,7 +9982,7 @@ async function constructBureau<const D extends AgentDefinitions>(
           // The run's original start is gone with its record: nothing names a surface for it.
           origin: { kind: 'api' },
           message: originatingMessageText(loaded.record.input),
-          createdAt: new Date(summary.createdAt).toISOString(),
+          createdAt,
         });
       }
       offset += page.items.length;
@@ -19635,6 +19707,65 @@ async function constructBureau<const D extends AgentDefinitions>(
     );
   }
 
+  /**
+   * COR-1868 — admits the task of a child run, a goal attempt or a workflow step, from its claim.
+   * Called once the run's start has committed, so no task is ever listed for a run that did not
+   * exist. A second admission (a continued claim, a re-run activity) is a no-op: the record is
+   * written once.
+   */
+  async function admitSubordinateTask(run: SubordinateRun): Promise<void> {
+    let claim: SubordinateClaim;
+    if (run.local !== undefined) {
+      claim = {
+        agentName: run.agentName,
+        principal: run.local.principal,
+        input: run.local.input,
+        taskOrigin: run.local.taskOrigin,
+      };
+    } else {
+      const loaded = await runtime.loadCatalogRunRecoveryRecord(run.runId);
+      if (loaded.status !== 'found' || loaded.record.taskOrigin === undefined) return;
+      claim = { ...loaded.record, taskOrigin: loaded.record.taskOrigin };
+    }
+    await tasks.recordAdmission(
+      subordinateTaskAdmission(run.runId, claim, {
+        ownerOf: ownerOrLocal,
+        originatingMessage: originatingMessageText,
+        createdAt: await durableRunCreatedAt(run.runId),
+      }),
+    );
+  }
+
+  /**
+   * COR-1868 — follows a subordinate run to its end. The task is admitted after the start
+   * committed, then settled from the run's own end and from nothing else: the child topology, the
+   * goal and the workflow keep their own settlements and never write the task.
+   */
+  function trackSubordinateRun(run: SubordinateRun): void {
+    detachBestEffortPromise(
+      run.started.then(
+        (origin) => {
+          // A claim written before COR-1868 holds no origin: the run stays a non-task.
+          if (origin === undefined) return undefined;
+          catalogSettlements.follow(
+            publishFreshCatalogRun({
+              handle: run.handle,
+              agentName: run.agentName,
+              admit: () => admitSubordinateTask(run),
+              hook: catalogRunSettlements,
+              followCleanup: (closed) => void tasks.watchCleanup(run.runId, closed),
+              diagnose,
+              durableEnd: catalogDurableEnd,
+            }),
+          );
+          return undefined;
+        },
+        // The start never committed, so there is no run and no task.
+        () => undefined,
+      ),
+    );
+  }
+
   const { planChildRun, startChildRun, startGoalAttemptRun, startWorkflowStepRun } =
     createCatalogDispatcher({
       agentCatalog,
@@ -19658,6 +19789,7 @@ async function constructBureau<const D extends AgentDefinitions>(
             }),
           ),
         ),
+      trackSubordinateRun,
       fileAgents,
       // COR-1577 — `requestHumanInput` for a durable `bureau.run()` run.
       humanInput: runtime.durable !== undefined ? options.humanInput : false,
@@ -19820,6 +19952,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         agentName: attribution?.agentName ?? findRunAgentName(runState) ?? BUREAU_AGENT_NAME,
         principal: ownerOrLocal(attribution?.principal),
         live: runState.status === 'running',
+        ...contextOfParent(getRunSessionIdentifier(runState)),
       };
     }
     const state = runtime.durable ? await runtime.durable.engine.get(parentRunId) : null;
@@ -19828,7 +19961,13 @@ async function constructBureau<const D extends AgentDefinitions>(
       agentName: state.input.agentName,
       principal: ownerOrLocal(attribution?.principal),
       live: DURABLE_FORCIBLY_TERMINABLE_STATUSES.has(state.status),
+      ...contextOfParent(state.input.sessionId),
     };
+  }
+
+  /** The parent's session, as a child's task origin records it; absent when the parent has none. */
+  function contextOfParent(sessionId: unknown): { readonly contextId?: string } {
+    return typeof sessionId === 'string' && sessionId !== '' ? { contextId: sessionId } : {};
   }
 
   /**

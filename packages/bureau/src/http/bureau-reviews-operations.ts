@@ -482,6 +482,9 @@ export function reviewFault(error: unknown, identifier: string): unknown {
       }
       return { code: 'Conflict', message: error.message, data: { reason: error.message } };
     }
+    case 'STORAGE_UNAVAILABLE':
+      // Not a review outcome: left to the pipeline, which masks it as an internal failure.
+      return error;
     case 'BAD_REQUEST':
     case 'NOT_CONFIGURED':
     case 'RATE_LIMITED':

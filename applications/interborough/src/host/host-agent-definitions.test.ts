@@ -7,7 +7,7 @@
  * It also holds the host's `/host/paths` route and the editor's two copies of the Bureau's
  * identifier rules.
  */
-import { AGENT_IDENTIFIER_PATTERN as BUREAU_IDENTIFIER_PATTERN } from '@lostgradient/bureau';
+import { AGENT_FILE_STEM_PATTERN as BUREAU_IDENTIFIER_PATTERN } from '@lostgradient/bureau';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

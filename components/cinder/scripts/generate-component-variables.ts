@@ -123,6 +123,7 @@ function isRuntimeStateDeclaration(declaration: Declaration): boolean {
 function renderVariablesModule(variables: readonly string[]): string {
   const literal = JSON.stringify(variables, null, 2);
   return [
+    `/** CSS custom properties this component reads, which a consumer can override. */`,
     `const variables: readonly string[] = ${literal};`,
     ``,
     `export default variables;`,

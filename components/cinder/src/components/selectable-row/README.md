@@ -4,6 +4,8 @@ Full-width row with a native button or link primary action and independent trail
 
 Use `SelectableRow` when activating the main row body opens or selects an item while Rename, menu, or external-link controls need their own Tab stops. The primary action contains the leading, title, description, and metadata regions; `trailingActions` renders beside it rather than inside it, so the resulting HTML never nests interactive elements.
 
+Trailing actions are always visible. `SelectableRow` never hides them until the row is hovered or focused, because a touch screen cannot hover and a keyboard user should not have to find the row first. When a row has more actions than fit beside its text, keep one visible control, such as a `Dropdown` with a `⋯` trigger, rather than revealing the actions on hover.
+
 Choose `ActionRow` when the entire row is one button and its trailing content is non-interactive. Choose `StackedListItem` when the row is static and only its title needs to link.
 
 ## Usage

@@ -169,6 +169,7 @@ const child = {
       childRunId: 'child-1',
     },
   },
+  taskOrigin: { kind: 'agent' as const, parentRunId: 'parent-1', agentName: 'planner' },
 };
 
 const settleOutcome = (started: { durablyStarted: Promise<void> }): Promise<unknown> =>

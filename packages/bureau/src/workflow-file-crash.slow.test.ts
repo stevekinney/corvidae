@@ -173,14 +173,18 @@ async function parkedScenario(scope: ScenarioScope): Promise<void> {
       'bureau-workflow-schedule:sleeper:1',
     ]);
 
-    // Exactly one agent run for each step, and none of them is a task, here or anywhere.
+    // Exactly one agent run for each step, and each is one task of its instance (COR-1868): the
+    // restart wrote no second record for a run the dead process had started.
     const stepRuns = await engine.list({ type: 'agentRun', idPrefix: 'workflow-agent-' });
     expect(stepRuns.items).toHaveLength(3);
     for (const stepRun of stepRuns.items) {
-      expect(await bureau.internals.taskRegistry.record(stepRun.id)).toBeUndefined();
+      const record = await bureau.internals.taskRegistry.record(stepRun.id);
+      expect(record).toMatchObject({ owner: 'anonymous:local', origin: { kind: 'parent' } });
     }
     const page = await bureau.internals.taskRegistry.enumerate({ limit: 100, offset: 0 });
-    expect(page.tasks).toEqual([]);
+    expect(page.tasks.map((task) => task.id).toSorted()).toEqual(
+      stepRuns.items.map((stepRun) => stepRun.id).toSorted(),
+    );
   } finally {
     const shutdown = await bureau?.shutdown();
     await store.dispose();
@@ -234,7 +238,13 @@ async function claimScenario(scope: ScenarioScope): Promise<void> {
       .durableEngine()!
       .list({ type: 'agentRun', idPrefix: 'workflow-agent-' });
     expect(stepRuns.items).toHaveLength(1);
-    expect(await bureau.internals.taskRegistry.record(stepRuns.items[0]!.id)).toBeUndefined();
+    // The step that ran again continued the dead process's claim, so the task carries the origin
+    // the claim stored, and there is one record for the one run (COR-1868).
+    const stepTask = await bureau.internals.taskRegistry.record(stepRuns.items[0]!.id);
+    expect(stepTask).toMatchObject({
+      owner: 'anonymous:local',
+      origin: { kind: 'parent', parentRunId: 'claimed-run' },
+    });
   } finally {
     const shutdown = await bureau?.shutdown();
     await store.dispose();

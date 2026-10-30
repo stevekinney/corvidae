@@ -101,6 +101,7 @@ export { default as keyboardShortcutsVariables } from '../components/keyboard-sh
 export { default as labelVariables } from '../components/label/label.variables.ts';
 export { default as lineChartVariables } from '../components/line-chart/line-chart.variables.ts';
 export { default as linkVariables } from '../components/link/link.variables.ts';
+export { default as listDetailVariables } from '../components/list-detail/list-detail.variables.ts';
 export { default as loadMoreVariables } from '../components/load-more/load-more.variables.ts';
 export { default as localeProviderVariables } from '../components/locale-provider/locale-provider.variables.ts';
 export { default as marqueeVariables } from '../components/marquee/marquee.variables.ts';

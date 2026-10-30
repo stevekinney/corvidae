@@ -68,6 +68,34 @@ describe('resizable-panels sizing', () => {
     expect(resolveSizeToPixels({ value: 25, unit: 'percent' }, 800)).toBe(200);
   });
 
+  test('gives slack to an unbounded neighbor instead of the first pane with a cap', () => {
+    const fixedWidthThenFill: ResizablePanelDefinition[] = [
+      {
+        id: 'list',
+        label: 'List',
+        defaultSize: { value: 410, unit: 'px' },
+        minSize: { value: 200, unit: 'px' },
+        maxSize: { value: 560, unit: 'px' },
+      },
+      { id: 'detail', label: 'Detail', minSize: { value: 320, unit: 'px' } },
+    ];
+    const state = createInitialLayoutState(fixedWidthThenFill, 988, 'horizontal');
+
+    expect(state.panels[0]!.sizePixels).toBeCloseTo(410, 3);
+    expect(state.panels[1]!.sizePixels).toBeCloseTo(578, 3);
+  });
+
+  test('shares slack equally between panes that have no maximum', () => {
+    const unbounded: ResizablePanelDefinition[] = [
+      { id: 'a', label: 'A', defaultSize: { value: 100, unit: 'px' } },
+      { id: 'b', label: 'B', defaultSize: { value: 100, unit: 'px' } },
+    ];
+    const state = createInitialLayoutState(unbounded, 500, 'horizontal');
+
+    expect(state.panels[0]!.sizePixels).toBeCloseTo(250, 3);
+    expect(state.panels[1]!.sizePixels).toBeCloseTo(250, 3);
+  });
+
   test('creates an initial measured layout', () => {
     const state = createInitialLayoutState(panes, 1000, 'horizontal');
     expect(state.panels).toHaveLength(3);

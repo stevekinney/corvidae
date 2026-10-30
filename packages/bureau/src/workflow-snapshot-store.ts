@@ -245,7 +245,8 @@ export function createWorkflowSnapshotStore(
   function splitKey(key: string): { id: string; workflowVersion: string } | undefined {
     if (!key.startsWith(WORKFLOW_SNAPSHOT_KEY_PREFIX)) return undefined;
     const rest = key.slice(WORKFLOW_SNAPSHOT_KEY_PREFIX.length);
-    const separator = rest.indexOf(':');
+    // A version is `sha256:<hex>` and an id may hold a colon (`plugin:name`), so split before the algorithm.
+    const separator = rest.indexOf(':sha256:');
     if (separator <= 0) return undefined;
     return { id: rest.slice(0, separator), workflowVersion: rest.slice(separator + 1) };
   }

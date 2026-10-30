@@ -84,6 +84,36 @@ describe('the chat spend ledger', () => {
     expect(await ledger.totalOf('chat-1', 'new')).toBe(2);
   });
 
+  it('puts the incarnation in the key, so a chat’s records are one prefix and a late one is removed by it (COR-1933)', async () => {
+    const { kv, ledger } = setup();
+    await ledger.record(input('run-a', 1, { incarnation: 'old' }));
+    await ledger.record(input('run-b', 2, { incarnation: 'new' }));
+    expect(await kv.list(`${CHAT_SPEND_KEY_PREFIX}chat-1:old:`)).toHaveLength(1);
+    expect(await kv.list(`${CHAT_SPEND_KEY_PREFIX}chat-1:new:`)).toHaveLength(1);
+
+    expect(await ledger.forget('chat-1', 'old')).toBe(1);
+    // A record written after the chat was forgotten (a run that ended after its deletion) is
+    // left under the same prefix, and the next forget removes it without reading anything.
+    await ledger.record(input('run-late', 4, { incarnation: 'old' }));
+    expect(await kv.list(`${CHAT_SPEND_KEY_PREFIX}chat-1:old:`)).toHaveLength(1);
+    expect(await ledger.forget('chat-1', 'old')).toBe(1);
+    expect(await kv.list(`${CHAT_SPEND_KEY_PREFIX}chat-1:old:`)).toHaveLength(0);
+    expect(await ledger.totalOf('chat-1', 'new')).toBe(2);
+  });
+
+  it('does not count a version 1 record, and forget removes the ones of its incarnation (COR-1933)', async () => {
+    const { kv, ledger } = setup();
+    const legacy = (incarnation: string) =>
+      JSON.stringify({ schemaVersion: 1, ...input('run-a', 8, { incarnation }) });
+    await kv.set('bureau-chat-spend:v1:chat-1:run-old', legacy('old'));
+    await kv.set('bureau-chat-spend:v1:chat-1:run-new', legacy('new'));
+    expect(await ledger.totalOf('chat-1', 'old')).toBe(0);
+    expect(await ledger.forget('chat-1', 'old')).toBe(1);
+    expect(await kv.list('bureau-chat-spend:v1:chat-1:')).toEqual([
+      'bureau-chat-spend:v1:chat-1:run-new',
+    ]);
+  });
+
   it('stores the owner and the incarnation on every record, under the reserved prefix', async () => {
     const { kv, ledger } = setup();
     await ledger.record(input('run-a', 0.25, { owner: 'api-key:alice' }));
@@ -109,7 +139,7 @@ describe('the chat spend ledger', () => {
 
   it('refuses to total a chat whose record it cannot read, rather than counting it as nothing', async () => {
     const { kv, ledger } = setup();
-    await kv.set(`${CHAT_SPEND_KEY_PREFIX}chat-1:broken`, '{"schemaVersion":2}');
+    await kv.set(`${CHAT_SPEND_KEY_PREFIX}chat-1:one:broken`, '{"schemaVersion":2}');
     const error = await rejectionOf(ledger.totalOf('chat-1', 'one'));
     expect(error instanceof Error ? error.message : '').toContain('version 1');
   });
