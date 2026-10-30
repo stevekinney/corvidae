@@ -438,8 +438,8 @@ import {
   validateReviewAnswer,
 } from './review-answer';
 import {
+  type AnswerEncryptionKeys,
   holdsSealedAnswer,
-  sealSecretAnswer,
   type SecretAnswerAuditEntry,
   SecretAnswerUnavailableError,
   secretFieldsOfReview,
@@ -2092,6 +2092,16 @@ async function constructBureau<const D extends AgentDefinitions>(
   options: BureauOptions<D>,
   construction: BureauConstruction<D>,
 ): Promise<void> {
+  // COR-1920: the answer keys are the caller's, so they are read once, before the first await.
+  const answerEncryption: AnswerEncryptionKeys | undefined =
+    options.answerEncryption === undefined
+      ? undefined
+      : {
+          current: options.answerEncryption.current,
+          ...(options.answerEncryption.retired === undefined
+            ? {}
+            : { retired: options.answerEncryption.retired }),
+        };
   // AB-194: validated here (BAD_REQUEST at construction time). Admission
   // enforces these same validated values (defaulting to
   // `DEFAULT_SESSION_INPUT_BACKLOG_LIMIT`/`DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT`)
@@ -2371,7 +2381,13 @@ async function constructBureau<const D extends AgentDefinitions>(
     // COR-1546: the resolved identifier, so the memory tenant a run writes under is `Bureau.id`.
     // COR-1721: the wrapped sink, so a diagnostic the composition raises is also a `diagnostic`
     // event; the user's `onDiagnostic` is still called once, inside `diagnose`.
-    { ...options, id: bureauId, runtime: runtimeServices, onDiagnostic: diagnose },
+    {
+      ...options,
+      id: bureauId,
+      runtime: runtimeServices,
+      onDiagnostic: diagnose,
+      ...(answerEncryption === undefined ? {} : { answerEncryption }),
+    },
     {
       decideToolFor: (owner, offered) => lateDecisions.toolWiringFor(true, owner, offered),
       toolGrantFor: async (taskId) =>
@@ -16892,15 +16908,14 @@ async function constructBureau<const D extends AgentDefinitions>(
   ): Promise<{ readonly plaintext: unknown; readonly sealed: unknown }> {
     const fields = secretFieldsOfReview(review);
     if (fields.length === 0) return { plaintext: answer, sealed: answer };
-    const keys = options.answerEncryption;
-    if (keys === undefined || runtime.secretAnswers === undefined) {
+    if (runtime.secretAnswers === undefined) {
       throw new BureauError(
         'This question asks for a secret, and the Bureau has no key or storage to keep one in (set "answerEncryption" and "storage").',
         'NOT_CONFIGURED',
         'encryption',
       );
     }
-    const outcome = await sealSecretAnswer({ reviewId: review.id, fields, answer, keys });
+    const outcome = await runtime.secretAnswers.seal({ reviewId: review.id, fields, answer });
     if (!outcome.ok) throw new ReviewAnswerInvalidError(outcome.issues);
     return outcome;
   }

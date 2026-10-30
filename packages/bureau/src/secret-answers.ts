@@ -409,6 +409,12 @@ export interface SecretAnswerStore {
   ): Promise<{ readonly payload: unknown; readonly audit: readonly SecretAnswerAuditEntry[] }>;
   /** The plaintext of `secretRef` for `runId`; throws when it is another run's or cannot be read. */
   resolve(secretRef: string, runId: string): Promise<string>;
+  /** {@link sealSecretAnswer} under this store's keys. */
+  seal(input: {
+    readonly reviewId: string;
+    readonly fields: readonly string[];
+    readonly answer: unknown;
+  }): Promise<SealedAnswer>;
 }
 
 /** Thrown by {@link SecretAnswerStore.resolve} for a reference the asking run may not read. Its message names nothing secret. */
@@ -428,7 +434,12 @@ export function createSecretAnswerStore(options: {
   readonly keys: AnswerEncryptionKeys;
   readonly now: () => number;
 }): SecretAnswerStore {
-  const { kv, keys, now } = options;
+  const { kv, now } = options;
+  // The keys are the caller's: read once, here.
+  const keys: AnswerEncryptionKeys = {
+    current: options.keys.current,
+    ...(options.keys.retired === undefined ? {} : { retired: options.keys.retired }),
+  };
 
   async function storeOne(
     review: { readonly id: string; readonly runId: string },
@@ -490,6 +501,7 @@ export function createSecretAnswerStore(options: {
       }
       return openSealedAnswer(secretRef, record.encrypted, keys);
     },
+    seal: (input) => sealSecretAnswer({ ...input, keys }),
   };
 }
 

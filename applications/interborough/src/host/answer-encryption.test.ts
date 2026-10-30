@@ -68,7 +68,8 @@ describe('answerEncryptionKeys', () => {
     const keys = await answerEncryptionKeys(bungalow);
     secrets.set(retiredAnswerEncryptionKey(old.keyId), await exportEncryptionKey(old));
 
-    expect((await keys.retired?.(old.keyId))?.keyId).toBe(old.keyId);
+    const found = await keys.retired?.(old.keyId);
+    expect(found?.keyId).toBe(old.keyId);
     expect(await keys.retired?.('0'.repeat(24))).toBeUndefined();
     // An id that is not a key id is never turned into a secret name.
     expect(await keys.retired?.('../approval-secret')).toBeUndefined();
