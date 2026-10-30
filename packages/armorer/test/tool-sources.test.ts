@@ -188,6 +188,30 @@ describe('loadToolSource for OpenAPI', () => {
       expect(calls[1]?.url.startsWith('https://specs.example.test/api/v3/pets')).toBe(true);
     });
 
+    it('resolves a relative server URL against the URL the document was redirected to', async () => {
+      const calls: string[] = [];
+      const redirecting = (async (input: RequestInfo | URL) => {
+        const url = new Request(input).url;
+        calls.push(url);
+        if (url.endsWith('/alias/openapi.json')) {
+          const response = Response.json(documentWithServer('../api'));
+          Object.defineProperty(response, 'url', {
+            value: 'https://specs.example.test/v2/spec/openapi.json',
+          });
+          return response;
+        }
+        return Response.json([]);
+      }) as typeof fetch;
+      const loaded = await loadToolSource(
+        urlSource({
+          specification: { type: 'url', url: 'https://specs.example.test/alias/openapi.json' },
+        }),
+        { resolveCredential: () => undefined, fetch: redirecting },
+      );
+      await loaded.tools.find((tool) => tool.name === 'find-pets')?.execute({});
+      expect(calls[1]?.startsWith('https://specs.example.test/v2/api/pets')).toBe(true);
+    });
+
     it('uses an absolute server URL as written', async () => {
       const { fetch, calls } = createRecordingFetch(
         documentWithServer('https://api.example.test/v1'),

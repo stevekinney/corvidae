@@ -430,9 +430,9 @@ async function loadOpenApiSource(
   options: LoadToolSourceOptions,
 ): Promise<LoadedToolSource> {
   const fetchImplementation = options.fetch ?? fetch;
-  const specification =
+  const { specification, documentUrl } =
     source.specification.type === 'document'
-      ? source.specification.document
+      ? { specification: source.specification.document, documentUrl: undefined }
       : await fetchSpecification(source.id, source.specification.url, fetchImplementation);
   const authentication = source.authentication;
   const auth: OpenAPIAuth | undefined =
@@ -448,7 +448,7 @@ async function loadOpenApiSource(
             value: await requireCredential(source.id, authentication.credential, options),
           }
         : undefined;
-  const baseUrl = resolveBaseUrl(source, specification);
+  const baseUrl = resolveBaseUrl(source, specification, documentUrl);
   const tools = createToolboxFromOpenAPI(specification, {
     fetch: fetchImplementation,
     baseUrl,
@@ -461,10 +461,14 @@ async function loadOpenApiSource(
 
 /**
  * The base URL requests go to: the description's `baseUrl`, else the document's first server. A
- * relative server URL resolves against the document's own URL when it was fetched, and is an error
+ * relative server URL resolves against the URL the document was finally served from (after redirects) when it was fetched, and is an error
  * for an inline document, which has nothing to resolve it against.
  */
-function resolveBaseUrl(source: OpenApiToolSourceDescription, specification: OpenAPISpec): string {
+function resolveBaseUrl(
+  source: OpenApiToolSourceDescription,
+  specification: OpenAPISpec,
+  documentUrl: string | undefined,
+): string {
   if (source.baseUrl) return source.baseUrl;
   const server = specification.servers?.[0]?.url;
   if (!server) {
@@ -473,7 +477,6 @@ function resolveBaseUrl(source: OpenApiToolSourceDescription, specification: Ope
       'it has no `baseUrl` and its document lists no server.',
     );
   }
-  const documentUrl = source.specification.type === 'url' ? source.specification.url : undefined;
   let resolved: URL;
   try {
     resolved = new URL(server, documentUrl);
@@ -501,7 +504,7 @@ async function fetchSpecification(
   sourceId: string,
   url: string,
   fetchImplementation: typeof fetch,
-): Promise<OpenAPISpec> {
+): Promise<{ specification: OpenAPISpec; documentUrl: string }> {
   const response = await fetchImplementation(url, { headers: { accept: 'application/json' } });
   if (!response.ok) {
     throw new Error(
@@ -509,7 +512,11 @@ async function fetchSpecification(
     );
   }
   try {
-    return (await response.json()) as OpenAPISpec;
+    // `response.url` is the final URL after redirects; a relative server URL resolves against it.
+    return {
+      specification: (await response.json()) as OpenAPISpec,
+      documentUrl: response.url || url,
+    };
   } catch (error) {
     throw new Error(
       `Tool source "${sourceId}": its OpenAPI document is not valid JSON (YAML documents are not supported).`,
