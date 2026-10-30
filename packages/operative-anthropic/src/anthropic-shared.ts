@@ -1,10 +1,12 @@
 import {
+  type Effort,
   type GenerateResponse,
   type ResolvedCommonParameters,
   type ToolChoice,
   anthropicSamplingSupport,
   createModelCatalog,
   ProviderError,
+  resolveAnthropicEffort,
 } from '@lostgradient/operative/provider-kit';
 import {
   anthropicDisabledThinkingRule,
@@ -218,6 +220,34 @@ export function assertDisabledThinkingSupported(
         `effort, or omit thinking or use 'adaptive' to keep thinking on.`,
     });
   }
+}
+
+/**
+ * The effort one call sends (COR-1935): the effort the session's steering names for this step,
+ * resolved for the model, or `constructed` (the construction-time effort, already resolved) when
+ * steering names none. Steering is read on every call, never at construction, so a steered effort
+ * reaches the next step of a running chat and the next run of an idle one.
+ *
+ * A steered effort never fails a call. A model with no effort support resolves it to `undefined`,
+ * which omits `output_config`, and one that disabled thinking would make the API answer 400 at the
+ * steered effort keeps `constructed`. The response's `metadata.effectiveEffort` reports the value
+ * that was sent, or `'none'`, so a step that did not take the steered effort says so.
+ */
+export function resolveAnthropicStepEffort(
+  steered: Effort | undefined,
+  constructed: Effort | undefined,
+  resolvedModel: string,
+  thinking: AnthropicThinkingConfig | undefined,
+): Effort | undefined {
+  if (steered === undefined) return constructed;
+  const resolved = resolveAnthropicEffort(steered, resolvedModel);
+  try {
+    assertDisabledThinkingSupported(resolvedModel, thinking, resolved);
+  } catch (error) {
+    if (error instanceof ProviderError) return constructed;
+    throw error;
+  }
+  return resolved;
 }
 
 /**

@@ -37,6 +37,7 @@ import {
   assertThinkingParametersCompatible,
   assertToolChoiceSupported,
   buildAnthropicMessageRequest,
+  resolveAnthropicStepEffort,
 } from './anthropic-shared.ts';
 import type { AnthropicProviderOptions, AnthropicStreamingClient } from './anthropic-types.ts';
 
@@ -98,6 +99,13 @@ export function createAnthropicProviderStream(
   ): Promise<GenerateResponse> => {
     const effectiveMaximumTokens = context.maximumTokens ?? maximumTokens;
     assertThinkingBudgetBelowMaximum(options.thinking, effectiveMaximumTokens);
+    // The step's steered effort, read per call (COR-1935), not the construction-time one.
+    const stepEffort = resolveAnthropicStepEffort(
+      context.steering?.effort,
+      resolvedEffort,
+      resolvedModel,
+      options.thinking,
+    );
     const client = await getClient();
     const { streaming } = context;
     const conversationForRequest = cacheAwareAssembly
@@ -114,7 +122,7 @@ export function createAnthropicProviderStream(
       maxTokens: effectiveMaximumTokens,
       system,
       stream: true,
-      effort: resolvedEffort,
+      effort: stepEffort,
       thinking: options.thinking,
       metadata: options.requestMetadata,
       tools,
@@ -129,13 +137,7 @@ export function createAnthropicProviderStream(
       const stream = await Promise.resolve(client.messages.create(params, requestOptions));
 
       return withInputLineage(
-        await consumeAnthropicStream(
-          stream,
-          streaming,
-          context.signal,
-          resolvedModel,
-          resolvedEffort,
-        ),
+        await consumeAnthropicStream(stream, streaming, context.signal, resolvedModel, stepEffort),
         lineage,
       );
     } catch (error) {

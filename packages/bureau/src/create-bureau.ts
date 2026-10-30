@@ -185,6 +185,7 @@ import {
   AUDIT_SCHEDULE_OWNER_PREFIX,
   AUDIT_SESSION_OWNER_PREFIX,
   AUDIT_SKILL_SOURCE_OWNER_PREFIX,
+  AUDIT_TOOL_SOURCE_OWNER_PREFIX,
   AUDIT_WORKER_DEPLOYMENT_OWNER_PREFIX,
   AUDIT_WORKFLOW_OWNER_PREFIX,
   type AuditTrail,
@@ -1078,7 +1079,8 @@ class BureauError extends Error {
     | 'NOT_CONFIGURED'
     | 'BAD_REQUEST'
     | 'RATE_LIMITED'
-    | 'UNSUPPORTED_CAPABILITY';
+    | 'UNSUPPORTED_CAPABILITY'
+    | 'STORAGE_UNAVAILABLE';
   readonly subject: BureauErrorNotConfiguredSubject | undefined;
 
   // `subject` is required for NOT_CONFIGURED and disallowed for every other
@@ -1094,7 +1096,8 @@ class BureauError extends Error {
       | 'NOT_CONFIGURED'
       | 'BAD_REQUEST'
       | 'RATE_LIMITED'
-      | 'UNSUPPORTED_CAPABILITY',
+      | 'UNSUPPORTED_CAPABILITY'
+      | 'STORAGE_UNAVAILABLE',
     subject?: BureauErrorNotConfiguredSubject,
   ) {
     super(message);
@@ -5454,10 +5457,24 @@ async function constructBureau<const D extends AgentDefinitions>(
   ): Promise<NonNullable<RunOptions['costBudget']> | undefined> {
     const budget = sessionAgent?.options.costBudget;
     if (budget?.perChatUsd === undefined) return undefined;
-    const spent =
-      session?.incarnation === undefined
-        ? 0
-        : await chatSpendLedger.totalOf(sessionId, session.incarnation);
+    let spent = 0;
+    if (session?.incarnation !== undefined) {
+      try {
+        spent = await chatSpendLedger.totalOf(sessionId, session.incarnation);
+      } catch (error) {
+        // COR-1933 — a typed refusal, not the store's own error: the caller branches on the code.
+        diagnose({
+          level: 'error',
+          scope: 'chat-spend',
+          message: `[bureau] Could not read the spend of chat "${sessionId}": ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+        throw new BureauError(
+          `The spend of chat "${sessionId}" could not be read, so its run was not started: ${serializeUnknownError(error)}`,
+          'STORAGE_UNAVAILABLE',
+        );
+      }
+    }
     return { ...budget, priorChatSpendUsd: spent };
   }
 
@@ -5469,10 +5486,12 @@ async function constructBureau<const D extends AgentDefinitions>(
   };
 
   /**
-   * Writes a chat run's spend to the chat's ledger, once the session has recorded how the run
-   * ended (COR-1915). A run with no price on its requests spent nothing the ledger can count. The
-   * ledger writes a run's record once, so a terminal event a recovery replays records nothing
-   * more, and a write that fails is diagnosed by the ledger and never fails the run's settlement.
+   * Writes a chat run's spend to the chat's ledger (COR-1915), before the session records how the
+   * run ended (COR-1933): a crash in between then leaves a session that still says `running`, which
+   * recovery reattaches and replays into a ledger that already holds the record. A run with no
+   * price on its requests spent nothing the ledger can count. The ledger writes a run's record
+   * once, so a terminal event a recovery replays records nothing more, and a write that fails is
+   * diagnosed by the ledger and never fails the run's settlement.
    */
   async function recordChatRunSpend(
     runId: string,
@@ -5484,7 +5503,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     if (spend === undefined || usd === undefined || !Number.isFinite(usd) || usd <= 0) return;
     if (incarnation === undefined) return;
     try {
-      await chatSpendLedger.record({
+      const written = await chatSpendLedger.record({
         sessionId,
         incarnation,
         runId,
@@ -5493,6 +5512,16 @@ async function constructBureau<const D extends AgentDefinitions>(
         usd,
         recordedAt: runtimeServices.clock.nowISO(),
       });
+      // COR-1933 — a chat deleted while this run ran has had its records forgotten already, so
+      // the one just written would stay behind. Checked AFTER the write: either the deletion
+      // committed before this read and the record is removed here, or after it, and the
+      // deletion's own `forget` runs after the write and removes it.
+      if (written && runtime.sessionStore) {
+        const session = await runtime.sessionStore.load(sessionId);
+        if (session?.incarnation !== incarnation) {
+          await chatSpendLedger.forget(sessionId, incarnation);
+        }
+      }
     } catch (error) {
       diagnose({
         level: 'error',
@@ -5513,16 +5542,26 @@ async function constructBureau<const D extends AgentDefinitions>(
       runId: string;
       sessionId: string;
       status: 'completed' | 'error' | 'aborted';
-      /** What the run spent, for the chat's ledger (COR-1915); written after the session's save. */
+      /** What the run spent, for the chat's ledger (COR-1915); written before the session's save. */
       spend?: ChatRunSpend;
     },
   ): void {
     // The incarnation is read now, with the terminal event, and not after the save: the map that
     // holds it is dropped when the run's records are, which can be before the save finishes.
     const spentIn = runSessionIncarnations.get(context.runId);
-    const recorded = persistSessionUpdate(saveSessionUpdate, context)
-      .then(() => recordChatRunSpend(context.runId, context.sessionId, spentIn, context.spend))
-      .then(() => settleSessionInputsAfterRunEnd(context.sessionId, context.runId));
+    // The spend is recorded BEFORE the session's end record (COR-1933), inside the tracked save,
+    // so `drain()` waits for both and a crash between them is repaired by recovery's replay.
+    // `recordChatRunSpend` never rejects, and a save retry finds the record already written.
+    const spendRecorded = recordChatRunSpend(
+      context.runId,
+      context.sessionId,
+      spentIn,
+      context.spend,
+    );
+    const recorded = persistSessionUpdate(async () => {
+      await spendRecorded;
+      return saveSessionUpdate();
+    }, context).then(() => settleSessionInputsAfterRunEnd(context.sessionId, context.runId));
     const settler = terminalSessionRecordSettlers.get(context.runId);
     terminalSessionRecordSettlers.delete(context.runId);
     if (settler !== undefined) {
@@ -10829,6 +10868,15 @@ async function constructBureau<const D extends AgentDefinitions>(
               : undefined;
           return typeof recorded === 'string' ? recorded : ownerOrLocal(undefined);
         }
+        if (runId.startsWith(AUDIT_TOOL_SOURCE_OWNER_PREFIX)) {
+          // COR-1930 — a saved tool source has no owner field: the owner who changed it is
+          // recorded on the entry, and a record without one belongs to the deployment's owner.
+          const recorded =
+            typeof detail === 'object' && detail !== null
+              ? (detail as { owner?: unknown }).owner
+              : undefined;
+          return typeof recorded === 'string' ? recorded : ownerOrLocal(undefined);
+        }
         if (runId.startsWith(AUDIT_WORKFLOW_OWNER_PREFIX)) {
           // COR-1529 — a workflow file has no owner field: it belongs to the deployment's owner.
           return ownerOrLocal(undefined);
@@ -14766,6 +14814,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       outcome = await forkLedger.claim(identity, digest, {
         contextId: runtimeServices.identifiers.next('session'),
         override: parentRequest ?? parentSteering?.model ?? null,
+        effort: parentSteering?.effort ?? null,
       });
     } catch (error) {
       if (error instanceof BureauLedgerConflictError) throw forkConflict(request);
@@ -14818,7 +14867,21 @@ async function constructBureau<const D extends AgentDefinitions>(
                   }
                 : { target: 'model', policyRef: claim.override.policyRef },
           });
-    const result: ForkSessionResult = { contextId: claim.contextId, carriedOverride: carried };
+    // COR-1935: the effort goes the same way. The claim keeps it, so a retry after a restart
+    // carries the one the first attempt read, and a claim from before the field carries none.
+    const carriedEffort =
+      claim.effort === undefined || claim.effort === null
+        ? null
+        : await submitSteeringCommand(claim.contextId, {
+            id: `${request.commandId}:effort`,
+            principal: request.owner,
+            requestedValue: { target: 'effort', override: claim.effort },
+          });
+    const result: ForkSessionResult = {
+      contextId: claim.contextId,
+      carriedOverride: carried,
+      carriedEffort,
+    };
     const completed = await forkLedger.complete(outcome.entry, result);
     return answerOfFork(completed.result);
   }
@@ -14912,6 +14975,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         desired?.model === undefined
           ? null
           : { provider: desired.modelProvider ?? null, model: desired.model },
+      effort: desired?.effort ?? null,
       configVersion: gate?.getConfigVersion() ?? 0,
     };
   }
@@ -16597,6 +16661,28 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
+   * COR-1942: a review this process no longer lists may be one someone decided. The peer's
+   * follower drops its copy once it reads the decision from the shared history, so whether a late,
+   * different decision answers `CONFLICT` (the decision record's answer while the peer still lists
+   * the review) or `NOT_FOUND` must not depend on when that read lands. The resolved-review record
+   * is keyed by the review id alone and outlives the task and the session's own fence, so it names
+   * the decision. Only a decision that differs is refused as lost; repeating the decision made is
+   * the documented `NOT_FOUND` of a resolved review. A review nothing recorded (expired, never
+   * asked, or swept by `retention.audit`) has no decision to conflict with.
+   */
+  async function refuseLostDecisionOfGoneReview(input: ResolveReviewInput): Promise<void> {
+    const decided = await resolvedReviewStore.get(input.id);
+    if (
+      decided !== undefined &&
+      (decided.decision !== input.decision ||
+        decided.decidedBy !== input.principal ||
+        decided.reason !== input.reason)
+    ) {
+      throw new BureauError(`Review with id "${input.id}" is already resolved`, 'CONFLICT');
+    }
+  }
+
+  /**
    * COR-1828 — what a decision's records keep beyond the decision itself. A human wait's approved
    * answer is kept as the digest the decision fence already took over its reference form
    * (`answerDigest`); a tool approval approved with `remember` names the tool its grant allows
@@ -16736,6 +16822,7 @@ async function constructBureau<const D extends AgentDefinitions>(
           resolvingReviewIds.delete(input.id);
         }
       }
+      await refuseLostDecisionOfGoneReview(input);
       throw new BureauError(`No pending review with id "${input.id}"`, 'NOT_FOUND');
     }
 

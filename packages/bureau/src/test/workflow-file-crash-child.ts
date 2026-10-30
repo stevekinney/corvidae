@@ -15,7 +15,7 @@
  *
  * Not a test file: it is spawned by `workflow-file-crash.slow.test.ts`.
  */
-import { writeFileSync } from 'node:fs';
+import { publishChildFile } from './child-output-file';
 
 import { createAgent } from '@lostgradient/operative';
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
@@ -109,7 +109,7 @@ async function parkedOn(workflowId: string, operationType: string): Promise<bool
 
 if (mode === 'claim') {
   // Written before the start: the kill lands inside it.
-  writeFileSync(markerPath, JSON.stringify({ instances: ['claimed-run'] }), 'utf8');
+  publishChildFile(markerPath, JSON.stringify({ instances: ['claimed-run'] }));
   await engine.start('claimed', { kind: 'schedule', scheduleId: 'manual' }, { id: 'claimed-run' });
   await new Promise<never>(() => {});
 }
@@ -122,9 +122,8 @@ await until('the waiter to wait', () => parkedOn('waiter-run', 'wait-signal'));
 await until('the midstep agent to start', () => midstepStarted);
 
 // Written synchronously so it is on disk before the kill. No `dispose()`, deliberately.
-writeFileSync(
+publishChildFile(
   markerPath,
   JSON.stringify({ instances: ['sleeper-run', 'waiter-run', 'midstep-run'] }),
-  'utf8',
 );
 process.kill(process.pid, 'SIGKILL');

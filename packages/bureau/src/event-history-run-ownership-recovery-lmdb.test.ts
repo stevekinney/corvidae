@@ -10,7 +10,7 @@
  * delay instead (see `pollUntilWithRealDelay` below).
  */
 
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { stopWhen, createAgent } from '@lostgradient/operative';
@@ -24,6 +24,7 @@ import type { AgentDefinitions } from './agent-catalog';
 import { expectScenarioPassed, settleScenario } from './test/hoisted-scenario';
 import { createLmdbStorageFixture } from './test/storage-fixtures';
 import { waitUntil } from '@lostgradient/testing/wait-until';
+import { readChildJson } from './test/child-output-file';
 
 const CHILD = join(import.meta.dir, 'test', 'event-history-owner-crash-child.ts');
 
@@ -181,7 +182,7 @@ const outcome = await settleScenario(async (scope) => {
   const stderr = await new Response(child.stderr).text();
   // The test kills the child, so any other exit means bureau A never reached its crash point.
   expect(child.signalCode ?? stderr).toBe('SIGKILL');
-  const run = JSON.parse(readFileSync(markerPath, 'utf8')) as Marker;
+  const run = readChildJson<Marker>(markerPath);
   rmSync(markerPath, { force: true });
 
   const bureauB = await createBureau<AgentDefinitions>({

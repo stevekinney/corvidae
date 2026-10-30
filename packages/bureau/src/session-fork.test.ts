@@ -836,6 +836,7 @@ describe('the parent’s model choice', () => {
     });
     expect(await bureau.contexts.steering(result.contextId)).toEqual({
       model: { provider: 'anthropic', model: 'claude-opus-5' },
+      effort: null,
       configVersion: 1,
     });
     // The parent keeps its own, and an exact retry returns the same pair.
@@ -923,6 +924,82 @@ describe('the parent’s model choice', () => {
     const planned = await bureau.contexts.steering('planned-fork');
     expect(planned?.model?.model).toBe('claude-opus-5');
     expect(await fork(bureau, run.contextId, finalAssistantOf(run.id), 'crash-2')).toEqual(result);
+  });
+});
+
+describe('the parent’s effort (COR-1935)', () => {
+  const steerEffort = (
+    bureau: { readonly contexts: Pick<BureauContexts, 'steer'> },
+    sessionId: string,
+    effort: 'low' | 'high',
+  ) =>
+    bureau.contexts.steer(sessionId, {
+      id: 'raise',
+      principal: ALICE,
+      requestedValue: { target: 'effort', override: effort },
+    });
+
+  it('is admitted on the fork as <commandId>:effort, and the outcome is returned beside the contextId', async () => {
+    const bureau = await openBureau();
+    const run = await completedSession(bureau);
+    const raised = await steerEffort(bureau, run.contextId, 'high');
+    expect(raised.outcome).toBe('accepted');
+
+    const result = await fork(bureau, run.contextId, finalAssistantOf(run.id), 'fork-effort');
+
+    expect(result.carriedOverride).toBeNull();
+    expect(result.carriedEffort).toMatchObject({
+      outcome: 'accepted',
+      command: { id: 'fork-effort:effort', sessionId: result.contextId },
+    });
+    expect(await bureau.contexts.steering(result.contextId)).toEqual({
+      model: null,
+      effort: 'high',
+      configVersion: 1,
+    });
+    expect(await fork(bureau, run.contextId, finalAssistantOf(run.id), 'fork-effort')).toEqual(
+      result,
+    );
+  });
+
+  it('carries the model and the effort together, each as its own command', async () => {
+    const bureau = await openBureau();
+    const run = await completedSession(bureau);
+    await steerEffort(bureau, run.contextId, 'low');
+    await bureau.contexts.steer(run.contextId, {
+      id: 'switch',
+      principal: ALICE,
+      requestedValue: {
+        target: 'model',
+        override: OPUS_5.model,
+        provider: OPUS_5.provider,
+      } as never,
+    });
+
+    const result = await fork(bureau, run.contextId, finalAssistantOf(run.id), 'fork-both');
+
+    expect(result.carriedOverride).toMatchObject({ command: { id: 'fork-both:model' } });
+    expect(result.carriedEffort).toMatchObject({ command: { id: 'fork-both:effort' } });
+    expect(await bureau.contexts.steering(result.contextId)).toEqual({
+      model: { provider: 'anthropic', model: 'claude-opus-5' },
+      effort: 'low',
+      configVersion: 2,
+    });
+  });
+
+  it('carries nothing when the parent never set one, and reads a claim from before the field as none', async () => {
+    const bureau = await openBureau();
+    const run = await completedSession(bureau);
+    const untouched = await fork(bureau, run.contextId, finalAssistantOf(run.id));
+    await steerEffort(bureau, run.contextId, 'high');
+    await claimFork(bureau, run, 'old-claim', { contextId: 'old-fork', override: null });
+
+    const old = await fork(bureau, run.contextId, `${run.id}:step:0`, 'old-claim').catch(
+      () => undefined,
+    );
+
+    expect(untouched.carriedEffort).toBeNull();
+    expect(old?.carriedEffort ?? null).toBeNull();
   });
 });
 

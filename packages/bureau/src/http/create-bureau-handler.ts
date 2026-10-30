@@ -58,6 +58,7 @@ import {
 import { type AgentDefinitions, mediaCapabilitiesOf } from '../agent-catalog.ts';
 import { agentExamplesSchema } from '../agent-examples.ts';
 import { readFileAgentBinding } from '../agent-file-catalog.ts';
+import { AGENT_IDENTIFIER_PATTERN } from '../agent-file.ts';
 import { isTryAgentName } from '../agent-try.ts';
 import {
   COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS,
@@ -467,8 +468,11 @@ export type BureauHandlerOptions = {
   readonly maxRequestBodyBytes?: number;
 };
 
-/** An A2A agent name is a URL path segment, so it needs no encoding. */
-export const A2A_AGENT_NAME_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+/**
+ * An A2A agent name is a URL path segment: a bare name needs no encoding, and a `plugin:name`
+ * (COR-1871) is percent-encoded where Bureau builds a URL from it and decoded where one is read.
+ */
+export const A2A_AGENT_NAME_PATTERN = AGENT_IDENTIFIER_PATTERN;
 
 /**
  * Every `agUi` option, as a record keyed by `AgUiOptions`: a key added to the type

@@ -828,10 +828,17 @@ describe('createBureau', () => {
     // A generate function that calls the `next` tool on step 0 so a tool.started
     // event fires, then completes on step 1. The toolbox must be a real createToolbox
     // (not empty) so toolbox addEventListener is wired and the event bubbles.
-    const callsNextThenFinishes: GenerateFunction = async ({ step }) =>
-      step === 0
-        ? { content: 'calling', toolCalls: [{ name: 'next', arguments: {} }] }
-        : { content: 'done', toolCalls: [] };
+    // Step 0 waits on `listenerAttached`, which the test opens only after it has attached the
+    // `tool.started` listener, so the first tool event cannot precede the listener however many
+    // async turns lie between `start()` returning and the run's first step.
+    const listenerAttached = Promise.withResolvers<void>();
+    const callsNextThenFinishes: GenerateFunction = async ({ step }) => {
+      if (step === 0) {
+        await listenerAttached.promise;
+        return { content: 'calling', toolCalls: [{ name: 'next', arguments: {} }] };
+      }
+      return { content: 'done', toolCalls: [] };
+    };
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
         'audit-agent': createAgent({
@@ -846,12 +853,14 @@ describe('createBureau', () => {
 
     // Capture tool.started events via the ActiveRun's event surface.
     const runState = bureau.internals.store.getRun(summary.id);
-    runState?.activeRun.addEventListener('tool.started', (event) => {
+    expect(runState).toBeDefined();
+    runState!.activeRun.addEventListener('tool.started', (event) => {
       capturedStamps.push({
         agentName: event.agentName,
         runId: event.runId,
       });
     });
+    listenerAttached.resolve();
 
     await waitForRunCompletion(bureau, summary.id);
 
@@ -869,13 +878,19 @@ describe('createBureau', () => {
     // mismatched attribution. The events carry the run's agent name.
     const capturedStamps: Array<{ agentName: string; runId: string }> = [];
 
+    // Step 0 waits on `listenerAttached` (opened after the listener is attached), so the first
+    // tool event cannot precede the listener whatever the number of async turns after `start()`.
+    const listenerAttached = Promise.withResolvers<void>();
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
         default: createAgent({
-          generate: async ({ step }) =>
-            step === 0
-              ? { content: 'calling', toolCalls: [{ name: 'next', arguments: {} }] }
-              : { content: 'done', toolCalls: [] },
+          generate: async ({ step }) => {
+            if (step === 0) {
+              await listenerAttached.promise;
+              return { content: 'calling', toolCalls: [{ name: 'next', arguments: {} }] };
+            }
+            return { content: 'done', toolCalls: [] };
+          },
           toolbox: createToolbox([createNextTool()]),
           stopWhen: stopWhen.noToolCalls(),
         }),
@@ -885,9 +900,11 @@ describe('createBureau', () => {
     const summary = await bureau.tasks.start('default', 'Stamp test');
 
     const runState = bureau.internals.store.getRun(summary.id);
-    runState?.activeRun.addEventListener('tool.started', (event) => {
+    expect(runState).toBeDefined();
+    runState!.activeRun.addEventListener('tool.started', (event) => {
       capturedStamps.push({ agentName: event.agentName, runId: event.runId });
     });
+    listenerAttached.resolve();
 
     await waitForRunCompletion(bureau, summary.id);
 
@@ -3149,7 +3166,9 @@ describe('createBureau', () => {
       // the resolver now wires the C3 block so the tool.started event emitted
       // during resume carries {agentName:'recovery-agent', runId}.
       const capturedStamps: Array<{ agentName: string; runId: string }> = [];
-      // COR-1938: step 1 waits for the listener below, so the resumed step cannot run first.
+      // Step 1 waits on `listenerAttached`, which the test opens only after the reattached run is
+      // visible and the listener is attached: the first tool event cannot precede the listener
+      // however many async turns recovery takes (COR-1938).
       const listenerAttached = Promise.withResolvers<void>();
       const bureauB = await createBureau<AgentDefinitions>({
         agents: {
@@ -3175,16 +3194,17 @@ describe('createBureau', () => {
         durableOwnership: { ownership: 'none' },
       });
 
-      // Subscribe to tool.started on the reattached ActiveRun BEFORE recovery
-      // events drain. bureauB's createBureau calls recoverDurableRuns synchronously
-      // before returning, so store.getRun may already resolve.
-      const runState = bureauB.internals.store.getRun(run.id);
-      runState?.activeRun.addEventListener('tool.started', (event) => {
-        capturedStamps.push({ agentName: event.agentName, runId: event.runId });
-      });
-      listenerAttached.resolve();
-
       try {
+        // Subscribe to tool.started on the reattached ActiveRun before step 1 may run. Wait for the
+        // run to be registered (state, not a turn count), attach, then open the gate.
+        await pollUntil(() => bureauB.internals.store.getRun(run.id) !== undefined);
+        bureauB.internals.store
+          .getRun(run.id)!
+          .activeRun.addEventListener('tool.started', (event) => {
+            capturedStamps.push({ agentName: event.agentName, runId: event.runId });
+          });
+        listenerAttached.resolve();
+
         await pollUntil(async () => {
           const current = await bureauB.contexts.get(run.contextId);
           return current?.metadata['lastRunStatus'] !== 'running';

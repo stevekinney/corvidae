@@ -13,7 +13,7 @@
  * parent waits on process exit, the child's own marker file, and durable
  * completion (`waitForDurableRun`), never on a poll.
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -36,6 +36,7 @@ import {
   createSqliteStorageFixture,
   type PersistentBureauStorageFixture,
 } from './test/storage-fixtures';
+import { readChildJson } from './test/child-output-file';
 
 const CHILD = join(import.meta.dir, 'test', 'steering-crash-child.ts');
 
@@ -77,7 +78,7 @@ async function runCrashingChild(
   // instead — which would invalidate the test's premise, not merely fail it.
   expect(child.signalCode ?? stderr).toBe('SIGKILL');
   expect(existsSync(markerPath)).toBe(true);
-  return JSON.parse(readFileSync(markerPath, 'utf8')) as Marker;
+  return readChildJson<Marker>(markerPath);
 }
 
 /** A Bureau over a new handle on `database`, as a new process would open. */

@@ -408,6 +408,16 @@ export interface AuditTrail {
      * exists to close (just at shutdown instead of a crash).
      */
     dedupeKey?: string | undefined;
+    /**
+     * COR-1926: when `true`, this call's returned promise REJECTS when the record cannot be
+     * written (a storage failure, an invalid `timestampMs`, or an already-aborted shutdown
+     * signal) instead of resolving after a diagnostic, which is what the default does. It adds
+     * no deduplication: every strict call that succeeds appends one record. For a caller that
+     * answers a person for the write, such as the host's skill trust route, which must not report
+     * a change as recorded when it was not. Callers that omit it keep the best-effort,
+     * never-rejecting path. A trail with no KV store still resolves without writing.
+     */
+    strict?: boolean | undefined;
   }): Promise<void>;
   /**
    * AB-388: delete every durable record whose `timestampMs` is strictly
@@ -962,6 +972,9 @@ export const AUDIT_WORKER_DEPLOYMENT_OWNER_PREFIX = 'worker-deployment:';
 /** The `runId` prefix of a skill source's synthetic audit owner, `skill-source:<id>` (COR-1818). */
 export const AUDIT_SKILL_SOURCE_OWNER_PREFIX = 'skill-source:';
 
+/** The `runId` prefix of a saved tool source's synthetic audit owner, `tool-source:<id>` (COR-1930). */
+export const AUDIT_TOOL_SOURCE_OWNER_PREFIX = 'tool-source:';
+
 /**
  * Every synthetic owner prefix above. A `runId` with one of these prefixes resolves to an owner
  * without a run, so `reservedWorkflowIdentifierReason` refuses each as the start of a run id a
@@ -974,6 +987,7 @@ export const AUDIT_SYNTHETIC_OWNER_PREFIXES: readonly string[] = [
   AUDIT_WORKFLOW_OWNER_PREFIX,
   AUDIT_WORKER_DEPLOYMENT_OWNER_PREFIX,
   AUDIT_SKILL_SOURCE_OWNER_PREFIX,
+  AUDIT_TOOL_SOURCE_OWNER_PREFIX,
 ];
 
 /**
@@ -1012,6 +1026,17 @@ export function auditTrailWorkerDeploymentOwnerId(deploymentName: string): strin
  */
 export function auditTrailSkillSourceOwnerId(sourceId: string): string {
   return `${AUDIT_SKILL_SOURCE_OWNER_PREFIX}${sourceId}`;
+}
+
+/**
+ * The synthetic `runId` a change to a saved tool source is filed under, `tool-source:<id>`: the
+ * change belongs to no run. `query({ runId })` with it retrieves one source's changes, in order.
+ * The record's `principal` is the owner who made the change and its detail names the source
+ * (`sourceId`) and the owner; a local-command MCP source's record also holds its `commandLine`.
+ * It never holds a credential or an environment value.
+ */
+export function auditTrailToolSourceOwnerId(sourceId: string): string {
+  return `${AUDIT_TOOL_SOURCE_OWNER_PREFIX}${sourceId}`;
 }
 
 /** The `owner` field of a deletion entry's detail, or nothing when no owner was recorded. */
@@ -1392,6 +1417,14 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
         return Promise.reject(
           new Error(
             `[audit-trail] Refusing dedupeKey-guarded write for "${writeOptions.dedupeKey}": the audit trail's shutdown signal is already aborted.`,
+          ),
+        );
+      }
+      // COR-1926: a `strict` caller asked to be told when the record is not written.
+      if (writeOptions?.strict) {
+        return Promise.reject(
+          new Error(
+            `[audit-trail] Refusing strict write of the "${entry.type}" record for "${entry.runId}": the audit trail's shutdown signal is already aborted.`,
           ),
         );
       }
@@ -2474,10 +2507,12 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
       principal?: string;
       timestampMs?: number | undefined;
       dedupeKey?: string | undefined;
+      strict?: boolean | undefined;
     }): Promise<void> {
       await writeOutOfBandRecord(entry, {
         timestampMs: entry.timestampMs,
         dedupeKey: entry.dedupeKey,
+        ...(entry.strict === true ? { strict: true } : {}),
       });
     },
 

@@ -12,6 +12,7 @@ import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { ApprovalOutcomeNotWrittenError, BureauError } from './create-bureau';
+import { fireReviewFollowerOf } from './fire-review-follower';
 import {
   OWNER,
   readFrames,
@@ -560,12 +561,32 @@ describe('a crash between a fire step’s session write and its commit', () => {
 });
 
 describe('a fire’s approval is fenced across Bureau processes by the durable decision record (COR-1579)', () => {
-  it('refuses a peer’s stale denial after the first decision’s session fence has retired with the task', async () => {
+  /**
+   * A peer that listed the fire's approval resolves it after the first process has decided it
+   * (COR-1942). The two states the peer can be in are forced, not waited for: the peer's follower
+   * reads the first decision from the shared history and drops its copy of the review on a timer
+   * of its own, so a test that merely lets the retention steps run races it.
+   */
+  const stalePeerDenial = async (row: {
+    /** Whether the peer still lists the review (its follower is stopped) or has dropped it. */
+    readonly peerLists: boolean;
+    /** Whether the fire's task leaves retention, and the session's record of the decision with it. */
+    readonly taskRetires: boolean;
+    /** Whether the record of the decision, which audit retention keeps, is swept before the peer asks. */
+    readonly recordSwept: boolean;
+    /** The id the peer resolves; a review that never existed names another. */
+    readonly neverExisted?: boolean;
+    readonly principal?: string;
+    readonly decision?: 'deny' | 'approve';
+  }) => {
     const path = harness.nextDatabasePath();
     const firstCharges: number[] = [];
     const first = await open({
       storage: harness.sqliteHandle(path),
-      retention: { tasks: { olderThan: 1 } },
+      retention: {
+        tasks: { olderThan: 1 },
+        ...(row.recordSwept ? { audit: { olderThan: 1 } } : {}),
+      },
       agents: {
         default: createAgent({
           generate: chargesOnce,
@@ -593,24 +614,98 @@ describe('a fire’s approval is fenced across Bureau processes by the durable d
       },
     });
     await reviewOf(peer, fireId);
+    // Pinned to the state the row names, before the first decision can reach the peer's follower.
+    if (row.peerLists) fireReviewFollowerOf(peer).unfollow(fireId);
 
     await first.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice });
-    // The task leaves retention, and the session's own record of the decision goes with it.
-    await pollUntil(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 5));
-      await first.maintain(Date.now());
-      return (await first.internals.taskRegistry.record(fireId)) === undefined ? true : undefined;
-    }, 'the fire’s task to leave retention');
-    const metadata = await sessionMetadata(first, 'fenced-session');
-    expect(keysOf(metadata['resolvedReviewDecisions'])).toEqual([]);
+    if (row.taskRetires) {
+      // The task leaves retention, and the session's own record of the decision goes with it.
+      await pollUntil(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        await first.maintain(Date.now());
+        return (await first.internals.taskRegistry.record(fireId)) === undefined ? true : undefined;
+      }, 'the fire’s task to leave retention');
+      const metadata = await sessionMetadata(first, 'fenced-session');
+      expect(keysOf(metadata['resolvedReviewDecisions'])).toEqual([]);
+    }
+    if (row.recordSwept) {
+      await pollUntil(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        await first.maintain(Date.now());
+        const remaining = await first.reviews.listResolved();
+        return remaining.length === 0 ? true : undefined;
+      }, 'the audit retention to sweep the record of the decision');
+    }
+    if (row.peerLists) {
+      expect(reviewsOf(peer, fireId).map(({ id }) => id)).toEqual([review.id]);
+    } else {
+      await pollUntil(
+        () => (reviewsOf(peer, fireId).length === 0 ? true : undefined),
+        'the peer to drop the review the first process decided',
+      );
+    }
 
     const refusal = await rejectionOf(
-      peer.reviews.resolve({ id: review.id, decision: 'deny', principal: OWNER.bob }),
+      peer.reviews.resolve({
+        id: row.neverExisted === true ? `${review.id}-never-asked` : review.id,
+        decision: row.decision ?? 'deny',
+        principal: row.principal ?? OWNER.bob,
+      }),
     );
-
-    expect((refusal as BureauError).code).toBe('CONFLICT');
     expect(firstCharges).toEqual([4242]);
     expect(peerCharges).toEqual([]);
+    return (refusal as BureauError).code;
+  };
+
+  // Decided, so the answer is the same whether the peer still lists the review or has dropped it.
+  const rows = [
+    ['the peer lists the review and the task is live', { peerLists: true, taskRetires: false }],
+    [
+      'the peer lists the review and the first decision’s session fence has retired with the task',
+      { peerLists: true, taskRetires: true },
+    ],
+    [
+      'the peer has dropped the review and the task is live',
+      { peerLists: false, taskRetires: false },
+    ],
+    [
+      'the peer has dropped the review and the first decision’s session fence has retired with the task',
+      { peerLists: false, taskRetires: true },
+    ],
+  ] as const;
+  for (const [name, row] of rows) {
+    it(`refuses a peer’s stale denial with CONFLICT when ${name}`, async () => {
+      expect(await stalePeerDenial({ ...row, recordSwept: false })).toBe('CONFLICT');
+    });
+  }
+
+  it('answers NOT_FOUND to a peer that repeats the decision the first process made, as a resolved review always has', async () => {
+    expect(
+      await stalePeerDenial({
+        peerLists: false,
+        taskRetires: true,
+        recordSwept: false,
+        decision: 'approve',
+        principal: OWNER.alice,
+      }),
+    ).toBe('NOT_FOUND');
+  });
+
+  it('answers NOT_FOUND once audit retention has swept the record of the decision, which was the only thing that knew it', async () => {
+    expect(await stalePeerDenial({ peerLists: false, taskRetires: true, recordSwept: true })).toBe(
+      'NOT_FOUND',
+    );
+  });
+
+  it('answers NOT_FOUND for a review that never existed', async () => {
+    expect(
+      await stalePeerDenial({
+        peerLists: false,
+        taskRetires: true,
+        recordSwept: false,
+        neverExisted: true,
+      }),
+    ).toBe('NOT_FOUND');
   });
 });
 

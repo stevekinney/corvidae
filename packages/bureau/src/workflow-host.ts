@@ -11,6 +11,7 @@
 
 import {
   type DocumentActivityArgument,
+  type DocumentActivityHandler,
   type DocumentTriggerValidator,
   type DocumentWorkflowHost,
   type Engine,
@@ -18,10 +19,13 @@ import {
   normalizeScheduleSpec,
   registerWorkflowDocuments,
   type RegisteredWorkflowDocument,
+  type WorkflowDocument,
   type WorkflowDocumentSet,
 } from '@lostgradient/weft';
 
+import { isMappedHandlerName } from './namespaced-identifier';
 import { toScheduleSpec } from './schedule-spec';
+import { toWeftDocument } from './workflow-document-handlers';
 import { AGENT_STEP_HANDLER } from './workflow-file';
 import { checkWorkflowSchema } from './workflow-schema';
 
@@ -208,6 +212,64 @@ export function bindWorkflowHost(engine: Engine, host: DocumentWorkflowHost): vo
   }
 }
 
+/** A document in Bureau's form as Weft receives it; anything that is not one passes through to Weft's own refusal. */
+function mapDocumentInput(input: unknown): unknown {
+  const steps = (input as { steps?: unknown } | null)?.steps;
+  return Array.isArray(steps) ? toWeftDocument(input as WorkflowDocument) : input;
+}
+
+/**
+ * `host` with the activities registered directly on `engine` under a mapped handler name
+ * (`plugin__name`, which a document names as `plugin:name`) added to it. They are looked up when a
+ * document is validated or a step runs, so one registered after this call is seen. Only mapped
+ * names are bridged: a bare engine activity is never a document handler. The activity receives the
+ * same {@link DocumentActivityArgument} a host handler does.
+ */
+export function bridgeEngineActivities(
+  engine: Engine,
+  host: DocumentWorkflowHost,
+): DocumentWorkflowHost {
+  const bridged = (name: string | symbol): DocumentActivityHandler | undefined => {
+    if (typeof name !== 'string' || Object.hasOwn(host.activities, name)) return undefined;
+    if (!isMappedHandlerName(name)) return undefined;
+    if (engine.getActivityFunction(name) === undefined) return undefined;
+    return async (argument) => {
+      const run = engine.getActivityFunction(name);
+      if (run === undefined) throw new Error(`The activity "${name}" is no longer registered.`);
+      return run(argument);
+    };
+  };
+  const activities = new Proxy<Record<string, DocumentActivityHandler>>(
+    {},
+    {
+      get: (_target, name) =>
+        typeof name === 'string' && Object.hasOwn(host.activities, name)
+          ? host.activities[name]
+          : bridged(name),
+      has: (_target, name) =>
+        (typeof name === 'string' && Object.hasOwn(host.activities, name)) ||
+        bridged(name) !== undefined,
+      ownKeys: () => [
+        ...Object.keys(host.activities),
+        ...engine
+          .listActivityDefinitions()
+          .map((definition) => definition.name)
+          .filter((name) => !Object.hasOwn(host.activities, name) && isMappedHandlerName(name)),
+      ],
+      getOwnPropertyDescriptor: (_target, name) => {
+        const value =
+          typeof name === 'string' && Object.hasOwn(host.activities, name)
+            ? host.activities[name]
+            : bridged(name);
+        return value === undefined
+          ? undefined
+          : { value, enumerable: true, configurable: true, writable: false };
+      },
+    },
+  );
+  return Object.freeze({ ...host, activities });
+}
+
 /**
  * Register `documents` on `engine` through `host`: the binding check above, then Weft's
  * `registerWorkflowDocuments`. Call it before the engine recovers.
@@ -218,5 +280,10 @@ export async function registerBureauWorkflowDocuments(
   documents: WorkflowDocumentSet,
 ): Promise<readonly RegisteredWorkflowDocument[]> {
   bindWorkflowHost(engine, host);
-  return registerWorkflowDocuments(engine, host, documents);
+  return registerWorkflowDocuments(engine, host, {
+    active: documents.active.map(mapDocumentInput),
+    ...(documents.retained === undefined
+      ? {}
+      : { retained: documents.retained.map(mapDocumentInput) }),
+  });
 }
