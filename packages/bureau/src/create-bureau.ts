@@ -14219,12 +14219,10 @@ async function constructBureau<const D extends AgentDefinitions>(
       return state === null || isTerminalDurableStatus(state.status);
     },
     purgeRun: purgeDurableRun,
-    purgeReviews:
-      runtime.kv === undefined
-        ? undefined
-        : async (runIds) => {
-            await purgeReviewRecords({ kv: runtime.kv!, audit: () => auditTrailInstance }, runIds);
-          },
+    purgeReviews: async (runIds) => {
+      if (runtime.kv === undefined) return;
+      await purgeReviewRecords({ kv: runtime.kv, audit: () => auditTrailInstance }, runIds);
+    },
     // Read when it runs: the surface store is built after this purge.
     descendantsOf: descendantRunIdsOf,
     purgeRunRecords: async (runId) => {
@@ -14243,12 +14241,9 @@ async function constructBureau<const D extends AgentDefinitions>(
       await surfaces?.removeTask(runId);
     },
     taskIdsOf: (sessionId, incarnation) => tasks.taskIdsOfContext(sessionId, incarnation),
-    purgeLedgers:
-      runtime.kv === undefined
-        ? undefined
-        : async (runIds) => {
-            await purgeChatLedgerEntries(runtime.kv!, runIds);
-          },
+    purgeLedgers: async (runIds) => {
+      if (runtime.kv !== undefined) await purgeChatLedgerEntries(runtime.kv, runIds);
+    },
     redactTaskRecords: async (runIds) => {
       for (const runId of runIds) await tasks.redactSettlement(runId);
     },
@@ -14256,39 +14251,35 @@ async function constructBureau<const D extends AgentDefinitions>(
       const service = assetServiceHolder.current;
       if (service !== undefined) await purgeChatAssets(service, assets);
     },
-    purgeMemories:
-      runtime.memory === undefined
-        ? undefined
-        : async (sessionId, runIds, placements) => {
-            await purgeChatMemories(
-              {
-                memory: runtime.memory!,
-                tenantId: bureauId,
-                // The task record outlives the chat, and names the agent and owner a run's memory
-                // was written under.
-                placementOf: async (runId) => {
-                  const record = await tasks.record(runId);
-                  return record === undefined || record.agentName === null
-                    ? undefined
-                    : { agentName: record.agentName, owner: record.owner };
-                },
-              },
-              { sessionId, runIds, placements },
-            );
+    purgeMemories: async (sessionId, runIds, placements) => {
+      if (runtime.memory === undefined) return;
+      await purgeChatMemories(
+        {
+          memory: runtime.memory,
+          tenantId: bureauId,
+          // The task record outlives the chat, and names the agent and owner a run's memory was
+          // written under.
+          placementOf: async (runId) => {
+            const record = await tasks.record(runId);
+            return record === undefined || record.agentName === null
+              ? undefined
+              : { agentName: record.agentName, owner: record.owner };
           },
-    purgeSessionInput:
-      runtime.durable === undefined
-        ? undefined
-        : async (sessionId, incarnation) => {
-            const mailbox = tryGetSessionInputMailbox(sessionId, incarnation);
-            if (mailbox !== undefined) {
-              await mailbox.purge();
-              // The mailbox is gone: a handle kept for it would only hold its registry.
-              sessionInputMailboxes.delete(`${sessionId}\u0000${incarnation}`);
-              mailbox.dispose();
-            }
-            await sessionInputSettlement?.forget(sessionId, incarnation);
-          },
+        },
+        { sessionId, runIds, placements },
+      );
+    },
+    purgeSessionInput: async (sessionId, incarnation) => {
+      if (runtime.durable === undefined) return;
+      const mailbox = tryGetSessionInputMailbox(sessionId, incarnation);
+      if (mailbox !== undefined) {
+        await mailbox.purge();
+        // The mailbox is gone: a handle kept for it would only hold its registry.
+        sessionInputMailboxes.delete(`${sessionId}\u0000${incarnation}`);
+        mailbox.dispose();
+      }
+      await sessionInputSettlement?.forget(sessionId, incarnation);
+    },
     hasUndrainedEvents: async (sessionId, incarnation) => {
       const pending = await runtime.sessionStore?.outbox.pending();
       return (

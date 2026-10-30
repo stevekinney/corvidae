@@ -1744,4 +1744,20 @@ describe('redactSettlement (COR-1934)', () => {
     expect(await registry.redactSettlement('run-2')).toBe(false);
     expect(await registry.redactSettlement('run-9')).toBe(false);
   });
+
+  it('empties the history of a settled task that is a context of its own, such as a delegated child’s', async () => {
+    const { registry } = build();
+    await admit(registry, 'child-1', { contextId: 'child-1', incarnation: '' });
+    await registry.recordSettled('child-1', {
+      at: '2026-10-18T01:00:00.000Z',
+      status: 'completed',
+      finishReason: 'stop-condition',
+      message: null,
+    });
+    expect(await registry.history('child-1')).not.toEqual([]);
+
+    expect(await registry.redactSettlement('child-1')).toBe(true);
+    expect(await registry.history('child-1')).toEqual([]);
+    expect(await registry.redactSettlement('child-1')).toBe(false);
+  });
 });

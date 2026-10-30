@@ -106,6 +106,10 @@ export const BUREAU_RESERVED_KEY_FAMILIES: readonly ReservedKeyFamily[] = [
   kept('bureau-agent-version:v1:', 'an agent’s version record, not a chat’s'),
   purged('bureau-catalog-run:'),
   purgedButUnexercised(
+    'bureau-chat-spend:v1:',
+    'the earlier layout of the chat spend ledger, which is only read and removed now; nothing writes it',
+  ),
+  purgedButUnexercised(
     'bureau-chat-spend:v2:',
     'written once a run reports a price, which the scripted models of the class test do not',
   ),
