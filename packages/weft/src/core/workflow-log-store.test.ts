@@ -283,6 +283,31 @@ describe('createWorkflowLogStore', () => {
     expect(messagesOf(await store.read('run-1'))).toEqual(['kept']);
   });
 
+  it('settles a flush while a workflow keeps logging during every write, and loses no line', async () => {
+    await using storage = new MemoryStorage();
+    const store = createWorkflowLogStore(storage);
+    const batch = storage.batch.bind(storage);
+    let writes = 0;
+    // A workflow that logs once per durable step logs again while the write of its last line is in
+    // flight. That line belongs to the next drain: joining the one in flight would keep it, and every
+    // flush and prune queued behind it, going for as long as the workflow logs.
+    storage.batch = async (operations) => {
+      writes += 1;
+      if (writes <= 20) store.sink(record({ message: `during write ${writes}` }));
+      return batch(operations);
+    };
+    store.sink(record({ message: 'first' }));
+    const writesWhenFirstFlushSettled = store.flush().then(() => writes);
+
+    expect(await writesWhenFirstFlushSettled).toBe(1);
+    // Each later drain writes what the one before it left behind, until the last write has logged.
+    for (let drain = 0; drain < 25; drain++) await store.flush();
+    const messages = messagesOf(await store.read('run-1'));
+    expect(messages).toHaveLength(21);
+    expect(messages[0]).toBe('first');
+    expect(messages.at(-1)).toBe('during write 20');
+  });
+
   it('never throws from the sink, whatever the record holds', async () => {
     await using storage = new MemoryStorage();
     const errors: unknown[] = [];

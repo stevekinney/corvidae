@@ -13,7 +13,8 @@
  * `maximumLineBytes` (2 KiB by default), with a visible marker.
  *
  * Durability: the sink is asynchronous. A line is buffered in memory and written in a batch on the
- * next turn, on {@link WorkflowLogStore.flush}, and on engine shutdown. A crash can lose the lines
+ * next turn, on {@link WorkflowLogStore.flush}, and on engine shutdown (`shutdown()` or `await using`;
+ * a synchronous `using` disposal cannot await storage, so it flushes nothing). A crash can lose the lines
  * of the turn that had not been written yet; that is accepted. A write that fails drops its batch
  * and reports to {@link WorkflowLogStoreOptions.onError}; a log must never fail the run it describes.
  *
@@ -243,8 +244,11 @@ export function createWorkflowLogStore(
   /** Write every run's buffer. Runs only inside {@link enqueue}, so two writes never overlap. */
   const drain = async (): Promise<void> => {
     scheduled = false;
-    for (const [workflowId, buffer] of buffers) {
-      buffers.delete(workflowId);
+    // A snapshot: a line logged while a run's write is in flight starts the next drain, so a
+    // workflow that logs on every step cannot keep this one (and everything queued behind it) going.
+    const pending = Array.from(buffers);
+    buffers.clear();
+    for (const [workflowId, buffer] of pending) {
       try {
         await writeRun(workflowId, buffer);
       } catch (error) {
