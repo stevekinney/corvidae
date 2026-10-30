@@ -86,6 +86,7 @@ import {
   type AgentFileProblem,
   AgentFileError,
   AgentSnapshotError,
+  agentFileInputOf,
   checkAgentIdentifier,
   decodeAgentFile,
   hashAgentFileBytes,
@@ -97,10 +98,12 @@ import {
   digestsOf,
   loadReferenceDocuments,
   type ReferenceCache,
+  referenceCacheKey,
   referenceIdentity,
   renderInstructions,
 } from './agent-reference-documents';
 import { createFileAgentCompactor } from './file-agent-compaction';
+import { isNamespacedIdentifier } from './namespaced-identifier';
 import { createFileAgentGenerate } from './file-agent-generate';
 import { costBudgetOptions, toolboxBudgetOf, usdPricingOfRow } from './file-agent-cost-budget';
 import { guardrailsOfPreset } from './guardrail-presets';
@@ -262,6 +265,18 @@ export interface AgentListing {
   readonly definitionRevision?: number;
   /** Why an `invalid` file cannot run. */
   readonly problem?: AgentFileProblem;
+  /**
+   * COR-1873 — the plugin that ships the agent, for a file of a plugin's read-only layer
+   * (`plugin:name`). Such a file cannot be written; `duplicate` copies it into the owner's source.
+   * Absent for a code agent and an owner's file.
+   */
+  readonly plugin?: string;
+}
+
+/** The plugin a listed file belongs to: the namespace of a `plugin:name` the identifier check accepted. */
+function pluginOfListing(id: string, problem: AgentFileProblem | undefined): string | undefined {
+  if (problem?.code === 'invalid-identifier' || !isNamespacedIdentifier(id)) return undefined;
+  return id.slice(0, id.indexOf(':'));
 }
 
 /** What changed in one rescan, by identifier. */
@@ -517,26 +532,6 @@ function sameSignature(left: FileEntry, right: FileEntry): boolean {
 /** How many times `detail` settles a file that changed under it before it serves the read as it is. */
 const DETAIL_SETTLE_ATTEMPTS = 3;
 
-/** The definition as a caller supplies it. `examples` are not part of the input: the file keeps them. */
-function inputOf(definition: AgentFileDefinition): AgentFileDefinitionInput {
-  // A rest, so a key the definition gains is carried into the input and not dropped here.
-  const { examples: _examples, ...input } = definition;
-  // An update that omits `stepLimit`, `retry`, `compaction`, `references`, `guardrails`,
-  // `costBudget`, `toolBudget` or `toolApproval` keeps the file's value, and a version that has none must remove
-  // it: `null` says so.
-  return {
-    ...input,
-    stepLimit: definition.stepLimit ?? null,
-    retry: definition.retry ?? null,
-    compaction: definition.compaction ?? null,
-    references: definition.references ?? null,
-    guardrails: definition.guardrails ?? null,
-    costBudget: definition.costBudget ?? null,
-    toolBudget: definition.toolBudget ?? null,
-    toolApproval: definition.toolApproval ?? null,
-  };
-}
-
 /** Whether `entry` is a file whose references are read on every scan. */
 function hasReferences(entry: FileEntry): boolean {
   return (
@@ -592,6 +587,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
 
   function toListing(entry: FileEntry): AgentListing {
     const ready = entry.problem === undefined;
+    const plugin = pluginOfListing(entry.id, entry.problem);
     return {
       id: entry.id,
       source: 'file',
@@ -605,6 +601,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         ? {}
         : { definitionRevision: entry.definitionRevision }),
       ...(entry.problem === undefined ? {} : { problem: entry.problem }),
+      ...(plugin === undefined ? {} : { plugin }),
     };
   }
 
@@ -879,14 +876,20 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     };
   }
 
-  function evaluate(id: string, bytes: Uint8Array, hash: string, revision: number): FileEntry {
+  function evaluate(
+    id: string,
+    bytes: Uint8Array,
+    hash: string,
+    revision: number,
+    plugin: string | undefined,
+  ): FileEntry {
     const invalid = (problem: AgentFileProblem): FileEntry => ({
       id,
       hash,
       revision,
       problem,
     });
-    const identifierProblem = checkAgentIdentifier(id);
+    const identifierProblem = checkAgentIdentifier(id, plugin);
     if (identifierProblem !== undefined) return invalid(identifierProblem);
     const text = decodeAgentFile(bytes);
     if (text === undefined) {
@@ -1069,6 +1072,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       options.source,
       definition.references,
       referenceCache,
+      id,
     );
     if (!loaded.ok) return { id, hash, revision, definition, descriptor, problem: loaded.problem };
     const identity = referenceIdentity(hash, loaded.documents);
@@ -1114,7 +1118,9 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     const settled = new Map(loaded);
     const referenced = new Set<string>();
     for (const [id, scanned] of loaded) {
-      for (const path of scanned.definition?.references ?? []) referenced.add(path);
+      for (const path of scanned.definition?.references ?? []) {
+        referenced.add(referenceCacheKey(id, path));
+      }
       let entry = scanned;
       if (hasReferences(entry)) {
         entry = await withReferences(entry);
@@ -1126,8 +1132,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       if (revision !== entry.definitionRevision) settled.set(id, atRevision(entry, revision));
     }
     // A document no agent names any more is not kept.
-    for (const path of referenceCache.keys())
-      if (!referenced.has(path)) referenceCache.delete(path);
+    for (const key of referenceCache.keys()) if (!referenced.has(key)) referenceCache.delete(key);
     return settled;
   }
 
@@ -1207,7 +1212,12 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       }
       // A reference the source cannot read would list the file `invalid` as soon as it was written.
       if (definition.references !== undefined) {
-        const loaded = await loadReferenceDocuments(options.source, definition.references);
+        const loaded = await loadReferenceDocuments(
+          options.source,
+          definition.references,
+          undefined,
+          id,
+        );
         if (!loaded.ok) return loaded.problem;
       }
       return undefined;
@@ -1233,7 +1243,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
           `Agent "${id}" has no stored version ${revision}.`,
         );
       }
-      return writer.update(id, inputOf(version.definition), restoreOptions);
+      return writer.update(id, agentFileInputOf(version.definition), restoreOptions);
     },
   };
 
@@ -1278,7 +1288,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
             entry =
               known.hash === raw.hash && known.revision === revision
                 ? known
-                : evaluate(id, raw.bytes, raw.hash, revision);
+                : evaluate(id, raw.bytes, raw.hash, revision, raw.plugin);
             // An entry evaluated here has not read its documents yet.
             if (entry.agent === undefined && hasReferences(entry)) {
               entry = await withReferences(entry);

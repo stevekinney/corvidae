@@ -43,8 +43,17 @@ export interface DefinitionScannerOptions<TEntry extends ScannedEntry> {
   readonly diagnose: (message: string, cause: unknown) => void;
   /** The current deployment revision; an entry evaluated against another is evaluated again. */
   readonly revision: () => number;
-  /** Turn one definition's bytes into an entry. */
-  readonly evaluate: (id: string, bytes: Uint8Array, hash: string, revision: number) => TEntry;
+  /**
+   * Turn one definition's bytes into an entry. `plugin` is the plugin whose read-only layer holds
+   * it (COR-1873), or `undefined` for an owner's definition.
+   */
+  readonly evaluate: (
+    id: string,
+    bytes: Uint8Array,
+    hash: string,
+    revision: number,
+    plugin: string | undefined,
+  ) => TEntry;
   /** The entry for a definition larger than the source's limit. */
   readonly tooLarge: (id: string, size: number, revision: number) => TEntry;
   /** The entry for a definition that could not be read. */
@@ -140,7 +149,7 @@ export function createDefinitionScanner<TEntry extends ScannedEntry>(
       }
       const previous = entries.get(id);
       if (previous?.hash === raw.hash && previous.revision === revision) return previous;
-      return options.evaluate(id, raw.bytes, raw.hash, revision);
+      return options.evaluate(id, raw.bytes, raw.hash, revision, raw.plugin);
     } catch (error) {
       return options.unreadable(id, error, revision);
     }

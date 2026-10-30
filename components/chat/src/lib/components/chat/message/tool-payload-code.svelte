@@ -2,6 +2,8 @@
   export type ToolPayloadCodeProps = {
     /** Structured payload text to render. */
     code: string;
+    /** Whether the code block shows its `JSON` language label. Default `true`. */
+    languageLabelVisible?: boolean;
     /** Additional CSS class. */
     class?: string;
   };
@@ -11,11 +13,11 @@
   import { CodeBlock } from '@lostgradient/cinder';
   import { classNames } from '../../../utilities/class-names.ts';
 
-  let { code, class: className }: ToolPayloadCodeProps = $props();
+  let { code, languageLabelVisible = true, class: className }: ToolPayloadCodeProps = $props();
 </script>
 
 <div class={classNames('tool-payload-code', className)}>
-  <CodeBlock {code} language="json" />
+  <CodeBlock {code} language="json" {languageLabelVisible} />
 </div>
 
 <style>

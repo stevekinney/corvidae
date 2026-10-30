@@ -516,6 +516,35 @@ describe('the push projection of a task a configuration outlives', () => {
     expect(recreated.error).toBeDefined();
   });
 
+  it('takes the push state of a deleted context with it: its configurations and queued deliveries, which then never go out (COR-1934)', async () => {
+    const fixture = await fixtureOf(answering('the answer is private'));
+    // No delivery loop runs, so the task's deliveries stay queued in the outbox.
+    const sent = await call(fixture, 'SendMessage', {
+      message: message('go'),
+      configuration: {
+        returnImmediately: true,
+        taskPushNotificationConfig: webhook(fixture, { id: 'hook-1', token: 'token-a' }),
+      },
+    });
+    const { id: taskId, contextId } = sent.result.task;
+    const queued = async () => {
+      const deliveries = await fixture.outbox.list();
+      return deliveries.length;
+    };
+    await eventually(async () => (await queued()) > 0);
+
+    const report = await fixture.opened.bureau.contexts.delete(contextId);
+    expect(report.deleted).toBe(true);
+
+    await eventually(async () => (await queued()) === 0);
+    const config = await call(fixture, 'GetTaskPushNotificationConfig', { taskId, id: 'hook-1' });
+    expect(config.error).toBeDefined();
+    // Started now, delivery finds nothing to send.
+    fixture.startDelivery();
+    await quietFor(150);
+    expect(fixture.receiver.requests).toEqual([]);
+  });
+
   it('finishes an expired task whose install failed, and refuses another payload under its id', async () => {
     const fixture = await fixtureOf(answering('done'));
     const store = fixture.sender.pushStore as { create: (...input: never[]) => Promise<unknown> };

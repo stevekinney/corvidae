@@ -92,6 +92,15 @@ export interface RunCursor {
 }
 
 /**
+ * A tool call as a durable step records it (COR-1872). `toolId` is the id of the tool the call's
+ * name resolved to when the step recorded it, `namespace:name@version` for a versioned tool, so a
+ * later reader can tell which version ran and refuse to run the call again on any other. It is
+ * absent when the name resolved to no single tool. Optional, so it adds no record version: a record
+ * written before it existed reads as calls that pinned nothing.
+ */
+export type RecordedToolCall = ToolCall & { readonly toolId?: string | undefined };
+
+/**
  * A plain, cloneable projection of a single completed step.
  *
  * Mirrors the public {@link import('../types').StepResult} shape but OMITS the
@@ -107,7 +116,8 @@ export interface StepRecord {
   parts: readonly MultiModalContent[];
   /** The id of the assistant row the step committed; absent when it committed none. */
   messageId?: string | undefined;
-  toolCalls: readonly ToolCall[];
+  /** The step's tool calls, each with the versioned id of the tool it named (COR-1872). */
+  toolCalls: readonly RecordedToolCall[];
   results: readonly ToolExecutionResult[];
   usage?: { prompt: number; completion: number; total: number } | undefined;
   metadata?: Record<string, JSONValue> | undefined;

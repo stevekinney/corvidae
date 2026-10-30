@@ -9,6 +9,8 @@
     ChatAttachmentUpload,
   } from './chat-attachment.ts';
   import type { AttachmentKind } from './attachment-kind.ts';
+  import type { ChatComposerFormat, ChatComposerToolbarContext } from './composer-markdown.ts';
+  import type { ChatComposerStatus } from './composer-status.ts';
 
   export type { ChatAttachment } from './chat-attachment.ts';
 
@@ -101,9 +103,23 @@
     /** Called when an attachment fails validation */
     onAttachmentFailure?: ((file: File, error: string) => void) | undefined;
 
+    // Markdown
+    /**
+     * Style Markdown in place: markers dim, and emphasis, code, links, and list
+     * markers show as they will render. The text stays the Markdown that is sent.
+     * Default `true`.
+     */
+    markdownStyling?: boolean;
+    /** Show Bold, Italic, Code, Link, and List buttons in the footer. Default `false`. */
+    formattingToolbar?: boolean;
+    /** The status line under the composer: an approval waiting, a reconnect, or queued follow-ups. */
+    status?: ChatComposerStatus | undefined;
+
     // Snippets for extensibility
     /** Custom actions area (e.g., additional buttons) */
     actions?: Snippet | undefined;
+    /** Toolbar slot at the start of the footer, given a `format` command for the selection. */
+    toolbar?: Snippet<[ChatComposerToolbarContext]> | undefined;
   };
 </script>
 
@@ -113,7 +129,8 @@
    *
    * Features:
    * - Uses a native textarea composer so Chat does not require the rich editor bundle
-   * - Keyboard shortcuts: Enter to send, Shift+Enter for newline
+   * - Keyboard shortcuts: Enter to send, Shift+Enter for newline; Cmd/Ctrl+B, I, E, K format Markdown
+   * - Styles Markdown in place over the textarea, which still holds the Markdown that is sent
    * - IME-aware: composition input (Japanese/Chinese/Korean) won't trigger send
    * - File attachments (images, code, documents) via paste, drag-drop, or file picker
    * - Blocks whitespace-only submit
@@ -133,7 +150,25 @@
   import { classNames } from '../../../utilities/class-names.ts';
   import { useAnnouncer } from '../../../utilities/use-announcer.svelte.ts';
   import { createIdFactory, useStableId } from '../../../utilities/id-factory.ts';
-  import { Paperclip, SendHorizontal, Square, Tooltip, X, Button } from '@lostgradient/cinder';
+  import {
+    Bold,
+    Button,
+    Code,
+    Italic,
+    LinkIcon,
+    List,
+    Paperclip,
+    SendHorizontal,
+    Square,
+    Tooltip,
+    X,
+  } from '@lostgradient/cinder';
+  import {
+    applyComposerFormat,
+    composerShortcutFormat,
+    highlightComposerMarkdown,
+  } from './composer-markdown.ts';
+  import { composerStatusText } from './composer-status.ts';
   import { deriveAttachmentKind } from './attachment-kind.ts';
   import ChatAttachmentPreview from './chat-attachment-preview.svelte';
 
@@ -143,6 +178,19 @@
   // Tracks hash-derived IDs used in this instance so collisions (same name/size/mtime)
   // get a unique suffix rather than a duplicate DOM ID.
   const usedAttachmentIds = new Set<string>();
+
+  const FORMATTING_BUTTONS = [
+    { format: 'bold', label: 'Bold', keyshortcuts: 'Meta+B Control+B', icon: Bold },
+    { format: 'italic', label: 'Italic', keyshortcuts: 'Meta+I Control+I', icon: Italic },
+    { format: 'code', label: 'Code', keyshortcuts: 'Meta+E Control+E', icon: Code },
+    { format: 'link', label: 'Link', keyshortcuts: 'Meta+K Control+K', icon: LinkIcon },
+    { format: 'list', label: 'List', keyshortcuts: undefined, icon: List },
+  ] as const satisfies readonly {
+    format: ChatComposerFormat;
+    label: string;
+    keyshortcuts: string | undefined;
+    icon: unknown;
+  }[];
 
   let {
     id,
@@ -192,11 +240,31 @@
     onAttachmentAdd,
     onAttachmentRemove,
     onAttachmentFailure,
+    markdownStyling = true,
+    formattingToolbar = false,
+    status,
     actions,
+    toolbar,
     ...rest
   }: ChatInputProps = $props();
 
   const resolvedComposerLabel = $derived(composerLabel.trim() || 'Message');
+
+  const markdownSegments = $derived(markdownStyling ? highlightComposerMarkdown(value) : []);
+  const statusText = $derived(status ? composerStatusText(status) : undefined);
+  const toolbarContext: ChatComposerToolbarContext = { format: applyFormat };
+  let markdownBackdrop = $state<HTMLDivElement | null>(null);
+
+  function syncBackdropScroll(): void {
+    if (!markdownBackdrop || !editorElement) return;
+    markdownBackdrop.scrollTop = editorElement.scrollTop;
+    markdownBackdrop.scrollLeft = editorElement.scrollLeft;
+  }
+
+  $effect(() => {
+    void markdownSegments;
+    syncBackdropScroll();
+  });
 
   // Derived: show stop button when sending and onstop is provided. In follow-up
   // mode Stop sits beside Send rather than taking its place.
@@ -241,6 +309,16 @@
 
   // Screen reader announcements
   const announcer = useAnnouncer();
+
+  // The visible status line is not a live region (one mounted with its text
+  // is not reliably read), so a change is announced through the composer's.
+  let announcedStatusText: string | undefined;
+  $effect(() => {
+    const text = statusText;
+    if (text === announcedStatusText) return;
+    announcedStatusText = text;
+    if (text !== undefined) untrack(() => announcer.announce(text));
+  });
 
   // Derived state
   const errorId = $derived(`${id}-error`);
@@ -738,6 +816,12 @@
       if (event.defaultPrevented) {
         return;
       }
+      const format = composerShortcutFormat(event);
+      if (format) {
+        event.preventDefault();
+        applyFormat(format);
+        return;
+      }
     }
 
     if (event.key !== 'Enter' || event.shiftKey || event.altKey) return;
@@ -924,6 +1008,23 @@
     onComposerInput?.(value);
   }
 
+  /**
+   * Applies a formatting command to the composer's selection: wraps it in
+   * `**`, `*`, or backticks (unwrapping an already-wrapped selection), makes
+   * it a link, or toggles list markers on its lines.
+   */
+  export function applyFormat(format: ChatComposerFormat): void {
+    if (!editorElement || disabled) return;
+    const edit = applyComposerFormat(
+      editorElement.value,
+      editorElement.selectionStart,
+      editorElement.selectionEnd,
+      format,
+    );
+    insertAtRange({ start: edit.start, end: edit.end }, edit.text);
+    editorElement.setSelectionRange(edit.selectionStart, edit.selectionEnd);
+  }
+
   export function addFiles(files: File[]): void {
     if (!allowAttachments) return;
     files.forEach((file) => addAttachment(file));
@@ -998,6 +1099,13 @@
 
   <!-- Editor area -->
   <div class="chat-input-editor-container">
+    {#if markdownStyling}
+      <div bind:this={markdownBackdrop} class="chat-input-markdown" aria-hidden="true">
+        {#each markdownSegments as segment, index (index)}<span
+            class={`chat-input-markdown-${segment.kind}`}>{segment.text}</span
+          >{/each}{#if value === '' || value.endsWith('\n')}&#8203;{/if}
+      </div>
+    {/if}
     <textarea
       bind:this={editorElement}
       id={`${id}-editor`}
@@ -1008,6 +1116,7 @@
       onpointerup={oncomposerselectionchange}
       onselect={oncomposerselectionchange}
       onblur={oncomposerblur}
+      onscroll={syncBackdropScroll}
       {placeholder}
       role={composerRole}
       aria-label={resolvedComposerLabel}
@@ -1016,7 +1125,7 @@
       aria-activedescendant={composerAriaActiveDescendant}
       aria-autocomplete={composerAriaAutocomplete}
       {disabled}
-      class="chat-input-editor"
+      class={classNames('chat-input-editor', markdownStyling && 'chat-input-editor-styled')}
       aria-describedby={shortcutDescriptionId}
       rows="1"></textarea>
   </div>
@@ -1047,6 +1156,28 @@
         >
           <Paperclip class="cinder-icon-sm" />
         </Button>
+      {/if}
+
+      {#if formattingToolbar}
+        <div class="chat-input-toolbar" role="toolbar" aria-label="Formatting">
+          {#each FORMATTING_BUTTONS as button (button.format)}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-label={button.label}
+              aria-keyshortcuts={button.keyshortcuts}
+              disabled={disabled || sendBlocked}
+              onmousedown={(event: MouseEvent) => event.preventDefault()}
+              onclick={() => applyFormat(button.format)}
+            >
+              <button.icon class="cinder-icon-sm" />
+            </Button>
+          {/each}
+        </div>
+      {/if}
+      {#if toolbar}
+        {@render toolbar(toolbarContext)}
       {/if}
 
       <!-- Visually hidden shortcut description: always in the accessibility tree even when hint is container-queried away -->
@@ -1144,6 +1275,10 @@
       />
     </div>
   </div>
+
+  {#if statusText}
+    <p class="chat-input-status" data-chat-composer-status={status?.kind}>{statusText}</p>
+  {/if}
 
   <!-- Error display -->
   {#if error}
@@ -1290,6 +1425,90 @@
 
   .chat-input-editor::placeholder {
     color: var(--cinder-text-subtle);
+  }
+
+  /* Markdown styling: the textarea keeps the text and the caret but draws no
+   * glyphs; a backdrop with the same metrics draws them, styled. Nothing in the
+   * backdrop may change a glyph's width, so strong text is a faux bold and code
+   * keeps the composer's font. */
+  .chat-input-editor-container {
+    position: relative;
+  }
+
+  /* Both layers reserve the same scrollbar gutter, so a classic scrollbar on
+   * a long draft narrows them alike and they wrap at the same places. */
+  .chat-input-editor-styled,
+  .chat-input-markdown {
+    scrollbar-gutter: stable;
+  }
+
+  .chat-input-editor-styled {
+    position: relative;
+    color: transparent;
+    caret-color: var(--cinder-text-default);
+  }
+
+  /* Stay transparent when disabled, too; the backdrop dims instead. */
+  .chat-input-editor-styled:is(:read-only, :disabled) {
+    color: transparent;
+  }
+
+  .chat-input-markdown:has(~ .chat-input-editor-styled:is(:read-only, :disabled)) {
+    color: var(--cinder-text-muted);
+  }
+
+  .chat-input-editor-styled::selection {
+    color: transparent;
+    background: color-mix(in oklch, var(--cinder-accent-solid) 25%, transparent);
+  }
+
+  .chat-input-markdown {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    padding: var(--cinder-space-1) var(--cinder-space-3);
+    font: inherit;
+    line-height: var(--cinder-leading-normal);
+    color: var(--cinder-text-default);
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    pointer-events: none;
+  }
+
+  .chat-input-markdown-marker,
+  .chat-input-markdown-list-marker {
+    color: var(--cinder-text-subtle);
+  }
+
+  .chat-input-markdown-strong {
+    text-shadow: 0.35px 0 0 currentColor;
+  }
+
+  .chat-input-markdown-emphasis {
+    font-style: italic;
+  }
+
+  .chat-input-markdown-code {
+    border-radius: var(--cinder-radius-sm);
+    background: var(--cinder-surface-inset);
+  }
+
+  .chat-input-markdown-link {
+    color: var(--cinder-accent-text);
+    text-decoration: underline;
+  }
+
+  .chat-input-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .chat-input-status {
+    margin: 0;
+    padding-inline: var(--cinder-space-1);
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-muted);
   }
 
   .chat-input-editor:focus {

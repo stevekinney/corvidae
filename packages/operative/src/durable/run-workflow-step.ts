@@ -1,5 +1,7 @@
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { WorkflowContext, WorkflowOperation } from '@lostgradient/weft';
+import type { AnyToolbox } from 'armorer';
+import type { ToolCall } from 'armorer/protocol';
 import { Conversation, type MessageInput, type MultiModalContent } from 'conversationalist';
 
 import { effectiveContextTail } from '../effective-context-record';
@@ -23,6 +25,7 @@ import type {
   DurableRunDeps,
   PendingHumanWait,
   PendingWakeup,
+  RecordedToolCall,
   RunCursor,
   SessionInputDelivery,
   SessionInputPayload,
@@ -151,6 +154,21 @@ export function conversationAfterStep(
   throw new Error('Durable step result carries no conversation.');
 }
 
+/**
+ * Each call with the id of the tool its name resolves to in the step's own toolbox (COR-1872), so
+ * the record pins the version that ran. A name that resolves to no single tool is recorded
+ * without one.
+ */
+function pinToolCalls(
+  calls: readonly ToolCall[],
+  toolbox: Pick<AnyToolbox, 'resolveTool'>,
+): RecordedToolCall[] {
+  return calls.map((call) => {
+    const resolution = toolbox.resolveTool(call.name);
+    return resolution.ok ? { ...call, toolId: resolution.tool.id } : call;
+  });
+}
+
 export function runStepMemo(
   ctx: Pick<WorkflowContext, 'services' | 'memo'>,
   snapshot: ConversationSnapshot,
@@ -164,10 +182,16 @@ export function runStepMemo(
     deps.pendingHumanWait = undefined;
     deps.pendingWakeup = undefined;
     const conversation = conversationForStep(deps, snapshot);
+    let stepToolbox: AnyToolbox = deps.toolbox;
     const stepDeps = {
       ...buildStepDeps(deps.options),
       toolbox: deps.toolbox,
-      onStepToolbox: deps.onStepToolbox,
+      // COR-1872: the toolbox the step ran against, which a `selectTools` hook may have replaced,
+      // is the one its recorded calls are pinned against.
+      onStepToolbox: (toolbox: AnyToolbox) => {
+        stepToolbox = toolbox;
+        deps.onStepToolbox?.(toolbox);
+      },
       admissionTracker: deps.admissionTracker,
       runId,
       durableOperationKeys: true,
@@ -221,7 +245,7 @@ export function runStepMemo(
           ...(pushed.contextEpochId === undefined ? {} : { contextEpochId: pushed.contextEpochId }),
           ...(pushed.planReason === undefined ? {} : { planReason: pushed.planReason }),
           ...(storedContext === undefined ? {} : { effectiveContext: storedContext }),
-          toolCalls: pushed.toolCalls,
+          toolCalls: pinToolCalls(pushed.toolCalls, stepToolbox),
           results: pushed.results,
           ...(pushed.usage ? { usage: pushed.usage } : {}),
           ...(stepMetadata && Object.keys(stepMetadata).length > 0

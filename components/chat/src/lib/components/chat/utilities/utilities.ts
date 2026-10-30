@@ -495,18 +495,14 @@ export function deriveMessageParts(
   if (message.role === 'tool-call' && message.toolCall && context.toolCallPair) {
     const result = context.toolCallPair.result;
     const actionPart = result ? deriveToolActionPart(message.id, result, context) : undefined;
-    const toolCallPart: ToolCallMessagePart = context.toolCallPresentation
-      ? {
-          type: 'tool-call',
-          key: `${message.id}:tool-call:${message.toolCall.id}`,
-          pair: context.toolCallPair,
-          presentation: context.toolCallPresentation,
-        }
-      : {
-          type: 'tool-call',
-          key: `${message.id}:tool-call:${message.toolCall.id}`,
-          pair: context.toolCallPair,
-        };
+    const toolCallPart: ToolCallMessagePart = {
+      type: 'tool-call',
+      key: `${message.id}:tool-call:${message.toolCall.id}`,
+      pair: context.toolCallPair,
+    };
+    if (context.toolCallPresentation) toolCallPart.presentation = context.toolCallPresentation;
+    const approvalState = context.approvalStates?.get(context.toolCallPair.call.id);
+    if (approvalState !== undefined) toolCallPart.approvalState = approvalState;
     return [...entryParts, toolCallPart, ...(actionPart ? [actionPart] : []), ...imageParts];
   }
 

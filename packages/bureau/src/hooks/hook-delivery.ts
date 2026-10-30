@@ -18,7 +18,8 @@
  *
  * A delivery holds a lease while a process drives it, refreshed on every write. A process that
  * stops cleanly releases it; one that crashes leaves it to expire, and `resume` takes only records
- * whose lease has. A restart inside that window finds the lease still live, so `resume` leaves the
+ * whose lease has. It finds them through the pending index (`hook-store.ts`), never by reading every
+ * record. A restart inside that window finds the lease still live, so `resume` leaves the
  * record and schedules one tracked re-scan for the earliest expiry it skipped (and again for any
  * that remain); a shutdown abandons the wait. Without it such a delivery would stay pending until
  * some later restart.
@@ -135,6 +136,12 @@ export interface HookDeliveries {
    * when the lease expires; a shutdown cancels it.
    */
   resume(): Promise<number>;
+  /**
+   * Removes the settled deliveries last written more than `olderThanMilliseconds` ago and resolves
+   * with how many it removed. A pending delivery is never removed, however old, and a delivery
+   * that changed since it was read is left.
+   */
+  prune(olderThanMilliseconds: number): Promise<number>;
 }
 
 /** `text` with every occurrence of `secret` removed. */
@@ -491,23 +498,19 @@ export function createHookDeliveries(dependencies: HookDeliveryDependencies): Ho
   }> {
     const driving: Promise<void>[] = [];
     const skipped = new Map<string, number>();
-    for (const listed of await store.listDeliveries()) {
-      if (listed.status !== 'pending' || (only !== undefined && !only.has(listed.id))) continue;
-      if (listed.leaseUntil > engine.now()) {
-        skipped.set(listed.id, listed.leaseUntil);
-        continue;
-      }
-      const stored = await store.getDelivery(listed.id);
+    for (const id of await store.listPendingDeliveryIds()) {
+      if (only !== undefined && !only.has(id)) continue;
+      const stored = await store.getDelivery(id);
       if (stored === undefined || stored.record.status !== 'pending') continue;
       if (stored.record.leaseUntil > engine.now()) {
-        skipped.set(listed.id, stored.record.leaseUntil);
+        skipped.set(id, stored.record.leaseUntil);
         continue;
       }
       const claimed = await write(
         stored,
         advanced(stored.record, { attempts: withoutSending(stored.record.attempts) }),
       );
-      if (claimed !== undefined) driving.push(drive(listed.id));
+      if (claimed !== undefined) driving.push(drive(id));
     }
     // Awaited, so the tracked `resume()` covers the deliveries it took.
     await Promise.allSettled(driving);
@@ -584,7 +587,19 @@ export function createHookDeliveries(dependencies: HookDeliveryDependencies): Ho
       return id;
     },
     drive,
+    async prune(olderThanMilliseconds) {
+      const cutoff = engine.now() - olderThanMilliseconds;
+      let removed = 0;
+      for (const stored of await store.listStoredDeliveries()) {
+        if (stored.record.status === 'pending' || stored.record.updatedAt >= cutoff) continue;
+        // Conditional on the text read, so a record that changed since (it cannot be pending again,
+        // but a fence is a fence) is left.
+        if (await store.deleteDelivery(stored)) removed += 1;
+      }
+      return removed;
+    },
     async resume() {
+      await store.indexPendingDeliveries();
       const first = await scan();
       if (first.skipped.size > 0) engine.track(rescan(first.skipped));
       return first.taken;

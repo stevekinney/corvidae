@@ -168,12 +168,14 @@ import { createAssetGeneratedMediaAdmitter } from './assets/generated-media-admi
 import {
   claimRowAssets,
   isPermanentClaimFailure,
+  managedAssetIdsOf,
   releaseClaimsByHolderPrefix,
   releaseRowAssetClaims,
   runRowHolderId,
   sessionRowHolderId,
   sessionRowHolderPrefix,
 } from './assets/row-asset-claims';
+import { heldClaimsOf } from './assets/internal-access';
 import { humanInputSchemasOf, validateHumanInputOption } from './human-input-option';
 import {
   validateChildrenOption,
@@ -184,6 +186,8 @@ import {
 import type { AssetService } from './assets/types';
 import type { DefinitionScannerHealth } from './definition-scanner';
 import { createAssetClaimReconciler } from './asset-claim-reconciliation';
+import { purgeChatAssets, type ChatAsset } from './chat-asset-purge';
+import { purgeChatMemories, type RunMemoryPlacement } from './chat-memory-purge';
 import {
   AUDIT_AGENT_OWNER_PREFIX,
   AUDIT_HOOK_OWNER_PREFIX,
@@ -279,6 +283,7 @@ import type { BureauGoals } from './goal-types';
 import { createGoalValidatorCatalog } from './goal-validator-catalog';
 import { composeBureauGoals } from './goals-composition';
 import { leaseEvidenceFromLostHealth } from './liveness-projection';
+import { createAbandonedTaskSweeper, openProcessLease } from './process-lease';
 import {
   createDecisions,
   decisionModelNames,
@@ -407,7 +412,8 @@ import {
   type WorkflowRuntime,
 } from './workflow-runtime';
 import { createBureauWorkerDeployments } from './worker-deployments';
-import { validateDefinitionSource } from './sources/validate-definition-source';
+import type { AgentSource, WorkflowSource } from './sources/definition-source';
+import { resolveDefinitionSource } from './sources/validate-definition-source';
 import { collidingWorkflowToolName, createWorkflowTools } from './workflow-tools';
 import { createSettingsTools } from './settings/settings-tools';
 import { createWorkflowSnapshotStore } from './workflow-snapshot-store';
@@ -504,6 +510,7 @@ import { copyAgentOwnedRunOptions, sessionExecuteOptions } from './session-agent
 import {
   admitSessionInput,
   isSessionInputSessionIdAddressable,
+  SessionInputMailboxPurgedError,
   type SessionInputAdmissionAttemptOutcome,
   createSessionInputMailbox,
   type PersistedSessionInput,
@@ -607,6 +614,13 @@ import {
 } from './types';
 import { isSettlingRunAction, settledActionTimestamp } from './run-settlement';
 import { createAudit } from './audit/create-audit';
+import {
+  ChatRunsNotEndedError,
+  createChatContentPurge,
+  type DeletedChat,
+} from './chat-content-purge';
+import { purgeReviewRecords } from './chat-review-purge';
+import { purgeChatLedgerEntries } from './chat-ledger-purge';
 import { createNotifications } from './notifications/create-notifications';
 import type { BureauNotifications } from './notifications/notification-types';
 import {
@@ -1158,6 +1172,54 @@ class ApprovalOutcomeNotWrittenError extends BureauError {
 }
 
 /**
+ * A tool call waiting for approval names a tool version the toolbox no longer holds (COR-1872). A
+ * durable record pins `namespace:name@version` and runs only that version: `reason` is
+ * `version-mismatch` when other versions of the tool are loaded, which `candidates` lists, and
+ * `missing` when none is. Recovery reports it as the cause of the review it cannot restore, and
+ * `resolveReview` throws it rather than run another version; either way the tool does not run.
+ */
+class PinnedToolUnavailableError extends BureauError {
+  /** Why the pinned id did not resolve. */
+  readonly reason: 'missing' | 'ambiguous' | 'version-mismatch';
+  /** The `namespace:name@version` the run recorded. */
+  readonly toolId: string;
+  /** The ids of the loaded tools that came closest; empty for `missing`. */
+  readonly candidates: readonly string[];
+  constructor(
+    toolId: string,
+    reason: 'missing' | 'ambiguous' | 'version-mismatch',
+    candidates: readonly string[],
+  ) {
+    super(
+      `The run recorded tool "${toolId}", and the toolbox ${
+        candidates.length === 0 ? 'holds no version of it' : `holds ${candidates.join(', ')}`
+      } (${reason}).`,
+      'CONFLICT',
+    );
+    this.name = 'PinnedToolUnavailableError';
+    this.reason = reason;
+    this.toolId = toolId;
+    this.candidates = candidates;
+  }
+}
+
+/**
+ * The error for an approval whose binding pins a tool id `toolbox` no longer resolves, or
+ * `undefined` when it resolves or the approval pins none.
+ */
+function pinnedToolUnavailable(
+  toolbox: Pick<BureauToolbox, 'resolveTool'>,
+  approval: Pick<SignedPendingToolApproval, 'approvalBinding'>,
+): PinnedToolUnavailableError | undefined {
+  const toolId = approval.approvalBinding?.toolDefinitionRevision;
+  if (typeof toolId !== 'string') return undefined;
+  const resolution = toolbox.resolveTool(toolId);
+  return resolution.ok
+    ? undefined
+    : new PinnedToolUnavailableError(toolId, resolution.reason, resolution.candidates);
+}
+
+/**
  * `resolveReview` was given the round the caller read, and the review has moved past it: another
  * resolver superseded the approval, which replaces it under the same id with the next round
  * (COR-1659). Nothing took effect, so it is a `CONFLICT` the caller answers by reading the review
@@ -1231,6 +1293,7 @@ export {
   ApprovalOutcomeNotWrittenError,
   BureauError,
   BureauShuttingDownError,
+  PinnedToolUnavailableError,
   ReviewAnswerInvalidError,
   ReviewRoundChangedError,
   TaskRespondError,
@@ -1332,6 +1395,40 @@ export class UnknownScheduleAgentError extends BureauError {
     this.name = 'UnknownScheduleAgentError';
     this.agentName = agentName;
   }
+}
+
+/** {@link BureauOptions} once each definition-source option is one source (COR-1873). */
+type LayeredBureauOptions<D extends AgentDefinitions> = Omit<
+  BureauOptions<D>,
+  'agentSource' | 'workflowSource'
+> & {
+  readonly agentSource?: AgentSource;
+  readonly workflowSource?: WorkflowSource;
+};
+
+/** `options` with `agentSource` and `workflowSource` each checked and layered into one source. */
+function withLayeredSources<const D extends AgentDefinitions>(
+  options: BureauOptions<D>,
+): LayeredBureauOptions<D> {
+  const { agentSource, workflowSource, ...rest } = options;
+  return {
+    ...rest,
+    ...(agentSource === undefined
+      ? {}
+      : {
+          agentSource: resolveDefinitionSource('agentSource', 'agent', agentSource, toBadRequest),
+        }),
+    ...(workflowSource === undefined
+      ? {}
+      : {
+          workflowSource: resolveDefinitionSource(
+            'workflowSource',
+            'workflow',
+            workflowSource,
+            toBadRequest,
+          ),
+        }),
+  };
 }
 
 function toBadRequest(message: string): never {
@@ -2086,7 +2183,7 @@ export function createScheduledFireApprovalHook(
 /**
  * Whether a maintenance pass had anything to drive: a durable engine, the audit trail, governed
  * memory (COR-1546, whose deletions advance only when asked to), a notification retention window
- * (COR-1941), or terminal tasks it removed.
+ * (COR-1941), a hook delivery retention window (COR-1943), or terminal tasks it removed.
  * Kept apart from `createBureau` so its complexity stays inside the repository's bound.
  */
 function hasMaintenanceSurface(surface: {
@@ -2094,6 +2191,7 @@ function hasMaintenanceSurface(surface: {
   readonly auditTrail: boolean;
   readonly memory: boolean;
   readonly notificationRetention: boolean;
+  readonly hookDeliveryRetention: boolean;
   readonly tasksRemoved: number;
 }): boolean {
   return (
@@ -2101,6 +2199,7 @@ function hasMaintenanceSurface(surface: {
     surface.auditTrail ||
     surface.memory ||
     surface.notificationRetention ||
+    surface.hookDeliveryRetention ||
     surface.tasksRemoved > 0
   );
 }
@@ -2135,12 +2234,15 @@ function needsAutomaticMaintenance(composed: {
   readonly keyValueStore: boolean;
   readonly activeAuditRetention: boolean;
   readonly activeNotificationRetention: boolean;
+  readonly activeHookDeliveryRetention: boolean;
 }): boolean {
   return (
     composed.durableEngine ||
     composed.memory ||
     (composed.keyValueStore &&
-      (composed.activeAuditRetention || composed.activeNotificationRetention))
+      (composed.activeAuditRetention ||
+        composed.activeNotificationRetention ||
+        composed.activeHookDeliveryRetention))
   );
 }
 
@@ -2285,9 +2387,11 @@ function resumeHooks(input: {
 }
 
 async function constructBureau<const D extends AgentDefinitions>(
-  options: BureauOptions<D>,
+  given: BureauOptions<D>,
   construction: BureauConstruction<D>,
 ): Promise<void> {
+  // COR-1873: several definition sources are read as one layered source from here on.
+  let options = withLayeredSources(given);
   // COR-1920: the answer keys are the caller's, so they are read once, before the first await.
   const answerEncryption: AnswerEncryptionKeys | undefined =
     options.answerEncryption === undefined
@@ -2336,7 +2440,6 @@ async function constructBureau<const D extends AgentDefinitions>(
   // COR-1524: a model written in an agent file has to become a `generate` somehow, and only the
   // host holds the credentials to do it. Refused here rather than leaving every file unusable.
   if (options.agentSource !== undefined) {
-    validateDefinitionSource('agentSource', 'agent', options.agentSource, toBadRequest);
     if (options.models?.generate === undefined) {
       toBadRequest(
         '"options.models.generate" is required with "options.agentSource": it turns a model in the model catalog into the generate an agent file runs with',
@@ -2351,7 +2454,6 @@ async function constructBureau<const D extends AgentDefinitions>(
     );
   }
   if (options.workflowSource !== undefined) {
-    validateDefinitionSource('workflowSource', 'workflow', options.workflowSource, toBadRequest);
     // COR-1529: Bureau adds the workflow tools to the tool catalog itself, so a host tool that
     // already has one of their names would be silently shadowed or shadow them.
     const colliding = collidingWorkflowToolName(options.agentSource?.tools);
@@ -4674,6 +4776,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   let recoveryPassActive = false;
   /** The boot repair of task histories (COR-1669), which `shutdown()` awaits before storage closes. */
   let taskResyncBootPass: Promise<void> | undefined;
+
   const bootFrameRunIds = new Set<string>();
   let liveFramesSubscribed = false;
   const bootFrameBuffer: ServerFrame[] = [];
@@ -4885,10 +4988,23 @@ async function constructBureau<const D extends AgentDefinitions>(
   // COR-1915: what each run of a chat spent, which a file agent's `costBudget.perChatUsd` is
   // measured against. A Bureau with no key-value store keeps it in memory, as it does its tasks.
   const chatSpendLedger = createChatSpendLedger({ kv: runtime.kv, diagnose });
+  // COR-1946: a Bureau over a store that outlives the process names itself on every task it admits
+  // and holds a lease under that name, which is how a later boot tells a task whose process is gone
+  // from one whose process is another Bureau still running over the same store.
+  const processLease = openProcessLease({
+    kv: runtime.kv,
+    persistence: options.storage?.capabilities().persistence,
+    clock: runtimeServices.clock,
+    timers: runtimeServices.timers,
+    identifiers: runtimeServices.identifiers,
+    diagnose: (message, cause) =>
+      diagnose({ level: 'error', scope: 'task-registry', message: `[bureau] ${message}`, cause }),
+  });
   const tasks = createTaskRegistry({
     kv: runtime.kv,
     clock: runtimeServices.clock,
     identifiers: runtimeServices.identifiers,
+    processId: processLease.processId,
     // COR-1594: the end of a fire reaches a stream another process serves through the fire's
     // durable history. A Bureau with no persistent storage has none, and no second process.
     onFireSettled: appendFireSettledEvent,
@@ -5348,6 +5464,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         keyValueStore: Boolean(runtime.kv),
         activeAuditRetention: auditRetention !== undefined && auditRetention !== 'forever',
         activeNotificationRetention: currentSettings()['retention.notifications'] !== undefined,
+        activeHookDeliveryRetention: currentSettings()['retention.hookDeliveries'] !== undefined,
       }) && options.maintenance !== 'manual'
     );
   }
@@ -7356,9 +7473,17 @@ async function constructBureau<const D extends AgentDefinitions>(
       if (approval && typeof approval === 'object' && !Array.isArray(approval)) {
         if (!(approval as { approvalBinding?: unknown }).approvalBinding) continue;
         try {
+          // COR-1872: the call resumes at the tool version its run recorded, or not at all.
+          const unavailable = pinnedToolUnavailable(toolbox, approval);
+          if (unavailable !== undefined) throw unavailable;
           await restoreApproval(approval as SignedPendingToolApproval);
         } catch (error) {
-          if (!isTerminalApprovalBindingError(error)) throw error;
+          if (
+            !(error instanceof PinnedToolUnavailableError) &&
+            !isTerminalApprovalBindingError(error)
+          ) {
+            throw error;
+          }
           if (scheduledFireApprovalRuns.has(runId)) {
             await releaseScheduledFireApproval(runId, reviewId, 'invalid', { sessionId });
           } else {
@@ -7370,8 +7495,11 @@ async function constructBureau<const D extends AgentDefinitions>(
             level: 'warn',
             scope: 'approval-recovery',
             message:
-              `[bureau] Failed to restore approval binding for "${reviewId}"; ` +
-              'the affected review will remain unavailable while other runs recover.',
+              `[bureau] Failed to restore approval binding for "${reviewId}"` +
+              (error instanceof PinnedToolUnavailableError
+                ? ` (${error.reason}: ${error.toolId})`
+                : '') +
+              '; the affected review will remain unavailable while other runs recover.',
             cause: error,
           });
         }
@@ -7829,11 +7957,10 @@ async function constructBureau<const D extends AgentDefinitions>(
    * in keeps these as history until retention ends them; a tried one is a throwaway, so it keeps
    * none. Best-effort for each step, like the rest of a deletion that has already committed: a
    * failure is diagnosed and the retention that ends every run's history ends this one's.
-   * What a deletion of any context leaves stays until retention removes it (a purge is COR-1934):
-   * the audit trail's entries, which hold what the agent answered; on a store that keeps durable
-   * event history, the fleet event records and their indexes, which hold the run's content too;
-   * delivery markers and counters; and the engine's tombstones (`wf-gen:` and
-   * `wf-owner-epoch:`), which keep a run id from being reused.
+   * The content a deletion of any context leaves (event history, dedupe and surface markers,
+   * audit text) is purged by `chatContentPurge` (COR-1934), which this tried path runs after; the
+   * engine's tombstones (`wf-gen:` and `wf-owner-epoch:`), which keep a run id from being reused,
+   * stay until retention.
    */
   async function discardTriedRuns(
     session: AgentSession,
@@ -7872,10 +7999,8 @@ async function constructBureau<const D extends AgentDefinitions>(
     for (const runId of runIds) {
       if (store.getRun(runId) !== undefined) await attempt('run', runId, () => deleteRun(runId));
       await attempt('task record', runId, () => tasks.remove(runId));
-      const durable = runtime.durable;
-      if (durable === undefined) continue;
-      await attempt('workflow', runId, () => durable.engine.purge({ idPrefix: runId }));
-      await attempt('checkpoints', runId, () => durable.checkpointStore.clear(runId));
+      if (runtime.durable === undefined) continue;
+      await attempt('workflow and checkpoints', runId, () => purgeDurableRun(runId));
     }
   }
 
@@ -9979,6 +10104,29 @@ async function constructBureau<const D extends AgentDefinitions>(
    * `createBureau()` never rejects on it, in whole or in part).
    */
   /**
+   * COR-1946 — settles the tasks of a process that is gone (see `process-lease.ts`). A lease that is
+   * still current is left alone and looked at again when it would lapse, so a process restarted
+   * inside its predecessor's lease still settles what the predecessor left. Never rejects.
+   */
+  const abandonedTaskSweeper = createAbandonedTaskSweeper({
+    lease: processLease,
+    kv: runtime.kv,
+    timers: runtimeServices.timers,
+    // A manual host has no timer of the Bureau's: its next `maintain()` looks again.
+    rearm: options.maintenance !== 'manual',
+    now: runtimeServices.clock.now,
+    nowISO: runtimeServices.clock.nowISO,
+    unsettled: () => tasks.unsettled(),
+    hasLiveRun: (taskId) => store.getRun(taskId) !== undefined,
+    isDurablyRecorded: async (taskId) =>
+      runtime.durable !== undefined && (await runtime.durable.engine.get(taskId)) !== null,
+    settleAbandoned: (taskId, ownerProcess, lease, settlement) =>
+      tasks.settleAbandoned(taskId, ownerProcess, lease, settlement),
+    diagnose: (message, cause) =>
+      diagnose({ level: 'error', scope: 'recovery', message: `[bureau] ${message}`, cause }),
+  });
+
+  /**
    * COR-1481 — a crash can land between a run reaching its terminal state and the task record
    * saying so, or between a catalog run's durable start and its task record being written. At
    * boot, a task record whose durable run is terminal is settled from the durable state, and a
@@ -9987,7 +10135,11 @@ async function constructBureau<const D extends AgentDefinitions>(
    */
   async function reconcileTaskRecords(): Promise<void> {
     const durable = runtime.durable;
-    if (!durable) return;
+    if (!durable) {
+      // COR-1946: with no durable engine every run is process-local, and only the lease rule applies.
+      await abandonedTaskSweeper.run();
+      return;
+    }
     const settle = async (
       taskId: string,
       state: Awaited<ReturnType<typeof durable.engine.get>>,
@@ -10050,6 +10202,9 @@ async function constructBureau<const D extends AgentDefinitions>(
       if (store.getRun(record.taskId) !== undefined) continue;
       await settle(record.taskId, await durable.engine.get(record.taskId));
     }
+    // COR-1946: what the durable state did not settle, and no durable workflow records, belongs to
+    // the process that admitted it.
+    await abandonedTaskSweeper.run();
     // COR-1594: a fire whose settlement was written but whose history event never was, because its
     // process died between the two, would leave a stream open on another process for ever. The
     // event is deduplicated per fire, so the ones that were appended are skipped by their marker.
@@ -10833,6 +10988,18 @@ async function constructBureau<const D extends AgentDefinitions>(
       // attempt's run have both been resumed by `recoverAll()` above. Recovery
       // reports what it could not do rather than throwing.
       currentRecoveryPerRunFailures?.push(...(await recoverGoalsAtBoot()));
+    }
+
+    // COR-1934 — a deleted chat whose content purge a crash or a failure stopped.
+    try {
+      await chatContentPurge.sweep();
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'recovery',
+        message: `[bureau] Boot recovery could not finish the pending content purges of deleted chats: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
     }
 
     // COR-1476 — recovered runs are reattached and visible as live now, so
@@ -12428,6 +12595,9 @@ async function constructBureau<const D extends AgentDefinitions>(
       : undefined;
 
     await auditTrailInstance.prune(effectiveCutoff, { protectRunId });
+    // COR-1934 — the tombstones of runs purged before the same cutoff: an entry or event older
+    // than it is pruned anyway.
+    await chatContentPurge.pruneTombstones(effectiveCutoff);
   }
 
   /**
@@ -13305,6 +13475,27 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
+   * COR-1943 — removes the settled hook deliveries last written longer ago than
+   * `retention.hookDeliveries`, read per pass so a change applies to the next one. With the setting
+   * unset, or no hooks, nothing is removed; a pending delivery never is. A failure is reported and
+   * never stops the rest of a pass.
+   */
+  async function pruneHookDeliveries(pass: 'Manual' | 'Automatic'): Promise<void> {
+    const window = currentSettings()['retention.hookDeliveries'];
+    if (window === undefined || hooksInstance === undefined) return;
+    try {
+      await hooksInstance.prune(window.olderThan);
+    } catch (error: unknown) {
+      diagnose({
+        level: 'error',
+        scope: 'durable-maintenance',
+        message: `[bureau] ${pass} hook delivery retention pass failed: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
+  }
+
+  /**
    * COR-1546 — advances every open governed-memory deletion: resumes an interrupted synchronous
    * lane and settles the bounded-async targets, which stay pending until something asks. Governed
    * memory runs nothing on a timer of its own, so a record forgotten through `bureau.memory.forget`
@@ -13346,6 +13537,21 @@ async function constructBureau<const D extends AgentDefinitions>(
           error,
         );
       }
+      // COR-1946 — a manual host's lease is renewed here, and what a stopped process left is looked
+      // for again, since the Bureau runs no timer of its own for either.
+      if (options.maintenance === 'manual') {
+        try {
+          await processLease.renew();
+        } catch (error: unknown) {
+          diagnose({
+            level: 'error',
+            scope: 'durable-maintenance',
+            message: `[bureau] Could not renew the process lease: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        }
+        await abandonedTaskSweeper.run();
+      }
       if (hasDurableEngine) {
         try {
           await runtime.durable?.engine.runMaintenance(now);
@@ -13375,6 +13581,17 @@ async function constructBureau<const D extends AgentDefinitions>(
           level: 'error',
           scope: 'durable-maintenance',
           message: `[bureau] Manual session-outbox drain pass failed: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      }
+      // COR-1934 — the content purge of a deleted chat that failed or was cut short is finished.
+      try {
+        await chatContentPurge.sweep();
+      } catch (error: unknown) {
+        diagnose({
+          level: 'error',
+          scope: 'durable-maintenance',
+          message: `[bureau] Manual deleted-chat purge pass failed: ${serializeUnknownError(error)}`,
           cause: error,
         });
       }
@@ -13489,6 +13706,8 @@ async function constructBureau<const D extends AgentDefinitions>(
       await pruneWorkflowLogs('Manual');
       // COR-1941 — notifications past `retention.notifications`.
       await pruneNotifications('Manual');
+      // COR-1943 — settled hook deliveries past `retention.hookDeliveries`.
+      await pruneHookDeliveries('Manual');
       // COR-1546 — governed memory's deletions advance only when asked to.
       try {
         await propagateMemoryDeletions();
@@ -13528,6 +13747,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       auditTrail: Boolean(auditTrailInstance),
       memory: runtime.memory !== undefined,
       notificationRetention: currentSettings()['retention.notifications'] !== undefined,
+      hookDeliveryRetention: currentSettings()['retention.hookDeliveries'] !== undefined,
       tasksRemoved,
     })
       ? true
@@ -13705,6 +13925,17 @@ async function constructBureau<const D extends AgentDefinitions>(
             cause: error,
           });
         }
+        // COR-1934 — the content purge of a deleted chat that failed or was cut short.
+        try {
+          await chatContentPurge.sweep();
+        } catch (error: unknown) {
+          diagnose({
+            level: 'error',
+            scope: 'durable-maintenance',
+            message: `[bureau] Automatic deleted-chat purge pass failed: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        }
         // COR-1476 — the backstop for input left open with no live run.
         try {
           await sessionInputSettlement?.sweep();
@@ -13803,6 +14034,8 @@ async function constructBureau<const D extends AgentDefinitions>(
         await pruneWorkflowLogs('Automatic');
         // COR-1941 — notifications past `retention.notifications`.
         await pruneNotifications('Automatic');
+        // COR-1943 — settled hook deliveries past `retention.hookDeliveries`.
+        await pruneHookDeliveries('Automatic');
         // COR-1546 — governed memory's deletions advance only when asked to.
         try {
           await propagateMemoryDeletions();
@@ -13924,6 +14157,170 @@ async function constructBureau<const D extends AgentDefinitions>(
   // runs (either via the commit callback or the `finally` safety net for
   // the never-existed-session path / a thrown error before commit) so it
   // never double-clears an entry a later, unrelated call may already own.
+  /**
+   * COR-1934 — removes one run's durable workflow and its checkpoints. A workflow that is not
+   * terminal is skipped by the engine's purge.
+   */
+  async function purgeDurableRun(runId: string): Promise<void> {
+    const durable = runtime.durable;
+    if (durable === undefined) return;
+    // By exact id: a prefix purge would take `…-run-10` with `…-run-1`, and refuses a documented
+    // custom child id such as `order:42`.
+    const purged = await durable.engine.purgeById(runId);
+    // `false` is also what a lost compare-and-set, a run that began again, or a finalizer still
+    // owed answer. A workflow that is still stored is then the run's content left behind: the step
+    // fails, so the pending record stays and the next pass retries, and its checkpoints stay with
+    // it, since the id may by now be another run's.
+    if (!purged && (await durable.engine.get(runId)) !== null) {
+      throw new Error(`The durable workflow of run "${runId}" was not purged and is still stored`);
+    }
+    await durable.checkpointStore.clear(runId);
+  }
+
+  /** The statuses after which a durable workflow no longer changes. */
+  const isTerminalDurableStatus = (status: string): boolean =>
+    status === 'completed' ||
+    status === 'failed' ||
+    status === 'cancelled' ||
+    status === 'timed-out';
+  /**
+   * COR-1934 — the runs the given runs delegated to, directly or through other children, breadth
+   * first, so a child comes before its own children; none of the given runs is repeated.
+   */
+  async function descendantRunIdsOf(parents: readonly string[]): Promise<string[]> {
+    const found: string[] = [];
+    const seen = new Set(parents);
+    const queue = [...parents];
+    for (let index = 0; index < queue.length; index += 1) {
+      for (const child of await childTopologyStore.listByParent(queue[index]!)) {
+        if (seen.has(child.childRunId)) continue;
+        seen.add(child.childRunId);
+        found.push(child.childRunId);
+        queue.push(child.childRunId);
+      }
+    }
+    return found;
+  }
+
+  /**
+   * COR-1934 — the content a deleted chat leaves outside the session store: its event history, its
+   * dedupe and surface markers, its runs' workflows, and the answer text in its audit entries. See
+   * `chat-content-purge.ts` for what goes, the order, and how a failed purge is finished.
+   */
+  const chatContentPurge = createChatContentPurge({
+    kv: runtime.kv,
+    history: () => eventHistoryInstance,
+    producer: () => durableEventProducerInstance,
+    audit: () => auditTrailInstance,
+    runEnded: async (runId) => {
+      const durable = runtime.durable;
+      if (durable === undefined) return true;
+      const state = await durable.engine.get(runId);
+      return state === null || isTerminalDurableStatus(state.status);
+    },
+    purgeRun: purgeDurableRun,
+    purgeReviews: async (runIds) => {
+      if (runtime.kv === undefined) return;
+      await purgeReviewRecords({ kv: runtime.kv, audit: () => auditTrailInstance }, runIds);
+    },
+    // Read when it runs: the surface store is built after this purge.
+    descendantsOf: descendantRunIdsOf,
+    purgeRunRecords: async (runId) => {
+      const recovery = await runtime.loadCatalogRunRecoveryRecord(runId);
+      // A goal attempt's or a workflow step's record is its owner's claim, not a chat's words.
+      const claimed =
+        recovery.status === 'found' &&
+        (recovery.record.goalAttempt !== undefined || recovery.record.workflowStep !== undefined);
+      if (recovery.status !== 'missing' && recovery.status !== 'read-error' && !claimed) {
+        await runtime.deleteCatalogRunRecoveryRecord(runId);
+      }
+      await childTopologyStore.remove(runId);
+      await childTopologyStore.deletePeerCalls(runId);
+    },
+    purgeSurfaces: async (runId) => {
+      await surfaces?.removeTask(runId);
+    },
+    taskIdsOf: (sessionId, incarnation) => tasks.taskIdsOfContext(sessionId, incarnation),
+    purgeLedgers: async (runIds) => {
+      if (runtime.kv !== undefined) await purgeChatLedgerEntries(runtime.kv, runIds);
+    },
+    redactTaskRecords: async (runIds) => {
+      for (const runId of runIds) await tasks.redactSettlement(runId);
+    },
+    purgeAssets: async (assets) => {
+      const service = assetServiceHolder.current;
+      if (service !== undefined) await purgeChatAssets(service, assets);
+    },
+    purgeMemories: async (sessionId, runIds, placements) => {
+      if (runtime.memory === undefined) return;
+      await purgeChatMemories(
+        {
+          memory: runtime.memory,
+          tenantId: bureauId,
+          // The task record outlives the chat, and names the agent and owner a run's memory was
+          // written under.
+          placementOf: async (runId) => {
+            const record = await tasks.record(runId);
+            return record === undefined || record.agentName === null
+              ? undefined
+              : { agentName: record.agentName, owner: record.owner };
+          },
+        },
+        { sessionId, runIds, placements },
+      );
+    },
+    purgeSessionInput: async (sessionId, incarnation) => {
+      if (runtime.durable === undefined) return;
+      const mailbox = tryGetSessionInputMailbox(sessionId, incarnation);
+      if (mailbox !== undefined) {
+        await mailbox.purge();
+        // The mailbox is gone: a handle kept for it would only hold its registry.
+        sessionInputMailboxes.delete(`${sessionId}\u0000${incarnation}`);
+        mailbox.dispose();
+      }
+      await sessionInputSettlement?.forget(sessionId, incarnation);
+    },
+    hasUndrainedEvents: async (sessionId, incarnation) => {
+      const pending = await runtime.sessionStore?.outbox.pending();
+      return (
+        pending?.some(
+          (entry) =>
+            entry.sessionId === sessionId &&
+            entry.incarnation === incarnation &&
+            entry.kind !== 'session.deleted',
+        ) ?? false
+      );
+    },
+    currentIncarnation: async (sessionId) => {
+      const session = await runtime.sessionStore?.load(sessionId);
+      return session?.incarnation;
+    },
+    now: () => runtimeServices.clock.now(),
+    diagnose,
+  });
+
+  /**
+   * COR-1934 — every run of a chat about to be deleted: the runs this process holds for it, the
+   * runs its ownership map names (pruned once a run's history expires), and its task records,
+   * the complete list. A list that cannot be read fails the delete before anything is removed,
+   * because a partial one would leave a run's content behind for good.
+   */
+  async function chatRunIdsOf(session: AgentSession): Promise<string[]> {
+    const runIds = new Set<string>();
+    for (const [, runState] of store.getState().runs) {
+      if (getRunSessionIdentifier(runState) === session.id) runIds.add(runState.id);
+    }
+    const owners = session.metadata['lastRunOwningPrincipals'];
+    if (isPlainAuthorityRecord(owners)) for (const runId of Object.keys(owners)) runIds.add(runId);
+    for (const taskId of await tasks.taskIdsOfContext(session.id, session.incarnation)) {
+      runIds.add(taskId);
+    }
+    // Children the chat's runs delegated to hold its words too (COR-1934); the purge reads the
+    // topology again on every pass, so one dispatched after this is found as well.
+    for (const child of await descendantRunIdsOf([...runIds])) runIds.add(child);
+    return [...runIds];
+  }
+
   const inFlightSessionDeletions = new Map<string, Promise<ContextDeletionReport>>();
   async function deleteSession(
     id: string,
@@ -14243,6 +14640,52 @@ async function constructBureau<const D extends AgentDefinitions>(
     if (checkFailure !== undefined) throw checkFailure.error;
   }
 
+  /**
+   * COR-1934 — the managed assets a session holds: the ones its rows reference, owned by the
+   * session's owner, and the ones it holds a claim on, owned by whoever owns the asset. Read before
+   * the delete, because the rows are gone by the time the purge runs and the delete releases the
+   * claims. An asset it never claimed is found by its row, and one whose row compaction removed by
+   * its claim.
+   */
+  async function chatAssetsOf(session: AgentSession): Promise<ChatAsset[]> {
+    const context = rowClaimContext(session);
+    if (context === undefined) return [];
+    const found = new Map<string, ChatAsset>();
+    for (const row of context.rows) {
+      for (const assetId of managedAssetIdsOf(row)) {
+        found.set(assetId, { assetId, ownerId: context.principalId });
+      }
+    }
+    const claims = await heldClaimsOf(
+      context.service,
+      sessionRowHolderPrefix(session.id, session.incarnation),
+    );
+    for (const claim of claims) {
+      // An asset the chat's owner only read (another principal's, shared with them) is that
+      // principal's to keep or delete: the chat released its claim, and that is all it did.
+      if (claim.ownerId !== context.principalId) continue;
+      found.set(claim.assetId, { assetId: claim.assetId, ownerId: claim.ownerId });
+    }
+    return [...found.values()];
+  }
+
+  /**
+   * COR-1934 — whose memory, and under which agent, the chat's runs wrote, named before the delete
+   * because the task records that otherwise say so can be gone by the time the purge runs (a
+   * `retention.tasks` shorter than memory's retention).
+   */
+  function chatMemoryPlacementsOf(
+    session: AgentSession,
+    runIds: readonly string[],
+  ): RunMemoryPlacement[] {
+    const placements = new Map<string, RunMemoryPlacement>();
+    for (const runId of runIds) {
+      const owner = resolveRunMemoryOwner(session.metadata, runId);
+      placements.set(`${owner}\u0000${session.agentName}`, { owner, agentName: session.agentName });
+    }
+    return [...placements.values()];
+  }
+
   async function releaseSessionGeneratedAssets(session: AgentSession): Promise<void> {
     const context = rowClaimContext(session);
     if (context === undefined) return;
@@ -14304,6 +14747,17 @@ async function constructBureau<const D extends AgentDefinitions>(
       return { deleted: false, tasks: [] };
     }
     if (session) {
+      // COR-1934 — before anything is removed: the purge that follows the commit is owed from here,
+      // and a delete that cannot record it is refused, so the chat is deleted again whole.
+      const runIds = await chatRunIdsOf(session);
+      const deletedChat: DeletedChat = {
+        sessionId: id,
+        incarnation: session.incarnation,
+        runIds,
+        assets: await chatAssetsOf(session),
+        memoryPlacements: chatMemoryPlacementsOf(session, runIds),
+      };
+      await chatContentPurge.record(deletedChat);
       await prepareSessionsForRemoval([session]);
       for (const runId of persistedApprovalRunIds(session.metadata)) {
         await revokePendingApprovalsForRun(runId, {
@@ -14412,9 +14866,12 @@ async function constructBureau<const D extends AgentDefinitions>(
             : await sessionStore.delete(id, { expectedIncarnation });
       } catch (error) {
         if (triedAgent !== undefined) tryAgents.hold(triedAgent);
+        // The delete did not commit: the purge is not owed.
+        await chatContentPurge.forget(deletedChat);
         throw error;
       }
       onStoreDeletionCommitted();
+      if (!removedLiveRecord) await chatContentPurge.forget(deletedChat);
       // COR-1915 — the deleted chat's spend records go with it. A record left behind is ignored
       // anyway, since a chat recreated under the id has another incarnation, so a failure here is
       // diagnosed and never keeps the deletion from finishing.
@@ -14532,6 +14989,21 @@ async function constructBureau<const D extends AgentDefinitions>(
       // with it: the other contexts' runs are history that retention ends.
       if (removedLiveRecord && sessionOriginOf(session.metadata) === 'try') {
         await discardTriedRuns(session, sessionRunIds);
+      }
+      // COR-1934 — the chat's content goes once its runs have ended, so their last events are in.
+      // The deletion has committed: a failure is diagnosed, the pending record stays, and the next
+      // maintenance pass or boot finishes the purge.
+      if (removedLiveRecord) {
+        try {
+          await chatContentPurge.run(deletedChat);
+        } catch (error) {
+          diagnose({
+            level: error instanceof ChatRunsNotEndedError ? 'warn' : 'error',
+            scope: 'durable-maintenance',
+            message: `[bureau] Chat "${id}" was deleted, but its content could not be purged yet; a later maintenance pass retries: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        }
       }
       return { deleted: removedLiveRecord, tasks: liveTasks };
     }
@@ -14780,6 +15252,11 @@ async function constructBureau<const D extends AgentDefinitions>(
           principalBacklogLimit: sessionInputPrincipalBacklogLimit(),
           sessionBacklogLimitForCrossSessionRead: sessionInputSessionBacklogLimit(),
           nowMs: runtimeServices.clock.now(),
+        }).catch((error: unknown): SessionInputAdmissionAttemptOutcome => {
+          // COR-1934: the chat was deleted and its mailbox purged while this admission was in
+          // flight; it is refused as any input to a chat that is gone.
+          if (error instanceof SessionInputMailboxPurgedError) return { outcome: 'not-found' };
+          throw error;
         });
       })();
     const admission = (
@@ -18226,6 +18703,9 @@ async function constructBureau<const D extends AgentDefinitions>(
       if (!record.type.startsWith('review.')) continue;
       const detail = record.detail;
       if (detail === null || typeof detail !== 'object') continue;
+      // COR-1934: a deleted chat's entry keeps the review's identity and nothing it asked, so it
+      // cannot stand for the review.
+      if ((detail as Record<string, unknown>)['redacted'] === true) continue;
       const reviewDetail = (detail as Record<string, unknown>)['review'];
       if (reviewDetail === null || typeof reviewDetail !== 'object') continue;
       if ((reviewDetail as Record<string, unknown>)['id'] !== id) continue;
@@ -19096,6 +19576,9 @@ async function constructBureau<const D extends AgentDefinitions>(
         await automaticRunOwnershipPruneCurrentPass;
       }
       if (taskResyncBootPass) await taskResyncBootPass;
+      // COR-1946: no further lease renewals or sweeps; the lease itself is removed last.
+      processLease.halt();
+      await abandonedTaskSweeper.close();
       // AB-388: drain any manual `maintain()` call(s) still in
       // flight — see `manualDurableMaintenancePasses`'s own doc comment
       // above. `allSettled` (never `all`): a rejection here is either
@@ -19307,6 +19790,16 @@ async function constructBureau<const D extends AgentDefinitions>(
               // watcher stops and drains before storage closes under it (COR-1669).
               await fileAgents?.files.close();
             } finally {
+              // COR-1946: removed after every task write of this shutdown, so a peer need not wait
+              // for it to lapse; a failure only means the peer waits.
+              await processLease.release().catch((error: unknown) => {
+                diagnose({
+                  level: 'error',
+                  scope: 'shutdown',
+                  message: `[bureau] Could not remove the process lease: ${serializeUnknownError(error)}`,
+                  cause: error,
+                });
+              });
               try {
                 // Bureau stops using the caller's storage, which the caller closes (COR-1767).
                 runtime.stopUsingStorage();
@@ -20905,6 +21398,12 @@ async function constructBureau<const D extends AgentDefinitions>(
       },
     );
     taskResyncInstance = createTaskResync({
+      contextIsLive: async (contextId, incarnation) => {
+        const sessionStore = runtime.sessionStore;
+        if (sessionStore === undefined) return true;
+        const session = await sessionStore.load(contextId);
+        return session?.incarnation === incarnation;
+      },
       answerOf: (taskId) => {
         const content = bureau.tasks
           .detail(taskId)
@@ -21297,6 +21796,9 @@ async function constructBureau<const D extends AgentDefinitions>(
       cause: error,
     });
   });
+  // COR-1946: the lease exists before the first task is admitted and before recovery looks at
+  // what a stopped process left, so a peer that boots now finds this process alive.
+  await processLease.start(options.maintenance === 'manual' ? 'manual' : 'timer');
   // Orphaned steering logs are independent of run recovery, so they are
   // swept at boot even when that recovery is deferred; in the background,
   // and awaited by shutdown before the backend closes.

@@ -66,6 +66,8 @@ export type ToolCallMessagePart = {
   key: string;
   pair: ToolCallPair;
   presentation?: ToolCallPresentation;
+  /** The call's approval state, when it asked for one; a denial reads Denied. */
+  approvalState?: ApprovalState;
 };
 
 export type ToolCallKind = 'search' | 'fetch' | 'write' | 'execute' | 'reason' | 'other';

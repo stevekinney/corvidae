@@ -31,8 +31,11 @@
       idempotencyKey: part.action.idempotencyKey,
       state: part.state,
       headingLevel: 4,
+      // One row: the reply above the approval already explains the request.
+      layout: 'row',
     };
 
+    if (part.action.message !== undefined) props.question = part.action.message;
     if (part.action.sandbox !== undefined) props.sandbox = part.action.sandbox;
     if (part.action.env !== undefined) props.env = part.action.env;
     if (part.action.snapshotId !== undefined) props.snapshotId = part.action.snapshotId;

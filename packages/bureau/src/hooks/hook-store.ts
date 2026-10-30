@@ -7,7 +7,10 @@
  */
 
 import type { EncryptedValue } from '@lostgradient/cryptography';
-import type { ConditionalTextValueStore } from '@lostgradient/storage';
+import type {
+  ConditionalTextValueStore,
+  TextValueStoreBatchOperation,
+} from '@lostgradient/storage';
 
 import { type AnswerEncryptionKeys, openSealedAnswer, sealValue } from '../secret-answers.ts';
 import {
@@ -23,6 +26,19 @@ export const HOOK_KEY_PREFIX = 'bureau-hook:v1:';
 
 /** Every delivery record's key starts with this. */
 export const HOOK_DELIVERY_KEY_PREFIX = 'bureau-hook-delivery:v1:';
+
+/**
+ * Every pending delivery has a key here, named for its id, written in the same conditional batch as
+ * its record and removed in the one that settles it, so resume lists these keys and never reads a
+ * settled record (COR-1943). The value is empty.
+ */
+export const HOOK_DELIVERY_PENDING_KEY_PREFIX = 'bureau-hook-delivery-pending:v1:';
+
+/**
+ * Present once every delivery record written before the pending index existed (COR-1939, PR #797)
+ * has been indexed, so the one scan that does it runs once per store (COR-1943).
+ */
+export const HOOK_DELIVERY_INDEX_BUILT_KEY = 'bureau-hook-delivery-index-built:v1';
 
 /** Every sealed signing secret the default {@link HookSecretStore} keeps has a key starting with this. */
 export const HOOK_SECRET_KEY_PREFIX = 'bureau-hook-secret:v1:';
@@ -155,15 +171,28 @@ export interface HookStore {
   deleteHook(before: Stored<HookRecord>): Promise<boolean>;
   /** The delivery, or `undefined` when there is none or its record cannot be read. */
   getDelivery(id: string): Promise<Stored<HookDeliveryRecord> | undefined>;
-  /** Every readable delivery. */
+  /** Every readable delivery. Reads every record; resume uses {@link HookStore.listPendingDeliveryIds}. */
   listDeliveries(): Promise<readonly HookDeliveryRecord[]>;
-  /** Writes a new delivery; `false` when the id is taken. */
+  /** Every readable delivery with the text it was read as, for a conditional removal. */
+  listStoredDeliveries(): Promise<readonly Stored<HookDeliveryRecord>[]>;
+  /** The ids of the pending deliveries, from the pending index: no record is read. */
+  listPendingDeliveryIds(): Promise<readonly string[]>;
+  /**
+   * Indexes the pending deliveries written before the index existed, once per store. Each index key
+   * is written only while its record is still what was read, so a delivery that settled meanwhile
+   * is not indexed.
+   */
+  indexPendingDeliveries(): Promise<void>;
+  /** Writes a new delivery, and its pending index key when it is pending; `false` when the id is taken. */
   createDelivery(record: HookDeliveryRecord): Promise<boolean>;
-  /** Replaces `before` with `after`; `false` when the delivery is no longer `before`. */
+  /**
+   * Replaces `before` with `after` and sets or removes the pending index key to match `after`'s
+   * status, in one batch; `false` when the delivery is no longer `before`.
+   */
   replaceDelivery(before: Stored<HookDeliveryRecord>, after: HookDeliveryRecord): Promise<boolean>;
-  /** Removes `before`; `false` when the delivery is no longer `before`. */
+  /** Removes `before` and its pending index key; `false` when the delivery is no longer `before`. */
   deleteDelivery(before: Stored<HookDeliveryRecord>): Promise<boolean>;
-  /** Removes every delivery of a hook. */
+  /** Removes every delivery of a hook, with their pending index keys. */
   deleteDeliveriesOf(hookId: string): Promise<void>;
 }
 
@@ -192,6 +221,16 @@ export function createHookStore(kv: ConditionalTextValueStore): HookStore {
     return record === undefined ? undefined : { record, raw };
   }
 
+  const deliveryKey = (id: string): string => `${HOOK_DELIVERY_KEY_PREFIX}${id}`;
+  const pendingKey = (id: string): string => `${HOOK_DELIVERY_PENDING_KEY_PREFIX}${id}`;
+
+  /** The operation that leaves the pending index key of `record` as its status says. */
+  function indexOperation(record: HookDeliveryRecord): TextValueStoreBatchOperation {
+    return record.status === 'pending'
+      ? { type: 'set', key: pendingKey(record.id), value: '' }
+      : { type: 'delete', key: pendingKey(record.id) };
+  }
+
   return {
     getHook: (id) => readOne(`${HOOK_KEY_PREFIX}${id}`, parseHook),
     listHooks: () => readAll(HOOK_KEY_PREFIX, parseHook),
@@ -216,38 +255,69 @@ export function createHookStore(kv: ConditionalTextValueStore): HookStore {
         [{ key: `${HOOK_KEY_PREFIX}${before.record.id}`, expectedValue: before.raw }],
         [{ type: 'delete', key: `${HOOK_KEY_PREFIX}${before.record.id}` }],
       ),
-    getDelivery: (id) => readOne(`${HOOK_DELIVERY_KEY_PREFIX}${id}`, parseDelivery),
+    getDelivery: (id) => readOne(deliveryKey(id), parseDelivery),
     listDeliveries: () => readAll(HOOK_DELIVERY_KEY_PREFIX, parseDelivery),
+    async listStoredDeliveries() {
+      const stored: Stored<HookDeliveryRecord>[] = [];
+      for (const key of await kv.list(HOOK_DELIVERY_KEY_PREFIX)) {
+        const raw = await kv.get(key);
+        const record = raw === null ? undefined : parseDelivery(raw);
+        if (raw !== null && record !== undefined) stored.push({ record, raw });
+      }
+      return stored;
+    },
+    async listPendingDeliveryIds() {
+      const keys = await kv.list(HOOK_DELIVERY_PENDING_KEY_PREFIX);
+      return keys.map((key) => key.slice(HOOK_DELIVERY_PENDING_KEY_PREFIX.length));
+    },
+    async indexPendingDeliveries() {
+      if (await kv.has(HOOK_DELIVERY_INDEX_BUILT_KEY)) return;
+      for (const key of await kv.list(HOOK_DELIVERY_KEY_PREFIX)) {
+        const raw = await kv.get(key);
+        const record = raw === null ? undefined : parseDelivery(raw);
+        if (raw === null || record === undefined || record.status !== 'pending') continue;
+        await kv.conditionalBatch(
+          [{ key, expectedValue: raw }],
+          [{ type: 'set', key: pendingKey(record.id), value: '' }],
+        );
+      }
+      await kv.set(HOOK_DELIVERY_INDEX_BUILT_KEY, '1');
+    },
     createDelivery: (record) =>
       kv.conditionalBatch(
-        [{ key: `${HOOK_DELIVERY_KEY_PREFIX}${record.id}`, expectedValue: null }],
+        [{ key: deliveryKey(record.id), expectedValue: null }],
         [
-          {
-            type: 'set',
-            key: `${HOOK_DELIVERY_KEY_PREFIX}${record.id}`,
-            value: JSON.stringify(record),
-          },
+          { type: 'set', key: deliveryKey(record.id), value: JSON.stringify(record) },
+          indexOperation(record),
         ],
       ),
     replaceDelivery: (before, after) =>
       kv.conditionalBatch(
-        [{ key: `${HOOK_DELIVERY_KEY_PREFIX}${before.record.id}`, expectedValue: before.raw }],
+        [{ key: deliveryKey(before.record.id), expectedValue: before.raw }],
         [
-          {
-            type: 'set',
-            key: `${HOOK_DELIVERY_KEY_PREFIX}${before.record.id}`,
-            value: JSON.stringify(after),
-          },
+          { type: 'set', key: deliveryKey(before.record.id), value: JSON.stringify(after) },
+          indexOperation(after),
         ],
       ),
     deleteDelivery: (before) =>
       kv.conditionalBatch(
-        [{ key: `${HOOK_DELIVERY_KEY_PREFIX}${before.record.id}`, expectedValue: before.raw }],
-        [{ type: 'delete', key: `${HOOK_DELIVERY_KEY_PREFIX}${before.record.id}` }],
+        [{ key: deliveryKey(before.record.id), expectedValue: before.raw }],
+        [
+          { type: 'delete', key: deliveryKey(before.record.id) },
+          { type: 'delete', key: pendingKey(before.record.id) },
+        ],
       ),
     async deleteDeliveriesOf(hookId) {
       for (const record of await readAll(HOOK_DELIVERY_KEY_PREFIX, parseDelivery)) {
-        if (record.hookId === hookId) await kv.delete(`${HOOK_DELIVERY_KEY_PREFIX}${record.id}`);
+        if (record.hookId !== hookId) continue;
+        // Unconditional, as before: the hook is gone, and so is whatever was driving this delivery.
+        await kv.conditionalBatch(
+          [],
+          [
+            { type: 'delete', key: deliveryKey(record.id) },
+            { type: 'delete', key: pendingKey(record.id) },
+          ],
+        );
       }
     },
   };

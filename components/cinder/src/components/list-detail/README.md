@@ -113,6 +113,14 @@ The `header` snippet sits above the rows. Put the title and the create action on
 
 `J` moves the keyboard cursor to the next row and `K` to the previous one, moving focus with it. `Enter` opens the row the cursor is on. The cursor is separate from the open item: moving it never changes the detail. `J` and `K` are ignored while focus is in a text field, a menu, a listbox, a combobox or a dialog, and while Control, Meta or Alt is held.
 
+`LIST_DETAIL_SHORTCUTS` describes these keys, each with its `keys` and a `label`, so an application can list them in its own shortcut map without handling them. The list region's `aria-keyshortcuts` is built from the same list.
+
+```ts
+import { LIST_DETAIL_SHORTCUTS } from '@lostgradient/cinder';
+
+const labels: string[] = LIST_DETAIL_SHORTCUTS.map((shortcut) => shortcut.label);
+```
+
 ## Selection in the URL
 
 The open item's key is kept in the `selected` search parameter (`selectionParameter`; pass `null` to keep it out of the URL). On mount, an empty `selectedKey` is filled from the URL, so a reload or a shared link lands on the same item. The URL is updated with `history.replaceState`, so selecting does not add history entries, and other search parameters are kept. Pass `selectionLocation` with `read` and `write` to route differently or to test. An explicit `selectedKey` wins over the URL and is written to it. A key that names no row shows the empty detail when the layout is split, and the list when it is stacked.

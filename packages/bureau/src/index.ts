@@ -1,4 +1,10 @@
-export { BUREAU_RESERVED_KEY_PREFIXES } from './reserved-key-prefixes';
+export {
+  BUREAU_RESERVED_KEY_FAMILIES,
+  BUREAU_RESERVED_KEY_PREFIXES,
+  type ChatDeleteClassification,
+  type ReservedKeyFamily,
+  SHARED_KEY_FAMILIES_OF_A_CHAT,
+} from './reserved-key-prefixes';
 export {
   BUILT_IN_NOTIFICATION_KINDS,
   NOTIFICATION_KIND_PATTERN,
@@ -85,7 +91,11 @@ export type {
   DefinitionSourceHost,
   WorkflowSource,
 } from './sources/definition-source';
-export { hashDefinitionBytes, SourceConflictError } from './sources/definition-source';
+export {
+  hashDefinitionBytes,
+  SourceConflictError,
+  SourceReadOnlyError,
+} from './sources/definition-source';
 export type { AgentRevision } from './agent-snapshot-store';
 export type { AgentVersionRecord } from './agent-version-store';
 export type { AgentReferenceDigest, AgentReferenceDocument } from './agent-reference-documents';
@@ -118,6 +128,23 @@ export {
   RESERVED_NAMESPACES,
   toWeftHandlerName,
 } from './namespaced-identifier';
+export {
+  createVersionedCatalog,
+  formatVersionedId,
+  parseVersionedId,
+  VERSIONED_CATALOG_KINDS,
+} from './versioned-catalog';
+export type {
+  VersionedCatalog,
+  VersionedCatalogEntry,
+  VersionedCatalogKind,
+  VersionedCatalogReference,
+  VersionedCatalogRegistration,
+  VersionedCatalogRegistrationResult,
+  VersionedCatalogRequest,
+  VersionedCatalogResolution,
+  VersionedCatalogSource,
+} from './versioned-catalog';
 export {
   WORKFLOW_FILE_STEM_PATTERN,
   WORKFLOW_IDENTIFIER_PATTERN,
@@ -309,6 +336,7 @@ export {
   classifyRecoveredRun,
   classifyRecoveredRunDetailed,
   createBureau,
+  PinnedToolUnavailableError,
   ReviewAnswerInvalidError,
   ReviewRoundChangedError,
   ScheduleLocatorUnavailableError,
@@ -576,6 +604,7 @@ export type {
   BureauLogsOptions,
   BureauLogsRetentionOption,
   BureauNotificationsRetentionOption,
+  BureauHookDeliveriesRetentionOption,
   BureauMemoryRetentionOption,
   BureauReceiptRetentionOption,
   BureauRetentionOptions,

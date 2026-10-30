@@ -593,7 +593,17 @@ export interface AssetService {
   ): Promise<AssetDescriptor>;
   releaseHold(assetId: string, principal: AssetPrincipal, holdId: string): Promise<AssetDescriptor>;
   expire(assetId: string, principal: AssetPrincipal): Promise<AssetDescriptor>;
-  delete(assetId: string, principal: AssetPrincipal): AssetWorkHandle<AssetDescriptor>;
+  /**
+   * Deletes the asset to a tombstone. A hold refuses it (`held`). With `unlessReferenced`, a
+   * reference refuses it the same way, decided in the same compare-and-swap that deletes, so a
+   * caller that means to delete an asset only if nothing holds it is not raced by a claim taken
+   * between its look and its delete.
+   */
+  delete(
+    assetId: string,
+    principal: AssetPrincipal,
+    options?: { readonly unlessReferenced?: boolean },
+  ): AssetWorkHandle<AssetDescriptor>;
   transform(
     assetId: string,
     principal: AssetPrincipal,

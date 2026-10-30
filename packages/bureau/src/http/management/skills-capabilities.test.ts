@@ -108,7 +108,7 @@ describe('bureau.skills.list', () => {
       {
         name: 'deploy',
         description: 'Description for deploy',
-        source: { id: 'workspace', kind: 'project', location: sources[1]?.location },
+        source: { id: 'workspace', kind: 'project', location: sources[1]?.location, plugin: null },
         trust: 'untrusted',
         trustReason: expect.any(String),
         available: false,
@@ -129,6 +129,55 @@ describe('bureau.skills.list', () => {
     ).toEqual([
       ['home', 2],
       ['workspace', 1],
+    ]);
+  });
+
+  it('lists a skill from a plugin source with kind plugin and its plugin name (COR-1873)', async () => {
+    const owner = await skillsDirectory({ summarize: undefined });
+    const shipped = await skillsDirectory({ triage: undefined });
+    const sources: readonly SkillSource[] = [
+      { id: 'home', kind: 'user', location: owner, precedence: 20 },
+      { id: 'plugin-linear', kind: 'plugin', plugin: 'linear', location: shipped, precedence: 35 },
+    ];
+    const catalog = await discoverSkills({ sources, now });
+    const standing: SkillsStanding = {
+      catalog,
+      sources: sources.map((source) => ({
+        id: source.id,
+        kind: source.kind,
+        location: source.location,
+        ...(source.plugin === undefined ? {} : { plugin: source.plugin }),
+        trust: 'trusted',
+        trustReason: 'test',
+      })),
+    };
+    const served = await serve();
+    const handler = createBureauHandler(served.bureau, {
+      unauthenticatedAccess: 'allow',
+      skills: { standing: () => standing },
+    });
+
+    const response = await callAs(handler, 'bureau.skills.list', {});
+
+    expect(response.error).toBeUndefined();
+    expect(listOf(response, 'skills')).toEqual([
+      expect.objectContaining({
+        name: 'summarize',
+        source: { id: 'home', kind: 'user', location: owner, plugin: null },
+      }),
+      expect.objectContaining({
+        name: 'triage',
+        source: { id: 'plugin-linear', kind: 'plugin', location: shipped, plugin: 'linear' },
+        // Plugins are trusted code, so a skill one ships is available without admitting it.
+        trust: 'trusted',
+        available: true,
+      }),
+    ]);
+    expect(
+      listOf(response, 'sources').map((source) => [source['id'], source['kind'], source['plugin']]),
+    ).toEqual([
+      ['home', 'user', null],
+      ['plugin-linear', 'plugin', 'linear'],
     ]);
   });
 

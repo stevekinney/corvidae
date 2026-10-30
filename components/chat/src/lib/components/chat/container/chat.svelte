@@ -29,7 +29,8 @@
 <script lang="ts">
   import { flushSync, tick } from 'svelte';
   import { isStreamingMessage } from '../builders.ts';
-  import type { MessageInput } from '../conversation-model.ts';
+  import type { Message, MessageInput, ToolCallPair } from '../conversation-model.ts';
+  import type { ChatComposerStatus } from '../input/composer-status.ts';
   import { classNames } from '../../../utilities/class-names.ts';
   import { overflowFadeEdges } from '../../../utilities/overflow-fade-edges.ts';
   import {
@@ -114,6 +115,10 @@
     loadingEarlierLabel = 'Loading earlier messages',
     header,
     composerActions,
+    composerToolbar,
+    composerFormattingToolbar = false,
+    composerMarkdownStyling = true,
+    composerStatus,
     empty,
     emptyPrompts,
     messageActions,
@@ -488,6 +493,32 @@
       ? toolResultMessagesByResult.get(pair.result)
       : undefined;
     return resolveArtifactForMessage(message, pairedResultMessage);
+  }
+
+  /** Each tool-call message in a group with its resolved pair. */
+  function toolCallGroupPairs(
+    groupMessages: readonly Message[],
+  ): { message: Message; pair: ToolCallPair }[] {
+    return groupMessages.flatMap((message) => {
+      if (!message.toolCall?.id) return [];
+      const pairs = toolCallPairsByCallId.get(message.toolCall.id) ?? [];
+      const pair = pairs.find((candidate) => candidate.call === message.toolCall) ?? pairs[0];
+      return pair ? [{ message, pair }] : [];
+    });
+  }
+
+  /** How long each call took, from its message to its result's, when both have times. */
+  function toolCallDurations(
+    groupPairs: readonly { message: Message; pair: ToolCallPair }[],
+  ): Map<string, number> {
+    const durations = new Map<string, number>();
+    for (const { message, pair } of groupPairs) {
+      const resultMessage = pair.result ? toolResultMessagesByResult.get(pair.result) : undefined;
+      if (!resultMessage) continue;
+      const duration = Date.parse(resultMessage.createdAt) - Date.parse(message.createdAt);
+      if (Number.isFinite(duration) && duration >= 0) durations.set(pair.call.id, duration);
+    }
+    return durations;
   }
 
   function artifactsForToolCallMessages(
@@ -1089,6 +1120,13 @@
   }
   // The adapter opting in to run input is what keeps the composer live during a run.
   const followUpsEnabled = $derived(adapter?.sendRunInput !== undefined);
+  // The host's status wins; otherwise say when an approval is holding the run.
+  const resolvedComposerStatus = $derived<ChatComposerStatus | undefined>(
+    composerStatus ??
+      (commandActions.hasPendingApproval()
+        ? { kind: 'waiting', steers: followUpsEnabled }
+        : undefined),
+  );
   const handleRetry = commandActions.handleRetry;
   const handleEdit = commandActions.handleEdit;
   const handleApprovalResolve = commandActions.resolveToolApproval;
@@ -1744,6 +1782,7 @@
         {@render renderTypingIndicator()}
       {:else if renderRow.type === 'tool-call-group'}
         {@const artifacts = artifactsForToolCallMessages(renderRow.messages)}
+        {@const groupPairs = toolCallGroupPairs(renderRow.messages)}
         <ToolCallTimeline
           messageId={renderRow.messages[0]!.id}
           activityActive={progressState === 'tool' &&
@@ -1751,12 +1790,9 @@
           describeToolCall={adapter?.describeToolCall
             ? (pair) => describeToolCallSafely(pair.call, pair.result)
             : undefined}
-          pairs={renderRow.messages.flatMap((message) => {
-            if (!message.toolCall?.id) return [];
-            const pairs = toolCallPairsByCallId.get(message.toolCall.id) ?? [];
-            const pair = pairs.find((candidate) => candidate.call === message.toolCall) ?? pairs[0];
-            return pair ? [pair] : [];
-          })}
+          pairs={groupPairs.map(({ pair }) => pair)}
+          approvalStates={commandActions.approvalStates}
+          durations={toolCallDurations(groupPairs)}
         />
         {#if artifacts.length > 0}
           <div class="chat-artifact-actions" role="group" aria-label="Artifact actions">
@@ -1898,6 +1934,10 @@
           sending={streaming}
           allowFollowUp={followUpsEnabled}
           actions={composerActions}
+          toolbar={composerToolbar}
+          formattingToolbar={composerFormattingToolbar}
+          markdownStyling={composerMarkdownStyling}
+          status={resolvedComposerStatus}
           {allowAttachments}
           onstop={streaming ? handleStopGenerating : undefined}
           {onComposerInput}

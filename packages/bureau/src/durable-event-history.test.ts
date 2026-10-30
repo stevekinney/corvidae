@@ -42,6 +42,7 @@ import {
   InvalidRetentionCutoffError,
   ReservedDurableEventKindError,
 } from './durable-event-history';
+import { RunContentPurgedError, runTombstoneKey } from './chat-content-tombstone';
 import { FRAMES_DROPPED_KIND } from './frames-dropped';
 import {
   ActionEvent,
@@ -2797,10 +2798,158 @@ function createRecordingHistory(
     retainBefore() {
       throw new Error('unused by createDurableEventProducer');
     },
+    purgeOwner() {
+      throw new Error('unused by createDurableEventProducer');
+    },
     dispose: async () => {},
   };
   return { history, calls };
 }
+
+describe('purgeOwner() (COR-1934)', () => {
+  async function seeded() {
+    const storage = await createMemoryStorage();
+    const runtime = createManualRuntimeServices();
+    const history = createDurableEventHistory(storage, runtime);
+    return { storage, history };
+  }
+
+  async function keys(storage: Storage, prefix: string): Promise<string[]> {
+    const found: string[] = [];
+    for await (const [key] of storage.scan(prefix)) found.push(key);
+    return found;
+  }
+
+  it("deletes one owner's events, their index entries and their dedupe markers, and nothing of another owner", async () => {
+    const { storage, history } = await seeded();
+    const doomed = { kind: 'run', id: 'run-1' } as const;
+    const prefixSibling = { kind: 'run', id: 'run-10' } as const;
+    await history.record(doomed, 'run.completed', { answer: 'secret' }, { dedupeKey: 'a' });
+    await history.record(prefixSibling, 'run.completed', { answer: 'kept' }, { dedupeKey: 'a' });
+    await history.record(doomed, 'run.error', { answer: 'secret' });
+
+    expect(await history.purgeOwner(doomed)).toBe(2);
+
+    const left = await history.page(doomed);
+    if ('outcome' in left) throw new Error('expected a page');
+    expect(left.events).toEqual([]);
+    expect(await keys(storage, 'outbox-dedupe:run:run-1:')).toEqual([]);
+    expect(await keys(storage, 'fleet-event-by-workflow:run%3Arun-1:')).toEqual([]);
+    expect(await keys(storage, 'outbox-dedupe:run:run-10:')).toHaveLength(1);
+    const kept = await history.page(prefixSibling);
+    if ('outcome' in kept) throw new Error('expected a page');
+    expect(kept.events.map((event) => event.payload)).toEqual([{ answer: 'kept' }]);
+    // The dedupe marker went with its event, so the same event can be recorded again.
+    await history.record(doomed, 'run.completed', { answer: 'again' }, { dedupeKey: 'a' });
+    expect(await history.purgeOwner(doomed)).toBe(1);
+    // Nothing left: a repeat deletes nothing.
+    expect(await history.purgeOwner(doomed)).toBe(0);
+
+    await history.dispose();
+  });
+
+  it('deletes only the given incarnation and keeps the named kinds and their markers', async () => {
+    const { storage, history } = await seeded();
+    const owner = { kind: 'session', id: 'chat-1' } as const;
+    await history.record(
+      owner,
+      'session.saved',
+      { preview: 'old' },
+      { incarnation: 'one', dedupeKey: '1' },
+    );
+    await history.record(
+      owner,
+      'session.deleted',
+      { sessionId: 'chat-1' },
+      { incarnation: 'one', dedupeKey: '2' },
+    );
+    await history.record(
+      owner,
+      'session.saved',
+      { preview: 'new' },
+      { incarnation: 'two', dedupeKey: '3' },
+    );
+    await history.record(owner, 'session.saved', { preview: 'none' });
+
+    expect(
+      await history.purgeOwner(owner, {
+        incarnation: 'one',
+        keepKinds: new Set(['session.deleted']),
+      }),
+    ).toBe(1);
+
+    const page = await history.page(owner);
+    if ('outcome' in page) throw new Error('expected a page');
+    expect(page.events.map((event) => event.payload)).toEqual([
+      { sessionId: 'chat-1' },
+      { preview: 'new' },
+      { preview: 'none' },
+    ]);
+    const markers = await keys(storage, 'outbox-dedupe:session:chat-1:');
+    expect(markers.toSorted()).toEqual([
+      'outbox-dedupe:session:chat-1:session.deleted:2',
+      'outbox-dedupe:session:chat-1:session.saved:3',
+    ]);
+
+    await history.dispose();
+  });
+
+  it('never cuts a batch inside an event, so a failed batch leaves whole events for the retry', async () => {
+    const { storage, history } = await seeded();
+    const owner = { kind: 'run', id: 'run-1' } as const;
+    // One event without a dedupe marker (two keys), then events with one (three keys each): a
+    // flat slice into batches of 300 puts the last event's index entry apart from its event.
+    await history.record(owner, 'run.error', { answer: 'secret' });
+    for (let index = 0; index < 101; index += 1) {
+      await history.record(
+        owner,
+        'run.completed',
+        { answer: 'secret' },
+        { dedupeKey: `k${index}` },
+      );
+    }
+    const batches: string[][] = [];
+    const batch = storage.batch.bind(storage);
+    let failAfter = 1;
+    storage.batch = async (operations) => {
+      if (batches.length >= failAfter) throw new Error('injected: store down');
+      batches.push(operations.map((operation) => operation.key));
+      return batch(operations);
+    };
+
+    await history.purgeOwner(owner).then(
+      () => undefined,
+      () => undefined,
+    );
+
+    expect(batches).toHaveLength(1);
+    for (const keys of batches) {
+      for (const key of keys.filter((entry) => entry.startsWith('fleet-event-by-workflow:'))) {
+        const sequence = Number(key.slice(key.lastIndexOf(':') + 1));
+        expect(keys).toContain(KEYS.fleetEvent(sequence));
+      }
+    }
+    // The retry finds every event that is left, and removes it.
+    failAfter = Number.POSITIVE_INFINITY;
+    expect(await history.purgeOwner(owner)).toBeGreaterThan(0);
+    expect(await keys(storage, 'fleet-event-by-workflow:run%3Arun-1:')).toEqual([]);
+    expect(await keys(storage, 'fleet-event:')).toEqual([]);
+
+    await history.dispose();
+  });
+
+  it('removes an index entry whose event is already gone', async () => {
+    const { storage, history } = await seeded();
+    const owner = { kind: 'run', id: 'run-1' } as const;
+    await history.record(owner, 'run.completed', {});
+    await storage.delete(KEYS.fleetEvent(0));
+
+    expect(await history.purgeOwner(owner)).toBe(0);
+
+    expect(await keys(storage, 'fleet-event-by-workflow:run%3Arun-1:')).toEqual([]);
+    await history.dispose();
+  });
+});
 
 describe('createDurableEventProducer()', () => {
   it('records a run-durable action type under the run owner, with the same serialized detail the audit trail would produce', async () => {
@@ -4222,5 +4371,55 @@ describe('createDurableEventProducer()', () => {
 
       await producer.dispose();
     });
+  });
+});
+
+describe('the fence of a purged run (COR-1934)', () => {
+  it('drops a record for a run whose tombstone is written, before and in the same batch as the append', async () => {
+    const storage = await createMemoryStorage();
+    const runtime = createManualRuntimeServices();
+    const history = createDurableEventHistory(storage, runtime);
+    const tombstone = runTombstoneKey('run-1');
+    await storage.put(
+      tombstone,
+      new TextEncoder().encode(JSON.stringify({ runId: 'run-1', purgedAt: 1 })),
+    );
+
+    // Read before the append: refused at once.
+    expect(
+      await rejectionOf(history.record({ kind: 'run', id: 'run-1' }, 'run.completed', { c: 'S' })),
+    ).toBeInstanceOf(RunContentPurgedError);
+    expect(
+      await rejectionOf(
+        history.record(
+          { kind: 'run', id: 'run-1' },
+          'run.completed',
+          { c: 'S' },
+          { dedupeKey: 'k' },
+        ),
+      ),
+    ).toBeInstanceOf(RunContentPurgedError);
+    // Written between the read and the commit: the batch's own condition refuses it.
+    await storage.delete(tombstone);
+    const originalGet = storage.get.bind(storage);
+    let armed = true;
+    storage.get = async (key: string) => {
+      const value = await originalGet(key);
+      if (armed && key === tombstone) {
+        armed = false;
+        await storage.put(tombstone, new TextEncoder().encode('{"runId":"run-1","purgedAt":2}'));
+      }
+      return value;
+    };
+    expect(
+      await rejectionOf(history.record({ kind: 'run', id: 'run-1' }, 'run.completed', { c: 'S' })),
+    ).toBeInstanceOf(RunContentPurgedError);
+    storage.get = originalGet;
+    // Nothing of the run was appended; another run records as before.
+    const page = await history.page({ kind: 'run', id: 'run-1' });
+    expect('events' in page ? page.events : page).toEqual([]);
+    const other = await history.record({ kind: 'run', id: 'run-2' }, 'run.completed', { c: 'S' });
+    expect(other.owner).toEqual({ kind: 'run', id: 'run-2' });
+    await history.dispose();
   });
 });
