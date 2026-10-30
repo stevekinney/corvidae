@@ -9,6 +9,7 @@ import {
   buildOpenAIRow,
   deepFreeze,
 } from './model-catalog-rows.ts';
+import { PROVIDER_NAME_PATTERN } from './provider-name.ts';
 import type { BaseProviderOptions, Effort, ProviderName } from './types.ts';
 
 export { requireLimits, requireModalities, type ModelLimitEntry } from './model-catalog-data.ts';
@@ -182,6 +183,34 @@ export interface CreateModelCatalogOptions {
    * when both are supplied, for backward compatibility.
    */
   readonly runtime?: RuntimeServices | undefined;
+  /**
+   * Rows a loaded provider contributes beyond the built-in seed, appended after it. A row's
+   * `provider` is the contributing provider's name, so a provider package adds its rows without an
+   * edit to this module.
+   *
+   * @throws {Error} When a row's `provider` does not match the provider-name grammar, or when two
+   * rows (a seed row included) carry one provider and model.
+   */
+  readonly descriptors?: readonly BackendDescriptor[] | undefined;
+}
+
+/** Snapshots and freezes the rows a provider contributes, after checking each is well formed and unique. */
+function contributedRows(
+  rows: readonly BackendDescriptor[],
+  seeded: readonly BackendDescriptor[],
+): readonly BackendDescriptor[] {
+  const seen = new Set(seeded.map((row) => `${row.provider}\u0000${row.model}`));
+  return rows.map((row) => {
+    if (!PROVIDER_NAME_PATTERN.test(row.provider)) {
+      throw new Error(`model-catalog: "${row.provider}" is not a valid provider name`);
+    }
+    const key = `${row.provider}\u0000${row.model}`;
+    if (seen.has(key)) {
+      throw new Error(`model-catalog: duplicate row for ${row.provider}/${row.model}`);
+    }
+    seen.add(key);
+    return deepFreeze(structuredClone(row));
+  });
 }
 
 /**
@@ -208,10 +237,10 @@ export function createModelCatalog(options?: CreateModelCatalogOptions): ModelCa
     deepFreeze(buildGeminiRow(model, freshness)),
   );
 
+  const seeded = [...anthropicDescriptors, ...openAIDescriptors, ...geminiDescriptors];
   const descriptors = Object.freeze([
-    ...anthropicDescriptors,
-    ...openAIDescriptors,
-    ...geminiDescriptors,
+    ...seeded,
+    ...contributedRows(options?.descriptors ?? [], seeded),
   ]);
 
   return Object.freeze({

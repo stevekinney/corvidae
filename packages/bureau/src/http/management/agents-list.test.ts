@@ -1,7 +1,7 @@
 /**
  * COR-1489 — what `bureau.agents.list` returns: every entry's `kind` (`code` or `file`) and its
- * `a2a` opt-in. Every ready agent is listed to any authenticated caller, whether or not it opts
- * into A2A; the `a2aAgents` allowlist only decides which code-defined agents opt in.
+ * `a2a` opt-in. Every ready agent is listed to a caller holding `bureau.agents:read`, whether or not
+ * it opts into A2A, and only the agents that opt in to any other caller (COR-1904).
  */
 import { createAgent } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
@@ -85,16 +85,15 @@ describe('bureau.agents.list code-defined agents outside the A2A allowlist', () 
     ]);
   });
 
-  it('are listed to a caller who holds no scope and owns nothing, by name, label and description', async () => {
+  // COR-1904: a caller with no scope used to see them too. Now only `bureau.agents:read` does, so a
+  // credential handed to A2A clients learns nothing of an agent it is not offered.
+  it('are not listed to a caller who holds no scope and owns nothing', async () => {
     const served = await withInternalAgent();
 
     const listed = await rpc(served.keyed, 'bureau.agents.list', {}, 'alice-key');
 
-    expect(summary(listOf(listed, 'agents'))).toEqual([
-      ['alpha', 'code', true],
-      ['internal', 'code', false],
-    ]);
-    expect(JSON.stringify(listed)).toContain('Never offered over A2A');
+    expect(summary(listOf(listed, 'agents'))).toEqual([['alpha', 'code', true]]);
+    expect(JSON.stringify(listed)).not.toContain('Never offered over A2A');
   });
 
   it('are named by the deployment, which lists every ready agent', async () => {

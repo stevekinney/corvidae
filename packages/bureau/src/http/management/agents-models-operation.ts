@@ -6,7 +6,8 @@
  * its `model` is the default and its `models` list, or the deployment's catalog without one,
  * says what else it allows. A code-defined agent is selectable when its profile is, fixed when
  * one model is attached, and neither routed nor opaque ones offer a choice. Any authenticated
- * caller may ask about an agent the deployment lists; any other name is `NotFound`.
+ * caller may ask about an agent `bureau.agents.list` lists to it; any other name is `NotFound`, so
+ * a caller without `bureau.agents:read` cannot learn of an agent that does not opt into A2A.
  *
  * @module agents-models-operation
  */
@@ -15,7 +16,7 @@ import { defineOperation } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import type { AgentModels } from '../../agent-models.ts';
-import type { BureauDeploymentOperationHost } from './deployment-operations.ts';
+import { agentsVisibleTo, type BureauDeploymentOperationHost } from './deployment-operations.ts';
 import {
   resourceNotFound,
   unaryTransports as transports,
@@ -58,7 +59,7 @@ export const agentsModelsOperation = defineOperation<
   mcpExposable: false,
   summary: 'List the models an agent allows',
   description:
-    'Returns the models a session of `agentName` can be switched to through `bureau.contexts.steer`: `selectable`, `models` (each with `provider`, `model` and `displayName`, the provider-native model name, since the deployment’s catalog holds no label of its own) and `default`, the catalog row the agent’s next step would use with no override, or `null` when that is not known. A persisted agent (an agent file) is selectable: its frontmatter `model` is the default, its `models` list, filtered to the models the deployment’s catalog holds, says what is allowed, and without a list the whole catalog is. A code-defined agent with `allowedCandidates` (or a selectable profile naming none, which allows the whole catalog) is selectable the same way. A fixed agent is not selectable and lists its one model; a routed or opaque agent is not selectable and lists none. Any authenticated caller may ask about an agent `bureau.agents.list` lists; any other name answers `NotFound`.',
+    'Returns the models a session of `agentName` can be switched to through `bureau.contexts.steer`: `selectable`, `models` (each with `provider`, `model` and `displayName`, the provider-native model name, since the deployment’s catalog holds no label of its own) and `default`, the catalog row the agent’s next step would use with no override, or `null` when that is not known. A persisted agent (an agent file) is selectable: its frontmatter `model` is the default, its `models` list, filtered to the models the deployment’s catalog holds, says what is allowed, and without a list the whole catalog is. A code-defined agent with `allowedCandidates` (or a selectable profile naming none, which allows the whole catalog) is selectable the same way. A fixed agent is not selectable and lists its one model; a routed or opaque agent is not selectable and lists none. Any authenticated caller may ask about an agent `bureau.agents.list` lists to it (every ready agent with `bureau.agents:read`, only the ones that opt into A2A without it); any other name answers `NotFound`.',
   destructive: false,
   tags: ['Agents'],
   inputSchema: agentsModelsInput,
@@ -68,9 +69,12 @@ export const agentsModelsOperation = defineOperation<
   discoverable: true,
   transports,
   unknownKeyPolicy,
-  invoke: async ({ input, host }) => {
-    // Only a listed agent (ready, code-defined or persisted) has models to describe.
-    const listed = host.deployment.agents().find((agent) => agent.name === input.agentName);
+  invoke: async ({ input, host, principal }) => {
+    // Only an agent listed to this caller (ready, and opted into A2A for a caller without
+    // `bureau.agents:read`) has models to describe.
+    const listed = agentsVisibleTo(principal, host.deployment.agents()).find(
+      (agent) => agent.name === input.agentName,
+    );
     const described = listed === undefined ? undefined : host.agentModels.describe(input.agentName);
     if (described === undefined) throw resourceNotFound('agent', input.agentName);
     return {

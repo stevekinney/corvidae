@@ -28,6 +28,13 @@ export type TextareaProps = Omit<HTMLTextareaAttributes, 'class'> & {
   maxlength?: number;
   /** Disables the textarea. */
   disabled?: boolean;
+  /**
+   * Size step shared with the other fields. A textarea is taller than one line, so `size`
+   * sets only its block padding: `sm` 6px, `md` 8px, `lg` 10px, matching the inset of the
+   * fields beside it rather than their height.
+   * @default "md"
+   */
+  size?: 'sm' | 'md' | 'lg';
   /** Extra class names merged with `.cinder-textarea`. */
   class?: string;
   /**

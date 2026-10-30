@@ -63,6 +63,7 @@ import { DEFAULT_MAX_STREAM_CONNECTIONS_PER_WORKFLOW } from './runtime/websocket
 import { endWorkerReconnectGracePeriods } from './runtime/worker-disconnect-requeue.ts';
 import { createWorkerSessionTiming } from './runtime/worker-session-timing.ts';
 import { TaskQueue } from './task-queue.ts';
+import { createWatchEventFeed } from './watch-event-feed-backend.ts';
 import { createWorkflowEventFeed } from './workflow-event-feed.ts';
 
 // Types
@@ -331,7 +332,6 @@ export function buildServerContext(
   // #708. Every helper below only exercises registry-erased `Engine`
   // behavior.
   const engine = options.engine as Engine;
-  const eventFeedBackend = createEngineEventFeedBackend(engine);
 
   // Deferred-promise gate for startup task-ledger recovery. Constructed
   // before `context` so it can be embedded in the object literal below, then
@@ -400,8 +400,8 @@ export function buildServerContext(
     metricsCollector: serverMetricsCollector,
     connectionCounts,
     refreshConnectionMetrics,
-    eventFeedBackend,
-    workflowEventFeed: createWorkflowEventFeed(eventFeedBackend),
+    watchEventFeed: createWatchEventFeed(engine),
+    workflowEventFeed: createWorkflowEventFeed(createEngineEventFeedBackend(engine)),
     fleetEventFeed: createFleetEventFeed(options.engine.storage),
     activeJsonRpcSessions: new Set(),
     mcpEndpoint: createMcpEndpoint(engine),

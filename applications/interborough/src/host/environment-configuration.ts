@@ -1,3 +1,6 @@
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import type { BungalowEnvironment } from '@lostgradient/bungalow';
 
 /** The port the host listens on when `INTERBOROUGH_PORT` is not set. */
@@ -6,9 +9,20 @@ export const DEFAULT_PORT = 7234;
 /** The environment variable that overrides {@link DEFAULT_PORT}. */
 export const PORT_VARIABLE = 'INTERBOROUGH_PORT';
 
+/** Where `bun scripts/build.ts` writes the application: `build/` at the package root. */
+export const DEFAULT_BUILD_DIRECTORY = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+  'build',
+);
+
+/** The environment variable that names the directory holding the built application, in place of `build/`. */
+export const BUILD_DIRECTORY_VARIABLE = 'INTERBOROUGH_BUILD_DIRECTORY';
+
 /**
- * The process environment, which the host reads for `INTERBOROUGH_HOME` (through Bungalow) and
- * for `INTERBOROUGH_PORT`. This is the only module in the application's source that touches
+ * The process environment, which the host reads for `INTERBOROUGH_HOME` (through Bungalow), for
+ * `INTERBOROUGH_PORT`, and for `INTERBOROUGH_BUILD_DIRECTORY`. This is the only module in the application's source that touches
  * `process.env`; everything else receives an environment as a value, which is also how tests
  * inject one.
  */
@@ -30,4 +44,15 @@ export function resolvePort(environment: BungalowEnvironment): number {
     throw new Error(`${PORT_VARIABLE} must be a whole number from 0 to 65535 (got "${raw}").`);
   }
   return port;
+}
+
+/**
+ * The directory the built application is served from: the one `INTERBOROUGH_BUILD_DIRECTORY` names
+ * (a relative path is taken from the working directory), or {@link DEFAULT_BUILD_DIRECTORY} when
+ * it is unset or empty. The entries (`serve.ts`, `dev.ts`) and the supervisor read the same
+ * variable, so `start` checks for the build it will serve.
+ */
+export function resolveBuildDirectory(environment: BungalowEnvironment): string {
+  const raw = environment[BUILD_DIRECTORY_VARIABLE];
+  return raw === undefined || raw === '' ? DEFAULT_BUILD_DIRECTORY : resolve(raw);
 }

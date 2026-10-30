@@ -23,7 +23,7 @@ function readRemTokenValue(source: string, name: string): number {
   throw new Error(`Missing or unresolvable rem-valued token for ${name}`);
 }
 
-function readButtonHeightToken(size: 'xs' | 'sm' | 'md' | 'lg' | 'xl'): number {
+function readButtonHeightToken(size: 'xs' | 'sm' | 'md' | 'lg'): number {
   return readRemTokenValue(readTokenSource(), `cinder-button-height-${size}`);
 }
 
@@ -65,27 +65,28 @@ function expectColorMixBackgroundHasFallback(block: string): void {
   expect(previousDeclaration).not.toContain('transparent');
 }
 
-describe('Button sizes — xl', () => {
-  test('xl size applies data-cinder-size="xl"', () => {
-    const { container } = render(Button, { props: { label: 'Big', size: 'xl' } });
-    expect(container.querySelector('button')?.getAttribute('data-cinder-size')).toBe('xl');
+describe('Button sizes', () => {
+  test('the size ladder stops at lg', () => {
+    expect(readTokenSource()).not.toContain('--cinder-button-height-xl');
+    expect(readButtonSource()).not.toContain("data-cinder-size='xl'");
   });
 
-  test('sizes use the compact 24/32/32/36/40px height ladder', () => {
-    // `sm` shares `control.height.sm` with toolbar SegmentedControl and Chip,
-    // so it matches `md`'s height and differs from it in padding and type.
+  test('sizes read the shared 24/28/32/40px control height scale', () => {
     expect(readButtonHeightToken('xs')).toBe(1.5);
-    expect(readButtonHeightToken('sm')).toBe(2);
+    expect(readButtonHeightToken('sm')).toBe(1.75);
     expect(readButtonHeightToken('md')).toBe(2);
-    expect(readButtonHeightToken('lg')).toBe(2.25);
-    expect(readButtonHeightToken('xl')).toBe(2.5);
+    expect(readButtonHeightToken('lg')).toBe(2.5);
+    for (const size of ['xs', 'sm', 'md', 'lg'] as const) {
+      expect(readTokenSource()).toContain(
+        `--cinder-button-height-${size}: var(--cinder-control-height-${size});`,
+      );
+    }
   });
 
-  test('font-size ladder: lg=md-token, xl=lg-token, md stays sm', () => {
+  test('font-size ladder: lg=md-token, md stays sm', () => {
     const source = readTokenSource();
     expect(source).toContain('--cinder-button-font-size-md: var(--cinder-text-sm);');
     expect(source).toContain('--cinder-button-font-size-lg: var(--cinder-text-md);');
-    expect(source).toContain('--cinder-button-font-size-xl: var(--cinder-text-lg);');
   });
 
   test('text scale defines the md step at 15px', () => {

@@ -294,7 +294,7 @@
     >
       {label}
       {#if resolvedRequired}
-        <span class="cinder-_required-marker" aria-hidden="true">*</span>
+        <span class="cinder-_required-marker" aria-hidden="true"></span>
       {/if}
     </span>
   {/if}

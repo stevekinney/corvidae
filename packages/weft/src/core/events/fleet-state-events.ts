@@ -157,12 +157,20 @@ export class WorkerDeploymentChangedEvent extends Event {
 }
 
 /**
- * Fired on the {@link Engine} after a chunk written under a workflow stream key
- * other than `tokens` is durably stored. It carries the key and the chunk's
- * zero-based sequence, never the chunk body. Token chunks are not announced
- * here: they already reach subscribers through `stream:token` and the workflow
- * feed. The event announces a stored chunk, not a completed stream: a stream
- * that later fails has its partial chunks removed.
+ * Fired on the {@link Engine} after chunks written under a workflow stream key
+ * other than `tokens` are durably stored. It carries the key and a zero-based
+ * `sequence`, never a chunk body. Token chunks are not announced here: they
+ * already reach subscribers through `stream:token` and the workflow feed.
+ *
+ * It is coalesced per `(workflowId, key)`, so `sequence` is the latest chunk
+ * stored when the event fires, not every chunk: the first chunk after a quiet
+ * 250 ms window is announced at once, and a trailing event at the end of the
+ * window names the latest stored sequence. A stream's last chunk is always
+ * announced, when the stream completes or its workflow ends, and a run that a
+ * `start-new` replacement superseded announces nothing. Read the chunks after
+ * the last one held rather than counting events. The event announces stored
+ * chunks, not a completed stream: a stream that later fails has its partial
+ * chunks removed.
  *
  * @example
  * ```ts

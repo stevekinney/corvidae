@@ -306,7 +306,7 @@ for await (const event of tail) {
 }
 ```
 
-The tail is single-consumer and stops on terminal workflow events or `tail.close()`. Pass `eventTransport: 'websocket'` to require WebSocket, `eventTransport: 'sse'` to require SSE, or `HttpClientOptions.webSocketFactory` to provide a runtime-specific WebSocket constructor.
+The tail is single-consumer and stops on terminal workflow events or `tail.close()`. Pass `eventTransport: 'websocket'` to require WebSocket, `eventTransport: 'sse'` to require SSE, or `HttpClientOptions.webSocketFactory` to provide a runtime-specific WebSocket constructor. The client assumes the global `WebSocket` cannot send upgrade headers, so with headers or a token configured `eventTransport: 'auto'` uses SSE; set `webSocketCarriesHeaders: true` when your runtime's `WebSocket` accepts an options bag with headers (Bun does) to keep the WebSocket channel.
 
 ### Idempotent Starts and Signal-With-Start
 

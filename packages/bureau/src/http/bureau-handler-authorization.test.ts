@@ -1225,7 +1225,7 @@ describe('the AG-UI routes owner predicate', () => {
       const mount = createAgUiMount(
         harness.bureau,
         { mayAccess: counting, ownerOf: (resource) => harness.bureau.ownerOf(resource) },
-        ['assistant'],
+        { includes: (agentName) => agentName === 'assistant' },
         {},
       );
       const handler = createOperationHandler({

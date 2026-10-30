@@ -47,6 +47,7 @@ import { scheduleInputPreview } from '../../schedule-input-preview.ts';
 import type { BureauSchedules } from '../../types.ts';
 import type { BureauScope } from '../bureau-scopes.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
+import type { BureauAgentVisibilityHost } from './deployment-operations.ts';
 import {
   DEFAULT_PAGE_LIMIT,
   pageFields,
@@ -56,25 +57,26 @@ import {
 } from './management-schemas.ts';
 
 /** What the schedule operations read from the handler's `host`. */
-export type BureauSchedulesOperationHost = BureauOwnershipHost & {
-  readonly schedules: Pick<
-    BureauSchedules,
-    | 'create'
-    | 'get'
-    | 'list'
-    | 'pause'
-    | 'resume'
-    | 'cancel'
-    | 'update'
-    | 'agentName'
-    | 'inputPreview'
-  > & {
-    /** The owner of record of a schedule, or `undefined` when it is not a Bureau schedule. */
-    readonly owner: (scheduleId: string) => Promise<string | undefined>;
-    /** Whether the Bureau's agent catalog holds an agent named `name`. */
-    readonly hasAgent: (name: string) => boolean;
+export type BureauSchedulesOperationHost = BureauOwnershipHost &
+  BureauAgentVisibilityHost & {
+    readonly schedules: Pick<
+      BureauSchedules,
+      | 'create'
+      | 'get'
+      | 'list'
+      | 'pause'
+      | 'resume'
+      | 'cancel'
+      | 'update'
+      | 'agentName'
+      | 'inputPreview'
+    > & {
+      /** The owner of record of a schedule, or `undefined` when it is not a Bureau schedule. */
+      readonly owner: (scheduleId: string) => Promise<string | undefined>;
+      /** Whether the Bureau's agent catalog holds an agent named `name`. */
+      readonly hasAgent: (name: string) => boolean;
+    };
   };
-};
 
 const scheduleStatus = z.enum(['active', 'paused', 'cancelled']);
 const scheduleIdentifier = z.string().min(1).max(256).describe('The identifier of the schedule.');
@@ -413,7 +415,13 @@ export const schedulesCreateOperation = defineOperation<
         data: { reason: 'no owner of record' },
       } satisfies OperationFault;
     }
-    if (!host.schedules.hasAgent(input.agentName)) throw resourceNotFound('agent', input.agentName);
+    // An agent the caller may not name (COR-1904) is as unknown to it as one the catalog lacks.
+    if (
+      !host.agentVisibility.mayName(principal, input.agentName) ||
+      !host.schedules.hasAgent(input.agentName)
+    ) {
+      throw resourceNotFound('agent', input.agentName);
+    }
     try {
       const summary = await host.schedules.create({
         agentName: input.agentName,

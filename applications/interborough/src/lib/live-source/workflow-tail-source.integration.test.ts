@@ -22,10 +22,16 @@
  */
 import type { WorkflowEvent } from '@lostgradient/weft';
 import { flushPortableMicrotasks, HttpClient } from '@lostgradient/weft';
+import { QueryClient } from '@tanstack/svelte-query';
 import { waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { quietFor } from '@lostgradient/testing/wait-until';
+import {
+  applyWorkflowTailFrame,
+  createWorkflowCheckpointRefresher,
+  workflowEventsKey,
+} from './cache-integration.ts';
 import { installFetchImplementation } from './fetch.test-support.ts';
 import {
   startLiveSourceTestServer,
@@ -82,6 +88,10 @@ function installSeverableFetch(): { sever(): void; requests: Request[]; restore(
     return new Response(body, { status: upstream.status, headers: upstream.headers });
   });
   return { sever: () => cuts.pop()?.(), requests, restore };
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
 }
 
 function identities(events: readonly WorkflowEvent[]): string[] {
@@ -162,12 +172,6 @@ describe('WorkflowTailSource (integration, real server)', () => {
       });
 
       expect(secondReceived.slice(0, firstReceived.length)).toEqual(firstReceived);
-      // No duplicate (type, data) pairs within the second tail's own delivery.
-      const seen = new Set(
-        secondReceived.map((frame) => `${frame.type}:${JSON.stringify(frame.data)}`),
-      );
-      expect(seen.size).toBe(secondReceived.length);
-
       secondSource.close();
     } finally {
       await server.stop();
@@ -246,12 +250,65 @@ describe('WorkflowTailSource (integration, real server)', () => {
       const controlReceived: WorkflowEvent[] = [];
       control.subscribe((frame) => controlReceived.push(frame));
       await control.whenConnected();
-      // Compared by event identity (type and step): the server's replayed history also carries a
-      // `__weftCheckpointReplay` payload that its live frames omit, which says nothing about delivery.
+      // Compared by event identity (type and step): the server's replayed history can carry fields
+      // that its live frames omit, which says nothing about delivery. Lifecycle events repeat
+      // legitimately (one `signal:received` per signal), so equality with the control tail, not
+      // distinct identities, is what rules out a replayed prefix and a gap.
       await waitFor(() => expect(identities(received)).toEqual(identities(controlReceived)));
-      expect(new Set(identities(received)).size).toBe(received.length);
 
       control.close();
+      source.close();
+    } finally {
+      await server.stop();
+    }
+  });
+  test('every checkpoint entry the old events route delivered is still in the Events tab cache, live', async () => {
+    const server = await startLiveSourceTestServer();
+    try {
+      const workflowId = 'wts-integration-checkpoints';
+      await startSignalStepped(server, workflowId, 3);
+      await server.engine.signal(workflowId, 'advance');
+
+      const client = sseClient(server);
+      const queryClient = new QueryClient();
+      const refreshCheckpoints = createWorkflowCheckpointRefresher(queryClient, workflowId, (id) =>
+        client.getEvents(id),
+      );
+      const source = new WorkflowTailSource(client, workflowId);
+      source.subscribe((frame) => {
+        applyWorkflowTailFrame(queryClient, workflowId, frame);
+        void refreshCheckpoints();
+      });
+      await source.whenConnected();
+
+      // The old route served the engine's durable log; that is what the cache must still hold.
+      const checkpointSteps = async (): Promise<unknown[]> => {
+        const steps: unknown[] = [];
+        for await (const record of server.engine.replayWorkflowFeed(workflowId, 'events', -1)) {
+          if (record.kind === 'workflow:checkpoint') steps.push(asRecord(record.payload)['step']);
+        }
+        return steps;
+      };
+      const cachedSteps = (): unknown[] =>
+        (queryClient.getQueryData<WorkflowEvent[]>(workflowEventsKey(workflowId)) ?? [])
+          .filter((event) => event.type === 'workflow:checkpoint')
+          .map((event) => event.data['step']);
+
+      const stepsBeforeSignal = await checkpointSteps();
+      const checkpointsBeforeSignal = stepsBeforeSignal.length;
+      // A checkpoint committed while the tail is live reaches the cache.
+      await server.engine.signal(workflowId, 'advance');
+      await waitFor(async () => {
+        const expectedSteps = await checkpointSteps();
+        expect(expectedSteps.length).toBeGreaterThan(checkpointsBeforeSignal);
+        expect(cachedSteps()).toEqual(expectedSteps);
+      });
+      // The lifecycle frames the tail now carries sit beside them.
+      const types = (
+        queryClient.getQueryData<WorkflowEvent[]>(workflowEventsKey(workflowId)) ?? []
+      ).map((event) => event.type);
+      expect(types).toContain('workflow:started');
+
       source.close();
     } finally {
       await server.stop();

@@ -254,19 +254,23 @@ describe('classifyArtifactValue', () => {
 
 describe('humanizeKey', () => {
   test('splits camelCase', () => {
-    expect(humanizeKey('callToAction')).toBe('Call to action');
+    expect(humanizeKey('callToAction')).toBe('Call To Action');
   });
 
   test('splits snake_case', () => {
-    expect(humanizeKey('annual_value')).toBe('Annual value');
+    expect(humanizeKey('annual_value')).toBe('Annual Value');
   });
 
   test('splits kebab-case', () => {
-    expect(humanizeKey('discount-rate')).toBe('Discount rate');
+    expect(humanizeKey('discount-rate')).toBe('Discount Rate');
   });
 
   test('leaves a single lowercase word capitalized', () => {
     expect(humanizeKey('term')).toBe('Term');
+  });
+
+  test('writes acronyms in their canonical spelling', () => {
+    expect(humanizeKey('orderId')).toBe('Order ID');
   });
 
   test('returns the original key for an empty string', () => {
@@ -277,7 +281,7 @@ describe('humanizeKey', () => {
 describe('humanizeKeys', () => {
   test('maps every top-level key and preserves values', () => {
     expect(humanizeKeys({ callToAction: 'Buy now', term: '24 months' })).toEqual({
-      'Call to action': 'Buy now',
+      'Call To Action': 'Buy now',
       Term: '24 months',
     });
   });

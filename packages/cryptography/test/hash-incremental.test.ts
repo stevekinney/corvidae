@@ -52,16 +52,15 @@ describe('createIncrementalHash', () => {
     expect(hash.digest()).toBe(sha256HexSync('test'));
   });
 
-  test('passes supported Bun algorithms through without a package whitelist', () => {
+  test('passes supported algorithms through without a package whitelist', () => {
     const hash = createIncrementalHash('blake2b512');
     hash.update('test');
     expect(hash.digest()).toBe(createHash('blake2b512').update('test').digest('hex'));
   });
 
-  test('falls back to node crypto when the Bun runtime is unavailable', async () => {
+  test('falls back to node crypto through the injected loader', async () => {
     await withRuntimeOverride(
       {
-        Bun: undefined,
         require: (specifier: string) => {
           expect(specifier).toBe('node:crypto');
           return { createHash };
@@ -76,23 +75,24 @@ describe('createIncrementalHash', () => {
     );
   });
 
-  test('uses the default require fallback when no override is provided', async () => {
-    await withRuntimeOverride(
-      {
-        Bun: undefined,
-      },
-      () => {
-        const hash = createIncrementalHash();
-        hash.update('fallback');
-        expect(hash.digest()).toBe(createHash('sha256').update('fallback').digest('hex'));
-      },
+  test('uses process.getBuiltinModule when the override names no loader', async () => {
+    await withRuntimeOverride({}, () => {
+      const hash = createIncrementalHash();
+      hash.update('fallback');
+      expect(hash.digest()).toBe(createHash('sha256').update('fallback').digest('hex'));
+    });
+  });
+
+  test('reports an unsupported algorithm as its own error, not as a missing runtime', () => {
+    expect(() => createIncrementalHash('not-a-real-algorithm')).toThrow();
+    expect(() => createIncrementalHash('not-a-real-algorithm')).not.toThrow(
+      'createIncrementalHash is not available in this environment',
     );
   });
 
   test('throws a helpful error when no synchronous streaming runtime is available', async () => {
     await withRuntimeOverride(
       {
-        Bun: undefined,
         require: () => {
           throw new Error('runtime unavailable');
         },

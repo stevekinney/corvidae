@@ -29,23 +29,19 @@ export type IncrementalHash = {
 };
 
 type HashRuntimeOverride = {
-  Bun?: unknown;
   require?: ModuleLoader;
   getBuiltinModule?: ModuleLoader;
 };
 
 type ModuleLoader = (specifier: string) => unknown;
 
-type BunRuntime = {
-  CryptoHasher: new (algorithm: string) => BunHasher;
-};
-type BunHasher = {
-  update(data: string): BunHasher;
+type Hasher = {
+  update(data: string): Hasher;
   digest(format: 'hex'): string;
 };
 type NodeCrypto = {
-  createHash?: (algorithm: string) => BunHasher;
-  createHmac?: (algorithm: string, secret: string) => BunHasher;
+  createHash?: (algorithm: string) => Hasher;
+  createHmac?: (algorithm: string, secret: string) => Hasher;
   timingSafeEqual?: (left: Uint8Array, right: Uint8Array) => boolean;
 };
 
@@ -59,7 +55,6 @@ function getHashRuntimeOverride(): HashRuntimeOverride | undefined {
 function isHashRuntimeOverride(value: unknown): value is HashRuntimeOverride {
   if (typeof value !== 'object' || value === null) return false;
   return (
-    hasOptionalProperty(value, 'Bun', isOptionalBunRuntime) &&
     hasOptionalProperty(value, 'require', isOptionalModuleLoader) &&
     hasOptionalProperty(value, 'getBuiltinModule', isOptionalModuleLoader)
   );
@@ -73,25 +68,12 @@ function hasOptionalProperty(
   return !Reflect.has(value, key) || isValid(Reflect.get(value, key));
 }
 
-function isOptionalBunRuntime(value: unknown): boolean {
-  return value === undefined || isBunRuntime(value);
-}
-
 function isOptionalModuleLoader(value: unknown): boolean {
   return value === undefined || isModuleLoader(value);
 }
 
 function isModuleLoader(value: unknown): value is ModuleLoader {
   return typeof value === 'function';
-}
-
-function isBunRuntime(value: unknown): value is BunRuntime {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'CryptoHasher' in value &&
-    typeof value.CryptoHasher === 'function'
-  );
 }
 
 function isNodeCrypto(value: unknown): value is NodeCrypto {
@@ -105,27 +87,6 @@ function isNodeCrypto(value: unknown): value is NodeCrypto {
 
 function isOptionalFunction(value: unknown): boolean {
   return value === undefined || typeof value === 'function';
-}
-
-function isBunHasher(value: unknown): value is BunHasher {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'update' in value &&
-    typeof value.update === 'function' &&
-    'digest' in value &&
-    typeof value.digest === 'function'
-  );
-}
-
-function getBunRuntime(): BunRuntime | undefined {
-  const runtimeOverride = getHashRuntimeOverride();
-  if (runtimeOverride && 'Bun' in runtimeOverride) {
-    return isBunRuntime(runtimeOverride.Bun) ? runtimeOverride.Bun : undefined;
-  }
-
-  const candidate: unknown = Reflect.get(globalThis, 'Bun');
-  return isBunRuntime(candidate) ? candidate : undefined;
 }
 
 function getBuiltinModuleFn(): ((specifier: string) => unknown) | undefined {
@@ -191,16 +152,10 @@ export async function sha256BytesHex(data: Uint8Array): Promise<string> {
 
 /**
  * Computes the SHA-256 hex digest of a string synchronously.
- * Uses `Bun.CryptoHasher` in Bun or `node:crypto` in Node.js.
+ * Uses `node:crypto`, which Bun and Node.js both provide.
  * Throws in browser environments where no synchronous crypto API is available.
  */
 export function sha256HexSync(text: string): string {
-  const bunRuntime = getBunRuntime();
-  if (bunRuntime) {
-    return new bunRuntime.CryptoHasher('sha256').update(text).digest('hex');
-  }
-
-  // Node.js runtime (lazy require to avoid bundler issues)
   try {
     const { createHash } = requireNodeCrypto();
     if (!createHash) throw new Error('createHash is unavailable.');
@@ -214,7 +169,7 @@ export function sha256HexSync(text: string): string {
 
 /**
  * Computes an HMAC-SHA-256 hex signature synchronously.
- * Uses `node:crypto` in Node.js and Bun.
+ * Uses `node:crypto`, which Bun and Node.js both provide.
  * Throws in browser environments where no synchronous HMAC API is available.
  */
 export function hmacSha256HexSync(secret: string, text: string): string {
@@ -258,43 +213,30 @@ export function timingSafeEqualHex(left: string, right: string): boolean {
 
 /**
  * Creates an incremental (streaming) hash for accumulating data across multiple `.update()` calls.
- * Uses `Bun.CryptoHasher` in Bun or `node:crypto` in Node.js.
+ * Uses `node:crypto`, which Bun and Node.js both provide.
  * Throws in browser environments where no synchronous streaming crypto API is available.
  *
  * @param algorithm - Hash algorithm to use. Default: `'sha256'`.
  */
 export function createIncrementalHash(algorithm: string = 'sha256'): IncrementalHash {
-  const bunRuntime = getBunRuntime();
-  if (bunRuntime) {
-    const candidate = Reflect.construct(bunRuntime.CryptoHasher, [algorithm]);
-    if (!isBunHasher(candidate)) throw new Error('Bun CryptoHasher is malformed.');
-    const hasher = candidate;
-    return {
-      update(data: string) {
-        hasher.update(data);
-      },
-      digest() {
-        return hasher.digest('hex');
-      },
-    };
-  }
-
-  // Node.js runtime
+  let createHash: NonNullable<NodeCrypto['createHash']>;
   try {
-    const { createHash } = requireNodeCrypto();
-    if (!createHash) throw new Error('createHash is unavailable.');
-    const hash = createHash(algorithm);
-    return {
-      update(data: string) {
-        hash.update(data);
-      },
-      digest() {
-        return hash.digest('hex');
-      },
-    };
+    const available = requireNodeCrypto().createHash;
+    if (!available) throw new Error('createHash is unavailable.');
+    createHash = available;
   } catch {
     throw new Error(
       'createIncrementalHash is not available in this environment. Use the async sha256Hex instead, which works everywhere via Web Crypto.',
     );
   }
+  // Outside the `try`, so an unsupported algorithm reports its own error rather than a missing runtime.
+  const hash = createHash(algorithm);
+  return {
+    update(data: string) {
+      hash.update(data);
+    },
+    digest() {
+      return hash.digest('hex');
+    },
+  };
 }

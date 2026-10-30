@@ -32,6 +32,7 @@ import type { GoalState } from '../../goal-state.ts';
 import { ownerOrLocal } from '../../owner-of-record.ts';
 import type { Bureau } from '../../types.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
+import type { BureauAgentVisibilityHost } from './deployment-operations.ts';
 import {
   DEFAULT_PAGE_LIMIT,
   pageFields,
@@ -41,9 +42,10 @@ import {
 } from './management-schemas.ts';
 
 /** What the goal operations read from the handler's `host`. */
-export type BureauGoalsOperationHost = BureauOwnershipHost & {
-  readonly goals: Pick<Bureau['goals'], 'create' | 'get' | 'list' | 'cancel'>;
-};
+export type BureauGoalsOperationHost = BureauOwnershipHost &
+  BureauAgentVisibilityHost & {
+    readonly goals: Pick<Bureau['goals'], 'create' | 'get' | 'list' | 'cancel'>;
+  };
 
 const goalStatus = z.enum([
   'pending',
@@ -420,6 +422,11 @@ export const goalsCreateOperation = defineOperation<
         message: 'A goal needs an owner, and this credential names none',
         data: { reason: 'no owner of record' },
       } satisfies OperationFault;
+    }
+    // Before anything else is learned about the goal: an agent the caller may not name
+    // (COR-1904) is as unknown to it as one the catalog lacks.
+    if (!host.agentVisibility.mayName(principal, input.agentName)) {
+      throw resourceNotFound('agent', input.agentName);
     }
     const { bounds } = input;
     const outcome = await host.goals.create({

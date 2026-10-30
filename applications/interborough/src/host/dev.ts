@@ -10,14 +10,21 @@
  *
  * The host runs with `development: true`, so every open page reloads itself after a successful
  * rebuild (`dev-reload.ts`).
+ *
+ * `bun run dev` starts this entry through the supervisor (`supervisor.ts`), so a restart request
+ * (`POST /host/restart`) stops the host and exits with `RESTART_EXIT_CODE`, which `bun --watch`
+ * passes up and the supervisor answers by starting it again. `INTERBOROUGH_BUILD_DIRECTORY` moves
+ * the build, and the file that records its inputs goes beside it.
  */
 
 import { unwatchFile, watchFile, type Stats } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import { buildBrowserApplication, stopBrowserBuilds } from './browser-build.ts';
+import { processEnvironment, resolveBuildDirectory } from './environment-configuration.ts';
 import { startHost } from './host.ts';
 import { createRebuildScheduler } from './rebuild-scheduler.ts';
+import { RESTART_EXIT_CODE } from './restart.ts';
 import { installShutdownSignals } from './shutdown-signals.ts';
 import { createSourceWatcher } from './source-watcher.ts';
 
@@ -30,15 +37,22 @@ const ENTRY_PAGE = join(packageRoot, 'index.html');
  * (`source-watcher.ts`), so a workspace the bundle starts importing is watched after the build
  * that imports it. The file is ignored by Git.
  */
-const BUILD_INPUTS_FILE = join(packageRoot, '.dev-build-inputs.json');
+const environment = processEnvironment();
+const buildDirectory = resolveBuildDirectory(environment);
+const BUILD_INPUTS_FILE = join(dirname(buildDirectory), '.dev-build-inputs.json');
 
 /** Wait this long after the last change before rebuilding, so one save is one build. */
 const REBUILD_DELAY_MILLISECONDS = 100;
 
-const buildOptions = { inputsFile: BUILD_INPUTS_FILE };
+const buildOptions = { outdir: buildDirectory, inputsFile: BUILD_INPUTS_FILE };
 
 await buildBrowserApplication(buildOptions);
-const host = await startHost({ development: true });
+const host = await startHost({
+  environment,
+  buildDirectory,
+  development: true,
+  onRestartRequested: () => shutDown(RESTART_EXIT_CODE),
+});
 console.info(`Interborough is listening on ${host.url}`);
 console.info(
   `Its state lives in ${
@@ -79,14 +93,29 @@ const entryChanged = (current: Stats, previous: Stats): void => {
 };
 watchFile(ENTRY_PAGE, { interval: 100 }, entryChanged);
 
-async function shutDown(): Promise<void> {
-  rebuilds.close();
-  // A build still running would write `build/` after this process has gone.
-  await stopBrowserBuilds();
-  unwatchFile(ENTRY_PAGE, entryChanged);
-  sources.close();
-  await host.close();
-  process.exit(0);
+let stopping: Promise<never> | undefined;
+
+/**
+ * Stop everything this process started, then exit with `code`. The first call decides the code: a
+ * signal that arrives while a restart is stopping the host does not turn it into a plain exit. A
+ * host that did not stop cleanly exits 1, which ends the supervisor rather than restarting.
+ */
+function shutDown(code: number): Promise<never> {
+  stopping ??= (async (): Promise<never> => {
+    try {
+      rebuilds.close();
+      // A build still running would write `build/` after this process has gone.
+      await stopBrowserBuilds();
+      unwatchFile(ENTRY_PAGE, entryChanged);
+      sources.close();
+      await host.close();
+    } catch (error) {
+      console.error('The host did not stop cleanly.', error);
+      process.exit(1);
+    }
+    process.exit(code);
+  })();
+  return stopping;
 }
 
-installShutdownSignals(process, shutDown);
+installShutdownSignals(process, () => shutDown(0));

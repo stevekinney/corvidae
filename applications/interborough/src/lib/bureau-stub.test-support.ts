@@ -74,6 +74,7 @@ export const STUB_REMOTE_PROVIDERS: { name: string; secretFile: string }[] = [
 export function stubRemoteHostPaths() {
   return {
     mode: 'remote' as const,
+    database: { kind: 'postgres' as const, location: 'db.example.test:5432/interborough' },
     agentDirectory: STUB_REMOTE_AGENT_DIRECTORY,
     workflowDirectory: STUB_REMOTE_WORKFLOW_DIRECTORY,
     configurationFile: STUB_REMOTE_CONFIGURATION_FILE,
@@ -89,6 +90,10 @@ export function stubHostPaths(
 ) {
   return {
     mode,
+    database:
+      mode === 'local'
+        ? { kind: 'sqlite' as const, path: '/home/me/.interborough/database.sqlite' }
+        : { kind: 'postgres' as const, location: 'db.example.test:5432/interborough' },
     agentDirectory,
     workflowDirectory,
     configurationFile: STUB_CONFIGURATION_FILE,

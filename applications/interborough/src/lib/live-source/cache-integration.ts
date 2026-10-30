@@ -274,6 +274,100 @@ export function applyWorkflowTailFrame(
   if (status !== null) patchWorkflowDetailStatus(queryClient, workflowId, status, event.timestamp);
 }
 
+const CHECKPOINT_EVENT_TYPE = 'workflow:checkpoint';
+
+/**
+ * Replaces the cached checkpoint entries with a fresh `getEvents()` result and keeps every other
+ * cached entry (the lifecycle frames `WorkflowTailSource` appended) the result does not repeat, in
+ * timestamp order.
+ *
+ * The per-workflow `/events/sse` route carries the watch events (`workflow:started`,
+ * `activity:completed`, ...), not the durable log's `workflow:checkpoint` entries, so a checkpoint
+ * committed after the first fetch reaches the cache only through a refetch.
+ */
+export function mergeWorkflowCheckpointEvents(
+  queryClient: QueryClient,
+  workflowId: string,
+  fetched: readonly WorkflowEvent[],
+): void {
+  queryClient.setQueryData<WorkflowEvent[]>(workflowEventsKey(workflowId), (old) =>
+    combineCheckpointEvents(old, fetched),
+  );
+}
+
+function combineCheckpointEvents(
+  cached: readonly WorkflowEvent[] | undefined,
+  fetched: readonly WorkflowEvent[],
+): WorkflowEvent[] {
+  const fetchedKeys = new Set(fetched.map(eventKey));
+  // Cached checkpoints are replaced by the fetch; every other cached entry stays unless the
+  // fetch returned the same entry.
+  const kept = (cached ?? []).filter(
+    (event) => event.type !== CHECKPOINT_EVENT_TYPE && !fetchedKeys.has(eventKey(event)),
+  );
+  return [...fetched, ...kept].toSorted((left, right) => left.timestamp - right.timestamp);
+}
+
+function eventKey(event: WorkflowEvent): string {
+  return `${event.type}\u0000${event.timestamp}\u0000${JSON.stringify(event.data)}`;
+}
+
+/**
+ * The Events tab's query function: fetches the durable event log and returns it merged with what
+ * the cache already holds. TanStack writes a query function's result over the whole cache entry,
+ * so returning the raw `getEvents()` list (checkpoints only) on a window-focus or reconnect
+ * refetch would drop the lifecycle frames the tail appended, and the tail's cursor has moved past
+ * them. The initial fetch and every later one therefore take the same merge.
+ */
+export async function fetchWorkflowEventsMerged(
+  queryClient: QueryClient,
+  workflowId: string,
+  fetchEvents: (workflowId: string) => Promise<readonly WorkflowEvent[]>,
+): Promise<WorkflowEvent[]> {
+  const fetched = await fetchEvents(workflowId);
+  // Read the cache after the await: frames the tail appended while the fetch ran are kept.
+  return combineCheckpointEvents(
+    queryClient.getQueryData<WorkflowEvent[]>(workflowEventsKey(workflowId)),
+    fetched,
+  );
+}
+
+/**
+ * Builds the refresh the Events tab calls after each tail frame: it refetches the durable event
+ * log and merges its checkpoints into the cache. Calls made while a fetch is in flight coalesce
+ * into one more fetch started after it, so the last call always sees a result at least as new as
+ * itself. A failed fetch leaves the cache as it was; the next frame tries again.
+ */
+export function createWorkflowCheckpointRefresher(
+  queryClient: QueryClient,
+  workflowId: string,
+  fetchEvents: (workflowId: string) => Promise<readonly WorkflowEvent[]>,
+): () => Promise<void> {
+  let running: Promise<void> | null = null;
+  let again = false;
+
+  async function drain(): Promise<void> {
+    do {
+      again = false;
+      try {
+        mergeWorkflowCheckpointEvents(queryClient, workflowId, await fetchEvents(workflowId));
+      } catch {
+        // Keep the last known rows; a later frame retries.
+      }
+    } while (again);
+    running = null;
+  }
+
+  return () => {
+    if (running !== null) {
+      again = true;
+      return running;
+    }
+    running = drain();
+    return running;
+  };
+}
+
 // ---------------------------------------------------------------------------
 // FleetEventSource → cache
 // ---------------------------------------------------------------------------

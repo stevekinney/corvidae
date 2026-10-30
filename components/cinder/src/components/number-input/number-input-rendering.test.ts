@@ -251,6 +251,6 @@ describe('NumberInput — required marker', () => {
     const marker = container.querySelector('.cinder-_required-marker');
     expect(marker).not.toBeNull();
     expect(marker?.getAttribute('aria-hidden')).toBe('true');
-    expect(marker?.textContent).toBe('*');
+    expect(marker?.textContent).toBe('');
   });
 });

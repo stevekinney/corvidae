@@ -28,6 +28,7 @@ import {
 } from '@lostgradient/weft';
 import { z } from 'zod';
 
+import { SETTING_LOCK_REASONS } from '../../settings/settings-schema.ts';
 import type { BureauSettings, SettingsChange } from '../../settings/types.ts';
 import { ownerOfPrincipal } from '../owner-predicate.ts';
 import { unaryTransports as transports, unknownKeyPolicy } from './management-schemas.ts';
@@ -52,6 +53,8 @@ const write = {
 const keyStateSchema = z.object({
   apply: z.enum(['live', 'restart']),
   locked: z.boolean(),
+  /** Why the key is locked; present exactly when `locked` is `true`. */
+  lockReason: z.enum(SETTING_LOCK_REASONS).optional(),
   pendingRestart: z.boolean(),
 });
 
@@ -74,7 +77,7 @@ export const settingsGetOperation = defineOperation<
   mcpExposable: false,
   summary: 'Read the runtime settings',
   description:
-    'Returns every setting’s value by dotted key (the stored value, or the code option where none is stored or the key is locked), the record’s `revision` to pass back as `expectedRevision`, whether the record is `persisted` beyond the process, and per key how it applies (`live` or `restart`), whether the deployment `locked` it, and whether a stored `restart` value is `pendingRestart`. Requires `bureau.settings:read`.',
+    'Returns every setting’s value by dotted key (the stored value, or the code option where none is stored or the key is locked), the record’s `revision` to pass back as `expectedRevision`, whether the record is `persisted` beyond the process, and per key how it applies (`live` or `restart`), whether the deployment `locked` it and, if so, the `lockReason` (`deployment`, or `shared-storage` for a key that processes sharing one store must agree on), and whether a stored `restart` value is `pendingRestart`. Requires `bureau.settings:read`.',
   destructive: false,
   tags: ['Settings'],
   inputSchema: getInput,

@@ -59,6 +59,7 @@ export type {
   UserModelConfiguration,
 } from './policy.ts';
 export type { ProviderConfigurationBase, ProviderDefinition } from './provider-definition.ts';
+export { PROVIDER_NAME_PATTERN, isProviderName } from './provider-name.ts';
 export {
   composeStrategies,
   createComplexityStrategy,

@@ -189,6 +189,7 @@ export function disposeEngine(
   internals.pendingWebhooks.clear();
   disposeSourceResolutionState(internals, dispatchEvent);
   clearPendingResultPollTimers(internals);
+  internals.streamChunkAnnouncer[Symbol.dispose]();
   internals.sleepResolvers.clear();
   internals.sleepResolversByWorkflow.clear();
   settleSleepResolverReadyWaitersForTesting(internals);

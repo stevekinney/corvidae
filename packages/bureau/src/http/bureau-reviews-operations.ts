@@ -35,6 +35,7 @@ import { reviewReceiptOf } from '../tasks/respond-to-task.ts';
 import {
   ApprovalOutcomeNotWrittenError,
   BureauError,
+  ReviewAnswerInvalidError,
   ReviewRoundChangedError,
 } from '../create-bureau.ts';
 import type {
@@ -178,6 +179,13 @@ const humanWaitReviewSchema = z.object({
   kind: z.literal('human-wait'),
   signalName: z.string(),
   prompt: z.string().optional(),
+  /**
+   * The JSON Schema (2020-12) the answer must satisfy, when the question has one: the model's
+   * per-call `answerSchema`, else the author's per-signal one. It carries the `x-` keywords that
+   * choose the control (`x-labels`, `x-allowOther`, `x-kind`, `x-secret`, `x-asset`). Absent, any
+   * answer is taken. `bureau.reviews.resolve` checks an `answer` against it.
+   */
+  inputSchema: z.record(z.string(), z.unknown()).optional(),
 });
 
 /** One review as it crosses the wire. */
@@ -260,6 +268,7 @@ export function projectReview(
     kind: 'human-wait',
     signalName: review.signalName,
     ...(review.prompt === undefined ? {} : { prompt: review.prompt }),
+    ...(review.inputSchema === undefined ? {} : { inputSchema: review.inputSchema }),
   };
 }
 
@@ -310,6 +319,21 @@ function reviewNotFound(identifier: string): OperationFault {
  */
 export function reviewFault(error: unknown, identifier: string): unknown {
   if (!(error instanceof BureauError)) return error;
+  // An answer that does not fit its question's schema: `InvalidParams`, one issue per field, with
+  // each path rooted at the request's `answer` so it reads like any other invalid parameter.
+  if (error instanceof ReviewAnswerInvalidError) {
+    return {
+      code: 'InvalidParams',
+      message: error.message,
+      data: {
+        issues: error.issues.map((issue) => ({
+          path: ['answer', ...issue.path],
+          message: issue.message,
+          code: issue.code,
+        })),
+      },
+    } satisfies OperationFault;
+  }
   switch (error.code) {
     case 'NOT_FOUND':
       return reviewNotFound(identifier);
@@ -433,6 +457,12 @@ const reviewsResolveInput = z
       .enum(['approve', 'deny', 'reject'])
       .describe('Whether to `approve` the review, `deny` it, or `reject` it with a `reason`.'),
     reason: z.string().optional().describe('Required, and non-blank, for `reject`.'),
+    answer: z
+      .unknown()
+      .optional()
+      .describe(
+        'Approving a human wait: the answer, delivered as the signal’s payload. When the review carries an `inputSchema` the answer must satisfy it, and is required; a wait with no schema takes any answer. Ignored for `deny` and `reject`, and refused for a tool approval, which takes no answer.',
+      ),
     round: z
       .number()
       .int()
@@ -465,7 +495,7 @@ export const reviewsResolveOperation = defineOperation<
   mcpExposable: true,
   summary: 'Approve, deny, or reject a pending review',
   description:
-    'Resolves a pending review of one of the caller’s own runs as the authenticated caller; the reviewer is never a payload field. A caller holding `bureau.reviews:resolve` resolves any owner’s. `reject` requires a `reason`. The `receipt` is `applied` (including a landed reject, which `decision` reports) or `superseded`. Resolving a review that is already resolved, or one the caller may not resolve, answers 404 until command receipts exist. Resolving a tool approval also writes its outcome into the session’s conversation: the executed result on approve, an error result carrying the reason on deny and reject, each replacing the pending `action_required` result in place, so a run started next on the session answers an up-to-date conversation. A `superseded` receipt writes nothing. `round` is the round of the review the caller read (`bureau.reviews.get` and `list` return it): a re-gated approval keeps its id and advances its round, so a decision made on round N is refused with a `Conflict` once the review is at another round, before anything is decided, written, or audited. A `Conflict` whose `reason` begins `REVIEW_ROUND_CHANGED: ` is that refusal (nothing took effect; read the review again); one that begins `APPROVAL_OUTCOME_NOT_WRITTEN: ` means the decision took effect (the tool ran or was refused) and only that write failed; any other `Conflict` is a resolver that lost. Omit `round` and the call is not fenced.',
+    'Resolves a pending review of one of the caller’s own runs as the authenticated caller; the reviewer is never a payload field. A caller holding `bureau.reviews:resolve` resolves any owner’s. `reject` requires a `reason`. The `receipt` is `applied` (including a landed reject, which `decision` reports) or `superseded`. Resolving a review that is already resolved, or one the caller may not resolve, answers 404 until command receipts exist. Resolving a tool approval also writes its outcome into the session’s conversation: the executed result on approve, an error result carrying the reason on deny and reject, each replacing the pending `action_required` result in place, so a run started next on the session answers an up-to-date conversation. A `superseded` receipt writes nothing. Approving a human wait takes an `answer`; when the review has an `inputSchema` the answer is checked against it before anything is decided, and one that does not fit answers `InvalidParams` with `data.issues` (`path` rooted at `answer`, `message`, and `code`, the schema keyword that failed) and leaves the review pending. `round` is the round of the review the caller read (`bureau.reviews.get` and `list` return it): a re-gated approval keeps its id and advances its round, so a decision made on round N is refused with a `Conflict` once the review is at another round, before anything is decided, written, or audited. A `Conflict` whose `reason` begins `REVIEW_ROUND_CHANGED: ` is that refusal (nothing took effect; read the review again); one that begins `APPROVAL_OUTCOME_NOT_WRITTEN: ` means the decision took effect (the tool ran or was refused) and only that write failed; any other `Conflict` is a resolver that lost. Omit `round` and the call is not fenced.',
   destructive: true,
   tags: ['Reviews'],
   inputSchema: reviewsResolveInput,
@@ -485,6 +515,14 @@ export const reviewsResolveOperation = defineOperation<
       !(await mayAccessReview(host, principal, review.runId, 'bureau.reviews:resolve'))
     ) {
       throw reviewNotFound(input.id);
+    }
+    if (input.answer !== undefined && review.kind === 'tool-approval') {
+      const fault: OperationFault = {
+        code: 'Unprocessable',
+        message: 'An answer addresses a human wait; a tool approval takes a decision',
+        data: { reason: 'answer addressed to a tool approval' },
+      };
+      throw fault;
     }
     // The actor on the audit entry is the caller's owner string. The authentication
     // step already refused an anonymous caller with 401; this guards the one way
@@ -506,6 +544,7 @@ export const reviewsResolveOperation = defineOperation<
         principal: actor,
         ...(input.reason === undefined ? {} : { reason: input.reason }),
         ...(input.round === undefined ? {} : { round: input.round }),
+        ...(input.answer === undefined ? {} : { payload: input.answer }),
       });
       return {
         id: result.id,

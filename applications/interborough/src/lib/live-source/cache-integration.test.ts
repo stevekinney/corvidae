@@ -1,3 +1,4 @@
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import {
   WorkflowCompletedEvent,
   WorkflowStartedEvent,
@@ -13,6 +14,8 @@ import {
   applyFleetEventFrame,
   applyScheduleFleetFrame,
   applyWorkflowTailFrame,
+  createWorkflowCheckpointRefresher,
+  mergeWorkflowCheckpointEvents,
   REVIEWS_LIST_KEY_PREFIX,
   SCHEDULES_DETAIL_KEY_PREFIX,
   SCHEDULES_LIST_KEY_PREFIX,
@@ -35,6 +38,95 @@ describe('workflowDetailKey / workflowEventsKey', () => {
   test('produce the documented array shapes', () => {
     expect(workflowDetailKey('wf_1')).toEqual(['workflows', 'detail', 'wf_1']);
     expect(workflowEventsKey('wf_1')).toEqual(['workflows', 'events', 'wf_1']);
+  });
+});
+
+describe('mergeWorkflowCheckpointEvents', () => {
+  test('replaces cached checkpoints with the fetched ones and keeps lifecycle frames, in time order', () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData<WorkflowEvent[]>(workflowEventsKey('wf_1'), [
+      event('workflow:checkpoint', 10, { step: 1 }),
+      event('workflow:started', 5),
+      event('activity:completed', 20),
+    ]);
+    mergeWorkflowCheckpointEvents(queryClient, 'wf_1', [
+      event('workflow:checkpoint', 10, { step: 1 }),
+      event('workflow:checkpoint', 30, { step: 2 }),
+      event('workflow:completed', 99),
+    ]);
+    expect(
+      queryClient
+        .getQueryData<WorkflowEvent[]>(workflowEventsKey('wf_1'))
+        ?.map((entry) => `${entry.type}@${entry.timestamp}`),
+    ).toEqual([
+      'workflow:started@5',
+      'workflow:checkpoint@10',
+      'activity:completed@20',
+      'workflow:checkpoint@30',
+      'workflow:completed@99',
+    ]);
+  });
+
+  test('does not repeat a cached non-checkpoint entry the fetch also returns', () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData<WorkflowEvent[]>(workflowEventsKey('wf_1'), [
+      event('workflow:started', 5, { reason: 'kickoff' }),
+    ]);
+    mergeWorkflowCheckpointEvents(queryClient, 'wf_1', [
+      event('workflow:started', 5, { reason: 'kickoff' }),
+    ]);
+    expect(queryClient.getQueryData<WorkflowEvent[]>(workflowEventsKey('wf_1'))).toHaveLength(1);
+  });
+
+  test('creates the cache when only a fetch has arrived', () => {
+    const queryClient = new QueryClient();
+    mergeWorkflowCheckpointEvents(queryClient, 'wf_1', [
+      event('workflow:checkpoint', 1, { step: 1 }),
+    ]);
+    expect(queryClient.getQueryData<WorkflowEvent[]>(workflowEventsKey('wf_1'))).toHaveLength(1);
+  });
+});
+
+describe('createWorkflowCheckpointRefresher', () => {
+  test('coalesces calls made during a fetch into one follow-up fetch that sees the newest data', async () => {
+    const queryClient = new QueryClient();
+    const gates: PromiseWithResolvers<WorkflowEvent[]>[] = [];
+    let fetches = 0;
+    const refresh = createWorkflowCheckpointRefresher(queryClient, 'wf_1', () => {
+      fetches += 1;
+      const gate = Promise.withResolvers<WorkflowEvent[]>();
+      gates.push(gate);
+      return gate.promise;
+    });
+    const first = refresh();
+    void refresh();
+    void refresh();
+    expect(fetches).toBe(1);
+    gates[0]?.resolve([event('workflow:checkpoint', 1, { step: 1 })]);
+    await waitUntil(() => fetches === 2);
+    gates[1]?.resolve([
+      event('workflow:checkpoint', 1, { step: 1 }),
+      event('workflow:checkpoint', 2, { step: 2 }),
+    ]);
+    await first;
+    expect(fetches).toBe(2);
+    expect(queryClient.getQueryData<WorkflowEvent[]>(workflowEventsKey('wf_1'))).toHaveLength(2);
+  });
+
+  test('keeps the cached rows when a fetch fails and fetches again on the next call', async () => {
+    const queryClient = new QueryClient();
+    const seed = [event('workflow:checkpoint', 1, { step: 1 })];
+    queryClient.setQueryData<WorkflowEvent[]>(workflowEventsKey('wf_1'), seed);
+    let fail = true;
+    const refresh = createWorkflowCheckpointRefresher(queryClient, 'wf_1', async () => {
+      if (fail) throw new Error('offline');
+      return [...seed, event('workflow:checkpoint', 2, { step: 2 })];
+    });
+    await refresh();
+    expect(queryClient.getQueryData<WorkflowEvent[]>(workflowEventsKey('wf_1'))).toEqual(seed);
+    fail = false;
+    await refresh();
+    expect(queryClient.getQueryData<WorkflowEvent[]>(workflowEventsKey('wf_1'))).toHaveLength(2);
   });
 });
 

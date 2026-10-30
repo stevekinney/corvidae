@@ -56,17 +56,6 @@ export const COMPONENT_DOC_SECTIONS: readonly DocSection[] = ([] = [
     ],
   },
   {
-    slug: 'button-size-xl',
-    headings: ['## Button', '### Size: xl'],
-    cssProperties: [
-      '--cinder-button-padding-x-xl',
-      '--cinder-button-padding-y-xl',
-      '--cinder-button-height-xl',
-      '--cinder-button-font-size-xl',
-      '--cinder-button-radius-xl',
-    ],
-  },
-  {
     slug: 'accordion-item',
     headings: ['## Component tokens', '### Accordion Item'],
     cssProperties: [

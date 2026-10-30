@@ -37,7 +37,7 @@ type InputAddonProps = (
   groupClassName?: string;
 };
 
-export type InputProps = Omit<HTMLInputAttributes, 'class'> &
+export type InputProps = Omit<HTMLInputAttributes, 'class' | 'size'> &
   InputAddonProps & {
     /** HTML `id` for the underlying input, used to associate the `<label>` and ARIA attributes. Required. */
     id: string;
@@ -72,6 +72,13 @@ export type InputProps = Omit<HTMLInputAttributes, 'class'> &
      * @default "default"
      */
     variant?: InputVariant;
+    /**
+     * Height step from the shared `--cinder-control-height-*` scale: `sm` 28px, `md` 32px,
+     * `lg` 40px, the same heights as a Button of that size. Replaces the native character-width
+     * `size` attribute, which Cinder does not forward; set a width with CSS instead.
+     * @default "md"
+     */
+    size?: 'sm' | 'md' | 'lg';
     /** Attachment for native input access and lifecycle-scoped listeners. */
     inputAttachment?: Attachment<HTMLInputElement>;
     /** Custom class merged with `.cinder-input`. */

@@ -66,6 +66,8 @@
   import type { LiveSourceStatus } from '../../../lib/live-source/index.ts';
   import {
     applyWorkflowTailFrame,
+    createWorkflowCheckpointRefresher,
+    fetchWorkflowEventsMerged,
     workflowEventsKey,
   } from '../../../lib/live-source/cache-integration.ts';
   import { WorkflowTailSource } from '../../../lib/live-source/workflow-tail-source.svelte.ts';
@@ -102,20 +104,14 @@
 
   const eventsQuery = createQuery(() => ({
     queryKey: workflowEventsKey(workflow.id),
-    queryFn: () => client.getEvents(workflow.id),
+    queryFn: () =>
+      fetchWorkflowEventsMerged(queryClient, workflow.id, (id) => client.getEvents(id)),
   }));
 
-  // Seed the live-tail cache from the initial fetch exactly once, so the
-  // tail's incremental appends (`applyWorkflowTailFrame`) build on the same
-  // history rather than a separate, never-populated entry — see
-  // `cache-integration.ts`'s module doc on the shared `workflowEventsKey`
-  // contract this track is the first consumer of.
-  $effect(() => {
-    if (!eventsQuery.isSuccess) return;
-    queryClient.setQueryData<WorkflowEvent[]>(workflowEventsKey(workflow.id), (old) =>
-      old === undefined ? eventsQuery.data : old,
-    );
-  });
+  // The query's own cache entry is the live-tail cache (`workflowEventsKey`): `queryFn` merges each
+  // fetch with the lifecycle frames the tail (`applyWorkflowTailFrame`) has appended, so the
+  // initial response and every refetch (window focus, reconnect) keep them. See
+  // `cache-integration.ts`'s module doc on the shared key contract.
 
   // Reads `workflow.status` once, as `$state`'s INITIAL value only (plan §5:
   // "Live default on while the workflow is running") — the user can then
@@ -127,10 +123,20 @@
   let live = $state(untrack(() => !isTerminalStatus(workflow.status)));
   let tail = $state<WorkflowTailSource | null>(null);
 
+  const refreshCheckpoints = createWorkflowCheckpointRefresher(
+    queryClient,
+    untrack(() => workflow.id),
+    (id) => client.getEvents(id),
+  );
+
   function startTail(): void {
     if (tail !== null) return;
     const source = new WorkflowTailSource(client, workflow.id);
-    source.subscribe((event) => applyWorkflowTailFrame(queryClient, workflow.id, event));
+    source.subscribe((event) => {
+      applyWorkflowTailFrame(queryClient, workflow.id, event);
+      // The tail carries lifecycle events; checkpoints come from the durable log.
+      void refreshCheckpoints();
+    });
     tail = source;
   }
 

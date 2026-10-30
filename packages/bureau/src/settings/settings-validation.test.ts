@@ -7,6 +7,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { ENGINE_PATCH_FIELDS, SETTING_KEYS } from './settings-schema.ts';
 import {
+  CONTEXT_CHECKED_KEYS,
   ENGINE_CLAIM_KEYS,
   OPTION_VALIDATORS,
   SCHEMA_CHECKED_KEYS,
@@ -19,6 +20,7 @@ describe('the consumer checks behind each setting', () => {
       ...Object.keys(OPTION_VALIDATORS),
       ...Object.keys(ENGINE_PATCH_FIELDS),
       ...ENGINE_CLAIM_KEYS,
+      ...CONTEXT_CHECKED_KEYS,
       ...SCHEMA_CHECKED_KEYS,
     ];
     expect([...new Set(covered)].toSorted()).toEqual([...SETTING_KEYS].toSorted());

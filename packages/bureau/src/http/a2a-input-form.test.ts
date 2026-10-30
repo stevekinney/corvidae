@@ -345,8 +345,10 @@ describe('bureau.tasks.respond on a wait with an input schema', () => {
       expect(
         await rejectionOf(respond({ messageId: 'r-1', data: { environment: 'moon' } })),
       ).toMatchObject({ code: 'InvalidParams' });
+      // Text is read as the value it stands for: `staging` is not an object (COR-1804).
       expect(await rejectionOf(respond({ messageId: 'r-2', answer: 'staging' }))).toMatchObject({
-        code: 'Unprocessable',
+        code: 'InvalidParams',
+        data: { issues: [{ path: ['answer'], code: 'type' }] },
       });
       expect(await rejectionOf(respond({ messageId: 'r-3', decision: 'approve' }))).toMatchObject({
         code: 'InvalidParams',
@@ -354,6 +356,98 @@ describe('bureau.tasks.respond on a wait with an input schema', () => {
       expect(await statusOf(fixture.bureau, task.id)).toBe('input-required');
 
       const applied = await respond({ messageId: 'r-4', data: { environment: 'staging' } });
+      expect(applied).toMatchObject({ kind: 'human-wait', receipt: 'applied' });
+    } finally {
+      await fixture.opened.dispose();
+    }
+  });
+
+  it('takes text as written for a string schema, and refuses it field by field (COR-1804)', async () => {
+    const fixture = await open({ type: 'string', maxLength: 5 });
+    try {
+      const task = await fixture.start();
+      const respond = (messageId: string, answer: string) =>
+        respondToTask(fixture.host, fixture.principal, { taskId: task.id, messageId, answer });
+
+      expect(await rejectionOf(respond('r-1', 'far too long'))).toMatchObject({
+        code: 'InvalidParams',
+        data: { issues: [{ path: ['answer'], code: 'maxLength' }] },
+      });
+      expect(await statusOf(fixture.bureau, task.id)).toBe('input-required');
+
+      // Not JSON, and not parsed as it: the text is the answer.
+      expect(await respond('r-2', 'ready')).toMatchObject({
+        kind: 'human-wait',
+        receipt: 'applied',
+      });
+    } finally {
+      await fixture.opened.dispose();
+    }
+  });
+
+  it('reads text as JSON for a schema that asks for more than a string (COR-1804)', async () => {
+    const fixture = await open(deploySchema);
+    try {
+      const task = await fixture.start();
+      const respond = (messageId: string, answer: string) =>
+        respondToTask(fixture.host, fixture.principal, { taskId: task.id, messageId, answer });
+
+      expect(await rejectionOf(respond('r-1', '{"environment":"moon"}'))).toMatchObject({
+        code: 'InvalidParams',
+        data: { issues: [{ path: ['answer', 'environment'], code: 'enum' }] },
+      });
+      expect(await statusOf(fixture.bureau, task.id)).toBe('input-required');
+
+      expect(await respond('r-2', '{"environment":"staging"}')).toMatchObject({
+        kind: 'human-wait',
+        receipt: 'applied',
+      });
+    } finally {
+      await fixture.opened.dispose();
+    }
+  });
+
+  it('keeps text that fits an enum-plus-other question as written (COR-1804)', async () => {
+    const fixture = await open({
+      anyOf: [{ enum: ['8080', '3000'] }, { type: 'string' }],
+      'x-allowOther': true,
+    });
+    try {
+      const task = await fixture.start();
+
+      const applied = await respondToTask(fixture.host, fixture.principal, {
+        taskId: task.id,
+        messageId: 'r-ports',
+        answer: '8080',
+      });
+
+      expect(applied).toMatchObject({ kind: 'human-wait', receipt: 'applied' });
+    } finally {
+      await fixture.opened.dispose();
+    }
+  });
+
+  it('asserts a date-time answer’s format, which the form check leaves as an annotation (COR-1804)', async () => {
+    const fixture = await open({
+      type: 'object',
+      properties: { when: { type: 'string', format: 'date-time' } },
+      required: ['when'],
+    });
+    try {
+      const task = await fixture.start();
+      const respond = (messageId: string, when: string) =>
+        respondToTask(fixture.host, fixture.principal, {
+          taskId: task.id,
+          messageId,
+          data: { when },
+        });
+
+      expect(await rejectionOf(respond('r-1', 'tomorrow'))).toMatchObject({
+        code: 'InvalidParams',
+      });
+      expect(await statusOf(fixture.bureau, task.id)).toBe('input-required');
+
+      const applied = await respond('r-2', '2026-10-29T14:30:00Z');
       expect(applied).toMatchObject({ kind: 'human-wait', receipt: 'applied' });
     } finally {
       await fixture.opened.dispose();

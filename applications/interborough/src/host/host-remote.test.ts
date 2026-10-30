@@ -99,6 +99,7 @@ describe('local mode', () => {
       agentDirectory: string;
     };
     expect(paths.mode).toBe('local');
+    expect((paths as { database?: unknown }).database).toEqual(host.database);
     expect(paths.agentDirectory).toBe(join(home, 'agents'));
     const snapshot = await host.bureau.settings.get();
     expect(snapshot.keys['durableOwnership.ownership']?.locked).toBe(false);

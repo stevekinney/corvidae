@@ -11,5 +11,6 @@ export * from './neon-value-mapping.ts';
 export * from './postgres-key-value-queries.ts';
 export * from './postgres-key-value-storage.ts';
 export * from './read-only-query.ts';
+export type { SerializationRetryOptions } from './serialization-retry.ts';
 export * from './sql-identifier.ts';
 export * from './sqlite-key-value-queries.ts';

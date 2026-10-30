@@ -50,7 +50,10 @@ describe.skipIf(database === null)('a host on Postgres and S3', () => {
     const host = await start();
 
     const snapshot = await host.bureau.settings.get();
-    expect(snapshot.keys['durableOwnership.ownership']?.locked).toBe(true);
+    expect(snapshot.keys['durableOwnership.ownership']).toMatchObject({
+      locked: true,
+      lockReason: 'shared-storage',
+    });
     expect(snapshot.keys['tools.wakeup']?.locked).toBe(false);
     const refused = await host.bureau.settings.update(
       { 'durableOwnership.ownership': 'none' },
@@ -73,7 +76,7 @@ describe.skipIf(database === null)('a host on Postgres and S3', () => {
       const host = await start();
 
       const snapshot = await host.bureau.settings.get();
-      expect(snapshot.keys[key]?.locked).toBe(true);
+      expect(snapshot.keys[key]).toMatchObject({ locked: true, lockReason: 'shared-storage' });
       const refused = await host.bureau.settings.update(
         { [key]: value },
         { expectedRevision: snapshot.revision },
@@ -85,11 +88,17 @@ describe.skipIf(database === null)('a host on Postgres and S3', () => {
   );
 
   test('keeps the locks its caller asked for beside its own', async () => {
-    const host = await start({ settings: { locked: ['workflowVersion'] } });
+    const host = await start({ settings: { locked: { workflowVersion: 'deployment' } } });
 
     const snapshot = await host.bureau.settings.get();
-    expect(snapshot.keys['workflowVersion']?.locked).toBe(true);
-    expect(snapshot.keys['durableOwnership.ownership']?.locked).toBe(true);
+    expect(snapshot.keys['workflowVersion']).toMatchObject({
+      locked: true,
+      lockReason: 'deployment',
+    });
+    expect(snapshot.keys['durableOwnership.ownership']).toMatchObject({
+      locked: true,
+      lockReason: 'shared-storage',
+    });
   });
 
   test('reports locations and variable names at /host/paths, and no credential anywhere', async () => {
@@ -101,6 +110,7 @@ describe.skipIf(database === null)('a host on Postgres and S3', () => {
     const paths = JSON.parse(body) as Record<string, unknown>;
     const prefix = `s3://${client.bucket}/host/`;
     expect(paths['mode']).toBe('remote');
+    expect(paths['database']).toEqual(host.database);
     expect(String(paths['agentDirectory'])).toStartWith(prefix);
     expect(String(paths['agentDirectory'])).toEndWith('/agents/');
     expect(String(paths['workflowDirectory'])).toEndWith('/workflows/');
