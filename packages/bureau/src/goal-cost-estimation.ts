@@ -24,19 +24,36 @@ const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
 const isPrice = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0;
 
-function isModelPricing(value: unknown): boolean {
-  if (!isPlainRecord(value)) return false;
-  const known = [
-    'promptCostPerMillionTokens',
-    'completionCostPerMillionTokens',
-    'cacheWriteCostPerMillionTokens',
-    'cacheReadCostPerMillionTokens',
-  ];
-  if (!Object.keys(value).every((key) => known.includes(key))) return false;
+const PRICE_KEYS = [
+  'promptCostPerMillionTokens',
+  'completionCostPerMillionTokens',
+  'cacheWriteCostPerMillionTokens',
+  'cacheReadCostPerMillionTokens',
+];
+
+/** The rates of one tier: the two required prices and the optional cache prices, and nothing else. */
+function hasValidRates(value: Record<string, unknown>, extraKeys: readonly string[]): boolean {
+  if (!Object.keys(value).every((key) => PRICE_KEYS.includes(key) || extraKeys.includes(key))) {
+    return false;
+  }
   if (!isPrice(value['promptCostPerMillionTokens'])) return false;
   if (!isPrice(value['completionCostPerMillionTokens'])) return false;
   return ['cacheWriteCostPerMillionTokens', 'cacheReadCostPerMillionTokens'].every(
     (key) => value[key] === undefined || isPrice(value[key]),
+  );
+}
+
+function isModelPricing(value: unknown): boolean {
+  if (!isPlainRecord(value)) return false;
+  if (!hasValidRates(value, ['longContext'])) return false;
+  // COR-1914: a file agent's budget prices a long-prompt tier from the catalog row, and the
+  // estimator persisted for a goal attempt must keep it, or the attempt would not start.
+  const longContext = value['longContext'];
+  if (longContext === undefined) return true;
+  return (
+    isPlainRecord(longContext) &&
+    hasValidRates(longContext, ['inputTokensAbove']) &&
+    isPrice(longContext['inputTokensAbove'])
   );
 }
 

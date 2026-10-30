@@ -632,14 +632,27 @@ export class UsageAccumulatedEvent extends Event {
   }
 }
 
+/**
+ * Fired when a run's spend crosses one of its `RunOptions.costBudget.warnAt` fractions (COR-1914),
+ * once per fraction per run (a host that crashes after sending one and before saving the step can send it again). `threshold` is the fraction, `budget` the run's `perRunUsd`,
+ * `currentCost` the run's spend after the step that crossed it, and `model` the model that step
+ * ran on. It carries no request content.
+ */
 export class BudgetThresholdEvent extends Event {
   static readonly type = 'budget.threshold' as const;
+  /** The step whose spend crossed the threshold; absent for a monitor's threshold, which has no step. */
+  readonly step: number | undefined;
+  /** The fraction of the budget that was crossed. */
   readonly threshold: number;
+  /** The run's spend, in US dollars, after the step. */
   readonly currentCost: number;
+  /** The budget the fraction is of, in US dollars. */
   readonly budget: number;
+  /** The model the step ran on. */
   readonly model: string;
-  constructor(data: CostBudgetThresholdEvent) {
+  constructor(data: CostBudgetThresholdEvent, step?: number) {
     super(BudgetThresholdEvent.type);
+    this.step = step;
     this.threshold = data.threshold;
     this.currentCost = data.currentCost;
     this.budget = data.budget;

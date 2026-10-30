@@ -27,6 +27,7 @@ import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 
 import type { AgentSkillDescriptor } from '@lostgradient/operative';
+import { RUN_COST_BUDGET_MAXIMUM_WARNINGS } from '@lostgradient/operative';
 import { CORE_SCHEMA, load as loadYaml, YAMLException } from 'js-yaml';
 import { z } from 'zod';
 
@@ -63,6 +64,7 @@ export const AGENT_FILE_KNOWN_KEYS = [
   'compaction',
   'references',
   'guardrails',
+  'costBudget',
 ] as const;
 
 /** Why a file cannot be used as an agent. Carried on the listing, and on a refused write. */
@@ -137,6 +139,23 @@ export const agentRetrySchema = z.strictObject({
   attempts: z.number().int().min(1).max(AGENT_RETRY_ATTEMPTS_MAXIMUM),
   delayMilliseconds: z.number().int().min(0).max(AGENT_RETRY_DELAY_MAXIMUM_MILLISECONDS).optional(),
   jitter: z.boolean().optional(),
+});
+
+/** The most a file's `costBudget.perRunUsd` may allow one run to spend, in US dollars. */
+export const AGENT_COST_BUDGET_MAXIMUM_USD = 1_000_000;
+/** The most thresholds a file's `costBudget.warnAt` may list: Operative's own limit. */
+export const AGENT_COST_BUDGET_MAXIMUM_WARNINGS = RUN_COST_BUDGET_MAXIMUM_WARNINGS;
+
+/**
+ * What one run of the agent may spend (COR-1914). `perRunUsd` is the limit in US dollars, measured
+ * against the run's cost as the model catalog prices each request: a run that reaches it finishes
+ * with `budget-exceeded`. `warnAt` lists fractions of it, each strictly between 0 and 1, at which
+ * the run's activity shows one `budget.threshold` event. Any order and repeats are accepted; the
+ * definition holds them sorted and without repeats.
+ */
+export const agentCostBudgetSchema = z.strictObject({
+  perRunUsd: z.number().positive().max(AGENT_COST_BUDGET_MAXIMUM_USD),
+  warnAt: z.array(z.number().gt(0).lt(1)).max(AGENT_COST_BUDGET_MAXIMUM_WARNINGS).optional(),
 });
 
 /** The fewest percent of the context window at which compaction may trigger (`compaction.thresholdPercent`). */
@@ -277,6 +296,11 @@ export const agentFileFrontmatterSchema = z
      */
     guardrails: agentGuardrailPresetSchema.nullish(),
     /**
+     * What one run may spend. Absent, a run has no spend limit. The agent's `model` must have a
+     * price in the model catalog, or the file is not usable.
+     */
+    costBudget: agentCostBudgetSchema.nullish(),
+    /**
      * Prompts that show what a person might ask the agent, which a new chat offers as buttons. Read
      * only: it is not in {@link AGENT_FILE_KNOWN_KEYS}, so a rewrite of the file keeps it as it is.
      */
@@ -361,10 +385,20 @@ export const agentFileDefinitionSchema = z.object({
    */
   references: agentReferencesSchema.optional(),
   guardrails: agentGuardrailPresetSchema.optional(),
+  /** Absent from a snapshot written before the field existed, and from a file that has none. */
+  costBudget: agentCostBudgetSchema.optional(),
   /** Prompts a new chat offers (see the frontmatter's `examples`); absent for a file that has none. */
   examples: agentExamplesSchema.optional(),
   instructions: z.string(),
 });
+
+/** A file's `costBudget`; see {@link agentCostBudgetSchema}. */
+export interface AgentCostBudget {
+  /** The most one run may spend, in US dollars. */
+  readonly perRunUsd: number;
+  /** Fractions of `perRunUsd` at which the run warns, ascending and without repeats. */
+  readonly warnAt?: readonly number[] | undefined;
+}
 
 /** A file's `retry`, as written. */
 export interface AgentRetry {
@@ -421,6 +455,11 @@ export interface AgentFileDefinition {
    */
   readonly guardrails?: AgentGuardrailPreset;
   /**
+   * What one run of the agent may spend, as the file's `costBudget` states it, with `warnAt`
+   * sorted and without repeats. Absent when the file sets none: a run has no spend limit.
+   */
+  readonly costBudget?: AgentCostBudget;
+  /**
    * Prompts that show what a person might ask the agent, as the file's `examples` lists them.
    * Absent when it lists none. A caller never supplies them: they stay in the file through a write.
    */
@@ -445,6 +484,7 @@ const definitionKeyTable: Record<keyof AgentFileDefinition, true> = {
   compaction: true,
   references: true,
   guardrails: true,
+  costBudget: true,
   examples: true,
   instructions: true,
 };
@@ -506,6 +546,11 @@ export interface AgentFileDefinitionInput {
    * `null` removes it.
    */
   readonly guardrails?: AgentGuardrailPreset | null | undefined;
+  /**
+   * See {@link AgentFileDefinition.costBudget}. An update that omits it keeps the file's value;
+   * `null` removes it.
+   */
+  readonly costBudget?: AgentCostBudget | null | undefined;
   readonly instructions: string;
 }
 
@@ -594,6 +639,18 @@ function retryOf(retry: AgentRetry): AgentRetry {
   };
 }
 
+/**
+ * A cost budget as a definition holds it: `warnAt` sorted and without repeats, and left out when it
+ * lists none, so two files that say the same thing are the same definition.
+ */
+function costBudgetOf(budget: AgentCostBudget): AgentCostBudget {
+  const warnAt = [...new Set(budget.warnAt ?? [])].toSorted((left, right) => left - right);
+  return {
+    perRunUsd: budget.perRunUsd,
+    ...(warnAt.length === 0 ? {} : { warnAt }),
+  };
+}
+
 /** A compaction without the keys it leaves out, so a definition holds exactly what a file wrote. */
 function compactionOf(compaction: AgentCompaction): AgentCompaction {
   return {
@@ -626,6 +683,7 @@ function toDefinition(
       ? {}
       : { references: [...frontmatter.references] }),
     ...(frontmatter.guardrails == null ? {} : { guardrails: frontmatter.guardrails }),
+    ...(frontmatter.costBudget == null ? {} : { costBudget: costBudgetOf(frontmatter.costBudget) }),
     ...(frontmatter.examples == null ? {} : { examples: frontmatter.examples }),
     instructions,
   };
@@ -730,6 +788,7 @@ function knownFrontmatter(definition: AgentFileDefinitionInput): Record<string, 
     known['references'] = [...definition.references];
   }
   if (definition.guardrails != null) known['guardrails'] = definition.guardrails;
+  if (definition.costBudget != null) known['costBudget'] = costBudgetOf(definition.costBudget);
   return known;
 }
 
@@ -762,6 +821,7 @@ export function resolveAgentFileDefinition(
       ? {}
       : { references: [...input.references] }),
     ...(input.guardrails == null ? {} : { guardrails: input.guardrails }),
+    ...(input.costBudget == null ? {} : { costBudget: costBudgetOf(input.costBudget) }),
     instructions: input.instructions,
   };
 }
@@ -782,8 +842,8 @@ export function serializeUpdatedAgentFile(
 ): Uint8Array | undefined {
   const before = existing.definition;
   // A key the caller leaves out (`a2a`, `stepLimit`, `retry`, `compaction`, `references`,
-  // `guardrails`) is not a change to it: the file keeps the value it has, and a file with no such
-  // key is not given one.
+  // `guardrails`, `costBudget`) is not a change to it: the file keeps the value it has, and a file
+  // with no such key is not given one.
   const keptA2a = input.a2a === undefined;
   const next = resolveAgentFileDefinition(id, {
     ...input,
@@ -793,6 +853,7 @@ export function serializeUpdatedAgentFile(
     ...(input.compaction === undefined ? { compaction: before.compaction } : {}),
     ...(input.references === undefined ? { references: before.references } : {}),
     ...(input.guardrails === undefined ? { guardrails: before.guardrails } : {}),
+    ...(input.costBudget === undefined ? { costBudget: before.costBudget } : {}),
   });
   // `examples` is the file's own and an input never carries it, so it is not a change.
   const { examples: _kept, ...beforeKnown } = before;
@@ -815,6 +876,7 @@ export function serializeUpdatedAgentFile(
         ...(input.compaction === undefined ? { compaction: before.compaction } : {}),
         ...(input.references === undefined ? { references: before.references } : {}),
         ...(input.guardrails === undefined ? { guardrails: before.guardrails } : {}),
+        ...(input.costBudget === undefined ? { costBudget: before.costBudget } : {}),
       }),
       AGENT_FILE_KNOWN_KEYS,
       existing.lineEnding,

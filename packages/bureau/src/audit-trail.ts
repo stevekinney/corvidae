@@ -171,6 +171,10 @@ export const AUDIT_EVENT_TYPES = [
   'session.deleted',
   // AB-228 — budget accounting (no production emitter; see doc comment).
   'budget.exceeded',
+  // COR-1914 — a run crossing one of its agent file's `costBudget.warnAt` fractions: dispatched
+  // by the run itself, once per fraction (a crash between sending one and saving the step can repeat it). The run ending on the budget itself is a `run.error`
+  // and a `run.completed` with the finish reason `budget-exceeded`.
+  'budget.threshold',
   // AB-228 — toolbox-level safety events, under their forwarded wire strings.
   'toolbox.loop-warning',
   'toolbox.loop-blocked',

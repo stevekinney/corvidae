@@ -32,6 +32,7 @@ import {
 
 import { AgentRunError } from './errors.ts';
 import {
+  BudgetThresholdEvent,
   RunAbortedEvent,
   RunCompletedEvent,
   RunErrorEvent,
@@ -212,6 +213,15 @@ const PROJECTIONS: readonly RunEventProjection[] = [
     confidence: event.confidence,
     action: event.action,
   })),
+  // A run crossing a `costBudget.warnAt` fraction (COR-1914): what the run has spent against what it
+  // may, and the model of the step that crossed. No request content.
+  projection(BudgetThresholdEvent.type, isInstance(BudgetThresholdEvent), (event) => ({
+    step: event.step,
+    threshold: event.threshold,
+    currentCost: event.currentCost,
+    budget: event.budget,
+    model: event.model,
+  })),
   projection(RunErrorEvent.type, isInstance(RunErrorEvent), (event) => ({
     step: event.step,
     error: projectError(event.error),
@@ -251,6 +261,7 @@ export const PUBLISHED_RUN_EVENT_KINDS = [
   RunCompletedEvent.type,
   RunTripwireEvent.type,
   RunGuardrailEvent.type,
+  BudgetThresholdEvent.type,
   RunErrorEvent.type,
   RunAbortedEvent.type,
 ] as const;
