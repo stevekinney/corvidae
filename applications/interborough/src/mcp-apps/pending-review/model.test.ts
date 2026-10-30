@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'bun:test';
 
 import {
+  bureauReviewsOf,
   describeResolution,
   describeStatus,
   isOutcomeNotWritten,
   isReview,
   isReviewList,
   isRoundChanged,
+  MAXIMUM_PAGES,
+  readPendingQueue,
   type Review,
+  type ReviewPage,
   viewReview,
 } from './model.ts';
 
@@ -39,6 +43,58 @@ describe('the pending-review model', () => {
     expect(isReviewList(null)).toBe(false);
     expect(isReview(approval)).toBe(true);
     expect(isReview({ reviews: [] })).toBe(false);
+  });
+
+  it('accepts a list that carries a workflow review of the engine, and keeps only the Bureau’s own', () => {
+    const engine = { id: 'engine-1', kind: 'engine-review', source: 'engine', status: 'pending' };
+    const page = { reviews: [engine, approval], nextPageToken: null };
+
+    expect(isReviewList(page)).toBe(true);
+    expect(isReviewList({ reviews: [{ id: 'x', kind: 'something-else' }] })).toBe(false);
+    expect(isReviewList({ reviews: [], nextPageToken: 7 })).toBe(false);
+    expect(isReview(engine)).toBe(false);
+    expect(bureauReviewsOf(page as ReviewPage).map((review) => review.id)).toEqual([approval.id]);
+  });
+
+  it('follows the pages of the queue and drops the engine reviews between them', async () => {
+    const second = { ...approval, id: 'approval:run-2:call-2' };
+    const pages = new Map<string | undefined, ReviewPage>([
+      [
+        undefined,
+        { reviews: [approval, { id: 'engine-1', kind: 'engine-review' }], nextPageToken: 'p2' },
+      ],
+      ['p2', { reviews: [second], nextPageToken: null }],
+    ]);
+    const asked: Array<string | undefined> = [];
+
+    const queue = await readPendingQueue(async (token) => {
+      asked.push(token);
+      return pages.get(token);
+    });
+
+    expect(asked).toEqual([undefined, 'p2']);
+    expect(queue).toEqual({ reviews: [approval, second], truncated: false });
+  });
+
+  it('fails the whole read when a page cannot be read, and stops at the page bound', async () => {
+    expect(
+      await readPendingQueue(async (token) =>
+        token === undefined ? { reviews: [approval], nextPageToken: 'p2' } : undefined,
+      ),
+    ).toBeUndefined();
+
+    let reads = 0;
+    const endless = await readPendingQueue(async () => {
+      reads += 1;
+      return {
+        reviews: [{ ...approval, id: `approval:run-${reads}:call` }],
+        nextPageToken: `p${reads}`,
+      };
+    });
+
+    expect(reads).toBe(MAXIMUM_PAGES);
+    expect(endless?.truncated).toBe(true);
+    expect(endless?.reviews).toHaveLength(MAXIMUM_PAGES);
   });
 
   it('shows what a reviewer decides on and offers a decision while it is pending', () => {

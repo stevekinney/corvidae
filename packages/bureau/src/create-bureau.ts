@@ -437,6 +437,11 @@ import {
   type ReviewDecisionRequest,
 } from './review-decision-record';
 import {
+  createResolvedReviewStore,
+  type ReviewDecisionAuditPayload,
+  resolvedReviewOfAudit,
+} from './resolved-review-record';
+import {
   formatReviewAnswerIssues,
   type ReviewAnswerIssue,
   validateReviewAnswer,
@@ -566,6 +571,7 @@ import type {
   ResolveReviewInput,
   ResolveReviewResult,
   BureauRetentionOptions,
+  ReviewResolutionFields,
   ReviewStatus,
   RunSummary,
   ServerFrame,
@@ -673,6 +679,29 @@ export function omitKeysWithPrefix(
 /** Narrows JSON's readonly array union before spreading object metadata. */
 function isJsonObject(value: JSONValue | undefined): value is Record<string, JSONValue> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * COR-1828 — the tools a person allowed for the rest of a chat: the `approvalGrants` entry of the
+ * session's metadata, a list of tool names. It lives and dies with the session, so deleting the
+ * chat ends the grant, and a fork (which copies the owner and its provenance only) starts with none.
+ */
+function approvalGrantsOf(metadata: Record<string, JSONValue> | undefined): string[] {
+  const held = metadata?.['approvalGrants'];
+  return Array.isArray(held)
+    ? held.filter((entry): entry is string => typeof entry === 'string')
+    : [];
+}
+
+/**
+ * COR-1828 — the `remembered` field of a resolution that was asked to remember a tool: whether the
+ * grant was stored with the decision. Nothing when no tool was named.
+ */
+function rememberedField(
+  rememberTool: string | undefined,
+  stored: boolean,
+): { remembered?: boolean } {
+  return rememberTool === undefined ? {} : { remembered: stored };
 }
 
 function omitKey(record: Record<string, JSONValue>, omittedKey: string): Record<string, JSONValue> {
@@ -2771,6 +2800,8 @@ async function constructBureau<const D extends AgentDefinitions>(
               ...(options.agentApprovalSecret === undefined
                 ? {}
                 : { approvalSecret: options.agentApprovalSecret }),
+              // COR-1828: a tool a person allowed for the rest of the chat skips its `on-changes` ask.
+              rememberedTools: approvalGrantsOfRun,
               // COR-1920: a file agent's per-run toolbox resolves secret answers as the Bureau's does.
               ...(runtime.secretAnswers === undefined
                 ? {}
@@ -2908,6 +2939,9 @@ async function constructBureau<const D extends AgentDefinitions>(
       // COR-1367 — the same guardrail inheritance the run's fresh dispatch
       // used, so a recovered run resumes under the policy it started with.
       const resolvedOptions = await agent[OPERATIVE_RESOLVE_RUN_OPTIONS](input, {
+        // COR-1828: the run's own id, so a per-run toolbox (a file agent's `toolboxOptions`) can
+        // find the chat the run belongs to. A catalog dispatch already names it.
+        ...(context.runId === undefined && runId !== '' ? { runId } : {}),
         ...(childContext === undefined ? context : { ...context, ...childContext }),
         ...catalogRunGuardrailsContext(agent),
       });
@@ -3039,6 +3073,12 @@ async function constructBureau<const D extends AgentDefinitions>(
       result?: unknown;
       /** COR-1920: what the decision's audit entry says of each secret answer it delivered. */
       secretAnswers?: readonly SecretAnswerAuditEntry[];
+      /** COR-1828: the digest of the approved answer, which the resolved-review record keeps. */
+      answerDigest?: string | undefined;
+      /** COR-1828: the tool the decision asked to remember, stored with the decision's commit. */
+      rememberTool?: string | undefined;
+      /** COR-1828: the owner of record of the run, for the resolved-review record. */
+      owner?: string | undefined;
     }
   >();
   const pendingApprovalOverrides = new Map<
@@ -5909,6 +5949,9 @@ async function constructBureau<const D extends AgentDefinitions>(
     // behavioral difference (see `recordReviewStatusTransition`'s own doc
     // comment on the `superseded` branch).
     auditAttachment?: ReviewAuditAttachment,
+    // COR-1828: the tool the decision asked to remember. It joins the session's `approvalGrants`
+    // in this same commit, so the grant and the decision land together or not at all.
+    rememberTool?: string,
     // AB-391 (Codex review finding, PR #601, "Detect when the resolution
     // update appends nothing"): returns whether the `sessionStore.update()`
     // call below actually committed — `false` when the updater returned
@@ -6039,6 +6082,13 @@ async function constructBureau<const D extends AgentDefinitions>(
               session.metadata['approvalResolutionStartedIds'],
               reviewId,
             ),
+            ...(rememberTool === undefined
+              ? {}
+              : {
+                  approvalGrants: [
+                    ...new Set([...approvalGrantsOf(session.metadata), rememberTool]),
+                  ],
+                }),
             // `resolvedReviewIds` is guaranteed to NOT already include
             // `reviewId` here — the `alreadyLanded`/`conflictingDecision`
             // early returns above handle that case before this object is
@@ -6116,6 +6166,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     principal: string,
     reason: string | undefined,
     auditAttachment?: ReviewAuditAttachment,
+    rememberTool?: string,
     // AB-391: see `persistReviewResolution`'s own doc comment on this
     // return value, including its `alreadyLanded` handling of an ambiguous
     // prior commit — that check runs on EVERY call to
@@ -6136,6 +6187,7 @@ async function constructBureau<const D extends AgentDefinitions>(
           principal,
           reason,
           auditAttachment,
+          rememberTool,
         );
       } catch (error) {
         // AB-391 (Codex P1 review finding, PR #601, "Distinguish concurrent
@@ -11873,6 +11925,7 @@ async function constructBureau<const D extends AgentDefinitions>(
    * entire duration down to one async tick.
    */
   async function pruneAuditTrail(): Promise<void> {
+    await pruneResolvedReviews();
     if (!auditTrailInstance) return;
     const retention = currentSettings()['retention.audit'];
     if (!retention || retention === 'forever') return;
@@ -11943,6 +11996,26 @@ async function constructBureau<const D extends AgentDefinitions>(
       : undefined;
 
     await auditTrailInstance.prune(effectiveCutoff, { protectRunId });
+  }
+
+  /**
+   * COR-1828 — retires the resolved-review records decided before `retention.audit` allows, on the
+   * same pass and the same setting as the audit entries of those decisions. Kept for ever under
+   * `'forever'` or no setting. A failure is diagnosed and does not stop the audit prune that follows.
+   */
+  async function pruneResolvedReviews(): Promise<void> {
+    const retention = currentSettings()['retention.audit'];
+    if (!retention || retention === 'forever') return;
+    try {
+      await resolvedReviewStore.pruneBefore(runtimeServices.clock.now() - retention.olderThan);
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'audit-trail',
+        message: `[bureau] Could not prune the resolved-review records: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
   }
 
   /**
@@ -12456,6 +12529,9 @@ async function constructBureau<const D extends AgentDefinitions>(
         dedupeKey: `session.attachment:${entry.sessionId}:${entry.ordinal}`,
       });
     }
+    // COR-1828: the decision's resolved-review record rides the same replay, so a crash after the
+    // session commit leaves it for the next drain, as it leaves the audit entry.
+    await recordResolvedReview(payload, entry.committedAtMs);
     return acknowledge();
   }
 
@@ -16282,6 +16358,47 @@ async function constructBureau<const D extends AgentDefinitions>(
     return undefined;
   }
 
+  /**
+   * Refuses, before anything is decided or found, a `reject` without a reason (AB-46: for both review
+   * kinds), and (COR-1828) a `remember` that is not the approval of a tool approval: a grant is the
+   * consequence of approving, and only a tool has one to give.
+   */
+  function assertDecisionFitsInput(input: ResolveReviewInput): void {
+    if (input.decision === 'reject' && (input.reason === undefined || input.reason.trim() === '')) {
+      throw new BureauError('reject requires a reason', 'BAD_REQUEST');
+    }
+    if (
+      input.remember === true &&
+      (input.decision !== 'approve' || input.id.startsWith('human-wait:'))
+    ) {
+      throw new BureauError(
+        'remember applies to approving a tool approval, and to nothing else',
+        'BAD_REQUEST',
+      );
+    }
+  }
+
+  /**
+   * COR-1828 — what a decision's records keep beyond the decision itself. A human wait's approved
+   * answer is kept as the digest the decision fence already took over its reference form
+   * (`answerDigest`); a tool approval approved with `remember` names the tool its grant allows
+   * (`rememberTool`).
+   */
+  function recordedByDecision(
+    review: SessionPendingReview,
+    input: ResolveReviewInput,
+    digest: string,
+  ): { answerDigest: string | undefined; rememberTool: string | undefined } {
+    const approving = input.decision === 'approve';
+    return {
+      answerDigest: review.kind === 'human-wait' && approving ? digest : undefined,
+      rememberTool:
+        review.kind === 'tool-approval' && approving && input.remember === true
+          ? review.approval.toolName
+          : undefined,
+    };
+  }
+
   async function resolveReview(
     input: ResolveReviewInput,
     // COR-1579: the human wait of a session run another process holds, derived from durable
@@ -16294,9 +16411,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     // `resolveReview` is the validation boundary, so this throws before any
     // state change (before even finding the review), matching the gateway's
     // `POST /:id/reject` 400-on-missing-reason contract.
-    if (input.decision === 'reject' && (input.reason === undefined || input.reason.trim() === '')) {
-      throw new BureauError('reject requires a reason', 'BAD_REQUEST');
-    }
+    assertDecisionFitsInput(input);
     const listed = listPendingReviews().find((candidate) => candidate.id === input.id);
     const review = listed ?? (derived?.id === input.id ? derived : undefined);
     if (!review) {
@@ -16320,6 +16435,8 @@ async function constructBureau<const D extends AgentDefinitions>(
             cleanup.principal,
             cleanup.reason,
             cleanup.secretAnswers,
+            cleanup.answerDigest,
+            cleanup.owner,
           );
           const cleanupAuditAppended = await persistReviewResolutionWithRetry(
             cleanup.sessionId,
@@ -16330,6 +16447,7 @@ async function constructBureau<const D extends AgentDefinitions>(
             cleanup.principal,
             cleanup.reason,
             cleanupAuditAttachment,
+            cleanup.rememberTool,
           );
           reviewResolutionCleanupPending.delete(input.id);
           await releaseDecidedReview(cleanup.runId, cleanup.review.id);
@@ -16379,7 +16497,12 @@ async function constructBureau<const D extends AgentDefinitions>(
             cleanup.decision,
             cleanup.principal,
             cleanup.reason,
-            { auditAlreadyAppended: cleanupAuditAppended },
+            {
+              auditAlreadyAppended: cleanupAuditAppended,
+              secretAnswers: cleanup.secretAnswers,
+              answerDigest: cleanup.answerDigest,
+              owner: cleanup.owner,
+            },
           );
           if (cleanupOutcomeNotWritten !== undefined) throw cleanupOutcomeNotWritten;
           return {
@@ -16389,6 +16512,7 @@ async function constructBureau<const D extends AgentDefinitions>(
             ...(cleanup.kind === 'tool-approval' && cleanup.decision === 'reject'
               ? { feedback: cleanup.reason }
               : {}),
+            ...rememberedField(cleanup.rememberTool, cleanupAuditAppended),
           };
         } finally {
           resolvingReviewIds.delete(input.id);
@@ -16471,6 +16595,9 @@ async function constructBureau<const D extends AgentDefinitions>(
     // COR-1579: claim the decision durably before anything irreversible. See
     // `review-decision-record.ts` for which claims are kept and which released.
     const claimRequest = sessionDecisionRequest(review, input);
+    // COR-1828: what the decision's records keep: see `recordedByDecision`.
+    const { answerDigest, rememberTool } = recordedByDecision(review, input, claimRequest.digest);
+    const decisionOwner = await ownerForRecord(review.runId);
     let claim: Awaited<ReturnType<typeof reviewDecisions.claim>>;
     try {
       if (review.kind === 'human-wait' && input.decision === 'approve') {
@@ -16728,6 +16855,8 @@ async function constructBureau<const D extends AgentDefinitions>(
         input.principal,
         input.reason,
         secretAnswerAudit,
+        answerDigest,
+        decisionOwner,
       );
       try {
         auditAlreadyAppended = await persistReviewResolutionWithRetry(
@@ -16739,6 +16868,7 @@ async function constructBureau<const D extends AgentDefinitions>(
           input.principal,
           input.reason,
           auditAttachment,
+          rememberTool,
         );
       } catch (error) {
         // AB-391 (Codex P1 review finding, PR #601, "Distinguish concurrent
@@ -16765,6 +16895,9 @@ async function constructBureau<const D extends AgentDefinitions>(
             ...(input.reason !== undefined ? { reason: input.reason } : {}),
             ...(result === undefined ? {} : { result }),
             secretAnswers: secretAnswerAudit,
+            answerDigest,
+            rememberTool,
+            owner: decisionOwner,
           });
         }
         resolvingReviewIds.delete(review.id);
@@ -16804,6 +16937,11 @@ async function constructBureau<const D extends AgentDefinitions>(
 
     await recordReviewDecision(review, input.decision, input.principal, input.reason, {
       auditAlreadyAppended,
+      secretAnswers: secretAnswerAudit,
+      answerDigest,
+      owner: decisionOwner,
+      // COR-1828: a superseded call decided nothing, so it keeps no resolved-review record.
+      decisionIsFinal: !keepPending,
     });
 
     if (outcomeNotWritten !== undefined) throw outcomeNotWritten;
@@ -16817,6 +16955,8 @@ async function constructBureau<const D extends AgentDefinitions>(
         ? { feedback: input.reason }
         : {}),
       ...(keepPending ? { superseded: true as const } : {}),
+      // COR-1828: stored with the decision's commit; a superseded call ran nothing, so none was.
+      ...rememberedField(rememberTool, !keepPending && auditAlreadyAppended),
     };
   }
 
@@ -16834,6 +16974,11 @@ async function constructBureau<const D extends AgentDefinitions>(
     principal: string,
     reason?: string,
     secretAnswers: readonly SecretAnswerAuditEntry[] = [],
+    // COR-1828: a human wait's approved answer as a digest over its reference form.
+    answerDigest?: string,
+    // COR-1828: the owner of record of the review's run, read while the run is live, so the
+    // resolved-review record a replay writes later names it whatever became of the run.
+    owner?: string,
   ): ReviewAuditAttachment {
     const secretFields = review.kind === 'human-wait' ? secretFieldsOfReview(review) : [];
     const decisionSuffix =
@@ -16865,9 +17010,68 @@ async function constructBureau<const D extends AgentDefinitions>(
         // COR-1920: a secret answer is named by its field and a digest of its ciphertext, never
         // by its value.
         ...(secretAnswers.length > 0 ? { secretAnswers } : {}),
+        // COR-1828: what the resolved-review record keeps of the answer.
+        ...(answerDigest !== undefined ? { answerDigest } : {}),
+        ...(owner !== undefined ? { owner } : {}),
       },
       principal,
     };
+  }
+
+  /**
+   * COR-1828 — keeps the record of a decided review, from the payload of the audit entry that
+   * stands for the decision. Called by each writer of that entry, so the record is as durable as
+   * the entry: a decision that rode the session commit is recorded when its outbox entry is
+   * replayed (at `decidedAt`, the commit's time), and any other when its audit entry is written. A
+   * payload that is not a decision (an expiry, a revocation) writes nothing. The owner rides in the
+   * payload's `detail`, read while the run was live. A failure to write throws: on a replay it
+   * leaves the outbox entry unacknowledged for the next drain, as a failed audit write does.
+   */
+  async function recordResolvedReview(
+    payload: ReviewDecisionAuditPayload,
+    decidedAt: number,
+  ): Promise<void> {
+    if (!payload.type.startsWith('review.')) return;
+    const resolved = resolvedReviewOfAudit(payload, decidedAt);
+    if (resolved === undefined) return;
+    if (await resolvedReviewStore.record(resolved)) return;
+    // A record already held is the same decision replayed, unless another decision won the review.
+    const held = await resolvedReviewStore.get(resolved.review.id);
+    if (
+      held !== undefined &&
+      (held.decision !== resolved.decision || held.decidedBy !== resolved.decidedBy)
+    ) {
+      diagnose({
+        level: 'error',
+        scope: 'audit-trail',
+        message: `[bureau] The resolved-review record of "${resolved.review.id}" already holds ${held.decision} by "${held.decidedBy}"; ${resolved.decision} by "${resolved.decidedBy}" was not kept.`,
+      });
+    }
+  }
+
+  /** The owner of record a decision's records name: the run's, or the local owner of a run no one holds. */
+  async function ownerForRecord(runId: string): Promise<string> {
+    try {
+      return (await runOwner(runId)) ?? ANONYMOUS_LOCAL_OWNER;
+    } catch {
+      return ANONYMOUS_LOCAL_OWNER;
+    }
+  }
+
+  /** {@link recordResolvedReview} for a writer that cannot retry it: a failure is diagnosed, not thrown. */
+  async function recordResolvedReviewBestEffort(
+    payload: ReviewDecisionAuditPayload,
+  ): Promise<void> {
+    try {
+      await recordResolvedReview(payload, runtimeServices.clock.now());
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'audit-trail',
+        message: `[bureau] Could not keep the resolved-review record of "${payload.runId}": ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
   }
 
   async function recordReviewDecision(
@@ -16883,15 +17087,37 @@ async function constructBureau<const D extends AgentDefinitions>(
     // (the default) is the ONLY path with no preceding session-store commit
     // to couple to (`resolveReview`'s `keepPending` re-gate branch), where
     // the direct write below remains correct exactly as it always was.
-    requestOptions?: { auditAlreadyAppended?: boolean },
+    requestOptions?: {
+      auditAlreadyAppended?: boolean;
+      secretAnswers?: readonly SecretAnswerAuditEntry[] | undefined;
+      answerDigest?: string | undefined;
+      owner?: string | undefined;
+      /**
+       * COR-1828: `false` for a decision that left the review pending (a re-gated approval), whose
+       * resolved-review record would name a decision nothing acted on and, being written once,
+       * would hide the real one.
+       */
+      decisionIsFinal?: boolean;
+    },
   ): Promise<void> {
     // COR-1622: a close follows the request it closes in the history, and the request of a fire's
     // first review waits for its seed read.
     await fireReviewSeeds.pending(review.runId);
     if (!requestOptions?.auditAlreadyAppended) {
-      await auditTrailInstance?.record(
-        buildReviewDecisionAuditRecord(review, decision, principal, reason),
+      const directAudit = buildReviewDecisionAuditRecord(
+        review,
+        decision,
+        principal,
+        reason,
+        requestOptions?.secretAnswers,
+        requestOptions?.answerDigest,
+        requestOptions?.owner ?? (await ownerForRecord(review.runId)),
       );
+      await auditTrailInstance?.record(directAudit);
+      // COR-1828: this entry rode no session commit, so no replay will keep the record.
+      if (requestOptions?.decisionIsFinal !== false) {
+        await recordResolvedReviewBestEffort(directAudit);
+      }
     }
 
     // AB-224: the live counterpart of the durable write above — dispatched
@@ -16915,6 +17141,30 @@ async function constructBureau<const D extends AgentDefinitions>(
         runAttribution.get(review.runId)?.principal,
         runSessionIncarnations.get(review.runId),
       );
+    }
+  }
+
+  /**
+   * COR-1828 — the tools a person allowed for the rest of the chat `runId` belongs to, read from
+   * the session's metadata when a tool call is decided. A run that no session holds (a
+   * `bureau.run()` run, or one this process does not hold) has no chat, and a session that cannot be
+   * read counts as having none, so the call asks.
+   */
+  async function approvalGrantsOfRun(runId: string): Promise<ReadonlySet<string>> {
+    const sessions = runtime.sessionStore;
+    if (sessions === undefined) return new Set();
+    try {
+      // A run this process holds names its session; one recovered after a restart is found by
+      // its task record, which every session run writes before it starts.
+      const runState = store.getRun(runId);
+      const live = runState === undefined ? '' : getRunSessionIdentifier(runState);
+      const task = live !== '' ? undefined : await tasks.get(runId);
+      const sessionId = live !== '' ? live : task?.contextId;
+      if (sessionId === undefined) return new Set();
+      const session = await sessions.load(sessionId);
+      return new Set(approvalGrantsOf(session?.metadata));
+    } catch {
+      return new Set();
     }
   }
 
@@ -17212,6 +17462,8 @@ async function constructBureau<const D extends AgentDefinitions>(
    * review resolves through the session path.
    */
   async function resolveAnyReview(requested: ResolveReviewInput): Promise<ResolveReviewResult> {
+    // COR-1828: the engine's human waits skip `resolveReview`, so the shape of the decision is refused here.
+    assertDecisionFitsInput(requested);
     const input = await humanWaitAnswerFittingItsSchema(requested);
     if (runHumanWaits.has(input.id)) {
       assertExpectedReviewRound(input, { id: input.id, kind: 'human-wait' });
@@ -17239,7 +17491,7 @@ async function constructBureau<const D extends AgentDefinitions>(
    */
   async function getReview(
     id: string,
-  ): Promise<(PendingReview & { status: ReviewStatus; resolvedBy?: string }) | undefined> {
+  ): Promise<(PendingReview & ReviewResolutionFields) | undefined> {
     const pending = listPendingReviews().find((candidate) => candidate.id === id);
     if (pending) return pending;
     // COR-1577: the park of a `bureau.run()` run, which no session holds.
@@ -17248,7 +17500,22 @@ async function constructBureau<const D extends AgentDefinitions>(
     // COR-1579: the park of a run another process holds.
     const derived = await derivedHumanWait(id);
     if (derived) return derived;
-    if (!auditTrailInstance) return undefined;
+    // COR-1828: the audit trail is where a closed review is read from, with what it was asked. A
+    // Bureau with none, or whose trail no longer holds it, reads the review's own record, which
+    // says who decided it and when and keeps what was asked and answered.
+    const recorded = async (): Promise<(PendingReview & ReviewResolutionFields) | undefined> => {
+      const found = await resolvedReviewStore.get(id);
+      if (found === undefined) return undefined;
+      return {
+        ...found.review,
+        resolvedBy: found.decidedBy,
+        resolvedAt: found.decidedAt,
+        ...(found.reason === undefined ? {} : { resolutionReason: found.reason }),
+        ...(found.answerDigest === undefined ? {} : { answerDigest: found.answerDigest }),
+        ...(found.secretRefs === undefined ? {} : { secretRefs: found.secretRefs }),
+      };
+    };
+    if (!auditTrailInstance) return recorded();
 
     const runId = reviewRunId(id);
     if (!runId) return undefined;
@@ -17266,16 +17533,25 @@ async function constructBureau<const D extends AgentDefinitions>(
       // match found in iteration order IS the chronologically-last one.
       match = record;
     }
-    if (!match) return undefined;
+    if (!match) return recorded();
 
     // A record written before `round` existed has none at runtime, whatever the type says.
     const reviewDetail = (match.detail as Record<string, unknown>)['review'] as PendingReview;
+    // A decision says more than a closing does: its note, and what it kept of the answer.
+    const decision = resolvedReviewOfAudit(
+      { runId, type: match.type, detail: match.detail, principal: match.principal ?? '' },
+      match.timestampMs,
+    );
     return {
       ...reviewDetail,
       ...(reviewDetail.kind === 'tool-approval' ? { round: reviewDetail.round ?? 0 } : {}),
       status: reviewStatusFromAuditType(match.type),
-      // Who decided it, as the audit trail recorded the decision.
+      // Who decided it, and when, as the audit trail recorded the decision.
       ...(match.principal === undefined ? {} : { resolvedBy: match.principal }),
+      resolvedAt: match.timestampMs,
+      ...(decision?.reason === undefined ? {} : { resolutionReason: decision.reason }),
+      ...(decision?.answerDigest === undefined ? {} : { answerDigest: decision.answerDigest }),
+      ...(decision?.secretRefs === undefined ? {} : { secretRefs: decision.secretRefs }),
     };
   }
 
@@ -18996,6 +19272,8 @@ async function constructBureau<const D extends AgentDefinitions>(
 
   // COR-1579 — the durable decision record every review resolution claims before it acts.
   const reviewDecisions = createReviewDecisionRecords(runtime.kv);
+  // COR-1828 — the record of each decided review, written beside the decision's audit entry.
+  const resolvedReviewStore = createResolvedReviewStore(runtime.kv);
 
   // COR-1577 — the human-wait reviews of `bureau.run()` runs, which have no session. Held apart
   // from `listPendingReviews()` above so the session path (and what COR-1302 excluded) is as it
@@ -19008,15 +19286,31 @@ async function constructBureau<const D extends AgentDefinitions>(
     checkpointSteps: async (runId) =>
       (await runtime.durable?.checkpointStore.loadSteps(runId)) ?? [],
     now: runtimeServices.clock.now,
-    recordDecision: async (review, decision, principal, reason, writeAudit, secretAnswers) => {
+    recordDecision: async (
+      review,
+      decision,
+      principal,
+      reason,
+      writeAudit,
+      secretAnswers,
+      answerDigest,
+    ) => {
       // COR-1622: a close follows the request it closes in the history.
       await fireReviewSeeds.pending(review.runId);
       // COR-1579: only the caller whose decision record turned `recorded` writes the entry, so
       // two processes deciding one park alike leave one.
       if (writeAudit) {
-        await auditTrailInstance?.record(
-          buildReviewDecisionAuditRecord(review, decision, principal, reason, secretAnswers),
+        const audit = buildReviewDecisionAuditRecord(
+          review,
+          decision,
+          principal,
+          reason,
+          secretAnswers,
+          answerDigest,
+          await ownerForRecord(review.runId),
         );
+        await auditTrailInstance?.record(audit);
+        await recordResolvedReviewBestEffort(audit);
       }
       if (decision === 'approve') {
         emitter.dispatch(new ReviewApprovedEvent(review.id, review.runId, principal, review.kind));
@@ -19432,6 +19726,15 @@ async function constructBureau<const D extends AgentDefinitions>(
   // COR-1577: a `bureau.run()` run's park joins the session reviews in the public list, and
   // resolves through the engine by run id. Every other review resolves exactly as before.
   const reviews = createReviews({
+    listResolved: async (filter) => {
+      const held = await resolvedReviewStore.list();
+      return held
+        .filter(
+          (resolved) =>
+            filter?.resolvedAfter === undefined || resolved.decidedAt >= filter.resolvedAfter,
+        )
+        .toSorted((a, b) => b.decidedAt - a.decidedAt || (a.review.id < b.review.id ? -1 : 1));
+    },
     listSessionReviews: listPendingReviews,
     listRunHumanWaits: () => runHumanWaits.list(),
     get: getReview,

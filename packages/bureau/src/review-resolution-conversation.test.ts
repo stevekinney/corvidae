@@ -227,6 +227,39 @@ describe('resolveReview writes the outcome of a tool approval into the session',
     }
   });
 
+  it('keeps no resolved record while the review is still pending, and the final decision after', async () => {
+    const { bureau, review } = await parkedBureau(regatingToolbox([]));
+    try {
+      const first = await bureau.reviews.resolve({
+        id: review.id,
+        decision: 'approve',
+        principal: 'alice',
+      });
+
+      expect(first.superseded).toBe(true);
+      expect(bureau.reviews.list().map((pending) => pending.id)).toEqual([review.id]);
+      expect(await bureau.reviews.listResolved()).toEqual([]);
+      expect(await bureau.reviews.get(review.id)).toMatchObject({ status: 'pending' });
+
+      await bureau.reviews.resolve({
+        id: review.id,
+        decision: 'deny',
+        principal: 'bob',
+        round: 1,
+      });
+
+      const resolved = await bureau.reviews.listResolved();
+      expect(resolved).toHaveLength(1);
+      expect(resolved[0]).toMatchObject({ decision: 'deny', decidedBy: 'bob' });
+      expect(await bureau.reviews.get(review.id)).toMatchObject({
+        status: 'denied',
+        resolvedBy: 'bob',
+      });
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
   it('counts each supersession in the review round, under one id', async () => {
     const { bureau, review } = await parkedBureau(regatingToolbox([]));
     try {

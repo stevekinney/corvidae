@@ -30,6 +30,7 @@ export function toolApprovalFixture(
   overrides: Partial<BureauToolApproval> = {},
 ): BureauToolApproval {
   return {
+    source: 'bureau',
     id: 'approval:run-1:call-1',
     runId: 'run-1',
     agentName: 'tool-runner',
@@ -58,6 +59,7 @@ export function toolApprovalFixture(
 
 export function humanWaitFixture(overrides: Partial<BureauHumanWait> = {}): BureauHumanWait {
   return {
+    source: 'bureau',
     id: 'human-wait:run-2:environment:0',
     runId: 'run-2',
     agentName: 'request-human-input',

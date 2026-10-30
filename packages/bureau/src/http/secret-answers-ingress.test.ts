@@ -32,6 +32,8 @@ import type { AgentDefinitions } from '../agent-catalog';
 import { createMemoryAssetStorage } from '../assets/storage';
 import { canonicalJson, createCommandLedger, digestCommandPayload } from '../command-ledger.ts';
 import { createBureau } from '../create-bureau.ts';
+import { RESOLVED_REVIEW_KEY_PREFIX } from '../resolved-review-record.ts';
+import { digestReviewDelivery } from '../review-decision-record.ts';
 import {
   type AnswerEncryptionKeys,
   createSecretAnswerResolver,
@@ -402,6 +404,25 @@ async function secretBureau(
     ]);
   }
 
+  /**
+   * COR-1828 — the record of the decision keeps the answer as a digest over its reference form and
+   * the references of its secret fields, and nothing of a value: the full storage scan above reads it.
+   */
+  async function expectResolvedRecord(runId: string, answer: unknown): Promise<void> {
+    const records = await bureau.reviews.listResolved();
+    const record = records.find((candidate) => candidate.review.runId === runId);
+    expect(record).toMatchObject({
+      decision: 'approve',
+      secretRefs: [seen.secretRef],
+      answerDigest: digestReviewDelivery(answer),
+    });
+    expectNoLeak('the resolved-review record', JSON.stringify(record));
+    const everyKey = await everyStoredKey(storage);
+    const stored = everyKey.filter(([key]) => key.startsWith(RESOLVED_REVIEW_KEY_PREFIX));
+    expect(stored).toHaveLength(1);
+    expectNoLeak('the stored resolved-review record', stored.map(([, value]) => value).join('\n'));
+  }
+
   async function dispose(): Promise<void> {
     unsubscribe();
     await bureau.dispose();
@@ -426,6 +447,7 @@ async function secretBureau(
     expectToolOutcomes,
     expectRecords,
     expectAudit,
+    expectResolvedRecord,
     dispose,
   };
 }
@@ -448,6 +470,10 @@ describe('a secret answer through bureau.reviews.resolve', () => {
       harness.expectToolOutcomes();
       await harness.expectRecords(runId);
       await harness.expectAudit(runId);
+      await harness.expectResolvedRecord(runId, {
+        user: 'ada',
+        password: { secretRef: harness.seen.secretRef },
+      });
       await harness.scan(runId);
     } finally {
       await harness.dispose();

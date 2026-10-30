@@ -587,6 +587,8 @@ export type {
   PendingToolApprovalReview,
   ProviderConfiguration,
   ResolveReviewInput,
+  ResolvedReview,
+  ReviewResolutionFields,
   ResolveReviewResult,
   RetentionWindowOption,
   RunDetail,

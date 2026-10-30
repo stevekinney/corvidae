@@ -215,7 +215,7 @@ describe('a human wait of a run with no session (COR-1577)', () => {
     const hidden = await call(serve(owned), 'bureau.reviews.list', {});
     const visible = await call(serve(owned, operator), 'bureau.reviews.list', {});
 
-    expect(hidden.result).toEqual({ reviews: [] });
+    expect(hidden.result).toEqual({ reviews: [], nextPageToken: null });
     expect(visible.result).toMatchObject({ reviews: [{ id: 'human-wait:run-2:answer:0' }] });
   });
 });
@@ -227,8 +227,10 @@ describe('bureau.reviews.list', () => {
     const body = await call(handler, 'bureau.reviews.list', {});
 
     expect(body.result).toEqual({
+      nextPageToken: null,
       reviews: [
         {
+          source: 'bureau',
           id: 'approval:run-1:call-1',
           kind: 'tool-approval',
           runId: 'run-1',
@@ -252,10 +254,12 @@ describe('bureau.reviews.list', () => {
     expect(JSON.stringify(body)).not.toContain('secret-signed-token');
   });
 
-  it('rejects any input key', async () => {
-    const body = await call(serve(stubHost()), 'bureau.reviews.list', { status: 'approved' });
+  it('rejects a key it does not define, and a status it does not know', async () => {
+    for (const params of [{ principal: 'api-key:other' }, { status: 'approved' }]) {
+      const body = await call(serve(stubHost()), 'bureau.reviews.list', params);
 
-    expect(body.error?.data?.httpStatus).toBe(400);
+      expect(body.error?.data?.httpStatus).toBe(400);
+    }
   });
 });
 
@@ -663,6 +667,7 @@ describe('projectReview', () => {
     });
 
     expect(projected).toEqual({
+      source: 'bureau',
       kind: 'human-wait',
       id: 'human-wait:run-1:answer:0',
       runId: 'run-1',
@@ -745,7 +750,7 @@ describe('the reviews operations against a real Bureau', () => {
       });
 
       const after = await call(handler, 'bureau.reviews.list', {});
-      expect(after.result).toEqual({ reviews: [] });
+      expect(after.result).toEqual({ reviews: [], nextPageToken: null });
       const again = await call(handler, 'bureau.reviews.resolve', { id, decision: 'approve' });
       expect(again.error?.data?.httpStatus).toBe(404);
       const resolvedReview = await call(handler, 'bureau.reviews.get', { id });
@@ -1070,7 +1075,7 @@ describe('who reaches the human wait of a bureau.run() run, through a real Burea
       expect(JSON.stringify(get.error).replaceAll(id, '<id>')).toBe(
         JSON.stringify(unknown.error).replaceAll('no-such', '<id>'),
       );
-      expect(list.result).toEqual({ reviews: [] });
+      expect(list.result).toEqual({ reviews: [], nextPageToken: null });
       // The refusals left the review pending and the run parked.
       expect(bureau.reviews.list().map((review) => review.id)).toEqual([id]);
       const owner = await callAs(OWNER_KEY, handler, 'bureau.reviews.resolve', {
@@ -1097,7 +1102,7 @@ describe('who reaches the human wait of a bureau.run() run, through a real Burea
         const hidden = await callAs(key, keyed, 'bureau.reviews.get', { id });
         expect(hidden.error?.data?.httpStatus).toBe(404);
         const listed = await callAs(key, keyed, 'bureau.reviews.list', {});
-        expect(listed.result).toEqual({ reviews: [] });
+        expect(listed.result).toEqual({ reviews: [], nextPageToken: null });
       }
       const refused = await callAs(OTHER_KEY, keyed, 'bureau.reviews.resolve', {
         id,

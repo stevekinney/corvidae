@@ -133,6 +133,8 @@ export type RunHumanWaitsDependencies = {
     reason: string | undefined,
     writeAudit: boolean,
     secretAnswers: readonly SecretAnswerAuditEntry[],
+    /** COR-1828: the digest of the approved answer in its reference form; absent for a deny or reject. */
+    answerDigest: string | undefined,
   ) => Promise<void>;
   /**
    * Refuses a payload that holds a secret field unsealed (COR-1920). Called before the decision is
@@ -609,6 +611,7 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
       input.reason,
       writeAudit,
       secretAnswers,
+      input.decision === 'approve' ? request.digest : undefined,
     );
     return { id: review.id, kind: 'human-wait', decision: input.decision };
   }

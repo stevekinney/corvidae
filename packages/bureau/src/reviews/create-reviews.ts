@@ -12,6 +12,8 @@ export type ReviewsDependencies = {
    * session reviews in {@link BureauReviews.list}.
    */
   readonly listRunHumanWaits: () => PendingReview[];
+  /** {@link BureauReviews.listResolved}. */
+  readonly listResolved: BureauReviews['listResolved'];
   /** {@link BureauReviews.get}. */
   readonly get: BureauReviews['get'];
   /** {@link BureauReviews.pendingOf}. */
@@ -33,6 +35,7 @@ export function createReviews(dependencies: ReviewsDependencies): BureauReviews 
       ...dependencies.listSessionReviews(),
       ...dependencies.listRunHumanWaits(),
     ],
+    listResolved: dependencies.listResolved,
     get: dependencies.get,
     pendingOf: dependencies.pendingOf,
     resolve: dependencies.resolve,
