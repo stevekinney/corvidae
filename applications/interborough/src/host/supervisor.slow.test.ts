@@ -4,11 +4,13 @@
  * process and bring up another one on the same port; a run parked on a signal must still be parked
  * afterwards; and under `dev` a source edit must still restart the host in place. Each process is
  * started through the hang guard, its process ids come from the supervisor's own output, and every
- * one is ended and proven gone when the test is over. Nothing asserts on how long anything takes.
+ * one is ended and proven gone when its scenario is over. Each scenario runs at module scope, under
+ * the hang guard, so none is on Bun's per-test clock; the tests assert on what it recorded. Nothing
+ * asserts on how long anything takes.
  */
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterAll, describe, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -28,7 +30,6 @@ type Supervised = {
   readonly stop: () => Promise<void>;
 };
 
-const running: Supervised[] = [];
 const scratchDirectories: string[] = [];
 
 async function scratch(): Promise<string> {
@@ -110,16 +111,26 @@ async function supervise(
       for (const pid of pids()) if (alive(pid)) process.kill(pid, 'SIGKILL');
     },
   };
-  running.push(supervised);
   return supervised;
 }
 
-afterEach(async () => {
-  for (const supervised of running.splice(0)) await supervised.stop();
+afterAll(async () => {
   for (const directory of scratchDirectories.splice(0)) {
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+/** Run `scenario` against a supervised host, and end the supervisor and its hosts however it went. */
+async function withSupervised<T>(
+  supervised: Supervised,
+  scenario: (supervised: Supervised) => Promise<T>,
+): Promise<T> {
+  try {
+    return await scenario(supervised);
+  } finally {
+    await supervised.stop();
+  }
+}
 
 async function stubBuild(): Promise<string> {
   const directory = join(await scratch(), 'build');
@@ -154,22 +165,32 @@ async function waitForStarts(supervised: Supervised, count: number): Promise<num
   return supervised.pids();
 }
 
-async function requestRestart(supervised: Supervised): Promise<void> {
+/** Ask the host to restart, and say how it answered. */
+async function requestRestart(supervised: Supervised): Promise<number> {
   const response = await fetch(new URL(HOST_RESTART_ROUTE, supervised.url), { method: 'POST' });
-  expect(response.status).toBe(202);
+  return response.status;
 }
 
+/** What a restart did: the processes either side of it, and whether each was alive afterwards. */
+type Restarted = {
+  readonly status: number;
+  readonly before: number;
+  readonly after: number;
+  readonly beforeAlive: boolean;
+  readonly afterAlive: boolean;
+};
+
 /** Restart the host and wait for the new process to answer; the old one is gone by then. */
-async function restart(supervised: Supervised): Promise<{ before: number; after: number }> {
-  const [before] = supervised.pids().slice(-1);
+async function restart(supervised: Supervised): Promise<Restarted> {
+  const before = supervised.pids().at(-1);
   if (before === undefined) throw new Error('The host has not started.');
   const starts = supervised.pids().length;
-  await requestRestart(supervised);
+  const status = await requestRestart(supervised);
   const started = await waitForStarts(supervised, starts + 1);
   const after = started.at(-1);
   if (after === undefined) throw new Error('The host did not start again.');
   await waitForHost(supervised);
-  return { before, after };
+  return { status, before, after, beforeAlive: alive(before), afterAlive: alive(after) };
 }
 
 /** A `RunAgentInput` body for the AG-UI mount. */
@@ -216,36 +237,26 @@ async function humanWaits(supervised: Supervised): Promise<string[]> {
 const interruptOf = (stream: string): string =>
   /"interrupts":\[\{"id":"([^"]+)"/.exec(stream)?.[1] ?? '';
 
-describe('under `start`', () => {
-  test('a restart request yields a new host process on the same port', async () => {
-    const supervised = await supervise('serve', { buildDirectory: await stubBuild() });
+// Under `start`: the production entry on a stub build.
+const startRestart = await withSupervised(
+  await supervise('serve', { buildDirectory: await stubBuild() }),
+  async (supervised) => {
     await waitForHost(supervised);
-    const [first] = supervised.pids();
-
-    const { before, after } = await restart(supervised);
-
-    expect(before).toBe(first!);
-    expect(after).not.toBe(before);
-    expect(alive(before)).toBe(false);
-    expect(alive(after)).toBe(true);
-    // The same origin answers: the new process took the port the old one released.
+    const first = supervised.pids().at(0);
+    const restarted = await restart(supervised);
     const answer = await fetch(new URL('/host/paths', supervised.url));
-    expect(answer.status).toBe(200);
-    expect(supervised.stdout()).toContain(`Interborough is listening on ${supervised.url.href}`);
-  });
+    return { first, restarted, answerStatus: answer.status, stdout: supervised.stdout() };
+  },
+);
 
-  test('a run waiting on a signal before the restart is still waiting after it', async () => {
-    const supervised = await supervise('serve', { buildDirectory: await stubBuild() });
+const startParkedRun = await withSupervised(
+  await supervise('serve', { buildDirectory: await stubBuild() }),
+  async (supervised) => {
     await waitForHost(supervised);
     const first = await agUiStream(supervised, runBody('thread-parked'));
-    expect(first).toContain('"reason":"human-wait"');
-    const waiting = await humanWaits(supervised);
-    expect(waiting).toHaveLength(1);
-
-    const { before, after } = await restart(supervised);
-
-    expect(after).not.toBe(before);
-    expect(await humanWaits(supervised)).toEqual(waiting);
+    const waitingBefore = await humanWaits(supervised);
+    const restarted = await restart(supervised);
+    const waitingAfter = await humanWaits(supervised);
     // And the wait is a live one: answering it in the new process finishes the run.
     const answered = await agUiStream(
       supervised,
@@ -260,84 +271,111 @@ describe('under `start`', () => {
         ],
       }),
     );
-    expect(answered).toContain('"type":"success"');
-    expect(await humanWaits(supervised)).toEqual([]);
-  });
-});
-
-describe('under `dev`', () => {
-  test('a restart request yields a new host process, here the real development entry', async () => {
-    const buildDirectory = join(await scratch(), 'build');
-    const supervised = await supervise('dev', { buildDirectory });
-    await waitForHost(supervised);
-
-    const { before, after } = await restart(supervised);
-
-    expect(after).not.toBe(before);
-    expect(alive(before)).toBe(false);
-    const page = await fetch(new URL('/', supervised.url));
-    expect(page.status).toBe(200);
-  });
-
-  test('a source edit still reloads the host in place, and a restart request after it still restarts it', async () => {
-    // A stand-in host: it names its generation and exits 75 when it is asked to restart, as the
-    // host does. The entry is outside the package, so rewriting its dependency reloads it without
-    // touching the tree. (A real host's own reload is `bun --watch`'s, and the first test above
-    // runs the real host under it.)
-    const directory = await scratch();
-    const generationModule = join(directory, 'generation.ts');
-    const entry = join(directory, 'entry.ts');
-    await writeFile(generationModule, 'export const generation = 1;\n');
-    await writeFile(
-      entry,
-      `import { RESTART_EXIT_CODE } from ${JSON.stringify(join(import.meta.dir, 'restart.ts'))};
-import { generation } from './generation.ts';
-
-console.info('Generation ' + generation + ' is starting');
-Bun.serve({
-  hostname: '127.0.0.1',
-  port: Number(process.env.INTERBOROUGH_PORT),
-  fetch() {
-    setImmediate(() => process.exit(RESTART_EXIT_CODE));
-    return new Response(null, { status: 202 });
+    const waitingAfterAnswer = await humanWaits(supervised);
+    return { first, waitingBefore, restarted, waitingAfter, answered, waitingAfterAnswer };
   },
+);
+
+describe('under `start`', () => {
+  test('a restart request yields a new host process on the same port', () => {
+    const { first, restarted, answerStatus, stdout } = startRestart;
+    expect(restarted.status).toBe(202);
+    expect(restarted.before).toBe(first!);
+    expect(restarted.after).not.toBe(restarted.before);
+    expect(restarted.beforeAlive).toBe(false);
+    expect(restarted.afterAlive).toBe(true);
+    // The same origin answers: the new process took the port the old one released.
+    expect(answerStatus).toBe(200);
+    expect(stdout).toContain('Interborough is listening on http://127.0.0.1:');
+  });
+
+  test('a run waiting on a signal before the restart is still waiting after it', () => {
+    const { first, waitingBefore, restarted, waitingAfter, answered, waitingAfterAnswer } =
+      startParkedRun;
+    expect(first).toContain('"reason":"human-wait"');
+    expect(waitingBefore).toHaveLength(1);
+    expect(restarted.after).not.toBe(restarted.before);
+    expect(waitingAfter).toEqual(waitingBefore);
+    expect(answered).toContain('"type":"success"');
+    expect(waitingAfterAnswer).toEqual([]);
+  });
 });
-console.info('Generation ' + generation + ' is listening');
-`,
-    );
-    const supervised = await supervise('dev', { buildDirectory: await stubBuild(), entry });
-    const output = (): string => `${supervised.stdout()}\n${supervised.stderr()}`;
-    await waitUntil(() => supervised.stdout().includes('Generation 1 is listening'), {
-      message: 'the first generation',
-      yieldTurn: () => Bun.sleep(50),
-    });
-    const [pid] = supervised.pids();
+
+// Under `dev`: the real development entry, which builds into a scratch directory.
+const devRestart = await withSupervised(
+  await supervise('dev', { buildDirectory: join(await scratch(), 'build') }),
+  async (supervised) => {
+    await waitForHost(supervised);
+    const restarted = await restart(supervised);
+    const page = await fetch(new URL('/', supervised.url));
+    return { restarted, pageStatus: page.status };
+  },
+);
+
+// A source edit: the entry is a wrapper outside the package that imports the real `dev.ts` and a
+// module of its own, so rewriting that module reloads the real host without touching the tree.
+const devReload = await (async () => {
+  const directory = await scratch();
+  const generationModule = join(directory, 'generation.ts');
+  const entry = join(directory, 'entry.ts');
+  await writeFile(generationModule, "console.info('Generation 1 loaded');\n");
+  await writeFile(
+    entry,
+    `import './generation.ts';\nimport ${JSON.stringify(join(import.meta.dir, 'dev.ts'))};\n`,
+  );
+  const supervised = await supervise('dev', {
+    buildDirectory: join(directory, 'build'),
+    entry,
+  });
+  const listening = (): number =>
+    (supervised.stdout().match(/Interborough is listening/g) ?? []).length;
+  return withSupervised(supervised, async () => {
+    await waitForHost(supervised);
+    const pid = supervised.pids().at(0);
 
     // Bun arms its file watch after the module has run, so a change made too early is missed: the
-    // dependency is rewritten until the second generation starts.
+    // module is rewritten until the second generation loads. It is not rewritten after that,
+    // because every reload would abandon the start of the generation before it.
     let rewrite = 0;
     await waitUntil(
       async () => {
-        if (supervised.stdout().includes('Generation 2 is starting')) return true;
-        await writeFile(generationModule, `export const generation = 2; // ${rewrite}\n`);
+        if (supervised.stdout().includes('Generation 2 loaded')) return true;
+        await writeFile(generationModule, `console.info('Generation 2 loaded'); // ${rewrite}\n`);
         rewrite += 1;
-        await Bun.sleep(300);
+        await Bun.sleep(1000);
         return false;
       },
-      { message: 'the edited generation to start' },
+      { message: 'the edited module to load' },
     );
-    await waitUntil(() => supervised.stdout().includes('Generation 2 is listening'), {
-      message: 'the edited generation to listen',
+    await waitUntil(() => listening() >= 2, {
+      message: 'the reloaded host to listen',
       yieldTurn: () => Bun.sleep(50),
     });
+    await waitForHost(supervised);
     // A reload keeps the process: the supervisor was not involved.
-    expect({ pids: supervised.pids(), output: output() }).toMatchObject({ pids: [pid!] });
+    const pidsAfterReload = supervised.pids();
 
-    // The reloaded generation's exit code still reaches the supervisor.
-    await requestRestart(supervised);
-    const [, after] = await waitForStarts(supervised, 2);
-    expect(after).not.toBe(pid!);
-    expect(alive(pid!)).toBe(false);
-    expect(supervised.stdout()).toContain('The host asked to restart. Starting it again.');
+    // The reloaded host's exit code still reaches the supervisor.
+    const restarted = await restart(supervised);
+    return { pid, pidsAfterReload, restarted };
+  });
+})();
+
+describe('under `dev`', () => {
+  test('a restart request yields a new host process, here the real development entry', () => {
+    expect(devRestart.restarted.status).toBe(202);
+    expect(devRestart.restarted.after).not.toBe(devRestart.restarted.before);
+    expect(devRestart.restarted.beforeAlive).toBe(false);
+    expect(devRestart.pageStatus).toBe(200);
+  });
+
+  test('a source edit still reloads the real host in place, and a restart request after it still restarts it', () => {
+    expect(devReload.pid).toBeDefined();
+    expect(devReload.pidsAfterReload).toEqual([devReload.pid!]);
+    expect(devReload.restarted.status).toBe(202);
+    expect(devReload.restarted.before).toBe(devReload.pid!);
+    expect(devReload.restarted.after).not.toBe(devReload.pid!);
+    expect(devReload.restarted.beforeAlive).toBe(false);
+    expect(devReload.restarted.afterAlive).toBe(true);
   });
 });
