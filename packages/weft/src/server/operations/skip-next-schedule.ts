@@ -21,8 +21,9 @@ export const skipNextScheduleOperation = defineOperation({
     'Skip the next run of an active recurring schedule by `scheduleId`: the next occurrence that ' +
     'would start a workflow starts none, and the one after it runs as usual. In a time zone the ' +
     'next wake-up can be the end of a daylight-saving gap that starts nothing, so the occurrence ' +
-    'skipped is the next real run, reported as `skipUntil` on the schedule. Counts as a change to ' +
-    'the schedule (its `revision` goes up by one); skipping again before that run has passed ' +
+    'skipped is the next real run, reported as `skipUntil` on the schedule. A run that is due but ' +
+    'has not started is the next run. The skip leaves `revision` and `nextFireAt` as they are; ' +
+    'skipping again before that run has passed ' +
     'changes nothing. Faults with NotFound when no schedule with the given id exists, and with ' +
     'Conflict when the schedule is paused or cancelled.',
   destructive: false,

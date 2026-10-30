@@ -2500,11 +2500,13 @@ export class Engine<
    * Skip the next run of an active schedule (COR-1829): the next occurrence that would start a run
    * (not always {@link ScheduleSummary.nextFireAt}, which in a time zone can be the end of a
    * daylight-saving gap that fires nothing) starts none, and the one after it fires as usual. The
-   * occurrence is {@link ScheduleSummary.skipUntil} until the schedule moves past it. It counts as a
-   * change to the schedule (its `revision` goes up by one), `options.expectedRevision` guards it as
-   * it does a pause, and skipping again before that occurrence passes changes nothing. The next
-   * occurrence is read from now, as an update reads it, so one already overdue is dropped. A schedule
-   * that is not active has no next run to skip and rejects.
+   * occurrence is {@link ScheduleSummary.skipUntil} until the schedule moves past it. An occurrence
+   * that is due but has not started a run (a jittered fire, one inside the poll window, the next of a
+   * backfill catching up) is the next run; one a late tick will count as missed is not. The skip is
+   * bookkeeping, as a fire is: `revision`, `nextFireAt` and the timer stay as they are, so a tick in
+   * flight honors it. `options.expectedRevision` guards it as it does a pause, and skipping again
+   * before that occurrence passes changes nothing. A schedule that is not active has no next run to
+   * skip and rejects.
    *
    * @example
    * ```ts

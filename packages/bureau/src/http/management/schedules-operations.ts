@@ -565,7 +565,7 @@ export const schedulesCancelOperation = defineGuardedWrite(
 export const schedulesSkipNextOperation = defineGuardedWrite(
   'bureau.schedules.skipnext',
   'Skip the next fire of a schedule',
-  `Skips the next fire of an active schedule: the next fire that would start a task starts none, and the one after it runs as usual. That fire is the view’s \`skipUntil\` until the schedule moves past it; it is not always \`nextFireAt\`, which in a time zone can be the end of a daylight-saving gap that starts nothing. Skipping counts as a change to the schedule (its \`revision\` goes up by one), skipping again before that fire has passed changes nothing, and a pause, a cancel, or a new cadence ends the skip. A paused or cancelled schedule has no next fire and is a \`Conflict\`. ${STALE_NOTE}`,
+  `Skips the next fire of an active schedule: the next fire that would start a task starts none, and the one after it runs as usual. That fire is the view’s \`skipUntil\` until the schedule moves past it; it is not always \`nextFireAt\`, which in a time zone can be the end of a daylight-saving gap that starts nothing. The skip leaves the schedule’s \`revision\` as it is, skipping again before that fire has passed changes nothing, and a pause, a cancel, or a new cadence ends the skip. A paused or cancelled schedule has no next fire and is a \`Conflict\`. ${STALE_NOTE}`,
   (schedules, id, guard) => schedules.skipNext(id, guard),
 );
 

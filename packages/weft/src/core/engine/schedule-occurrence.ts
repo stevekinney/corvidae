@@ -105,3 +105,11 @@ export function findFiringScheduleOccurrence(state: CadenceSource, fromAt: numbe
     at = getNextScheduleOccurrence(state, at);
   }
 }
+
+/**
+ * Whether a person asked to skip the occurrence at `at` ({@link ScheduleState.skipUntil}): that one
+ * occurrence, and no other, so a skip never takes an earlier occurrence a tick is still owed.
+ */
+export function isSkippedOccurrence(state: Pick<ScheduleState, 'skipUntil'>, at: number): boolean {
+  return state.skipUntil === at;
+}

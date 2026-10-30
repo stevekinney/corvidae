@@ -1,4 +1,4 @@
-import type { BatchOperation } from '@lostgradient/storage';
+import type { BatchOperation, ConditionalBatchCondition } from '@lostgradient/storage';
 import { KEYS } from '../../storage/keys.ts';
 import { encode } from '../codec.ts';
 import { ScheduleFiredEvent } from '../events.ts';
@@ -25,6 +25,12 @@ export type ScheduledRunStartOptions = {
   scheduleStateAfterStart?: ScheduleState;
   /** Prior terminal run whose transient schedule metadata is now settled. */
   completedWorkflowId?: string;
+  /**
+   * Conditions the start batch commits under (COR-1829): a run now passes the condition that the
+   * schedule key still holds the bytes it decided from, with `scheduleStateAfterStart`, so the run
+   * and the schedule that names it land together or not at all.
+   */
+  startConditions?: ConditionalBatchCondition[];
   /**
    * Internal only (WFT-95). Set by `drainQueuedScheduleRun()` when `workflowId`
    * is a persisted `queuedRuns[].workflowId` being replayed, not a freshly
@@ -140,6 +146,7 @@ export async function startScheduledRun(
     buildPinnedRevisionOverride(state),
     options.skipAdmissionIdCheck,
     buildScheduledRunTransientState(resolution),
+    options.startConditions,
   );
 
   // The run launched, so the occurrence fired. Emit before the unavailable

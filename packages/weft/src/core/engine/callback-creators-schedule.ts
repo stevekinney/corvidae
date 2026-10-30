@@ -38,6 +38,7 @@ export function createScheduleCallbacks<TWorkflows extends object, TActivities e
       revisionOverride,
       skipAdmissionIdCheck,
       transientState,
+      startConditions,
     ) => {
       await startWorkflow(
         getInternals(engine),
@@ -46,7 +47,9 @@ export function createScheduleCallbacks<TWorkflows extends object, TActivities e
         options,
         additionalStartOperations,
         createLifecycleCallbacks(engine),
-        undefined,
+        startConditions === undefined || startConditions.length === 0
+          ? undefined
+          : () => ({ operations: [], conditions: startConditions }),
         revisionOverride,
         skipAdmissionIdCheck,
         transientState,

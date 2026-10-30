@@ -2,13 +2,14 @@
  * The writes a schedule timer tick makes to the schedule it fires (COR-1594). A tick decides what
  * to write from the schedule it read, possibly some time and a whole run later, so every write is
  * conditioned on the bytes the schedule key last held for the tick, and a write that loses that
- * condition is made again only if the schedule is still as the tick left it.
+ * condition is made again only if the schedule is still as the tick left it, carrying what the
+ * other writer recorded meanwhile (COR-1829).
  */
 
 import type { BatchOperation } from '@lostgradient/storage';
 import type { ScheduleState } from '../types.ts';
 import type { EngineInternals } from './internals.ts';
-import { getNextScheduleOccurrence } from './schedule-occurrence.ts';
+import { findFiringScheduleOccurrence, getNextScheduleOccurrence } from './schedule-occurrence.ts';
 import {
   type LoadedScheduleState,
   loadScheduleState,
@@ -37,7 +38,9 @@ export type ScheduleTimerProgress = { state: ScheduleState; stored: LoadedSchedu
 /**
  * Whether the schedule is still as this tick left it: active, at the `revision` the tick holds,
  * with the `nextFireAt` it holds. Another process's pause, update or cancel moves the revision,
- * and another process's timer tick moves `nextFireAt`; a clearing of the current run moves neither.
+ * and another process's timer tick moves `nextFireAt`. A run now, a skip next and a clearing of
+ * the current run move neither: what they recorded is carried into the tick's write
+ * ({@link carryConcurrentRecords}).
  */
 function isStillAsTickLeftIt(current: ScheduleState, left: ScheduleState): boolean {
   return (
@@ -51,8 +54,9 @@ function isStillAsTickLeftIt(current: ScheduleState, left: ScheduleState): boole
  * Writes the tick's state, conditioned on the bytes the schedule key last held for it (COR-1594).
  * A write that loses the condition read a schedule another process has since changed: the schedule
  * is read again, and the write is made again, on the new bytes, only if the schedule is still as
- * this tick left it ({@link isStillAsTickLeftIt}). Otherwise whatever changed it owns the schedule
- * and the timer from then on, nothing is written, and this resolves `false`.
+ * this tick left it ({@link isStillAsTickLeftIt}), with what the other process recorded carried
+ * in. Otherwise whatever changed it owns the schedule and the timer from then on, nothing is
+ * written, and this resolves `false`. On `true`, `progress.stored.state` is what was written.
  */
 export async function persistScheduleTimerState(
   internals: EngineInternals,
@@ -60,27 +64,126 @@ export async function persistScheduleTimerState(
   state: ScheduleState,
   options?: { includeTimer?: boolean; additionalOperations?: BatchOperation[] },
 ): Promise<boolean> {
+  let next = state;
   try {
     for (;;) {
       try {
-        const bytes = await writeScheduleState(internals, state, {
+        const bytes = await writeScheduleState(internals, next, {
           ...options,
-          extraConditions: scheduleReadConditions(internals, state.id, progress.stored),
+          extraConditions: scheduleReadConditions(internals, next.id, progress.stored),
         });
-        progress.stored = { state, bytes };
+        progress.stored = { state: next, bytes };
         return true;
       } catch (error) {
         if (!(error instanceof ScheduleReadConditionLostError)) throw error;
       }
-      const current = await loadScheduleState(internals, state.id);
+      const current = await loadScheduleState(internals, next.id);
       if (current === null || !isStillAsTickLeftIt(current.state, progress.stored.state)) {
         return false;
       }
+      next = carryConcurrentRecords(next, progress.stored.state, current.state);
       progress.stored = current;
     }
   } catch (error) {
-    throw new ScheduleStatePersistenceError(state.id, error);
+    throw new ScheduleStatePersistenceError(next.id, error);
   }
+}
+
+/**
+ * `ours`, the state the tick decided from `base`, with what another process recorded on the same
+ * cadence meanwhile (`theirs`) carried in (COR-1829): the slot, queue, overlap count and skip that a
+ * run now, a skip next, or the end of a run change without moving the cadence. Each field takes
+ * whichever side changed it from `base`; when both did:
+ *
+ * - A run they recorded stays the current run: it is never written over, and a run this tick
+ *   started without seeing it is left to finish, unrecorded. A slot they only cleared (the run
+ *   ended) takes the run this tick started.
+ * - The queue keeps their entries, without the ones this tick started, followed by the ones it added.
+ * - The overlap counts add up.
+ * - A skip they recorded for an occurrence this tick has already passed without honoring moves to
+ *   the next occurrence that fires, so it still skips exactly one run.
+ */
+function carryConcurrentRecords(
+  ours: ScheduleState,
+  base: ScheduleState,
+  theirs: ScheduleState,
+): ScheduleState {
+  const { currentWorkflowId: _current, lastSkippedAt: _skipped, skipUntil: _skip, ...rest } = ours;
+  const currentWorkflowId = carriedCurrentRun(ours, base, theirs);
+  const lastSkippedAt =
+    ours.lastSkippedAt === base.lastSkippedAt
+      ? theirs.lastSkippedAt
+      : Math.max(ours.lastSkippedAt ?? 0, theirs.lastSkippedAt ?? 0);
+  const skipUntil =
+    theirs.skipUntil === base.skipUntil
+      ? ours.skipUntil
+      : carriedSkip(ours, base, theirs.skipUntil);
+  return {
+    ...rest,
+    ...(currentWorkflowId !== undefined && { currentWorkflowId }),
+    queuedRuns: carriedQueue(ours, base, theirs),
+    skippedCount: theirs.skippedCount + ours.skippedCount - base.skippedCount,
+    ...(lastSkippedAt !== undefined && { lastSkippedAt }),
+    ...(skipUntil !== undefined && { skipUntil }),
+  };
+}
+
+function carriedCurrentRun(
+  ours: ScheduleState,
+  base: ScheduleState,
+  theirs: ScheduleState,
+): string | undefined {
+  const theirsRecordedARun =
+    theirs.currentWorkflowId !== undefined && theirs.currentWorkflowId !== base.currentWorkflowId;
+  return theirsRecordedARun || ours.currentWorkflowId === base.currentWorkflowId
+    ? theirs.currentWorkflowId
+    : ours.currentWorkflowId;
+}
+
+function queuedIds(state: ScheduleState): Set<string> {
+  return new Set(state.queuedRuns.map((run) => run.workflowId));
+}
+
+function carriedQueue(
+  ours: ScheduleState,
+  base: ScheduleState,
+  theirs: ScheduleState,
+): ScheduleState['queuedRuns'] {
+  const baseIds = queuedIds(base);
+  const ourIds = queuedIds(ours);
+  const theirIds = queuedIds(theirs);
+  return [
+    ...theirs.queuedRuns.filter(
+      (run) => !baseIds.has(run.workflowId) || ourIds.has(run.workflowId),
+    ),
+    ...ours.queuedRuns.filter(
+      (run) => !baseIds.has(run.workflowId) && !theirIds.has(run.workflowId),
+    ),
+  ];
+}
+
+/**
+ * The skip another process recorded, as this tick's write carries it. The tick planned without it,
+ * so an occurrence at or before it that the tick has already accounted for (fired it: `lastFireAt`;
+ * or moved past it: `nextFireAt`) was not skipped, and the skip moves to the next one that fires.
+ */
+function carriedSkip(
+  ours: ScheduleState,
+  base: ScheduleState,
+  skipUntil: number | undefined,
+): number | undefined {
+  if (skipUntil === undefined) return undefined;
+  if (
+    ours.nextFireAt !== null &&
+    ours.nextFireAt !== base.nextFireAt &&
+    skipUntil < ours.nextFireAt
+  ) {
+    return findFiringScheduleOccurrence(ours, ours.nextFireAt);
+  }
+  if (ours.lastFireAt !== undefined && skipUntil <= ours.lastFireAt) {
+    return findFiringScheduleOccurrence(ours, getNextScheduleOccurrence(ours, ours.lastFireAt));
+  }
+  return skipUntil;
 }
 
 /**

@@ -25,6 +25,7 @@ import {
   type ScheduleState,
 } from '../types.ts';
 import type { EngineInternals } from './internals.ts';
+import { isSkippedOccurrence, type ScheduleTick } from './schedule-occurrence.ts';
 import { coerceScheduleId } from './validation/schedule.ts';
 
 /** One missed instant and how many occurrences it stands for. */
@@ -203,4 +204,44 @@ export async function listScheduleMissedFires(
     if (row !== null) rows.push(row);
   }
   return rows.toReversed().slice(0, take);
+}
+
+/**
+ * The occurrences a late timer skips: every tick in the window that would have fired, except the
+ * one a person asked to skip, which would not have.
+ */
+export function lateMisses(
+  state: ScheduleState,
+  ticks: ScheduleTick[],
+  windowStart: number,
+  windowEnd: number,
+): MissedScheduleOccurrences[] {
+  const late = ticks.filter((tick) => tick.fires && !isSkippedOccurrence(state, tick.at));
+  if (late.length === 0) return [];
+  return [
+    {
+      reason: 'late',
+      instants: late.map((tick) => ({ at: tick.at, count: 1 })),
+      windowStart,
+      windowEnd,
+    },
+  ];
+}
+
+/**
+ * The wall-clock times daylight-saving gaps swallowed in a run of ticks, which are missed whether
+ * the tick was reached on time or late: the time does not exist, so no run could have started at
+ * it. The window is the instant a gap ends, because that is when the clock passes it.
+ */
+export function gapMisses(ticks: ScheduleTick[]): MissedScheduleOccurrences[] {
+  const gaps = ticks.filter((tick) => tick.dstGapSkipped > 0);
+  if (gaps.length === 0) return [];
+  return [
+    {
+      reason: 'dst-gap',
+      instants: gaps.map((tick) => ({ at: tick.at, count: tick.dstGapSkipped })),
+      windowStart: gaps[0]!.at,
+      windowEnd: gaps.at(-1)!.at,
+    },
+  ];
 }

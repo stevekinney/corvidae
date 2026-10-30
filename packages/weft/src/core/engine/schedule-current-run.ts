@@ -115,6 +115,17 @@ export async function applyScheduleOccurrence(
 }
 
 /**
+ * Whether the end of the current run starts the run queued first. An active schedule drains its
+ * queue. A paused one keeps the occurrences its cadence queued until it is resumed, but still starts
+ * a run a person asked for (COR-1829): nothing else would, since a paused schedule has no timer.
+ */
+function drainsQueuedRun(state: ScheduleState): boolean {
+  const [next] = state.queuedRuns;
+  if (next === undefined) return false;
+  return state.status === 'active' || (state.status === 'paused' && next.manual === true);
+}
+
+/**
  * Waits for the scheduled run `workflowId` to finish its turn: starts the inline launches still
  * queued, then waits for the run's own turn. The run's activity can call back into its schedule,
  * and pause, resume, cancel, and update take the schedule's serialization, so a caller must not
@@ -170,7 +181,7 @@ export async function handleScheduledWorkflowTerminal(
       };
       // Queue entries are accepted work. Keep draining them even if a later update
       // changes overlap; the new policy governs only future occurrences.
-      if (clearedState.status === 'active' && clearedState.queuedRuns.length > 0) {
+      if (drainsQueuedRun(clearedState)) {
         await drainQueuedScheduleRun({ ...clearedState, updatedAt: now }, callbacks, workflowId);
         return;
       }

@@ -79,7 +79,7 @@ describe('the operations list', () => {
 });
 
 describe('bureau.schedules.skipnext', () => {
-  it('skips the next fire once: the view names it, the receipt carries the new revision, and a repeat changes nothing', async () => {
+  it('skips the next fire once: the view names it, the revision stays, and a repeat changes nothing', async () => {
     const opened = await serve();
     const id = await createdBy(opened, 'alice-key');
     const before = await viewOf(opened, id);
@@ -91,10 +91,10 @@ describe('bureau.schedules.skipnext', () => {
       { scheduleId: id },
       'alice-key',
     );
-    expect(skipped.result).toEqual({ id, status: 'active', revision: 2 });
+    expect(skipped.result).toEqual({ id, status: 'active', revision: 1 });
     const after = await viewOf(opened, id);
     expect(after['skipUntil']).toBe(after['nextFireAt']);
-    expect(after['revision']).toBe(2);
+    expect(after['revision']).toBe(1);
 
     const again = await rpc(
       opened.handler,
@@ -102,7 +102,7 @@ describe('bureau.schedules.skipnext', () => {
       { scheduleId: id },
       'alice-key',
     );
-    expect(again.result).toEqual({ id, status: 'active', revision: 2 });
+    expect(again.result).toEqual({ id, status: 'active', revision: 1 });
   });
 
   it('answers a stale expectedRevision with StaleRevision and writes nothing', async () => {
@@ -154,14 +154,16 @@ describe('bureau.schedules.skipnext', () => {
       expect([key, status(denied)]).toEqual([key, 404]);
     }
     const untouched = await viewOf(opened, id);
-    expect(untouched['revision']).toBe(1);
+    expect(untouched['skipUntil']).toBeNull();
     const allowed = await rpc(
       opened.handler,
       'bureau.schedules.skipnext',
       { scheduleId: id },
       'schedules-writer-key',
     );
-    expect(allowed.result).toMatchObject({ revision: 2 });
+    expect(allowed.result).toMatchObject({ revision: 1 });
+    const skipped = await viewOf(opened, id);
+    expect(skipped['skipUntil']).not.toBeNull();
   });
 });
 

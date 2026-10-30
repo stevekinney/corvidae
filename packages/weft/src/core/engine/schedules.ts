@@ -60,6 +60,10 @@ export type ScheduleCallbacks = {
    * `transientState` (internal only) is threaded straight through to `startWorkflow`'s parameter
    * of the same name: the occurrence's resolved services, and the run's membership in terminal
    * cleanup, which `startWorkflow` installs when its launch adopts the id.
+   *
+   * `startConditions` (COR-1829) makes the start batch conditional on them, as an idempotent
+   * start's mapping is: a run now commits its run only while the schedule key still holds the
+   * bytes it decided from, so another engine's change makes the start fail and nothing launches.
    */
   startWorkflow: (
     type: string,
@@ -69,6 +73,7 @@ export type ScheduleCallbacks = {
     revisionOverride?: string,
     skipAdmissionIdCheck?: boolean,
     transientState?: StartTransientState,
+    startConditions?: ConditionalBatchCondition[],
   ) => Promise<void>;
   loadWorkflowState: (workflowId: string) => Promise<WorkflowState | null | undefined>;
   cancelWorkflow: (workflowId: string) => Promise<void>;

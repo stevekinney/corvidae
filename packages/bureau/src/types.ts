@@ -1691,8 +1691,8 @@ export interface BureauSchedules {
    * `skipNextScheduleOccurrence`: the next occurrence that would start a run starts none, and the one
    * after it runs as usual. That occurrence is the summary's `skipUntil` until the schedule moves
    * past it, and it is not always `nextFireAt`: in a time zone `nextFireAt` can be the end of a
-   * daylight-saving gap that fires nothing. Skipping counts as a change to the schedule (its
-   * `revision` goes up by one), and skipping again before that run has passed changes nothing.
+   * daylight-saving gap that fires nothing. The skip leaves the schedule's `revision` as it is,
+   * and skipping again before that run has passed changes nothing.
    * Resolves `true`, or `undefined` when no durable engine is composed. A schedule that does not
    * exist, and a workflow file's schedule, reject with `NOT_FOUND`; a schedule that is paused or
    * cancelled has no next run and rejects. `guard` as for {@link BureauSchedules.pause}.

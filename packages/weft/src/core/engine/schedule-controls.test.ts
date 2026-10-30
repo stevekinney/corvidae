@@ -91,7 +91,8 @@ describe('skipping the next occurrence', () => {
     await engine.skipNextScheduleOccurrence('daily');
     const skipped = await summaryOf(engine, 'daily');
     expect(isoOf(skipped.skipUntil)).toBe('2026-01-01T09:00:00.000Z');
-    expect(skipped.revision).toBe(2);
+    // A skip is bookkeeping, as a fire is: the schedule's own revision stays where it was.
+    expect(skipped.revision).toBe(1);
 
     await tickEngine(engine, clock, at('2026-01-01T09:00:00.000Z'));
     expect(runs).toEqual([]);
@@ -156,7 +157,8 @@ describe('skipping the next occurrence', () => {
     await engine.skipNextScheduleOccurrence('daily');
 
     const summary = await summaryOf(engine, 'daily');
-    expect(summary.revision).toBe(2);
+    // The second skip wrote nothing: the record is as the first one left it.
+    expect(isoOf(summary.updatedAt)).toBe('2026-01-01T00:00:00.000Z');
     expect(isoOf(summary.skipUntil)).toBe('2026-01-01T09:00:00.000Z');
   });
 

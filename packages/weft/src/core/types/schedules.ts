@@ -446,7 +446,7 @@ export interface ScheduleMetadata {
   nextFireAt: number | null;
   /**
    * The occurrence a person asked to skip (see {@link Engine.skipNextScheduleOccurrence}): the
-   * schedule starts no run for any occurrence at or before this instant. It names the next
+   * schedule starts no run for the occurrence at this instant. It names the next
    * occurrence that would actually have started a run, which is not always {@link nextFireAt}: in
    * a time zone, `nextFireAt` can be the end of a daylight-saving gap that fires nothing. It is
    * absent when nothing is skipped, and is cleared as soon as the schedule moves past it, by a
