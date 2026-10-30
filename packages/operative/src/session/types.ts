@@ -23,6 +23,12 @@ export interface SessionListOptions {
    */
   origin?: SessionOrigin | undefined;
   /**
+   * Leave out the sessions of these origins, applied with `origin` to the summary index before
+   * `offset` and `limit`. A listing that names an `origin` is not narrowed by this: asking for an
+   * origin is asking for it, so `{ origin: 'try', excludeOrigins: ['try'] }` lists the `try` ones.
+   */
+  excludeOrigins?: readonly SessionOrigin[] | undefined;
+  /**
    * Only the sessions whose `title` contains this text, ignoring case: the title a person gave the
    * session if it has one (`SESSION_TITLE_METADATA_KEY`), otherwise the derived one. A session with
    * no title matches none. Applied to the summary index before `offset` and `limit`, like `owner`,

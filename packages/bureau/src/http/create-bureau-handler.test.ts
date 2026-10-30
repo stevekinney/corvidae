@@ -557,6 +557,7 @@ describe('createBureauHandler catalog', () => {
         'bureau.agents.definitions.update',
         'bureau.agents.list',
         'bureau.agents.models',
+        'bureau.agents.try',
         'bureau.agents.versions.list',
         'bureau.agents.versions.restore',
         'bureau.assets.get',

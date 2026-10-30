@@ -3,6 +3,9 @@
  * (COR-1526), written, read, and deleted through the same Markdown files a
  * person edits by hand (COR-1524), and the models and tools those files may name.
  *
+ * `bureau.agents.try` (COR-1911) takes a definition that is not saved and starts a throwaway context
+ * with it; it needs `bureau.agents:write`, as `create` does, and writes no file.
+ *
  * `bureau.agents.versions.list` and `bureau.agents.versions.restore` (COR-1815) keep the saved
  * versions of an agent apart from its runs: `list` is read like `revisions`, and `restore` is
  * written like `update`. A `savedBy` on a version is the caller's owner string, so a save through
@@ -39,7 +42,8 @@ import {
 import { defineOperation, type OperationFault, type Principal } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import type { AgentDefinitions, BureauAgentCatalog } from '../../agent-catalog.ts';
+import type { AgentDefinitions } from '../../agent-catalog.ts';
+import type { BureauAgents } from '../../types.ts';
 import {
   AGENT_IDENTIFIER_MAX_LENGTH,
   agentCompactionSchema,
@@ -62,6 +66,7 @@ import type {
   AgentListing,
 } from '../../agent-file-catalog.ts';
 import { auditTrailAgentOwnerId } from '../../audit-trail.ts';
+import { BureauError } from '../../create-bureau.ts';
 import { mayAccessAgents } from '../agent-access.ts';
 import type { BureauScope } from '../bureau-scopes.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
@@ -86,8 +91,16 @@ export interface AgentDefinitionAuditEntry {
 export type BureauAgentDefinitionsOperationHost = BureauOwnershipHost & {
   readonly agentDefinitions: {
     readonly agents: Pick<
-      BureauAgentCatalog<AgentDefinitions>,
-      'list' | 'detail' | 'tools' | 'revisions' | 'versions' | 'create' | 'update' | 'delete'
+      BureauAgents<AgentDefinitions>,
+      | 'list'
+      | 'detail'
+      | 'tools'
+      | 'revisions'
+      | 'versions'
+      | 'create'
+      | 'update'
+      | 'delete'
+      | 'try'
     >;
     /** Whether the `a2a` allowlist of `createBureauHandler` names the code-defined agent `id`. */
     readonly optsCodeAgentIntoA2A: (id: string) => boolean;
@@ -991,6 +1004,96 @@ export const agentsCatalogOperation = defineOperation<
   },
 });
 
+const tryInput = z.object({
+  definition: definitionInputSchema,
+  message: z
+    .string()
+    .min(1)
+    .describe('The first message of the throwaway chat, which the tried agent answers.'),
+});
+
+const tryOutput = z.object({
+  contextId: z.string().describe('The new context, whose origin is `try`.'),
+  agentName: z
+    .string()
+    .describe('The name the tried agent runs under: valid only for `contextId`, in no catalog.'),
+  taskId: z.string().describe('The task that answers the first message.'),
+});
+
+/**
+ * The fault for a definition that was refused or could not be tried, as `create` answers one:
+ * `Unprocessable`, whose message names each field at fault (`model`, `tools.1`).
+ */
+function tryFaultOf(error: unknown): never {
+  if (error instanceof AgentFileError) {
+    if (error.code === 'agent-directory-not-configured') {
+      throw {
+        code: 'UnsupportedCapability',
+        message: error.message,
+        data: { capability: 'agent-directory' },
+      } satisfies OperationFault;
+    }
+    throw {
+      code: 'Unprocessable',
+      message: error.message,
+      data: { reason: error.code },
+    } satisfies OperationFault;
+  }
+  if (error instanceof BureauError && error.code === 'CONFLICT') {
+    throw {
+      code: 'Unavailable',
+      message: error.message,
+      data: { reason: 'shutting-down' },
+    } satisfies OperationFault;
+  }
+  throw error;
+}
+
+export const agentsTryOperation = defineOperation<
+  typeof tryInput,
+  typeof tryOutput,
+  BureauAgentDefinitionsOperationHost
+>({
+  name: 'bureau.agents.try',
+  mcpExposable: false,
+  summary: 'Try an unsaved agent definition',
+  description:
+    'Builds an agent from `definition` with the schema and checks of an agent file, writes nothing, and starts a new throwaway context with it over `message`. The result is the `contextId` (its `origin` is `try`), the `agentName` the agent runs under (it starts with `try:`, is in no catalog and is valid only for that context) and the `taskId` that answers the first message; follow up with a task on that context and agent. A definition that would not load as a file is `Unprocessable`, as for `create`, its message naming each field at fault (`model`, `tools.1`), and nothing exists. A definition that lists `references`, or a tool that writes memory, schedules work or delegates (`memory_store`, `memory_forget`, `scheduleSelf`, `scheduleWakeup`, `workflows-create`, `workflows-update`, `workflows-pause`, `workflows-resume`, `settings-update`, `transfer_to_*`), is refused the same way. A run of the tried agent remembers nothing, is offered neither `scheduleWakeup` nor `decide`, and cannot start a child. The agent lives in memory for the context: `bureau.contexts.delete` removes the context and the agent together, and a restart ends the agent, leaving a context that can be read and deleted. The context is left out of `bureau.contexts.list` unless `origin` is `try`, and its tasks out of `bureau.tasks.list` unless it is filtered by `contextId` or `agentName`. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is refused with `Forbidden`.',
+  destructive: true,
+  tags: ['Agents'],
+  inputSchema: tryInput,
+  outputSchema: tryOutput,
+  producibleFaults: [
+    'InvalidParams',
+    'Forbidden',
+    'Unprocessable',
+    'UnsupportedCapability',
+    'Unavailable',
+  ],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    const definitions = requireScope(
+      host,
+      principal,
+      'bureau.agents:write',
+      'Trying an agent definition',
+    );
+    const owner = ownerOfPrincipal(principal);
+    try {
+      return await definitions.agents.try(
+        definitionOf(input.definition),
+        input.message,
+        owner === undefined ? {} : { principal: owner },
+      );
+    } catch (error) {
+      return tryFaultOf(error);
+    }
+  },
+});
+
 /** The agent definition operations, in the order the handler serves them. */
 export const bureauAgentDefinitionsOperations = [
   agentDefinitionsCreateOperation,
@@ -1002,4 +1105,5 @@ export const bureauAgentDefinitionsOperations = [
   agentsCatalogOperation,
   agentVersionsListOperation,
   agentVersionsRestoreOperation,
+  agentsTryOperation,
 ] as const;

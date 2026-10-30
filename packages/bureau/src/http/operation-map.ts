@@ -149,6 +149,7 @@ export const OPERATION_MAP = {
   'bureau.agents.list': { member: 'agents.list' },
   // Describes one catalog agent against the models catalog (COR-1708).
   'bureau.agents.models': { member: 'agents.models' },
+  'bureau.agents.try': { member: 'agents.try' },
   'bureau.agents.definitions.create': { member: 'agents.create' },
   'bureau.agents.definitions.update': { member: 'agents.update' },
   'bureau.agents.definitions.delete': { member: 'agents.delete' },

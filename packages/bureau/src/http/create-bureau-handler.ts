@@ -55,11 +55,7 @@ import {
   type BureauEventsOperationHost,
   defineBureauEventsSubscriptionOperation,
 } from '../bureau-events-operation.ts';
-import {
-  type AgentDefinitions,
-  type BureauAgentCatalog,
-  mediaCapabilitiesOf,
-} from '../agent-catalog.ts';
+import { type AgentDefinitions, mediaCapabilitiesOf } from '../agent-catalog.ts';
 import { agentExamplesSchema } from '../agent-examples.ts';
 import { readFileAgentBinding } from '../agent-file-catalog.ts';
 import {
@@ -83,6 +79,7 @@ import { mediaInputModesOf, mediaOutputModesOf } from './a2a-agent-card.ts';
 import { createTaskReader } from './a2a-task-reader.ts';
 import type {
   Bureau,
+  BureauAgents,
   BureauAudit,
   BureauInternals,
   BureauReviews,
@@ -293,7 +290,7 @@ export type BureauHandlerSource = Pick<
     has(name: string): boolean;
     find(name: string): AgentDescription | undefined;
   } & Pick<
-    BureauAgentCatalog<AgentDefinitions>,
+    BureauAgents<AgentDefinitions>,
     | 'list'
     | 'detail'
     | 'models'
@@ -303,6 +300,7 @@ export type BureauHandlerSource = Pick<
     | 'create'
     | 'update'
     | 'delete'
+    | 'try'
   >;
 };
 

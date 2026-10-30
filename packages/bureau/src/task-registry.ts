@@ -60,6 +60,7 @@ import {
   type TaskListingRecord,
   type TaskListingScope,
 } from './task-list-snapshots';
+import { isTryAgentName } from './agent-try';
 import {
   isStoredTaskOrigin,
   type StoredTaskOrigin,
@@ -1000,6 +1001,10 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     }
     if (query.agentName !== undefined) {
       records = records.filter((record) => record.agentName === query.agentName);
+    } else if (query.contextId === undefined) {
+      // COR-1911: the runs of a tried agent are listed when they are asked for, by their context
+      // or their agent, and not among the deployment's own work.
+      records = records.filter((record) => !isTryAgentName(record.agentName ?? ''));
     }
     if (query.origin !== undefined) {
       records = records.filter((record) => record.origin?.kind === query.origin);

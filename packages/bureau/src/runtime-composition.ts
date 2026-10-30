@@ -80,6 +80,7 @@ import {
   withEnhancedStreaming,
   WorkflowVersionMismatchEvent,
   SESSION_ORIGIN_METADATA_KEY,
+  sessionOriginOf,
   SESSION_OWNER_METADATA_KEY,
 } from '@lostgradient/operative';
 import {
@@ -2268,6 +2269,8 @@ export interface RuntimeComposition {
        * refused at approve under the snapshot read again.
        */
       skillPolicyUnverifiable?: boolean | undefined;
+      /** COR-1911 — the run neither recalls nor remembers: no memory hook is registered. */
+      withoutMemory?: boolean | undefined;
     },
   ): Promise<{
     generate: GenerateFunction;
@@ -3226,6 +3229,12 @@ async function buildRuntimeComposition(
        */
       memoryOwner?: string | undefined;
       skillPolicyUnverifiable?: boolean | undefined;
+      /**
+       * COR-1911 — the run neither recalls memory nor remembers its answers: no memory hook is
+       * registered. A run of an agent that is being tried is one; it is a throwaway, and leaves
+       * nothing in the memory its owner keeps.
+       */
+      withoutMemory?: boolean | undefined;
     },
   ) {
     const sessionAgent = runtimeOptions?.sessionAgent;
@@ -3294,7 +3303,7 @@ async function buildRuntimeComposition(
     // recovered run whose authority could not be restored gets none: no
     // conversation can reach memory outside the authority it was granted.
     const memoryAuthority =
-      memory && requestContext
+      memory && requestContext && runtimeOptions?.withoutMemory !== true
         ? createRunMemoryAuthority(
             requestContext,
             {
@@ -3731,6 +3740,8 @@ async function buildRuntimeComposition(
         skillPolicyUnverifiable: skillSnapshot.status === 'unverifiable',
         sessionAgent,
         memoryOwner: resolveRunMemoryOwner(session.metadata, runId),
+        // COR-1911 — a run of a tried agent resumes as it began, without memory.
+        withoutMemory: sessionOriginOf(session.metadata) === 'try',
       },
     );
     const skillRecovery = await runRuntime.skillsRecovered;

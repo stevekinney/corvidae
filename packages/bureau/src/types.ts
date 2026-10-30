@@ -81,6 +81,7 @@ import type {
   AgentOutput,
   BureauAgentCatalog,
 } from './agent-catalog';
+import type { AgentFileDefinitionInput } from './agent-file';
 import type { BureauAssetOptions } from './assets/asset-service';
 import type { McpResourceReader } from './assets/content-source-resolver';
 import type { AssetService } from './assets/types';
@@ -1427,6 +1428,57 @@ export interface StartTaskOptions {
   readonly withTraceContext?: <T>(parent: unknown, fn: () => Promise<T>) => Promise<T>;
 }
 
+/** What `bureau.agents.try` takes besides the definition and the first input. */
+export interface TryAgentOptions {
+  /** The principal that owns the context: who may follow up on it and delete it. */
+  readonly principal?: string;
+  /** The request context of the first task, as {@link StartTaskOptions.requestContext}. */
+  readonly requestContext?: ToolRequestContext;
+  /** Aborts the first task when it fires. */
+  readonly signal?: AbortSignal;
+}
+
+/** What `bureau.agents.try` started. */
+export interface TryAgentResult {
+  /**
+   * The new context, whose origin is `try`. Follow-up goes to it by `tasks.start(agentName, input,
+   * { contextId })`; deleting it removes the context, its tasks and the agent.
+   */
+  readonly contextId: string;
+  /**
+   * The name the tried agent runs under. It starts with `try:`, is in no catalog, and is valid
+   * only for `contextId`.
+   */
+  readonly agentName: string;
+  /** The first task, which answers the first input. */
+  readonly taskId: string;
+}
+
+/**
+ * The agent catalog with the one operation that reaches past it (COR-1911): `try`, which builds an
+ * agent from a definition that is not saved and starts a throwaway context with it.
+ */
+export interface BureauAgents<D extends AgentDefinitions> extends BureauAgentCatalog<D> {
+  /**
+   * Builds an agent from `definition` with the schema and checks of an agent file (so a definition
+   * that would not load as a file is refused with the same field-named error: `tools.1`, `model`)
+   * and starts a new context with it over `input`, without writing an agent file, a snapshot, or a
+   * catalog entry. The context's origin is `try`: it is left out of `contexts.list` unless that is
+   * asked for, and its tasks out of `tasks.list` unless asked for by context or agent. Its runs
+   * remember nothing, offer no `scheduleWakeup` or `decide`, start no child, and a definition that
+   * lists a tool that writes memory, schedules, or delegates (`memory_store`, `memory_forget`,
+   * `scheduleSelf`, `scheduleWakeup`, `workflows-*`, `settings-update`, `transfer_to_*`) is
+   * refused. The agent lives in memory, for the context: deleting the context removes it, and a
+   * restart ends it, leaving a context that can be read and deleted but not continued.
+   * Rejects with an `AgentFileError` for a definition that is refused.
+   */
+  try(
+    definition: AgentFileDefinitionInput,
+    input: TaskInput,
+    options?: TryAgentOptions,
+  ): Promise<TryAgentResult>;
+}
+
 /**
  * A started task. It iterates the task's run events; `result()` settles with the run's result,
  * `abort()` requests cancellation (a no-op once the task has settled), and `snapshot()` reads its
@@ -2341,9 +2393,10 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   /**
    * The typed agent catalog (AB-15, AB-22) — the immutable, read-only view
    * over `BureauOptions.agents`. `bureau.agents.has(name)` narrows a literal
-   * string to a known agent name where TypeScript permits it.
+   * string to a known agent name where TypeScript permits it. `bureau.agents.try` (COR-1911)
+   * starts a throwaway context with an agent definition that is not saved.
    */
-  readonly agents: BureauAgentCatalog<D>;
+  readonly agents: BureauAgents<D>;
   /**
    * COR-1527 — the workflow files in {@link BureauOptions.workflowSource}, or `undefined` when
    * the Bureau has none. Every workflow belongs to the deployment's owner of record.
