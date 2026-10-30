@@ -14,7 +14,10 @@ import type { EngineInternals } from './internals.ts';
 import { startUnderScheduleRead } from './schedule-conditioned-start.ts';
 import type { ScheduledRunStartOptions } from './schedule-run.ts';
 import { ScheduleReadConditionLostError } from './schedule-state-read.ts';
-import type { ScheduleTimerProgress } from './schedule-timer-writes.ts';
+import {
+  advanceScheduleTimerProgress,
+  type ScheduleTimerProgress,
+} from './schedule-timer-writes.ts';
 import { buildScheduleStateOperations } from './schedule-write-operations.ts';
 import type { ScheduleCallbacks } from './schedules.ts';
 
@@ -78,6 +81,6 @@ export async function startOccurrenceRun(
     scheduleStateOperations: following,
   });
   if (!started) throw new ScheduleReadConditionLostError(state.id);
-  progress.stored = { state: written, bytes };
+  advanceScheduleTimerProgress(progress, { state: written, bytes });
   if (concluding) commit.concluded = written;
 }

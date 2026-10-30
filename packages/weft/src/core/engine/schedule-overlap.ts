@@ -1,6 +1,7 @@
 import { ScheduleSkippedEvent } from '../events.ts';
 import type { ScheduleState } from '../types.ts';
 import type { EngineInternals } from './internals.ts';
+import { startUnderScheduleRead } from './schedule-conditioned-start.ts';
 import { startOccurrenceRun, type OccurrenceCommit } from './schedule-occurrence-commit.ts';
 import type { ScheduledRunStartOptions } from './schedule-run.ts';
 import { clearScheduleCurrentWorkflow } from './state-utilities.ts';
@@ -103,16 +104,14 @@ async function startScheduleRunInOccupiedSlot(
   return stateAfterStart;
 }
 
-export async function drainQueuedScheduleRun(
+/** The start of the run queued first: the schedule it leaves and how the run is started. */
+function planQueuedRunStart(
   state: ScheduleState,
-  callbacks: Pick<ScheduleOverlapCallbacks, 'startScheduledRun'>,
   completedWorkflowId?: string,
-  commit?: OccurrenceCommit,
-): Promise<ScheduleState> {
+): { after: ScheduleState; options: ScheduledRunStartOptions } | null {
   const [queuedRun, ...remainingQueuedRuns] = state.queuedRuns;
-  if (queuedRun === undefined) return state;
-
-  const stateAfterStart: ScheduleState = {
+  if (queuedRun === undefined) return null;
+  const after: ScheduleState = {
     ...state,
     currentWorkflowId: queuedRun.workflowId,
     queuedRuns: remainingQueuedRuns,
@@ -126,14 +125,49 @@ export async function drainQueuedScheduleRun(
     // admitting a fresh one — see ScheduledRunStartOptions.skipAdmissionIdCheck.
     skipAdmissionIdCheck: true,
   };
+  return { after, options };
+}
+
+export async function drainQueuedScheduleRun(
+  state: ScheduleState,
+  callbacks: Pick<ScheduleOverlapCallbacks, 'startScheduledRun'>,
+  completedWorkflowId?: string,
+  commit?: OccurrenceCommit,
+): Promise<ScheduleState> {
+  const plan = planQueuedRunStart(state, completedWorkflowId);
+  if (plan === null) return state;
   if (commit === undefined) {
     await callbacks.startScheduledRun(state, {
-      ...options,
-      scheduleStateAfterStart: stateAfterStart,
+      ...plan.options,
+      scheduleStateAfterStart: plan.after,
     });
   } else {
     // Ahead of this occurrence's own run, so it commits the schedule as the drain leaves it.
-    await startOccurrenceRun(commit, callbacks, state, stateAfterStart, options, false);
+    await startOccurrenceRun(commit, callbacks, state, plan.after, plan.options, false);
   }
-  return stateAfterStart;
+  return plan.after;
+}
+
+/**
+ * Starts the run queued first in the same batch as the schedule that names it, committed only
+ * while the schedule key still holds `basis` (COR-1925), for a drain outside a tick's occurrence:
+ * the end of a run, or a resumed backfill. Resolves the schedule as it was written, or `null` when
+ * another engine changed the schedule first: nothing committed, no run launched, and the caller
+ * reads the schedule again. `state` is the schedule the drain decides from, which may differ from
+ * the stored bytes `basis` by what the caller has already cleared in memory.
+ */
+export async function drainQueuedScheduleRunUnderRead(
+  internals: EngineInternals,
+  state: ScheduleState,
+  basis: Uint8Array,
+  callbacks: Pick<ScheduleOverlapCallbacks, 'startScheduledRun'>,
+  completedWorkflowId?: string,
+): Promise<ScheduleState | null> {
+  const plan = planQueuedRunStart(state, completedWorkflowId);
+  if (plan === null) return state;
+  const started = await startUnderScheduleRead(internals, callbacks, state, basis, {
+    ...plan.options,
+    scheduleStateAfterStart: plan.after,
+  });
+  return started ? plan.after : null;
 }

@@ -1,4 +1,3 @@
-import { encode } from '../codec.ts';
 import type { ScheduleState, TimerEntry } from '../types.ts';
 import { WeftError } from '../weft-error.ts';
 import type { EngineInternals } from './internals.ts';
@@ -16,9 +15,9 @@ import {
   isSkippedOccurrence,
   type ScheduleTick,
 } from './schedule-occurrence.ts';
-import { drainQueuedScheduleRun } from './schedule-overlap.ts';
 import { loadScheduleState } from './schedule-state-read.ts';
 import {
+  drainQueuedRunInSection,
   recordOccurrence,
   scheduleAfterWork,
   type PlannedScheduleTimerWork,
@@ -265,10 +264,12 @@ async function resumeScheduleTimer(
       nextState.currentWorkflowId === undefined &&
       nextState.queuedRuns.length > 0
     ) {
-      nextState = await drainQueuedScheduleRun(nextState, callbacks);
-      // The drain wrote the schedule as it returned it, so that is what the key holds now, and the
-      // next write of this tick is conditioned on it (COR-1925).
-      progress.stored = { state: nextState, bytes: encode(nextState) };
+      // The drain is conditioned on the bytes this section holds, and writes the schedule as it
+      // returns it, so that is what the key holds afterwards and the next write of this tick is
+      // conditioned on it (COR-1925). One that finds the schedule no longer the tick's ends it.
+      const drained = await drainQueuedRunInSection(internals, progress, nextState, callbacks);
+      if (drained === null) return { kind: 'done' };
+      nextState = drained;
     }
     if (index === work.occurrencesToProcess.length - 1) {
       nextState = { ...scheduleAfterWork(nextState, work), updatedAt: now };

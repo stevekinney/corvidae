@@ -3,6 +3,7 @@
  * it leaves behind, and how each occurrence's run is committed with the schedule that names it.
  */
 
+import { encode } from '../codec.ts';
 import type { ScheduleState } from '../types.ts';
 import type { EngineInternals } from './internals.ts';
 import {
@@ -12,8 +13,10 @@ import {
 } from './schedule-missed-fires.ts';
 import type { OccurrenceCommit } from './schedule-occurrence-commit.ts';
 import { getNextScheduleOccurrence, isSkippedOccurrence } from './schedule-occurrence.ts';
+import { drainQueuedScheduleRunUnderRead } from './schedule-overlap.ts';
 import { loadScheduleState, ScheduleReadConditionLostError } from './schedule-state-read.ts';
 import {
+  advanceScheduleTimerProgress,
   carryConcurrentRecords,
   isStillAsTickLeftIt,
   persistScheduleTimerState,
@@ -139,7 +142,7 @@ export async function recordOccurrence(
         const current = await loadScheduleState(internals, before.id);
         if (current === null || !isStillAsTickLeftIt(current.state, base)) return null;
         before = carryConcurrentRecords(before, base, current.state);
-        progress.stored = current;
+        advanceScheduleTimerProgress(progress, current, before);
         retry = true;
         continue;
       }
@@ -153,4 +156,41 @@ export async function recordOccurrence(
     progress.state = nextState;
     return writeOccurrenceState(internals, progress, nextState, work, finalOccurrence, withMisses);
   }
+}
+
+/**
+ * Starts the run queued first for a resumed backfill section, conditioned on the bytes the section
+ * last held (COR-1925), as the occurrences of {@link recordOccurrence} are. `state` is the
+ * schedule after the section cleared the ended run's slot in memory. A drain that loses the
+ * condition reads the schedule again: when it is still as the tick left it, what the other engine
+ * recorded is carried in and the drain is decided again (a run another engine already started
+ * fills the slot and ends it); otherwise the schedule is no longer the tick's and this resolves
+ * `null`. Otherwise resolves the schedule as the drain wrote it, which is what the key holds.
+ */
+export async function drainQueuedRunInSection(
+  internals: EngineInternals,
+  progress: ScheduleTimerProgress,
+  state: ScheduleState,
+  callbacks: ScheduleCallbacks,
+): Promise<ScheduleState | null> {
+  let deciding = state;
+  while (deciding.currentWorkflowId === undefined && deciding.queuedRuns.length > 0) {
+    const drained = await drainQueuedScheduleRunUnderRead(
+      internals,
+      deciding,
+      progress.stored.bytes,
+      callbacks,
+    );
+    if (drained !== null) {
+      advanceScheduleTimerProgress(progress, { state: drained, bytes: encode(drained) });
+      return drained;
+    }
+    const current = await loadScheduleState(internals, deciding.id);
+    if (current === null || !isStillAsTickLeftIt(current.state, progress.stored.state)) {
+      return null;
+    }
+    deciding = carryConcurrentRecords(deciding, progress.stored.state, current.state);
+    advanceScheduleTimerProgress(progress, current, deciding);
+  }
+  return deciding;
 }

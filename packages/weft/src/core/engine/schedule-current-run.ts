@@ -16,7 +16,11 @@ import type { ScheduleState, WorkflowState } from '../types.ts';
 import { commitFencedEngineWrite } from './fenced-write.ts';
 import type { EngineInternals } from './internals.ts';
 import { startOccurrenceRun, type OccurrenceCommit } from './schedule-occurrence-commit.ts';
-import { applyBlockedScheduleOccurrence, drainQueuedScheduleRun } from './schedule-overlap.ts';
+import {
+  applyBlockedScheduleOccurrence,
+  drainQueuedScheduleRun,
+  drainQueuedScheduleRunUnderRead,
+} from './schedule-overlap.ts';
 import { decodeScheduleRunMetadata } from './schedule-run-metadata.ts';
 import { runIsolatedScheduleStateOperation } from './schedule-state-operations.ts';
 import {
@@ -205,7 +209,16 @@ export async function handleScheduledWorkflowTerminal(
       // Queue entries are accepted work. Keep draining them even if a later update
       // changes overlap; the new policy governs only future occurrences.
       if (drainsQueuedRun(clearedState)) {
-        await drainQueuedScheduleRun({ ...clearedState, updatedAt: now }, callbacks, workflowId);
+        // Conditioned on the bytes this was decided from: a pause, an update, or another engine's
+        // drain that landed since the read loses it, and the schedule is read again (COR-1925).
+        const drained = await drainQueuedScheduleRunUnderRead(
+          internals,
+          clearedState,
+          loaded.bytes,
+          callbacks,
+          workflowId,
+        );
+        if (drained === null) continue;
         return;
       }
       try {
