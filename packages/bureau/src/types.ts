@@ -486,8 +486,15 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * `BureauError` (`BAD_REQUEST`). Requires {@link ModelsOptions.generate}: a model name that
    * nothing can turn into a `generate` would be silently ignored, so `createBureau` refuses the
    * combination with `BureauError` (`BAD_REQUEST`).
+   *
+   * COR-1873: pass several sources to layer them. The owner's sources come first; a plugin's
+   * read-only layer (`agentFileDirectory(path, { plugin })`) sits beneath them, lists its agents
+   * as `plugin:name`, reloads them when they change, and refuses every write with
+   * `agent-file-read-only`. `agents.duplicate` copies one into the owner's source. The list is
+   * read as `layeredAgentSource(list)`; an empty list or two layers of one plugin is refused with
+   * `BureauError` (`BAD_REQUEST`).
    */
-  agentSource?: AgentSource;
+  agentSource?: AgentSource | readonly AgentSource[];
   /**
    * COR-1913 — the secret that signs the tool approvals the file agents of
    * {@link BureauOptions.agentSource} raise. A file agent's tools ask a person before they run
@@ -508,8 +515,12 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * schedule its `trigger` names. Requires a durable engine, and `createBureau` refuses the
    * combination without one with `BureauError` (`BAD_REQUEST`). See
    * `documentation/workflow-files.md`.
+   *
+   * COR-1873: pass several sources to layer them, as for {@link BureauOptions.agentSource}: a
+   * plugin's read-only layer lists its workflows as `plugin:name` and refuses every write with
+   * `workflow-file-read-only`.
    */
-  workflowSource?: WorkflowSource;
+  workflowSource?: WorkflowSource | readonly WorkflowSource[];
   /**
    * COR-1813 — Weft's worker deployment catalog, the durable store of worker builds and routing
    * pointers. With it, {@link Bureau.deployments} reads a deployment's routing pointer and ramps,

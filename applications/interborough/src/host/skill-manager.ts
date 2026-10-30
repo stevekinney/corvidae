@@ -222,6 +222,7 @@ export async function createSkillManager(options: SkillManagerOptions): Promise<
         id: source.id,
         kind: source.kind,
         location: source.location,
+        ...(source.plugin === undefined ? {} : { plugin: source.plugin }),
         trust: trusted.has(source.id) ? 'trusted' : 'untrusted',
         trustReason: trusted.has(source.id)
           ? `Source '${source.id}' is listed in skills.trusted.`

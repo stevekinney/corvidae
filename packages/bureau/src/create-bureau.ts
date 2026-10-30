@@ -405,7 +405,8 @@ import {
   type WorkflowRuntime,
 } from './workflow-runtime';
 import { createBureauWorkerDeployments } from './worker-deployments';
-import { validateDefinitionSource } from './sources/validate-definition-source';
+import type { AgentSource, WorkflowSource } from './sources/definition-source';
+import { resolveDefinitionSource } from './sources/validate-definition-source';
 import { collidingWorkflowToolName, createWorkflowTools } from './workflow-tools';
 import { createSettingsTools } from './settings/settings-tools';
 import { createWorkflowSnapshotStore } from './workflow-snapshot-store';
@@ -1326,6 +1327,40 @@ export class UnknownScheduleAgentError extends BureauError {
     this.name = 'UnknownScheduleAgentError';
     this.agentName = agentName;
   }
+}
+
+/** {@link BureauOptions} once each definition-source option is one source (COR-1873). */
+type LayeredBureauOptions<D extends AgentDefinitions> = Omit<
+  BureauOptions<D>,
+  'agentSource' | 'workflowSource'
+> & {
+  readonly agentSource?: AgentSource;
+  readonly workflowSource?: WorkflowSource;
+};
+
+/** `options` with `agentSource` and `workflowSource` each checked and layered into one source. */
+function withLayeredSources<const D extends AgentDefinitions>(
+  options: BureauOptions<D>,
+): LayeredBureauOptions<D> {
+  const { agentSource, workflowSource, ...rest } = options;
+  return {
+    ...rest,
+    ...(agentSource === undefined
+      ? {}
+      : {
+          agentSource: resolveDefinitionSource('agentSource', 'agent', agentSource, toBadRequest),
+        }),
+    ...(workflowSource === undefined
+      ? {}
+      : {
+          workflowSource: resolveDefinitionSource(
+            'workflowSource',
+            'workflow',
+            workflowSource,
+            toBadRequest,
+          ),
+        }),
+  };
 }
 
 function toBadRequest(message: string): never {
@@ -2256,9 +2291,11 @@ function composeHooks(input: {
 }
 
 async function constructBureau<const D extends AgentDefinitions>(
-  options: BureauOptions<D>,
+  given: BureauOptions<D>,
   construction: BureauConstruction<D>,
 ): Promise<void> {
+  // COR-1873: several definition sources are read as one layered source from here on.
+  let options = withLayeredSources(given);
   // COR-1920: the answer keys are the caller's, so they are read once, before the first await.
   const answerEncryption: AnswerEncryptionKeys | undefined =
     options.answerEncryption === undefined
@@ -2307,7 +2344,6 @@ async function constructBureau<const D extends AgentDefinitions>(
   // COR-1524: a model written in an agent file has to become a `generate` somehow, and only the
   // host holds the credentials to do it. Refused here rather than leaving every file unusable.
   if (options.agentSource !== undefined) {
-    validateDefinitionSource('agentSource', 'agent', options.agentSource, toBadRequest);
     if (options.models?.generate === undefined) {
       toBadRequest(
         '"options.models.generate" is required with "options.agentSource": it turns a model in the model catalog into the generate an agent file runs with',
@@ -2322,7 +2358,6 @@ async function constructBureau<const D extends AgentDefinitions>(
     );
   }
   if (options.workflowSource !== undefined) {
-    validateDefinitionSource('workflowSource', 'workflow', options.workflowSource, toBadRequest);
     // COR-1529: Bureau adds the workflow tools to the tool catalog itself, so a host tool that
     // already has one of their names would be silently shadowed or shadow them.
     const colliding = collidingWorkflowToolName(options.agentSource?.tools);

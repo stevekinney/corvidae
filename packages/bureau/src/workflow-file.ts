@@ -165,14 +165,22 @@ export type ParsedWorkflowFile =
   | { readonly ok: true; readonly file: WorkflowFileContents }
   | { readonly ok: false; readonly problem: WorkflowFileProblem };
 
-/** Why `id`, an owner file's stem, cannot be a workflow identifier, or `undefined` when it can. */
-export function checkWorkflowIdentifier(id: string): WorkflowFileProblem | undefined {
-  if (id.length <= WORKFLOW_IDENTIFIER_MAXIMUM_LENGTH && WORKFLOW_FILE_STEM_PATTERN.test(id)) {
+/**
+ * Why `id` cannot be a workflow identifier, or `undefined` when it can: an owner file's bare stem,
+ * or, for a file of `plugin`'s read-only layer (COR-1873), `plugin:stem`.
+ */
+export function checkWorkflowIdentifier(
+  id: string,
+  plugin?: string,
+): WorkflowFileProblem | undefined {
+  const stem =
+    plugin === undefined ? id : id.startsWith(`${plugin}:`) ? id.slice(plugin.length + 1) : '';
+  if (id.length <= WORKFLOW_IDENTIFIER_MAXIMUM_LENGTH && WORKFLOW_FILE_STEM_PATTERN.test(stem)) {
     return undefined;
   }
   return {
     code: 'invalid-identifier',
-    message: `"${id}" is not a valid workflow identifier: it must match ${WORKFLOW_FILE_STEM_PATTERN.source} and be at most ${WORKFLOW_IDENTIFIER_MAXIMUM_LENGTH} characters.`,
+    message: `"${id}" is not a valid workflow identifier: it must match ${WORKFLOW_FILE_STEM_PATTERN.source}${plugin === undefined ? '' : ` after "${plugin}:"`} and be at most ${WORKFLOW_IDENTIFIER_MAXIMUM_LENGTH} characters.`,
   };
 }
 
@@ -272,15 +280,17 @@ function hasUnrecognizedDocumentKeys(documentInput: unknown): boolean {
 }
 
 /**
- * Parse a workflow file's text as the workflow `id`, validating it against `host`. Never throws:
- * a file that cannot be used comes back as a problem.
+ * Parse a workflow file's text as the workflow `id`, validating it against `host`. `plugin` names
+ * the plugin whose read-only layer holds the file (COR-1873). Never throws: a file that cannot be
+ * used comes back as a problem.
  */
 export function parseWorkflowFile(
   id: string,
   text: string,
   host: DocumentWorkflowHost,
+  plugin?: string,
 ): ParsedWorkflowFile {
-  const identifierProblem = checkWorkflowIdentifier(id);
+  const identifierProblem = checkWorkflowIdentifier(id, plugin);
   if (identifierProblem !== undefined) return { ok: false, problem: identifierProblem };
   let value: unknown;
   try {
@@ -394,7 +404,8 @@ export type WorkflowFileErrorCode =
   | WorkflowFileProblemCode
   | 'workflow-file-not-found'
   | 'workflow-file-exists'
-  | 'workflow-file-changed';
+  | 'workflow-file-changed'
+  | 'workflow-file-read-only';
 
 /** A write or read of a workflow file that was refused. `problem` carries the detail, if any. */
 export class WorkflowFileError extends Error {

@@ -7,9 +7,10 @@ import { join } from 'node:path';
  * The kind is not decoration: it is what a trust policy decides on. A `project` skill lives in
  * whatever workspace happens to be open, so it is the least trustworthy of the four and is
  * unavailable until something admits the workspace; a `built-in` skill ships with the host and is
- * trusted by construction.
+ * trusted by construction. A `plugin` skill ships in a plugin's read-only layer (COR-1873); plugins
+ * are trusted, in-process code, so it is trusted too, and it sits beneath the owner's sources.
  */
-export type SkillSourceKind = 'project' | 'user' | 'built-in' | 'remote' | 'storage';
+export type SkillSourceKind = 'project' | 'user' | 'built-in' | 'remote' | 'storage' | 'plugin';
 
 /**
  * How completely a source can supply a skill.
@@ -44,6 +45,8 @@ export interface SkillSource {
   readonly precedence: number;
   /** What this source can actually deliver. Defaults to `complete` for filesystem sources. */
   readonly bundleSupport?: SkillBundleSupport;
+  /** The plugin that ships the skills, for a `plugin` source (COR-1873). */
+  readonly plugin?: string;
 }
 
 /** Default precedence by kind: a project skill shadows a user skill, which shadows a built-in. */
@@ -52,6 +55,7 @@ export const DEFAULT_SOURCE_PRECEDENCE: Readonly<Record<SkillSourceKind, number>
   user: 20,
   storage: 25,
   remote: 30,
+  plugin: 35,
   'built-in': 40,
 });
 
@@ -185,6 +189,11 @@ export function defaultTrustForKind(kind: SkillSourceKind): SkillTrustDecision {
       return {
         state: 'untrusted',
         reason: 'Remote sources are untrusted until an integrity policy admits them.',
+      };
+    case 'plugin':
+      return {
+        state: 'trusted',
+        reason: 'Plugin sources ship with a plugin, which is trusted code the host loads.',
       };
     case 'storage':
       // The operator's own durable store, written by this runtime — the self-improvement flow puts

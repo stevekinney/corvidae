@@ -22,6 +22,7 @@ import {
   type AgentFileDefinition,
   type AgentFileDefinitionInput,
   type AgentFileProblem,
+  agentFileInputOf,
   checkAgentIdentifier,
   decodeAgentFile,
   hashAgentFileBytes,
@@ -30,10 +31,12 @@ import {
   serializeNewAgentFile,
   serializeUpdatedAgentFile,
 } from './agent-file';
+import { isNamespacedIdentifier } from './namespaced-identifier';
 import {
   type AgentSource,
   type DefinitionEntry,
   SourceConflictError,
+  SourceReadOnlyError,
 } from './sources/definition-source';
 
 export interface AgentFileWriterDependencies {
@@ -86,6 +89,21 @@ export interface AgentFileWriter {
     options: { readonly expectedHash: string } & AgentFileSaveOptions,
   ): Promise<AgentFileWriteResult>;
   delete(id: string, options: { readonly expectedHash: string }): Promise<AgentFileWriteResult>;
+  /**
+   * COR-1873 — copy the plugin agent `id` (`plugin:name`) into the owner's source as `name.md`,
+   * an agent the owner can edit. A tool the file names with a pinned version (`plugin:tool@1.2.0`)
+   * is written unversioned (`plugin:tool`), so the copy uses whichever version is loaded. Refuses
+   * with `agent-file-exists` when the owner already has `name`, `agent-file-not-found` when there is
+   * no such plugin agent, and `agent-file-has-references` for an agent whose `references` name
+   * documents beside the plugin's files, which the copy could not read.
+   */
+  duplicate(id: string, options?: AgentFileSaveOptions): Promise<AgentFileWriteResult>;
+}
+
+/** `name` without a pinned `@version`: files float to whichever version is loaded (COR-1873). */
+function unversioned(name: string): string {
+  const at = name.indexOf('@');
+  return at === -1 ? name : name.slice(0, at);
 }
 
 function refuse(problem: AgentFileProblem): never {
@@ -125,8 +143,14 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
     try {
       return await work();
     } catch (error) {
+      if (error instanceof SourceReadOnlyError) throw readOnly(error.id, error.plugin);
       throw error instanceof SourceConflictError ? conflictOf(error) : error;
     }
+  }
+
+  /** The refusal of a write to an agent a plugin's read-only layer holds (COR-1873). */
+  function readOnly(id: string, plugin: string): AgentFileError {
+    return new AgentFileError('agent-file-read-only', new SourceReadOnlyError(id, plugin).message);
   }
 
   /** The file's bytes, which must still hold `expectedHash`. */
@@ -165,8 +189,64 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
   }
 
   function checkIdentifier(id: string): void {
+    // A plugin's agent is never written, whether or not the plugin is loaded (COR-1873).
+    if (isNamespacedIdentifier(id)) throw readOnly(id, id.slice(0, id.indexOf(':')));
     const problem = checkAgentIdentifier(id);
     if (problem !== undefined) refuse(problem);
+  }
+
+  /** The copy of the plugin agent `id` the owner's `name.md` holds. */
+  async function duplicateBytes(id: string): Promise<{ name: string; bytes: Uint8Array }> {
+    if (!isNamespacedIdentifier(id)) {
+      throw new AgentFileError(
+        'invalid-identifier',
+        `"${id}" is not a plugin's agent: only a plugin:name agent can be duplicated.`,
+      );
+    }
+    const name = id.slice(id.indexOf(':') + 1);
+    const entry = await dependencies.read(id);
+    if (entry === undefined) throw conflictOf(new SourceConflictError(id, '', null));
+    if (entry.problem !== undefined) {
+      throw new AgentFileError(
+        'agent-file-unreadable',
+        `The file for "${id}" cannot be read: ${entry.problem.message}`,
+      );
+    }
+    const text = decodeAgentFile(entry.bytes);
+    const parsed = text === undefined ? undefined : parseAgentFile(id, text);
+    if (parsed === undefined || !parsed.ok) {
+      throw new AgentFileError(
+        'agent-file-unreadable',
+        `The file for "${id}" cannot be read as an agent file, so it cannot be duplicated.`,
+        parsed?.ok === false ? parsed.problem : undefined,
+      );
+    }
+    const { definition, raw } = parsed.file;
+    if (definition.references !== undefined && definition.references.length > 0) {
+      throw new AgentFileError(
+        'agent-file-has-references',
+        `"${id}" names reference documents that sit beside the plugin's files, so it cannot be duplicated.`,
+      );
+    }
+    const input = agentFileInputOf(definition);
+    const toolApproval =
+      definition.toolApproval === undefined
+        ? null
+        : Object.fromEntries(
+            Object.entries(definition.toolApproval).map(([tool, mode]) => [
+              unversioned(tool),
+              mode,
+            ]),
+          );
+    const bytes =
+      serializeUpdatedAgentFile(name, parsed.file, {
+        ...input,
+        // A file without a `name` is labelled by its identifier, which the copy changes.
+        name: Object.hasOwn(raw, 'name') ? definition.name : undefined,
+        tools: definition.tools.map(unversioned),
+        toolApproval,
+      }) ?? entry.bytes;
+    return { name, bytes };
   }
 
   /** Refuse unless `bytes` would load as a usable agent named `id`. */
@@ -192,7 +272,8 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
 
   return {
     async read(id) {
-      checkIdentifier(id);
+      // A plugin's agent can be read, only not written.
+      if (!isNamespacedIdentifier(id)) checkIdentifier(id);
       const entry = await dependencies.read(id);
       if (entry === undefined) return undefined;
       if (entry.problem !== undefined) {
@@ -247,6 +328,15 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
         if (next === undefined) return { id, hash: expectedHash };
         await checkWritable(id, next);
         return replace(id, next, expectedHash, savedBy);
+      });
+    },
+
+    duplicate(id, saveOptions) {
+      return exclusive(async () => {
+        const { name, bytes } = await duplicateBytes(id);
+        checkIdentifier(name);
+        await checkWritable(name, bytes);
+        return replace(name, bytes, null, saveOptions?.savedBy);
       });
     },
 

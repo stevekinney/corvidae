@@ -215,9 +215,27 @@ export const agentSource = agentObjectSource(
 
 A file agent runs exactly as a code-defined one does. `bureau.tasks.start('researcher', input)` accepts any string name (a second overload of `start`, which resolves to an untyped `TaskHandle`) and runs it as a task in a context, resolving the same options, tools, and instructions. It is refused with `NOT_FOUND` for a name that is not a ready agent.
 
-`bureau.agents` keeps `names()`, `entries()`, `query()`, `get()`, and `has()` typed to the code-defined map. The combined view is `list()`: code agents first in definition order, then file agents by identifier, each with `id`, `source`, `state`, `name`, `description`, `a2a`, `owner`, `definitionHash`, `definitionRevision` (see [Revisions](#revisions)), and, for an invalid file, `problem`.
+`bureau.agents` keeps `names()`, `entries()`, `query()`, `get()`, and `has()` typed to the code-defined map. The combined view is `list()`: code agents first in definition order, then file agents by identifier, each with `id`, `source`, `state`, `name`, `description`, `a2a`, `owner`, `definitionHash`, `definitionRevision` (see [Revisions](#revisions)), for an invalid file, `problem`, and, for a plugin's agent, `plugin` (see [Plugin layers](#plugin-layers)).
 
 Every file agent belongs to the deployment's owner of record, `anonymous:local` in single-user mode. A file has no owner field, and an `owner` key in the frontmatter is just an unknown key.
+
+## Plugin layers
+
+A plugin ships agent files too (COR-1873). `agentFileDirectory(path, { plugin: 'linear' })` makes a plugin's directory a read-only layer: each `<name>.md` in it is listed as `linear:<name>`, and an owner's file stem still has no colon, so an owner file can never claim a plugin's identifier. `agentSource` takes a list of sources and layers them with `layeredAgentSource` (from `@lostgradient/bureau/sources`): the owner's sources come first, in the order given, and each plugin's layer sits beneath them. Two layers of one plugin, or an empty list, are refused with `BureauError` (`BAD_REQUEST`).
+
+```ts
+import { agentFileDirectory } from '@lostgradient/bureau/sources';
+import type { AgentSource } from '@lostgradient/bureau';
+
+export const agentSource: readonly AgentSource[] = [
+  agentFileDirectory('/srv/agents'),
+  agentFileDirectory('/srv/plugins/linear/agents', { plugin: 'linear' }),
+];
+```
+
+A plugin's agent lists with `plugin` set to the plugin's name (`plugin` on the wire, `null` for every other agent). Its file reloads when it changes, as an owner's does, because the layer watches through its directory. Every write is refused: `create`, `update`, `delete`, and a version `restore` of a `plugin:name` throw `AgentFileError` `agent-file-read-only` (HTTP `Unprocessable`), and the layer itself rejects a write that reaches it with a `SourceReadOnlyError`. A plugin's `references` are read from the plugin's own directory.
+
+`bureau.agents.duplicate('linear:triager', { savedBy? })` copies the agent into the owner's first source as `triager.md`, an agent the owner can edit. Files float: a tool the plugin's file names with a pinned version, `linear:create-issue@1.2.0`, is written unversioned, `linear:create-issue`, so the copy uses whichever version is loaded; `toolApproval` keys are unversioned the same way. The copy is checked like any write, and refused with `agent-file-exists` when the owner already has the name and `agent-file-has-references` for an agent whose `references` name documents beside the plugin's files, which the copy could not read.
 
 ## Watching
 
