@@ -198,7 +198,7 @@ describe('a remembered tool (COR-1828)', () => {
             approvalPolicy: { mode: RESTRICTIONS[restriction].mode },
             policy: createToolApprovalHooks(
               { subject: mode },
-              { remembered: async (toolName) => toolName === 'subject' },
+              { remembered: async (tool) => tool.name === 'subject' },
             ),
           });
           const expected = combineApprovalStatuses(
@@ -221,11 +221,31 @@ describe('a remembered tool (COR-1828)', () => {
       execute: async () => ({ ran: true }),
     });
     const toolbox = createToolbox([subject({ mutates: true }), other], {
-      policy: createToolApprovalHooks({}, { remembered: (toolName) => toolName === 'subject' }),
+      policy: createToolApprovalHooks({}, { remembered: (tool) => tool.name === 'subject' }),
     });
 
     expect(await outcomeOf(toolbox, 'subject')).toBe('success');
     expect(await outcomeOf(toolbox, 'other')).toBe('action_required');
+  });
+
+  it('asks the grant for the id of the tool called, version included (COR-1950)', async () => {
+    const versioned = (version: string) =>
+      createTool({
+        name: 'subject',
+        version,
+        description: 'A tool that changes things',
+        input: z.object({}),
+        metadata: { mutates: true },
+        execute: async () => ({ ran: true }),
+      });
+    const granted = new Set(['default:subject@1.0.0']);
+    const hooks = () => createToolApprovalHooks({}, { remembered: (tool) => granted.has(tool.id) });
+
+    const sameVersion = createToolbox([versioned('1.0.0')], { policy: hooks() });
+    const newVersion = createToolbox([versioned('2.0.0')], { policy: hooks() });
+
+    expect(await outcomeOf(sameVersion)).toBe('success');
+    expect(await outcomeOf(newVersion)).toBe('action_required');
   });
 
   it('asks when the grant cannot be read', async () => {
@@ -250,8 +270,8 @@ describe('a remembered tool (COR-1828)', () => {
         policy: createToolApprovalHooks(
           { subject: mode },
           {
-            remembered: (toolName) => {
-              asked.push(toolName);
+            remembered: (tool) => {
+              asked.push(tool.name);
               return true;
             },
           },

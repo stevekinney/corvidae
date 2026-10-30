@@ -4,7 +4,7 @@
  *
  * `acceptsSecrets` is the metadata key Armorer reads to decide whether a tool may receive the
  * plaintext of a secret answer (COR-1816): `metadata.acceptsSecrets === true`, and nothing else. A
- * tool the owner has not flagged is left exactly as the loader made it, so it never carries the key
+ * tool the owner has not flagged keeps the loader's metadata, so it never carries the key
  * and a `{ secretRef }` in its arguments fails with `secret-not-accepted`.
  *
  * @module tool-source-tool-settings
@@ -41,7 +41,8 @@ export function withAcceptsSecrets(tool: Tool): Tool {
  * transport to take that back. The check sits where the host builds every saved source's tools, so
  * no kind of source (MCP over HTTP or stdio, OpenAPI from a URL or inline) can send a request, or
  * use a credential, after the host retired it. The configuration is copied whole, so the name,
- * description, schema, tags and metadata (the tier and approval metadata) are the original's.
+ * description, schema, tags, metadata (the tier and approval metadata) and identity, version
+ * included (COR-1950: an approval is bound to it), are the original's.
  */
 export function refusingWhen(tool: Tool, refusal: () => string | undefined): Tool {
   const refuseWhenRetired = (): void => {

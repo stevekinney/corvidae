@@ -302,8 +302,8 @@ describe('the approval precedence table (COR-1936)', () => {
           policy: createToolApprovalHooks(
             { subject: setting },
             {
-              remembered: (toolName) => {
-                asked.push(`${mode}:${setting}:${tier}:${toolName}`);
+              remembered: (tool) => {
+                asked.push(`${mode}:${setting}:${tier}:${tool.name}`);
                 return true;
               },
               permissionMode: () => mode,

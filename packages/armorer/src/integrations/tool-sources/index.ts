@@ -28,6 +28,7 @@ import {
   type McpOAuthTokenStorage,
 } from '../mcp/oauth';
 import { createToolboxFromOpenAPI, type OpenAPIAuth, type OpenAPISpec } from '../openapi';
+import { mcpRecipient, versionOfMaterial } from './tool-version';
 
 const nonEmptyString = z.string().min(1);
 
@@ -267,6 +268,13 @@ export type LoadedToolSource = {
  * mutating). An OpenAPI source generates one tool per operation, tiered by HTTP method. The
  * description is validated first.
  *
+ * Every tool carries a `version` (COR-1950), a digest of what a person approves: the source's
+ * `id`, where its calls go, the tool's name and input schema, and its capability (an MCP tool's
+ * annotations, an OpenAPI operation's method and path). Armorer binds an approval to the tool's
+ * id, which includes the version, and refuses to issue one for a tool with none, so a changed
+ * tool needs a new approval and an earlier one no longer applies. An unchanged tool has the same
+ * version at every start. See `tool-version.ts` for what the digest leaves out.
+ *
  * @throws {ToolSourceDescriptionError} for an invalid description.
  * @throws {ToolSourceCredentialError} when a named credential has no value.
  * @throws {ToolSourceAuthorizationRequiredError} when an OAuth source needs the user to authorize.
@@ -347,7 +355,13 @@ async function loadMcpSource(
   // Listing the tools is a request of its own, and may hang as the handshake may.
   const stopWatching = closeOnAbort(options.signal, () => client.close());
   try {
-    const tools = await fromMcpClientTools(client, { serverId: source.id });
+    const recipient = mcpRecipient(source.transport);
+    const tools = await fromMcpClientTools(client, {
+      serverId: source.id,
+      // What a person approves of the tool (see `tool-version.ts`): an approval is bound to it.
+      version: (tool, capability) =>
+        versionOfMaterial(['mcp', source.id, recipient, tool.name, tool.inputSchema, capability]),
+    });
     return { id: source.id, kind: 'mcp', tools, close: onceAsync(() => client.close()) };
   } catch (error) {
     await client.close().catch(() => undefined);
@@ -561,6 +575,8 @@ async function loadOpenApiSource(
     ...(auth ? { auth } : {}),
     ...(source.allowOperations ? { allowOperations: source.allowOperations } : {}),
     ...(source.namePrefix ? { namePrefix: source.namePrefix } : {}),
+    // What a person approves of the tool (see `tool-version.ts`): an approval is bound to it.
+    version: (operation) => versionOfMaterial(['openapi', source.id, baseUrl, operation]),
   });
   return { id: source.id, kind: 'openapi', tools, close: async () => undefined };
 }

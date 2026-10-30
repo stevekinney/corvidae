@@ -8,6 +8,9 @@
  *   dynamic registration, PKCE, authorization code and refresh grants, RFC 9207 `iss`), whose one
  *   tool is `echo`.
  * - {@link petsDocument}: an OpenAPI document with a read, a write, and a delete operation.
+ * - {@link startRenamingMcpServer}, {@link startPetsServer} and {@link writablePetsDocument}: a
+ *   mutating MCP tool and a mutating OpenAPI operation that record the calls that ran, whose input
+ *   schema a test can change (COR-1950).
  */
 import { createMCP, createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
@@ -250,3 +253,114 @@ export const petsDocument = {
     },
   },
 };
+
+/** What {@link startRenamingMcpServer} saw: the arguments of every `rename` call that ran. */
+export type RenamingMcpServer = TestServer & {
+  /** The arguments of each `rename` call the server executed, in order. */
+  readonly renamed: readonly unknown[];
+  /**
+   * Serve `rename` with its one string argument called `field` from now on, at the same address:
+   * the server changed its tool's input schema between two starts of the host.
+   */
+  changeField(field: string): Promise<void>;
+};
+
+async function renamingMcp(field: string, renamed: unknown[]) {
+  const rename = createTool({
+    name: 'rename',
+    description: 'renames something',
+    input: z.object({ [field]: z.string() }),
+    // No annotations: an MCP tool the server does not vouch for is a mutating one.
+    async execute(params) {
+      renamed.push(params);
+      return { renamed: true };
+    },
+  });
+  return createMCP(createToolbox([rename]));
+}
+
+/**
+ * An MCP server over Streamable HTTP for the approval tests: one mutating tool, `rename`, that
+ * records every call it ran, answering only `Authorization: Bearer <token>`.
+ */
+export async function startRenamingMcpServer(token: string): Promise<RenamingMcpServer> {
+  const renamed: unknown[] = [];
+  const authorizations: (string | null)[] = [];
+  let mcp = await renamingMcp('target', renamed);
+  const server = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch(request) {
+      const header = request.headers.get('authorization');
+      authorizations.push(header);
+      if (header !== `Bearer ${token}`) return new Response('unauthorized', { status: 401 });
+      return mcp.fetch(request);
+    },
+  });
+  return {
+    origin: `http://127.0.0.1:${server.port}`,
+    authorizations,
+    renamed,
+    async changeField(field) {
+      mcp = await renamingMcp(field, renamed);
+    },
+    stop: () => server.stop(true),
+  };
+}
+
+/** What {@link startPetsServer} saw: every request that reached it. */
+export type PetsServer = TestServer & {
+  /** The method, path and JSON body of each request, in order. */
+  readonly requests: readonly { method: string; path: string; body: unknown }[];
+};
+
+/** A service for {@link writablePetsDocument} to point at, which records what it is sent. */
+export async function startPetsServer(): Promise<PetsServer> {
+  const requests: { method: string; path: string; body: unknown }[] = [];
+  const server = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    async fetch(request) {
+      const text = await request.text();
+      requests.push({
+        method: request.method,
+        path: new URL(request.url).pathname,
+        body: text === '' ? null : (JSON.parse(text) as unknown),
+      });
+      return Response.json({ ok: true });
+    },
+  });
+  return {
+    origin: `http://127.0.0.1:${server.port}`,
+    authorizations: [],
+    requests,
+    stop: () => server.stop(true),
+  };
+}
+
+/**
+ * An OpenAPI document with one write, `createPet` (the tool `create-pet`), whose JSON body is an
+ * object with one string property called `field`.
+ */
+export function writablePetsDocument(field: string) {
+  return {
+    openapi: '3.0.0',
+    info: { title: 'Pets', version: '1.0.0' },
+    paths: {
+      '/pets': {
+        post: {
+          operationId: 'createPet',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { type: 'object', properties: { [field]: { type: 'string' } } },
+              },
+            },
+          },
+          responses: { '200': { description: 'ok' } },
+        },
+      },
+    },
+  };
+}

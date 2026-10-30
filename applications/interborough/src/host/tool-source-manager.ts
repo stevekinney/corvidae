@@ -27,7 +27,9 @@
  * - **`acceptsSecrets` per tool (COR-1932).** The owner's per-tool settings sit in the entry's
  *   `tools`, keyed by the tool's own name. At load, a flagged tool is rebuilt with
  *   `metadata.acceptsSecrets: true` (`tool-source-tool-settings.ts`), the key Armorer reads for
- *   secret answers (COR-1816); every other tool is left as the loader made it. A setting that
+ *   secret answers (COR-1816); every other tool keeps the loader's metadata. Every tool, flagged or
+ *   not, is rebuilt behind the gate below, and keeps the `version` the loader gave it (COR-1950): an
+ *   approval, and a chat's remembered tool, are bound to it. A setting that
  *   reaches no tool is reported on the source as `unmatchedSettings`. {@link
  *   ToolSourceManager.configureTools} changes the settings through the same queue and lock.
  * - **Local only.** A remote home keeps its configuration in a bucket and its secrets in the
@@ -888,13 +890,14 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       for (const tool of loaded.tools) {
         const name = byName.get(tool.name);
         if (name === undefined) continue;
-        // Only a tool the owner flagged is rebuilt; every other keeps the metadata the loader gave it.
+        // Only a tool the owner flagged gets `acceptsSecrets`; every other keeps the metadata the loader gave it.
         const acceptsSecrets = entry.tools.get(tool.name)?.acceptsSecrets === true;
-        // Every saved source's tool passes this gate, so a retired source's tool cannot run.
+        // Every saved source's tool is rebuilt behind this gate, so a retired source's tool cannot
+        // run. The rebuild copies the configuration whole, so the loader's version survives it.
         const offered = acceptsSecrets ? withAcceptsSecrets(tool) : tool;
         catalog[name] = refusingWhen(offered, () =>
           retired.has(source.id)
-            ? `Tool source "${source.id}" was removed or changed; its tools work again after the host starts.`
+            ? `Tool source "${source.id}" was removed or changed, so this tool no longer runs. Start the host again: a changed source then loads as it now stands, and a removed one is gone.`
             : undefined,
         );
         tools.push({
