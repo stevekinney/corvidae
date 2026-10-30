@@ -13,7 +13,7 @@
  */
 import { createAgent, stopWhen, type GenerateFunction } from '@lostgradient/operative';
 
-/** The names the e2e host publishes the barrier agents under. */
+/** The names the e2e host serves the barrier agents under. */
 export const BARRIER_AGENT_NAME = 'barrier';
 export const BARRIER_SHORT_AGENT_NAME = 'barrier-short';
 

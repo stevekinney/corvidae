@@ -29,7 +29,7 @@ async function open(storage?: Awaited<ReturnType<typeof faultyStorage>>['storage
         generate: async () => ({ content: 'done', toolCalls: [] }),
       }),
     },
-    publish: ['asker'],
+    a2aAgents: ['asker'],
     ...(storage === undefined ? { durableHistory: true } : { storage }),
     handlerOptions: { publicUrl: 'http://localhost' },
   });
@@ -91,7 +91,7 @@ describe('a new task’s receipt over a durable history', () => {
     });
     const handler = createBureauHandler(marked, {
       authentication,
-      publish: ['asker'],
+      a2aAgents: ['asker'],
       publicUrl: 'http://localhost',
     });
     const original = message('go');

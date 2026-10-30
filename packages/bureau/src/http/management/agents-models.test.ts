@@ -210,7 +210,7 @@ describe('bureau.agents.models access', () => {
     });
   });
 
-  it('asks only that the caller be authenticated for a published agent: a caller with no scope reads it', async () => {
+  it('asks only that the caller be authenticated: a caller with no scope reads any listed agent', async () => {
     const served = await serve({ agents: agents() });
 
     const body = await rpc(
@@ -224,51 +224,39 @@ describe('bureau.agents.models access', () => {
     expect(body.result?.['selectable']).toBe(false);
   });
 
-  it('answers an unpublished code agent as not found to a caller who may not see it, and describes it to one who may', async () => {
+  it('describes a code agent outside the A2A allowlist to a caller with no scope, as to any other', async () => {
     const served = await serve({ agents: agents() });
     const asKey = (key: string) =>
       rpc(served.keyed, 'bureau.agents.models', { agentName: 'fixed' }, key);
 
-    // `fixed` is not in the publish allowlist: no scope sees exactly what an unknown name sees.
-    const hidden = await asKey('alice-key');
+    // `fixed` is not in the A2A allowlist, which has no bearing on who may ask about it.
+    for (const key of ['alice-key', 'agents-writer-key', 'agents-reader-key']) {
+      const body = await asKey(key);
+      expect([key, body.error]).toEqual([key, undefined]);
+      expect(body.result?.['selectable']).toBe(false);
+    }
     const unknown = await rpc(
       served.keyed,
       'bureau.agents.models',
       { agentName: 'nobody' },
       'alice-key',
     );
-    expect(hidden.error?.data).toMatchObject({
-      weftCode: 'NotFound',
-      resource: 'agent',
-      identifier: 'fixed',
-    });
-    expect(hidden.result).toBeUndefined();
     expect(unknown.error?.data).toMatchObject({ weftCode: 'NotFound', resource: 'agent' });
-    // The write scope alone does not read, as in `bureau.agents.list`.
-    const writer = await asKey('agents-writer-key');
-    expect(writer.error?.data).toMatchObject({ weftCode: 'NotFound' });
-
-    const reader = await asKey('agents-reader-key');
-    expect(reader.error).toBeUndefined();
-    expect(reader.result?.['selectable']).toBe(false);
   });
 
-  it('answers an unpublished agent file as not found to a caller who may not see it', async () => {
+  it('describes an agent file that has not opted into A2A to a caller with no scope', async () => {
     const served = await serve();
     await served.put('drafted.md', agentFileText({ model: KNOWN_MODEL }));
     await served.bureau.agents.refresh();
-    const asKey = (key: string) =>
-      rpc(served.keyed, 'bureau.agents.models', { agentName: 'drafted' }, key);
 
-    const stranger = await asKey('alice-key');
-    expect(stranger.error?.data).toMatchObject({
-      weftCode: 'NotFound',
-      resource: 'agent',
-      identifier: 'drafted',
-    });
-    const reader = await asKey('agents-reader-key');
-    expect(reader.error).toBeUndefined();
-    expect(reader.result?.['selectable']).toBe(true);
+    const stranger = await rpc(
+      served.keyed,
+      'bureau.agents.models',
+      { agentName: 'drafted' },
+      'alice-key',
+    );
+    expect(stranger.error).toBeUndefined();
+    expect(stranger.result?.['selectable']).toBe(true);
   });
 
   it('refuses a request that names no agent, or a key it does not declare', async () => {

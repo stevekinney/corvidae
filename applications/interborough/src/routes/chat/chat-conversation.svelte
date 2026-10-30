@@ -68,7 +68,6 @@
   import { decidedKey, SeenReviews } from './decided-elsewhere.ts';
   import ModelPicker from './model-picker.svelte';
   import NewChatWelcome from './new-chat-welcome.svelte';
-  import { startableAgents } from './new-chat.ts';
   import { toolGroups } from './tool-activity.ts';
   import ToolCalls from './tool-calls.svelte';
   import SessionTasks from './session-tasks.svelte';
@@ -120,13 +119,11 @@
     undefined,
   );
   const choices = $derived(
-    (agents.data ?? [])
-      .filter((entry: AgentSummary) => entry.publishState === 'published')
-      .map((entry: AgentSummary) => ({
-        value: entry.name,
-        label: entry.displayName,
-        ...(entry.description === null ? {} : { description: entry.description }),
-      })),
+    (agents.data ?? []).map((entry: AgentSummary) => ({
+      value: entry.name,
+      label: entry.displayName,
+      ...(entry.description === null ? {} : { description: entry.description }),
+    })),
   );
 
   // What the selected agent's model lets a person attach. An agent the Bureau has not listed yet,
@@ -444,7 +441,7 @@
       {#snippet empty()}
         {#if choosing}
           <NewChatWelcome
-            agents={startableAgents(agents.data ?? [])}
+            agents={agents.data ?? []}
             selected={agent}
             {chosen}
             onChoose={chooseAgent}

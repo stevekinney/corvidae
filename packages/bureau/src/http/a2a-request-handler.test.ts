@@ -59,7 +59,7 @@ describe('a continuation whose receipt could not be recorded', () => {
   it('keeps its claim, and its retry finishes the answer instead of refusing or rerouting it', async () => {
     const opened = await openBureau({
       agents: { asker: createAgent({ name: 'asker', generate: parksThenAnswers() }) },
-      publish: ['asker'],
+      a2aAgents: ['asker'],
     });
     try {
       const runtime = createDefaultRuntimeServices();
@@ -143,7 +143,7 @@ describe('a completed task whose reply this instance cannot read yet', () => {
           generate: async () => ({ content: 'the reply', toolCalls: [] }),
         }),
       },
-      publish: ['asker'],
+      a2aAgents: ['asker'],
     });
     try {
       let hidden = true;

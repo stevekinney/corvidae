@@ -52,7 +52,7 @@ const AGENTS = ['tool-runner', 'assistant'].map((name) => ({
   description: null,
   definitionRevision: 1,
   kind: 'code',
-  publishState: 'published',
+  a2a: false,
 }));
 
 function world(overrides: Partial<World> = {}): World {

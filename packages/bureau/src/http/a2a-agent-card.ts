@@ -1,5 +1,5 @@
 /**
- * The public Agent Card of one published Bureau agent (COR-903), projected from the agent
+ * The public Agent Card of one Bureau agent that opts into A2A (COR-903), projected from the agent
  * catalog and the agent's definition. The kit (`createA2AHandler`) adds the card's one
  * interface (its URL, `protocolVersion: "1.0"`, and `tenant`) and its signatures, and serves it
  * with `ETag` and `Cache-Control`.
@@ -204,7 +204,7 @@ function skillOf(descriptor: AgentSkillDescriptor): AgentSkill {
   };
 }
 
-/** The card of one published agent, without the interface and signatures the kit adds. */
+/** The card of one opted-in agent, without the interface and signatures the kit adds. */
 export function createBureauAgentCard(source: A2AAgentCardSource): A2AAgentCardInput {
   const name =
     source.displayName === undefined || source.displayName === ''

@@ -76,7 +76,7 @@ async function withAgents<T>(
     agents: Object.fromEntries(
       Object.entries(agents).map(([name, generate]) => [name, createAgent({ name, generate })]),
     ),
-    publish: Object.keys(agents),
+    a2aAgents: Object.keys(agents),
     handlerOptions: { publicUrl: PUBLIC_URL },
   });
   try {
@@ -434,7 +434,7 @@ describe('a media task nobody read before a restart', () => {
           generate: replying([textFile('output.txt', 'Generated text')]),
         }),
       },
-      publish: ['writer'],
+      a2aAgents: ['writer'],
       durableHistory: true,
       handlerOptions: { publicUrl: PUBLIC_URL },
     });

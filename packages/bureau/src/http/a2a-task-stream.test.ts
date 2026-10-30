@@ -20,6 +20,7 @@ const VIEW: TaskView = {
   owner: 'api-key:alice',
   actor: null,
   kind: 'chat',
+  origin: null,
   status: 'working',
   finishReason: null,
   statusMessage: null,

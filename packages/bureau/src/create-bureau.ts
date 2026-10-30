@@ -337,6 +337,13 @@ import {
   type TaskRegistry,
   type TaskToolGrant,
 } from './task-registry';
+import {
+  parseStartTaskOrigin,
+  type StartTaskOrigin,
+  type TaskOrigin,
+  taskOriginOfStart,
+  taskOriginTag,
+} from './task-origin';
 import { createTaskResync, type TaskResync } from './task-resync';
 import {
   ANONYMOUS_LOCAL_OWNER,
@@ -1279,6 +1286,8 @@ function validateMessageRequest(
  */
 type SessionTaskFields = {
   readonly taskInput?: TaskInput | undefined;
+  /** Where the task came from, as the caller declared it. See {@link StartTaskOptions.origin}. */
+  readonly origin?: StartTaskOrigin | undefined;
   readonly inputParts?: Exclude<SessionInputPayload, string> | undefined;
   readonly onActiveRun?: ((activeRun: ActiveRun) => void) | undefined;
   /**
@@ -1461,6 +1470,7 @@ function snapshotStartOptions(options: StartTaskOptions): StartTaskOptions {
     principal,
     commandId,
     requestContext,
+    origin,
     signal,
     traceContext,
     withTraceContext,
@@ -1471,11 +1481,18 @@ function snapshotStartOptions(options: StartTaskOptions): StartTaskOptions {
   if (withTraceContext !== undefined && typeof withTraceContext !== 'function') {
     toBadRequest('"options.withTraceContext" must be a function');
   }
+  let declaredOrigin: StartTaskOrigin | undefined;
+  try {
+    declaredOrigin = parseStartTaskOrigin(origin);
+  } catch (error) {
+    return toBadRequest(error instanceof Error ? error.message : '"options.origin" is not valid');
+  }
   return {
     ...(contextId === undefined ? {} : { contextId }),
     ...(principal === undefined ? {} : { principal }),
     ...(commandId === undefined ? {} : { commandId }),
     ...(requestContext === undefined ? {} : { requestContext }),
+    ...(declaredOrigin === undefined ? {} : { origin: declaredOrigin }),
     ...(signal === undefined ? {} : { signal }),
     ...(traceContext === undefined ? {} : { traceContext }),
     ...(withTraceContext === undefined ? {} : { withTraceContext }),
@@ -4913,6 +4930,9 @@ async function constructBureau<const D extends AgentDefinitions>(
     if (kind === 'tool-approval') ensureLazyExpirySweep();
     const owner = runAttribution.get(runId)?.principal ?? ANONYMOUS_LOCAL_OWNER;
     emitter.dispatch(new ReviewRequestedEvent(reviewId, runId, owner, kind, target));
+    // COR-1754 — a park changes the task's view (it now waits on its requester) without writing
+    // its record, so whoever waits on the task is told here, the one place a park is noticed.
+    detachBestEffortPromise(tasks.announceChanged(runId));
   }
 
   /**
@@ -7223,6 +7243,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       ...(startOptions.withTraceContext === undefined
         ? {}
         : { withTraceContext: startOptions.withTraceContext }),
+      ...(startOptions.origin === undefined ? {} : { origin: startOptions.origin }),
       ...(startOptions.signal === undefined ? {} : { signal: startOptions.signal }),
       taskInput: input,
       onActiveRun(activeRun) {
@@ -7359,6 +7380,13 @@ async function constructBureau<const D extends AgentDefinitions>(
       throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
     }
     const agentName = resolveRunAgentName(sessionId, session, request.agentName);
+    // COR-1867 — where the task came from, as its record and its run's `origin:<kind>` tag keep
+    // it. A chat's identifiers are this start's own, never the caller's.
+    const taskOrigin: TaskOrigin = taskOriginOfStart(request.origin, {
+      sessionId,
+      agentName,
+      owner,
+    });
     // COR-323 — every run belongs to a catalog agent. The implicit `bureau` agent, which ran on
     // Bureau-wide `generate`/`toolbox` options, no longer exists, so a session stored under it
     // answers as any unknown agent does.
@@ -7785,6 +7813,7 @@ async function constructBureau<const D extends AgentDefinitions>(
           incarnation: runSessionIncarnations.get(runId) ?? savedAsRunning?.incarnation ?? '',
           agentName,
           owner,
+          origin: taskOrigin,
           // The text the run began with, whether it came as `message` or as an appended user row.
           message: request.message ?? (requestText === '' ? undefined : requestText),
           tools: toolGrant,
@@ -7883,9 +7912,12 @@ async function constructBureau<const D extends AgentDefinitions>(
                 sessionId,
                 // Lets durable steering in any process find this run as live
                 // for this session incarnation (`liveSessionRunIdsEverywhere`).
-                ...(steeringSession !== undefined
-                  ? { tags: [steeringSessionRunTag(sessionId, steeringSession.incarnation)] }
-                  : {}),
+                tags: [
+                  taskOriginTag(taskOrigin),
+                  ...(steeringSession === undefined
+                    ? []
+                    : [steeringSessionRunTag(sessionId, steeringSession.incarnation)]),
+                ],
                 ...(humanInputEmitter ? { emitter: humanInputEmitter } : {}),
                 ...(durableServicesOnServices ? { onServices: durableServicesOnServices } : {}),
               }
@@ -9364,6 +9396,8 @@ async function constructBureau<const D extends AgentDefinitions>(
           incarnation: '',
           agentName: loaded.record.agentName,
           owner: ownerOrLocal(loaded.record.principal),
+          // The run's original start is gone with its record: nothing names a surface for it.
+          origin: { kind: 'api' },
           message: originatingMessageText(loaded.record.input),
           createdAt: new Date(summary.createdAt).toISOString(),
         });
@@ -19255,6 +19289,12 @@ async function constructBureau<const D extends AgentDefinitions>(
         owner: fire.owner,
         actor: SCHEDULER_ACTOR,
         kind: 'schedule-fire',
+        // COR-1867: the fire is its run id. Without a schedule id (a branch the composition's own
+        // preconditions rule out) the origin is not recorded, and reads `null`, not a guess.
+        origin:
+          fire.scheduleId === undefined
+            ? undefined
+            : { kind: 'schedule', scheduleId: fire.scheduleId, fireId: fire.runId },
         message: fire.message,
         // COR-1710: the fire's grant, recorded once with it; a rebuilt fire reads it back.
         tools: toolGrantNow(),

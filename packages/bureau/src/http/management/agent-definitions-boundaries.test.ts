@@ -1,8 +1,8 @@
 /**
- * COR-1526 correction — the boundaries of the agent definition operations: who is told an
- * unpublished agent exists, how a code-defined key is refused, what withdrawing or deleting an
- * agent does to the runs that are already parked, what `published` means for a code-defined
- * agent, how publishing rewrites a file, and how long an identifier may be.
+ * COR-1526 correction — the boundaries of the agent definition operations: who is told an agent
+ * exists, how a code-defined key is refused, what deleting an agent does to the runs that are
+ * already parked, what `a2a` means for a code-defined agent, how turning the A2A opt-in on or off
+ * rewrites a file, and how long an identifier may be.
  */
 import { EventType } from '@ag-ui/core';
 import { createAgent, createScriptedGenerate } from '@lostgradient/operative';
@@ -12,7 +12,7 @@ import { AGENT_IDENTIFIER_MAX_LENGTH, parseAgentFile } from '../../agent-file.ts
 import { agentFileText, KNOWN_MODEL } from '../../testing/agent-file-fixtures.test-support.ts';
 import { startFileBureau } from '../../testing/agent-file-bureau.test-support.ts';
 import { createBureau } from '../../create-bureau.ts';
-import { bureauMetadata, readAgUiStream, typesOf } from '../ag-ui-stream.test-support.ts';
+import { readAgUiStream, typesOf } from '../ag-ui-stream.test-support.ts';
 import { runAgentInput, startRequest } from '../ag-ui-fixtures.test-support.ts';
 import { createBureauHandler } from '../create-bureau-handler.ts';
 import {
@@ -37,59 +37,44 @@ const names = (response: Awaited<ReturnType<typeof callAs>>): string[] =>
 const sorted = (values: string[]): string[] =>
   values.toSorted((left, right) => (left < right ? -1 : left > right ? 1 : 0));
 
-describe('who is told an unpublished agent exists', () => {
-  it('shows a draft or withdrawn persisted agent in bureau.agents.list only to a caller who may read definitions', async () => {
+describe('who is told an agent exists', () => {
+  it('shows every ready persisted agent in bureau.agents.list to any authenticated caller, opted in or not, and an invalid file to none', async () => {
     const served = await serve();
-    // A draft (never published) and a withdrawn agent, and one that is published.
     const draft = await callAs(served.local, 'bureau.agents.definitions.create', {
       id: 'secret-launch',
       definition: { ...DEFINITION, name: 'Secret launch planner' },
     });
-    const withdrawnHash = await callAs(served.local, 'bureau.agents.definitions.create', {
-      id: 'once-public',
-      definition: DEFINITION,
-    });
-    const published = await callAs(served.local, 'bureau.agents.definitions.publish', {
-      id: 'once-public',
-      expectedHash: withdrawnHash.result?.['hash'],
-    });
-    await callAs(served.local, 'bureau.agents.definitions.withdraw', {
-      id: 'once-public',
-      expectedHash: published.result?.['hash'],
-    });
     const open = await callAs(served.local, 'bureau.agents.definitions.create', {
       id: 'open-agent',
-      definition: DEFINITION,
-    });
-    await callAs(served.local, 'bureau.agents.definitions.publish', {
-      id: 'open-agent',
-      expectedHash: open.result?.['hash'],
+      definition: { ...DEFINITION, a2a: true },
     });
     expect(draft.error).toBeUndefined();
+    expect(open.error).toBeUndefined();
+    await served.put('broken.md', agentFileText({ model: 'anthropic/none' }));
+    await served.bureau.agents.refresh();
 
     const asKey = async (key: string) =>
       names(await rpc(served.keyed, 'bureau.agents.list', {}, key));
-    // No scope, no ownership: only what is published, and nothing about the rest.
-    expect(await asKey('alice-key')).toEqual(['alpha', 'open-agent']);
-    // The scope that reads definitions, the owner, and an operator also see the unpublished ones.
-    const all = ['alpha', 'once-public', 'open-agent', 'secret-launch'];
-    expect(sorted(await asKey('agents-reader-key'))).toEqual(all);
-    expect(sorted(await asKey('operator-key'))).toEqual(all);
+    // No scope and no ownership is enough to list, and to start, an agent.
+    const all = ['alpha', 'open-agent', 'secret-launch'];
+    for (const key of ['alice-key', 'agents-reader-key', 'agents-writer-key', 'operator-key']) {
+      expect([key, sorted(await asKey(key))]).toEqual([key, all]);
+    }
     expect(sorted(names(await callAs(served.owner, 'bureau.agents.list', {})))).toEqual(all);
-    // The write scope alone does not read.
-    expect(await asKey('agents-writer-key')).toEqual(['alpha', 'open-agent']);
-    // Nothing in the unpublished agent's own words reaches a caller who may not see it.
-    const alice = JSON.stringify(await rpc(served.keyed, 'bureau.agents.list', {}, 'alice-key'));
-    expect(alice).not.toContain('Secret launch planner');
-    expect(alice).not.toContain('secret-launch');
+    // What the definition operations disclose is still gated by the read scope.
+    const denied = await rpc(
+      served.keyed,
+      'bureau.agents.definitions.get',
+      { id: 'secret-launch' },
+      'alice-key',
+    );
+    expect(denied.error?.data?.httpStatus).toBe(404);
   });
 });
 
 describe('a code-defined key', () => {
   const guarded = [
     ['update', { definition: DEFINITION }],
-    ['publish', {}],
-    ['withdraw', {}],
     ['delete', {}],
   ] as const;
 
@@ -143,7 +128,7 @@ describe('a code-defined key', () => {
   });
 });
 
-describe('publication gates new runs only', () => {
+describe('deleting an agent gates new runs only', () => {
   /** A Bureau whose file agents ask a human, and then answer. */
   async function parkingServed() {
     const served = await serve({
@@ -175,10 +160,6 @@ describe('publication gates new runs only', () => {
       unauthenticatedAccess: 'allow',
       agUi: {},
     });
-    const published = await callAs(handler, 'bureau.agents.definitions.publish', {
-      id: 'researcher',
-      expectedHash: served.hashOf('researcher'),
-    });
     const frames = await readAgUiStream(
       await handler(startRequest(runAgentInput({ threadId: 'parked' }), {}, 'researcher')),
     );
@@ -200,30 +181,13 @@ describe('publication gates new runs only', () => {
           'researcher',
         ),
       );
-    return { served, handler, published, resume, hash: published.result?.['hash'] as string };
+    return { served, handler, resume, hash: served.hashOf('researcher') };
   }
 
-  it('resumes a parked run while its agent is published, so the two cases below are not vacuous', async () => {
+  it('resumes a parked run while its agent exists, so the case below is not vacuous', async () => {
     const { resume } = await parkingServed();
     const frames = await readAgUiStream(await resume());
     expect(typesOf(frames)).toContain(EventType.RUN_FINISHED);
-  });
-
-  it('lets a parked run be resumed after its agent is withdrawn, and still refuses a new run', async () => {
-    const { handler, resume, hash } = await parkingServed();
-    const withdrawn = await callAs(handler, 'bureau.agents.definitions.withdraw', {
-      id: 'researcher',
-      expectedHash: hash,
-    });
-    expect(withdrawn.error).toBeUndefined();
-    const frames = await readAgUiStream(await resume());
-    expect(typesOf(frames)).toContain(EventType.RUN_FINISHED);
-    expect(typesOf(frames)).not.toContain(EventType.RUN_ERROR);
-    expect(String(bureauMetadata(frames[0]!.event)['runId'])).not.toBe('');
-    const fresh = await readAgUiStream(
-      await handler(startRequest(runAgentInput({ threadId: 'fresh' }), {}, 'researcher')),
-    );
-    expect(typesOf(fresh)).toEqual([EventType.RUN_ERROR]);
   });
 
   it('lets a parked run be resumed after its agent is deleted', async () => {
@@ -236,11 +200,15 @@ describe('publication gates new runs only', () => {
     const frames = await readAgUiStream(await resume());
     expect(typesOf(frames)).toContain(EventType.RUN_FINISHED);
     expect(typesOf(frames)).not.toContain(EventType.RUN_ERROR);
+    const fresh = await readAgUiStream(
+      await handler(startRequest(runAgentInput({ threadId: 'fresh' }), {}, 'researcher')),
+    );
+    expect(typesOf(fresh)).toEqual([EventType.RUN_ERROR]);
   });
 });
 
-describe('published, for a code-defined agent', () => {
-  it('is true when the allowlist publishes it, in get and list, as bureau.agents.list says', async () => {
+describe('a2a, for a code-defined agent', () => {
+  it('is true when the allowlist names it, in get and list, as bureau.agents.list says', async () => {
     const served = await serve({
       agents: {
         alpha: createAgent({
@@ -255,33 +223,28 @@ describe('published, for a code-defined agent', () => {
     });
     const listed = await callAs(served.local, 'bureau.agents.definitions.list', {});
     const byId = Object.fromEntries(listOf(listed, 'agents').map((entry) => [entry['id'], entry]));
-    expect(byId['alpha']).toMatchObject({ source: 'code', published: true });
-    expect(byId['beta']).toMatchObject({ source: 'code', published: false });
-    for (const [id, published] of [
+    expect(byId['alpha']).toMatchObject({ source: 'code', a2a: true });
+    expect(byId['beta']).toMatchObject({ source: 'code', a2a: false });
+    for (const [id, a2a] of [
       ['alpha', true],
       ['beta', false],
     ] as const) {
       const got = await callAs(served.local, 'bureau.agents.definitions.get', { id });
-      expect([id, got.result?.['published']]).toEqual([id, published]);
+      expect([id, got.result?.['a2a']]).toEqual([id, a2a]);
     }
-    // The caller that holds every scope also sees the agent the allowlist does not name, as unpublished.
-    const published = await callAs(served.local, 'bureau.agents.list', {});
-    expect(
-      listOf(published, 'agents').map((entry) => [entry['name'], entry['publishState']]),
-    ).toEqual([
-      ['alpha', 'published'],
-      ['beta', 'unpublished'],
+    // Both are listed; the allowlist only decides which opt into A2A.
+    const listedAgents = await callAs(served.local, 'bureau.agents.list', {});
+    expect(listOf(listedAgents, 'agents').map((entry) => [entry['name'], entry['a2a']])).toEqual([
+      ['alpha', true],
+      ['beta', false],
     ]);
   });
 });
 
-describe('publish and withdraw keep the shape of the file', () => {
+describe('turning the A2A opt-in on or off keeps the shape of the file', () => {
   const shapes: Array<[string, string]> = [
-    ['an empty tools list', `name: Named\nmodel: ${KNOWN_MODEL}\ntools: []\n`],
-    ['a null description', `name: Named\ndescription: ~\nmodel: ${KNOWN_MODEL}\n`],
-    ['a padded name', `name: "  Padded  "\nmodel: ${KNOWN_MODEL}\n`],
-    ['a null name', `name:\nmodel: ${KNOWN_MODEL}\n`],
-    ['a null skills list', `model: ${KNOWN_MODEL}\nskills: ~\n`],
+    ['a comment above the model', `# kept\nname: Named\nmodel: ${KNOWN_MODEL}\n`],
+    ['a key Bureau does not know', `name: Named\nmodel: ${KNOWN_MODEL}\ncreated: 2026-10-18\n`],
   ];
 
   for (const [label, frontmatter] of shapes) {
@@ -290,35 +253,41 @@ describe('publish and withdraw keep the shape of the file', () => {
       const original = `---\n${frontmatter}---\nBody.\n`;
       await served.put('shape.md', original);
       await served.bureau.agents.refresh();
-      const published = await callAs(served.owner, 'bureau.agents.definitions.publish', {
+      const parsed = parseAgentFile('shape', original);
+      if (!parsed.ok) throw new Error('expected the fixture to parse');
+      const { name, model, instructions } = parsed.file.definition;
+      const optedIn = await callAs(served.owner, 'bureau.agents.definitions.update', {
         id: 'shape',
         expectedHash: served.hashOf('shape'),
+        definition: { name, model, instructions, a2a: true },
       });
       expect(await readFile(ownerPath(served, 'shape'), 'utf8')).toBe(
-        original.replace('\n---\nBody', '\npublished: true\n---\nBody'),
+        original.replace('\n---\nBody', '\na2a: true\n---\nBody'),
       );
-      await callAs(served.owner, 'bureau.agents.definitions.withdraw', {
+      await callAs(served.owner, 'bureau.agents.definitions.update', {
         id: 'shape',
-        expectedHash: published.result?.['hash'],
+        expectedHash: optedIn.result?.['hash'],
+        definition: { name, model, instructions, a2a: false },
       });
       expect(await readFile(ownerPath(served, 'shape'), 'utf8')).toBe(
-        original.replace('\n---\nBody', '\npublished: false\n---\nBody'),
+        original.replace('\n---\nBody', '\na2a: false\n---\nBody'),
       );
     });
   }
 
-  it('for a comment on the published line itself', async () => {
+  it('for an a2a line that is replaced in place', async () => {
     const served = await serve();
-    const original = `---\nmodel: ${KNOWN_MODEL}\npublished: false # off until launch\n---\nBody.\n`;
+    const original = `---\n# kept\nmodel: ${KNOWN_MODEL}\na2a: false\ncreated: 2026-10-18\n---\nBody.\n`;
     await served.put('shape.md', original);
     await served.bureau.agents.refresh();
-    await callAs(served.owner, 'bureau.agents.definitions.publish', {
+    await callAs(served.owner, 'bureau.agents.definitions.update', {
       id: 'shape',
       expectedHash: served.hashOf('shape'),
+      definition: { model: KNOWN_MODEL, instructions: 'Body.\n', a2a: true },
     });
-    const text = await readFile(ownerPath(served, 'shape'), 'utf8');
-    expect(text).toContain('# off until launch');
-    expect(text).toContain('published: true');
+    expect(await readFile(ownerPath(served, 'shape'), 'utf8')).toBe(
+      original.replace('a2a: false', 'a2a: true'),
+    );
   });
 });
 
@@ -348,8 +317,6 @@ describe('the identifier cap', () => {
       ['get', { id: tooLong }],
       ['revisions', { id: tooLong }],
       ['update', { id: tooLong, expectedHash: 'x', definition: DEFINITION }],
-      ['publish', { id: tooLong, expectedHash: 'x' }],
-      ['withdraw', { id: tooLong, expectedHash: 'x' }],
       ['delete', { id: tooLong, expectedHash: 'x' }],
     ] as const) {
       const response = await callAs(served.owner, `bureau.agents.definitions.${method}`, params);

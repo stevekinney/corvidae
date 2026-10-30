@@ -39,7 +39,7 @@ describe('the A2A record’s lifetime', () => {
     try {
       const handler = createBureauHandler(bureau, {
         unauthenticatedAccess: 'allow',
-        publish: ['asker'],
+        a2aAgents: ['asker'],
         publicUrl: 'http://localhost',
       });
       const response = await handler(

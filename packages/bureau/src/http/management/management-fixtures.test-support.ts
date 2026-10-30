@@ -260,7 +260,7 @@ export async function openBureau(
     /** Stop a run at a tool call that needs approval, as a real host does. */
     stopAtApproval?: boolean;
     storage?: Storage;
-    publish?: readonly string[];
+    a2aAgents?: readonly string[];
     agents?: Parameters<typeof createBureau>[0]['agents'];
     durableHistory?: boolean;
     /** The validators durable goals may name. */
@@ -276,7 +276,7 @@ export async function openBureau(
     /** Passed to `createBureauHandler` beside the authentication. */
     handlerOptions?: Omit<
       Parameters<typeof createBureauHandler>[1],
-      'authentication' | 'unauthenticatedAccess' | 'publish'
+      'authentication' | 'unauthenticatedAccess' | 'a2aAgents'
     >;
   } = {},
 ): Promise<OpenedBureau> {
@@ -322,7 +322,7 @@ export async function openBureau(
   try {
     handler = createBureauHandler(bureau, {
       authentication,
-      ...(options.publish === undefined ? {} : { publish: options.publish }),
+      ...(options.a2aAgents === undefined ? {} : { a2aAgents: options.a2aAgents }),
       ...options.handlerOptions,
     });
   } catch (error) {

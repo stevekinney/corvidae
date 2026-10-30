@@ -1,5 +1,5 @@
 /**
- * The A2A mount (COR-903): every published agent served over A2A 1.0.1 at
+ * The A2A mount (COR-903): every agent that opts into A2A served over A2A 1.0.1 at
  * `<publicUrl>/a2a/<catalog-name>`, through Weft's kit (`createA2AHandler`) and Bureau's own
  * request handler (`a2a-request-handler.ts`).
  *
@@ -9,8 +9,8 @@
  * other request has already been authenticated by the handler before it reaches the mount, and
  * a caller that can own nothing is refused.
  *
- * Publication is read on every request, so an agent published or withdrawn later is served or
- * refused without a restart: an agent that is not published has no card, starts no task, and
+ * The opt-in is read on every request, so an agent that opts in or out later is served or
+ * refused without a restart: an agent that has not opted in has no card, starts no task, and
  * reads as not found.
  *
  * @module a2a-mount
@@ -57,9 +57,9 @@ export type BureauA2AOptions = {
 /** What the mount reads beyond the Bureau itself. */
 export type BureauA2AMountOptions = BureauA2AOptions & {
   readonly bureau: A2ABureau & { readonly id: string };
-  readonly publication: { readonly includes: (agentName: string) => boolean };
+  readonly optedIn: { readonly includes: (agentName: string) => boolean };
   /**
-   * Whether any task of the agent is still addressable. A withdrawn agent that has one keeps a
+   * Whether any task of the agent is still addressable. An agent that opted out and has one keeps a
    * tombstone at its path until the last has passed its retention.
    */
   readonly hasTasks: (agentName: string) => Promise<boolean>;
@@ -150,7 +150,7 @@ function tombstoneSource(
   };
 }
 
-/** Creates the mount that serves every published agent over A2A. */
+/** Creates the mount that serves every opted-in agent over A2A. */
 export function createBureauA2AMount(options: BureauA2AMountOptions): OperationHandlerMount {
   const publicUrl = trimTrailingSlash(options.publicUrl);
   const discoveryUrl = trimTrailingSlash(options.discoveryUrl ?? options.publicUrl);
@@ -191,13 +191,13 @@ export function createBureauA2AMount(options: BureauA2AMountOptions): OperationH
     return durableHistory;
   };
 
-  async function handlerOf(agentName: string, published: boolean): Promise<A2AHandler | undefined> {
+  async function handlerOf(agentName: string, optedIn: boolean): Promise<A2AHandler | undefined> {
     const held = handlers.get(agentName);
     // A tombstone serves only tasks, so the handler the agent had, or one with a bare card, does.
     const source =
-      options.describe(agentName) ?? (published ? undefined : tombstoneSource(agentName));
+      options.describe(agentName) ?? (optedIn ? undefined : tombstoneSource(agentName));
     if (source === undefined) return undefined;
-    if (held !== undefined && (!published || held.revision === source.definitionRevision)) {
+    if (held !== undefined && (!optedIn || held.revision === source.definitionRevision)) {
       return held.handler;
     }
     const keepsHistory = await keepsDurableHistory();
@@ -216,7 +216,7 @@ export function createBureauA2AMount(options: BureauA2AMountOptions): OperationH
       publicUrl,
       ledger: options.ledger,
       respond: options.respond,
-      acceptsNewTasks: () => options.publication.includes(agentName),
+      acceptsNewTasks: () => options.optedIn.includes(agentName),
       push: options.push,
       ...(options.runtime === undefined
         ? {}
@@ -248,14 +248,14 @@ export function createBureauA2AMount(options: BureauA2AMountOptions): OperationH
       const pathname = new URL(request.url).pathname;
       const agentName = agentOf(pathname);
       if (agentName === undefined) return notFound();
-      const published = options.publication.includes(agentName);
-      // A withdrawn agent's tombstone serves its remaining tasks, never its card.
-      if (!published && (PUBLIC_ROUTE.test(pathname) || !(await options.hasTasks(agentName)))) {
+      const optedIn = options.optedIn.includes(agentName);
+      // An opted-out agent's tombstone serves its remaining tasks, never its card.
+      if (!optedIn && (PUBLIC_ROUTE.test(pathname) || !(await options.hasTasks(agentName)))) {
         return notFound();
       }
-      const handler = await handlerOf(agentName, published);
+      const handler = await handlerOf(agentName, optedIn);
       if (handler === undefined) return notFound();
-      // Without signing there is no key to publish; the kit would read the path as JSON-RPC.
+      // Without signing there is no key to serve; the kit would read the path as JSON-RPC.
       if (options.signing === undefined && pathname.endsWith('/.well-known/jwks.json')) {
         return notFound();
       }

@@ -151,7 +151,7 @@ describe('the runs list', () => {
         description: null,
         definitionRevision: 1,
         kind: 'code',
-        publishState: 'published',
+        a2a: false,
       })),
     }));
 

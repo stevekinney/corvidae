@@ -5,7 +5,7 @@
  * (how many schedules the start created, what the record holds, whether the start rejected), and
  * then restarts once on the same storage to show what the next start does with what was left.
  */
-import { createBureau, type Bureau } from '@lostgradient/bureau';
+import { createBureau, ScheduleLocatorUnavailableError, type Bureau } from '@lostgradient/bureau';
 import { MemoryStorage } from '@lostgradient/storage';
 import { afterEach, describe, expect, test } from 'bun:test';
 
@@ -56,6 +56,11 @@ async function seededSchedules(bureau: SeededBureau) {
   );
 }
 
+async function seededGoals(bureau: SeededBureau): Promise<string[]> {
+  const goals = await bureau.goals.list();
+  return goals.map((goal) => goal.goalRunId);
+}
+
 /** A Bureau whose `schedules.create` is `create`, counted. Everything else is the real Bureau. */
 function withCreate(bureau: SeededBureau, create: Create): SeededBureau {
   return { ...bureau, schedules: { ...bureau.schedules, create } };
@@ -82,8 +87,11 @@ type Row = {
   /** What the record holds before the start; the Bureau holds nothing unless `existing` says so. */
   record?: string;
   existing?: 'seeded-schedule' | 'seeded-schedule-cancelled';
-  /** What `schedules.create` does for the start: it delegates to the real one unless told. */
-  create?: 'throws' | 'undefined';
+  /**
+   * What `schedules.create` does for the start: it delegates to the real one unless told.
+   * `locator-unavailable` registers the schedule and then throws `ScheduleLocatorUnavailableError`.
+   */
+  create?: 'throws' | 'undefined' | 'locator-unavailable';
   /** What happens to the record while `create` runs. */
   during?: 'overwritten' | 'deleted';
   /** The storage fails this conditional write (1 is the claim, 2 the release or the identifier). */
@@ -95,89 +103,120 @@ type Row = {
     seeded: number;
     /** `identifier` is the id of a seeded schedule this start created; `claim` is any `claimed:<uuid>`. */
     record: string;
+    /** Whether the seeded goal exists afterwards: only the start that won the claim creates it. */
+    goal: boolean;
   };
   /** A restart: a new Bureau on the same storage, with nothing failing. */
-  restart: { created: number; seeded: number; record: string };
+  restart: { created: number; seeded: number; record: string; goal: boolean };
 };
+
+const CRASHED_CLAIM = 'claimed:crashed-before-the-identifier-was-written';
 
 const rows: Row[] = [
   {
-    name: 'first start: claims, creates once, and records the identifier',
-    first: { created: 1, seeded: 1, record: 'identifier' },
-    restart: { created: 0, seeded: 1, record: 'identifier' },
+    name: 'first start: claims, creates once, records the identifier, and creates the goal',
+    first: { created: 1, seeded: 1, record: 'identifier', goal: true },
+    restart: { created: 0, seeded: 1, record: 'identifier', goal: true },
   },
   {
-    name: 'overlapping starts: the one that loses the claim creates nothing',
+    name: 'overlapping starts: the one that loses the claim creates neither schedule nor goal',
     starts: 2,
-    first: { created: 1, seeded: 1, record: 'identifier' },
-    restart: { created: 0, seeded: 1, record: 'identifier' },
+    first: { created: 1, seeded: 1, record: 'identifier', goal: true },
+    restart: { created: 0, seeded: 1, record: 'identifier', goal: true },
   },
   {
     name: 'five overlapping starts still create one',
     starts: 5,
-    first: { created: 1, seeded: 1, record: 'identifier' },
-    restart: { created: 0, seeded: 1, record: 'identifier' },
+    first: { created: 1, seeded: 1, record: 'identifier', goal: true },
+    restart: { created: 0, seeded: 1, record: 'identifier', goal: true },
   },
   {
-    name: 'record present, schedule absent: an operator deleted it, so it is not recreated',
+    name: 'record present, schedule absent: an operator deleted it, so it is not recreated and the goal is left alone',
     record: 'schedule-an-operator-deleted',
-    first: { created: 0, seeded: 0, record: 'schedule-an-operator-deleted' },
-    restart: { created: 0, seeded: 0, record: 'schedule-an-operator-deleted' },
+    first: { created: 0, seeded: 0, record: 'schedule-an-operator-deleted', goal: false },
+    restart: { created: 0, seeded: 0, record: 'schedule-an-operator-deleted', goal: false },
   },
   {
     name: 'record present, schedule cancelled: delete-then-restart does not recreate it',
     record: 'recorded-below',
     existing: 'seeded-schedule-cancelled',
-    first: { created: 0, seeded: 0, record: 'recorded-below' },
-    restart: { created: 0, seeded: 0, record: 'recorded-below' },
+    first: { created: 0, seeded: 0, record: 'recorded-below', goal: false },
+    restart: { created: 0, seeded: 0, record: 'recorded-below', goal: false },
   },
   {
     name: 'schedule present, record absent (an install from before the record): seeds one more once',
     existing: 'seeded-schedule',
-    first: { created: 1, seeded: 2, record: 'identifier' },
-    restart: { created: 0, seeded: 2, record: 'identifier' },
+    first: { created: 1, seeded: 2, record: 'identifier', goal: true },
+    restart: { created: 0, seeded: 2, record: 'identifier', goal: true },
   },
   {
-    name: 'a claim a crashed start left: nothing is created, nothing throws, the claim stays',
-    record: 'claimed:crashed-before-the-identifier-was-written',
-    first: {
-      created: 0,
-      seeded: 0,
-      record: 'claimed:crashed-before-the-identifier-was-written',
-    },
-    restart: { created: 0, seeded: 0, record: 'claimed:crashed-before-the-identifier-was-written' },
+    name: 'a claim a crashed start left: nothing is created, nothing throws, the claim stays (and is reported)',
+    record: CRASHED_CLAIM,
+    first: { created: 0, seeded: 0, record: CRASHED_CLAIM, goal: false },
+    restart: { created: 0, seeded: 0, record: CRASHED_CLAIM, goal: false },
   },
   {
-    name: 'create throws: the error propagates, the claim is removed, the next start seeds',
+    name: 'create throws: the error propagates, the claim is removed, no goal, the next start seeds',
     create: 'throws',
-    first: { rejects: CREATE_FAILURE, created: 1, seeded: 0, record: 'absent' },
-    restart: { created: 1, seeded: 1, record: 'identifier' },
+    first: { rejects: CREATE_FAILURE, created: 1, seeded: 0, record: 'absent', goal: false },
+    restart: { created: 1, seeded: 1, record: 'identifier', goal: true },
   },
   {
-    name: 'create returns undefined: no error, the claim is removed, the next start seeds',
+    name: 'create returns undefined: no error, the claim is removed, the winner still creates the goal, the next start seeds',
     create: 'undefined',
-    first: { created: 1, seeded: 0, record: 'absent' },
-    restart: { created: 1, seeded: 1, record: 'identifier' },
+    first: { created: 1, seeded: 0, record: 'absent', goal: true },
+    restart: { created: 1, seeded: 1, record: 'identifier', goal: true },
+  },
+  {
+    name: 'create throws ScheduleLocatorUnavailableError: the schedule is registered, so its identifier is recorded and seeding continues',
+    create: 'locator-unavailable',
+    first: { created: 1, seeded: 1, record: 'identifier', goal: true },
+    restart: { created: 0, seeded: 1, record: 'identifier', goal: true },
+  },
+  {
+    name: 'create throws ScheduleLocatorUnavailableError but the claim is gone: the start fails loudly, no goal',
+    create: 'locator-unavailable',
+    during: 'overwritten',
+    first: {
+      rejects: SeededScheduleRecordLostError,
+      created: 1,
+      seeded: 1,
+      record: 'someone-elses-value',
+      goal: false,
+    },
+    restart: { created: 0, seeded: 1, record: 'someone-elses-value', goal: false },
   },
   {
     name: 'create throws after something else took the record: that value is not removed',
     create: 'throws',
     during: 'overwritten',
-    first: { rejects: CREATE_FAILURE, created: 1, seeded: 0, record: 'someone-elses-value' },
-    restart: { created: 0, seeded: 0, record: 'someone-elses-value' },
+    first: {
+      rejects: CREATE_FAILURE,
+      created: 1,
+      seeded: 0,
+      record: 'someone-elses-value',
+      goal: false,
+    },
+    restart: { created: 0, seeded: 0, record: 'someone-elses-value', goal: false },
   },
   {
     name: 'create returns undefined after something else took the record: not removed either',
     create: 'undefined',
     during: 'overwritten',
-    first: { created: 1, seeded: 0, record: 'someone-elses-value' },
-    restart: { created: 0, seeded: 0, record: 'someone-elses-value' },
+    first: { created: 1, seeded: 0, record: 'someone-elses-value', goal: true },
+    restart: { created: 0, seeded: 0, record: 'someone-elses-value', goal: true },
   },
   {
     name: 'create succeeds but the claim is gone: the start fails loudly and the record stays unset',
     during: 'deleted',
-    first: { rejects: SeededScheduleRecordLostError, created: 1, seeded: 1, record: 'absent' },
-    restart: { created: 1, seeded: 2, record: 'identifier' },
+    first: {
+      rejects: SeededScheduleRecordLostError,
+      created: 1,
+      seeded: 1,
+      record: 'absent',
+      goal: false,
+    },
+    restart: { created: 1, seeded: 2, record: 'identifier', goal: true },
   },
   {
     name: 'create succeeds but another value replaced the claim: fails loudly, keeps that value',
@@ -187,27 +226,28 @@ const rows: Row[] = [
       created: 1,
       seeded: 1,
       record: 'someone-elses-value',
+      goal: false,
     },
-    restart: { created: 0, seeded: 1, record: 'someone-elses-value' },
+    restart: { created: 0, seeded: 1, record: 'someone-elses-value', goal: false },
   },
   {
     name: 'the claim write fails: create is never called and the record stays absent',
     failWrite: 1,
-    first: { rejects: STORAGE_FAILURE, created: 0, seeded: 0, record: 'absent' },
-    restart: { created: 1, seeded: 1, record: 'identifier' },
+    first: { rejects: STORAGE_FAILURE, created: 0, seeded: 0, record: 'absent', goal: false },
+    restart: { created: 1, seeded: 1, record: 'identifier', goal: true },
   },
   {
     name: 'create throws and removing the claim fails too: the create error wins, the claim stays',
     create: 'throws',
     failWrite: 2,
-    first: { rejects: CREATE_FAILURE, created: 1, seeded: 0, record: 'claim' },
-    restart: { created: 0, seeded: 0, record: 'claim' },
+    first: { rejects: CREATE_FAILURE, created: 1, seeded: 0, record: 'claim', goal: false },
+    restart: { created: 0, seeded: 0, record: 'claim', goal: false },
   },
   {
     name: 'crash between the schedule and the identifier: the install keeps its one schedule',
     failWrite: 2,
-    first: { rejects: STORAGE_FAILURE, created: 1, seeded: 1, record: 'claim' },
-    restart: { created: 0, seeded: 1, record: 'claim' },
+    first: { rejects: STORAGE_FAILURE, created: 1, seeded: 1, record: 'claim', goal: false },
+    restart: { created: 0, seeded: 1, record: 'claim', goal: false },
   },
 ];
 
@@ -258,6 +298,9 @@ describe('seedBureau records the seeded schedule in Weft storage', () => {
         const summary =
           row.create === 'undefined' ? undefined : await bureau.schedules.create(definition);
         await interfere();
+        if (row.create === 'locator-unavailable' && summary !== undefined) {
+          throw new ScheduleLocatorUnavailableError(summary.id);
+        }
         return summary;
       };
       async function interfere(): Promise<void> {
@@ -269,8 +312,9 @@ describe('seedBureau records the seeded schedule in Weft storage', () => {
       }
       if (row.failWrite !== undefined) failRecordWrite(storage, row.failWrite);
 
+      const warnings: string[] = [];
       const starts = Array.from({ length: row.starts ?? 1 }, () =>
-        seedBureau(withCreate(bureau, create), storage),
+        seedBureau(withCreate(bureau, create), storage, (message) => warnings.push(message)),
       );
       const settled = await Promise.allSettled(starts);
       const rejections = settled.filter((result) => result.status === 'rejected');
@@ -291,10 +335,11 @@ describe('seedBureau records the seeded schedule in Weft storage', () => {
         matches(recordAfterFirst, row.first.record, afterFirst, existingId),
         `the record is ${String(recordAfterFirst)}`,
       ).toBe(true);
-      const goals = await bureau.goals.list();
-      if (row.first.rejects === undefined) {
-        expect(goals.map((goal) => goal.goalRunId)).toEqual([SEEDED_GOAL_RUN_IDENTIFIER]);
-      }
+      expect(await seededGoals(bureau)).toEqual(row.first.goal ? [SEEDED_GOAL_RUN_IDENTIFIER] : []);
+      // An overlapping start may read the winner's claim while it is still working, which is reported
+      // as a possibly stale claim, so only a lone start's warnings are exact.
+      if ((row.starts ?? 1) === 1)
+        expect(warnings).toHaveLength(initialRecord?.startsWith('claimed:') ? 1 : 0);
 
       // Restart: a new Bureau on the same storage, and nothing fails this time.
       bureau.dispose();
@@ -302,12 +347,18 @@ describe('seedBureau records the seeded schedule in Weft storage', () => {
       storage.conditionalBatch = MemoryStorage.prototype.conditionalBatch.bind(storage);
       const restarted = await openBureau(storage);
       let createdAfterRestart = 0;
+      const restartWarnings: string[] = [];
       await seedBureau(
         withCreate(restarted, async (definition) => {
           createdAfterRestart += 1;
           return restarted.schedules.create(definition);
         }),
         storage,
+        (message) => restartWarnings.push(message),
+      );
+      expect(restartWarnings).toHaveLength(recordAfterFirst?.startsWith('claimed:') ? 1 : 0);
+      expect(await seededGoals(restarted)).toEqual(
+        row.restart.goal ? [SEEDED_GOAL_RUN_IDENTIFIER] : [],
       );
       expect(createdAfterRestart).toBe(row.restart.created);
       const afterRestart = await seededSchedules(restarted);
@@ -329,5 +380,27 @@ describe('seedBureau records the seeded schedule in Weft storage', () => {
     const keys: string[] = [];
     for await (const [key] of storage.scan('app:')) keys.push(key);
     expect(keys).toEqual([RECORD_KEY]);
+  });
+
+  test('a start that finds a claim left behind reports the record by key and does not call it a failure', async () => {
+    const storage = new MemoryStorage();
+    await storage.put(RECORD_KEY, new TextEncoder().encode(CRASHED_CLAIM));
+    const bureau = await openBureau(storage);
+    const warnings: string[] = [];
+    await seedBureau(bureau, storage, (message) => warnings.push(message));
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('"seeded-schedule"');
+    expect(warnings[0]).toContain('stale');
+    expect(warnings[0]).toContain('no other host is starting');
+    expect(warnings[0]).not.toContain(CRASHED_CLAIM);
+  });
+
+  test('a start that finds the recorded identifier says nothing', async () => {
+    const storage = new MemoryStorage();
+    const bureau = await openBureau(storage);
+    await seedBureau(bureau, storage, () => {});
+    const warnings: string[] = [];
+    await seedBureau(bureau, storage, (message) => warnings.push(message));
+    expect(warnings).toEqual([]);
   });
 });

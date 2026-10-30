@@ -35,7 +35,7 @@ describe('a claim that committed and then reported a failure', () => {
   it('keeps the inline assets it admitted, and the exact retry delivers them', async () => {
     const opened = await openBureau({
       agents: { seer: createAgent({ name: 'seer', generate: answers }) },
-      publish: ['seer'],
+      a2aAgents: ['seer'],
     });
     try {
       const runtime = createDefaultRuntimeServices();

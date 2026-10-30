@@ -63,7 +63,7 @@ function stubEngine(): void {
                 description: 'Repeats the last message it was sent.',
                 definitionRevision: 1,
                 kind: 'code',
-                publishState: 'published',
+                a2a: false,
                 media: null,
               },
             ],

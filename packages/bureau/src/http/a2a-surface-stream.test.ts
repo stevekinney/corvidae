@@ -99,7 +99,7 @@ async function withTask(
 ): Promise<void> {
   const opened = await openBureau({
     agents: { asker: createAgent({ name: 'asker', generate: parksThenAnswers() }) },
-    publish: ['asker'],
+    a2aAgents: ['asker'],
     ...(storage === undefined ? { durableHistory: true } : { storage }),
     handlerOptions: { publicUrl: 'http://localhost' },
   });

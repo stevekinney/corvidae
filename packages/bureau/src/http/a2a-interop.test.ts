@@ -57,7 +57,7 @@ describe('the A2A mount with the @a2a-js/sdk client', () => {
           generate: parkingUntilAborted,
         }),
       },
-      publish: ['asker', 'waiter'],
+      a2aAgents: ['asker', 'waiter'],
       handlerOptions: { publicUrl: PUBLIC_URL },
     });
     try {
@@ -130,7 +130,7 @@ describe('the A2A mount with the @a2a-js/sdk client', () => {
       agents: {
         asker: createAgent({ name: 'asker', description: 'Answers.', generate: answering('done') }),
       },
-      publish: ['asker'],
+      a2aAgents: ['asker'],
       handlerOptions: { publicUrl: PUBLIC_URL },
     });
     try {

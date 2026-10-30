@@ -54,7 +54,7 @@ function agent(overrides: Partial<AgentSummary>): AgentSummary {
     description: null,
     definitionRevision: 1,
     kind: 'code',
-    publishState: 'published',
+    a2a: false,
     media: null,
     ...overrides,
   };
@@ -184,10 +184,11 @@ describe('the chat and agent matches', () => {
     ]);
   });
 
-  test('offers a new chat only with a published agent, by the words of the command', () => {
-    const unpublished = agent({ name: 'echo-draft', publishState: 'unpublished' });
-    expect(matchNewChats([ECHO_AGENT, unpublished], 'ech').map((match) => match.name)).toEqual([
+  test('offers a new chat with every agent, whether or not it opts into A2A, by the words of the command', () => {
+    const optedIn = agent({ name: 'echo-draft', a2a: true });
+    expect(matchNewChats([ECHO_AGENT, optedIn], 'ech').map((match) => match.name)).toEqual([
       'echo',
+      'echo-draft',
     ]);
     expect(matchNewChats([ECHO_AGENT], 'new chat with ec').map((match) => match.name)).toEqual([
       'echo',

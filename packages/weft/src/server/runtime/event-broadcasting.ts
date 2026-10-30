@@ -47,7 +47,12 @@ function serializeEvent(event: Event): string | null {
 /**
  * Result of wiring up engine-to-WebSocket event broadcasting.
  *
- * - `dispose`: removes all listeners (abort signal). Called on server shutdown.
+ * - `dispose`: removes all listeners (abort signal), then settles once every event write already
+ *   in flight has settled: the storage write of each queued event and every fleet-feed append, so
+ *   the caller may release the storage under them. An event dispatched after the call is not
+ *   written. A write that fails is logged where it is logged otherwise and does not reject the
+ *   returned promise. The wait has no deadline of its own: a write that never settles holds it.
+ *   Called on server shutdown.
  * - `cleanupWorkflow`: drops the per-workflow sequence state for the given
  *   workflow id. Should be invoked when a workflow reaches a terminal state
  *   so the bookkeeping maps do not grow unbounded over the server's lifetime.
@@ -62,11 +67,11 @@ function serializeEvent(event: Event): string | null {
  * const bunServer = Bun.serve({ fetch: () => new Response('ok') });
  * const handle: EventBroadcastingHandle = wireEventBroadcasting(engine, bunServer);
  * // Later, on shutdown:
- * handle.dispose();
+ * await handle.dispose();
  * ```
  */
 export interface EventBroadcastingHandle {
-  dispose: () => void;
+  dispose: () => Promise<void>;
   cleanupWorkflow: (workflowId: string) => void;
 }
 
@@ -202,6 +207,9 @@ export function wireEventBroadcasting(
    * race on `sequenceCounters` without requiring an explicit mutex.
    */
   const sequenceChains = new Map<string, Promise<void>>();
+  // Fleet-feed appends of events that belong to no workflow, so they sit on no chain. `dispose`
+  // waits for them too.
+  const pendingWorkflowlessAppends = new Set<Promise<void>>();
 
   /** Ensure the sequence counter for a workflow is seeded from storage. */
   function ensureSequenceInitialized(workflowId: string): Promise<void> {
@@ -364,7 +372,10 @@ export function wireEventBroadcasting(
         const message = serializeEvent(event);
         if (message === null) return;
         if (workflowId === undefined) {
-          void appendFleetEvent(options?.fleetEventFeed, eventType, undefined, message);
+          // `appendFleetEvent` reports its own failure and never rejects.
+          const append = appendFleetEvent(options?.fleetEventFeed, eventType, undefined, message);
+          pendingWorkflowlessAppends.add(append);
+          void append.then(() => pendingWorkflowlessAppends.delete(append));
           return;
         }
 
@@ -435,7 +446,12 @@ export function wireEventBroadcasting(
   }
 
   return {
-    dispose: () => controller.abort(),
+    dispose: async () => {
+      // Listeners go first, so no chain starts after this snapshot. Every chain already catches
+      // its own failure, so none of these rejects.
+      controller.abort();
+      await Promise.all([...sequenceChains.values(), ...pendingWorkflowlessAppends]);
+    },
     cleanupWorkflow,
   };
 }

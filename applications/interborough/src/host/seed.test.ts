@@ -10,7 +10,6 @@ import {
   HUMAN_INPUT_PROMPT,
   HUMAN_INPUT_SIGNAL,
   NEVER_PASSING_VALIDATOR,
-  PUBLISHED_AGENT_NAMES,
   SEEDED_AGENT_NAMES,
   SEEDED_GOAL_RUN_IDENTIFIER,
   SEEDED_SCHEDULE_DESCRIPTION,
@@ -45,7 +44,7 @@ afterEach(async () => {
 });
 
 describe('the seeded agents', () => {
-  test('are the six the host defines, and the host publishes all but internal', async () => {
+  test('are the six the host defines, and it serves all of them to chat', async () => {
     const host = await start();
     for (const name of SEEDED_AGENT_NAMES) expect(host.bureau.agents.has(name)).toBe(true);
     expect([...SEEDED_AGENT_NAMES].toSorted()).toEqual([
@@ -56,16 +55,9 @@ describe('the seeded agents', () => {
       'request-human-input',
       'tool-runner',
     ]);
-    expect([...PUBLISHED_AGENT_NAMES].toSorted()).toEqual([
-      'assistant',
-      'echo',
-      'model-switcher',
-      'request-human-input',
-      'tool-runner',
-    ]);
   });
 
-  test('each published agent suggests one prompt, which the agent list carries to a new chat', async () => {
+  test('each seeded agent suggests one prompt, which the agent list carries to a new chat', async () => {
     const host = await start();
     const response = await fetch(new URL('/bureau/jsonrpc', host.url), {
       method: 'POST',
@@ -76,7 +68,7 @@ describe('the seeded agents', () => {
       result?: { agents: { name: string; examples?: string[] }[] };
     };
     const examples = new Map(body.result?.agents.map((agent) => [agent.name, agent.examples]));
-    for (const name of PUBLISHED_AGENT_NAMES) {
+    for (const name of SEEDED_AGENT_NAMES) {
       expect(examples.get(name)?.length, name).toBe(1);
     }
     expect(examples.get('tool-runner')).toEqual(['Refund order 1234']);

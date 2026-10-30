@@ -48,6 +48,7 @@ import type {
   TaskRegistry,
   TaskView,
 } from './task-registry';
+import type { StartTaskOrigin } from './task-origin';
 import type { InteractiveSurfaces } from './interactive-surface/store';
 import type { ToolPolicy } from 'armorer/protocol';
 import type { AgentSource, WorkflowSource } from './sources/definition-source';
@@ -334,7 +335,7 @@ export interface BureauRetentionOptions {
    * Durable maintenance removes a terminal task older than the window through
    * the run store, so Bureau's existing `run.removed` event fires for it and
    * everything keyed on the task releases its own state; deleting a task is
-   * also what eventually releases a withdrawn agent's tombstone mount. A
+   * also what eventually releases an opted-out agent's tombstone mount. A
    * running task, and a terminal one not yet older than the window, is never
    * removed. Only tasks in this process's run store are candidates, so a
    * terminal run from before a restart is not removed. The pass runs from
@@ -400,7 +401,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * and started by name through {@link BureauTasks.start}. See
    * `documentation/agent-files.md`.
    *
-   * Bureau keeps parsing, validation, snapshots, revisions, publication, and the write-through
+   * Bureau keeps parsing, validation, snapshots, revisions, and the write-through
    * operations; the source only holds bytes. The source's `tools` is the deployment's tool
    * catalog: the tools an agent file may name in `tools`. With {@link BureauOptions.workflowSource}
    * Bureau adds `workflows-create`, `workflows-update`, `workflows-pause`, `workflows-resume`,
@@ -1316,6 +1317,14 @@ export interface StartTaskOptions {
   readonly commandId?: string;
   /** Authenticated, request-scoped authority forwarded to Armorer tool execution. */
   readonly requestContext?: ToolRequestContext;
+  /**
+   * Where the task came from, recorded on its record and mirrored as the run's `origin:<kind>`
+   * tag (COR-1867). Only the kind, and for a person the surface, is declared; a chat's context,
+   * agent, and principal are the ones this start resolved. Omitted, the task's origin is
+   * `{ kind: 'api' }`. It is not part of the command a `commandId` identifies: a retry from
+   * another surface replays the original task and its origin.
+   */
+  readonly origin?: StartTaskOrigin;
   /** Aborts the task when it fires, from the moment the task starts executing. */
   readonly signal?: AbortSignal;
   /** The caller's trace context, the parent of the task's spans. */

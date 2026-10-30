@@ -131,7 +131,7 @@ import {
   deploymentGetOperation,
   type DeploymentRecovery,
   describeOperations,
-  type PublishedAgent,
+  type ListedAgent,
 } from './management/deployment-operations.ts';
 import {
   type BureauWorkerDeploymentsOperationHost,
@@ -278,16 +278,7 @@ export type BureauHandlerSource = Pick<
     find(name: string): AgentDescription | undefined;
   } & Pick<
     BureauAgentCatalog<AgentDefinitions>,
-    | 'list'
-    | 'detail'
-    | 'models'
-    | 'tools'
-    | 'revisions'
-    | 'create'
-    | 'update'
-    | 'delete'
-    | 'publish'
-    | 'withdraw'
+    'list' | 'detail' | 'models' | 'tools' | 'revisions' | 'create' | 'update' | 'delete'
   >;
 };
 
@@ -323,20 +314,20 @@ export type BureauHandlerHost = BureauEventsOperationHost &
 
 export type BureauHandlerOptions = {
   /**
-   * Names of the code-defined agents this handler publishes. Every name must exist in the
-   * Bureau's code-defined agents and match {@link PUBLISHED_AGENT_NAME_PATTERN}, because a
-   * published name becomes a URL path segment. Omitted publishes no code-defined agent.
+   * Names of the code-defined agents that opt into A2A. Every name must exist in the Bureau's
+   * code-defined agents and match {@link A2A_AGENT_NAME_PATTERN}, because a name served over A2A
+   * becomes a URL path segment. Omitted, no code-defined agent opts in.
    *
-   * It governs code-defined agents only. A persisted agent (an agent file, COR-1524) is
-   * published by its own `published` frontmatter, which `bureau.agents.definitions.publish`
-   * and `withdraw` set, and is never named here.
+   * It governs code-defined agents only, and only the A2A mount: every ready agent, code-defined
+   * or persisted, is listed and can be started over AG-UI. A persisted agent (an agent file,
+   * COR-1524) opts in with `a2a: true` in its own frontmatter and is never named here.
    *
-   * `bureau.agents.list`, `bureau.deployment.get`, the AG-UI mount, and the A2A mount read the
-   * publication on every request.
+   * `bureau.agents.list`, `bureau.deployment.get`, and the A2A mount read the opt-in on every
+   * request.
    */
-  readonly publish?: readonly string[];
+  readonly a2aAgents?: readonly string[];
   /**
-   * The handler's public URL, which mounts A2A 1.0.1 (`a2a-mount.ts`): every published agent is
+   * The handler's public URL, which mounts A2A 1.0.1 (`a2a-mount.ts`): every agent that opts in is
    * served at `<publicUrl>/a2a/<catalog-name>`, its public Agent Card at
    * `<publicUrl>/a2a/<catalog-name>/.well-known/agent-card.json`. It is the only source of the
    * card's interface URL: nothing is derived from a request. An absolute `http` or `https` URL
@@ -349,14 +340,14 @@ export type BureauHandlerOptions = {
    */
   readonly discoveryUrl?: string;
   /**
-   * Signs every published agent's Agent Card and serves its public key at
+   * Signs every opted-in agent's Agent Card and serves its public key at
    * `<path>/.well-known/jwks.json` (the kit's option shape). Needs `publicUrl`.
    */
   readonly signing?: A2ASigningOptions;
   /**
    * Delivers A2A push notifications (COR-1543): Weft's outbox push sender
    * (`createOutboxPushNotificationSender`) and the outbox it enqueues to, whose adapter is
-   * `createHttpDeliveryAdapter`. Needs `publicUrl`. A published agent's card declares
+   * `createHttpDeliveryAdapter`. Needs `publicUrl`. An opted-in agent's card declares
    * `capabilities.pushNotifications` only when this is set and the Bureau also keeps a durable
    * event history, because a push notification is a projection of that history; otherwise every
    * push operation answers `PushNotificationNotSupportedError`.
@@ -408,7 +399,7 @@ export type BureauHandlerOptions = {
    * one, and cancel one, as AG-UI 1.0 Server-Sent Events. Omitted, nothing is
    * mounted and those paths are the handler's ordinary 404.
    *
-   * Agents are selected from {@link BureauHandlerOptions.publish}. The mount needs
+   * Any ready agent can be started. The mount needs
    * a Bureau with a durable engine, because its human-wait parks and its
    * run-creation receipts both do, and `createBureauHandler` throws at
    * construction without one. It is prepended to `mounts`, so Weft still refuses a
@@ -429,8 +420,8 @@ export type BureauHandlerOptions = {
   readonly maxRequestBodyBytes?: number;
 };
 
-/** A published agent name is a URL path segment, so it needs no encoding. */
-export const PUBLISHED_AGENT_NAME_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+/** An A2A agent name is a URL path segment, so it needs no encoding. */
+export const A2A_AGENT_NAME_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 
 /**
  * Every `agUi` option, as a record keyed by `AgUiOptions`: a key added to the type
@@ -449,7 +440,7 @@ const AG_UI_OPTIONS: Readonly<Record<keyof AgUiOptions, 'positive-integer' | 'ot
 const AG_UI_OPTION_NAMES: ReadonlySet<string> = new Set(Object.keys(AG_UI_OPTIONS));
 
 const OPTION_NAMES: ReadonlySet<string> = new Set([
-  'publish',
+  'a2aAgents',
   'publicUrl',
   'discoveryUrl',
   'signing',
@@ -516,16 +507,19 @@ function assertAuthentication(
   }
 }
 
-function assertPublish(bureau: BureauHandlerSource, publish: readonly string[] | undefined): void {
-  if (publish === undefined) return;
-  if (!Array.isArray(publish)) fail('publish must be an array of agent names');
-  for (const entry of publish as readonly unknown[]) {
+function assertA2AAgents(
+  bureau: BureauHandlerSource,
+  a2aAgents: readonly string[] | undefined,
+): void {
+  if (a2aAgents === undefined) return;
+  if (!Array.isArray(a2aAgents)) fail('a2aAgents must be an array of agent names');
+  for (const entry of a2aAgents as readonly unknown[]) {
     const shown = JSON.stringify(entry);
-    if (typeof entry !== 'string' || !PUBLISHED_AGENT_NAME_PATTERN.test(entry)) {
-      fail(`publish name ${shown} must match ${PUBLISHED_AGENT_NAME_PATTERN.source}`);
+    if (typeof entry !== 'string' || !A2A_AGENT_NAME_PATTERN.test(entry)) {
+      fail(`a2aAgents name ${shown} must match ${A2A_AGENT_NAME_PATTERN.source}`);
     }
     if (!bureau.agents.has(entry)) {
-      fail(`publish names ${shown}, which is not in the Bureau's agent catalog`);
+      fail(`a2aAgents names ${shown}, which is not in the Bureau's agent catalog`);
     }
   }
 }
@@ -756,12 +750,12 @@ async function recoveryOf(bureau: BureauHandlerSource): Promise<DeploymentRecove
   return { status: report.outcome, failedRunCount: report.perRunFailures.length };
 }
 
-/** The `tools` field of a {@link PublishedAgent}, which is absent when the agent does not say. */
+/** The `tools` field of a {@link ListedAgent}, which is absent when the agent does not say. */
 function toolsOf(names: readonly string[] | undefined): { readonly tools?: readonly string[] } {
   return names === undefined ? {} : { tools: names };
 }
 
-/** The `examples` field of a {@link PublishedAgent}, which is absent when the agent has none. */
+/** The `examples` field of a {@link ListedAgent}, which is absent when the agent has none. */
 function examplesOf(prompts: readonly string[] | undefined): {
   readonly examples?: readonly string[];
 } {
@@ -795,19 +789,16 @@ function readCodeToolNames(agent: object): readonly string[] | undefined {
 }
 
 /**
- * The agents this deployment lists as published or withdrawn. A code-defined agent is published
- * by the `publish` allowlist alone and is not listed otherwise. A persisted agent (COR-1526)
- * is published by its own frontmatter: every agent file that is ready is listed, `published`
- * when its file says so and `withdrawn` when it does not. An agent file that is invalid is not
- * an agent, so it is not listed.
+ * The agents this deployment lists: every code-defined agent, and every persisted agent (COR-1526)
+ * whose file is ready. An agent file that is invalid is not an agent, so it is not listed. `a2a`
+ * says whether the agent opts into A2A: the `a2aAgents` allowlist for a code-defined agent, the
+ * file's own `a2a` frontmatter for a persisted one.
  */
-function publishedAgentsOf(
+function listedAgentsOf(
   bureau: BureauHandlerSource,
-  publish: readonly string[],
-): readonly PublishedAgent[] {
-  // Every code-defined agent is described, and the `publish` allowlist says which are offered: the
-  // rest are `unpublished`, which only a caller who may read definitions is told of.
-  const code = bureau.agents.list().flatMap((listing): PublishedAgent[] => {
+  a2aAgents: readonly string[],
+): readonly ListedAgent[] {
+  const code = bureau.agents.list().flatMap((listing): ListedAgent[] => {
     if (listing.source !== 'code') return [];
     const agent = bureau.agents.find(listing.id);
     if (agent === undefined) return [];
@@ -818,14 +809,14 @@ function publishedAgentsOf(
         displayName: agent.name === '' || agent.name === '(agent)' ? listing.id : agent.name,
         description: agent.description ?? null,
         definitionRevision: readGenerationProfile(agent as never).revision,
-        publishState: publish.includes(listing.id) ? 'published' : 'unpublished',
+        a2a: a2aAgents.includes(listing.id),
         media: mediaCapabilitiesOf(readGenerationProfile(agent as never).descriptors),
         ...toolsOf(readCodeToolNames(agent)),
         ...examplesOf(readCodeExamples(agent)),
       },
     ];
   });
-  const persisted = bureau.agents.list().flatMap((listing): PublishedAgent[] => {
+  const persisted = bureau.agents.list().flatMap((listing): ListedAgent[] => {
     if (listing.source !== 'file' || listing.state !== 'ready') return [];
     const agent = bureau.agents.find(listing.id);
     if (agent === undefined) return [];
@@ -836,7 +827,7 @@ function publishedAgentsOf(
         displayName: listing.name,
         description: listing.description,
         definitionRevision: readGenerationProfile(agent as never).revision,
-        publishState: listing.published ? 'published' : 'withdrawn',
+        a2a: listing.a2a,
         media: mediaCapabilitiesOf(readGenerationProfile(agent as never).descriptors),
         ...toolsOf(readFileAgentBinding(agent)?.definition.tools),
         ...examplesOf(readFileAgentBinding(agent)?.definition.examples),
@@ -847,27 +838,35 @@ function publishedAgentsOf(
 }
 
 /**
- * Whether an adapter may start `name`: it is in the `publish` allowlist, or it is a persisted
- * agent whose file publishes it. Read when asked, so publishing or withdrawing takes effect on
- * the next request without a restart.
+ * Whether an adapter may start `name`: the Bureau has a ready agent by that name, code-defined or
+ * persisted. Read when asked, so an agent created or deleted takes effect on the next request.
  */
-function createPublication(
+function createStartable(bureau: BureauHandlerSource): {
+  readonly includes: (agentName: string) => boolean;
+} {
+  return { includes: (agentName) => bureau.agents.find(agentName) !== undefined };
+}
+
+/**
+ * Whether the A2A mount serves `name`: it is in the `a2aAgents` allowlist, or it is a persisted
+ * agent whose file says `a2a: true`. Read when asked, so a file that turns the opt-in on or off
+ * takes effect on the next request without a restart.
+ */
+function createA2AOptIn(
   bureau: BureauHandlerSource,
-  publish: readonly string[],
+  a2aAgents: readonly string[],
 ): { readonly includes: (agentName: string) => boolean } {
   return {
     includes: (agentName) =>
-      publish.includes(agentName) ||
+      a2aAgents.includes(agentName) ||
       bureau.agents
         .list()
-        .some(
-          (listing) => listing.source === 'file' && listing.id === agentName && listing.published,
-        ),
+        .some((listing) => listing.source === 'file' && listing.id === agentName && listing.a2a),
   };
 }
 
 /**
- * The A2A mount: one interface per published agent. A task's A2A record leaves with its task:
+ * The A2A mount: one interface per agent that opts in. A task's A2A record leaves with its task:
  * the mount deletes it when the run leaves the store (`run.removed`).
  */
 function createA2AMount(
@@ -875,7 +874,7 @@ function createA2AMount(
   options: BureauHandlerOptions,
   host: BureauHandlerHost,
 ): OperationHandlerMount {
-  const publish = options.publish ?? [];
+  const a2aAgents = options.a2aAgents ?? [];
   const kv = bureau.internals.kv ?? textValueStore(new MemoryStorage());
   const records = createA2ATaskRecords(kv);
   const push = createPushSupport(bureau, options, kv, records);
@@ -924,9 +923,9 @@ function createA2AMount(
     ...(options.discoveryUrl === undefined ? {} : { discoveryUrl: options.discoveryUrl }),
     ...(options.signing === undefined ? {} : { signing: options.signing }),
     bureau,
-    publication: createPublication(bureau, publish),
-    // Only a task A2A served has a record, so an agent that was never published, whose tasks
-    // came through Bureau's other surfaces, never gets a tombstone.
+    optedIn: createA2AOptIn(bureau, a2aAgents),
+    // Only a task A2A served has a record, so an agent that never opted in, whose tasks came
+    // through Bureau's other surfaces, never gets a tombstone.
     hasTasks: async (agentName) => {
       for (let offset = 0; ; offset += TOMBSTONE_SCAN_PAGE) {
         const page = await bureau.internals.taskRegistry.enumerate({
@@ -939,9 +938,7 @@ function createA2AMount(
       }
     },
     describe: (agentName) => {
-      const described = publishedAgentsOf(bureau, publish).find(
-        (agent) => agent.name === agentName,
-      );
+      const described = listedAgentsOf(bureau, a2aAgents).find((agent) => agent.name === agentName);
       const agent = bureau.agents.find(agentName) as
         { readonly skillDescriptors?: readonly AgentSkillDescriptor[] | undefined } | undefined;
       if (described === undefined || agent === undefined) return undefined;
@@ -1002,7 +999,7 @@ function createPushSupport(
   return { delivery, checkpoints, projector, ready };
 }
 
-/** How many of a withdrawn agent's tasks one tombstone check reads at a time. */
+/** How many of an opted-out agent's tasks one tombstone check reads at a time. */
 const TOMBSTONE_SCAN_PAGE = 50;
 
 /**
@@ -1011,7 +1008,7 @@ const TOMBSTONE_SCAN_PAGE = 50;
  */
 export function buildBureauHandlerHost(
   bureau: BureauHandlerSource,
-  publish: readonly string[],
+  a2aAgents: readonly string[],
 ): BureauHandlerHost {
   const operations = describeOperations(BUREAU_HANDLER_OPERATIONS);
   return {
@@ -1052,7 +1049,7 @@ export function buildBureauHandlerHost(
     },
     agentDefinitions: {
       agents: bureau.agents,
-      publishesCodeAgent: (id) => publish.includes(id),
+      optsCodeAgentIntoA2A: (id) => a2aAgents.includes(id),
       models: () => bureau.models.catalog().descriptors,
       audit: async (entry) => {
         await bureau.internals.auditTrail?.record(entry);
@@ -1087,7 +1084,7 @@ export function buildBureauHandlerHost(
     deployment: {
       id: bureau.id,
       state: () => bureau.lifecycle,
-      publishedAgents: () => publishedAgentsOf(bureau, publish),
+      agents: () => listedAgentsOf(bureau, a2aAgents),
       operations: () => operations,
       recovery: () => recoveryOf(bureau),
     },
@@ -1125,7 +1122,7 @@ export function createBureauHandler(
   assertKnownOptions(options);
   const unauthenticatedAccess = resolveUnauthenticatedAccess(options);
   assertAuthentication(options.authentication, unauthenticatedAccess);
-  assertPublish(bureau, options.publish);
+  assertA2AAgents(bureau, options.a2aAgents);
   assertAgUi(bureau, options);
   assertA2A(bureau, options);
   assertAssets(bureau);
@@ -1133,7 +1130,7 @@ export function createBureauHandler(
   assertBureauId(bureau);
   assertPersistence(bureau);
 
-  const host = buildBureauHandlerHost(bureau, options.publish ?? []);
+  const host = buildBureauHandlerHost(bureau, options.a2aAgents ?? []);
 
   return createOperationHandler({
     operations: BUREAU_HANDLER_OPERATIONS,
@@ -1156,7 +1153,7 @@ export function createBureauHandler(
                 mayAccess: host.ownership.mayAccess,
                 ownerOf: (resource) => bureau.ownerOf(resource),
               },
-              createPublication(bureau, options.publish ?? []),
+              createStartable(bureau),
               options.agUi,
             ),
           ]),

@@ -331,7 +331,7 @@ describe('a page that asks to be kept', () => {
                   description: null,
                   definitionRevision: 1,
                   kind: 'code',
-                  publishState: 'published',
+                  a2a: false,
                 },
               ],
             }

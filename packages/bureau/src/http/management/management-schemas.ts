@@ -13,6 +13,8 @@
 import type { OperationFault } from '@lostgradient/weft';
 import { z } from 'zod';
 
+import { TASK_PERSON_SURFACES } from '../../task-origin.ts';
+
 /** Unary management operations are served over JSON-RPC HTTP only. */
 export const unaryTransports = {
   http: false,
@@ -45,6 +47,28 @@ export const taskCleanupSchema = z.enum([
   'unknown-outcome',
 ]);
 
+/** Where a task came from. Mirrors `TaskOrigin` (`task-origin.ts`). */
+export const taskOriginSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('chat'),
+    contextId: z.string(),
+    agentName: z.string(),
+    principal: z.string(),
+  }),
+  z.object({
+    kind: z.literal('person'),
+    principal: z.string(),
+    surface: z.enum(TASK_PERSON_SURFACES),
+  }),
+  z.object({
+    kind: z.literal('schedule'),
+    scheduleId: z.string(),
+    fireId: z.string(),
+    manual: z.literal(true).optional(),
+  }),
+  z.object({ kind: z.literal('api') }),
+]);
+
 /** One task, as the management plane shows it. Message text is never part of it. */
 export const taskViewSchema = z.object({
   id: z.string(),
@@ -62,6 +86,13 @@ export const taskViewSchema = z.object({
    * instead of asking the session store.
    */
   kind: z.enum(['chat', 'schedule-fire', 'catalog']),
+  /**
+   * Where the task came from, recorded when it was admitted (COR-1867), or `null` for a task
+   * recorded before origins were kept. `chat`: a person's message in a chat. `person`: a person
+   * who started the task directly, from a `surface`. `schedule`: one fire of a schedule, with
+   * `manual` set when a person fired it by hand. `api`: a start with no Bureau context to name.
+   */
+  origin: taskOriginSchema.nullable(),
   status: taskStateSchema,
   finishReason: z.string().nullable(),
   statusMessage: z.string().max(1000).nullable(),

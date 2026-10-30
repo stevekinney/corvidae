@@ -62,7 +62,7 @@ describe('a continuation’s admission', () => {
       });
       const handler = createBureauHandler(spying, {
         authentication,
-        publish: ['asker'],
+        a2aAgents: ['asker'],
         publicUrl: 'http://localhost',
       });
       const session = await opened.bureau.contexts.get(started.contextId);
@@ -166,7 +166,11 @@ describe('two continuations that name the same revision', () => {
       });
       // Two instances: each has its own in-process fence and reads and writes the one store.
       const instance = () =>
-        createBureauHandler(spying, { authentication, publish: ['asker'], publicUrl: PUBLIC_URL });
+        createBureauHandler(spying, {
+          authentication,
+          a2aAgents: ['asker'],
+          publicUrl: PUBLIC_URL,
+        });
       const instances = [
         { ...opened, handler: instance() },
         { ...opened, handler: instance() },
@@ -234,7 +238,7 @@ describe('two continuations that name the same revision', () => {
         ...opened,
         handler: createBureauHandler(spying, {
           authentication,
-          publish: ['asker'],
+          a2aAgents: ['asker'],
           publicUrl: PUBLIC_URL,
         }),
       };

@@ -47,11 +47,21 @@ const runEventKindSchema = z.enum(PUBLISHED_RUN_EVENT_KINDS);
  * string too, so narrowing to one kind stays the simple case.
  */
 const runEventsSubscriptionInput = z.object({
-  runId: z.string().min(1),
-  kinds: z.union([runEventKindSchema, z.array(runEventKindSchema).min(1)]).optional(),
+  runId: z.string().min(1).describe('The identifier of the run whose events to follow.'),
+  kinds: z
+    .union([runEventKindSchema, z.array(runEventKindSchema).min(1)])
+    .optional()
+    .describe('One event kind, or several. Omitting it delivers every published kind.'),
   // Bound the input here; invoke checks its structure against the resolved
   // feed before opening a stream, so every transport returns `InvalidParams`.
-  fromCursor: z.string().min(1).max(512).optional(),
+  fromCursor: z
+    .string()
+    .min(1)
+    .max(512)
+    .optional()
+    .describe(
+      'The cursor of the last event already seen; the replay continues after it. Omitting it replays from the beginning of what the feed retains. An opaque value taken from an event or the subscription’s envelope.',
+    ),
 });
 
 const runEventsSubscriptionEnvelope = z.object({

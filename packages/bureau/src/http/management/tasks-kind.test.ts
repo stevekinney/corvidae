@@ -58,6 +58,7 @@ describe('a task view’s kind', () => {
         owner: OWNER.alice,
         actor: 'system:scheduler',
         kind: 'schedule-fire',
+        origin: { kind: 'api' },
         message: undefined,
       });
       try {

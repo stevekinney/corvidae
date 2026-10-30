@@ -56,7 +56,7 @@ async function runEventTypes(host: Host, agent: string, threadId: string): Promi
 }
 
 describe('the AG-UI mount', () => {
-  test('streams a published seeded agent’s run under the /bureau prefix', async () => {
+  test('streams a seeded agent’s run under the /bureau prefix', async () => {
     const host = await start();
     const types = await runEventTypes(host, 'assistant', 'thread-assistant');
     expect(types[0]).toBe('RUN_STARTED');
@@ -64,18 +64,18 @@ describe('the AG-UI mount', () => {
     expect(types.at(-1)).toBe('RUN_FINISHED');
   });
 
-  test('refuses an agent that is not published as a thread that does not exist', async () => {
+  test('streams the run of the seeded agent the host once kept private, and refuses a name it does not have', async () => {
     const host = await start();
-    const types = await runEventTypes(host, 'internal', 'thread-internal');
-    expect(types).toEqual(['RUN_ERROR']);
+    const internal = await runEventTypes(host, 'internal', 'thread-internal');
+    expect(internal[0]).toBe('RUN_STARTED');
+    expect(internal.at(-1)).toBe('RUN_FINISHED');
+    expect(await runEventTypes(host, 'no-such-agent', 'thread-missing')).toEqual(['RUN_ERROR']);
   });
 });
 
 describe('extra agents', () => {
-  test('an extra agent that is published runs over the mount', async () => {
-    const host = await start({
-      extraAgents: { agents: { extra: extraAgent }, published: ['extra'] },
-    });
+  test('an extra agent runs over the mount', async () => {
+    const host = await start({ extraAgents: { agents: { extra: extraAgent } } });
     const types = await runEventTypes(host, 'extra', 'thread-extra');
     expect(types[0]).toBe('RUN_STARTED');
     expect(types.at(-1)).toBe('RUN_FINISHED');
@@ -89,43 +89,34 @@ describe('extra agents', () => {
         startHost({
           environment: { INTERBOROUGH_HOME: home },
           port: 0,
-          extraAgents: { agents: { [name]: extraAgent }, published: [name] },
+          extraAgents: { agents: { [name]: extraAgent } },
         }),
       );
       expect(String(refusal)).toContain(`The extra agent "${name}" has the name of a seeded agent`);
     }
   });
 
-  test('an extra agent that is not published is refused, and the seeded ones are unchanged', async () => {
-    const host = await start({ extraAgents: { agents: { extra: extraAgent }, published: [] } });
-    expect(await runEventTypes(host, 'extra', 'thread-hidden')).toEqual(['RUN_ERROR']);
-    const seeded = await runEventTypes(host, 'assistant', 'thread-seeded');
-    expect(seeded.at(-1)).toBe('RUN_FINISHED');
-  });
-
-  test('an extra agent is listed with the published ones, and the unpublished one is listed as such', async () => {
-    const host = await start({
-      extraAgents: { agents: { extra: extraAgent }, published: ['extra'] },
-    });
+  test('an extra agent is listed with the seeded ones, none of which opts into A2A', async () => {
+    const host = await start({ extraAgents: { agents: { extra: extraAgent } } });
     const response = await fetch(new URL('/bureau/jsonrpc', host.url), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'bureau.agents.list', params: {} }),
     });
     const body = (await response.json()) as {
-      result: { agents: Array<{ name: string; kind: string; publishState: string }> };
+      result: { agents: Array<{ name: string; kind: string; a2a: boolean }> };
     };
     const listed = body.result.agents
-      .map((agent) => [agent.name, agent.kind, agent.publishState] as const)
+      .map((agent) => [agent.name, agent.kind, agent.a2a] as const)
       .toSorted(([left], [right]) => left.localeCompare(right));
     expect(listed).toEqual([
-      ['assistant', 'code', 'published'],
-      ['echo', 'code', 'published'],
-      ['extra', 'code', 'published'],
-      ['internal', 'code', 'unpublished'],
-      ['model-switcher', 'code', 'published'],
-      ['request-human-input', 'code', 'published'],
-      ['tool-runner', 'code', 'published'],
+      ['assistant', 'code', false],
+      ['echo', 'code', false],
+      ['extra', 'code', false],
+      ['internal', 'code', false],
+      ['model-switcher', 'code', false],
+      ['request-human-input', 'code', false],
+      ['tool-runner', 'code', false],
     ]);
   });
 });

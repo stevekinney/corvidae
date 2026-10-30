@@ -112,7 +112,7 @@ async function withService(
   const bureauRuntime = createManualRuntimeServices();
   const opened = await openBureau({
     agents: { asker: createAgent({ name: 'asker', generate }) },
-    publish: ['asker'],
+    a2aAgents: ['asker'],
     bureauOptions: {
       runtime: bureauRuntime,
       retention: { tasks: { olderThan: 2 * TASK_AGE_MILLISECONDS }, receipts: { olderThan: 1000 } },

@@ -15,9 +15,7 @@ import {
   getAgentDefinition,
   listAgentDefinitions,
   listAgentRevisions,
-  publishAgent,
   updateAgent,
-  withdrawAgent,
   type AgentDefinitionInput,
 } from './agent-definitions.ts';
 import {
@@ -40,7 +38,7 @@ const definition: AgentDefinitionInput = {
   description: null,
   model: 'anthropic/sonnet',
   tools: ['lookup-order'],
-  skills: [],
+  skillDescriptors: [],
   instructions: 'Be careful.',
 };
 
@@ -88,7 +86,7 @@ describe('the operations', () => {
       { method: 'bureau.agents.definitions.get', params: { id: 'researcher' } },
     ]);
     expect(detail.hash).toBe('hash-1');
-    expect(detail.definition?.skills[0]?.id).toBe('cite');
+    expect(detail.definition?.skillDescriptors[0]?.id).toBe('cite');
   });
 
   test('get refuses an answer that is not an agent', async () => {
@@ -106,11 +104,11 @@ describe('the operations', () => {
     stub = installBureauStub({
       'bureau.agents.definitions.get': () => ({
         ...agent,
-        definition: agent.definition && { ...agent.definition, skills: [skill] },
+        definition: agent.definition && { ...agent.definition, skillDescriptors: [skill] },
       }),
     });
     const detail = await getAgentDefinition('researcher');
-    expect(detail.definition?.skills).toEqual([skill]);
+    expect(detail.definition?.skillDescriptors).toEqual([skill]);
   });
 
   test('list follows the pages to the last, and asks for the largest page', async () => {
@@ -162,41 +160,28 @@ describe('the operations', () => {
     expect(stub.calls[0]?.params).toEqual({ id: 'researcher', definition });
   });
 
-  test('update names the hash the caller read, and the definition has no published key', async () => {
+  test('update names the hash the caller read, and carries the A2A opt-in the definition states', async () => {
     stub = installBureauStub({
       'bureau.agents.definitions.update': () => ({ id: 'researcher', hash: 'hash-2' }),
     });
-    await updateAgent('researcher', 'hash-1', definition);
-    expect(stub.calls[0]?.params).toEqual({ id: 'researcher', expectedHash: 'hash-1', definition });
-    expect(Object.keys(definition)).not.toContain('published');
+    await updateAgent('researcher', 'hash-1', { ...definition, a2a: true });
+    expect(stub.calls[0]?.params).toEqual({
+      id: 'researcher',
+      expectedHash: 'hash-1',
+      definition: { ...definition, a2a: true },
+    });
   });
 
-  test('publish, withdraw, and delete each name the hash', async () => {
+  test('delete names the hash', async () => {
     stub = installBureauStub({
-      'bureau.agents.definitions.publish': () => ({ id: 'researcher', hash: 'h-published' }),
-      'bureau.agents.definitions.withdraw': () => ({ id: 'researcher', hash: 'h-withdrawn' }),
       'bureau.agents.definitions.delete': () => ({ id: 'researcher', hash: 'h-deleted' }),
     });
-    const published = await publishAgent('researcher', 'hash-1');
-    const withdrawn = await withdrawAgent('researcher', 'h-published');
-    const deleted = await deleteAgent('researcher', 'h-withdrawn');
-    expect([published.hash, withdrawn.hash, deleted.hash]).toEqual([
-      'h-published',
-      'h-withdrawn',
-      'h-deleted',
-    ]);
+    const deleted = await deleteAgent('researcher', 'hash-1');
+    expect(deleted.hash).toBe('h-deleted');
     expect(stub.calls).toEqual([
       {
-        method: 'bureau.agents.definitions.publish',
-        params: { id: 'researcher', expectedHash: 'hash-1' },
-      },
-      {
-        method: 'bureau.agents.definitions.withdraw',
-        params: { id: 'researcher', expectedHash: 'h-published' },
-      },
-      {
         method: 'bureau.agents.definitions.delete',
-        params: { id: 'researcher', expectedHash: 'h-withdrawn' },
+        params: { id: 'researcher', expectedHash: 'hash-1' },
       },
     ]);
   });

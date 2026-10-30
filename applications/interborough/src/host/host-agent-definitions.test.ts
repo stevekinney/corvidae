@@ -23,9 +23,7 @@ import {
   getAgentDefinition,
   listAgentDefinitions,
   listAgentRevisions,
-  publishAgent,
   updateAgent,
-  withdrawAgent,
   type AgentDefinitionInput,
 } from '../lib/agent-definitions.ts';
 import type { Fetcher } from '../lib/bureau-client.ts';
@@ -61,14 +59,16 @@ async function startConfigured(): Promise<{ host: Host; home: string; fetcher: F
   return { host, home, fetcher };
 }
 
-const skills = [{ id: 'cite', name: 'Cite', description: 'Cites the sources', tags: ['research'] }];
+const skillDescriptors = [
+  { id: 'cite', name: 'Cite', description: 'Cites the sources', tags: ['research'] },
+];
 
 const definition: AgentDefinitionInput = {
   name: 'Researcher',
   description: 'Finds and cites sources',
   model: 'anthropic/sonnet',
   tools: ['lookup-order'],
-  skills,
+  skillDescriptors,
   instructions: 'You are a careful researcher.',
 };
 
@@ -136,7 +136,7 @@ describe('the operations, against the real Bureau', () => {
     expect(offered).toContain('lookup-order');
   });
 
-  test('creates, reads, updates, publishes, withdraws, and deletes an agent file', async () => {
+  test('creates, reads, updates, opts into and out of A2A, and deletes an agent file', async () => {
     const { home, fetcher } = await startConfigured();
     const created = await createAgent('researcher', definition, { fetch: fetcher });
     expect(created.id).toBe('researcher');
@@ -147,9 +147,9 @@ describe('the operations, against the real Bureau', () => {
     expect(read.source).toBe('file');
     expect(read.state).toBe('ready');
     expect(read.hash).toBe(created.hash);
-    expect(read.published).toBe(false);
+    expect(read.a2a).toBe(false);
     expect(read.definition?.model).toBe('anthropic/sonnet');
-    expect(read.definition?.skills).toEqual(skills);
+    expect(read.definition?.skillDescriptors).toEqual(skillDescriptors);
 
     const updated = await updateAgent(
       'researcher',
@@ -158,20 +158,39 @@ describe('the operations, against the real Bureau', () => {
       { fetch: fetcher },
     );
     expect(updated.hash).not.toBe(created.hash);
-    // The update kept the skills and did not publish.
+    // The update kept the skill descriptors and left the A2A opt-in as the file had it.
     const afterUpdate = await getAgentDefinition('researcher', { fetch: fetcher });
-    expect(afterUpdate.definition?.skills).toEqual(skills);
+    expect(afterUpdate.definition?.skillDescriptors).toEqual(skillDescriptors);
     expect(afterUpdate.definition?.instructions).toBe('Changed.');
-    expect(afterUpdate.published).toBe(false);
+    expect(afterUpdate.a2a).toBe(false);
 
-    const published = await publishAgent('researcher', updated.hash, { fetch: fetcher });
-    const afterPublish = await getAgentDefinition('researcher', { fetch: fetcher });
-    expect(afterPublish.published).toBe(true);
-    const withdrawn = await withdrawAgent('researcher', published.hash, { fetch: fetcher });
-    const afterWithdraw = await getAgentDefinition('researcher', { fetch: fetcher });
-    expect(afterWithdraw.published).toBe(false);
+    const optedIn = await updateAgent(
+      'researcher',
+      updated.hash,
+      { ...definition, instructions: 'Changed.', a2a: true },
+      { fetch: fetcher },
+    );
+    const afterOptIn = await getAgentDefinition('researcher', { fetch: fetcher });
+    expect(afterOptIn.a2a).toBe(true);
+    // A save that leaves the opt-in out keeps it.
+    const kept = await updateAgent(
+      'researcher',
+      optedIn.hash,
+      { ...definition, instructions: 'Changed again.' },
+      { fetch: fetcher },
+    );
+    const afterKept = await getAgentDefinition('researcher', { fetch: fetcher });
+    expect(afterKept.a2a).toBe(true);
+    const optedOut = await updateAgent(
+      'researcher',
+      kept.hash,
+      { ...definition, instructions: 'Changed again.', a2a: false },
+      { fetch: fetcher },
+    );
+    const afterOptOut = await getAgentDefinition('researcher', { fetch: fetcher });
+    expect(afterOptOut.a2a).toBe(false);
 
-    await deleteAgent('researcher', withdrawn.hash, { fetch: fetcher });
+    await deleteAgent('researcher', optedOut.hash, { fetch: fetcher });
     expect(await Bun.file(file).exists()).toBe(false);
     expect(await faultOf(getAgentDefinition('researcher', { fetch: fetcher }))).toEqual({
       kind: 'not-found',
@@ -202,7 +221,6 @@ describe('the operations, against the real Bureau', () => {
     const current = await getAgentDefinition('researcher', { fetch: fetcher });
     for (const write of [
       () => updateAgent('researcher', created.hash, definition, { fetch: fetcher }),
-      () => publishAgent('researcher', created.hash, { fetch: fetcher }),
       () => deleteAgent('researcher', created.hash, { fetch: fetcher }),
     ]) {
       const fault = await faultOf(write());

@@ -99,13 +99,12 @@ test.describe('a new agent', () => {
       await page.getByRole('button', { name: copy.createAction }).click();
       await expect(page).toHaveURL(/\/agents\/e2e-new-agent$/);
 
-      // The save lands on the agent's page, which says the new agent is not published and offers
-      // no chat with it, but does offer its editor.
+      // The save lands on the agent's page, which offers a chat with the new agent and its
+      // editor, and says nothing of A2A.
       const detail = page.locator('[data-view="agents"]');
       await expect(detail).toHaveAttribute('data-state', 'ready');
       await expect(page.getByRole('heading', { level: 1, name: 'E2E New Agent' })).toBeVisible();
-      await expect(page.getByText('Not published').first()).toBeVisible();
-      await expect(page.getByRole('link', { name: 'New chat' })).toHaveCount(0);
+      await expect(page.getByRole('link', { name: 'New chat' }).first()).toBeVisible();
       await expect(page.getByRole('link', { name: copy.editAction })).toHaveAttribute(
         'href',
         '/agents/e2e-new-agent/edit',
@@ -113,7 +112,7 @@ test.describe('a new agent', () => {
 
       const agent = await readAgent(request, 'e2e-new-agent');
       expect(agent.state).toBe('ready');
-      expect(agent.published).toBe(false);
+      expect(agent.a2a).toBe(false);
       expect(agent.definition).toMatchObject({
         name: 'E2E New Agent',
         model: 'anthropic/claude-sonnet-5',
@@ -278,7 +277,7 @@ test.describe('a new agent on a host with no model provider', () => {
 
 test.describe('an agent that exists', () => {
   for (const width of WIDTHS) {
-    test(`is edited in place, keeps its skills, and shows its file and history, at ${width} pixels`, async ({
+    test(`is edited in place, keeps its skill descriptors, and shows its file and history, at ${width} pixels`, async ({
       page,
       request,
       checkA11y,
@@ -329,9 +328,9 @@ test.describe('an agent that exists', () => {
 
       const agent = await readAgent(request, 'e2e-edit');
       expect(agent.definition?.instructions).toBe('Edited in the browser.');
-      // The editor never touches `skills`, and a save does not publish.
-      expect(agent.definition?.skills).toEqual(BASE_DEFINITION.skills);
-      expect(agent.published).toBe(false);
+      // The editor never touches `skillDescriptors`, and a save leaves the A2A opt-in as it was.
+      expect(agent.definition?.skillDescriptors).toEqual(BASE_DEFINITION.skillDescriptors);
+      expect(agent.a2a).toBe(false);
       expect(await readFile(path, 'utf8')).toContain('Edited in the browser.');
     });
   }
@@ -357,64 +356,55 @@ test.describe('an agent that exists', () => {
     );
   });
 
-  test('is published and withdrawn through its own control, never through a save', async ({
+  test('opts into and out of A2A with its switch, saved with the form', async ({
     page,
     request,
   }) => {
-    await makeAgent(request, 'e2e-publish');
-    await page.goto('/agents/e2e-publish/edit');
-    const published = page.getByRole('switch', { name: copy.publishedLabel });
-    await expect(published).toHaveAttribute('aria-checked', 'false');
+    await makeAgent(request, 'e2e-a2a');
+    await page.goto('/agents/e2e-a2a/edit');
+    const a2a = page.getByRole('switch', { name: copy.a2aLabel });
+    await expect(a2a).toHaveAttribute('aria-checked', 'false');
 
-    await published.click();
-    await expect(published).toHaveAttribute('aria-checked', 'true');
-    const afterPublish = await readAgent(request, 'e2e-publish');
-    expect(afterPublish.published).toBe(true);
-
-    // A save after publishing uses the file's new hash, and leaves the agent published.
-    await page.getByRole('textbox', { name: /^Description/ }).fill('Changed after publishing.');
+    // The switch alone writes nothing: the opt-in is saved with the rest of the definition.
+    await a2a.click();
+    await expect(a2a).toHaveAttribute('aria-checked', 'true');
+    const beforeSave = await readAgent(request, 'e2e-a2a');
+    expect(beforeSave.a2a).toBe(false);
     await page.getByRole('button', { name: copy.saveAction }).click();
-    await expect(page).toHaveURL(/\/agents\/e2e-publish$/);
-    const afterSave = await readAgent(request, 'e2e-publish');
-    expect(afterSave.published).toBe(true);
-    expect(afterSave.definition?.published).toBe(true);
-    // Its page offers a chat with it and carries no badge: published is the normal state, and it
-    // shows the file's own model, tools and version.
+    await expect(page).toHaveURL(/\/agents\/e2e-a2a$/);
+    const afterOptIn = await readAgent(request, 'e2e-a2a');
+    expect(afterOptIn.a2a).toBe(true);
+    expect(afterOptIn.definition?.a2a).toBe(true);
+    // Its page offers a chat with it and carries no badge, and shows the file's own model, tools
+    // and version.
     await expect(page.getByRole('link', { name: 'New chat' }).first()).toBeVisible();
-    await expect(page.getByText('Not published')).toHaveCount(0);
-    await expect(page.getByText('Published', { exact: true })).toHaveCount(0);
     await expect(page.getByTestId('agent-facts')).toContainText('anthropic/sonnet');
     await expect(page.getByTestId('agent-file-version')).toContainText(
-      afterSave.hash?.slice(0, 8) ?? '',
+      afterOptIn.hash?.slice(0, 8) ?? '',
     );
 
-    await page.goto('/agents/e2e-publish/edit');
-    const again = page.getByRole('switch', { name: copy.publishedLabel });
+    await page.goto('/agents/e2e-a2a/edit');
+    const again = page.getByRole('switch', { name: copy.a2aLabel });
     await expect(again).toHaveAttribute('aria-checked', 'true');
     await again.click();
     await expect(again).toHaveAttribute('aria-checked', 'false');
-    const afterWithdraw = await readAgent(request, 'e2e-publish');
-    expect(afterWithdraw.published).toBe(false);
-    // Withdrawn, its page says it is not published and offers no chat.
-    await page.goto('/agents/e2e-publish');
-    await expect(page.getByText('Not published').first()).toBeVisible();
-    await expect(page.getByRole('link', { name: 'New chat' })).toHaveCount(0);
+    await page.getByRole('button', { name: copy.saveAction }).click();
+    await expect(page).toHaveURL(/\/agents\/e2e-a2a$/);
+    const afterOptOut = await readAgent(request, 'e2e-a2a');
+    expect(afterOptOut.a2a).toBe(false);
+    // Opted out of A2A, its page still offers a chat.
+    await expect(page.getByRole('link', { name: 'New chat' }).first()).toBeVisible();
   });
 
-  test('shows the revision that has run, by its short hash, once the published agent has been used', async ({
+  test('shows the revision that has run, by its short hash, once the agent has been used', async ({
     page,
     request,
   }) => {
     await makeAgent(request, 'e2e-history');
     await page.goto('/agents/e2e-history/edit');
     await expect(page.getByTestId('agent-revisions-empty')).toBeVisible();
-    await page.getByRole('switch', { name: copy.publishedLabel }).click();
-    await expect(page.getByRole('switch', { name: copy.publishedLabel })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    );
-    const published = await readAgent(request, 'e2e-history');
-    const hash = published.hash ?? '';
+    const first = await readAgent(request, 'e2e-history');
+    const hash = first.hash ?? '';
 
     // A client other than the page starts a run through the AG-UI mount, which a save never does.
     const stream = await runToEnd(request, 'e2e-history', newThreadId('history'), 'Hello');

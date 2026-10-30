@@ -26,7 +26,6 @@ async function start(barrier: Barrier): Promise<Host> {
     port: 0,
     extraAgents: {
       agents: createBarrierAgents(barrier),
-      published: [BARRIER_AGENT_NAME, BARRIER_SHORT_AGENT_NAME],
     },
   });
   hosts.push(host);
