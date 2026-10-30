@@ -255,7 +255,7 @@ describe('Sidebar (desktop / inline aside)', () => {
       const props = { mobileBreakpoint: '640px', navigation: listSnippet('items') };
       Reflect.set(props, 'mobileBreakpoint', 640);
       render(Sidebar, { props });
-    }).toThrow('Sidebar mobileBreakpoint must be a CSS length such as "47.99rem".');
+    }).toThrow('Sidebar mobileBreakpoint must be a CSS length such as "639.98px".');
   });
 
   test('aria-label in rest spread cannot override the component-owned label', () => {
@@ -305,8 +305,8 @@ describe('Sidebar (desktop / inline aside)', () => {
 
 describe('Sidebar SSR responsive fallback', () => {
   test('exports the mobile drawer breakpoint contract', () => {
-    expect(SIDEBAR_MOBILE_BREAKPOINT).toBe('47.99rem');
-    expect(SIDEBAR_MOBILE_MEDIA_QUERY).toBe('(max-width: 47.99rem)');
+    expect(SIDEBAR_MOBILE_BREAKPOINT).toBe('639.98px');
+    expect(SIDEBAR_MOBILE_MEDIA_QUERY).toBe('(max-width: 639.98px)');
   });
 
   test('marks the no-matchMedia desktop aside as a mobile first-paint fallback', () => {
@@ -367,7 +367,7 @@ describe('Sidebar SSR responsive fallback', () => {
       ),
     );
     expect(css).toMatch(
-      /\.cinder-sidebar--desktop\[data-cinder-sidebar-mobile-breakpoint='47\.99rem'\]\[data-cinder-collapsed\]\s*{\s*display:\s*none;\s*}/,
+      /\.cinder-sidebar--desktop\[data-cinder-sidebar-mobile-breakpoint='639\.98px'\]\[data-cinder-collapsed\]\s*{\s*display:\s*none;\s*}/,
     );
   });
 });

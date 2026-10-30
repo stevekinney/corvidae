@@ -324,4 +324,77 @@
   .cinder-table__header-cell[data-cinder-align='right'] {
     text-align: right;
   }
+
+  /* ----------------------------------------
+ * Stacked — below the `stackBelow` viewport width (table.svelte sets
+ * `data-cinder-stacked`), each body row becomes a block and each cell shows
+ * its column's header text (copied onto the cell as
+ * `data-cinder-stack-label`) above its value. The label is a block of its
+ * own rather than a grid column, so a cell holding several elements keeps
+ * its own inline flow. The header row leaves the
+ * layout but stays in the accessibility tree, so the table keeps its column
+ * names for assistive technology. Declared last so these rules win over the
+ * density, selection, alignment, and sticky-header rules at equal
+ * specificity.
+ * ---------------------------------------- */
+
+  .cinder-table[data-cinder-stacked] {
+    display: block;
+    position: relative;
+  }
+
+  .cinder-table-scroll .cinder-table[data-cinder-stacked] {
+    min-inline-size: 0;
+  }
+
+  .cinder-table[data-cinder-stacked] > .cinder-table__body {
+    display: block;
+  }
+
+  .cinder-table[data-cinder-stacked] > .cinder-table__header {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .cinder-table[data-cinder-stacked] .cinder-table__body .cinder-table__row {
+    display: block;
+    padding-block: var(--cinder-space-2);
+    border-bottom: 1px solid var(--cinder-border-muted);
+  }
+
+  .cinder-table[data-cinder-stacked] .cinder-table__body .cinder-table__row:last-child {
+    border-bottom: 0;
+  }
+
+  .cinder-table[data-cinder-stacked] .cinder-table__body .cinder-table__cell {
+    display: block;
+    width: auto;
+    min-inline-size: 0;
+    padding-block: var(--cinder-space-1);
+    padding-inline: var(--cinder-space-3);
+    border-bottom: 0;
+    text-align: start;
+  }
+
+  .cinder-table[data-cinder-stacked] .cinder-table__cell[data-cinder-stack-label]::before {
+    content: attr(data-cinder-stack-label);
+    display: block;
+    margin-block-end: var(--cinder-space-0-5);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-medium);
+    color: var(--cinder-text-muted);
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-table[data-cinder-stacked] .cinder-table__cell-text {
+    max-inline-size: 100%;
+  }
 }

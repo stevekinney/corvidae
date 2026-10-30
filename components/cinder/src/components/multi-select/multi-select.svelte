@@ -31,6 +31,11 @@
   import { createAnchoredOverlay } from '../../_internal/anchored-overlay.svelte.ts';
   import { resolveFieldControl } from '../../_internal/field-control.ts';
   import { getFormFieldContext } from '../../_internal/form-field-context.ts';
+  import {
+    PHONE_VIEWPORT_BREAKPOINT,
+    readViewportBreakpoint,
+    useViewportBelow,
+  } from '../../_internal/viewport-below.svelte.ts';
   import FormFieldFrame from '../../_internal/form-field-frame.svelte';
   import { classNames } from '../../utilities/class-names.ts';
   import { createPortalAttachment } from '../portal/index.ts';
@@ -54,6 +59,7 @@
     filter,
     selectionFeedback = 'fixed',
     direction = 'down',
+    sheetBelow = PHONE_VIEWPORT_BREAKPOINT,
     size = 'md',
     class: className,
     'aria-describedby': consumerDescribedBy,
@@ -127,6 +133,11 @@
   // full-trigger-width CSS behavior (`inset-inline: 0`); `direction` maps directly to a
   // Floating UI placement, and `flip` (always active in `createAnchoredOverlay`) upgrades
   // the previous purely author-controlled `direction` into collision-aware placement.
+  const sheetBreakpoint = $derived(readViewportBreakpoint(sheetBelow, 'MultiSelect', 'sheetBelow'));
+  const narrowViewport = useViewportBelow(() => sheetBreakpoint);
+  // Docking is presentation only, so it follows the viewport live; the
+  // filter, keyboard, and dismissal owners are the same in either form.
+  const sheet = $derived(narrowViewport.current);
   const anchoredOverlay = createAnchoredOverlay({
     open: () => open,
     anchor: () => triggerElement,
@@ -515,7 +526,8 @@
         data-cinder-direction={direction}
         data-cinder-placement={anchoredOverlay.resolvedPlacement}
         data-cinder-position-ready={anchoredOverlay.positionReady}
-        style={anchoredOverlay.positionStyle}
+        data-cinder-sheet={sheet ? 'docked' : undefined}
+        style={sheet ? undefined : anchoredOverlay.positionStyle}
         data-cinder-open
       >
         {#if filterable}

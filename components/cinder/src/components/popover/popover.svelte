@@ -28,11 +28,17 @@
   import { createAnchoredOverlay } from '../../_internal/anchored-overlay.svelte.ts';
   import { createAnchoredOverlayExitState } from '../../_internal/anchored-overlay-exit.svelte.ts';
   import { captureFocus, pushEscapeHandler } from '../../_internal/overlay.ts';
+  import {
+    PHONE_VIEWPORT_BREAKPOINT,
+    readViewportBreakpoint,
+    useViewportBelow,
+  } from '../../_internal/viewport-below.svelte.ts';
   import { devWarn } from '../../utilities/dev-warn.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import { restoreFocusTo } from '../../utilities/focus.ts';
   import { createClickOutside } from '../../utilities/attachments.ts';
   import { useReducedMotion } from '../../utilities/use-reduced-motion.svelte.ts';
+  import Drawer from '../drawer/drawer.svelte';
   import { createPortalAttachment } from '../portal/index.ts';
   import {
     createInheritedPortalStyle,
@@ -57,6 +63,7 @@
     wireTriggerAria = true,
     closeOnEscape = true,
     widthMode = 'content',
+    sheetBelow = PHONE_VIEWPORT_BREAKPOINT,
     portalScopeClass,
     class: className,
     onExitComplete,
@@ -74,6 +81,25 @@
     }
     return null;
   }
+
+  // Below `sheetBelow` the popover opens as a bottom sheet. The form is fixed
+  // for each open session, chosen as it opens, so a resize while open never
+  // swaps the surface (and its focus and dismissal owners) out from under the
+  // user. A popover that takes focus renders through the modal bottom Drawer;
+  // one that leaves focus on its trigger docks its own panel to the bottom
+  // edge, since a modal sheet would make that trigger inert.
+  type SheetForm = 'anchored' | 'drawer' | 'docked';
+  const sheetBreakpoint = $derived(readViewportBreakpoint(sheetBelow, 'Popover', 'sheetBelow'));
+  const narrowViewport = useViewportBelow(() => sheetBreakpoint);
+  let sheetForm = $state<SheetForm>('anchored');
+  $effect.pre(() => {
+    if (!open) return;
+    sheetForm = untrack(() => {
+      if (!narrowViewport.current) return 'anchored';
+      return focusManagement === 'panel' ? 'drawer' : 'docked';
+    });
+  });
+  const drawerTitle = $derived(label ?? 'Popover');
 
   let triggerWrapper: HTMLDivElement | undefined = $state();
   let portalScopeElement: HTMLDivElement | undefined = $state();
@@ -420,6 +446,8 @@
   $effect(() => {
     if (!open) return;
     if (!anchorElement) return;
+    // The bottom Drawer owns focus, Escape, and focus restoration itself.
+    if (sheetForm === 'drawer') return;
     // Snapshot focusManagement at open time. untrack so a consumer changing the
     // prop while open (even via a parent re-render) does not tear down and re-run
     // this effect — matching the resolvedAnchorAtOpen snapshot below.
@@ -556,7 +584,31 @@
   </div>
 {/if}
 
-{#if mounted && exitState.renderPanel && resolvedAnchorElement}
+{#if sheetForm === 'drawer'}
+  <Drawer
+    bind:open
+    placement="bottom"
+    title={drawerTitle}
+    {...ariaLabelledby === undefined ? {} : { ariaLabelledby }}
+    triggerRef={resolvedAnchorElement}
+    dragHandleVisible
+    class="cinder-popover__sheet"
+  >
+    <!-- The Drawer is the dialog, so a dialog popover's content needs no
+         second dialog role; the id stays so the trigger's aria-controls
+         still names the content. -->
+    <div
+      id={panelId}
+      role={role === 'dialog' ? undefined : role}
+      aria-label={role === 'dialog' ? undefined : resolvedAriaLabel}
+      aria-labelledby={role === 'dialog' ? undefined : ariaLabelledby}
+      class={classNames('cinder-popover__sheet-content', className)}
+      data-cinder-sheet="drawer"
+    >
+      {@render children()}
+    </div>
+  </Drawer>
+{:else if mounted && exitState.renderPanel && resolvedAnchorElement}
   <div
     bind:this={portalScopeElement}
     {@attach portalScopeAttachment}
@@ -580,7 +632,8 @@
     data-cinder-position-ready={anchoredOverlay.positionReady}
     data-cinder-closing={exitState.isClosing ? '' : undefined}
     data-cinder-has-position={resolvedPositionStyle ? '' : undefined}
-    style={resolvedPositionStyle}
+    data-cinder-sheet={sheetForm === 'docked' ? 'docked' : undefined}
+    style={sheetForm === 'docked' ? undefined : resolvedPositionStyle}
     tabindex="-1"
   >
     {@render children()}

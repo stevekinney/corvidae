@@ -14,6 +14,7 @@
     selectable?: boolean;
     scrollable?: boolean;
     scrollContainerProps?: TableScrollContainerProps;
+    stackBelow?: string | false;
     includeHeaderSelectionState?: boolean;
     includeHeaderSelectionHandler?: boolean;
     renderSecondHeaderRow?: boolean;
@@ -48,6 +49,7 @@
     selectable = false,
     scrollable = false,
     scrollContainerProps,
+    stackBelow,
     includeHeaderSelectionState = true,
     includeHeaderSelectionHandler = true,
     renderSecondHeaderRow = false,
@@ -93,6 +95,7 @@
   {selectable}
   {scrollable}
   {...scrollContainerProps !== undefined ? { scrollContainerProps } : {}}
+  {...stackBelow !== undefined ? { stackBelow } : {}}
 >
   <TableHeader
     {...headerProps}

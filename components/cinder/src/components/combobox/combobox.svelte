@@ -28,6 +28,7 @@
   import { createCommandListState } from '../_internal/create-command-list-state.svelte.ts';
   import { groupOptions, hasGroupedOptions } from '../_internal/group-options.ts';
   import Popover from '../popover/popover.svelte';
+  import { PHONE_VIEWPORT_BREAKPOINT } from '../../_internal/viewport-below.svelte.ts';
 
   let {
     id,
@@ -47,6 +48,7 @@
     maxVisibleOptions = 200,
     customValueAllowed = false as AllowCustom,
     size = 'md',
+    sheetBelow = PHONE_VIEWPORT_BREAKPOINT,
     class: className,
     'aria-describedby': consumerDescribedBy,
   }: ComboboxProps<T, AllowCustom> = $props();
@@ -594,6 +596,7 @@
       wireTriggerAria={false}
       closeOnEscape={false}
       widthMode="match-anchor"
+      {sheetBelow}
       portalScopeClass={classNames('cinder-combobox', className)}
       class="cinder-combobox__panel"
       onExitComplete={() => {
@@ -642,6 +645,7 @@
       wireTriggerAria={false}
       closeOnEscape={false}
       widthMode="match-anchor"
+      {sheetBelow}
       portalScopeClass={classNames('cinder-combobox', className)}
       class="cinder-combobox__empty-panel"
       onExitComplete={() => {

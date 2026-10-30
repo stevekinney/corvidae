@@ -8,7 +8,7 @@
    *
    * The leading menu button (PROJECT-BRIEF: "topbar condenses … overflow
    * menu for secondary controls") is CSS-hidden above Cinder Sidebar's own
-   * mobile breakpoint (`foundation.css`, `47.99rem`) and is the only way to
+   * mobile breakpoint (`foundation.css`, `639.98px`) and is the only way to
    * reopen the navigation drawer on a small viewport once it's closed —
    * `Sidebar` itself renders no trigger of its own below that width.
    */

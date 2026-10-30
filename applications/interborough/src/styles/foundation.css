@@ -229,7 +229,7 @@
 }
 
 /* Mobile navigation-drawer trigger — hidden above Cinder Sidebar's own
- * mobile breakpoint (`SIDEBAR_MOBILE_BREAKPOINT`, `47.99rem`); below it,
+ * mobile breakpoint (`SIDEBAR_MOBILE_BREAKPOINT`, `639.98px`); below it,
  * `Sidebar` renders no trigger of its own, so this is the only way to
  * reopen the drawer once closed (`shell.svelte`'s module doc). */
 .weft-shell-topbar .weft-shell-menu-trigger {
@@ -239,9 +239,9 @@
 /* Responsive: PROJECT-BRIEF binding rules — no page-level horizontal
  * scroll ever; topbar condenses (icon-only ⌘K, menu trigger appears);
  * interactive targets ≥40px on touch. Kept aligned with Cinder Sidebar's
- * own `47.99rem` mobile breakpoint (cinder#735/#801) so the menu trigger
+ * own `639.98px` mobile breakpoint (cinder#735/#801) so the menu trigger
  * appears exactly when `Sidebar` actually becomes a drawer. */
-@media (max-width: 47.99rem) {
+@media (max-width: 639.98px) {
   .weft-shell-topbar .weft-shell-menu-trigger {
     display: inline-flex;
   }
