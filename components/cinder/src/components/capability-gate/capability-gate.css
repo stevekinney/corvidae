@@ -35,12 +35,6 @@
     flex-wrap: wrap;
   }
 
-  /* Callout presentation — indented, inline */
-  .cinder-capability-gate[data-cinder-presentation='callout'] {
-    border-inline-start-width: 4px;
-    border-radius: 0 var(--cinder-radius-md) var(--cinder-radius-md) 0;
-  }
-
   .cinder-capability-gate__status {
     display: flex;
     flex-direction: row;

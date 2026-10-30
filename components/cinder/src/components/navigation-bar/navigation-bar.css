@@ -318,7 +318,6 @@
        floor the shared base rule was never given. */
     min-block-size: var(--cinder-touch-target-min);
     border-bottom: none;
-    border-inline-start: 2px solid transparent;
     /* Concentric with this panel, not a smaller step off the radius scale.
        The panel (`.cinder-navigation-bar__items[data-cinder-mobile-panel]`)
        gets `cinder-_floating-surface`'s `border-radius: var(--cinder-radius-md)`
@@ -339,7 +338,6 @@
 
   .cinder-navigation-bar__items[data-cinder-mobile-panel][data-cinder-visible]
     .cinder-navigation-item[data-variant='mobile'][data-active='true'] {
-    border-inline-start-color: var(--cinder-accent-solid);
     background-color: var(--cinder-surface-inset);
   }
 
@@ -365,6 +363,13 @@
 
     .cinder-navigation-bar[data-cinder-placement='bottom'] {
       border-top-color: CanvasText;
+    }
+
+    /* The active mobile row is a tint, which collapses to Canvas here. */
+    .cinder-navigation-bar__items[data-cinder-mobile-panel][data-cinder-visible]
+      .cinder-navigation-item[data-variant='mobile'][data-active='true'] {
+      background-color: SelectedItem;
+      color: SelectedItemText;
     }
   }
 }
