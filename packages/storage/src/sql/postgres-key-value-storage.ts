@@ -390,14 +390,14 @@ export class PostgresKeyValueStorage implements Storage {
     assertStorageBatchOperationCount('conditionalBatch conditions', conditions.length);
     assertStorageBatchOperationCount('conditionalBatch operations', operations.length);
 
-    await this.#ensureTable();
-
     // Resolve the write net effect once, outside the retry loop — it is
-    // deterministic input, so recomputing per retry would be wasted work.
+    // deterministic input, so recomputing per retry would be wasted work. Both it and the
+    // conditions snapshot come before the first `await`: a retry waits, so a caller that
+    // reuses its arrays while the call is pending must not change what later attempts do.
     const netEffect = resolveBatchNetEffect(operations);
-    // Snapshot the caller's conditions: a retry now waits, so a caller that reuses its array
-    // while the call is pending must not change what later attempts compare.
     const checkedConditions = conditions.map((condition) => ({ ...condition }));
+
+    await this.#ensureTable();
 
     // SERIALIZABLE is required, not SELECT...FOR UPDATE: a condition with
     // expectedValue null asserts a key is ABSENT, and a row lock cannot lock a
