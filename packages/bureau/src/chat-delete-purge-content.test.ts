@@ -9,7 +9,13 @@
  */
 import { generateEncryptionKey } from '@lostgradient/cryptography';
 import { createTool, createToolbox, type Toolbox } from 'armorer';
-import { createAgent, stopWhen, type GenerateFunction } from '@lostgradient/operative';
+import {
+  createAgent,
+  createModelCatalog,
+  stopWhen,
+  withBackendDescriptors,
+  type GenerateFunction,
+} from '@lostgradient/operative';
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
 import { createMemoryAssetStorage } from './assets/storage';
@@ -21,8 +27,14 @@ import { message, type Json } from './http/a2a-mount.test-support.ts';
 import { authentication } from './http/management/management-fixtures.test-support.ts';
 import { waitForCondition } from './test';
 import { createSqliteStorageFixture, type BureauStorageFixture } from './test/storage-fixtures';
+import { base64Of, pngBytes } from './testing/asset-fixtures.test-support.ts';
 import type { Bureau } from './types';
 import { INTERACTIVE_SURFACE_CONTRACT_VERSION } from './interactive-surface/types';
+import {
+  BUREAU_RESERVED_KEY_FAMILIES,
+  type ReservedKeyFamily,
+  SHARED_KEY_FAMILIES_OF_A_CHAT,
+} from './reserved-key-prefixes';
 
 /** What each content-bearing feature of a chat holds, by name; every chat has values of its own. */
 type Sentinels = Readonly<Record<string, string>>;
@@ -34,6 +46,8 @@ function sentinelsOf(tag: string, kind: ChatKind): Sentinels {
   const common = {
     a2aMessage: `A2AMESSAGE${tag}`,
     a2aFollowUp: `A2AFOLLOWUP${tag}`,
+    /** The name of a file sent inline with the follow-up, which the send's receipt keeps. */
+    fileName: `FILENAME${tag}`,
     input: `SESSIONINPUT${tag}`,
     surfaceSummary: `SURFACESUMMARY${tag}`,
     surfaceData: `SURFACEDATA${tag}`,
@@ -53,11 +67,13 @@ function sentinelsOf(tag: string, kind: ChatKind): Sentinels {
         ...common,
         humanPrompt: `HUMANPROMPT${tag}`,
         humanPayload: `HUMANPAYLOAD${tag}`,
-        humanReason: `HUMANREASON${tag}`,
         childInput: `CHILDINPUT${tag}`,
         childOutcome: `CHILDOUTCOME${tag}`,
       };
 }
+
+/** The plaintext of a question chat's secret field, which must never be stored in clear. */
+const secretOf = (tag: string) => `PLAINTEXT-PASSWORD-${tag}`;
 
 const ALICE = 'api-key:alice';
 const OPERATOR = 'api-key:operator';
@@ -87,6 +103,67 @@ function holding(entries: Map<string, string>, needle: string): string[] {
 /** The key prefix of each family, so a failure names the family that kept a sentinel. */
 function familiesHolding(entries: Map<string, string>, needle: string): string[] {
   return [...new Set(holding(entries, needle).map((key) => key.split(':')[0]!))].toSorted();
+}
+
+const FAMILIES: readonly ReservedKeyFamily[] = [
+  ...BUREAU_RESERVED_KEY_FAMILIES,
+  ...SHARED_KEY_FAMILIES_OF_A_CHAT,
+];
+
+/** The family a key belongs to, by its longest matching prefix, or `undefined` for none. */
+function familyOf(key: string): ReservedKeyFamily | undefined {
+  let found: ReservedKeyFamily | undefined;
+  for (const family of FAMILIES) {
+    if (
+      key.startsWith(family.prefix) &&
+      (found === undefined || family.prefix.length > found.prefix.length)
+    ) {
+      found = family;
+    }
+  }
+  return found;
+}
+
+/** The ids a deleted chat is known by: its context and every run of it, children included. */
+interface ChatIds {
+  readonly contextId: string;
+  readonly runIds: readonly string[];
+}
+
+/** Whether a key is the `session.deleted` record of the event history, its index entry or its dedupe marker. */
+function isDeletionMarker(entries: Map<string, string>, key: string, value: string): boolean {
+  if (key.startsWith('fleet-event:')) return value.includes('session.deleted');
+  if (key.startsWith('fleet-event-by-workflow:')) {
+    const event = entries.get(`fleet-event:${key.slice(key.lastIndexOf(':') + 1)}`);
+    return event !== undefined && event.includes('session.deleted');
+  }
+  return key.startsWith('outbox-dedupe:') && key.includes(':session.deleted:');
+}
+
+/**
+ * Holds every key of the store to its family's classification (COR-1934): a key no family covers
+ * is a family nobody classified; a key of a `purged` family may not name a deleted chat or one of
+ * its runs, in its key or its value. The one exception is the `session.deleted` record of the
+ * event history, which is how a deleted chat's history is told from one that never existed.
+ */
+function classificationFindings(
+  entries: Map<string, string>,
+  deleted: readonly ChatIds[],
+): string[] {
+  const ids = deleted.flatMap((chat) => [chat.contextId, ...chat.runIds]);
+  const findings: string[] = [];
+  for (const [key, value] of entries) {
+    const family = familyOf(key);
+    if (family === undefined) {
+      findings.push(`unclassified family: ${key}`);
+      continue;
+    }
+    if (family.onChatDelete !== 'purged') continue;
+    if (isDeletionMarker(entries, key, value)) continue;
+    const named = ids.find((id) => key.includes(id) || value.includes(id));
+    if (named !== undefined) findings.push(`${family.prefix} still names ${named}: ${key}`);
+  }
+  return findings;
 }
 
 interface World {
@@ -144,11 +221,15 @@ async function openWorld(): Promise<World> {
           prompt: plan.current['humanPrompt'],
         })
       : answer();
+  // The agents take an image, so a message's inline file is admitted as an asset.
+  const vision = createModelCatalog()
+    .descriptors.filter((descriptor) => descriptor.provider === 'anthropic')
+    .slice(0, 1);
   const bureau = await createBureau<AgentDefinitions>({
     id: 'chat-purge-content',
     agents: {
       helper: createAgent({
-        generate: helper,
+        generate: withBackendDescriptors(helper, vision),
         toolbox: createToolbox([lookup, refund], {
           approvalSecret: 'chat-purge-secret',
           approvalPolicy: { mode: 'on-mutation' },
@@ -157,7 +238,10 @@ async function openWorld(): Promise<World> {
       }),
       // A plain toolbox: the question tool is only offered where no approval policy needs a
       // versioned definition of it.
-      asker: createAgent({ generate: asker, stopWhen: stopWhen.noToolCalls() }),
+      asker: createAgent({
+        generate: withBackendDescriptors(asker, vision),
+        stopWhen: stopWhen.noToolCalls(),
+      }),
       // The agent a chat delegates to.
       worker: createAgent({
         generate: async () => ({ content: plan.current['childOutcome'] ?? '', toolCalls: [] }),
@@ -206,7 +290,7 @@ async function a2aSend(
       headers: {
         'content-type': 'application/json',
         'A2A-Version': '1.0',
-        'X-API-Key': 'alice-key',
+        'X-API-Key': 'alice-assets-key',
       },
       body: JSON.stringify({
         jsonrpc: '2.0',
@@ -276,7 +360,7 @@ async function sendInput(world: World, task: { id: string; contextId: string }, 
 }
 
 /** The chat's run hands work to another agent, whose input and outcome are the chat's words. */
-async function delegate(world: World, task: { id: string }, sentinels: Sentinels) {
+async function delegate(world: World, task: { id: string }, sentinels: Sentinels): Promise<string> {
   const dispatched = await world.bureau.children.dispatch({
     parentRunId: task.id,
     agentName: 'worker',
@@ -289,6 +373,7 @@ async function delegate(world: World, task: { id: string }, sentinels: Sentinels
     childRunId: dispatched.child.childRunId,
   });
   expect(settled).toMatchObject({ outcome: 'settled' });
+  return dispatched.child.childRunId;
 }
 
 async function completed(world: World, runId: string) {
@@ -316,6 +401,7 @@ async function useEveryFeature(world: World, kind: ChatKind, tag: string) {
   const [review] = reviewsOf(task.id);
   await useSurface(world, task, sentinels);
   await sendInput(world, task, sentinels['input']!);
+  const runIds = [task.id];
 
   if (kind === 'approval') {
     if (review?.kind !== 'tool-approval') throw new Error('Expected a tool approval.');
@@ -337,27 +423,40 @@ async function useEveryFeature(world: World, kind: ChatKind, tag: string) {
   } else {
     if (review?.kind !== 'human-wait') throw new Error('Expected a question to a person.');
     // The run waits for the person, so it can hand work on.
-    await delegate(world, task, sentinels);
-    await bureau.reviews.resolve({
-      id: review.id,
-      decision: 'approve',
+    runIds.push(await delegate(world, task, sentinels));
+    // Answered as a command with a structured answer: its receipt keeps the answer it admitted
+    // (`TasksRespondClaim.submission`), in the `tasks.respond` ledger.
+    // The secret field's plaintext is never stored in clear: it is sealed apart from the answer.
+    const answered = await bureau.tasks.respond({
+      taskId: task.id,
+      messageId: `respond-${task.id}`,
+      data: { note: sentinels['humanPayload'], password: secretOf(tag) },
       principal: OPERATOR,
-      payload: {
-        note: sentinels['humanPayload'],
-        password: `PLAINTEXT-${sentinels['humanReason']}`,
-      },
-      reason: sentinels['humanReason']!,
+      operator: true,
     });
+    expect(answered.receipt).toBe('applied');
   }
   await completed(world, task.id);
   // The chat goes on: a second message in it, which the agent answers.
+  // The follow-up carries a file inline: its bytes become an asset, and the send's receipt keeps
+  // the file's projection (name included) for a retry.
   const followUp = await a2aSend(world, agent, sentinels['a2aFollowUp']!, {
     contextId: task.contextId,
+    parts: [
+      { text: sentinels['a2aFollowUp'] },
+      {
+        raw: base64Of(pngBytes(8, 8)),
+        filename: `${sentinels['fileName']}.png`,
+        mediaType: 'image/png',
+      },
+    ],
   });
   expect(followUp.contextId).toBe(task.contextId);
+  runIds.push(followUp.id);
   await completed(world, followUp.id);
   await bureau.maintain();
-  return { task, sentinels };
+  const ids: ChatIds = { contextId: task.contextId, runIds };
+  return { task, sentinels, ids };
 }
 
 function allSentinels(...chats: Sentinels[]): [name: string, value: string][] {
@@ -383,10 +482,13 @@ describe('contexts.delete purges every content-bearing feature of a chat (COR-19
       .map(([name, value]) => `${name}:${value}`);
     expect(unstored).toEqual([]);
 
-    // The sealed answers of the two question chats are stored, one record each.
+    // The sealed answers of the two question chats are stored, one record each, and the plaintext
+    // of neither is anywhere.
     const secretKeys = (entries: Map<string, string>) =>
       [...entries.keys()].filter((key) => key.startsWith('bureau-secret-answer:v1:'));
     expect(secretKeys(before)).toHaveLength(2);
+    expect(holding(before, secretOf('DoomedQ'))).toEqual([]);
+    expect(holding(before, secretOf('KeptQ'))).toEqual([]);
 
     for (const chat of doomed) await world.bureau.contexts.delete(chat.task.contextId);
     await world.bureau.maintain();
@@ -398,6 +500,13 @@ describe('contexts.delete purges every content-bearing feature of a chat (COR-19
         .filter(([, families]) => families.length > 0),
     );
     expect(surviving).toEqual({});
+    // Every family is classified, and a purged family names none of the deleted chats.
+    expect(
+      classificationFindings(
+        after,
+        doomed.map((chat) => chat.ids),
+      ),
+    ).toEqual([]);
     expect(secretKeys(after)).toHaveLength(1);
     const lost = allSentinels(...kept.map((chat) => chat.sentinels))
       .filter(([, value]) => holding(after, value).length === 0)

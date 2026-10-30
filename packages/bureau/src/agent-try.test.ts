@@ -377,7 +377,11 @@ describe('deleting a tried chat (COR-1911)', () => {
    * - `wf-gen:` and `wf-owner-epoch:`: the engine's tombstones, which keep a run id from being
    *   used twice.
    * - `chat-content-purge-pending:v1:`: the finished purge's record, kept settled until the second
-   *   pass removes what a late writer added.
+   *   pass takes a run admitted after the delete began.
+   * - `chat-content-purge-tombstone:v1:`: each run's fence, which a late write of its process is
+   *   refused by (the run id and when it was purged), kept as long as the audit retention.
+   * - `appmbx:`: the chat's purged input mailbox keeps its header, sealed, so an admission that
+   *   raced the purge is refused rather than recreating the mailbox.
    */
   const KEPT = [
     'audit:v1:',
@@ -390,6 +394,8 @@ describe('deleting a tried chat (COR-1911)', () => {
     'wf-gen:',
     'wf-owner-epoch:',
     'chat-content-purge-pending:v1:',
+    'chat-content-purge-tombstone:v1:',
+    'appmbx:',
   ];
 
   /** The prefixes of the keys that are the chat, its runs, its tasks, its workflow and its agent. */

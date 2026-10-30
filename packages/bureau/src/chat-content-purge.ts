@@ -32,17 +32,28 @@
  * failed, or a process that died after the commit, is finished by the next one. Every step is
  * idempotent: it lists what is left each time.
  *
- * ## The late writers
+ * ## The late writers, and the second pass
  *
  * A run is purged once its workflow is terminal, but the process that drove it may still be writing
  * its last events: the `run.completed` event and audit entry follow the terminal workflow
- * asynchronously, and in another process nothing here awaits them. A write that lands after the
- * purge would bring the answer back. So a finished purge does not drop its pending record: it marks
- * it settled, and the sweep runs the whole purge a second time once
- * {@link LATE_WRITE_GRACE_MILLISECONDS} have passed, and only then drops the record. Every step is
- * idempotent, so the second pass removes whatever a late writer added. This assumes run and
- * session ids are not reused within the grace, which holds for the ids the Bureau mints (each
- * carries a UUID); the pass is bounded in time, not a guarantee against a writer paused for longer.
+ * asynchronously, and in another process nothing here awaits them. A write that landed after the
+ * purge would bring the answer back. So a pass writes a tombstone for every ended run BEFORE it
+ * deletes anything (`chat-content-tombstone.ts`), and every write of a run's content carries the
+ * tombstone's absence as a precondition: a late audit entry is written with its content redacted,
+ * and a late event is dropped. The session's own events come only through the session outbox,
+ * which the purge waits for (`hasUndrainedEvents`), so the session owner needs no tombstone.
+ *
+ * What the fence cannot cover is a run the pass does not know about: one admitted to the chat by
+ * another process between `chatRunIdsOf` and the delete's commit, or a child dispatched by a run
+ * that had not ended. So every pass reads the chat's task records and the delegation topology
+ * again, and a finished purge does not drop its pending record: it marks it settled, and the sweep
+ * runs the whole purge a second time once {@link LATE_WRITE_GRACE_MILLISECONDS} have passed, and
+ * only then drops the record. The second pass is for those admissions, which race the delete
+ * itself; it is bounded in time and is not the guarantee against a late writer, which the fence is.
+ *
+ * One run's failure never stops the rest of the chat's purge: each run's steps are tried on their
+ * own, the failures are collected, and the pass fails at the end with all of them, so the pending
+ * record stays and the next pass retries only what is left.
  *
  * A pending record whose chat still exists under the same incarnation belongs to a delete that
  * has not committed (or never will); the sweep leaves it alone, and the delete that does commit
@@ -54,6 +65,12 @@ import type { ConditionalTextValueStore } from '@lostgradient/storage';
 
 import { createA2ATaskRecords } from './http/a2a-task-record';
 import type { AuditTrail } from './audit-trail';
+import {
+  CHAT_CONTENT_TOMBSTONE_PREFIX,
+  parseTombstone,
+  runTombstoneKey,
+  tombstoneValue,
+} from './chat-content-tombstone';
 import type { DurableEventHistory, DurableEventProducer } from './durable-event-history';
 import { deletionMarkerKindFor } from './durable-event-history';
 import { serializeUnknownError } from './serialization';
@@ -66,10 +83,10 @@ const PENDING_PREFIX = 'chat-content-purge-pending:v1:';
 const REMOVED_SURFACES_PREFIX = 'bureau-removed-surfaces:v1:';
 
 /**
- * How long a finished purge waits before it runs a second time to remove what a late writer added
- * (see the module comment). Far longer than the lag between a terminal workflow and the last
- * event or audit write of the process that drove it, and short enough that the record is gone
- * the same day.
+ * How long a finished purge waits before it runs a second time, to take a run admitted to the
+ * chat, or a child dispatched, after the first pass read the chat's runs (see the module
+ * comment). Far longer than a delete's commit window, and short enough that the record is gone
+ * the same day. A late write of a run the pass knew about is fenced by its tombstone, not by this.
  */
 export const LATE_WRITE_GRACE_MILLISECONDS = 10 * 60_000;
 
@@ -80,8 +97,9 @@ export interface DeletedChat {
   /** Every run of the chat: those this process holds, those it attributed, and its task records. */
   readonly runIds: readonly string[];
   /**
-   * Epoch milliseconds a purge of the chat finished, set once it has; the second, late-write pass
-   * runs {@link LATE_WRITE_GRACE_MILLISECONDS} after it. Absent while the first pass is owed.
+   * Epoch milliseconds a purge of the chat finished, set once it has; the second pass, for a run
+   * admitted after the first began, runs {@link LATE_WRITE_GRACE_MILLISECONDS} after it. Absent
+   * while the first pass is owed.
    */
   readonly settledAt?: number | undefined;
 }
@@ -129,6 +147,24 @@ export interface ChatContentPurgeDependencies {
    */
   readonly purgeSessionInput:
     ((sessionId: string, incarnation: string) => Promise<void>) | undefined;
+  /**
+   * The task ids recorded for the chat's incarnation, read on every pass so a run admitted after
+   * the delete began is found by the next pass. `undefined` without a task registry.
+   */
+  readonly taskIdsOf:
+    ((sessionId: string, incarnation: string) => Promise<readonly string[]>) | undefined;
+  /**
+   * Removes the command-ledger entries that name the runs or the chat: the receipts of A2A sends,
+   * `tasks.respond` commands and run creations, whose claims and results keep what the command
+   * carried. `undefined` without a KV store.
+   */
+  readonly purgeLedgers:
+    ((runIds: ReadonlySet<string>, sessionId: string) => Promise<void>) | undefined;
+  /**
+   * Drops the text of the runs' task settlements (a failure message, a catalog task's answer);
+   * the records themselves stay. `undefined` without a task registry.
+   */
+  readonly redactTaskRecords: ((runIds: ReadonlySet<string>) => Promise<void>) | undefined;
   /** Whether the chat has events still waiting in the session outbox to be recorded. */
   readonly hasUndrainedEvents: (sessionId: string, incarnation: string) => Promise<boolean>;
   /** The incarnation the session id holds now, or `undefined` when it holds none. */
@@ -159,6 +195,12 @@ export interface ChatContentPurge {
   run(chat: DeletedChat): Promise<void>;
   /** Finishes every owed purge whose chat is gone. Never rejects: a failure is diagnosed. */
   sweep(): Promise<number>;
+  /**
+   * Drops the tombstones of runs purged before `cutoffMs`, and resolves how many went. Called
+   * with the audit trail's retention cutoff, because an entry or event older than it is pruned
+   * anyway (see `chat-content-tombstone.ts`).
+   */
+  pruneTombstones(cutoffMs: number): Promise<number>;
 }
 
 function pendingKey(sessionId: string, incarnation: string): string {
@@ -214,12 +256,43 @@ export class ChatRunsNotEndedError extends Error {
   }
 }
 
+/**
+ * A pass that could not finish every step: the failures, one per step, with the run each is
+ * about. The pending record stays, and the next pass retries what is left.
+ */
+export class ChatPurgeIncompleteError extends Error {
+  constructor(
+    readonly sessionId: string,
+    readonly failures: readonly { readonly runId: string | undefined; readonly error: unknown }[],
+  ) {
+    super(
+      `The content purge of deleted chat "${sessionId}" could not finish ${failures.length} of its steps: ${failures
+        .map(
+          ({ runId, error }) =>
+            `${runId === undefined ? 'the chat' : `run "${runId}"`}: ${serializeUnknownError(error)}`,
+        )
+        .join('; ')}`,
+    );
+    this.name = 'ChatPurgeIncompleteError';
+  }
+}
+
 /** Builds the {@link ChatContentPurge} over the Bureau's stores. */
 export function createChatContentPurge(
   dependencies: ChatContentPurgeDependencies,
 ): ChatContentPurge {
   const { kv, diagnose } = dependencies;
   const inFlight = new Map<string, Promise<void>>();
+
+  /** Writes the run's tombstone, unless one is there already: the first purge's time stands. */
+  async function writeTombstone(runId: string): Promise<void> {
+    if (kv === undefined) return;
+    const key = runTombstoneKey(runId);
+    await kv.conditionalBatch(
+      [{ key, expectedValue: null }],
+      [{ type: 'set', key, value: tombstoneValue({ runId, purgedAt: dependencies.now() }) }],
+    );
+  }
 
   /** Purges the chat's content; resolves every run it covered, those it delegated to included. */
   async function purgeContent(chat: DeletedChat): Promise<string[]> {
@@ -232,10 +305,23 @@ export function createChatContentPurge(
     }
     const history = dependencies.history();
     const producer = dependencies.producer();
+    const failures: { runId: string | undefined; error: unknown }[] = [];
+    /** Runs one step of the purge; a failure is kept for the end and stops nothing else. */
+    const step = async (runId: string | undefined, work: () => Promise<unknown>) => {
+      try {
+        await work();
+      } catch (error: unknown) {
+        failures.push({ runId, error });
+      }
+    };
     const runIds = new Set<string>();
     const unended: string[] = [];
-    // The chat's runs and the runs they delegated to, the deepest last.
+    // The chat's runs, read again on every pass: the record's, the task records' (a run admitted
+    // after the delete began), and the runs they delegated to, the deepest last.
     const owned = [...new Set(chat.runIds)];
+    for (const taskId of (await dependencies.taskIdsOf?.(chat.sessionId, chat.incarnation)) ?? []) {
+      if (!owned.includes(taskId)) owned.push(taskId);
+    }
     for (const descendant of (await dependencies.descendantsOf?.(owned)) ?? []) {
       if (!owned.includes(descendant)) owned.push(descendant);
     }
@@ -243,16 +329,23 @@ export function createChatContentPurge(
       if ((await dependencies.runEnded?.(runId)) === false) unended.push(runId);
       else runIds.add(runId);
     }
+    // The fence first, before anything of a run goes: from here its late writers are refused.
+    for (const runId of runIds) await writeTombstone(runId);
     for (const runId of runIds) {
-      if (history !== undefined) {
-        await producer?.waitForActiveWrites({ kind: 'run', id: runId });
-        await history.purgeOwner({ kind: 'run', id: runId });
-      }
-      // The surfaces first: their removal writes the marker the next line deletes.
-      await dependencies.purgeSurfaces?.(runId);
-      await kv?.deletePrefix(`${REMOVED_SURFACES_PREFIX}${encodeStorageKeyComponent(runId)}:`);
+      await step(runId, async () => {
+        if (history !== undefined) {
+          await producer?.waitForActiveWrites({ kind: 'run', id: runId });
+          await history.purgeOwner({ kind: 'run', id: runId });
+        }
+      });
+      await step(runId, async () => {
+        // The surfaces first: their removal writes the marker the next line deletes.
+        await dependencies.purgeSurfaces?.(runId);
+        await kv?.deletePrefix(`${REMOVED_SURFACES_PREFIX}${encodeStorageKeyComponent(runId)}:`);
+      });
     }
-    if (history !== undefined) {
+    await step(undefined, async () => {
+      if (history === undefined) return;
       const owner = { kind: 'session', id: chat.sessionId } as const;
       await producer?.waitForActiveWrites(owner);
       // The `session.deleted` record stays: it is how the history of a deleted chat is told from
@@ -262,24 +355,34 @@ export function createChatContentPurge(
         incarnation: chat.incarnation,
         keepKinds: new Set(kept === undefined ? [] : [kept]),
       });
-    }
+    });
     // After the events, so a failure here still leaves a purge owed. A workflow is removed last of
     // the run's records: nothing above reads it.
-    for (const runId of runIds) await dependencies.purgeRun?.(runId);
-    await dependencies.audit()?.redact(runIds);
-    await dependencies.purgeReviews?.(runIds);
+    for (const runId of runIds)
+      await step(runId, () => dependencies.purgeRun?.(runId) ?? Promise.resolve());
+    await step(undefined, async () => dependencies.audit()?.redact(runIds));
+    await step(undefined, async () => dependencies.purgeReviews?.(runIds));
+    await step(undefined, async () => dependencies.purgeLedgers?.(runIds, chat.sessionId));
+    await step(undefined, async () => dependencies.redactTaskRecords?.(runIds));
 
     // What belongs to the chat as a whole is left while one of its runs is still live: that run
     // reads the chat's input and writes its A2A history until it ends.
     if (unended.length === 0) {
       // Last, and the deepest child first: these records are how a retry finds the children, so
       // none goes while a run below it could still be waiting.
-      for (const runId of [...runIds].toReversed()) await dependencies.purgeRunRecords?.(runId);
-      if (kv !== undefined) {
-        await createA2ATaskRecords(kv).clearContext(chat.sessionId, chat.incarnation);
+      for (const runId of [...runIds].toReversed()) {
+        await step(runId, () => dependencies.purgeRunRecords?.(runId) ?? Promise.resolve());
       }
-      await dependencies.purgeSessionInput?.(chat.sessionId, chat.incarnation);
+      await step(undefined, async () => {
+        if (kv !== undefined) {
+          await createA2ATaskRecords(kv).clearContext(chat.sessionId, chat.incarnation);
+        }
+      });
+      await step(undefined, async () =>
+        dependencies.purgeSessionInput?.(chat.sessionId, chat.incarnation),
+      );
     }
+    if (failures.length > 0) throw new ChatPurgeIncompleteError(chat.sessionId, failures);
     // Owed, not lost: the runs that have not ended keep their content, and the pending record
     // stays, until the pass that finds them ended.
     if (unended.length > 0) throw new ChatRunsNotEndedError(chat.sessionId, unended);
@@ -396,6 +499,22 @@ export function createChatContentPurge(
         }
       }
       return finished;
+    },
+
+    async pruneTombstones(cutoffMs) {
+      if (kv === undefined) return 0;
+      let pruned = 0;
+      for (const key of await kv.list(CHAT_CONTENT_TOMBSTONE_PREFIX)) {
+        const text = await kv.get(key);
+        if (text === null) continue;
+        const tombstone = parseTombstone(text);
+        // One this module cannot read is left: it fences nothing it should not.
+        if (tombstone === undefined || tombstone.purgedAt >= cutoffMs) continue;
+        if (await kv.conditionalBatch([{ key, expectedValue: text }], [{ type: 'delete', key }])) {
+          pruned += 1;
+        }
+      }
+      return pruned;
     },
   };
 }

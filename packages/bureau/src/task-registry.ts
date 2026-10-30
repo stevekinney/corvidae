@@ -568,6 +568,13 @@ export interface TaskRegistry {
    */
   clearHistory(contextId: string, incarnation: string): Promise<number>;
   /**
+   * COR-1934 — drops the text of a task's settlement, for a chat whose content is purged: the
+   * failure message (which can quote what was said) and a catalog task's recorded answer. The
+   * settlement's time, status and finish reason stay. Resolves whether the record changed; a
+   * record with nothing to drop, or none, is left as it is.
+   */
+  redactSettlement(taskId: string): Promise<boolean>;
+  /**
    * Reports where the cleanup of each given task stands, waiting up to
    * `waitMilliseconds` (none, at zero) for acknowledgements still outstanding. A
    * cleanup that has not been acknowledged by then is `cleanup-pending`.
@@ -1655,6 +1662,27 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         }
       }
       return removed;
+    },
+
+    async redactSettlement(taskId) {
+      let changed = false;
+      await update(taskId, (current) => {
+        const settled = current.settled;
+        if (settled === undefined || (settled.message === null && settled.answer === undefined)) {
+          return undefined;
+        }
+        changed = true;
+        return {
+          ...current,
+          settled: {
+            at: settled.at,
+            status: settled.status,
+            finishReason: settled.finishReason,
+            message: null,
+          },
+        };
+      });
+      return changed;
     },
 
     async clearHistory(contextId, incarnation) {

@@ -24,6 +24,7 @@ import {
   createAuditTrail,
   redactAuditDetail,
 } from './audit-trail';
+import { runTombstoneKey } from './chat-content-tombstone';
 import { ActionEvent, type BureauEventMap } from './events';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau } from './types';
@@ -3717,5 +3718,43 @@ describe('COR-89 — omitted runtime', () => {
     } finally {
       factory.mockRestore();
     }
+  });
+});
+
+describe('the fence of a purged run (COR-1934)', () => {
+  it('writes an entry of a purged run with its content redacted, dedupe-keyed or not, and another run’s whole', async () => {
+    const kv = textValueStore(new MemoryStorage());
+    const { bureau } = createStubBureau();
+    const trail = createAuditTrail(bureau, kv);
+    await kv.set(runTombstoneKey('run-1'), JSON.stringify({ runId: 'run-1', purgedAt: 1 }));
+
+    await trail.record({ runId: 'run-1', type: 'run.completed', detail: { content: 'SECRET' } });
+    await trail.record({
+      runId: 'run-1',
+      type: 'tool.settled',
+      detail: { toolName: 'lookup', result: 'SECRET' },
+      dedupeKey: 'late-tool',
+    });
+    await trail.record({ runId: 'run-2', type: 'run.completed', detail: { content: 'SECRET' } });
+
+    const purged = await trail.query({ runId: 'run-1' });
+    expect(purged.map((entry) => [entry.type, entry.detail])).toEqual([
+      ['run.completed', { redacted: true }],
+      ['tool.settled', { redacted: true, toolName: 'lookup' }],
+    ]);
+    const whole = await trail.query({ runId: 'run-2' });
+    expect(whole.map((entry) => entry.detail)).toEqual([{ content: 'SECRET' }]);
+    // The dedupe marker was still written: an exact replay records nothing more.
+    await trail.record({
+      runId: 'run-1',
+      type: 'tool.settled',
+      detail: { toolName: 'lookup', result: 'SECRET' },
+      dedupeKey: 'late-tool',
+    });
+    expect(await trail.query({ runId: 'run-1' })).toHaveLength(2);
+    for (const key of await kv.list('audit:v1:')) {
+      if (key.endsWith(':run-1')) expect(await kv.get(key)).not.toContain('SECRET');
+    }
+    trail.dispose();
   });
 });

@@ -8,10 +8,12 @@ import { describe, expect, it } from 'bun:test';
 
 import type { AuditTrail } from './audit-trail';
 import {
+  ChatPurgeIncompleteError,
   ChatRunsNotEndedError,
   createChatContentPurge,
   LATE_WRITE_GRACE_MILLISECONDS,
 } from './chat-content-purge';
+import { CHAT_CONTENT_TOMBSTONE_PREFIX, runTombstoneKey } from './chat-content-tombstone';
 import { A2A_TASK_RECORD_KEY_PREFIX, createA2ATaskRecords } from './http/a2a-task-record';
 import type { DurableEventHistory, DurableEventProducer } from './durable-event-history';
 import type { BureauDiagnostic } from './types';
@@ -26,12 +28,16 @@ interface Calls {
   readonly reviews: string[][];
   readonly sessionInput: string[];
   readonly records: string[];
+  readonly ledgers: string[][];
+  readonly settlements: string[][];
 }
 
 function setup(
   options: {
     ended?: (runId: string) => boolean;
     descendants?: () => Record<string, string[]>;
+    taskIds?: () => string[];
+    purgeRun?: (runId: string) => Promise<void>;
     undrained?: () => boolean;
     incarnation?: () => string | undefined;
   } = {},
@@ -45,6 +51,8 @@ function setup(
     reviews: [],
     sessionInput: [],
     records: [],
+    ledgers: [],
+    settlements: [],
   };
   const clock = { now: 1_000 };
   const diagnostics: BureauDiagnostic[] = [];
@@ -75,7 +83,15 @@ function setup(
     audit: () => audit,
     runEnded: async (runId) => options.ended?.(runId) ?? true,
     purgeRun: async (runId) => {
+      await options.purgeRun?.(runId);
       calls.workflows.push(runId);
+    },
+    taskIdsOf: async () => options.taskIds?.() ?? [],
+    purgeLedgers: async (runIds) => {
+      calls.ledgers.push([...runIds]);
+    },
+    redactTaskRecords: async (runIds) => {
+      calls.settlements.push([...runIds]);
     },
     descendantsOf: async (parents) =>
       parents.flatMap((parent) => options.descendants?.()[parent] ?? []),
@@ -337,5 +353,70 @@ describe('createChatContentPurge (COR-1934)', () => {
 
     expect(await kv.list(PENDING_PREFIX)).toHaveLength(1);
     expect(diagnostics.map((entry) => entry.level)).toEqual(['error']);
+  });
+});
+
+describe('the fence and the failure isolation of a pass (COR-1934)', () => {
+  it('writes every ended run’s tombstone before anything goes, and finishes the other runs when one fails', async () => {
+    const seen: string[] = [];
+    const { kv, calls, purge } = setup({
+      purgeRun: async (runId) => {
+        seen.push(...(await kv.list(CHAT_CONTENT_TOMBSTONE_PREFIX)));
+        if (runId === 'run-1') throw new Error('injected: engine down');
+      },
+    });
+    await purge.record(CHAT);
+
+    const failure = await purge.run(CHAT).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(ChatPurgeIncompleteError);
+    expect((failure as ChatPurgeIncompleteError).failures.map((entry) => entry.runId)).toEqual([
+      'run-1',
+    ]);
+    // Both tombstones were in place before the first workflow was touched.
+    expect(new Set(seen)).toEqual(new Set([runTombstoneKey('run-1'), runTombstoneKey('run-2')]));
+    // The failure stopped nothing else: the other run's workflow, the audit redaction and the
+    // ledgers were all done, and the record stays unsettled for the next pass.
+    expect(calls.workflows).toEqual(['run-2']);
+    expect(calls.redacted).toEqual([['run-1', 'run-2']]);
+    expect(calls.ledgers).toEqual([['run-1', 'run-2']]);
+    expect(calls.settlements).toEqual([['run-1', 'run-2']]);
+    const [key] = await kv.list(PENDING_PREFIX);
+    expect(JSON.parse((await kv.get(key!))!)).not.toHaveProperty('settledAt');
+  });
+
+  it('reads the chat’s task records on every pass, so a run admitted after the delete began is purged too', async () => {
+    const admitted: string[] = [];
+    const { calls, purge, kv } = setup({ taskIds: () => admitted });
+    await purge.record(CHAT);
+    await purge.run(CHAT);
+    expect(calls.workflows).toEqual(['run-1', 'run-2']);
+
+    // Another process admitted a run to the chat while the delete was committing.
+    admitted.push('run-3');
+    const [key] = await kv.list(PENDING_PREFIX);
+    const settled = JSON.parse((await kv.get(key!))!) as { settledAt: number };
+    await purge.run({ ...CHAT, settledAt: settled.settledAt });
+
+    expect(calls.workflows).toEqual(['run-1', 'run-2', 'run-1', 'run-2', 'run-3']);
+    expect(await kv.get(runTombstoneKey('run-3'))).not.toBeNull();
+  });
+
+  it('keeps a tombstone’s first purge time, and prunes tombstones older than the cutoff', async () => {
+    const { kv, purge, clock } = setup();
+    await purge.record(CHAT);
+    await purge.run(CHAT);
+    const first = JSON.parse((await kv.get(runTombstoneKey('run-1')))!) as { purgedAt: number };
+    expect(first.purgedAt).toBe(1_000);
+    clock.now = 5_000;
+    await purge.run({ ...CHAT, settledAt: 1_000 });
+    expect(JSON.parse((await kv.get(runTombstoneKey('run-1')))!)).toEqual({
+      runId: 'run-1',
+      purgedAt: 1_000,
+    });
+
+    expect(await purge.pruneTombstones(1_000)).toBe(0);
+    expect(await purge.pruneTombstones(1_001)).toBe(2);
+    expect(await kv.list(CHAT_CONTENT_TOMBSTONE_PREFIX)).toEqual([]);
   });
 });

@@ -486,6 +486,7 @@ import { copyAgentOwnedRunOptions, sessionExecuteOptions } from './session-agent
 import {
   admitSessionInput,
   isSessionInputSessionIdAddressable,
+  SessionInputMailboxPurgedError,
   type SessionInputAdmissionAttemptOutcome,
   createSessionInputMailbox,
   type PersistedSessionInput,
@@ -594,6 +595,7 @@ import {
   type DeletedChat,
 } from './chat-content-purge';
 import { purgeReviewRecords } from './chat-review-purge';
+import { purgeChatLedgerEntries } from './chat-ledger-purge';
 import { createContexts } from './contexts/create-contexts';
 import { createTaskHandle, createTasks, seedsConversation } from './tasks/create-tasks';
 import {
@@ -12177,6 +12179,9 @@ async function constructBureau<const D extends AgentDefinitions>(
       : undefined;
 
     await auditTrailInstance.prune(effectiveCutoff, { protectRunId });
+    // COR-1934 — the tombstones of runs purged before the same cutoff: an entry or event older
+    // than it is pruned anyway.
+    await chatContentPurge.pruneTombstones(effectiveCutoff);
   }
 
   /**
@@ -13671,35 +13676,15 @@ async function constructBureau<const D extends AgentDefinitions>(
   // the never-existed-session path / a thrown error before commit) so it
   // never double-clears an entry a later, unrelated call may already own.
   /**
-   * COR-1934 — removes one run's durable workflow and its checkpoints. The workflow is purged by
-   * `idPrefix`, which also matches every run whose id begins with this one (`…-run-1` and
-   * `…-run-10`), so the purge is pinned to the run's own creation time as well. A workflow that is
-   * not terminal is skipped by the engine's purge.
+   * COR-1934 — removes one run's durable workflow and its checkpoints. A workflow that is not
+   * terminal is skipped by the engine's purge.
    */
   async function purgeDurableRun(runId: string): Promise<void> {
     const durable = runtime.durable;
     if (durable === undefined) return;
-    const state = await durable.engine.get(runId);
-    if (state !== null) {
-      const filter = {
-        idPrefix: runId,
-        createdAt: { gte: state.createdAt, lte: state.createdAt },
-      };
-      // The engine purges by prefix, and no filter names one workflow: a run whose id begins with
-      // this one and was created in the same millisecond (`…-run-1` and `…-run-10` under a clock
-      // that does not advance) matches too. Purging it would erase another chat's workflow, so
-      // an ambiguous run keeps its workflow, which retention ends, and says so.
-      const matches = await durable.engine.list({ ...filter, limit: 2 });
-      if (matches.items.every((item) => item.id === runId)) {
-        await durable.engine.purge(filter);
-      } else {
-        diagnose({
-          level: 'warn',
-          scope: 'durable-maintenance',
-          message: `[bureau] The durable workflow of run "${runId}" was not purged: another workflow whose id begins with it was created in the same millisecond, and the engine purges by prefix. Retention removes it.`,
-        });
-      }
-    }
+    // By exact id: a prefix purge would take `…-run-10` with `…-run-1`, and refuses a documented
+    // custom child id such as `order:42`.
+    await durable.engine.purgeById(runId);
     await durable.checkpointStore.clear(runId);
   }
 
@@ -13767,6 +13752,16 @@ async function constructBureau<const D extends AgentDefinitions>(
     },
     purgeSurfaces: async (runId) => {
       await surfaces?.removeTask(runId);
+    },
+    taskIdsOf: (sessionId, incarnation) => tasks.taskIdsOfContext(sessionId, incarnation),
+    purgeLedgers:
+      runtime.kv === undefined
+        ? undefined
+        : async (runIds, sessionId) => {
+            await purgeChatLedgerEntries(runtime.kv!, runIds, sessionId);
+          },
+    redactTaskRecords: async (runIds) => {
+      for (const runId of runIds) await tasks.redactSettlement(runId);
     },
     purgeSessionInput:
       runtime.durable === undefined
@@ -14704,6 +14699,11 @@ async function constructBureau<const D extends AgentDefinitions>(
           principalBacklogLimit: sessionInputPrincipalBacklogLimit(),
           sessionBacklogLimitForCrossSessionRead: sessionInputSessionBacklogLimit(),
           nowMs: runtimeServices.clock.now(),
+        }).catch((error: unknown): SessionInputAdmissionAttemptOutcome => {
+          // COR-1934: the chat was deleted and its mailbox purged while this admission was in
+          // flight; it is refused as any input to a chat that is gone.
+          if (error instanceof SessionInputMailboxPurgedError) return { outcome: 'not-found' };
+          throw error;
         });
       })();
     const admission = (

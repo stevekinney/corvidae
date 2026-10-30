@@ -392,15 +392,17 @@ export class Mailbox {
 
   /**
    * Permanently delete every durable record of this mailbox: its commands (and the payloads they
-   * carry), receipts, indexes and header. For a host that has retired the resource and must
-   * forget what was sent to it rather than wait for terminal retention.
+   * carry), receipts and indexes. For a host that has retired the resource and must forget what
+   * was sent to it rather than wait for terminal retention.
    *
-   * It does not cancel work: a command a consumer has claimed is deleted under it, so call it
-   * only once the resource has no consumer. A mailbox that is admitted to afterwards starts
-   * again from sequence zero. Safe to repeat: a second call finishes what a failed one stopped,
-   * and answers `0` when nothing is left.
+   * The header stays, sealed with `purgedAt`: every later `admit()` is refused as `rejected` with
+   * reason `purged`, and an admission that raced the purge (it read the header the seal replaced)
+   * loses its compare-and-swap and is refused the same way, so nothing can recreate the mailbox
+   * behind the purge. It does not cancel work: a command a consumer has claimed is deleted under
+   * it, so call it only once the resource has no consumer. Safe to repeat: a second call finishes
+   * what a failed one stopped, and answers `0` when nothing is left.
    *
-   * @returns How many keys were deleted.
+   * @returns How many keys were deleted; the seal is not counted.
    */
   async purge(): Promise<number> {
     this.#assertLive();

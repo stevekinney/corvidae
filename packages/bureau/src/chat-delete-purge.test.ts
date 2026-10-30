@@ -16,7 +16,9 @@ import { createConversationHistory } from 'conversationalist';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { LATE_WRITE_GRACE_MILLISECONDS } from './chat-content-purge';
+import { RunContentPurgedError } from './chat-content-tombstone';
 import { createBureau } from './create-bureau';
+import { createDurableEventHistory } from './durable-event-history';
 import { type BureauStorageFixture, createSqliteStorageFixture } from './test/storage-fixtures';
 import { startTaskFrom } from './test/task-start-request.ts';
 import type { Bureau, BureauDiagnostic } from './types';
@@ -37,14 +39,11 @@ const REMOVED_SURFACES_PREFIX = 'bureau-removed-surfaces:v1:';
  */
 const RUN_KEYS_THAT_STAY = [
   'audit:v1:',
+  'chat-content-purge-tombstone:v1:',
   'bureau-task:v1:',
   'bureau-task-context:v1:',
-  'tag:',
   'wf-gen:',
   'wf-owner-epoch:',
-  'wf-terminal:',
-  'wf-has-services:',
-  'wf-cleanup-needed:',
 ];
 
 /** Every key of the store with its value read as text, binary included, so a sentinel is found anywhere. */
@@ -261,35 +260,27 @@ describe('contexts.delete purges the content of the chat (COR-1934)', () => {
     });
   });
 
-  it('keeps a workflow it cannot single out, because a neighbour created in the same millisecond matches the prefix too', async () => {
+  it('purges a run by its exact id, so a neighbour whose id begins with it, created in the same millisecond, is untouched', async () => {
     await withBureau(firstCallAnswers(), async (harness) => {
       const { bureau } = harness;
       const { targetRunId, neighbourRunId } = await chatsWithPrefixNeighbour(harness);
       const engine = bureau.durableEngine()!;
-      // The engine cannot narrow by id: make the pinned filter match both runs, as two runs created
-      // in one millisecond do.
-      const list = engine.list.bind(engine);
-      const purge = engine.purge.bind(engine);
-      engine.list = (filter, options) => list({ ...filter, createdAt: undefined }, options);
-      engine.purge = (filter) =>
-        purge(filter === undefined ? filter : { ...filter, createdAt: undefined });
+      // A prefix purge could not tell the two apart when they were created in one millisecond;
+      // the exact-id purge never reads a prefix, so the clock is held still to prove it.
+      const target = await engine.get(targetRunId);
+      const neighbour = await engine.get(neighbourRunId);
+      expect(target?.createdAt).toBeDefined();
+      expect(neighbour?.createdAt).toBeDefined();
 
       await bureau.contexts.delete('chat-1');
       await bureau.maintain();
-      engine.list = list;
-      engine.purge = purge;
 
-      // Nothing of the neighbour went with it.
+      // Nothing of the neighbour went with it, and the target's workflow is gone.
       expect(await engine.get(neighbourRunId)).not.toBeNull();
       expect(await bureau.contexts.get('chat-10')).toBeDefined();
       expect(await bureau.tasks.detail(neighbourRunId)).toBeDefined();
-      // The ambiguous run keeps its workflow, and the Bureau says so rather than guessing.
-      expect(await engine.get(targetRunId)).not.toBeNull();
-      expect(
-        harness.diagnostics.filter(
-          (entry) => entry.level === 'warn' && entry.message.includes('was not purged'),
-        ),
-      ).not.toEqual([]);
+      expect(await engine.get(targetRunId)).toBeNull();
+      expect(errorsOf(harness.diagnostics)).toEqual([]);
     });
   });
 
@@ -386,7 +377,9 @@ describe('contexts.delete purges the content of the chat (COR-1934)', () => {
 });
 
 describe('a late write of the process that drove a deleted chat’s run (COR-1934)', () => {
-  it('is removed by the second pass, after the grace, and not before', async () => {
+  const LATE = 'LATE-WRITE-SENTINEL-5b9d';
+
+  it('is fenced by the run’s tombstone: the audit entry is written redacted, and the event is dropped', async () => {
     await withBureau(firstCallAnswers(), async (harness) => {
       const { bureau, fixture } = harness;
       const runId = await harness.chat('chat-1', INPUT);
@@ -396,31 +389,103 @@ describe('a late write of the process that drove a deleted chat’s run (COR-193
       await bureau.maintain();
       expect(holding(await scan(fixture), ANSWER)).toEqual([]);
 
-      // The process that drove the run writes its last audit entry after the purge removed the
-      // run's workflow: another process's owner, whose terminal workflow was the purge's signal.
-      const LATE = 'LATE-WRITE-SENTINEL-5b9d';
-      await bureau.internals.auditTrail!.record({
+      // The process that drove the run writes its last audit entry and event after the purge
+      // removed the run's workflow: another process's owner, whose terminal workflow was the
+      // purge's signal.
+      const trail = bureau.internals.auditTrail!;
+      await trail.record({
         runId,
         type: 'run.completed',
-        detail: { result: { content: LATE }, content: LATE },
+        detail: { result: { content: LATE }, content: LATE, finishReason: 'stop' },
       });
-      await bureau.internals.auditTrail!.record({
-        runId: otherRunId,
-        type: 'run.completed',
-        detail: { content: LATE },
+      await trail.record({
+        runId,
+        type: 'tool.settled',
+        detail: { toolName: 'lookup', result: LATE },
+        dedupeKey: `late:${runId}:tool`,
       });
-      expect(holding(await scan(fixture), LATE).length).toBeGreaterThan(0);
+      await trail.record({ runId: otherRunId, type: 'run.completed', detail: { content: LATE } });
 
-      // Before the grace the sweep leaves the settled record alone: the window is bounded in time.
-      await bureau.maintain();
-      expect(holding(await scan(fixture), LATE).length).toBeGreaterThan(0);
-
-      await harness.afterGrace();
       const after = await scan(fixture);
-      // The deleted chat's late entry is redacted; another chat's entry is not touched.
+      // The deleted chat's late entries are there, redacted as they were written, and another
+      // chat's entry is not touched.
+      const late = await trail.query({ runId });
+      // The run's own entries (redacted by the purge) and the two late ones (redacted as written).
+      expect(late.filter((entry) => entry.type === 'run.completed')).toHaveLength(2);
+      const lateEntries = late.filter(
+        (entry) => entry.type === 'tool.settled' || entry.type === 'run.completed',
+      );
+      expect(lateEntries).toHaveLength(3);
+      expect(lateEntries.map((entry) => entry.detail)).toEqual(
+        lateEntries.map(() => expect.objectContaining({ redacted: true })),
+      );
       expect(holding(after, LATE).filter((key) => key.includes(runId))).toEqual([]);
       expect(holding(after, LATE).filter((key) => key.includes(otherRunId))).not.toEqual([]);
       expect(errorsOf(harness.diagnostics)).toEqual([]);
+    });
+  });
+
+  it('from a second process over the same store is fenced the same way, with no second pass', async () => {
+    await withBureau(firstCallAnswers(), async (harness) => {
+      const { bureau, fixture } = harness;
+      const runId = await harness.chat('chat-1', INPUT);
+      const otherRunId = await harness.chat('chat-2');
+      await bureau.maintain();
+      await bureau.contexts.delete('chat-1');
+      await bureau.maintain();
+
+      // Another process: its own Bureau and history over the same storage, which awaited nothing
+      // of the purge.
+      const runtime = createManualRuntimeServices({ origin: '2026-10-13T01:00:00.000Z' });
+      const diagnostics: BureauDiagnostic[] = [];
+      const other = await createBureau<AgentDefinitions>({
+        onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+        agents: {
+          default: createAgent({ generate: firstCallAnswers(), stopWhen: stopWhen.noToolCalls() }),
+        },
+        runtime,
+        storage: fixture.storage,
+        durable: true,
+        durableOwnership: { ownership: 'none' },
+      });
+      const history = createDurableEventHistory(fixture.storage, runtime);
+      try {
+        await other.internals.auditTrail!.record({
+          runId,
+          type: 'run.completed',
+          detail: { result: { content: LATE }, content: LATE },
+        });
+        const dropped = await rejectionOf(
+          history.record({ kind: 'run', id: runId }, 'run.completed', { content: LATE }),
+        );
+        expect(dropped).toBeInstanceOf(RunContentPurgedError);
+        await history.record({ kind: 'run', id: otherRunId }, 'run.completed', { content: LATE });
+      } finally {
+        await history.dispose();
+        await other.dispose();
+      }
+
+      const after = await scan(fixture);
+      expect(holding(after, LATE).filter((key) => key.includes(runId))).toEqual([]);
+      expect(
+        [...after.keys()].filter((key) =>
+          key.startsWith(`fleet-event-by-workflow:run%3A${runId}:`),
+        ),
+      ).toEqual([]);
+      // The other run's late event landed, in clear.
+      expect(
+        [...after].filter(([, value]) => value.includes(LATE) && value.includes(otherRunId)),
+      ).not.toEqual([]);
+      expect(errorsOf(harness.diagnostics)).toEqual([]);
+      expect(errorsOf(diagnostics)).toEqual([]);
+      // The second pass still runs, for a run admitted after the delete began, and then the
+      // record is dropped; the tombstone stays, for the audit retention to prune.
+      await harness.afterGrace();
+      expect(await pendingRecords(fixture)).toEqual([]);
+      const settled = await scan(fixture);
+      expect(
+        [...settled.keys()].filter((key) => key.startsWith('chat-content-purge-tombstone:v1:')),
+      ).toHaveLength(1);
     });
   });
 });

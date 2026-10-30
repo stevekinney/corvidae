@@ -149,6 +149,11 @@ import {
 } from '@lostgradient/weft';
 
 import type { AgentDefinitions } from './agent-catalog';
+import {
+  notPurgedCondition,
+  RunContentPurgedError,
+  runTombstoneKey,
+} from './chat-content-tombstone';
 import { FRAMES_DROPPED_KIND } from './frames-dropped';
 import { reviewCanceledDedupeKey } from './review-closing-events';
 import type { EventTimestampResolver } from './event-timestamp';
@@ -1127,6 +1132,15 @@ export function createDurableEventHistory(
     return undefined;
   }
 
+  /**
+   * COR-1934 — whether the run's content was purged with its chat, in which case nothing more
+   * of it is recorded. Read before an append so a dropped write costs one read, and again after
+   * a lost append, because the tombstone may have been written between the read and the commit.
+   */
+  async function isPurged(owner: DurableEventOwner): Promise<boolean> {
+    return owner.kind === 'run' && (await storage.get(runTombstoneKey(owner.id))) !== null;
+  }
+
   async function record(
     owner: DurableEventOwner,
     kind: string,
@@ -1134,6 +1148,10 @@ export function createDurableEventHistory(
     options?: DurableEventRecordOptions,
   ): Promise<DurableEventEnvelope> {
     if (RESERVED_DURABLE_EVENT_KINDS.has(kind)) throw new ReservedDurableEventKindError(kind);
+    if (await isPurged(owner)) throw new RunContentPurgedError(owner.id);
+    // The fence of a purged run (COR-1934): in the same batch as the append, so a purge that
+    // begins between the read above and the commit still refuses the write.
+    const fence = owner.kind === 'run' ? [notPurgedCondition(owner.id)] : [];
     const emittedAtMs = options?.emittedAtMs ?? runtime.clock.now();
     const dedupeKey = options?.dedupeKey;
     const incarnation =
@@ -1146,11 +1164,19 @@ export function createDurableEventHistory(
         payload,
         ...incarnation,
       };
-      const appended = await feed.append(
-        { kind, workflowId: encodeOwner(owner), emittedAtMs, payload: stored },
-        { conditions: options?.conditions ?? [], operations: options?.operations ?? [] },
-      );
-      return toDurableEventEnvelope(appended, owner);
+      try {
+        const appended = await feed.append(
+          { kind, workflowId: encodeOwner(owner), emittedAtMs, payload: stored },
+          {
+            conditions: [...fence, ...(options?.conditions ?? [])],
+            operations: options?.operations ?? [],
+          },
+        );
+        return toDurableEventEnvelope(appended, owner);
+      } catch (error) {
+        if (await isPurged(owner)) throw new RunContentPurgedError(owner.id);
+        throw error;
+      }
     }
     const stored: StoredDurableEventPayload = {
       schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -1182,7 +1208,11 @@ export function createDurableEventHistory(
       const appended = await feed.append(
         { kind, workflowId: encodeOwner(owner), emittedAtMs, payload: stored },
         {
-          conditions: [{ key: markerKey, expectedValue: null }, ...(options?.conditions ?? [])],
+          conditions: [
+            { key: markerKey, expectedValue: null },
+            ...fence,
+            ...(options?.conditions ?? []),
+          ],
           operations: [
             { type: 'put', key: markerKey, value: encode(true) },
             ...(options?.operations ?? []),
@@ -1191,6 +1221,7 @@ export function createDurableEventHistory(
       );
       return toDurableEventEnvelope(appended, owner);
     } catch (error) {
+      if (await isPurged(owner)) throw new RunContentPurgedError(owner.id);
       const existing = await findByDedupeKey(owner, kind, dedupeKey);
       if (existing) return existing;
       throw error;
@@ -2299,6 +2330,9 @@ export function createDurableEventProducer<D extends AgentDefinitions = AgentDef
       history.record(owner, kind, payload, options).then(
         () => undefined,
         (error: unknown) => {
+          // COR-1934: the run's content was purged with its chat; the event is dropped, by
+          // design, and no repair is owed for it.
+          if (error instanceof RunContentPurgedError) return;
           diagnose({
             level: 'error',
             scope: 'durable-event-history',

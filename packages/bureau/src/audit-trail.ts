@@ -24,6 +24,7 @@ import type {
 import type { ConditionalTextValueStore } from '@lostgradient/storage';
 
 import type { AgentDefinitions } from './agent-catalog';
+import { notPurgedCondition, runTombstoneKey } from './chat-content-tombstone';
 import type { EventTimestampResolver } from './event-timestamp';
 import {
   resolveDiagnosticSink,
@@ -1374,24 +1375,34 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
   //
   // COR-1390: each attempt reserves its own sequence (see `reserveSequence`)
   // and asks `buildRecord` for the record carrying it.
+  //
+  // COR-1934: the write also carries the run's purge tombstone as a precondition
+  // (`notPurgedCondition`). A run whose chat was deleted has its content purged
+  // and its tombstone written before anything else goes; an entry its process
+  // writes afterwards is then written with its content redacted, in a second
+  // attempt without the fence, so the trail still shows the run happened and
+  // nothing it said comes back.
   async function attemptKeyFencedWrite(
     store: ConditionalTextValueStore,
     buildRecord: (sequence: number) => AuditRecord,
     markerKey: string | undefined,
     attemptsRemaining: number,
+    fenced = true,
   ): Promise<void> {
-    const attemptRecord = buildRecord(await reserveSequence(store));
+    const built = buildRecord(await reserveSequence(store));
+    const attemptRecord = fenced
+      ? built
+      : { ...built, detail: redactAuditDetail(built.type, built.detail) };
     const attemptKey = encodeKey(
       attemptRecord.timestampMs,
       attemptRecord.sequence as number,
       attemptRecord.runId,
     );
-    const preconditions = markerKey
-      ? [
-          { key: markerKey, expectedValue: null },
-          { key: attemptKey, expectedValue: null },
-        ]
-      : [{ key: attemptKey, expectedValue: null }];
+    const preconditions = [
+      ...(markerKey ? [{ key: markerKey, expectedValue: null }] : []),
+      { key: attemptKey, expectedValue: null },
+      ...(fenced ? [notPurgedCondition(attemptRecord.runId)] : []),
+    ];
     const operations = markerKey
       ? [
           { type: 'set' as const, key: markerKey, value: attemptKey },
@@ -1406,6 +1417,11 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
     // needing a fresh key). Writes with no marker have only the key
     // precondition, so any failure here is always a key collision.
     if (markerKey && (await store.has(markerKey))) return;
+    // The run's content was purged: the entry is written redacted instead.
+    if (fenced && (await store.has(runTombstoneKey(attemptRecord.runId)))) {
+      await attemptKeyFencedWrite(store, buildRecord, markerKey, attemptsRemaining, false);
+      return;
+    }
     if (attemptsRemaining <= 0) {
       const target = markerKey
         ? `dedupeKey "${markerKey.slice(DEDUPE_MARKER_PREFIX.length)}"`
@@ -1414,7 +1430,7 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
         `[audit-trail] Exhausted retries resolving an audit-record key collision for ${target}.`,
       );
     }
-    await attemptKeyFencedWrite(store, buildRecord, markerKey, attemptsRemaining - 1);
+    await attemptKeyFencedWrite(store, buildRecord, markerKey, attemptsRemaining - 1, fenced);
   }
 
   // Subscribe to the bureau's action stream. The bureau re-emits every

@@ -42,6 +42,7 @@ import {
   InvalidRetentionCutoffError,
   ReservedDurableEventKindError,
 } from './durable-event-history';
+import { RunContentPurgedError, runTombstoneKey } from './chat-content-tombstone';
 import { FRAMES_DROPPED_KIND } from './frames-dropped';
 import {
   ActionEvent,
@@ -4370,5 +4371,55 @@ describe('createDurableEventProducer()', () => {
 
       await producer.dispose();
     });
+  });
+});
+
+describe('the fence of a purged run (COR-1934)', () => {
+  it('drops a record for a run whose tombstone is written, before and in the same batch as the append', async () => {
+    const storage = await createMemoryStorage();
+    const runtime = createManualRuntimeServices();
+    const history = createDurableEventHistory(storage, runtime);
+    const tombstone = runTombstoneKey('run-1');
+    await storage.put(
+      tombstone,
+      new TextEncoder().encode(JSON.stringify({ runId: 'run-1', purgedAt: 1 })),
+    );
+
+    // Read before the append: refused at once.
+    expect(
+      await rejectionOf(history.record({ kind: 'run', id: 'run-1' }, 'run.completed', { c: 'S' })),
+    ).toBeInstanceOf(RunContentPurgedError);
+    expect(
+      await rejectionOf(
+        history.record(
+          { kind: 'run', id: 'run-1' },
+          'run.completed',
+          { c: 'S' },
+          { dedupeKey: 'k' },
+        ),
+      ),
+    ).toBeInstanceOf(RunContentPurgedError);
+    // Written between the read and the commit: the batch's own condition refuses it.
+    await storage.delete(tombstone);
+    const originalGet = storage.get.bind(storage);
+    let armed = true;
+    storage.get = async (key: string) => {
+      const value = await originalGet(key);
+      if (armed && key === tombstone) {
+        armed = false;
+        await storage.put(tombstone, new TextEncoder().encode('{"runId":"run-1","purgedAt":2}'));
+      }
+      return value;
+    };
+    expect(
+      await rejectionOf(history.record({ kind: 'run', id: 'run-1' }, 'run.completed', { c: 'S' })),
+    ).toBeInstanceOf(RunContentPurgedError);
+    storage.get = originalGet;
+    // Nothing of the run was appended; another run records as before.
+    const page = await history.page({ kind: 'run', id: 'run-1' });
+    expect('events' in page ? page.events : page).toEqual([]);
+    const other = await history.record({ kind: 'run', id: 'run-2' }, 'run.completed', { c: 'S' });
+    expect(other.owner).toEqual({ kind: 'run', id: 'run-2' });
+    await history.dispose();
   });
 });

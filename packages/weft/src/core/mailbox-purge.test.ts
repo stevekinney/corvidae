@@ -6,14 +6,18 @@
 
 import { describe, expect, it } from 'bun:test';
 
+import { KEYS } from '../storage/keys.ts';
 import { collectKeys } from '../testing/storage-backends.test-support.ts';
 
 import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
+import { MailboxContentionError } from './mailbox-internals.ts';
 import { ApplicationCommandValidationError } from './mailbox-validation.ts';
-import { admitOne, claimOne, createMailboxFixture } from './mailbox.test-support.ts';
+import { admitOne, claimOne, commandInput, createMailboxFixture } from './mailbox.test-support.ts';
 
 const SECRET = 'PAYLOAD-SENTINEL-42';
+/** The header key of the fixture's mailbox, which a purge seals rather than deletes. */
+const header = (resourceId = 'agent-7') => KEYS.applicationMailbox('bureau', resourceId);
 
 async function everythingStored(storage: MemoryStorage): Promise<string> {
   const parts: string[] = [];
@@ -45,7 +49,9 @@ describe('Mailbox.purge', () => {
     const deleted = await mailbox.purge();
 
     expect(deleted).toBeGreaterThan(0);
-    expect(await collectKeys(storage, '')).toEqual([]);
+    // Only the sealed header is left, and it holds no payload.
+    expect(await collectKeys(storage, '')).toEqual([header()]);
+    expect(await everythingStored(storage)).not.toContain(SECRET);
     mailbox.dispose();
   });
 
@@ -64,22 +70,60 @@ describe('Mailbox.purge', () => {
     await purged.mailbox.purge();
 
     const left = await collectKeys(storage, '');
-    expect(left.filter((key) => key.includes('session-1:'))).toEqual([]);
+    // Only the purged mailbox's sealed header is left under its resource id.
+    expect(left.filter((key) => key.includes('session-1:') || key.endsWith(':session-1'))).toEqual([
+      header('session-1'),
+    ]);
     expect(left.filter((key) => key.includes('session-10'))).toEqual(neighbourKeys);
     expect(left.filter((key) => key.includes('session-2')).length).toBeGreaterThan(0);
     for (const { mailbox } of [purged, neighbour, other]) mailbox.dispose();
   });
 
-  it('answers 0 for a mailbox that holds nothing and when repeated, and can be admitted to again', async () => {
+  it('answers 0 for a mailbox that holds nothing and when repeated, and refuses every later admission', async () => {
     const storage = new MemoryStorage();
     const { mailbox } = createMailboxFixture({ storage });
-    expect(await mailbox.purge()).toBe(0);
     await admitOne(mailbox);
     expect(await mailbox.purge()).toBeGreaterThan(0);
     expect(await mailbox.purge()).toBe(0);
-    const again = await admitOne(mailbox);
-    const receipt = await mailbox.receipt(again);
-    expect(receipt?.sequence).toBe(0);
+    const refused = await mailbox.admit(commandInput({ idempotencyKey: 'after-purge' }));
+    expect(refused).toMatchObject({ status: 'rejected', reason: 'purged' });
+    expect(await mailbox.list()).toEqual([]);
+    expect(await everythingStored(storage)).not.toContain('after-purge');
+    mailbox.dispose();
+  });
+
+  it('seals a mailbox that was never admitted to, so a first admission racing the purge is refused', async () => {
+    const storage = new MemoryStorage();
+    const { mailbox } = createMailboxFixture({ storage });
+    expect(await mailbox.purge()).toBe(0);
+    expect(await mailbox.admit(commandInput())).toMatchObject({
+      status: 'rejected',
+      reason: 'purged',
+    });
+    mailbox.dispose();
+  });
+
+  it('refuses an admission that read the header the purge replaced', async () => {
+    // The admission reads the header, then the purge seals it, then the admission commits: its
+    // compare-and-swap on the header it read fails, and its retry reads the seal.
+    const storage = new MemoryStorage();
+    const { mailbox } = createMailboxFixture({ storage });
+    await admitOne(mailbox);
+    const originalGet = storage.get.bind(storage);
+    let purgedDuringAdmission: Promise<number> | undefined;
+    storage.get = async (key: string) => {
+      const bytes = await originalGet(key);
+      // The first read of the header by the racing admission: purge now, before it commits.
+      if (key === header() && purgedDuringAdmission === undefined) {
+        storage.get = originalGet;
+        purgedDuringAdmission = mailbox.purge();
+        await purgedDuringAdmission;
+      }
+      return bytes;
+    };
+    const admission = await mailbox.admit(commandInput({ idempotencyKey: 'raced' }));
+    expect(admission).toMatchObject({ status: 'rejected', reason: 'purged' });
+    expect(await everythingStored(storage)).not.toContain('raced');
     mailbox.dispose();
   });
 
@@ -87,5 +131,20 @@ describe('Mailbox.purge', () => {
     const { mailbox } = createMailboxFixture();
     mailbox.dispose();
     expect(await rejectionOf(mailbox.purge())).toBeInstanceOf(ApplicationCommandValidationError);
+  });
+
+  it('reports contention when the seal keeps losing its compare-and-swap, and deletes nothing', async () => {
+    const storage = new MemoryStorage();
+    const { mailbox } = createMailboxFixture({ storage });
+    await admitOne(mailbox, { payload: { form: 'inline', value: { text: SECRET } } });
+    // Every seal attempt finds the header moved under it: an admission that always wins the race.
+    const originalBatch = storage.conditionalBatch.bind(storage);
+    storage.conditionalBatch = async (conditions, operations) =>
+      conditions.some((condition) => condition.key === header())
+        ? false
+        : originalBatch(conditions, operations);
+    expect(await rejectionOf(mailbox.purge())).toBeInstanceOf(MailboxContentionError);
+    expect(await everythingStored(storage)).toContain(SECRET);
+    mailbox.dispose();
   });
 });
