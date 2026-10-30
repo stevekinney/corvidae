@@ -138,6 +138,11 @@ export interface ResolvedOptions {
    * was created without one (the default console behavior).
    */
   onLog: EngineOptions['onLog'] | null;
+  /**
+   * The persisted-log store (`EngineOptions.workflowLogs`); `null` when the engine was created
+   * without one, in which case `Engine.getLogs` answers no lines.
+   */
+  workflowLogs: EngineOptions['workflowLogs'] | null;
 }
 
 export interface WorkflowResultWaiter {

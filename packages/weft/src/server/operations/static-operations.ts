@@ -47,8 +47,10 @@ import { listAlertsOperation } from './list-alerts.ts';
 import { listCatalogSourcesOperation } from './list-catalog-sources.ts';
 import { listCheckpointsOperation } from './list-checkpoints.ts';
 import { listReviewsOperation } from './list-reviews.ts';
+import { listScheduleMissedFiresOperation } from './list-schedule-missed-fires.ts';
 import { listSchedulesOperation } from './list-schedules.ts';
 import { listWorkflowDefinitionsOperation } from './list-workflow-definitions.ts';
+import { listWorkflowLogsOperation } from './list-workflow-logs.ts';
 import { listWorkflowRevisionsOperation } from './list-workflow-revisions.ts';
 import { listWorkflowUpdatesOperation } from './list-workflow-updates.ts';
 import { listWorkflowsOperation } from './list-workflows.ts';
@@ -64,6 +66,7 @@ import { resumeScheduleOperation } from './resume-schedule.ts';
 import { resumeWorkflowOperation } from './resume-workflow.ts';
 import { setWorkflowAttributesOperation } from './set-workflow-attributes.ts';
 import { signalWorkflowOperation } from './signal-workflow.ts';
+import { skipNextScheduleOperation } from './skip-next-schedule.ts';
 import { startOrSignalWorkflowOperation } from './start-or-signal-workflow.ts';
 import { startWorkflowOperation } from './start-workflow.ts';
 import * as storageCapabilities from './storage-capabilities.ts';
@@ -79,6 +82,7 @@ import { streamWorkflowSseOperation } from './stream-workflow-sse.ts';
 import { submitReviewDecisionOperation } from './submit-review-decision.ts';
 import { suspendWorkflowOperation } from './suspend-workflow.ts';
 import { timeoutWorkflowOperation } from './timeout-workflow.ts';
+import { triggerScheduleOperation } from './trigger-schedule.ts';
 import { updateScheduleOperation } from './update-schedule.ts';
 import { updateWorkflowOperation } from './update-workflow.ts';
 import { workerStartOverridePreviewOperation } from './worker-start-override-preview.ts';
@@ -127,6 +131,7 @@ export const STATIC_OPERATIONS: ReadonlyArray<RegistrableOperation> = [
   timeoutWorkflowOperation,
   updateWorkflowOperation,
   listWorkflowUpdatesOperation,
+  listWorkflowLogsOperation,
   createScheduleOperation,
   updateScheduleOperation,
   getRegistryOperation,
@@ -152,6 +157,9 @@ export const STATIC_OPERATIONS: ReadonlyArray<RegistrableOperation> = [
   cancelScheduleOperation,
   pauseScheduleOperation,
   resumeScheduleOperation,
+  skipNextScheduleOperation,
+  triggerScheduleOperation,
+  listScheduleMissedFiresOperation,
   getStreamChunksOperation,
   streamWorkflowSseOperation,
   workflowEventsSseOperation,

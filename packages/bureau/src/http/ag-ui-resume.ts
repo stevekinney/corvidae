@@ -272,6 +272,8 @@ export function createResume(context: ResumeContext) {
       runId: request.runId,
       nativeRunId: result.runId,
       owner: readableAs,
+      // The caller's own owner is `request.owner`; `readableAs` is the owner of the thread it reads.
+      viewerIsOwner: request.owner === readableAs,
       replay: started ? 'beginning' : 'open-step',
       messagesSnapshot: !started,
       ...(fresh?.prelude === undefined ? {} : { preludeEvents: fresh.prelude }),

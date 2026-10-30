@@ -16,12 +16,13 @@ import {
 } from './events';
 import { createStepGeneratedMediaAdmitter, type GeneratedMediaAdmission } from './generated-media';
 import { assistantMessageIdentifier } from './message-identifiers';
+import { checkCostBudget, openStepCostWindow, type StepCostWindow } from './run-step-cost-budget';
 import { finalizeStep } from './run-step-finalization';
 import { executeGeneration } from './run-step-generation';
 import { prepareStep } from './run-step-preparation';
 import { partsOf, settleResponse } from './run-step-response';
 import { commitAssistantRow } from './run-step-row';
-import { accumulateUsage } from './run-step-support';
+import { accumulateUsage, costModelOfStep } from './run-step-support';
 import { executeTools } from './run-step-tools';
 import { explicitAbortReason, guardrailReporter } from './run-step-utilities';
 import type { SelectionGate } from './selection-gate';
@@ -148,6 +149,11 @@ export interface StepDeps {
   readonly agentName: string | undefined;
   /** Prices each request's usage into `RunState.cost`; `undefined` accumulates no cost. */
   readonly costEstimation: RunOptions['costEstimation'];
+  /**
+   * The run's spend limit (COR-1914). Checked after each step against `RunState.cost`, so it has
+   * no effect without `costEstimation`.
+   */
+  readonly costBudget: RunOptions['costBudget'];
   /**
    * AB-204: when supplied, every run-owned hook's fire-and-forget promise
    * (`onLLMInput`/`onLLMOutput` here; `onRunComplete`/`onRunAbort`/
@@ -285,6 +291,32 @@ export async function runStep(
   step: number,
   emitter: EventDispatcher | undefined,
 ): Promise<StepOutcome> {
+  // COR-1914: the budget is measured from the spend the step began with, so a billed response the
+  // step discarded still counts. A step that reaches finalization is checked there; one that
+  // moves on without (an `onError` skip, an aborted step) is checked here, and one that ends the
+  // run is not: the run is over either way.
+  const costWindow = openStepCostWindow(runState);
+  const outcome = await runStepBody(deps, runState, conversation, step, emitter, costWindow);
+  if (costWindow.checked || (outcome.kind !== 'continue' && outcome.kind !== 'next')) {
+    return outcome;
+  }
+  try {
+    checkCostBudget({ deps, runState, emitter, step, window: costWindow });
+  } catch (error) {
+    emitter?.dispatch(new RunErrorEvent(step, error, 'policy'));
+    return { kind: 'error', error, errorKind: 'policy' };
+  }
+  return outcome;
+}
+
+async function runStepBody(
+  deps: StepDeps,
+  runState: RunState,
+  conversation: Conversation,
+  step: number,
+  emitter: EventDispatcher | undefined,
+  costWindow: StepCostWindow,
+): Promise<StepOutcome> {
   const { signal, hooks } = deps;
   if (signal?.aborted) {
     return { kind: 'abort', reason: explicitAbortReason(signal) };
@@ -384,6 +416,9 @@ export async function runStep(
     resolvedSources,
     admission,
   } = preparation;
+  costWindow.model = deps.costEstimation
+    ? costModelOfStep(deps.costEstimation, steeringDesiredState?.model)
+    : undefined;
 
   const admitter = createStepGeneratedMediaAdmitter({
     port: deps.generatedMediaAdmitter,
@@ -440,7 +475,14 @@ export async function runStep(
     } catch (error) {
       // See the comment on the validateResponseHooks catch above — the
       // response has already been billed by the provider.
-      accumulateUsage(runState, emitter, step, response.usage, deps.costEstimation);
+      accumulateUsage(
+        runState,
+        emitter,
+        step,
+        response.usage,
+        deps.costEstimation,
+        steeringDesiredState?.model,
+      );
       // A cancellation that interrupted a media admission is the cancellation, not an error.
       if (error instanceof GeneratedMediaNotAdmittedError && signal?.aborted) {
         return { kind: 'abort', reason: explicitAbortReason(signal) };
@@ -469,14 +511,14 @@ export async function runStep(
   //
   // Streaming deltas (`stream:text-delta`, emitted by
   // `withEnhancedStreaming`/`composeConfiguredGenerate` while the provider
-  // call above is still in flight) are a separate, already-decided surface:
-  // bureau's `runtime-composition.ts` (AB-40) forces buffered, non-streaming
-  // generation whenever its auto-wired default guardrail preset is active,
-  // specifically so no delta reaches a client before this post-guardrail
-  // point. A caller who explicitly supplies a custom `guardrails` config (as
-  // opposed to leaving it `undefined`) has opted into managing that
-  // tradeoff themselves per that same file's comment, and streaming deltas
-  // for such a run remain pre-guardrail by design.
+  // call above is still in flight) are a separate surface, and they are
+  // pre-guardrail by construction: nothing here holds them back. Bureau does
+  // not buffer them and does not produce them either (COR-1806): it wires no
+  // `streamEventTarget`, so the frames its AG-UI mount sends for a run's text
+  // and reasoning are read from the recorded events that follow this point, a
+  // `generate.completed` that carries the response the guardrails left. A host
+  // that wires streaming itself owns keeping a delta from a client until its
+  // output guardrail has run.
   if (generateDurationMilliseconds !== undefined) {
     emitter?.dispatch(new GenerateCompletedEvent(step, response, generateDurationMilliseconds));
   }
@@ -495,7 +537,7 @@ export async function runStep(
   runState.lastContent = content;
   runState.lastParts = parts;
   runState.finalRowIsReplacement = false;
-  accumulateUsage(runState, emitter, step, usage, deps.costEstimation);
+  accumulateUsage(runState, emitter, step, usage, deps.costEstimation, steeringDesiredState?.model);
 
   // COR-713: the row carries the settled parts, not only the text. A step that is a thinking block
   // and a tool call has no text and still has a row to keep. The row takes the id a streaming client
@@ -565,5 +607,6 @@ export async function runStep(
     contextEpochId: generation.contextEpochId,
     planReason: generation.planReason,
     effectiveContext: generation.effectiveContext,
+    costWindow,
   });
 }

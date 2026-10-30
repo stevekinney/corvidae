@@ -11,6 +11,7 @@ import {
   type RecoverAllOptions,
   type RegistryAgnosticEngine,
   type WorkflowLogRecord,
+  type WorkflowLogStore,
   type WorkflowServicesResolution,
   type WorkflowServicesResolverInfo,
 } from '@lostgradient/weft';
@@ -207,6 +208,14 @@ export interface CreateRunEngineOptions {
    * human-wait park marker (COR-121) is withheld from this sink and the console.
    */
   onLog?: ((record: WorkflowLogRecord) => void) | undefined;
+
+  /**
+   * COR-1811 — the Weft log store whose persisted `ctx.log` lines the engine serves
+   * (`EngineOptions.workflowLogs`). The caller feeds it through {@link onLog}, which is where the
+   * human-wait park marker is withheld from it, and the engine reads it for `getLogs`, flushes it
+   * on shutdown, and removes a purged run's lines from it.
+   */
+  workflowLogs?: WorkflowLogStore | undefined;
 
   /**
    * History circuit breaker. An agent run checkpoints its full transcript per
@@ -445,6 +454,7 @@ export async function createRunEngine(options: CreateRunEngineOptions): Promise<
       : {}),
     resolveWorkflowServices,
     onLog: createHumanWaitMarkerSink(options.onLog),
+    ...(options.workflowLogs !== undefined ? { workflowLogs: options.workflowLogs } : {}),
     ...(options.history ? { history: options.history } : {}),
     ...(options.checkpointSizeWarningThreshold !== undefined
       ? { checkpointSizeWarningThreshold: options.checkpointSizeWarningThreshold }

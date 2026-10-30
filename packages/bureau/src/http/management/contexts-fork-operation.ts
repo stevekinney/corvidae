@@ -1,8 +1,12 @@
 /**
- * `bureau.contexts.fork`: branch a context (a Bureau session) after a completed agent reply, through
- * `Bureau.contexts.fork` (COR-1560).
+ * `bureau.contexts.fork`: branch a context (a Bureau session) at the end of a turn, or before its
+ * first message, through `Bureau.contexts.fork` (COR-1560, COR-1910). Editing a sent message is a
+ * fork at the reply before it, or `throughMessageId: null` for the first message, followed by a
+ * new run of the edited text on the fork (`bureau.contexts.input` reaches only a live run, and an
+ * idle fork answers it `session-terminal`); the original stays as history through `parentContextId`.
  *
- * The new context shares the history through `throughMessageId`, is owned by the caller, records
+ * The new context shares the history through `throughMessageId` (nothing, for `null`), is owned by
+ * the caller, records
  * where it came from (`parentContextId` and `forkedFromMessageId`, which `bureau.contexts.list` and
  * `get` return), and keeps the parent's model: the parent's latest `model` override is admitted on
  * the new context as `<commandId>:model`, and that outcome is returned beside the `contextId`. A
@@ -16,9 +20,7 @@
  * | -------------------------------------- | ------------- | ----------------------------------- |
  * | a missing or invisible context         | `NotFound`    | none (`data.resource` is `context`) |
  * | a message the context does not hold    | `NotFound`    | none (`data.resource` is `message`) |
- * | not the final assistant reply of a run | `Conflict`    | `not-a-branch-point`                |
- * | the run ended in error                 | `Conflict`    | `branch-from-errored-run`           |
- * | the run was aborted                    | `Conflict`    | `branch-from-aborted-run`           |
+ * | not the last reply of an ended run     | `Conflict`    | `not-a-branch-point`                |
  * | a tool approval is still pending       | `Conflict`    | `branch-with-pending-approval`      |
  * | a tool call has no result              | `Conflict`    | `branch-with-unresolved-tool-call`  |
  * | the `commandId` named another message  | `Conflict`    | `command-conflict`                  |
@@ -64,8 +66,9 @@ const contextsForkInput = z.object({
   throughMessageId: z
     .string()
     .min(1)
+    .nullable()
     .describe(
-      'The final assistant message of a completed run in the context, which the branch ends at.',
+      'The last assistant reply of a run that has ended in the context (completed, errored or aborted), which the branch ends at; null branches before the first message, so the new context starts empty.',
     ),
 });
 
@@ -81,8 +84,11 @@ const contextsForkOutput = z.object({
 });
 
 /** The fault a refused branch answers with; a missing message is named by its identifier. */
-function faultForRefusal(error: SessionForkRefusedError, throughMessageId: string): OperationFault {
-  if (error.reason === 'message-not-found') {
+function faultForRefusal(
+  error: SessionForkRefusedError,
+  throughMessageId: string | null,
+): OperationFault {
+  if (error.reason === 'message-not-found' && throughMessageId !== null) {
     return resourceNotFound('message', throughMessageId);
   }
   return { code: 'Conflict', message: error.message, data: { reason: error.reason } };
@@ -95,9 +101,9 @@ export const contextsForkOperation = defineOperation<
 >({
   name: 'bureau.contexts.fork',
   mcpExposable: false,
-  summary: 'Branch a context after a reply',
+  summary: 'Branch a context at a reply or before its first message',
   description:
-    'Branches one of the caller’s own contexts after a completed agent reply: a new context that shares the history through `throughMessageId`, which must be the final assistant message of a run that ended `completed`, is owned by the caller, and records its lineage (`parentContextId`, `forkedFromMessageId`). The parent’s latest model override is carried onto the new context as `<commandId>:model`, and its admission outcome is returned as `carriedOverride`, `null` when the parent had none; a refused admission (the model is no longer allowed) leaves the new context in place on the agent’s default. `commandId` is the caller’s own identifier: an exact retry, even after a restart, returns the original answer and creates nothing more. The command’s identity is the caller’s owner, the context and the `commandId`, so an operator and the owner retrying one `commandId` make two forks, and a settled command is kept for 24 hours, after which an exact retry branches again. A message the context does not hold is `NotFound`. A message that is not the final assistant reply of a run is a `Conflict` with reason `not-a-branch-point`; a run that ended in error `branch-from-errored-run`; an aborted run `branch-from-aborted-run`; a run with a tool approval waiting `branch-with-pending-approval`; a reply with a tool call that has no result `branch-with-unresolved-tool-call`; and a `commandId` already used for another message `command-conflict`. A Bureau that is shutting down is `Unavailable` with reason `shutting-down`. Another owner’s context and a missing one answer `NotFound`. Branching another owner’s context copies its history, so it requires both `bureau.contexts:read` and `bureau.contexts:write`; a caller holding only one of them is answered `NotFound`, as for a context it may not see. No scope is needed for the caller’s own. The call writes no audit entry.',
+    'Branches one of the caller’s own contexts at the end of a turn: a new context that shares the history through `throughMessageId`, which must be the last assistant reply of a run that has ended (`completed`, errored or aborted), is owned by the caller, and records its lineage (`parentContextId`, `forkedFromMessageId`). `throughMessageId: null` branches before the first message: the new context starts empty, records `parentContextId` and a `null` `forkedFromMessageId`. Editing a sent message is this call at the reply before it, then a new run of the edited text on the new context (`bureau.contexts.input` reaches only a live run, so an idle fork answers it `session-terminal`); the original is left unchanged. An earlier turn can be branched while a later run of the context is still live; the live run’s own replies cannot. The parent’s latest model override is carried onto the new context as `<commandId>:model`, and its admission outcome is returned as `carriedOverride`, `null` when the parent had none; a refused admission (the model is no longer allowed) leaves the new context in place on the agent’s default. `commandId` is the caller’s own identifier: an exact retry, even after a restart, returns the original answer and creates nothing more. The command’s identity is the caller’s owner, the context and the `commandId`, so an operator and the owner retrying one `commandId` make two forks, and a settled command is kept for 24 hours, after which an exact retry branches again. A message the context does not hold is `NotFound`. A message that is not the last assistant reply of an ended run is a `Conflict` with reason `not-a-branch-point`; a run with a tool approval waiting `branch-with-pending-approval`; a reply with a tool call that has no result `branch-with-unresolved-tool-call`; and a `commandId` already used for another message `command-conflict`. A Bureau that is shutting down is `Unavailable` with reason `shutting-down`. Another owner’s context and a missing one answer `NotFound`. Branching another owner’s context copies its history, so it requires both `bureau.contexts:read` and `bureau.contexts:write`; a caller holding only one of them is answered `NotFound`, as for a context it may not see. No scope is needed for the caller’s own. The call writes no audit entry.',
   destructive: true,
   tags: ['Contexts'],
   inputSchema: contextsForkInput,
@@ -170,7 +176,9 @@ export const contextsForkOperation = defineOperation<
         } satisfies OperationFault;
       }
       if (error instanceof ForkThroughMessageError) {
-        throw resourceNotFound('message', input.throughMessageId);
+        throw input.throughMessageId === null
+          ? resourceNotFound('context', contextId)
+          : resourceNotFound('message', input.throughMessageId);
       }
       if (error instanceof BureauError && error.code === 'NOT_FOUND') {
         throw resourceNotFound('context', contextId);

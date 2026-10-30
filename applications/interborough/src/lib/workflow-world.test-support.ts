@@ -393,6 +393,7 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
     overlap: schedule.overlap,
     revision: schedule.revision,
     nextFireAt: iso(schedule.nextFireAt),
+    skipUntil: null,
     lastFireAt: null,
     missedFireCount: schedule.missedFireCount,
     skippedCount: schedule.skippedCount,

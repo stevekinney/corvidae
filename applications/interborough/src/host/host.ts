@@ -21,7 +21,11 @@
  * its owner's chats.
  *
  * The model catalog holds the models of the providers in Bungalow's `configuration.json` that have
- * an API key in its secrets (`providers.ts`). The seeded agents still answer from a script.
+ * an API key in its secrets (`providers.ts`), with the catalog edits beside them
+ * (`catalog-edits.ts`). The seeded agents still answer from a script. A local host writes the
+ * configuration and a provider's key, and reloads the catalog, without a restart
+ * (`provider-manager.ts`, `provider-routes.ts`); a remote host refuses, reporting the reason
+ * `deployment`.
  *
  * Every request acts as the one local caller, `anonymous:local`, holding every Weft scope and
  * every Bureau scope. There is no sign-in: the host binds `127.0.0.1` only, and the Bureau handler
@@ -52,6 +56,8 @@
  *   the Workflows pages can show an agent's file path and a workflow's, and the agent editor can
  *   say where to configure a model provider: the configuration file, and the file that holds each
  *   provider's API key.
+ * - `/host/providers`, `/host/providers/<name>`, `/host/providers/reload`, and `/host/catalog`:
+ *   read and change the provider configuration (`provider-routes.ts`).
  * - `POST /host/restart`: asks the host to restart. It is registered only for a host started with
  *   `onRestartRequested` (the entries, which run under the supervisor), and answers `202` before
  *   the callback runs.
@@ -88,6 +94,7 @@ import { routes as clientRoutes } from '../app/routes.ts';
 import { HOST_PATHS_ROUTE } from '../lib/host-paths.ts';
 import { startHostPushDelivery, type HostPushDelivery } from './a2a-push.ts';
 import { answerEncryptionKeys } from './answer-encryption.ts';
+import { createConfigurationQueue, type ConfigurationQueue } from './configuration-queue.ts';
 import {
   createDevReload,
   DEV_RELOAD_ROUTE,
@@ -124,9 +131,9 @@ import {
 } from './locations.ts';
 import { mcpAppMounts } from './mcp-app-mounts.ts';
 import { createHostMemory } from './memory.ts';
+import { createProviderManager, type ProviderManager } from './provider-manager.ts';
+import { providerRoutes } from './provider-routes.ts';
 import {
-  createCatalogGenerate,
-  loadProviders,
   PROVIDER_NAMES,
   PROVIDER_SECRET_KEYS,
   TYPESAFE_SECRET_KEY,
@@ -172,6 +179,19 @@ const REMOTE_LOCKED_SETTINGS = {
  * the `retention.audit` window the Bureau starts with; a value stored on the Settings page replaces it.
  */
 export const AUDIT_RETENTION_MILLISECONDS = 90 * 24 * 60 * 60 * 1000;
+
+/**
+ * How long the host keeps a finished run's workflow log lines after the run last wrote one: 7 days, in
+ * milliseconds (COR-1811). It is the `retention.logs` window the Bureau starts with; a value stored
+ * on the Settings page replaces it.
+ */
+export const WORKFLOW_LOG_RETENTION_MILLISECONDS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * How many workflow log lines a run keeps by default: 500, with the oldest evicted past it
+ * (COR-1811). It is the `logs.maximumLinesPerRun` setting the Bureau starts with.
+ */
+export const WORKFLOW_LOG_MAXIMUM_LINES_PER_RUN = 500;
 
 /** The directory of agent files under the Interborough home: `researcher.md` is the agent `researcher`. */
 export const AGENT_DIRECTORY_NAME = 'agents';
@@ -293,6 +313,18 @@ export type Host = {
    * not hold.
    */
   generateFor(selection: ModelSelection): GenerateFunction;
+  /**
+   * Change the model providers without a restart: connect one with its key, edit the catalog, or
+   * read the configuration again. A remote host refuses a change with
+   * {@link ProviderWriteLockedError}, reason `deployment`. See {@link ProviderManager}.
+   */
+  readonly providers: Pick<ProviderManager, 'connect' | 'editCatalog' | 'reload' | 'snapshot'>;
+  /**
+   * The queue every writer of `configuration.json` runs its read-change-write through, so two
+   * writers never start from text the other is about to replace. The provider manager uses it;
+   * another writer of the file takes it from here (`configuration-queue.ts`).
+   */
+  readonly configurationQueue: ConfigurationQueue;
   /**
    * A point-in-time reading of the host's own state: the Bureau's diagnostics, the engine server's
    * lease, workers, and connections, the build it serves, and the providers it offers. It holds no
@@ -465,18 +497,16 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // the secrets, and nothing else. The Bureau is created with exactly these rows, so no boot step
     // plans against a provider that is not configured. The seeded agents still answer from a
     // script.
-    const providers = await loadProviders({
-      configurationLocation: bungalow.configurationLocation,
-      readConfiguration: () => bungalow.readConfiguration(),
-      readSecret: (key) => bungalow.readSecret(key),
+    const configurationQueue = createConfigurationQueue();
+    const providers = await createProviderManager({
+      bungalow,
+      configurationQueue,
       warn: options.warn ?? ((message) => console.warn(message)),
+      resolveProviderGenerate: options.resolveProviderGenerate ?? resolveProviderGenerate,
     });
+    held.providers = providers;
     const generateFor = (selection: ModelSelection): GenerateFunction =>
-      createCatalogGenerate(selection, {
-        rows: providers.rows,
-        apiKeys: providers.apiKeys,
-        resolveProviderGenerate: options.resolveProviderGenerate ?? resolveProviderGenerate,
-      });
+      providers.generateFor(selection);
     const agentContent = bungalow.content(AGENT_DIRECTORY_NAME);
     const workflowContent = bungalow.content(WORKFLOW_DIRECTORY_NAME);
     // The TypeSafe key, when the secrets hold one, registers a decision model, `typesafe`, for the
@@ -516,7 +546,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           }),
       // A file's `model` is a row of this catalog, so it runs with the key in the secrets.
       models: {
-        catalog: providers.rows,
+        catalog: providers.current().rows,
         generate: (row) => {
           const provider = PROVIDER_NAMES.find((name) => name === row.provider);
           if (provider === undefined) {
@@ -529,7 +559,13 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       answerEncryption: answerKeys,
       // The audit trail is kept 90 days (COR-1810); a person changes it on the Settings page, and
       // the stored value then replaces this default.
-      retention: { audit: { olderThan: AUDIT_RETENTION_MILLISECONDS } },
+      retention: {
+        audit: { olderThan: AUDIT_RETENTION_MILLISECONDS },
+        logs: { olderThan: WORKFLOW_LOG_RETENTION_MILLISECONDS },
+      },
+      // The `ctx.log` lines of a workflow are kept with its run (COR-1811), so the run page can show
+      // them: the newest 500 per run, for seven days, both changeable on the Settings page.
+      logs: { maximumLinesPerRun: WORKFLOW_LOG_MAXIMUM_LINES_PER_RUN },
       // Governed memory (COR-1546): an agent remembers across every chat its owner has with it, and
       // the Memory page lists, searches, forgets, and corrects what it remembers.
       memory: createHostMemory(storage),
@@ -545,6 +581,16 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       ...(settings === undefined ? {} : { settings }),
     });
     held.bureau = bureau;
+    // From here a change to the configuration or a key reaches the Bureau's catalog, and a file
+    // agent is validated against it again.
+    providers.attach(async (rows) => {
+      const catalog = bureau.models.replace(rows);
+      // `replace` starts a rescan of the agent files without waiting for it. A file agent keeps
+      // the generate it was built with, so a run that starts after this resolves must find the
+      // agents already rebuilt with the keys just read.
+      await bureau.agents.refresh();
+      return catalog.revision;
+    });
     if (options.seed !== false) {
       await seedBureau(bureau, storage);
     }
@@ -631,6 +677,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           : { [HOST_RESTART_ROUTE]: { POST: (request: Request) => refuse(request) ?? restart() } }),
         // Where a person edits what the host keeps by hand. The pages show an agent's file path and
         // a workflow's.
+        ...providerRoutes(providers, refuse),
         [HOST_PATHS_ROUTE]: {
           GET: (request: Request) =>
             refuse(request) ??
@@ -724,6 +771,13 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       deploymentId: bungalow.deploymentId,
       database,
       generateFor,
+      configurationQueue,
+      providers: {
+        connect: (connection) => providers.connect(connection),
+        editCatalog: (edits) => providers.editCatalog(edits),
+        reload: () => providers.reload(),
+        snapshot: () => providers.snapshot(),
+      },
       diagnostics: () => ({
         bureau: bureau.internals.diagnostics(),
         weft: {
@@ -732,7 +786,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           connections: server.connections(),
         },
         build: buildDiagnostics(buildDirectory),
-        providers: providerDiagnostics(providers),
+        providers: providerDiagnostics(providers.current()),
       }),
       notifyRebuilt: () => devReload?.notify(),
       close: () => (held.closing ??= teardown(held)),
@@ -753,6 +807,7 @@ type Held = {
   readonly bungalow: Bungalow;
   storage?: Storage;
   bureau?: Bureau<SeededAgents>;
+  providers?: ProviderManager;
   replacementEngine?: RegistryAgnosticEngine;
   server?: WeftServer;
   pushDelivery?: HostPushDelivery;
@@ -771,6 +826,8 @@ async function teardown(held: Held): Promise<void> {
       failures.push(error);
     }
   };
+  // No change to the providers may start once the host is going away.
+  held.providers?.close();
   // End the reload streams first, so no page is left reading a host that is going away.
   await step(held.devReload && (() => held.devReload?.close()));
   await step(held.publicServer && (() => held.publicServer?.stop(true)));

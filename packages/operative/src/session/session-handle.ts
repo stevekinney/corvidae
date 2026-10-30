@@ -325,11 +325,13 @@ export function createSessionHandle(
         throw new TypeError('fork() takes throughRun or throughMessageId, not both.');
       }
       const forkedHistory: ConversationHistory =
-        options?.throughMessageId !== undefined
-          ? historyThroughMessage(session, options.throughMessageId)
-          : options?.throughRun === undefined
-            ? historyOrEmpty(session.conversationHistory, runtime)
-            : conversationThroughRun(session, options.throughRun);
+        options?.throughMessageId === null
+          ? createConversationHistory(undefined, { runtime })
+          : options?.throughMessageId !== undefined
+            ? historyThroughMessage(session, options.throughMessageId)
+            : options?.throughRun === undefined
+              ? historyOrEmpty(session.conversationHistory, runtime)
+              : conversationThroughRun(session, options.throughRun);
 
       // Create the forked session with a new id and empty runs[]. It keeps the source's owner of
       // record and no other metadata (COR-1581): the forked rows reference assets the owner may
@@ -343,7 +345,10 @@ export function createSessionHandle(
           ? {}
           : {
               [SESSION_PARENT_METADATA_KEY]: sessionId,
-              [SESSION_FORKED_FROM_MESSAGE_METADATA_KEY]: options.throughMessageId,
+              // A fork before the first message has a parent and no message to name.
+              ...(options.throughMessageId === null
+                ? {}
+                : { [SESSION_FORKED_FROM_MESSAGE_METADATA_KEY]: options.throughMessageId }),
             };
       const forkedMetadata = {
         ...(owner === undefined ? {} : { [SESSION_OWNER_METADATA_KEY]: owner }),
@@ -357,7 +362,7 @@ export function createSessionHandle(
             options.throughMessageId !== undefined &&
             existing.metadata[SESSION_PARENT_METADATA_KEY] === sessionId &&
             existing.metadata[SESSION_FORKED_FROM_MESSAGE_METADATA_KEY] ===
-              options.throughMessageId &&
+              (options.throughMessageId ?? undefined) &&
             existing.metadata[SESSION_OWNER_METADATA_KEY] === owner
           ) {
             return createSessionHandle(existing.id, context);

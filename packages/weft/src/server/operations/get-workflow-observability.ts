@@ -13,6 +13,7 @@ const scheduleProvenanceOutput = z
   .object({
     scheduleId: z.string(),
     occurrence: z.number().optional(),
+    manual: z.literal(true).optional(),
   })
   .nullable();
 

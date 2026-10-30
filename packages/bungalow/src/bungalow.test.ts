@@ -149,6 +149,79 @@ describe('deploymentId', () => {
   });
 });
 
+describe('writeConfiguration', () => {
+  const SENTINEL = 'sentinel-configuration-text-4c1d';
+
+  test('writes the configuration 0600, reads it back, and replaces an earlier one', async () => {
+    const root = temporaryDirectory();
+    using handle = await openIn(root);
+    handle.writeConfiguration('{"first":1}\n');
+    expect(await handle.readConfiguration()).toBe('{"first":1}\n');
+    handle.writeConfiguration('{"second":2}\n');
+    expect(await handle.readConfiguration()).toBe('{"second":2}\n');
+    expect(modeOf(handle.configurationLocation)).toBe(0o600);
+    expect(readdirSync(root).toSorted()).toEqual([
+      'configuration.json',
+      'deployment-id',
+      'lock',
+      'logs',
+      'secrets',
+    ]);
+  });
+
+  test('persists across reopen', async () => {
+    const root = temporaryDirectory();
+    const first = await openIn(root);
+    first.writeConfiguration('{"kept":true}');
+    first.close();
+    using second = await openIn(root);
+    expect(await second.readConfiguration()).toBe('{"kept":true}');
+  });
+
+  test('a failure while publishing the file leaves the previous file whole and no temporary file', async () => {
+    const root = temporaryDirectory();
+    using handle = openAtRoot(TEST_NAME, root, {
+      renameConfiguration: () => {
+        throw Object.assign(new Error(`rename ${root} failed`), { code: 'EIO', syscall: 'rename' });
+      },
+    });
+    writeFileSync(join(root, 'configuration.json'), '{"previous":true}');
+    let thrown: unknown;
+    try {
+      handle.writeConfiguration(SENTINEL);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(BungalowFilesystemError);
+    expect(String(thrown)).not.toContain(SENTINEL);
+    expect(String(thrown)).not.toContain(root);
+    expect(JSON.stringify((thrown as Error).cause)).not.toContain(root);
+    expect(await handle.readConfiguration()).toBe('{"previous":true}');
+    expect(readdirSync(root).filter((name) => name.endsWith('.tmp'))).toEqual([]);
+  });
+
+  test('a temporary file a crash left behind is removed on open and the previous file is intact', async () => {
+    const root = temporaryDirectory();
+    await openAndClose(root);
+    writeFileSync(join(root, 'configuration.json'), '{"previous":true}');
+    const leftover = `configuration.json.4242-${crypto.randomUUID()}.tmp`;
+    writeFileSync(join(root, leftover), '{"half":');
+    const unrelated = 'configuration.json.backup';
+    writeFileSync(join(root, unrelated), 'mine');
+    using handle = await openIn(root);
+    expect(existsSync(join(root, leftover))).toBe(false);
+    expect(existsSync(join(root, unrelated))).toBe(true);
+    expect(await handle.readConfiguration()).toBe('{"previous":true}');
+  });
+
+  test('refuses a closed handle and a value that is not text', async () => {
+    const handle = await openIn(temporaryDirectory());
+    expect(() => handle.writeConfiguration(42 as unknown as string)).toThrow(BungalowInputError);
+    handle.close();
+    expect(() => handle.writeConfiguration('{}')).toThrow(BungalowStateError);
+  });
+});
+
 describe('secrets', () => {
   test('stores each secret in its own 0600 file and reads it back verbatim', async () => {
     const root = temporaryDirectory();

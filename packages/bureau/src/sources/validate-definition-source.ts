@@ -31,4 +31,9 @@ export function validateDefinitionSource(
       `"options.${option}" must be ${kind === 'agent' ? 'an agent' : 'a workflow'} source (kind "${kind}"), not kind ${JSON.stringify(record['kind'])}`,
     );
   }
+  if (kind === 'agent' && typeof record['readSibling'] !== 'function') {
+    badRequest(
+      `"options.${option}" must be a definition source: it has no "readSibling" method, which reads an agent file's reference documents`,
+    );
+  }
 }

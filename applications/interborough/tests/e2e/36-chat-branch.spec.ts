@@ -111,8 +111,8 @@ test('stays on the session and says why when the Bureau refuses the branch', asy
         id: body.id,
         error: {
           code: -32000,
-          message: 'The run ended in error.',
-          data: { reason: 'branch-from-errored-run', weftCode: 'Conflict', httpStatus: 409 },
+          message: 'An approval is pending.',
+          data: { reason: 'branch-with-pending-approval', weftCode: 'Conflict', httpStatus: 409 },
         },
       },
     });
@@ -123,7 +123,9 @@ test('stays on the session and says why when the Bureau refuses the branch', asy
   await page.locator(ASSISTANT_ROW).first().hover();
   await branchAction(page).click();
 
-  await expect(page.getByText(CHAT_COPY.branch.refused['branch-from-errored-run'])).toBeVisible();
+  await expect(
+    page.getByText(CHAT_COPY.branch.refused['branch-with-pending-approval']),
+  ).toBeVisible();
   await expect(page).toHaveURL(new RegExp(`/chat/${parentId}$`));
   await checkA11y('a refused branch');
 });

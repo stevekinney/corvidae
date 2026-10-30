@@ -14,11 +14,25 @@ export interface AgentDirectoryEntry {
   readonly isFile: boolean;
 }
 
+/** What {@link AgentFileOperations.stat} reports of a file. */
+export interface AgentFileStat {
+  readonly size: number;
+  /** The inode number, which a file replaced by a rename changes. */
+  readonly inode: number;
+  /** The modification time, in milliseconds since the epoch. */
+  readonly modifiedMilliseconds: number;
+}
+
 export interface AgentFileOperations {
   /** The directory's entries, or `undefined` when the directory does not exist. */
   listDirectory(directory: string): Promise<readonly AgentDirectoryEntry[] | undefined>;
   /** A file's size in bytes, or `undefined` when it is gone. */
   size(path: string): Promise<number | undefined>;
+  /**
+   * A file's size, inode and modification time, or `undefined` when it is gone: what a reader that
+   * kept a file's bytes compares to learn whether to read them again.
+   */
+  stat(path: string): Promise<AgentFileStat | undefined>;
   /** A file's bytes, or `undefined` when it is gone. */
   read(path: string): Promise<Uint8Array | undefined>;
   makeDirectory(directory: string): Promise<void>;
@@ -63,6 +77,16 @@ export const nodeAgentFileOperations: AgentFileOperations = {
     try {
       const info = await stat(path);
       return info.size;
+    } catch (error) {
+      if (hasErrorCode(error, 'ENOENT')) return undefined;
+      throw error;
+    }
+  },
+
+  async stat(path) {
+    try {
+      const info = await stat(path);
+      return { size: info.size, inode: info.ino, modifiedMilliseconds: info.mtimeMs };
     } catch (error) {
       if (hasErrorCode(error, 'ENOENT')) return undefined;
       throw error;

@@ -36,8 +36,10 @@ const SECRET_MODE = 0o600;
 /** `<pid>-<uuid>`, the middle of the name `writePrivateFile` gives a temporary file. */
 const TEMPORARY_SUFFIX =
   '\\.\\d+-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.tmp';
-/** The only temporary file Bungalow writes in the root: beside `deployment-id`. */
-const ROOT_TEMPORARY_FILE = new RegExp(`^deployment-id${TEMPORARY_SUFFIX}$`);
+/** The only temporary files Bungalow writes in the root: beside `deployment-id` and `configuration.json`. */
+const ROOT_TEMPORARY_FILE = new RegExp(
+  `^(?:deployment-id|configuration\\.json)${TEMPORARY_SUFFIX}$`,
+);
 /** The only temporary files Bungalow writes in `secrets/`: beside a valid secret key. */
 const SECRET_TEMPORARY_FILE = new RegExp(`^[a-z0-9][a-z0-9-]*${TEMPORARY_SUFFIX}$`);
 
@@ -83,6 +85,15 @@ export type Bungalow = {
   s3Client(): Bun.S3Client | undefined;
   /** The text of the configuration, or `undefined` when none has been written. Absence is valid. */
   readConfiguration(): Promise<string | undefined>;
+  /**
+   * Replace the configuration with `text`, atomically: the text goes to a temporary file that is
+   * synced and then renamed over `configuration.json`, so a crash or a failure at any step leaves
+   * the previous file whole. The file is mode 0600. Bungalow stores the text as given and never
+   * parses it, so the caller validates it first. Remote mode keeps the configuration in a bucket
+   * object a person puts there, so it throws `BungalowStateError`. A failure throws
+   * `BungalowFilesystemError`, whose message and cause never carry the text or a path.
+   */
+  writeConfiguration(text: string): void;
   /**
    * Where the secret `key` is stored: its 0600 file path in local mode, the name of its
    * `<NAME>_SECRET_<KEY>` variable in remote mode. The key is validated.
@@ -143,7 +154,11 @@ function writeFully(descriptor: number, contents: Buffer): void {
  * The rename replaces whatever entry was at `path` (a symbolic link, a FIFO, a stale file) rather
  * than writing through it, so a write can never land on something that is not Bungalow's.
  */
-function writePrivateFile(path: string, contents: string): void {
+function writePrivateFile(
+  path: string,
+  contents: string,
+  rename: (from: string, to: string) => void = renameSync,
+): void {
   const temporary = `${path}.${process.pid}-${crypto.randomUUID()}.tmp`;
   let descriptor: number | undefined;
   try {
@@ -158,7 +173,7 @@ function writePrivateFile(path: string, contents: string): void {
     fsyncSync(descriptor);
     closeSync(descriptor);
     descriptor = undefined;
-    renameSync(temporary, path);
+    rename(temporary, path);
   } catch (error) {
     if (descriptor !== undefined) closeSync(descriptor);
     try {
@@ -203,6 +218,8 @@ function loadDeploymentId(path: string): string {
 export type OpenAtRootDependencies = {
   readonly acquireLock?: (root: string) => RootLock;
   readonly onClose?: () => void;
+  /** Replaces the rename that publishes a written configuration, so a test can fail it. */
+  readonly renameConfiguration?: (from: string, to: string) => void;
 };
 
 /**
@@ -214,7 +231,7 @@ export function openAtRoot(
   root: string,
   dependencies: OpenAtRootDependencies = {},
 ): Bungalow {
-  const { acquireLock = acquireRootLock, onClose } = dependencies;
+  const { acquireLock = acquireRootLock, onClose, renameConfiguration } = dependencies;
   filesystem('prepare the root directory', () =>
     ensureDirectory(root, 'root directory', { privateMode: true }),
   );
@@ -284,6 +301,15 @@ export function openAtRoot(
       assertOpen();
       return filesystem('read the configuration', () =>
         readEntry(configurationLocation, 'configuration file'),
+      );
+    },
+    writeConfiguration(text) {
+      assertOpen();
+      if (typeof text !== 'string') {
+        throw new BungalowInputError('The configuration must be text.');
+      }
+      filesystem('write the configuration', () =>
+        writePrivateFile(configurationLocation, text, renameConfiguration),
       );
     },
     secretLocation(key) {

@@ -179,7 +179,7 @@ async function scheduleFromWorkflowState(
   }
 
   if (scheduleState.overlap === 'allow') {
-    return metadata.occurrence !== undefined ? metadata : null;
+    return metadata.occurrence !== undefined || metadata.manual === true ? metadata : null;
   }
 
   if (scheduleState.currentWorkflowId === state.id) {

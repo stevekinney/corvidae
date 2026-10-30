@@ -169,6 +169,7 @@ import {
 import { humanInputSchemasOf, validateHumanInputOption } from './human-input-option';
 import {
   validateChildrenOption,
+  validateLogsMaximumLinesPerRun,
   validateRetentionOptions,
   validateSessionInputBacklogLimit,
 } from './option-validators.ts';
@@ -204,6 +205,7 @@ import {
   type ChildTopologyParent,
   createChildTopology,
 } from './child-topology';
+import { childActionOf } from './child-announcement';
 import { createChildTopologyStore } from './child-topology-store';
 import {
   type CommandLedger,
@@ -2125,6 +2127,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   validateDecisionsOptions(options.decisions, toBadRequest);
   validateHumanInputOption(options.humanInput);
   validateRetentionOptions(options.retention, toBadRequest);
+  validateLogsMaximumLinesPerRun(options.logs?.maximumLinesPerRun, toBadRequest);
   validateChildrenOption(options.children, toBadRequest);
   assertMemoryTenantIsStable(options);
   // COR-1577: `bureau` names the Bureau-wide default agent on the session path, which is told
@@ -2391,6 +2394,22 @@ async function constructBureau<const D extends AgentDefinitions>(
       ...(answerEncryption === undefined ? {} : { answerEncryption }),
     },
     {
+      // COR-1811 — persisted workflow log lines, when `options.logs` asks for them. The cap is read
+      // on every line, so a change to `logs.maximumLinesPerRun` applies to the next one.
+      ...(options.logs === undefined
+        ? {}
+        : {
+            workflowLogs: {
+              maximumLinesPerRun: () => currentSettings()['logs.maximumLinesPerRun'],
+              onError: (error: unknown) =>
+                diagnose({
+                  level: 'error',
+                  scope: 'durable-maintenance',
+                  message: `[bureau] Writing workflow log lines failed: ${serializeUnknownError(error)}`,
+                  cause: error,
+                }),
+            },
+          }),
       decideToolFor: (owner, offered) => lateDecisions.toolWiringFor(true, owner, offered),
       toolGrantFor: async (taskId) =>
         (await taskRegistryHolder.current?.recordToolGrant(taskId, toolGrantNow())) ??
@@ -2659,6 +2678,23 @@ async function constructBureau<const D extends AgentDefinitions>(
         await auditTrailInstance?.record(entry);
       },
       applyLive: (values, keys) => {
+        // COR-1866: a file agent that enables compaction is valid only while a summarizer is
+        // configured, and the model catalog does not carry the setting, so the files are checked
+        // again here. Unset at boot there is no catalog yet, and its first scan reads the setting.
+        if (
+          fileAgents !== undefined &&
+          keys.includes('context.summarizerModel') &&
+          !runAdmissionClosed
+        ) {
+          fileAgents.files.revalidate().catch((cause: unknown) =>
+            diagnose({
+              level: 'error',
+              scope: 'agent-files',
+              message: '[bureau] could not validate agent files against the summarizer setting',
+              cause,
+            }),
+          );
+        }
         const engine = runtime.durable?.engine;
         const patch = enginePatchOf(values, keys);
         if (engine === undefined || patch === undefined) return;
@@ -12591,6 +12627,27 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
+   * COR-1811 — removes the persisted workflow log lines of finished runs that wrote nothing for longer
+   * than `retention.logs`, read per pass so a change applies to the next one. With the setting unset the
+   * lines stay until their run is purged. A failure is reported and never stops the rest of a pass.
+   */
+  async function pruneWorkflowLogs(pass: 'Manual' | 'Automatic'): Promise<void> {
+    const logs = runtime.durable?.workflowLogs;
+    const window = currentSettings()['retention.logs'];
+    if (logs === undefined || window === undefined) return;
+    try {
+      await logs.prune({ olderThan: window.olderThan });
+    } catch (error: unknown) {
+      diagnose({
+        level: 'error',
+        scope: 'durable-maintenance',
+        message: `[bureau] ${pass} workflow log retention pass failed: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
+  }
+
+  /**
    * COR-1546 — advances every open governed-memory deletion: resumes an interrupted synchronous
    * lane and settles the bounded-async targets, which stay pending until something asks. Governed
    * memory runs nothing on a timer of its own, so a record forgotten through `bureau.memory.forget`
@@ -12771,6 +12828,8 @@ async function constructBureau<const D extends AgentDefinitions>(
       }
       // COR-1629 — governed memory's retention expires only when asked to, before its deletions advance.
       await sweepMemoryRetention('Manual');
+      // COR-1811 — persisted workflow log lines past `retention.logs`.
+      await pruneWorkflowLogs('Manual');
       // COR-1546 — governed memory's deletions advance only when asked to.
       try {
         await propagateMemoryDeletions();
@@ -13080,6 +13139,8 @@ async function constructBureau<const D extends AgentDefinitions>(
         }
         // COR-1629 — governed memory's retention expires only when asked to, before its deletions advance.
         await sweepMemoryRetention('Automatic');
+        // COR-1811 — persisted workflow log lines past `retention.logs`.
+        await pruneWorkflowLogs('Automatic');
         // COR-1546 — governed memory's deletions advance only when asked to.
         try {
           await propagateMemoryDeletions();
@@ -14292,8 +14353,12 @@ async function constructBureau<const D extends AgentDefinitions>(
       // The parent was deleted, or the message with it, after the checks: nothing was created. The
       // command settles to that failure rather than staying pending, so a retry is refused alike.
       if (!(error instanceof ForkThroughMessageError)) throw error;
+      // A fork before the first message names no message: the parent itself is what went away.
       const failure: ForkLedgerFailure = {
-        failure: { reason: 'message-not-found', message: error.message },
+        failure:
+          error.messageId === null
+            ? { reason: 'context-not-found', message: error.message }
+            : { reason: 'message-not-found', message: error.message },
       };
       await forkLedger.complete(outcome.entry, failure);
       return answerOfFork(failure);
@@ -14377,6 +14442,9 @@ async function constructBureau<const D extends AgentDefinitions>(
   /** What a ledger result answers: the fork, or the refusal the command settled to. */
   function answerOfFork(result: ForkLedgerResult): ForkSessionResult {
     if ('failure' in result) {
+      if (result.failure.reason === 'context-not-found') {
+        throw new BureauError(result.failure.message, 'NOT_FOUND');
+      }
       throw new SessionForkRefusedError(result.failure.reason, result.failure.message);
     }
     return structuredClone(result);
@@ -17472,6 +17540,38 @@ async function constructBureau<const D extends AgentDefinitions>(
       : { expectedRevision: guard.expectedRevision };
   }
 
+  async function skipNextSchedule(
+    scheduleId: string,
+    guard?: ScheduleRevisionGuard,
+  ): Promise<true | undefined> {
+    if (!runtime.durable) return undefined;
+    refuseWorkflowSchedule(scheduleId);
+    await runtime.durable.engine.skipNextScheduleOccurrence(
+      scheduleId,
+      scheduleTransitionOptions(guard),
+    );
+    return true;
+  }
+
+  async function runScheduleNow(
+    scheduleId: string,
+  ): Promise<import('@lostgradient/weft').ScheduleTriggerResult | undefined> {
+    if (!runtime.durable) return undefined;
+    refuseWorkflowSchedule(scheduleId);
+    return runtime.durable.engine.triggerSchedule(scheduleId);
+  }
+
+  async function listScheduleMissed(
+    scheduleId: string,
+    read?: { readonly limit?: number | undefined },
+  ): Promise<import('@lostgradient/weft').ScheduleMissedFire[] | null | undefined> {
+    if (!runtime.durable) return undefined;
+    return runtime.durable.engine.listScheduleMissedFires(
+      scheduleId,
+      read?.limit === undefined ? undefined : { limit: read.limit },
+    );
+  }
+
   async function updateSchedule(
     scheduleId: string,
     update: DurableScheduleUpdate,
@@ -19083,6 +19183,14 @@ async function constructBureau<const D extends AgentDefinitions>(
         ...(principal === undefined ? {} : { principal }),
       });
     },
+    // COR-1806: a child shows on its parent run's stream as a child a tool dispatched does. A
+    // parent this process does not hold has no action log here, and the record is dropped.
+    announce: (announcement) => {
+      const action = childActionOf(announcement);
+      if (action !== undefined) {
+        store.recordAction(announcement.record.parentRunId, action.type, action.detail);
+      }
+    },
     resolveParent: resolveChildParent,
     isKnownRun,
     planChild: planChildRun,
@@ -19249,6 +19357,9 @@ async function constructBureau<const D extends AgentDefinitions>(
     resume: resumeSchedule,
     cancel: cancelSchedule,
     update: updateSchedule,
+    skipNext: skipNextSchedule,
+    runNow: runScheduleNow,
+    missed: listScheduleMissed,
     agentName: getScheduleAgentName,
     inputPreview: getScheduleInputPreview,
     eventHistory: readEventHistory,
@@ -19660,7 +19771,13 @@ async function constructBureau<const D extends AgentDefinitions>(
         origin:
           fire.scheduleId === undefined
             ? undefined
-            : { kind: 'schedule', scheduleId: fire.scheduleId, fireId: fire.runId },
+            : {
+                kind: 'schedule',
+                scheduleId: fire.scheduleId,
+                fireId: fire.runId,
+                // COR-1829: a fire a person started with `schedules.runNow`, not the cadence.
+                ...(fire.manual === true ? { manual: true as const } : {}),
+              },
         message: fire.message,
         // COR-1710: the fire's grant, recorded once with it; a rebuilt fire reads it back.
         tools: toolGrantNow(),

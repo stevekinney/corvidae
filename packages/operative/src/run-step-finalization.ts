@@ -12,6 +12,7 @@ import {
 } from './events';
 import type { PlanReason } from './providers/plan-reason';
 import type { EventDispatcher, RunState, StepDeps, StepOutcome } from './run-step';
+import { checkCostBudget, type StepCostWindow } from './run-step-cost-budget';
 import { evaluateStopConditions } from './run-step-utilities';
 import { validateOutput } from './structured-output/response-schema';
 import type { GenerateResponse, StepResult } from './types';
@@ -31,6 +32,8 @@ export interface StepFinalizationDependencies {
   contextEpochId: string | undefined;
   planReason?: PlanReason | undefined;
   effectiveContext?: EffectiveContextRecord | undefined;
+  /** What the step spent, for the run's `costBudget` (COR-1914). */
+  costWindow: StepCostWindow;
 }
 
 export async function finalizeStep(input: StepFinalizationDependencies): Promise<StepOutcome> {
@@ -48,6 +51,7 @@ export async function finalizeStep(input: StepFinalizationDependencies): Promise
     contextEpochId,
     planReason,
     effectiveContext,
+    costWindow,
   } = input;
   const { hooks } = deps;
   const { content, usage, metadata } = response;
@@ -99,6 +103,9 @@ export async function finalizeStep(input: StepFinalizationDependencies): Promise
   // afford.
   let shouldStop: boolean;
   try {
+    // The budget is checked before the stop conditions: a step that spent the whole budget ends the
+    // run as `budget-exceeded` even when a stop condition would also have ended it.
+    checkCostBudget({ deps, runState, emitter, step, window: costWindow });
     shouldStop = await evaluateStopConditions(deps.stopConditions, stepResult);
   } catch (error) {
     emitter?.dispatch(new StepCompletedEvent(stepResult));

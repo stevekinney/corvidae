@@ -11,6 +11,7 @@ import {
   createAgent,
   type BackendDescriptor,
   type GenerateFunction,
+  type TokenUsage,
 } from '@lostgradient/operative';
 
 import type { AgentDefinitions } from '../agent-catalog.ts';
@@ -28,7 +29,19 @@ export interface Observation {
   readonly systemPrompt: string | undefined;
 }
 
-export type Script = (observation: Observation) => Promise<string> | string;
+/**
+ * What a scripted generate answers: its text, or the text with the token usage the provider
+ * reported and the tool calls it asked for (COR-1914), so a test can spend money and take steps.
+ */
+export type ScriptedReply =
+  | string
+  | {
+      readonly content: string;
+      readonly usage?: TokenUsage;
+      readonly toolCalls?: readonly { readonly name: string; readonly arguments: object }[];
+    };
+
+export type Script = (observation: Observation) => Promise<ScriptedReply> | ScriptedReply;
 
 export interface FileBureauHarness {
   readonly directory: string;
@@ -43,6 +56,11 @@ export interface FileBureauOptions {
   readonly directory?: string;
   /** What each model's generate answers. Defaults to the model's own name. */
   readonly scripts?: Readonly<Record<string, Script>>;
+  /**
+   * The reasoning each model's generate puts before its answer, as a `thinking` part (a model
+   * with no entry returns none). The answer is still `scripts`'.
+   */
+  readonly thinking?: Readonly<Record<string, string>>;
   readonly overrides?: Partial<BureauOptions<AgentDefinitions>>;
   readonly observed?: Observation[];
   readonly agents?: AgentDefinitions;
@@ -52,6 +70,7 @@ function generateFor(
   descriptor: BackendDescriptor,
   scripts: Readonly<Record<string, Script>>,
   observed: Observation[],
+  thinking: Readonly<Record<string, string>>,
 ): GenerateFunction {
   return async ({ toolbox, conversation }) => {
     const system = conversation.getFirstSystemMessage()?.content;
@@ -65,7 +84,28 @@ function generateFor(
     };
     observed.push(observation);
     const script = scripts[descriptor.model];
-    return { content: await (script ? script(observation) : descriptor.model), toolCalls: [] };
+    const reply = await (script ? script(observation) : descriptor.model);
+    const content = typeof reply === 'string' ? reply : reply.content;
+    const thought = thinking[descriptor.model];
+    return {
+      content,
+      toolCalls:
+        typeof reply === 'string'
+          ? []
+          : [...(reply.toolCalls ?? [])].map((call) => ({
+              name: call.name,
+              arguments: call.arguments,
+            })),
+      ...(typeof reply === 'string' || reply.usage === undefined ? {} : { usage: reply.usage }),
+      ...(thought === undefined
+        ? {}
+        : {
+            parts: [
+              { type: 'thinking' as const, thinking: thought, signature: 'scripted-signature' },
+              { type: 'text' as const, text: content },
+            ],
+          }),
+    };
   };
 }
 
@@ -74,6 +114,7 @@ export async function startFileBureau(options: FileBureauOptions = {}): Promise<
   const directory = options.directory ?? (await mkdtemp(join(tmpdir(), 'bureau-agent-run-')));
   const observed = options.observed ?? [];
   const scripts = options.scripts ?? {};
+  const thinking = options.thinking ?? {};
   const bureau = await createBureau<AgentDefinitions>({
     agents: {
       ...(options.agents ?? {
@@ -91,7 +132,7 @@ export async function startFileBureau(options: FileBureauOptions = {}): Promise<
     ...options.overrides,
     // Merged, so an override of the catalog or of the generate keeps the other.
     models: {
-      generate: (descriptor) => generateFor(descriptor, scripts, observed),
+      generate: (descriptor) => generateFor(descriptor, scripts, observed, thinking),
       ...options.overrides?.models,
     },
   });

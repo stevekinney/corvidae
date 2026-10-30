@@ -8,6 +8,7 @@
 import { WORKFLOW_CATALOG_KEYS } from './catalog-keys.ts';
 import { GENERATION_KEYS } from './generation-keys.ts';
 import { LEASE_KEYS } from './lease-keys.ts';
+import { WORKFLOW_LOG_KEYS } from './log-keys.ts';
 import { MAILBOX_KEYS } from './mailbox-keys.ts';
 import { OUTBOX_KEYS } from './outbox-keys.ts';
 import { OWNERSHIP_CLAIM_KEYS } from './ownership-keys.ts';
@@ -25,6 +26,7 @@ export { DEFAULT_SCOPE } from './default-scope.ts';
 export { GENERATION_KEYS } from './generation-keys.ts';
 export { WEFT_RESERVED_KEY_PREFIXES } from './key-prefixes.ts';
 export { LEASE_KEYS } from './lease-keys.ts';
+export { WORKFLOW_LOG_KEYS } from './log-keys.ts';
 export { MAILBOX_KEYS } from './mailbox-keys.ts';
 export { OUTBOX_KEYS } from './outbox-keys.ts';
 export { OWNERSHIP_CLAIM_KEYS } from './ownership-keys.ts';
@@ -77,6 +79,7 @@ export const KEYS: typeof WORKFLOW_RECORD_KEYS_CORE &
   typeof OWNERSHIP_CLAIM_KEYS &
   typeof WORKFLOW_CATALOG_KEYS &
   typeof GENERATION_KEYS &
+  typeof WORKFLOW_LOG_KEYS &
   typeof WORKFLOW_LIFECYCLE_KEYS_EXTENDED = {
   ...WORKFLOW_RECORD_KEYS_CORE,
   ...SIGNAL_KEYS,
@@ -88,5 +91,6 @@ export const KEYS: typeof WORKFLOW_RECORD_KEYS_CORE &
   ...OWNERSHIP_CLAIM_KEYS,
   ...WORKFLOW_CATALOG_KEYS,
   ...GENERATION_KEYS,
+  ...WORKFLOW_LOG_KEYS,
   ...WORKFLOW_LIFECYCLE_KEYS_EXTENDED,
 };

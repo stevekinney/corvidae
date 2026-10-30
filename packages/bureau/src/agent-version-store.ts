@@ -17,10 +17,17 @@
  *   or `null` for an edit made outside the writer that the directory watcher found;
  * - `owner`: the owner of record of the agent (v1 is single-user, and every new record carries
  *   its owner so a later release can add users without migrating this family);
- * - `definition`: the whole definition, validated on read (`agentFileDefinitionSchema`). Reference
- *   documents are not part of a definition, so a record never holds their contents;
+ * - `definition`: the whole definition, validated on read (`agentFileDefinitionSchema`). It holds
+ *   the `references` paths and never the documents' text;
+ * - `referenceDigests` (COR-1866): for an agent with references, the path and SHA-256 of each
+ *   document as it was read when the revision was raised, in the file's order. Absent when the
+ *   agent has none. A record never holds a document's content, so a document that changed since
+ *   cannot be restored, only named; restoring a version writes its definition (its `references`
+ *   list included) and the documents are whatever the paths name then. `hash` is then the agent's
+ *   identity hash (`agent-reference-documents.ts`), not the file's;
  * - `changedKeys`: the keys of the definition that differ from the previous version's, in the
- *   definition's own order. A change to the instructions only gives `["instructions"]`. A first
+ *   definition's own order. A change to the instructions only gives `["instructions"]`. A change
+ *   to a document alone (same paths, a new digest) gives `["references"]`. A first
  *   version, or one whose predecessor is not stored, lists every key the definition has.
  *
  * An identifier cannot hold `:` and a revision is a decimal integer, so the key needs no encoding
@@ -53,6 +60,11 @@ import {
   type AgentFileDefinition,
   agentFileDefinitionSchema,
 } from './agent-file';
+import {
+  type AgentReferenceDigest,
+  agentReferenceDigestSchema,
+  sameDigests,
+} from './agent-reference-documents';
 
 export const AGENT_VERSION_KEY_PREFIX = 'bureau-agent-version:v1:';
 
@@ -73,6 +85,8 @@ export interface AgentVersionRecord {
   readonly owner: string;
   /** The definition as of this revision. */
   readonly definition: AgentFileDefinition;
+  /** The documents the definition's `references` named, as they were read. Absent when it has none. */
+  readonly referenceDigests?: readonly AgentReferenceDigest[];
   /** The definition keys that differ from the previous version's. */
   readonly changedKeys: readonly string[];
 }
@@ -80,6 +94,8 @@ export interface AgentVersionRecord {
 /** What {@link AgentRevisionStore.advance} is given to record when it raises a revision. */
 export interface AgentVersionInput {
   readonly definition: AgentFileDefinition;
+  /** The documents the definition's `references` named, as they were read. Omit it for none. */
+  readonly referenceDigests?: readonly AgentReferenceDigest[] | undefined;
   readonly savedAt: string;
   readonly savedBy: string | null;
   readonly owner: string;
@@ -107,9 +123,16 @@ export function agentVersionKeyPrefix(id: string): string {
 export function changedDefinitionKeys(
   previous: AgentFileDefinition | undefined,
   next: AgentFileDefinition,
+  digests?: {
+    readonly previous: readonly AgentReferenceDigest[] | undefined;
+    readonly next: readonly AgentReferenceDigest[] | undefined;
+  },
 ): string[] {
+  const documentsChanged = digests !== undefined && !sameDigests(digests.previous, digests.next);
   return AGENT_FILE_DEFINITION_KEYS.filter((key) =>
-    previous === undefined ? next[key] !== undefined : !isDeepStrictEqual(previous[key], next[key]),
+    previous === undefined
+      ? next[key] !== undefined
+      : !isDeepStrictEqual(previous[key], next[key]) || (key === 'references' && documentsChanged),
   );
 }
 
@@ -122,6 +145,9 @@ export function encodeAgentVersion(record: AgentVersionRecord): string {
     savedBy: record.savedBy,
     owner: record.owner,
     definition: record.definition,
+    ...(record.referenceDigests === undefined || record.referenceDigests.length === 0
+      ? {}
+      : { referenceDigests: record.referenceDigests }),
     changedKeys: record.changedKeys,
   });
 }
@@ -156,6 +182,11 @@ export function parseAgentVersion(text: string | null): AgentVersionRecord | und
   }
   const definition = agentFileDefinitionSchema.safeParse(value['definition']);
   if (!definition.success) return undefined;
+  const digests =
+    value['referenceDigests'] === undefined
+      ? undefined
+      : agentReferenceDigestSchema.array().safeParse(value['referenceDigests']);
+  if (digests !== undefined && !digests.success) return undefined;
   return {
     revision,
     hash,
@@ -163,6 +194,9 @@ export function parseAgentVersion(text: string | null): AgentVersionRecord | und
     savedBy,
     owner,
     definition: definition.data as AgentFileDefinition,
+    ...(digests === undefined || digests.data.length === 0
+      ? {}
+      : { referenceDigests: digests.data }),
     changedKeys: changedKeys as string[],
   };
 }

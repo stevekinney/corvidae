@@ -4,7 +4,7 @@ import type { ToolCall } from 'armorer/protocol';
 import { Conversation } from 'conversationalist';
 import type { ZodType } from 'zod';
 
-import { accumulateRequestCost, seedAccumulatedCost } from './cost-estimation';
+import { accumulateRequestCost, getModelPricing, seedAccumulatedCost } from './cost-estimation';
 import { AgentRunError } from './errors';
 import {
   ElicitationRequestedEvent,
@@ -198,6 +198,22 @@ export function dispatchSettledResults(
 }
 
 /**
+ * The model a step's request is priced at (COR-1914). A session switched to another model runs a
+ * step on it, and that step must cost what that model charges, not what the agent's default
+ * charges, or a budget could be spent at a rate it never counted. The switched model is used when
+ * the run's pricing knows it; otherwise the run's own `costEstimation.model` stands.
+ */
+export function costModelOfStep(
+  costEstimation: NonNullable<RunOptions['costEstimation']>,
+  stepModel: string | undefined,
+): string {
+  if (stepModel === undefined || stepModel === costEstimation.model) return costEstimation.model;
+  return getModelPricing(stepModel, costEstimation.pricing) === undefined
+    ? costEstimation.model
+    : stepModel;
+}
+
+/**
  * Folds a step's token usage into `runState.totalUsage` and dispatches
  * `UsageAccumulatedEvent`. Extracted so the validate-response tripwire path
  * (which returns an error result before the main usage-accumulation block)
@@ -211,10 +227,12 @@ export function accumulateUsage(
   step: number,
   usage: TokenUsage | undefined,
   costEstimation: RunOptions['costEstimation'],
+  stepModel?: string,
 ): void {
   if (usage) {
     // Priced per request here, where the request's own usage is still separate from the sum.
     if (costEstimation) {
+      const model = costModelOfStep(costEstimation, stepModel);
       // The accumulator must always cover all of `totalUsage`. Usage that arrived with no cost
       // (a checkpoint from before costs were accumulated) is seeded at the base tier first, or
       // the terminal estimate would count only the requests made after the resume.
@@ -223,12 +241,7 @@ export function accumulateUsage(
         costEstimation.model,
         costEstimation.pricing,
       );
-      runState.cost = accumulateRequestCost(
-        runState.cost,
-        usage,
-        costEstimation.model,
-        costEstimation.pricing,
-      );
+      runState.cost = accumulateRequestCost(runState.cost, usage, model, costEstimation.pricing);
     }
     runState.totalUsage.prompt += usage.prompt;
     runState.totalUsage.completion += usage.completion;

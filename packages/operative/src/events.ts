@@ -632,14 +632,27 @@ export class UsageAccumulatedEvent extends Event {
   }
 }
 
+/**
+ * Fired when a run's spend crosses one of its `RunOptions.costBudget.warnAt` fractions (COR-1914),
+ * once per fraction per run (a host that crashes after sending one and before saving the step can send it again). `threshold` is the fraction, `budget` the run's `perRunUsd`,
+ * `currentCost` the run's spend after the step that crossed it, and `model` the model that step
+ * ran on. It carries no request content.
+ */
 export class BudgetThresholdEvent extends Event {
   static readonly type = 'budget.threshold' as const;
+  /** The step whose spend crossed the threshold; absent for a monitor's threshold, which has no step. */
+  readonly step: number | undefined;
+  /** The fraction of the budget that was crossed. */
   readonly threshold: number;
+  /** The run's spend, in US dollars, after the step. */
   readonly currentCost: number;
+  /** The budget the fraction is of, in US dollars. */
   readonly budget: number;
+  /** The model the step ran on. */
   readonly model: string;
-  constructor(data: CostBudgetThresholdEvent) {
+  constructor(data: CostBudgetThresholdEvent, step?: number) {
     super(BudgetThresholdEvent.type);
+    this.step = step;
     this.threshold = data.threshold;
     this.currentCost = data.currentCost;
     this.budget = data.budget;
@@ -1478,11 +1491,20 @@ export class AgentScheduledEvent extends Event {
  */
 export class WakeupScheduledEvent extends Event {
   static readonly type = 'schedule.wakeup' as const;
+  /** The duration the run asked to sleep, as it asked: milliseconds, or a duration string. */
   readonly duration: number | string;
+  /** The note the run left for itself, when it left one. */
   readonly note?: string | undefined;
-  constructor(duration: number | string, note?: string) {
+  /**
+   * When the run is due to wake, in milliseconds since the Unix epoch: the run's clock when the
+   * tool accepted the request, plus the duration. The park itself sleeps from when the step ends,
+   * so the actual wake can be a little later.
+   */
+  readonly wakeAt: number;
+  constructor(duration: number | string, wakeAt: number, note?: string) {
     super(WakeupScheduledEvent.type);
     this.duration = duration;
+    this.wakeAt = wakeAt;
     this.note = note;
   }
 }

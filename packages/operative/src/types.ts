@@ -22,6 +22,7 @@ import type { ChildRunRegistry } from './child-run';
 import type { ChildSignalPort } from './child-signals';
 import type { ContextEpochSealer } from './context-epoch';
 import type { MediaCostEstimator } from './context/types';
+import type { RunCostBudget } from './cost-budget';
 import type { CostEstimate, CostEstimationOptions } from './cost-estimation';
 import type { SessionInputGate, SteeringDesiredState } from './durable/types';
 import type { EffectiveContextRecord } from './effective-context-record';
@@ -332,6 +333,17 @@ export interface GenerateResponse {
    * returns, the loop has admitted it as a managed asset.
    */
   parts?: readonly MultiModalContent[] | undefined;
+  /**
+   * The indices in `parts` of `thinking` parts an output guardrail withheld from the run's
+   * observers (COR-1806). The redact action sets it on a step that called tools: a provider such
+   * as Anthropic requires a tool-use turn's thinking back complete and unmodified on the request
+   * that carries the tool results, so those parts stay in `parts` and in the stored conversation,
+   * and only a surface that shows the run's reasoning leaves them out. Bureau's AG-UI stream sends
+   * no reasoning frame for them. A step with no tool calls has its flagged thinking removed from
+   * `parts` instead, and leaves this unset. It rides `generate.completed`, but never the row the
+   * step commits.
+   */
+  withheldThinking?: readonly number[] | undefined;
   toolCalls: ToolCallInput[];
   usage?: TokenUsage | undefined;
   metadata?: Record<string, JSONValue> | undefined;
@@ -847,6 +859,15 @@ export interface RunOptionsBase {
    * explicit model.
    */
   costEstimation?: { model: string; pricing?: CostEstimationOptions } | undefined;
+  /**
+   * What one run may spend (COR-1914). Measured against the run's own cost estimate, so it needs
+   * `costEstimation` with a priced model; `createAgent` refuses a budget without one. A run that
+   * reaches `perRunUsd` ends with the finish reason `budget-exceeded` and an error naming
+   * `perRunUsd`, and each `warnAt` fraction publishes one `budget.threshold` event as the run
+   * crosses it. A durable run keeps its spend across a recovery, so it neither forgets the cost
+   * already incurred nor, as a rule, announces a threshold twice: a host that crashes after a warning is sent and before the step is saved can announce it again.
+   */
+  costBudget?: RunCostBudget | undefined;
   /**
    * The AB-64/AB-250 selection-revalidation gate, read at the same `runStep`
    * boundary as `steering` (after the pause-wait loop, before backpressure):

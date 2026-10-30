@@ -10,6 +10,12 @@ export interface ContextInternals {
   abortController: AbortController;
   stepIndex: number;
   accumulatedResults: Map<number, unknown> | undefined;
+  /**
+   * True from the moment a relaunched run's body starts until it first yields an operation (or
+   * ends): everything it logs in that stretch was logged by the execution it continues. See
+   * {@link ContextOptions.resumed}.
+   */
+  replayingToPark: boolean;
   checkpointLocals: Record<string, unknown>;
   stateSession: Record<string, unknown> | undefined;
   searchAttributes: Record<string, SearchAttributeValue>;
@@ -63,6 +69,7 @@ export function initializeInternals(
     abortController: options.abortController,
     stepIndex: options.initialStep ?? 0,
     accumulatedResults: options.accumulatedResults,
+    replayingToPark: options.resumed === true,
     stateSession: initialSessionState,
     checkpointLocals: createCheckpointLocals(initialSessionState, options.locals),
     searchAttributes: options.searchAttributes ? { ...options.searchAttributes } : {},

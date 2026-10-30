@@ -24,10 +24,14 @@ export type {
   AgentFileIssue,
   AgentFileProblem,
   AgentFileProblemCode,
+  AgentCompaction,
+  AgentCostBudget,
   AgentGuardrailPreset,
   AgentRetry,
 } from './agent-file';
 export {
+  AGENT_COST_BUDGET_MAXIMUM_USD,
+  AGENT_COST_BUDGET_MAXIMUM_WARNINGS,
   AGENT_GUARDRAIL_PRESETS,
   AGENT_IDENTIFIER_PATTERN,
   agentFileFrontmatterSchema,
@@ -44,6 +48,7 @@ export type {
 export type { AgentFileWriteResult } from './agent-file-writer';
 export type {
   AgentSource,
+  SiblingRead,
   DefinitionEntry,
   DefinitionEntryProblem,
   DefinitionSource,
@@ -54,6 +59,7 @@ export type {
 export { hashDefinitionBytes, SourceConflictError } from './sources/definition-source';
 export type { AgentRevision } from './agent-snapshot-store';
 export type { AgentVersionRecord } from './agent-version-store';
+export type { AgentReferenceDigest, AgentReferenceDocument } from './agent-reference-documents';
 export type {
   WorkflowDetail,
   WorkflowRunDetail,
@@ -516,6 +522,8 @@ export type {
   BureauInternals,
   BureauMemoryAuthorityOptions,
   BureauOptions,
+  BureauLogsOptions,
+  BureauLogsRetentionOption,
   BureauMemoryRetentionOption,
   BureauReceiptRetentionOption,
   BureauRetentionOptions,

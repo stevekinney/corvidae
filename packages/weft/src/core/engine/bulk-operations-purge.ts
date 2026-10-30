@@ -31,6 +31,7 @@ import {
 import { forgetBranchActivityReceipts } from './timeline-coordinator-detail.ts';
 import { isTerminalWorkflowStatus } from './validation.ts';
 import { foldWorkflowGenerationBumpForPurge } from './workflow-generation-fence.ts';
+import { flushWorkflowLogs } from './workflow-logs.ts';
 import { getWorkflowRetentionDeadline } from './workflow-retention-deadline.ts';
 import {
   refreshWorkflowVisibilityMaintenance,
@@ -195,6 +196,9 @@ export async function collectWorkflowPurgeDeleteOperations(
   state: WorkflowState,
 ): Promise<BatchOperation[]> {
   const workflowId = state.id;
+  // A line still buffered would otherwise be written after the sweep below listed the run's lines,
+  // and outlive the run (COR-1811).
+  await flushWorkflowLogs(internals);
   // The one thing this does write: the update history has no bound, so it is removed in batches of its
   // own first (see `drainUpdateHistory`), and what is left folds into the atomic batch below.
   await drainUpdateHistory(internals, state);
@@ -415,6 +419,8 @@ async function addWorkflowPrefixDeleteKeys(
     const keys = await collectKeysForPrefix(storage, prefix);
     for (const key of keys) deleteKeys.add(key);
   }
+  // The counter record of the run's persisted `ctx.log` lines (COR-1811) sits under its own prefix.
+  deleteKeys.add(KEYS.workflowLogCounter(workflowId));
   await addWorkflowLinkedFleetEventDeleteKeys(storage, deleteKeys, workflowId);
 }
 
@@ -449,6 +455,8 @@ function workflowPurgePrefixes(workflowId: string): string[] {
     // `onTerminalConflict: 'start-new'` restart — read the prior run's timeline.
     `wf:${encodedWorkflowId}:timeline:`,
     `ev:${encodedWorkflowId}:`,
+    // The run's persisted `ctx.log` lines (COR-1811): they live as long as the run does.
+    KEYS.workflowLogPrefix(workflowId),
     KEYS.watchEventPrefix(workflowId),
     `sig:${encodedWorkflowId}:`,
     `review:${encodedWorkflowId}:`,

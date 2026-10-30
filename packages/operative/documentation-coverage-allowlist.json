@@ -26,7 +26,6 @@
     ". BoundedScheduleReport",
     ". BudgetExceededError",
     ". BudgetExceededEvent",
-    ". BudgetThresholdEvent",
     ". BuildRunReportInput",
     ". CatalogProjection",
     ". ClassifiedError",

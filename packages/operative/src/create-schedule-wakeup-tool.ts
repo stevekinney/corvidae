@@ -1,9 +1,17 @@
+import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
+import { parseDuration } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import { renderDurationLabel } from './durable/continuation-input';
 import { DurableCapabilityUnavailableError } from './durable/durable-capability-unavailable-error';
 import type { PendingHumanWait, PendingWakeup } from './durable/types';
+import { WakeupScheduledEvent } from './events';
 import { refuseIfStepIsParked, type RefusedParkRequest } from './park-refusal';
+
+/** Where `scheduleWakeup` announces a wakeup it accepted: a `CompletableEventTarget`, or anything shaped like one. */
+type WakeupEventDispatcher = {
+  dispatchEvent(event: Event): boolean;
+};
 
 /**
  * Input shape for the `scheduleWakeup` tool. The agent calls this tool to
@@ -96,6 +104,29 @@ export interface CreateScheduleWakeupToolOptions {
    * undefined, pendingHumanWait: undefined, durable: true }` stub.
    */
   context: ScheduleWakeupContext;
+  /**
+   * Optional event emitter. When provided, a `WakeupScheduledEvent` is dispatched each time the
+   * tool accepts a request (C3 completeness rule: every state transition emits an event). A
+   * refused request, and one whose duration cannot be turned into a wake time, dispatch none.
+   */
+  emitter?: WakeupEventDispatcher | undefined;
+  /**
+   * The run's clock, in milliseconds since the Unix epoch, which dates the event's `wakeAt`.
+   * Defaults to the default runtime services' clock.
+   */
+  now?: (() => number) | undefined;
+}
+
+/**
+ * When a wakeup asked for in `duration` is due, or `undefined` when the duration is not one the
+ * scheduler parses (the park would reject it too, so there is no wake time to announce).
+ */
+function wakeTimeOf(duration: number | string, now: () => number): number | undefined {
+  try {
+    return now() + parseDuration(duration);
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -160,7 +191,7 @@ export interface CreateScheduleWakeupToolOptions {
  * ```
  */
 export function createScheduleWakeupTool(options: CreateScheduleWakeupToolOptions) {
-  const { context } = options;
+  const { context, emitter, now = () => createDefaultRuntimeServices().clock.now() } = options;
 
   return {
     name: 'scheduleWakeup',
@@ -214,6 +245,13 @@ export function createScheduleWakeupTool(options: CreateScheduleWakeupToolOption
         duration: input.in,
         ...(input.note !== undefined ? { note: input.note } : {}),
       };
+
+      if (emitter) {
+        const wakeAt = wakeTimeOf(input.in, now);
+        if (wakeAt !== undefined) {
+          emitter.dispatchEvent(new WakeupScheduledEvent(input.in, wakeAt, input.note));
+        }
+      }
 
       const durationLabel = renderDurationLabel(input.in);
 
