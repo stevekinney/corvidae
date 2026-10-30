@@ -101,6 +101,15 @@ describe('Toolbox.resolveTool', () => {
     expect(toolbox.resolveTool('a:search@2').ok).toBe(true);
   });
 
+  it('never throws on a reference that is not a string', () => {
+    const toolbox = createToolbox([searchTool('a', '1')]);
+
+    expect(toolbox.resolveTool(undefined as never).ok).toBe(false);
+    expect(toolbox.resolveTool('a:%E0%A4%A').ok).toBe(false);
+    expect(toolbox.resolveTool('a:').ok).toBe(false);
+    expect(toolbox.resolveTool(':search').ok).toBe(false);
+  });
+
   it('treats a registered name that contains a colon as a bare name', () => {
     const toolbox = createToolbox([
       createTool({
