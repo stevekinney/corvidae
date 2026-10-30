@@ -251,6 +251,7 @@ describe('SchemaForm large schemas', () => {
           labels: ['pasted'],
           timeoutMs: 2000,
           shipping: { carrier: 'UPS' },
+          headers: { Pasted: '1' },
         }),
       },
     });
@@ -259,6 +260,7 @@ describe('SchemaForm large schemas', () => {
     expect(screen.queryByRole('textbox', { name: /Input as JSON/ })).toBeNull();
     expect(requiredInstance(screen.getByLabelText(/Order ID/), HTMLInputElement).value).toBe('Z-9');
     expect(container.textContent).toContain('pasted');
+    expect(screen.getByDisplayValue('Pasted')).toBeTruthy();
     await submit(container);
     expect(submitted.at(-1)).toMatchObject({
       orderId: 'Z-9',
@@ -266,6 +268,7 @@ describe('SchemaForm large schemas', () => {
       quantity: 4,
       labels: ['pasted'],
       timeoutMs: 2000,
+      headers: { Pasted: '1' },
     });
   });
 });

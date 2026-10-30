@@ -232,8 +232,6 @@ export class SchemaFormState {
     if (this.#options.getSubmitting()) return;
     this.#bumpTouchedValidationSequence(field.path);
     if (field.kind !== 'number' && field.kind !== 'integer') return;
-    // A duration is typed in the unit on screen, so its text is not the stored number.
-    if (field.unit !== undefined) return;
     if (!(event.target instanceof HTMLInputElement)) return;
     this.#numericDrafts = { ...this.#numericDrafts, [pathKey(field.path)]: event.target.value };
     this.clearSerializedValue();

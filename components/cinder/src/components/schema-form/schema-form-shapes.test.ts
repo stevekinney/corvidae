@@ -366,6 +366,21 @@ describe('SchemaForm shapes: milliseconds as a number plus unit', () => {
     expect(submitted).toEqual([{ timeoutMs: 120_000 }]);
   });
 
+  test('does not submit stale milliseconds while a number is typed but not yet committed', async () => {
+    const { container, submitted } = await mount(
+      { type: 'object', properties: { timeoutMs: { type: 'integer', title: 'Timeout' } } },
+      { timeoutMs: 90_000 },
+    );
+
+    await fireEvent.input(screen.getByRole('spinbutton', { name: /Timeout/ }), {
+      target: { value: '2' },
+    });
+    await submit(container);
+
+    expect(submitted).toEqual([]);
+    expect(screen.getByText('Timeout Ms must be integer.')).toBeTruthy();
+  });
+
   test('accepts a format-only duration schema without a schema error', async () => {
     const { container, submitted } = await mount(
       { type: 'object', properties: { delay: { type: 'number', format: 'duration-ms' } } },

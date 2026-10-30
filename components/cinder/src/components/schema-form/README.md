@@ -43,7 +43,7 @@ Each shape below has exactly one schema rule. A schema that does not match a rul
 | `type: "array"` with `items.type: "string"` and no `items.enum` | A tag input. Repeated tags are allowed unless the array sets `uniqueItems: true`, and a pending draft is committed on submit. |
 | `type: "object"` with no `properties` and `additionalProperties: { "type": "string" }` | A key/value row list. A row with a value but no key, or two rows with one key, blocks submission with a message. |
 | `oneOf` of exactly two branches: one primitive (`const`, `enum`, or a `string`, `number`, `integer` or `boolean` type) and one `type: "object"` with `properties` | A segmented choice, then the fields of the chosen branch. The branch is read from the value (an object is the object branch), never stored, and switching starts the new branch from its defaults. |
-| A `number` or `integer` with `format: "duration-ms"`, or whose property name ends in `Ms`, `_ms`, `Milliseconds` or `_milliseconds` | A number plus a unit (ms, s, min, h). The value is always stored in milliseconds; the unit only changes how the number is shown. |
+| A `number` or `integer` with `format: "duration-ms"`, or whose property name ends in `Ms`, `_ms`, `Milliseconds` or `_milliseconds` | A number plus a unit (ms, s, min, h). The value is always stored in milliseconds; the unit only changes how the number is shown. Like every numeric editor, text typed but not yet committed is reported and validated as typed, never converted. |
 
 A `oneOf` with two primitives, with an object branch that has no `properties`, or with more than two branches stays raw JSON. An object that declares `properties`, or whose `additionalProperties` is anything other than `{ "type": "string" }`, is not a record.
 
