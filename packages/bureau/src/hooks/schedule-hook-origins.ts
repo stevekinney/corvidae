@@ -44,6 +44,8 @@ export interface ScheduleHookOrigins {
    * the schedule that file owns, under any generation, carries the hook's origin.
    */
   recordWorkflow(identifier: string, hookId: string): Promise<void>;
+  /** The hook recorded for workflow `identifier`'s file, or `undefined` when none is. */
+  hookOfWorkflow(identifier: string): Promise<string | undefined>;
   /** Forgets the origin of workflow `identifier`: its file was created again by something no hook started. */
   clearWorkflow(identifier: string): Promise<void>;
   /** Records that the hook `hookId` started the run that created agent schedule `scheduleId`. */
@@ -85,6 +87,9 @@ export function createScheduleHookOrigins(kv: ConditionalTextValueStore): Schedu
     kv.set(key, JSON.stringify({ version: 1, hookId } satisfies StoredScheduleHookOrigin));
   return {
     recordWorkflow: (identifier, hookId) => write(workflowKey(identifier), hookId),
+    async hookOfWorkflow(identifier) {
+      return hookIdOf(await kv.get(workflowKey(identifier)));
+    },
     async clearWorkflow(identifier) {
       await kv.delete(workflowKey(identifier));
     },

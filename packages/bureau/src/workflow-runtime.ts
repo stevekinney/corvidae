@@ -244,8 +244,9 @@ export interface WorkflowWriteContext {
    * The hook that started the run that made the write (COR-1952), set by the workflow tools from
    * the calling run and by nothing else. A `create` or `update` that carries it records the hook as
    * the origin of the file's schedule, so the schedule's fires are read as that hook's runs and
-   * start no `start-workflow` hook. A `create` without it clears any origin left under the
-   * identifier; an `update` without it leaves the origin as it is.
+   * start no `start-workflow` hook. It is recorded before the file is written and put back if the
+   * write fails. A `create` without it clears any origin left under the identifier; an `update`
+   * without it leaves the origin as it is.
    */
   readonly hookOrigin?: string | undefined;
 }
@@ -469,7 +470,8 @@ export interface WorkflowRuntimeOptions {
    * Where the hook that started the run that wrote a workflow's file is recorded (COR-1952), so the
    * file's schedule carries it. Absent for a Bureau with no key-value store.
    */
-  readonly hookOrigins?: Pick<ScheduleHookOrigins, 'recordWorkflow' | 'clearWorkflow'> | undefined;
+  readonly hookOrigins?:
+    Pick<ScheduleHookOrigins, 'recordWorkflow' | 'clearWorkflow' | 'hookOfWorkflow'> | undefined;
   /** Registers background work with the Bureau, so a test can wait for it to settle. */
   readonly track?: ((promise: Promise<unknown>, label: string) => void) | undefined;
   /**
@@ -939,23 +941,34 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
   }
 
   /**
-   * Record, right after a file is written and before its schedule is put in line (COR-1952), that a
-   * hook started the run that wrote it, so no fire of the schedule is read as a run no hook started.
-   * A file created without a hook's origin clears any a previous file under the identifier left. A
-   * failure here fails the write, because the file is already there and its schedule would
-   * otherwise start untagged.
+   * Put the hook that started the writing run on the file's schedule (COR-1952) before the file is
+   * written, so the file's schedule cannot be applied, and fire, before its origin is readable. A
+   * file created without a hook's origin clears any a previous file under the identifier left; an
+   * update without one keeps what is there. A `create` of an identifier that already has a file
+   * leaves the record alone, because it will be refused and the file keeps its own origin.
+   * Returns what puts the record back as it was, for a write that then fails.
    */
-  async function recordHookOrigin(
+  async function claimHookOrigin(
     type: WorkflowAuditType,
-    id: string,
+    id: string | undefined,
     hookOrigin: string | undefined,
-  ): Promise<void> {
+  ): Promise<() => Promise<void>> {
     const origins = options.hookOrigins;
-    if (origins === undefined || (type !== 'workflow.created' && type !== 'workflow.updated')) {
-      return;
+    const unchanged = async (): Promise<void> => {};
+    if (origins === undefined || id === undefined) return unchanged;
+    if (type === 'workflow.created') {
+      if (catalog.list().some((listing) => listing.id === id)) return unchanged;
+    } else if (type !== 'workflow.updated' || hookOrigin === undefined) {
+      return unchanged;
     }
-    if (hookOrigin !== undefined) await origins.recordWorkflow(id, hookOrigin);
-    else if (type === 'workflow.created') await origins.clearWorkflow(id);
+    const prior = await origins.hookOfWorkflow(id);
+    if (prior === hookOrigin) return unchanged;
+    if (hookOrigin === undefined) await origins.clearWorkflow(id);
+    else await origins.recordWorkflow(id, hookOrigin);
+    return async () => {
+      if (prior === undefined) await origins.clearWorkflow(id);
+      else await origins.recordWorkflow(id, prior);
+    };
   }
 
   /**
@@ -972,9 +985,16 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     context: WorkflowWriteContext | undefined,
     previousHash: string | undefined,
     work: () => Promise<WorkflowFileWriteResult>,
+    id?: string,
   ): Promise<WorkflowFileWriteResult> {
-    const result = await work();
-    await recordHookOrigin(type, result.id, context?.hookOrigin);
+    const restoreHookOrigin = await claimHookOrigin(type, id, context?.hookOrigin);
+    let result: WorkflowFileWriteResult;
+    try {
+      result = await work();
+    } catch (error) {
+      await restoreHookOrigin();
+      throw error;
+    }
     await audit(type, result, context?.actor, previousHash);
     if (applyPending) queueApply();
     await settled();
@@ -1150,10 +1170,14 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     },
 
     create: (id, definition, context) =>
-      write('workflow.created', context, undefined, () => catalog.create(id, definition)),
+      write('workflow.created', context, undefined, () => catalog.create(id, definition), id),
     update: (id, definition, update) =>
-      write('workflow.updated', update, update.expectedHash, () =>
-        catalog.update(id, definition, update),
+      write(
+        'workflow.updated',
+        update,
+        update.expectedHash,
+        () => catalog.update(id, definition, update),
+        id,
       ),
     pause: (id, guard) =>
       write('workflow.paused', guard, guard.expectedHash, () => catalog.setPaused(id, true, guard)),

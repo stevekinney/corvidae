@@ -13,8 +13,15 @@ import type { BureauDiagnostic } from '../types.ts';
 import type { EncryptionKey } from '@lostgradient/cryptography';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { afterEach, beforeAll, describe, expect, it } from 'bun:test';
 
+import { createSqliteStorageFixture } from '../test/storage-fixtures.ts';
+import {
+  startWorkflowBureau,
+  type WorkflowBureauHarness,
+} from '../testing/workflow-bureau.test-support.ts';
+import { AGENT_STEP } from '../testing/workflow-file-fixtures.test-support.ts';
 import {
   startWorkflowToolsBureau,
   type WorkflowToolsHarness,
@@ -33,9 +40,9 @@ beforeAll(async () => {
   key = await newEncryptionKey();
 });
 
-const harnesses: WorkflowToolsHarness[] = [];
+const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
-  for (const harness of harnesses.splice(0).toReversed()) await harness.dispose();
+  for (const cleanup of cleanups.splice(0).toReversed()) await cleanup();
 });
 
 /** What the model of the probe's `chain` workflow is told; it answers with a `workflows-create`. */
@@ -79,7 +86,7 @@ async function openProbe() {
       webhooks: { targets: [], fetch: receiver.fetch, sleep: () => Promise.resolve() },
     },
   });
-  harnesses.push(harness);
+  cleanups.push(() => harness.dispose());
   const workflows = harness.bureau.workflows!;
   let created = 0;
   harness.plan('workflows-create', (message) =>
@@ -282,6 +289,76 @@ describe('the schedule a tool makes with the run that is calling it', () => {
     expect(deliveries.slice(1).every((delivery) => skippedFor(delivery, probe.hook.id))).toBe(true);
     const state = await probe.engine.get(instanceId);
     expect(state?.input).toMatchObject({ kind: 'schedule' });
+  });
+});
+
+describe('a reopened Bureau', () => {
+  it('still reads a schedule’s fires as the hook’s: the origin is in the store, not in memory', async () => {
+    const database = createSqliteStorageFixture();
+    cleanups.push(() => database.dispose());
+    const overrides = (storage: Awaited<ReturnType<typeof database.reopen>>) => ({
+      storage,
+      durableOwnership: { ownership: 'none' as const },
+      answerEncryption: { current: key },
+      hooks: {},
+      webhooks: {
+        targets: [],
+        fetch: createReceiver().fetch,
+        sleep: () => Promise.resolve(),
+      },
+    });
+    const first = await startWorkflowBureau({ overrides: overrides(database.storage) });
+    const directory = first.directory;
+    await first.putWorkflow('chain', { trigger: ON_GO });
+    const hook = await first.bureau.hooks!.create({
+      action: { type: 'start-workflow', workflowId: 'chain' },
+      events: ['run.settled'],
+    });
+    // Written as the workflow tools write it for a run that `hook` started.
+    await first.bureau.workflows!.create(
+      'probe',
+      { agent: 'writer', trigger: SCHEDULED.trigger, steps: [AGENT_STEP] },
+      { hookOrigin: hook.id },
+    );
+    await first.bureau.dispose();
+
+    const second: WorkflowBureauHarness = await startWorkflowBureau({
+      directory,
+      overrides: overrides(await database.reopen()),
+    });
+    cleanups.push(() => second.dispose());
+    await second.bureau.durableEngine()!.triggerSchedule(workflowScheduleId('probe', 1));
+    const [decided] = await waitForSettledDeliveries(second.bureau, hook.id, 1);
+    expect(decided).toMatchObject({ status: 'failed' });
+    expect(skippedFor(decided!, hook.id)).toBe(true);
+    await quietFor(250);
+    const chains = await second.bureau.durableEngine()!.list({ type: 'chain' });
+    expect(chains.items).toHaveLength(0);
+  });
+});
+
+describe('a write that a hook-started run makes and the file refuses', () => {
+  it('leaves the origin of the file that is there as it was, and takes none for a file that is not', async () => {
+    const probe = await probeWithFirstSchedule();
+    // Refused: the identifier is taken. An owner's call carries no origin and must not clear the
+    // hook's, and a hook's call must not take one for the owner's file.
+    expect(await rejectionOf(probe.workflows.create('probe-1', SCHEDULED))).toBeDefined();
+    await probe.workflows.create('owner-probe', SCHEDULED);
+    const taken = probe.workflows.create('owner-probe', SCHEDULED, { hookOrigin: probe.hook.id });
+    expect(await rejectionOf(taken)).toBeDefined();
+    const stale = probe.workflows.update('owner-probe', SCHEDULED, {
+      expectedHash: 'not-the-hash',
+      hookOrigin: probe.hook.id,
+    });
+    expect(await rejectionOf(stale)).toBeDefined();
+
+    await probe.fireWorkflowSchedule('probe-1');
+    const afterHooked = await probe.deliveries(3);
+    expect(skippedFor(afterHooked.at(-1)!, probe.hook.id)).toBe(true);
+    // The owner's file still starts the hook when it fires.
+    await probe.engine.triggerSchedule(workflowScheduleId('owner-probe', 1));
+    const afterOwned = await probe.deliveries(4);
+    expect(afterOwned.at(-1)).toMatchObject({ status: 'delivered' });
   });
 });
 
