@@ -29,36 +29,13 @@ import {
   type PostgresKeyValueQueries,
 } from './postgres-key-value-queries.ts';
 import { assertReadOnlyQuery } from './read-only-query.ts';
-
-/**
- * Postgres `SQLSTATE`s that abort a transaction but mean "retry from the start",
- * not "the operation is invalid":
- * - `40001` serialization_failure — a `SERIALIZABLE` transaction conflicted with
- *   a concurrent one and was rolled back.
- * - `40P01` deadlock_detected — two transactions touched overlapping rows in
- *   different orders; Postgres rolled one back as the deadlock victim. Two CAS
- *   calls gated on different keys can deadlock, so this must converge through the
- *   same retry path rather than escape as an engine error.
- *
- * A unique-violation (`23505`) is intentionally NOT retryable here: every write
- * goes through `INSERT ... ON CONFLICT (key) DO UPDATE`, which resolves a key
- * collision instead of raising `23505`, so it cannot occur on this UPSERT shape.
- *
- * The deadlock victim's rollback is total, so retrying the whole
- * `BEGIN → read → compare → write → COMMIT` cycle (re-reading every condition) is
- * as safe for `40P01` as for `40001`.
- */
-const RETRYABLE_TRANSACTION_FAILURES = new Set(['40001', '40P01']);
-
-/**
- * Cap on `SERIALIZABLE` attempts for a single `conditionalBatch`. A conflict
- * means a concurrent writer touched an overlapping row; under the singleton
- * deployment Weft targets, contention is bounded, so a small cap is enough.
- * On exhaustion the call throws rather than silently returning `false` — a
- * silent `false` would look like a precondition mismatch and corrupt the
- * compare-and-swap callers (start idempotency, quota reservation) depend on.
- */
-const MAX_SERIALIZATION_RETRIES = 5;
+import {
+  isRetryableTransactionFailure,
+  MAX_SERIALIZATION_RETRIES,
+  serializationRetryDelay,
+  sleep,
+  type SerializationRetryOptions,
+} from './serialization-retry.ts';
 
 /**
  * A connection that can run a single interactive transaction. Obtained from
@@ -123,15 +100,12 @@ export type PostgresKeyValueStorageOptions = {
    * are unaffected).
    */
   table?: string;
+  /**
+   * How `conditionalBatch` backs off between `SERIALIZABLE` attempts. Defaults to a real
+   * `setTimeout` sleep and `Math.random`; inject both to keep tests deterministic.
+   */
+  serializationRetry?: SerializationRetryOptions;
 };
-
-function isRetryableTransactionFailure(error: unknown): boolean {
-  if (typeof error !== 'object' || error === null || !('code' in error)) {
-    return false;
-  }
-  const code = (error as { code?: unknown }).code;
-  return typeof code === 'string' && RETRYABLE_TRANSACTION_FAILURES.has(code);
-}
 
 /**
  * Driver-agnostic base for Weft's Postgres-wire storage adapters. Implements the
@@ -172,6 +146,9 @@ export class PostgresKeyValueStorage implements Storage {
   // dispose (sync-then-async, or either twice) awaits/observes the same `end()`
   // rather than calling it again (which the driver rejects as "ended twice").
   #poolShutdown: Promise<void> | undefined;
+  // Backoff between SERIALIZABLE attempts; see SerializationRetryOptions.
+  #retryDelay: (milliseconds: number) => Promise<void>;
+  #retryRandom: () => number;
 
   /**
    * @param options Connection configuration ({@link PostgresKeyValueStorageOptions}).
@@ -194,6 +171,8 @@ export class PostgresKeyValueStorage implements Storage {
       this.#pool = options.pool;
     }
     this.#schema = options.schema;
+    this.#retryDelay = options.serializationRetry?.delay ?? sleep;
+    this.#retryRandom = options.serializationRetry?.random ?? Math.random;
     // Resolve + validate the table reference once. With no schema/table set this
     // is the bare `kv` (byte-identical default SQL); otherwise a quoted,
     // identifier-validated `"schema"."table"`.
@@ -416,20 +395,24 @@ export class PostgresKeyValueStorage implements Storage {
     // Resolve the write net effect once, outside the retry loop — it is
     // deterministic input, so recomputing per retry would be wasted work.
     const netEffect = resolveBatchNetEffect(operations);
+    // Snapshot the caller's conditions: a retry now waits, so a caller that reuses its array
+    // while the call is pending must not change what later attempts compare.
+    const checkedConditions = conditions.map((condition) => ({ ...condition }));
 
     // SERIALIZABLE is required, not SELECT...FOR UPDATE: a condition with
     // expectedValue null asserts a key is ABSENT, and a row lock cannot lock a
     // nonexistent row — two concurrent absent-checks would both pass. Under
     // SERIALIZABLE the conflicting transaction is aborted (40001, or 40P01 when
     // it deadlocks), so exactly one writer wins. Retry the whole transaction
-    // (re-reading every condition) on a retryable abort, bounded by the cap.
+    // (re-reading every condition) on a retryable abort, waiting a jittered,
+    // exponentially growing delay between attempts and bounded by the cap.
     let lastError: unknown;
     for (let attempt = 0; attempt < MAX_SERIALIZATION_RETRIES; attempt += 1) {
       try {
         return await this.#withTransaction(
           PG_BEGIN_SERIALIZABLE,
           async (client) => {
-            if (!(await conditionsHold(client, this.#queries, conditions))) {
+            if (!(await conditionsHold(client, this.#queries, checkedConditions))) {
               return false;
             }
             await writeBatchNetEffect(client, this.#queries, netEffect);
@@ -446,6 +429,9 @@ export class PostgresKeyValueStorage implements Storage {
           throw error;
         }
         lastError = error;
+      }
+      if (attempt + 1 < MAX_SERIALIZATION_RETRIES) {
+        await this.#retryDelay(serializationRetryDelay(attempt, this.#retryRandom));
       }
     }
 
