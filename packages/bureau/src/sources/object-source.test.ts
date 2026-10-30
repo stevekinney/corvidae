@@ -235,6 +235,37 @@ describe('reading a reference beside the definitions', () => {
     });
   });
 
+  it('answers unchanged from the listing’s ETag without a GET, and reads again once the object changed', async () => {
+    const { server, source, calls } = setup();
+    server.put(`${PREFIX}docs/style.md`, 'Be brief.');
+    const agentSource = source as AgentSource;
+    const first = await agentSource.readSibling('docs/style.md', { limit: 100 });
+    if (first.kind !== 'found' || first.stamp === undefined) throw new Error('Expected a stamp.');
+    expect(calls.reads).toHaveLength(1);
+
+    const lists = calls.lists;
+    expect(
+      await agentSource.readSibling('docs/style.md', { limit: 100, unlessStamp: first.stamp }),
+    ).toEqual({ kind: 'unchanged' });
+    expect(calls.reads).toHaveLength(1);
+    expect(calls.lists).toBe(lists + 1);
+
+    server.put(`${PREFIX}docs/style.md`, 'Be thorough.');
+    const second = await agentSource.readSibling('docs/style.md', {
+      limit: 100,
+      unlessStamp: first.stamp,
+    });
+    expect(second.kind).toBe('found');
+    expect(calls.reads).toHaveLength(2);
+  });
+
+  it('states its poll interval as the interval references are read again, and none under watch: false', () => {
+    const polling = setup({ pollIntervalMilliseconds: 30_000 }).source as AgentSource;
+    expect(polling.referencePollMilliseconds).toBe(30_000);
+    const quiet = setup({ watch: false }).source as AgentSource;
+    expect(quiet.referencePollMilliseconds).toBeUndefined();
+  });
+
   it('is not shown the objects of another prefix, whatever the path', async () => {
     const { server, source } = setup();
     server.put('elsewhere/secret.md', 'not yours');

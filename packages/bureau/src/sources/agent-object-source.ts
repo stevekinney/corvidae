@@ -47,7 +47,11 @@ export function agentObjectSource(
   );
   return Object.assign(source, {
     kind: 'agent' as const,
-    async readSibling(path: string, readOptions: { readonly limit: number }) {
+    referencePollMilliseconds: source.pollIntervalMilliseconds,
+    async readSibling(
+      path: string,
+      readOptions: { readonly limit: number; readonly unlessStamp?: string | undefined },
+    ) {
       assertReferencePath(path);
       return await source.readBeside(path, readOptions);
     },

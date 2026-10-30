@@ -128,7 +128,17 @@ export class SourceConflictError extends Error {
 
 /** What {@link AgentSource.readSibling} found at a path. */
 export type SiblingRead =
-  | { readonly kind: 'found'; readonly bytes: Uint8Array }
+  | {
+      readonly kind: 'found';
+      readonly bytes: Uint8Array;
+      /**
+       * An opaque token that changes when the document does (an ETag, or a file's size, inode and
+       * modification time). A caller that kept the bytes passes it back as `unlessStamp`. Absent
+       * when the source cannot tell.
+       */
+      readonly stamp?: string | undefined;
+    }
+  | { readonly kind: 'unchanged' }
   | { readonly kind: 'missing' }
   | { readonly kind: 'too-large'; readonly size: number };
 
@@ -152,8 +162,22 @@ export type AgentSource = DefinitionSource & {
    * location. A document larger than `options.limit` bytes is reported as `too-large` without
    * being read in full where the source can tell; a document that is not there is `missing`.
    * Rejects when the document exists and cannot be read.
+   *
+   * With `options.unlessStamp` set to the `stamp` of an earlier `found`, a document whose stamp is
+   * still that one is answered `unchanged` without its content being read: the caller keeps the
+   * bytes it has. A source that cannot stamp a document ignores the option and reads it.
    */
-  readSibling(path: string, options: { readonly limit: number }): Promise<SiblingRead>;
+  readSibling(
+    path: string,
+    options: { readonly limit: number; readonly unlessStamp?: string | undefined },
+  ): Promise<SiblingRead>;
+  /**
+   * How often, in milliseconds, the source looks for changes on its own: its poll interval. The
+   * catalog reads an agent's reference documents again at this period, because nothing else
+   * reports an edit to one. Absent when the source does not watch (`watch: false`), in which case
+   * a document is read again by the next scan only.
+   */
+  readonly referencePollMilliseconds?: number | undefined;
 };
 
 /** The source of workflow definitions. */

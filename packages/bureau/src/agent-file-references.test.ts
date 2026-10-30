@@ -5,10 +5,11 @@
  * snapshot and only the digest on a saved version.
  */
 import { mkdir, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import {
@@ -17,13 +18,16 @@ import {
   AgentFileError,
   parseAgentFile,
 } from './agent-file';
-import { readFileAgentBinding, REFERENCE_POLL_MILLISECONDS } from './agent-file-catalog';
+import { readFileAgentBinding } from './agent-file-catalog';
+import { DIRECTORY_POLL_INTERVAL_MILLISECONDS } from './sources/watched-directory';
 import {
   referenceIdentity,
   renderInstructions,
   type AgentReferenceDocument,
 } from './agent-reference-documents';
 import { createAgentSnapshotStore } from './agent-snapshot-store';
+import { nodeAgentFileOperations } from './sources/agent-file-operations';
+import { createMemoryDefinitionSource } from './testing/memory-definition-source.test-support';
 import {
   type AgentFileFixture,
   agentFileText,
@@ -254,7 +258,7 @@ describe('editing a reference document', () => {
 
   it('is noticed by the catalog without a rescan being asked for, within the reference poll', async () => {
     const runtime = createManualRuntimeServices({ origin: '2026-10-18T00:00:00.000Z' });
-    const fixture = await start({ runtime });
+    const fixture = await start({ runtime, watch: true });
     await mkdir(join(fixture.directory, 'docs'));
     await fixture.put('style.md', 'Be brief.\n');
     await fixture.put('docs/glossary.txt', 'Order: a purchase.\n');
@@ -265,7 +269,7 @@ describe('editing a reference document', () => {
     // A document in a subdirectory: `fs.watch` of the directory never sees it.
     await fixture.put('docs/glossary.txt', 'Order: a purchase or a return.\n');
     const changed = fixture.nextChange((change) => change.changed.includes('helper'));
-    await runtime.advance(REFERENCE_POLL_MILLISECONDS);
+    await runtime.advance(DIRECTORY_POLL_INTERVAL_MILLISECONDS);
     await changed;
 
     expect(entryOf(fixture).definitionRevision).toBe((before ?? 0) + 1);
@@ -276,7 +280,7 @@ describe('editing a reference document', () => {
 
   it('is noticed when the document goes missing, and the agent is listed invalid', async () => {
     const runtime = createManualRuntimeServices({ origin: '2026-10-18T00:00:00.000Z' });
-    const fixture = await start({ runtime });
+    const fixture = await start({ runtime, watch: true });
     await fixture.put('style.md', 'Be brief.\n');
     await fixture.put('helper.md', agentFileText({ model: KNOWN_MODEL, references: '[style.md]' }));
     await fixture.catalog.refresh();
@@ -284,28 +288,108 @@ describe('editing a reference document', () => {
 
     await rm(join(fixture.directory, 'style.md'));
     const changed = fixture.nextChange((change) => change.rejected.includes('helper'));
-    await runtime.advance(REFERENCE_POLL_MILLISECONDS);
+    await runtime.advance(DIRECTORY_POLL_INTERVAL_MILLISECONDS);
     await changed;
     expect(entryOf(fixture).problem?.code).toBe('missing-reference');
   });
 
   it('arms the poll only while an agent has references, and not after the catalog is closed', async () => {
     const runtime = createManualRuntimeServices({ origin: '2026-10-18T00:00:00.000Z' });
-    const fixture = await start({ runtime });
+    const fixture = await start({ runtime, watch: true });
     await fixture.put('plain.md', validAgentFile());
     await fixture.catalog.refresh();
-    expect(runtime.pendingTimers()).toEqual([]);
+    const withoutReferences = runtime.pendingTimers().length;
 
     await fixture.put('style.md', 'Be brief.\n');
     await fixture.put('helper.md', agentFileText({ model: KNOWN_MODEL, references: '[style.md]' }));
     await fixture.catalog.refresh();
-    expect(runtime.pendingTimers()).toHaveLength(1);
+    expect(runtime.pendingTimers()).toHaveLength(withoutReferences + 1);
 
     await fixture.catalog.close();
     expect(runtime.pendingTimers()).toEqual([]);
     await rm(join(fixture.directory, 'style.md'));
-    await runtime.advance(REFERENCE_POLL_MILLISECONDS * 3);
+    await runtime.advance(DIRECTORY_POLL_INTERVAL_MILLISECONDS * 3);
     expect(runtime.pendingTimers()).toEqual([]);
+  });
+
+  it('does not poll under a source that does not watch, and a scan still reads the documents', async () => {
+    const runtime = createManualRuntimeServices({ origin: '2026-10-18T00:00:00.000Z' });
+    const fixture = await start({ runtime, watch: false });
+    await fixture.put('style.md', 'Be brief.\n');
+    await fixture.put('helper.md', agentFileText({ model: KNOWN_MODEL, references: '[style.md]' }));
+    await fixture.catalog.refresh();
+    expect(runtime.pendingTimers()).toEqual([]);
+    await fixture.put('style.md', 'Be thorough.\n');
+    await fixture.catalog.refresh();
+    expect(bindingOf(fixture).referenceDocuments?.[0]?.content).toBe('Be thorough.\n');
+  });
+
+  it('reads no content for a document whose stamp has not moved, and reads it again once it has', async () => {
+    const runtime = createManualRuntimeServices({ origin: '2026-10-18T00:00:00.000Z' });
+    const reads: string[] = [];
+    const fixture = await start({
+      runtime,
+      watch: true,
+      operations: {
+        ...nodeAgentFileOperations,
+        read: (path) => {
+          reads.push(basename(path));
+          return nodeAgentFileOperations.read(path);
+        },
+      },
+    });
+    await fixture.put('notes.txt', 'Be brief.\n');
+    await fixture.put(
+      'helper.md',
+      agentFileText({ model: KNOWN_MODEL, references: '[notes.txt]' }),
+    );
+    await fixture.catalog.refresh();
+    const initial = reads.filter((name) => name === 'notes.txt').length;
+    expect(initial).toBeGreaterThan(0);
+
+    // Many polls and rescans with the document as it was: nothing is read.
+    for (let tick = 0; tick < 3; tick += 1) {
+      await runtime.advance(DIRECTORY_POLL_INTERVAL_MILLISECONDS);
+      await fixture.catalog.refresh();
+    }
+    expect(reads.filter((name) => name === 'notes.txt')).toHaveLength(initial);
+
+    await fixture.put('notes.txt', 'Be thorough, and longer.\n');
+    await fixture.catalog.refresh();
+    expect(reads.filter((name) => name === 'notes.txt').length).toBeGreaterThan(initial);
+    expect(bindingOf(fixture).referenceDocuments?.[0]?.content).toBe('Be thorough, and longer.\n');
+  });
+
+  it('polls at the interval the source states, not at a period of its own', async () => {
+    const memory = createMemoryDefinitionSource('agent', {
+      tools: {},
+      referencePollMilliseconds: 30_000,
+    });
+    const runtime = createManualRuntimeServices({ origin: '2026-10-18T00:00:00.000Z' });
+    const fixture = await start({ runtime, source: memory.source });
+    memory.setSibling('style.md', 'Be brief.\n');
+    memory.set('helper', agentFileText({ model: KNOWN_MODEL, references: '[style.md]' }));
+    await fixture.catalog.refresh();
+    expect(entryOf(fixture).state).toBe('ready');
+    const [timer] = runtime.pendingTimers();
+    // Nothing has advanced the manual clock, so a due time is the period.
+    expect(timer?.dueAt).toBe(30_000);
+    const reads = memory.siblingContentReads();
+
+    // Nothing moved at the end of an interval: the document is looked at and not fetched.
+    await runtime.advance(30_000);
+    // The poll runs after the timer fires and arms the next one when it is done.
+    await waitUntil(() => runtime.pendingTimers().length === 1);
+    expect(memory.siblingContentReads()).toBe(reads);
+
+    memory.setSibling('style.md', 'Be thorough.\n');
+    await runtime.advance(29_999);
+    expect(entryOf(fixture).definitionRevision).toBe(1);
+    const changed = fixture.nextChange((change) => change.changed.includes('helper'));
+    await runtime.advance(1);
+    await changed;
+    expect(entryOf(fixture).definitionRevision).toBe(2);
+    expect(memory.siblingContentReads()).toBe(reads + 1);
   });
 
   it('is read afresh by detail, which does not describe a revision older than its documents', async () => {

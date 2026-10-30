@@ -11,6 +11,7 @@ import type { Tool } from 'armorer';
 
 import { AGENT_FILE_EXTENSION, AGENT_FILE_SIZE_LIMIT } from '../agent-file';
 import { nodeAgentFileOperations } from './agent-file-operations';
+import { DIRECTORY_POLL_INTERVAL_MILLISECONDS } from './watched-directory';
 import type { AgentSource, SiblingRead } from './definition-source';
 import { createDirectorySource, type DirectorySourceOptions } from './directory-source';
 import { assertReferencePath } from './reference-path';
@@ -48,7 +49,7 @@ export function agentFileDirectory(
   const root = resolve(path);
   async function readSibling(
     sibling: string,
-    readOptions: { readonly limit: number },
+    readOptions: { readonly limit: number; readonly unlessStamp?: string | undefined },
   ): Promise<SiblingRead> {
     assertReferencePath(sibling);
     const target = resolve(root, ...sibling.split('/'));
@@ -59,17 +60,23 @@ export function agentFileDirectory(
         `The reference path ${JSON.stringify(sibling)} is outside the directory.`,
       );
     }
-    const size = await operations.size(target);
-    if (size === undefined) return { kind: 'missing' };
-    if (size > readOptions.limit) return { kind: 'too-large', size };
+    const info = await operations.stat(target);
+    if (info === undefined) return { kind: 'missing' };
+    if (info.size > readOptions.limit) return { kind: 'too-large', size: info.size };
+    // A file replaced by a rename has another inode; one edited in place has another time or size.
+    const stamp = `${info.size}:${info.inode}:${info.modifiedMilliseconds}`;
+    if (readOptions.unlessStamp === stamp) return { kind: 'unchanged' };
     const bytes = await operations.read(target);
     if (bytes === undefined) return { kind: 'missing' };
     if (bytes.byteLength > readOptions.limit) return { kind: 'too-large', size: bytes.byteLength };
-    return { kind: 'found', bytes };
+    return { kind: 'found', bytes, stamp };
   }
   return Object.assign(source, {
     kind: 'agent' as const,
     readSibling,
+    ...(options.watch === false
+      ? {}
+      : { referencePollMilliseconds: DIRECTORY_POLL_INTERVAL_MILLISECONDS }),
     ...(options.tools === undefined ? {} : { tools: options.tools }),
   });
 }

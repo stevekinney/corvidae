@@ -146,19 +146,43 @@ function problemFor(
 }
 
 /**
+ * The bytes of the documents read last, by path, with the stamp the source gave each. A source
+ * that can tell a document is unchanged by its stamp answers `unchanged` and the bytes here are
+ * used, so a poll that finds nothing moved reads no content.
+ */
+export type ReferenceCache = Map<string, { readonly stamp: string; readonly bytes: Uint8Array }>;
+
+/**
  * Read the documents `paths` name through `source`, one after another so the first problem in the
- * file's order is the one reported. Never rejects.
+ * file's order is the one reported. With a `cache`, a document the source reports unchanged is not
+ * read again, and each document read is remembered by its stamp. Never rejects.
  */
 export async function loadReferenceDocuments(
   source: Pick<AgentSource, 'readSibling'>,
   paths: readonly string[],
+  cache?: ReferenceCache,
 ): Promise<ReferenceLoad> {
   const documents: AgentReferenceDocument[] = [];
   let total = 0;
   for (const [index, path] of paths.entries()) {
     let read;
     try {
-      read = await source.readSibling(path, { limit: AGENT_REFERENCE_SIZE_LIMIT });
+      const cached = cache?.get(path);
+      read = await source.readSibling(path, {
+        limit: AGENT_REFERENCE_SIZE_LIMIT,
+        ...(cached === undefined ? {} : { unlessStamp: cached.stamp }),
+      });
+      if (read.kind === 'unchanged') {
+        // A source answers `unchanged` only to a stamp it was given, which came with these bytes.
+        read =
+          cached === undefined
+            ? { kind: 'missing' }
+            : { kind: 'found', bytes: cached.bytes, stamp: cached.stamp };
+      } else if (read.kind === 'found' && read.stamp !== undefined) {
+        cache?.set(path, { stamp: read.stamp, bytes: read.bytes });
+      } else {
+        cache?.delete(path);
+      }
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       return problemFor('missing-reference', index, path, `could not be read: ${reason}`);

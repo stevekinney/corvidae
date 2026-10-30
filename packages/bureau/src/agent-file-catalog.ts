@@ -38,9 +38,11 @@
  * without changing the file. The revision identity is then not the file's hash but the identity
  * hash that folds in each document's digest (the file's own hash when there are no references), so
  * editing a document raises the `definitionRevision`; `definitionHash` and `expectedHash` stay the
- * file's bytes. While any agent has references the catalog also re-reads them once a second
- * ({@link REFERENCE_POLL_MILLISECONDS}) and rescans when one moved, because a source reports
- * changes to agent files and not to the documents they name.
+ * file's bytes. While any agent has references the catalog also re-reads them at the source's own
+ * poll interval (`AgentSource.referencePollMilliseconds`; none under a source that does not
+ * watch) and rescans when one moved, because a source reports changes to agent files and not to
+ * the documents they name. The source stamps each document (an ETag, or a file's size, inode and
+ * modification time), and a document whose stamp is unchanged is not read again.
  *
  * A file with `compaction` enabled is `invalid` (`invalid-frontmatter`, path `compaction`) while
  * the deployment has no summarizer (`models.summarizer()`). Nothing tells the catalog the
@@ -82,6 +84,7 @@ import {
   type AgentReferenceDocument,
   digestsOf,
   loadReferenceDocuments,
+  type ReferenceCache,
   referenceIdentity,
   renderInstructions,
 } from './agent-reference-documents';
@@ -382,12 +385,6 @@ function inputOf(definition: AgentFileDefinition): AgentFileDefinitionInput {
   };
 }
 
-/**
- * How often the catalog reads the reference documents again, in milliseconds, while any agent has
- * references. The same period as the directory source's safety rescan.
- */
-export const REFERENCE_POLL_MILLISECONDS = 1000;
-
 /** Whether `entry` is a file whose references are read on every scan. */
 function hasReferences(entry: FileEntry): boolean {
   return (
@@ -400,6 +397,8 @@ function hasReferences(entry: FileEntry): boolean {
 
 export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentFileCatalog {
   const owner = ownerOrLocal(undefined);
+  /** The documents read last, by path, so a reading that finds one unchanged does not fetch it. */
+  const referenceCache: ReferenceCache = new Map();
   /**
    * What the scanner compares an entry's deployment state with. It rises when the model catalog's
    * revision moves and when {@link AgentFileCatalog.revalidate} is called, so a change the model
@@ -796,7 +795,11 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     if (hash === undefined || definition?.references === undefined || descriptor === undefined) {
       return entry;
     }
-    const loaded = await loadReferenceDocuments(options.source, definition.references);
+    const loaded = await loadReferenceDocuments(
+      options.source,
+      definition.references,
+      referenceCache,
+    );
     if (!loaded.ok) return { id, hash, revision, definition, descriptor, problem: loaded.problem };
     const identity = referenceIdentity(hash, loaded.documents);
     if (entry.agent !== undefined && entry.identity === identity) return entry;
@@ -839,7 +842,9 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     loaded: ReadonlyMap<string, FileEntry>,
   ): Promise<ReadonlyMap<string, FileEntry>> {
     const settled = new Map(loaded);
+    const referenced = new Set<string>();
     for (const [id, scanned] of loaded) {
+      for (const path of scanned.definition?.references ?? []) referenced.add(path);
       let entry = scanned;
       if (hasReferences(entry)) {
         entry = await withReferences(entry);
@@ -850,6 +855,9 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       const revision = await revisionOf(id, entry);
       if (revision !== entry.definitionRevision) settled.set(id, atRevision(entry, revision));
     }
+    // A document no agent names any more is not kept.
+    for (const path of referenceCache.keys())
+      if (!referenced.has(path)) referenceCache.delete(path);
     return settled;
   }
 
@@ -880,13 +888,15 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
    */
   function scheduleReferencePoll(): void {
     if (closing || referenceTimer !== undefined) return;
+    const period = options.source.referencePollMilliseconds;
+    if (period === undefined) return;
     if (![...directoryWatcher.entries().values()].some(hasReferences)) return;
     referenceTimer = options.runtime.timers.setTimeout(() => {
       referenceTimer = undefined;
       polling = pollReferences().finally(() => {
         polling = undefined;
       });
-    }, REFERENCE_POLL_MILLISECONDS);
+    }, period);
   }
 
   /** Read every agent's references; rescan if one moved. Never rejects. */

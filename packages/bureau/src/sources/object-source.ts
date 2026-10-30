@@ -116,7 +116,12 @@ function validate(
  * object under the same prefix by its path (`agent-object-source.ts` checks the path first).
  */
 export type ObjectSource = DefinitionSource & {
-  readBeside(path: string, options: { readonly limit: number }): Promise<SiblingRead>;
+  readBeside(
+    path: string,
+    options: { readonly limit: number; readonly unlessStamp?: string | undefined },
+  ): Promise<SiblingRead>;
+  /** The poll interval, or `undefined` under `watch: false`. */
+  readonly pollIntervalMilliseconds: number | undefined;
 };
 
 /** A {@link DefinitionSource} over the objects under a key prefix. */
@@ -167,7 +172,9 @@ export function createObjectSource(
       host = lent;
     },
 
-    async readBeside(path, { limit }) {
+    pollIntervalMilliseconds: options.watch === false ? undefined : pollInterval,
+
+    async readBeside(path, { limit, unlessStamp }) {
       const key = `${prefix}${path}`;
       // The listing reports a size, so an object over the limit is never read in full. The key
       // itself is the first match of its own prefix, so it is on the first page when it exists.
@@ -175,10 +182,12 @@ export function createObjectSource(
       const listed = page.objects.find((candidate) => candidate.key === key);
       if (listed === undefined) return { kind: 'missing' };
       if (listed.size > limit) return { kind: 'too-large', size: listed.size };
+      // The listing's ETag says whether the object changed: no GET when it is the one last read.
+      if (listed.etag !== '' && unlessStamp === listed.etag) return { kind: 'unchanged' };
       const read = await operations.read(key);
       if (read === undefined) return { kind: 'missing' };
       if (read.bytes.byteLength > limit) return { kind: 'too-large', size: read.bytes.byteLength };
-      return { kind: 'found', bytes: read.bytes };
+      return { kind: 'found', bytes: read.bytes, stamp: read.etag === '' ? undefined : read.etag };
     },
 
     async load(): Promise<readonly DefinitionEntry[]> {
