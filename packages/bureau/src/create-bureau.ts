@@ -2707,6 +2707,7 @@ async function constructBureau<const D extends AgentDefinitions>(
             },
           }),
       decideToolFor: (owner, offered) => lateDecisions.toolWiringFor(true, owner, offered),
+      permissionModeOfRun,
       toolGrantFor: async (taskId) =>
         (await taskRegistryHolder.current?.recordToolGrant(taskId, toolGrantNow())) ??
         toolGrantNow(),
@@ -3060,8 +3061,6 @@ async function constructBureau<const D extends AgentDefinitions>(
                 : { approvalSecret: options.agentApprovalSecret }),
               // COR-1828: a tool a person allowed for the rest of the chat skips its `on-changes` ask.
               rememberedTools: approvalGrantsOfRun,
-              // COR-1936: and the chat's permission mode is read for every call.
-              permissionModeOfRun,
               // COR-1920: a file agent's per-run toolbox resolves secret answers as the Bureau's does.
               ...(runtime.secretAnswers === undefined
                 ? {}
@@ -17500,7 +17499,10 @@ async function constructBureau<const D extends AgentDefinitions>(
             );
           }
         }
-        const approvalToolbox = runToolboxesByRunId.get(review.runId) ?? runtime.baseToolbox;
+        // COR-1947: an approved call is decided again, under the chat's mode of the moment.
+        const approvalToolbox =
+          runToolboxesByRunId.get(review.runId) ??
+          runtime.withChatPermission(runtime.baseToolbox, review.runId);
         if (input.decision === 'approve') {
           const { approval } = review;
           if (approval.approvalToken === undefined) {

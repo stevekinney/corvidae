@@ -120,6 +120,7 @@ function claimRuntime(options: {
     durable: { engine: {}, checkpointStore: {} },
     createBureauInvariantHooks: () => undefined,
     mediaOptionsFor: () => ({}),
+    withChatPermission: (toolbox: unknown) => toolbox,
     claimCatalogRunRecoveryRecord: options.claim,
     persistCatalogRunRecoveryRecord: options.persist ?? (async () => {}),
     loadCatalogRunRecoveryRecord: options.load ?? (async () => ({ status: 'missing' })),
@@ -144,6 +145,7 @@ async function engineRuntime(
     durable: { engine, checkpointStore },
     createBureauInvariantHooks: () => undefined,
     mediaOptionsFor: () => ({}),
+    withChatPermission: (toolbox: unknown) => toolbox,
     claimCatalogRunRecoveryRecord: async () => true,
     persistCatalogRunRecoveryRecord: async () => {},
     ...overrides,
@@ -453,6 +455,7 @@ describe('a run that is not durable', () => {
   const plain = {
     createBureauInvariantHooks: () => undefined,
     mediaOptionsFor: () => ({}),
+    withChatPermission: (toolbox: unknown) => toolbox,
   } as unknown as RuntimeComposition;
 
   it('settles its reference when it is aborted while it is still resolving', async () => {

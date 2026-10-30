@@ -630,12 +630,14 @@ export function createCatalogDispatcher({
         : undefined;
     const composeResolvedOptions = (resolved: RunOptions): RunOptions => {
       const withRuntime: RunOptions = { runtime: runtimeServices, ...resolved };
+      // COR-1947: a dispatch can name a chat, so it runs under the chat's mode as a session run does.
+      const toolbox = runtime.withChatPermission(withRuntime.toolbox, runId);
       return {
         ...withRuntime,
         ...(humanInputEmitter === undefined && decide === undefined
-          ? {}
+          ? { toolbox }
           : {
-              toolbox: wireDurableOptInTools(withRuntime.toolbox, humanInputServices, {
+              toolbox: wireDurableOptInTools(toolbox, humanInputServices, {
                 humanInput: humanInputEmitter !== undefined,
                 inputSchemas: humanInputSchemasOf(
                   grant === undefined ? humanInput : grant.humanInput,

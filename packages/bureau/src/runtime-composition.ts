@@ -32,6 +32,7 @@ import type {
   JSONValue,
   OnStepHook,
   OperativeHookMap,
+  PermissionMode,
   PrepareStepHook,
   ProviderDefinition,
   RegistryAgnosticEngine,
@@ -101,6 +102,7 @@ import { createDecideToolbox, type DecideToolWiring } from './decisions/decide-t
 import { humanInputEnabled, humanInputSchemasOf } from './human-input-option';
 import { isStoredTaskOrigin, type StoredTaskOrigin } from './task-origin';
 import type { TaskToolGrant } from './task-registry';
+import { ONLY_ASKS_A_PERSON, withChatPermission } from './tool-approval';
 import { withAddedTools, withToolboxLayer } from './toolbox-additions';
 import {
   type AnyWorkflowDefinition,
@@ -335,6 +337,8 @@ export function wireDurableOptInTools(
     const humanInputToolbox = createToolbox([
       createTool({
         ...rawHumanInputTool,
+        // COR-1947: it only asks a person, so no permission mode stands in front of it.
+        metadata: { [ONLY_ASKS_A_PERSON]: true },
         // armorer's `execute` contract is async; the raw tool factory's
         // `execute` is synchronous (it only mutates `context` and returns a
         // plain result), so wrap it rather than changing its public shape.
@@ -379,6 +383,10 @@ export function wireDurableOptInTools(
     const wakeupToolbox = createToolbox([
       createTool({
         ...rawWakeupTool,
+        // COR-1947: it schedules work, so `read-only` denies it. A version, because Armorer can
+        // only raise an approval for a versioned tool, and `always` asks about it.
+        version: '1.0.0',
+        metadata: { mutates: true, summary: 'Wake this run in {in}' },
         // Same async-wrap rationale as `requestHumanInput` above: the raw
         // tool's `execute` is synchronous and can throw synchronously
         // (`DurableCapabilityUnavailableError`); armorer's contract is
@@ -1600,6 +1608,13 @@ export type RuntimeCompositionDependencies = {
     offered: boolean,
   ) => DecideToolWiring | undefined;
   /**
+   * COR-1936 — the permission mode of the chat a run belongs to, read when each of the run's tool
+   * calls is decided, so a steer applies from the next call; `undefined` for a run that belongs to
+   * no chat. A rejection is read as `read-only`. Late-bound by `createBureau`, which holds the
+   * steering.
+   */
+  permissionModeOfRun?: (runId: string) => Promise<PermissionMode | undefined>;
+  /**
    * COR-1710 — the tools task `taskId` was granted when it started, from its admission record;
    * for a task recorded before grants were, the settings now, recorded on it once. Without this,
    * a resumed task is offered what the options say, as before grants existed.
@@ -2136,6 +2151,11 @@ export interface RuntimeComposition {
    * that produced the pending approval.
    */
   baseToolbox: BureauToolbox;
+  /**
+   * COR-1947 — `toolbox` with every tool held to the permission mode of the chat `runId` belongs
+   * to. Every toolbox a run calls goes through this once, whatever kind of agent built it.
+   */
+  withChatPermission(toolbox: BureauToolbox, runId: string): BureauToolbox;
   setRequestAuthorityValidator(
     validator: ((context: ToolRequestContext) => boolean | Promise<boolean>) | undefined,
   ): void;
@@ -3119,6 +3139,12 @@ async function buildRuntimeComposition(
   const configuredGenerate: GenerateFunction | undefined =
     options.generate === undefined ? undefined : applyCache(options.generate, options.cache, kv);
 
+  /** {@link RuntimeComposition.withChatPermission}. */
+  function governedByChat(toolbox: BureauToolbox, runId: string): BureauToolbox {
+    const read = dependencies.permissionModeOfRun;
+    return read === undefined ? toolbox : withChatPermission(toolbox, () => read(runId));
+  }
+
   /**
    * The guardrail configuration in force for this composition, with `false`
    * narrowed away so a caller sees a real configuration or nothing.
@@ -3579,16 +3605,19 @@ async function buildRuntimeComposition(
       getActiveSkillToolPolicy === undefined && !skillPolicyUnverified
         ? undefined
         : () => (skillPolicyUnverified ? { allowList: [] } : getActiveSkillToolPolicy?.());
+    // COR-1947 — nearest the tools: a layer, so what is added to the run later is held to it too.
+    const chatToolbox =
+      request.runId === undefined ? toolbox : governedByChat(toolbox, request.runId);
     const runToolbox = withDefaultToolboxRequestContext(
       // COR-1228 — narrow by active-skill policy first, then apply the request
       // context. Order matters only for readability here: both are proxies and
       // neither observes the other, but filtering nearest the toolbox keeps the
       // request-context wrapper the outermost thing a caller sees.
       skillToolPolicy
-        ? withToolboxLayer(toolbox, (rebuilt) =>
+        ? withToolboxLayer(chatToolbox, (rebuilt) =>
             withActiveSkillToolPolicy(rebuilt, skillToolPolicy),
           )
-        : toolbox,
+        : chatToolbox,
       requestContext,
       () => requestAuthorityValidator,
       runtimeServices,
@@ -4444,9 +4473,10 @@ async function buildRuntimeComposition(
     const decide = offersDecide
       ? dependencies.decideToolFor?.(ownerOrLocal(record.principal), catalogGrant.decide)
       : undefined;
+    const chatToolbox = governedByChat(resolution.options.toolbox, runId);
     const toolbox =
       offersHumanInput || decide !== undefined
-        ? wireDurableOptInTools(resolution.options.toolbox, humanInputServices, {
+        ? wireDurableOptInTools(chatToolbox, humanInputServices, {
             humanInput: offersHumanInput,
             inputSchemas: catalogGrant.inputSchemas,
             wakeup: false,
@@ -4459,7 +4489,7 @@ async function buildRuntimeComposition(
               },
             },
           })
-        : resolution.options.toolbox;
+        : chatToolbox;
     const services: DurableRunDeps = {
       options: {
         ...resolution.options,
@@ -5286,6 +5316,7 @@ async function buildRuntimeComposition(
     // so any toolbox sharing this instance's `approvalSecret` and tool set can
     // resume a signed pending approval, not only the specific per-run clone.
     baseToolbox,
+    withChatPermission: governedByChat,
     setRequestAuthorityValidator(validator) {
       requestAuthorityValidator = validator;
     },

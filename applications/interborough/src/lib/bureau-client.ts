@@ -65,9 +65,8 @@ const permissionModeSchema = z.enum(['always', 'on-changes', 'allow-all', 'read-
  * How readily a session's tool calls ask a person, as `bureau.contexts.steer` takes it and
  * `bureau.contexts.get` reports it: `on-changes` asks as each tool's own setting says (the default),
  * `always` asks on every call, `allow-all` skips the asks `on-changes` would raise, and `read-only`
- * denies every tool that is not read-only. Today it governs only a file agent's own listed tools
- * (and toolboxes built with `createToolApprovalHooks({ permissionMode })`); code agents' tools such
- * as the seeded `tool-runner`, and Bureau's built-in run tools, do not read it yet (COR-1947).
+ * denies every tool that is not read-only. It governs every tool of the chat's runs, whichever
+ * kind of agent holds it; only `requestHumanInput`, which just asks a person, stands outside it.
  */
 export type PermissionMode = z.infer<typeof permissionModeSchema>;
 

@@ -36,6 +36,14 @@
  * composes the hook with its own policy by the most restrictive verdict, a mode or a grant also
  * never loosens an approval policy the toolbox applies itself.
  *
+ * Bureau applies a chat's mode to every run's toolbox (COR-1947), whatever built it, so an agent
+ * kind cannot miss it: {@link withChatPermission} reads the mode once for each call, hands it to
+ * every policy hook of the toolbox, and adds {@link decideChatPermission}, which holds each tool of
+ * the run to `read-only` and `always`. A hook from {@link createToolApprovalHooks} reads the same
+ * value, so its rules (`allow-all`, a grant) apply to a code agent's toolbox as they do to a file
+ * agent's, with no option to pass. Only the toolbox's own tools have a `toolApproval` setting to
+ * decide by; {@link decideChatPermission} decides the rest, by the tier alone.
+ *
  * @module tool-approval
  */
 
@@ -46,11 +54,16 @@ import {
   type CapabilityTier,
   evaluateApprovalStatus,
   resolveCapabilityTier,
+  type ToolConfiguration,
   type ToolPolicyContext,
   type ToolPolicyDecision,
   type ToolPolicyHooks,
+  type AnyToolbox,
   createApprovalPolicyHooks,
+  resolveToolPolicyAllow,
 } from 'armorer';
+
+import { withToolboxLayer } from './toolbox-additions';
 
 /** The values a tool's `toolApproval` entry may take. */
 export const TOOL_APPROVAL_MODES = ['never', 'on-changes', 'always', 'blocked'] as const;
@@ -120,6 +133,113 @@ export function decideToolApproval(input: ToolApprovalInput): ApprovalStatus {
   return mode === 'allow-all' && tier !== undefined ? 'allow' : 'ask';
 }
 
+/**
+ * What a chat's mode alone makes of a call, whatever else decides it: the part of the mode that
+ * holds for every tool of a run, the ones with no `toolApproval` setting included. `read-only`
+ * denies a tool that is not read-only, `always` asks, and the other two leave the call to the
+ * toolbox, so a code agent's toolbox decides under `on-changes` as it always has. Pure, so a table
+ * can pin it.
+ */
+export function decideChatPermission(
+  mode: PermissionMode,
+  tier: CapabilityTier | undefined,
+): ApprovalStatus {
+  if (mode === 'read-only' && tier !== 'read-only') return 'deny';
+  return mode === 'always' ? 'ask' : 'allow';
+}
+
+/**
+ * The metadata key of a tool that does nothing but put a question to a person, which no mode stands
+ * in front of: it changes nothing, and it is how a run in `read-only` or `always` gets an answer. A
+ * key and not a name, so that a host's own tool of the same name is decided as any other tool is.
+ */
+export const ONLY_ASKS_A_PERSON = 'onlyAsksAPerson';
+
+/** A chat's mode as one call reads it. */
+interface ChatPermission {
+  readonly mode: PermissionMode;
+  /** The read failed, so `mode` is `read-only` and a denial says the mode could not be read. */
+  readonly unreadable: boolean;
+}
+
+/** The `policyContext` key {@link withChatPermission} hands a call's {@link ChatPermission} under. */
+const CHAT_PERMISSION_FIELD = 'chatPermission';
+
+/** The chat's mode for this call; `undefined` for a run that belongs to no chat. */
+function chatPermissionOf(context: ToolPolicyContext): ChatPermission | undefined {
+  return context.policyContext?.[CHAT_PERMISSION_FIELD] as ChatPermission | undefined;
+}
+
+/** Reads the mode of a run's chat; `undefined` for a run that belongs to no chat. */
+export type ChatPermissionReader = () => Promise<PermissionMode | undefined>;
+
+/** Reads the mode once; a read that fails is `read-only`, so no call goes through on a guess. */
+async function readChatPermission(read: ChatPermissionReader): Promise<ChatPermission | undefined> {
+  try {
+    const mode = await read();
+    return mode === undefined ? undefined : { mode, unreadable: false };
+  } catch {
+    return { mode: 'read-only', unreadable: true };
+  }
+}
+
+/** The decision of a chat's mode alone on a call ({@link decideChatPermission}). */
+function chatPermissionDecision(context: ToolPolicyContext): ToolPolicyDecision {
+  const chat = chatPermissionOf(context);
+  if (chat === undefined) return { allow: true, status: 'allow' };
+  const tier = resolveCapabilityTier(context.metadata, context.tags);
+  const status = decideChatPermission(chat.mode, tier);
+  return decisionOf(context, tier, TOOL_APPROVAL_DEFAULT_MODE, chat.mode, status, chat.unreadable);
+}
+
+/**
+ * A tool's own policy with the chat's mode in front of it. A single decision, because a call that
+ * two policies each paused on would be put to a person twice: a denial wins, and a tool that already
+ * asks asks once.
+ */
+function withChatPermissionDecision(
+  policy: ToolConfiguration['policy'],
+): NonNullable<ToolConfiguration['policy']> {
+  return {
+    ...policy,
+    async beforeExecute(context) {
+      const chat = chatPermissionDecision(context);
+      if (chat.status === 'deny') return chat;
+      const own = await policy?.beforeExecute?.(context);
+      if (chat.status === 'allow') return own;
+      if (own === false) return own;
+      const decision = typeof own === 'object' ? resolveToolPolicyAllow(own) : { allow: true };
+      return decision.allow ? { ...decision, ...chat } : decision;
+    },
+  };
+}
+
+/**
+ * Holds every tool of a run's toolbox to the mode of the run's chat (COR-1947), read by `read` when
+ * each call is decided, so a steer applies from the next call. The toolbox is the path every agent
+ * kind's calls take, and a layer, so a tool added to it afterwards is held too. The tool's own
+ * policy runs after the toolbox's, so a hook of the toolbox sees the same mode and never makes the
+ * call ask a second time ({@link createToolApprovalHooks}).
+ */
+export function withChatPermission(toolbox: AnyToolbox, read: ChatPermissionReader): AnyToolbox {
+  return withToolboxLayer(toolbox, (inner) => {
+    const held = inner.toJSON().filter((tool) => tool.metadata?.[ONLY_ASKS_A_PERSON] !== true);
+    // Nothing to hold yet, and a toolbox that refuses every call keeps its refusal. A new object
+    // all the same: a layer's result must not be the toolbox it wraps.
+    if (held.length === 0) return { ...inner };
+    return inner.extend(
+      ...held.map((tool) => ({
+        ...tool,
+        policy: withChatPermissionDecision(tool.policy),
+        policyContext: async (context: ToolPolicyContext) => ({
+          ...(await tool.policyContext?.(context)),
+          [CHAT_PERMISSION_FIELD]: await readChatPermission(read),
+        }),
+      })),
+    );
+  });
+}
+
 /** What {@link createToolApprovalHooks} takes. */
 export interface ToolApprovalHooksOptions {
   /** The value for a tool with no entry. Defaults to {@link TOOL_APPROVAL_DEFAULT_MODE}. */
@@ -127,9 +247,9 @@ export interface ToolApprovalHooksOptions {
   /**
    * The tools the hook governs. A call to any other tool is allowed by this hook, and left to
    * whatever else decides it. A run's toolbox holds more than the agent's own tools: Bureau adds
-   * `requestHumanInput`, `scheduleWakeup`, the skill tools and the like, which declare no
-   * capability metadata and so would ask under `on-changes`. Name the agent's tools here so only
-   * they are governed. Omitted, every tool in the toolbox is.
+   * `requestHumanInput`, `scheduleWakeup`, the skill tools and the like. Name the agent's tools here
+   * so only they are governed by `toolApproval`: a chat's permission mode reaches the others by
+   * itself ({@link withChatPermission}). Omitted, every tool in the toolbox is.
    */
   readonly tools?: readonly string[] | undefined;
   /**
@@ -147,10 +267,11 @@ export interface ToolApprovalHooksOptions {
     | undefined;
   /**
    * The chat's permission mode (COR-1936), read when each call is decided, so a steer applies to
-   * the next call. Omitted, the call has no chat (a run outside a session) and the tool's own
-   * setting decides, as it does in the default mode. A rejection counts as `read-only`: when the
-   * mode cannot be read, a tool that is not read-only is denied, and no call is let through on a
-   * guess.
+   * the next call. Only a toolbox run outside a Bureau needs it: a Bureau hands every hook of a
+   * run's toolbox the mode of the run's chat, which wins over this option. Omitted there too, the
+   * call has no chat (a run outside a session) and the tool's own setting decides, as it does in
+   * the default mode. A rejection counts as `read-only`: when the mode cannot be read, a tool that
+   * is not read-only is denied, and no call is let through on a guess.
    */
   readonly permissionMode?: (() => PermissionMode | Promise<PermissionMode>) | undefined;
 }
@@ -234,7 +355,8 @@ export function createToolApprovalHooks(
         return { allow: true, status: 'allow' };
       }
       const setting = modes.get(context.toolName) ?? defaultMode;
-      const { mode, unreadable } = await modeOfChat();
+      const chat = chatPermissionOf(context);
+      const { mode, unreadable } = chat ?? (await modeOfChat());
       const tier = resolveCapabilityTier(context.metadata, context.tags);
       let status = decideToolApproval({ mode, setting, tier, remembered: false });
       // The grant is read only when it would change the answer.
@@ -246,6 +368,9 @@ export function createToolApprovalHooks(
       ) {
         status = 'allow';
       }
+      // In `always` the run's toolbox asks about every call ({@link withChatPermission}), and a
+      // second ask here would make a person approve the call twice.
+      if (chat?.mode === 'always' && status === 'ask') status = 'allow';
       return decisionOf(context, tier, setting, mode, status, unreadable);
     },
   };
