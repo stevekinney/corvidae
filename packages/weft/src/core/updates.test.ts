@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
 import { MemoryStorage } from '@lostgradient/storage';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS } from '../storage/keys.ts';
 import { decode, encode } from './codec.ts';
 import { UpdateCoordinator, UpdateTimeoutError } from './updates.ts';
@@ -223,7 +224,7 @@ describe('UpdateCoordinator', () => {
       const waiting = coordinator.waitForResponse('upd-aborted', 600_000, controller.signal);
       controller.abort();
       // load-proof: the abort ends the wait directly; the 10-minute timeout is never waited out
-      await expect(waiting).rejects.toBeInstanceOf(UpdateTimeoutError);
+      expect(await rejectionOf(waiting)).toBeInstanceOf(UpdateTimeoutError);
     });
   });
 
