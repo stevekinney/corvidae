@@ -1,11 +1,11 @@
 /**
- * Byte-level WebSocket client for testing RemoteWorker protocol durability
- * under network failure. Built on `Bun.connect` so tests can drop application
- * frames, terminate the underlying TCP socket without a WebSocket close frame,
- * and assert exact wire behavior. Not re-exported from `src/testing/index.ts`.
+ * Byte-level WebSocket client for testing RemoteWorker protocol durability under network
+ * failure. Built on `Bun.connect` so tests can drop application frames, terminate the TCP
+ * socket without a close frame, and assert exact wire behavior. Not re-exported from the index.
  * @internal
  */
 
+import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import type { Socket } from 'bun';
 
 import {
@@ -111,7 +111,7 @@ export async function connectFaultInjectingWorker(
   });
 
   return new Promise<FaultInjectingWorker>((resolve, reject) => {
-    const handshakeTimeoutMs = options.handshakeTimeoutMs ?? 1_000;
+    const handshakeTimeoutMs = options.handshakeTimeoutMs ?? HANG_GUARD_MILLISECONDS;
     const handshakeTimer = setTimeout(() => {
       if (state.handshakeResolved) return;
       state.handshakeResolved = true;
