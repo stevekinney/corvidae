@@ -203,9 +203,18 @@ export function selectCatalogRows(input: {
       (row) => row.provider === provider && row.lifecycle !== 'retired',
     );
     const named = new Set<BackendDescriptor>();
+    // The allowlist may name a row the `catalog` list adds, which has no built-in match.
+    const addedModels = new Set(
+      (input.configuration.catalog ?? [])
+        .filter(
+          (edit) =>
+            edit.provider === provider && !candidates.some((row) => matchesEntry(row, edit.model)),
+        )
+        .map((edit) => edit.model),
+    );
     entry.models?.forEach((model, index) => {
       const matches = candidates.filter((row) => matchesEntry(row, model));
-      if (matches.length === 0) {
+      if (matches.length === 0 && !addedModels.has(model)) {
         throw new ProviderConfigurationError(
           input.path,
           `providers.${provider}.models[${index}]`,
@@ -229,6 +238,12 @@ export function selectCatalogRows(input: {
     candidates: (provider) =>
       descriptors.filter((row) => row.provider === provider && row.lifecycle !== 'retired'),
     matches: matchesEntry,
+    keepsAdded: (provider, model) => {
+      const models = isProviderName(provider)
+        ? input.configuration.providers[provider]?.models
+        : undefined;
+      return models === undefined || models.includes(model);
+    },
   });
 }
 

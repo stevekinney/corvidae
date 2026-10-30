@@ -25,6 +25,7 @@ import type { resolveProviderGenerate, SettingLockReason } from '@lostgradient/b
 import type { BackendDescriptor, GenerateFunction } from '@lostgradient/operative';
 
 import { parseCatalogEdits, type CatalogEdit } from './catalog-edits.ts';
+import { createConfigurationQueue, type ConfigurationQueue } from './configuration-queue.ts';
 import type { HostProviderDiagnostics } from './host-diagnostics.ts';
 import { providerDiagnostics } from './host-diagnostics.ts';
 import { hostWriteLocks } from './locations.ts';
@@ -55,6 +56,23 @@ export class ProviderWriteLockedError extends Error {
     );
     this.name = 'ProviderWriteLockedError';
     this.reason = reason;
+  }
+}
+
+/**
+ * A change that stored a provider's new key but could not write the configuration, and could not
+ * put the old key back. The host is using the new key. The message says so and names no value.
+ */
+export class ProviderPartialChangeError extends Error {
+  /** The provider whose key was stored. */
+  readonly provider: InterboroughProviderName;
+
+  constructor(provider: InterboroughProviderName) {
+    super(
+      `The ${provider} key was stored and is in use, but the configuration could not be written and the previous key could not be put back.`,
+    );
+    this.name = 'ProviderPartialChangeError';
+    this.provider = provider;
   }
 }
 
@@ -132,6 +150,8 @@ export type ProviderManager = {
   editCatalog(edits: unknown): Promise<ProviderChange>;
   /** Read the configuration and the keys again and apply them. */
   reload(): Promise<ProviderChange>;
+  /** The queue this manager writes the configuration through, for other writers of the file to share. */
+  readonly configurationQueue: ConfigurationQueue;
   /**
    * Hand the manager the function that installs rows in the Bureau and resolves, with the
    * catalog's new revision, once the agents built from them are rebuilt. Call it once, before any change.
@@ -153,6 +173,8 @@ export type ProviderManagerOptions = {
     | 'readSecret'
     | 'writeSecret'
   >;
+  /** The queue every writer of `configuration.json` shares. Defaults to a new one. */
+  readonly configurationQueue?: ConfigurationQueue;
   /** Receives warnings, such as a configured provider with no key. They never hold a key. */
   readonly warn: (message: string) => void;
   /** Bureau's provider resolver, or a stand-in for a test. */
@@ -209,16 +231,14 @@ export async function createProviderManager(
   let replaceRows: ((rows: readonly BackendDescriptor[]) => Promise<number>) | undefined;
   let closed = false;
   // Every change reads the files, decides, writes, and reads again. Running them one at a time
-  // keeps a second change from deciding on text the first is about to replace.
-  let queue: Promise<unknown> = Promise.resolve();
-  const serialized = <Result>(work: () => Promise<Result>): Promise<Result> => {
-    const result = queue.then(() => {
+  // keeps a second change from deciding on text the first is about to replace. The queue is shared
+  // with any other writer of the file.
+  const configurationQueue = options.configurationQueue ?? createConfigurationQueue();
+  const serialized = <Result>(work: () => Promise<Result>): Promise<Result> =>
+    configurationQueue.run(() => {
       if (closed) throw new Error('The host is shutting down.');
       return work();
     });
-    queue = result.catch(() => undefined);
-    return result;
-  };
 
   const lockReason = (): SettingLockReason | undefined => hostWriteLocks(bungalow).configuration;
   const assertWritable = (): void => {
@@ -263,6 +283,7 @@ export async function createProviderManager(
 
   return {
     current: () => loaded,
+    configurationQueue,
     lockReason,
     generateFor: (selection) =>
       createCatalogGenerate(selection, {
@@ -314,13 +335,23 @@ export async function createProviderManager(
           { ...document, providers: { ...providers, [provider]: entry } },
           new Set([...loaded.apiKeys.keys(), provider]),
         );
+        const secretKey = PROVIDER_SECRET_KEYS[provider];
+        const previousKey = bungalow.readSecret(secretKey);
         try {
-          bungalow.writeSecret(PROVIDER_SECRET_KEYS[provider], key);
+          bungalow.writeSecret(secretKey, key);
           bungalow.writeConfiguration(text);
         } catch (error) {
-          // Whatever reached the disk is what the host should serve, so a half-finished change
-          // does not leave the process and the files disagreeing.
+          // The key went first. Put the old one back (an empty value reads as no key), so a change
+          // that did not happen leaves the host on the key it had.
+          let restored = true;
+          try {
+            bungalow.writeSecret(secretKey, previousKey ?? '');
+          } catch {
+            restored = false;
+          }
+          // Whatever is on the disk now is what the host should serve.
           await apply().catch(() => undefined);
+          if (!restored) throw new ProviderPartialChangeError(provider);
           throw error;
         }
         return apply();

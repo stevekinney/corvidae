@@ -6,7 +6,7 @@
 import { openBungalow } from '@lostgradient/bungalow';
 import { resolveProviderGenerate, type ProviderConfiguration } from '@lostgradient/bureau';
 import { createAgent } from '@lostgradient/operative';
-import { waitUntil } from '@lostgradient/testing/wait-until';
+import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, statSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -422,6 +422,85 @@ describe('catalog edits', () => {
     check(await startAt(directory));
   });
 
+  test('a price edit keeps the long-context rates unless it names them', async () => {
+    const { host } = await startWithAnthropic();
+    const kept = rowOf(host, 'claude-haiku-5-5')?.pricing?.longContext;
+    expect(kept).toBeDefined();
+
+    await host.providers.editCatalog([
+      {
+        provider: 'anthropic',
+        model: 'claude-haiku-5-5',
+        pricing: { inputPerMillionTokens: 1, outputPerMillionTokens: 2, currency: 'USD' },
+      },
+    ]);
+    expect(rowOf(host, 'claude-haiku-5-5')?.pricing).toEqual({
+      inputPerMillionTokens: 1,
+      outputPerMillionTokens: 2,
+      currency: 'USD',
+      longContext: kept,
+    });
+
+    const replacement = {
+      inputTokensAbove: 50_000,
+      inputPerMillionTokens: 3,
+      outputPerMillionTokens: 4,
+    };
+    await host.providers.editCatalog([
+      {
+        provider: 'anthropic',
+        model: 'claude-haiku-5-5',
+        pricing: {
+          inputPerMillionTokens: 1,
+          outputPerMillionTokens: 2,
+          currency: 'USD',
+          longContext: replacement,
+        },
+      },
+    ]);
+    expect(rowOf(host, 'claude-haiku-5-5')?.pricing?.longContext).toEqual(replacement);
+
+    await host.providers.editCatalog([
+      {
+        provider: 'anthropic',
+        model: 'claude-haiku-5-5',
+        pricing: {
+          inputPerMillionTokens: 1,
+          outputPerMillionTokens: 2,
+          currency: 'USD',
+          longContext: null,
+        },
+      },
+    ]);
+    expect(rowOf(host, 'claude-haiku-5-5')?.pricing).toEqual({
+      inputPerMillionTokens: 1,
+      outputPerMillionTokens: 2,
+      currency: 'USD',
+    });
+  });
+
+  test('an allowlist may name an added row, so a file that does is accepted on the next start', async () => {
+    const { directory, host } = await startWithAnthropic();
+
+    await host.providers.editCatalog([
+      { provider: 'anthropic', model: 'claude-next', basedOn: 'sonnet' },
+    ]);
+    await host.providers.connect({
+      provider: 'anthropic',
+      apiKey: KEY_A,
+      models: ['sonnet', 'claude-next'],
+    });
+    expect(pairsOf(host)).toEqual(['anthropic/claude-next', 'anthropic/claude-sonnet-5']);
+
+    await host.close();
+    const restarted = await startAt(directory);
+    expect(pairsOf(restarted)).toEqual(['anthropic/claude-next', 'anthropic/claude-sonnet-5']);
+
+    // An allowlist that leaves the added row out keeps it out, as it does a built-in row.
+    await restarted.providers.connect({ provider: 'anthropic', apiKey: KEY_A, models: ['sonnet'] });
+    expect(pairsOf(restarted)).toEqual(['anthropic/claude-sonnet-5']);
+  });
+
   test('an empty list removes the edits and restores the built-in rows', async () => {
     const { directory, host } = await startWithAnthropic();
     const original = rowOf(host, 'claude-haiku-4-5');
@@ -452,6 +531,14 @@ describe('catalog edits', () => {
         'catalog[0].maxOutputTokens',
       ],
       [[{ provider: 'anthropic', model: 'haiku', basedOn: 'sonnet' }], 'catalog[0].basedOn'],
+      // One model under two names is one row, so the second edit would silently do nothing.
+      [
+        [
+          { provider: 'anthropic', model: 'claude-haiku-4-5', off: true },
+          { provider: 'anthropic', model: 'haiku', off: false },
+        ],
+        'catalog[1].model',
+      ],
       [[{ provider: 'voyage', model: 'haiku' }], 'catalog[0].provider'],
       [[{ provider: 'anthropic', model: 'haiku', colour: 'red' }], 'catalog[0].colour'],
       [
@@ -470,6 +557,28 @@ describe('catalog edits', () => {
     }
     expect(await readFile(join(directory, 'configuration.json'), 'utf8')).toBe(before);
     expect(rowOf(host, 'claude-haiku-4-5')?.availability).not.toBe('unavailable');
+  });
+});
+
+describe('the configuration queue', () => {
+  test('is shared: a change waits for the writer ahead of it on the host’s queue', async () => {
+    const directory = await home();
+    const host = await startAt(directory);
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const other = host.configurationQueue.run(() => gate);
+
+    const change = host.providers.connect({ provider: 'anthropic', apiKey: KEY_A });
+    // Load can only delay a write, never bring it forward, so a quiet window shows it waited.
+    await quietFor(50);
+    expect(existsSync(join(directory, 'configuration.json'))).toBe(false);
+
+    release();
+    await other;
+    await change;
+    expect(existsSync(join(directory, 'configuration.json'))).toBe(true);
   });
 });
 

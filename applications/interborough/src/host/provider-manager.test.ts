@@ -7,7 +7,11 @@ import type { Bungalow } from '@lostgradient/bungalow';
 import { resolveProviderGenerate } from '@lostgradient/bureau';
 import { describe, expect, test } from 'bun:test';
 
-import { createProviderManager, ProviderWriteLockedError } from './provider-manager.ts';
+import {
+  createProviderManager,
+  ProviderPartialChangeError,
+  ProviderWriteLockedError,
+} from './provider-manager.ts';
 import { HOST_CATALOG_ROUTE, providerRoutes } from './provider-routes.ts';
 
 const KEY = 'fixture-key-manager-5d21';
@@ -28,7 +32,7 @@ type FakeHome = Pick<
 
 function fakeHome(
   mode: 'local' | 'remote',
-  options: { readonly failConfiguration?: boolean } = {},
+  options: { readonly failConfiguration?: boolean; readonly failRestore?: boolean } = {},
 ): FakeHome {
   const home: FakeHome = {
     mode,
@@ -45,6 +49,13 @@ function fakeHome(
     readSecret: (key) => home.secrets.get(key),
     writeSecret: (key, value) => {
       home.writes.push(`secret ${key}`);
+      // The second write of one secret is the restore.
+      if (
+        options.failRestore === true &&
+        home.writes.filter((write) => write === `secret ${key}`).length > 1
+      ) {
+        throw new Error('The disk is full.');
+      }
       home.secrets.set(key, value);
     },
   };
@@ -144,10 +155,48 @@ describe('a write that fails', () => {
     expect(failure).toBeInstanceOf(Error);
     expect(String(failure).includes(KEY)).toBe(false);
     expect(home.configuration).toBe(before);
-    // The key reached the disk before the configuration failed, and the host serves what the disk
-    // holds: the openai provider is not listed, so it is not offered.
+    // The key reached the disk before the configuration failed, and was put back: an empty value
+    // reads as no key, and the provider is not listed either way.
+    expect(home.secrets.get('openai-api-key')).toBe('');
     expect(manager.current().rows.map((row) => row.model)).toEqual(models);
     expect([...manager.current().apiKeys.keys()]).toEqual(['anthropic']);
+  });
+
+  test('a rotation whose configuration write fails puts the previous key back and keeps using it', async () => {
+    const home = fakeHome('local', { failConfiguration: true });
+    const { manager } = await managerFor(home);
+
+    const failure = await failureOf(manager.connect({ provider: 'anthropic', apiKey: KEY }));
+
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure).not.toBeInstanceOf(ProviderPartialChangeError);
+    expect(home.secrets.get('anthropic-api-key')).toBe('fixture-existing-key');
+    expect(manager.current().apiKeys.get('anthropic')).toBe('fixture-existing-key');
+    expect(String(failure).includes(KEY)).toBe(false);
+  });
+
+  test('says so, truthfully, when the previous key cannot be put back either', async () => {
+    const home = fakeHome('local', { failConfiguration: true, failRestore: true });
+    const { manager } = await managerFor(home);
+
+    const failure = await failureOf(manager.connect({ provider: 'anthropic', apiKey: KEY }));
+
+    expect(failure).toBeInstanceOf(ProviderPartialChangeError);
+    // The host serves what the disk holds, which is the new key.
+    expect(manager.current().apiKeys.get('anthropic')).toBe(KEY);
+    using server = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      routes: providerRoutes(manager, () => undefined),
+    });
+    const response = await fetch(new URL('/host/providers/anthropic', server.url), {
+      method: 'PUT',
+      body: JSON.stringify({ apiKey: KEY }),
+    });
+    expect(response.status).toBe(500);
+    const text = await response.text();
+    expect(JSON.parse(text)).toMatchObject({ error: 'partial', provider: 'anthropic' });
+    expect(text.includes(KEY)).toBe(false);
   });
 
   test('a change after close is refused', async () => {

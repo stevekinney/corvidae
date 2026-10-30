@@ -246,6 +246,45 @@ describe('the catalog rows', () => {
     expect(stale.message).not.toContain('gpt-unheard-of');
   });
 
+  test('let an allowlist name an added row, and keep an added row the allowlist leaves out out', () => {
+    const added = { provider: 'openai', model: 'gpt-next', basedOn: 'gpt-4.1' };
+    const named = selectCatalogRows({
+      configuration: configure({ openai: { models: ['gpt-4.1', 'gpt-next'] } }, [added]),
+      path: PATH,
+      available: ALL,
+    });
+    expect(named.map((row) => row.model)).toEqual(['gpt-4.1', 'gpt-next']);
+    const left = selectCatalogRows({
+      configuration: configure({ openai: { models: ['gpt-4.1'] } }, [added]),
+      path: PATH,
+      available: ALL,
+    });
+    expect(left.map((row) => row.model)).toEqual(['gpt-4.1']);
+    // Without the edit that adds it, the same allowlist entry matches nothing and is refused.
+    const stale = failureOf(() =>
+      selectCatalogRows({
+        configuration: configure({ openai: { models: ['gpt-4.1', 'gpt-next'] } }),
+        path: PATH,
+        available: ALL,
+      }),
+    );
+    expect(stale.field).toBe('providers.openai.models[1]');
+  });
+
+  test('refuse two edits that name one model under different names, naming the second', () => {
+    const failure = failureOf(() =>
+      selectCatalogRows({
+        configuration: configure({ anthropic: {} }, [
+          { provider: 'anthropic', model: 'claude-haiku-4-5', off: true },
+          { provider: 'anthropic', model: 'haiku', off: true },
+        ]),
+        path: PATH,
+        available: new Set<'anthropic'>(),
+      }),
+    );
+    expect(failure.field).toBe('catalog[1].model');
+  });
+
   test('leave an allowlisted-out row out even when an edit names it', () => {
     const rows = selectCatalogRows({
       configuration: configure({ openai: { models: ['gpt-4.1'] } }, [

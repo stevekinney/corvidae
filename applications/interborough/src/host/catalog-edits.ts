@@ -15,7 +15,8 @@
  *
  * An edit that names a row of the provider's built-in list changes that row. One that does not is
  * an added row: it names `basedOn`, a current model of the same provider whose capabilities it
- * copies, and may set its own price and limits. A message about an edit names the field, never a
+ * copies, and may set its own price and limits. A built-in row is edited once, whatever name
+ * the edits use for it. A price edit keeps the row's long-context rates unless it names them. A message about an edit names the field, never a
  * value.
  *
  * @module catalog-edits
@@ -33,6 +34,21 @@ export type CatalogPricing = {
   readonly outputPerMillionTokens: number;
   /** The currency both prices are in, such as `USD`. */
   readonly currency: string;
+  /**
+   * The rates for a request whose input is long. Left out, the row keeps the rates it has, so a
+   * price edit never drops them; an object replaces them; `null` removes them.
+   */
+  readonly longContext?: CatalogLongContextPricing | null;
+};
+
+/** The rates that replace the two prices for a request whose input exceeds `inputTokensAbove` tokens. */
+export type CatalogLongContextPricing = {
+  /** The input size above which these rates apply. */
+  readonly inputTokensAbove: number;
+  /** The price of a million input tokens at that size. */
+  readonly inputPerMillionTokens: number;
+  /** The price of a million output tokens at that size. */
+  readonly outputPerMillionTokens: number;
 };
 
 /** One edit to the catalog. `provider` and `model` identify the row; every other field is optional. */
@@ -62,7 +78,17 @@ const EDIT_FIELDS = [
   'maxOutputTokens',
   'basedOn',
 ] as const;
-const PRICING_FIELDS = ['inputPerMillionTokens', 'outputPerMillionTokens', 'currency'] as const;
+const PRICING_FIELDS = [
+  'inputPerMillionTokens',
+  'outputPerMillionTokens',
+  'currency',
+  'longContext',
+] as const;
+const LONG_CONTEXT_FIELDS = [
+  'inputTokensAbove',
+  'inputPerMillionTokens',
+  'outputPerMillionTokens',
+] as const;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -93,6 +119,29 @@ function nonNegativeNumber(value: unknown, path: string, field: string): number 
   return value;
 }
 
+function parseLongContext(value: unknown, path: string, field: string): CatalogLongContextPricing {
+  if (!isPlainObject(value))
+    throw problem(path, field, 'expected an object, or null to remove it.');
+  for (const key of Object.keys(value)) {
+    if (!(LONG_CONTEXT_FIELDS as readonly string[]).includes(key)) {
+      throw problem(path, `${field}.${key}`, 'not a known field.');
+    }
+  }
+  return {
+    inputTokensAbove: positiveInteger(value['inputTokensAbove'], path, `${field}.inputTokensAbove`),
+    inputPerMillionTokens: nonNegativeNumber(
+      value['inputPerMillionTokens'],
+      path,
+      `${field}.inputPerMillionTokens`,
+    ),
+    outputPerMillionTokens: nonNegativeNumber(
+      value['outputPerMillionTokens'],
+      path,
+      `${field}.outputPerMillionTokens`,
+    ),
+  };
+}
+
 function parsePricing(value: unknown, path: string, field: string): CatalogPricing {
   if (!isPlainObject(value)) throw problem(path, field, 'expected an object.');
   for (const key of Object.keys(value)) {
@@ -112,6 +161,14 @@ function parsePricing(value: unknown, path: string, field: string): CatalogPrici
       `${field}.outputPerMillionTokens`,
     ),
     currency: nonEmptyText(value['currency'], path, `${field}.currency`),
+    ...(value['longContext'] === undefined
+      ? {}
+      : {
+          longContext:
+            value['longContext'] === null
+              ? null
+              : parseLongContext(value['longContext'], path, `${field}.longContext`),
+        }),
   };
 }
 
@@ -194,13 +251,35 @@ export type CatalogEditInput = {
   readonly candidates: (provider: string) => readonly BackendDescriptor[];
   /** Whether a row is named by a model or an alias. */
   readonly matches: (row: BackendDescriptor, name: string) => boolean;
+  /**
+   * Whether the provider's allowlist keeps the added row `model`. An added row has no alias, so
+   * the allowlist names it by its model. Defaults to keeping every added row.
+   */
+  readonly keepsAdded?: (provider: string, model: string) => boolean;
 };
+
+/** The row's price with the edit's rates over it; the long-context rates stay unless the edit names them. */
+function patchedPricing(
+  row: BackendDescriptor,
+  edit: CatalogPricing,
+): BackendDescriptor['pricing'] {
+  const { longContext: editedLongContext, ...rates } = edit;
+  const { longContext: keptLongContext, ...kept } = row.pricing ?? {};
+  const longContext = editedLongContext === undefined ? keptLongContext : editedLongContext;
+  return {
+    ...kept,
+    ...rates,
+    ...(longContext === null || longContext === undefined
+      ? {}
+      : { longContext: { ...longContext } }),
+  };
+}
 
 function patched(row: BackendDescriptor, edit: CatalogEdit): BackendDescriptor {
   return {
     ...row,
     ...(edit.off === true ? { availability: 'unavailable' as const } : {}),
-    ...(edit.pricing === undefined ? {} : { pricing: { ...edit.pricing } }),
+    ...(edit.pricing === undefined ? {} : { pricing: patchedPricing(row, edit.pricing) }),
     ...(edit.contextWindowTokens === undefined
       ? {}
       : { contextWindowTokens: edit.contextWindowTokens }),
@@ -217,11 +296,14 @@ function assertLimits(row: BackendDescriptor, path: string, field: string): void
 /**
  * The selected rows with the edits applied. An edit to a built-in row replaces that row where it
  * stands, when the provider has a key and the provider's allowlist kept it. An added row is
- * appended after the others when its provider has a key. Every edit is checked either way, so a
+ * appended after the others when its provider has a key and its allowlist, if it has one, names it. Every edit is checked either way, so a
  * stale edit fails before the provider's key appears.
  */
 export function applyCatalogEdits(input: CatalogEditInput): BackendDescriptor[] {
   const rows = [...input.selected];
+  // The built-in rows already edited, by provider and model, whatever name the edit used. Two
+  // names for one row (`claude-haiku-4-5` and `haiku`) would otherwise pass for two rows.
+  const edited = new Set<string>();
   input.edits.forEach((edit, index) => {
     const field = `catalog[${index}]`;
     const candidates = input.candidates(edit.provider);
@@ -234,9 +316,22 @@ export function applyCatalogEdits(input: CatalogEditInput): BackendDescriptor[] 
           'only an added row names a base. This edit changes a built-in model.',
         );
       }
+      const identity = JSON.stringify([builtIn.provider, builtIn.model]);
+      if (edited.has(identity)) {
+        throw problem(
+          input.path,
+          `${field}.model`,
+          'a second edit for a model an earlier edit already names, under another name.',
+        );
+      }
+      edited.add(identity);
       const next = patched(builtIn, edit);
       assertLimits(next, input.path, `${field}.maxOutputTokens`);
-      const position = rows.indexOf(builtIn);
+      // Found by provider and model, because an earlier edit may have replaced the row. A row
+      // that is not there was left out: its provider has no key, or the allowlist excludes it.
+      const position = rows.findIndex(
+        (row) => row.provider === builtIn.provider && row.model === builtIn.model,
+      );
       if (position !== -1) rows[position] = next;
       return;
     }
@@ -260,7 +355,12 @@ export function applyCatalogEdits(input: CatalogEditInput): BackendDescriptor[] 
       edit,
     );
     assertLimits(added, input.path, `${field}.maxOutputTokens`);
-    if (input.available.has(edit.provider)) rows.push(added);
+    if (
+      input.available.has(edit.provider) &&
+      (input.keepsAdded?.(edit.provider, edit.model) ?? true)
+    ) {
+      rows.push(added);
+    }
   });
   return rows;
 }

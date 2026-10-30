@@ -86,6 +86,7 @@ import {
 
 import { routes as clientRoutes } from '../app/routes.ts';
 import { HOST_PATHS_ROUTE } from '../lib/host-paths.ts';
+import { createConfigurationQueue, type ConfigurationQueue } from './configuration-queue.ts';
 import {
   createDevReload,
   DEV_RELOAD_ROUTE,
@@ -283,6 +284,12 @@ export type Host = {
    */
   readonly providers: Pick<ProviderManager, 'connect' | 'editCatalog' | 'reload' | 'snapshot'>;
   /**
+   * The queue every writer of `configuration.json` runs its read-change-write through, so two
+   * writers never start from text the other is about to replace. The provider manager uses it;
+   * another writer of the file takes it from here (`configuration-queue.ts`).
+   */
+  readonly configurationQueue: ConfigurationQueue;
+  /**
    * A point-in-time reading of the host's own state: the Bureau's diagnostics, the engine server's
    * lease, workers, and connections, the build it serves, and the providers it offers. It holds no
    * credential: a provider is its name and its models. The lock holder is left out, because it is
@@ -447,8 +454,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // the secrets, and nothing else. The Bureau is created with exactly these rows, so no boot step
     // plans against a provider that is not configured. The seeded agents still answer from a
     // script.
+    const configurationQueue = createConfigurationQueue();
     const providers = await createProviderManager({
       bungalow,
+      configurationQueue,
       warn: options.warn ?? ((message) => console.warn(message)),
       resolveProviderGenerate: options.resolveProviderGenerate ?? resolveProviderGenerate,
     });
@@ -678,6 +687,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       deploymentId: bungalow.deploymentId,
       database,
       generateFor,
+      configurationQueue,
       providers: {
         connect: (connection) => providers.connect(connection),
         editCatalog: (edits) => providers.editCatalog(edits),

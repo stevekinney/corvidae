@@ -144,7 +144,13 @@ The configuration is written atomically (Bungalow's `writeConfiguration`: a temp
 }
 ```
 
-An edit that names a built-in model (by `model` or alias) changes that row. An off model stays listed as `unavailable`, which keeps it from agents and plans, and `host.generateFor` refuses it. An edit that names no built-in model adds a row: `basedOn` names a current model of the same provider whose capabilities it copies, and it may set its own price and limits. An edit with no match and no `basedOn`, a second edit for one model, or an output limit above the context window fails with the field, for example `catalog[0].model`.
+An edit that names a built-in model (by `model` or alias) changes that row. A price edit keeps the row's `longContext` rates unless its `pricing` names them: `"longContext": { "inputTokensAbove", "inputPerMillionTokens", "outputPerMillionTokens" }` replaces them and `"longContext": null` removes them. An off model stays listed as `unavailable`, which keeps it from agents and plans, and `host.generateFor` refuses it. An edit that names no built-in model adds a row: `basedOn` names a current model of the same provider whose capabilities it copies, and it may set its own price and limits. An edit with no match and no `basedOn`, a second edit for one model (under the same name or another, such as `claude-haiku-4-5` and `haiku`), or an output limit above the context window fails with the field, for example `catalog[0].model`.
+
+An allowlist (`providers.<name>.models`) may name an added row by its model, and applies to added rows as to built-in ones: an added row the allowlist does not name is left out.
+
+**Other writers of `configuration.json`.** A write reads the file, changes the part it owns, and writes the whole file back, so writers must not overlap. `host.configurationQueue.run(work)` is the one queue they share (`src/host/configuration-queue.ts`): run the whole read-change-write inside `work`. The provider manager uses it, and any other part of the host that writes the file must too.
+
+**A failed key change.** The key is written before the configuration. When the configuration cannot be written, the previous key is put back and the host keeps using it. If that cannot be done either, the answer is `500` with `{ "error": "partial" }` and says the new key is in use.
 
 **Remote mode refuses.** A remote home keeps its configuration in the bucket and its keys in the environment, which the host cannot write. `PUT` requests answer `403` with `{ "error": "locked", "reason": "deployment" }`, `/host/paths` reports `locked: { configuration: "deployment", providerKeys: "deployment" }` (the reason codes `settings.get` gives a locked key), and `host.providers.connect` and `.editCatalog` throw `ProviderWriteLockedError`. Reload still works, since it only reads.
 

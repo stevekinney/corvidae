@@ -20,6 +20,7 @@
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
 import {
   ProviderInputError,
+  ProviderPartialChangeError,
   ProviderWriteLockedError,
   type ProviderManager,
 } from './provider-manager.ts';
@@ -86,6 +87,12 @@ async function respond(work: () => Promise<unknown>): Promise<Response> {
       return Response.json(
         { error: 'invalid', field: 'body', message: error.message },
         { status: 400 },
+      );
+    }
+    if (error instanceof ProviderPartialChangeError) {
+      return Response.json(
+        { error: 'partial', provider: error.provider, message: error.message },
+        { status: 500 },
       );
     }
     // Nothing from the failure is repeated: it may hold a path or, from a provider, a value.
