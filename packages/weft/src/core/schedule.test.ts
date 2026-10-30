@@ -1499,7 +1499,7 @@ describe('recurring schedules', () => {
     engine[Symbol.dispose]();
   });
 
-  it('keeps the fired schedule timer retryable when the rearm batch fails.', async () => {
+  it('pauses the schedule and leaves no run when the batch that starts the run and rearms the timer fails.', async () => {
     const storage = new FailingScheduleBatchStorage();
     const clock = { now: Date.UTC(2026, 0, 1, 0, 0, 0) };
     const engine = createEngine(clock, storage);
@@ -1528,21 +1528,20 @@ describe('recurring schedules', () => {
     try {
       await tickEngine(engine, clock, originalFireAt);
 
+      // The run and the rearm are one batch (COR-1925), so a fault in it starts no run and
+      // records nothing, and pauses the schedule as any failed start does.
       const storedScheduleBytes = await storage.get(KEYS.schedule('rearm-atomicity-schedule'));
       expect(storedScheduleBytes).not.toBeNull();
       expect(decode(storedScheduleBytes!)).toMatchObject({
         id: 'rearm-atomicity-schedule',
-        status: 'active',
-        nextFireAt: originalFireAt,
+        status: 'paused',
       });
       expect(decode(storedScheduleBytes!)).not.toHaveProperty('lastFireAt');
       expect(
-        await storage.get(KEYS.scheduleTick(originalFireAt, 'rearm-atomicity-schedule')),
-      ).not.toBeNull();
-      expect(
         await storage.get(KEYS.scheduleTick(nextFireAt, 'rearm-atomicity-schedule')),
       ).toBeNull();
-      expect(await storage.get('timer-idx:schedule:rearm-atomicity-schedule')).not.toBeNull();
+      const runs = await engine.list({});
+      expect(runs.items).toEqual([]);
     } finally {
       errorSpy.mockRestore();
       engine[Symbol.dispose]();
@@ -1607,7 +1606,7 @@ describe('recurring schedules', () => {
     engine[Symbol.dispose]();
   });
 
-  it('rejects a concurrent update and preserves the fired timer when callback rearm fails.', async () => {
+  it('applies a concurrent update after a failed start-and-rearm batch paused the schedule.', async () => {
     const storage = new ControlledScheduleBatchStorage();
     const clock = { now: Date.UTC(2026, 0, 1, 0, 0, 0) };
     const engine = createEngine(clock, storage);
@@ -1648,17 +1647,17 @@ describe('recurring schedules', () => {
       expect(updateSettled).toBe(false);
       storage.releaseBatch.resolve();
       await tickPromise;
-      expect(await throwingRejectionOf(updatePromise)).toThrow(
-        'Failed to persist schedule "serialized-update-failure" while processing its timer',
-      );
+      await updatePromise;
 
+      // The tick's failure paused the schedule and started no run; the update was serialized
+      // behind it and applied to the schedule as it was left.
       expect(await schedule.describe()).toMatchObject({
-        cronExpression: '*/15 * * * * *',
-        nextFireAt: originalFireAt,
+        cronExpression: '*/45 * * * * *',
+        status: 'paused',
       });
-      expect(
-        await storage.get(KEYS.scheduleTick(originalFireAt, 'serialized-update-failure')),
-      ).not.toBeNull();
+      expect(await schedule.describe()).not.toHaveProperty('lastFireAt');
+      const runs = await engine.list({});
+      expect(runs.items).toEqual([]);
     } finally {
       storage.releaseBatch.resolve();
       errorSpy.mockRestore();

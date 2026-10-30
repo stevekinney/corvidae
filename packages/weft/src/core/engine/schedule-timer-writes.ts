@@ -37,16 +37,18 @@ export type ScheduleTimerProgress = { state: ScheduleState; stored: LoadedSchedu
 
 /**
  * Whether the schedule is still as this tick left it: active, at the `revision` the tick holds,
- * with the `nextFireAt` it holds. Another process's pause, update or cancel moves the revision,
+ * with the `nextFireAt` and `lastFireAt` it holds (COR-1925: another tick that fired the occurrence
+ * a backfill is catching up on moves `lastFireAt` before it moves `nextFireAt`). Another process's pause, update or cancel moves the revision,
  * and another process's timer tick moves `nextFireAt`. A run now, a skip next and a clearing of
  * the current run move neither: what they recorded is carried into the tick's write
  * ({@link carryConcurrentRecords}).
  */
-function isStillAsTickLeftIt(current: ScheduleState, left: ScheduleState): boolean {
+export function isStillAsTickLeftIt(current: ScheduleState, left: ScheduleState): boolean {
   return (
     current.status === 'active' &&
     current.revision === left.revision &&
-    current.nextFireAt === left.nextFireAt
+    current.nextFireAt === left.nextFireAt &&
+    current.lastFireAt === left.lastFireAt
   );
 }
 
@@ -103,7 +105,7 @@ export async function persistScheduleTimerState(
  * - A skip they recorded for an occurrence this tick has already passed without honoring moves to
  *   the next occurrence that fires, so it still skips exactly one run.
  */
-function carryConcurrentRecords(
+export function carryConcurrentRecords(
   ours: ScheduleState,
   base: ScheduleState,
   theirs: ScheduleState,

@@ -28,9 +28,14 @@ function at(iso: string): number {
   return Date.parse(iso);
 }
 
-/** A storage whose Nth write of the schedule's own key (counted from `after`) rejects, once. */
+/**
+ * A storage whose Nth write of the schedule's own key (counted from `after`) rejects, and so does
+ * every schedule write after it until `recover()`: the process is gone, so the pause its failure
+ * handler would write never lands either.
+ */
 function failingScheduleWrites(shared: Storage, scheduleId: string) {
   let remaining: number | undefined;
+  let crashed = false;
   // A tick's write of the schedule, as opposed to the clearing of a finished run's slot, which
   // deletes the run's metadata in the same batch.
   const putsSchedule = (operations: readonly BatchOperation[]) =>
@@ -44,10 +49,14 @@ function failingScheduleWrites(shared: Storage, scheduleId: string) {
       return (...args: unknown[]) => {
         if (property === 'batch' || property === 'conditionalBatch') {
           const operations = (property === 'batch' ? args[0] : args[1]) as BatchOperation[];
+          if (crashed && putsSchedule(operations)) {
+            return Promise.reject(new Error('simulated crash'));
+          }
           if (remaining !== undefined && putsSchedule(operations)) {
             remaining -= 1;
             if (remaining < 0) {
               remaining = undefined;
+              crashed = true;
               return Promise.reject(new Error('simulated crash'));
             }
           }
@@ -61,6 +70,10 @@ function failingScheduleWrites(shared: Storage, scheduleId: string) {
     /** The schedule write after the next `writes` ones fails. */
     failAfter(writes: number): void {
       remaining = writes;
+    },
+    /** The process is back: schedule writes land again. */
+    recover(): void {
+      crashed = false;
     },
   };
 }
@@ -286,6 +299,7 @@ describe('a tick replayed after a crash mid-backfill', () => {
 
     expect(failure).toHaveBeenCalledTimes(1);
     failure.mockRestore();
+    faulty.recover();
     await opened.scheduler.tick(clock.now);
 
     const summary = await opened.getSchedule('hourly');

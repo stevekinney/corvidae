@@ -120,6 +120,10 @@ export function closeOpenedEngines(): void {
   for (const close of closers.splice(0)) close();
 }
 
+/**
+ * Two engines over one store, each counting the services its resolver is asked for (COR-1925):
+ * `resolved.a` and `resolved.b` hold the workflow ids, in order.
+ */
 export async function openEngines(
   scheduleOptions: Pick<ScheduleOptions, 'backfill' | 'overlap'> = {},
 ) {
@@ -127,8 +131,17 @@ export async function openEngines(
   const shared = new BunSQLiteStorage(':memory:');
   const a = engineStorage(shared);
   const b = engineStorage(shared);
-  const engineA = createEngine(clock, a.storage);
-  const engineB = createEngine(clock, b.storage);
+  const resolved = { a: [] as string[], b: [] as string[] };
+  const resolverFor = (ids: string[]) => async (info: { workflowId: string }) => {
+    ids.push(info.workflowId);
+    return { status: 'available' as const, services: {} };
+  };
+  const engineA = createEngine(clock, a.storage, {
+    resolveWorkflowServices: resolverFor(resolved.a),
+  });
+  const engineB = createEngine(clock, b.storage, {
+    resolveWorkflowServices: resolverFor(resolved.b),
+  });
   closers.push(
     () => engineA[Symbol.dispose](),
     () => engineB[Symbol.dispose](),
@@ -143,7 +156,7 @@ export async function openEngines(
     id: SCHEDULE_ID,
     ...scheduleOptions,
   });
-  return { clock, shared, a, b, engineA, engineB };
+  return { clock, shared, a, b, engineA, engineB, resolved };
 }
 
 export async function stateOf(shared: Storage): Promise<ScheduleState> {

@@ -21,6 +21,7 @@ import {
 } from './pinned-schedule-revision.ts';
 import { withoutSkip } from './schedule-controls.ts';
 import { ScheduleHandle } from './schedule-handle.ts';
+import type { OccurrenceCommit } from './schedule-occurrence-commit.ts';
 import { getNextScheduleOccurrence } from './schedule-occurrence.ts';
 import type { ScheduledRunStartOptions } from './schedule-run.ts';
 import { runScheduleTransition } from './schedule-state-operations.ts';
@@ -84,6 +85,7 @@ export type ScheduleCallbacks = {
     state: ScheduleState,
     occurrence?: number,
     manual?: true,
+    commit?: OccurrenceCommit,
   ) => Promise<ScheduleState>;
   flushQueuedInlineWorkflowStartsDirectly: () => Promise<void>;
   failWorkflow: (workflowId: string, error: Error) => Promise<void>;

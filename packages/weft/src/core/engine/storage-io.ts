@@ -4,8 +4,6 @@ import {
   type ConditionalBatchCondition,
 } from '@lostgradient/storage';
 import { KEYS } from '../../storage/keys.ts';
-import { encode } from '../codec.ts';
-import { buildTimerBatchOperations } from '../scheduler.ts';
 import { WorkflowTimeoutError } from '../timeouts.ts';
 import type { ScheduleState, WorkflowState } from '../types.ts';
 import {
@@ -19,9 +17,9 @@ import {
 } from './fenced-write.ts';
 import { getWorkflowExecutionStartedAt } from './handles.ts';
 import type { EngineInternals } from './internals.ts';
-import { resolveEffectiveScheduleFireAt } from './schedule-jitter.ts';
 import { isScheduleReadCondition, ScheduleReadConditionLostError } from './schedule-state-read.ts';
-import { createScheduleTimerId, decodeWorkflowStartHeaders } from './state-utilities.ts';
+import { buildScheduleStateOperations } from './schedule-write-operations.ts';
+import { decodeWorkflowStartHeaders } from './state-utilities.ts';
 import { retryTerminalWorkflowStateWrite } from './terminal-write-retry.ts';
 import { decodeWorkflowState } from './validation.ts';
 import {
@@ -328,49 +326,6 @@ export async function commitExternalTerminalWorkflowStateOperations(
   }
 }
 
-function buildPreviousScheduleTimerDeleteOperations(
-  previousState: ScheduleState | undefined,
-): BatchOperation[] {
-  if (previousState?.status !== 'active' || previousState.nextFireAt === null) return [];
-  return [
-    {
-      type: 'delete',
-      key: KEYS.scheduleTick(
-        resolveEffectiveScheduleFireAt(previousState, previousState.nextFireAt),
-        previousState.id,
-      ),
-    },
-  ];
-}
-
-function buildNextScheduleTimerOperations(
-  state: ScheduleState,
-  includeTimer: boolean,
-): BatchOperation[] {
-  if (!includeTimer || state.status !== 'active' || state.nextFireAt === null) return [];
-  return buildTimerBatchOperations({
-    id: createScheduleTimerId(state.id),
-    workflowId: state.id,
-    fireAt: resolveEffectiveScheduleFireAt(state, state.nextFireAt),
-    kind: 'schedule',
-  });
-}
-
-function buildScheduleTimerReplacementOperations(
-  state: ScheduleState,
-  includeTimer: boolean,
-  previousState: ScheduleState | undefined,
-): BatchOperation[] {
-  const deleteOperations = buildPreviousScheduleTimerDeleteOperations(previousState);
-  const nextTimerOperations = buildNextScheduleTimerOperations(state, includeTimer);
-  if (nextTimerOperations.length > 0) return [...deleteOperations, ...nextTimerOperations];
-  if (previousState === undefined) return deleteOperations;
-  return [
-    ...deleteOperations,
-    { type: 'delete', key: `timer-idx:${createScheduleTimerId(state.id)}` },
-  ];
-}
-
 /**
  * Persist schedule state and optionally write the next schedule timer.
  *
@@ -404,17 +359,8 @@ export async function writeScheduleState(
     onExtraConditionsLost?: () => Error;
   },
 ): Promise<Uint8Array> {
-  const bytes = encode(state);
-  const operations: BatchOperation[] = [
-    { type: 'put', key: KEYS.schedule(state.id), value: bytes },
-  ];
-
-  const includeTimer = options?.includeTimer ?? state.status === 'active';
-  operations.push(
-    ...buildScheduleTimerReplacementOperations(state, includeTimer, options?.replaceTimerFrom),
-  );
-
-  operations.push(...(options?.additionalOperations ?? []));
+  const { bytes, record, following } = buildScheduleStateOperations(state, options);
+  const operations: BatchOperation[] = [record, ...following];
 
   const extraConditions = options?.extraConditions ?? [];
 

@@ -259,7 +259,18 @@ describe('engine callback creators', () => {
             message: `${source}:${error instanceof Error ? error.message : String(error)}`,
           });
         },
-        startWorkflow: async () => {},
+        // The services resolve once the start's batch has committed, which this stub stands for.
+        startWorkflow: async (
+          _type,
+          _input,
+          _options,
+          _operations,
+          _revision,
+          _skip,
+          transient,
+        ) => {
+          await transient?.resolveServices?.();
+        },
       };
 
       await startScheduledRun(

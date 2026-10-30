@@ -3,6 +3,7 @@ import { settleInlineLaunches } from '../../testing/inline-launch-settle.test-su
 import { Engine } from '../engine.ts';
 import {
   workflow as defineWorkflow,
+  type EngineOptions,
   type ScheduleSummary,
   type WorkflowFunction,
 } from '../types.ts';
@@ -16,8 +17,12 @@ export type Clock = { now: number };
 export const MINUTE = 60_000;
 export const START = Date.UTC(2026, 0, 1, 0, 0, 0);
 
-export function createEngine(clock: Clock, storage: Storage = new MemoryStorage()): Engine {
-  return new Engine({ storage, getNow: () => clock.now });
+export function createEngine(
+  clock: Clock,
+  storage: Storage = new MemoryStorage(),
+  options: Pick<EngineOptions, 'resolveWorkflowServices'> = {},
+): Engine {
+  return new Engine({ storage, getNow: () => clock.now, ...options });
 }
 
 export function registerWorkflow<TInput, TOutput>(

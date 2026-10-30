@@ -375,7 +375,8 @@ const interleavings: readonly {
       expectNothingHeld(harness);
 
       expectLaunched(await harness.launch());
-      return { kind: 'launch', index: 1 };
+      // Launch A was rejected before its batch committed, so only B consulted the resolver.
+      return { kind: 'launch', index: 0 };
     },
   },
   {
@@ -393,7 +394,8 @@ const interleavings: readonly {
       expectSameHoldings(atSecondStart, NOTHING_HELD);
 
       expectLaunched(await second);
-      return { kind: 'launch', index: 1 };
+      // Launch A was rejected before its batch committed, so only B consulted the resolver.
+      return { kind: 'launch', index: 0 };
     },
   },
   {
@@ -412,7 +414,8 @@ const interleavings: readonly {
       expectSameHoldings(atSecondStart, NOTHING_HELD);
 
       expectLaunched(await second);
-      return { kind: 'launch', index: 1 };
+      // Launch A was rejected before its batch committed, so only B consulted the resolver.
+      return { kind: 'launch', index: 0 };
     },
   },
   {
