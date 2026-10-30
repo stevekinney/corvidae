@@ -116,6 +116,7 @@ describe('the groups', () => {
       'decisions',
       'context',
       'retention',
+      'logs',
       'sessionInput',
       'children',
       'engine',

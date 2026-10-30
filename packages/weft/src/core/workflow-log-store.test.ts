@@ -301,11 +301,109 @@ describe('createWorkflowLogStore', () => {
 
     expect(await writesWhenFirstFlushSettled).toBe(1);
     // Each later drain writes what the one before it left behind, until the last write has logged.
+    // load-proof: each flush awaits the whole drain chain, so the count of drains is fixed by the writes and no timing is involved
     for (let drain = 0; drain < 25; drain++) await store.flush();
     const messages = messagesOf(await store.read('run-1'));
     expect(messages).toHaveLength(21);
     expect(messages[0]).toBe('first');
     expect(messages.at(-1)).toBe('during write 20');
+  });
+
+  it('cuts on the width of a character: three-byte and four-byte characters stay whole', async () => {
+    await using storage = new MemoryStorage();
+    const store = createWorkflowLogStore(storage);
+    store.sink(record({ message: '€'.repeat(1000) }));
+    store.sink(record({ message: '😀'.repeat(600) }));
+    const { lines } = await store.read('run-1');
+
+    for (const line of lines) {
+      expect(line.truncated).toBe(true);
+      expect(ENCODER.encode(line.message).byteLength).toBeLessThanOrEqual(2048);
+      expect(line.message).not.toContain('\uFFFD');
+    }
+  });
+
+  it('honors a smaller line budget and falls back to the default for one that is not a positive integer', async () => {
+    await using storage = new MemoryStorage();
+    const small = createWorkflowLogStore(storage, { maximumLineBytes: 64 });
+    small.sink(record({ workflowId: 'small', message: 'x'.repeat(200) }));
+    const { lines: cut } = await small.read('small');
+    expect(ENCODER.encode(cut[0]?.message ?? '').byteLength).toBeLessThanOrEqual(64);
+    expect(cut[0]?.truncated).toBe(true);
+
+    const fallback = createWorkflowLogStore(storage, { maximumLineBytes: -5 });
+    fallback.sink(record({ workflowId: 'fallback', message: 'x'.repeat(2048) }));
+    const { lines: kept } = await fallback.read('fallback');
+    expect(kept[0]?.truncated).toBe(false);
+  });
+
+  it('reads a counter it cannot decode as a run that has written nothing', async () => {
+    await using storage = new MemoryStorage();
+    await storage.put(
+      KEYS.workflowLogCounter('run-1'),
+      ENCODER.encode(JSON.stringify({ next: 3, first: 0, dropped: 0, updatedAt: 'yesterday' })),
+    );
+    const store = createWorkflowLogStore(storage);
+    store.sink(record({ message: 'fresh' }));
+
+    expect(sequencesOf(await store.read('run-1'))).toEqual([0]);
+  });
+
+  it('survives an error reporter that throws, and a prune that fails', async () => {
+    await using storage = new MemoryStorage();
+    const store = createWorkflowLogStore(storage, {
+      onError: () => {
+        throw new Error('reporter');
+      },
+    });
+    const batch = storage.batch.bind(storage);
+    storage.batch = async () => {
+      throw new Error('disk full');
+    };
+    store.sink(record({ message: 'lost' }));
+    await store.flush();
+    storage.batch = batch;
+    store.sink(record({ message: 'kept' }));
+    await store.flush();
+
+    const scan = storage.scan.bind(storage);
+    const failure = new Error('scan failed');
+    storage.scan = () => {
+      throw failure;
+    };
+    const outcome = await store.prune({ olderThan: 1 }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(outcome).toBe(failure);
+
+    // The failed prune did not wedge the queue behind it.
+    storage.scan = scan;
+    expect(messagesOf(await store.read('run-1'))).toEqual(['kept']);
+  });
+
+  it('reports a run whose lines could not be removed and prunes the others', async () => {
+    await using storage = new MemoryStorage();
+    let now = 0;
+    const errors: unknown[] = [];
+    const store = createWorkflowLogStore(storage, {
+      getNow: () => now,
+      onError: (error) => errors.push(error),
+    });
+    store.sink(record({ workflowId: 'stuck' }));
+    store.sink(record({ workflowId: 'gone' }));
+    await store.flush();
+    now = 1_000;
+    const remove = storage.delete.bind(storage);
+    const failure = new Error('delete failed');
+    storage.delete = async (key) => {
+      if (key === KEYS.workflowLogCounter('stuck')) throw failure;
+      return remove(key);
+    };
+
+    expect(await store.prune({ olderThan: 10 })).toEqual({ runs: 1 });
+    expect(errors).toEqual([failure]);
+    expect(linesOf(await store.read('gone'))).toEqual([]);
   });
 
   it('never throws from the sink, whatever the record holds', async () => {

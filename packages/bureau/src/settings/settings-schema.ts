@@ -176,11 +176,6 @@ export const settingsSchema = z
       .describe(
         'How long a run keeps its workflow log lines after it last wrote one, in milliseconds; the next maintenance pass sweeps by it. Has effect only on a Bureau that persists workflow logs.',
       ),
-    'logs.maximumLinesPerRun': positiveInteger
-      .max(MAXIMUM_WORKFLOW_LOG_LINES_PER_RUN)
-      .describe(
-        'How many workflow log lines a run keeps, at most 5000; past it the oldest line is evicted and counted as dropped. Applies to the next line written.',
-      ),
     'retention.checkpoints': z
       .union([
         z.literal('keep-all'),
@@ -192,6 +187,11 @@ export const settingsSchema = z
           .strict(),
       ])
       .describe('How many checkpoints of a durable run are kept.'),
+    'logs.maximumLinesPerRun': positiveInteger
+      .max(MAXIMUM_WORKFLOW_LOG_LINES_PER_RUN)
+      .describe(
+        'How many workflow log lines a run keeps, at most 5000; past it the oldest line is evicted and counted as dropped. Applies to the next line written.',
+      ),
     'sessionInput.sessionBacklogLimit': positiveInteger.describe(
       'How many undelivered inputs one context may hold. Live from the next session: a session started after the change admits against the new limit, and a running session keeps the limit its mailbox was built with.',
     ),
@@ -297,8 +297,8 @@ export const SETTING_APPLY: Readonly<Record<SettingKey, SettingApply>> = {
   'retention.receipts': 'live',
   'retention.memory': 'live',
   'retention.logs': 'live',
-  'logs.maximumLinesPerRun': 'live',
   'retention.checkpoints': 'live',
+  'logs.maximumLinesPerRun': 'live',
   // Live from the next session (owner decision, COR-1710 revision 2026-10-27): a running session
   // keeps the limit its Weft mailbox was built with, which keeps Weft's backlog check atomic.
   'sessionInput.sessionBacklogLimit': 'live',

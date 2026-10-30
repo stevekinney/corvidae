@@ -90,6 +90,7 @@ describe('the page', () => {
       'Decisions',
       'Context',
       'Retention',
+      'Logs',
       'Session input',
       'Children',
       'Engine',
