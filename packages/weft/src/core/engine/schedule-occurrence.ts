@@ -90,3 +90,18 @@ export function collectDueScheduleTicks(
     maxOccurrences,
   });
 }
+
+/**
+ * The first instant at or after `fromAt` (a tick of the schedule) that starts a run. A tick is not
+ * always a fire: in a time zone, `nextFireAt` can be the end of a daylight-saving gap that swallowed
+ * a wall-clock time and fires only if the expression also matches it (see {@link ScheduleTick}).
+ * A gap's end is followed by a later tick, so the search ends.
+ */
+export function findFiringScheduleOccurrence(state: CadenceSource, fromAt: number): number {
+  let at = fromAt;
+  for (;;) {
+    const [tick] = collectDueScheduleTicks(state, at, at, 1);
+    if (tick === undefined || tick.fires) return at;
+    at = getNextScheduleOccurrence(state, at);
+  }
+}

@@ -5,6 +5,7 @@
  * condition is made again only if the schedule is still as the tick left it.
  */
 
+import type { BatchOperation } from '@lostgradient/storage';
 import type { ScheduleState } from '../types.ts';
 import type { EngineInternals } from './internals.ts';
 import { getNextScheduleOccurrence } from './schedule-occurrence.ts';
@@ -57,7 +58,7 @@ export async function persistScheduleTimerState(
   internals: EngineInternals,
   progress: ScheduleTimerProgress,
   state: ScheduleState,
-  options?: { includeTimer?: boolean },
+  options?: { includeTimer?: boolean; additionalOperations?: BatchOperation[] },
 ): Promise<boolean> {
   try {
     for (;;) {

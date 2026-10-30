@@ -89,6 +89,8 @@ describe('KEYS insertion order', () => {
       'scheduleRunLink',
       'scheduleRunBySchedulePrefix',
       'scheduleRunBySchedule',
+      'scheduleMissedPrefix',
+      'scheduleMissed',
       'operation',
       'operationInflight',
       'operationQueued',
@@ -314,6 +316,7 @@ describe('WEFT_RESERVED_KEY_PREFIXES', () => {
       KEYS.scheduleRun('workflow-id'),
       KEYS.scheduleRunLink('workflow-id'),
       KEYS.scheduleRunBySchedule('schedule-id', 'workflow-id'),
+      KEYS.scheduleMissed('schedule-id', 1, 'late'),
       KEYS.teardownSucceeded('workflow-id'),
       KEYS.operation('default', 1, 'operation-id'),
       KEYS.operationInflight('operation-id'),
@@ -1021,6 +1024,14 @@ describe('KEYS', () => {
     expect(KEYS.workflowVisibilityMetaBuiltAt()).toBe('wf-idx-meta:built-at');
     expect(KEYS.workflowVisibilityMetaCursor()).toBe('wf-idx-meta:cursor');
     expect(KEYS.workflowVisibilityMetaBuilding()).toBe('wf-idx-meta:building');
+  });
+
+  it('keys a missed-fire row by schedule, padded occurrence and reason', () => {
+    expect(KEYS.scheduleMissedPrefix('schedule:id')).toBe('schedule-missed:schedule%3Aid:');
+    expect(KEYS.scheduleMissed('schedule:id', 42, 'dst-gap')).toBe(
+      'schedule-missed:schedule%3Aid:0000000000000042:dst-gap',
+    );
+    expect(KEYS.scheduleMissed('s', 9, 'late') < KEYS.scheduleMissed('s', 10, 'late')).toBe(true);
   });
 
   it('encodes both dimensions of the schedule-run reverse index', () => {

@@ -16,9 +16,10 @@ export async function applyBlockedScheduleOccurrence(
   hasActiveWorkflow: boolean,
   callbacks: ScheduleOverlapCallbacks,
   occurrence?: number,
+  manual?: true,
 ): Promise<ScheduleState> {
   if (!hasActiveWorkflow) {
-    return startScheduleRunInOccupiedSlot(state, callbacks, occurrence);
+    return startScheduleRunInOccupiedSlot(state, callbacks, occurrence, manual);
   }
 
   if (state.overlap === 'cancel-running') {
@@ -30,6 +31,7 @@ export async function applyBlockedScheduleOccurrence(
       clearScheduleCurrentWorkflow(state),
       callbacks,
       occurrence,
+      manual,
     );
   }
 
@@ -42,6 +44,7 @@ export async function applyBlockedScheduleOccurrence(
           workflowId: crypto.randomUUID(),
           queuedAt: internals.options.getNow(),
           ...(occurrence !== undefined && { occurrence }),
+          ...(manual === true && { manual }),
         },
       ],
     };
@@ -79,12 +82,14 @@ async function startScheduleRunInOccupiedSlot(
   state: ScheduleState,
   callbacks: Pick<ScheduleOverlapCallbacks, 'startScheduledRun'>,
   occurrence?: number,
+  manual?: true,
 ): Promise<ScheduleState> {
   const workflowId = crypto.randomUUID();
   const stateAfterStart: ScheduleState = { ...state, currentWorkflowId: workflowId };
   await callbacks.startScheduledRun(state, {
     workflowId,
     ...(occurrence !== undefined && { occurrence }),
+    ...(manual === true && { manual }),
   });
   return stateAfterStart;
 }
@@ -105,6 +110,7 @@ export async function drainQueuedScheduleRun(
   await callbacks.startScheduledRun(state, {
     workflowId: queuedRun.workflowId,
     ...(queuedRun.occurrence !== undefined && { occurrence: queuedRun.occurrence }),
+    ...(queuedRun.manual === true && { manual: queuedRun.manual }),
     scheduleStateAfterStart: stateAfterStart,
     ...(completedWorkflowId !== undefined && { completedWorkflowId }),
     // WFT-95: this replays an already-persisted queued-run id rather than

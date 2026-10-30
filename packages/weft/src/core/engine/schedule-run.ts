@@ -17,6 +17,8 @@ type ScheduledRunServicesResolution =
 
 export type ScheduledRunStartOptions = {
   occurrence?: number;
+  /** Present and `true` for a run a person triggered by hand (`engine.triggerSchedule`). */
+  manual?: true;
   /** Reserved queue identity. A fresh id is minted when omitted. */
   workflowId?: string;
   /** Schedule state committed atomically with the workflow start. */
@@ -55,7 +57,8 @@ export async function startScheduledRun(
 ): Promise<string> {
   const workflowId = options.workflowId ?? crypto.randomUUID();
   const occurrence = options.occurrence;
-  const metadata = encodeScheduleRunMetadata(state.id, occurrence);
+  const manual = options.manual;
+  const metadata = encodeScheduleRunMetadata(state.id, occurrence, manual);
   const scheduleRunOperations: BatchOperation[] = [
     {
       type: 'put',
@@ -93,7 +96,13 @@ export async function startScheduledRun(
     });
   }
 
-  const resolution = await resolveScheduledRunServices(internals, workflowId, state, occurrence);
+  const resolution = await resolveScheduledRunServices(
+    internals,
+    workflowId,
+    state,
+    occurrence,
+    manual,
+  );
 
   if (resolution !== null) {
     // Write the "expects services" marker atomically with the workflow record.
@@ -185,6 +194,7 @@ async function resolveScheduledRunServices(
   workflowId: string,
   state: ScheduleState,
   occurrence: number | undefined,
+  manual: true | undefined,
 ): Promise<ScheduledRunServicesResolution> {
   const resolver = internals.options.resolveWorkflowServices;
   if (internals.inlineStrategy === null || !resolver) {
@@ -200,6 +210,7 @@ async function resolveScheduledRunServices(
       schedule: {
         id: state.id,
         ...(occurrence !== undefined ? { occurrence } : {}),
+        ...(manual === true ? { manual } : {}),
       },
     });
   } catch (error) {

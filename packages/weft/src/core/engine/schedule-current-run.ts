@@ -75,6 +75,7 @@ export async function applyScheduleOccurrence(
   state: ScheduleState,
   callbacks: ScheduleCallbacks,
   occurrence?: number,
+  manual?: true,
 ): Promise<ScheduleState> {
   // WFT-136/COR-105: the one observation point every occurrence passes through,
   // dispatched before the overlap policy is consulted so a consumer sees the
@@ -98,6 +99,7 @@ export async function applyScheduleOccurrence(
   if (stateForOccurrence.overlap === 'allow') {
     await callbacks.startScheduledRun(stateForOccurrence, {
       ...(occurrence !== undefined && { occurrence }),
+      ...(manual === true && { manual }),
     });
     return stateForOccurrence;
   }
@@ -108,6 +110,7 @@ export async function applyScheduleOccurrence(
     hasActiveWorkflow,
     callbacks,
     occurrence,
+    manual,
   );
 }
 

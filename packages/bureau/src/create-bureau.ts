@@ -17319,6 +17319,38 @@ async function constructBureau<const D extends AgentDefinitions>(
       : { expectedRevision: guard.expectedRevision };
   }
 
+  async function skipNextSchedule(
+    scheduleId: string,
+    guard?: ScheduleRevisionGuard,
+  ): Promise<true | undefined> {
+    if (!runtime.durable) return undefined;
+    refuseWorkflowSchedule(scheduleId);
+    await runtime.durable.engine.skipNextScheduleOccurrence(
+      scheduleId,
+      scheduleTransitionOptions(guard),
+    );
+    return true;
+  }
+
+  async function runScheduleNow(
+    scheduleId: string,
+  ): Promise<import('@lostgradient/weft').ScheduleTriggerResult | undefined> {
+    if (!runtime.durable) return undefined;
+    refuseWorkflowSchedule(scheduleId);
+    return runtime.durable.engine.triggerSchedule(scheduleId);
+  }
+
+  async function listScheduleMissed(
+    scheduleId: string,
+    read?: { readonly limit?: number | undefined },
+  ): Promise<import('@lostgradient/weft').ScheduleMissedFire[] | null | undefined> {
+    if (!runtime.durable) return undefined;
+    return runtime.durable.engine.listScheduleMissedFires(
+      scheduleId,
+      read?.limit === undefined ? undefined : { limit: read.limit },
+    );
+  }
+
   async function updateSchedule(
     scheduleId: string,
     update: DurableScheduleUpdate,
@@ -19093,6 +19125,9 @@ async function constructBureau<const D extends AgentDefinitions>(
     resume: resumeSchedule,
     cancel: cancelSchedule,
     update: updateSchedule,
+    skipNext: skipNextSchedule,
+    runNow: runScheduleNow,
+    missed: listScheduleMissed,
     agentName: getScheduleAgentName,
     inputPreview: getScheduleInputPreview,
     eventHistory: readEventHistory,
@@ -19500,7 +19535,13 @@ async function constructBureau<const D extends AgentDefinitions>(
         origin:
           fire.scheduleId === undefined
             ? undefined
-            : { kind: 'schedule', scheduleId: fire.scheduleId, fireId: fire.runId },
+            : {
+                kind: 'schedule',
+                scheduleId: fire.scheduleId,
+                fireId: fire.runId,
+                // COR-1829: a fire a person started with `schedules.runNow`, not the cadence.
+                ...(fire.manual === true ? { manual: true as const } : {}),
+              },
         message: fire.message,
         // COR-1710: the fire's grant, recorded once with it; a rebuilt fire reads it back.
         tools: toolGrantNow(),

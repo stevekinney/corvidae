@@ -134,7 +134,7 @@ Each workflow with a `schedule` trigger has exactly one live native schedule, wh
 
 Every startup, every rescan that finds a change, and every rescan after a failed apply puts the schedule back to match the file (a schedule changed through Weft's own console is corrected at the next of these, not at once): it is created if missing, its `spec` and `overlap` are updated, it is paused when the file says `paused: true` and resumed when it does not, and it is cancelled when the file is deleted or becomes `invalid`. Fixing the file creates a new generation. The schedule always resolves the active revision at the moment it fires (`active-at-fire`), and its input, which is the instance's `trigger`, is the static `{ kind: 'schedule', scheduleId }`; when it fired is the instance's own `createdAt`.
 
-`bureau.schedules.*` (the in-process `bureau.schedules.get` and `bureau.schedules.list`) reads these schedules, and `ownerOf` answers them with the deployment's owner. `bureau.schedules.pause`, `bureau.schedules.resume`, and `bureau.schedules.cancel` refuse them with `BureauError` (`NOT_FOUND`), as if they did not exist: the workflow's own operations are the only way to change one.
+`bureau.schedules.*` (the in-process `bureau.schedules.get` and `bureau.schedules.list`) reads these schedules, and `ownerOf` answers them with the deployment's owner. `bureau.schedules.pause`, `bureau.schedules.resume`, `bureau.schedules.cancel`, `bureau.schedules.skipnext`, and `bureau.schedules.runnow` refuse them with `BureauError` (`NOT_FOUND`), as if they did not exist: the workflow's own operations are the only way to change one.
 
 ## Signals
 

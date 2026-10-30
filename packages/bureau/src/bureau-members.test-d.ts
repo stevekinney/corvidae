@@ -140,7 +140,7 @@ export type ReviewsMembers = AssertNever<
   Exclude<keyof BureauReviews, 'list' | 'get' | 'resolve' | 'pendingOf'>
 >;
 
-// `schedules` has exactly the eleven operations.
+// `schedules` has exactly the fourteen operations.
 export type SchedulesMembers = AssertNever<
   Exclude<
     keyof BureauSchedules,
@@ -151,6 +151,9 @@ export type SchedulesMembers = AssertNever<
     | 'resume'
     | 'cancel'
     | 'update'
+    | 'skipNext'
+    | 'runNow'
+    | 'missed'
     | 'agentName'
     | 'inputPreview'
     | 'events'

@@ -57,8 +57,8 @@ export function createScheduleCallbacks<TWorkflows extends object, TActivities e
     getWorkflowResult: (workflowId) => engine.getHandle(workflowId).result(),
     refreshScheduledWorkflowState: (state) => refreshScheduledWorkflowStateForEngine(engine, state),
     startScheduledRun: (state, options) => startScheduledRunForEngine(engine, state, options),
-    applyScheduleOccurrence: (state, occurrence) =>
-      applyScheduleOccurrenceForEngine(engine, state, occurrence),
+    applyScheduleOccurrence: (state, occurrence, manual) =>
+      applyScheduleOccurrenceForEngine(engine, state, occurrence, manual),
     flushQueuedInlineWorkflowStartsDirectly: () =>
       flushQueuedInlineWorkflowStartsDirectly(
         getInternals(engine),
@@ -134,12 +134,14 @@ export async function applyScheduleOccurrenceForEngine<
   engine: Engine<TWorkflows, TActivities>,
   state: ScheduleState,
   occurrence?: number,
+  manual?: true,
 ): Promise<ScheduleState> {
   return applyScheduleOccurrence(
     getInternals(engine),
     state,
     createScheduleCallbacks(engine),
     occurrence,
+    manual,
   );
 }
 export async function handleScheduleTimerForEngine<

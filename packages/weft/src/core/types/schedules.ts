@@ -75,6 +75,11 @@ export interface ScheduleQueuedRun {
   queuedAt: number;
   /** Nominal cadence timestamp retained from the occurrence that was queued. */
   occurrence?: number;
+  /**
+   * Present and `true` when a person triggered this run by hand (see {@link Engine.triggerSchedule})
+   * rather than the cadence. It travels to the run's schedule metadata when the queue drains.
+   */
+  manual?: true;
 }
 
 /**
@@ -439,6 +444,15 @@ export interface ScheduleMetadata {
   /** When the most recent occurrence was dropped by the overlap policy. */
   lastSkippedAt?: number;
   nextFireAt: number | null;
+  /**
+   * The occurrence a person asked to skip (see {@link Engine.skipNextScheduleOccurrence}): the
+   * schedule starts no run for any occurrence at or before this instant. It names the next
+   * occurrence that would actually have started a run, which is not always {@link nextFireAt}: in
+   * a time zone, `nextFireAt` can be the end of a daylight-saving gap that fires nothing. It is
+   * absent when nothing is skipped, and is cleared as soon as the schedule moves past it, by a
+   * cadence change, a pause, or a cancel. A stored schedule that predates the field reads as absent.
+   */
+  skipUntil?: number;
   currentWorkflowId?: string;
   /** Ordered durable occurrences waiting behind `currentWorkflowId`. */
   queuedRuns: ScheduleQueuedRun[];
