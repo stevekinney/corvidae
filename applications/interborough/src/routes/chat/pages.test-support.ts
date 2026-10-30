@@ -18,6 +18,7 @@ export const CONTEXT = {
   forkedFromMessageId: null,
   model: null,
   effort: null,
+  permissionMode: 'on-changes',
   configVersion: 0,
   messageCount: 2,
   createdAt: '2026-10-19T08:00:00.000Z',

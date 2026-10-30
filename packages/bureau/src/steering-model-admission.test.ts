@@ -141,6 +141,7 @@ describe('admission checks the model against the agent', () => {
     expect(await bureau.contexts.steering(run.contextId)).toEqual({
       model: { provider: 'anthropic', model: 'claude-opus-5' },
       effort: null,
+      permissionMode: null,
       configVersion: 1,
     });
     stepped.releaseFirstStep();
@@ -314,6 +315,7 @@ describe('a switched model reaches the provider call', () => {
     expect(await restarted.contexts.steering(run.contextId)).toEqual({
       model: { provider: 'anthropic', model: 'claude-opus-5' },
       effort: null,
+      permissionMode: null,
       configVersion: 1,
     });
   });
@@ -381,6 +383,7 @@ describe('a steering log written before the provider field existed', () => {
     expect(steering).toEqual({
       model: { provider: null, model: 'claude-opus-5' },
       effort: null,
+      permissionMode: null,
       configVersion: 1,
     });
   });

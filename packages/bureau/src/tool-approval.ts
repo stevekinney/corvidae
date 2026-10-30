@@ -8,27 +8,48 @@
  * it with the toolbox's own `approvalPolicy` by taking the most restrictive verdict
  * (`combineApprovalStatuses`: `deny` over `ask` over `allow`). So the hook can only tighten what the
  * toolbox decides: a tool set to `never` is still asked about when the toolbox says to ask, and a
- * tool set to `blocked` is denied whatever the toolbox says. Chat permission modes work the same
- * way, only tightening.
+ * tool set to `blocked` is denied whatever the toolbox says.
  *
- * A person who approves a call can ask to allow its tool for the rest of the chat (COR-1828,
- * `remember` on `reviews.resolve`). {@link ToolApprovalHooksOptions.remembered} carries that grant
- * into the hook, which consults it for a tool whose value is `on-changes` and for no other: a grant
- * skips the next `on-changes` ask, and never loosens `always`, `blocked`, or `never`. Because the
- * toolbox composes the hook with its own policy by the most restrictive verdict, a grant also never
- * loosens an agent-wide always mode or a read-only restriction the toolbox applies.
+ * A chat has a permission mode as well (COR-1936, `bureau.contexts.steer`'s `permissionMode`), which
+ * {@link ToolApprovalHooksOptions.permissionMode} carries into the hook. {@link decideToolApproval}
+ * is the whole rule, as eight rules, strongest first:
+ *
+ * 1. A tool set to `blocked` is denied.
+ * 2. In `read-only` mode every tool that is not read-only is denied: a tool that declares no
+ *    capability, and one with a remembered grant, included.
+ * 3. A tool set to `always` asks every time, and a remembered grant cannot loosen it.
+ * 4. In `always` mode every call asks.
+ * 5. A remembered grant skips an `on-changes` ask for that tool in that chat (COR-1828).
+ * 6. A tool set to `on-changes`, or to nothing, asks when it changes something, is dangerous, or
+ *    declares nothing.
+ * 7. In `allow-all` mode that ask is skipped for a tool that declares what it does. It is never
+ *    skipped for a tool set to `always` or `blocked`, and a tool that declares nothing still asks.
+ * 8. A tool set to `never` runs without asking, unless a rule above applies or it declares nothing.
+ *
+ * Modes only tighten, except `allow-all`, which skips the asks `on-changes` raises and nothing
+ * else. The default mode, `on-changes`, decides by the tool's own setting alone, which is also how
+ * a hook given no mode decides: rule 6 is the tool's default and rule 8 its opt-out from it, so a
+ * tool set to `never` is not asked about in a chat on `on-changes`.
+ *
+ * A remembered grant (`remember` on `reviews.resolve`) is consulted for a tool whose value is
+ * `on-changes` and for no other, and only when it would change the answer. Because the toolbox
+ * composes the hook with its own policy by the most restrictive verdict, a mode or a grant also
+ * never loosens an approval policy the toolbox applies itself.
  *
  * @module tool-approval
  */
 
+import type { PermissionMode } from '@lostgradient/operative';
 import {
   type ApprovalMode,
+  type ApprovalStatus,
   type CapabilityTier,
-  createApprovalPolicyHooks,
   evaluateApprovalStatus,
+  resolveCapabilityTier,
   type ToolPolicyContext,
   type ToolPolicyDecision,
   type ToolPolicyHooks,
+  createApprovalPolicyHooks,
 } from 'armorer';
 
 /** The values a tool's `toolApproval` entry may take. */
@@ -70,6 +91,35 @@ export function defaultToolApproval(tier: CapabilityTier | undefined): 'allow' |
     : 'ask';
 }
 
+/** What {@link decideToolApproval} reads about one call. */
+export interface ToolApprovalInput {
+  /** The chat's permission mode. */
+  readonly mode: PermissionMode;
+  /** The tool's `toolApproval` value, `on-changes` when it has none. */
+  readonly setting: ToolApprovalMode;
+  /** The tool's capability tier, `undefined` when it declares none, which is not read-only. */
+  readonly tier: CapabilityTier | undefined;
+  /** Whether a person allowed the tool for the rest of this chat. */
+  readonly remembered: boolean;
+}
+
+/**
+ * What a call does, `allow`, `ask` or `deny`: the eight rules in this module's header, in order.
+ * Pure, so a table can pin every combination; {@link createToolApprovalHooks} builds the decision
+ * a toolbox acts on from it.
+ */
+export function decideToolApproval(input: ToolApprovalInput): ApprovalStatus {
+  const { mode, setting, tier, remembered } = input;
+  if (setting === 'blocked') return 'deny';
+  if (mode === 'read-only' && tier !== 'read-only') return 'deny';
+  if (setting === 'always' || mode === 'always') return 'ask';
+  // What is left is `never` and `on-changes`, which the tool's own setting decides.
+  const own = evaluateApprovalStatus(tier, ARMORER_MODE[setting]);
+  if (own !== 'ask' || setting !== 'on-changes') return own;
+  if (remembered) return 'allow';
+  return mode === 'allow-all' && tier !== undefined ? 'allow' : 'ask';
+}
+
 /** What {@link createToolApprovalHooks} takes. */
 export interface ToolApprovalHooksOptions {
   /** The value for a tool with no entry. Defaults to {@link TOOL_APPROVAL_DEFAULT_MODE}. */
@@ -84,16 +134,61 @@ export interface ToolApprovalHooksOptions {
   readonly tools?: readonly string[] | undefined;
   /**
    * Whether a person allowed `toolName` for the rest of this chat (COR-1828). It is asked, at the
-   * time of the call, only for a tool whose value is `on-changes`; `true` lets that call through
-   * without asking. It is never asked for `always`, `blocked` or `never`, so a grant cannot change
-   * what those answer. A rejection counts as `false`: when the grant cannot be read, the call asks.
+   * time of the call, only for a tool whose value is `on-changes` and only when a grant would
+   * change the answer; `true` lets that call through without asking. It is never asked for
+   * `always`, `blocked` or `never`, so a grant cannot change what those answer. A rejection counts
+   * as `false`: when the grant cannot be read, the call asks.
    */
   readonly remembered?: ((toolName: string) => boolean | Promise<boolean>) | undefined;
+  /**
+   * The chat's permission mode (COR-1936), read when each call is decided, so a steer applies to
+   * the next call. Omitted, the call has no chat (a run outside a session) and the tool's own
+   * setting decides, as it does in the default mode. A rejection counts as `read-only`: when the
+   * mode cannot be read, a tool that is not read-only is denied, and no call is let through on a
+   * guess.
+   */
+  readonly permissionMode?: (() => PermissionMode | Promise<PermissionMode>) | undefined;
+}
+
+/** The mode a chat is in when nothing was set: the tool's own setting decides. */
+const DEFAULT_PERMISSION_MODE: PermissionMode = 'on-changes';
+
+/** The decision a toolbox acts on for a call whose verdict is `status`. */
+function decisionOf(
+  context: ToolPolicyContext,
+  tier: CapabilityTier | undefined,
+  setting: ToolApprovalMode,
+  mode: PermissionMode,
+  status: ApprovalStatus,
+): ToolPolicyDecision {
+  if (status === 'allow') return { allow: true, status: 'allow' };
+  const tierLabel = tier ?? 'unrecognized';
+  if (status === 'deny' && setting !== 'blocked') {
+    return {
+      allow: false,
+      status: 'deny',
+      reason: `Tool "${context.toolName}" (${tierLabel} tier) is denied because this chat is in ${mode} mode, which allows only read-only tools.`,
+    };
+  }
+  // The Armorer mode whose verdict for this call is `status`, so the reason and the summary of the
+  // person's question are Armorer's own.
+  const asked: ApprovalMode =
+    setting === 'blocked'
+      ? 'deny'
+      : setting === 'always' || mode === 'always'
+        ? 'always'
+        : ARMORER_MODE[setting];
+  return (
+    createApprovalPolicyHooks({ mode: asked }).beforeExecute as (
+      context: ToolPolicyContext,
+    ) => ToolPolicyDecision
+  )(context);
 }
 
 /**
  * The policy hook for an agent's tools: each call is decided by the value `toolApproval` gives its
- * tool, or by `options.defaultMode` (`on-changes`) when it gives none. Give the result to a
+ * tool, or by `options.defaultMode` (`on-changes`) when it gives none, and by the chat's permission
+ * mode when `options.permissionMode` gives one ({@link decideToolApproval}). Give the result to a
  * toolbox as `policy`. The hook holds no state, but build one for each run all the same, as a
  * toolbox does: nothing then leaks between runs if the hook ever keeps some.
  *
@@ -107,40 +202,43 @@ export function createToolApprovalHooks(
   const defaultMode = options.defaultMode ?? TOOL_APPROVAL_DEFAULT_MODE;
   const modes = new Map<string, ToolApprovalMode>(Object.entries(toolApproval ?? {}));
   const governed = options.tools === undefined ? undefined : new Set(options.tools);
-  const hooksOfMode = new Map<ToolApprovalMode, ToolPolicyHooks>(
-    TOOL_APPROVAL_MODES.map((mode) => [
-      mode,
-      createApprovalPolicyHooks({ mode: ARMORER_MODE[mode] }),
-    ]),
-  );
-  const remembered = options.remembered;
-  /** The verdict `on-changes` gave, or `allow` when it asked and a person allowed the tool for this chat. */
-  async function allowWhenRemembered(
-    decided: ToolPolicyDecision | Promise<ToolPolicyDecision>,
-    toolName: string,
-  ): Promise<ToolPolicyDecision> {
-    const verdict = await decided;
-    // Only an ask is ever lifted: an allow stays one, and a deny (which `on-changes` never gives) too.
-    if (verdict.status !== 'needs_approval') return verdict;
-    let granted = false;
+  const { remembered, permissionMode } = options;
+  /** Whether the grant is held; a grant that cannot be read is not held. */
+  async function granted(toolName: string): Promise<boolean> {
     try {
-      granted = await (remembered as NonNullable<typeof remembered>)(toolName);
+      return await (remembered as NonNullable<typeof remembered>)(toolName);
     } catch {
-      // The grant cannot be read, so the call asks.
+      return false;
     }
-    return granted ? { allow: true, status: 'allow' } : verdict;
+  }
+  /** The chat's mode; one that cannot be read is `read-only`. */
+  async function modeOfChat(): Promise<PermissionMode> {
+    if (permissionMode === undefined) return DEFAULT_PERMISSION_MODE;
+    try {
+      return await permissionMode();
+    } catch {
+      return 'read-only';
+    }
   }
   return {
-    beforeExecute(context: ToolPolicyContext): ToolPolicyDecision | Promise<ToolPolicyDecision> {
+    async beforeExecute(context: ToolPolicyContext): Promise<ToolPolicyDecision> {
       if (governed !== undefined && !governed.has(context.toolName)) {
         return { allow: true, status: 'allow' };
       }
-      const mode = modes.get(context.toolName) ?? defaultMode;
-      // Every mode has a hook, built above.
-      const decided = (hooksOfMode.get(mode) as ToolPolicyHooks).beforeExecute?.(context) as
-        ToolPolicyDecision | Promise<ToolPolicyDecision>;
-      if (mode !== 'on-changes' || remembered === undefined) return decided;
-      return allowWhenRemembered(decided, context.toolName);
+      const setting = modes.get(context.toolName) ?? defaultMode;
+      const mode = await modeOfChat();
+      const tier = resolveCapabilityTier(context.metadata, context.tags);
+      let status = decideToolApproval({ mode, setting, tier, remembered: false });
+      // The grant is read only when it would change the answer.
+      if (
+        status === 'ask' &&
+        remembered !== undefined &&
+        decideToolApproval({ mode, setting, tier, remembered: true }) === 'allow' &&
+        (await granted(context.toolName))
+      ) {
+        status = 'allow';
+      }
+      return decisionOf(context, tier, setting, mode, status);
     },
   };
 }

@@ -58,15 +58,28 @@ const effortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
 /** A reasoning effort, as `bureau.contexts.steer` takes it and `bureau.contexts.get` reports it. */
 export type Effort = z.infer<typeof effortSchema>;
 
+/** The permission modes a session can be set to (`bureau.contexts.steer`'s `permissionMode`). */
+const permissionModeSchema = z.enum(['always', 'on-changes', 'allow-all', 'read-only']);
+
+/**
+ * How readily a session's tool calls ask a person, as `bureau.contexts.steer` takes it and
+ * `bureau.contexts.get` reports it: `on-changes` asks as each tool's own setting says (the default),
+ * `always` asks on every call, `allow-all` skips the asks `on-changes` would raise, and `read-only`
+ * denies every tool that is not read-only.
+ */
+export type PermissionMode = z.infer<typeof permissionModeSchema>;
+
 /**
  * One session as `bureau.contexts.get` shows it: the summary, and what its steering has settled on.
  * `model` is the latest model the session was switched to, `null` before any, which means the
- * agent's default; `effort` is the latest effort it was set to, `null` before any; `configVersion` is
+ * agent's default; `effort` is the latest effort it was set to, `null` before any; `permissionMode`
+ * is its permission mode, `on-changes` before one was set; `configVersion` is
  * the version a later `bureau.contexts.steer`'s `expectedRevision` is compared against.
  */
 export const contextDetailSchema = chatContextSchema.extend({
   model: z.object({ provider: z.string().nullable(), model: z.string() }).nullable(),
   effort: effortSchema.nullable(),
+  permissionMode: permissionModeSchema,
   configVersion: z.number().int().nonnegative(),
 });
 
@@ -202,7 +215,8 @@ export type SteerOutcome = z.infer<typeof steerOutcomeSchema>;
 
 /**
  * Changes one setting of a session (`bureau.contexts.steer`): `override` switches it to another
- * model its agent allows, `effort` sets its reasoning effort, and a request carries exactly one.
+ * model its agent allows, `effort` sets its reasoning effort, `permissionMode` sets how readily its
+ * tool calls ask a person, and a request carries exactly one.
  * `commandId` is the caller's own identifier: an exact retry of it is a replay. `expectedRevision`
  * is the `configVersion` the caller read.
  */
@@ -215,8 +229,18 @@ export async function steerContext(
     | {
         readonly override: { readonly provider: string; readonly model: string };
         readonly effort?: never;
+        readonly permissionMode?: never;
       }
-    | { readonly effort: Effort; readonly override?: never }
+    | {
+        readonly effort: Effort;
+        readonly override?: never;
+        readonly permissionMode?: never;
+      }
+    | {
+        readonly permissionMode: PermissionMode;
+        readonly override?: never;
+        readonly effort?: never;
+      }
   ),
   options?: { readonly signal?: AbortSignal },
 ): Promise<SteerOutcome> {

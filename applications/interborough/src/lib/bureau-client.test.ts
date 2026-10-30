@@ -147,6 +147,7 @@ describe('the Bureau’s context operations', () => {
         forkedFromMessageId: null,
         model: null,
         effort: null,
+        permissionMode: 'on-changes',
         configVersion: 0,
         messageCount: 2,
         createdAt: '2026-10-19T00:00:00.000Z',
@@ -259,6 +260,21 @@ describe('switching a session’s model and branching it', () => {
       contextId: 'c1',
       commandId: 'command-2',
       effort: 'high',
+    });
+  });
+
+  test('steerContext sends a permission mode without an override', async () => {
+    const stub = answering(result({ outcome: 'accepted', command: {} }));
+
+    const outcome = await withStub(stub.fetch, () =>
+      steerContext({ contextId: 'c1', commandId: 'command-3', permissionMode: 'read-only' }),
+    );
+
+    expect(outcome).toEqual({ outcome: 'accepted' });
+    expect(stub.calls[0]?.body.params).toEqual({
+      contextId: 'c1',
+      commandId: 'command-3',
+      permissionMode: 'read-only',
     });
   });
 

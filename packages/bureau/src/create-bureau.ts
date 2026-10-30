@@ -51,6 +51,8 @@ import {
   type OnStepHook,
   OPERATIVE_RESOLVE_RUN_OPTIONS,
   parseSessionInputPayload,
+  PERMISSION_MODES,
+  type PermissionMode,
   readGenerationProfile,
   reattachDurableActiveRun,
   type RecoveredRunHandle,
@@ -2810,6 +2812,8 @@ async function constructBureau<const D extends AgentDefinitions>(
                 : { approvalSecret: options.agentApprovalSecret }),
               // COR-1828: a tool a person allowed for the rest of the chat skips its `on-changes` ask.
               rememberedTools: approvalGrantsOfRun,
+              // COR-1936: and the chat's permission mode is read for every call.
+              permissionModeOfRun,
               // COR-1920: a file agent's per-run toolbox resolves secret answers as the Bureau's does.
               ...(runtime.secretAnswers === undefined
                 ? {}
@@ -14743,6 +14747,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         contextId: runtimeServices.identifiers.next('session'),
         override: parentRequest ?? parentSteering?.model ?? null,
         effort: parentSteering?.effort ?? null,
+        permissionMode: parentSteering?.permissionMode ?? null,
       });
     } catch (error) {
       if (error instanceof BureauLedgerConflictError) throw forkConflict(request);
@@ -14805,10 +14810,20 @@ async function constructBureau<const D extends AgentDefinitions>(
             principal: request.owner,
             requestedValue: { target: 'effort', override: claim.effort },
           });
+    // COR-1936: and the permission mode, so a branch of a read-only chat is read-only.
+    const carriedPermissionMode =
+      claim.permissionMode === undefined || claim.permissionMode === null
+        ? null
+        : await submitSteeringCommand(claim.contextId, {
+            id: `${request.commandId}:permission-mode`,
+            principal: request.owner,
+            requestedValue: { target: 'permission-mode', override: claim.permissionMode },
+          });
     const result: ForkSessionResult = {
       contextId: claim.contextId,
       carriedOverride: carried,
       carriedEffort,
+      carriedPermissionMode,
     };
     const completed = await forkLedger.complete(outcome.entry, result);
     return answerOfFork(completed.result);
@@ -14904,6 +14919,7 @@ async function constructBureau<const D extends AgentDefinitions>(
           ? null
           : { provider: desired.modelProvider ?? null, model: desired.model },
       effort: desired?.effort ?? null,
+      permissionMode: desired?.permissionMode ?? null,
       configVersion: gate?.getConfigVersion() ?? 0,
     };
   }
@@ -15101,7 +15117,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       // once here rather than casting at each field access.
       const configurationRequest = request.requestedValue as Extract<
         SteeringRequestedValue,
-        { target: 'route' | 'model' | 'provider' | 'effort' }
+        { target: 'route' | 'model' | 'provider' | 'effort' | 'permission-mode' }
       >;
 
       // COR-1227 — resolve a `policyRef` to a concrete coordinate.
@@ -15144,11 +15160,15 @@ async function constructBureau<const D extends AgentDefinitions>(
               ? profile.exactOverride?.provider
               : steeringTarget === 'route'
                 ? profile.exactOverride?.route
-                : // `effort` has a dedicated profile field beside the
-                  // override, and it is the more natural place for a policy
-                  // to express one — `exactOverride.effort` still wins when
-                  // both are set, matching the override's name.
-                  (profile.exactOverride?.effort ?? profile.defaultEffort);
+                : // COR-1936: a policy profile states no permission mode, so there is nothing
+                  // to resolve one from.
+                  steeringTarget === 'permission-mode'
+                  ? undefined
+                  : // `effort` has a dedicated profile field beside the
+                    // override, and it is the more natural place for a policy
+                    // to express one — `exactOverride.effort` still wins when
+                    // both are set, matching the override's name.
+                    (profile.exactOverride?.effort ?? profile.defaultEffort);
         if (override === undefined) {
           // The profile exists but specifies nothing for this coordinate.
           // Admitting anything here would be inventing a value the policy
@@ -15166,7 +15186,9 @@ async function constructBureau<const D extends AgentDefinitions>(
         resolvedRequestedValue = (
           steeringTarget === 'effort'
             ? { target: 'effort', override: override as Effort }
-            : { target: steeringTarget, override }
+            : steeringTarget === 'permission-mode'
+              ? { target: 'permission-mode', override: override as PermissionMode }
+              : { target: steeringTarget, override }
         ) satisfies ImplementedSteeringCommand['requestedValue'];
       }
       const { descriptors } = models.catalog();
@@ -15190,15 +15212,18 @@ async function constructBureau<const D extends AgentDefinitions>(
               ? descriptors.some((descriptor) =>
                   descriptor.effort.portable.includes(override as Effort),
                 )
-              : // `route`: a routing entry is configured on the generate
-                // function (`RoutingOptions.routes`), not in the model
-                // catalog, and Bureau does not hold that table. There is
-                // nothing here to validate against, so admission accepts
-                // the name and the routing layer rejects an unknown route
-                // at generate time. Recorded rather than faked: a
-                // membership test against a catalog that structurally
-                // cannot contain routes would reject every valid route.
-                true;
+              : // COR-1936: a permission mode is Bureau's own, not a catalog row.
+                steeringTarget === 'permission-mode'
+                ? (PERMISSION_MODES as readonly string[]).includes(override as string)
+                : // `route`: a routing entry is configured on the generate
+                  // function (`RoutingOptions.routes`), not in the model
+                  // catalog, and Bureau does not hold that table. There is
+                  // nothing here to validate against, so admission accepts
+                  // the name and the routing layer rejects an unknown route
+                  // at generate time. Recorded rather than faked: a
+                  // membership test against a catalog that structurally
+                  // cannot contain routes would reject every valid route.
+                  true;
       if (!known) {
         return refuseSteering(
           {
@@ -17387,18 +17412,43 @@ async function constructBureau<const D extends AgentDefinitions>(
     const sessions = runtime.sessionStore;
     if (sessions === undefined) return new Set();
     try {
-      // A run this process holds names its session; one recovered after a restart is found by
-      // its task record, which every session run writes before it starts.
-      const runState = store.getRun(runId);
-      const live = runState === undefined ? '' : getRunSessionIdentifier(runState);
-      const task = live !== '' ? undefined : await tasks.get(runId);
-      const sessionId = live !== '' ? live : task?.contextId;
+      const sessionId = await sessionIdOfRun(runId);
       if (sessionId === undefined) return new Set();
       const session = await sessions.load(sessionId);
       return new Set(approvalGrantsOf(session?.metadata));
     } catch {
       return new Set();
     }
+  }
+
+  /**
+   * The session `runId` belongs to, or `undefined` for a run no session holds. A run this process
+   * holds names its session; one recovered after a restart is found by its task record, which
+   * every session run writes before it starts.
+   */
+  async function sessionIdOfRun(runId: string): Promise<string | undefined> {
+    const runState = store.getRun(runId);
+    const live = runState === undefined ? '' : getRunSessionIdentifier(runState);
+    const task = live !== '' ? undefined : await tasks.get(runId);
+    return live !== '' ? live : task?.contextId;
+  }
+
+  /**
+   * COR-1936 — the permission mode of the chat `runId` belongs to, read when a tool call is
+   * decided: the mode the session's steering gate holds (the one the run reads at its step
+   * boundaries, kept current from the log in a durable Bureau), so a steer is in force for the
+   * calls decided after it. `undefined` for a run no session holds, which has no chat to steer.
+   * A chat that was never steered is `on-changes`. A read that fails rejects, and the approval
+   * hook treats that as `read-only`.
+   */
+  async function permissionModeOfRun(runId: string): Promise<PermissionMode | undefined> {
+    if (runtime.sessionStore === undefined) return undefined;
+    const sessionId = await sessionIdOfRun(runId);
+    if (sessionId === undefined) return undefined;
+    const gate = steeringGates.get(sessionId);
+    if (gate !== undefined) return gate.getDesiredState().permissionMode ?? 'on-changes';
+    const steering = await getSessionSteering(sessionId);
+    return steering?.permissionMode ?? 'on-changes';
   }
 
   /**
