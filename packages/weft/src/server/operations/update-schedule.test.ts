@@ -26,6 +26,12 @@ function createEngine(): Engine {
   return engine;
 }
 
+/** The time zone a stored schedule is read in. */
+async function zoneOf(engine: Engine, scheduleId: string): Promise<string | undefined> {
+  const summary = await engine.getSchedule(scheduleId);
+  return summary?.timeZone;
+}
+
 const registry = createOperationRegistry([updateScheduleOperation]);
 const bindings = [updateScheduleRestBinding];
 
@@ -85,7 +91,7 @@ describe('weft.schedules.update', () => {
       { operationRegistry: registry, restBindings: bindings },
     );
     expect(kept.status).toBe(204);
-    expect((await engine.getSchedule('zoned'))?.timeZone).toBe('America/Los_Angeles');
+    expect(await zoneOf(engine, 'zoned')).toBe('America/Los_Angeles');
 
     const changed = await handleRequest(
       jsonRequest('PATCH', '/v1/schedules/zoned', {
@@ -96,7 +102,7 @@ describe('weft.schedules.update', () => {
       { operationRegistry: registry, restBindings: bindings },
     );
     expect(changed.status).toBe(204);
-    expect((await engine.getSchedule('zoned'))?.timeZone).toBe('Europe/Berlin');
+    expect(await zoneOf(engine, 'zoned')).toBe('Europe/Berlin');
 
     const refused = await handleRequest(
       jsonRequest('PATCH', '/v1/schedules/zoned', {
@@ -107,7 +113,7 @@ describe('weft.schedules.update', () => {
       { operationRegistry: registry, restBindings: bindings },
     );
     expect(refused.status).toBe(400);
-    expect((await engine.getSchedule('zoned'))?.timeZone).toBe('Europe/Berlin');
+    expect(await zoneOf(engine, 'zoned')).toBe('Europe/Berlin');
   });
 
   it('keeps the path identifier and partial update fields at the binding boundary', async () => {

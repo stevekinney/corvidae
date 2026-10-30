@@ -191,8 +191,15 @@ describe('a schedule’s time zone (COR-1820)', () => {
       timeZone: 'America/Los_Angeles',
     });
     const id = created.result!['id'] as string;
-    const read = async () =>
-      (await rpc(opened.handler, 'bureau.schedules.get', { scheduleId: id }, 'alice-key')).result;
+    const read = async () => {
+      const body = await rpc(
+        opened.handler,
+        'bureau.schedules.get',
+        { scheduleId: id },
+        'alice-key',
+      );
+      return body.result;
+    };
 
     await rpc(
       opened.handler,

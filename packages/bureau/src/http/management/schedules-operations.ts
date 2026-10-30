@@ -168,7 +168,7 @@ function assertKnownTimeZone(timeZone: string | undefined): void {
   if (timeZone !== undefined && !isValidTimeZone(timeZone)) {
     throw invalidParams(
       'timeZone',
-      `\`timeZone\` must be an IANA time zone name such as "America/Los_Angeles", or "UTC"; "${timeZone}" is not one`,
+      `\`timeZone\` must be an IANA time zone name such as "America/Los_Angeles", or "UTC"; "${String(timeZone)}" is not one`,
     );
   }
 }

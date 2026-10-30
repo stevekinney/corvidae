@@ -25,6 +25,12 @@ function createEngine(): Engine {
   return engine;
 }
 
+/** The time zone a stored schedule is read in. */
+async function zoneOf(engine: Engine, scheduleId: string): Promise<string | undefined> {
+  const summary = await engine.getSchedule(scheduleId);
+  return summary?.timeZone;
+}
+
 const registry = createOperationRegistry([createScheduleOperation]);
 const bindings = [createScheduleRestBinding];
 
@@ -93,8 +99,8 @@ describe('weft.schedules.create', () => {
     );
 
     expect([zoned.status, plain.status]).toEqual([201, 201]);
-    expect((await engine.getSchedule('weekday-mornings'))?.timeZone).toBe('America/Los_Angeles');
-    expect((await engine.getSchedule('weekday-mornings-utc'))?.timeZone).toBe('UTC');
+    expect(await zoneOf(engine, 'weekday-mornings')).toBe('America/Los_Angeles');
+    expect(await zoneOf(engine, 'weekday-mornings-utc')).toBe('UTC');
   });
 
   it('returns 400 for a time zone the runtime does not know, over REST and JSON-RPC', async () => {

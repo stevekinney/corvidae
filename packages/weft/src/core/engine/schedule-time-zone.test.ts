@@ -4,6 +4,7 @@ import { KEYS } from '../../storage/keys.ts';
 import { decode, encode } from '../codec.ts';
 import type { Engine } from '../engine.ts';
 import { ScheduleMissedFireEvent } from '../events/schedule-events.ts';
+import type { ScheduleSummary } from '../types.ts';
 import {
   createEngine,
   registerWorkflow,
@@ -25,6 +26,31 @@ function at(iso: string): number {
 
 function isoOf(timestamp: number | null | undefined): string | null {
   return timestamp === null || timestamp === undefined ? null : new Date(timestamp).toISOString();
+}
+
+type Describable = { describe(): Promise<ScheduleSummary | null> };
+
+/** One field of a schedule's current summary. */
+async function fieldOf<K extends keyof ScheduleSummary>(
+  handle: Describable,
+  key: K,
+): Promise<ScheduleSummary[K]> {
+  const summary = await handle.describe();
+  if (summary === null) throw new Error('Schedule no longer exists');
+  return summary[key];
+}
+
+/** When the schedule is next due. */
+async function nextFireOf(handle: Describable): Promise<number> {
+  const summary = await handle.describe();
+  if (summary === null) throw new Error('Schedule no longer exists');
+  return requireNextFireAt(summary);
+}
+
+/** The time zone a stored schedule is read in. */
+async function zoneOf(engine: Engine, scheduleId: string): Promise<string | undefined> {
+  const summary = await engine.getSchedule(scheduleId);
+  return summary?.timeZone;
 }
 
 function recordMissedFires(engine: Engine): ScheduleMissedFireEvent[] {
@@ -72,10 +98,10 @@ describe('schedule time zones', () => {
       id: 'weekdays',
       timeZone: LOS_ANGELES,
     });
-    expect((await handle.describe())?.timeZone).toBe(LOS_ANGELES);
+    expect(await fieldOf(handle, 'timeZone')).toBe(LOS_ANGELES);
 
     for (let fire = 0; fire < 3; fire += 1) {
-      await tickEngine(engine, opened.clock, requireNextFireAt((await handle.describe())!));
+      await tickEngine(engine, opened.clock, await nextFireOf(handle));
     }
 
     expect(opened.runs).toEqual([
@@ -94,7 +120,7 @@ describe('schedule time zones', () => {
     });
 
     for (let fire = 0; fire < 3; fire += 1) {
-      await tickEngine(engine, opened.clock, requireNextFireAt((await handle.describe())!));
+      await tickEngine(engine, opened.clock, await nextFireOf(handle));
     }
 
     expect(opened.runs).toEqual([
@@ -113,7 +139,7 @@ describe('schedule time zones', () => {
       timeZone: LOS_ANGELES,
     });
     // The schedule wakes where the clock passes the skipped time, so it can record the miss.
-    expect(isoOf(requireNextFireAt((await handle.describe())!))).toBe('2026-03-08T10:00:00.000Z');
+    expect(isoOf(await nextFireOf(handle))).toBe('2026-03-08T10:00:00.000Z');
 
     await tickEngine(engine, opened.clock, at('2026-03-08T10:00:00.000Z'));
 
@@ -134,7 +160,7 @@ describe('schedule time zones', () => {
 
     await tickEngine(engine, opened.clock, at('2026-03-09T09:30:00.000Z'));
     expect(opened.runs).toEqual(['2026-03-09T09:30:00.000Z']);
-    expect((await handle.describe())?.missedFireCount).toBe(1);
+    expect(await fieldOf(handle, 'missedFireCount')).toBe(1);
     expect(missed).toHaveLength(1);
   });
 
@@ -165,7 +191,7 @@ describe('schedule time zones', () => {
       id: 'daily',
       timeZone: LOS_ANGELES,
     });
-    expect(isoOf(requireNextFireAt((await handle.describe())!))).toBe('2026-11-01T08:30:00.000Z');
+    expect(isoOf(await nextFireOf(handle))).toBe('2026-11-01T08:30:00.000Z');
 
     await tickEngine(engine, opened.clock, at('2026-11-01T08:30:00.000Z'));
     const afterFirst = await handle.describe();
@@ -176,7 +202,7 @@ describe('schedule time zones', () => {
     await tickEngine(engine, opened.clock, at('2026-11-02T09:30:00.000Z'));
 
     expect(opened.runs).toEqual(['2026-11-01T08:30:00.000Z', '2026-11-02T09:30:00.000Z']);
-    expect((await handle.describe())?.missedFireCount).toBe(0);
+    expect(await fieldOf(handle, 'missedFireCount')).toBe(0);
     expect(missed).toHaveLength(0);
   });
 
@@ -188,13 +214,13 @@ describe('schedule time zones', () => {
       id: 'late',
       timeZone: LOS_ANGELES,
     });
-    const dueAt = requireNextFireAt((await handle.describe())!);
+    const dueAt = await nextFireOf(handle);
 
     await tickEngine(engine, opened.clock, dueAt + 10 * 60_000);
 
     expect(opened.runs).toEqual([]);
     expect(missed.map((event) => [event.reason, event.missedCount])).toEqual([['late', 1]]);
-    expect((await handle.describe())?.missedFireCount).toBe(1);
+    expect(await fieldOf(handle, 'missedFireCount')).toBe(1);
   });
 
   it('records both the late fire and the gap when a late tick spans a spring-forward change', async () => {
@@ -245,7 +271,7 @@ describe('schedule time zones', () => {
         (error: unknown) => error,
       );
     expect(updated).toBeInstanceOf(Error);
-    expect((await engine.getSchedule('good'))?.timeZone).toBe(LOS_ANGELES);
+    expect(await zoneOf(engine, 'good')).toBe(LOS_ANGELES);
   });
 
   it('refuses a zone on an interval schedule, which counts elapsed time', async () => {
@@ -261,7 +287,7 @@ describe('schedule time zones', () => {
       'options.timeZone applies only to a cron schedule',
     );
     await engine.schedule('report', null, { every: '1h' }, { id: 'plain' });
-    expect((await engine.getSchedule('plain'))?.timeZone).toBe('UTC');
+    expect(await zoneOf(engine, 'plain')).toBe('UTC');
   });
 
   it('keeps the zone through an update that omits it, and changes it when given', async () => {
@@ -283,7 +309,7 @@ describe('schedule time zones', () => {
     expect(isoOf(summary?.nextFireAt)).toBe('2026-03-06T01:00:00.000Z');
 
     await engine.updateSchedule('zoned', { every: '1h' });
-    expect((await handle.describe())?.timeZone).toBe('UTC');
+    expect(await fieldOf(handle, 'timeZone')).toBe('UTC');
   });
 
   it('computes the first occurrence of a definition-form schedule in its zone', async () => {
@@ -295,7 +321,7 @@ describe('schedule time zones', () => {
       input: null,
       timeZone: LOS_ANGELES,
     });
-    expect(isoOf(requireNextFireAt((await handle.describe())!))).toBe('2026-03-06T17:00:00.000Z');
+    expect(isoOf(await nextFireOf(handle))).toBe('2026-03-06T17:00:00.000Z');
   });
 });
 

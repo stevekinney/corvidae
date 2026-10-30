@@ -25,7 +25,7 @@ export function getDefaultTimeZone(): string {
 export function isValidTimeZone(value: unknown): value is string {
   if (typeof value !== 'string' || value.length === 0) return false;
   try {
-    new Intl.DateTimeFormat('en-US', { timeZone: value });
+    getFormatter(value);
     return true;
   } catch {
     return false;

@@ -121,11 +121,7 @@ function isFirstPass(at: number, timeZone: string): boolean {
  * and how many gap matches end there. A schedule stores only its next instant, so this is how a
  * tick is recovered from one.
  */
-export function describeZonedCronTick(
-  scan: NaiveCronScan,
-  at: number,
-  timeZone: string,
-): CronTick {
+export function describeZonedCronTick(scan: NaiveCronScan, at: number, timeZone: string): CronTick {
   const local = toLocal(at, timeZone);
   const matches = scan(local - 1000) === local;
   return {

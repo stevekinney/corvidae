@@ -358,7 +358,8 @@ describe('createAgentSchedule', () => {
         ...(timeZone === undefined ? {} : { timeZone }),
       });
 
-    expect((await retry('America/Los_Angeles')).id).toBe('zoned-run');
+    const same = await retry('America/Los_Angeles');
+    expect(same.id).toBe('zoned-run');
     for (const other of ['Europe/Berlin', undefined]) {
       let refusal: unknown;
       try {

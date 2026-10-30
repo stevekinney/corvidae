@@ -7,7 +7,6 @@ import {
   selectNextValue,
   shiftLocalDateTime,
 } from './cron-formatter.ts';
-import { describeZonedCronTick, nextZonedCronTick, type CronTick } from './cron-zoned.ts';
 import { parseCronExpression } from './cron-parser.ts';
 import type {
   CronOccurrenceOptions,
@@ -15,6 +14,7 @@ import type {
   ParsedCronExpression,
   ZonedParts,
 } from './cron-types.ts';
+import { describeZonedCronTick, nextZonedCronTick, type CronTick } from './cron-zoned.ts';
 
 function nextSearchTimestamp(candidate: number): number {
   return candidate + 1000;
