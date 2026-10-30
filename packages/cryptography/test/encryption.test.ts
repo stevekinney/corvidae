@@ -59,6 +59,21 @@ describe('encrypt and decrypt', () => {
     expect(await decrypt(stored, { current: key })).toBe('');
   });
 
+  test('keeps a leading byte-order mark', async () => {
+    const key = await generateEncryptionKey();
+    for (const text of ['\uFEFFhunter2', '\uFEFF', 'a\uFEFFb']) {
+      expect(await decrypt(await encrypt(text, key), { current: key })).toBe(text);
+    }
+  });
+
+  test('rejects a string with a lone surrogate instead of altering it', async () => {
+    const key = await generateEncryptionKey();
+    for (const text of ['\uD800', 'a\uDC00b', 'x\uD83D']) {
+      await expectCode(encrypt(text, key), 'invalid-text');
+    }
+    expect(await decrypt(await encrypt('\u{1F600}', key), { current: key })).toBe('\u{1F600}');
+  });
+
   test('refuses input that is neither text nor bytes', async () => {
     const key = await generateEncryptionKey();
     const error = await encrypt(undefined as unknown as string, key).catch(
@@ -77,7 +92,8 @@ describe('encrypt and decrypt', () => {
   test('stored fields are unpadded base64url and the IV is 96 bits', async () => {
     const key = await generateEncryptionKey();
     const stored = await encrypt(secret, key);
-    for (const field of [stored.ciphertext, stored.iv, stored.keyId]) {
+    expect(stored.keyId).toMatch(/^[0-9a-f]{24}$/);
+    for (const field of [stored.ciphertext, stored.iv]) {
       expect(field).toMatch(/^[A-Za-z0-9_-]+$/);
     }
     expect(atob(stored.iv.replaceAll('-', '+').replaceAll('_', '/')).length).toBe(12);
@@ -205,6 +221,18 @@ describe('tampering', () => {
   });
 });
 
+describe('Bungalow compatibility', () => {
+  test('a retired-key secret name built from the keyId passes the Bungalow secret-key pattern', async () => {
+    // Copied from packages/bungalow/src/validation.ts (ENTRY_PATTERN, used by assertSecretKey).
+    // Importing it would add a Bungalow dependency, a tsconfig reference and a build-mode typecheck
+    // to this hashing package for one regular expression; the host (COR-1816 part 3) joins the two.
+    const bungalowSecretKey = /^[a-z0-9][a-z0-9-]*$/;
+    const key = await generateEncryptionKey();
+    expect(bungalowSecretKey.test(`answer-encryption-key-${key.keyId}`)).toBe(true);
+    expect(bungalowSecretKey.test('answer-encryption-key')).toBe(true);
+  });
+});
+
 describe('rotation', () => {
   test('a value written under a retired key still decrypts through the keyring', async () => {
     const oldKey = await generateEncryptionKey();
@@ -245,7 +273,7 @@ describe('key import and export', () => {
     const second = await generateEncryptionKey();
     const exported = await exportEncryptionKey(first);
     expect(first.keyId).not.toBe(second.keyId);
-    expect(first.keyId.length).toBe(16);
+    expect(first.keyId).toMatch(/^[0-9a-f]{24}$/);
     expect(exported.includes(first.keyId)).toBe(false);
   });
 

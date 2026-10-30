@@ -65,7 +65,7 @@ const restored = await importEncryptionKey(encoded);
 console.log(await decrypt(stored, { current: restored })); // correct horse battery staple
 ```
 
-Each call to `encrypt` draws a fresh random 96-bit IV, so encrypting the same text twice gives different output; rotate a key well before it has sealed about 2^32 values. The 128-bit tag is part of `ciphertext`. The `keyId` is a truncated, domain-separated SHA-256 of the key, so it is safe to store and log and can be recomputed from the key; use it to name the secret that holds a retired key. The version and `keyId` are bound into the GCM additional data, so rewriting either one fails authentication instead of selecting another key.
+Each call to `encrypt` draws a fresh random 96-bit IV, so encrypting the same text twice gives different output; rotate a key well before it has sealed about 2^32 values. The 128-bit tag is part of `ciphertext`. The `keyId` is 24 lowercase hexadecimal characters taken from a domain-separated SHA-256 of the key, so it is safe to store and log, can be recomputed from the key, and is a valid Bungalow secret-name suffix; name the secret that holds a retired key `answer-encryption-key-<keyId>` (a hyphen, not a dot). `encrypt` rejects a string with a lone surrogate (`invalid-text`) instead of silently changing it, and `decrypt` returns a leading U+FEFF unchanged. The version and `keyId` are bound into the GCM additional data, so rewriting either one fails authentication instead of selecting another key.
 
 `importEncryptionKey` returns a non-extractable key by default, which `exportEncryptionKey` then refuses; pass `{ extractable: true }` when you must export it again. `generateEncryptionKey` returns an extractable key.
 
@@ -95,7 +95,7 @@ try {
 }
 ```
 
-`CryptographyError.code` is one of `secret-unavailable` (the keyring lacks the stored `keyId`), `authentication-failed` (a field was altered or the key is wrong), `malformed-secret`, `unsupported-version`, `invalid-key`, or `invalid-text` (`decrypt` found bytes that are not UTF-8; use `decryptBytes`). Messages are fixed text and never contain key material or plaintext.
+`CryptographyError.code` is one of `secret-unavailable` (the keyring lacks the stored `keyId`), `authentication-failed` (a field was altered or the key is wrong), `malformed-secret`, `unsupported-version`, `invalid-key`, or `invalid-text` (`encrypt` was given a string with a lone surrogate, or `decrypt` found bytes that are not UTF-8; use `decryptBytes`). Messages are fixed text and never contain key material or plaintext.
 
 ## Signatures and comparison
 

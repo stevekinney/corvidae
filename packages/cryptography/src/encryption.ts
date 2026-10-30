@@ -8,8 +8,9 @@
  *   `crypto.getRandomValues`; an IV is never derived, counted, or reused. With random 96-bit IVs the
  *   collision risk stays negligible up to roughly 2^32 encryptions under one key, so rotate a key
  *   long before it has sealed that many values.
- * - **Key id.** A key's id is `base64url(SHA-256("corvidae.cryptography.key-id.v1" || rawKey))`
- *   truncated to 12 bytes. SHA-256 is preimage-resistant and the key is 256 bits of entropy, so the
+ * - **Key id.** A key's id is `hex(SHA-256("corvidae.cryptography.key-id.v1" || rawKey))`
+ *   truncated to 12 bytes: 24 lowercase hexadecimal characters, which is a valid Bungalow secret-name
+ *   suffix (`answer-encryption-key-<keyId>`). SHA-256 is preimage-resistant and the key is 256 bits of entropy, so the
  *   id reveals nothing usable about the key, and it is derived rather than stored, so a host can
  *   recompute the id (and the Bungalow secret name that embeds it) from the key alone.
  * - **Additional authenticated data.** The version tag and the key id are bound into the GCM
@@ -42,7 +43,7 @@ export type CryptographyErrorCode =
   | 'unsupported-version'
   /** An encoded key is not a valid base64url 256-bit key, or cannot be exported. */
   | 'invalid-key'
-  /** Decrypted bytes are not valid UTF-8 text; use {@link decryptBytes} for binary values. */
+  /** Text that cannot round-trip: a string with a lone surrogate, or decrypted bytes that are not UTF-8. */
   | 'invalid-text';
 
 /** An error from this module. The message is fixed text and never contains key material or plaintext. */
@@ -128,6 +129,12 @@ function decodeBase64Url(encoded: unknown): Uint8Array<ArrayBuffer> | undefined 
   }
 }
 
+function toHex(bytes: Uint8Array): string {
+  let hex = '';
+  for (const byte of bytes) hex += byte.toString(16).padStart(2, '0');
+  return hex;
+}
+
 async function deriveKeyId(rawKey: Uint8Array<ArrayBuffer>): Promise<string> {
   const domain = textEncoder.encode(KEY_ID_DOMAIN);
   const input = new Uint8Array(domain.length + rawKey.length);
@@ -135,7 +142,7 @@ async function deriveKeyId(rawKey: Uint8Array<ArrayBuffer>): Promise<string> {
   input.set(rawKey, domain.length);
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', input));
   input.fill(0);
-  return encodeBase64Url(digest.slice(0, KEY_ID_BYTES));
+  return toHex(digest.slice(0, KEY_ID_BYTES));
 }
 
 async function importRawKey(
@@ -201,7 +208,7 @@ export async function exportEncryptionKey(key: EncryptionKey): Promise<string> {
 }
 
 function additionalData(keyId: string): Uint8Array<ArrayBuffer> {
-  // Fields are separated by NUL; a key id is base64url and so cannot contain one.
+  // Fields are separated by NUL; a key id is lowercase hex and so cannot contain one.
   return textEncoder.encode(`${ADDITIONAL_DATA_DOMAIN}\0${STORED_VERSION}\0${keyId}`);
 }
 
@@ -219,6 +226,10 @@ export async function encrypt(
   // Snapshot caller-owned inputs before the first await.
   const keyId = key.keyId;
   const cryptoKey = key.cryptoKey;
+  if (typeof plaintext === 'string' && !plaintext.isWellFormed()) {
+    // TextEncoder would silently replace a lone surrogate with U+FFFD and change the value.
+    throw new CryptographyError('invalid-text');
+  }
   const data = typeof plaintext === 'string' ? textEncoder.encode(plaintext) : plaintext;
   const iv = new Uint8Array(IV_BYTES);
   crypto.getRandomValues(iv);
@@ -292,11 +303,14 @@ export async function decryptBytes(value: EncryptedValue, keyring: Keyring): Pro
   }
 }
 
-/** Like {@link decryptBytes}, then decodes the result as UTF-8; throws `invalid-text` if it is not text. */
+/**
+ * Like {@link decryptBytes}, then decodes the result as UTF-8, keeping a leading U+FEFF so the text
+ * round-trips exactly; throws `invalid-text` if the bytes are not UTF-8.
+ */
 export async function decrypt(value: EncryptedValue, keyring: Keyring): Promise<string> {
   const bytes = await decryptBytes(value, keyring);
   try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
     throw new CryptographyError('invalid-text');
   }
