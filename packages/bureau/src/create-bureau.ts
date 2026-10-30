@@ -446,6 +446,7 @@ import {
   type SecretAnswerAuditEntry,
   SecretAnswerUnavailableError,
   secretFieldsOfReview,
+  secretResolverOf,
   unsealedSecretFields,
 } from './secret-answers';
 import {

@@ -66,7 +66,7 @@ import {
   MemoryStorage,
   textValueStore,
 } from '@lostgradient/storage';
-import { readToolShortDescription, type Tool } from 'armorer';
+import { readToolShortDescription, type Tool, type ToolSecretResolver } from 'armorer';
 
 import type { AnyRunnableAgent } from './agent-catalog';
 import {
