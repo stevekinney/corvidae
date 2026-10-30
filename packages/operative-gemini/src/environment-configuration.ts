@@ -11,19 +11,6 @@ const environmentVariables = {
 } as const;
 
 function runtimeEnvironment(): Record<string, string | undefined> {
-  const runtimeBun = Reflect.get(globalThis, 'Bun');
-  if (typeof runtimeBun === 'object' && runtimeBun !== null) {
-    const bunEnvironment = Reflect.get(runtimeBun, 'env');
-    if (typeof bunEnvironment === 'object' && bunEnvironment !== null) {
-      return Object.fromEntries(
-        Object.values(environmentVariables).map((name) => [
-          name,
-          Reflect.get(bunEnvironment, name),
-        ]),
-      );
-    }
-  }
-
   const runtimeProcess = Reflect.get(globalThis, 'process');
   if (typeof runtimeProcess === 'object' && runtimeProcess !== null) {
     const processEnvironment = Reflect.get(runtimeProcess, 'env');
