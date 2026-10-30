@@ -610,15 +610,19 @@ describe('a secret answer through bureau.reviews.resolve', () => {
         payload: { user: 'ada', password: SECRET },
       };
       // Two resolves at once: one claims and delivers, the other is the same decision.
-      const [first, second] = await Promise.allSettled([
+      const outcomes = await Promise.allSettled([
         harness.bureau.reviews.resolve(input),
         harness.bureau.reviews.resolve(input),
       ]);
-      expect(first.status).toBe('fulfilled');
-      const refusal = second.status === 'rejected' ? String(second.reason) : '';
+      // Either may be the one that delivers; at least one does.
+      expect(outcomes.some((outcome) => outcome.status === 'fulfilled')).toBe(true);
       // A concurrent same-decision caller is told it is already being resolved, never that a
       // different decision won.
-      expect(refusal).not.toContain('different resolver');
+      for (const outcome of outcomes) {
+        if (outcome.status === 'rejected') {
+          expect(String(outcome.reason)).not.toContain('different resolver');
+        }
+      }
       await harness.settled(runId);
       // Once the run has moved on, a retry finds no pending review, as it would for any answer:
       // nothing reports another decision.
