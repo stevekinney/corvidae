@@ -39,7 +39,7 @@ const recordSchema = z.object({
   sequence: z.number().int().nullable(),
   timestamp: z.string(),
   type: z.string(),
-  /** What the record is about: a run id, or `schedule:<id>`, `session:<id>`, `agent:<id>`, `workflow:<id>`. */
+  /** What the record is about: a run id, or `schedule:<id>`, `session:<id>`, `agent:<id>`, `workflow:<id>`, `skill-source:<id>`. */
   resource: z.string(),
   /** The actor, when the record names one. Never the owner. */
   principal: z.string().nullable(),

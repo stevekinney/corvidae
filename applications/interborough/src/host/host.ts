@@ -148,6 +148,8 @@ import {
   type SeededAgents,
 } from './seed.ts';
 import { isShellNavigation } from './shell-request.ts';
+import { createSkillManager, type SkillManager } from './skill-manager.ts';
+import { skillRoutes } from './skill-routes.ts';
 
 /** The application name Bungalow keys the state directory, `INTERBOROUGH_HOME`, and lock on. */
 export const APPLICATION_NAME = 'interborough';
@@ -310,6 +312,13 @@ export type Host = {
    * another writer of the file takes it from here (`configuration-queue.ts`).
    */
   readonly configurationQueue: ConfigurationQueue;
+  /**
+   * The executable skills the host discovered from the `skills` sources in `configuration.json`,
+   * and the one way they change: deciding whether a source is trusted, which is written to the
+   * file, applied, and recorded in the audit trail as `skill.source.trusted`. A remote host
+   * refuses a change with {@link SkillWriteLockedError}, reason `deployment`. See {@link SkillManager}.
+   */
+  readonly skills: Pick<SkillManager, 'setTrust' | 'refresh' | 'standing'>;
   /**
    * A point-in-time reading of the host's own state: the Bureau's diagnostics, the engine server's
    * lease, workers, and connections, the build it serves, and the providers it offers. It holds no
@@ -554,6 +563,16 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       ...(settings === undefined ? {} : { settings }),
     });
     held.bureau = bureau;
+    // The skills the configuration names are discovered now and handed to the handler below. A
+    // trust change is audited by the Bureau's trail, so the manager waits for the Bureau.
+    const skills = await createSkillManager({
+      bungalow,
+      configurationQueue,
+      audit: async (entry) => {
+        await bureau.internals.auditTrail?.record(entry);
+      },
+    });
+    held.skills = skills;
     // From here a change to the configuration or a key reaches the Bureau's catalog, and a file
     // agent is validated against it again.
     providers.attach(async (rows) => {
@@ -651,6 +670,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         // Where a person edits what the host keeps by hand. The pages show an agent's file path and
         // a workflow's.
         ...providerRoutes(providers, refuse),
+        ...skillRoutes(skills, refuse),
         [HOST_PATHS_ROUTE]: {
           GET: (request: Request) =>
             refuse(request) ??
@@ -714,6 +734,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // reachable than the rest of the host.
       publicUrl: `${publicOrigin}${BUREAU_PATH_PREFIX}`,
       ...(a2aAgents === undefined ? {} : { a2aAgents }),
+      // `bureau.skills.list` reads the host's standing on every request, so a trust change shows
+      // on the next call.
+      skills: { standing: () => skills.standing() },
       ...(pushDelivery === undefined ? {} : { pushNotifications: pushDelivery.pushNotifications }),
     });
 
@@ -745,6 +768,11 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       database,
       generateFor,
       configurationQueue,
+      skills: {
+        setTrust: (request) => skills.setTrust(request),
+        refresh: () => skills.refresh(),
+        standing: () => skills.standing(),
+      },
       providers: {
         connect: (connection) => providers.connect(connection),
         editCatalog: (edits) => providers.editCatalog(edits),
@@ -781,6 +809,7 @@ type Held = {
   storage?: Storage;
   bureau?: Bureau<SeededAgents>;
   providers?: ProviderManager;
+  skills?: SkillManager;
   replacementEngine?: RegistryAgnosticEngine;
   server?: WeftServer;
   pushDelivery?: HostPushDelivery;
@@ -801,6 +830,7 @@ async function teardown(held: Held): Promise<void> {
   };
   // No change to the providers may start once the host is going away.
   held.providers?.close();
+  held.skills?.close();
   // End the reload streams first, so no page is left reading a host that is going away.
   await step(held.devReload && (() => held.devReload?.close()));
   await step(held.publicServer && (() => held.publicServer?.stop(true)));

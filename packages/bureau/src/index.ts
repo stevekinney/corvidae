@@ -36,6 +36,7 @@ export {
 } from './agent-file';
 export type {
   AgentCatalogChange,
+  AgentCodeDefinition,
   AgentFileDetail,
   AgentListing,
   AgentToolDescription,
@@ -179,6 +180,7 @@ export type {
 } from './audit-trail';
 export {
   AUDIT_EVENT_TYPES,
+  auditTrailSkillSourceOwnerId,
   computeInitialAuditSequence,
   createAuditTrail,
   encodeKey as encodeAuditEntryKey,
@@ -627,6 +629,7 @@ export {
   A2A_AGENT_NAME_PATTERN,
 } from './http/create-bureau-handler';
 export { BUREAU_SCOPES, type BureauScope } from './http/bureau-scopes';
+export type { SkillSourceStanding, SkillsStanding } from './http/management/skills-operations';
 export {
   RESUME_ATTEMPT_FAILED_MESSAGES,
   RESUME_ATTEMPT_STILL_GOING_MESSAGES,

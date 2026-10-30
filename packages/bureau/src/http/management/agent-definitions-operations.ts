@@ -55,7 +55,11 @@ import {
   type AgentFileDefinition,
   type AgentFileDefinitionInput,
 } from '../../agent-file.ts';
-import type { AgentFileDetail, AgentListing } from '../../agent-file-catalog.ts';
+import type {
+  AgentCodeDefinition,
+  AgentFileDetail,
+  AgentListing,
+} from '../../agent-file-catalog.ts';
 import { auditTrailAgentOwnerId } from '../../audit-trail.ts';
 import { mayAccessAgents } from '../agent-access.ts';
 import type { BureauScope } from '../bureau-scopes.ts';
@@ -149,8 +153,25 @@ const definitionOutputSchema = z.object({
   instructions: z.string(),
 });
 
+/** What a code-defined agent states about itself (COR-1818); read-only, since no file backs it. */
+const codeDefinitionSchema = z.object({
+  name: z.string(),
+  description: z.string().nullable(),
+  /** The model its next step would use, `<provider>/<model>`; `null` for a scripted or routed agent. */
+  model: z.string().nullable(),
+  /** The models a session may be switched to, `<provider>/<model>`; empty for a fixed, routed or opaque agent. */
+  models: z.array(z.string()),
+  tools: z.array(z.string()),
+  /** The executable skills the agent can activate, by name; not `skillDescriptors`. */
+  skills: z.array(z.string()),
+  skillDescriptors: z.array(agentSkillDescriptorSchema),
+  instructions: z.string().nullable(),
+});
+
 const agentDetailSchema = agentListingSchema.extend({
   definition: definitionOutputSchema.nullable(),
+  /** A code-defined agent's own statement of itself; `null` for a file agent. */
+  codeDefinition: codeDefinitionSchema.nullable(),
   text: z.string().nullable(),
 });
 
@@ -303,10 +324,26 @@ function definitionView(definition: AgentFileDefinition) {
   };
 }
 
+/** A code agent's definition with its arrays copied, so it is the plain data the wire holds. */
+function codeDefinitionView(definition: AgentCodeDefinition) {
+  return {
+    name: definition.name,
+    description: definition.description,
+    model: definition.model,
+    models: [...definition.models],
+    tools: [...definition.tools],
+    skills: [...definition.skills],
+    skillDescriptors: definition.skillDescriptors.map(skillView),
+    instructions: definition.instructions,
+  };
+}
+
 function detailView(host: BureauAgentDefinitionsOperationHost, detail: AgentFileDetail) {
   return {
     ...listingView(host, detail),
     definition: detail.definition === null ? null : definitionView(detail.definition),
+    codeDefinition:
+      detail.codeDefinition === undefined ? null : codeDefinitionView(detail.codeDefinition),
     text: detail.text,
   };
 }
@@ -608,7 +645,7 @@ export const agentDefinitionsGetOperation = defineOperation<
   mcpExposable: false,
   summary: 'Read one agent definition',
   description:
-    'Returns one agent: whether it is `ready` or `invalid` (with the `problem` that makes it so), whether it opts into A2A (`a2a`: the handler’s `a2a` allowlist for a code-defined agent, its own file for a persisted one; an invalid file never opts in, even when its `a2a` key says so), its `definitionRevision` (`null` for an invalid file), and, for a file, its `hash`, exact `text`, and parsed `definition`. An editor writes a change back with `expectedHash` set to `hash`. A code-defined agent has `source: "code"`, no hash, and no definition. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`.',
+    'Returns one agent: whether it is `ready` or `invalid` (with the `problem` that makes it so), whether it opts into A2A (`a2a`: the handler’s `a2a` allowlist for a code-defined agent, its own file for a persisted one; an invalid file never opts in, even when its `a2a` key says so), its `definitionRevision` (`null` for an invalid file), and, for a file, its `hash`, exact `text`, and parsed `definition`. An editor writes a change back with `expectedHash` set to `hash`. A code-defined agent has `source: "code"`, no hash, no `text`, and no `definition`; its `codeDefinition` is what the agent states about itself, read-only: its `instructions`, its `model` (`<provider>/<model>`, `null` for a scripted or routed agent) and the `models` a session may switch to, its `tools` and executable `skills` by name, and its `skillDescriptors`. A file agent has `codeDefinition: null`. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`.',
   destructive: false,
   tags: ['Agents'],
   inputSchema: getInput,
@@ -892,6 +929,16 @@ const catalogOutput = z.object({
       description: z.string(),
       /** The one line a screen shows for the tool, or `null` when it declares none. */
       shortDescription: z.string().nullable(),
+      /** What the tool takes, as a JSON Schema; `null` when its schema cannot be written as one. */
+      inputSchema: z.record(z.string(), z.unknown()).nullable(),
+      /** What the tool may technically do; `null` when it declares none, which is never read as read-only. */
+      tier: z.enum(['read-only', 'mutating', 'dangerous']).nullable(),
+      /** What happens by default when an agent calls the tool: the tier's `on-mutation` rule. */
+      defaultApproval: z.enum(['allow', 'ask', 'deny']),
+      /** `bureau` for a tool Bureau adds itself, `host` for one the host passed in. */
+      source: z.enum(['host', 'bureau']),
+      /** The agents that use the tool now: ready agent files that list it, and code agents that name it. */
+      users: z.array(z.string()),
     }),
   ),
 });
@@ -905,7 +952,7 @@ export const agentsCatalogOperation = defineOperation<
   mcpExposable: false,
   summary: 'List the models and tools an agent may name',
   description:
-    'Returns the deployment’s selectable `models`, the rows of its model catalog unfiltered and each reduced to the `general` audience whoever asks (pricing and `endpointAmbiguous` are never returned), and its `tools`, by the name an agent file lists them under, each with its model-facing `description` and a `shortDescription` (one line for a person, or `null` when the tool declares none). A definition’s `model` is written `<provider>/<model-or-alias>` and its `tools` are names from this list. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is refused with `Forbidden`.',
+    'Returns the deployment’s selectable `models`, the rows of its model catalog unfiltered and each reduced to the `general` audience whoever asks (pricing and `endpointAmbiguous` are never returned), and its `tools`, by the name an agent file lists them under, each with its model-facing `description`, a `shortDescription` (one line for a person, or `null` when the tool declares none), its `inputSchema` (JSON Schema, or `null`), its capability `tier` (`read-only`, `mutating` or `dangerous`; `null` when it declares none), its `defaultApproval` (`allow` for a read-only tool, `ask` for a tool that changes something, is dangerous or is unclassified: Armorer’s `on-mutation` rule applied to the tier; it does not read a per-tool rule an agent file states, which can only tighten it), its `source` (`bureau` for the settings and workflow tools Bureau adds, `host` for tools the host provides) and its `users`, the identifiers of the agents that use it now. A definition’s `model` is written `<provider>/<model-or-alias>` and its `tools` are names from this list. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is refused with `Forbidden`.',
   destructive: false,
   tags: ['Agents'],
   inputSchema: catalogInput,
@@ -925,7 +972,11 @@ export const agentsCatalogOperation = defineOperation<
     return Promise.resolve({
       // The general projection is applied for every caller, so no caller sees a price.
       models: definitions.models().map(modelView),
-      tools: definitions.agents.tools().map((tool) => ({ ...tool })),
+      tools: definitions.agents.tools().map((tool) => ({
+        ...tool,
+        inputSchema: tool.inputSchema === null ? null : structuredClone(tool.inputSchema),
+        users: [...tool.users],
+      })),
     });
   },
 });

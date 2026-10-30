@@ -68,6 +68,9 @@ const DETAIL_ALLOWLIST: readonly string[] = [
   'previousBuildId',
   'rampBasisPoints',
   'generation',
+  // COR-1818: a skill source's trust change, which names the source and the decision.
+  'sourceId',
+  'trusted',
 ];
 
 function detailOf(detail: unknown): AuditQueryRecord['detail'] {

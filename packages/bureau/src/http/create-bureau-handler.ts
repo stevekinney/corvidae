@@ -164,6 +164,11 @@ import {
   bureauSettingsOperations,
 } from './management/settings-operations.ts';
 import {
+  type BureauSkillsOperationHost,
+  bureauSkillsOperations,
+  type SkillsStanding,
+} from './management/skills-operations.ts';
+import {
   type BureauGoalsOperationHost,
   bureauGoalsOperations,
 } from './management/goals-operations.ts';
@@ -326,7 +331,8 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauAuditOperationHost &
   BureauAssetsOperationHost &
   BureauDecisionsOperationHost &
-  BureauSettingsOperationHost;
+  BureauSettingsOperationHost &
+  BureauSkillsOperationHost;
 
 export type BureauHandlerOptions = {
   /**
@@ -344,6 +350,16 @@ export type BureauHandlerOptions = {
    * request.
    */
   readonly a2aAgents?: readonly string[];
+  /**
+   * The executable skills the host discovered, which `bureau.skills.list` reports (COR-1818).
+   * Discovery and trust belong to the host (COR-752, Decision 1): it reads its skill directories,
+   * decides which sources it admits, and returns that standing here. `standing` is read on every
+   * request, so a host that changes trust or rediscovers returns the new catalog from the next
+   * call. Omitted, the list is empty.
+   */
+  readonly skills?: {
+    readonly standing: () => SkillsStanding | Promise<SkillsStanding>;
+  };
   /**
    * The handler's public URL, which mounts A2A 1.0.1 (`a2a-mount.ts`): every agent that opts in is
    * served at `<publicUrl>/a2a/<catalog-name>`, its public Agent Card at
@@ -469,6 +485,7 @@ const AG_UI_OPTION_NAMES: ReadonlySet<string> = new Set(Object.keys(AG_UI_OPTION
 
 const OPTION_NAMES: ReadonlySet<string> = new Set([
   'a2aAgents',
+  'skills',
   'publicUrl',
   'discoveryUrl',
   'signing',
@@ -712,6 +729,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   ...bureauAssetsOperations,
   ...bureauDecisionsOperations,
   ...bureauSettingsOperations,
+  ...bureauSkillsOperations,
   ...bureauWorkerDeploymentsOperations,
 ] as const;
 
@@ -1077,6 +1095,7 @@ const TOMBSTONE_SCAN_PAGE = 50;
 export function buildBureauHandlerHost(
   bureau: BureauHandlerSource,
   a2aAgents: readonly string[],
+  skills?: BureauHandlerOptions['skills'],
 ): BureauHandlerHost {
   const operations = describeOperations(BUREAU_HANDLER_OPERATIONS);
   return {
@@ -1124,6 +1143,7 @@ export function buildBureauHandlerHost(
         await bureau.internals.auditTrail?.record(entry);
       },
     },
+    skills: { standing: () => skills?.standing() },
     workflows: bureau.workflows,
     deployments: bureau.deployments,
     schedules: {
@@ -1203,7 +1223,7 @@ export function createBureauHandler(
   assertBureauId(bureau);
   assertPersistence(bureau);
 
-  const host = buildBureauHandlerHost(bureau, options.a2aAgents ?? []);
+  const host = buildBureauHandlerHost(bureau, options.a2aAgents ?? [], options.skills);
 
   return createOperationHandler({
     operations: BUREAU_HANDLER_OPERATIONS,
