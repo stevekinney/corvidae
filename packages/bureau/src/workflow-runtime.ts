@@ -574,17 +574,46 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
   const writingOrigins = new Set<string>();
 
   /**
+   * Hook origins left on record for a workflow whose file is gone while an instance of it was still
+   * live. The record stays, because that instance's events are attributed through it, and goes at
+   * the first reconcile that finds the workflow with no live instance or with a file again.
+   */
+  const orphanedOrigins = new Set<string>();
+
+  /** Whether an instance of workflow `id` has not finished. */
+  async function hasLiveInstances(id: string): Promise<boolean> {
+    const page = await engine.list({
+      type: id,
+      status: ['pending', 'running', 'suspended'],
+      limit: 1,
+    });
+    return page.items.length > 0;
+  }
+
+  /**
    * Forget the hook origin of every workflow that has no file any more (COR-1952), so a file an
    * owner adds later under the identifier is not read as a hook's. A file removed by hand never
    * passes through a write, so this runs with every reconcile. A file listed as invalid or
-   * unreadable still counts as there.
+   * unreadable still counts as there. A record is kept while an instance of its workflow is live
+   * (see {@link orphanedOrigins}): the instance's `run.settled` is still read through it.
    */
   async function forgetVanishedHookOrigins(): Promise<void> {
     const origins = options.hookOrigins;
     if (origins === undefined) return;
     const present = new Set(catalog.list().map((listing) => listing.id));
     for (const id of await origins.workflowsWithOrigin()) {
-      if (!present.has(id) && !writingOrigins.has(id)) await origins.clearWorkflow(id);
+      if (writingOrigins.has(id)) continue;
+      if (present.has(id)) {
+        // A file under an identifier whose old file went while it ran is the owner's.
+        if (orphanedOrigins.delete(id)) await origins.clearWorkflow(id);
+        continue;
+      }
+      if (await hasLiveInstances(id)) {
+        orphanedOrigins.add(id);
+        continue;
+      }
+      orphanedOrigins.delete(id);
+      await origins.clearWorkflow(id);
     }
   }
 
@@ -963,6 +992,30 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     }
   }
 
+  /** The tail of the writes to each workflow that carries a hook origin, so two never interleave. */
+  const writeTails = new Map<string, Promise<unknown>>();
+
+  /**
+   * Run `work` after every write to workflow `id` that is already waiting, and before any later one.
+   * The hook origin is claimed, the file written and the claim rolled back inside one turn of it, so
+   * a write that loses a hash check puts back the origin it read, which no other write changed in
+   * between. Without an `id` it just runs.
+   */
+  async function serializedPerWorkflow<T>(
+    id: string | undefined,
+    work: () => Promise<T>,
+  ): Promise<T> {
+    if (id === undefined) return work();
+    const run = (writeTails.get(id) ?? Promise.resolve()).then(work, work);
+    const tail = run.catch(() => undefined);
+    writeTails.set(id, tail);
+    try {
+      return await run;
+    } finally {
+      if (writeTails.get(id) === tail) writeTails.delete(id);
+    }
+  }
+
   /**
    * Put the hook that started the writing run on the file's schedule (COR-1952) before the file is
    * written, so the file's schedule cannot be applied, and fire, before its origin is readable. A
@@ -979,6 +1032,8 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     const origins = options.hookOrigins;
     const unchanged = async (): Promise<void> => {};
     if (origins === undefined || id === undefined) return unchanged;
+    // A file written under the identifier again is no longer one whose record is waiting to go.
+    orphanedOrigins.delete(id);
     if (type === 'workflow.created') {
       if (catalog.list().some((listing) => listing.id === id)) return unchanged;
     } else if (type !== 'workflow.updated' || hookOrigin === undefined) {
@@ -1010,17 +1065,18 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     work: () => Promise<WorkflowFileWriteResult>,
     id?: string,
   ): Promise<WorkflowFileWriteResult> {
-    const restoreHookOrigin = await claimHookOrigin(type, id, context?.hookOrigin);
-    if (id !== undefined) writingOrigins.add(id);
-    let result: WorkflowFileWriteResult;
-    try {
-      result = await work();
-    } catch (error) {
-      await restoreHookOrigin();
-      throw error;
-    } finally {
-      if (id !== undefined) writingOrigins.delete(id);
-    }
+    const result = await serializedPerWorkflow(id, async () => {
+      const restoreHookOrigin = await claimHookOrigin(type, id, context?.hookOrigin);
+      if (id !== undefined) writingOrigins.add(id);
+      try {
+        return await work();
+      } catch (error) {
+        await restoreHookOrigin();
+        throw error;
+      } finally {
+        if (id !== undefined) writingOrigins.delete(id);
+      }
+    });
     await audit(type, result, context?.actor, previousHash);
     if (applyPending) queueApply();
     await settled();

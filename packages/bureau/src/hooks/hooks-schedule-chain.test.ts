@@ -73,10 +73,11 @@ type Probe = Awaited<ReturnType<typeof openProbe>>;
  * A Bureau with a `start-workflow` hook on `run.settled`, and the probe's agent: each time the
  * `chain` workflow's step runs, it calls `workflows-create` for a new schedule workflow.
  */
-async function openProbe() {
+async function openProbe(beforeGenerate?: (message: string) => Promise<void>) {
   const receiver = createReceiver();
   const diagnostics: BureauDiagnostic[] = [];
   const harness = await startWorkflowToolsBureau({
+    beforeGenerate,
     overrides: {
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
       storage: new MemoryStorage(),
@@ -151,8 +152,10 @@ function skippedFor(delivery: Awaited<ReturnType<typeof deliveriesOf>>[number], 
 }
 
 /** The probe up to the point a hook-started run has made its first schedule. */
-async function probeWithFirstSchedule(): Promise<Probe> {
-  const probe = await openProbe();
+async function probeWithFirstSchedule(
+  beforeGenerate?: (message: string) => Promise<void>,
+): Promise<Probe> {
+  const probe = await openProbe(beforeGenerate);
   await probe.startSource();
   // Source settles (delivered: starts `chain`); chain's step settles (skipped: a hook's own run).
   await waitUntil(() => probe.probes().length === 1);
@@ -315,6 +318,72 @@ describe('a workflow file that is gone', () => {
       expect(decided.at(-1)).toMatchObject({ status: 'delivered' });
     },
   );
+});
+
+describe('two hook-started runs writing the same workflow', () => {
+  it('leave the origin of the write that won, however the other one ends', async () => {
+    const probe = await openProbe();
+    await probe.workflows.create('owner-probe', SCHEDULED);
+    const expectedHash = probe.workflows.list().find((l) => l.id === 'owner-probe')!.hash!;
+    // One hash, two writers: one write is refused for it. Neither may take the other's origin away.
+    const outcomes = await Promise.allSettled(
+      ['hook-a', 'hook-b'].map((hookOrigin, index) =>
+        probe.workflows.update(
+          'owner-probe',
+          { ...SCHEDULED, trigger: { kind: 'schedule', spec: `${String(index + 2)}h` } },
+          { expectedHash, hookOrigin },
+        ),
+      ),
+    );
+    expect(outcomes.filter((outcome) => outcome.status === 'fulfilled')).toHaveLength(1);
+
+    await probe.engine.triggerSchedule(workflowScheduleId('owner-probe', 1));
+    const [decided] = await probe.deliveries(1);
+    expect(decided).toMatchObject({ status: 'failed' });
+    expect(decided!.attempts[0]!.error).toContain('Skipped');
+  });
+});
+
+describe('a workflow deleted while one of its fires runs', () => {
+  it('still reads the fire as the hook’s when it settles, and forgets the origin afterwards', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let reached!: () => void;
+    const holding = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    let armed = false;
+    const probe = await probeWithFirstSchedule(async (message) => {
+      if (!armed || !message.startsWith('Tick')) return;
+      reached();
+      await gate;
+    });
+    armed = true;
+    await probe.engine.triggerSchedule(workflowScheduleId('probe-1', 1));
+    await holding;
+    const detail = await probe.workflows.get('probe-1');
+    await probe.workflows.delete('probe-1', { expectedHash: detail!.hash! });
+    release();
+
+    const decided = await probe.deliveries(3);
+    expect(skippedFor(decided.at(-1)!, probe.hook.id)).toBe(true);
+    await quietFor(250);
+    expect(await probe.instanceCount('chain')).toBe(1);
+
+    // Once nothing of it is live, the next reconcile forgets the origin: an owner's file under the
+    // identifier starts the hook.
+    await probe.workflows.refresh();
+    await writeFile(
+      join(probe.harness.workflowsPath, 'probe-1.json'),
+      workflowFileText('probe-1', SCHEDULED),
+    );
+    await probe.workflows.refresh();
+    await probe.engine.triggerSchedule(workflowScheduleId('probe-1', 2));
+    const afterOwned = await probe.deliveries(4);
+    expect(afterOwned.at(-1)).toMatchObject({ status: 'delivered' });
+  });
 });
 
 describe('a reopened Bureau', () => {

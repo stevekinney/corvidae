@@ -81,6 +81,8 @@ export interface WorkflowToolsHarness {
 }
 
 export interface WorkflowToolsOptions {
+  /** Awaited before each model call with the message it was sent, so a test can hold a run mid-step (COR-1952). */
+  readonly beforeGenerate?: ((message: string) => Promise<void>) | undefined;
   readonly overrides?: Partial<BureauOptions<AgentDefinitions>>;
   /** The file agents to create, by identifier. Defaults to `scribe`. */
   readonly agents?: readonly string[];
@@ -108,6 +110,8 @@ export async function startWorkflowToolsBureau(
         .toSorted(),
     );
     const rows = conversation.getMessages();
+    const lastUser = rows.findLast((row) => row.role === 'user')?.content;
+    await options.beforeGenerate?.(typeof lastUser === 'string' ? lastUser : '');
     const answered = rows.findLast((row) => row.role === 'tool-result');
     if (answered !== undefined && rows.at(-1) === answered) {
       captured = (answered as { toolResult?: unknown }).toolResult;
