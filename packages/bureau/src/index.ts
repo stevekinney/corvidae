@@ -617,6 +617,35 @@ export type {
   WebhookTriggerType,
 } from './webhook-notifier';
 export { createWebhookNotifier } from './webhook-notifier';
+export type { WebhookDeliveryEngine } from './webhook-notifier';
+/*
+ * User-defined hooks (COR-1939): `Bureau.hooks`, the `X-Signature` a receiver verifies, and the
+ * port a host keeps the sealed signing secrets through.
+ */
+export type { BureauHooks, HookCreateInput, HookUpdateInput } from './hooks/create-hooks';
+export { HOOK_TEST_EVENT_KIND } from './hooks/create-hooks';
+export {
+  HOOK_SIGNATURE_HEADER,
+  HOOK_SIGNATURE_TOLERANCE_SECONDS,
+  signHookDelivery,
+  verifyHookSignature,
+} from './hooks/hook-signature';
+export type { HookSignatureFailure, HookSignatureVerification } from './hooks/hook-signature';
+export { createKvHookSecretStore } from './hooks/hook-store';
+export { HookError, HOOK_RESPONSE_EXCERPT_BYTES } from './hooks/hook-types';
+export type {
+  Hook,
+  HookAttemptOutcome,
+  HookDelivery,
+  HookDeliveryAttempt,
+  HookDeliveryRequest,
+  HookDeliveryStatus,
+  HookErrorCode,
+  HookSecretStore,
+} from './hooks/hook-types';
+export { hookUrlDefect } from './hooks/hook-url-policy';
+export type { HookUrlPolicy } from './hooks/hook-url-policy';
+export type { BureauHooksOptions } from './types';
 /*
  * A bureau's lifecycle events, projected onto Weft's replay-plus-live feed
  * and exposed as `bureau.events` in the same catalog that carries Weft's own

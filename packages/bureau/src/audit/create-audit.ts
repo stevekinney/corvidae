@@ -68,6 +68,11 @@ const DETAIL_ALLOWLIST: readonly string[] = [
   'previousBuildId',
   'rampBasisPoints',
   'generation',
+  // COR-1939: a hook's changes and its exhausted deliveries, which name the hook and the delivery
+  // and carry neither the URL (it may hold a token) nor any secret.
+  'hookId',
+  'deliveryId',
+  'attempts',
   // COR-1818: a skill source's trust change, which names the source and the decision.
   'sourceId',
   'trusted',

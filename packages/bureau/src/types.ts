@@ -106,6 +106,9 @@ import type {
   SteeringCommandRequest,
 } from './steering';
 import type { WebhookNotifier, WebhookNotifierOptions } from './webhook-notifier';
+import type { BureauHooks } from './hooks/create-hooks';
+import type { HookSecretStore } from './hooks/hook-types';
+import type { HookUrlPolicy } from './hooks/hook-url-policy';
 
 // ── Provider Configuration ───────────────────────────────────────────
 
@@ -753,6 +756,17 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    */
   webhooks?: WebhookNotifierOptions;
   /**
+   * COR-1939 — user-defined hooks: owner-scoped webhooks over the Bureau's published events, each
+   * delivery HMAC-signed (`X-Signature`), its request, response excerpt and attempts kept on a
+   * record, and retried and resumed after a restart. Exposed as {@link Bureau.hooks} and as the
+   * `bureau.hooks.*` operations. Needs durable storage (`NOT_CONFIGURED`, subject `persistence`,
+   * without it) and {@link BureauOptions.answerEncryption} to seal signing secrets (a write of one
+   * is refused without it). Deliveries use the HTTP client, retry schedule, clock and shutdown of
+   * {@link BureauOptions.webhooks} (`fetch`, `maxAttempts`, `backoffBaseMilliseconds`, `sleep`,
+   * `now`, `signal`), which may have no `targets`. Omit to compose none — the default.
+   */
+  hooks?: BureauHooksOptions;
+  /**
    * Online evaluations (AB-53) — samples a fraction of completed live runs
    * through configured judges/matchers, records every sampled score to the
    * durable audit trail, and fires a webhook (via `options.webhooks`, AB-21's
@@ -1258,6 +1272,26 @@ export interface BureauRecoveryReport {
    * `scope: 'recovery'` `warn`.
    */
   readonly skippedRuns: readonly { readonly runId: string; readonly type: string }[];
+}
+
+/** {@link BureauOptions.hooks}. */
+export interface BureauHooksOptions {
+  /**
+   * Where the sealed signing secrets are kept. Bureau seals each secret (COR-1816's scheme, under
+   * {@link BureauOptions.answerEncryption}) before it reaches the port, so the port holds
+   * ciphertext only. A host whose secrets live elsewhere supplies its own; its `writeLock()` makes
+   * a secret write fail with `locked` and that reason (`deployment` for a remote home). Omitted,
+   * the ciphertext is kept in Bureau's key-value store.
+   */
+  secrets?: HookSecretStore;
+  /**
+   * Which URLs a hook may deliver to. By default loopback and private-network addresses are
+   * allowed (Interborough is local-first); link-local, unspecified and multicast never are. A
+   * hosted deployment sets `allowPrivateNetworks: false`.
+   */
+  urlPolicy?: HookUrlPolicy;
+  /** How long one delivery request may take before it counts as failed. Default `10000`. */
+  requestTimeoutMilliseconds?: number;
 }
 
 /** {@link BureauOptions.children}. */
@@ -2432,6 +2466,13 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * BureauOptions.workerDeployments}. See {@link BureauWorkerDeployments}.
    */
   readonly deployments: BureauWorkerDeployments | undefined;
+  /**
+   * COR-1939 — user-defined hooks over the Bureau's published events: `create`, `update`, `delete`,
+   * `get`, `list`, `test` and `deliveries`. `undefined` when the Bureau has no {@link
+   * BureauOptions.hooks}. A hook belongs to the principal that created it; the in-process calls
+   * leave authorization to the caller, as `Bureau.goals` does. See {@link BureauHooks}.
+   */
+  readonly hooks: BureauHooks | undefined;
 
   /**
    * COR-772 — Bureau's durable parent-child topology: dispatch a catalog

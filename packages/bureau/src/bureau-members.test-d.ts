@@ -299,7 +299,9 @@ type TopLevelMembers =
   | 'runtimeServices'
   | 'peerCalls'
   // COR-1813: the worker rollouts.
-  | 'deployments';
+  | 'deployments'
+  // COR-1939: the user-defined hooks.
+  | 'hooks';
 
 export type BureauTopLevelMembersAreExact = AssertTrue<Equals<keyof Bureau, TopLevelMembers>>;
 

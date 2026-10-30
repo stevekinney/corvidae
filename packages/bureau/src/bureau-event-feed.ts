@@ -480,6 +480,12 @@ export type BureauEventFeedOptions = {
    */
   liveBufferSize?: number;
   now?: () => number;
+  /**
+   * Called synchronously with each envelope after it is appended, so a consumer that must see every
+   * published event as it happens (COR-1939's hooks) needs no subscription that could fall behind.
+   * A listener that throws is ignored.
+   */
+  onPublish?: (envelope: BureauEventEnvelope) => void;
 };
 
 export function createBureauEventFeed(options: BureauEventFeedOptions): BureauEventFeed {
@@ -561,6 +567,11 @@ export function createBureauEventFeed(options: BureauEventFeedOptions): BureauEv
       };
       sequence += 1;
       backend.append(envelope);
+      try {
+        options.onPublish?.(envelope);
+      } catch {
+        // A listener must not break the feed it listens to.
+      }
       return envelope;
     },
     dispose() {

@@ -1,0 +1,301 @@
+/**
+ * COR-1939 — `bureau.hooks.*` over a real Bureau and its handler: who may create, read, change,
+ * test and delete a hook and see its deliveries, the shapes returned, and the typed faults.
+ */
+import { generateEncryptionKey } from '@lostgradient/cryptography';
+import { afterEach, describe, expect, it } from 'bun:test';
+
+import { createReceiver, SIGNING_SECRET } from '../../hooks/hooks.test-support.ts';
+import type { HookSecretStore } from '../../hooks/hook-types.ts';
+import { BUREAU_HANDLER_OPERATIONS } from '../create-bureau-handler.ts';
+import { bureauHooksOperations } from './hooks-operations.ts';
+import { openBureau, type OpenedBureau, rpc } from './management-fixtures.test-support.ts';
+
+const cleanups: Array<() => Promise<void>> = [];
+afterEach(async () => {
+  for (const cleanup of cleanups.splice(0).toReversed()) await cleanup();
+});
+
+async function open(options: { secrets?: HookSecretStore; withoutHooks?: boolean } = {}) {
+  const receiver = createReceiver((_call, index) =>
+    index === 0 ? new Response('pong', { status: 200 }) : new Response('again'),
+  );
+  const opened: OpenedBureau = await openBureau({
+    bureauOptions: {
+      ...(options.withoutHooks === true
+        ? {}
+        : {
+            hooks: options.secrets === undefined ? {} : { secrets: options.secrets },
+            answerEncryption: { current: await generateEncryptionKey() },
+          }),
+      webhooks: { targets: [], fetch: receiver.fetch, sleep: () => Promise.resolve() },
+    },
+  });
+  cleanups.push(() => opened.dispose());
+  return { opened, receiver };
+}
+
+const call = (opened: OpenedBureau, method: string, params: unknown, key: string) =>
+  rpc(opened.handler, method, params, key);
+
+const NEW_HOOK = {
+  url: 'https://receiver.example/hook',
+  events: ['run.settled'],
+  signingSecret: SIGNING_SECRET,
+};
+
+async function resultOf(opened: OpenedBureau, method: string, params: unknown, key: string) {
+  const body = await call(opened, method, params, key);
+  return body.result;
+}
+
+async function errorOf(opened: OpenedBureau, method: string, params: unknown, key: string) {
+  const body = await call(opened, method, params, key);
+  return body.error;
+}
+
+async function createAs(opened: OpenedBureau, key: string, params: object = {}) {
+  const created = await call(opened, 'bureau.hooks.create', { ...NEW_HOOK, ...params }, key);
+  expect(created.error).toBeUndefined();
+  return created.result as { id: string; owner: string };
+}
+
+describe('bureau.hooks.*', () => {
+  it('serves the seven operations, each described, with only delete destructive', () => {
+    expect(bureauHooksOperations.map((operation) => operation.name)).toEqual([
+      'bureau.hooks.create',
+      'bureau.hooks.update',
+      'bureau.hooks.delete',
+      'bureau.hooks.get',
+      'bureau.hooks.list',
+      'bureau.hooks.test',
+      'bureau.hooks.deliveries',
+    ]);
+    for (const operation of bureauHooksOperations) {
+      expect(BUREAU_HANDLER_OPERATIONS).toContain(operation);
+      expect(operation.description?.length ?? 0).toBeGreaterThan(40);
+    }
+    expect(
+      bureauHooksOperations.filter((operation) => operation.destructive).map((o) => o.name),
+    ).toEqual(['bureau.hooks.delete']);
+  });
+
+  it('creates a hook owned by the caller, and never returns the signing secret', async () => {
+    const { opened } = await open();
+    const created = await call(opened, 'bureau.hooks.create', NEW_HOOK, 'alice-observer-key');
+    expect(created.error).toBeUndefined();
+    expect(created.result).toMatchObject({
+      owner: 'api-key:alice',
+      url: NEW_HOOK.url,
+      events: ['run.settled'],
+      enabled: true,
+      name: null,
+      revision: 1,
+    });
+    expect(JSON.stringify(created)).not.toContain(SIGNING_SECRET);
+    const id = (created.result as { id: string }).id;
+    for (const [method, params] of [
+      ['bureau.hooks.get', { hookId: id }],
+      ['bureau.hooks.list', {}],
+      ['bureau.hooks.deliveries', { hookId: id }],
+    ] as const) {
+      expect(
+        JSON.stringify(await call(opened, method, params, 'alice-observer-key')),
+      ).not.toContain(SIGNING_SECRET);
+    }
+  });
+
+  it('requires bureau.events:observe-all to create, and an owner to own', async () => {
+    const { opened } = await open();
+    const forbidden = await call(opened, 'bureau.hooks.create', NEW_HOOK, 'alice-key');
+    expect(forbidden.error?.data).toMatchObject({
+      reason: 'missing scope bureau.events:observe-all',
+    });
+    // A write scope alone is not enough, and neither names an owner a credential lacks.
+    const writer = await call(opened, 'bureau.hooks.create', NEW_HOOK, 'hooks-writer-key');
+    expect(writer.error?.data).toMatchObject({ reason: 'missing scope bureau.events:observe-all' });
+  });
+
+  it('shows a hook and its deliveries only to its owner, and answers anyone else as for a missing one', async () => {
+    const { opened } = await open();
+    const hook = await createAs(opened, 'alice-observer-key');
+    await call(opened, 'bureau.hooks.test', { hookId: hook.id }, 'alice-key');
+
+    for (const [method, params] of [
+      ['bureau.hooks.get', { hookId: hook.id }],
+      ['bureau.hooks.update', { hookId: hook.id, enabled: false }],
+      ['bureau.hooks.delete', { hookId: hook.id }],
+      ['bureau.hooks.test', { hookId: hook.id }],
+      ['bureau.hooks.deliveries', { hookId: hook.id }],
+    ] as const) {
+      const other = await call(opened, method, params, 'bob-key');
+      const missing = await call(opened, method, { ...params, hookId: 'no-such-hook' }, 'bob-key');
+      expect([method, other.error?.data?.['resource'], other.error?.code]).toEqual([
+        method,
+        'hook',
+        missing.error?.code,
+      ]);
+      // Identical but for the identifier the caller itself named.
+      expect(JSON.stringify(other.error).replaceAll(hook.id, 'ID')).toBe(
+        JSON.stringify(missing.error).replaceAll('no-such-hook', 'ID'),
+      );
+    }
+
+    const bobs = await call(opened, 'bureau.hooks.list', {}, 'bob-key');
+    expect(bobs.result).toEqual({ hooks: [] });
+    const alices = await call(opened, 'bureau.hooks.list', {}, 'alice-key');
+    expect((alices.result as { hooks: unknown[] }).hooks).toHaveLength(1);
+    // Still there, untouched.
+    const still = await call(opened, 'bureau.hooks.get', { hookId: hook.id }, 'alice-key');
+    expect(still.result).toMatchObject({ id: hook.id, enabled: true });
+  });
+
+  it('grants the read and write scopes across owners, neither implying the other', async () => {
+    const { opened } = await open();
+    const hook = await createAs(opened, 'alice-observer-key');
+    const id = { hookId: hook.id };
+    const disable = { hookId: hook.id, enabled: false };
+
+    expect(await resultOf(opened, 'bureau.hooks.get', id, 'hooks-reader-key')).toMatchObject({
+      id: hook.id,
+    });
+    expect(await resultOf(opened, 'bureau.hooks.list', {}, 'hooks-reader-key')).toMatchObject({
+      hooks: [{ id: hook.id }],
+    });
+    expect(
+      await errorOf(opened, 'bureau.hooks.deliveries', id, 'hooks-reader-key'),
+    ).toBeUndefined();
+    const readerUpdate = await errorOf(opened, 'bureau.hooks.update', disable, 'hooks-reader-key');
+    expect(readerUpdate?.data).toMatchObject({ resource: 'hook' });
+
+    const writerGet = await errorOf(opened, 'bureau.hooks.get', id, 'hooks-writer-key');
+    expect(writerGet?.data).toMatchObject({ resource: 'hook' });
+    expect(await resultOf(opened, 'bureau.hooks.list', {}, 'hooks-writer-key')).toEqual({
+      hooks: [],
+    });
+    expect(
+      await resultOf(opened, 'bureau.hooks.update', disable, 'hooks-writer-key'),
+    ).toMatchObject({
+      enabled: false,
+      owner: 'api-key:alice',
+    });
+    expect(await errorOf(opened, 'bureau.hooks.test', id, 'hooks-writer-key')).toBeUndefined();
+    expect(await resultOf(opened, 'bureau.hooks.delete', id, 'hooks-writer-key')).toEqual({
+      hookId: hook.id,
+      deleted: true,
+    });
+  });
+
+  it('needs observe-all to change the events of a hook, and no scope to change anything else of one’s own', async () => {
+    const { opened } = await open();
+    const hook = await createAs(opened, 'alice-observer-key');
+    const rename = await call(
+      opened,
+      'bureau.hooks.update',
+      { hookId: hook.id, name: 'mine' },
+      'alice-key',
+    );
+    expect(rename.result).toMatchObject({ name: 'mine' });
+    const events = await call(
+      opened,
+      'bureau.hooks.update',
+      { hookId: hook.id, events: ['run.registered'] },
+      'alice-key',
+    );
+    expect(events.error?.data).toMatchObject({ reason: 'missing scope bureau.events:observe-all' });
+  });
+
+  it('sends a test delivery and answers its record, with the response excerpt', async () => {
+    const { opened, receiver } = await open();
+    const hook = await createAs(opened, 'alice-observer-key');
+    const tested = await call(opened, 'bureau.hooks.test', { hookId: hook.id }, 'alice-key');
+
+    expect(tested.error).toBeUndefined();
+    expect(tested.result).toMatchObject({
+      hookId: hook.id,
+      owner: 'api-key:alice',
+      kind: 'hook.test',
+      test: true,
+      status: 'delivered',
+      attempts: [{ number: 1, outcome: 'response', status: 200, responseExcerpt: 'pong' }],
+    });
+    expect(receiver.calls).toHaveLength(1);
+    const listed = await call(opened, 'bureau.hooks.deliveries', { hookId: hook.id }, 'alice-key');
+    expect(listed.result).toMatchObject({
+      deliveries: [{ id: (tested.result as { id: string }).id }],
+    });
+  });
+
+  it('answers InvalidParams for an unacceptable URL, event, or secret, and StaleRevision for a stale update', async () => {
+    const { opened } = await open();
+    const badUrl = await call(
+      opened,
+      'bureau.hooks.create',
+      { ...NEW_HOOK, url: 'http://169.254.169.254/' },
+      'alice-observer-key',
+    );
+    expect(badUrl.error?.data).toMatchObject({ issues: [{ path: ['url'] }] });
+    const badEvent = await call(
+      opened,
+      'bureau.hooks.create',
+      { ...NEW_HOOK, events: ['hook.test'] },
+      'alice-observer-key',
+    );
+    expect(badEvent.error?.code).toBe(-32602);
+    const shortSecret = await call(
+      opened,
+      'bureau.hooks.create',
+      { ...NEW_HOOK, signingSecret: 'short' },
+      'alice-observer-key',
+    );
+    expect(shortSecret.error?.code).toBe(-32602);
+
+    const hook = await createAs(opened, 'alice-observer-key');
+    await call(opened, 'bureau.hooks.update', { hookId: hook.id, enabled: false }, 'alice-key');
+    const stale = await call(
+      opened,
+      'bureau.hooks.update',
+      { hookId: hook.id, enabled: true, expectedRevision: 1 },
+      'alice-key',
+    );
+    expect(stale.error?.data).toMatchObject({ currentRevision: 2 });
+  });
+
+  it('refuses a secret write with Forbidden and reason deployment when the host locks them', async () => {
+    const held = new Map<string, Awaited<ReturnType<HookSecretStore['get']>>>();
+    const secrets: HookSecretStore = {
+      writeLock: () => 'deployment',
+      get: async (id) => held.get(id),
+      set: async (id, encrypted) => void held.set(id, encrypted),
+      delete: async (id) => void held.delete(id),
+    };
+    const { opened } = await open({ secrets });
+
+    const refused = await call(opened, 'bureau.hooks.create', NEW_HOOK, 'alice-observer-key');
+
+    expect(refused.error?.data).toMatchObject({ reason: 'deployment' });
+    expect(refused.error?.data?.httpStatus).toBe(403);
+    expect(held.size).toBe(0);
+    expect(await resultOf(opened, 'bureau.hooks.list', {}, 'alice-key')).toEqual({ hooks: [] });
+  });
+
+  it('answers UnsupportedCapability on a Bureau without hooks', async () => {
+    const { opened } = await open({ withoutHooks: true });
+    const response = await call(opened, 'bureau.hooks.list', {}, 'alice-key');
+    expect(response.error?.data).toMatchObject({ capability: 'hooks' });
+  });
+
+  it('answers UnsupportedCapability, and writes nothing, when the Bureau has no key to seal a secret', async () => {
+    const receiver = createReceiver();
+    const opened = await openBureau({
+      bureauOptions: {
+        hooks: {},
+        webhooks: { targets: [], fetch: receiver.fetch, sleep: () => Promise.resolve() },
+      },
+    });
+    cleanups.push(() => opened.dispose());
+    const response = await call(opened, 'bureau.hooks.create', NEW_HOOK, 'alice-observer-key');
+    expect(response.error?.data).toMatchObject({ capability: 'encryption' });
+    expect(await resultOf(opened, 'bureau.hooks.list', {}, 'alice-key')).toEqual({ hooks: [] });
+  });
+});

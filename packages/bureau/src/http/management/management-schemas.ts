@@ -153,7 +153,8 @@ export function resourceNotFound(
     | 'goal'
     | 'asset'
     | 'upload'
-    | 'memory',
+    | 'memory'
+    | 'hook',
   identifier: string,
 ): OperationFault {
   return {
