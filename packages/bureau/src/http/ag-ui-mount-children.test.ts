@@ -2,7 +2,8 @@
  * COR-855 — a Bureau child run is a separate native run with its own id and
  * owner. The mount projects it as a separate AG-UI run: its owner attaches by its
  * own id and sees the parent's id on `RUN_STARTED`, anyone else is answered as for
- * a missing run, and the parent's stream carries none of it.
+ * a missing run, and the parent's stream carries none of its events, only the two
+ * announcements of it (COR-1806; see `ag-ui-mount-stream-events.test.ts`).
  */
 import { EventType } from '@ag-ui/core';
 import {
@@ -286,15 +287,26 @@ describe('child runs', () => {
     });
   });
 
-  it('never put their events or their input on the parent’s stream', async () => {
+  it('put only their announcements on the parent’s stream, never their events or their input', async () => {
     await withParentAndChild(async ({ parent, script, childId }) => {
       script.release('hold');
       const tail = await parent.rest();
-      const everything = JSON.stringify([...parent.received, ...tail]);
+      const frames = parent.received;
+      const naming = frames.filter((frame) => JSON.stringify(frame.event).includes(childId));
 
       expect(tail.at(-1)!.event.type).toBe(EventType.RUN_FINISHED);
-      expect(everything).not.toContain(childId);
+      // The child's id appears in the announcement that it started, and in nothing else (it has not
+      // settled: its step is held), and no step, text or tool event of the child is the parent's.
+      expect(naming.map((frame) => frame.event)).toMatchObject([
+        {
+          type: EventType.CUSTOM,
+          name: 'bureau.child-run-started',
+          value: { childRunId: childId },
+        },
+      ]);
+      const everything = JSON.stringify(frames);
       expect(everything).not.toContain('child work');
+      expect(everything).not.toContain('Child done.');
     });
   });
 });

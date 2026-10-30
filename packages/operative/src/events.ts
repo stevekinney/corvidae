@@ -1478,11 +1478,20 @@ export class AgentScheduledEvent extends Event {
  */
 export class WakeupScheduledEvent extends Event {
   static readonly type = 'schedule.wakeup' as const;
+  /** The duration the run asked to sleep, as it asked: milliseconds, or a duration string. */
   readonly duration: number | string;
+  /** The note the run left for itself, when it left one. */
   readonly note?: string | undefined;
-  constructor(duration: number | string, note?: string) {
+  /**
+   * When the run is due to wake, in milliseconds since the Unix epoch: the run's clock when the
+   * tool accepted the request, plus the duration. The park itself sleeps from when the step ends,
+   * so the actual wake can be a little later.
+   */
+  readonly wakeAt: number;
+  constructor(duration: number | string, wakeAt: number, note?: string) {
     super(WakeupScheduledEvent.type);
     this.duration = duration;
+    this.wakeAt = wakeAt;
     this.note = note;
   }
 }

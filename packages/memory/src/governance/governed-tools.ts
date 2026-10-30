@@ -37,6 +37,9 @@ function defaultAuthority(input: GovernedMemoryToolAuthorityInput): MemoryAuthor
   });
 }
 
+/** The class a model's `memory_store` call writes, which is also the class governed writes default to. */
+const STORED_MEMORY_CLASS = 'episodic';
+
 const recallInput = z.object({
   query: z.string().describe('What to look for in memory'),
   limit: z.number().int().positive().optional().describe('Maximum number of records to return'),
@@ -117,13 +120,21 @@ export function createGovernedMemoryTools(
       const receipt = await memory.write(authority, params.content, {
         collection,
         source: 'model-tool',
+        memoryClass: STORED_MEMORY_CLASS,
         metadata: {
           ...(params.tags === undefined ? {} : { tags: params.tags }),
           ...(params.importance === undefined ? {} : { importance: params.importance }),
         },
       });
+      // The record's collection and class ride in the result so a host that watches its runs'
+      // tool results can say where the record went (Bureau's `bureau.memory-written` frame).
       return receipt.status === 'admitted' || receipt.status === 'duplicate'
-        ? { stored: true, id: receipt.recordId }
+        ? {
+            stored: true,
+            id: receipt.recordId,
+            collection,
+            memoryClass: STORED_MEMORY_CLASS,
+          }
         : { stored: false };
     },
   });

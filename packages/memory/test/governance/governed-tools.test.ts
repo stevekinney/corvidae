@@ -68,7 +68,8 @@ describe('createGovernedMemoryTools (model-facing, untrusted)', () => {
       { content: 'The garage code changed last week.', tags: ['house'], importance: 0.4 },
       { requestContext: requestContext('owner-a') },
     );
-    expect(stored).toMatchObject({ stored: true });
+    // The result names where the record went, which Bureau announces as `bureau.memory-written`.
+    expect(stored).toMatchObject({ stored: true, collection: 'house', memoryClass: 'episodic' });
     const hits = await fixture.memory.search(principalA, 'garage code', { collection: 'house' });
     expect(hits[0]?.record).toMatchObject({
       source: 'model-tool',

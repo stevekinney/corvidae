@@ -43,6 +43,11 @@ export interface FileBureauOptions {
   readonly directory?: string;
   /** What each model's generate answers. Defaults to the model's own name. */
   readonly scripts?: Readonly<Record<string, Script>>;
+  /**
+   * The reasoning each model's generate puts before its answer, as a `thinking` part (a model
+   * with no entry returns none). The answer is still `scripts`'.
+   */
+  readonly thinking?: Readonly<Record<string, string>>;
   readonly overrides?: Partial<BureauOptions<AgentDefinitions>>;
   readonly observed?: Observation[];
   readonly agents?: AgentDefinitions;
@@ -52,6 +57,7 @@ function generateFor(
   descriptor: BackendDescriptor,
   scripts: Readonly<Record<string, Script>>,
   observed: Observation[],
+  thinking: Readonly<Record<string, string>>,
 ): GenerateFunction {
   return async ({ toolbox, conversation }) => {
     const system = conversation.getFirstSystemMessage()?.content;
@@ -65,7 +71,20 @@ function generateFor(
     };
     observed.push(observation);
     const script = scripts[descriptor.model];
-    return { content: await (script ? script(observation) : descriptor.model), toolCalls: [] };
+    const content = await (script ? script(observation) : descriptor.model);
+    const thought = thinking[descriptor.model];
+    return {
+      content,
+      toolCalls: [],
+      ...(thought === undefined
+        ? {}
+        : {
+            parts: [
+              { type: 'thinking' as const, thinking: thought, signature: 'scripted-signature' },
+              { type: 'text' as const, text: content },
+            ],
+          }),
+    };
   };
 }
 
@@ -74,6 +93,7 @@ export async function startFileBureau(options: FileBureauOptions = {}): Promise<
   const directory = options.directory ?? (await mkdtemp(join(tmpdir(), 'bureau-agent-run-')));
   const observed = options.observed ?? [];
   const scripts = options.scripts ?? {};
+  const thinking = options.thinking ?? {};
   const bureau = await createBureau<AgentDefinitions>({
     agents: {
       ...(options.agents ?? {
@@ -91,7 +111,7 @@ export async function startFileBureau(options: FileBureauOptions = {}): Promise<
     ...options.overrides,
     // Merged, so an override of the catalog or of the generate keeps the other.
     models: {
-      generate: (descriptor) => generateFor(descriptor, scripts, observed),
+      generate: (descriptor) => generateFor(descriptor, scripts, observed, thinking),
       ...options.overrides?.models,
     },
   });

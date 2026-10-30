@@ -15,13 +15,33 @@
  * events carry them, are ordered by the store's own sequence, and are the same
  * records on a replay as live.
  *
- * The one `CUSTOM` event it emits is `bureau.asset-part`, once for each managed asset a step's
- * response carries, in ascending part index, inside the step's text message (after its start,
- * before its end). A step with assets and no text gets a message of its own to hold them.
+ * Its `CUSTOM` vocabulary is closed and documented in `ag-ui-vocabulary.ts`:
  *
- * What it does not emit: `STATE_DELTA`, `ACTIVITY_*`, `REASONING_*`, any other `CUSTOM`,
- * `RAW`, `SUBAGENT_*`, and the `*_CHUNK` forms. Reasoning in particular never
- * reaches the wire.
+ * - `bureau.asset-part`, once for each managed asset a step's response carries, in ascending part
+ *   index, inside the step's text message (after its start, before its end). A step with assets
+ *   and no text gets a message of its own to hold them.
+ * - `bureau.memory-written`, once for each `memory_store` call whose result says it stored a
+ *   record, right after that call's result.
+ * - `bureau.wakeup-scheduled`, once for each `schedule.wakeup` record the run left.
+ * - `bureau.child-run-started` and `bureau.child-run-settled`, once for each
+ *   `multiagent.child-workflow.*` record the run left.
+ *
+ * Reasoning is the one family that is live and private (COR-1806). A step whose response carries
+ * `thinking` parts is announced as `REASONING_START`, `REASONING_MESSAGE_START`,
+ * `REASONING_MESSAGE_CONTENT`, `REASONING_MESSAGE_END` and `REASONING_END`, once for each part,
+ * before the step's text message. It is read from `generate.completed`, which the run records only
+ * after its output guardrails have run, so a guardrail that blocked or redacted a response also
+ * replaced the parts the frames would have been read from: no frame ever carries the response as
+ * the model first produced it. On a step that called tools, redaction keeps the flagged thinking
+ * parts (the provider requires them back unmodified) and names them in the response's
+ * `withheldThinking`; no frame is sent for those. `redacted_thinking` parts and every part's
+ * `signature` are never sent. The projector emits these events; it is the stream that sends them
+ * to the run's owner alone and never in a replay. None of the reasoning events, and none of the
+ * `CUSTOM` events above except `bureau.asset-part`, enters the checkpoint a late attach replays:
+ * they are announced to the streams that are attached when they happen.
+ *
+ * What it does not emit: `STATE_DELTA`, `ACTIVITY_*`, `RAW`, `SUBAGENT_*`,
+ * `REASONING_ENCRYPTED_VALUE`, and the `*_CHUNK` forms.
  *
  * @module ag-ui-projection
  */
@@ -40,8 +60,16 @@ import {
   ASSET_PART_EVENT_NAME,
   type AssetPartAnnouncement,
   type AssetPartReference,
+  CHILD_RUN_SETTLED_EVENT_NAME,
+  CHILD_RUN_STARTED_EVENT_NAME,
+  type ChildRunSettledAnnouncement,
+  type ChildRunStartedAnnouncement,
   type EventStamp,
+  MEMORY_WRITTEN_EVENT_NAME,
+  type MemoryWrittenAnnouncement,
   stamp,
+  WAKEUP_SCHEDULED_EVENT_NAME,
+  type WakeupScheduledAnnouncement,
 } from './ag-ui-vocabulary.ts';
 
 /** The terminal fact of a native run, before it is turned into the event that ends the AG-UI run. */
@@ -78,7 +106,15 @@ export const RECORDED = {
   toolsExecuting: 'tools.executing',
   toolsExecuted: 'tools.executed',
   humanWaitParked: 'multiagent.human-wait.parked',
+  wakeupScheduled: 'schedule.wakeup',
+  childStarted: 'multiagent.child-workflow.started',
+  childCompleted: 'multiagent.child-workflow.completed',
+  childFailed: 'multiagent.child-workflow.failed',
+  childAborted: 'multiagent.child-workflow.aborted',
 } as const;
+
+/** The tool whose result says a record was written to memory. */
+export const MEMORY_STORE_TOOL_NAME = 'memory_store';
 
 /** The `code` of the error a run that stopped at its step limit announces with `run.error`. */
 export const MAXIMUM_STEPS_CODE = 'MAXIMUM_STEPS';
@@ -114,6 +150,65 @@ function resultsOf(value: unknown): ToolResultDetail[] {
   return Array.isArray(value) ? value.map((entry) => record(entry) as ToolResultDetail) : [];
 }
 
+/**
+ * The text of every `thinking` part of a response, in order, except the parts its output guardrail
+ * withheld (their indices in `parts`, as `withheldThinking`). Redacted thinking has none to send.
+ */
+function thinkingOf(response: Record<string, unknown>): string[] {
+  const { parts, withheldThinking } = response;
+  if (!Array.isArray(parts)) return [];
+  const withheld = new Set(Array.isArray(withheldThinking) ? (withheldThinking as unknown[]) : []);
+  return (parts as unknown[]).flatMap((part, index) => {
+    if (withheld.has(index)) return [];
+    const { type, thinking } = record(part);
+    return type === 'thinking' && typeof thinking === 'string' && thinking.length > 0
+      ? [thinking]
+      : [];
+  });
+}
+
+/** A tool result's content as an object: the object itself, or the JSON text of one. */
+function contentRecord(content: unknown): Record<string, unknown> {
+  if (typeof content !== 'string') return record(content);
+  try {
+    return record(JSON.parse(content) as unknown);
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * What a `memory_store` result says was written, or `undefined` when it says nothing was: the
+ * result must be a success with `stored: true` and name the record, its collection and its class.
+ * A tool that stores without naming them announces nothing, because the announcement is the
+ * client's only way to find the record.
+ */
+function memoryWriteOf(
+  result: ToolResultDetail,
+): Pick<MemoryWrittenAnnouncement, 'recordId' | 'collection' | 'class'> | undefined {
+  if (toolNameOf(result) !== MEMORY_STORE_TOOL_NAME || result['outcome'] !== 'success') {
+    return undefined;
+  }
+  const content = contentRecord(result['content']);
+  const { stored, id, collection, memoryClass } = content;
+  if (
+    stored !== true ||
+    typeof id !== 'string' ||
+    id === '' ||
+    typeof collection !== 'string' ||
+    collection === '' ||
+    typeof memoryClass !== 'string' ||
+    memoryClass === ''
+  ) {
+    return undefined;
+  }
+  return { recordId: id, collection, class: memoryClass };
+}
+
+function textOf(value: unknown): string | undefined {
+  return typeof value === 'string' && value !== '' ? value : undefined;
+}
+
 /** The text of a tool result as a `TOOL_CALL_RESULT` carries it. */
 function resultContent(
   messageId: string,
@@ -134,6 +229,7 @@ export class RunProjector {
   private readonly announced = new Set<string>();
   private readonly resulted = new Set<string>();
   private readonly held = new Set<string>();
+  private readonly reasoned = new Set<number>();
   private tripwire = false;
   private readonly checkpoint = new ProjectionCheckpoint();
 
@@ -142,10 +238,25 @@ export class RunProjector {
     private readonly context: EventStamp,
   ) {}
 
+  /** The Bureau session, which is the AG-UI thread. */
+  private get sessionId(): string | undefined {
+    return this.context.sessionId;
+  }
+
   private live<TEvent extends Event>(event: TEvent): TEvent {
     const stamped = stamp(event, this.context, { durable: false });
     this.checkpoint.record(stamped);
     return stamped;
+  }
+
+  /**
+   * An event for the streams attached now and for no one who attaches later: stamped as a live
+   * event and kept out of the checkpoint a late attach replays. Reasoning is private to the run's
+   * owner and must never be part of a replay; the announcements below carry nothing a message
+   * row would later hold, so a checkpoint entry for them would never be released.
+   */
+  private liveOnly<TEvent extends Event>(event: TEvent): TEvent {
+    return stamp(event, this.context, { durable: false });
   }
 
   /**
@@ -175,11 +286,14 @@ export class RunProjector {
       case RECORDED.generateCompleted: {
         const response = record(data['response']);
         return {
-          events: this.completeText(
-            stepOf(data),
-            response['content'],
-            assetPartsOf(response['parts']),
-          ),
+          events: [
+            ...this.announceReasoning(stepOf(data), thinkingOf(response)),
+            ...this.completeText(
+              stepOf(data),
+              response['content'],
+              assetPartsOf(response['parts']),
+            ),
+          ],
         };
       }
       case RECORDED.toolsExecuting:
@@ -195,6 +309,16 @@ export class RunProjector {
         return { events: this.finishStep(stepOf(data), data) };
       case RECORDED.humanWaitParked:
         return { events: [], parked: true };
+      case RECORDED.wakeupScheduled:
+        return { events: this.announceWakeup(data) };
+      case RECORDED.childStarted:
+        return { events: this.announceChildStarted(data) };
+      case RECORDED.childCompleted:
+        return { events: this.announceChildSettled(data, 'completed') };
+      case RECORDED.childFailed:
+        return { events: this.announceChildSettled(data, 'failed') };
+      case RECORDED.childAborted:
+        return { events: this.announceChildSettled(data, 'aborted') };
       case RECORDED.runTripwire:
         this.tripwire = true;
         return { events: [] };
@@ -372,6 +496,79 @@ export class RunProjector {
     });
   }
 
+  /**
+   * The step's `thinking` parts as AG-UI reasoning: one span for the step, holding one message for
+   * each part. Sent once for a step however many times its `generate.completed` is read, and only
+   * while that step is the one in flight.
+   */
+  private announceReasoning(step: number | undefined, thoughts: readonly string[]): Event[] {
+    if (step === undefined || this.openStep !== step || thoughts.length === 0) return [];
+    if (this.reasoned.has(step)) return [];
+    this.reasoned.add(step);
+    const span = `${this.messageId(step)}:reasoning`;
+    return [
+      this.liveOnly({ type: EventType.REASONING_START, messageId: span }),
+      ...thoughts.flatMap((thought, index) => {
+        const messageId = `${span}:${index}`;
+        return [
+          this.liveOnly({ type: EventType.REASONING_MESSAGE_START, messageId, role: 'reasoning' }),
+          this.liveOnly({
+            type: EventType.REASONING_MESSAGE_CONTENT,
+            messageId,
+            delta: thought,
+          }),
+          this.liveOnly({ type: EventType.REASONING_MESSAGE_END, messageId }),
+        ];
+      }),
+      this.liveOnly({ type: EventType.REASONING_END, messageId: span }),
+    ];
+  }
+
+  private announceWakeup(data: Record<string, unknown>): Event[] {
+    const { duration, note, wakeAt } = data;
+    if (
+      (typeof duration !== 'number' && typeof duration !== 'string') ||
+      typeof wakeAt !== 'number' ||
+      !Number.isFinite(wakeAt)
+    ) {
+      return [];
+    }
+    const noted = textOf(note);
+    const value: WakeupScheduledAnnouncement = {
+      runId: this.runId,
+      duration,
+      ...(noted === undefined ? {} : { note: noted }),
+      wakeAt,
+    };
+    return [this.liveOnly({ type: EventType.CUSTOM, name: WAKEUP_SCHEDULED_EVENT_NAME, value })];
+  }
+
+  private announceChildStarted(data: Record<string, unknown>): Event[] {
+    const parentRunId = textOf(data['parentRunId']);
+    const childRunId = textOf(data['childRunId']);
+    const childAgentName = textOf(data['childAgentName']);
+    if (parentRunId === undefined || childRunId === undefined || childAgentName === undefined) {
+      return [];
+    }
+    const value: ChildRunStartedAnnouncement = {
+      parentRunId,
+      childRunId,
+      childAgentName,
+      durable: data['durable'] === true,
+    };
+    return [this.liveOnly({ type: EventType.CUSTOM, name: CHILD_RUN_STARTED_EVENT_NAME, value })];
+  }
+
+  private announceChildSettled(
+    data: Record<string, unknown>,
+    status: ChildRunSettledAnnouncement['status'],
+  ): Event[] {
+    const childRunId = textOf(data['childRunId']);
+    if (childRunId === undefined) return [];
+    const value: ChildRunSettledAnnouncement = { childRunId, status };
+    return [this.liveOnly({ type: EventType.CUSTOM, name: CHILD_RUN_SETTLED_EVENT_NAME, value })];
+  }
+
   private announceCalls(step: number | undefined, calls: ToolCallDetail[]): Event[] {
     if (step === undefined) return [];
     const parentMessageId = this.messageId(step);
@@ -412,6 +609,18 @@ export class RunProjector {
           role: 'tool',
         }),
       );
+      const written = memoryWriteOf(result);
+      if (written !== undefined && this.sessionId !== undefined) {
+        const value: MemoryWrittenAnnouncement = {
+          messageId: this.messageId(step),
+          ...written,
+          runId: this.runId,
+          sessionId: this.sessionId,
+        };
+        events.push(
+          this.liveOnly({ type: EventType.CUSTOM, name: MEMORY_WRITTEN_EVENT_NAME, value }),
+        );
+      }
     }
     return events;
   }

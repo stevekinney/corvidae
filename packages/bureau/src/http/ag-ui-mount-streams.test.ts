@@ -1,7 +1,8 @@
 /**
  * COR-855 — how a stream ends, and what it leaves behind: the maximum duration,
  * a reader that falls behind, a client that goes away, and the reasoning that
- * never reaches the wire.
+ * never reaches a snapshot (it is sent live to a run's owner: see
+ * `ag-ui-mount-stream-events.test.ts`).
  */
 import { EventType } from '@ag-ui/core';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';

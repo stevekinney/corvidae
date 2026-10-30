@@ -347,12 +347,24 @@ export function wireDurableOptInTools(
   }
 
   if (options.wakeup) {
-    // Unlike `requestHumanInput`, `scheduleWakeup` dispatches no event on
-    // park — `ctx.sleep` is itself the durable checkpoint, and recovery
-    // re-arms it with no live wiring needed (AB-41's decision record) — so
-    // no emitter is threaded here.
+    // `ctx.sleep` is itself the durable checkpoint, and recovery re-arms it with no live wiring
+    // needed (AB-41's decision record). The tool announces the request it accepted (COR-1806) on
+    // the run's own emitter, read lazily from `ctx.services` as `requestHumanInput`'s recovery
+    // forwarder reads it: the run's `services.emitter` settles after this wiring but before any
+    // tool call. A recovered run whose replay re-executes the call announces it again, as it
+    // would announce a human wait.
     const wakeupContext = createWakeupContext(servicesRef);
-    const rawWakeupTool = createScheduleWakeupTool({ context: wakeupContext });
+    const rawWakeupTool = createScheduleWakeupTool({
+      context: wakeupContext,
+      emitter: {
+        dispatchEvent: (event: Event) => {
+          const target = servicesRef.current?.emitter;
+          return hasDispatchEvent(target) ? target.dispatchEvent(event) : false;
+        },
+      },
+      now: () =>
+        (servicesRef.current?.options.runtime ?? createDefaultRuntimeServices()).clock.now(),
+    });
     const wakeupToolbox = createToolbox([
       createTool({
         ...rawWakeupTool,

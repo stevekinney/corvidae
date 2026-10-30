@@ -10,19 +10,55 @@ import type {
 const DEFAULT_BLOCK_MESSAGE =
   'Response blocked by output guardrail: the output was flagged as a policy violation.';
 
+/** The text a thinking part carries, which an output validator must see as it sees the answer. */
+type ThinkingText = { readonly index: number; readonly text: string };
+
+function thinkingTextsOf(response: GenerateResponse): ThinkingText[] {
+  return (response.parts ?? []).flatMap((part, index) =>
+    part.type === 'thinking' && part.thinking.length > 0 ? [{ index, text: part.thinking }] : [],
+  );
+}
+
+type Failure = {
+  /** The index of the flagged thinking part among the response's parts, or -1 for the content. */
+  readonly target: number;
+  readonly result: ValidationResult;
+  readonly validatorName: string;
+};
+
+function highestConfidence(failures: readonly Failure[]): Failure | undefined {
+  let top: Failure | undefined;
+  for (const failure of failures) {
+    if (!top || failure.result.confidence > top.result.confidence) top = failure;
+  }
+  return top;
+}
+
 /**
  * Creates an output guardrail hook that inspects model responses after each generate step.
  *
- * Validators run against the response content. When a validator flags the output, the
- * configured action determines the behavior:
- * - `'block'` (default): returns a new `GenerateResponse` with refusal text
+ * Validators run against the response content and against the text of each `thinking` part
+ * (COR-1806): a model's reasoning reaches the run's owner and the stored conversation, so it is
+ * output the guardrail owns. When a validator flags either, the configured action determines the
+ * behavior:
+ * - `'block'` (default): returns a new `GenerateResponse` with refusal text, whichever text was
+ *   flagged. The response's parts, thinking included, are dropped with it.
  * - `'warn'`: calls `onTriggered` but passes the original response through
- * - `'redact'`: returns a new `GenerateResponse` with the validator's redacted content
+ * - `'redact'`: for flagged content, returns a new `GenerateResponse` with the validator's
+ *   redacted content. For a response whose content is clean and whose thinking is flagged, the
+ *   flagged thinking is withheld, never edited: a thinking part carries a provider signature, so
+ *   its text cannot change. A step with no tool calls returns the response with the flagged
+ *   thinking parts removed. A step with tool calls keeps every part unchanged and names the
+ *   flagged ones in `withheldThinking`, because a provider such as Anthropic requires a tool-use
+ *   turn's thinking back complete and unmodified on the request that carries the tool results.
+ *   That thinking stays in the stored conversation, where only the model reads it again, and a
+ *   surface that shows the run's reasoning (Bureau's AG-UI stream) leaves it out.
  * - `'tripwire'`: throws a `GuardrailTripwireError`, hard-halting the run right after
  *   post-processing flags the response (see `createGuardrails({ mode: 'tripwire' })`)
  *
  * Validator errors are caught via `Promise.allSettled` to prevent a broken validator
- * from crashing the agent loop.
+ * from crashing the agent loop. `redacted_thinking` parts carry no readable text and are not
+ * scanned.
  */
 export function createOutputGuardrail(options: OutputGuardrailOptions): ValidateResponseHook {
   const {
@@ -44,33 +80,37 @@ export function createOutputGuardrail(options: OutputGuardrailOptions): Validate
       toolCallCount: response.toolCalls.length,
     };
 
-    // Run all validators in parallel and collect results
+    // Run every validator over the content and over each thinking part, in parallel.
+    const thoughts = thinkingTextsOf(response);
+    const targets = [{ index: -1, text: output }, ...thoughts];
     const settled = await Promise.allSettled(
-      validators.map(async (validator) => ({
-        result: await validator.validate(output, validatorContext),
-        validatorName: validator.name,
-      })),
+      targets.flatMap((target) =>
+        validators.map(async (validator) => ({
+          target: target.index,
+          result: await validator.validate(target.text, validatorContext),
+          validatorName: validator.name,
+        })),
+      ),
     );
 
-    // Find the highest-confidence failure
-    let topFailure: { result: ValidationResult; validatorName: string } | undefined;
-
-    for (const outcome of settled) {
-      if (outcome.status === 'fulfilled' && !outcome.value.result.valid) {
-        if (!topFailure || outcome.value.result.confidence > topFailure.result.confidence) {
-          topFailure = outcome.value;
-        }
-      }
-    }
+    const failures = settled.flatMap((outcome) =>
+      outcome.status === 'fulfilled' && !outcome.value.result.valid ? [outcome.value] : [],
+    );
+    const contentFailure = highestConfidence(failures.filter((failure) => failure.target === -1));
+    const topFailure = highestConfidence(failures);
 
     if (!topFailure) return;
 
+    const flagged =
+      topFailure.target === -1
+        ? output
+        : (thoughts.find((t) => t.index === topFailure.target)?.text ?? output);
     const event: OutputGuardrailTriggeredEvent = {
       validator: topFailure.validatorName,
       category: topFailure.result.category,
       confidence: topFailure.result.confidence,
       action,
-      output,
+      output: flagged,
       detail: topFailure.result.detail,
     };
 
@@ -93,11 +133,30 @@ export function createOutputGuardrail(options: OutputGuardrailOptions): Validate
       return;
     }
 
-    if (action === 'redact' && topFailure.result.redacted) {
-      return {
-        content: topFailure.result.redacted,
-        toolCalls: [],
-      };
+    if (action === 'redact') {
+      if (contentFailure?.result.redacted) {
+        return {
+          content: contentFailure.result.redacted,
+          toolCalls: [],
+        };
+      }
+      if (contentFailure === undefined) {
+        // Only thinking was flagged: the answer and its tool calls stand, the flagged thoughts go.
+        const withheld = new Set([
+          ...(response.withheldThinking ?? []),
+          ...failures.map((failure) => failure.target),
+        ]);
+        if (response.toolCalls.length > 0) {
+          // The next request replays this turn's thinking byte-for-byte, so the parts stay and
+          // only the observers are told to leave the flagged ones out.
+          return { ...response, withheldThinking: [...withheld].toSorted((a, b) => a - b) };
+        }
+        return {
+          ...response,
+          parts: (response.parts ?? []).filter((_part, index) => !withheld.has(index)),
+          withheldThinking: undefined,
+        };
+      }
     }
 
     // Default: block (also fallback when redact has no redacted text)
