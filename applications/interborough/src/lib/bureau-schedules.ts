@@ -105,6 +105,8 @@ export type AgentScheduleInput = {
   /** A session each fire continues. Without one, every fire is a fresh session. */
   readonly sessionId?: string;
   readonly overlap?: 'skip' | 'allow';
+  /** The IANA zone a cron `spec` is read in. Left out for an interval, which the Bureau refuses one for. */
+  readonly timeZone?: string;
 };
 
 /** Creates a schedule the caller owns. Its revision is `1`. */
@@ -123,6 +125,7 @@ export async function createAgentSchedule(
       ? {}
       : { sessionId: schedule.sessionId }),
     ...(schedule.overlap === undefined ? {} : { overlap: schedule.overlap }),
+    ...(schedule.timeZone === undefined ? {} : { timeZone: schedule.timeZone }),
   };
   return viewSchema.parse(await callBureau('bureau.schedules.create', params, options));
 }
@@ -176,14 +179,16 @@ export function cancelAgentSchedule(
   return guardedWrite('bureau.schedules.cancel', scheduleId, expectedRevision, options);
 }
 
-/** What an update changes: the cadence always, and the description and overlap when they are given. */
+/** What an update changes: the cadence always, and the description, overlap, and zone when they are given. */
 export type AgentScheduleUpdate = {
   readonly spec: string;
   readonly description?: string;
   readonly overlap?: 'skip' | 'allow';
+  /** The IANA zone a cron `spec` is read in. Left out, the Bureau keeps the schedule's zone. */
+  readonly timeZone?: string;
 };
 
-/** Replaces the schedule's cadence, and changes its description and overlap when they are given. */
+/** Replaces the schedule's cadence, and changes its description, overlap, and zone when they are given. */
 export async function updateAgentSchedule(
   scheduleId: string,
   update: AgentScheduleUpdate,
@@ -195,6 +200,7 @@ export async function updateAgentSchedule(
     spec: update.spec,
     ...(update.description === undefined ? {} : { description: update.description }),
     ...(update.overlap === undefined ? {} : { overlap: update.overlap }),
+    ...(update.timeZone === undefined ? {} : { timeZone: update.timeZone }),
     ...(expectedRevision === undefined ? {} : { expectedRevision }),
   };
   return receiptSchema.parse(await callBureau('bureau.schedules.update', params, options));

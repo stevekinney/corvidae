@@ -3,11 +3,11 @@ import ScheduleBuilder from './schedule-builder.svelte';
 
 export default ScheduleBuilder;
 export type {
-  ScheduleAuthoringMode,
   ScheduleBuilderProps,
   ScheduleBuilderSchemaProps,
   ScheduleFire,
   ScheduleIntervalUnit,
+  ScheduleRepeats,
   ScheduleValue,
   ScheduleValueSchema,
 } from './schedule-builder.types.ts';

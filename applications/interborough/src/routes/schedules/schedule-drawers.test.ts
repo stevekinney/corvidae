@@ -128,8 +128,8 @@ describe('editing an agent run', () => {
     expect((dialog.getByLabelText('Description') as HTMLInputElement).value).toBe('Daily summary');
     // The cadence is the schedule builder's, and the overlap policy is the one choice the Bureau
     // offers, to skip a fire or to allow it, as a checkbox.
-    expect(dialog.getByRole('tab', { name: 'Interval' })).not.toBeNull();
-    expect(dialog.getByRole('tab', { name: 'Cron' })).not.toBeNull();
+    expect(dialog.getByLabelText('Repeats')).not.toBeNull();
+    expect(dialog.getByRole('combobox', { name: 'Time zone' })).not.toBeNull();
     expect((dialog.getByLabelText(SKIP) as HTMLInputElement).checked).toBe(true);
     expect(dialog.queryByRole('group', { name: OVERLAP })).toBeNull();
     // Everything else the engine's drawer has is left out: none of it is a field of the update.
@@ -613,7 +613,10 @@ describe('the drawers when something is not as it was', () => {
     const dialog = within(await drawer('Edit schedule'));
     await dialog.findByLabelText('Description');
 
-    await fireEvent.click(dialog.getByRole('tab', { name: 'Interval' }));
+    await fireEvent.change(await dialog.findByLabelText('Repeats'), {
+      target: { value: 'interval' },
+    });
+    await fireEvent.change(dialog.getByLabelText('Unit'), { target: { value: 'minutes' } });
     const every = dialog.getByLabelText('Every');
     await fireEvent.input(every, { target: { value: '20' } });
     await fireEvent.change(every, { target: { value: '20' } });
@@ -637,7 +640,7 @@ describe('the drawers when something is not as it was', () => {
       target: { value: 'Hello' },
     });
 
-    await fireEvent.click(dialog.getByRole('tab', { name: 'Cron' }));
+    await fireEvent.change(dialog.getByLabelText('Repeats'), { target: { value: 'cron' } });
     // The minute field's raw expression, which the cadence follows.
     const minute = document.querySelector('[id$="cron-field-0-raw"]');
     if (!(minute instanceof HTMLInputElement)) throw new Error('expected the minute field');
@@ -681,7 +684,7 @@ describe('a cadence of less than a minute', () => {
     const cadence = dialog.getByLabelText(SCHEDULE_COPY.form.cadenceLabel);
     expect(cadence).toBeDisabled();
     expect((cadence as HTMLInputElement).value).toBe('Every 30 seconds');
-    expect(dialog.queryByRole('tab', { name: 'Interval' })).toBeNull();
+    expect(dialog.queryByLabelText('Repeats')).toBeNull();
 
     await fireEvent.input(description, { target: { value: 'Still thirty seconds' } });
     await fireEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
@@ -732,13 +735,16 @@ describe('a cadence of less than a minute', () => {
     open(`/schedules/${SECONDS_AGENT}?edit=1`, secondsWorld());
     const dialog = within(await drawer('Edit schedule'));
     await dialog.findByLabelText('Description');
-    expect(dialog.queryByRole('tab', { name: 'Interval' })).toBeNull();
+    expect(dialog.queryByLabelText('Repeats')).toBeNull();
 
     await fireEvent.click(
       dialog.getByRole('button', { name: SCHEDULE_COPY.form.changeCadenceAction }),
     );
 
-    await fireEvent.click(await dialog.findByRole('tab', { name: 'Interval' }));
+    await fireEvent.change(await dialog.findByLabelText('Repeats'), {
+      target: { value: 'interval' },
+    });
+    await fireEvent.change(dialog.getByLabelText('Unit'), { target: { value: 'minutes' } });
     const every = dialog.getByLabelText('Every');
     await fireEvent.input(every, { target: { value: '20' } });
     await fireEvent.change(every, { target: { value: '20' } });
@@ -755,7 +761,7 @@ describe('a cadence of less than a minute', () => {
     const dialog = within(await drawer('Edit schedule'));
     await dialog.findByLabelText('Description');
 
-    expect(dialog.getByRole('tab', { name: 'Interval' })).not.toBeNull();
+    expect(dialog.getByLabelText('Repeats')).not.toBeNull();
     expect(
       dialog.queryByRole('button', { name: SCHEDULE_COPY.form.changeCadenceAction }),
     ).toBeNull();
@@ -808,7 +814,10 @@ describe('a code-defined schedule’s cadence changed in the builder', () => {
     const dialog = within(await drawer('Edit schedule'));
     await dialog.findByLabelText('Description');
 
-    await fireEvent.click(dialog.getByRole('tab', { name: 'Interval' }));
+    await fireEvent.change(await dialog.findByLabelText('Repeats'), {
+      target: { value: 'interval' },
+    });
+    await fireEvent.change(dialog.getByLabelText('Unit'), { target: { value: 'minutes' } });
     const every = dialog.getByLabelText('Every');
     await fireEvent.input(every, { target: { value: '20' } });
     await fireEvent.change(every, { target: { value: '20' } });

@@ -4,7 +4,7 @@
  * minutes"). Pure logic, no DOM — colocated `bun test` coverage.
  *
  * `describeCadence()` is a bounded cron humanizer covering the recurrence
- * shapes this console's own `ScheduleBuilder` presets produce (every-N,
+ * shapes this console's own `ScheduleBuilder` choices produce (every-N,
  * daily, weekly-on-a-day, monthly-on-a-day) plus fixed intervals. It is
  * deliberately not exhaustive — no external cron-humanizer dependency is
  * pulled in for the bundle-size budget (plan §12) — an expression outside
@@ -19,6 +19,8 @@ import type { ScheduleSpec } from '@lostgradient/weft';
 export interface ScheduleCadence {
   readonly cronExpression?: string;
   readonly intervalMs?: number;
+  /** The IANA zone a cron cadence is read in; `UTC` for an interval and for a schedule stored without one. */
+  readonly timeZone?: string;
 }
 
 const WEEKDAY_NAMES = [
@@ -196,42 +198,52 @@ export function describeCadence(cadence: ScheduleCadence): string {
 const CINDER_INTERVAL_UNIT_MS: Readonly<Record<ScheduleIntervalUnit, number>> = {
   minutes: 60_000,
   hours: 3_600_000,
-  days: 86_400_000,
-  weeks: 7 * 86_400_000,
 };
 
 /**
- * Converts a Cinder `ScheduleBuilder` value into the wire fields Weft's
+ * Converts a Cinder `ScheduleBuilder` value into the spec Weft's
  * `weft.schedules.create`/`weft.schedules.update` operations accept
- * (`cronExpression` | `every`). Interval mode always resolves to a
- * millisecond NUMBER rather than a duration string — Cinder's `unit: 'weeks'`
- * has no equivalent in Weft's `Duration` string grammar (`ms|s|m|h|d` only;
- * verified against `weft/src/core/scheduler/duration.ts`), so emitting
- * milliseconds sidesteps that gap entirely rather than approximating weeks
- * as `"7d"` × every.
+ * (`cron` | `every`). An interval resolves to milliseconds, which the Bureau
+ * path turns back into its duration text (`bureauSpecOf`). The zone travels
+ * separately: see {@link scheduleValueTimeZone}.
  */
 export function scheduleValueToWireSpec(value: ScheduleValue): ScheduleSpec {
-  if (value.mode === 'cron') return { cron: value.expression };
-  return { every: value.every * CINDER_INTERVAL_UNIT_MS[value.unit] };
+  if ('cron' in value) return { cron: value.cron };
+  return { every: value.every.count * CINDER_INTERVAL_UNIT_MS[value.every.unit] };
 }
 
-type IntervalScheduleValue = Extract<ScheduleValue, { mode: 'interval' }>;
+/**
+ * The zone to send with a builder value: its `timeZone` for a cron, and `undefined` for an
+ * interval, which counts elapsed time and which Weft and the Bureau refuse a zone for.
+ */
+export function scheduleValueTimeZone(value: ScheduleValue): string | undefined {
+  return 'cron' in value ? value.timeZone : undefined;
+}
 
-/** Reduces a millisecond interval to the largest whole Cinder-supported unit (minutes/hours/days/weeks) that evenly divides it, falling back to minutes (rounded up) for a non-dividing value. */
-export function intervalMsToScheduleValue(intervalMs: number): IntervalScheduleValue {
-  if (intervalMs % CINDER_INTERVAL_UNIT_MS.weeks === 0) {
-    return { mode: 'interval', every: intervalMs / CINDER_INTERVAL_UNIT_MS.weeks, unit: 'weeks' };
-  }
-  if (intervalMs % CINDER_INTERVAL_UNIT_MS.days === 0) {
-    return { mode: 'interval', every: intervalMs / CINDER_INTERVAL_UNIT_MS.days, unit: 'days' };
-  }
+/** The zone a persisted cadence is read in: its own for a cron, and `undefined` for an interval. */
+export function cadenceTimeZone(cadence: ScheduleCadence): string | undefined {
+  return cadence.cronExpression !== undefined ? (cadence.timeZone ?? 'UTC') : undefined;
+}
+
+type IntervalScheduleValue = Extract<ScheduleValue, { every: unknown }>;
+
+/** Reduces a millisecond interval to whole hours when it divides evenly, else to minutes (rounded, at least one), so a persisted `2d` reopens as every 48 hours. */
+export function intervalMsToScheduleValue(
+  intervalMs: number,
+  timeZone: string,
+): IntervalScheduleValue {
   if (intervalMs % CINDER_INTERVAL_UNIT_MS.hours === 0) {
-    return { mode: 'interval', every: intervalMs / CINDER_INTERVAL_UNIT_MS.hours, unit: 'hours' };
+    return {
+      every: { unit: 'hours', count: intervalMs / CINDER_INTERVAL_UNIT_MS.hours },
+      timeZone,
+    };
   }
   return {
-    mode: 'interval',
-    every: Math.max(1, Math.round(intervalMs / CINDER_INTERVAL_UNIT_MS.minutes)),
-    unit: 'minutes',
+    every: {
+      unit: 'minutes',
+      count: Math.max(1, Math.round(intervalMs / CINDER_INTERVAL_UNIT_MS.minutes)),
+    },
+    timeZone,
   };
 }
 
@@ -252,6 +264,7 @@ export function cadenceOf(schedule: ScheduleCadence): ScheduleCadence {
   return {
     ...(schedule.cronExpression !== undefined ? { cronExpression: schedule.cronExpression } : {}),
     ...(schedule.intervalMs !== undefined ? { intervalMs: schedule.intervalMs } : {}),
+    ...(schedule.timeZone !== undefined ? { timeZone: schedule.timeZone } : {}),
   };
 }
 
@@ -262,10 +275,20 @@ export function cadenceToWireSpec(cadence: ScheduleCadence): ScheduleSpec | unde
   return undefined;
 }
 
-/** Rehydrates a persisted schedule's cadence into a `ScheduleValue` for the edit drawer's `ScheduleBuilder`. */
+/** The zone a builder opens in when a schedule has none to give it: the browser's own. */
+export function browserTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}
+
+/** Rehydrates a persisted schedule's cadence into a `ScheduleValue` for the edit drawer's `ScheduleBuilder`, in the zone the schedule is stored with. */
 export function cadenceToScheduleValue(cadence: ScheduleCadence): ScheduleValue {
-  if (cadence.cronExpression !== undefined)
-    return { mode: 'cron', expression: cadence.cronExpression };
-  if (cadence.intervalMs !== undefined) return intervalMsToScheduleValue(cadence.intervalMs);
-  return { mode: 'interval', every: 15, unit: 'minutes' };
+  const timeZone = cadence.timeZone ?? 'UTC';
+  if (cadence.cronExpression !== undefined) return { cron: cadence.cronExpression, timeZone };
+  if (cadence.intervalMs !== undefined)
+    return intervalMsToScheduleValue(cadence.intervalMs, timeZone);
+  return { every: { unit: 'minutes', count: 15 }, timeZone };
 }

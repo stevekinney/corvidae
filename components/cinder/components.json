@@ -4249,11 +4249,11 @@
       "exportName": "ScheduleBuilder",
       "category": "form",
       "status": "beta",
-      "purpose": "Recurrence-definition control that authors a cron or fixed-interval schedule via presets, raw cron fields, or an interval, alongside an always-visible summary, next-fires preview, and timezone slot.",
+      "purpose": "Recurrence-definition control that reads a schedule as Repeats, At and Time zone, emits a cron or a counted interval with its IANA zone, and reads the schedule back as a sentence with its next runs.",
       "tags": ["schedule", "recurrence", "cron", "form"],
       "useWhen": [
         "Letting a user define when a job or notification recurs, supplying your own date/cron library to compute upcoming fire times.",
-        "You want a friendly presets UI (daily, weekly, monthly) that still round-trips to a portable cron or interval value."
+        "You want plain repeat choices that still round-trip to a portable cron or interval value, with custom cron one choice away."
       ],
       "avoidWhen": [
         {
@@ -4265,7 +4265,7 @@
           "alternative": "date-picker"
         }
       ],
-      "related": ["date-picker", "segmented-control", "input", "time-field"],
+      "related": ["date-picker", "combobox", "input", "time-field"],
       "hasConstraints": false,
       "hasExamples": true,
       "artifacts": {
@@ -4274,9 +4274,9 @@
         "examples": "src/components/schedule-builder/schedule-builder.examples.json"
       },
       "a11y": {
-        "pattern": "WAI-ARIA Tabs",
+        "pattern": "Form group",
         "notes": [
-          "The available authoring modes render as a tablist; each cron field reports validity via aria-invalid and an associated hint/error."
+          "Repeats is a native select; At is hidden for interval repeats; the time zone is a searchable combobox; each custom cron field reports validity via aria-invalid and an associated hint or error."
         ]
       }
     },

@@ -119,6 +119,8 @@ export interface CreateScheduleArgs {
   readonly overlap?: ScheduleOverlapPolicy;
   readonly backfill?: boolean;
   readonly jitter?: Duration;
+  /** The IANA zone a cron `spec` is read in. Left out for an interval, which Weft refuses one for. */
+  readonly timeZone?: string;
   readonly revisionPolicy?: ScheduleRevisionPolicy;
 }
 
@@ -143,6 +145,7 @@ export async function createSchedule(
     ...(args.overlap !== undefined ? { overlap: args.overlap } : {}),
     ...(args.backfill !== undefined ? { backfill: args.backfill } : {}),
     ...(args.jitter !== undefined ? { jitter: args.jitter } : {}),
+    ...(args.timeZone !== undefined ? { timeZone: args.timeZone } : {}),
     ...(args.revisionPolicy !== undefined ? { revisionPolicy: args.revisionPolicy } : {}),
   });
   return { id: handle.id };
@@ -152,7 +155,7 @@ export async function createSchedule(
  * `PATCH /api/v1/schedules/:id` (`weft.schedules.update`).
  *
  * `options` is `ScheduleUpdateOptions` (`description | overlap | backfill |
- * jitter | revisionPolicy`), forwarded as-is. Callers pass
+ * jitter | timeZone | revisionPolicy`), forwarded as-is. Callers pass
  * `ScheduleFormState.toUpdateOptions()`, which already applies the
  * omit-when-unchanged rule to every key: `undefined` (or an absent key)
  * preserves the schedule's current value, and that matters most for
