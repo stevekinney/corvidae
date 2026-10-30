@@ -54,6 +54,26 @@ describe('bureau.agents.versions.list', () => {
     expect(typeof versions[0]?.['savedAt']).toBe('string');
   });
 
+  it('names the principal that created the agent on version 1', async () => {
+    const served = await serve();
+    const created = await rpc(
+      served.keyed,
+      'bureau.agents.definitions.create',
+      { id: 'researcher', definition: DEFINITION },
+      'operator-key',
+    );
+    expect(created.error).toBeUndefined();
+
+    const versions = listOf(
+      await callAs(served.owner, 'bureau.agents.versions.list', { id: 'researcher' }),
+      'versions',
+    );
+
+    expect(versions.map((entry) => [entry['revision'], entry['savedBy']])).toEqual([
+      [1, 'api-key:operator'],
+    ]);
+  });
+
   it('lists a version that never ran, apart from the runs’ own history', async () => {
     const served = await serve();
     const first = await seed(served);

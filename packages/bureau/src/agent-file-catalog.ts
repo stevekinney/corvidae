@@ -314,16 +314,9 @@ const DETAIL_SETTLE_ATTEMPTS = 3;
 
 /** The definition as a caller supplies it. `examples` are not part of the input: the file keeps them. */
 function inputOf(definition: AgentFileDefinition): AgentFileDefinitionInput {
-  return {
-    name: definition.name,
-    description: definition.description,
-    model: definition.model,
-    ...(definition.models === undefined ? {} : { models: definition.models }),
-    tools: definition.tools,
-    skillDescriptors: definition.skillDescriptors,
-    a2a: definition.a2a,
-    instructions: definition.instructions,
-  };
+  // A rest, so a key the definition gains is carried into the input and not dropped here.
+  const { examples: _examples, ...input } = definition;
+  return input;
 }
 
 export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentFileCatalog {

@@ -245,6 +245,42 @@ export interface AgentFileDefinition {
   readonly instructions: string;
 }
 
+/**
+ * Every key of {@link AgentFileDefinition}, in the order a version's `changedKeys` lists them.
+ * Typed as a `Record`, so a key added to the interface and left out here fails the type-check.
+ */
+const definitionKeyTable: Record<keyof AgentFileDefinition, true> = {
+  name: true,
+  description: true,
+  model: true,
+  models: true,
+  tools: true,
+  skillDescriptors: true,
+  a2a: true,
+  examples: true,
+  instructions: true,
+};
+
+/** The keys of {@link AgentFileDefinition}, which a copy or a comparison of one walks. */
+export const AGENT_FILE_DEFINITION_KEYS = Object.freeze(
+  Object.keys(definitionKeyTable) as (keyof AgentFileDefinition)[],
+);
+
+type AssertTrue<Condition extends true> = Condition;
+
+/**
+ * Compiles only while {@link agentFileDefinitionSchema} names exactly the keys of
+ * {@link AgentFileDefinition}: a stored definition is parsed through the schema, which drops a key
+ * it does not name, so a key missing from it would be lost from every version read back.
+ */
+export type AgentFileDefinitionSchemaIsExhaustive = AssertTrue<
+  [keyof AgentFileDefinition] extends [keyof z.output<typeof agentFileDefinitionSchema>]
+    ? [keyof z.output<typeof agentFileDefinitionSchema>] extends [keyof AgentFileDefinition]
+      ? true
+      : false
+    : false
+>;
+
 /** What a caller supplies to `create` or `update`; the defaults are the file's. */
 export interface AgentFileDefinitionInput {
   readonly name?: string | undefined;

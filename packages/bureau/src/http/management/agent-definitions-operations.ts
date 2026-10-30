@@ -668,7 +668,7 @@ export const agentVersionsListOperation = defineOperation<
   mcpExposable: false,
   summary: 'List the saved versions of an agent',
   description:
-    'Lists the versions of the agent’s definition, newest first, each with its `revision`, the file `hash`, when it was saved (`savedAt`), who saved it (`savedBy`, or `null` for an edit made to the file directly), the whole `definition`, and the `changedKeys` that differ from the version before it (a change to the instructions alone gives `["instructions"]`). Every save and every direct edit is one version, whether or not the agent ran, and a version outlives the runs that used it. Bureau keeps the newest 50 and any older version a retained run still references. A code-defined agent has none. `bureau.agents.definitions.revisions` is the history of the runs, not of the saves. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else, and an identifier with no agent, is answered `NotFound`.',
+    'Lists the versions of the agent’s definition, newest first, each with its `revision`, the file `hash`, when it was saved (`savedAt`), who saved it (`savedBy`, or `null` for an edit made to the file directly), the whole `definition`, and the `changedKeys` that differ from the version before it (a change to the instructions alone gives `["instructions"]`). Every save and every direct edit is one version, whether or not the agent ran, and a version outlives the runs that used it. Bureau keeps the newest 50 and any older version a retained run still references. A code-defined agent has none. `bureau.agents.definitions.revisions` is the history of the runs, not of the saves. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else, and an identifier with neither an agent nor a stored version, is answered `NotFound`; a deleted agent still lists the versions it kept.',
   destructive: false,
   tags: ['Agents'],
   inputSchema: getInput,
@@ -739,10 +739,12 @@ export const agentVersionsRestoreOperation = defineOperation<
         expectedHash: input.expectedHash,
         savedBy: ownerOfPrincipal(principal),
       });
+      // Read before the audit write is awaited, so a save that settles during it is not reported
+      // as this restore's revision.
+      const listing = definitions.agents.list().find((candidate) => candidate.id === input.id);
       if (result.hash !== input.expectedHash) {
         await audit(host, principal, 'agent.updated', result, input.expectedHash);
       }
-      const listing = definitions.agents.list().find((candidate) => candidate.id === input.id);
       return { ...result, revision: listing?.definitionRevision ?? null };
     } catch (error) {
       return faultOf(error, input.id, input.expectedHash);

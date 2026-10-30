@@ -425,7 +425,8 @@ export function createAgentCatalog<D extends AgentDefinitions>(
       return files?.onChange(listener) ?? (() => undefined);
     },
     read: async (id) => requireFiles().read(id),
-    create: async (id, definition) => requireFiles().create(id, definition),
+    create: async (id, definition, writeOptions) =>
+      requireFiles().create(id, definition, writeOptions),
     update: async (id, definition, writeOptions) =>
       requireFiles().update(id, definition, writeOptions),
     delete: async (id, writeOptions) => requireFiles().delete(id, writeOptions),

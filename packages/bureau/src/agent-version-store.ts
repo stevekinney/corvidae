@@ -48,7 +48,11 @@ import { isDeepStrictEqual } from 'node:util';
 
 import type { TextValueStore } from '@lostgradient/storage';
 
-import { type AgentFileDefinition, agentFileDefinitionSchema } from './agent-file';
+import {
+  AGENT_FILE_DEFINITION_KEYS,
+  type AgentFileDefinition,
+  agentFileDefinitionSchema,
+} from './agent-file';
 
 export const AGENT_VERSION_KEY_PREFIX = 'bureau-agent-version:v1:';
 
@@ -86,19 +90,6 @@ export interface AgentVersionInput {
   readonly retainedRevisions?: (() => Promise<ReadonlySet<number>>) | undefined;
 }
 
-/** The definition's keys in the order {@link AgentVersionRecord.changedKeys} lists them. */
-const DEFINITION_KEYS = [
-  'name',
-  'description',
-  'model',
-  'models',
-  'tools',
-  'skillDescriptors',
-  'a2a',
-  'examples',
-  'instructions',
-] as const satisfies readonly (keyof AgentFileDefinition)[];
-
 /** The key of the version of `id` at `revision`. */
 export function agentVersionKey(id: string, revision: number): string {
   return `${AGENT_VERSION_KEY_PREFIX}${id}:${revision}`;
@@ -117,7 +108,7 @@ export function changedDefinitionKeys(
   previous: AgentFileDefinition | undefined,
   next: AgentFileDefinition,
 ): string[] {
-  return DEFINITION_KEYS.filter((key) =>
+  return AGENT_FILE_DEFINITION_KEYS.filter((key) =>
     previous === undefined ? next[key] !== undefined : !isDeepStrictEqual(previous[key], next[key]),
   );
 }
