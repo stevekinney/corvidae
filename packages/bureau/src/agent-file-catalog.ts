@@ -216,6 +216,12 @@ export interface AgentFileCatalogOptions {
    */
   readonly approvalSecret?: string | undefined;
   /**
+   * The tools a person allowed for the rest of the chat a run belongs to (COR-1828), read when the
+   * run's tool call is decided. Omitted, nothing is remembered. A run whose context names no run id
+   * has no chat to read, so its calls ask as the agent file says.
+   */
+  readonly rememberedTools?: ((runId: string) => Promise<ReadonlySet<string>>) | undefined;
+  /**
    * Reads a secret answer back for a tool that declares `acceptsSecrets` (COR-1920). A file
    * agent's per-run toolbox is built here, so it is handed the resolver the Bureau's own toolbox
    * has; without one such a tool sees no secret.
@@ -628,12 +634,31 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       ...(Object.keys(tools).length === 0 ? {} : { tools }),
       // Built for each run (COR-1913): the hook is the agent's per-tool approval, and the secret
       // signs the approvals it raises, so a restart can still resolve one.
-      toolboxOptions: () => ({
-        // Only the agent's own tools: the toolbox also holds the tools Bureau adds to a run.
-        policy: createToolApprovalHooks(definition.toolApproval, { tools: definition.tools }),
-        ...(options.approvalSecret === undefined ? {} : { approvalSecret: options.approvalSecret }),
-        ...(options.secretResolver === undefined ? {} : { secretResolver: options.secretResolver }),
-      }),
+      toolboxOptions: (context) => {
+        const runId = context?.runId;
+        const rememberedTools = options.rememberedTools;
+        return {
+          // Only the agent's own tools: the toolbox also holds the tools Bureau adds to a run.
+          policy: createToolApprovalHooks(definition.toolApproval, {
+            tools: definition.tools,
+            // A tool a person allowed for the rest of this chat skips its `on-changes` ask.
+            ...(rememberedTools === undefined || runId === undefined
+              ? {}
+              : {
+                  remembered: async (toolName: string) => {
+                    const granted = await rememberedTools(runId);
+                    return granted.has(toolName);
+                  },
+                }),
+          }),
+          ...(options.approvalSecret === undefined
+            ? {}
+            : { approvalSecret: options.approvalSecret }),
+          ...(options.secretResolver === undefined
+            ? {}
+            : { secretResolver: options.secretResolver }),
+        };
+      },
       // A call that asks parks the run on the approval: the answer comes from a person, not the
       // model, and a model that is told "action required" would only ask again.
       stopWhen: [stopWhen.pendingApproval(), stopWhen.noToolCalls()],

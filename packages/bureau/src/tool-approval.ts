@@ -11,6 +11,13 @@
  * tool set to `blocked` is denied whatever the toolbox says. Chat permission modes work the same
  * way, only tightening.
  *
+ * A person who approves a call can ask to allow its tool for the rest of the chat (COR-1828,
+ * `remember` on `reviews.resolve`). {@link ToolApprovalHooksOptions.remembered} carries that grant
+ * into the hook, which consults it for a tool whose value is `on-changes` and for no other: a grant
+ * skips the next `on-changes` ask, and never loosens `always`, `blocked`, or `never`. Because the
+ * toolbox composes the hook with its own policy by the most restrictive verdict, a grant also never
+ * loosens an agent-wide always mode or a read-only restriction the toolbox applies.
+ *
  * @module tool-approval
  */
 
@@ -61,6 +68,13 @@ export interface ToolApprovalHooksOptions {
    * they are governed. Omitted, every tool in the toolbox is.
    */
   readonly tools?: readonly string[] | undefined;
+  /**
+   * Whether a person allowed `toolName` for the rest of this chat (COR-1828). It is asked, at the
+   * time of the call, only for a tool whose value is `on-changes`; `true` lets that call through
+   * without asking. It is never asked for `always`, `blocked` or `never`, so a grant cannot change
+   * what those answer. A rejection counts as `false`: when the grant cannot be read, the call asks.
+   */
+  readonly remembered?: ((toolName: string) => boolean | Promise<boolean>) | undefined;
 }
 
 /**
@@ -85,6 +99,23 @@ export function createToolApprovalHooks(
       createApprovalPolicyHooks({ mode: ARMORER_MODE[mode] }),
     ]),
   );
+  const remembered = options.remembered;
+  /** The verdict `on-changes` gave, or `allow` when it asked and a person allowed the tool for this chat. */
+  async function allowWhenRemembered(
+    decided: ToolPolicyDecision | Promise<ToolPolicyDecision>,
+    toolName: string,
+  ): Promise<ToolPolicyDecision> {
+    const verdict = await decided;
+    // Only an ask is ever lifted: an allow stays one, and a deny (which `on-changes` never gives) too.
+    if (verdict.status !== 'needs_approval') return verdict;
+    let granted = false;
+    try {
+      granted = await (remembered as NonNullable<typeof remembered>)(toolName);
+    } catch {
+      // The grant cannot be read, so the call asks.
+    }
+    return granted ? { allow: true, status: 'allow' } : verdict;
+  }
   return {
     beforeExecute(context: ToolPolicyContext): ToolPolicyDecision | Promise<ToolPolicyDecision> {
       if (governed !== undefined && !governed.has(context.toolName)) {
@@ -92,8 +123,10 @@ export function createToolApprovalHooks(
       }
       const mode = modes.get(context.toolName) ?? defaultMode;
       // Every mode has a hook, built above.
-      return (hooksOfMode.get(mode) as ToolPolicyHooks).beforeExecute?.(context) as
+      const decided = (hooksOfMode.get(mode) as ToolPolicyHooks).beforeExecute?.(context) as
         ToolPolicyDecision | Promise<ToolPolicyDecision>;
+      if (mode !== 'on-changes' || remembered === undefined) return decided;
+      return allowWhenRemembered(decided, context.toolName);
     },
   };
 }

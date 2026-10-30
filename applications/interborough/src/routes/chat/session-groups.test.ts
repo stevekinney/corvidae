@@ -33,6 +33,7 @@ const humanWait = (
   prompt: string | undefined,
   requestedAt = 1,
 ): BureauReview => ({
+  source: 'bureau',
   id: `review-${requestedAt}`,
   runId: 'run',
   kind: 'human-wait',
@@ -49,6 +50,7 @@ const approval = (
   message: string | undefined,
   requestedAt = 1,
 ): BureauReview => ({
+  source: 'bureau',
   id: `approval-${requestedAt}`,
   runId: 'run',
   kind: 'tool-approval',

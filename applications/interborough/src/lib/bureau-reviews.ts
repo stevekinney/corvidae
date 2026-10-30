@@ -10,7 +10,27 @@ import { z } from 'zod';
 
 import { callBureau } from './bureau-client.ts';
 
+/**
+ * How a review left the queue: who closed it, when, and what was decided. A secret answer is only
+ * ever a reference here (`secretRefs`), and the answer a digest; the value is never sent.
+ */
+const resolutionSchema = z.object({
+  /** Absent when the Bureau closed the review itself (an expiry, a revocation, a cancellation). */
+  decision: z.enum(['approve', 'deny', 'reject']).optional(),
+  decidedBy: z.string(),
+  /** Epoch milliseconds the review was closed. */
+  decidedAt: z.number(),
+  reason: z.string().optional(),
+  answerDigest: z.string().optional(),
+  secretRefs: z.array(z.string()).optional(),
+});
+
 const reviewCommon = {
+  /**
+   * Where the review comes from; the Bureau's own say `bureau`. The Bureau always says, so a stand-in
+   * that leaves it off is read as its own.
+   */
+  source: z.literal('bureau').default('bureau'),
   id: z.string(),
   runId: z.string(),
   agentName: z.string().optional(),
@@ -27,6 +47,8 @@ const reviewCommon = {
     'canceled',
     'superseded',
   ]),
+  /** Present once the review has left the queue. */
+  resolution: resolutionSchema.optional(),
 };
 
 const toolActionSchema = z.discriminatedUnion('type', [
@@ -75,8 +97,46 @@ export const bureauReviewSchema = z.discriminatedUnion('kind', [
   }),
 ]);
 
+/**
+ * A workflow review of the durable engine, listed beside the Bureau's own (`source: 'engine'`).
+ * It keeps the engine's words: `pending` or `completed`, and a decision of `approved`, `rejected`
+ * or `needs-changes`.
+ */
+export const engineReviewSchema = z.object({
+  source: z.literal('engine'),
+  kind: z.literal('engine-review'),
+  id: z.string(),
+  /** The workflow the review belongs to. */
+  runId: z.string(),
+  requestedAt: z.number(),
+  ageMilliseconds: z.number(),
+  status: z.enum(['pending', 'completed']),
+  reviewType: z.string(),
+  reviewers: z.array(z.string()),
+  allowPartial: z.boolean(),
+  artifact: z.unknown().optional(),
+  resolution: z
+    .object({
+      decision: z.enum(['approved', 'rejected', 'needs-changes']),
+      decidedBy: z.string(),
+      decidedAt: z.number(),
+      reason: z.string().optional(),
+    })
+    .optional(),
+});
+
+/** One item of `bureau.reviews.list`: a Bureau review or an engine review. */
+export const listedReviewSchema = z.discriminatedUnion('kind', [
+  ...bureauReviewSchema.options,
+  engineReviewSchema,
+]);
+
 /** A review waiting on a person: either a tool approval or a human wait. */
 export type BureauReview = z.infer<typeof bureauReviewSchema>;
+/** A workflow review of the durable engine. */
+export type EngineReview = z.infer<typeof engineReviewSchema>;
+/** One item of the merged review list. */
+export type ListedReview = z.infer<typeof listedReviewSchema>;
 /** A review that asks whether a gated tool call may run. */
 export type BureauToolApproval = Extract<BureauReview, { kind: 'tool-approval' }>;
 /** A review that asks a person for the input a run is parked on. */
@@ -84,12 +144,50 @@ export type BureauHumanWait = Extract<BureauReview, { kind: 'human-wait' }>;
 
 type Options = { readonly signal?: AbortSignal };
 
-/** The reviews waiting for a decision, from the caller's own runs (`bureau.reviews.list`). */
+const listAnswerSchema = z.object({
+  reviews: z.array(listedReviewSchema),
+  // The Bureau always says; a stand-in that leaves it off ends the list.
+  nextPageToken: z.string().nullish(),
+});
+
+/** What `bureau.reviews.list` filters and pages by. */
+export type ReviewsQuery = {
+  /** `pending` (the default) or `resolved`, the reviews a person decided. */
+  readonly status?: 'pending' | 'resolved';
+  /** With `resolved`: only those decided at or after this instant, in epoch milliseconds. */
+  readonly resolvedAfter?: number;
+  /** The most reviews in one page, from 1 to 100; the Bureau's default is 50. */
+  readonly limit?: number;
+  /** The `nextPageToken` of the previous page, for the same `status` and `resolvedAfter`. */
+  readonly pageToken?: string;
+};
+
+/**
+ * One page of the merged review list (`bureau.reviews.list`): the Bureau's reviews and, for a caller
+ * who may read the engine's, its workflow reviews, in one order. Pending ones run oldest request
+ * first; resolved ones, latest decision first. `nextPageToken` is `null` on the last page.
+ */
+export async function pageReviews(
+  query: ReviewsQuery = {},
+  options?: Options,
+): Promise<{ readonly reviews: readonly ListedReview[]; readonly nextPageToken: string | null }> {
+  const page = listAnswerSchema.parse(await callBureau('bureau.reviews.list', query, options));
+  return { reviews: page.reviews, nextPageToken: page.nextPageToken ?? null };
+}
+
+/**
+ * The reviews waiting for a decision, from the caller's own runs (`bureau.reviews.list`), every
+ * page of them. The engine's workflow reviews are left out: the Reviews screen reads those itself.
+ */
 export async function listBureauReviews(options?: Options): Promise<readonly BureauReview[]> {
-  const body = z
-    .object({ reviews: z.array(bureauReviewSchema) })
-    .parse(await callBureau('bureau.reviews.list', {}, options));
-  return body.reviews;
+  const reviews: BureauReview[] = [];
+  let pageToken: string | undefined;
+  do {
+    const page = await pageReviews(pageToken === undefined ? {} : { pageToken }, options);
+    for (const review of page.reviews) if (review.source === 'bureau') reviews.push(review);
+    pageToken = page.nextPageToken ?? undefined;
+  } while (pageToken !== undefined);
+  return reviews;
 }
 
 /** One review by its id, pending or not. One the caller may not see is a not-found fault. */
@@ -110,6 +208,8 @@ const resolveAnswerSchema = z.object({
   /** `superseded` means the approval was gated again and stays pending, so the tool did not run. */
   receipt: z.enum(['applied', 'rejected', 'superseded']),
   feedback: z.string().optional(),
+  /** Present when the call asked to remember: whether the grant was stored with the decision. */
+  remembered: z.boolean().optional(),
 });
 
 /**
@@ -149,6 +249,8 @@ export function isReviewRoundChanged(error: unknown): boolean {
 /**
  * Approves, denies, or rejects a review (`bureau.reviews.resolve`). A rejection needs its reason.
  * `round` is the round of the tool approval the person was shown, which fences the decision on it.
+ * `remember` approves a tool approval and allows its tool for the rest of the chat; the Bureau
+ * refuses it on a human wait and on a deny or reject.
  */
 export async function resolveBureauReview(
   input: {
@@ -156,6 +258,7 @@ export async function resolveBureauReview(
     readonly decision: ReviewDecision;
     readonly reason?: string;
     readonly round?: number;
+    readonly remember?: boolean;
   },
   options?: Options,
 ): Promise<ReviewResolution> {

@@ -1038,6 +1038,17 @@ export interface ResolveReviewInput {
    * REQUIRED (non-empty) when `decision` is `'reject'`.
    */
   reason?: string;
+  /**
+   * COR-1828 — `tool-approval` approve only: also allow this tool for the rest of the chat. The
+   * grant (`approvalGrants: [toolName]` on the session's metadata) is stored in the same commit as
+   * the decision, and it ends with the chat: it is not carried into a fork, and a deleted session
+   * takes it along. It only ever skips an `on-changes` ask. It never loosens a tool set to
+   * `always` or `blocked`, an agent-wide always mode, or a read-only restriction, because those
+   * answer `ask` or `deny` whatever the grant says (the registry hook composes by the most
+   * restrictive verdict). Refused with `BAD_REQUEST`, before anything is decided, on a human wait
+   * and on a `deny` or `reject`.
+   */
+  remember?: boolean;
 }
 
 export interface ResolveReviewResult {
@@ -1058,6 +1069,64 @@ export interface ResolveReviewResult {
    * id with its {@link PendingToolApprovalReview.round} incremented.
    */
   superseded?: true;
+  /**
+   * COR-1828 — set when the input asked to `remember` the tool: `true` once the grant was stored
+   * with the decision, `false` when the decision did not store it. A superseded resolution stores
+   * no grant, because the tool did not run.
+   */
+  remembered?: boolean;
+}
+
+/**
+ * What {@link BureauReviews.get} adds to a review: its current `status`, and, once it has left the
+ * queue, who closed it and when (COR-1828). Read from the review's resolved-review record when it
+ * has one, otherwise from the chronologically-last `review.*` audit entry.
+ */
+export interface ReviewResolutionFields {
+  /** The review's current lifecycle status. */
+  status: ReviewStatus;
+  /** The principal that closed it: the decider, or a `system:*` principal for an expiry, a revocation or a cancellation. */
+  resolvedBy?: string;
+  /** Epoch milliseconds it was closed. */
+  resolvedAt?: number;
+  /** The note given with the decision. */
+  resolutionReason?: string;
+  /** A human wait's approved answer as a digest over its reference form (see {@link ResolvedReview.answerDigest}). */
+  answerDigest?: string;
+  /** The references the approved answer's secret fields were stored under. */
+  secretRefs?: readonly string[];
+}
+
+/**
+ * A review once a person has decided it (COR-1828): the review as it was asked, who decided it,
+ * what they decided, and when. Kept under `bureau-resolved-review:v1:` until `retention.audit`
+ * retires it. A tool approval's signed token and binding are not part of it, and neither is a
+ * secret answer: it holds the answer's SHA-256 over its reference form and the references the
+ * answer's secret fields were stored under, never a plaintext or a digest of one.
+ */
+export interface ResolvedReview {
+  /** The review as it was asked, with `status` set to the decision's (`approved`, `denied` or `rejected`). */
+  readonly review: PendingReview & { status: ReviewStatus };
+  /** What was decided. */
+  readonly decision: 'approve' | 'deny' | 'reject';
+  /** The principal that decided. */
+  readonly decidedBy: string;
+  /** Epoch milliseconds the decision was committed. */
+  readonly decidedAt: number;
+  /**
+   * The owner of record of the review's run when it was decided, so the record stays listed for its
+   * owner after the run and its session are deleted.
+   */
+  readonly owner: string;
+  /** The note given with the decision; always present for a `reject`. */
+  readonly reason?: string | undefined;
+  /**
+   * A human wait's approved answer: SHA-256 of its canonical JSON with every secret field reduced
+   * to its `{ secretRef }`. Absent for a tool approval and for a `deny` or `reject`.
+   */
+  readonly answerDigest?: string | undefined;
+  /** The references (`{ secretRef }`) the answer's secret fields were stored under; absent when it had none. */
+  readonly secretRefs?: readonly string[] | undefined;
 }
 
 /**
@@ -1257,6 +1326,16 @@ export interface BureauReviews {
   list(): PendingReview[];
 
   /**
+   * COR-1828 — the reviews a person has decided (approved, denied or rejected) and that
+   * `retention.audit` has not retired, newest decision first. `resolvedAfter` keeps only those
+   * decided at or after that instant (epoch milliseconds). Reads the Bureau's resolved-review
+   * records, so a Bureau with no key-value store (an ephemeral one) answers empty. A review that
+   * expired, was revoked or was canceled has no decision and is not listed; `get` still answers it
+   * from the audit trail.
+   */
+  listResolved(filter?: { readonly resolvedAfter?: number }): Promise<ResolvedReview[]>;
+
+  /**
    * Look up one review by id, live or resolved (AB-46). For a still-pending
    * id this is `reviews.list()`'s live scan. For a resolved id, this
    * reconstructs `PendingReview & { status }` from the chronologically-last
@@ -1264,9 +1343,7 @@ export interface BureauReviews {
    * `undefined` when no audit trail is configured (ephemeral bureau) or when
    * `id` matches nothing at all.
    */
-  get(
-    id: string,
-  ): Promise<(PendingReview & { status: ReviewStatus; resolvedBy?: string }) | undefined>;
+  get(id: string): Promise<(PendingReview & ReviewResolutionFields) | undefined>;
 
   /**
    * The human waits a run is still parked on, read from durable state (COR-1579), so a process

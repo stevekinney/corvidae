@@ -174,3 +174,92 @@ describe('createToolApprovalHooks', () => {
     expect(await outcomeOf(toolbox, 'subject')).toBe('success');
   });
 });
+
+describe('a remembered tool (COR-1828)', () => {
+  const REMEMBERED: Readonly<Record<ToolApprovalMode, Readonly<Record<Kind, ApprovalStatus>>>> = {
+    // A grant lifts the `on-changes` ask of a changing tool and nothing else.
+    never: HOOK_ALONE.never,
+    'on-changes': { 'read-only': 'allow', mutating: 'allow' },
+    always: HOOK_ALONE.always,
+    blocked: HOOK_ALONE.blocked,
+  };
+  const RESTRICTIONS = {
+    allow: { mode: 'never', status: 'allow' },
+    ask: { mode: 'always', status: 'ask' },
+    // A restriction that refuses every call, as a read-only mode refuses a call that changes things.
+    deny: { mode: 'deny', status: 'deny' },
+  } as const satisfies Record<string, { mode: ApprovalMode; status: ApprovalStatus }>;
+
+  for (const mode of TOOL_APPROVAL_MODES) {
+    for (const kind of ['read-only', 'mutating'] as const) {
+      for (const restriction of ['allow', 'ask', 'deny'] as const) {
+        it(`decides a ${kind} tool set to ${mode} that is remembered, under a toolbox that ${restriction === 'allow' ? 'allows' : restriction === 'ask' ? 'asks' : 'denies'}`, async () => {
+          const toolbox = createToolbox([subject(METADATA[kind])], {
+            approvalPolicy: { mode: RESTRICTIONS[restriction].mode },
+            policy: createToolApprovalHooks(
+              { subject: mode },
+              { remembered: async (toolName) => toolName === 'subject' },
+            ),
+          });
+          const expected = combineApprovalStatuses(
+            RESTRICTIONS[restriction].status,
+            REMEMBERED[mode][kind],
+          );
+
+          expect(await outcomeOf(toolbox)).toBe(OUTCOME[expected]);
+        });
+      }
+    }
+  }
+
+  it('lifts the ask of the tool that was remembered and not of another', async () => {
+    const other = createTool({
+      name: 'other',
+      description: 'Another tool that changes things',
+      input: z.object({}),
+      metadata: { mutates: true },
+      execute: async () => ({ ran: true }),
+    });
+    const toolbox = createToolbox([subject({ mutates: true }), other], {
+      policy: createToolApprovalHooks({}, { remembered: (toolName) => toolName === 'subject' }),
+    });
+
+    expect(await outcomeOf(toolbox, 'subject')).toBe('success');
+    expect(await outcomeOf(toolbox, 'other')).toBe('action_required');
+  });
+
+  it('asks when the grant cannot be read', async () => {
+    const toolbox = createToolbox([subject({ mutates: true })], {
+      policy: createToolApprovalHooks(
+        {},
+        {
+          remembered: () => {
+            throw new Error('The session could not be read.');
+          },
+        },
+      ),
+    });
+
+    expect(await outcomeOf(toolbox)).toBe('action_required');
+  });
+
+  it('never asks the grant about a tool whose value is not on-changes', async () => {
+    const asked: string[] = [];
+    for (const mode of ['never', 'always', 'blocked'] as const) {
+      const toolbox = createToolbox([subject({ mutates: true })], {
+        policy: createToolApprovalHooks(
+          { subject: mode },
+          {
+            remembered: (toolName) => {
+              asked.push(toolName);
+              return true;
+            },
+          },
+        ),
+      });
+      await outcomeOf(toolbox);
+    }
+
+    expect(asked).toEqual([]);
+  });
+});

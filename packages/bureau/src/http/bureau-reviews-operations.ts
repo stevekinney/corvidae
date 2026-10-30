@@ -24,10 +24,29 @@
  * state for every running agent run, and get and resolve reach them through the
  * Bureau's own derivation by id.
  *
+ * ## One list for the inbox and its Done tab (COR-1828)
+ *
+ * `bureau.reviews.list` takes `status: 'pending' | 'resolved'` (default `pending`),
+ * `resolvedAfter` (resolved only), `limit` and `pageToken`, and merges two sources into
+ * one ordered list: the Bureau's own reviews (`source: 'bureau'`, a tool approval or a human
+ * wait) and, for a caller holding the Weft scope `reviews:read`, the durable engine's workflow
+ * reviews (`source: 'engine'`, `kind: 'engine-review'`; its `completed` is this list's `resolved`).
+ * A caller without that scope sees Bureau items only. Pending items run oldest request first
+ * (`requestedAt` ascending); resolved ones, most recent decision first (`resolution.decidedAt`
+ * descending); ties break on source (`bureau` first), then id. A page token is a position in that
+ * order, bound to the filters it was issued for: under other filters it is `InvalidParams`.
+ * An engine review keeps its engine words: `status` is `pending` or `completed`, and
+ * `resolution.decision` is `approved`, `rejected` or `needs-changes`, which Bureau's `approve`,
+ * `deny` and `reject` do not stand for.
+ *
  * @module bureau-reviews-operations
  */
 
-import { defineOperation, type OperationFault } from '@lostgradient/weft';
+import {
+  defineOperation,
+  type OperationFault,
+  type RegistryAgnosticEngine,
+} from '@lostgradient/weft';
 import { z } from 'zod';
 
 import { reviewReceiptOf } from '../tasks/respond-to-task.ts';
@@ -42,7 +61,8 @@ import type {
   Bureau,
   PendingReview,
   PendingToolApprovalReview,
-  ReviewStatus,
+  ResolvedReview,
+  ReviewResolutionFields,
   BureauReviews,
 } from '../types.ts';
 import type { BureauScope } from './bureau-scopes.ts';
@@ -55,7 +75,7 @@ export type BureauReviewsOperationHost = {
      * COR-1579: what the list reads to add the parks of runs another process holds. A host that
      * provides neither lists this process's reviews alone.
      */
-    Partial<Pick<BureauReviews, 'pendingOf'> & Pick<Bureau, 'durableEngine'>>;
+    Partial<Pick<BureauReviews, 'pendingOf' | 'listResolved'> & Pick<Bureau, 'durableEngine'>>;
 } & BureauOwnershipHost;
 
 /** How many running agent runs one `engine.list` page reads. */
@@ -106,15 +126,39 @@ const reviewStatusSchema = z.enum([
   'superseded',
 ]);
 
+/**
+ * How a review left the queue, once it has: who closed it and when, and, for a decision, what was
+ * decided. The note and what the Bureau kept of an approved answer ride along. An answer is never
+ * here: `answerDigest` is a digest over its reference form, and `secretRefs` names the references
+ * its secret fields were stored under (COR-1920), never a secret's value.
+ */
+const bureauResolutionSchema = z.object({
+  /** Absent when the Bureau closed the review itself (an expiry, a revocation, a cancellation). */
+  decision: z.enum(['approve', 'deny', 'reject']).optional(),
+  /** The principal that decided, or the `system:*` principal that closed the review. */
+  decidedBy: z.string(),
+  /** Epoch milliseconds the review was closed. */
+  decidedAt: z.number(),
+  reason: z.string().optional(),
+  /** A human wait's approved answer: SHA-256 of its canonical JSON with secret fields as `{ secretRef }`. */
+  answerDigest: z.string().optional(),
+  secretRefs: z.array(z.string()).optional(),
+});
+
 const reviewCommonFields = {
+  /** Where the review comes from; every review of the Bureau's own says `bureau`. */
+  source: z.literal('bureau'),
   id: z.string(),
   runId: z.string(),
   agentName: z.string().optional(),
   /** Epoch milliseconds the review was requested. */
   requestedAt: z.number(),
   /** Milliseconds between `requestedAt` and the moment the review was read. */
+  /** For a resolved review, the milliseconds between `requestedAt` and the decision. */
   ageMilliseconds: z.number(),
   status: reviewStatusSchema,
+  /** Present once the review has left the queue. */
+  resolution: bureauResolutionSchema.optional(),
 };
 
 const operationSchema = z.discriminatedUnion('kind', [
@@ -188,13 +232,55 @@ const humanWaitReviewSchema = z.object({
   inputSchema: z.record(z.string(), z.unknown()).optional(),
 });
 
-/** One review as it crosses the wire. */
+/**
+ * A human review request of a durable workflow, as the engine keeps it (`ctx.waitForReview`), listed
+ * beside the Bureau's own reviews (COR-1828). Its words are the engine's: `status` is `pending` or
+ * `completed`, and a decision is `approved`, `rejected` or `needs-changes`. Its `id` is the engine's
+ * review key and `runId` the workflow it belongs to. Resolving one is the engine's operation
+ * (`weft.reviews.decide`), not `bureau.reviews.resolve`.
+ */
+const engineReviewSchema = z.object({
+  source: z.literal('engine'),
+  kind: z.literal('engine-review'),
+  id: z.string(),
+  /** The workflow the review belongs to. */
+  runId: z.string(),
+  /** Epoch milliseconds the review was requested. */
+  requestedAt: z.number(),
+  /** Milliseconds between `requestedAt` and the moment the review was read. */
+  ageMilliseconds: z.number(),
+  status: z.enum(['pending', 'completed']),
+  reviewType: z.string(),
+  reviewers: z.array(z.string()),
+  allowPartial: z.boolean(),
+  /** What the reviewer is asked to judge; whatever the workflow put there. */
+  artifact: z.unknown().optional(),
+  resolution: z
+    .object({
+      decision: z.enum(['approved', 'rejected', 'needs-changes']),
+      decidedBy: z.string(),
+      decidedAt: z.number(),
+      reason: z.string().optional(),
+    })
+    .optional(),
+});
+
+/** One review of the Bureau's own as it crosses the wire. */
 export const bureauReviewSchema = z.discriminatedUnion('kind', [
   toolApprovalReviewSchema,
   humanWaitReviewSchema,
 ]);
 
 export type BureauReview = z.infer<typeof bureauReviewSchema>;
+
+/** One item of `bureau.reviews.list`: a Bureau review, or a workflow review of the engine. */
+export const listedReviewSchema = z.discriminatedUnion('kind', [
+  toolApprovalReviewSchema,
+  humanWaitReviewSchema,
+  engineReviewSchema,
+]);
+
+export type ListedReview = z.infer<typeof listedReviewSchema>;
 
 type ToolAction = PendingToolApprovalReview['approval']['action'];
 
@@ -228,21 +314,57 @@ function projectAction(action: ToolAction): z.input<typeof toolActionSchema> {
   };
 }
 
+const DECISION_OF_STATUS = new Map<string, 'approve' | 'deny' | 'reject'>([
+  ['approved', 'approve'],
+  ['denied', 'deny'],
+  ['rejected', 'reject'],
+]);
+
+/**
+ * How a review that has left the queue was closed, when the Bureau knows who closed it and when.
+ * A decision names what was decided; an expiry, a revocation or a cancellation names the
+ * `system:*` principal and no decision.
+ */
+function projectResolution(review: PendingReview & ReviewResolutionFields): {
+  resolution?: z.input<typeof bureauResolutionSchema>;
+} {
+  if (
+    review.status === 'pending' ||
+    review.resolvedBy === undefined ||
+    review.resolvedAt === undefined
+  ) {
+    return {};
+  }
+  const decision = DECISION_OF_STATUS.get(review.status);
+  return {
+    resolution: {
+      ...(decision === undefined ? {} : { decision }),
+      decidedBy: review.resolvedBy,
+      decidedAt: review.resolvedAt,
+      ...(review.resolutionReason === undefined ? {} : { reason: review.resolutionReason }),
+      ...(review.answerDigest === undefined ? {} : { answerDigest: review.answerDigest }),
+      ...(review.secretRefs === undefined ? {} : { secretRefs: [...review.secretRefs] }),
+    },
+  };
+}
+
 /**
  * Project a review onto its wire shape. The projection is an allowlist, so a
  * field added to {@link PendingReview} later reaches no client until it is added
  * here on purpose.
  */
 export function projectReview(
-  review: PendingReview & { status: ReviewStatus },
+  review: PendingReview & ReviewResolutionFields,
 ): z.input<typeof bureauReviewSchema> {
   const common = {
+    source: 'bureau' as const,
     id: review.id,
     runId: review.runId,
     ...(review.agentName === undefined ? {} : { agentName: review.agentName }),
     requestedAt: review.requestedAt,
     ageMilliseconds: review.ageMilliseconds,
     status: review.status,
+    ...projectResolution(review),
   };
   if (review.kind === 'tool-approval') {
     return {
@@ -384,35 +506,267 @@ async function mayAccessReview(
   return host.ownership.mayAccess({ principal, resourceOwner, operatorScope });
 }
 
+const DEFAULT_PAGE_LIMIT = 50;
+
+const reviewsListInput = z
+  .object({
+    status: z
+      .enum(['pending', 'resolved'])
+      .optional()
+      .describe(
+        'Which reviews to list: `pending` (the default) or `resolved`, the ones a person has decided, which is what a Done tab shows.',
+      ),
+    resolvedAfter: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe(
+        'With `status: "resolved"`: only the reviews decided at or after this instant, in epoch milliseconds.',
+      ),
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(100)
+      .optional()
+      .describe('The most reviews to return in one page, from 1 to 100. Defaults to 50.'),
+    pageToken: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        'The `nextPageToken` of the previous page, to continue that listing. An opaque position, valid only with the `status` and `resolvedAfter` it was issued for.',
+      ),
+  })
+  .refine((input) => input.resolvedAfter === undefined || input.status === 'resolved', {
+    message: '`resolvedAfter` applies to `status: "resolved"`',
+    path: ['resolvedAfter'],
+  });
+
+const reviewsListOutput = z.object({
+  reviews: z.array(listedReviewSchema),
+  /** `null` when no review remains after this page. */
+  nextPageToken: z.string().nullable(),
+});
+
+/** Where an item sits in the merged order: the time it is ordered by, its source, then its id. */
+type ListPosition = {
+  readonly at: number;
+  readonly source: 'bureau' | 'engine';
+  readonly id: string;
+};
+
+type ListEntry = ListPosition & { readonly item: z.input<typeof listedReviewSchema> };
+
+const SOURCE_RANK = { bureau: 0, engine: 1 } as const;
+
+/** Whether `a` comes before `b`: pending oldest request first, resolved latest decision first. */
+function comesBefore(status: 'pending' | 'resolved', a: ListPosition, b: ListPosition): boolean {
+  if (a.at !== b.at) return status === 'pending' ? a.at < b.at : a.at > b.at;
+  if (a.source !== b.source) return SOURCE_RANK[a.source] < SOURCE_RANK[b.source];
+  return a.id < b.id;
+}
+
+/** The filters a page token is bound to. */
+function listFilterKey(input: { status?: string | undefined; resolvedAfter?: number | undefined }) {
+  return `${input.status ?? 'pending'}|${String(input.resolvedAfter ?? '')}`;
+}
+
+function encodePageToken(filters: string, position: ListPosition): string {
+  return Buffer.from(JSON.stringify({ v: 1, filters, ...position })).toString('base64url');
+}
+
+function invalidPageToken(message: string, code: string): OperationFault {
+  return {
+    code: 'InvalidParams',
+    message,
+    data: { issues: [{ path: ['pageToken'], message, code }] },
+  };
+}
+
+/** The position a token holds; a token that is not ours, or that another filter issued, is `InvalidParams`. */
+function decodePageToken(token: string, filters: string): ListPosition {
+  let value: unknown;
+  try {
+    value = JSON.parse(Buffer.from(token, 'base64url').toString('utf8'));
+  } catch {
+    throw invalidPageToken('The page token is not one this list issued', 'page-token-malformed');
+  }
+  const held =
+    typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+  if (
+    held['v'] !== 1 ||
+    typeof held['filters'] !== 'string' ||
+    typeof held['at'] !== 'number' ||
+    (held['source'] !== 'bureau' && held['source'] !== 'engine') ||
+    typeof held['id'] !== 'string'
+  ) {
+    throw invalidPageToken('The page token is not one this list issued', 'page-token-malformed');
+  }
+  if (held['filters'] !== filters) {
+    throw invalidPageToken(
+      'The page token was issued for other filters than this request names',
+      'page-token-filters-changed',
+    );
+  }
+  return { at: held['at'], source: held['source'], id: held['id'] };
+}
+
+/** An engine review as the list shows it. */
+function projectEngineReview(
+  entry: Awaited<ReturnType<RegistryAgnosticEngine['listReviews']>>[number],
+  now: number,
+): z.input<typeof engineReviewSchema> {
+  return {
+    source: 'engine',
+    kind: 'engine-review',
+    id: entry.reviewId,
+    runId: entry.workflowId,
+    requestedAt: entry.createdAt,
+    ageMilliseconds:
+      entry.status === 'completed' ? entry.timestamp - entry.createdAt : now - entry.createdAt,
+    status: entry.status,
+    reviewType: entry.reviewType,
+    reviewers: [...entry.reviewers],
+    allowPartial: entry.allowPartial,
+    artifact: entry.artifact,
+    ...(entry.status === 'completed'
+      ? {
+          resolution: {
+            decision: entry.decision,
+            decidedBy: entry.reviewer,
+            decidedAt: entry.timestamp,
+            ...(entry.feedback === undefined ? {} : { reason: entry.feedback }),
+          },
+        }
+      : {}),
+  };
+}
+
+/** The resolved record, read as {@link BureauReviews.get} reads a closed review. */
+function reviewOfResolved(resolved: ResolvedReview): PendingReview & ReviewResolutionFields {
+  return {
+    ...resolved.review,
+    // The time the review waited for its decision, not the time since it was asked.
+    ageMilliseconds: Math.max(0, resolved.decidedAt - resolved.review.requestedAt),
+    resolvedBy: resolved.decidedBy,
+    resolvedAt: resolved.decidedAt,
+    ...(resolved.reason === undefined ? {} : { resolutionReason: resolved.reason }),
+    ...(resolved.answerDigest === undefined ? {} : { answerDigest: resolved.answerDigest }),
+    ...(resolved.secretRefs === undefined ? {} : { secretRefs: resolved.secretRefs }),
+  };
+}
+
 export const reviewsListOperation = defineOperation<
-  z.ZodObject<Record<string, never>>,
-  z.ZodObject<{ reviews: z.ZodArray<typeof bureauReviewSchema> }>,
+  typeof reviewsListInput,
+  typeof reviewsListOutput,
   BureauReviewsOperationHost
 >({
   name: 'bureau.reviews.list',
   mcpExposable: true,
-  summary: 'List the reviews that are waiting for a decision',
+  summary: 'List the reviews that are waiting for a decision, or that have been decided',
   description:
-    'Returns the pending reviews of the caller’s own runs, which is what an inbox shows; a caller holding `bureau.reviews:read` sees every owner’s. A resolved review is reached by id with `bureau.reviews.get`.',
+    'Returns the reviews of the caller’s own runs, which is what an inbox shows; a caller holding `bureau.reviews:read` sees every owner’s. `status` is `pending` (the default: oldest request first, by `requestedAt`) or `resolved` (the reviews a person decided, latest decision first, by `resolution.decidedAt`, optionally only those decided at or after `resolvedAfter`); each item carries `source`, `bureau` for a tool approval or a question the Bureau holds, and `engine` for a workflow review of the durable engine (`kind: "engine-review"`), which only a caller holding the Weft scope `reviews:read` is shown. Ties break on source, then id. Pages with `limit` (1 to 100, default 50) and `pageToken`; `nextPageToken` is `null` when no review remains. A token is an opaque position in that order, valid only with the `status` and `resolvedAfter` it was issued for; any other token is `InvalidParams`. A resolved review is kept until `retention.audit` retires it, and carries `resolution` (who decided, what, and when); a secret answer appears only as its reference, never its value. A review that expired, was revoked or was canceled has no decision and is not listed as resolved; `bureau.reviews.get` still reads it.',
   destructive: false,
   tags: ['Reviews'],
-  inputSchema: z.object({}),
-  outputSchema: z.object({ reviews: z.array(bureauReviewSchema) }),
+  inputSchema: reviewsListInput,
+  outputSchema: reviewsListOutput,
   producibleFaults: ['InvalidParams'],
   access: { kind: 'authenticated' },
   discoverable: true,
   transports,
   unknownKeyPolicy,
-  invoke: async ({ host, principal }) => {
-    const pending = await pendingReviewsOfEveryProcess(host.reviews);
-    const visible = await Promise.all(
-      pending.map(async (review) => {
-        const allowed = await mayAccessReview(host, principal, review.runId, 'bureau.reviews:read');
-        return allowed ? review : undefined;
-      }),
-    );
+  invoke: async ({ input, host, principal }) => {
+    const status = input.status ?? 'pending';
+    const filters = listFilterKey(input);
+    const after =
+      input.pageToken === undefined ? undefined : decodePageToken(input.pageToken, filters);
+    const entries: ListEntry[] = [];
+    const include = (entry: ListEntry): void => {
+      if (after === undefined || comesBefore(status, after, entry)) entries.push(entry);
+    };
+
+    if (status === 'pending') {
+      const pending = await pendingReviewsOfEveryProcess(host.reviews);
+      const visible = await Promise.all(
+        pending.map(async (review) =>
+          (await mayAccessReview(host, principal, review.runId, 'bureau.reviews:read'))
+            ? review
+            : undefined,
+        ),
+      );
+      for (const review of visible) {
+        if (review === undefined) continue;
+        include({
+          at: review.requestedAt,
+          source: 'bureau',
+          id: review.id,
+          item: projectReview(review),
+        });
+      }
+    } else {
+      const resolved =
+        (await host.reviews.listResolved?.(
+          input.resolvedAfter === undefined ? {} : { resolvedAfter: input.resolvedAfter },
+        )) ?? [];
+      for (const record of resolved) {
+        // The owner of record, kept with the record, decides: the run may be gone by now.
+        const allowed = host.ownership.mayAccess({
+          principal,
+          resourceOwner: record.owner,
+          operatorScope: 'bureau.reviews:read',
+        });
+        if (!allowed) continue;
+        include({
+          at: record.decidedAt,
+          source: 'bureau',
+          id: record.review.id,
+          item: projectReview(reviewOfResolved(record)),
+        });
+      }
+    }
+
+    // The engine's reviews, only for a caller the engine's own list would serve.
+    const engine = host.reviews.durableEngine?.();
+    if (
+      engine !== undefined &&
+      typeof engine.listReviews === 'function' &&
+      principal.method !== 'unauthenticated' &&
+      principal.hasScope('reviews:read')
+    ) {
+      const now = Date.now();
+      const listed = await engine.listReviews({
+        status: status === 'pending' ? 'pending' : 'completed',
+      });
+      for (const entry of listed) {
+        const decidedAt = entry.status === 'completed' ? entry.timestamp : undefined;
+        if (
+          decidedAt !== undefined &&
+          input.resolvedAfter !== undefined &&
+          decidedAt < input.resolvedAfter
+        ) {
+          continue;
+        }
+        include({
+          at: decidedAt ?? entry.createdAt,
+          source: 'engine',
+          id: entry.reviewId,
+          item: projectEngineReview(entry, now),
+        });
+      }
+    }
+
+    entries.sort((a, b) => (comesBefore(status, a, b) ? -1 : comesBefore(status, b, a) ? 1 : 0));
+    const limit = input.limit ?? DEFAULT_PAGE_LIMIT;
+    const page = entries.slice(0, limit);
+    const last = page.at(-1);
     return {
-      reviews: visible.filter((review) => review !== undefined).map(projectReview),
+      reviews: page.map((entry) => entry.item),
+      nextPageToken:
+        entries.length > limit && last !== undefined
+          ? encodePageToken(filters, { at: last.at, source: last.source, id: last.id })
+          : null,
     };
   },
 });
@@ -471,12 +825,22 @@ const reviewsResolveInput = z
       .describe(
         'The `round` of the review the caller read. A re-gated tool approval keeps its id and advances its round; when this is given and the review is no longer at it, nothing is decided and the answer is a `Conflict`. A human wait is always at round 0. Omitted, the call is not fenced.',
       ),
+    remember: z
+      .boolean()
+      .optional()
+      .describe(
+        'Approving a tool approval: also allow its tool for the rest of this chat (`Allow for the rest of this chat`). Refused with `Unprocessable` for a human wait and for a `deny` or `reject`.',
+      ),
   })
   // COR-1920: a field the operation does not define is refused, not dropped.
   .strict()
   .refine((input) => input.decision !== 'reject' || (input.reason ?? '').trim() !== '', {
     message: 'reject requires a reason',
     path: ['reason'],
+  })
+  .refine((input) => input.remember !== true || input.decision === 'approve', {
+    message: 'remember applies to approving a tool approval',
+    path: ['remember'],
   });
 
 const reviewsResolveOutput = z.object({
@@ -486,6 +850,11 @@ const reviewsResolveOutput = z.object({
   receipt: reviewReceiptSchema,
   /** `tool-approval` reject only: the reason, for the next run to splice in. */
   feedback: z.string().optional(),
+  /**
+   * Present when the call asked to `remember`: `true` once the grant was stored with the decision,
+   * `false` when it was not (the tool did not run, or the chat is gone).
+   */
+  remembered: z.boolean().optional(),
 });
 
 export const reviewsResolveOperation = defineOperation<
@@ -497,7 +866,7 @@ export const reviewsResolveOperation = defineOperation<
   mcpExposable: true,
   summary: 'Approve, deny, or reject a pending review',
   description:
-    'Resolves a pending review of one of the caller’s own runs as the authenticated caller; the reviewer is never a payload field. A caller holding `bureau.reviews:resolve` resolves any owner’s. `reject` requires a `reason`. The `receipt` is `applied` (including a landed reject, which `decision` reports) or `superseded`. Resolving a review that is already resolved, or one the caller may not resolve, answers 404 until command receipts exist. Resolving a tool approval also writes its outcome into the session’s conversation: the executed result on approve, an error result carrying the reason on deny and reject, each replacing the pending `action_required` result in place, so a run started next on the session answers an up-to-date conversation. A `superseded` receipt writes nothing. Approving a human wait takes an `answer`; when the review has an `inputSchema` the answer is checked against it before anything is decided, and one that does not fit answers `InvalidParams` with `data.issues` (`path` rooted at `answer`, `message`, and `code`, the schema keyword that failed) and leaves the review pending. `round` is the round of the review the caller read (`bureau.reviews.get` and `list` return it): a re-gated approval keeps its id and advances its round, so a decision made on round N is refused with a `Conflict` once the review is at another round, before anything is decided, written, or audited. A `Conflict` whose `reason` begins `REVIEW_ROUND_CHANGED: ` is that refusal (nothing took effect; read the review again); one that begins `APPROVAL_OUTCOME_NOT_WRITTEN: ` means the decision took effect (the tool ran or was refused) and only that write failed; any other `Conflict` is a resolver that lost. Omit `round` and the call is not fenced.',
+    'Resolves a pending review of one of the caller’s own runs as the authenticated caller; the reviewer is never a payload field. A caller holding `bureau.reviews:resolve` resolves any owner’s. `reject` requires a `reason`. The `receipt` is `applied` (including a landed reject, which `decision` reports) or `superseded`. Resolving a review that is already resolved, or one the caller may not resolve, answers 404 until command receipts exist. `remember: true` on approving a tool approval also allows its tool for the rest of the chat: the next ask for it in that chat that the agent file would make by `on-changes` runs without asking, and no other chat, fork, tool, `always` or `blocked` value, agent-wide always mode or read-only restriction is affected; the response says `remembered`. Resolving a tool approval also writes its outcome into the session’s conversation: the executed result on approve, an error result carrying the reason on deny and reject, each replacing the pending `action_required` result in place, so a run started next on the session answers an up-to-date conversation. A `superseded` receipt writes nothing. Approving a human wait takes an `answer`; when the review has an `inputSchema` the answer is checked against it before anything is decided, and one that does not fit answers `InvalidParams` with `data.issues` (`path` rooted at `answer`, `message`, and `code`, the schema keyword that failed) and leaves the review pending. `round` is the round of the review the caller read (`bureau.reviews.get` and `list` return it): a re-gated approval keeps its id and advances its round, so a decision made on round N is refused with a `Conflict` once the review is at another round, before anything is decided, written, or audited. A `Conflict` whose `reason` begins `REVIEW_ROUND_CHANGED: ` is that refusal (nothing took effect; read the review again); one that begins `APPROVAL_OUTCOME_NOT_WRITTEN: ` means the decision took effect (the tool ran or was refused) and only that write failed; any other `Conflict` is a resolver that lost. Omit `round` and the call is not fenced.',
   destructive: true,
   tags: ['Reviews'],
   inputSchema: reviewsResolveInput,
@@ -517,6 +886,14 @@ export const reviewsResolveOperation = defineOperation<
       !(await mayAccessReview(host, principal, review.runId, 'bureau.reviews:resolve'))
     ) {
       throw reviewNotFound(input.id);
+    }
+    if (input.remember === true && review.kind !== 'tool-approval') {
+      const fault: OperationFault = {
+        code: 'Unprocessable',
+        message: 'Only a tool approval can be remembered; a human wait takes an answer',
+        data: { reason: 'remember addressed to a human wait' },
+      };
+      throw fault;
     }
     if (input.answer !== undefined && review.kind === 'tool-approval') {
       const fault: OperationFault = {
@@ -547,6 +924,7 @@ export const reviewsResolveOperation = defineOperation<
         ...(input.reason === undefined ? {} : { reason: input.reason }),
         ...(input.round === undefined ? {} : { round: input.round }),
         ...(input.answer === undefined ? {} : { payload: input.answer }),
+        ...(input.remember === true ? { remember: true } : {}),
       });
       return {
         id: result.id,
@@ -554,6 +932,7 @@ export const reviewsResolveOperation = defineOperation<
         decision: result.decision,
         receipt: reviewReceiptOf(result.result),
         ...(result.feedback === undefined ? {} : { feedback: result.feedback }),
+        ...(result.remembered === undefined ? {} : { remembered: result.remembered }),
       };
     } catch (error) {
       throw reviewFault(error, input.id);

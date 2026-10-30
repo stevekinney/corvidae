@@ -181,7 +181,10 @@ describe('the identity of every request', () => {
     // Listing reviews needs `bureau.reviews:read`, which the local caller's grant supplies.
     const called = await mcp(3, 'tools/call', { name: 'bureau.reviews.list', arguments: {} });
     expect(called.result?.['isError']).toBeFalsy();
-    expect(called.result?.['structuredContent']).toEqual({ reviews: [] });
+    expect(called.result?.['structuredContent']).toEqual({
+      reviews: [],
+      nextPageToken: null,
+    });
   });
 
   test('Bureau owns what the local caller creates as anonymous:local', async () => {

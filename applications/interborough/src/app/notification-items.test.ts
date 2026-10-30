@@ -21,6 +21,7 @@ function minutesAgo(minutes: number): string {
 
 function approval(overrides: Partial<Extract<BureauReview, { kind: 'tool-approval' }>> = {}) {
   return {
+    source: 'bureau',
     id: 'approval:run-1:call-1',
     runId: 'run-1-6c4d2f8e-0000-4000-8000-0000000009aa',
     agentName: 'tool-runner',
@@ -42,6 +43,7 @@ function approval(overrides: Partial<Extract<BureauReview, { kind: 'tool-approva
 
 function question(overrides: Partial<Extract<BureauReview, { kind: 'human-wait' }>> = {}) {
   return {
+    source: 'bureau',
     id: 'human-wait:run-2:environment:0',
     runId: 'run-2-6c4d2f8e-0000-4000-8000-0000000009bb',
     agentName: 'request-human-input',

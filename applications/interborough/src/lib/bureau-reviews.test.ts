@@ -9,6 +9,7 @@ import {
   isApprovalOutcomeNotWritten,
   isReviewRoundChanged,
   listBureauReviews,
+  pageReviews,
   resolveBureauReview,
   type BureauReview,
 } from './bureau-reviews.ts';
@@ -109,5 +110,99 @@ describe('the Bureau’s review operations', () => {
     expect(await rejectionOf(withFetch(stub.fetch, () => listBureauReviews()))).toBeInstanceOf(
       Error,
     );
+  });
+});
+
+describe('the merged review list (COR-1828)', () => {
+  const ENGINE_REVIEW = {
+    source: 'engine',
+    kind: 'engine-review',
+    id: 'review-1',
+    runId: 'wf-1',
+    requestedAt: 1_792_436_500_000,
+    ageMilliseconds: 5,
+    status: 'pending',
+    reviewType: 'content',
+    reviewers: ['alice'],
+    allowPartial: false,
+    artifact: { text: 'draft' },
+  };
+
+  test('a page carries the Bureau’s and the engine’s reviews, and the token to continue', async () => {
+    const stub = answering({ reviews: [TOOL_APPROVAL, ENGINE_REVIEW], nextPageToken: 'next' });
+    const page = await withFetch(stub.fetch, () =>
+      pageReviews({ status: 'resolved', resolvedAfter: 5, limit: 2, pageToken: 'token' }),
+    );
+    expect(stub.calls).toEqual([
+      {
+        method: 'bureau.reviews.list',
+        params: { status: 'resolved', resolvedAfter: 5, limit: 2, pageToken: 'token' },
+      },
+    ]);
+    expect(page.reviews.map((review) => `${review.source}:${review.kind}`)).toEqual([
+      'bureau:tool-approval',
+      'engine:engine-review',
+    ]);
+    expect(page.nextPageToken).toBe('next');
+  });
+
+  test('a resolved review carries who decided it, and a secret answer only as a reference', async () => {
+    const resolved = {
+      ...HUMAN_WAIT,
+      status: 'approved',
+      resolution: {
+        decision: 'approve',
+        decidedBy: 'api-key:bob',
+        decidedAt: 1_792_436_600_000,
+        answerDigest: 'a'.repeat(64),
+        secretRefs: ['human-wait:run-2:environment:0/password'],
+      },
+    };
+    const stub = answering({ reviews: [resolved], nextPageToken: null });
+    const page = await withFetch(stub.fetch, () => pageReviews({ status: 'resolved' }));
+    const [review] = page.reviews;
+    expect(review?.source === 'bureau' && review.resolution).toMatchObject({
+      decision: 'approve',
+      decidedBy: 'api-key:bob',
+      secretRefs: ['human-wait:run-2:environment:0/password'],
+    });
+  });
+
+  test('the inbox list follows every page and leaves the engine’s reviews to the Reviews screen', async () => {
+    const calls: unknown[] = [];
+    const stub: Fetcher = async (_input, init) => {
+      const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as Call;
+      calls.push(body.params);
+      const first = (body.params as { pageToken?: string }).pageToken === undefined;
+      return Response.json({
+        jsonrpc: '2.0',
+        id: 1,
+        result: first
+          ? { reviews: [TOOL_APPROVAL, ENGINE_REVIEW], nextPageToken: 'second' }
+          : { reviews: [HUMAN_WAIT], nextPageToken: null },
+      });
+    };
+    const reviews = await withFetch(stub, () => listBureauReviews());
+    expect(calls).toEqual([{}, { pageToken: 'second' }]);
+    expect(reviews.map((review) => review.kind)).toEqual(['tool-approval', 'human-wait']);
+  });
+
+  test('resolve sends remember only when it is asked, and reads whether it was stored', async () => {
+    const stub = answering({
+      id: TOOL_APPROVAL.id,
+      kind: 'tool-approval',
+      decision: 'approve',
+      receipt: 'applied',
+      remembered: true,
+    });
+    const resolution = await withFetch(stub.fetch, () =>
+      resolveBureauReview({ id: TOOL_APPROVAL.id, decision: 'approve', remember: true }),
+    );
+    expect(stub.calls[0]?.params).toEqual({
+      id: TOOL_APPROVAL.id,
+      decision: 'approve',
+      remember: true,
+    });
+    expect(resolution.remembered).toBe(true);
   });
 });
