@@ -29,6 +29,7 @@
     id,
     value = $bindable(''),
     placeholder,
+    size = 'md',
     shortcut,
     disabled,
     readonly,
@@ -129,6 +130,7 @@
     id={resolvedId}
     bind:value
     {placeholder}
+    {size}
     {readonly}
     type="search"
     class="cinder-search-field__input"

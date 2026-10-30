@@ -1,6 +1,7 @@
 <script lang="ts" module>
   export const title = 'Button sizes';
-  export const description = 'xs, sm, md, lg, and xl sizes.';
+  export const description =
+    'xs, sm, md, and lg sizes, on the shared 24/28/32/40px control height scale.';
 </script>
 
 <script lang="ts">
@@ -12,5 +13,4 @@
   <Button size="sm" label="Small" />
   <Button size="md" label="Medium" />
   <Button size="lg" label="Large" />
-  <Button size="xl" label="Extra Large" />
 </div>

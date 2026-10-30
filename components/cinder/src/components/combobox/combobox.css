@@ -30,7 +30,7 @@
     display: block;
     width: 100%;
     min-height: var(--cinder-control-height-md);
-    padding: var(--cinder-space-1-5) var(--cinder-space-3);
+    padding: var(--cinder-space-1) var(--cinder-space-3);
     font-size: var(--cinder-text-sm);
     font-family: inherit;
     line-height: var(--cinder-leading-normal);
@@ -42,6 +42,17 @@
     transition:
       border-color var(--cinder-duration-fast) var(--cinder-ease-standard),
       box-shadow var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+  /* Size: the shared control height for the step, with block padding that
+     keeps the line box inside it. */
+  .cinder-combobox__input[data-cinder-size='sm'] {
+    min-height: var(--cinder-control-height-sm);
+    padding-block: var(--cinder-space-0-5);
+  }
+
+  .cinder-combobox__input[data-cinder-size='lg'] {
+    min-height: var(--cinder-control-height-lg);
+    padding-block: var(--cinder-space-2);
   }
 
   /* Sticky-hover suppression on touch. */

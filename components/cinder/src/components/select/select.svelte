@@ -33,6 +33,7 @@
     error,
     required,
     disabled,
+    size = 'md',
     class: className,
     'aria-describedby': consumerDescribedBy,
     'aria-invalid': consumerInvalid,
@@ -83,6 +84,7 @@
       <select
         {id}
         class="cinder-_input-frame cinder-select"
+        data-cinder-size={size}
         disabled={field.disabled}
         required={field.required}
         data-cinder-empty="true"
@@ -94,6 +96,7 @@
       <select
         {id}
         class="cinder-_input-frame cinder-select"
+        data-cinder-size={size}
         disabled={field.disabled}
         required={field.required}
         bind:value

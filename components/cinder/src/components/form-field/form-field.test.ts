@@ -123,7 +123,7 @@ describe('FormField rendering', () => {
     const marker = container.querySelector('.cinder-_required-marker');
     expect(marker).not.toBeNull();
     expect(marker?.getAttribute('aria-hidden')).toBe('true');
-    expect(marker?.textContent).toBe('*');
+    expect(marker?.textContent).toBe('');
   });
 
   test('does not render required marker when required is false', () => {

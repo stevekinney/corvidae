@@ -43,6 +43,7 @@ Filterable dropdown that combines a text input with a selectable option list.
 | `name` | `string` | no | — | Native form field name. Renders a hidden input carrying the selected value. |
 | `placeholder` | `string` | no | — | Placeholder when no value is selected. |
 | `required` | `boolean` | no | — | Marks the field required: renders the required marker on the label and sets `aria-required` on the input. Inherited from a wrapping FormField when unset. |
+| `size` | `"sm"` \| `"md"` \| `"lg"` | no | `"md"` | Height step from the shared `--cinder-control-height-*` scale: `sm` 28px, `md` 32px, `lg` 40px, the same heights as a Button of that size. |
 | `textInputValue` | `string` | no | — | Free-text input value (the text the user has typed). Bindable. |
 | `filter` | `(opaque)` | no | — | Custom synchronous filter. Receives an option and the current input value; returns true to keep. Defaults to case-insensitive substring match on label. Not expressible in JSON Schema; see the component types for the signature. |
 | `onValueChange` | `(opaque)` | no | — | Called when an option, or an arbitrary value when enabled, is committed. Not expressible in JSON Schema; see the component types for the signature. |

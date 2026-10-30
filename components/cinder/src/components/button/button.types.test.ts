@@ -36,7 +36,7 @@ import type { ButtonProps } from './button.types.ts';
 type _SnapshotVariant =
   'primary' | 'secondary' | 'soft' | 'danger' | 'soft-danger' | 'ghost' | 'ghost-danger';
 
-type _SnapshotSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+type _SnapshotSize = 'xs' | 'sm' | 'md' | 'lg';
 
 type _SnapshotSharedHtmlAttributes = WithoutDataAttributes<
   Omit<HTMLAttributes<HTMLButtonElement | HTMLAnchorElement>, 'class'>
