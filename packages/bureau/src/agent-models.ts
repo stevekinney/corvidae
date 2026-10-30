@@ -118,7 +118,7 @@ export function describeAgentModels(
     return {
       kind: 'selectable',
       selectable: true,
-      models: distinct(rows.map(choiceOf)),
+      models: distinct(rows.map((row) => choiceOf(row))),
       default: attached,
     };
   }
