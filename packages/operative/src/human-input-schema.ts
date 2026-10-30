@@ -1,8 +1,11 @@
 import Ajv2020 from 'ajv/dist/2020.js';
 
+import { humanInputSchemaExtensionIssues } from './human-input-schema-extensions';
+
 /**
  * A JSON Schema (draft 2020-12) describing the answer a `requestHumanInput` wait expects. The
- * agent's author configures it per signal name; the model never supplies one.
+ * agent's author configures it per signal name, and the model may supply one per call as
+ * `answerSchema`, which replaces the signal's configured one for that call.
  */
 export type HumanInputSchema = Readonly<Record<string, unknown>>;
 
@@ -12,16 +15,32 @@ export const HUMAN_INPUT_SCHEMA_MAXIMUM_BYTES = 32 * 1024;
 /** The deepest object/array nesting a {@link HumanInputSchema} may hold, the schema itself being level 1. */
 export const HUMAN_INPUT_SCHEMA_MAXIMUM_DEPTH = 8;
 
-/** Raised when an author-supplied human-input schema is not acceptable. */
+/**
+ * One reason a human-input schema is not acceptable: where in the schema it is, and what is wrong.
+ * It is the shape the model reads in an `invalid-answer-schema` tool result.
+ */
+export interface HumanInputSchemaIssue {
+  /** The location inside the rejected schema, as property names and array indexes; `[]` is the schema itself. */
+  readonly path: ReadonlyArray<string | number>;
+  /** What is wrong, in a sentence the model can act on. */
+  readonly message: string;
+}
+
+/** Raised when a human-input schema, configured by an author or supplied by the model, is not acceptable. */
 export class HumanInputSchemaError extends Error {
   override readonly name = 'HumanInputSchemaError';
 
+  /** Every reason the schema was refused; a refusal with one cause holds one issue at path `[]`. */
+  readonly issues: ReadonlyArray<HumanInputSchemaIssue>;
+
   constructor(
-    /** The signal name the rejected schema was configured for. */
+    /** The signal name the rejected schema was configured for, or that the call asked for. */
     readonly signalName: string,
     message: string,
+    issues?: ReadonlyArray<HumanInputSchemaIssue>,
   ) {
     super(`inputSchemas["${signalName}"]: ${message}`);
+    this.issues = issues ?? [{ path: [], message }];
   }
 }
 
@@ -113,6 +132,18 @@ export function checkHumanInputSchema(signalName: string, schema: unknown): Huma
     throw new HumanInputSchemaError(
       signalName,
       `not a valid JSON Schema 2020-12: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  const extensionIssues = humanInputSchemaExtensionIssues(copy);
+  if (extensionIssues.length > 0) {
+    throw new HumanInputSchemaError(
+      signalName,
+      extensionIssues
+        .map((issue) =>
+          issue.path.length === 0 ? issue.message : `${issue.path.join('.')}: ${issue.message}`,
+        )
+        .join(' '),
+      extensionIssues,
     );
   }
   return copy;
