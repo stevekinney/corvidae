@@ -191,7 +191,7 @@ async function secretBureau() {
   };
 
   const frames: string[] = [];
-  const bureau = (await createBureau<AgentDefinitions>({
+  const bureau: Bureau = await createBureau<AgentDefinitions>({
     id: 'secret-answers',
     agents: {
       [AGENT]: createAgent({
@@ -205,7 +205,7 @@ async function secretBureau() {
     durable: true,
     assets: { storage: createMemoryAssetStorage() },
     answerEncryption: keys,
-  })) as unknown as Bureau;
+  });
   const unsubscribe = bureau.frames((frame) => frames.push(JSON.stringify(frame)));
   const handler = createBureauHandler(bureau, {
     unauthenticatedAccess: 'allow',
@@ -264,7 +264,8 @@ async function secretBureau() {
 
   /** Every secret-answer record carries its owner and the run that asked. */
   async function expectRecords(runId: string, owner = PRINCIPAL): Promise<void> {
-    const records = (await everyStoredKey(storage))
+    const stored = await everyStoredKey(storage);
+    const records = stored
       .filter(([key]) => key.startsWith(SECRET_ANSWER_KEY_PREFIX))
       .map(([, value]) => JSON.parse(value) as Record<string, unknown>);
     expect(records).toHaveLength(1);

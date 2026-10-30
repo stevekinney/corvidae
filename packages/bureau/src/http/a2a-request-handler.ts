@@ -635,9 +635,11 @@ async function surfaceAnswerOf(
  */
 async function refuseSecretAnswer(
   bureau: { readonly reviews: Pick<BureauReviews, 'get'> },
-  view: TaskView,
-  input: TasksRespondInput,
+  view: TaskView | undefined,
+  command: ContinuationCommand | undefined,
 ): Promise<void> {
+  if (view === undefined || command?.path !== 'answer') return;
+  const { input } = command;
   if ((input.decision ?? 'approve') !== 'approve') return;
   const waits = view.openWaits.filter(
     (wait): wait is Extract<TaskOpenWait, { kind: 'human-wait' }> => wait.kind === 'human-wait',
@@ -1721,9 +1723,7 @@ export function createBureauA2ARequestHandler(
             );
     // COR-1920: an answer to a question that asks for a secret is refused here, before the send
     // ledger or the task's history records the message that carries it.
-    if (command?.path === 'answer' && continued !== undefined) {
-      await refuseSecretAnswer(bureau, continued, command.input);
-    }
+    await refuseSecretAnswer(bureau, continued, command);
     // The message's parts, read and authorized before anything is admitted. An answer to a wait
     // reads no file, so only a new task and input to a working task plan any.
     const inboundContextOfCaller = inboundContext(user.principal, owner);

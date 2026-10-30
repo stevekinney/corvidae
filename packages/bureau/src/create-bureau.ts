@@ -19257,7 +19257,10 @@ async function constructBureau<const D extends AgentDefinitions>(
       ledger: createTasksRespondLedger(runtime.kv, runtimeServices),
       refusal: (refusal) => new TaskRespondError(refusal),
       isRefusal: (error): error is BureauError => error instanceof BureauError,
-      sealAnswer: async (review, answer) => (await sealHumanWaitAnswer(review, answer)).sealed,
+      sealAnswer: async (review, answer) => {
+        const sealed = await sealHumanWaitAnswer(review, answer);
+        return sealed.sealed;
+      },
     },
   }) as Bureau<D>['tasks'];
 

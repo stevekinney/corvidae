@@ -319,7 +319,7 @@ describe('a wait whose schema asks for a secret, over A2A (COR-1920)', () => {
       }
       // Text is an answer the wait could take, so its refusal says why it is not taken here.
       const text = await rejectionOf(fixture.send(userMessage('m-plain', task.id, { text: 'x' })));
-      expect(String((text as Error).message)).toContain('answered only in the chat');
+      expect((text as Error).message).toContain('answered only in the chat');
 
       expect(await statusOf(fixture.bureau, task.id)).toBe('input-required');
       // Nothing recorded the refused messages: the task's history holds no part of them.

@@ -1,5 +1,6 @@
 import { CryptographyError, generateEncryptionKey } from '@lostgradient/cryptography';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
 
 import {
@@ -71,9 +72,9 @@ describe('sealSecretAnswer', () => {
     expect(JSON.stringify(outcome.sealed)).not.toContain('hunter2');
     if (!isSealedSecretAnswer(sealed)) throw new Error('unreachable');
     expect(await openSealedAnswer(sealed.secretRef, sealed.encrypted, answerKeys)).toBe('hunter2');
-    await expect(
-      openSealedAnswer(`${REVIEW}/other`, sealed.encrypted, answerKeys),
-    ).rejects.toBeInstanceOf(CryptographyError);
+    expect(
+      await rejectionOf(openSealedAnswer(`${REVIEW}/other`, sealed.encrypted, answerKeys)),
+    ).toBeInstanceOf(CryptographyError);
     expect(withoutCiphertext(outcome.sealed)).toEqual({
       user: 'ada',
       password: { secretRef: `${REVIEW}/password` },
@@ -141,10 +142,15 @@ describe('createSecretAnswerStore', () => {
     // A later store under the same reference keeps the first answer.
     await store.store(review, await seal('second'), 'owner-1');
     expect(await store.resolve(REVIEW, 'run-1')).toBe('first');
-    await expect(store.resolve(REVIEW, 'run-2')).rejects.toThrow('not available');
-    await expect(
-      store.store({ id: 'human-wait:run-1:other:0', runId: 'run-1' }, await seal('x'), 'o'),
-    ).rejects.toThrow('not available');
+    expect(String(await rejectionOf(store.resolve(REVIEW, 'run-2')))).toContain('not available');
+    const foreign = await seal('x');
+    expect(
+      String(
+        await rejectionOf(
+          store.store({ id: 'human-wait:run-1:other:0', runId: 'run-1' }, foreign, 'o'),
+        ),
+      ),
+    ).toContain('not available');
 
     const rotated = createSecretAnswerStore({
       kv,

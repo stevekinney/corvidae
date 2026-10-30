@@ -5,6 +5,7 @@ import {
   exportEncryptionKey,
   generateEncryptionKey,
 } from '@lostgradient/cryptography';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, test } from 'bun:test';
 
 import {
@@ -57,9 +58,8 @@ describe('answerEncryptionKeys', () => {
   test('refuses a remote host without the key, naming the variable', async () => {
     const { bungalow } = fakeBungalow('remote');
 
-    await expect(answerEncryptionKeys(bungalow)).rejects.toThrow(
-      'INTERBOROUGH_SECRET_ANSWER_ENCRYPTION_KEY',
-    );
+    const failure = await rejectionOf(answerEncryptionKeys(bungalow));
+    expect(String(failure)).toContain('INTERBOROUGH_SECRET_ANSWER_ENCRYPTION_KEY');
   });
 
   test('reads a retired key by its id, and nothing for an id it does not hold', async () => {
