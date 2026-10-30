@@ -153,10 +153,13 @@ import { type AgentDefinitions, type AgentNames, createAgentCatalog } from './ag
 import { AgentFileError, AgentSnapshotError, type AgentFileDefinitionInput } from './agent-file';
 import { createTryAgents, isTryAgentName, TRY_AGENT_NAME_START, tryToolProblem } from './agent-try';
 import {
+  allowedDescriptorsOfFileAgent,
   createAgentFileCatalog,
   type FileAgentBinding,
   readFileAgentBinding,
+  readFileAgentCostBudget,
 } from './agent-file-catalog';
+import { unpricedSwitchReason } from './file-agent-cost-budget';
 import { createFileAgentRuntime, type FileAgentRuntime } from './agent-file-runtime';
 import { createAgentSnapshotStore } from './agent-snapshot-store';
 import { createAssetService } from './assets/asset-service';
@@ -1249,6 +1252,19 @@ class ReviewAnswerInvalidError extends BureauError {
     );
     this.name = 'ReviewAnswerInvalidError';
     this.issues = issues;
+  }
+}
+
+/**
+ * A steering command was refused because it switches the model of an agent with a `costBudget` to
+ * one the catalog has no price for (COR-1921). It is a `BAD_REQUEST` `BureauError`, so the
+ * catalog's steer answers `InvalidParams` naming the `override` field and the budget; a fork
+ * that carries a model across catches it, and answers the carry as rejected.
+ */
+class UnpricedSwitchRefusedError extends BureauError {
+  constructor(message: string) {
+    super(message, 'BAD_REQUEST');
+    this.name = 'UnpricedSwitchRefusedError';
   }
 }
 
@@ -15402,6 +15418,26 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
+   * COR-1921 — why a session of `agentName`'s agent may not be switched to `override` because the
+   * agent has a `costBudget` and the model's row has no price in the catalog, or `undefined` when
+   * it may. The agent is a file agent, bound or `ephemeral` (tried): a code-defined agent has no
+   * budget. The row judged is the one the agent's generate runs for the switch.
+   */
+  function unpricedSwitchRefusalOf(
+    agentName: string,
+    override: { readonly model: string; readonly provider?: string | undefined },
+  ): string | undefined {
+    const agent = agentCatalog.find(agentName) ?? tryAgents.peek(agentName);
+    const budgeted = agent === undefined ? undefined : readFileAgentCostBudget(agent);
+    if (budgeted === undefined) return undefined;
+    return unpricedSwitchReason(
+      budgeted.budget,
+      allowedDescriptorsOfFileAgent(budgeted.models, models.catalog().descriptors),
+      override,
+    );
+  }
+
+  /**
    * COR-1559 — whether `agentName`'s agent allows a session to be switched to `override`: the
    * model must be one `bureau.agents.models` lists for it. A routed or opaque agent lists none, so
    * every override is refused; only an agent this Bureau cannot find is left to the deployment's
@@ -15569,7 +15605,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     const carried =
       claim.override === null
         ? null
-        : await submitSteeringCommand(claim.contextId, {
+        : await carryModelOverride(claim.contextId, {
             id: `${request.commandId}:model`,
             principal: request.owner,
             // As the parent asked: a policy reference is submitted as a reference, and resolved
@@ -15612,6 +15648,26 @@ async function constructBureau<const D extends AgentDefinitions>(
     };
     const completed = await forkLedger.complete(outcome.entry, result);
     return answerOfFork(completed.result);
+  }
+
+  /**
+   * Admits the model a fork carries from its parent. An agent whose `costBudget` cannot count the
+   * model (COR-1921: its price left the catalog since) refuses it, and the fork answers the carry
+   * as rejected, as it does a model the agent no longer allows, rather than failing half made.
+   */
+  async function carryModelOverride(
+    contextId: string,
+    request: SteeringCommandRequest,
+  ): Promise<SteeringCommandAdmissionOutcome> {
+    try {
+      return await submitSteeringCommand(contextId, request);
+    } catch (error) {
+      if (!(error instanceof UnpricedSwitchRefusedError)) throw error;
+      return {
+        outcome: 'rejected',
+        failure: { failedAt: runtimeServices.clock.nowISO(), reason: 'policy-denied' },
+      };
+    }
   }
 
   /**
@@ -16146,6 +16202,29 @@ async function constructBureau<const D extends AgentDefinitions>(
           configurationRequest.policyRef === undefined ? undefined : resolvedRequestedValue,
         );
       }
+    }
+
+    // COR-1921 — a budgeted agent is not switched to a model the catalog cannot price: counting
+    // its steps at another model's rate would spend the budget unseen. A key the log already
+    // decided (the durable log, or the in-memory ledger of a Bureau with none) is answered from
+    // there and skips it. This refusal is a throw, so it is not logged: a retry of it is judged
+    // again, and is admitted if the catalog has since gained a price.
+    const inMemoryKeyBound =
+      durableSteeringStore() === undefined &&
+      request.id !== undefined &&
+      getSteeringLedgerEntry(steeringCommandLedger, request.principal, request.id) !== undefined;
+    if (
+      resolvedRequestedValue.target === 'model' &&
+      resolvedRequestedValue.override !== undefined &&
+      !keyAlreadyBound &&
+      !inMemoryKeyBound
+    ) {
+      const reason = unpricedSwitchRefusalOf(session.agentName, {
+        model: resolvedRequestedValue.override,
+        provider:
+          'provider' in resolvedRequestedValue ? resolvedRequestedValue.provider : undefined,
+      });
+      if (reason !== undefined) throw new UnpricedSwitchRefusedError(reason);
     }
 
     const now = runtimeServices.clock.nowISO();

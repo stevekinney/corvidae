@@ -500,7 +500,7 @@ export async function executeGeneration(
           step,
           billedUsage,
           deps.costEstimation,
-          steeringDesiredState?.model,
+          steeringDesiredState,
         );
       }
 

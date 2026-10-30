@@ -1,4 +1,4 @@
-import { createModelCatalog } from '@lostgradient/operative';
+import { createModelCatalog, getModelPricing } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
 import { costBudgetOptions } from './file-agent-cost-budget';
@@ -129,5 +129,17 @@ describe('the estimator a budgeted file agent is built with (COR-1914)', () => {
       const { costEstimation } = costBudgetOptions({ perRunUsd: 1 }, row, []);
       expect(isGoalAttemptCostEstimation(JSON.parse(JSON.stringify(costEstimation)))).toBe(true);
     }
+  });
+
+  it('accepts, and keeps through JSON, a budgeted agent’s estimator that lists a model as unpriced (COR-1921)', () => {
+    const [first, second] = createModelCatalog().descriptors;
+    if (first === undefined || second === undefined) throw new Error('Expected two catalog rows.');
+    const { costEstimation } = costBudgetOptions({ perRunUsd: 1 }, first, [
+      { ...second, model: 'unpriced-model', pricing: undefined },
+    ]);
+    const stored = JSON.parse(JSON.stringify(costEstimation));
+    expect(stored.pricing.customPricing['unpriced-model']).toBeNull();
+    expect(isGoalAttemptCostEstimation(stored)).toBe(true);
+    expect(getModelPricing('unpriced-model', stored.pricing)).toBeUndefined();
   });
 });

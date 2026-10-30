@@ -4,7 +4,12 @@ import type { ToolCall } from 'armorer/protocol';
 import { Conversation } from 'conversationalist';
 import type { ZodType } from 'zod';
 
-import { accumulateRequestCost, getModelPricing, seedAccumulatedCost } from './cost-estimation';
+import {
+  accumulateRequestCost,
+  getModelPricing,
+  providerModelPricingKey,
+  seedAccumulatedCost,
+} from './cost-estimation';
 import { AgentRunError } from './errors';
 import {
   ElicitationRequestedEvent,
@@ -197,20 +202,59 @@ export function dispatchSettledResults(
   }
 }
 
+/** The model a session was switched to, as a step's steering names it. */
+export interface SteeredModel {
+  /** The model name; absent for a session that was never switched. */
+  readonly model?: string | undefined;
+  /** The provider the switch named, absent when it named none. */
+  readonly modelProvider?: string | undefined;
+}
+
 /**
- * The model a step's request is priced at (COR-1914). A session switched to another model runs a
- * step on it, and that step must cost what that model charges, not what the agent's default
- * charges, or a budget could be spent at a rate it never counted. The switched model is used when
- * the run's pricing knows it; otherwise the run's own `costEstimation.model` stands.
+ * The key of `costEstimation.pricing` that prices a step, or `undefined` when the model a session
+ * was switched to has no price (COR-1921). A session switched to a model runs a step on it, and
+ * that step must cost what that model charges, not what the agent's default charges, or a budget
+ * could be spent at a rate it never counted. A switch that names a provider is priced by that
+ * provider's entry ({@link providerModelPricingKey}) when the pricing has one, since two providers
+ * can serve one model name at different prices, or one of them at none. A step that is not
+ * switched is priced at the run's own `costEstimation.model`.
+ */
+export function switchedPricingKey(
+  costEstimation: NonNullable<RunOptions['costEstimation']>,
+  steered: SteeredModel | undefined,
+): string | undefined {
+  const model = steered?.model;
+  if (model === undefined) return costEstimation.model;
+  const provider = steered?.modelProvider;
+  const custom = costEstimation.pricing?.customPricing;
+  const providerKey = provider === undefined ? undefined : providerModelPricingKey(provider, model);
+  const key =
+    providerKey !== undefined && custom !== undefined && Object.hasOwn(custom, providerKey)
+      ? providerKey
+      : model;
+  return getModelPricing(key, costEstimation.pricing) === undefined ? undefined : key;
+}
+
+/**
+ * The key a step's request is priced at: {@link switchedPricingKey}, and the run's own
+ * `costEstimation.model` when the switched model has no price, which only a run with no cost
+ * budget reaches: a run with one stops before such a step ({@link checkSwitchedModelPriced}).
  */
 export function costModelOfStep(
   costEstimation: NonNullable<RunOptions['costEstimation']>,
-  stepModel: string | undefined,
+  steered: SteeredModel | undefined,
 ): string {
-  if (stepModel === undefined || stepModel === costEstimation.model) return costEstimation.model;
-  return getModelPricing(stepModel, costEstimation.pricing) === undefined
+  return switchedPricingKey(costEstimation, steered) ?? costEstimation.model;
+}
+
+/** The model name a step's cost is reported under: the switched model when it is priced, else the run's own. */
+export function pricedModelNameOfStep(
+  costEstimation: NonNullable<RunOptions['costEstimation']>,
+  steered: SteeredModel | undefined,
+): string {
+  return switchedPricingKey(costEstimation, steered) === undefined
     ? costEstimation.model
-    : stepModel;
+    : (steered?.model ?? costEstimation.model);
 }
 
 /**
@@ -227,12 +271,12 @@ export function accumulateUsage(
   step: number,
   usage: TokenUsage | undefined,
   costEstimation: RunOptions['costEstimation'],
-  stepModel?: string,
+  steered?: SteeredModel,
 ): void {
   if (usage) {
     // Priced per request here, where the request's own usage is still separate from the sum.
     if (costEstimation) {
-      const model = costModelOfStep(costEstimation, stepModel);
+      const model = costModelOfStep(costEstimation, steered);
       // The accumulator must always cover all of `totalUsage`. Usage that arrived with no cost
       // (a checkpoint from before costs were accumulated) is seeded at the base tier first, or
       // the terminal estimate would count only the requests made after the resume.

@@ -14,6 +14,7 @@ import { HookRegistry } from '@lostgradient/lifecycle';
 import { noToolCalls } from './conditions/predicates';
 import type { RunCostBudget } from './cost-budget';
 import { crossedThresholds, totalAccumulatedCost, validateRunCostBudget } from './cost-budget';
+import { getModelPricing, providerModelPricingKey } from './cost-estimation';
 import { createAgent } from './create-agent';
 import { startDurableRunResult } from './durable/active-run-result-entrypoints';
 import { createCheckpointStore } from './durable/checkpoint-store';
@@ -270,9 +271,98 @@ describe('a step on a switched model', () => {
     expect(result.costEstimate?.totalCost).toBeCloseTo(1, 10);
   });
 
-  it('is priced at the agent’s model when the switched model has no price', async () => {
-    const result = await executeLoop(options({}, { steering: gate('unpriced'), runId: 'run-1' }));
-    expect(result.steps).toHaveLength(5);
+  it('stops the run before the step when the switched model has no price (COR-1921)', async () => {
+    let asked = 0;
+    const generate: RunOptions['generate'] = async (...input) => {
+      asked += 1;
+      return scripted(8)(...input);
+    };
+    const result = await executeLoop(
+      options({ generate }, { steering: gate('unpriced'), runId: 'run-1' }),
+    );
+    expect(result.finishReason).toBe('budget-exceeded');
+    expect(messageOf(result.error)).toContain('unpriced');
+    expect(messageOf(result.error)).toContain('perRunUsd');
+    // The model was never asked, so nothing was spent at another model's rate.
+    expect(asked).toBe(0);
+    expect(result.steps).toHaveLength(0);
+  });
+
+  it('stops a run that is switched to an unpriced model after its first steps', async () => {
+    let switched = false;
+    const steering: SteeringGate = {
+      sessionId: 'session',
+      getDesiredState: () => ({
+        paused: false,
+        configVersion: 1,
+        ...(switched ? { model: 'unpriced' } : {}),
+      }),
+      awaitResume: async () => {},
+    };
+    const generate: RunOptions['generate'] = async (...input) => {
+      switched = true;
+      return scripted(8)(...input);
+    };
+    const result = await executeLoop(options({ generate }, { steering, runId: 'run-1' }));
+    expect(result.finishReason).toBe('budget-exceeded');
+    expect(result.steps).toHaveLength(1);
+    expect(messageOf(result.error)).toContain('unpriced');
+  });
+
+  it('judges the provider a switch names: its own price runs, and a provider with none stops the run (COR-1921)', async () => {
+    const pricing = {
+      customPricing: {
+        cheap: PRICING.customPricing.cheap,
+        // Two providers serve `dual`: the bare name is the first one's, which has no price.
+        dual: null,
+        [providerModelPricingKey('bad', 'dual')]: null,
+        [providerModelPricingKey('good', 'dual')]: PRICING.customPricing.pricey,
+      },
+    };
+    const switchedTo = (modelProvider: string | undefined): SteeringGate => ({
+      sessionId: 'session',
+      getDesiredState: () => ({ paused: false, configVersion: 1, model: 'dual', modelProvider }),
+      awaitResume: async () => {},
+    });
+    const run = (modelProvider: string | undefined) =>
+      executeLoop(
+        options(
+          { costEstimation: { model: 'cheap', pricing } },
+          { steering: switchedTo(modelProvider), runId: 'run-1' },
+        ),
+      );
+
+    const good = await run('good');
+    expect(good.finishReason).toBe('budget-exceeded');
+    expect(good.steps).toHaveLength(1);
+    expect(good.costEstimate?.totalCost).toBeCloseTo(1, 10);
+
+    for (const provider of ['bad', undefined]) {
+      const stopped = await run(provider);
+      expect(stopped.finishReason).toBe('budget-exceeded');
+      expect(stopped.steps).toHaveLength(0);
+      expect(messageOf(stopped.error)).toContain('dual');
+    }
+  });
+
+  it('prices a switched model it knows, and counts an unpriced one at the agent’s model without a budget', async () => {
+    const priced = await executeLoop(
+      options(
+        { generate: scripted(2), costBudget: undefined },
+        { steering: gate('pricey'), runId: 'run-1' },
+      ),
+    );
+    expect(priced.finishReason).toBe('stop-condition');
+    expect(priced.costEstimate?.totalCost).toBeCloseTo(2, 10);
+
+    const unbudgeted = await executeLoop(
+      options(
+        { generate: scripted(8), costBudget: undefined },
+        { steering: gate('unpriced'), runId: 'run-1' },
+      ),
+    );
+    expect(unbudgeted.finishReason).toBe('stop-condition');
+    expect(unbudgeted.steps).toHaveLength(8);
   });
 });
 
@@ -329,6 +419,13 @@ describe('spend a step folds in before it finishes', () => {
     // $1.00 at `pricey`'s rate, not $0.10 at `cheap`'s: one skipped step passes the budget.
     expect(result.finishReason).toBe('budget-exceeded');
     expect(result.costEstimate?.totalCost).toBeCloseTo(1, 10);
+  });
+});
+
+describe('a model set to null in customPricing', () => {
+  it('has no price, even one the built-in table knows (COR-1921)', () => {
+    expect(getModelPricing('gpt-4.1')).toBeDefined();
+    expect(getModelPricing('gpt-4.1', { customPricing: { 'gpt-4.1': null } })).toBeUndefined();
   });
 });
 
