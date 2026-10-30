@@ -978,7 +978,7 @@ describe('a signal that fails', () => {
     stub?.on('bureau.workflows.signal', () => {
       sends += 1;
       if (sends === 1) throw workflowFaults.unavailable();
-      return { started: [], delivered: [] };
+      return { started: [], delivered: [], rejected: [] };
     });
     const form = testId(container, 'workflow-signal') as HTMLElement;
     await fireEvent.click(
