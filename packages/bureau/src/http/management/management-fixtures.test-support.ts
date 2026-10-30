@@ -47,6 +47,14 @@ const credentials: Record<string, { subject: string; scopes: readonly Authorizat
     subject: 'diagnostics-reader',
     scopes: ['bureau.diagnostics:read'],
   },
+  'deployments-reader-key': {
+    subject: 'deployments-reader',
+    scopes: ['bureau.deployments:read'],
+  },
+  'deployments-writer-key': {
+    subject: 'deployments-writer',
+    scopes: ['bureau.deployments:write'],
+  },
   'settings-reader-key': { subject: 'settings-reader', scopes: ['bureau.settings:read'] },
   'settings-writer-key': {
     subject: 'settings-writer',

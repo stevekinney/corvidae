@@ -177,6 +177,7 @@ import {
   AUDIT_AGENT_OWNER_PREFIX,
   AUDIT_SCHEDULE_OWNER_PREFIX,
   AUDIT_SESSION_OWNER_PREFIX,
+  AUDIT_WORKER_DEPLOYMENT_OWNER_PREFIX,
   AUDIT_WORKFLOW_OWNER_PREFIX,
   type AuditTrail,
   auditTrailSessionOwnerId,
@@ -366,6 +367,7 @@ import {
   payloadMaximumBytesOf,
   type WorkflowRuntime,
 } from './workflow-runtime';
+import { createBureauWorkerDeployments } from './worker-deployments';
 import { validateDefinitionSource } from './sources/validate-definition-source';
 import { collidingWorkflowToolName, createWorkflowTools } from './workflow-tools';
 import { createSettingsTools } from './settings/settings-tools';
@@ -10229,6 +10231,10 @@ async function constructBureau<const D extends AgentDefinitions>(
           // COR-1526 — an agent file has no owner field: it belongs to the deployment's owner.
           return ownerOrLocal(undefined);
         }
+        if (runId.startsWith(AUDIT_WORKER_DEPLOYMENT_OWNER_PREFIX)) {
+          // COR-1813 — a worker deployment has no owner field: it belongs to the deployment's owner.
+          return ownerOrLocal(undefined);
+        }
         if (runId.startsWith(AUDIT_WORKFLOW_OWNER_PREFIX)) {
           // COR-1529 — a workflow file has no owner field: it belongs to the deployment's owner.
           return ownerOrLocal(undefined);
@@ -18966,6 +18972,21 @@ async function constructBureau<const D extends AgentDefinitions>(
     },
     agents: agentCatalog,
     workflows: workflowRuntime?.workflows,
+    deployments:
+      options.workerDeployments === undefined
+        ? undefined
+        : createBureauWorkerDeployments({
+            catalog: options.workerDeployments,
+            now: () => runtimeServices.clock.now(),
+            audit: async (entry) => auditTrailInstance?.record(entry),
+            diagnose: (message, cause) =>
+              diagnose({
+                level: 'error',
+                scope: 'worker-deployments',
+                message: `[bureau] ${message}`,
+                cause,
+              }),
+          }),
     models,
     decisions: lateDecisions.decisions,
     // COR-1710: composed with the runtime, before this object exists.
