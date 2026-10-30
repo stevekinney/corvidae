@@ -962,6 +962,9 @@ export const AUDIT_WORKER_DEPLOYMENT_OWNER_PREFIX = 'worker-deployment:';
 /** The `runId` prefix of a skill source's synthetic audit owner, `skill-source:<id>` (COR-1818). */
 export const AUDIT_SKILL_SOURCE_OWNER_PREFIX = 'skill-source:';
 
+/** The `runId` prefix of a saved tool source's synthetic audit owner, `tool-source:<id>` (COR-1930). */
+export const AUDIT_TOOL_SOURCE_OWNER_PREFIX = 'tool-source:';
+
 /**
  * Every synthetic owner prefix above. A `runId` with one of these prefixes resolves to an owner
  * without a run, so `reservedWorkflowIdentifierReason` refuses each as the start of a run id a
@@ -974,6 +977,7 @@ export const AUDIT_SYNTHETIC_OWNER_PREFIXES: readonly string[] = [
   AUDIT_WORKFLOW_OWNER_PREFIX,
   AUDIT_WORKER_DEPLOYMENT_OWNER_PREFIX,
   AUDIT_SKILL_SOURCE_OWNER_PREFIX,
+  AUDIT_TOOL_SOURCE_OWNER_PREFIX,
 ];
 
 /**
@@ -1012,6 +1016,17 @@ export function auditTrailWorkerDeploymentOwnerId(deploymentName: string): strin
  */
 export function auditTrailSkillSourceOwnerId(sourceId: string): string {
   return `${AUDIT_SKILL_SOURCE_OWNER_PREFIX}${sourceId}`;
+}
+
+/**
+ * The synthetic `runId` a change to a saved tool source is filed under, `tool-source:<id>`: the
+ * change belongs to no run. `query({ runId })` with it retrieves one source's changes, in order.
+ * The record's `principal` is the owner who made the change and its detail names the source
+ * (`sourceId`) and the owner; a local-command MCP source's record also holds its `commandLine`.
+ * It never holds a credential or an environment value.
+ */
+export function auditTrailToolSourceOwnerId(sourceId: string): string {
+  return `${AUDIT_TOOL_SOURCE_OWNER_PREFIX}${sourceId}`;
 }
 
 /** The `owner` field of a deletion entry's detail, or nothing when no owner was recorded. */

@@ -185,6 +185,7 @@ import {
   AUDIT_SCHEDULE_OWNER_PREFIX,
   AUDIT_SESSION_OWNER_PREFIX,
   AUDIT_SKILL_SOURCE_OWNER_PREFIX,
+  AUDIT_TOOL_SOURCE_OWNER_PREFIX,
   AUDIT_WORKER_DEPLOYMENT_OWNER_PREFIX,
   AUDIT_WORKFLOW_OWNER_PREFIX,
   type AuditTrail,
@@ -10788,6 +10789,15 @@ async function constructBureau<const D extends AgentDefinitions>(
         }
         if (runId.startsWith(AUDIT_SKILL_SOURCE_OWNER_PREFIX)) {
           // COR-1818 — a skill source has no owner field: the owner who changed its trust is
+          // recorded on the entry, and a record without one belongs to the deployment's owner.
+          const recorded =
+            typeof detail === 'object' && detail !== null
+              ? (detail as { owner?: unknown }).owner
+              : undefined;
+          return typeof recorded === 'string' ? recorded : ownerOrLocal(undefined);
+        }
+        if (runId.startsWith(AUDIT_TOOL_SOURCE_OWNER_PREFIX)) {
+          // COR-1930 — a saved tool source has no owner field: the owner who changed it is
           // recorded on the entry, and a record without one belongs to the deployment's owner.
           const recorded =
             typeof detail === 'object' && detail !== null

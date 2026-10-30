@@ -19,6 +19,7 @@ import { z } from 'zod';
 
 import type { Tool } from '../../is-tool';
 import {
+  completeMcpOAuthAuthorization,
   connectMcpClient,
   connectMcpClientWithOAuth,
   createMcpOAuthProvider,
@@ -236,6 +237,14 @@ export type LoadToolSourceOptions = {
   oauth?: ToolSourceOAuthOptions;
   /** Fetch for the OpenAPI document, OpenAPI calls, and MCP over HTTP. Defaults to the global `fetch`. */
   fetch?: typeof fetch;
+  /**
+   * Abandons the load when it aborts before the load settles: an MCP source stops the child
+   * process or connection it opened (a stdio server that never answers is killed, not waited on
+   * for the SDK's own timeout), and the load rejects. Aborting after the load has settled does
+   * nothing; close the returned source instead. An OpenAPI source and an OAuth connection hold
+   * no process and are not closed by it.
+   */
+  signal?: AbortSignal;
 };
 
 /** The tools a saved source produced, and the connection to release when the host shuts down. */
@@ -269,6 +278,7 @@ export async function loadToolSource(
   // The options object is caller-owned and read after awaits below, so it is copied first.
   const source = parseToolSourceDescription(description);
   const snapshot = { ...options };
+  snapshot.signal?.throwIfAborted();
   return source.kind === 'mcp'
     ? loadMcpSource(source, snapshot)
     : loadOpenApiSource(source, snapshot);
@@ -334,12 +344,49 @@ async function loadMcpSource(
     source.transport.type === 'stdio'
       ? await connectStdio(source.id, source.transport, options)
       : await connectHttp(source.id, source.transport, options);
+  // Listing the tools is a request of its own, and may hang as the handshake may.
+  const stopWatching = closeOnAbort(options.signal, () => client.close());
   try {
     const tools = await fromMcpClientTools(client, { serverId: source.id });
     return { id: source.id, kind: 'mcp', tools, close: onceAsync(() => client.close()) };
   } catch (error) {
     await client.close().catch(() => undefined);
     throw error;
+  } finally {
+    stopWatching();
+  }
+}
+
+/**
+ * Runs `close` when `signal` aborts, and returns the function that stops watching. A signal that
+ * has already aborted runs it at once.
+ */
+function closeOnAbort(signal: AbortSignal | undefined, close: () => Promise<unknown>): () => void {
+  if (signal === undefined) return () => undefined;
+  const run = (): void => void close().catch(() => undefined);
+  if (signal.aborted) {
+    run();
+    return () => undefined;
+  }
+  signal.addEventListener('abort', run, { once: true });
+  return () => signal.removeEventListener('abort', run);
+}
+
+/**
+ * {@link connectMcpClient} over `transport`, closing the transport if `signal` aborts first. For
+ * the SDK's stdio transport that kills the child, including the throwaway sibling it probes the
+ * server's protocol version on, which a pending connect would otherwise wait on for a minute.
+ */
+async function connectUntilAborted(
+  transport: Parameters<typeof connectMcpClient>[0],
+  signal: AbortSignal | undefined,
+): Promise<Client> {
+  signal?.throwIfAborted();
+  const stopWatching = closeOnAbort(signal, () => transport.close());
+  try {
+    return await connectMcpClient(transport);
+  } finally {
+    stopWatching();
   }
 }
 
@@ -357,22 +404,7 @@ async function connectHttp(
         `Tool source "${sourceId}" authenticates with OAuth, but no \`oauth\` options were given to the loader.`,
       );
     }
-    const redirectUrl = oauth.redirectUrl(sourceId);
-    const clientMetadata: OAuthClientMetadata = {
-      client_name: authentication.clientName ?? 'armorer-mcp-client',
-      redirect_uris: [String(redirectUrl)],
-      grant_types: ['authorization_code', 'refresh_token'],
-      response_types: ['code'],
-      token_endpoint_auth_method: 'none',
-      ...(authentication.scope ? { scope: authentication.scope } : {}),
-    };
-    const provider = createMcpOAuthProvider({
-      redirectUrl,
-      clientMetadata,
-      tokenStorage: oauth.tokenStorage(sourceId),
-      onAuthorizationRequired: (authorizationUrl) =>
-        oauth.onAuthorizationRequired(sourceId, authorizationUrl),
-    });
+    const provider = createToolSourceOAuthProvider(sourceId, authentication, oauth);
     try {
       return await connectMcpClientWithOAuth({
         serverUrl: transport.url,
@@ -392,15 +424,88 @@ async function connectHttp(
     // Resolved once up front so a missing credential fails the load with a named error, then on
     // every request so a rotated value is picked up without reloading the source.
     await requireCredential(sourceId, name, options);
-    return connectMcpClient(
+    return connectUntilAborted(
       new StreamableHTTPClientTransport(new URL(transport.url), {
         ...fetchOption,
         authProvider: { token: () => requireCredential(sourceId, name, options) },
       }),
+      options.signal,
     );
   }
 
-  return connectMcpClient(new StreamableHTTPClientTransport(new URL(transport.url), fetchOption));
+  return connectUntilAborted(
+    new StreamableHTTPClientTransport(new URL(transport.url), fetchOption),
+    options.signal,
+  );
+}
+
+/** The OAuth provider for one source, built the same way to start a flow and to complete it. */
+function createToolSourceOAuthProvider(
+  sourceId: string,
+  authentication: { scope?: string | undefined; clientName?: string | undefined },
+  oauth: ToolSourceOAuthOptions,
+) {
+  const redirectUrl = oauth.redirectUrl(sourceId);
+  const clientMetadata: OAuthClientMetadata = {
+    client_name: authentication.clientName ?? 'armorer-mcp-client',
+    redirect_uris: [String(redirectUrl)],
+    grant_types: ['authorization_code', 'refresh_token'],
+    response_types: ['code'],
+    token_endpoint_auth_method: 'none',
+    ...(authentication.scope ? { scope: authentication.scope } : {}),
+  };
+  return createMcpOAuthProvider({
+    redirectUrl,
+    clientMetadata,
+    tokenStorage: oauth.tokenStorage(sourceId),
+    onAuthorizationRequired: (authorizationUrl) =>
+      oauth.onAuthorizationRequired(sourceId, authorizationUrl),
+  });
+}
+
+/**
+ * Finishes the sign-in of an MCP source that authenticates with `oauth`, once the user's browser
+ * has been sent back to the redirect URL. `callbackUrl` is the full URL (or just the query string)
+ * the authorization server redirected to. The `state` and issuer are checked against what the
+ * flow recorded in the source's token storage, and the code is exchanged for tokens, which are
+ * saved through the same storage. Load the source again afterwards to list its tools.
+ *
+ * @throws {ToolSourceDescriptionError} for an invalid description.
+ * @throws {Error} when the source does not authenticate with `oauth`, or the callback does not
+ *   match the flow it recorded. No message repeats a URL.
+ */
+export async function completeToolSourceAuthorization(
+  description: ToolSourceDescription,
+  options: {
+    /** The same host-owned pieces given to {@link loadToolSource}. */
+    oauth: ToolSourceOAuthOptions;
+    /** The URL the authorization server redirected the user's browser to. */
+    callbackUrl: string | URL;
+    /** Fetch for the token exchange. Defaults to the global `fetch`. */
+    fetch?: typeof fetch;
+  },
+): Promise<void> {
+  const source = parseToolSourceDescription(description);
+  const authentication =
+    source.kind === 'mcp' && source.transport.type === 'http'
+      ? source.transport.authentication
+      : undefined;
+  if (
+    source.kind !== 'mcp' ||
+    source.transport.type !== 'http' ||
+    authentication?.type !== 'oauth'
+  ) {
+    throw new Error(`Tool source "${source.id}" does not authenticate with OAuth.`);
+  }
+  // Caller-owned, read after the awaits below.
+  const oauth = { ...options.oauth };
+  const provider = createToolSourceOAuthProvider(source.id, authentication, oauth);
+  await completeMcpOAuthAuthorization(provider, {
+    serverUrl: source.transport.url,
+    callbackUrl: options.callbackUrl,
+    tokenStorage: oauth.tokenStorage(source.id),
+    ...(options.fetch ? { fetchFn: options.fetch } : {}),
+  });
 }
 
 async function connectStdio(
@@ -415,13 +520,14 @@ async function connectStdio(
   for (const [variable, credential] of Object.entries(transport.credentialEnv ?? {})) {
     credentialEnvironment[variable] = await requireCredential(sourceId, credential, options);
   }
-  return connectMcpClient(
+  return connectUntilAborted(
     new StdioClientTransport({
       command: transport.command,
       ...(transport.args ? { args: transport.args } : {}),
       ...(transport.cwd ? { cwd: transport.cwd } : {}),
       env: { ...getDefaultEnvironment(), ...transport.env, ...credentialEnvironment },
     }),
+    options.signal,
   );
 }
 

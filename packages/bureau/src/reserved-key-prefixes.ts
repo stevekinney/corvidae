@@ -62,6 +62,7 @@ export const BUREAU_RESERVED_KEY_PREFIXES: readonly string[] = [
   'session-input-open:v2:',
   'settings',
   'skill-source:',
+  'tool-source:',
   'skill:',
   'steering-key:v1',
   'steering-log:v1',

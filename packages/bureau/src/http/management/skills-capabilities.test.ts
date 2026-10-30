@@ -14,7 +14,11 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { createAgentSkills } from '../../agent-skills.ts';
-import { AUDIT_SYNTHETIC_OWNER_PREFIXES, auditTrailSkillSourceOwnerId } from '../../audit-trail.ts';
+import {
+  AUDIT_SYNTHETIC_OWNER_PREFIXES,
+  auditTrailSkillSourceOwnerId,
+  auditTrailToolSourceOwnerId,
+} from '../../audit-trail.ts';
 import { ANONYMOUS_LOCAL_OWNER } from '../../owner-of-record.ts';
 import { agentFileDirectory } from '../../sources/agent-file-directory.ts';
 import { createSkillClient } from '../../skills/client/skill-client.ts';
@@ -240,6 +244,50 @@ describe('the audit record of a skill source’s trust change', () => {
     // The owner string is the deployment's, so a caller who is not that owner reads nothing.
     expect(listOf(asStranger as never, 'records')).toEqual([]);
     expect(AUDIT_SYNTHETIC_OWNER_PREFIXES).toContain('skill-source:');
+  });
+});
+
+describe('the audit record of a saved tool source’s change', () => {
+  it('is filed under the source, shows the command line, and belongs to the owner who made it', async () => {
+    const served = await serve();
+    const trail = served.bureau.internals.auditTrail;
+    if (trail === undefined) throw new Error('The Bureau keeps no audit trail.');
+    const resource = auditTrailToolSourceOwnerId('files');
+    await trail.record({
+      runId: resource,
+      type: 'tool.source.connected',
+      principal: ANONYMOUS_LOCAL_OWNER,
+      detail: {
+        sourceId: 'files',
+        owner: ANONYMOUS_LOCAL_OWNER,
+        commandLine: 'npx -y @example/files-server',
+        env: { TOKEN: 'never-shown' },
+      },
+    });
+
+    const asOperator = await rpc(
+      served.keyed,
+      'bureau.audit.query',
+      { runId: resource },
+      'operator-key',
+    );
+    const asStranger = await rpc(
+      served.keyed,
+      'bureau.audit.query',
+      { runId: resource },
+      'alice-key',
+    );
+
+    expect(listOf(asOperator as never, 'records')).toEqual([
+      expect.objectContaining({
+        type: 'tool.source.connected',
+        resource,
+        principal: ANONYMOUS_LOCAL_OWNER,
+        detail: { sourceId: 'files', commandLine: 'npx -y @example/files-server' },
+      }),
+    ]);
+    expect(listOf(asStranger as never, 'records')).toEqual([]);
+    expect(AUDIT_SYNTHETIC_OWNER_PREFIXES).toContain('tool-source:');
   });
 });
 

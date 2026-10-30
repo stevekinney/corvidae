@@ -184,6 +184,58 @@ A source is a directory whose subdirectories are skills: `id` is letters, digits
 
 Remote mode refuses a trust change: `PUT` answers `403` with `{ "error": "locked", "reason": "deployment" }` and `host.skills.setTrust` throws `SkillWriteLockedError`, since the bucket's configuration belongs to the deployment. Listing and refreshing still work. If the change is applied but the audit trail cannot take the record, the answer is `500` with `{ "error": "partial" }` and the change stands.
 
+### Saved tool sources
+
+An agent file may list tools from an MCP server or an OpenAPI service the host has saved. Sources are the `toolSources` key of `configuration.json`; each entry holds Armorer's description under `source` (plain JSON from `armorer/tool-sources`, which names a credential and never holds one) and, beside it, any settings of the host's own under `tools`, keyed by the tool's own name. `tools` takes no field yet, and a field it does not know is refused, not ignored:
+
+```json
+{
+  "toolSources": [
+    {
+      "source": {
+        "id": "tracker",
+        "kind": "mcp",
+        "transport": {
+          "type": "http",
+          "url": "https://mcp.example.com/mcp",
+          "authentication": { "type": "bearer", "credential": "token" }
+        }
+      }
+    }
+  ]
+}
+```
+
+`id` is 1 to 20 lowercase letters, digits and hyphens, starting with a letter (a tool name that began with a digit would be refused by Gemini), because it names the Bungalow secret `tool-source-<id>` that holds the source's credentials. A mistake stops the host and names the field, such as `toolSources[0].source.id`. The key is optional, and every other key is left alone.
+
+**The name an agent file uses.** A source's tool is `<id>__<tool>`: the source's `id`, two underscores, and the tool's own name. An `id` never holds `_`, so the first `__` ends it: two sources, or a source and a built-in tool such as `lookup-order` or Bureau's `workflows-*`, can never share a name. The whole name stays within 64 characters, the shortest limit a model provider sets. An agent file stores the name, and a tool approval hangs on it, so the name is a contract that depends on the tool's own name alone, never on what else the server lists or in which order:
+
+- A name made only of letters, digits, `_` and `-`, short enough, and not ending in `-` and eight hex digits is used as it is: `tracker__create_issue`, and an OpenAPI source's `list-pets` is `pets__list-pets`.
+- Any other name is `<id>__<readable>-<digest>`: each character outside that set becomes `_`, the readable part is cut so the whole fits in 64 characters, and `<digest>` is the first eight hex digits of the SHA-256 of the tool's raw name. `foo_bar` is `files__foo_bar` and `foo.bar` is `files__foo_bar-` plus its digest, so the two stay apart, and dropping or reordering either never moves the other's name. A name that already ends in `-` and eight hex digits takes a digest of its own, so a plain name and a digested one never meet.
+- If two tools of a source would still get one name (a server that lists a name twice, or a digest collision), neither is offered: both are skipped and listed under `skipped` with the reason, and the rest load. Neither the first nor the last wins, since that would let the server's listing order decide which tool a stored name means. A tool with no name is skipped the same way.
+
+Renaming a source's `id` renames its tools. MCP has no allow-list in Armorer, so a source offers every tool its server lists; an OpenAPI source narrows with `allowOperations` and `namePrefix` in its description.
+
+**Loaded at boot, listed after a restart.** The host loads every source before it builds the Bureau, with each tool's capability tier from Armorer (an MCP tool's annotations; an OpenAPI operation's HTTP method), so `bureau.agents.catalog` lists `tracker__…` beside the built-in tools and an agent file may name them. A source added or changed later reads `pending-restart` until the host starts again. One source that cannot load, because it is unreachable, names a credential nobody stored, holds credentials that cannot be read, or does not answer within 30 seconds (at which point a local command's process is stopped, and so is one that is still connecting when the host closes), is reported on its own entry (`failed`, with a message that names no URL or value) and never stops the host or another source. An OAuth source with no tokens is not contacted: it reads `needs-authorization`.
+
+**Credentials are encrypted.** Bearer tokens, API keys, a local command's environment secrets, and an MCP source's OAuth state (tokens, client registration, the PKCE verifier and `state` of a sign-in in progress, discovery state) are encrypted with the AES-GCM helper of `@lostgradient/cryptography`, under the same installation key secret answers are sealed with (`answer-encryption-key`, so a rotation keeps earlier values readable), and kept in `secrets/tool-source-<id>` as JSON: the credential names in the clear, every value ciphertext, each ciphertext bound to its source and name. Rotating the key (see "Secret answers" above) keeps them readable while the retired key exists; once it is deleted the source reads `failed` with "cannot be read" until it is connected again. Nothing else holds them: not `configuration.json`, an error, a log line, the audit trail, or a response.
+
+**Credentials go only where they were given.** A stored credential is carried over to a later `PUT` only when the source goes to the same place: the same kind and, for an MCP server, the same URL (or, for a local command, the same command, arguments and working directory), or, for an OpenAPI service, the same `baseUrl` and specification URL (or inline document's servers). Change any of those and every stored credential and any OAuth sign-in is dropped; the request must supply new credentials, or is refused with `400` naming `credentials.<name>`. Changing something else, such as `allowOperations` or an OAuth scope, keeps them. A new source never starts from a secret an earlier source with the same id left behind, and removing a source clears its secret. Until the host restarts, the tools a replaced or removed source loaded stay connected to the old address and are given no credential or sign-in at all, so a call fails rather than carry the new address's token to the old server; a rotated credential for the same address is picked up at once. Connecting a source again also repairs a secret that cannot be read (a retired key that is gone), even for an OAuth source that names no credential.
+
+| Route | What it does |
+| --- | --- |
+| `GET /host/tool-sources` | Each configured source with its `state` (`loaded`, `failed`, `needs-authorization`, `pending-restart`), `tools` (`name`, `tool`, `tier`), `skipped`, stored credential `credentials` names, and, for OAuth, `authorized`. Carries `lockReason` when changes are refused. |
+| `PUT /host/tool-sources/<id>` `{ "source": { … }, "credentials": { "<name>": "<value>" } }` | Connects a source or replaces it: stores the credentials the description names (one already held may be left out), then lists the source in `configuration.json` through `host.configurationQueue`. `source.id` must be `<id>`. Answers `{ id, changed, restartRequired: true }`. |
+| `DELETE /host/tool-sources/<id>` | Removes the source and clears its credentials. |
+| `POST /host/tool-sources/<id>/authorize` | Starts an MCP OAuth sign-in: answers `{ "authorized": false, "authorizationUrl": "…" }` to open in a browser, or `{ "authorized": true }` when the stored tokens already work. |
+| `GET /host/oauth/callback/<id>` | Where the authorization server sends the browser back (`http://127.0.0.1:<port>/host/oauth/callback/<id>`, built from the host's origin). It accepts only the `state` the sign-in recorded, only while one is waiting, only within 10 minutes of the authorization URL being handed out, and only for the description the sign-in began for; a callback for a source that was removed or changed since is refused with `400`. It exchanges the code, stores the tokens, and answers a small page that repeats nothing from the request, taking its turn with every other change to the configuration and to that source's secret, so a removal that arrives during the exchange waits for it. The exchange is cancelled after the 30-second load timeout. The tools are listed after a restart. |
+
+URLs in a description (an MCP `url`, an OpenAPI `specification.url`, `baseUrl`) must be http or https without a username or password: the route refuses anything else with `400` and the field, such as `source.transport.url`, and never repeats the URL. A failed configuration write is repaired: the credentials the file still describes are put back, a write that threw after it replaced the file is read back and taken as done, and if the put-back fails too the answer is `500` with `{ "error": "partial" }`. A change that is applied but cannot be recorded in the audit trail answers `500` with `{ "error": "partial" }` and stands.
+
+**A local command is the owner's.** A source whose transport is `stdio` spawns a process on this machine, so only the owner principal may add it; anyone else gets `403` with `{ "error": "owner-only" }` (`ToolSourceOwnerOnlyError`), and nothing is written. Every connect, removal and sign-in is recorded in the audit trail under `tool-source:<id>` (`tool.source.connected`, `tool.source.removed`, `tool.source.authorized`), and a local command's record carries its `commandLine`: the executable and its arguments, never its environment or credentials.
+
+**Remote mode refuses.** The bucket's configuration and the environment's secrets belong to the deployment, so every change answers `403` with `{ "error": "locked", "reason": "deployment" }` and `host.toolSources.connect`, `.remove`, `.authorize` throw `ToolSourceWriteLockedError`. Reading, and loading what the deployment configured, still work.
+
 ### Decisions
 
 Bureau answers typed questions (`bureau.decisions.decide`, and the `decide` tool a task can call) with a language model from this catalog. An optional `typesafe-api-key` secret (a file in `secrets/`, mode `0600`, whitespace trimmed) registers TypeSafe's Jev as the decision model `typesafe`, the default of the `decisions.model` setting, for the kinds it serves: `boolean`, `choice`, and `scale`. Switching `decisions.model` to `catalog` on the Settings page sends every question to the fallback; the next decision uses the new choice. A `structured` question, and every question when the secret is absent, goes to the catalog's fallback row (`anthropic/claude-haiku-5-5`, else the cheapest priced row with structured output), which needs a configured provider. With neither, `decide` fails with `NOT_CONFIGURED`.
