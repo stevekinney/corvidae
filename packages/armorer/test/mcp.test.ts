@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { expectPromiseToReject } from '../src/async-assertion-test-helpers';
 import { toolContent } from '../src/protocol';
 
+import { resolveCapabilityTier } from '../src/approval-policy';
 import { createTool } from '../src/create-tool';
 import { createToolbox } from '../src/create-toolbox';
 import {
@@ -1168,12 +1169,51 @@ describe('createMCP', () => {
 
     expect(tool.metadata).toEqual({
       readOnly: true,
+      mutates: false,
+      dangerous: false,
       mcp: {
         title: 'Annotated title',
         description: 'annotated description',
       },
     });
     expect(await tool.execute({})).toEqual({ ok: true });
+  });
+
+  it.each([
+    ['no annotations', undefined, 'mutating'],
+    ['empty annotations', {}, 'mutating'],
+    ['readOnlyHint true', { readOnlyHint: true }, 'read-only'],
+    ['readOnlyHint false', { readOnlyHint: false }, 'mutating'],
+    ['destructiveHint true', { destructiveHint: true }, 'dangerous'],
+    ['destructiveHint false', { destructiveHint: false }, 'mutating'],
+    [
+      'readOnlyHint false and destructiveHint true',
+      { readOnlyHint: false, destructiveHint: true },
+      'dangerous',
+    ],
+    [
+      'readOnlyHint true and destructiveHint false',
+      { readOnlyHint: true, destructiveHint: false },
+      'read-only',
+    ],
+    [
+      'readOnlyHint true and destructiveHint true',
+      { readOnlyHint: true, destructiveHint: true },
+      'dangerous',
+    ],
+    ['idempotentHint only', { idempotentHint: true }, 'mutating'],
+  ] as const)('maps %s to the %s capability tier', (_label, annotations, tier) => {
+    const [tool = requiredValue<never>(undefined, 'tool')] = fromMcpTools([
+      {
+        name: 'tiered',
+        description: 'tier mapping',
+        ...(annotations === undefined ? {} : { annotations }),
+        inputSchema: z.object({}),
+        handler: async () => ({ content: [] }),
+      },
+    ]);
+
+    expect(resolveCapabilityTier(tool.metadata, tool.tags)).toBe(tier);
   });
 
   it('parses MCP content blocks and error payloads across edge cases', async () => {

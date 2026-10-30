@@ -28,7 +28,7 @@ const toolbox = createToolbox(tools, {
 });
 ```
 
-- **`CapabilityTier`** — `'read-only' | 'mutating' | 'dangerous'`. Resolved from a tool's `metadata.readOnly` / `metadata.mutates` / `metadata.dangerous` flags (falling back to `dangerous` / `mutating` / `readonly` risk tags). This is exactly the metadata armorer's coding toolbox (`read-file`, `grep`, `glob`) and the OpenAPI integration's verb-derived metadata (`GET` → read-only, `POST`/`PUT` → mutating, `DELETE` → dangerous) already emit — no changes were needed to either to feed this axis.
+- **`CapabilityTier`** — `'read-only' | 'mutating' | 'dangerous'`. Resolved from a tool's `metadata.readOnly` / `metadata.mutates` / `metadata.dangerous` flags (falling back to `dangerous` / `mutating` / `readonly` risk tags). This is exactly the metadata armorer's coding toolbox (`read-file`, `grep`, `glob`) and the OpenAPI integration's verb-derived metadata (`GET` → read-only, `POST`/`PUT` → mutating, `DELETE` → dangerous) already emit. Imported MCP tools get the same flags from the server's annotations (`readOnlyHint` → read-only, `destructiveHint` → dangerous, anything else, unannotated tools included → mutating); see the MCP documentation.
 - **`ApprovalMode`** — `'never' | 'on-mutation' | 'always' | 'deny'`. `never` allows the tier outright. `always` asks every time. `on-mutation` allows `read-only` and asks for anything at or above `mutating`. `deny` blocks the tier regardless of anything else.
 - **`ApprovalStatus`** — the three-way verdict a check produces: `'allow' | 'ask' | 'deny'`.
 

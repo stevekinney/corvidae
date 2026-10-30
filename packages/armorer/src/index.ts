@@ -289,6 +289,7 @@ export * from './instrumentation';
 export * from './integrations/mcp';
 export * from './integrations/mcp/oauth';
 export * from './integrations/openapi';
+export * from './integrations/tool-sources';
 export * from './middleware';
 export * from './query';
 export * from './resolution';

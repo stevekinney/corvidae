@@ -45,6 +45,7 @@ import {
   type OAuthDiscoveryState,
   type OAuthTokens,
   type StreamableHTTPClientTransportOptions,
+  type Transport,
 } from '@modelcontextprotocol/client';
 import type { Tool } from '../../is-tool';
 import {
@@ -313,13 +314,19 @@ export async function completeMcpOAuthAuthorization(
   });
 }
 
-export type ConnectMcpClientWithOAuthOptions = {
+/** Options shared by {@link connectMcpClient} and {@link connectMcpClientWithOAuth}. */
+export type ConnectMcpClientOptions = {
+  /** The identity the client announces. Defaults to `armorer-mcp-client`. */
+  clientInfo?: Implementation;
+  /** Extra SDK client options; `versionNegotiation` defaults to `{ mode: 'auto' }`. */
+  clientOptions?: ClientOptions;
+};
+
+export type ConnectMcpClientWithOAuthOptions = ConnectMcpClientOptions & {
   /** Canonical URI of the MCP server to connect to over Streamable HTTP. */
   serverUrl: string | URL;
   /** An {@link OAuthClientProvider}, typically from {@link createMcpOAuthProvider}. */
   provider: OAuthClientProvider;
-  clientInfo?: Implementation;
-  clientOptions?: ClientOptions;
   transportOptions?: Omit<StreamableHTTPClientTransportOptions, 'authProvider'>;
 };
 
@@ -337,6 +344,25 @@ const DEFAULT_MCP_CLIENT_INFO: Implementation = {
 const DEFAULT_MCP_VERSION_NEGOTIATION: NonNullable<ClientOptions['versionNegotiation']> = {
   mode: 'auto',
 };
+
+/**
+ * Connects an MCP `Client` over any transport with Armorer's defaults: the
+ * `armorer-mcp-client` identity and automatic protocol-version negotiation.
+ * {@link connectMcpClientWithOAuth} is this over Streamable HTTP with an OAuth
+ * provider; use this directly for a bearer-token HTTP transport or a stdio
+ * transport. The caller owns the returned client and closes it.
+ */
+export async function connectMcpClient(
+  transport: Transport,
+  options: ConnectMcpClientOptions = {},
+): Promise<Client> {
+  const client = new Client(options.clientInfo ?? DEFAULT_MCP_CLIENT_INFO, {
+    versionNegotiation: DEFAULT_MCP_VERSION_NEGOTIATION,
+    ...options.clientOptions,
+  });
+  await client.connect(transport);
+  return client;
+}
 
 /**
  * Connects an MCP `Client` to a server over Streamable HTTP with the given
@@ -358,12 +384,10 @@ export async function connectMcpClientWithOAuth(
     ...transportOptions,
     authProvider: provider,
   });
-  const client = new Client(clientInfo ?? DEFAULT_MCP_CLIENT_INFO, {
-    versionNegotiation: DEFAULT_MCP_VERSION_NEGOTIATION,
-    ...clientOptions,
+  return connectMcpClient(transport, {
+    ...(clientInfo ? { clientInfo } : {}),
+    ...(clientOptions ? { clientOptions } : {}),
   });
-  await client.connect(transport);
-  return client;
 }
 
 /**

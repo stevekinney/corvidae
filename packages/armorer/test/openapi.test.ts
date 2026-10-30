@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import { resolveCapabilityTier } from '../src/approval-policy';
 import { createToolbox } from '../src/create-toolbox';
 import { createToolboxFromOpenAPI, type OpenAPISpec } from '../src/integrations/openapi';
 import petstoreSpec from './fixtures/petstore-expanded.json';
@@ -60,6 +61,24 @@ describe('createToolboxFromOpenAPI', () => {
     const deletePet = tools.find((tool) => tool.name === 'delete-pet');
 
     expect(deletePet?.metadata).toEqual({ readOnly: false, mutates: true, dangerous: true });
+  });
+
+  it.each([
+    ['get', 'read-only'],
+    ['head', 'read-only'],
+    ['options', 'read-only'],
+    ['trace', 'read-only'],
+    ['post', 'mutating'],
+    ['put', 'mutating'],
+    ['patch', 'mutating'],
+    ['delete', 'dangerous'],
+  ] as const)('maps %s operations to the %s capability tier', (method, tier) => {
+    const [tool] = createToolboxFromOpenAPI({
+      servers: [{ url: 'https://api.example.test' }],
+      paths: { '/things': { [method]: { operationId: 'thing' } } },
+    });
+
+    expect(resolveCapabilityTier(tool?.metadata, tool?.tags)).toBe(tier);
   });
 
   it('kebab-cases an operationId containing spaces', () => {

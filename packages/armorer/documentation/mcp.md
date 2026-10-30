@@ -395,6 +395,43 @@ await completeMcpOAuthAuthorization(provider, {
 
 `completeMcpOAuthAuthorization` validates the redirect's `iss` parameter per [RFC 9207](https://datatracker.ietf.org/doc/html/rfc9207) against the issuer recorded during discovery — guarding against authorization-server mix-up attacks — before ever exchanging the authorization code for tokens. This is implemented against the MCP Authorization spec base revision [2025-06-18](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization), plus the RFC 9207 issuer-validation requirement from the [current draft revision](https://modelcontextprotocol.io/specification/draft/basic/authorization#authorization-response-validation).
 
+### Capability tiers of imported tools
+
+`fromMcpTools`, `fromMcpClientTools`, and `fromMcpEndpointTools` set each imported tool's `readOnly`, `mutates`, and `dangerous` metadata from the server's annotations, which `resolveCapabilityTier` reads. `destructiveHint: true` is `dangerous`, `readOnlyHint: true` is `read-only`, and every other tool, one with no annotations included, is `mutating`. A server that sets both hints to `true` gets `dangerous`, so a remote server cannot loosen its own tier. A server's annotations are advisory, so an unannotated tool is treated as mutating rather than assumed safe.
+
+## Saved tool sources
+
+A host that saves "this MCP server" or "this OpenAPI service" in its configuration describes it as a `ToolSourceDescription`, which is plain JSON: it holds no function and no secret, and names a credential only by the name the host stores it under. `loadToolSource(description, { resolveCredential })` connects and returns the source's tools plus a `close()`; `loadToolSources` loads many and reports the failures apart from the sources that loaded. `parseToolSourceDescription` validates a value read back from configuration and rejects unknown fields.
+
+```typescript
+import { loadToolSource, parseToolSourceDescription } from 'armorer';
+
+const description = parseToolSourceDescription({
+  id: 'tracker',
+  kind: 'mcp',
+  transport: {
+    type: 'http',
+    url: 'https://mcp.example.com/mcp',
+    authentication: { type: 'bearer', credential: 'tracker-token' },
+  },
+});
+
+const source = await loadToolSource(description, {
+  // The only way a credential reaches the loader. Return undefined when there is none.
+  resolveCredential: ({ sourceId, credential }) => lookUpSecret(sourceId, credential),
+});
+console.log(source.tools.map((tool) => tool.name));
+await source.close();
+
+declare function lookUpSecret(sourceId: string, credential: string): string | undefined;
+```
+
+- **MCP over HTTP** takes a `url` and `authentication` of `{ type: 'bearer', credential }` or `{ type: 'oauth', scope?, clientName? }`. An `oauth` source needs the loader's `oauth` option: `tokenStorage(sourceId)` returns the `McpOAuthTokenStorage` that holds that source's tokens (back it with encrypted storage), plus the `redirectUrl` and `onAuthorizationRequired(sourceId, url)`. When the user has not authorized yet, the load throws `ToolSourceAuthorizationRequiredError` after passing the URL on; finish with `completeMcpOAuthAuthorization` and load again.
+- **MCP over stdio** takes a `command`, `args`, `cwd`, plain `env`, and `credentialEnv`, which maps an environment variable to the credential that fills it. The child inherits only the SDK's default safe environment, never the host's.
+- **OpenAPI** takes `specification` (`{ type: 'url', url }` fetched as JSON without credentials, or `{ type: 'document', document }`), an optional `baseUrl` (defaulting to the document's first server), `authentication` of `{ type: 'bearer', credential }` or `{ type: 'api-key', header, credential }`, `allowOperations` (a list of `operationId`s), and `namePrefix`. Tiers come from the HTTP method: `GET`, `HEAD`, `OPTIONS`, and `TRACE` are read-only, `DELETE` is dangerous, and the rest are mutating.
+
+A missing credential fails the load with `ToolSourceCredentialError`, which names the credential and never a value. The loader reads no environment variable or file for a credential.
+
 ## Agent SDK integrations
 
 Agent SDK integration examples are documented in [Agent SDK Integrations](./agent-sdk-integrations.md), including:
