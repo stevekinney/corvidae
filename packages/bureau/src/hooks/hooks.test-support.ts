@@ -60,6 +60,24 @@ export function createClock(start = 1_800_000_000_000) {
   return { clock, now: () => clock.milliseconds };
 }
 
+/** A sleep that waits until the test releases it, and records how long each wait asked for. */
+export function createManualSleep() {
+  const requested: number[] = [];
+  const pending: Array<() => void> = [];
+  return {
+    requested,
+    sleep: (milliseconds: number) =>
+      new Promise<void>((resolve) => {
+        requested.push(milliseconds);
+        pending.push(resolve);
+      }),
+    /** Lets every wait that is open now finish. */
+    release(): void {
+      for (const resolve of pending.splice(0)) resolve();
+    },
+  };
+}
+
 /** The signing secret most tests use: unique, so a scan for it finds nothing else. */
 export const SIGNING_SECRET = 'whsec-corvidae-test-9f3a6c1e0b27d845';
 
@@ -83,6 +101,8 @@ export type OpenHooksBureauOptions = {
   readonly hooks?: NonNullable<BureauOptions['hooks']>;
   readonly onDiagnostic?: BureauOptions['onDiagnostic'];
   readonly withoutKey?: boolean;
+  /** Replaces the instant backoff wait, for a test that holds a wait open. */
+  readonly sleep?: (milliseconds: number) => Promise<void>;
 };
 
 /** A Bureau with one agent that answers at once, hooks on, and delivery over the injected `fetch`. */
@@ -105,7 +125,7 @@ export async function openHooksBureau(options: OpenHooksBureauOptions): Promise<
       targets: [],
       fetch: options.fetch,
       // Backoff waits are not what these tests measure; the delivery's record is.
-      sleep: () => Promise.resolve(),
+      sleep: options.sleep ?? (() => Promise.resolve()),
       ...(options.now === undefined ? {} : { now: options.now }),
       ...(options.maxAttempts === undefined ? {} : { maxAttempts: options.maxAttempts }),
     },

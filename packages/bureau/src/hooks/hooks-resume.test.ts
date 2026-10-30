@@ -7,6 +7,7 @@ import type { EncryptionKey } from '@lostgradient/cryptography';
 import { textValueStore } from '@lostgradient/storage';
 import { afterEach, beforeAll, describe, expect, it } from 'bun:test';
 
+import type { BureauDiagnostic } from '../types.ts';
 import { createSqliteStorageFixture } from '../test/storage-fixtures.ts';
 import { waitForCondition } from '../test';
 import { HOOK_SIGNATURE_HEADER, verifyHookSignature } from './hook-signature.ts';
@@ -14,6 +15,7 @@ import { HOOK_DELIVERY_KEY_PREFIX } from './hook-store.ts';
 import type { HookDeliveryRecord } from './hook-types.ts';
 import {
   createClock,
+  createManualSleep,
   createReceiver,
   deliveriesOf,
   fireRunEvents,
@@ -121,7 +123,7 @@ describe('a delivery after a restart', () => {
     expect(await second.bureau.hooks!.get(run.hook.id)).toMatchObject({ owner: 'api-key:alice' });
   });
 
-  it('keeps a crashed process’s attempt as interrupted and never resends it under its own number', async () => {
+  it('resumes a crashed process’s delivery when its lease runs out, even if the restart came inside the window', async () => {
     const run = await firstProcess();
     await run.stopFirst();
     // What a crash leaves: the attempt written as sending, and a lease that has not run out.
@@ -140,34 +142,74 @@ describe('a delivery after a restart', () => {
     await kv.set(deliveryKey!, JSON.stringify(crashed));
 
     const receiver = createReceiver();
-    const second = await openHooksBureau({ storage, fetch: receiver.fetch, key, now: run.now });
+    const wait = createManualSleep();
+    const second = await openHooksBureau({
+      storage,
+      fetch: receiver.fetch,
+      key,
+      now: run.now,
+      sleep: wait.sleep,
+    });
     cleanups.push(() => second.dispose());
-    await resumed(second);
-
-    // The live lease keeps another process from taking it.
+    // The live lease keeps this process from taking it now; it schedules one scan for the expiry.
+    await waitForCondition(() => wait.requested.length === 1, 'no re-scan was scheduled');
+    expect(wait.requested).toEqual([60_000]);
     expect(receiver.calls).toHaveLength(0);
     const [held] = await deliveriesOf(second.bureau, run.hook.id);
     expect(held!.status).toBe('pending');
 
-    // The lease runs out; the next process to start takes the delivery.
-    run.clock.milliseconds += 61_000;
-    await second.dispose();
-    const third = await openHooksBureau({
-      storage: await run.database.reopen(),
-      fetch: receiver.fetch,
-      key,
-      now: run.now,
-    });
-    cleanups.push(() => third.dispose());
-    const [delivery] = await waitForSettledDeliveries(third.bureau, run.hook.id, 1);
+    // The lease runs out; the same process takes the delivery, with no further restart.
+    run.clock.milliseconds += 60_000;
+    wait.release();
+    const [delivery] = await waitForSettledDeliveries(second.bureau, run.hook.id, 1);
 
     expect(delivery!.status).toBe('delivered');
     expect(delivery!.attempts.map((attempt) => [attempt.number, attempt.outcome])).toEqual([
       [1, 'interrupted'],
       [2, 'response'],
     ]);
+    // Sent once, as a new attempt that never reuses the interrupted one's number, and the
+    // re-scan did not schedule itself again, since nothing is left to wait for.
     expect(receiver.calls).toHaveLength(1);
     expect(receiver.calls[0]!.headers.get('X-Delivery-Attempt')).toBe('2');
+    expect(wait.requested).toEqual([60_000]);
+  });
+
+  it('cancels the scheduled re-scan on shutdown, and takes nothing after it', async () => {
+    const run = await firstProcess();
+    await run.stopFirst();
+    const storage = await run.database.reopen();
+    const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
+    const [deliveryKey] = await kv.list(HOOK_DELIVERY_KEY_PREFIX);
+    const record = JSON.parse((await kv.get(deliveryKey!))!) as HookDeliveryRecord;
+    await kv.set(
+      deliveryKey!,
+      JSON.stringify({
+        ...record,
+        leaseUntil: run.clock.milliseconds + 60_000,
+        revision: record.revision + 1,
+      }),
+    );
+
+    const receiver = createReceiver();
+    const wait = createManualSleep();
+    const diagnostics: BureauDiagnostic[] = [];
+    const second = await openHooksBureau({
+      storage,
+      fetch: receiver.fetch,
+      key,
+      now: run.now,
+      sleep: wait.sleep,
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+    });
+    await waitForCondition(() => wait.requested.length === 1, 'no re-scan was scheduled');
+    // The wait never finishes on its own; the shutdown abandons it and still completes.
+    await second.dispose();
+    run.clock.milliseconds += 61_000;
+    wait.release();
+
+    expect(receiver.calls).toHaveLength(0);
+    expect(diagnostics.filter((diagnostic) => diagnostic.level === 'error')).toEqual([]);
   });
 
   it('counts interrupted attempts against the limit, so a restart loop cannot retry forever', async () => {

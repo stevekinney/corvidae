@@ -18,7 +18,10 @@
  *
  * A delivery holds a lease while a process drives it, refreshed on every write. A process that
  * stops cleanly releases it; one that crashes leaves it to expire, and `resume` takes only records
- * whose lease has.
+ * whose lease has. A restart inside that window finds the lease still live, so `resume` leaves the
+ * record and schedules one tracked re-scan for the earliest expiry it skipped (and again for any
+ * that remain); a shutdown abandons the wait. Without it such a delivery would stay pending until
+ * some later restart.
  *
  * @module hook-delivery
  */
@@ -92,7 +95,11 @@ export interface HookDeliveries {
   enqueue(hook: HookRecord, event: HookEventToDeliver, test: boolean): Promise<string>;
   /** Drives a delivery to a stop: delivered, exhausted, aborted, or released by a shutdown. Never rejects. */
   drive(deliveryId: string): Promise<void>;
-  /** Takes every pending delivery whose lease has expired, drives each to a stop, and resolves with how many it took. */
+  /**
+   * Takes every pending delivery whose lease has expired, drives each to a stop, and resolves with
+   * how many it took. A pending delivery whose lease is still live is taken by a tracked re-scan
+   * when the lease expires; a shutdown cancels it.
+   */
   resume(): Promise<number>;
 }
 
@@ -344,6 +351,55 @@ export function createHookDeliveries(dependencies: HookDeliveryDependencies): Ho
     }
   }
 
+  /**
+   * One pass: takes each pending delivery with an expired lease and drives it. Reports the pending
+   * deliveries it left because another process's lease is still live, with that lease. `only`
+   * narrows the pass to those ids, so a re-scan never claims a delivery this process is driving.
+   */
+  async function scan(only?: ReadonlySet<string>): Promise<{
+    readonly taken: number;
+    readonly skipped: ReadonlyMap<string, number>;
+  }> {
+    const driving: Promise<void>[] = [];
+    const skipped = new Map<string, number>();
+    for (const listed of await store.listDeliveries()) {
+      if (listed.status !== 'pending' || (only !== undefined && !only.has(listed.id))) continue;
+      if (listed.leaseUntil > engine.now()) {
+        skipped.set(listed.id, listed.leaseUntil);
+        continue;
+      }
+      const stored = await store.getDelivery(listed.id);
+      if (stored === undefined || stored.record.status !== 'pending') continue;
+      if (stored.record.leaseUntil > engine.now()) {
+        skipped.set(listed.id, stored.record.leaseUntil);
+        continue;
+      }
+      const claimed = await write(
+        stored,
+        advanced(stored.record, { attempts: withoutSending(stored.record.attempts) }),
+      );
+      if (claimed !== undefined) driving.push(drive(listed.id));
+    }
+    // Awaited, so the tracked `resume()` covers the deliveries it took.
+    await Promise.allSettled(driving);
+    return { taken: driving.length, skipped };
+  }
+
+  /** Waits for the earliest live lease among `skipped`, scans those again, and repeats until none is left or a shutdown. */
+  async function rescan(initial: ReadonlyMap<string, number>): Promise<void> {
+    try {
+      let skipped = initial;
+      while (skipped.size > 0 && !engine.shuttingDown()) {
+        await engine.wait(Math.max(Math.min(...skipped.values()) - engine.now(), 0));
+        if (engine.shuttingDown()) return;
+        const scanned = await scan(new Set(skipped.keys()));
+        skipped = scanned.skipped;
+      }
+    } catch (cause) {
+      dependencies.diagnose('A hook delivery re-scan failed', cause);
+    }
+  }
+
   return {
     async enqueue(hook, event, test) {
       const id = dependencies.newId();
@@ -389,26 +445,9 @@ export function createHookDeliveries(dependencies: HookDeliveryDependencies): Ho
     },
     drive,
     async resume() {
-      const driving: Promise<void>[] = [];
-      for (const listed of await store.listDeliveries()) {
-        if (listed.status !== 'pending' || listed.leaseUntil > engine.now()) continue;
-        const stored = await store.getDelivery(listed.id);
-        if (
-          stored === undefined ||
-          stored.record.status !== 'pending' ||
-          stored.record.leaseUntil > engine.now()
-        ) {
-          continue;
-        }
-        const claimed = await write(
-          stored,
-          advanced(stored.record, { attempts: withoutSending(stored.record.attempts) }),
-        );
-        if (claimed !== undefined) driving.push(drive(listed.id));
-      }
-      // Awaited, so the tracked `resume()` covers the deliveries it took.
-      await Promise.allSettled(driving);
-      return driving.length;
+      const first = await scan();
+      if (first.skipped.size > 0) engine.track(rescan(first.skipped));
+      return first.taken;
     },
   };
 }

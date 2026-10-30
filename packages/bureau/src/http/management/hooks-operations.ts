@@ -11,8 +11,13 @@
  * answered as for a missing one. The owner comes from the caller's credential and never from a
  * payload.
  *
- * A hook observes the whole Bureau's events, as `bureau.events` does, so creating one, or changing
- * the events it lists, also requires `bureau.events:observe-all`.
+ * A hook observes the whole Bureau's events, as `bureau.events` does, so anything that sets or
+ * widens what it reaches also requires `bureau.events:observe-all`: creating one, and an update that
+ * sets `url` (the events go wherever the URL points, so re-pointing a hook is reading them), sets
+ * `events`, or enables the hook. `test` does not: it sends a fixed message, never an event.
+ * The scope is checked against the caller on every such call, not against the hook's creator, so a
+ * key holding only `bureau.hooks:write` (or an owner whose scope was withdrawn) cannot turn an
+ * existing fleet-wide hook into a reader of its own.
  *
  * The signing secret is a write-only input of `create` and `update`: no operation, record, log or
  * audit entry returns it. A host that keeps secrets elsewhere (a remote home) refuses a write of
@@ -211,6 +216,11 @@ function holds(principal: Principal, scope: BureauScope): boolean {
   return principal.method !== 'unauthenticated' && principal.hasScope(scope);
 }
 
+/** The principal string recorded as the actor of an audit entry, or `undefined` when it names none. */
+function actorOf(principal: Principal): string | undefined {
+  return ownerOfPrincipal(principal);
+}
+
 /** The principal's owner string, or the fault for a credential that names none. */
 function ownerFor(principal: Principal): string {
   const owner = ownerOfPrincipal(principal);
@@ -334,7 +344,7 @@ export const hooksUpdateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Change a hook',
   description:
-    'Changes the fields given and leaves the rest: `url`, `events` (replacing the list), `signingSecret` (replacing the secret; write-only, never returned), `name` (`null` removes it) and `enabled`. A caller changes its own hooks without a scope; `bureau.hooks:write` changes any owner’s, and anyone else is answered `NotFound`. Changing `events` also requires `bureau.events:observe-all`. `expectedRevision`, when given, is compared inside the write: a hook that has changed since is a `StaleRevision` fault whose `currentRevision` is the revision now current. Faults for the URL, events and secret are those of `bureau.hooks.create`.',
+    'Changes the fields given and leaves the rest: `url`, `events` (replacing the list), `signingSecret` (replacing the secret; write-only, never returned), `name` (`null` removes it) and `enabled`. A caller changes its own hooks without a scope; `bureau.hooks:write` changes any owner’s, and anyone else is answered `NotFound`. Setting `url`, setting `events`, or setting `enabled: true` also requires `bureau.events:observe-all` of the caller, because each decides where the whole Bureau’s events go (renaming, replacing the secret and disabling do not). `expectedRevision`, when given, is compared inside the write: a hook that has changed since is a `StaleRevision` fault whose `currentRevision` is the revision now current. Faults for the URL, events and secret are those of `bureau.hooks.create`.',
   destructive: false,
   tags: ['Hooks'],
   inputSchema: updateInput,
@@ -352,9 +362,15 @@ export const hooksUpdateOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
     const { hooks } = await hookFor(host, principal, input.hookId, 'bureau.hooks:write');
-    if (input.events !== undefined) requireObserveAll(principal);
+    // Where the whole Bureau's events go is decided by the url, the kinds, and whether the hook
+    // fires at all, so the caller needs the scope for each of them, whoever created the hook.
+    if (input.url !== undefined || input.events !== undefined || input.enabled === true) {
+      requireObserveAll(principal);
+    }
+    const actor = actorOf(principal);
     try {
       const updated = await hooks.update(input.hookId, {
+        ...(actor === undefined ? {} : { principal: actor }),
         ...(input.url === undefined ? {} : { url: input.url }),
         ...(input.events === undefined ? {} : { events: input.events }),
         ...(input.signingSecret === undefined ? {} : { signingSecret: input.signingSecret }),
@@ -395,7 +411,11 @@ export const hooksDeleteOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
     const { hooks } = await hookFor(host, principal, input.hookId, 'bureau.hooks:write');
-    const deleted = await hooks.delete(input.hookId);
+    const actor = actorOf(principal);
+    const deleted = await hooks.delete(
+      input.hookId,
+      actor === undefined ? {} : { principal: actor },
+    );
     if (!deleted) throw resourceNotFound('hook', input.hookId);
     return { hookId: input.hookId, deleted };
   },
@@ -465,7 +485,7 @@ export const hooksTestOperation = defineOperation<
   mcpExposable: false,
   summary: 'Send a test delivery',
   description:
-    'Sends one signed `hook.test` delivery to the hook, with one attempt and no retry, and answers its record once the attempt has ended: the request, the response status and a bounded excerpt of the response, or the error. It works on a disabled hook. A caller tests its own hooks; `bureau.hooks:write` tests any owner’s. A failed delivery is an answer (`status: "exhausted"`), not a fault.',
+    'Sends one signed `hook.test` delivery to the hook, with one attempt and no retry, and answers its record once the attempt has ended: the request, the response status and a bounded excerpt of the response, or the error. It works on a disabled hook and sends a fixed message, never an event, so it needs no `bureau.events:observe-all`. A caller tests its own hooks; `bureau.hooks:write` tests any owner’s. A failed delivery is an answer (`status: "exhausted"`), not a fault.',
   destructive: false,
   tags: ['Hooks'],
   inputSchema: idInput,
@@ -477,7 +497,11 @@ export const hooksTestOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
     const { hooks } = await hookFor(host, principal, input.hookId, 'bureau.hooks:write');
-    const delivery = await hooks.test(input.hookId);
+    const actor = actorOf(principal);
+    const delivery = await hooks.test(
+      input.hookId,
+      actor === undefined ? {} : { principal: actor },
+    );
     if (delivery === undefined) throw resourceNotFound('hook', input.hookId);
     return deliveryViewOf(delivery);
   },

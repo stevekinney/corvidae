@@ -86,39 +86,48 @@ export async function receive(request: Request, secret: string): Promise<Respons
 }
 ```
 
-and one that does not computes the same thing with the platform:
+and one that does not verifies with the platform. `crypto.subtle.verify` compares the digest in constant time, and the timestamp is checked against the replay window first:
 
 ```ts
-async function digest(secret: string, timestamp: number, body: string): Promise<string> {
+const TOLERANCE_SECONDS = 300;
+
+function hexBytes(hex: string): Uint8Array<ArrayBuffer> {
+  return Uint8Array.from(hex.match(/../g) ?? [], (pair) => Number.parseInt(pair, 16));
+}
+
+export async function verify(secret: string, header: string, body: string): Promise<boolean> {
+  const parts = header.split(',').map((part) => part.trim().split('='));
+  const timestamp = Number(parts.find(([name]) => name === 't')?.[1]);
+  // Written so a missing or non-numeric `t` fails the comparison instead of passing it.
+  if (!(Math.abs(Date.now() / 1000 - timestamp) <= TOLERANCE_SECONDS)) return false;
   const key = await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(secret),
     { name: 'HMAC', hash: 'SHA-256' },
     false,
-    ['sign'],
+    ['verify'],
   );
-  const signature = await crypto.subtle.sign(
-    'HMAC',
-    key,
-    new TextEncoder().encode(`${timestamp}.${body}`),
-  );
-  return [...new Uint8Array(signature)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  const message = new TextEncoder().encode(`${timestamp}.${body}`);
+  for (const [name, value] of parts) {
+    if (name !== 'v1' || value === undefined || !/^[0-9a-f]{64}$/.test(value)) continue;
+    if (await crypto.subtle.verify('HMAC', key, hexBytes(value), message)) return true;
+  }
+  return false;
 }
-console.log(await digest('secret', 1800000000, '{}'));
 ```
 
 ## Delivery, retries and restarts
 
 A 2xx answer is delivered. Any other status, a network error, or a timeout (10 seconds by default, `hooks.requestTimeoutMilliseconds`) is a failed attempt, retried with the notifier's backoff up to its `maxAttempts`, then `exhausted` (also audited as `hook.delivery.exhausted`, filed under `hook:<id>`, without the URL). A redirect is a failed attempt and is never followed. `bureau.hooks.test` sends one `hook.test` delivery with one attempt and no retry, even to a disabled hook.
 
-A delivery record keeps the request without its signature, each attempt's outcome, status, and the first 1024 bytes of the response, and the owner. Records survive a restart. A restart resumes every `pending` delivery whose lease has run out, under one rule: **one attempt record produces at most one HTTP request.** An attempt is written as `sending` before the request is made; a restart that finds one still `sending` does not know its outcome, closes it as `interrupted` (it counts toward `maxAttempts`), and sends the next attempt under a new number, a new timestamp and the same `Idempotency-Key`. A receiver that saw the interrupted request can drop the repeat by that key. A process that stops cleanly releases its leases; one that crashes leaves them to expire.
+A delivery record keeps the request without its signature, each attempt's outcome, status, and the first 1024 bytes of the response, and the owner. Records survive a restart. A restart resumes every `pending` delivery whose lease has run out, under one rule: **one attempt record produces at most one HTTP request.** An attempt is written as `sending` before the request is made; a restart that finds one still `sending` does not know its outcome, closes it as `interrupted` (it counts toward `maxAttempts`), and sends the next attempt under a new number, a new timestamp and the same `Idempotency-Key`. A receiver that saw the interrupted request can drop the repeat by that key. A process that stops cleanly releases its leases; one that crashes leaves them to expire. A restart inside that window leaves such a delivery alone at first and scans again when the earliest lease runs out (and again for any that remain), so a quick restart does not leave it pending until the next one; a shutdown cancels the wait.
 
 Events that happen while the Bureau is down are not replayed.
 
 ## Which URLs
 
-`http` or `https`, with a host, no user name or password, no fragment, and at most 2048 characters. Link-local addresses (`169.254.0.0/16`, the cloud metadata endpoint, and `fe80::/10`), the unspecified addresses and multicast are always refused. Loopback and private-network addresses are **allowed by default**, because a local receiver is the main use of a local-first Interborough; a hosted deployment sets `hooks.urlPolicy.allowPrivateNetworks` to `false`. The check reads the URL, not the network: a hostname that resolves to a refused address is not caught, and redirects are never followed. The policy is applied when a hook is created or changed and again when a delivery is sent.
+`http` or `https`, with a host, no user name or password, no fragment, and at most 2048 characters. Link-local addresses (`169.254.0.0/16`, which holds the cloud metadata endpoint `169.254.169.254`, and `fe80::/10`), the IPv6 metadata endpoint `fd00:ec2::254`, the unspecified addresses and multicast are always refused, even when private networks are allowed: a metadata endpoint is never a legitimate local receiver. Loopback and private-network addresses are **allowed by default**, because a local receiver is the main use of a local-first Interborough; a hosted deployment, a remote Interborough home included, **must** pass `hooks: { urlPolicy: { allowPrivateNetworks: false } }` when it enables hooks, because the default exists for the person's own machine and would otherwise let a hook reach the deployment's internal network. The check reads the URL, not the network: a hostname that resolves to a refused address is not caught, and redirects are never followed. The policy is applied when a hook is created or changed and again when a delivery is sent.
 
 ## Who sees what
 
-A hook, and its deliveries, belong to the principal that created them and are visible to nobody else without `bureau.hooks:read` (`get`, `list`, `deliveries`) or `bureau.hooks:write` (`update`, `delete`, `test`); see the predicate table in `external-control-plane.md`. A hook observes the whole Bureau's events, so creating one, or changing its `events`, also needs `bureau.events:observe-all`.
+A hook, and its deliveries, belong to the principal that created them and are visible to nobody else without `bureau.hooks:read` (`get`, `list`, `deliveries`) or `bureau.hooks:write` (`update`, `delete`, `test`); see the predicate table in `external-control-plane.md`. A hook observes the whole Bureau's events, so anything that decides where they go also needs `bureau.events:observe-all` of the **caller**, whoever created the hook: `create`, and an `update` that sets `url`, sets `events`, or sets `enabled: true`. Renaming, replacing the secret and disabling need no such scope, and neither does `test`, which sends a fixed message and never an event. Without this a key holding only `bureau.hooks:write` could re-point another owner's fleet-wide hook at its own URL. The audit entries (`hook.created`, `hook.updated`, `hook.deleted`, `hook.tested`) name the caller as the actor and the hook's owner in their detail; the actor is left out when the credential names none.

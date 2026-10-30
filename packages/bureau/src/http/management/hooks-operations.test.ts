@@ -5,6 +5,7 @@
 import { generateEncryptionKey } from '@lostgradient/cryptography';
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { waitForCondition } from '../../test';
 import { createReceiver, SIGNING_SECRET } from '../../hooks/hooks.test-support.ts';
 import type { HookSecretStore } from '../../hooks/hook-types.ts';
 import { BUREAU_HANDLER_OPERATIONS } from '../create-bureau-handler.ts';
@@ -205,6 +206,103 @@ describe('bureau.hooks.*', () => {
     expect(events.error?.data).toMatchObject({ reason: 'missing scope bureau.events:observe-all' });
   });
 
+  it('needs observe-all of the caller to re-point, widen or re-enable a hook, whoever owns it', async () => {
+    const { opened } = await open();
+    const hook = await createAs(opened, 'alice-observer-key');
+    const missing = { reason: 'missing scope bureau.events:observe-all' };
+    const attacker = { hookId: hook.id, url: 'https://attacker.example/steal' };
+
+    // A key that may write any owner's hook, but may not observe the whole Bureau's events.
+    const writer = await call(opened, 'bureau.hooks.update', attacker, 'hooks-writer-key');
+    expect(writer.error?.data).toMatchObject(missing);
+    // The owner's own key, without the scope, is held to the same rule.
+    const owner = await call(opened, 'bureau.hooks.update', attacker, 'alice-key');
+    expect(owner.error?.data).toMatchObject(missing);
+    const widened = await call(
+      opened,
+      'bureau.hooks.update',
+      { hookId: hook.id, events: ['run.registered'] },
+      'hooks-writer-key',
+    );
+    expect(widened.error?.data).toMatchObject(missing);
+    expect(
+      await resultOf(opened, 'bureau.hooks.get', { hookId: hook.id }, 'alice-key'),
+    ).toMatchObject({
+      url: NEW_HOOK.url,
+      events: ['run.settled'],
+      revision: 1,
+    });
+
+    // Disabling narrows reach, so it needs no scope; enabling it again restores it, so it does.
+    const disabled = { hookId: hook.id, enabled: false };
+    expect(
+      await resultOf(opened, 'bureau.hooks.update', disabled, 'hooks-writer-key'),
+    ).toMatchObject({
+      enabled: false,
+    });
+    const enable = { hookId: hook.id, enabled: true };
+    const enableAsWriter = await call(opened, 'bureau.hooks.update', enable, 'hooks-writer-key');
+    expect(enableAsWriter.error?.data).toMatchObject(missing);
+    expect(
+      await resultOf(opened, 'bureau.hooks.update', enable, 'alice-observer-key'),
+    ).toMatchObject({
+      enabled: true,
+    });
+
+    // The scope is what is needed: a caller holding it may re-point the hook.
+    expect(await resultOf(opened, 'bureau.hooks.update', attacker, 'operator-key')).toMatchObject({
+      url: attacker.url,
+    });
+  });
+
+  it('lets a caller without observe-all test a hook, which sends a fixed message and never an event', async () => {
+    const { opened, receiver } = await open();
+    const hook = await createAs(opened, 'alice-observer-key');
+    const tested = await resultOf(
+      opened,
+      'bureau.hooks.test',
+      { hookId: hook.id },
+      'hooks-writer-key',
+    );
+    expect(tested).toMatchObject({ kind: 'hook.test', test: true, status: 'delivered' });
+    expect(receiver.calls).toHaveLength(1);
+    expect(JSON.parse(receiver.calls[0]!.body)).toMatchObject({
+      kind: 'hook.test',
+      payload: { message: expect.any(String) },
+    });
+  });
+
+  it('audits the caller as the actor of a change, not the hook’s owner', async () => {
+    const { opened } = await open();
+    const hook = await createAs(opened, 'alice-observer-key');
+    await call(
+      opened,
+      'bureau.hooks.update',
+      { hookId: hook.id, name: 'by-writer' },
+      'hooks-writer-key',
+    );
+    await call(opened, 'bureau.hooks.test', { hookId: hook.id }, 'hooks-writer-key');
+    await call(opened, 'bureau.hooks.delete', { hookId: hook.id }, 'hooks-writer-key');
+
+    const entries = async () => {
+      const queried = await opened.bureau.audit.query({ runId: `hook:${hook.id}` });
+      return queried.records;
+    };
+    await waitForCondition(async () => {
+      const found = await entries();
+      return found.length >= 4;
+    }, 'the audit entries never arrived');
+    const found = await entries();
+    const byType = Object.fromEntries(found.map((entry) => [entry.type, entry]));
+
+    // The creator is the owner, so for a creation they are the same.
+    expect(byType['hook.created']?.principal).toBe('api-key:alice');
+    for (const type of ['hook.updated', 'hook.tested', 'hook.deleted']) {
+      expect([type, byType[type]?.principal]).toEqual([type, 'api-key:hooks-writer']);
+      expect(byType[type]?.detail).toMatchObject({ hookId: hook.id });
+    }
+  });
+
   it('sends a test delivery and answers its record, with the response excerpt', async () => {
     const { opened, receiver } = await open();
     const hook = await createAs(opened, 'alice-observer-key');
@@ -255,7 +353,7 @@ describe('bureau.hooks.*', () => {
     const stale = await call(
       opened,
       'bureau.hooks.update',
-      { hookId: hook.id, enabled: true, expectedRevision: 1 },
+      { hookId: hook.id, name: 'renamed', expectedRevision: 1 },
       'alice-key',
     );
     expect(stale.error?.data).toMatchObject({ currentRevision: 2 });

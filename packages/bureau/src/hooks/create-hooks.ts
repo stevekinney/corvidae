@@ -47,6 +47,7 @@ import {
   type HookSecretStore,
 } from './hook-types.ts';
 import { type HookUrlPolicy, hookUrlDefect } from './hook-url-policy.ts';
+import type { EncryptedValue } from '@lostgradient/cryptography';
 import type { ConditionalTextValueStore } from '@lostgradient/storage';
 
 /** The event kind of a `hooks.test` delivery. It is not a published kind, so no hook can list it. */
@@ -96,6 +97,14 @@ export interface HookUpdateInput {
   readonly enabled?: boolean;
   /** Apply the change only if the hook is still at this revision. */
   readonly expectedRevision?: number;
+  /** The caller's principal (`api-key:<subject>`), recorded as the actor of the audit entry; omit when unknown. */
+  readonly principal?: string;
+}
+
+/** What `hooks.delete` and `hooks.test` take beyond the hook. */
+export interface HookCallOptions {
+  /** The caller's principal (`api-key:<subject>`), recorded as the actor of the audit entry; omit when unknown. */
+  readonly principal?: string;
 }
 
 /** The Bureau's hooks: `Bureau.hooks`. Ownership is decided by the caller, as for `Bureau.goals`. */
@@ -105,7 +114,7 @@ export interface BureauHooks {
   /** Changes a hook, or resolves `undefined` when there is none. */
   update(hookId: string, input: HookUpdateInput): Promise<Hook | undefined>;
   /** Deletes a hook, its sealed secret and its delivery records; `false` when there is none. */
-  delete(hookId: string): Promise<boolean>;
+  delete(hookId: string, options?: HookCallOptions): Promise<boolean>;
   /** One hook, or `undefined`. */
   get(hookId: string): Promise<Hook | undefined>;
   /** Every hook, oldest first; `owner` narrows to one owner's. */
@@ -115,7 +124,7 @@ export interface BureauHooks {
    * attempt has ended. A test is not retried. It works on a disabled hook. Resolves `undefined`
    * when there is no such hook.
    */
-  test(hookId: string): Promise<HookDelivery | undefined>;
+  test(hookId: string, options?: HookCallOptions): Promise<HookDelivery | undefined>;
   /** The hook's deliveries, newest first, at most `limit` (default 50, at most 200). */
   deliveries(
     hookId: string,
@@ -257,8 +266,12 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
     return cachedHooks.hooks.filter((hook) => hook.enabled && hook.events.includes(kind));
   }
 
-  /** Writes the sealed secret, after the checks that precede any write. */
-  async function writeSecret(hookId: string, secret: string): Promise<void> {
+  /**
+   * The secret sealed for `hookId`, after the checks that precede any write (the host's lock, the
+   * Bureau's key). Nothing is written: the caller writes it with {@link HookSecretStore.set} once
+   * the hook record it belongs to has been committed.
+   */
+  async function sealSecret(hookId: string, secret: string): Promise<EncryptedValue> {
     const lock = secrets.writeLock?.();
     if (lock !== undefined) {
       throw new HookError('locked', `This deployment locks hook secrets (${lock})`, {
@@ -271,16 +284,17 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         'The Bureau has no answerEncryption key, so it cannot seal a signing secret',
       );
     }
-    await secrets.set(hookId, await sealHookSecret(hookId, secret, dependencies.keys));
+    return sealHookSecret(hookId, secret, dependencies.keys);
   }
 
-  function recordChange(type: string, record: HookRecord): void {
+  /** Records a change; `actor` is the caller's principal (never the owner), omitted when unknown. */
+  function recordChange(type: string, record: HookRecord, actor: string | undefined): void {
     forgetCachedHooks();
     void dependencies
       .audit({
         runId: `hook:${record.id}`,
         type,
-        principal: record.owner,
+        ...(actor === undefined ? {} : { principal: actor }),
         detail: { hookId: record.id, owner: record.owner },
       })
       .catch((cause: unknown) => dependencies.diagnose('Failed to audit a hook change', cause));
@@ -309,7 +323,8 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         updatedAt: now,
         revision: 1,
       };
-      await writeSecret(record.id, secret);
+      const sealed = await sealSecret(record.id, secret);
+      await secrets.set(record.id, sealed);
       let created = false;
       try {
         created = await store.createHook(record);
@@ -317,7 +332,8 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         if (!created) await secrets.delete(record.id).catch(() => undefined);
       }
       if (!created) throw new Error(`Hook id "${record.id}" is already in use`);
-      recordChange('hook.created', record);
+      // The creator is the owner, so the owner is also the actor.
+      recordChange('hook.created', record, owner);
       return viewOf(record);
     },
     async update(hookId, input) {
@@ -335,6 +351,7 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         input.name === null || input.name === undefined ? input.name : checkedName(input.name);
       const enabled = input.enabled;
       const expectedRevision = input.expectedRevision;
+      const actor = input.principal;
 
       const stored = await store.getHook(hookId);
       if (stored === undefined) return undefined;
@@ -355,7 +372,9 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         updatedAt: engine.now(),
         revision: before.revision + 1,
       };
-      if (secret !== undefined) await writeSecret(hookId, secret);
+      // Sealed (and the lock and key checked) before the commit, written after it: a writer that
+      // loses the compare-and-swap leaves the secret the winner's, not its own.
+      const sealed = secret === undefined ? undefined : await sealSecret(hookId, secret);
       if (!(await store.replaceHook(stored, after))) {
         const current = await store.getHook(hookId);
         if (current === undefined) return undefined;
@@ -363,10 +382,11 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
           currentRevision: current.record.revision,
         });
       }
-      recordChange('hook.updated', after);
+      if (sealed !== undefined) await secrets.set(hookId, sealed);
+      recordChange('hook.updated', after, actor);
       return viewOf(after);
     },
-    async delete(hookId) {
+    async delete(hookId, options) {
       const stored = await store.getHook(hookId);
       if (stored === undefined) return false;
       if (!(await store.deleteHook(stored))) return false;
@@ -376,7 +396,7 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
           dependencies.diagnose('Failed to remove a hook’s sealed secret', cause),
         );
       await store.deleteDeliveriesOf(hookId);
-      recordChange('hook.deleted', stored.record);
+      recordChange('hook.deleted', stored.record, options?.principal);
       return true;
     },
     async get(hookId) {
@@ -391,7 +411,7 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         .toSorted((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id))
         .map(viewOf);
     },
-    async test(hookId) {
+    async test(hookId, options) {
       const stored = await store.getHook(hookId);
       if (stored === undefined) return undefined;
       const id = await deliveries.enqueue(
@@ -404,6 +424,7 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         },
         true,
       );
+      recordChange('hook.tested', stored.record, options?.principal);
       const driving = deliveries.drive(id);
       engine.track(driving);
       await driving;

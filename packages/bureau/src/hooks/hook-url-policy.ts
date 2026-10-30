@@ -6,11 +6,15 @@
  * characters.
  *
  * Always refused, whatever the policy: the unspecified addresses (`0.0.0.0`, `::`), link-local
- * addresses (`169.254.0.0/16`, which holds the cloud metadata endpoint, and `fe80::/10`), multicast,
- * and the IPv4-mapped forms of those. Loopback (`localhost`, `127.0.0.0/8`, `::1`) and the private
+ * addresses (`169.254.0.0/16`, which holds the cloud metadata endpoint `169.254.169.254`, and
+ * `fe80::/10`), the IPv6 metadata endpoint `fd00:ec2::254` (inside the private `fc00::/7`, so it is
+ * named on its own), multicast, and the IPv4-mapped forms of those. A metadata endpoint is never a
+ * legitimate local receiver, so `allowPrivateNetworks: true` does not reach it. Loopback (`localhost`, `127.0.0.0/8`, `::1`) and the private
  * ranges (`10/8`, `172.16/12`, `192.168/16`, `fc00::/7`) are allowed by default, because Interborough
  * runs on the person's own machine and a receiver on the same machine or network is the main use. A
- * hosted deployment sets {@link HookUrlPolicy.allowPrivateNetworks} to `false` to refuse those too.
+ * hosted deployment sets {@link HookUrlPolicy.allowPrivateNetworks} to `false` to refuse those too:
+ * a deployment that is not the person's own machine, such as a remote Interborough home, must pass
+ * `allowPrivateNetworks: false` when it enables hooks, because the default exists for the local one.
  *
  * The check reads the URL, not the network: a name that resolves to a refused address is not
  * caught. The delivery never follows a redirect, which is the other way to reach one.
@@ -49,7 +53,8 @@ function mappedIpv4(host: string): readonly number[] | undefined {
   return [high >> 8, high & 255, low >> 8, low & 255];
 }
 
-type AddressClass = 'unspecified' | 'link-local' | 'multicast' | 'loopback' | 'private' | 'public';
+type AddressClass =
+  'unspecified' | 'link-local' | 'metadata' | 'multicast' | 'loopback' | 'private' | 'public';
 
 function classifyIpv4(parts: readonly number[]): AddressClass {
   const [first = 0, second = 0] = parts;
@@ -65,6 +70,7 @@ function classifyIpv4(parts: readonly number[]): AddressClass {
 function classifyIpv6(host: string): AddressClass {
   if (host === '::') return 'unspecified';
   if (host === '::1') return 'loopback';
+  if (host === 'fd00:ec2::254') return 'metadata';
   const mapped = mappedIpv4(host);
   if (mapped !== undefined) return classifyIpv4(mapped);
   if (/^fe[89ab]/.test(host)) return 'link-local';
@@ -105,7 +111,12 @@ export function hookUrlDefect(value: string, policy: HookUrlPolicy = {}): string
   }
   if (url.hash !== '') return 'The URL must not have a fragment';
   const kind = classifyHost(url.hostname);
-  if (kind === 'unspecified' || kind === 'link-local' || kind === 'multicast') {
+  if (
+    kind === 'unspecified' ||
+    kind === 'link-local' ||
+    kind === 'metadata' ||
+    kind === 'multicast'
+  ) {
     return 'The URL names an address a hook may not deliver to';
   }
   if ((kind === 'loopback' || kind === 'private') && policy.allowPrivateNetworks === false) {

@@ -36,6 +36,8 @@ describe('hook URL policy', () => {
     ['http://[ff02::1]/', 'address a hook may not'],
     ['http://[::ffff:169.254.169.254]/', 'address a hook may not'],
     ['http://[::ffff:a9fe:a9fe]/', 'address a hook may not'],
+    ['http://[fd00:ec2::254]/', 'address a hook may not'],
+    ['http://[FD00:EC2:0:0:0:0:0:254]/latest/meta-data', 'address a hook may not'],
     ['http://2852039166/', 'address a hook may not'],
     ['http://0xa9.0xfe.0xa9.0xfe/', 'address a hook may not'],
   ])('refuses %s whatever the policy', (url, reason) => {

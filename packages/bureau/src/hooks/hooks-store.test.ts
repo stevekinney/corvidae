@@ -286,6 +286,54 @@ describe('the signing secret', () => {
   });
 });
 
+describe('a secret and a stale update', () => {
+  it('leaves the stored secret alone when the update loses its compare-and-swap', async () => {
+    const held = new Map<string, Awaited<ReturnType<HookSecretStore['get']>>>();
+    let writes = 0;
+    const secrets: HookSecretStore = {
+      get: async (id) => held.get(id),
+      set: async (id, encrypted) => {
+        writes += 1;
+        held.set(id, encrypted);
+      },
+      delete: async (id) => void held.delete(id),
+    };
+    const { bureau, receiver } = await open({ hooks: { secrets } });
+    const hook = await bureau.hooks!.create(HOOK);
+    expect(writes).toBe(1);
+    const sealedBefore = JSON.stringify(held.get(hook.id));
+    await bureau.hooks!.update(hook.id, { name: 'moved on' });
+
+    const stale = await refusal(
+      bureau.hooks!.update(hook.id, {
+        signingSecret: 'a-replacement-secret-abcdef',
+        expectedRevision: 1,
+      }),
+    );
+    expect(stale).toMatchObject({ code: 'stale-revision', currentRevision: 2 });
+    expect(writes).toBe(1);
+    expect(JSON.stringify(held.get(hook.id))).toBe(sealedBefore);
+
+    // The original secret still signs the next delivery.
+    await bureau.hooks!.test(hook.id);
+    const { verifyHookSignature } = await import('./hook-signature.ts');
+    const call = receiver.calls[0]!;
+    expect(
+      verifyHookSignature({
+        secret: SIGNING_SECRET,
+        header: call.headers.get('X-Signature')!,
+        body: call.body,
+        now: Date.now(),
+        toleranceSeconds: Number.MAX_SAFE_INTEGER,
+      }),
+    ).toEqual({ ok: true });
+
+    // A winning update with a secret writes it, after the commit.
+    await bureau.hooks!.update(hook.id, { signingSecret: 'a-replacement-secret-abcdef' });
+    expect(writes).toBe(2);
+  });
+});
+
 describe('a host that locks secret writes (remote mode)', () => {
   function lockedSecrets(reason: 'deployment' | 'shared-storage'): HookSecretStore & {
     writes: number;

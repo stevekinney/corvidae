@@ -1286,8 +1286,10 @@ export interface BureauHooksOptions {
   secrets?: HookSecretStore;
   /**
    * Which URLs a hook may deliver to. By default loopback and private-network addresses are
-   * allowed (Interborough is local-first); link-local, unspecified and multicast never are. A
-   * hosted deployment sets `allowPrivateNetworks: false`.
+   * allowed (Interborough is local-first); link-local (including the cloud metadata endpoints
+   * `169.254.169.254` and `fd00:ec2::254`), unspecified and multicast never are. A hosted
+   * deployment, a remote Interborough home included, must set `allowPrivateNetworks: false` when it
+   * enables hooks.
    */
   urlPolicy?: HookUrlPolicy;
   /** How long one delivery request may take before it counts as failed. Default `10000`. */
