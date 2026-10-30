@@ -57,23 +57,36 @@ describe('ToolApprovalPart', () => {
 
     expect(operation).toBe(part.action.operation);
   });
-  test('renders the shared Cinder approval card with mapped approval metadata', async () => {
-    const { container, getByRole } = render(ToolApprovalPart, { props: { part: pendingPart() } });
+  test('renders one Cinder approval row with the question and View input', async () => {
+    const { container, getByRole } = render(ToolApprovalPart, {
+      props: { part: pendingPart(), onApprovalResolve: () => undefined },
+    });
     const card = container.querySelector('.cinder-approval-card');
 
     expect(card).not.toBeNull();
     expect(card?.getAttribute('data-cinder-tool-approval')).toBe('true');
+    expect(card?.getAttribute('data-cinder-layout')).toBe('row');
     expect(card?.getAttribute('data-cinder-state')).toBe('pending');
     expect(card?.getAttribute('data-cinder-risk')).toBe('high');
-    expect(container.textContent).toContain('deploy_to_production');
-    expect(container.textContent).toContain('deploy_to_production --environment production');
+    expect(getByRole('article', { name: 'Deploy to production?' })).toBe(card as HTMLElement);
+    const buttons = Array.from(
+      container.querySelectorAll('.cinder-approval-card__row button'),
+      (button) => button.textContent?.trim(),
+    );
+    expect(buttons).toEqual(['View input', 'Deny', 'Approve']);
 
-    await fireEvent.click(getByRole('button', { name: 'Details' }));
+    await fireEvent.click(getByRole('button', { name: 'View input' }));
     flushSync();
 
-    expect(container.textContent).toContain('DEPLOY_TOKEN');
-    expect(container.textContent).toContain('test-policy');
-    expect(container.textContent).toContain('test-approval');
+    expect(container.textContent).toContain('deploy_to_production --environment production');
+  });
+
+  test('falls back to the tool name when the action has no message', () => {
+    const part = pendingPart();
+    const { message: _message, ...action } = part.action;
+    const { getByRole } = render(ToolApprovalPart, { props: { part: { ...part, action } } });
+
+    expect(getByRole('article', { name: 'Run deploy_to_production?' })).not.toBeNull();
   });
 
   test('approve forwards the exact approval resolution payload', async () => {
@@ -95,9 +108,9 @@ describe('ToolApprovalPart', () => {
     ]);
   });
 
-  test('deny preserves reason and remember in the resolution payload', async () => {
+  test('deny forwards a deny resolution', async () => {
     const resolutions: { toolCallId: string; resolution: ApprovalResolution }[] = [];
-    const { getByRole, getByLabelText } = render(ToolApprovalPart, {
+    const { getByRole } = render(ToolApprovalPart, {
       props: {
         part: pendingPart(),
         onApprovalResolve: (toolCallId, resolution) => {
@@ -106,16 +119,11 @@ describe('ToolApprovalPart', () => {
       },
     });
 
-    await fireEvent.input(getByLabelText('Reason'), { target: { value: 'Too risky.' } });
-    await fireEvent.click(getByLabelText("Don't ask again for operations like this"));
     await fireEvent.click(getByRole('button', { name: 'Deny' }));
     flushSync();
 
     expect(resolutions).toEqual([
-      {
-        toolCallId: 'call-1',
-        resolution: { decision: 'deny', reason: 'Too risky.', remember: true },
-      },
+      { toolCallId: 'call-1', resolution: { decision: 'deny', remember: false } },
     ]);
   });
 
@@ -139,10 +147,10 @@ describe('ToolApprovalPart', () => {
     });
 
     expect(document.activeElement).toBe(before);
-    const heading = container.querySelector('h4.cinder-approval-card__title');
-    if (!(heading instanceof HTMLElement)) throw new Error('Missing approval card heading');
-    expect(heading.textContent).toContain('deploy_to_production');
-    const card = getByRole('article', { name: 'Approval required for deploy_to_production' });
+    const heading = container.querySelector('h4.cinder-approval-card__row-question');
+    if (!(heading instanceof HTMLElement)) throw new Error('Missing approval row question');
+    expect(heading.textContent).toContain('Deploy to production?');
+    const card = getByRole('article', { name: 'Deploy to production?' });
     expect(card.getAttribute('aria-labelledby')).toBe(heading.id);
 
     card.focus();

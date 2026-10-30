@@ -68,8 +68,10 @@ The card title defaults to an `h3` with section headings one level deeper. Pass 
 | `expiresAt` | `string` | no | — | Optional ISO timestamp after which a pending approval is treated as expired. |
 | `headingLevel` | `2` \| `3` \| `4` \| `5` \| `6` | no | `3` | Heading level for the card title; section headings render one level deeper. Default `3`. |
 | `idempotencyKey` | `string` | yes | — | Idempotency key that makes repeated decisions durable. |
+| `layout` | `"card"` \| `"row"` | no | `"card"` | Layout: the full `card`, or one compact `row` with View input, Deny, and Approve. Default `'card'`. |
 | `operation` | { argsPreview?: `unknown`; command: `string`; filesTouched?: `string`[]; kind: `"command"` } \| { argsPreview?: `unknown`; filesTouched: `string`[]; kind: `"file-write"` } \| { argsPreview?: `unknown`; diff: `string`; filesTouched?: `string`[]; kind: `"patch"` } \| { argsPreview?: `unknown`; filesTouched?: `string`[]; kind: `"other"` } | yes | — | Operation details shown to the approver. |
 | `policyVersion` | `string` | yes | — | Policy version that produced the approval request. |
+| `question` | `string` | no | — | Question the `row` layout asks, such as `Run issue-refund for $42.10?`. Default `Run <tool>?`. |
 | `sandbox` | { name: `string`; provider: `string`; workingDir: `string` } | no | — | Optional sandbox context in which the operation will run. |
 | `snapshotId` | `string` | no | — | Snapshot identifier for the pending approval context. |
 | `state` | `"pending"` \| `"approved"` \| `"approved_with_edits"` \| `"denied"` \| `"expired"` \| `"cancelled"` | yes | — | Persisted approval state. |

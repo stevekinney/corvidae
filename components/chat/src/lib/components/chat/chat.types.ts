@@ -22,6 +22,8 @@ import type {
   ChatAttachmentErrorFormatter,
   ChatAttachmentUpload,
 } from './input/chat-attachment.ts';
+import type { ChatComposerToolbarContext } from './input/composer-markdown.ts';
+import type { ChatComposerStatus } from './input/composer-status.ts';
 import type { MarkdownNodeOverride, MessagePartOverride } from './message/chat-message-parts.ts';
 import type { ReasoningInfo, StepInfo } from './utilities/types.ts';
 
@@ -196,6 +198,14 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   header?: Snippet;
   /** Controls rendered in the composer footer, beside Send. Use it for host-owned controls such as a model `Select`. The snippet takes no arguments, stays interactive while a run streams and while a tool approval is pending, and the caller owns the semantics inside it. When omitted, the composer renders as before. */
   composerActions?: Snippet;
+  /** Toolbar slot at the start of the composer footer, given a `format` command for the composer's selection. */
+  composerToolbar?: Snippet<[ChatComposerToolbarContext]>;
+  /** Show the composer's Bold, Italic, Code, Link, and List buttons. Default `false`. */
+  composerFormattingToolbar?: boolean;
+  /** Style Markdown in place in the composer while it still sends Markdown. Default `true`. */
+  composerMarkdownStyling?: boolean;
+  /** The status line under the composer, such as a reconnect or queued follow-ups the host knows about. When omitted, Chat shows that an approval is waiting while one is pending. */
+  composerStatus?: ChatComposerStatus;
   empty?: Snippet;
   /** List of suggested starter prompt strings shown as clickable buttons in the default empty state. Clicking a prompt submits it immediately as a user message. Has no effect when a custom `empty` snippet is provided. */
   emptyPrompts?: string[];

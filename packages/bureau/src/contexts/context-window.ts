@@ -131,10 +131,8 @@ function isInstructionRow(message: Message): boolean {
 }
 
 /**
- * The tokens a message costs: its content and the parts of its tool result through the shared
- * estimator, plus what that estimator does not read: the call a row carries, and a tool result's
- * own `content`. With parts, `content` is the application value beside them, which no provider
- * sends, so it is counted only when the result has none.
+ * The tokens a message costs: what the shared estimator reads (content and a tool result's
+ * payload), plus the call a row carries, which that estimator does not read.
  */
 function messageTokens(message: Message): number {
   const call =
@@ -143,15 +141,7 @@ function messageTokens(message: Message): number {
       : estimateText(
           JSON.stringify({ name: message.toolCall.name, arguments: message.toolCall.arguments }),
         );
-  const result =
-    message.toolResult === undefined || message.toolResult.parts !== undefined
-      ? 0
-      : estimateText(
-          typeof message.toolResult.content === 'string'
-            ? message.toolResult.content
-            : JSON.stringify(message.toolResult.content),
-        );
-  return simpleTokenEstimator(message) + call + result;
+  return simpleTokenEstimator(message) + call;
 }
 
 /** What {@link sizeManagedAssets} asks of the asset service for one asset. */

@@ -13,3 +13,13 @@ export type {
   ChatAttachmentUpload,
 } from './chat-attachment.ts';
 export { default as ChatInput } from './chat-input.svelte';
+export {
+  applyComposerFormat,
+  highlightComposerMarkdown,
+  type ChatComposerFormat,
+  type ChatComposerToolbarContext,
+  type ComposerFormatEdit,
+  type ComposerMarkdownSegment,
+  type ComposerMarkdownSegmentKind,
+} from './composer-markdown.ts';
+export { composerStatusText, type ChatComposerStatus } from './composer-status.ts';

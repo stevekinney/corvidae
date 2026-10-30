@@ -125,8 +125,10 @@ describe('featured example server renderer', () => {
     const chat = rendered('chat', 'with-tool-approval');
 
     expect(chat.body).toContain('Deploying version 2.4.1 to production');
-    expect(chat.body).toContain('Arguments');
-    expect(chat.body).toContain('data-cinder-status="pending"');
+    expect(chat.body).toContain('data-cinder-layout="row"');
+    expect(chat.body).toContain('View input');
+    expect(chat.body).toContain('deploy_to_production arguments');
+    expect(chat.body).toContain('data-cinder-state="pending"');
     expect(chat.body).toContain('Approve');
     expect(chat.body).toContain('Deny');
   });
