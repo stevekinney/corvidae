@@ -966,15 +966,19 @@ const bureau = await createBureau({
   assets: { storage: createMemoryAssetStorage() }, // the handler serves the asset operations
 });
 
-// Authenticate: the host says which key stands for which principal. A principal with no scopes
-// owns what it creates and reaches nothing of anyone else's.
+// Authenticate: the host says which key stands for which principal. `bureau.agents:read` shows a
+// caller every agent the deployment has (without it, only the agents offered over A2A); with no
+// other scope, a principal owns what it creates and reaches nothing of anyone else's.
 const keys = { 'alice-key': 'alice', 'bob-key': 'bob' } as const;
 const handler = createBureauHandler(bureau, {
   authentication: {
     auditSink: () => undefined, // every authentication decision is passed here
     resolveApiKeyPrincipal: async (key) =>
       key in keys
-        ? principalFromApiKey({ subject: keys[key as keyof typeof keys], scopes: [] })
+        ? principalFromApiKey({
+            subject: keys[key as keyof typeof keys],
+            scopes: ['bureau.agents:read'],
+          })
         : null,
   },
 });
@@ -1058,10 +1062,10 @@ The handler has no run-starting operation of its own, so the host starts the run
 
 **Opting an agent into A2A.**
 
-- A code-defined agent opts in only through the `a2aAgents` allowlist of `createBureauHandler`; an agent file opts in with `a2a: true` in its frontmatter. The opt-in is read on every request, so opting in or out takes effect without a restart. An agent that has not opted in has no card, starts no task, and reads as not found. It is still listed and can still be chatted with over AG-UI.
+- A code-defined agent opts in only through the `a2aAgents` allowlist of `createBureauHandler`; an agent file opts in with `a2a: true` in its frontmatter. The opt-in is read on every request, so opting in or out takes effect without a restart. An agent that has not opted in has no card, starts no task, and reads as not found. It is still listed to a caller holding `bureau.agents:read` and can still be chatted with over AG-UI; a caller without that scope, such as a key handed to A2A clients, is listed only the agents that opt in, and `bureau.deployment.get` requires it (COR-1904).
 - One agent, one interface: `<publicUrl>/a2a/<catalog-name>` for JSON-RPC, `<publicUrl>/a2a/<catalog-name>/.well-known/agent-card.json` for the card, and, when `signing` is set, `<publicUrl>/a2a/<catalog-name>/.well-known/jwks.json` for the key. The catalog name is a URL path segment, and the handler throws at construction for an `a2aAgents` name that is not in the agent catalog.
 - The card is projected from the catalog and the agent's definition: `name` (the display name, else the catalog name), `description`, `version` (the definition revision), the agent's skill descriptors as `skills` (or one skill standing for the agent), and the input and output modes. It carries no tools, no internal endpoint, no credential, and no capability the deployment does not serve; `securitySchemes` and `securityRequirements` describe the credentials the handler enforces and nothing more.
-- The card is public, and every JSON-RPC request needs the handler's authentication (an API key resolved by `authentication.resolveApiKeyPrincipal`, or `unauthenticatedAccess: 'allow'` on a loopback host). A caller owns the tasks it creates, and another owner's task reads as missing.
+- The card is public, and every JSON-RPC request needs the handler's authentication (an API key resolved by `authentication.resolveApiKeyPrincipal`, or `unauthenticatedAccess: 'allow'` on a loopback host). With both (COR-1904), a request without a credential is the local caller everywhere but A2A, whose JSON-RPC requests then need a key, as the card's `securitySchemes` say; a refused key is a 401, never the local caller. A caller owns the tasks it creates, and another owner's task reads as missing.
 - `publicUrl` needs a Bureau with a durable engine and a `retention.tasks` of at least the 24 hours a send's idempotency binding is kept, or construction throws. The Bureau's `id` must be explicit when storage persists.
 
 **Methods.**
