@@ -89,10 +89,9 @@ describe('sha256HexSync', () => {
     expect(result).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  test('falls back to node crypto when the Bun runtime is unavailable', async () => {
+  test('falls back to node crypto through the injected loader', async () => {
     await withRuntimeOverride(
       {
-        Bun: undefined,
         require: (specifier: string) => {
           expect(specifier).toBe('node:crypto');
           return { createHash };
@@ -104,23 +103,15 @@ describe('sha256HexSync', () => {
     );
   });
 
-  test('uses the default require fallback when no override is provided', async () => {
-    await withRuntimeOverride(
-      {
-        Bun: undefined,
-      },
-      () => {
-        expect(sha256HexSync('fallback')).toBe(
-          createHash('sha256').update('fallback').digest('hex'),
-        );
-      },
-    );
+  test('uses process.getBuiltinModule when the override names no loader', async () => {
+    await withRuntimeOverride({}, () => {
+      expect(sha256HexSync('fallback')).toBe(createHash('sha256').update('fallback').digest('hex'));
+    });
   });
 
   test('throws a helpful error when no synchronous runtime is available', async () => {
     await withRuntimeOverride(
       {
-        Bun: undefined,
         require: () => {
           throw new Error('runtime unavailable');
         },
@@ -136,7 +127,6 @@ describe('sha256HexSync', () => {
   test('throws a helpful error when neither require nor process.getBuiltinModule are available', async () => {
     await withRuntimeOverride(
       {
-        Bun: undefined,
         getBuiltinModule: () => undefined,
       },
       () => {
@@ -159,10 +149,9 @@ describe('sha256HexSync', () => {
     expect(hmacSha256HexSync('secret', 'other-payload')).not.toBe(signature);
   });
 
-  test('falls back to node crypto when the Bun runtime is unavailable', async () => {
+  test('falls back to node crypto through the injected loader', async () => {
     await withRuntimeOverride(
       {
-        Bun: undefined,
         require: (specifier: string) => {
           expect(specifier).toBe('node:crypto');
           return { createHmac };
@@ -179,7 +168,6 @@ describe('sha256HexSync', () => {
   test('throws a helpful error when no synchronous HMAC runtime is available', async () => {
     await withRuntimeOverride(
       {
-        Bun: undefined,
         require: () => {
           throw new Error('runtime unavailable');
         },
@@ -208,13 +196,12 @@ describe('sha256HexSync', () => {
     expect(timingSafeEqualHex(left, right.slice(2))).toBe(false);
   });
 
-  test('uses node timing-safe comparison when the Bun runtime is unavailable', async () => {
+  test('uses node timing-safe comparison through the injected loader', async () => {
     const left = createHash('sha256').update('same').digest('hex');
     const right = createHash('sha256').update('same').digest('hex');
 
     await withRuntimeOverride(
       {
-        Bun: undefined,
         require: (specifier: string) => {
           expect(specifier).toBe('node:crypto');
           return { timingSafeEqual };
@@ -232,7 +219,6 @@ describe('sha256HexSync', () => {
 
     await withRuntimeOverride(
       {
-        Bun: undefined,
         require: () => {
           throw new Error('runtime unavailable');
         },

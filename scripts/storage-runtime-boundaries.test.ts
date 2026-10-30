@@ -40,14 +40,7 @@ type AllowedProbe = { file: string; token: ProbeToken; reason: string };
  * Every probe still allowed. A stale entry (its file no longer holds the probe) fails the test, so
  * this list can only shrink.
  */
-const allowedProbes: AllowedProbe[] = [
-  {
-    file: 'packages/storage/src/environment-configuration.ts',
-    token: 'typeof Bun',
-    reason:
-      'COR-1784 owns the environment lookup (Bun.env or process.env). It is not a driver or codec choice.',
-  },
-];
+const allowedProbes: AllowedProbe[] = [];
 
 const sourceDirectories = [
   ...readdirSync(join(root, 'packages'))
@@ -208,7 +201,6 @@ describe('storage runtime boundaries (COR-1783)', () => {
   const hits = scanStorageSources();
 
   test('scans the storage packages and Weft storage layer', () => {
-    const scanned = new Set(hits.map((hit) => hit.file));
     expect(sourceDirectories).toContain('packages/storage/src');
     expect(sourceDirectories).toContain('packages/storage-bun-sqlite/src');
     expect(sourceDirectories).toContain('packages/storage-node-sqlite/src');
@@ -218,8 +210,10 @@ describe('storage runtime boundaries (COR-1783)', () => {
     expect(collectSourceFiles('packages/storage-turso/src')).toContain(
       join('packages', 'storage-turso', 'src', 'turso-web.ts'),
     );
-    // The allowed site is the proof the walk reaches into src: it must still be found.
-    expect(scanned.has('packages/storage/src/environment-configuration.ts')).toBe(true);
+    // The environment reader is the proof the walk reaches into src: it must still be listed.
+    expect(collectSourceFiles('packages/storage/src')).toContain(
+      join('packages', 'storage', 'src', 'environment-configuration.ts'),
+    );
   });
 
   test('no storage source outside tests probes the runtime to choose a driver or a codec', () => {

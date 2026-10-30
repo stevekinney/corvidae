@@ -49,14 +49,16 @@ globalThis.environmentProbe = { engine: resolveEngineEnvironment(), provider: { 
     expect(node.engine.nodeEnv).toBe('development');
     expect(node.provider.googleApiKey).toBe('node-key');
     expect(node.serializedProvider).not.toContain('node-key');
+    const bunOnly = execute({ Bun: { env: { GOOGLE_API_KEY: 'bun-key' } } });
+    expect(bunOnly.provider).toEqual({});
     const bun = execute({
       Bun: { env: { NODE_ENV: 'production', GOOGLE_API_KEY: 'bun-key' } },
       process: { env: { NODE_ENV: 'development', GOOGLE_API_KEY: 'node-key' } },
     });
-    // Weft reads `process.env` whatever globals exist; on Bun the two are one object.
+    // Weft and the provider read `process.env` whatever globals exist; on Bun the two are one object.
     expect(bun.engine.nodeEnv).toBe('development');
-    expect(bun.provider.googleApiKey).toBe('bun-key');
-    expect(bun.serializedProvider).not.toContain('bun-key');
+    expect(bun.provider.googleApiKey).toBe('node-key');
+    expect(bun.serializedProvider).not.toContain('node-key');
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
