@@ -395,6 +395,9 @@ export function startDeletion(
           return {
             next: bump(internals, current, {
               state: 'deleted',
+              // The URL is a secret, often a signed one, and a tombstone is facts about an asset
+              // that is gone: nothing fetches it any more, so it is not kept for seven days.
+              providerFetchUrl: undefined,
               deletedAt: now,
               tombstoneUntil: internals.isoAfter(internals.policy.tombstoneRetentionMilliseconds),
             }),
