@@ -135,6 +135,7 @@ export const SETTING_GROUPS = [
   { id: 'children', label: 'Children' },
   { id: 'engine', label: 'Engine' },
   { id: 'durability', label: 'Durability' },
+  { id: 'a2a', label: 'A2A' },
 ] as const;
 
 /** The keys whose first segment is not their group: the ones that fix how the deployment is built. */

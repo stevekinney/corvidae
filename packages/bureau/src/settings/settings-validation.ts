@@ -94,6 +94,8 @@ export const SCHEMA_CHECKED_KEYS = [
   'workflowVersion',
   'engine.checkpointHistory',
   'engine.maxNestingDepth',
+  'a2a.push.enabled',
+  'a2a.push.sweepIntervalMs',
 ] as const satisfies readonly SettingKey[];
 
 /** The keys Weft checks together when it builds an engine: the workflow-claim timing. */
