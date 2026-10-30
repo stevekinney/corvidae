@@ -164,9 +164,12 @@ export type {
 
 // Input
 export {
+  applyComposerFormat,
   ChatAttachmentPreview,
   ChatInput,
+  composerStatusText,
   deriveAttachmentKind,
+  highlightComposerMarkdown,
   serializeChatAttachment,
   serializeChatAttachments,
 } from './input/index.ts';
@@ -177,6 +180,12 @@ export type {
   ChatAttachmentFailure,
   ChatAttachmentReference,
   ChatAttachmentUpload,
+  ChatComposerFormat,
+  ChatComposerStatus,
+  ChatComposerToolbarContext,
+  ComposerFormatEdit,
+  ComposerMarkdownSegment,
+  ComposerMarkdownSegmentKind,
   SerializedChatAttachment,
 } from './input/index.ts';
 
