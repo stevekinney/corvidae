@@ -102,6 +102,12 @@ export interface TryAgents {
   contextOf(name: string): string | undefined;
   /** Drops the agent named `name`, if `contextId` is the context it belongs to. */
   release(name: string, contextId: string): void;
+  /**
+   * Drops the agent named `name` as {@link release} does, and returns the entry it dropped, so a
+   * deletion that fails after it can {@link hold} the agent again. `undefined` when `contextId`
+   * is not the context the agent belongs to.
+   */
+  take(name: string, contextId: string): TryAgentEntry | undefined;
   /** How many agents are held. */
   readonly size: number;
 }
@@ -121,6 +127,12 @@ export function createTryAgents(): TryAgents {
     contextOf: (name) => held.get(name)?.contextId,
     release: (name, contextId) => {
       if (held.get(name)?.contextId === contextId) held.delete(name);
+    },
+    take: (name, contextId) => {
+      const entry = held.get(name);
+      if (entry?.contextId !== contextId) return undefined;
+      held.delete(name);
+      return entry;
     },
     get size() {
       return held.size;

@@ -444,6 +444,13 @@ export interface TaskRegistry {
     incarnation: string | undefined,
   ): Promise<readonly TaskRecord[]>;
   /**
+   * The ids of every task record of one incarnation of a context, read from the durable context
+   * index, so it names tasks of runs this process no longer holds (COR-1911). A task not yet
+   * bound to an incarnation is the context's whichever incarnation it has, as for
+   * {@link unsettledFiresOfContext}.
+   */
+  taskIdsOfContext(contextId: string, incarnation: string | undefined): Promise<readonly string[]>;
+  /**
    * Calls `listener` with the task's view once it is settled, and once only, whether the
    * settlement was recorded by the run's end or by a cancellation. Returns the function that
    * stops listening. A task already settled is not announced: read it with {@link get}.
@@ -1421,6 +1428,13 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       // The whole settlement is tracked, its announcement included, so `flush()` (and so
       // `idle()`) also waits for what a settlement listener starts, such as a surface freeze.
       return track(recordSettlement(taskId, settlement));
+    },
+
+    async taskIdsOfContext(contextId, incarnation) {
+      const records = await recordsOfContext(contextId);
+      return records
+        .filter((record) => record.incarnation === '' || belongsToIncarnation(record, incarnation))
+        .map((record) => record.taskId);
     },
 
     async unsettledFiresOfContext(contextId, incarnation) {

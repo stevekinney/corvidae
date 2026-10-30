@@ -13,7 +13,7 @@ import {
   createMockEmbedder,
   type GovernedMemory,
 } from '@lostgradient/memory';
-import { MemoryStorage } from '@lostgradient/storage';
+import { MemoryStorage, textValueStore, type Storage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -22,14 +22,15 @@ import { isTryAgentName, tryToolProblem } from './agent-try';
 import { createAgent } from '@lostgradient/operative';
 import { BureauError, createBureau, UnknownScheduleAgentError } from './create-bureau';
 import { SESSION_AGENT_DEFINITION_HASH_METADATA_KEY } from './runtime-composition';
-import { runTask, taskContent, waitForTaskState } from './test';
+import { runTask, taskContent, waitForCondition, waitForTaskState } from './test';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 import { KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import {
   type FileBureauHarness,
   type Observation,
   startFileBureau,
 } from './testing/agent-file-bureau.test-support';
-import type { Bureau, TryAgentResult } from './types';
+import type { Bureau, BureauDiagnostic, TryAgentResult } from './types';
 
 const harnesses: FileBureauHarness[] = [];
 const cleanups: Array<() => Promise<void>> = [];
@@ -55,17 +56,15 @@ const DEFINITION = {
 const ALICE = 'alice';
 
 /** Every key the storage holds, sorted. */
-async function keysOf(storage: MemoryStorage): Promise<string[]> {
+async function keysOf(storage: Storage): Promise<string[]> {
   const keys: string[] = [];
+  if (storage.keys === undefined) throw new Error('Expected a storage that lists its keys.');
   for await (const key of storage.keys('')) keys.push(key);
   return keys.toSorted();
 }
 
 /** The keys the storage holds now that `before` did not. */
-async function keysAddedSince(
-  storage: MemoryStorage,
-  before: readonly string[],
-): Promise<string[]> {
+async function keysAddedSince(storage: Storage, before: readonly string[]): Promise<string[]> {
   const now = await keysOf(storage);
   return now.filter((key) => !before.includes(key));
 }
@@ -365,23 +364,57 @@ describe('deleting a tried chat (COR-1911)', () => {
   }
 
   /**
-   * What a deleted chat may leave in storage, by key prefix: the audit trail's evidence and its
-   * counter, and the engine's tombstones, which keep a run id from being used twice, and the
-   * session outbox's counter. None of them holds the chat, its agent, or what the agent said.
+   * What a deleted chat may leave in storage, by key prefix. The same as a deleted chat of any
+   * other origin leaves (COR-1934 tracks a purge):
+   *
+   * - `audit:v1:` and `audit-sequence:v1:`: the audit trail's step and run entries and its counter.
+   *   The entries are evidence and hold the run's content, the agent's answer word for word, until
+   *   retention removes them.
+   * - `fleet-event:`, `fleet-event-by-workflow:` and `fleet-event-tail`: the durable event history
+   *   of the runs and the session, and its indexes. It holds run content until retention removes
+   *   it. A store opened as ephemeral writes none of it, so on MemoryStorage these are absent.
+   * - `outbox-dedupe:session:` and `bureau-removed-surfaces:v1:`: delivery markers of the session
+   *   outbox and of a run's removed surfaces, named by session or run id and holding no content.
+   * - `agent-session-outbox:v1:ordinal`: the session outbox's counter.
+   * - `wf-gen:` and `wf-owner-epoch:`: the engine's tombstones, which keep a run id from being
+   *   used twice.
+   * - `session-input-open:v2:`: the sweep's index of a retired session's mailbox, removed once
+   *   retention has emptied it.
    */
   const KEPT = [
     'audit:v1:',
     'audit-sequence:v1:',
+    'fleet-event:',
+    'fleet-event-by-workflow:',
+    'fleet-event-tail',
+    'outbox-dedupe:session:',
+    'bureau-removed-surfaces:v1:',
     'agent-session-outbox:v1:ordinal',
     'wf-gen:',
     'wf-owner-epoch:',
-    // The sweep's index of a retired session's mailbox, removed once retention has emptied it.
     'session-input-open:v2:',
   ];
 
-  it('leaves no storage key, no file and no listing that the chat created', async () => {
-    const storage = new MemoryStorage();
-    const harness = await start({ overrides: { storage } });
+  /** The prefixes of the keys that are the chat, its runs, its tasks, its workflow and its agent. */
+  const GONE = [
+    'agent-session-v2',
+    'bureau-task:v1:',
+    'bureau-task-context:v1:',
+    'durable-run:',
+    'ev:',
+    'steering-log:v1:',
+    'wf:',
+    'wf-cleanup',
+    'wf-has-services:',
+    'wf-terminal:',
+    'tag:',
+  ];
+
+  /** Starts a chat, answers it twice, deletes it, and reads what storage kept. */
+  async function deleteAnsweredChat(storage: Storage) {
+    const harness = await start({
+      overrides: { storage, durable: true, durableOwnership: { ownership: 'none' } },
+    });
     const { bureau, directory } = harness;
     const keysBefore = await keysOf(storage);
     const filesBefore = await filesIn(directory);
@@ -396,10 +429,37 @@ describe('deleting a tried chat (COR-1911)', () => {
 
     const left = await keysAddedSince(storage, keysBefore);
     expect(left.filter((key) => !KEPT.some((prefix) => key.startsWith(prefix)))).toEqual([]);
+    expect(left.filter((key) => GONE.some((prefix) => key.startsWith(prefix)))).toEqual([]);
     expect(await filesIn(directory)).toEqual(filesBefore);
     expect(await bureau.contexts.get(tried.contextId)).toBeUndefined();
     expect(await bureau.tasks.get(tried.taskId)).toBeUndefined();
     expect(bureau.tasks.detail(tried.taskId)).toBeUndefined();
+    const error = await rejectionOf(
+      bureau.tasks.start(tried.agentName, 'again', {
+        contextId: tried.contextId,
+        principal: ALICE,
+      }),
+    );
+    expect((error as BureauError).code).toBe('NOT_FOUND');
+    return { left, created, tried };
+  }
+
+  it('leaves no storage key, no file and no listing that the chat created', async () => {
+    await deleteAnsweredChat(new MemoryStorage());
+  });
+
+  it('on a persistent store, leaves what any deleted chat leaves, and the run content stays until retention', async () => {
+    const fixture = createSqliteStorageFixture();
+    cleanups.push(() => fixture.dispose());
+    const { left, created } = await deleteAnsweredChat(fixture.storage);
+
+    // Every kind of key that is the chat was written, so its absence above is a deletion.
+    for (const prefix of GONE) expect(created.some((key) => key.startsWith(prefix))).toBe(true);
+
+    // The durable event history and the audit trail are why a persistent store keeps more.
+    for (const prefix of ['audit:v1:', 'fleet-event:', 'fleet-event-by-workflow:']) {
+      expect(left.some((key) => key.startsWith(prefix))).toBe(true);
+    }
   });
 
   it('writes no agent definition, snapshot, revision or version while it lives', async () => {
@@ -459,6 +519,39 @@ describe('deleting a tried chat (COR-1911)', () => {
     expect(await bureau.tasks.get(tried.taskId)).toBeUndefined();
   });
 
+  it('cannot be started again under its id the moment the delete commits', async () => {
+    // The session store's delete has committed when `session.deleted` is raised, and the agent
+    // must be gone by then, or its owner could recreate the id, a context nothing would clean up.
+    const attempts: Promise<unknown>[] = [];
+    let tried: TryAgentResult | undefined;
+    const harness = await start({
+      overrides: {
+        onEvent: (event) => {
+          if (event.type !== 'session.deleted' || tried === undefined) return;
+          attempts.push(
+            rejectionOf(
+              harness.bureau.tasks.start(tried.agentName, 'again', {
+                contextId: tried.contextId,
+                principal: ALICE,
+              }),
+            ),
+          );
+        },
+      },
+    });
+    const { bureau } = harness;
+    tried = await bureau.agents.try(DEFINITION, 'hello', { principal: ALICE });
+    await waitForTaskState(bureau, tried.taskId);
+
+    await deleted(bureau, tried.contextId);
+
+    expect(attempts).toHaveLength(1);
+    const error = await attempts[0];
+    expect((error as BureauError).code).toBe('NOT_FOUND');
+    expect(await bureau.contexts.get(tried.contextId)).toBeUndefined();
+    expect(await bureau.contexts.list({ origin: 'chat' })).toEqual([]);
+  });
+
   it('drops the agent, so the chat cannot be continued once deleted', async () => {
     const harness = await start();
     const { bureau } = harness;
@@ -474,6 +567,81 @@ describe('deleting a tried chat (COR-1911)', () => {
 
     expect(error).toBeInstanceOf(BureauError);
     expect((error as BureauError).code).toBe('NOT_FOUND');
+  });
+});
+
+describe('a tried run that a restart interrupts (COR-1911)', () => {
+  it('is listed as a failed run, and a diagnostic says the agent was held in memory only', async () => {
+    const fixture = createSqliteStorageFixture();
+    cleanups.push(() => fixture.dispose());
+    const diagnostics: BureauDiagnostic[] = [];
+    const hold = new Promise<never>(() => undefined);
+    const overrides = {
+      durable: true,
+      durableOwnership: { ownership: 'none' as const },
+      maintenance: 'manual' as const,
+      onDiagnostic: (diagnostic: BureauDiagnostic) => void diagnostics.push(diagnostic),
+      // Each Bureau these options open gets its own handle on the store.
+      get storage() {
+        return fixture.open();
+      },
+    };
+    const first = await start({ scripts: { [MODEL]: () => hold }, overrides });
+    const tried = await first.bureau.agents.try(DEFINITION, 'hello', { principal: ALICE });
+    await waitForCondition(() => first.observed.length > 0, 'the tried run is calling the model');
+
+    const second = await start({ scripts: { [MODEL]: () => 'resumed' }, overrides });
+    const report = await second.bureau.recovery();
+
+    expect(report?.perRunFailures.map((failure) => failure.runId)).toEqual([tried.taskId]);
+    const named = diagnostics.filter(
+      (diagnostic) =>
+        diagnostic.scope === 'agent-try' &&
+        diagnostic.message.includes('try agent not reconstructable after restart') &&
+        diagnostic.message.includes(tried.taskId),
+    );
+    expect(named).toHaveLength(1);
+    expect(named[0]?.level).toBe('warn');
+  });
+});
+
+describe('deleting a tried chat after a restart (COR-1911)', () => {
+  it('removes the tasks the run store and the ownership map no longer name', async () => {
+    const fixture = createSqliteStorageFixture();
+    cleanups.push(() => fixture.dispose());
+    const overrides = {
+      durable: true,
+      durableOwnership: { ownership: 'none' as const },
+      maintenance: 'manual' as const,
+      onDiagnostic: () => undefined,
+      get storage() {
+        return fixture.open();
+      },
+    };
+    const first = await start({ overrides });
+    const tried = await first.bureau.agents.try(DEFINITION, 'hello', { principal: ALICE });
+    await waitForTaskState(first.bureau, tried.taskId);
+    await followUp(first.bureau, tried, 'once more');
+
+    // The second Bureau holds no run of the first, and the context no longer names its runs'
+    // owners, as it does once their event history has expired.
+    const kv = textValueStore(fixture.storage);
+    const [sessionKey] = await kv.list('agent-session-v2');
+    const raw = sessionKey === undefined ? null : await kv.get(sessionKey);
+    if (sessionKey === undefined || raw === null) throw new Error('Expected the tried session.');
+    const stored = JSON.parse(raw) as { metadata: Record<string, unknown> };
+    expect(Object.keys(stored.metadata)).toContain('lastRunOwningPrincipals');
+    delete stored.metadata['lastRunOwningPrincipals'];
+    await kv.set(sessionKey, JSON.stringify(stored));
+    const second = await start({ overrides });
+    const inherited = await second.bureau.tasks.get(tried.taskId);
+    expect(inherited?.id).toBe(tried.taskId);
+
+    await second.bureau.contexts.delete(tried.contextId);
+
+    expect(await second.bureau.tasks.get(tried.taskId)).toBeUndefined();
+    const left = await keysOf(fixture.storage);
+    expect(left.filter((key) => key.startsWith('bureau-task'))).toEqual([]);
   });
 });
 

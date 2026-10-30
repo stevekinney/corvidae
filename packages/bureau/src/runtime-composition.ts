@@ -144,6 +144,7 @@ import {
 
 import type { FileAgentBinding } from './agent-file-catalog';
 import { activeSkillToolPolicy, agentSkillsRun, createSkillGuardrailOptions } from './agent-skills';
+import { isTryAgentName } from './agent-try';
 import {
   type GoalAttemptFence,
   type GoalAttemptTarget,
@@ -5199,6 +5200,16 @@ async function buildRuntimeComposition(
       // detached write).
       const reason = error instanceof Error ? error.message : String(error);
       unrebuildableRecoveredRuns.add(info.workflowId);
+      // COR-1911 — a tried agent lives in memory and nowhere else, so a restart loses it and its
+      // run cannot be rebuilt. The recovery report lists the run; this names why.
+      if (isTryAgentName(info.input.agentName)) {
+        diagnose({
+          level: 'warn',
+          scope: 'agent-try',
+          message: `[bureau] Run "${info.workflowId}" (session ${sessionId}) of a tried agent cannot be recovered: try agent not reconstructable after restart. The agent was held in memory only; delete the chat.`,
+          cause: error,
+        });
+      }
       try {
         await sessionStore.updateMetadata(sessionId, {
           lastRunStatus: 'error',

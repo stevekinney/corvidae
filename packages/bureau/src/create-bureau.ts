@@ -7477,8 +7477,11 @@ async function constructBureau<const D extends AgentDefinitions>(
    * in keeps these as history until retention ends them; a tried one is a throwaway, so it keeps
    * none. Best-effort for each step, like the rest of a deletion that has already committed: a
    * failure is diagnosed and the retention that ends every run's history ends this one's.
-   * The audit trail's entries are evidence and stay, and so do the engine's tombstones
-   * (`wf-gen:` and `wf-owner-epoch:`), which keep a run id from being reused.
+   * What a deletion of any context leaves stays until retention removes it (a purge is COR-1934):
+   * the audit trail's entries, which hold what the agent answered; on a store that keeps durable
+   * event history, the fleet event records and their indexes, which hold the run's content too;
+   * delivery markers and counters; and the engine's tombstones (`wf-gen:` and
+   * `wf-owner-epoch:`), which keep a run id from being reused.
    */
   async function discardTriedRuns(
     session: AgentSession,
@@ -7487,6 +7490,21 @@ async function constructBureau<const D extends AgentDefinitions>(
     const runIds = new Set(knownRunIds);
     const owners = session.metadata['lastRunOwningPrincipals'];
     if (isPlainAuthorityRecord(owners)) for (const runId of Object.keys(owners)) runIds.add(runId);
+    // The run store holds only this process's runs, and the ownership map is pruned once a run's
+    // event history expires, while its task record stays longer: the durable context index is
+    // the complete list of the context's tasks.
+    try {
+      for (const taskId of await tasks.taskIdsOfContext(session.id, session.incarnation)) {
+        runIds.add(taskId);
+      }
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'agent-try',
+        message: `[bureau] Could not list the tasks of a deleted tried context "${session.id}": ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
     const attempt = async (what: string, runId: string, work: () => Promise<unknown>) => {
       try {
         await work();
@@ -13899,10 +13917,25 @@ async function constructBureau<const D extends AgentDefinitions>(
           cause: error,
         });
       });
-      const removedLiveRecord =
-        expectedIncarnation === undefined
-          ? await sessionStore.delete(id)
-          : await sessionStore.delete(id, { expectedIncarnation });
+      // COR-1911 — a tried context's agent goes BEFORE the store delete, not after it: once the
+      // delete commits, the id is free, and an owner who named the agent could start the id again
+      // with it, a context nothing would ever clean up. Without the agent the id answers
+      // NOT_FOUND. A delete that throws did not commit, so the context is still live and its
+      // agent is held again.
+      const triedAgent =
+        sessionOriginOf(session.metadata) === 'try'
+          ? tryAgents.take(session.agentName, id)
+          : undefined;
+      let removedLiveRecord: boolean;
+      try {
+        removedLiveRecord =
+          expectedIncarnation === undefined
+            ? await sessionStore.delete(id)
+            : await sessionStore.delete(id, { expectedIncarnation });
+      } catch (error) {
+        if (triedAgent !== undefined) tryAgents.hold(triedAgent);
+        throw error;
+      }
       onStoreDeletionCommitted();
       if (removedLiveRecord) await releaseSessionGeneratedAssets(session);
       // AB-389 — drain right here, before anything below that can stall
@@ -14008,7 +14041,6 @@ async function constructBureau<const D extends AgentDefinitions>(
       // with it: the other contexts' runs are history that retention ends.
       if (removedLiveRecord && sessionOriginOf(session.metadata) === 'try') {
         await discardTriedRuns(session, sessionRunIds);
-        tryAgents.release(session.agentName, id);
       }
       return { deleted: removedLiveRecord, tasks: liveTasks };
     }
