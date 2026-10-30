@@ -23,6 +23,7 @@ import { startHost, type Host } from './host.ts';
 const A2A_KEY = 'host-a2a-key-0123456789';
 const PUBLIC_ORIGIN = 'https://agents.example.test';
 const PUBLIC_HOST = 'agents.example.test';
+const MEDIA = 'generated media';
 const LOCAL_OWNER = 'anonymous:local';
 const A2A_OWNER = 'api-key:a2a';
 
@@ -36,6 +37,8 @@ type Operation =
   | { readonly kind: 'card'; readonly agent: string }
   | { readonly kind: 'rpc'; readonly method: string }
   | { readonly kind: 'get'; readonly path: string }
+  /** The content of an asset one owner holds, read at the route generated media names. */
+  | { readonly kind: 'asset'; readonly owner: 'a2a' | 'local' }
   | { readonly kind: 'raw-send'; readonly path: string };
 
 type Outcome =
@@ -47,7 +50,8 @@ type Outcome =
   | { readonly kind: 'agents'; readonly view: 'every agent' | 'opted in only' }
   | { readonly kind: 'deployment' }
   | { readonly kind: 'forbidden' }
-  | { readonly kind: 'answered' };
+  | { readonly kind: 'answered' }
+  | { readonly kind: 'media' };
 
 type Row = {
   readonly caller: Caller;
@@ -55,6 +59,8 @@ type Row = {
   readonly credential?: string;
   /** An `Origin` header, as a browser attaches to a cross-site request. */
   readonly origin?: string;
+  /** The remote caller's `Host`, when it is not the public origin's bare name. */
+  readonly hostHeader?: string;
   readonly operation: Operation;
   readonly expected: Outcome;
 };
@@ -249,6 +255,72 @@ const ROWS: readonly Row[] = [
     operation: { kind: 'get', path: '/' },
     expected: { kind: 'guard' },
   },
+  // Generated media names `<origin>/bureau/assets/<id>/content`: the key reads its own, and the
+  // Bureau's owner check refuses the rest. Without a key the guard refuses, because the Bureau
+  // would serve a keyless request as the owner.
+  {
+    caller: 'loopback',
+    configurations: EVERY,
+    operation: { kind: 'asset', owner: 'local' },
+    expected: { kind: 'media' },
+  },
+  {
+    caller: 'remote',
+    configurations: ['keyed'],
+    credential: A2A_KEY,
+    operation: { kind: 'asset', owner: 'a2a' },
+    expected: { kind: 'guard' },
+  },
+  {
+    caller: 'remote',
+    configurations: ['public'],
+    credential: A2A_KEY,
+    operation: { kind: 'asset', owner: 'a2a' },
+    expected: { kind: 'media' },
+  },
+  {
+    caller: 'remote',
+    configurations: ['public'],
+    operation: { kind: 'asset', owner: 'a2a' },
+    expected: { kind: 'unauthenticated' },
+  },
+  {
+    caller: 'remote',
+    configurations: ['public'],
+    operation: { kind: 'asset', owner: 'local' },
+    expected: { kind: 'unauthenticated' },
+  },
+  {
+    caller: 'remote',
+    configurations: ['public'],
+    credential: 'not-the-key',
+    operation: { kind: 'asset', owner: 'a2a' },
+    expected: { kind: 'unauthenticated' },
+  },
+  {
+    caller: 'remote',
+    configurations: ['public'],
+    credential: A2A_KEY,
+    operation: { kind: 'asset', owner: 'local' },
+    expected: { kind: 'not-found' },
+  },
+  // A proxy may write out the default port; any other port is another address.
+  {
+    caller: 'remote',
+    configurations: ['public'],
+    hostHeader: `${PUBLIC_HOST}:443`,
+    credential: A2A_KEY,
+    operation: { kind: 'send', agent: 'open' },
+    expected: { kind: 'task', owner: A2A_OWNER },
+  },
+  {
+    caller: 'remote',
+    configurations: ['public'],
+    hostHeader: `${PUBLIC_HOST}:8443`,
+    credential: A2A_KEY,
+    operation: { kind: 'send', agent: 'open' },
+    expected: { kind: 'guard' },
+  },
   // A path that only reads as A2A before its dot segments are resolved is not A2A.
   {
     caller: 'remote',
@@ -342,7 +414,7 @@ function sendBody(): string {
 
 function headersOf(row: Row): Record<string, string> {
   return {
-    ...(row.caller === 'remote' ? { host: PUBLIC_HOST } : {}),
+    ...(row.caller === 'remote' ? { host: row.hostHeader ?? PUBLIC_HOST } : {}),
     ...(row.credential === undefined ? {} : { 'X-API-Key': row.credential }),
     ...(row.origin === undefined ? {} : { origin: row.origin }),
   };
@@ -413,7 +485,9 @@ async function outcomeOf(host: Host, row: Row): Promise<Outcome> {
         ? `/bureau/a2a/${operation.agent}/.well-known/agent-card.json`
         : operation.kind === 'rpc'
           ? '/bureau/jsonrpc'
-          : operation.path;
+          : operation.kind === 'asset'
+            ? `/bureau/assets/${assetIds[operation.owner]}/content`
+            : operation.path;
   const init: RequestInit =
     operation.kind === 'send' || operation.kind === 'rpc'
       ? {
@@ -434,6 +508,11 @@ async function outcomeOf(host: Host, row: Row): Promise<Outcome> {
     expect(response.status).toBe(200);
     return { kind: 'card' };
   }
+  if (operation.kind === 'asset') {
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(MEDIA);
+    return { kind: 'media' };
+  }
   if (operation.kind === 'get') {
     expect(response.status).toBe(200);
     return { kind: 'answered' };
@@ -445,14 +524,34 @@ async function outcomeOf(host: Host, row: Row): Promise<Outcome> {
   return { kind: 'task', owner: owner ?? 'none' };
 }
 
+/** The asset each owner holds on the host under test, by the row's owner name. */
+let assetIds: Record<'a2a' | 'local', string> = { a2a: '', local: '' };
+
+/** Admits a small text asset as `owner`, as a task's generated media would be. */
+async function admitMedia(host: Host, owner: string): Promise<string> {
+  const assets = host.bureau.assets;
+  if (assets === undefined) throw new Error('The host has no asset service.');
+  const admission = await assets.admit(
+    {
+      source: { kind: 'inline', bytes: new TextEncoder().encode(MEDIA) },
+      declaredMediaType: 'text/plain',
+    },
+    { id: owner },
+  );
+  await admission.work.result();
+  return admission.assetId;
+}
+
 function describeRow(row: Row): string {
   const { operation } = row;
   const target =
     operation.kind === 'send' || operation.kind === 'card'
       ? `${operation.kind} ${operation.agent}`
-      : operation.kind === 'rpc'
-        ? operation.method
-        : `${operation.kind} ${operation.path}`;
+      : operation.kind === 'asset'
+        ? `asset of ${operation.owner}`
+        : operation.kind === 'rpc'
+          ? operation.method
+          : `${operation.kind} ${operation.path}`;
   const credential =
     row.credential === undefined
       ? 'no key'
@@ -460,7 +559,8 @@ function describeRow(row: Row): string {
         ? 'the key'
         : `wrong key "${row.credential}"`;
   const origin = row.origin === undefined ? '' : `, Origin ${row.origin}`;
-  return `${row.caller}, ${credential}${origin}: ${target} → ${row.expected.kind}`;
+  const hostHeader = row.hostHeader === undefined ? '' : `, Host ${row.hostHeader}`;
+  return `${row.caller}${hostHeader}, ${credential}${origin}: ${target} → ${row.expected.kind}`;
 }
 
 for (const configuration of EVERY)
@@ -468,6 +568,10 @@ for (const configuration of EVERY)
     let host: Host;
     beforeAll(async () => {
       host = await startConfigured(configuration);
+      assetIds = {
+        a2a: await admitMedia(host, A2A_OWNER),
+        local: await admitMedia(host, LOCAL_OWNER),
+      };
     });
     afterAll(async () => {
       await host.close();

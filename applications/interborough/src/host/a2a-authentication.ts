@@ -15,8 +15,9 @@
  * it. Every caller that holds the key owns its tasks as that one principal.
  *
  * The public origin (`INTERBOROUGH_A2A_PUBLIC_ORIGIN`, `environment-configuration.ts`) lets a
- * reverse proxy's `Host` through the request guard for `/bureau/a2a/*` only, and needs the key: a
- * public origin without one would hand A2A to anyone as the owner, so the host does not start.
+ * reverse proxy's `Host` through the request guard for `/bureau/a2a/*` and, with a credential,
+ * `/bureau/assets/*` only, and needs the key: a public origin without one would hand A2A to anyone
+ * as the owner, so the host does not start.
  *
  * @module a2a-authentication
  */

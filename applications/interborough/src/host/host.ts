@@ -34,7 +34,8 @@
  * reach the port, which is why the hostname is not an option. The one credential the host knows is
  * the operator's A2A key (COR-1904, `a2a-authentication.ts`): once it is stored, A2A requires it,
  * and it is the only way a request from beyond loopback, through a reverse proxy serving the public
- * origin `INTERBOROUGH_A2A_PUBLIC_ORIGIN` names, reaches anything, and then only `/bureau/a2a/*`.
+ * origin `INTERBOROUGH_A2A_PUBLIC_ORIGIN` names, reaches anything, and then only `/bureau/a2a/*`
+ * and `/bureau/assets/*`.
  *
  * Weft's server would report its own shared `unauthenticated-local` caller for a request with no
  * credential, so it listens on a second, private loopback port that answers only a per-process
@@ -58,7 +59,8 @@
  *   the host: loopback only, every call as `anonymous:local`. With the key (the Bungalow secret
  *   `a2a-api-key`), every A2A JSON-RPC call must present it and acts as `api-key:a2a`, which sees
  *   only the agents that opt in; with the public origin as well, the request guard lets that
- *   origin's `Host` through for these paths only (`request-guard.ts`).
+ *   origin's `Host` through for these paths and, with a credential, `/bureau/assets/*`, where the
+ *   media their tasks generate is read (`request-guard.ts`).
  * - `/host/paths`: where the host keeps the files a person edits by hand, so the agent editor and
  *   the Workflows pages can show an agent's file path and a workflow's, and the agent editor can
  *   say where to configure a model provider: the configuration file, and the file that holds each

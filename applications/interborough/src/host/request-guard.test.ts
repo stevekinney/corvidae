@@ -85,3 +85,35 @@ describe('a guard given a public A2A origin (COR-1904)', () => {
     expect(refusedAt('/bureau/a2a/open', { host: 'attacker.example' })).toBe(true);
   });
 });
+
+describe('a guard given a public origin on its default port (COR-1904)', () => {
+  const guard = createRequestGuard(() => 7234, new URL('https://agents.example.test'));
+
+  function statusAt(path: string, headers: Record<string, string>): number | undefined {
+    return guard(new Request(`http://127.0.0.1${path}`, { headers }))?.status;
+  }
+
+  test('accepts the name with the default port written out or left out', () => {
+    expect(statusAt('/bureau/a2a/open', { host: 'agents.example.test' })).toBeUndefined();
+    expect(statusAt('/bureau/a2a/open', { host: 'agents.example.test:443' })).toBeUndefined();
+  });
+
+  test('refuses any other port', () => {
+    expect(statusAt('/bureau/a2a/open', { host: 'agents.example.test:8443' })).toBe(403);
+    expect(statusAt('/bureau/a2a/open', { host: 'agents.example.test:80' })).toBe(403);
+  });
+
+  test('lets an asset read through only with a credential, which the Bureau then checks', () => {
+    const host = { host: 'agents.example.test' };
+    expect(statusAt('/bureau/assets/a/content', { ...host, 'x-api-key': 'k' })).toBeUndefined();
+    expect(
+      statusAt('/bureau/assets/a/content', { ...host, authorization: 'Bearer k' }),
+    ).toBeUndefined();
+    expect(statusAt('/bureau/assets/a/content', host)).toBe(401);
+    expect(statusAt('/bureau/assets/../jsonrpc', { ...host, 'x-api-key': 'k' })).toBe(403);
+  });
+
+  test('leaves an asset read on loopback to the Bureau, credential or not', () => {
+    expect(statusAt('/bureau/assets/a/content', { host: 'localhost:7234' })).toBeUndefined();
+  });
+});
