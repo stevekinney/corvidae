@@ -243,6 +243,11 @@ describe('removing a saved tool source', () => {
     const secretPath = join(path, 'secrets', 'tool-source-files');
     const held = await readFile(secretPath, 'utf8');
     expect(held.length).toBeGreaterThan(0);
+    // The ciphertext of the credential, which a scan can find while it is stored and not after.
+    const ciphertext = (JSON.parse(held) as { credentials: { token: { ciphertext: string } } })
+      .credentials.token.ciphertext;
+    expect(ciphertext.length).toBeGreaterThan(0);
+    expect(await filesHolding(path, ciphertext)).toEqual([secretPath]);
     expect(await filesHolding(path, BEARER)).toEqual([]);
 
     await send(host, 'DELETE', '/host/tool-sources/files');
@@ -250,6 +255,7 @@ describe('removing a saved tool source', () => {
     expect(await readFile(secretPath, 'utf8')).toBe('');
     const remaining = await host.toolSources.snapshot();
     expect(remaining.sources).toEqual([]);
+    expect(await filesHolding(path, ciphertext)).toEqual([]);
     expect(await filesHolding(path, BEARER)).toEqual([]);
   });
 
