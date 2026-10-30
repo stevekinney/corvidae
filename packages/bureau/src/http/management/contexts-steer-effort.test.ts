@@ -20,6 +20,11 @@ import {
   rpc,
   type RpcBody,
 } from './management-fixtures.test-support.ts';
+import {
+  exactlyOneSettingIssue,
+  requestedValueOf,
+  steeredSettingKey,
+} from './contexts-steer-operation.ts';
 
 function steppedPicker() {
   const stepped = createSteppedGenerate();
@@ -144,7 +149,7 @@ describe('bureau.contexts.steer effort', () => {
       expect(issuesOf(both)).toEqual([
         {
           path: ['effort'],
-          message: 'Exactly one of `override` and `effort` is allowed; both were sent',
+          message: 'Exactly one of `override` and `effort` is allowed; `override` and `effort` were sent',
           code: 'custom',
         },
       ]);
@@ -165,6 +170,35 @@ describe('bureau.contexts.steer effort', () => {
         model: null,
         configVersion: 0,
       });
+    });
+  });
+});
+
+describe('the exactly-one rule reads its keys from one list', () => {
+  const keys = ['override', 'effort', 'permissionMode'];
+
+  it('counts and names a hypothetical third setting', () => {
+    expect(exactlyOneSettingIssue({}, keys)).toEqual({
+      path: ['override'],
+      message:
+        'Exactly one of `override`, `effort` and `permissionMode` is required; none was sent',
+    });
+    expect(exactlyOneSettingIssue({ effort: 'low', permissionMode: 'plan' }, keys)).toEqual({
+      path: ['permissionMode'],
+      message:
+        'Exactly one of `override`, `effort` and `permissionMode` is allowed; `effort` and `permissionMode` were sent',
+    });
+    expect(exactlyOneSettingIssue({ permissionMode: 'plan' }, keys)).toBeUndefined();
+    expect(steeredSettingKey({ permissionMode: 'plan' }, keys)).toBe('permissionMode');
+  });
+
+  it('does not read a request naming only another setting as an effort', () => {
+    const third = { contextId: 'c', commandId: 'k', permissionMode: 'plan' };
+
+    expect(() => requestedValueOf(third as never)).toThrow('names none of the settings');
+    expect(requestedValueOf({ contextId: 'c', commandId: 'k', effort: 'low' })).toEqual({
+      target: 'effort',
+      override: 'low',
     });
   });
 });

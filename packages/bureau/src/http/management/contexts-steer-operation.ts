@@ -27,7 +27,7 @@
  * @module contexts-steer-operation
  */
 
-import { type Effort, sessionOwnerOf, type SteeringRequestedValue } from '@lostgradient/operative';
+import { sessionOwnerOf, type SteeringRequestedValue } from '@lostgradient/operative';
 import { defineOperation, type OperationFault } from '@lostgradient/weft';
 import { z } from 'zod';
 
@@ -56,6 +56,48 @@ const effortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
  * exactly one of them; a later setting adds its key here and to the object below.
  */
 const STEERED_SETTING_KEYS = ['override', 'effort'] as const;
+
+/** A key of {@link STEERED_SETTING_KEYS}. */
+type SteeredSettingKey = (typeof STEERED_SETTING_KEYS)[number];
+
+/** Backquoted keys, joined for a message: `a`, `a` and `b`, `a`, `b` and `c`. */
+function listKeys(keys: readonly string[]): string {
+  const quoted = keys.map((key) => `\`${key}\``);
+  const last = quoted.at(-1) ?? '';
+  return quoted.length < 2 ? last : `${quoted.slice(0, -1).join(', ')} and ${last}`;
+}
+
+/**
+ * The issue a request earns when it does not name exactly one of `keys`, or `undefined` when it
+ * does. The path is the field the caller should change: the second one named, or the first one
+ * that could have been. Everything it says is read from `keys`, so a setting added to the list is
+ * counted and named without a change here.
+ */
+export function exactlyOneSettingIssue(
+  input: Readonly<Record<string, unknown>>,
+  keys: readonly string[],
+): { readonly path: [string]; readonly message: string } | undefined {
+  const named = keys.filter((key) => Object.hasOwn(input, key) && input[key] !== undefined);
+  if (named.length === 1) return undefined;
+  return {
+    path: [named[1] ?? keys[0] ?? ''],
+    message:
+      named.length === 0
+        ? `Exactly one of ${listKeys(keys)} is required; none was sent`
+        : `Exactly one of ${listKeys(keys)} is allowed; ${listKeys(named)} were sent`,
+  };
+}
+
+/**
+ * The setting a request that passed {@link exactlyOneSettingIssue} names, as the key it was sent
+ * under; `undefined` for one that names none of `keys`.
+ */
+export function steeredSettingKey(
+  input: Readonly<Record<string, unknown>>,
+  keys: readonly string[],
+): string | undefined {
+  return keys.find((key) => Object.hasOwn(input, key) && input[key] !== undefined);
+}
 
 const contextsSteerInput = z
   .object({
@@ -87,19 +129,37 @@ const contextsSteerInput = z
       ),
   })
   .superRefine((input, context) => {
-    const named = STEERED_SETTING_KEYS.filter((key) => input[key] !== undefined);
-    if (named.length === 1) return;
-    // The issue is on the field the caller should change: the second one named, or the first one
-    // that could have been.
-    context.addIssue({
-      code: 'custom',
-      path: [named[1] ?? STEERED_SETTING_KEYS[0]],
-      message:
-        named.length === 0
-          ? 'Exactly one of `override` and `effort` is required; none was sent'
-          : 'Exactly one of `override` and `effort` is allowed; both were sent',
-    });
+    const issue = exactlyOneSettingIssue(input, STEERED_SETTING_KEYS);
+    if (issue !== undefined) context.addIssue({ code: 'custom', ...issue });
   });
+
+type SteerInput = z.infer<typeof contextsSteerInput>;
+
+/**
+ * The settings {@link requestedValueOf} has a branch for. Typed over {@link STEERED_SETTING_KEYS},
+ * so a key added to that list without a branch there fails to compile here.
+ */
+const SETTINGS_WITH_A_BRANCH = { override: true, effort: true } satisfies Record<
+  SteeredSettingKey,
+  true
+>;
+
+/**
+ * The steering target a request that names exactly one setting asks for. Each key is handled by
+ * name, and a request that names none of the keys handled here is not read as the last one: it
+ * throws, so a setting added to {@link STEERED_SETTING_KEYS} without a branch here fails loudly
+ * and never falls through to another setting.
+ */
+export function requestedValueOf(input: SteerInput): SteeringRequestedValue {
+  const key = steeredSettingKey(input, Object.keys(SETTINGS_WITH_A_BRANCH));
+  if (key === 'override' && input.override !== undefined) {
+    return { target: 'model', override: input.override.model, provider: input.override.provider };
+  }
+  if (key === 'effort' && input.effort !== undefined) {
+    return { target: 'effort', override: input.effort };
+  }
+  throw new Error('A steering request names none of the settings it can change.');
+}
 
 const failureSchema = z.object({
   failedAt: z.string(),
@@ -264,12 +324,8 @@ export const contextsSteerOperation = defineOperation<
     ) {
       throw resourceNotFound('context', contextId);
     }
-    // The schema holds that exactly one of the two is present.
-    const { override, effort } = input;
-    const requestedValue: SteeringRequestedValue =
-      effort === undefined && override !== undefined
-        ? { target: 'model', override: override.model, provider: override.provider }
-        : { target: 'effort', override: effort as Effort };
+    // The schema holds that exactly one setting is named.
+    const requestedValue = requestedValueOf(input);
     let outcome: SteeringCommandAdmissionOutcome;
     try {
       outcome = await host.contexts.steer(contextId, {
@@ -296,7 +352,7 @@ export const contextsSteerOperation = defineOperation<
           data: {
             issues: [
               {
-                path: [input.effort === undefined ? 'override' : 'effort'],
+                path: [steeredSettingKey(input, STEERED_SETTING_KEYS) ?? STEERED_SETTING_KEYS[0]],
                 message: error.message,
                 code: 'custom',
               },

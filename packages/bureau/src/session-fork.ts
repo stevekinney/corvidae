@@ -23,7 +23,7 @@
  * @module session-fork
  */
 
-import { type AgentSession, parseStepRowIdentifier } from '@lostgradient/operative';
+import { type AgentSession, type Effort, parseStepRowIdentifier } from '@lostgradient/operative';
 import type { ConversationHistory } from 'conversationalist';
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
@@ -91,6 +91,13 @@ export interface ForkSessionResult {
    * longer allowed) leaves the fork in place, running on the agent's default.
    */
   readonly carriedOverride: SteeringCommandAdmissionOutcome | null;
+  /**
+   * The outcome of admitting the parent's `effort` on the new session, as `<commandId>:effort`
+   * (COR-1935); `null` when the parent had none. A refused admission leaves the fork in place on
+   * the effort its agent's request carries. A result the ledger kept before the field existed has
+   * none, which reads as `null`.
+   */
+  readonly carriedEffort?: SteeringCommandAdmissionOutcome | null;
 }
 
 /**
@@ -130,6 +137,11 @@ export interface ForkLedgerClaim {
     readonly model: string;
     readonly policyRef?: string;
   } | null;
+  /**
+   * The effort the parent's steering had settled on when the attempt began (COR-1935); `null`
+   * when it had none. A claim written before the field existed has none, and carries no effort.
+   */
+  readonly effort?: Effort | null;
 }
 
 /** What the branch-point checks read besides the session. */

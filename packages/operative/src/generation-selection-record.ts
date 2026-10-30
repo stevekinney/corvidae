@@ -48,6 +48,11 @@ export function composeGenerationSelectionRecord(
   // steering field is "unspecified", never "clear the plan's value" —
   // `SteeringDesiredState`'s own fields are optional precisely so a
   // single-field command can exist.
+  //
+  // `effective` is the configuration the step was asked to run with, not a report of what a
+  // provider sent: a provider reads the steered effort on every call (COR-1935) but may clamp it
+  // to a tier its model has, or omit it for a model with no effort support. The value that went
+  // on the wire is the step's `GenerateResponse.metadata.effectiveEffort` (`'none'` when omitted).
   const effective: GenerationBackendRecord = {
     provider: steering?.provider ?? steering?.modelProvider ?? selected?.provider,
     model: steering?.model ?? selected?.model,
