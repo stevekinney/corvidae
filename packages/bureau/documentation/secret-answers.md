@@ -23,14 +23,14 @@ await bureau.dispose();
 
 ## The reference
 
-Once an answer is checked, each secret field is replaced by `{ "secretRef": "<reviewId><field>" }`, where `<field>` is the field's JSON Pointer within the answer: `human-wait:<runId>:login:0/password` for a `password` field, the bare review id when the answer itself is the secret. The reference is not secret.
+Once an answer is checked, each secret field is replaced by `{ "secretRef": "<reviewId><field>" }`, where `<field>` is the field's JSON Pointer within the answer: `human-wait:<runId>:login:0/password` for a `password` field, the bare review id when the answer itself is the secret. Any `~` or `/` in the review id (a signal name may hold one) is escaped as `~0` or `~1`, so the first `/` of a reference always starts the field and two questions never share a reference. The reference is not secret.
 
 The signal that releases the run carries the reference, so the model reads `[signal:login] {"password":{"secretRef":"…/password"},"user":"ada"}`, and the conversation, the checkpoint, the transcript, the replay and the run's events hold the same. The model passes the reference to a tool as it would any value.
 
 ## Where the plaintext goes
 
 - **Checked, then sealed.** The plaintext is checked against the question's schema (`minLength` and the rest apply), then encrypted with AES-256-GCM (`@lostgradient/cryptography`) as `{ "secretRef", "value" }`, so a ciphertext copied under another reference does not open.
-- **Kept once.** The ciphertext is stored under `bureau-secret-answer:v1:<sha256 of the reference>` as `{ version: 1, secretRef, reviewId, runId, owner, encrypted, recordedAt }`, where `encrypted` is `{ version, ciphertext, iv, keyId }` and `owner` is the run's owner. It is written once, after the review's decision is claimed and before the signal is sent, so every same-decision re-drive signals the reference to the secret the first claimant stored.
+- **Kept once, whole.** The ciphertext is stored under `bureau-secret-answer:v1:<sha256 of the reference>` as `{ version: 1, secretRef, reviewId, runId, owner, encrypted, recordedAt }`, where `encrypted` is `{ version, ciphertext, iv, keyId }` and `owner` is the run's owner. An answer's records are written together, in one compare-and-swap, after the review's decision is claimed and before the signal is sent: every same-decision re-drive signals the references to the secrets the first claimant stored, and an answer is never kept as a mix of two submissions' fields.
 - **Read for the asking run.** `createSecretAnswerResolver({ storage, keys })` is an Armorer `secretResolver`. It reads the record and decrypts it only when the tool call's `executionContext.parentRunId`, which Operative sets to the calling run's id over anything a caller passed, is the run that asked. Another run's call, a reference with no record, and a key that is no longer held are refused, which Armorer reports as `secret-unavailable`.
 
 The toolbox Bureau builds itself (when `options.toolbox` is omitted) carries this resolver. A toolbox an agent's author builds keeps its own options, so pass the resolver to it, made over the same storage and keys:

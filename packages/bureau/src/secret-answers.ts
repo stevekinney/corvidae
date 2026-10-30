@@ -6,7 +6,8 @@
  *
  * A secret field is replaced, everywhere the answer travels after it is checked, by a reference:
  * `{ "secretRef": "<reviewId><field>" }`, where `<field>` is the field's JSON Pointer within the
- * answer (`/password`, `/account/token`), empty when the answer itself is the secret. It is the
+ * answer (`/password`, `/account/token`), empty when the answer itself is the secret, and any `~`
+ * or `/` in the review id is escaped (`~0`, `~1`) so the first `/` always starts the field. It is the
  * shape Armorer recognizes (`packages/armorer/documentation/secrets.md`), so the model, which sees
  * only the reference, can pass it to a tool that declares `acceptsSecrets`, and Armorer asks this
  * module's resolver for the plaintext immediately before the call.
@@ -21,9 +22,10 @@
  * the conversation the model reads, the checkpoint, the replay, the audit trail and the command
  * ledgers hold the reference and never the plaintext.
  *
- * The record is written once, after the review's decision is claimed and before the signal is sent,
- * by compare-and-swap on an absent key: the first claimant's answer is the one every later
- * same-decision re-drive delivers, so what the run is told and what the resolver returns agree.
+ * An answer's records are written together, after the review's decision is claimed and before the
+ * signal is sent, by one compare-and-swap on absent keys: the first claimant's answer is the one
+ * every later same-decision re-drive delivers, whole, so what the run is told and what the resolver
+ * returns agree.
  *
  * ## Between the ingress and the record
  *
@@ -108,9 +110,28 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return prototype === Object.prototype || prototype === null;
 }
 
-/** The reference of the secret at `field` (a JSON Pointer) of the answer to `reviewId`. */
+/**
+ * The review id as a reference begins: `~` and `/` escaped as `~0` and `~1` (RFC 6901), so the
+ * first `/` of a reference always starts the field's pointer. A signal name may hold a `/`, and
+ * without the escape one review's field and another review's whole answer could share a reference.
+ */
+function referencePrefix(reviewId: string): string {
+  return reviewId.replaceAll('~', '~0').replaceAll('/', '~1');
+}
+
+/**
+ * The reference of the secret at `field` (a JSON Pointer) of the answer to `reviewId`: the review id
+ * with any `~` and `/` escaped, then the pointer (empty when the answer itself is the secret).
+ */
 export function secretAnswerReference(reviewId: string, field: string): string {
-  return `${reviewId}${field}`;
+  return `${referencePrefix(reviewId)}${field}`;
+}
+
+/** The field `secretRef` names within the answer to `reviewId`, or `undefined` when it is another review's. */
+function fieldOfReference(secretRef: string, reviewId: string): string | undefined {
+  const prefix = referencePrefix(reviewId);
+  if (secretRef === prefix) return '';
+  return secretRef.startsWith(`${prefix}/`) ? secretRef.slice(prefix.length) : undefined;
 }
 
 /** Whether `value` is exactly a {@link SealedSecretAnswer}: two own keys, `secretRef` and `encrypted`. */
@@ -251,10 +272,10 @@ export function unsealedSecretFields(answer: unknown, fields: readonly string[])
  * the sealed answers carry: what a kept, sealed answer says about which of its fields are secret.
  */
 export function sealedSecretFields(value: unknown, reviewId: string): string[] {
-  return sealedAnswersIn(value)
-    .map((answer) => answer.secretRef)
-    .filter((secretRef) => secretRef === reviewId || secretRef.startsWith(`${reviewId}/`))
-    .map((secretRef) => secretRef.slice(reviewId.length));
+  return sealedAnswersIn(value).flatMap((answer) => {
+    const field = fieldOfReference(answer.secretRef, reviewId);
+    return field === undefined ? [] : [field];
+  });
 }
 
 /** Whether `value` holds a {@link SealedSecretAnswer} anywhere. */
@@ -465,57 +486,78 @@ export function createSecretAnswerStore(options: {
     ...(options.keys.retired === undefined ? {} : { retired: options.keys.retired }),
   };
 
-  async function storeOne(
+  /** The record a stored answer is, if `raw` is one of `review`'s and names `secretRef`. */
+  function recordOf(
+    raw: string | null,
     review: { readonly id: string; readonly runId: string },
-    answer: SealedSecretAnswer,
+    secretRef: string,
+  ): SecretAnswerRecord | undefined {
+    const record = parseRecord(raw);
+    return record !== undefined &&
+      record.secretRef === secretRef &&
+      record.reviewId === review.id &&
+      record.runId === review.runId
+      ? record
+      : undefined;
+  }
+
+  /**
+   * Stores every secret of one answer, all or none: either this answer's records are all written
+   * in one compare-and-swap, or another same-decision answer's already are, and those are kept
+   * whole. An answer is never stored as a mix of two submissions' fields.
+   */
+  async function storeAll(
+    review: { readonly id: string; readonly runId: string },
+    answers: readonly SealedSecretAnswer[],
     owner: string,
-  ): Promise<EncryptedValue> {
-    const key = recordKey(answer.secretRef);
+  ): Promise<EncryptedValue[]> {
+    const recordKeys = answers.map((answer) => recordKey(answer.secretRef));
     for (let attempt = 0; attempt < MAXIMUM_STORE_ATTEMPTS; attempt += 1) {
-      const existing = await kv.get(key);
-      if (existing !== null) {
-        const record = parseRecord(existing);
-        if (
-          record === undefined ||
-          record.secretRef !== answer.secretRef ||
-          record.runId !== review.runId
-        ) {
-          throw new SecretAnswerUnavailableError();
-        }
-        return record.encrypted;
+      const existing = await Promise.all(recordKeys.map((key) => kv.get(key)));
+      if (existing.some((raw) => raw !== null)) {
+        // Another answer won: every one of its records must be here, and each is kept.
+        return existing.map((raw, index) => {
+          const record = recordOf(raw, review, answers[index]!.secretRef);
+          if (record === undefined) throw new SecretAnswerUnavailableError();
+          return record.encrypted;
+        });
       }
-      const record: SecretAnswerRecord = {
-        version: 1,
-        secretRef: answer.secretRef,
-        reviewId: review.id,
-        runId: review.runId,
-        owner,
-        encrypted: answer.encrypted,
-        recordedAt: now(),
-      };
+      const recordedAt = now();
       const written = await kv.conditionalBatch(
-        [{ key, expectedValue: null }],
-        [{ type: 'set', key, value: JSON.stringify(record) }],
+        recordKeys.map((key) => ({ key, expectedValue: null })),
+        answers.map((answer, index) => ({
+          type: 'set' as const,
+          key: recordKeys[index]!,
+          value: JSON.stringify({
+            version: 1,
+            secretRef: answer.secretRef,
+            reviewId: review.id,
+            runId: review.runId,
+            owner,
+            encrypted: answer.encrypted,
+            recordedAt,
+          } satisfies SecretAnswerRecord),
+        })),
       );
-      if (written) return answer.encrypted;
+      if (written) return answers.map((answer) => answer.encrypted);
     }
     throw new SecretAnswerUnavailableError();
   }
 
   return {
     async store(review, payload, owner) {
-      const audit: SecretAnswerAuditEntry[] = [];
-      for (const answer of sealedAnswersIn(payload)) {
-        // Only this review's own references are stored for it.
-        if (answer.secretRef !== review.id && !answer.secretRef.startsWith(`${review.id}/`)) {
-          throw new SecretAnswerUnavailableError();
-        }
-        const encrypted = await storeOne(review, answer, owner);
-        audit.push({
-          field: answer.secretRef.slice(review.id.length),
-          ciphertextDigest: sha256HexSync(encrypted.ciphertext),
-        });
+      const answers = sealedAnswersIn(payload);
+      // Only this review's own references are stored for it.
+      const fields = answers.map((answer) => fieldOfReference(answer.secretRef, review.id));
+      if (fields.some((field) => field === undefined)) throw new SecretAnswerUnavailableError();
+      if (new Set(answers.map((answer) => answer.secretRef)).size !== answers.length) {
+        throw new SecretAnswerUnavailableError();
       }
+      const stored = answers.length === 0 ? [] : await storeAll(review, answers, owner);
+      const audit: SecretAnswerAuditEntry[] = stored.map((encrypted, index) => ({
+        field: fields[index]!,
+        ciphertextDigest: sha256HexSync(encrypted.ciphertext),
+      }));
       return { payload: withoutCiphertext(payload), audit };
     },
     async resolve(secretRef, runId) {

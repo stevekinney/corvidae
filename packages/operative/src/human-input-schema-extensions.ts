@@ -229,6 +229,9 @@ function checkLabels(node: SchemaNode, path: Path, add: Adder): void {
 
 type Adder = (path: Path, message: string) => void;
 
+/** The keywords that make one schema stand for another. */
+const REFERENCE_KEYWORDS = ['$ref', '$dynamicRef', '$recursiveRef'] as const;
+
 /**
  * Checks every `x-` keyword in a schema and returns one issue per misuse, or `[]`. The schema is
  * already known to be a valid 2020-12 schema; this checks only the shapes the `x-` keywords promise.
@@ -237,7 +240,20 @@ export function humanInputSchemaExtensionIssues(
   schema: Readonly<Record<string, unknown>>,
 ): HumanInputSchemaIssue[] {
   const issues: HumanInputSchemaIssue[] = [];
+  // A reference could make a second field the same secret schema under another name, which no
+  // walk of `properties` would see; so a schema that asks for a secret refers to nothing.
+  const asksForSecret = [...schemaNodes(schema, [])].some(({ node }) => node['x-secret'] === true);
   for (const { node, path } of schemaNodes(schema, [])) {
+    if (asksForSecret) {
+      for (const keyword of REFERENCE_KEYWORDS) {
+        if (Object.hasOwn(node, keyword)) {
+          issues.push({
+            path: [...path, keyword],
+            message: `A schema that marks a field x-secret may not use ${keyword}: every secret field must be declared where it sits.`,
+          });
+        }
+      }
+    }
     const add: Adder = (at, message) => {
       issues.push({ path: at, message });
     };

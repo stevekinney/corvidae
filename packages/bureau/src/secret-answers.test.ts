@@ -205,3 +205,68 @@ describe('the decision record of a sealed answer', () => {
     expect(joined.outcome).toBe('same');
   });
 });
+
+describe('secret references and the records behind them', () => {
+  it('gives one review’s field and another review’s whole answer different references', async () => {
+    const kv = textValueStore(new MemoryStorage());
+    const store = createSecretAnswerStore({ kv, keys: await keys(), now: () => 1 });
+    const first = { id: 'human-wait:run-1:foo:0', runId: 'run-1' };
+    const second = { id: 'human-wait:run-1:foo:0/bar:1', runId: 'run-1' };
+    const sealed = async (reviewId: string, fields: string[], answer: unknown) => {
+      const outcome = await store.seal({ reviewId, fields, answer });
+      if (!outcome.ok) throw new Error('expected a sealed answer');
+      return outcome.sealed;
+    };
+
+    const a = await store.store(first, await sealed(first.id, ['/bar:1'], { 'bar:1': 'A' }), 'o');
+    const b = await store.store(second, await sealed(second.id, [''], 'B'), 'o');
+
+    const refA = (a.payload as { 'bar:1': { secretRef: string } })['bar:1'].secretRef;
+    const refB = (b.payload as { secretRef: string }).secretRef;
+    expect(refA).not.toBe(refB);
+    expect(refB).toBe('human-wait:run-1:foo:0~1bar:1');
+    expect(await store.resolve(refA, 'run-1')).toBe('A');
+    expect(await store.resolve(refB, 'run-1')).toBe('B');
+  });
+
+  it('keeps an answer’s secrets whole: a later answer takes all of the first, never a mix', async () => {
+    const kv = textValueStore(new MemoryStorage());
+    const store = createSecretAnswerStore({ kv, keys: await keys(), now: () => 1 });
+    const review = { id: REVIEW, runId: 'run-1' };
+    const fields = ['/password', '/token'];
+    const sealed = async (answer: unknown) => {
+      const outcome = await store.seal({ reviewId: REVIEW, fields, answer });
+      if (!outcome.ok) throw new Error('expected a sealed answer');
+      return outcome.sealed;
+    };
+
+    await store.store(review, await sealed({ password: 'password-A', token: 'token-A' }), 'o');
+    await store.store(review, await sealed({ password: 'password-B', token: 'token-B' }), 'o');
+
+    expect(await store.resolve(`${REVIEW}/password`, 'run-1')).toBe('password-A');
+    expect(await store.resolve(`${REVIEW}/token`, 'run-1')).toBe('token-A');
+
+    // A record set that holds only some of an answer's fields is never completed with another's.
+    const partial = createSecretAnswerStore({
+      kv: textValueStore(new MemoryStorage()),
+      keys: await keys(),
+      now: () => 1,
+    });
+    const onlyToken = await partial.seal({
+      reviewId: REVIEW,
+      fields: ['/token'],
+      answer: { token: 't' },
+    });
+    if (!onlyToken.ok) throw new Error('expected a sealed answer');
+    await partial.store(review, onlyToken.sealed, 'o');
+    const both = await partial.seal({
+      reviewId: REVIEW,
+      fields,
+      answer: { password: 'p', token: 'u' },
+    });
+    if (!both.ok) throw new Error('expected a sealed answer');
+    expect(String(await rejectionOf(partial.store(review, both.sealed, 'o')))).toContain(
+      'not available',
+    );
+  });
+});

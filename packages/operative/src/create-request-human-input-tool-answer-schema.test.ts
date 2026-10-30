@@ -411,6 +411,27 @@ describe('requestHumanInput answerSchema: x- keywords', () => {
     expect(paths).toContain('$defs.hidden.x-secret');
   });
 
+  it('refuses a reference in a schema that asks for a secret, so no field is a secret by another name', () => {
+    const tool = createRequestHumanInputTool({ context: makeContext() });
+
+    const result = invalidSchema(
+      tool.execute({
+        signalName: 'ask',
+        answerSchema: {
+          type: 'object',
+          properties: {
+            password: { type: 'string', writeOnly: true, 'x-secret': true },
+            confirmation: { $ref: '#/properties/password' },
+          },
+        },
+      }),
+    );
+
+    expect(result.issues.map((issue) => issue.path.join('.'))).toContain(
+      'properties.confirmation.$ref',
+    );
+  });
+
   it('reads x- keys in data a schema holds (enum, const, default) as data, not as keywords', () => {
     const context = makeContext();
     const tool = createRequestHumanInputTool({ context });
