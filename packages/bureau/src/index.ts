@@ -17,6 +17,7 @@ export type {
   AgentFileIssue,
   AgentFileProblem,
   AgentFileProblemCode,
+  AgentRetry,
 } from './agent-file';
 export {
   AGENT_IDENTIFIER_PATTERN,
