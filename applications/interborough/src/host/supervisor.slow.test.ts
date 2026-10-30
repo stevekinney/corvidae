@@ -30,6 +30,9 @@ type Supervised = {
   readonly stop: () => Promise<void>;
 };
 
+/** How long the edited module takes to evaluate, so a reload outlasts the next edit on any host. */
+const RELOAD_EVALUATION_MILLISECONDS = 2000;
+
 const scratchDirectories: string[] = [];
 
 async function scratch(): Promise<string> {
@@ -314,14 +317,18 @@ const devRestart = await withSupervised(
 
 // A source edit: the entry is a wrapper outside the package that imports the real `dev.ts` and a
 // module of its own, so rewriting that module reloads the real host without touching the tree.
+// The module takes a moment to evaluate, which is how a reload takes long enough to be abandoned
+// by a second edit on any host, not only on a busy one.
 const devReload = await (async () => {
   const directory = await scratch();
   const generationModule = join(directory, 'generation.ts');
   const entry = join(directory, 'entry.ts');
-  await writeFile(generationModule, "console.info('Generation 1 loaded');\n");
+  const generationSource = (generation: number): string =>
+    `await Bun.sleep(${RELOAD_EVALUATION_MILLISECONDS});\nconsole.info('Generation ${generation} loaded');\n`;
+  await writeFile(generationModule, generationSource(1));
   await writeFile(
     entry,
-    `import './generation.ts';\nimport ${JSON.stringify(join(import.meta.dir, 'dev.ts'))};\n`,
+    `import './generation.ts';\nimport ${JSON.stringify(join(import.meta.dir, 'dev.ts'))};\nconsole.info('Entry evaluated');\n`,
   );
   const supervised = await supervise('dev', {
     buildDirectory: join(directory, 'build'),
@@ -332,21 +339,24 @@ const devReload = await (async () => {
   return withSupervised(supervised, async () => {
     await waitForHost(supervised);
     const pid = supervised.pids().at(0);
+    let edits = 0;
 
-    // Bun arms its file watch after the module has run, so a change made too early is missed: the
-    // module is rewritten until the second generation loads. It is not rewritten after that,
-    // because every reload would abandon the start of the generation before it.
-    let rewrite = 0;
-    await waitUntil(
-      async () => {
-        if (supervised.stdout().includes('Generation 2 loaded')) return true;
-        await writeFile(generationModule, `console.info('Generation 2 loaded'); // ${rewrite}\n`);
-        rewrite += 1;
-        await Bun.sleep(1000);
-        return false;
-      },
-      { message: 'the edited module to load' },
-    );
+    // Bun watches the modules it has loaded once the first generation has run, and the entry
+    // reports that line, so the edit is made after it. It is made once. Bun reloads the process as
+    // soon as it sees an edit, and a second edit while the reload is loading abandons that load and
+    // starts it again (COR-1944): rewriting the module every second until the second generation
+    // appeared restarted the reload faster than a busy host could finish it. How long Bun takes to
+    // notice the edit is Bun's, so the wait is for the reload and for nothing shorter.
+    await waitUntil(() => supervised.stdout().includes('Entry evaluated'), {
+      message: 'the first generation to finish evaluating',
+      yieldTurn: () => Bun.sleep(50),
+    });
+    await writeFile(generationModule, generationSource(2));
+    edits += 1;
+    await waitUntil(() => supervised.stdout().includes('Generation 2 loaded'), {
+      message: 'the edited module to load',
+      yieldTurn: () => Bun.sleep(50),
+    });
     await waitUntil(() => listening() >= 2, {
       message: 'the reloaded host to listen',
       yieldTurn: () => Bun.sleep(50),
@@ -357,7 +367,7 @@ const devReload = await (async () => {
 
     // The reloaded host's exit code still reaches the supervisor.
     const restarted = await restart(supervised);
-    return { pid, pidsAfterReload, restarted };
+    return { pid, pidsAfterReload, restarted, edits };
   });
 })();
 
@@ -371,6 +381,8 @@ describe('under `dev`', () => {
 
   test('a source edit still reloads the real host in place, and a restart request after it still restarts it', () => {
     expect(devReload.pid).toBeDefined();
+    // One edit, reloaded once: a second edit during the reload would abandon it (COR-1944).
+    expect(devReload.edits).toBe(1);
     expect(devReload.pidsAfterReload).toEqual([devReload.pid!]);
     expect(devReload.restarted.status).toBe(202);
     expect(devReload.restarted.before).toBe(devReload.pid!);
