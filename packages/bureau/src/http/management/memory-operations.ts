@@ -846,7 +846,7 @@ export const memoryQuarantineOperation = defineOperation<
 const exportInput = z.object({ agentId: agentIdentifier });
 const exportOutput = z.object({
   /** The manifest governed memory stored for this export, which a deletion scrubs a removed record from. */
-  exportId: z.string(),
+  exportId: z.string().nullable(),
   memories: z.array(memoryViewSchema),
 });
 
@@ -860,7 +860,7 @@ export const memoryExportOperation = defineOperation<
   mcpExposable: false,
   summary: 'Export an agent’s memories',
   description:
-    'Exports every memory of the agent `agentId` that the caller may read, as data, with `exportId`, the manifest governed memory stored (a memory deleted later is scrubbed from it) and a `memory.exported` ledger event under the caller’s owner. A memory that was corrected is exported with its correction, which is the correction history; a quarantined or revoked one is not. An agent the caller has no memories of exports an empty list. Requires `bureau.memory:read`; a caller without it is `Forbidden`.',
+    'Exports every memory of the agent `agentId` that the caller may read, as data, with `exportId`, the manifest governed memory stored (a memory deleted later is scrubbed from it) and a `memory.exported` ledger event under the caller’s owner. A memory that was corrected is exported with its correction, which is the correction history; a quarantined or revoked one is not. A caller that can own no memory exports an empty list with a `null` `exportId`; one with no memories of the agent gets a manifest of none. Requires `bureau.memory:read`; a caller without it is `Forbidden`.',
   destructive: false,
   tags: ['Memory'],
   inputSchema: exportInput,
@@ -872,7 +872,7 @@ export const memoryExportOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
     const { memory, authority } = acting(host, principal, ACCESS.export);
-    if (authority === undefined) return { exportId: '', memories: [] };
+    if (authority === undefined) return { exportId: null, memories: [] };
     const result = await memory.export(authority, {
       collection: input.agentId,
       visibility: 'private',

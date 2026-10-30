@@ -220,7 +220,18 @@ export async function sweepRetention(
       outcome: dryRun ? 'dry-run' : 'applied',
       attribution: context.attribution(authority, operationId),
       recordIds: candidates.map((candidate) => candidate.id),
-      details: { policyRevision: policy.revision, ...pruned },
+      details: {
+        policyRevision: policy.revision,
+        // A ledger detail is a flat record, so each overridden class is one `retention.<class>` entry
+        // holding its rule as JSON: the audit names the rule that decided the sweep.
+        ...Object.fromEntries(
+          Object.entries(options.retention ?? {}).map(([memoryClass, rule]) => [
+            `retention.${memoryClass}`,
+            JSON.stringify(rule),
+          ]),
+        ),
+        ...pruned,
+      },
     });
   }
   return sweepResult(operationId, policy.revision, {

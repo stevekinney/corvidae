@@ -1902,7 +1902,7 @@ Both hooks are classified `replay: 'effectful'`: recall writes ledger events and
 
 | Projection | What ships for it |
 | --- | --- |
-| `bureau` | The two hooks above, under `createRunMemoryAuthority()`; the `bureau.memory.*` operations of `createBureauHandler`, which build a `user` authority for the caller's own partition; and the maintenance retention sweep, under a one-link `service:bureau` authority (revision `bureau:maintenance`). |
+| `bureau` | The two hooks above, under `createRunMemoryAuthority()`; the `bureau.memory.*` operations of `createBureauHandler`, which build a `user` authority (a `governance` one for the legal hold) for the caller's own partition; and the maintenance retention sweep, under a one-link `service:bureau` authority (revision `bureau:maintenance`). |
 | `tool` | `createGovernedMemoryTools()`'s default authority. Bureau does not add these tools to runs. A host that adds them to a toolbox must give the request explicit `memory:*` capabilities, because the tools read the request authority, not `runCapabilities`. |
 | `agent`, `child` | `attenuateMemoryAuthority()` for a host to derive a narrower authority. Bureau derives none for catalog agents or children. |
 | `a2a`, `mcp` | Nothing: this repository has no A2A or MCP memory adapter. An adapter records the projection on the authority it builds and calls the governed memory like any other caller. |

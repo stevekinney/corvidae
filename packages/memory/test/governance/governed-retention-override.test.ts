@@ -42,6 +42,14 @@ describe('sweepRetention with a retention override', () => {
       retention: { episodic: { kind: 'duration', milliseconds: 7 * DAY } },
     });
     expect(swept.status).toBe('applied');
+    // The audit names the override that decided the sweep, not only the policy revision.
+    const [event] = await fixture.ledger.listEvents({
+      tenantId: 'tenant-a',
+      type: 'memory.retention.swept',
+    });
+    expect(event?.details).toMatchObject({
+      'retention.episodic': JSON.stringify({ kind: 'duration', milliseconds: 7 * DAY }),
+    });
     expect(swept.expired.map((candidate) => candidate.id)).toEqual([recordId]);
     expect(swept.deletionIds).toHaveLength(1);
     expect(

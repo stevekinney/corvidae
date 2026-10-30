@@ -944,6 +944,24 @@ describe('bureau.memory.export (COR-1809)', () => {
     expect(event?.details).toMatchObject({ exportId: result['exportId'] });
     expect(event?.recordIds).toHaveLength(2);
 
+    // A corrected memory is exported with its correction, which is its history.
+    const aisle = (result['memories'] as Row[]).find((row) => row.content.includes('aisle'))!;
+    const corrected = await rpc(
+      handler,
+      'bureau.memory.correct',
+      { agentId: 'assistant', id: aisle.id, content: 'Alice prefers window seats.' },
+      'alice-key',
+    );
+    expect(resultOf(corrected)['id']).toBe(aisle.id);
+    const afterCorrection = resultOf(
+      await rpc(handler, 'bureau.memory.export', { agentId: 'assistant' }, 'alice-key'),
+    );
+    expect((afterCorrection['memories'] as Row[]).map((row) => row.content).toSorted()).toEqual([
+      'Alice likes tea.',
+      'Alice prefers aisle seats.',
+      'Alice prefers window seats.',
+    ]);
+
     // Bob exports his own and none of Alice's.
     const bobs = resultOf(
       await rpc(handler, 'bureau.memory.export', { agentId: 'assistant' }, 'bob-key'),
