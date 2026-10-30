@@ -160,6 +160,7 @@ function decisionOf(
   setting: ToolApprovalMode,
   mode: PermissionMode,
   status: ApprovalStatus,
+  modeUnreadable: boolean,
 ): ToolPolicyDecision {
   if (status === 'allow') return { allow: true, status: 'allow' };
   const tierLabel = tier ?? 'unrecognized';
@@ -167,7 +168,9 @@ function decisionOf(
     return {
       allow: false,
       status: 'deny',
-      reason: `Tool "${context.toolName}" (${tierLabel} tier) is denied because this chat is in ${mode} mode, which allows only read-only tools.`,
+      reason: modeUnreadable
+        ? `Tool "${context.toolName}" (${tierLabel} tier) is denied because the chat's permission mode could not be read; denying.`
+        : `Tool "${context.toolName}" (${tierLabel} tier) is denied because this chat is in ${mode} mode, which allows only read-only tools.`,
     };
   }
   // The Armorer mode whose verdict for this call is `status`, so the reason and the summary of the
@@ -211,13 +214,13 @@ export function createToolApprovalHooks(
       return false;
     }
   }
-  /** The chat's mode; one that cannot be read is `read-only`. */
-  async function modeOfChat(): Promise<PermissionMode> {
-    if (permissionMode === undefined) return DEFAULT_PERMISSION_MODE;
+  /** The chat's mode; one that cannot be read is `read-only`, and is reported as unreadable. */
+  async function modeOfChat(): Promise<{ mode: PermissionMode; unreadable: boolean }> {
+    if (permissionMode === undefined) return { mode: DEFAULT_PERMISSION_MODE, unreadable: false };
     try {
-      return await permissionMode();
+      return { mode: await permissionMode(), unreadable: false };
     } catch {
-      return 'read-only';
+      return { mode: 'read-only', unreadable: true };
     }
   }
   return {
@@ -226,7 +229,7 @@ export function createToolApprovalHooks(
         return { allow: true, status: 'allow' };
       }
       const setting = modes.get(context.toolName) ?? defaultMode;
-      const mode = await modeOfChat();
+      const { mode, unreadable } = await modeOfChat();
       const tier = resolveCapabilityTier(context.metadata, context.tags);
       let status = decideToolApproval({ mode, setting, tier, remembered: false });
       // The grant is read only when it would change the answer.
@@ -238,7 +241,7 @@ export function createToolApprovalHooks(
       ) {
         status = 'allow';
       }
-      return decisionOf(context, tier, setting, mode, status);
+      return decisionOf(context, tier, setting, mode, status, unreadable);
     },
   };
 }

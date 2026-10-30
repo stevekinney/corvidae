@@ -17435,9 +17435,8 @@ async function constructBureau<const D extends AgentDefinitions>(
 
   /**
    * COR-1936 — the permission mode of the chat `runId` belongs to, read when a tool call is
-   * decided: the mode the session's steering gate holds (the one the run reads at its step
-   * boundaries, kept current from the log in a durable Bureau), so a steer is in force for the
-   * calls decided after it. `undefined` for a run no session holds, which has no chat to steer.
+   * decided: the mode the session's steering holds, caught up from the durable log first (so a
+   * mode another process admitted is seen), so a steer is in force for the calls decided after it. `undefined` for a run no session holds, which has no chat to steer.
    * A chat that was never steered is `on-changes`. A read that fails rejects, and the approval
    * hook treats that as `read-only`.
    */
@@ -17445,8 +17444,8 @@ async function constructBureau<const D extends AgentDefinitions>(
     if (runtime.sessionStore === undefined) return undefined;
     const sessionId = await sessionIdOfRun(runId);
     if (sessionId === undefined) return undefined;
-    const gate = steeringGates.get(sessionId);
-    if (gate !== undefined) return gate.getDesiredState().permissionMode ?? 'on-changes';
+    // Read through the log catch-up, not the gate alone: another process on a shared durable
+    // backend may have admitted a mode since this process last polled.
     const steering = await getSessionSteering(sessionId);
     return steering?.permissionMode ?? 'on-changes';
   }

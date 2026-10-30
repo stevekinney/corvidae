@@ -274,6 +274,24 @@ describe('the approval precedence table (COR-1936)', () => {
         );
       }
     });
+
+    it('says the mode could not be read, and not that the chat is read-only', async () => {
+      const hooks = createToolApprovalHooks(
+        {},
+        {
+          permissionMode: () => {
+            throw new Error('The session store is down.');
+          },
+        },
+      );
+      const decision = await hooks.beforeExecute?.({
+        toolName: 'subject',
+        metadata: METADATA.mutating,
+      } as never);
+      expect(decision).toMatchObject({ allow: false, status: 'deny' });
+      expect((decision as { reason: string }).reason).toContain('could not be read');
+      expect((decision as { reason: string }).reason).not.toContain('read-only mode');
+    });
   });
 
   describe('the grant', () => {
