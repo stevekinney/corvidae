@@ -107,10 +107,10 @@ describe('revisions', () => {
       { id: 'linear:triager', hash: 'bb', definition: definition('y') },
       'run-2',
     );
-    expect((await store.revisions('linear')).map((revision) => revision.hash)).toEqual(['aa']);
-    expect((await store.revisions('linear:triager')).map((revision) => revision.hash)).toEqual([
-      'bb',
-    ]);
+    const linearRevisions = await store.revisions('linear');
+    expect(linearRevisions.map((revision) => revision.hash)).toEqual(['aa']);
+    const triagerRevisions = await store.revisions('linear:triager');
+    expect(triagerRevisions.map((revision) => revision.hash)).toEqual(['bb']);
   });
 });
 

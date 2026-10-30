@@ -19,7 +19,7 @@ const source = readFileSync(resolve(import.meta.dir, 'tool-payload-code.svelte')
 
 describe('chat tool-payload code block', () => {
   test('delegates highlighting to CodeBlock without a tool-local highlighter', () => {
-    expect(source).toContain('<CodeBlock {code} language="json" />');
+    expect(source).toContain('<CodeBlock {code} language="json" {languageLabelVisible} />');
     expect(source).not.toContain('highlighter={highlightJson}');
     expect(source).not.toContain('function highlightJson');
   });

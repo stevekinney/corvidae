@@ -54,7 +54,13 @@
     resolveStorage,
     writeStoredListWidth,
   } from './list-detail-state.ts';
+  import { LIST_DETAIL_SHORTCUTS } from './list-detail.constants.ts';
   import type { ListDetailProps } from './list-detail.types.ts';
+
+  // The region declares the keys it handles from the same list an application's shortcut map reads.
+  const LIST_DETAIL_KEY_SHORTCUTS = LIST_DETAIL_SHORTCUTS.map((shortcut) =>
+    shortcut.keys.join('+'),
+  ).join(' ');
 
   let {
     items,
@@ -266,7 +272,7 @@
   <section
     class="cinder-list-detail__list"
     aria-label={label}
-    aria-keyshortcuts="J K Enter"
+    aria-keyshortcuts={LIST_DETAIL_KEY_SHORTCUTS}
     onclick={handleClick}
     onkeydown={handleKeydown}
   >
