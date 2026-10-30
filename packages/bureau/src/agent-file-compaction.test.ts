@@ -313,6 +313,35 @@ describe('the transcript the summarizer is shown', () => {
   });
 });
 
+describe('the transcript of a tool interaction', () => {
+  it('names the tool and its arguments, so the summary records what was done', () => {
+    const conversation = new Conversation();
+    conversation.appendUserMessage('Email the customer.');
+    conversation.appendToolCall({
+      id: 'call-1',
+      name: 'send-email',
+      arguments: { to: 'ada@example.com', subject: 'Your order' },
+    });
+    conversation.appendToolResult({ callId: 'call-1', outcome: 'success', content: 'sent' });
+    const transcript = transcriptOf(conversation.getMessages());
+    expect(transcript).toContain('called tool "send-email" (call call-1)');
+    expect(transcript).toContain('"to":"ada@example.com"');
+    expect(transcript).toContain('result of call call-1: success');
+  });
+
+  it('cuts a long argument list short', () => {
+    const conversation = new Conversation();
+    conversation.appendToolCall({
+      id: 'call-1',
+      name: 'write-file',
+      arguments: { body: 'x'.repeat(5000) },
+    });
+    const transcript = transcriptOf(conversation.getMessages());
+    expect(transcript.length).toBeLessThan(700);
+    expect(transcript).toContain('…');
+  });
+});
+
 describe('a Bureau with compaction-enabled file agents', () => {
   const rows = createModelCatalog().descriptors;
 

@@ -22,10 +22,34 @@ import { Conversation, type Message, messageText } from 'conversationalist';
 export const COMPACTION_SYSTEM_PROMPT =
   'You compress the earlier part of a conversation between a user and an AI agent so the agent can continue it. Keep what the agent still needs: the user’s goals and instructions, decisions made, facts and names, file paths and identifiers, results of tool calls that matter, and work still open. Leave out pleasantries and detail that no longer matters. Reply with the summary only.';
 
+/** The most characters of a tool call's arguments the summarizer is shown. */
+const TOOL_ARGUMENTS_LIMIT = 500;
+
+/** One message as the summarizer reads it: its text, and the tool call or result it carries. */
+function describeMessage(message: Message): string {
+  const parts: string[] = [];
+  const text = messageText(message);
+  if (text !== '') parts.push(text);
+  // A tool call's name and arguments are not in its text, and are the record of what was done.
+  const { toolCall, toolResult } = message;
+  if (toolCall !== undefined) {
+    const serialized = JSON.stringify(toolCall.arguments) ?? '';
+    const shown =
+      serialized.length > TOOL_ARGUMENTS_LIMIT
+        ? `${serialized.slice(0, TOOL_ARGUMENTS_LIMIT)}…`
+        : serialized;
+    parts.push(`called tool "${toolCall.name}" (call ${toolCall.id}) with ${shown}`);
+  }
+  if (toolResult !== undefined) {
+    parts.push(`result of call ${toolResult.callId}: ${toolResult.outcome}`);
+  }
+  return parts.join('\n');
+}
+
 /** The conversation as plain text, one message per block, for the summarizer to read. */
 export function transcriptOf(messages: ReadonlyArray<Message>): string {
   return messages
-    .map((message) => `[${message.role}]\n${messageText(message)}`.trimEnd())
+    .map((message) => `[${message.role}]\n${describeMessage(message)}`.trimEnd())
     .join('\n\n');
 }
 
