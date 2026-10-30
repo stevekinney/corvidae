@@ -22,6 +22,26 @@ Multi-value dropdown that presents checkbox options inside an anchored floating 
 <MultiSelect id="fruit" label="Fruits" {items} bind:selectedIds={selected} />
 ```
 
+## Grouped items
+
+Give items a `group` name to render them under headings. Ungrouped items come first without a heading, and groups follow in order of first appearance. Each heading shows the group name and how many of its items are listed. With `filterable`, typing filters across every group, keeps the headings of groups that still match, and hides the rest. A `selectionFeedback` that moves selected items to the top does so within each group.
+
+```svelte
+<script lang="ts">
+  import { MultiSelect } from '@lostgradient/cinder';
+
+  const tools = [
+    { id: 'read', label: 'Read file', group: 'Built in' },
+    { id: 'write', label: 'Write file', group: 'Built in' },
+    { id: 'search', label: 'Search the web', group: 'Search server' },
+  ];
+
+  let selected = $state<string[]>([]);
+</script>
+
+<MultiSelect id="tools" label="Tools" items={tools} filterable bind:selectedIds={selected} />
+```
+
 ## Props
 
 <!-- generated:props:start -->

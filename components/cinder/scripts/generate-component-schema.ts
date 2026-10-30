@@ -1346,6 +1346,9 @@ function toPascalCase(kebab: string): string {
     .join('');
 }
 
+/** Documents the generated default export, which every package export of a schema resolves to. */
+const SCHEMA_DOCUMENTATION = '/** JSON Schema describing the props of this component. */';
+
 function renderSchemaModule(schema: ComponentSchemaOutput, depthToSrc: number): string {
   const relativePath = '../'.repeat(depthToSrc) + 'schema-types';
   const literal = JSON.stringify(schema, null, 2);
@@ -1361,6 +1364,7 @@ function renderSchemaModule(schema: ComponentSchemaOutput, depthToSrc: number): 
       `// eslint-disable-next-line no-unsafe-type-assertion -- generated schema parsed from a build-validated JSON string; see generate-component-schema.ts.`,
       `const schema = JSON.parse(${JSON.stringify(literal)}) as ComponentSchema;`,
       ``,
+      SCHEMA_DOCUMENTATION,
       `export default schema;`,
       ``,
     ].join('\n');
@@ -1371,6 +1375,7 @@ function renderSchemaModule(schema: ComponentSchemaOutput, depthToSrc: number): 
     ``,
     `const schema = ${literal} satisfies ComponentSchema;`,
     ``,
+    SCHEMA_DOCUMENTATION,
     `export default schema as ComponentSchema;`,
     ``,
   ].join('\n');

@@ -425,7 +425,7 @@ describe('saved tool sources', () => {
     await writeFile(
       join(path, 'configuration.json'),
       JSON.stringify({
-        toolSources: [{ source: petsSource, tools: { 'list-pets': { acceptsSecrets: true } } }],
+        toolSources: [{ source: petsSource, tools: { 'list-pets': { acceptsSecret: true } } }],
       }),
     );
 
@@ -433,7 +433,49 @@ describe('saved tool sources', () => {
 
     expect(failure).toBeInstanceOf(ProviderConfigurationError);
     expect((failure as ProviderConfigurationError).field).toBe(
-      'toolSources[0].tools.list-pets.acceptsSecrets',
+      'toolSources[0].tools.list-pets.acceptsSecret',
     );
+  });
+
+  test('sets acceptsSecrets for a tool on the route, lists it after a restart, and reports a name the server does not list', async () => {
+    const path = await home();
+    const first = await startAt(path);
+    await send(first, 'PUT', '/host/tool-sources/pets', {
+      source: petsSource,
+      credentials: { key: API_KEY },
+    });
+
+    const set = await send(first, 'PUT', '/host/tool-sources/pets/tools', {
+      tools: { 'delete-pet': { acceptsSecrets: true }, 'no-such-tool': { acceptsSecrets: true } },
+    });
+    const invalid = await send(first, 'PUT', '/host/tool-sources/pets/tools', {
+      tools: { 'delete-pet': { acceptsSecrets: 'yes' } },
+    });
+    const missing = await send(first, 'PUT', '/host/tool-sources/nope/tools', { tools: {} });
+
+    expect(set.status).toBe(200);
+    expect(await set.json()).toEqual({ id: 'pets', changed: true, restartRequired: true });
+    expect(invalid.status).toBe(400);
+    expect(await invalid.json()).toMatchObject({ field: 'tools.delete-pet.acceptsSecrets' });
+    expect(missing.status).toBe(404);
+
+    const second = await restart(first, path);
+    const listed: {
+      sources: {
+        state: string;
+        tools: { name: string; acceptsSecrets: boolean }[];
+        unmatchedSettings: { tool: string }[];
+      }[];
+    } = await jsonOf(send(second, 'GET', '/host/tool-sources'));
+
+    expect(listed.sources[0]?.state).toBe('loaded');
+    expect(
+      Object.fromEntries(
+        listed.sources[0]?.tools.map((tool) => [tool.name, tool.acceptsSecrets]) ?? [],
+      ),
+    ).toEqual({ 'pets__list-pets': false, 'pets__create-pet': false, 'pets__delete-pet': true });
+    expect(listed.sources[0]?.unmatchedSettings.map((entry) => entry.tool)).toEqual([
+      'no-such-tool',
+    ]);
   });
 });

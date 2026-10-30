@@ -22,6 +22,13 @@ export const REVIEW_CLOSING_EVENT_KINDS: ReadonlySet<string> = new Set(
   [...TERMINAL_REVIEW_STATUSES].map((status) => `review.${status}`),
 );
 
+/**
+ * The principal on a `review.superseded` that closes an abandoned request (COR-1613): the replay of
+ * a schedule fire ending the request of an attempt that died before it committed its step. A
+ * re-gate carries the principal that re-gated, so this one marks a request nothing can decide.
+ */
+export const REPLAY_SUPERSEDING_PRINCIPAL = 'system:replay';
+
 /** The durable event kind that ends a request without closing the review. */
 export const REVIEW_SUPERSEDED_EVENT_KIND = 'review.superseded';
 

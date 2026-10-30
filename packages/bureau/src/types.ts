@@ -99,6 +99,7 @@ import type { BureauModelPolicyOptions } from './model-policy';
 import type { BureauDecisions, DecisionsOptions } from './decisions/types';
 import type { BureauSettings, SettingsOptions } from './settings/types';
 import type { Models, ModelsOptions } from './models/create-models';
+import type { BureauNotifications } from './notifications/notification-types';
 import type { OnlineEvalSampler, OnlineEvalSamplerOptions } from './online-evals';
 import type { ForkSessionRequest, ForkSessionResult } from './session-fork';
 import type {
@@ -107,6 +108,9 @@ import type {
   SteeringCommandRequest,
 } from './steering';
 import type { WebhookNotifier, WebhookNotifierOptions } from './webhook-notifier';
+import type { BureauHooks } from './hooks/create-hooks';
+import type { HookSecretStore } from './hooks/hook-types';
+import type { HookUrlPolicy } from './hooks/hook-url-policy';
 
 // ── Provider Configuration ───────────────────────────────────────────
 
@@ -140,6 +144,13 @@ export interface SkillRuntimeConfiguration {
    * underneath it mid-conversation.
    */
   catalog?: SkillCatalogRevision;
+  /**
+   * The host's catalog as it is now, read each time a skill is used (COR-1926). `catalog` decides
+   * what a run is offered; this decides whether a skill it was offered may still be used, so a
+   * source the host stops trusting is refused at the next use by a run already in flight. It
+   * narrows and never widens. Omit it and a run uses the revision it started with.
+   */
+  currentCatalog?: () => SkillCatalogRevision;
   includeTools?: boolean;
   skillPolicy?: ToolPolicy;
 }
@@ -374,6 +385,22 @@ export interface BureauRetentionOptions {
    * integer; otherwise `createBureau` throws `BureauError(..., 'BAD_REQUEST')`.
    */
   logs?: BureauLogsRetentionOption | undefined;
+  /**
+   * COR-1941 — how long a notification is kept after it was written, swept by each maintenance
+   * pass whether or not it was read. Leave it out to keep notifications until the owner holds
+   * more than 1000, when the oldest go. `olderThan` must be a positive integer; otherwise
+   * `createBureau` throws `BureauError(..., 'BAD_REQUEST')`.
+   */
+  notifications?: BureauNotificationsRetentionOption | undefined;
+}
+
+/**
+ * COR-1941 — the window of {@link BureauRetentionOptions.notifications}. Only `{ olderThan }`
+ * exists: keeping notifications forever is leaving the option out.
+ */
+export interface BureauNotificationsRetentionOption {
+  /** Milliseconds after a notification was written; a positive integer. */
+  readonly olderThan: number;
 }
 
 /**
@@ -753,6 +780,17 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * Omit or pass `{ targets: [] }` to disable — the default.
    */
   webhooks?: WebhookNotifierOptions;
+  /**
+   * COR-1939 — user-defined hooks: owner-scoped webhooks over the Bureau's published events, each
+   * delivery HMAC-signed (`X-Signature`), its request, response excerpt and attempts kept on a
+   * record, and retried and resumed after a restart. Exposed as {@link Bureau.hooks} and as the
+   * `bureau.hooks.*` operations. Needs durable storage (`NOT_CONFIGURED`, subject `persistence`,
+   * without it) and {@link BureauOptions.answerEncryption} to seal signing secrets (a write of one
+   * is refused without it). Deliveries use the HTTP client, retry schedule, clock and shutdown of
+   * {@link BureauOptions.webhooks} (`fetch`, `maxAttempts`, `backoffBaseMilliseconds`, `sleep`,
+   * `now`, `signal`), which may have no `targets`. Omit to compose none — the default.
+   */
+  hooks?: BureauHooksOptions;
   /**
    * Online evaluations (AB-53) — samples a fraction of completed live runs
    * through configured judges/matchers, records every sampled score to the
@@ -1259,6 +1297,28 @@ export interface BureauRecoveryReport {
    * `scope: 'recovery'` `warn`.
    */
   readonly skippedRuns: readonly { readonly runId: string; readonly type: string }[];
+}
+
+/** {@link BureauOptions.hooks}. */
+export interface BureauHooksOptions {
+  /**
+   * Where the sealed signing secrets are kept. Bureau seals each secret (COR-1816's scheme, under
+   * {@link BureauOptions.answerEncryption}) before it reaches the port, so the port holds
+   * ciphertext only. A host whose secrets live elsewhere supplies its own; its `writeLock()` makes
+   * a secret write fail with `locked` and that reason (`deployment` for a remote home). Omitted,
+   * the ciphertext is kept in Bureau's key-value store.
+   */
+  secrets?: HookSecretStore;
+  /**
+   * Which URLs a hook may deliver to. By default loopback and private-network addresses are
+   * allowed (Interborough is local-first); link-local (including the cloud metadata endpoints
+   * `169.254.169.254` and `fd00:ec2::254`), unspecified and multicast never are. A hosted
+   * deployment, a remote Interborough home included, must set `allowPrivateNetworks: false` when it
+   * enables hooks.
+   */
+  urlPolicy?: HookUrlPolicy;
+  /** How long one delivery request may take before it counts as failed. Default `10000`. */
+  requestTimeoutMilliseconds?: number;
 }
 
 /** {@link BureauOptions.children}. */
@@ -2436,6 +2496,12 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    */
   readonly audit: BureauAudit;
   /**
+   * COR-1941 — the owner's notifications: what Bureau tells them needs their attention (a failed
+   * run, a review waiting, a budget exceeded) and whatever else the host writes through
+   * `notifications.create`. Persisted and owner-scoped. See {@link BureauNotifications}.
+   */
+  readonly notifications: BureauNotifications;
+  /**
    * The seam the handler and the test harness read: stores, event feeds, and the task registry.
    * It is not part of the surface an application builds on. See {@link BureauInternals}.
    */
@@ -2485,6 +2551,13 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * BureauOptions.workerDeployments}. See {@link BureauWorkerDeployments}.
    */
   readonly deployments: BureauWorkerDeployments | undefined;
+  /**
+   * COR-1939 — user-defined hooks over the Bureau's published events: `create`, `update`, `delete`,
+   * `get`, `list`, `test` and `deliveries`. `undefined` when the Bureau has no {@link
+   * BureauOptions.hooks}. A hook belongs to the principal that created it; the in-process calls
+   * leave authorization to the caller, as `Bureau.goals` does. See {@link BureauHooks}.
+   */
+  readonly hooks: BureauHooks | undefined;
 
   /**
    * COR-772 — Bureau's durable parent-child topology: dispatch a catalog

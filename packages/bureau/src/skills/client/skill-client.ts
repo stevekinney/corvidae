@@ -8,7 +8,12 @@ import {
 import { refusedByAdmissionPolicy, type SkillAdmissionPolicy } from '../admission';
 import type { SkillArtifact } from '../artifact';
 import { parseAllowedTools } from '../conformance';
-import { availableRecords, findRecord, type SkillCatalogRevision } from '../discovery/catalog';
+import {
+  availableRecords,
+  findRecord,
+  type SkillCatalogRecord,
+  type SkillCatalogRevision,
+} from '../discovery/catalog';
 import {
   SkillActivatedEvent,
   type SkillAdmissionRule,
@@ -83,6 +88,19 @@ export interface SkillDelegationGrant {
 export interface CreateSkillClientOptions {
   /** The revision this client is bound to. Immutable for the client's whole life. */
   readonly catalog: SkillCatalogRevision;
+  /**
+   * The host's catalog as it is now (COR-1926), read each time a skill is used.
+   *
+   * The bound {@link catalog} decides what this client offers, so a source trusted after the
+   * client was built adds nothing to it. This decides whether a skill the client does offer may
+   * still be used: it narrows and never widens. A skill whose source this catalog no longer
+   * trusts, or no longer lists, is refused at {@link SkillClient.activate}, at
+   * {@link SkillClient.loadResource}, and at {@link SkillClient.recover}, and an active skill
+   * leaves {@link SkillClient.active} and {@link SkillClient.narrowedTools} until its source is
+   * trusted again. A run that began before a revocation is refused at its next use, not at its
+   * next start. Omit it and the client uses its bound catalog alone.
+   */
+  readonly currentCatalog?: (() => SkillCatalogRevision) | undefined;
   readonly loadArtifact: SkillArtifactLoader;
   /** Injectable so a test need not read a real clock. */
   readonly now?: () => string;
@@ -121,10 +139,12 @@ export interface CreateSkillClientOptions {
 /**
  * The Agent-owned skill client.
  *
- * Bound to exactly one catalog revision and never re-reads it. A client whose catalog could move
+ * Bound to exactly one catalog revision for what it offers. A client whose offer could move
  * underneath it would be able to activate, mid-conversation, a skill the operator never saw —
- * which is the thing catalog revisions are numbered to prevent. A host that wants a newer catalog
- * builds a new client from it.
+ * which is the thing catalog revisions are numbered to prevent. A host that wants a newer offer
+ * builds a new client from it. What it may use is the one thing that can move, and only
+ * downward: with `currentCatalog` set, a skill the current catalog no longer trusts is refused
+ * when it is next used (COR-1926).
  */
 export interface SkillClient {
   /** The revision this client is bound to. */
@@ -249,11 +269,41 @@ export function createSkillClient(options: CreateSkillClientOptions): SkillClien
     };
   }
 
-  /** Every record this deployment's admission policy permits. */
+  /**
+   * The record the current catalog holds for the skill `bound` names, read at the moment of use.
+   * The bound record itself when the client has no current catalog; `undefined` when the current
+   * catalog no longer lists the skill, or lists the name under another source.
+   */
+  function liveRecord(bound: SkillCatalogRecord): SkillCatalogRecord | undefined {
+    if (options.currentCatalog === undefined) return bound;
+    const live = findRecord(options.currentCatalog(), bound.name);
+    return live !== undefined && live.sourceId === bound.sourceId ? live : undefined;
+  }
+
+  /** Whether the current catalog still lets the client use the skill `name` of its bound catalog. */
+  function stillUsable(name: string): boolean {
+    const bound = findRecord(options.catalog, name);
+    return bound === undefined || liveRecord(bound)?.available === true;
+  }
+
+  /** Every record this deployment's admission policy permits and the current catalog still trusts. */
   function admissiblyAvailable(): ReturnType<typeof availableRecords> {
     return availableRecords(options.catalog).filter(
-      (record) => refusedByAdmissionPolicy(record.name, options.admissionPolicy) === undefined,
+      (record) =>
+        refusedByAdmissionPolicy(record.name, options.admissionPolicy) === undefined &&
+        liveRecord(record)?.available === true,
     );
+  }
+
+  /** The refusal an unavailable record stands for. */
+  function refusalOf(record: SkillCatalogRecord) {
+    return record.unavailableReason === 'source-untrusted'
+      ? 'source-untrusted'
+      : record.unavailableReason === 'source-revoked'
+        ? 'source-revoked'
+        : record.unavailableReason === 'shadowed'
+          ? 'shadowed'
+          : 'incompatible';
   }
 
   // The catalog this client was handed is a fact about the run, announced once at construction
@@ -303,20 +353,21 @@ export function createSkillClient(options: CreateSkillClientOptions): SkillClien
       return outOfReach(name);
     }
 
-    if (!record.available) {
-      const refusal =
-        record.unavailableReason === 'source-untrusted'
-          ? 'source-untrusted'
-          : record.unavailableReason === 'source-revoked'
-            ? 'source-revoked'
-            : record.unavailableReason === 'shadowed'
-              ? 'shadowed'
-              : 'incompatible';
+    // The bound catalog first, then the current one: a skill this client was never offered stays
+    // refused, and one it was offered is refused when the host has stopped trusting it since.
+    const live = liveRecord(record);
+    if (live === undefined) {
+      reject(name, 'not-in-catalog');
+      return outOfReach(name);
+    }
+    for (const judged of [record, live]) {
+      if (judged.available) continue;
+      const refusal = refusalOf(judged);
       reject(name, refusal);
       return {
         activated: false,
         refusal,
-        message: `Skill '${name}' is not available: ${record.unavailableReason ?? 'unknown reason'}.`,
+        message: `Skill '${name}' is not available: ${judged.unavailableReason ?? 'unknown reason'}.`,
       };
     }
 
@@ -414,7 +465,7 @@ export function createSkillClient(options: CreateSkillClientOptions): SkillClien
           description: record.description,
           standing:
             refusedBy === undefined
-              ? standingFor(record, activeSkills.has(record.name))
+              ? standingFor(liveRecord(record) ?? record, activeSkills.has(record.name))
               : ('not-permitted' as const),
           ...(refusedBy === undefined ? {} : { admissionRule: refusedBy }),
           sourceId: record.sourceId,
@@ -443,6 +494,7 @@ export function createSkillClient(options: CreateSkillClientOptions): SkillClien
 
     active: () =>
       activeOrder
+        .filter(stillUsable)
         .map((name) => activeSkills.get(name))
         .filter((entry): entry is ActiveSkill => entry !== undefined),
 
@@ -456,7 +508,7 @@ export function createSkillClient(options: CreateSkillClientOptions): SkillClien
       // run's context, and letting it be read would be tier-three disclosure without the tier-two
       // decision that is supposed to gate it.
       const artifact = activeArtifacts.get(name);
-      if (artifact === undefined) return undefined;
+      if (artifact === undefined || !stillUsable(name)) return undefined;
       const resource = readResource(artifact, path);
       if (resource !== undefined) {
         events?.dispatchEvent(
@@ -476,6 +528,7 @@ export function createSkillClient(options: CreateSkillClientOptions): SkillClien
 
     narrowedTools(): readonly string[] | undefined {
       const requests = activeOrder
+        .filter(stillUsable)
         .map((name) => activeSkills.get(name)?.record.requestedTools)
         .filter((tools): tools is readonly string[] => tools !== undefined && tools.length > 0);
       if (requests.length === 0) return undefined;

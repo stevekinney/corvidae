@@ -20,6 +20,7 @@ const WATCHED = {
   chatDetail: queryKeys.contexts.detail('session-1'),
   goalList: queryKeys.goals.list(),
   goalRuns: queryKeys.goals.runs(),
+  notifications: queryKeys.bureauNotifications.list(),
   // A view whose probe found nothing to list, and one that has something.
   emptyView: queryKeys.view('runs', null),
   // Entries the feed does not drive.
@@ -46,6 +47,7 @@ function invalidated(queryClient: QueryClient): string[] {
 const REVIEWS_AND_TASKS = ['bureauReviews', 'bureauTasks', 'engineReviews', 'recentTasks'];
 const CHATS = ['chatDetail', 'chatTitles', 'runChats'];
 const GOALS = ['goalList', 'goalRuns'];
+const NOTIFICATIONS = ['notifications'];
 
 describe('invalidateForBureauEvent', () => {
   test.each([
@@ -112,13 +114,19 @@ describe('invalidateForBureauEvent', () => {
     expect(invalidated(queryClient)).toEqual(['emptyView', ...GOALS]);
   });
 
+  test('notification.created asks for the notifications, and nothing else', () => {
+    const queryClient = seeded();
+    expect(invalidateForBureauEvent(queryClient, { kind: 'notification.created' })).toBe(true);
+    expect(invalidated(queryClient)).toEqual(NOTIFICATIONS);
+  });
+
   test.each(['feed.gap', 'frames.dropped', 'feed.resync'])(
     '%s asks again for everything the feed drives',
     (kind) => {
       const queryClient = seeded();
       expect(invalidateForBureauEvent(queryClient, { kind })).toBe(true);
       expect(invalidated(queryClient)).toEqual(
-        [...REVIEWS_AND_TASKS, ...CHATS, ...GOALS, 'emptyView'].toSorted(),
+        [...REVIEWS_AND_TASKS, ...CHATS, ...GOALS, ...NOTIFICATIONS, 'emptyView'].toSorted(),
       );
     },
   );

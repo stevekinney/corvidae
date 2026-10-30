@@ -3,6 +3,7 @@
  * every request goes through the handler as a fetch, and every resource is made
  * by a real Bureau. Two principals hold the same scopes and disjoint resources.
  */
+import { generateEncryptionKey } from '@lostgradient/cryptography';
 import { EventType } from '@ag-ui/core';
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import {
@@ -158,6 +159,17 @@ const DEPLOYMENT_PARAMETERS = {
   rampBasisPoints: 1,
 } as const;
 
+/**
+ * What the hook operations (COR-1939) need beside an identifier: a complete request, so a probe
+ * reaches its own check instead of failing validation.
+ */
+const HOOK_PARAMETERS = {
+  hookId: 'x',
+  url: 'https://example.invalid/hook',
+  events: ['run.settled'],
+  signingSecret: 'probe-secret-0123456789',
+} as const;
+
 /** What the memory operations need beside the identifier a probe varies. */
 const MEMORY_PARAMETERS = {
   agentId: 'support',
@@ -214,6 +226,7 @@ function definitionParameters(operation: CatalogOperation) {
   if (operation.name.startsWith('bureau.schedules.')) return SCHEDULE_PARAMETERS;
   if (operation.name.startsWith('bureau.goals.')) return GOAL_PARAMETERS;
   if (operation.name.startsWith('bureau.deployments.')) return DEPLOYMENT_PARAMETERS;
+  if (operation.name.startsWith('bureau.hooks.')) return HOOK_PARAMETERS;
   return operation.name.startsWith('bureau.agents.')
     ? AGENT_DEFINITION_PARAMETERS
     : WORKFLOW_PARAMETERS;
@@ -322,6 +335,9 @@ async function openBureau(id = 'authorization-bureau') {
     validators: [createCheckValidator()],
     storage: new MemoryStorage(),
     durable: true,
+    // COR-1939: hooks, so a hook operation reaches its own ownership check.
+    hooks: {},
+    answerEncryption: { current: await generateEncryptionKey() },
   });
 }
 
@@ -712,6 +728,8 @@ describe('credentials', () => {
           query: 'x',
           content: 'x',
           granteeOwnerId: 'x',
+          // The notification operations name the notifications they act on.
+          ids: ['x'],
           reason: 'x',
           ...definitionParameters(operation),
         });
@@ -821,7 +839,15 @@ describe('identifiers grant nothing', () => {
 
   it('answers real and random ids identically to a non-owner without operator scopes', async () => {
     await withTwoOwners(async ({ bureau, handler, bob, bobScheduleId, bobGoalRunId }) => {
+      // COR-1939: bob's hook, made here because a hook writes its own audit entry.
+      const bobHook = await bureau.hooks!.create({
+        url: 'https://example.invalid/bob',
+        events: ['run.settled'],
+        signingSecret: 'bobs-signing-secret-0123456789',
+        principal: 'api-key:bob',
+      });
       const realIds: Record<string, string> = {
+        hookId: bobHook.id,
         id: bob.reviewId,
         runId: bob.run.id,
         taskId: bob.run.id,
@@ -1008,6 +1034,8 @@ describe('transcripts stay inside the Bureau', () => {
           query: 'x',
           content: 'x',
           granteeOwnerId: 'x',
+          // The notification operations name the notifications they act on.
+          ids: ['x'],
           reason: 'x',
           ...definitionParameters(operation),
         });

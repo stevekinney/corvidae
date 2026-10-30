@@ -1,3 +1,4 @@
+/** CSS custom properties this component reads, which a consumer can override. */
 const variables: readonly string[] = [
   '--cinder-accordion-item-panel-font-size',
   '--cinder-accordion-item-panel-inner-padding-block-end',

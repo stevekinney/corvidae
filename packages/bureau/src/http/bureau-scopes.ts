@@ -22,6 +22,12 @@ import type { PackageAuthorizationScope } from '@lostgradient/weft';
  * scopes let another caller read (`get`) or move (`ramp`, `promote`, `rollback`) them. Neither
  * implies the other.
  *
+ * The two `bureau.hooks` scopes (COR-1939) follow the rule: a hook belongs to its owner, who
+ * reaches it without a scope, and `read` (`list`, `get`, `deliveries`) and `write` (`update`,
+ * `delete`, `test`) grant any owner's hooks to another caller; neither implies the other. Creating
+ * a hook, or changing its events, also needs `bureau.events:observe-all`, because a hook observes
+ * the whole Bureau's events.
+ *
  * The three memory scopes are the exception to the rule above (COR-1546, COR-1809).
  * `bureau.memory:read`, `bureau.memory:write` and `bureau.memory:govern` do not grant cross-owner
  * access: a caller reaches `bureau.memory.*` only with the scope its operation needs, and then only
@@ -57,6 +63,8 @@ export const BUREAU_SCOPES = [
   'bureau.memory:govern',
   'bureau.deployments:read',
   'bureau.deployments:write',
+  'bureau.hooks:read',
+  'bureau.hooks:write',
 ] as const satisfies readonly PackageAuthorizationScope[];
 
 /** One of the scopes in {@link BUREAU_SCOPES}. */

@@ -7,6 +7,15 @@ export type MultiSelectItem<T extends string = string> = {
   description?: string;
   /** Non-selectable option row. */
   disabled?: boolean;
+  /**
+   * Optional group name. Items that share a name render together under a
+   * heading that shows the name and how many of the group's items are listed.
+   * Ungrouped items render first, without a heading, and groups follow in order
+   * of first appearance. A blank name counts as ungrouped. With
+   * `selectionFeedback` set to promote selected items, promotion happens within
+   * each group.
+   */
+  group?: string;
 };
 
 export type MultiSelectSelectionFeedback = 'top' | 'fixed' | 'top-after-reopen';

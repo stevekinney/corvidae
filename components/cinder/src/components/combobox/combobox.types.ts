@@ -16,6 +16,13 @@ export type ComboboxOption<T extends string = string> = {
   avatar?: string;
   /** When true, the option is non-selectable. */
   disabled?: boolean;
+  /**
+   * Optional group name. Options that share a name render together under a
+   * heading that shows the name and how many of the group's options are
+   * listed. Ungrouped options render first, without a heading, and
+   * groups follow in order of first appearance. A blank name counts as ungrouped.
+   */
+  group?: string;
 };
 
 /**

@@ -7,6 +7,7 @@ import {
   createTemporaryDirectory,
   removeTemporaryPath,
 } from '@lostgradient/testing/temporary-path';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { BureauError, createBureau } from './create-bureau';
@@ -209,7 +210,7 @@ describe('an agent step', () => {
     expect(detail?.error).toContain('model unavailable');
   });
 
-  it('starts a standalone run owned by anonymous:local that is not a task and has no session', async () => {
+  it('starts a standalone run owned by anonymous:local that is a task of the instance and has no session', async () => {
     const harness = await start();
     await harness.putWorkflow('digest', { trigger: { kind: 'schedule', spec: '1h' } });
     const run = await harness.bureau.durableEngine()?.start('digest', null, { id: 'owned' });
@@ -221,11 +222,20 @@ describe('an agent step', () => {
     const stepRunId = stepRuns?.items[0]?.id ?? '';
     expect(stepRunId.startsWith('workflow-agent-')).toBe(true);
     expect(await harness.bureau.ownerOf({ kind: 'run', id: stepRunId })).toBe('anonymous:local');
-    // Not a task, and no context was created for it.
+    // A task of the instance (COR-1868), though no context was created for it.
+    await waitUntil(
+      async () => (await harness.bureau.internals.taskRegistry.record(stepRunId)) !== undefined,
+      { message: 'the step run’s task is recorded' },
+    );
     const page = await harness.bureau.internals.taskRegistry.enumerate({ limit: 100, offset: 0 });
-    expect(page.tasks.map((task) => task.id)).not.toContain(stepRunId);
-    expect(await harness.bureau.internals.taskRegistry.record(stepRunId)).toBeUndefined();
+    expect(page.tasks.map((task) => task.id)).toContain(stepRunId);
+    expect(await harness.bureau.internals.taskRegistry.record(stepRunId)).toMatchObject({
+      owner: 'anonymous:local',
+      origin: { kind: 'parent', parentRunId: 'owned' },
+    });
     expect(await harness.bureau.contexts.get(stepRunId)).toBeUndefined();
+    // The instance itself is still no task.
+    expect(await harness.bureau.internals.taskRegistry.record('owned')).toBeUndefined();
   });
 });
 
@@ -272,9 +282,18 @@ describe('an agent step that names a file agent', () => {
     ]);
     const revisions = await bureau.agents.revisions('researcher');
     expect(revisions).toHaveLength(1);
-    // Still not a task, though the agent behind it is a file.
+    // A task of the instance (COR-1868), though the agent behind it is a file.
     const stepRuns = await bureau.durableEngine()!.list({ type: 'agentRun' });
-    expect(await bureau.internals.taskRegistry.record(stepRuns.items[0]!.id)).toBeUndefined();
+    const stepRunId = stepRuns.items[0]!.id;
+    await waitUntil(
+      async () => (await bureau.internals.taskRegistry.record(stepRunId)) !== undefined,
+      {
+        message: 'the step run’s task is recorded',
+      },
+    );
+    expect(await bureau.internals.taskRegistry.record(stepRunId)).toMatchObject({
+      origin: { kind: 'parent', parentRunId: 'file-agent-run' },
+    });
   });
 
   it('fails the step as a missing agent when the file agent is invalid', async () => {

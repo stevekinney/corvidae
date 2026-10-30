@@ -32,6 +32,53 @@ function storeWith(...entries: NotificationEntry[]): NotificationStore {
   return store;
 }
 
+describe('NotificationStore and the Bureau’s notifications', () => {
+  const stored = (id: string, overrides: Partial<NotificationEntry> = {}) =>
+    entry({ id: `notification:${id}`, notificationId: id, kind: 'failed', ...overrides });
+
+  function connected(...entries: NotificationEntry[]) {
+    const told: string[][] = [];
+    const store = storeWith(...entries);
+    store.setRemote({ markRead: (ids) => told.push([...ids]) });
+    return { store, told };
+  }
+
+  test('reading an item that is a notification tells the Bureau, once, and only for what was unread', () => {
+    const { store, told } = connected(
+      stored('a'),
+      stored('b', { serverRead: true }),
+      entry({ id: 'review:c' }),
+    );
+
+    store.markRead('notification:a');
+    store.markRead('notification:a');
+    store.markRead('notification:b');
+    store.markRead('review:c');
+
+    expect(told).toEqual([['a']]);
+  });
+
+  test('reading everything, or a chat, tells the Bureau which notifications it covered', () => {
+    const { store, told } = connected(
+      stored('a', { sessionId: 'one' }),
+      stored('b', { sessionId: 'two' }),
+      entry({ id: 'review:c', sessionId: 'two' }),
+    );
+
+    store.markSessionRead('two');
+    store.markAllRead();
+
+    expect(told).toEqual([['b'], ['a']]);
+  });
+
+  test('an item the Bureau holds as read is read, and does not count', () => {
+    const store = storeWith(stored('a', { serverRead: true }), stored('b'));
+
+    expect(store.items.map((item) => item.read)).toEqual([true, false]);
+    expect(store.unreadCount).toBe(1);
+  });
+});
+
 describe('NotificationStore', () => {
   test('a new store has no items and no unread count', () => {
     const store = new NotificationStore({ storage: memoryStorage() });

@@ -16,6 +16,70 @@
     gap: var(--cinder-space-3);
   }
 
+  /* A large form puts short fields side by side; the grid collapses to one column on its own
+     when the container is narrower than two columns. Wide controls take the whole row. */
+  .cinder-schema-form__fields[data-cinder-columns='two'] {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+    align-items: start;
+  }
+
+  .cinder-schema-form__fields > [data-cinder-span='full'] {
+    grid-column: 1 / -1;
+  }
+
+  .cinder-schema-form__toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: var(--cinder-space-3);
+  }
+
+  .cinder-schema-form__toolbar > :first-child {
+    flex: 1 1 14rem;
+  }
+
+  .cinder-schema-form__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-schema-form__json-panel {
+    display: grid;
+    gap: var(--cinder-space-3);
+  }
+
+  .cinder-schema-form__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-schema-form__duration {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-schema-form__group-label {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1);
+  }
+
+  /* The closed-group summary sits after the label and gives way to it when space runs out. */
+  .cinder-schema-form__summary {
+    min-inline-size: 0;
+    margin-inline-start: var(--cinder-space-2);
+    overflow: hidden;
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-normal);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .cinder-schema-form__fieldset {
     margin: 0;
     padding: var(--cinder-space-4);

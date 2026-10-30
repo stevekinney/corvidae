@@ -1333,6 +1333,7 @@ export const NOTIFICATION_COPY = {
   askedQuestion: (agent: string): string => `${agent} asked a question`,
   answered: (agent: string): string => `${agent} answered`,
   failed: (subject: string): string => `${subject} failed`,
+  budgetExceeded: (subject: string): string => `${subject} exceeded its budget`,
   /** What an agent is called when the Bureau names none. */
   unnamedAgent: 'An agent',
   /** Read between a sentence and the chat it is about, by a screen reader only. */

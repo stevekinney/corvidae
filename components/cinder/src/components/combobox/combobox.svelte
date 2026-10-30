@@ -26,6 +26,7 @@
   import { classNames } from '../../utilities/class-names.ts';
   import { rowDividerAttachment } from '../../utilities/row-divider.ts';
   import { createCommandListState } from '../_internal/create-command-list-state.svelte.ts';
+  import { groupOptions, hasGroupedOptions } from '../_internal/group-options.ts';
   import Popover from '../popover/popover.svelte';
 
   let {
@@ -89,17 +90,26 @@
     );
   };
 
+  const groupOf = (option: ComboboxOption<T>): string | undefined => option.group;
+
+  // Display order is the single source of truth: option ids, the active option
+  // and keyboard navigation all index into this flat list, and the sections
+  // below render it in the same order. With groups, the cap applies after the
+  // ungrouped-first, group-by-group ordering so which options survive it is
+  // predictable.
   const filteredOptions = $derived.by(() => {
     const fn = filter ?? defaultFilter;
+    const grouped = hasGroupedOptions(options, groupOf);
     const matches: ComboboxOption<T>[] = [];
     for (const option of options) {
       if (fn(option, textInputValue)) {
         matches.push(option);
-        if (matches.length >= maxVisibleOptions) break;
+        if (!grouped && matches.length >= maxVisibleOptions) break;
       }
     }
-    return matches;
+    return grouped ? groupOptions(matches, groupOf).ordered.slice(0, maxVisibleOptions) : matches;
   });
+  const optionSections = $derived(groupOptions(filteredOptions, groupOf).sections);
 
   let open = $state(false);
   let inputElement = $state<HTMLInputElement | null>(null);
@@ -497,6 +507,42 @@
   }
 </script>
 
+{#snippet optionRow(option: ComboboxOption<T>, index: number)}
+  <li
+    {@attach rowDividerAttachment}
+    id="{id}-option-{index}"
+    role="option"
+    class="cinder-_option-row cinder-combobox__option"
+    aria-selected={value === option.value}
+    aria-disabled={option.disabled || undefined}
+    aria-label={option.description ? `${option.label}, ${option.description}` : undefined}
+    data-cinder-active={index === activeIndex || undefined}
+    onmousedown={(event) => {
+      // mousedown rather than click so the option fires before the
+      // input's blur cancels the popover.
+      event.preventDefault();
+      selectOption(option);
+    }}
+    onmouseenter={() => {
+      // Disabled options are never active (see `setActiveIndex`) —
+      // guard here so hovering one doesn't clear whatever option is
+      // currently active via keyboard.
+      if (option.disabled) return;
+      setActiveIndex(index);
+    }}
+  >
+    {#if option.avatar?.trim()}
+      <img class="cinder-combobox__option-avatar" src={option.avatar} alt="" loading="lazy" />
+    {/if}
+    <span class="cinder-combobox__option-text">
+      <span class="cinder-combobox__option-label">{option.label}</span>
+      {#if option.description}
+        <span class="cinder-combobox__option-description">{option.description}</span>
+      {/if}
+    </span>
+  </li>
+{/snippet}
+
 {#snippet comboboxControl()}
   <div class="cinder-combobox__control" data-cinder-open={open || undefined}>
     <input
@@ -555,45 +601,32 @@
       }}
     >
       <ul bind:this={listboxElement} role="presentation" class="cinder-combobox__listbox">
-        {#each filteredOptions as option, index (option.value)}
-          <li
-            {@attach rowDividerAttachment}
-            id="{id}-option-{index}"
-            role="option"
-            class="cinder-_option-row cinder-combobox__option"
-            aria-selected={value === option.value}
-            aria-disabled={option.disabled || undefined}
-            aria-label={option.description ? `${option.label}, ${option.description}` : undefined}
-            data-cinder-active={index === activeIndex || undefined}
-            onmousedown={(event) => {
-              // mousedown rather than click so the option fires before the
-              // input's blur cancels the popover.
-              event.preventDefault();
-              selectOption(option);
-            }}
-            onmouseenter={() => {
-              // Disabled options are never active (see `setActiveIndex`) —
-              // guard here so hovering one doesn't clear whatever option is
-              // currently active via keyboard.
-              if (option.disabled) return;
-              setActiveIndex(index);
-            }}
-          >
-            {#if option.avatar?.trim()}
-              <img
-                class="cinder-combobox__option-avatar"
-                src={option.avatar}
-                alt=""
-                loading="lazy"
-              />
-            {/if}
-            <span class="cinder-combobox__option-text">
-              <span class="cinder-combobox__option-label">{option.label}</span>
-              {#if option.description}
-                <span class="cinder-combobox__option-description">{option.description}</span>
-              {/if}
-            </span>
-          </li>
+        {#each optionSections as section (section.group ?? '')}
+          {#if section.group === undefined}
+            {#each section.members as member (member.option.value)}
+              {@render optionRow(member.option, member.index)}
+            {/each}
+          {:else}
+            <li role="presentation" class="cinder-_option-group">
+              <div role="presentation" class="cinder-_option-group__heading">
+                <span id="{id}-group-{section.sectionIndex}" class="cinder-_option-group__label"
+                  >{section.group}</span
+                >
+                <span class="cinder-_option-group__count" aria-hidden="true"
+                  >{section.members.length}</span
+                >
+              </div>
+              <ul
+                role="group"
+                class="cinder-_option-group__options"
+                aria-labelledby="{id}-group-{section.sectionIndex}"
+              >
+                {#each section.members as member (member.option.value)}
+                  {@render optionRow(member.option, member.index)}
+                {/each}
+              </ul>
+            </li>
+          {/if}
         {/each}
       </ul>
     </Popover>

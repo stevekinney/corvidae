@@ -151,6 +151,18 @@ export function validateLogsRetentionOption(value: unknown, badRequest: BadReque
   }
 }
 
+/** COR-1941 — `BureauRetentionOptions.notifications` is `{ olderThan }`, a positive integer of milliseconds. */
+export function validateNotificationsRetentionOption(value: unknown, badRequest: BadRequest): void {
+  if (value === undefined) return;
+  if (typeof value !== 'object' || value === null) {
+    badRequest('"options.retention.notifications" must be { olderThan: number }');
+  }
+  const olderThan = (value as { readonly olderThan?: unknown }).olderThan;
+  if (typeof olderThan !== 'number' || !Number.isSafeInteger(olderThan) || olderThan <= 0) {
+    badRequest('"options.retention.notifications.olderThan" must be a positive integer');
+  }
+}
+
 /** COR-1811 — `BureauLogsOptions.maximumLinesPerRun` is a positive integer, at most 5000, when given. */
 export function validateLogsMaximumLinesPerRun(value: unknown, badRequest: BadRequest): void {
   if (value === undefined) return;
@@ -180,6 +192,7 @@ export function validateRetentionOptions(
   validateReceiptRetentionOption(retention?.receipts, badRequest);
   validateMemoryRetentionOption(retention?.memory, badRequest);
   validateLogsRetentionOption(retention?.logs, badRequest);
+  validateNotificationsRetentionOption(retention?.notifications, badRequest);
 }
 
 /**

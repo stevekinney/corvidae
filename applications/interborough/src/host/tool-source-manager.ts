@@ -24,6 +24,12 @@
  *   the configuration write fails and the file is not the one meant, the previous secret is put
  *   back; if that fails too, the error says the change is partial. A write that threw after it
  *   replaced the file is read back and taken as done.
+ * - **`acceptsSecrets` per tool (COR-1932).** The owner's per-tool settings sit in the entry's
+ *   `tools`, keyed by the tool's own name. At load, a flagged tool is rebuilt with
+ *   `metadata.acceptsSecrets: true` (`tool-source-tool-settings.ts`), the key Armorer reads for
+ *   secret answers (COR-1816); every other tool is left as the loader made it. A setting that
+ *   reaches no tool is reported on the source as `unmatchedSettings`. {@link
+ *   ToolSourceManager.configureTools} changes the settings through the same queue and lock.
  * - **Local only.** A remote home keeps its configuration in a bucket and its secrets in the
  *   environment, which the host cannot write, so every change is refused with the lock reason
  *   `deployment` ({@link ToolSourceWriteLockedError}), as for providers and skills.
@@ -40,8 +46,9 @@
  * - **Credentials go only where they were given.** A stored credential is carried over only for
  *   the same source going to the same place ({@link recipientOf}); a changed address drops it and
  *   the OAuth state, and a new source never inherits a secret an earlier one left behind. The tools
- *   a replaced or removed source loaded are connected to the old address until a restart, so they
- *   are denied the credentials and sign-in the source now holds ({@link retired} in the manager).
+ *   a replaced or removed source loaded stay in the catalog until a restart, but each refuses to
+ *   run: every saved source's tools are built behind one gate ({@link refusingWhen}) that checks
+ *   {@link retired} in the manager, so no kind of source can use what the loader captured.
  * - **Removal lists the agents it breaks, and rewrites none of them (COR-1931).**
  *   {@link ToolSourceManager.affectedAgents} reads the agent files that name any of the source's
  *   tools, in `tools` or only in `toolApproval`, before anything is removed; {@link
@@ -50,8 +57,9 @@
  *   that starts with `<id>__` (a source that failed, awaits a sign-in, or was added since the host
  *   started loaded nothing, but an agent file may still name its tools). An agent file is never
  *   edited. The Bureau's tool catalog is fixed when the host starts, so the removed tools stay in it
- *   (the source's connection is closed on removal, so a call fails) and the affected agents stay as they were until the next start; then each reads `invalid` with
- *   `unknown-tool`, naming the tool, until the owner detaches it. Taking the tools away at once
+ *   (each refuses to run, and the source's connection is closed) and the affected agents stay as
+ *   they were until the next start; then each reads `invalid` with `unknown-tool`, naming the tool,
+ *   until the owner detaches it. Taking the tools away at once
  *   would need a catalog that changes while agents run, which the Bureau does not have, and it
  *   matches every other change to a source, which also takes effect at the next start. The
  *   credential, and any OAuth state a sign-in in progress had stored, are cleared with the source;
@@ -88,6 +96,11 @@ import { ProviderConfigurationError } from './provider-configuration-error.ts';
 import { parseProviderConfiguration } from './providers.ts';
 import { affectedAgents, type AffectedAgent, type AgentToolUse } from './tool-source-agents.ts';
 import {
+  refusingWhen,
+  unmatchedToolSettings,
+  withAcceptsSecrets,
+} from './tool-source-tool-settings.ts';
+import {
   createToolSourceVault,
   NO_SECRETS,
   ToolSourceSecretsLockedError,
@@ -102,6 +115,7 @@ import {
   readToolSourcesConfiguration,
   serializeToolSources,
   TOOL_SOURCE_IDENTIFIER,
+  type ConfiguredToolSettings,
   type ConfiguredToolSource,
 } from './tool-sources-configuration.ts';
 
@@ -207,7 +221,11 @@ export type ToolSourceAuditEntry = {
   /** The synthetic resource the record is filed under, `tool-source:<id>`. */
   readonly runId: string;
   /** What happened to the source. */
-  readonly type: 'tool.source.connected' | 'tool.source.removed' | 'tool.source.authorized';
+  readonly type:
+    | 'tool.source.connected'
+    | 'tool.source.removed'
+    | 'tool.source.authorized'
+    | 'tool.source.tools-configured';
   /** The principal that made the change. */
   readonly principal: string;
   /** The source and the owner, and a local command's command line. Never a credential, URL or environment value. */
@@ -220,6 +238,10 @@ export type ToolSourceAuditEntry = {
     readonly affectedAgents?: string;
     /** For a removal: how many agent files that is. */
     readonly affectedAgentCount?: number;
+    /** For a tool-settings change: the tools that were granted `acceptsSecrets`. Names only. */
+    readonly granted?: readonly string[];
+    /** The tools whose `acceptsSecrets` was revoked, by a settings change or by pointing the source elsewhere. Names only. */
+    readonly revoked?: readonly string[];
   };
 };
 
@@ -240,6 +262,8 @@ export type ToolSourceToolStanding = {
   readonly name: string;
   /** The tool's own name at the source. */
   readonly tool: string;
+  /** Whether the running host lets the tool receive the plaintext of a secret answer (COR-1932). */
+  readonly acceptsSecrets: boolean;
   /** Its capability tier (`read-only`, `mutating`, `dangerous`), or `null` when it has none. */
   readonly tier: string | null;
 };
@@ -260,6 +284,13 @@ export type ToolSourceStanding = {
   readonly tools: readonly ToolSourceToolStanding[];
   /** The tools it offered that the host does not list, each with the reason. */
   readonly skipped: readonly { readonly tool: string; readonly reason: string }[];
+  /**
+   * Saved tool settings that reach no tool of a loaded source: a name the server does not list, or
+   * a tool the host does not offer. Nothing is applied to a different tool.
+   */
+  readonly unmatchedSettings: readonly { readonly tool: string; readonly message: string }[];
+  /** True when the saved tool settings differ from the ones the running host applied: they load at the next start. */
+  readonly settingsPending?: true;
   /** The names of the credentials stored for it, never their values. */
   readonly credentials: readonly string[];
   /** For an OAuth source: whether tokens are stored. */
@@ -284,6 +315,18 @@ export type ToolSourceConnection = {
   readonly id: unknown;
   /** Who is asking. A local command is added only by the owner. */
   readonly principal: string;
+};
+
+/** What a change to the per-tool settings of a source asks for. Every field is `unknown` because it arrives from a request. */
+export type ToolSourceToolSettingsChange = {
+  /** The identifier of a configured source. */
+  readonly id: unknown;
+  /**
+   * Tool name (as the server lists it, not the `<id>__<tool>` name) to settings. Each named tool's
+   * settings are replaced; tools not named are kept. `{ "acceptsSecrets": false }` or `{}` removes
+   * the tool's entry, which is the default.
+   */
+  readonly tools: unknown;
 };
 
 /** What a change reports. */
@@ -328,6 +371,8 @@ export type ToolSourceManager = {
   snapshot(): Promise<ToolSourceSnapshot>;
   /** Store a source's credentials and list the source in the configuration. */
   connect(request: ToolSourceConnection): Promise<ToolSourceChange>;
+  /** Set the per-tool settings (`acceptsSecrets`) of a configured source. Loaded at the next start. */
+  configureTools(request: ToolSourceToolSettingsChange): Promise<ToolSourceChange>;
   /** Remove a source from the configuration and clear its credentials. No agent file is changed. */
   remove(request: { readonly id: unknown; readonly principal: string }): Promise<ToolSourceRemoval>;
   /** The agent files a removal of the source would leave invalid. Changes nothing, and works on a remote home. */
@@ -541,6 +586,50 @@ function revisionOf(source: ToolSourceDescription): string {
   return createHash('sha256').update(JSON.stringify(source)).digest('hex');
 }
 
+/**
+ * What the saved per-tool settings come to, to tell whether the running host applied them: the
+ * tools flagged `acceptsSecrets`, by name. A tool with no entry, an empty entry, or `false` is the
+ * same default.
+ */
+function settingsRevision(entry: ConfiguredToolSource): string {
+  return JSON.stringify(acceptingTools(entry.tools));
+}
+
+/** The names of the tools flagged `acceptsSecrets`, sorted. */
+function acceptingTools(tools: ReadonlyMap<string, ConfiguredToolSettings>): string[] {
+  return [...tools]
+    .filter(([, settings]) => settings.acceptsSecrets === true)
+    .map(([name]) => name)
+    .sort();
+}
+
+/**
+ * The settings a request names, copied and checked before the first `await` (the caller owns the
+ * original). An entry for a name the server does not list is accepted: the source reports it.
+ */
+function checkedToolSettings(value: unknown): Map<string, ConfiguredToolSettings> {
+  const copy = copyOfJson(value);
+  if (!isPlainObject(copy)) throw new ToolSourceInputError('tools', 'expected an object.');
+  const settings = new Map<string, ConfiguredToolSettings>();
+  for (const [name, entry] of Object.entries(copy)) {
+    if (name === '') throw new ToolSourceInputError('tools', 'a tool name cannot be empty.');
+    if (!isPlainObject(entry)) {
+      throw new ToolSourceInputError(`tools.${name}`, 'expected an object.');
+    }
+    for (const key of Object.keys(entry)) {
+      if (key !== 'acceptsSecrets') {
+        throw new ToolSourceInputError(`tools.${name}.${key}`, 'not a known field.');
+      }
+    }
+    const accepts = entry['acceptsSecrets'];
+    if (accepts !== undefined && typeof accepts !== 'boolean') {
+      throw new ToolSourceInputError(`tools.${name}.acceptsSecrets`, 'expected true or false.');
+    }
+    settings.set(name, accepts === undefined ? {} : { acceptsSecrets: accepts });
+  }
+  return settings;
+}
+
 /** A record's entries ordered by key, so two records that differ only in key order compare equal. */
 function sortedEntries(record: Readonly<Record<string, string>> | undefined): [string, string][] {
   return Object.entries(record ?? {}).sort(([left], [right]) => (left < right ? -1 : 1));
@@ -602,16 +691,21 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
   const loading = new Set<AbortController>();
 
   /** What the last start made of each source: its standing, and the description it loaded. */
-  const booted = new Map<string, { standing: ToolSourceStanding; description: string }>();
+  const booted = new Map<
+    string,
+    { standing: ToolSourceStanding; description: string; settings: string }
+  >();
   const loadedSources: LoadedToolSource[] = [];
   /** The connection each source loaded at boot holds, so a removal can close it. */
   const loadedById = new Map<string, LoadedToolSource>();
   const catalog: Record<string, Tool> = {};
   /**
    * The sources whose loaded incarnation was removed, or replaced by one that goes somewhere
-   * else, since the host started. Their tools stay connected to the old address until a restart,
-   * so they are denied the credentials and sign-in the source now holds, which belong to the new
-   * address.
+   * else, since the host started. Their tools stay in the catalog until a restart, but every one
+   * refuses to run ({@link refusingWhen}, applied where the tools are built), so none can reach
+   * its server or use a credential the loader captured at load: not an OpenAPI key or token read
+   * once, a local command's environment, or an open MCP session. They are also denied the
+   * credentials and sign-in the source now holds, which belong to the new address.
    */
   const retired = new Set<string>();
 
@@ -701,7 +795,9 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
   function standingOf(
     entry: ConfiguredToolSource,
     state: ToolSourceState,
-    extra: Partial<Pick<ToolSourceStanding, 'message' | 'tools' | 'skipped'>> = {},
+    extra: Partial<
+      Pick<ToolSourceStanding, 'message' | 'tools' | 'skipped' | 'unmatchedSettings'>
+    > = {},
   ): ToolSourceStanding {
     return {
       id: entry.source.id,
@@ -710,6 +806,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       state,
       tools: [],
       skipped: [],
+      unmatchedSettings: [],
       credentials: [],
       ...extra,
     };
@@ -749,8 +846,9 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
   async function loadOne(entry: ConfiguredToolSource): Promise<void> {
     const { source } = entry;
     const description = JSON.stringify(source);
+    const settings = settingsRevision(entry);
     const remember = (standing: ToolSourceStanding): void => {
-      booted.set(source.id, { standing, description });
+      booted.set(source.id, { standing, description, settings });
     };
     try {
       if (isOAuth(source)) {
@@ -790,14 +888,33 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       for (const tool of loaded.tools) {
         const name = byName.get(tool.name);
         if (name === undefined) continue;
-        catalog[name] = tool;
+        // Only a tool the owner flagged is rebuilt; every other keeps the metadata the loader gave it.
+        const acceptsSecrets = entry.tools.get(tool.name)?.acceptsSecrets === true;
+        // Every saved source's tool passes this gate, so a retired source's tool cannot run.
+        const offered = acceptsSecrets ? withAcceptsSecrets(tool) : tool;
+        catalog[name] = refusingWhen(offered, () =>
+          retired.has(source.id)
+            ? `Tool source "${source.id}" was removed or changed; its tools work again after the host starts.`
+            : undefined,
+        );
         tools.push({
           name,
           tool: tool.name,
+          acceptsSecrets,
           tier: resolveCapabilityTier(tool.metadata, tool.tags) ?? null,
         });
       }
-      remember(standingOf(entry, 'loaded', { tools, skipped }));
+      const unmatchedSettings = unmatchedToolSettings(
+        entry.tools,
+        loaded.tools.map((tool) => tool.name),
+        skipped,
+      );
+      for (const { tool, message } of unmatchedSettings) {
+        warn(
+          `Tool source "${source.id}" has a setting for "${tool}" that reaches no tool: ${message}`,
+        );
+      }
+      remember(standingOf(entry, 'loaded', { tools, skipped, unmatchedSettings }));
     } catch (error) {
       if (error instanceof ToolSourceAuthorizationRequiredError) {
         remember(standingOf(entry, 'needs-authorization'));
@@ -861,6 +978,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
   async function record(
     type: ToolSourceAuditEntry['type'],
     source: ToolSourceDescription,
+    access: { readonly granted?: readonly string[]; readonly revoked?: readonly string[] } = {},
     affected?: readonly AffectedAgent[],
   ): Promise<void> {
     const commandLine = commandLineOf(source);
@@ -880,6 +998,13 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
                 affectedAgents: affected.map((agent) => agent.id).join(','),
                 affectedAgentCount: affected.length,
               }),
+          // Tool names only: never an argument, a reference, or a value.
+          ...(access.granted === undefined || access.granted.length === 0
+            ? {}
+            : { granted: access.granted }),
+          ...(access.revoked === undefined || access.revoked.length === 0
+            ? {}
+            : { revoked: access.revoked }),
         },
       });
     } catch {
@@ -888,32 +1013,28 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
   }
 
   /**
-   * Refuse, and clear what the sign-in stored, when the source was removed or replaced since the
-   * sign-in began for `revision`. A sign-in stores its `state`, client registration and discovery
-   * while the loader runs, outside the source's turn, so a removal that cleared the secret first
-   * would otherwise find that state written back afterwards, and a source added again under the
-   * same id would inherit it. A removed source loses its whole secret; a replacement keeps the
-   * credentials it stored and loses only the OAuth state.
+   * Whether the source `id` is still listed with the description `revision` names. Asked under
+   * the source's turn, where every change to the source's secret and configuration also takes its
+   * turn, so the answer holds for the write that follows it.
    */
-  function clearIfStale(id: string, revision: string): Promise<void> {
-    return serialized(() =>
-      vault.exclusive(id, async () => {
-        let current: ConfiguredToolSource;
-        try {
-          current = await configured(id);
-        } catch (error) {
-          if (error instanceof ToolSourceInputError && error.kind === 'unknown-source') {
-            vault.clear(id);
-          }
-          throw error;
-        }
-        if (revisionOf(current.source) !== revision) {
-          const { credentials } = await vault.read(id);
-          await vault.write(id, { credentials, oauth: undefined });
-          throw new ToolSourceInputError('source', 'changed while the sign-in was starting.');
-        }
-      }),
-    );
+  async function isCurrent(id: string, revision: string): Promise<boolean> {
+    try {
+      return revisionOf((await configured(id)).source) === revision;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Refuse a sign-in whose source was removed or replaced while it ran. The sign-in's OAuth
+   * storage is fenced ({@link isCurrent}), so it stored nothing and erased nothing of whatever
+   * holds the id now; this only tells the caller.
+   */
+  async function assertCurrent(id: string, revision: string): Promise<void> {
+    const current = await configured(id);
+    if (revisionOf(current.source) !== revision) {
+      throw new ToolSourceInputError('source', 'changed while the sign-in was starting.');
+    }
   }
 
   /** Write `text` as the configuration, and say whether the file holds it afterwards. */
@@ -946,11 +1067,29 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       const standings = await Promise.all(
         sources.map((entry) => {
           const previous = booted.get(entry.source.id);
-          const standing =
-            previous !== undefined && previous.description === JSON.stringify(entry.source)
-              ? previous.standing
-              : standingOf(entry, 'pending-restart');
-          return standingWithSecrets(entry, standing);
+          if (previous === undefined || previous.description !== JSON.stringify(entry.source)) {
+            return standingWithSecrets(entry, standingOf(entry, 'pending-restart'));
+          }
+          const { standing } = previous;
+          // Judged against the saved settings as they are now, and the tools the source listed when it loaded.
+          const unmatchedSettings =
+            standing.state === 'loaded'
+              ? unmatchedToolSettings(
+                  entry.tools,
+                  [
+                    ...standing.tools.map(({ tool }) => tool),
+                    ...standing.skipped.map(({ tool }) => tool),
+                  ],
+                  standing.skipped,
+                )
+              : [];
+          return standingWithSecrets(entry, {
+            ...standing,
+            unmatchedSettings,
+            ...(previous.settings === settingsRevision(entry)
+              ? {}
+              : { settingsPending: true as const }),
+          });
         }),
       );
       const reason = lockReason();
@@ -1022,7 +1161,12 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
             isOAuth(existing.source) &&
             isOAuth(source) &&
             JSON.stringify(existing.source) === JSON.stringify(source);
-          const next: ConfiguredToolSource = { source, tools: existing?.tools ?? new Map() };
+          // Per-tool settings, `acceptsSecrets` among them, were granted for the server the source
+          // went to: they are kept only while it still goes to the same place, like credentials.
+          const tools = sameRecipient && existing !== undefined ? existing.tools : new Map();
+          const next: ConfiguredToolSource = { source, tools };
+          const revoked =
+            existing === undefined || sameRecipient ? [] : acceptingTools(existing.tools);
           const nextSources =
             existing === undefined
               ? [...sources, next]
@@ -1074,10 +1218,46 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
             putPreviousBack();
             throw new Error('The tool-source configuration could not be written.');
           }
-          await record('tool.source.connected', source);
+          await record('tool.source.connected', source, { revoked });
           return { id, changed: true, restartRequired: true as const };
         }),
       );
+    },
+    async configureTools(request) {
+      assertWritable();
+      const id = checkedIdentifier(request.id, 'id');
+      const incoming = checkedToolSettings(request.tools);
+      return serialized(async () => {
+        const { text: currentText, document, sources } = await readDocument();
+        const existing = sources.find((entry) => entry.source.id === id);
+        if (existing === undefined) {
+          throw new ToolSourceInputError('source', 'not a configured source.', 'unknown-source');
+        }
+        const tools = new Map(existing.tools);
+        for (const [name, settings] of incoming) {
+          // The default is no entry at all, so a tool turned back off leaves nothing behind.
+          if (settings.acceptsSecrets === true) tools.set(name, settings);
+          else tools.delete(name);
+        }
+        const next: ConfiguredToolSource = { source: existing.source, tools };
+        const nextSources = sources.map((entry) => (entry === existing ? next : entry));
+        const nextDocument = { ...document, toolSources: serializeToolSources(nextSources) };
+        const text = `${JSON.stringify(nextDocument, null, 2)}\n`;
+        // The same checks the next start applies, before a byte is written.
+        parseProviderConfiguration(text, location);
+        parseToolSourcesConfiguration(nextDocument.toolSources, location);
+        if (text === currentText) return { id, changed: false, restartRequired: true as const };
+        if (!(await writeConfiguration(text))) {
+          throw new Error('The tool-source configuration could not be written.');
+        }
+        const before = new Set(acceptingTools(existing.tools));
+        const after = new Set(acceptingTools(tools));
+        await record('tool.source.tools-configured', existing.source, {
+          granted: [...after].filter((name) => !before.has(name)).sort(),
+          revoked: [...before].filter((name) => !after.has(name)).sort(),
+        });
+        return { id, changed: true, restartRequired: true as const };
+      });
     },
     async remove(request) {
       assertWritable();
@@ -1103,6 +1283,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
             throw new Error('The tool-source configuration could not be written.');
           }
           retired.add(id);
+          booted.delete(id);
           // Its connection was opened with credentials a removal cannot take back (a local command
           // got them in its environment), so it is closed: the tools fail until the next start.
           const connection = loadedById.get(id);
@@ -1116,7 +1297,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
           } catch {
             throw new ToolSourcePartialChangeError(id, 'credentials-not-cleared');
           }
-          await record('tool.source.removed', existing.source, affected);
+          await record('tool.source.removed', existing.source, {}, affected);
           return { id, changed: true, restartRequired: true as const, affectedAgents: affected };
         }),
       );
@@ -1139,29 +1320,33 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
         const loaded = await within((signal) =>
           loadToolSource(entry.source, {
             resolveCredential,
-            oauth: oauthOptions((_sourceId, url) => {
-              authorizationUrl = url;
-            }),
+            oauth: oauthOptions(
+              (_sourceId, url) => {
+                authorizationUrl = url;
+              },
+              'take',
+              (sourceId) =>
+                vault.tokenStorage(sourceId, 'take', () => isCurrent(sourceId, revision)),
+            ),
             signal,
             ...fetchOption,
           }),
         );
         // The tokens already work: there is nothing to sign in to.
         await loaded.close().catch(() => undefined);
-        await clearIfStale(id, revision);
+        await assertCurrent(id, revision);
         return { authorized: true };
       } catch (error) {
         if (
           error instanceof ToolSourceAuthorizationRequiredError &&
           authorizationUrl !== undefined
         ) {
-          await clearIfStale(id, revision);
           // The sign-in is good for this description and for a while: the callback checks both.
-          const recorded = await vault.beginSignIn(id, {
-            startedAt: now(),
-            revision: revisionOf(entry.source),
-          });
+          const recorded = await vault.beginSignIn(id, { startedAt: now(), revision }, () =>
+            isCurrent(id, revision),
+          );
           if (!recorded) {
+            await assertCurrent(id, revision);
             throw new ToolSourceInputError('source', 'changed while the sign-in was starting.');
           }
           return { authorized: false, authorizationUrl: authorizationUrl.href };

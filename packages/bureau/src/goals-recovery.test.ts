@@ -441,6 +441,7 @@ describe('a goal that ended while its next attempt was still starting', () => {
         definitionRevision: 1,
         input: 'work',
         goalAttempt: { goalRunId: 'g1', attemptIndex: 0 },
+        taskOrigin: { kind: 'goal', goalRunId: 'g1', attemptId: 'g1:a0' },
       });
 
       const { bureau } = await bootOver({
@@ -458,6 +459,8 @@ describe('a goal that ended while its next attempt was still starting', () => {
       expect(decode(stored!)).toMatchObject({
         goalAttempt: { goalRunId: 'g1', attemptIndex: 0, tombstonedAt: expect.any(String) },
       });
+      // A tombstoned claim never starts, so it never becomes a task (COR-1868).
+      expect(await bureau.internals.taskRegistry.record('goal-g1-a0')).toBeUndefined();
       const closed = await bureau.goals.close('g1');
       expect(closed).toMatchObject({ outcome: 'closed' });
       const after = await bureau.goals.get('g1');
@@ -521,6 +524,18 @@ describe('a run that existed before its controller opened the attempt', () => {
     // The run waited for the commit and then worked once; it neither stepped
     // unacknowledged nor was refused for waiting.
     expect(steps).toBe(1);
+    // The attempt's task is the one bureau A admitted when it started the run; the recovered run
+    // settles it from its own end, and recovery wrote no second record (COR-1868).
+    await pollUntil(async () => {
+      const task = await bureau.tasks.get('goal-g1-a0');
+      return task?.status === 'completed';
+    });
+    const attempts = await bureau.internals.taskRegistry.enumerate({
+      parentRunId: 'g1',
+      limit: 10,
+      offset: 0,
+    });
+    expect(attempts.tasks.map((task) => task.id)).toEqual(['goal-g1-a0']);
   });
 });
 

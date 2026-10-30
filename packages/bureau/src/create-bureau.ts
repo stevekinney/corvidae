@@ -182,6 +182,7 @@ import type { DefinitionScannerHealth } from './definition-scanner';
 import { createAssetClaimReconciler } from './asset-claim-reconciliation';
 import {
   AUDIT_AGENT_OWNER_PREFIX,
+  AUDIT_HOOK_OWNER_PREFIX,
   AUDIT_SCHEDULE_OWNER_PREFIX,
   AUDIT_SESSION_OWNER_PREFIX,
   AUDIT_SKILL_SOURCE_OWNER_PREFIX,
@@ -194,7 +195,11 @@ import {
   createAuditTrail,
 } from './audit-trail';
 import { agentSkillsRun } from './agent-skills';
-import { catalogRunGuardrailsContext, createCatalogDispatcher } from './bureau-catalog-dispatch';
+import {
+  catalogRunGuardrailsContext,
+  createCatalogDispatcher,
+  type SubordinateRun,
+} from './bureau-catalog-dispatch';
 import { createBureauEventFeed } from './bureau-event-feed.ts';
 import {
   createDiagnosticDispatcher,
@@ -259,6 +264,7 @@ import {
   RunRegisteredEvent,
   RunSettledEvent,
   RunRemovedEvent,
+  NotificationCreatedEvent,
   TaskCleanupAcknowledgedEvent,
   DiagnosticEvent,
 } from './events';
@@ -327,7 +333,11 @@ import {
   serializeRunState,
   serializeUnknownError,
 } from './serialization';
-import { createCatalogTaskSettler } from './catalog-task-settlement';
+import {
+  createCatalogTaskSettler,
+  type SubordinateClaim,
+  subordinateTaskAdmission,
+} from './catalog-task-settlement';
 import {
   createCatalogRunAssetReleaser,
   createRecoveredRunReleaseListener,
@@ -339,6 +349,7 @@ import {
   type DurableEnd,
   type DurableEndReader,
   createCatalogSettlementTracker,
+  publishFreshCatalogRun,
   settlementForRejection,
 } from './catalog-run-settlement';
 import {
@@ -473,6 +484,7 @@ import {
 import {
   REVIEW_CLOSING_EVENT_KINDS,
   reviewCanceledDedupeKey,
+  REPLAY_SUPERSEDING_PRINCIPAL,
   REVIEW_SUPERSEDED_EVENT_KIND,
   TERMINAL_REVIEW_STATUSES,
 } from './review-closing-events';
@@ -588,6 +600,7 @@ import {
 } from './types';
 import { isSettlingRunAction, settledActionTimestamp } from './run-settlement';
 import { createAudit } from './audit/create-audit';
+import { createNotifications } from './notifications/create-notifications';
 import { createContexts } from './contexts/create-contexts';
 import { createTaskHandle, createTasks, seedsConversation } from './tasks/create-tasks';
 import {
@@ -597,7 +610,13 @@ import {
 } from './tasks/respond-to-task';
 import { createReviews } from './reviews/create-reviews';
 import { createSchedules } from './schedules/create-schedules';
-import { createWebhookNotifier, type WebhookNotifier } from './webhook-notifier';
+import {
+  createWebhookNotifier,
+  type WebhookDeliveryEngine,
+  type WebhookNotifier,
+  type WebhookNotifierOptions,
+} from './webhook-notifier';
+import { createHooks, type CreatedHooks } from './hooks/create-hooks';
 import { scheduleInputPreview } from './schedule-input-preview';
 import { ownEntry } from './own-entry';
 
@@ -1070,7 +1089,8 @@ class BureauError extends Error {
     | 'NOT_CONFIGURED'
     | 'BAD_REQUEST'
     | 'RATE_LIMITED'
-    | 'UNSUPPORTED_CAPABILITY';
+    | 'UNSUPPORTED_CAPABILITY'
+    | 'STORAGE_UNAVAILABLE';
   readonly subject: BureauErrorNotConfiguredSubject | undefined;
 
   // `subject` is required for NOT_CONFIGURED and disallowed for every other
@@ -1086,7 +1106,8 @@ class BureauError extends Error {
       | 'NOT_CONFIGURED'
       | 'BAD_REQUEST'
       | 'RATE_LIMITED'
-      | 'UNSUPPORTED_CAPABILITY',
+      | 'UNSUPPORTED_CAPABILITY'
+      | 'STORAGE_UNAVAILABLE',
     subject?: BureauErrorNotConfiguredSubject,
   ) {
     super(message);
@@ -2044,16 +2065,24 @@ export function createScheduledFireApprovalHook(
 
 /**
  * Whether a maintenance pass had anything to drive: a durable engine, the audit trail, governed
- * memory (COR-1546, whose deletions advance only when asked to), or terminal tasks it removed.
+ * memory (COR-1546, whose deletions advance only when asked to), a notification retention window
+ * (COR-1941), or terminal tasks it removed.
  * Kept apart from `createBureau` so its complexity stays inside the repository's bound.
  */
 function hasMaintenanceSurface(surface: {
   readonly durableEngine: boolean;
   readonly auditTrail: boolean;
   readonly memory: boolean;
+  readonly notificationRetention: boolean;
   readonly tasksRemoved: number;
 }): boolean {
-  return surface.durableEngine || surface.auditTrail || surface.memory || surface.tasksRemoved > 0;
+  return (
+    surface.durableEngine ||
+    surface.auditTrail ||
+    surface.memory ||
+    surface.notificationRetention ||
+    surface.tasksRemoved > 0
+  );
 }
 
 /**
@@ -2077,7 +2106,7 @@ function resumeRefusedBeforeExecution(result: object): boolean {
 
 /**
  * Whether the automatic maintenance timer starts: there is a durable engine, governed memory
- * with a deletion to advance (COR-1546), or a key-value store whose audit trail has a retention
+ * with a deletion to advance (COR-1546), or a key-value store whose audit trail or notifications have a retention
  * policy to apply. A key-value store with no retention has nothing for the timer to do.
  */
 function needsAutomaticMaintenance(composed: {
@@ -2085,11 +2114,13 @@ function needsAutomaticMaintenance(composed: {
   readonly memory: boolean;
   readonly keyValueStore: boolean;
   readonly activeAuditRetention: boolean;
+  readonly activeNotificationRetention: boolean;
 }): boolean {
   return (
     composed.durableEngine ||
     composed.memory ||
-    (composed.keyValueStore && composed.activeAuditRetention)
+    (composed.keyValueStore &&
+      (composed.activeAuditRetention || composed.activeNotificationRetention))
   );
 }
 
@@ -2129,6 +2160,85 @@ export function createBureau<const D extends AgentDefinitions = Record<never, ne
     )
     .catch(result.reject);
   return result.promise;
+}
+
+/** COR-1939: hooks keep their records in the key-value store, so a Bureau with none cannot have them. */
+function rejectHooksWithoutStorage(
+  hooks: BureauOptions['hooks'],
+  kv: ConditionalTextValueStore | undefined,
+): void {
+  if (hooks !== undefined && kv === undefined) {
+    throw new BureauError(
+      'Hooks need durable storage: pass `storage`, so delivery records survive a restart',
+      'NOT_CONFIGURED',
+      'persistence',
+    );
+  }
+}
+
+/** Whether the webhook notifier is built: a fixed target is configured, or hooks need its engine. */
+function wantsWebhookNotifier(options: BureauOptions<AgentDefinitions>): boolean {
+  return (options.webhooks?.targets.length ?? 0) > 0 || options.hooks !== undefined;
+}
+
+/** The options the notifier is built with: the caller's `webhooks`, and the engine when hooks need it. */
+function webhookNotifierOptionsOf(
+  options: BureauOptions<AgentDefinitions>,
+  signal: AbortSignal,
+): WebhookNotifierOptions {
+  return {
+    targets: [],
+    ...options.webhooks,
+    signal,
+    ...(options.hooks === undefined ? {} : { engine: true }),
+  };
+}
+
+/**
+ * COR-1939: builds the hooks over the notifier's engine and resumes the deliveries a previous
+ * process left pending. The resume is tracked, so the notifier's `flush()` waits for it and for the
+ * deliveries it takes.
+ */
+function composeHooks(input: {
+  readonly options: BureauOptions<AgentDefinitions>['hooks'];
+  readonly engine: WebhookDeliveryEngine | undefined;
+  readonly kv: ConditionalTextValueStore | undefined;
+  readonly keys: AnswerEncryptionKeys | undefined;
+  readonly bureauId: string;
+  readonly runtimeServices: RuntimeServices;
+  readonly auditTrail: AuditTrail | undefined;
+  readonly diagnose: DiagnosticSink;
+}): CreatedHooks | undefined {
+  const { options, engine, kv, diagnose } = input;
+  if (options === undefined || engine === undefined || kv === undefined) return undefined;
+  const created = createHooks({
+    kv,
+    engine,
+    secrets: options.secrets,
+    keys: input.keys,
+    urlPolicy: options.urlPolicy,
+    requestTimeoutMilliseconds: options.requestTimeoutMilliseconds,
+    bureauId: input.bureauId,
+    newId: (kind) => input.runtimeServices.identifiers.next(kind),
+    audit: async (entry) => {
+      await input.auditTrail?.record(entry);
+    },
+    diagnose: (message, cause) =>
+      diagnose({ level: 'error', scope: 'hooks', message: `[bureau] ${message}`, cause }),
+  });
+  engine.track(
+    created.resume().then(
+      () => undefined,
+      (cause: unknown) =>
+        diagnose({
+          level: 'error',
+          scope: 'hooks',
+          message: '[bureau] Failed to resume pending hook deliveries',
+          cause,
+        }),
+    ),
+  );
+  return created;
 }
 
 async function constructBureau<const D extends AgentDefinitions>(
@@ -2278,7 +2388,14 @@ async function constructBureau<const D extends AgentDefinitions>(
   // and cannot drift from `BureauEventMap`. Events the feed has no
   // projection for are dropped by `publish`, which is what keeps the
   // supervisor's task and synthesis events off it.
-  const eventFeed = createBureauEventFeed({ bureauId, now: runtimeServices.clock.now });
+  // COR-1939: the hooks are built after the Bureau they listen to, so the feed reaches them through
+  // this cell.
+  let hooksInstance: CreatedHooks | undefined;
+  const eventFeed = createBureauEventFeed({
+    bureauId,
+    now: runtimeServices.clock.now,
+    onPublish: (envelope) => hooksInstance?.dispatch(envelope),
+  });
   // Guarded for the reason `emitLiveFrame` is (AB-96): `dispatchEvent` walks its all-events
   // listeners unguarded, so a throw here would propagate out of whichever `emitter.dispatch` call
   // was in flight — several of which run synchronously inside run setup, where an exception leaves a
@@ -4795,6 +4912,12 @@ async function constructBureau<const D extends AgentDefinitions>(
         }
       },
       cancelDurable: (taskId) => cancelDurableRun(taskId),
+      // COR-1868: a child run's task is stopped by the topology that owns the child.
+      cancelChild: async (child) => {
+        const cancelled = await childTopology.children.cancel(child);
+        if (cancelled.outcome === 'failed') throw new BureauError(cancelled.reason, 'CONFLICT');
+        return cancelled.outcome;
+      },
       sleep: (milliseconds) =>
         new Promise<void>((resolve) => {
           runtimeServices.timers.setTimeout(resolve, milliseconds);
@@ -4802,6 +4925,21 @@ async function constructBureau<const D extends AgentDefinitions>(
     },
   });
   taskRegistryHolder.current = tasks;
+  // COR-1941 — the owner's notifications. The built-in kinds are written from the events this
+  // emitter dispatches, after the task record they read is committed; the writes are drained at
+  // shutdown, before the storage closes.
+  const notificationsComposition = createNotifications({
+    kv: runtime.kv,
+    clock: runtimeServices.clock,
+    identifiers: runtimeServices.identifiers,
+    diagnose,
+    refusal: (message) => new BureauError(message, 'BAD_REQUEST'),
+    source: emitter,
+    tasks,
+    onCreated: (notification) => {
+      emitter.dispatch(new NotificationCreatedEvent(notification.id, notification.kind));
+    },
+  });
 
   /**
    * COR-1481 — the catalog-run settlement hook (`catalog-run-settlement.ts`): every `bureau.run()`
@@ -4877,8 +5015,9 @@ async function constructBureau<const D extends AgentDefinitions>(
     }),
   );
   /**
-   * Whether a run is a child run rather than a task: the child topology holds it, or, failing
-   * that, its identifier is not a catalog run's.
+   * Whether a run whose claim stores no `taskOrigin` is a child run rather than a task: the child
+   * topology holds it, or, failing that, its identifier is not a catalog run's. Only a run claimed
+   * before COR-1868 is classified this way; a later child, attempt or step is a task by its claim.
    */
   const isChildRun = async (runId: string): Promise<boolean> =>
     (await childTopologyStore.get(runId)) !== undefined || !runId.startsWith('agent-run-');
@@ -4891,16 +5030,18 @@ async function constructBureau<const D extends AgentDefinitions>(
       await fileAgents.settleRun(settlement.runId);
     }
   });
+  /** When the durable run was created (ISO 8601), or `undefined` when the engine has no record of it. */
+  const durableRunCreatedAt = async (runId: string): Promise<string | undefined> => {
+    const state = await runtime.durable?.engine.get(runId);
+    return state === null || state === undefined
+      ? undefined
+      : new Date(state.createdAt).toISOString();
+  };
   catalogRunSettlements.subscribe(
     createCatalogTaskSettler({
       tasks,
       loadRecoveryRecord: (runId) => runtime.loadCatalogRunRecoveryRecord(runId),
-      durableCreatedAt: async (runId) => {
-        const state = await runtime.durable?.engine.get(runId);
-        return state === null || state === undefined
-          ? undefined
-          : new Date(state.createdAt).toISOString();
-      },
+      durableCreatedAt: durableRunCreatedAt,
       isChildRun,
       now: runtimeServices.clock.nowISO,
       ownerOf: ownerOrLocal,
@@ -5123,7 +5264,9 @@ async function constructBureau<const D extends AgentDefinitions>(
     for (const reviewId of history.requested) {
       if (history.closed.has(reviewId) || committed.has(reviewId)) continue;
       const kind = reviewId.startsWith('human-wait:') ? 'human-wait' : 'tool-approval';
-      emitter.dispatch(new ReviewSupersededEvent(reviewId, runId, 'system:replay', kind));
+      emitter.dispatch(
+        new ReviewSupersededEvent(reviewId, runId, REPLAY_SUPERSEDING_PRINCIPAL, kind),
+      );
     }
   }
 
@@ -5159,6 +5302,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         memory: runtime.memory !== undefined,
         keyValueStore: Boolean(runtime.kv),
         activeAuditRetention: auditRetention !== undefined && auditRetention !== 'forever',
+        activeNotificationRetention: currentSettings()['retention.notifications'] !== undefined,
       }) && options.maintenance !== 'manual'
     );
   }
@@ -5437,10 +5581,24 @@ async function constructBureau<const D extends AgentDefinitions>(
   ): Promise<NonNullable<RunOptions['costBudget']> | undefined> {
     const budget = sessionAgent?.options.costBudget;
     if (budget?.perChatUsd === undefined) return undefined;
-    const spent =
-      session?.incarnation === undefined
-        ? 0
-        : await chatSpendLedger.totalOf(sessionId, session.incarnation);
+    let spent = 0;
+    if (session?.incarnation !== undefined) {
+      try {
+        spent = await chatSpendLedger.totalOf(sessionId, session.incarnation);
+      } catch (error) {
+        // COR-1933 — a typed refusal, not the store's own error: the caller branches on the code.
+        diagnose({
+          level: 'error',
+          scope: 'chat-spend',
+          message: `[bureau] Could not read the spend of chat "${sessionId}": ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+        throw new BureauError(
+          `The spend of chat "${sessionId}" could not be read, so its run was not started: ${serializeUnknownError(error)}`,
+          'STORAGE_UNAVAILABLE',
+        );
+      }
+    }
     return { ...budget, priorChatSpendUsd: spent };
   }
 
@@ -5452,10 +5610,12 @@ async function constructBureau<const D extends AgentDefinitions>(
   };
 
   /**
-   * Writes a chat run's spend to the chat's ledger, once the session has recorded how the run
-   * ended (COR-1915). A run with no price on its requests spent nothing the ledger can count. The
-   * ledger writes a run's record once, so a terminal event a recovery replays records nothing
-   * more, and a write that fails is diagnosed by the ledger and never fails the run's settlement.
+   * Writes a chat run's spend to the chat's ledger (COR-1915), before the session records how the
+   * run ended (COR-1933): a crash in between then leaves a session that still says `running`, which
+   * recovery reattaches and replays into a ledger that already holds the record. A run with no
+   * price on its requests spent nothing the ledger can count. The ledger writes a run's record
+   * once, so a terminal event a recovery replays records nothing more, and a write that fails is
+   * diagnosed by the ledger and never fails the run's settlement.
    */
   async function recordChatRunSpend(
     runId: string,
@@ -5467,7 +5627,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     if (spend === undefined || usd === undefined || !Number.isFinite(usd) || usd <= 0) return;
     if (incarnation === undefined) return;
     try {
-      await chatSpendLedger.record({
+      const written = await chatSpendLedger.record({
         sessionId,
         incarnation,
         runId,
@@ -5476,6 +5636,16 @@ async function constructBureau<const D extends AgentDefinitions>(
         usd,
         recordedAt: runtimeServices.clock.nowISO(),
       });
+      // COR-1933 — a chat deleted while this run ran has had its records forgotten already, so
+      // the one just written would stay behind. Checked AFTER the write: either the deletion
+      // committed before this read and the record is removed here, or after it, and the
+      // deletion's own `forget` runs after the write and removes it.
+      if (written && runtime.sessionStore) {
+        const session = await runtime.sessionStore.load(sessionId);
+        if (session?.incarnation !== incarnation) {
+          await chatSpendLedger.forget(sessionId, incarnation);
+        }
+      }
     } catch (error) {
       diagnose({
         level: 'error',
@@ -5496,16 +5666,26 @@ async function constructBureau<const D extends AgentDefinitions>(
       runId: string;
       sessionId: string;
       status: 'completed' | 'error' | 'aborted';
-      /** What the run spent, for the chat's ledger (COR-1915); written after the session's save. */
+      /** What the run spent, for the chat's ledger (COR-1915); written before the session's save. */
       spend?: ChatRunSpend;
     },
   ): void {
     // The incarnation is read now, with the terminal event, and not after the save: the map that
     // holds it is dropped when the run's records are, which can be before the save finishes.
     const spentIn = runSessionIncarnations.get(context.runId);
-    const recorded = persistSessionUpdate(saveSessionUpdate, context)
-      .then(() => recordChatRunSpend(context.runId, context.sessionId, spentIn, context.spend))
-      .then(() => settleSessionInputsAfterRunEnd(context.sessionId, context.runId));
+    // The spend is recorded BEFORE the session's end record (COR-1933), inside the tracked save,
+    // so `drain()` waits for both and a crash between them is repaired by recovery's replay.
+    // `recordChatRunSpend` never rejects, and a save retry finds the record already written.
+    const spendRecorded = recordChatRunSpend(
+      context.runId,
+      context.sessionId,
+      spentIn,
+      context.spend,
+    );
+    const recorded = persistSessionUpdate(async () => {
+      await spendRecorded;
+      return saveSessionUpdate();
+    }, context).then(() => settleSessionInputsAfterRunEnd(context.sessionId, context.runId));
     const settler = terminalSessionRecordSettlers.get(context.runId);
     terminalSessionRecordSettlers.delete(context.runId);
     if (settler !== undefined) {
@@ -9882,18 +10062,34 @@ async function constructBureau<const D extends AgentDefinitions>(
     // settled and has since been removed by retention, or never existed, and recreating it at
     // every boot would resurrect expired tasks, message text included. The record is dated
     // from the durable run, and the run settles it through the catalog settlement hook.
+    // COR-1868: a child run, a goal attempt and a workflow step are listed too, so no id prefix
+    // narrows the list; the claim says what each one is.
     for (let offset = 0; ;) {
       const page = await durable.engine.list({
         type: 'agentRun',
-        idPrefix: 'agent-run-',
         status: ['pending', 'running', 'suspended'],
         limit: 100,
         offset,
       });
       for (const summary of page.items) {
         if ((await tasks.record(summary.id)) !== undefined) continue;
-        if (await isChildRun(summary.id)) continue;
         const loaded = await runtime.loadCatalogRunRecoveryRecord(summary.id);
+        const createdAt = new Date(summary.createdAt).toISOString();
+        if (loaded.status === 'found' && loaded.record.taskOrigin !== undefined) {
+          // The claim stores the origin the run's start recorded: the task is rebuilt from it.
+          await tasks.recordAdmission(
+            subordinateTaskAdmission(
+              summary.id,
+              { ...loaded.record, taskOrigin: loaded.record.taskOrigin },
+              { ownerOf: ownerOrLocal, originatingMessage: originatingMessageText, createdAt },
+            ),
+          );
+          continue;
+        }
+        // A run claimed before COR-1868 is classified as it always was: only a top-level
+        // `bureau.run()` run is a task.
+        if (!summary.id.startsWith('agent-run-')) continue;
+        if (await isChildRun(summary.id)) continue;
         if (
           loaded.status !== 'found' ||
           loaded.record.goalAttempt !== undefined ||
@@ -9910,7 +10106,7 @@ async function constructBureau<const D extends AgentDefinitions>(
           // The run's original start is gone with its record: nothing names a surface for it.
           origin: { kind: 'api' },
           message: originatingMessageText(loaded.record.input),
-          createdAt: new Date(summary.createdAt).toISOString(),
+          createdAt,
         });
       }
       offset += page.items.length;
@@ -9949,6 +10145,23 @@ async function constructBureau<const D extends AgentDefinitions>(
       if (repaired !== undefined) {
         taskResyncBootPass = Promise.all([taskResyncBootPass, repaired]).then(() => undefined);
       }
+      // COR-1945: a failed run whose process died after its settlement committed and before its
+      // notification was written, or whose notification write failed, still has its outbox entry.
+      // Held in the same boot pass, so the boot takes no extra turn and `shutdown()` waits for it.
+      const notificationsRepaired = notificationsComposition.repair().then(
+        () => undefined,
+        (error: unknown) => {
+          diagnose({
+            level: 'error',
+            scope: 'recovery',
+            message: `[bureau] Could not repair the owed notifications at boot: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        },
+      );
+      taskResyncBootPass = Promise.all([taskResyncBootPass, notificationsRepaired]).then(
+        () => undefined,
+      );
       return report;
     } finally {
       recoveryPassActive = false;
@@ -10808,6 +11021,14 @@ async function constructBureau<const D extends AgentDefinitions>(
         if (runId.startsWith(AUDIT_WORKFLOW_OWNER_PREFIX)) {
           // COR-1529 — a workflow file has no owner field: it belongs to the deployment's owner.
           return ownerOrLocal(undefined);
+        }
+        if (runId.startsWith(AUDIT_HOOK_OWNER_PREFIX)) {
+          // COR-1939 — read from the entry, never from the hook, which may be gone.
+          const recorded =
+            typeof detail === 'object' && detail !== null
+              ? (detail as { owner?: unknown }).owner
+              : undefined;
+          return typeof recorded === 'string' ? recorded : undefined;
         }
         if (runId.startsWith(AUDIT_SESSION_OWNER_PREFIX)) {
           // Read from the entry, never from the session: it may be gone, or
@@ -13019,6 +13240,26 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
+   * COR-1941 — removes the notifications written longer ago than `retention.notifications`, read per
+   * pass so a change applies to the next one. With the setting unset an owner keeps up to 1000. A
+   * failure is reported and never stops the rest of a pass.
+   */
+  async function pruneNotifications(pass: 'Manual' | 'Automatic'): Promise<void> {
+    const window = currentSettings()['retention.notifications'];
+    if (window === undefined) return;
+    try {
+      await notificationsComposition.prune(window.olderThan);
+    } catch (error: unknown) {
+      diagnose({
+        level: 'error',
+        scope: 'durable-maintenance',
+        message: `[bureau] ${pass} notification retention pass failed: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
+  }
+
+  /**
    * COR-1546 — advances every open governed-memory deletion: resumes an interrupted synchronous
    * lane and settles the bounded-async targets, which stay pending until something asks. Governed
    * memory runs nothing on a timer of its own, so a record forgotten through `bureau.memory.forget`
@@ -13201,6 +13442,8 @@ async function constructBureau<const D extends AgentDefinitions>(
       await sweepMemoryRetention('Manual');
       // COR-1811 — persisted workflow log lines past `retention.logs`.
       await pruneWorkflowLogs('Manual');
+      // COR-1941 — notifications past `retention.notifications`.
+      await pruneNotifications('Manual');
       // COR-1546 — governed memory's deletions advance only when asked to.
       try {
         await propagateMemoryDeletions();
@@ -13239,6 +13482,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       durableEngine: hasDurableEngine,
       auditTrail: Boolean(auditTrailInstance),
       memory: runtime.memory !== undefined,
+      notificationRetention: currentSettings()['retention.notifications'] !== undefined,
       tasksRemoved,
     })
       ? true
@@ -13512,6 +13756,8 @@ async function constructBureau<const D extends AgentDefinitions>(
         await sweepMemoryRetention('Automatic');
         // COR-1811 — persisted workflow log lines past `retention.logs`.
         await pruneWorkflowLogs('Automatic');
+        // COR-1941 — notifications past `retention.notifications`.
+        await pruneNotifications('Automatic');
         // COR-1546 — governed memory's deletions advance only when asked to.
         try {
           await propagateMemoryDeletions();
@@ -18735,6 +18981,8 @@ async function constructBureau<const D extends AgentDefinitions>(
           await tasks.flush();
           // COR-1631 — so do the freezes of the surfaces those settlements started.
           await surfaces?.flush();
+          // COR-1941 — so do the notifications those settlements wrote.
+          await notificationsComposition.drain();
 
           for (const stop of stopForwarding) stop();
           emitter.dispatch(new BureauDisposedEvent());
@@ -18744,6 +18992,7 @@ async function constructBureau<const D extends AgentDefinitions>(
           // first, then disposing, ends every watcher: disposal aborts the
           // feed's lifetime signal, which each subscription is bound to.
           eventFeedSubscription.unsubscribe();
+          notificationsComposition.stop();
           // Any run feed still registered goes with it — `run.removed` reaps
           // the runs a host deleted, and this covers the rest.
           for (const feedRunId of runEventFeeds.runIds()) {
@@ -19635,6 +19884,65 @@ async function constructBureau<const D extends AgentDefinitions>(
     );
   }
 
+  /**
+   * COR-1868 — admits the task of a child run, a goal attempt or a workflow step, from its claim.
+   * Called once the run's start has committed, so no task is ever listed for a run that did not
+   * exist. A second admission (a continued claim, a re-run activity) is a no-op: the record is
+   * written once.
+   */
+  async function admitSubordinateTask(run: SubordinateRun): Promise<void> {
+    let claim: SubordinateClaim;
+    if (run.local !== undefined) {
+      claim = {
+        agentName: run.agentName,
+        principal: run.local.principal,
+        input: run.local.input,
+        taskOrigin: run.local.taskOrigin,
+      };
+    } else {
+      const loaded = await runtime.loadCatalogRunRecoveryRecord(run.runId);
+      if (loaded.status !== 'found' || loaded.record.taskOrigin === undefined) return;
+      claim = { ...loaded.record, taskOrigin: loaded.record.taskOrigin };
+    }
+    await tasks.recordAdmission(
+      subordinateTaskAdmission(run.runId, claim, {
+        ownerOf: ownerOrLocal,
+        originatingMessage: originatingMessageText,
+        createdAt: await durableRunCreatedAt(run.runId),
+      }),
+    );
+  }
+
+  /**
+   * COR-1868 — follows a subordinate run to its end. The task is admitted after the start
+   * committed, then settled from the run's own end and from nothing else: the child topology, the
+   * goal and the workflow keep their own settlements and never write the task.
+   */
+  function trackSubordinateRun(run: SubordinateRun): void {
+    detachBestEffortPromise(
+      run.started.then(
+        (origin) => {
+          // A claim written before COR-1868 holds no origin: the run stays a non-task.
+          if (origin === undefined) return undefined;
+          catalogSettlements.follow(
+            publishFreshCatalogRun({
+              handle: run.handle,
+              agentName: run.agentName,
+              admit: () => admitSubordinateTask(run),
+              hook: catalogRunSettlements,
+              followCleanup: (closed) => void tasks.watchCleanup(run.runId, closed),
+              diagnose,
+              durableEnd: catalogDurableEnd,
+            }),
+          );
+          return undefined;
+        },
+        // The start never committed, so there is no run and no task.
+        () => undefined,
+      ),
+    );
+  }
+
   const { planChildRun, startChildRun, startGoalAttemptRun, startWorkflowStepRun } =
     createCatalogDispatcher({
       agentCatalog,
@@ -19658,6 +19966,7 @@ async function constructBureau<const D extends AgentDefinitions>(
             }),
           ),
         ),
+      trackSubordinateRun,
       fileAgents,
       // COR-1577 — `requestHumanInput` for a durable `bureau.run()` run.
       humanInput: runtime.durable !== undefined ? options.humanInput : false,
@@ -19820,6 +20129,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         agentName: attribution?.agentName ?? findRunAgentName(runState) ?? BUREAU_AGENT_NAME,
         principal: ownerOrLocal(attribution?.principal),
         live: runState.status === 'running',
+        ...contextOfParent(getRunSessionIdentifier(runState)),
       };
     }
     const state = runtime.durable ? await runtime.durable.engine.get(parentRunId) : null;
@@ -19828,7 +20138,13 @@ async function constructBureau<const D extends AgentDefinitions>(
       agentName: state.input.agentName,
       principal: ownerOrLocal(attribution?.principal),
       live: DURABLE_FORCIBLY_TERMINABLE_STATUSES.has(state.status),
+      ...contextOfParent(state.input.sessionId),
     };
+  }
+
+  /** The parent's session, as a child's task origin records it; absent when the parent has none. */
+  function contextOfParent(sessionId: unknown): { readonly contextId?: string } {
+    return typeof sessionId === 'string' && sessionId !== '' ? { contextId: sessionId } : {};
   }
 
   /**
@@ -20112,6 +20428,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     contexts,
     tasks: bureauTasks,
     audit,
+    notifications: notificationsComposition.notifications,
     internals: {
       hasExplicitId: options.id !== undefined,
       get taskRetention() {
@@ -20164,6 +20481,9 @@ async function constructBureau<const D extends AgentDefinitions>(
     },
     agents: Object.freeze({ ...agentCatalog, try: tryAgent }),
     workflows: workflowRuntime?.workflows,
+    get hooks() {
+      return hooksInstance?.hooks;
+    },
     deployments:
       options.workerDeployments === undefined
         ? undefined
@@ -20385,7 +20705,8 @@ async function constructBureau<const D extends AgentDefinitions>(
   // exhausted delivery is recorded there). Only created when at least one
   // target is configured — the common case (no `options.webhooks`) costs
   // nothing beyond the `undefined` check in `createWebhookNotifier`.
-  if (options.webhooks && options.webhooks.targets.length > 0) {
+  rejectHooksWithoutStorage(options.hooks, runtime.kv);
+  if (wantsWebhookNotifier(options)) {
     webhookNotifierInstance = createWebhookNotifier(
       bureau,
       runtime.kv,
@@ -20395,11 +20716,23 @@ async function constructBureau<const D extends AgentDefinitions>(
       // delivery's `fetchImpl` to abort — the mechanism `dispose()`'s prior
       // detached call gave up entirely, which is what let a delivery's
       // write race storage teardown (AB-206 review finding, PR #402).
-      { ...options.webhooks, signal: withBackgroundShutdownSignal(options.webhooks.signal) },
+      webhookNotifierOptionsOf(options, withBackgroundShutdownSignal(options.webhooks?.signal)),
       diagnose,
       runtimeServices,
     );
   }
+
+  // COR-1939: user-defined hooks, on the notifier's delivery engine.
+  hooksInstance = composeHooks({
+    options: options.hooks,
+    engine: webhookNotifierInstance?.engine,
+    kv: runtime.kv,
+    keys: answerEncryption,
+    bureauId,
+    runtimeServices,
+    auditTrail: auditTrailInstance,
+    diagnose,
+  });
 
   // COR-718: an expiry is a deletion, so each expiring session's owner is recorded for
   // its deletion's audit entry the way `deleteSession` records it, before the store

@@ -585,6 +585,13 @@ describe('createBureauHandler catalog', () => {
         'bureau.goals.create',
         'bureau.goals.get',
         'bureau.goals.list',
+        'bureau.hooks.create',
+        'bureau.hooks.delete',
+        'bureau.hooks.deliveries',
+        'bureau.hooks.get',
+        'bureau.hooks.list',
+        'bureau.hooks.test',
+        'bureau.hooks.update',
         'bureau.memory.correct',
         'bureau.memory.export',
         'bureau.memory.forget',
@@ -596,6 +603,9 @@ describe('createBureauHandler catalog', () => {
         'bureau.memory.search',
         'bureau.memory.share',
         'bureau.memory.share.revoke',
+        'bureau.notifications.dismiss',
+        'bureau.notifications.list',
+        'bureau.notifications.markread',
         'bureau.reviews.get',
         'bureau.reviews.list',
         'bureau.reviews.resolve',
@@ -957,6 +967,8 @@ describe('the Bureau scope list', () => {
       'bureau.memory:govern',
       'bureau.deployments:read',
       'bureau.deployments:write',
+      'bureau.hooks:read',
+      'bureau.hooks:write',
     ]);
   });
 });

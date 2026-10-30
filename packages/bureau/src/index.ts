@@ -1,5 +1,21 @@
 export { BUREAU_RESERVED_KEY_PREFIXES } from './reserved-key-prefixes';
 export {
+  BUILT_IN_NOTIFICATION_KINDS,
+  NOTIFICATION_KIND_PATTERN,
+  NOTIFICATION_LIMIT_PER_OWNER,
+  NotificationPageTokenError,
+} from './notifications/notification-types';
+export type {
+  BuiltInNotificationKind,
+  BureauNotification,
+  BureauNotifications,
+  NotificationInput,
+  NotificationListQuery,
+  NotificationPage,
+  NotificationSelection,
+  NotificationSubject,
+} from './notifications/notification-types';
+export {
   type AnswerEncryptionKeys,
   createSecretAnswerResolver,
   SECRET_ANSWER_KEY_PREFIX,
@@ -40,6 +56,7 @@ export {
   AGENT_COST_BUDGET_MAXIMUM_USD,
   AGENT_COST_BUDGET_MAXIMUM_WARNINGS,
   AGENT_GUARDRAIL_PRESETS,
+  AGENT_FILE_STEM_PATTERN,
   AGENT_IDENTIFIER_PATTERN,
   AGENT_TOOL_BUDGET_MAXIMUM_CALLS,
   AGENT_TOOL_BUDGET_MAXIMUM_DURATION_SECONDS,
@@ -93,6 +110,16 @@ export type {
   WorkflowFileProblemCode,
 } from './workflow-file';
 export {
+  fromWeftHandlerName,
+  handlerNameIssue,
+  IDENTIFIER_SEGMENT_SOURCE,
+  isNamespacedIdentifier,
+  NAMESPACED_IDENTIFIER_PATTERN,
+  RESERVED_NAMESPACES,
+  toWeftHandlerName,
+} from './namespaced-identifier';
+export {
+  WORKFLOW_FILE_STEM_PATTERN,
   WORKFLOW_IDENTIFIER_PATTERN,
   WorkflowFileConflictError,
   WorkflowFileError,
@@ -330,6 +357,7 @@ export {
   GOAL_EVENT_KINDS,
   GoalLifecycleEvent,
   MemoryGovernanceEvent,
+  NotificationCreatedEvent,
   ScheduleMissedEvent,
   TaskCleanupAcknowledgedEvent,
   RecoveryAttemptedEvent,
@@ -547,6 +575,7 @@ export type {
   BureauOptions,
   BureauLogsOptions,
   BureauLogsRetentionOption,
+  BureauNotificationsRetentionOption,
   BureauMemoryRetentionOption,
   BureauReceiptRetentionOption,
   BureauRetentionOptions,
@@ -624,6 +653,35 @@ export type {
   WebhookTriggerType,
 } from './webhook-notifier';
 export { createWebhookNotifier } from './webhook-notifier';
+export type { WebhookDeliveryEngine } from './webhook-notifier';
+/*
+ * User-defined hooks (COR-1939): `Bureau.hooks`, the `X-Signature` a receiver verifies, and the
+ * port a host keeps the sealed signing secrets through.
+ */
+export type { BureauHooks, HookCreateInput, HookUpdateInput } from './hooks/create-hooks';
+export { HOOK_TEST_EVENT_KIND } from './hooks/create-hooks';
+export {
+  HOOK_SIGNATURE_HEADER,
+  HOOK_SIGNATURE_TOLERANCE_SECONDS,
+  signHookDelivery,
+  verifyHookSignature,
+} from './hooks/hook-signature';
+export type { HookSignatureFailure, HookSignatureVerification } from './hooks/hook-signature';
+export { createKvHookSecretStore } from './hooks/hook-store';
+export { HookError, HOOK_RESPONSE_EXCERPT_BYTES } from './hooks/hook-types';
+export type {
+  Hook,
+  HookAttemptOutcome,
+  HookDelivery,
+  HookDeliveryAttempt,
+  HookDeliveryRequest,
+  HookDeliveryStatus,
+  HookErrorCode,
+  HookSecretStore,
+} from './hooks/hook-types';
+export { hookUrlDefect } from './hooks/hook-url-policy';
+export type { HookUrlPolicy } from './hooks/hook-url-policy';
+export type { BureauHooksOptions } from './types';
 /*
  * A bureau's lifecycle events, projected onto Weft's replay-plus-live feed
  * and exposed as `bureau.events` in the same catalog that carries Weft's own

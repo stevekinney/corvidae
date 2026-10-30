@@ -101,6 +101,7 @@ export { default as keyboardShortcutsSchema } from '../components/keyboard-short
 export { default as labelSchema } from '../components/label/label.schema.ts';
 export { default as lineChartSchema } from '../components/line-chart/line-chart.schema.ts';
 export { default as linkSchema } from '../components/link/link.schema.ts';
+export { default as listDetailSchema } from '../components/list-detail/list-detail.schema.ts';
 export { default as loadMoreSchema } from '../components/load-more/load-more.schema.ts';
 export { default as localeProviderSchema } from '../components/locale-provider/locale-provider.schema.ts';
 export { default as marqueeSchema } from '../components/marquee/marquee.schema.ts';

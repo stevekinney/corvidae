@@ -101,7 +101,9 @@ export function costBudgetOptions(
 
 /**
  * A file's `toolBudget` as Armorer's `ToolboxOptions.budget` states it (COR-1915): seconds become
- * milliseconds, and a limit the file leaves out is left out.
+ * milliseconds, and a limit the file leaves out is left out. The counters live in the run's
+ * toolbox, in memory: a durable run that is recovered rebuilds its toolbox, so they start over
+ * (COR-1933; documented in `documentation/agent-files.md`).
  */
 export function toolboxBudgetOf(budget: AgentToolBudget): {
   maxCalls?: number;

@@ -48,6 +48,13 @@
     min-width: 0;
   }
 
+  /* The stale-data notice sits on its own line beneath the message, a step smaller. It keeps
+   * the status foreground colour so contrast on the tinted surface is unchanged. */
+  .cinder-banner__stale {
+    display: block;
+    font-size: var(--cinder-text-xs);
+  }
+
   /* ----------------------------------------
  * Actions region
  * ---------------------------------------- */

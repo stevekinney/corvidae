@@ -79,8 +79,14 @@ function createModuleSource(
     if (kind === 'schema' || kind === 'variables') {
       exports.push(`export { default as ${name} } from '${importPath}';`);
     } else {
-      imports.push(`import ${name} from '${importPath}' with { type: 'json' };`);
-      exports.push(`export { ${name} };`);
+      // A re-exported import binding has no declaration to carry a documentation comment, so the
+      // JSON is imported under another name and exported through a documented constant.
+      imports.push(`import ${name}Json from '${importPath}' with { type: 'json' };`);
+      const description =
+        kind === 'examples'
+          ? 'Code examples for this component.'
+          : 'Machine-readable usage constraints for this component.';
+      exports.push(`/** ${description} */\nexport const ${name} = ${name}Json;`);
     }
   }
 

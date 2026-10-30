@@ -88,7 +88,7 @@ export { default as Backdrop } from './components/backdrop/index.ts';
 export type { BackdropProps } from './components/backdrop/index.ts';
 
 export { default as Banner } from './components/banner/index.ts';
-export type { BannerProps, BannerVariant } from './components/banner/index.ts';
+export type { BannerPreset, BannerProps, BannerVariant } from './components/banner/index.ts';
 
 export { default as BarChart } from './components/bar-chart/index.ts';
 export type {
@@ -360,7 +360,12 @@ export { default as DropdownTrigger } from './components/dropdown-trigger/index.
 export type { DropdownTriggerProps } from './components/dropdown-trigger/index.ts';
 
 export { default as EmptyState } from './components/empty-state/index.ts';
-export type { EmptyStateAlign, EmptyStateProps } from './components/empty-state/index.ts';
+export type {
+  EmptyStateAlign,
+  EmptyStateKind,
+  EmptyStateProps,
+  EmptyStateSize,
+} from './components/empty-state/index.ts';
 
 export { default as ErrorState } from './components/error-state/index.ts';
 export type { ErrorStateProps, ErrorStateVariant } from './components/error-state/index.ts';
@@ -535,6 +540,14 @@ export type {
 
 export { default as LocaleProvider } from './components/locale-provider/index.ts';
 export type { LocaleProviderProps, TextDirection } from './components/locale-provider/index.ts';
+
+export { default as ListDetail } from './components/list-detail/index.ts';
+export type {
+  ListDetailProps,
+  ListDetailRowContext,
+  ListDetailSelectionLocation,
+  ListDetailStorage,
+} from './components/list-detail/index.ts';
 
 export { default as LoadMore } from './components/load-more/index.ts';
 export type { LoadMoreProps } from './components/load-more/index.ts';
@@ -819,7 +832,7 @@ export type {
 } from './utilities/sortable-controller.types.ts';
 
 export { default as Skeleton } from './components/skeleton/index.ts';
-export type { SkeletonProps } from './components/skeleton/index.ts';
+export type { SkeletonProps, SkeletonVariant } from './components/skeleton/index.ts';
 
 export { default as SkipLink } from './components/skip-link/index.ts';
 export type { SkipLinkProps, SkipLinkSchemaProps } from './components/skip-link/index.ts';

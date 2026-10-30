@@ -41,6 +41,7 @@ import {
   encodeStorageKeyComponent,
   MemoryStorage,
   textValueStore,
+  type TextValueStoreBatchOperation,
 } from '@lostgradient/storage';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 
@@ -62,6 +63,7 @@ import {
   type TaskListingSiblings,
 } from './task-list-snapshots';
 import { isTryAgentName } from './agent-try';
+import { notificationOutboxKey } from './notifications/notification-outbox';
 import {
   isStoredTaskOrigin,
   isTopLevelTaskOrigin,
@@ -242,9 +244,11 @@ export interface TaskAdmission {
   readonly kind?: TaskKind | undefined;
   /**
    * See {@link TaskRecord.origin}. Required so that a site that admits a task has to decide what
-   * it is; `undefined` records none, as a schedule fire does when its schedule is not known.
+   * it is; `undefined` records none, as a schedule fire does when its schedule is not known. A
+   * subordinate task is admitted with the origin its run's claim stores, which may be of a kind
+   * this release does not know ({@link StoredTaskOrigin}); it is kept as written.
    */
-  readonly origin: TaskOrigin | undefined;
+  readonly origin: StoredTaskOrigin | undefined;
   /** The originating user message's text, when the request had one. */
   readonly message: string | undefined;
   /** See {@link TaskRecord.tools}. */
@@ -317,6 +321,16 @@ export interface TaskRegistryHost {
   /** Cancels a durable run this process holds no live run for. */
   readonly cancelDurable: (taskId: string) => Promise<CancelDurableRunOutcome>;
   /**
+   * Cancels the child run a task of origin `agent` stands for, through the topology that owns it
+   * (`children.cancel`), which is the one cancel a child has (COR-1868). `requested` when the
+   * child is being stopped, `already-terminal` when it had ended, `not-found` when the topology
+   * holds no such child. A refusal of the cancel itself rejects.
+   */
+  readonly cancelChild: (child: {
+    readonly parentRunId: string;
+    readonly childRunId: string;
+  }) => Promise<'requested' | 'already-terminal' | 'not-found'>;
+  /**
    * Drops this process's own copy of a review another process closed (COR-1613): the durable
    * history says it was decided or expired, so what this process still lists for it is stale.
    */
@@ -332,8 +346,16 @@ export type TaskCancelReceipt = TaskCleanupState | 'rejected';
 /** What `cancel` found and did. */
 export interface TaskCancelOutcome {
   readonly receipt: TaskCancelReceipt;
-  readonly reason?: 'already-terminal';
+  /**
+   * Why a `rejected` receipt was given: the task had `already-terminal`, or it is `owned-by-goal`
+   * (a goal attempt, cancelled by cancelling the goal) or `owned-by-workflow` (a workflow step,
+   * cancelled with its instance), so no cancel of its own reaches the run (COR-1868).
+   */
+  readonly reason?: TaskCancelRejection;
 }
+
+/** Why a task's cancel was rejected. See {@link TaskCancelOutcome.reason}. */
+export type TaskCancelRejection = 'already-terminal' | 'owned-by-goal' | 'owned-by-workflow';
 
 /** A page of tasks, by offset: what {@link TaskRegistry.enumerate} answers. */
 export interface TaskPage {
@@ -883,6 +905,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     taskId: string,
     mutate: (record: TaskRecord) => TaskRecord | undefined,
     counted = true,
+    alsoWrite?: (next: TaskRecord) => readonly TextValueStoreBatchOperation[],
   ): Promise<boolean> {
     const key = recordKey(taskId);
     for (let attempt = 0; attempt < MAX_UPDATE_ATTEMPTS; attempt += 1) {
@@ -903,6 +926,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
               counted ? { ...next, revision: (current.revision ?? 0) + 1 } : next,
             ),
           },
+          ...(alsoWrite?.(next) ?? []),
         ],
       );
       if (committed) return true;
@@ -1338,24 +1362,35 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
   ): Promise<boolean> {
     const captured: { settled?: TaskRecord; newlySettled: boolean } = { newlySettled: false };
     const recorded = await track(
-      update(taskId, (record) => {
-        // A task has more than one writer of its settlement (the action that ended the run,
-        // and the catalog hook that carries the answer), so the answer is never lost to
-        // whichever lands last. Only a catalog task and a schedule fire record one: a session
-        // run's answer lives in its durable history, and a fire writes none there.
-        const answer =
-          record.incarnation === '' || record.kind === 'schedule-fire'
-            ? (settlement.answer ?? record.settled?.answer)
-            : undefined;
-        const { answer: _ignored, ...rest } = settlement;
-        captured.newlySettled = record.settled === undefined;
-        const next: TaskRecord = {
-          ...record,
-          settled: { ...rest, ...(answer === undefined ? {} : { answer }) },
-        };
-        captured.settled = next;
-        return next;
-      }),
+      update(
+        taskId,
+        (record) => {
+          // A task has more than one writer of its settlement (the action that ended the run,
+          // and the catalog hook that carries the answer), so the answer is never lost to
+          // whichever lands last. Only a catalog task and a schedule fire record one: a session
+          // run's answer lives in its durable history, and a fire writes none there.
+          const answer =
+            record.incarnation === '' || record.kind === 'schedule-fire'
+              ? (settlement.answer ?? record.settled?.answer)
+              : undefined;
+          const { answer: _ignored, ...rest } = settlement;
+          captured.newlySettled = record.settled === undefined;
+          const next: TaskRecord = {
+            ...record,
+            settled: { ...rest, ...(answer === undefined ? {} : { answer }) },
+          };
+          captured.settled = next;
+          return next;
+        },
+        true,
+        () =>
+          // COR-1945 — a run that ends `failed` owes a notification. The entry commits with the
+          // settlement or not at all, so a process that dies before the notification is written
+          // finds the debt at its next boot. Only a store that outlives the process is written to.
+          captured.newlySettled && settlement.status === 'failed' && options.kv !== undefined
+            ? [{ type: 'set', key: notificationOutboxKey(taskId), value: '1' }]
+            : [],
+      ),
     );
     if (recorded && captured.settled !== undefined) {
       await announceRecordedSettlement(taskId, captured.settled, captured.newlySettled);
@@ -1790,8 +1825,38 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     async cancel(taskId, waitMilliseconds) {
       const record = await read(taskId);
       if (record === undefined) return undefined;
+      // A goal attempt and a workflow step belong to the goal and the instance that own them: the
+      // goal stops its attempt in an order of its own (tombstone, then cancel), and a cancelled
+      // step fails its instance. No engine cancel is reached from here, for either (COR-1868).
+      if (record.origin?.kind === 'goal') {
+        return { receipt: 'rejected', reason: 'owned-by-goal' };
+      }
+      if (record.origin?.kind === 'parent') {
+        return { receipt: 'rejected', reason: 'owned-by-workflow' };
+      }
       const reviews = host.pendingReviews().filter((review) => review.runId === taskId);
       const before = viewOf(record, reviews);
+      // A child run is stopped by the topology that owns it, the same stop `children.cancel` makes.
+      if (record.origin?.kind === 'agent' && record.settled === undefined) {
+        // An origin this release cannot read names no parent, so there is no child to stop.
+        const parentRunId = taskOriginParentOf(record.origin);
+        const stopped =
+          parentRunId === null
+            ? 'not-found'
+            : await host.cancelChild({ parentRunId, childRunId: taskId });
+        if (stopped !== 'requested') return { receipt: 'rejected', reason: 'already-terminal' };
+        const watched = watchers.get(taskId);
+        if (watched === undefined || waitMilliseconds <= 0) {
+          const view = (await this.get(taskId)) ?? before;
+          return { receipt: receiptFor(view, observed.get(taskId), watchers.has(taskId)) };
+        }
+        const settled = await Promise.race([
+          watched,
+          host.sleep(waitMilliseconds).then(() => undefined),
+        ]);
+        const view = (await this.get(taskId)) ?? before;
+        return { receipt: receiptFor(view, settled, true) };
+      }
       const live = host.liveTask(taskId);
       const isLive =
         live?.phase === 'submitted' || live?.phase === 'running' || live?.phase === 'aborting';

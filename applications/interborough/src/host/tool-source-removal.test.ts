@@ -4,7 +4,11 @@
  * preview still reads, and a sign-in that was still starting when the source was removed.
  */
 import type { AnswerEncryptionKeys } from '@lostgradient/bureau';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, test } from 'bun:test';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import type { AgentToolUse } from './tool-source-agents.ts';
 import {
@@ -22,7 +26,7 @@ import {
   startMcpServer,
   startOAuthMcpServer,
 } from './tool-source-servers.test-support.ts';
-import { toolSourceSecretKey } from './tool-source-vault.ts';
+import { createToolSourceVault, toolSourceSecretKey } from './tool-source-vault.ts';
 
 const owner = 'anonymous:local';
 
@@ -69,7 +73,9 @@ async function started(
   const manager = createToolSourceManager({
     bungalow: home.bungalow,
     keys: extra.keys ?? (await keysOf()),
-    audit: async (entry) => void audited.push(entry),
+    audit: async (entry) => {
+      audited.push(entry);
+    },
     origin: () => 'http://127.0.0.1:1',
     agentToolUse: async () => extra.agents ?? agents,
     ...(extra.fetch === undefined ? {} : { fetch: extra.fetch }),
@@ -380,5 +386,268 @@ describe('the connection of a removed source', () => {
     await manager.remove({ id: 'files', principal: owner });
 
     expect(await failureOf(Promise.resolve(lookup?.execute({})))).toBeDefined();
+  });
+});
+
+/** An HTTP service that answers `/pets` and `/openapi.json`, and records what it was sent. */
+function startPetService() {
+  const requests: { path: string; apiKey: string | null; authorization: string | null }[] = [];
+  const server = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch(request) {
+      const path = new URL(request.url).pathname;
+      if (path === '/openapi.json') return Response.json(petsDocument);
+      requests.push({
+        path,
+        apiKey: request.headers.get('x-api-key'),
+        authorization: request.headers.get('authorization'),
+      });
+      return Response.json([{ id: 1 }]);
+    },
+  });
+  closers.push(async () => {
+    await server.stop(true);
+  });
+  return { origin: `http://127.0.0.1:${server.port}`, requests };
+}
+
+describe('the tools of a removed source', () => {
+  const credentialKinds = [
+    {
+      name: 'an API key',
+      authentication: { type: 'api-key', header: 'x-api-key', credential: 'key' },
+      sent: (request: { apiKey: string | null; authorization: string | null }) => request.apiKey,
+      value: 'removal-api-key',
+    },
+    {
+      name: 'a bearer token',
+      authentication: { type: 'bearer', credential: 'key' },
+      sent: (request: { apiKey: string | null; authorization: string | null }) =>
+        request.authorization,
+      value: 'removal-bearer-token',
+    },
+  ] as const;
+  const specifications = ['inline', 'url'] as const;
+
+  for (const credentialKind of credentialKinds) {
+    for (const specification of specifications) {
+      test(`cannot reach an OpenAPI service with ${credentialKind.name} read at load (${specification} specification)`, async () => {
+        const service = startPetService();
+        const home = memoryHome();
+        const keys = await keysOf();
+        const source = {
+          id: 'pets',
+          kind: 'openapi',
+          specification:
+            specification === 'inline'
+              ? { type: 'document', document: petsDocument }
+              : { type: 'url', url: `${service.origin}/openapi.json` },
+          baseUrl: `${service.origin}/`,
+          authentication: credentialKind.authentication,
+        };
+        const seeding = await started(home, { keys });
+        await seeding.manager.connect({
+          id: 'pets',
+          source,
+          credentials: { key: credentialKind.value },
+          principal: owner,
+        });
+        const { manager } = await started(home, { keys });
+        const listPets = manager.tools()['pets__list-pets'];
+        expect(listPets).toBeDefined();
+        expect(await listPets?.execute({})).toBeDefined();
+        expect(service.requests.map(credentialKind.sent)).toEqual(
+          [
+            credentialKind.value,
+            // The bearer is sent with its scheme.
+          ].map((value) =>
+            credentialKind.sent === credentialKinds[1].sent ? `Bearer ${value}` : value,
+          ),
+        );
+
+        await manager.remove({ id: 'pets', principal: owner });
+        const failure = await failureOf(Promise.resolve(listPets?.execute({})));
+
+        expect(failure).toBeInstanceOf(Error);
+        expect(service.requests).toHaveLength(1);
+        expect(home.state.secrets.get(toolSourceSecretKey('pets')) ?? '').toBe('');
+      });
+    }
+  }
+
+  test('keep their name, description, input, tags and metadata behind the gate', async () => {
+    const { home, keys } = await homeWithPets();
+    const ungated = createToolSourceManager({
+      bungalow: home.bungalow,
+      keys,
+      audit: async () => undefined,
+      origin: () => 'http://127.0.0.1:1',
+    });
+    closers.push(() => ungated.close());
+    await ungated.start();
+    const { manager } = await started(home, { keys });
+    const gated = manager.tools()['pets__delete-pet'];
+    const original = ungated.tools()['pets__delete-pet'];
+
+    expect(gated).toBeDefined();
+    expect(gated?.configuration.metadata).toEqual(original?.configuration.metadata);
+    expect(gated?.configuration.tags).toEqual(original?.configuration.tags);
+    expect(gated?.configuration.description).toBe(original?.configuration.description);
+    expect(gated?.name).toBe(original?.name);
+    expect(JSON.stringify(gated?.configuration.input)).toBe(
+      JSON.stringify(original?.configuration.input),
+    );
+  });
+
+  test('of a local command stop the child process and fail', async () => {
+    const fixture = new URL(
+      '../../../../packages/armorer/test/fixtures/tool-source-stdio-server.ts',
+      import.meta.url,
+    ).pathname;
+    const directory = await mkdtemp(join(tmpdir(), 'interborough-removal-'));
+    closers.push(() => rm(directory, { recursive: true, force: true }));
+    const pidFile = join(directory, 'pids');
+    const isRunning = (pid: number): boolean => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const home = memoryHome();
+    const keys = await keysOf();
+    const seeding = await started(home, { keys });
+    await seeding.manager.connect({
+      id: 'local',
+      source: {
+        id: 'local',
+        kind: 'mcp',
+        transport: {
+          type: 'stdio',
+          command: process.execPath,
+          args: [
+            '--no-install',
+            new URL('./tool-source-stdio-pid.test-support.ts', import.meta.url).pathname,
+            pidFile,
+            fixture,
+          ],
+          credentialEnv: { SOURCE_TOKEN: 'child-token' },
+        },
+      },
+      credentials: { 'child-token': 'child-secret-value' },
+      principal: owner,
+    });
+    const { manager } = await started(home, { keys });
+    const read = manager.tools()['local__read-environment'];
+    expect(await read?.execute({ name: 'SOURCE_TOKEN' })).toBe('child-secret-value');
+    // The load may start a short-lived sibling first; the process that serves is the last one.
+    const pids = (await readFile(pidFile, 'utf8')).split('\n').filter(Boolean).map(Number);
+    const serving = pids.at(-1) ?? 0;
+    expect(isRunning(serving)).toBe(true);
+
+    await manager.remove({ id: 'local', principal: owner });
+
+    const failure = await failureOf(Promise.resolve(read?.execute({ name: 'SOURCE_TOKEN' })));
+    expect(failure).toBeInstanceOf(Error);
+    await waitUntil(() => !isRunning(serving), {
+      message: 'the removed source’s child process to stop',
+    });
+  });
+
+  test('read as pending a restart, not loaded, when the source is added again', async () => {
+    const { home, keys } = await homeWithPets();
+    const { manager } = await started(home, { keys });
+    const loadedSnapshot = await manager.snapshot();
+    expect(loadedSnapshot.sources[0]?.state).toBe('loaded');
+
+    await manager.remove({ id: 'pets', principal: owner });
+    await manager.connect({
+      id: 'pets',
+      source: petsSource,
+      credentials: { key: 'pets-key-fixture' },
+      principal: owner,
+    });
+
+    const snapshot = await manager.snapshot();
+    expect(snapshot.sources[0]?.state).toBe('pending-restart');
+    expect(snapshot.sources[0]?.tools).toEqual([]);
+  });
+});
+
+describe('a sign-in whose source is replaced by a bearer source at the same address', () => {
+  test('keeps the credential the replacement stored, and drops only the OAuth state', async () => {
+    const oauth = await startOAuthMcpServer();
+    closers.push(() => oauth.stop());
+    const home = memoryHome();
+    const { gated, entered, release } = gatedFetch();
+    const { manager } = await started(home, { fetch: gated });
+    await manager.connect({
+      id: 'calendar',
+      source: calendarSource(oauth.origin),
+      principal: owner,
+    });
+
+    const signingIn = manager.authorize('calendar');
+    await entered;
+    await manager.connect({
+      id: 'calendar',
+      source: {
+        id: 'calendar',
+        kind: 'mcp',
+        transport: {
+          type: 'http',
+          url: `${oauth.origin}/`,
+          authentication: { type: 'bearer', credential: 'token' },
+        },
+      },
+      credentials: { token: 'replacement-bearer' },
+      principal: owner,
+    });
+    release();
+    const failure = await failureOf(signingIn);
+
+    expect(failure).toBeInstanceOf(ToolSourceInputError);
+    const secret = storedSecret(home, 'calendar');
+    expect(secret).not.toHaveProperty('oauth');
+    expect(Object.keys(secret.credentials ?? {})).toEqual(['token']);
+    const finalSnapshot = await manager.snapshot();
+    const [standing] = finalSnapshot.sources;
+    expect(standing?.credentials).toEqual(['token']);
+  });
+});
+
+describe('a sign-in that outlives its source', () => {
+  test('cannot erase the OAuth state of the source that replaced it', async () => {
+    const oauth = await startOAuthMcpServer();
+    closers.push(() => oauth.stop());
+    const home = memoryHome();
+    const keys = await keysOf();
+    const { gated, entered, release } = gatedFetch();
+    const { manager } = await started(home, { fetch: gated, keys });
+    await manager.connect({
+      id: 'calendar',
+      source: calendarSource(oauth.origin),
+      principal: owner,
+    });
+
+    const staleSignIn = manager.authorize('calendar');
+    await entered;
+    await manager.connect({
+      id: 'calendar',
+      source: calendarSource(oauth.origin, '/other'),
+      principal: owner,
+    });
+    // The replacement signs in while the old call still waits for the server.
+    await createToolSourceVault({ bungalow: home.bungalow, keys })
+      .tokenStorage('calendar')
+      .save({ tokens: { access_token: 'replacement-access', token_type: 'Bearer' } });
+    release();
+    const failure = await failureOf(staleSignIn);
+
+    expect(failure).toBeInstanceOf(ToolSourceInputError);
+    const finalSnapshot = await manager.snapshot();
+    expect(finalSnapshot.sources[0]).toMatchObject({ id: 'calendar', authorized: true });
   });
 });
