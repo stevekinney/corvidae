@@ -109,6 +109,30 @@ describe('the origin:schedule tag', () => {
     expect(await scheduleOriginRunIds(opened)).toHaveLength(2);
   });
 
+  it('is in the launch options the services resolver sees, as it is when recovery rebuilds them', async () => {
+    const clock = { now: START };
+    const launches: unknown[] = [];
+    const opened = createEngine(clock, undefined, {
+      resolveWorkflowServices: (info) => {
+        launches.push(info.launchOptions);
+        return { status: 'available', services: {} };
+      },
+    });
+    engine = opened;
+    registerWorkflow(opened, 'report', async function* (ctx) {
+      yield* ctx.waitForSignal('release');
+      return 'done';
+    });
+    await opened.schedule('report', null, '0 9 * * *', { id: 'resolver' });
+
+    const result = await opened.triggerSchedule('resolver');
+    await drainEngine();
+
+    expect(launches).toEqual([
+      { id: result.outcome === 'started' ? result.workflowId : '', tags: [SCHEDULE_ORIGIN_TAG] },
+    ]);
+  });
+
   it('is on a run now', async () => {
     const clock = { now: START };
     const opened = openHeldEngine(clock);

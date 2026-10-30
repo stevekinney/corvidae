@@ -255,7 +255,7 @@ async function resolveScheduledRunServices(
       workflowId,
       workflowType: state.workflowType,
       input: state.input,
-      launchOptions: { id: workflowId },
+      launchOptions: { id: workflowId, tags: [SCHEDULE_ORIGIN_TAG] },
       schedule: {
         id: state.id,
         ...(occurrence !== undefined ? { occurrence } : {}),
