@@ -109,7 +109,8 @@ export interface WorkflowFileProblem {
    * Present, and `true`, when the document holds a key this host does not know (COR-1927): the
    * mark of a file written by a newer Bureau, which this one cannot read but must not treat as
    * broken. A host that cannot read a file this way leaves the file's schedule and instances alone
-   * instead of cancelling them. It says nothing about other failures a file may also have.
+   * instead of cancelling them; a revision it had already registered stays registered, and may
+   * keep launching from the schedule until a restart. It says nothing about other failures a file may also have.
    */
   readonly unrecognizedKeys?: true;
 }
