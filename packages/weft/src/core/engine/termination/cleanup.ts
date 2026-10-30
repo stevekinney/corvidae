@@ -397,6 +397,8 @@ export function cleanupTerminalWorkflowMemory(
   workflowId: string,
   callbacks: Pick<TerminationCallbacks, 'swallowPromiseRejection' | 'dispatchEvent'>,
 ): void {
+  // Before the terminal event, so a stream's last chunk is announced ahead of the run's end.
+  internals.streamChunkAnnouncer.flushWorkflow(workflowId);
   settleSleepTimerAcknowledgements(internals, workflowId, 'terminal');
   internals.workflowsNeedingTerminalCleanup.delete(workflowId);
   releaseLaunchCheckpoint(internals, workflowId);

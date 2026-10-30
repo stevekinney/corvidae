@@ -332,6 +332,7 @@ import {
   getComposedWorkflowInterceptor,
   swallowPromiseRejection,
 } from './strategy-helpers.ts';
+import { StreamChunkAnnouncer } from './stream-chunk-announcer.ts';
 import { isEventFromSupersededGeneration } from './superseded-generation.ts';
 import {
   cancelWorkflow as cancelWorkflowFromTermination,
@@ -935,6 +936,9 @@ export class Engine<
     getInternals(this).reviewTimerIds = new Map();
     getInternals(this).pendingWebhooks = new Set();
     getInternals(this).pendingResultPollTimers = new Set();
+    getInternals(this).streamChunkAnnouncer = new StreamChunkAnnouncer((event) =>
+      this.dispatchEvent(event),
+    );
     getInternals(this).pendingTimelineEntries = new Map();
     getInternals(this).pendingAtomicWorkflowCommitSideEffects = new Map();
     getInternals(this).pendingOperationAtomicWorkflowCommitSideEffects = new Map();

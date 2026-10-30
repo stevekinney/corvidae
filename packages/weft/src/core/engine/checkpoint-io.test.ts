@@ -18,6 +18,7 @@ import { WorkflowCheckpointConflictError } from './checkpoint-conflict-error.ts'
 import { persistCheckpoint } from './checkpoint-io.ts';
 import { stageAtomicWorkflowCommitSideEffects } from './checkpoint-side-effects.ts';
 import type { EngineInternals } from './internals.ts';
+import { StreamChunkAnnouncer } from './stream-chunk-announcer.ts';
 import { cleanupTerminalWorkflowMemory } from './termination/cleanup.ts';
 
 class NoConditionalBatchStorage extends MemoryStorage {
@@ -165,6 +166,7 @@ function createCleanupInternals(storage: MemoryStorage, checkpoint: Checkpoint):
   return {
     ...createCheckpointInternals(storage, checkpoint),
     cancelHandlersByWorkflow: new Map(),
+    streamChunkAnnouncer: new StreamChunkAnnouncer(() => {}),
     heartbeatDetails: new Map(),
     lastHeartbeatDetailsByStep: new Map(),
     pendingAsyncActivities: new Map(),
