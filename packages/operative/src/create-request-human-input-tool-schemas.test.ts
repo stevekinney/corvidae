@@ -1,7 +1,8 @@
 /**
- * COR-1487 — an author configures a JSON Schema per signal on `requestHumanInput`; the model never
- * supplies one. The schema is checked when the tool is created and travels on the pending wait,
- * the park event, and the tool result the checkpoint persists.
+ * COR-1487 — an author configures a JSON Schema per signal on `requestHumanInput`. The schema is
+ * checked when the tool is created and travels on the pending wait, the park event, and the tool
+ * result the checkpoint persists. A call may carry its own `answerSchema` (COR-1804), covered in
+ * `create-request-human-input-tool-answer-schema.test.ts`.
  */
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
 import type { WorkflowLogRecord } from '@lostgradient/weft';
@@ -117,13 +118,17 @@ describe('createRequestHumanInputTool inputSchemas', () => {
     }
   });
 
-  it('keeps the model-facing input to the signal name and the prompt', () => {
+  it('keeps the model-facing input to the signal name, the prompt, and the call’s answerSchema', () => {
     const tool = createRequestHumanInputTool({
       context: makeContext(),
       inputSchemas: { deploy: formSchema },
     });
 
-    expect(Object.keys(tool.input.shape).toSorted()).toEqual(['prompt', 'signalName']);
+    expect(Object.keys(tool.input.shape).toSorted()).toEqual([
+      'answerSchema',
+      'prompt',
+      'signalName',
+    ]);
     const parsed = tool.input.parse({
       signalName: 'deploy',
       inputSchema: { type: 'string' },

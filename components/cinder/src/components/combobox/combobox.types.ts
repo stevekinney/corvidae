@@ -81,6 +81,12 @@ export type ComboboxProps<T extends string = string, AllowCustom extends boolean
    * or any external hint.
    */
   'aria-describedby'?: string;
+  /**
+   * Height step from the shared `--cinder-control-height-*` scale: `sm` 28px, `md` 32px,
+   * `lg` 40px, the same heights as a Button of that size.
+   * @default "md"
+   */
+  size?: 'sm' | 'md' | 'lg';
   /** Additional class names merged with `.cinder-combobox`. */
   class?: string;
 };

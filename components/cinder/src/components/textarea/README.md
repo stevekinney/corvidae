@@ -28,6 +28,7 @@ Multi-line text input for longer freeform content with optional resize control.
 | `maxlength` | `number` | no | — | Maximum character count. Passed through to the native `maxlength` attribute and shown as the limit in the `countVisible` counter. |
 | `required` | `boolean` | no | — | Marks the field as required. Passed through to the native `required` attribute. |
 | `rows` | `number` | no | — | Number of visible text rows. Defaults to 4. |
+| `size` | `"sm"` \| `"md"` \| `"lg"` | no | `"md"` | Size step shared with the other fields. A textarea is taller than one line, so `size` sets only its block padding: `sm` 6px, `md` 8px, `lg` 10px, matching the inset of the fields beside it rather than their height. |
 | `variant` | `"default"` \| `"code"` | no | `"default"` | Visual style. `"code"` applies a shared monospace metric set (font-family, font-size, line-height, tab-size) for source-like values such as raw JSON, YAML, or configuration text. |
 | `value` | `(opaque)` | no | — | Bound value of the textarea. Not expressible in JSON Schema; see the component types for the signature. |
 

@@ -1,4 +1,5 @@
 import type { BureauWorkflows } from './workflow-runtime';
+import type { BureauWorkerDeployments } from './worker-deployments';
 import type {
   EventIteratorOptions,
   EventObservableOptions,
@@ -63,6 +64,7 @@ import type {
   WorkflowLogRecord,
   WorkflowState,
   WorkflowSummary,
+  WorkerDeploymentCatalog,
 } from '@lostgradient/weft';
 import type { PendingToolApproval, SignedPendingToolApproval, ToolRequestContext } from 'armorer';
 import type { ConversationHistory, Message, MultiModalContent } from 'conversationalist';
@@ -421,6 +423,15 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    */
   workflowSource?: WorkflowSource;
   /**
+   * COR-1813 — Weft's worker deployment catalog, the durable store of worker builds and routing
+   * pointers. With it, {@link Bureau.deployments} reads a deployment's routing pointer and ramps,
+   * promotes, and rolls back its builds, and the `bureau.deployments.*` operations serve the same
+   * calls. Without it, `Bureau.deployments` is `undefined` and those operations answer
+   * `UnsupportedCapability`. Pass the catalog the Weft server routes with, built over the same
+   * storage, so a move here is the move the server routes by.
+   */
+  workerDeployments?: WorkerDeploymentCatalog;
+  /**
    * COR-772 — configuration for {@link Bureau.children}, Bureau's durable
    * parent-child topology. Omit it and children still dispatch, persist, and
    * recover; this only adds typed signals and delegation grants.
@@ -568,14 +579,15 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * COR-1709 — whether a durable Bureau offers the `decide` tool to a task: a typed question put
    * to a model (`boolean`, `choice`, `scale`, or `structured` against a JSON Schema). It is offered
    * by default, to the run kinds that are offered `requestHumanInput`, and only when something can
-   * answer: {@link BureauOptions.decisions}'s `model` or {@link ModelsOptions.generate}. The tool
+   * answer: a model registered in {@link DecisionsOptions.models} or {@link ModelsOptions.generate}. The tool
    * acts as the task's principal and is capped per task by {@link DecisionsOptions.maximumPerTask}.
    * Pass `false` to leave it out. Passing `true` throws `BureauError` `BAD_REQUEST`: the tool is
    * already the default.
    */
   decide?: false;
   /**
-   * COR-1709 — how `bureau.decisions.decide` and the `decide` tool are answered: a `model` for the
+   * COR-1709 — how `bureau.decisions.decide` and the `decide` tool are answered: `models` registered by
+   * name, of which the `decisions.model` setting (default `model`) names the one that answers the
    * kinds it serves, a `fallbackModel` row of the model catalog for the rest, and a
    * `maximumPerTask` cap on the tool. See {@link DecisionsOptions}.
    */
@@ -2152,6 +2164,12 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * the Bureau has none. Every workflow belongs to the deployment's owner of record.
    */
   readonly workflows: BureauWorkflows | undefined;
+  /**
+   * COR-1813 — the worker rollouts: `get` a deployment's routing pointer, and `ramp`, `promote`,
+   * and `rollBack` its builds. `undefined` when the Bureau has no {@link
+   * BureauOptions.workerDeployments}. See {@link BureauWorkerDeployments}.
+   */
+  readonly deployments: BureauWorkerDeployments | undefined;
 
   /**
    * COR-772 — Bureau's durable parent-child topology: dispatch a catalog

@@ -3,18 +3,27 @@
      control's inline label, by FormField, and by the standalone Label so the
      indicator can never drift between surfaces.
 
-     A visible asterisk (not a color-only dot) so the "required" meaning is
-     conveyed by glyph shape, satisfying WCAG 1.4.1 for users who cannot
-     perceive the red color. The span is `aria-hidden` in markup — the field's
+     A small red dot after the label (COR-1814, revision 24d), replacing the
+     asterisk. The span is empty and `aria-hidden` in markup: the field's
      native `required`/`aria-required` attribute is the single signal exposed
-     to assistive technology, so the asterisk does not double-announce. */
+     to assistive technology, so screen readers announce "required" exactly
+     as they did with the asterisk. The dot sits in the label's line, so its
+     position, not only its color, sets it apart. */
   .cinder-_required-marker {
-    display: inline-flex;
-    align-items: center;
+    display: inline-block;
     align-self: center;
-    color: var(--cinder-status-danger-text);
-    font-size: var(--cinder-text-sm);
-    line-height: 0;
+    inline-size: 0.5rem;
+    block-size: 0.5rem;
+    border-radius: var(--cinder-radius-full);
+    background: var(--cinder-status-danger-solid);
     flex-shrink: 0;
+  }
+
+  /* Forced colors drop the background, so draw the dot with a border in the
+     system text color instead. */
+  @media (forced-colors: active) {
+    .cinder-_required-marker {
+      border: 0.25rem solid CanvasText;
+    }
   }
 }

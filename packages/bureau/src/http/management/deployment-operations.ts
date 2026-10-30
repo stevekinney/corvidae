@@ -1,7 +1,11 @@
 /**
  * `bureau.deployment.get` and `bureau.agents.list`: what this Bureau is, and which
- * agents it has. Both need only authentication; neither reads a resource
- * with an owner.
+ * agents it has. Neither reads a resource with an owner.
+ *
+ * What a caller may see of the agents follows `bureau.agents:read` (COR-1904): a caller holding
+ * it sees every ready agent, and a caller without it, such as an A2A credential, sees only the
+ * agents that opt into A2A ({@link agentsVisibleTo}). `bureau.deployment.get` names every agent
+ * and every operation, so it requires the scope.
  *
  * `bureau.deployment.get` returns exactly five keys and no other configuration:
  * the Bureau's identity, its lifecycle state, the agents it has, the
@@ -11,7 +15,7 @@
  * @module deployment-operations
  */
 
-import { defineOperation } from '@lostgradient/weft';
+import { defineOperation, type Principal } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import type { AgentMediaCapabilities } from '../../agent-catalog.ts';
@@ -52,6 +56,49 @@ export type ListedAgent = {
    * has none.
    */
   readonly examples?: readonly string[];
+};
+
+/** The scope that shows a caller every ready agent rather than only the A2A ones. */
+export const AGENTS_WIDE_VIEW_SCOPE = 'bureau.agents:read';
+
+/**
+ * The agents `principal` may see (COR-1904): every listed agent when it holds `bureau.agents:read`,
+ * which the deployment's owner does, and otherwise only the agents that opt into A2A, so a
+ * credential handed to A2A clients learns nothing of the agents the deployment does not offer them.
+ * `bureau.agents.list` and `bureau.agents.models` both read through it.
+ */
+export function agentsVisibleTo(
+  principal: Principal,
+  agents: readonly ListedAgent[],
+): readonly ListedAgent[] {
+  return holdsWideView(principal) ? agents : agents.filter((agent) => agent.a2a);
+}
+
+function holdsWideView(principal: Principal): boolean {
+  return principal.method !== 'unauthenticated' && principal.hasScope(AGENTS_WIDE_VIEW_SCOPE);
+}
+
+/**
+ * Whether `principal` may name `agentName` where an operation starts or schedules it (COR-1904):
+ * always with `bureau.agents:read`, so the owner starts any ready agent as before (COR-1864), and
+ * otherwise only when {@link agentsVisibleTo} lists it. A caller that may not name an agent is
+ * answered as if it did not exist. Whether the agent exists is the caller's own check.
+ */
+export function mayNameAgent(
+  principal: Principal,
+  agentName: string,
+  agents: () => readonly ListedAgent[],
+): boolean {
+  if (holdsWideView(principal)) return true;
+  return agentsVisibleTo(principal, agents()).some((agent) => agent.name === agentName);
+}
+
+/** What the operations that start or schedule an agent read to decide who may name it. */
+export type BureauAgentVisibilityHost = {
+  readonly agentVisibility: {
+    /** {@link mayNameAgent} over the deployment's listed agents. */
+    readonly mayName: (principal: Principal, agentName: string) => boolean;
+  };
 };
 
 /**
@@ -129,13 +176,13 @@ export const deploymentGetOperation = defineOperation<
   mcpExposable: false,
   summary: 'Describe this deployment',
   description:
-    'Returns the deployment’s identity (`BureauOptions.id`), its state (`ready`, `draining` once shutdown has closed admission, `stopped`), the names of the agents it has, the operations it serves with each one’s schema version, and its boot recovery status (`pending` while a deferred recovery has not finished). It returns nothing else of the deployment’s configuration. Any authenticated principal may read it.',
+    'Returns the deployment’s identity (`BureauOptions.id`), its state (`ready`, `draining` once shutdown has closed admission, `stopped`), the names of the agents it has, the operations it serves with each one’s schema version, and its boot recovery status (`pending` while a deferred recovery has not finished). It returns nothing else of the deployment’s configuration. It requires `bureau.agents:read`, because it names every agent and every operation.',
   destructive: false,
   tags: ['Deployment'],
   inputSchema: deploymentGetInput,
   outputSchema: deploymentGetOutput,
   producibleFaults: ['InvalidParams'],
-  access: { kind: 'authenticated' },
+  access: { kind: 'scoped', scopes: { kind: 'allOf', scopes: [AGENTS_WIDE_VIEW_SCOPE] } },
   discoverable: true,
   transports,
   unknownKeyPolicy,
@@ -182,7 +229,7 @@ export const agentsListOperation = defineOperation<
   mcpExposable: true,
   summary: 'List the agents the caller may see',
   description:
-    'Returns the agents the deployment has, in definition order: its `name` (the catalog key every other operation calls `agentName`), `displayName`, `description`, `definitionRevision`, `kind` (`code` for a code-defined agent, `file` for a persisted one), `a2a` (whether the agent opts into A2A: the handler’s `a2aAgents` allowlist names a code-defined agent, a persisted agent’s file says `a2a: true`), and `media` (what the agent’s model takes in the way of media, as `modalities`, `mimeFamilies` and per-part `mediaLimits`, or `null` when the agent names no model descriptor; for a routed agent, what every route takes), and `tools` (the names of the tools the agent has, which a code-defined agent states and a persisted agent names in its file; omitted when the agent does not say, which differs from `[]`), and `examples` (prompts that show what a person might ask the agent, which a code-defined agent states and a persisted agent lists in its file; omitted when the agent has none). Any authenticated principal sees every agent that is ready, code-defined or persisted (`bureau.agents.definitions.*`). An invalid agent file is not listed.',
+    'Returns the agents the deployment has, in definition order: its `name` (the catalog key every other operation calls `agentName`), `displayName`, `description`, `definitionRevision`, `kind` (`code` for a code-defined agent, `file` for a persisted one), `a2a` (whether the agent opts into A2A: the handler’s `a2aAgents` allowlist names a code-defined agent, a persisted agent’s file says `a2a: true`), and `media` (what the agent’s model takes in the way of media, as `modalities`, `mimeFamilies` and per-part `mediaLimits`, or `null` when the agent names no model descriptor; for a routed agent, what every route takes), and `tools` (the names of the tools the agent has, which a code-defined agent states and a persisted agent names in its file; omitted when the agent does not say, which differs from `[]`), and `examples` (prompts that show what a person might ask the agent, which a code-defined agent states and a persisted agent lists in its file; omitted when the agent has none). A caller holding `bureau.agents:read` sees every agent that is ready, code-defined or persisted (`bureau.agents.definitions.*`); any other authenticated caller, such as an A2A credential, sees only the ready agents that opt into A2A. An invalid agent file is not listed.',
   destructive: false,
   tags: ['Deployment'],
   inputSchema: agentsListInput,
@@ -192,8 +239,8 @@ export const agentsListOperation = defineOperation<
   discoverable: true,
   transports,
   unknownKeyPolicy,
-  invoke: async ({ host }) => ({
-    agents: host.deployment.agents().map((agent) => ({
+  invoke: async ({ host, principal }) => ({
+    agents: agentsVisibleTo(principal, host.deployment.agents()).map((agent) => ({
       name: agent.name,
       displayName: agent.displayName,
       description: agent.description,

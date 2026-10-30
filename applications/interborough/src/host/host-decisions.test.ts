@@ -104,4 +104,36 @@ describe('the TypeSafe decision model', () => {
     expect(failure).toMatchObject({ code: 'NOT_CONFIGURED' });
     expect(requests).toEqual([]);
   });
+  test('registers TypeSafe as the default decision model, and `catalog` in the settings sends every kind to the fallback', async () => {
+    const host = await startWith({ [TYPESAFE_SECRET_KEY]: FIXTURE_KEY });
+    const snapshot = await host.bureau.settings.get();
+    expect(snapshot.values['decisions.model']).toBe('typesafe');
+
+    const changed = await host.bureau.settings.update(
+      { 'decisions.model': 'catalog' },
+      { expectedRevision: snapshot.revision },
+    );
+    expect(changed).toMatchObject({ outcome: 'applied' });
+    const failure = await host.bureau.decisions
+      .decide({ kind: 'boolean', question: 'Is it?' })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+
+    // The next decision no longer asks TypeSafe: the catalog has no row to fall back to.
+    expect(failure).toMatchObject({ code: 'NOT_CONFIGURED' });
+    expect(requests).toEqual([]);
+  });
+
+  test('offers only the catalog without the secret', async () => {
+    const host = await startWith({});
+    const { values } = await host.bureau.settings.get();
+    expect(values['decisions.model']).toBeUndefined();
+    const refused = await host.bureau.settings.update(
+      { 'decisions.model': 'typesafe' },
+      { expectedRevision: 0 },
+    );
+    expect(refused).toMatchObject({ outcome: 'rejected', reason: 'invalid-value' });
+  });
 });

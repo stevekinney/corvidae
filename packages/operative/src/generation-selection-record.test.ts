@@ -34,7 +34,7 @@ function selectedPlan(
     selectorRevision: 1,
     createdAt: '2026-09-19T00:00:00.000Z',
     outcome: 'selected',
-  } as SelectionPlan;
+  };
 }
 
 function unselectedPlan(): SelectionPlan {

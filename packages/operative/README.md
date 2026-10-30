@@ -422,7 +422,51 @@ A `HumanWaitParkedEvent` observed on a run this session started (typically from 
 
 A durable run step parks on at most one request, and the first one wins. `requestHumanInput` and `scheduleWakeup` share the step's park slots, so a human-input or wakeup request made while either slot is already set in that step is refused, whichever tool made the first. Only the first human-input or wakeup request in a step is honored; the model's tool description says so. The refusal is a normal tool result, not a thrown error, so the step completes and the model reads it in its next request: `requestHumanInput` returns `{ parked: false, signalName, refused: true, pendingPark, message }` and `scheduleWakeup` returns `{ scheduled: false, refused: true, pendingPark, message }`, where `pendingPark` names the park the step already holds (`{ kind: 'human-input', signalName }` or `{ kind: 'wakeup', duration }`). A refused call dispatches no `HumanWaitParkedEvent`, lists no review and takes no park ordinal, and `parkedHumanWait` never reads it as parked. The model can ask again once that wait ends. A repeat of the same signal name is refused like any other. The durable-capability check still runs first, so a non-durable context still throws `DurableCapabilityUnavailableError`. Under Armorer's parallel execution the order of two calls in one step is not guaranteed, so which one is first is whichever reaches its `execute` first.
 
-`createRequestHumanInputTool({ inputSchemas })` lets the agent's author say what answer a signal expects (COR-1487): a JSON Schema (draft 2020-12) per signal name. The model-facing input stays `{ signalName, prompt }` and never carries a schema; a `signalName` is at most 256 characters, the longest name Bureau carries in a surface continuation. Each schema is checked when the tool is created and `HumanInputSchemaError` names the signal whose schema is refused: it must be a plain object that compiles as 2020-12 with every `$ref` resolving, take at most 32 KiB serialized (`HUMAN_INPUT_SCHEMA_MAXIMUM_BYTES`), nest at most 8 levels (`HUMAN_INPUT_SCHEMA_MAXIMUM_DEPTH`), and use no `pattern`, `patternProperties`, `$id`, or `$async`, because an answer is untrusted input and Bureau checks it against the schema. The tool keeps its own copy. A park on a configured signal records the schema on `PendingHumanWait.inputSchema`, on `HumanWaitParkedEvent.inputSchema`, and on the tool result, which the step record persists, so `parkedHumanWait` and `humanWaitParks` read it back after a restart. `checkHumanInputSchemas(schemas)` is the same check as a standalone export: it validates a whole `inputSchemas` map and returns a `Map` of the checked schemas, or throws `HumanInputSchemaError`, so a host (Bureau's `createBureau` does) can refuse a bad map before it builds any agent. A signal with no entry behaves as before.
+`createRequestHumanInputTool({ inputSchemas })` lets the agent's author say what answer a signal expects (COR-1487): a JSON Schema (draft 2020-12) per signal name. The model-facing input is `{ signalName, prompt, answerSchema? }` (see below); a `signalName` is at most 256 characters, the longest name Bureau carries in a surface continuation. Each schema is checked when the tool is created and `HumanInputSchemaError` names the signal whose schema is refused: it must be a plain object that compiles as 2020-12 with every `$ref` resolving, take at most 32 KiB serialized (`HUMAN_INPUT_SCHEMA_MAXIMUM_BYTES`), nest at most 8 levels (`HUMAN_INPUT_SCHEMA_MAXIMUM_DEPTH`), and use no `pattern`, `patternProperties`, `$id`, or `$async`, because an answer is untrusted input and Bureau checks it against the schema. The tool keeps its own copy. A park on a configured signal records the schema on `PendingHumanWait.inputSchema`, on `HumanWaitParkedEvent.inputSchema`, and on the tool result, which the step record persists, so `parkedHumanWait` and `humanWaitParks` read it back after a restart. `checkHumanInputSchemas(schemas)` is the same check as a standalone export: it validates a whole `inputSchemas` map and returns a `Map` of the checked schemas, or throws `HumanInputSchemaError`, so a host (Bureau's `createBureau` does) can refuse a bad map before it builds any agent. A signal with no entry behaves as before.
+
+#### A question carries its own answer schema (COR-1804)
+
+The agent chooses the shape of each question as it asks: `requestHumanInput` takes an optional `answerSchema`, a JSON Schema (draft 2020-12) for that one answer. It is checked on the call by the same `checkHumanInputSchema` a configured schema meets at creation (32 KiB, 8 levels, no `$id`, no `pattern`, no `$async`), plus the `x-` keywords below. A call's `answerSchema` **replaces** the schema configured for the signal in `inputSchemas`, which applies only when a call gives none; the schema it parks with rides on `PendingHumanWait.inputSchema`, `HumanWaitParkedEvent.inputSchema` and the persisted tool result exactly as a configured one does, and the model's copy of the result leaves it out.
+
+A schema that breaks a limit parks nothing. The call returns `InvalidAnswerSchemaResult`, `{ parked: false, error: 'invalid-answer-schema', signalName, issues: [{ path, message }], message }`, which the model reads as the tool's result (`path` is the location inside the schema; a result lists at most 20 issues). No event is dispatched, no review is listed, and no slot is taken, so the model can ask again in the same step with a corrected schema. `parked: false` is also what a refused second park returns (`RefusedHumanInputResult`); the `error` key tells the two apart.
+
+The kinds of question, and the schema each is (the tool's description teaches the model the same table):
+
+| Kind | Schema |
+| --- | --- |
+| Pick one | `{ type: 'string', enum, 'x-labels' }` |
+| Pick one or something else | `{ anyOf: [{ enum }, { type: 'string', maxLength: 500 }], 'x-allowOther': true }` |
+| Pick several | `{ type: 'array', uniqueItems: true, items: { enum }, minItems, maxItems }` |
+| Free text | `{ type: 'string', maxLength }` |
+| Yes or no | `{ type: 'boolean' }` |
+| Number | `{ type: 'number', minimum, maximum }` |
+| Date or time | `{ type: 'string', format: 'date' \| 'time' \| 'date-time' }` (RFC 3339) |
+| Rating | `{ type: 'integer', minimum: 1, maximum: N, 'x-kind': 'rating', 'x-labels' }` |
+| A few fields | `{ type: 'object', properties, required, additionalProperties: false }` |
+| Secret | `{ type: 'string', writeOnly: true, 'x-secret': true }` |
+| File | `{ type: 'string', contentMediaType, 'x-asset': true }`, answered with a managed asset id |
+
+A rating and a number are both bounded numbers; `x-kind: 'rating'` is what tells a client to draw a rating. The `x-` keywords are checked wherever they sit in a schema (`humanInputSchemaExtensionIssues` returns one issue per misuse, with the path to it): `x-labels` is an object from each `enum` value (or each rating step) to a label of at most `HUMAN_INPUT_LABEL_MAXIMUM_LENGTH` characters; `x-allowOther` is a boolean and, when true, needs `anyOf` with an `enum` branch and a plain `string` branch; `x-kind` is `'rating'` and needs `type: 'integer'` with integer `minimum` and `maximum`; `x-secret` is a boolean and, when true, needs `type: 'string'` and `writeOnly: true`; `x-asset` is a boolean and, when true, needs `type: 'string'`. `HumanInputSchemaError.issues` carries the same list for a configured schema. A client that does not know a keyword ignores it, and the standard keywords alone still describe the answer.
+
+```ts
+import { createRequestHumanInputTool } from '@lostgradient/operative';
+
+declare const context: Parameters<typeof createRequestHumanInputTool>[0]['context'];
+
+const tool = createRequestHumanInputTool({ context });
+const outcome = tool.execute({
+  signalName: 'rate',
+  prompt: 'How was it?',
+  answerSchema: {
+    type: 'integer',
+    minimum: 1,
+    maximum: 5,
+    'x-kind': 'rating',
+    'x-labels': { '1': 'Poor', '5': 'Great' },
+  },
+});
+if (!outcome.parked && 'error' in outcome) console.log(outcome.issues);
+```
 
 ### `createLazyAgent(loader, options?)`
 
@@ -2171,7 +2215,9 @@ const catalog = createModelCatalog();
 const anthropicRows = catalog.descriptors.filter((d) => d.provider === 'anthropic');
 ```
 
-`getProviderCapabilities` is now implemented as a projection over `createModelCatalog`'s descriptors—its public signature and every previously published answer are unchanged.
+`getProviderCapabilities` is now implemented as a projection over `createModelCatalog`'s descriptors—every previously published answer is unchanged.
+
+`ProviderName` is an open `string`, not a union of the built-in names. A well-formed name matches `PROVIDER_NAME_PATTERN` (`^[a-z](?:[a-z0-9-]*[a-z0-9])?$`, the plugin-name grammar, bare with no `plugin:` prefix), and `isProviderName` narrows an `unknown` to it. A provider package contributes its own rows with `createModelCatalog({ descriptors })` and its capability answer with `getProviderCapabilities(name, { descriptors })`; no edit to this package is needed. A name that no loaded row carries is unavailable: every capability flag is `false`, and a selection restricted to it by `allowedProviders` returns `no-candidate`.
 
 ### Agent Generation Profile (AB-64, AB-245)
 
@@ -3213,7 +3259,7 @@ When the pinned spec revision changes, re-diff these two files against the new c
 | `{chat\|generate_content} {model}` (`@lostgradient/operative`) | Inference | `{gen_ai.operation.name} {model}` | CLIENT | `gen_ai.operation.name` (`chat`, or `generate_content` for Gemini), `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.request.max_tokens`, `gen_ai.usage.*` | None—full compliance. This is the canonical span for a single LLM inference call. |
 | `execute_tool {name}` (`armorer`) | Execute tool | `execute_tool {gen_ai.tool.name}` | INTERNAL | `gen_ai.operation.name=execute_tool`, `gen_ai.tool.name`, `gen_ai.tool.call.id`, `gen_ai.tool.description`, `error.type` | `gen_ai.tool.call.arguments`/`gen_ai.tool.call.result` are Opt-In under the conventions and deliberately not emitted—they can carry privileged tool arguments/results (AB-87/AB-230). `armorer.tool.*` carries duration/digest/status extensions the spec doesn't define. |
 
-`gen_ai.provider.name` values are mapped from operative's internal `ProviderName` to the conventions' well-known values where one is registered:
+`gen_ai.provider.name` values are mapped from a `ProviderName` to the conventions' well-known values where one is registered, and any other name passes through unchanged (the conventions permit a custom value):
 
 | `ProviderName` | `gen_ai.provider.name` | Note |
 | --- | --- | --- |

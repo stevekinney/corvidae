@@ -12,6 +12,7 @@ import {
   type BureauModelPolicyOptions,
   type PlanSelectionRequest,
 } from '../model-policy';
+import type { SettingsValues } from '../settings/settings-schema';
 
 /**
  * The `models` option of `createBureau`: which model rows the deployment offers, and how a row
@@ -61,6 +62,33 @@ export interface Models {
    * `modelPolicy`. Synchronous and side-effect-free: it starts no run and dispatches no event.
    */
   plan(request: PlanSelectionRequest): SelectionPlan;
+  /**
+   * The catalog row that summarizes a conversation when an agent compacts its context: the row
+   * the `context.summarizerModel` setting names, as `<provider>/<model>` or an alias of one, read
+   * on every call. `undefined` when the setting is unset, or when no row of the catalog as it is
+   * now matches it or the matching row is `unavailable` (a `replace` can remove or turn off the
+   * row after the setting was written).
+   */
+  summarizer(): BackendDescriptor | undefined;
+}
+
+/**
+ * The row of `rows` that `name` (`<provider>/<model>`, the model or one of its aliases) names, or
+ * `undefined` when none does.
+ */
+export function findCatalogRow(
+  rows: readonly BackendDescriptor[],
+  name: string,
+): BackendDescriptor | undefined {
+  const slash = name.indexOf('/');
+  if (slash < 1) return undefined;
+  const provider = name.slice(0, slash);
+  const model = name.slice(slash + 1);
+  return rows.find(
+    (row) =>
+      row.provider === provider &&
+      (row.model === model || row.aliases.some((alias) => alias.alias === model)),
+  );
 }
 
 /** What {@link createModels} reads from the Bureau that is constructing it. */
@@ -75,6 +103,8 @@ export interface ModelsDependencies<D extends AgentDefinitions> {
   /** Called after a `replace` commits, so agent files are validated against the new rows. */
   readonly onReplace: () => void;
   readonly agents: D;
+  /** The settings in force, read on every {@link Models.summarizer} call. Defaults to none set. */
+  readonly settings?: () => Pick<SettingsValues, 'context.summarizerModel'>;
   /** The model policy, or a function that reads it each time a plan is made (COR-1710). */
   readonly modelPolicy:
     BureauModelPolicyOptions | (() => BureauModelPolicyOptions | undefined) | undefined;
@@ -158,6 +188,8 @@ export function createModels<D extends AgentDefinitions>(
     projection: 'privileged' as const,
   });
   const generateFor = options?.generate;
+  const settings =
+    dependencies.settings ?? ((): Pick<SettingsValues, 'context.summarizerModel'> => ({}));
   const planner = createModelPolicyPlanner({
     agents: dependencies.agents,
     models: { catalog: () => catalog },
@@ -182,6 +214,12 @@ export function createModels<D extends AgentDefinitions>(
       return generateFor(row);
     },
     plan: (request) => planner.plan(request),
+    summarizer() {
+      const name = settings()['context.summarizerModel'];
+      if (name === undefined) return undefined;
+      const row = findCatalogRow(catalog.descriptors, name);
+      return row === undefined || row.availability === 'unavailable' ? undefined : row;
+    },
   };
   return Object.freeze(models);
 }

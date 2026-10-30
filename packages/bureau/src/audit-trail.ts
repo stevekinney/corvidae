@@ -949,6 +949,9 @@ export const AUDIT_AGENT_OWNER_PREFIX = 'agent:';
 /** The `runId` prefix of a workflow file's synthetic audit owner, `workflow:<id>` (COR-1529). */
 export const AUDIT_WORKFLOW_OWNER_PREFIX = 'workflow:';
 
+/** The `runId` prefix of a worker deployment's synthetic audit owner, `worker-deployment:<name>` (COR-1813). */
+export const AUDIT_WORKER_DEPLOYMENT_OWNER_PREFIX = 'worker-deployment:';
+
 /**
  * Every synthetic owner prefix above. A `runId` with one of these prefixes resolves to an owner
  * without a run, so `reservedWorkflowIdentifierReason` refuses each as the start of a run id a
@@ -959,6 +962,7 @@ export const AUDIT_SYNTHETIC_OWNER_PREFIXES: readonly string[] = [
   AUDIT_SESSION_OWNER_PREFIX,
   AUDIT_AGENT_OWNER_PREFIX,
   AUDIT_WORKFLOW_OWNER_PREFIX,
+  AUDIT_WORKER_DEPLOYMENT_OWNER_PREFIX,
 ];
 
 /**
@@ -977,6 +981,15 @@ export function auditTrailAgentOwnerId(agentId: string): string {
  */
 export function auditTrailWorkflowOwnerId(workflowId: string): string {
   return `${AUDIT_WORKFLOW_OWNER_PREFIX}${workflowId}`;
+}
+
+/**
+ * The synthetic `runId` a rollout move of a worker deployment is filed under,
+ * `worker-deployment:<name>`: a ramp, promote, or roll back belongs to no run, and the deployment's
+ * owner is the Bureau's. `query({ runId })` with it retrieves one deployment's moves, in order.
+ */
+export function auditTrailWorkerDeploymentOwnerId(deploymentName: string): string {
+  return `${AUDIT_WORKER_DEPLOYMENT_OWNER_PREFIX}${deploymentName}`;
 }
 
 /** The `owner` field of a deletion entry's detail, or nothing when no owner was recorded. */

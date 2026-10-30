@@ -40,6 +40,24 @@ describe('schema-form model', () => {
     required: ['name', 'count', 'active', 'mode', 'nested'],
   } satisfies JsonSchemaObject;
 
+  test('labels untitled properties with humanizeIdentifier and keeps a schema title', () => {
+    const model = createSchemaFormModel({
+      type: 'object',
+      properties: {
+        orderId: { type: 'string' },
+        wrong_item: { type: 'boolean' },
+        APIKey: { type: 'string' },
+        callbackUrl: { type: 'string', title: 'Where to call back' },
+      },
+    });
+    expect(model.field.fields.map((field) => field.label)).toEqual([
+      'Order ID',
+      'Wrong Item',
+      'API Key',
+      'Where to call back',
+    ]);
+  });
+
   test('detects JSON Schema object inputs', () => {
     expect(isJsonSchemaObject(schema)).toBe(true);
   });

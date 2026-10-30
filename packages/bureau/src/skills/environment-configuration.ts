@@ -12,7 +12,6 @@
  */
 
 function rawEnvironment(): Record<string, string | undefined> {
-  if (typeof Bun !== 'undefined') return Bun.env;
   if (typeof process !== 'undefined') return process.env;
   return {};
 }

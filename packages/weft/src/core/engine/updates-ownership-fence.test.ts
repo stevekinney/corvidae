@@ -39,6 +39,7 @@ function createDeliveryHarness(registry: unknown) {
     options: { payloadValidation: 'none' },
     storage: new MemoryStorage(),
     workflowClaimRegistry: registry,
+    abortController: new AbortController(),
     updateCoordinator: { deleteRequest },
     durableInlineOperations: new Map([
       [
@@ -139,6 +140,7 @@ describe('update() bypasses the in-memory waiter when the workflow is owned else
       updateWaitersByWorkflow: new Map<string, Set<string>>([
         ['workflow-1', new Set([WAITER_KEY])],
       ]),
+      abortController: new AbortController(),
       updateCoordinator: {
         submitRequest: mock(async () => ({
           updateId: 'update-1',

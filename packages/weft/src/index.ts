@@ -59,14 +59,7 @@ export {
   generateTraceId,
   parseTraceParent,
 } from './observability/propagation.ts';
-export {
-  detectRuntime,
-  detectRuntimeVersion,
-  hashBytes,
-  hashString,
-  sleep,
-} from './runtime/portable.ts';
-export type { RuntimeKind } from './runtime/portable.ts';
+export { hashBytes, hashString, sleep } from './runtime/portable.ts';
 export { createAuthenticator, validateAuthConfig } from './server/authentication.ts';
 export type {
   AuthConfig,
@@ -233,6 +226,7 @@ export type {
   DeploymentSelectionResult,
   WorkerDeploymentRemovalOutcome,
   WorkerDeploymentRouting,
+  WorkerDeploymentRoutingWrite,
   WorkerDeploymentVersion,
   WorkerDeploymentVersionReport,
   WorkerDeploymentVersionState,

@@ -1,4 +1,5 @@
 import { ownEntry } from '../../_internal/own-entry.ts';
+import { humanizeIdentifier } from '../../utilities/humanize-identifier.ts';
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 export type JsonSchemaObject = Record<string, unknown>;
@@ -177,11 +178,7 @@ function fieldLabel(schema: JsonSchemaObject, key: string): string {
   if (typeof title === 'string' && title.trim().length > 0) {
     return title;
   }
-  if (key === 'value') return 'Value';
-  return key
-    .replaceAll(/[-_]+/g, ' ')
-    .replaceAll(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/^\w/, (letter) => letter.toUpperCase());
+  return humanizeIdentifier(key);
 }
 
 export function defaultValueForField(field: SchemaFormField): unknown {

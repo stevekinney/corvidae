@@ -58,6 +58,12 @@ const schema = {
       description:
         'External element id(s) to compose into `aria-describedby`. Composed\nafter the component-generated description and error ids, matching the\nfield-control contract in Select. Useful for tooltip ids, counter ids,\nor any external hint.',
     },
+    size: {
+      enum: ['sm', 'md', 'lg'],
+      description:
+        'Height step from the shared `--cinder-control-height-*` scale: `sm` 28px, `md` 32px,\n`lg` 40px, the same heights as a Button of that size.',
+      default: 'md',
+    },
     class: {
       type: 'string',
       description: 'Additional class names merged with `.cinder-combobox`.',

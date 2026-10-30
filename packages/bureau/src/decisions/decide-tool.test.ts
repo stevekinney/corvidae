@@ -18,6 +18,7 @@ import { runTask } from '../test/index.ts';
 import type { Bureau, BureauOptions } from '../types.ts';
 import { createDecideToolbox, type DecideToolResult } from './decide-tool.ts';
 import type { DecisionSource } from './types.ts';
+import { hosted } from './hosted-decisions.test-support.ts';
 import { MemoryStorage } from '@lostgradient/storage';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
@@ -90,7 +91,7 @@ async function toolsOfTask(options: Partial<BureauOptions<AgentDefinitions>>): P
 
 describe('offering the decide tool', () => {
   it('offers it by default once a decision model is configured', async () => {
-    expect(await toolsOfTask({ decisions: { model: scriptedModel() } })).toContain('decide');
+    expect(await toolsOfTask({ decisions: hosted(scriptedModel()) })).toContain('decide');
   });
 
   it('offers it once models.generate is configured', async () => {
@@ -102,7 +103,7 @@ describe('offering the decide tool', () => {
   });
 
   it('leaves it out under decide: false, and offers the other tools still', async () => {
-    const tools = await toolsOfTask({ decisions: { model: scriptedModel() }, decide: false });
+    const tools = await toolsOfTask({ decisions: hosted(scriptedModel()), decide: false });
 
     expect(tools).not.toContain('decide');
     expect(tools).toContain('requestHumanInput');
@@ -110,15 +111,15 @@ describe('offering the decide tool', () => {
 
   it('leaves it out when nothing could answer, and when requestHumanInput is the one turned off', async () => {
     expect(await toolsOfTask({})).not.toContain('decide');
-    expect(
-      await toolsOfTask({ decisions: { model: scriptedModel() }, humanInput: false }),
-    ).toContain('decide');
+    expect(await toolsOfTask({ decisions: hosted(scriptedModel()), humanInput: false })).toContain(
+      'decide',
+    );
   });
 
   it('leaves it out of a non-durable Bureau', async () => {
-    expect(
-      await toolsOfTask({ durable: false, decisions: { model: scriptedModel() } }),
-    ).not.toContain('decide');
+    expect(await toolsOfTask({ durable: false, decisions: hosted(scriptedModel()) })).not.toContain(
+      'decide',
+    );
   });
 });
 
@@ -126,7 +127,10 @@ describe('calling the decide tool', () => {
   it('resolves inline and files the audit record under the task as the task’s principal', async () => {
     const results: unknown[] = [];
     const model = scriptedModel();
-    const bureau = await open({ worker: decidingAgent([], results, 1) }, { decisions: { model } });
+    const bureau = await open(
+      { worker: decidingAgent([], results, 1) },
+      { decisions: hosted(model) },
+    );
 
     const task = await bureau.tasks.start('worker', 'go', { principal: 'api-key:alice' });
     await task.result();
@@ -146,7 +150,7 @@ describe('calling the decide tool', () => {
     const model = scriptedModel();
     const bureau = await open(
       { worker: decidingAgent([], results, 3) },
-      { decisions: { model, maximumPerTask: 2 } },
+      { decisions: { ...hosted(model), maximumPerTask: 2 } },
     );
 
     await runTask(bureau, 'worker', 'go');

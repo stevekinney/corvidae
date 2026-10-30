@@ -4,7 +4,7 @@
  * shape is closed (an unknown field is an error), every schema must compile,
  * and the content is held to the payload cap.
  */
-import Ajv2020, { type ValidateFunction } from 'ajv/dist/2020.js';
+import Ajv2020, { type ErrorObject, type ValidateFunction } from 'ajv/dist/2020.js';
 
 import {
   INTERACTIVE_SURFACE_A2UI_VERSION,
@@ -204,22 +204,33 @@ export class InteractiveSurfaceSchemaCompiler {
    * Only the meta-schema, compiled in the constructor, may use one.
    */
   #refusing = false;
-  readonly #ajv = new Ajv2020({
-    strict: false,
-    allErrors: true,
-    validateFormats: false,
-    code: {
-      regExp: Object.assign(
-        (pattern: string, flags: string): RegExp => {
-          if (this.#refusing) throw new RegularExpressionRefused();
-          return new RegExp(pattern, flags);
-        },
-        { code: 'new RegExp' },
-      ),
-    },
-  });
+  readonly #ajv: Ajv2020;
 
-  constructor() {
+  /**
+   * @param options.formats Formats to assert, by name, each a predicate over the string. Without
+   * it `format` is an annotation, as JSON Schema 2020-12 makes it by default; with it, a value
+   * that fails a listed format is an error, and a format not listed is still an annotation.
+   */
+  constructor(
+    options: { readonly formats?: Readonly<Record<string, (value: string) => boolean>> } = {},
+  ) {
+    this.#ajv = new Ajv2020({
+      strict: false,
+      allErrors: true,
+      validateFormats: options.formats !== undefined,
+      ...(options.formats === undefined
+        ? {}
+        : { formats: { ...options.formats }, logger: false as const }),
+      code: {
+        regExp: Object.assign(
+          (pattern: string, flags: string): RegExp => {
+            if (this.#refusing) throw new RegularExpressionRefused();
+            return new RegExp(pattern, flags);
+          },
+          { code: 'new RegExp' },
+        ),
+      },
+    });
     // Compile the meta-schema, whose own patterns are trusted, before refusing.
     this.#ajv.compile({});
     this.#refusing = true;
@@ -282,6 +293,16 @@ export class InteractiveSurfaceSchemaCompiler {
       }
     }
     return validate;
+  }
+
+  /**
+   * Validates `value` against `schema` and returns every failure Ajv reports (empty when it
+   * satisfies the schema). Throws {@link InteractiveSurfaceValidationError} when the schema
+   * cannot be compiled under this compiler's rules.
+   */
+  errors(schema: InteractiveSurfaceJsonObject, value: unknown): readonly ErrorObject[] {
+    const validate = this.compile(schema, 'schema');
+    return validate(value) ? [] : [...(validate.errors ?? [])];
   }
 
   /** Validates `value` against `schema`; returns the first problem, or `undefined`. */

@@ -316,7 +316,7 @@ describe('the CollaborationPlan schema (COR-820)', () => {
 
   test('reuses operative’s DelegatedAuthority for tool authority', () => {
     const plan = edit(partitionedSearchPlanInput(), (draft) => {
-      draft['resourceEnvelope'].toolAuthority.grantedProviders = ['acme'];
+      draft['resourceEnvelope'].toolAuthority.grantedProviders = ['Acme'];
       draft['resourceEnvelope'].toolAuthority.maximumEffort = 'ludicrous';
       delete draft['resourceEnvelope'].toolAuthority.policyVersion;
     });
@@ -325,6 +325,13 @@ describe('the CollaborationPlan schema (COR-820)', () => {
       'resourceEnvelope.toolAuthority.maximumEffort',
       'resourceEnvelope.toolAuthority.policyVersion',
     ]);
+  });
+
+  test('grants any provider name in the provider-name grammar, loaded or not', () => {
+    const plan = edit(partitionedSearchPlanInput(), (draft) => {
+      draft['resourceEnvelope'].toolAuthority.grantedProviders = ['anthropic', 'example'];
+    });
+    expect(paths(plan)).toEqual([]);
   });
 
   test('parseCollaborationPlan throws a typed configuration error naming each issue', () => {

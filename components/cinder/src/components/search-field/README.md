@@ -25,6 +25,7 @@ Dedicated text input with a clear button and search icon for filtering or queryi
 | `placeholder` | `string` | no | — | Placeholder text. |
 | `readonly` | `boolean` | no | — | Marks the input as read-only; the clear button becomes inert. |
 | `shortcut` | `string` | no | — | Optional keyboard shortcut hint (e.g. `'⌘K'`). Rendered as a trailing `<kbd aria-hidden="true">` badge. The shortcut itself is not wired by this component. |
+| `size` | `"sm"` \| `"md"` \| `"lg"` | no | `"md"` | Height step from the shared `--cinder-control-height-*` scale, forwarded to the inner Input: `sm` 28px, `md` 32px, `lg` 40px. |
 | `value` | `string` | no | — | Bindable search value. |
 | `onClear` | `(opaque)` | no | — | Fires when the clear button is clicked. Not expressible in JSON Schema; see the component types for the signature. |
 | `onSearch` | `(opaque)` | no | — | Fires when the native `search` event triggers (Enter or programmatic dispatch). Not expressible in JSON Schema; see the component types for the signature. |

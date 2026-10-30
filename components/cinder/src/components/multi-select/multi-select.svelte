@@ -53,6 +53,7 @@
     filter,
     selectionFeedback = 'fixed',
     direction = 'down',
+    size = 'md',
     class: className,
     'aria-describedby': consumerDescribedBy,
   }: MultiSelectProps<T> = $props();
@@ -416,6 +417,7 @@
       type="button"
       {id}
       class="cinder-_input-frame cinder-multi-select__trigger"
+      data-cinder-size={size}
       disabled={field.disabled}
       aria-invalid={triggerAriaInvalid}
       aria-describedby={triggerDescribedBy}

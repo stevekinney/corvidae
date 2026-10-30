@@ -141,4 +141,11 @@ export const OPERATION_MAP = {
   'bureau.agents.definitions.revisions': { member: 'agents.revisions' },
   'bureau.agents.versions.list': { member: 'agents.versions.list' },
   'bureau.agents.versions.restore': { member: 'agents.versions.restore' },
+
+  // COR-1813: the wire name is `rollback` because operation names are lowercase; the in-process
+  // member keeps the camel-cased `rollBack`.
+  'bureau.deployments.get': { member: 'deployments.get' },
+  'bureau.deployments.ramp': { member: 'deployments.ramp' },
+  'bureau.deployments.promote': { member: 'deployments.promote' },
+  'bureau.deployments.rollback': { member: 'deployments.rollBack' },
 } as const satisfies Readonly<Record<string, OperationBinding>>;

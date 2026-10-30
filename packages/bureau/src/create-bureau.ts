@@ -177,6 +177,7 @@ import {
   AUDIT_AGENT_OWNER_PREFIX,
   AUDIT_SCHEDULE_OWNER_PREFIX,
   AUDIT_SESSION_OWNER_PREFIX,
+  AUDIT_WORKER_DEPLOYMENT_OWNER_PREFIX,
   AUDIT_WORKFLOW_OWNER_PREFIX,
   type AuditTrail,
   auditTrailSessionOwnerId,
@@ -258,10 +259,15 @@ import type { BureauGoals } from './goal-types';
 import { createGoalValidatorCatalog } from './goal-validator-catalog';
 import { composeBureauGoals } from './goals-composition';
 import { leaseEvidenceFromLostHealth } from './liveness-projection';
-import { createDecisions, validateDecisionsOptions } from './decisions/create-decisions';
+import {
+  createDecisions,
+  decisionModelNames,
+  validateDecisionsOptions,
+} from './decisions/create-decisions';
 import { createLateDecisions } from './decisions/late-decisions';
 import { createSettings, type SettingsComposition } from './settings/create-settings';
 import type { SettingsValues } from './settings/settings-schema';
+import { summarizerFailures } from './settings/settings-validation';
 import {
   bootSettings,
   enginePatchOf,
@@ -373,6 +379,7 @@ import {
   payloadMaximumBytesOf,
   type WorkflowRuntime,
 } from './workflow-runtime';
+import { createBureauWorkerDeployments } from './worker-deployments';
 import { validateDefinitionSource } from './sources/validate-definition-source';
 import { collidingWorkflowToolName, createWorkflowTools } from './workflow-tools';
 import { createSettingsTools } from './settings/settings-tools';
@@ -423,6 +430,11 @@ import {
   digestReviewDelivery,
   type ReviewDecisionRequest,
 } from './review-decision-record';
+import {
+  formatReviewAnswerIssues,
+  type ReviewAnswerIssue,
+  validateReviewAnswer,
+} from './review-answer';
 import {
   createRunHumanWaits,
   humanWaitDecisionPayload,
@@ -1060,6 +1072,26 @@ class ReviewRoundChangedError extends BureauError {
 }
 
 /**
+ * `reviews.resolve` was given an answer that does not satisfy the schema of the human wait it
+ * answers (COR-1804), or none where the schema needs one. Nothing was claimed, delivered or
+ * audited, so the review stays pending and the caller may answer again. It is a `BAD_REQUEST`
+ * `BureauError`; the catalog maps it to `InvalidParams` with the issues under `data.issues`.
+ */
+class ReviewAnswerInvalidError extends BureauError {
+  /** Every way the answer fails its schema; paths are relative to the answer. */
+  readonly issues: readonly ReviewAnswerIssue[];
+
+  constructor(issues: readonly ReviewAnswerIssue[]) {
+    super(
+      `The answer does not satisfy the question’s schema: ${formatReviewAnswerIssues(issues)}`,
+      'BAD_REQUEST',
+    );
+    this.name = 'ReviewAnswerInvalidError';
+    this.issues = issues;
+  }
+}
+
+/**
  * A command was refused because Bureau had closed admission (COR-1559). It is a `CONFLICT`
  * `BureauError`, so every caller that handled the throw still does, and it carries when Bureau
  * refused it, on the Bureau's own clock, for a caller that answers with data instead of a throw.
@@ -1084,12 +1116,15 @@ class BureauShuttingDownError extends BureauError {
 class TaskRespondError extends BureauError {
   readonly field: string | undefined;
   readonly reason: string | undefined;
+  /** Every field of the answer that failed the wait's schema, when that is what was refused (COR-1804). */
+  readonly issues: TaskRespondRefusal['issues'];
 
   constructor(refusal: TaskRespondRefusal) {
     super(refusal.message, refusal.code);
     this.name = 'TaskRespondError';
     this.field = refusal.field;
     this.reason = refusal.reason;
+    this.issues = refusal.issues;
   }
 }
 
@@ -1097,6 +1132,7 @@ export {
   ApprovalOutcomeNotWrittenError,
   BureauError,
   BureauShuttingDownError,
+  ReviewAnswerInvalidError,
   ReviewRoundChangedError,
   TaskRespondError,
 };
@@ -2529,6 +2565,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         );
       },
       agents: agentsSnapshot,
+      settings: currentSettings,
       modelPolicy: () => modelPolicyOf(currentSettings()),
     });
     // COR-1709: decisions read the model catalog and write to the audit trail, which is built
@@ -2557,6 +2594,9 @@ async function constructBureau<const D extends AgentDefinitions>(
       persisted: booted.persisted,
       defaults: settingsDefaults,
       locked: settingsLocked,
+      decisionModels: decisionModelNames(options.decisions),
+      // A summarizer must name a row of the catalog as it is at the write (COR-1899).
+      checkPatch: (values) => summarizerFailures(values, models.catalog().descriptors),
       boot: booted.stored,
       nowISO: runtimeServices.clock.nowISO,
       diagnose: diagnoseSettings,
@@ -10266,6 +10306,10 @@ async function constructBureau<const D extends AgentDefinitions>(
           // COR-1526 — an agent file has no owner field: it belongs to the deployment's owner.
           return ownerOrLocal(undefined);
         }
+        if (runId.startsWith(AUDIT_WORKER_DEPLOYMENT_OWNER_PREFIX)) {
+          // COR-1813 — a worker deployment has no owner field: it belongs to the deployment's owner.
+          return ownerOrLocal(undefined);
+        }
         if (runId.startsWith(AUDIT_WORKFLOW_OWNER_PREFIX)) {
           // COR-1529 — a workflow file has no owner field: it belongs to the deployment's owner.
           return ownerOrLocal(undefined);
@@ -16640,11 +16684,43 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
+   * COR-1804 — returns the input to resolve, or refuses, before any resolver claims the review, an
+   * approval of a human wait whose `payload` does not satisfy the schema the wait was parked with (the model's per-call
+   * `answerSchema`, else the author's per-signal one). Every answer reaches a human wait through
+   * {@link resolveAnyReview}, so this is the one place the answer is judged, whichever path
+   * (`bureau.reviews.resolve`, `tasks.respond`, an AG-UI resume) carried it. A wait with no schema
+   * takes any answer, and a deny or reject carries none. The refusal changes nothing: the review
+   * stays pending. A review this process cannot find is left to the resolver that reports it.
+   */
+  async function humanWaitAnswerFittingItsSchema(
+    input: ResolveReviewInput,
+  ): Promise<ResolveReviewInput> {
+    if (input.decision !== 'approve') return input;
+    // The caller owns `payload`, and this reads the review across awaits: the answer that is
+    // checked is a copy taken now, and it is the copy that is delivered when a schema applies.
+    let snapshot: unknown = input.payload;
+    try {
+      snapshot = structuredClone(input.payload);
+    } catch {
+      // Not cloneable, so not JSON: a schema refuses it below, and a wait without one takes it as given.
+    }
+    const review =
+      listPendingReviews().find((candidate) => candidate.id === input.id) ??
+      runHumanWaits.find(input.id) ??
+      (await derivedHumanWait(input.id));
+    if (review?.kind !== 'human-wait' || review.inputSchema === undefined) return input;
+    const issues = validateReviewAnswer(review.inputSchema, snapshot);
+    if (issues.length > 0) throw new ReviewAnswerInvalidError(issues);
+    return snapshot === undefined ? input : { ...input, payload: snapshot };
+  }
+
+  /**
    * `bureau.resolveReview`: a catalog park this process lists resolves through the engine by run
    * id (COR-1577), a park another process holds is derived first (COR-1579), and every other
    * review resolves through the session path.
    */
-  async function resolveAnyReview(input: ResolveReviewInput): Promise<ResolveReviewResult> {
+  async function resolveAnyReview(requested: ResolveReviewInput): Promise<ResolveReviewResult> {
+    const input = await humanWaitAnswerFittingItsSchema(requested);
     if (runHumanWaits.has(input.id)) {
       assertExpectedReviewRound(input, { id: input.id, kind: 'human-wait' });
       return runHumanWaits.resolve(input);
@@ -19003,6 +19079,21 @@ async function constructBureau<const D extends AgentDefinitions>(
     },
     agents: agentCatalog,
     workflows: workflowRuntime?.workflows,
+    deployments:
+      options.workerDeployments === undefined
+        ? undefined
+        : createBureauWorkerDeployments({
+            catalog: options.workerDeployments,
+            now: () => runtimeServices.clock.now(),
+            audit: async (entry) => auditTrailInstance?.record(entry),
+            diagnose: (message, cause) =>
+              diagnose({
+                level: 'error',
+                scope: 'worker-deployments',
+                message: `[bureau] ${message}`,
+                cause,
+              }),
+          }),
     models,
     decisions: lateDecisions.decisions,
     // COR-1710: composed with the runtime, before this object exists.

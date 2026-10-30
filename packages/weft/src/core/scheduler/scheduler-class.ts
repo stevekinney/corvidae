@@ -88,7 +88,7 @@ const EXPIRED_TIMER_SCAN_LIMIT_PER_SOURCE = 1_000;
  *
  * scheduler.start();
  * // ... use scheduler ...
- * scheduler.stop();
+ * await scheduler.stop();
  * ```
  */
 export class Scheduler implements Disposable {
@@ -99,6 +99,12 @@ export class Scheduler implements Disposable {
   readonly #commitTimerCleanup: (operations: BatchOperation[]) => Promise<void>;
   #intervalHandle: ReturnType<typeof setInterval> | null = null;
   #stopped = false;
+  /**
+   * The scans in flight (a tick or a flush), each as a promise that settles when the scan does and
+   * never rejects, so {@link Scheduler.stop} can wait on them without taking a failure over from
+   * the caller that owns the scan.
+   */
+  readonly #scansInFlight = new Set<Promise<void>>();
   /**
    * The owners whose timers this process is delivering, or has delivered and not yet cleaned up
    * (COR-1482). A scan reads an expired entry again on every poll until the scan that delivered
@@ -148,13 +154,46 @@ export class Scheduler implements Disposable {
     }, this.#pollIntervalMs);
   }
 
-  /** Stop the polling loop. */
-  stop(): void {
+  /**
+   * Stop the polling loop, then wait for the scans already in flight to settle. No tick starts
+   * after this call, and a tick in flight delivers no further timer; once the returned promise
+   * resolves the scheduler makes no more storage calls, so a host can close its storage next. A
+   * scan that fails reports its failure to the caller of that scan, never here: this promise
+   * resolves either way. Concurrent calls wait for the same scans. It has no deadline of its own,
+   * so a scan that never settles keeps it pending.
+   *
+   * Do not await it from inside a timer callback: the callback belongs to the scan being waited
+   * for.
+   */
+  stop(): Promise<void> {
+    this.#halt();
+    return this.#settleScansInFlight();
+  }
+
+  /** Clear the poller and refuse further ticks, without waiting for anything. */
+  #halt(): void {
     this.#stopped = true;
     if (this.#intervalHandle !== null) {
       clearInterval(this.#intervalHandle);
       this.#intervalHandle = null;
     }
+  }
+
+  async #settleScansInFlight(): Promise<void> {
+    while (this.#scansInFlight.size > 0) {
+      await Promise.all(this.#scansInFlight);
+    }
+  }
+
+  /** Run one scan and register it for {@link Scheduler.stop} to wait on until it settles. */
+  #trackScan(scan: Promise<void>): Promise<void> {
+    const tracked = scan.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.#scansInFlight.add(tracked);
+    void tracked.then(() => this.#scansInFlight.delete(tracked));
+    return scan;
   }
 
   /** Schedule a durable timer (writes to storage). */
@@ -204,7 +243,7 @@ export class Scheduler implements Disposable {
   /** Force an immediate scan for expired timers (for tests). */
   async tick(now?: number): Promise<void> {
     if (this.#stopped) return;
-    await this.#processExpiredTimers(now, { respectStopped: true });
+    await this.#trackScan(this.#processExpiredTimers(now, { respectStopped: true }));
   }
 
   /** Process all expired timers then stop.
@@ -214,8 +253,8 @@ export class Scheduler implements Disposable {
    *  ticks that might race with this drain.
    */
   async flush(now?: number): Promise<void> {
-    await this.#processExpiredTimers(now, { respectStopped: false });
-    this.stop();
+    await this.#trackScan(this.#processExpiredTimers(now, { respectStopped: false }));
+    this.#halt();
   }
 
   /** Scan storage for expired timers, fire callbacks, and clean up keys.
@@ -437,7 +476,11 @@ export class Scheduler implements Disposable {
       : null;
   }
 
+  /**
+   * Stop the poller without waiting: a synchronous dispose cannot. Use `await scheduler.stop()`
+   * where a scan in flight must settle before the storage closes.
+   */
   [Symbol.dispose](): void {
-    this.stop();
+    void this.stop();
   }
 }

@@ -26,7 +26,7 @@ const schema = {
     required: {
       type: 'boolean',
       description:
-        'Marks the group required: sets `aria-required="true"` and\n`data-cinder-required` on the fieldset and renders the required asterisk in\nthe legend.\n\nIt does NOT set `required` on any child `<input>` and does NOT enforce\nnative constraint validation. Per-control `required` must be set on the\nindividual `<Checkbox>`.',
+        'Marks the group required: sets `aria-required="true"` and\n`data-cinder-required` on the fieldset and renders the required dot in\nthe legend.\n\nIt does NOT set `required` on any child `<input>` and does NOT enforce\nnative constraint validation. Per-control `required` must be set on the\nindividual `<Checkbox>`.',
     },
     variant: {
       enum: ['default', 'card'],

@@ -293,7 +293,9 @@ type TopLevelMembers =
   | 'completed'
   | 'signal'
   | 'runtimeServices'
-  | 'peerCalls';
+  | 'peerCalls'
+  // COR-1813: the worker rollouts.
+  | 'deployments';
 
 export type BureauTopLevelMembersAreExact = AssertTrue<Equals<keyof Bureau, TopLevelMembers>>;
 

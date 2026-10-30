@@ -139,13 +139,6 @@
     border-radius: var(--cinder-button-radius-lg);
   }
 
-  .cinder-button[data-cinder-size='xl'] {
-    font-size: var(--cinder-button-font-size-xl);
-    padding: var(--cinder-button-padding-y-xl) var(--cinder-button-padding-x-xl);
-    min-height: var(--cinder-button-height-xl);
-    border-radius: var(--cinder-button-radius-xl);
-  }
-
   /* ----------------------------------------
  * Icon-only modifier
  * Button sizes are compact visual sizes, not guaranteed touch targets.
@@ -171,10 +164,6 @@
 
   .cinder-button[data-cinder-icon-only][data-cinder-size='lg'] {
     min-width: var(--cinder-button-height-lg);
-  }
-
-  .cinder-button[data-cinder-icon-only][data-cinder-size='xl'] {
-    min-width: var(--cinder-button-height-xl);
   }
 
   /* ----------------------------------------
