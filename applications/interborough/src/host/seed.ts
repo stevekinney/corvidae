@@ -50,7 +50,7 @@ import {
   type ConditionalTextValueStore,
   type Storage,
 } from '@lostgradient/storage';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox, type ToolSecretResolver } from 'armorer';
 import { z } from 'zod';
 
 /** Every seeded agent, by name. */
@@ -242,7 +242,7 @@ export function createAgentFileTools() {
   return { 'lookup-order': createLookupOrderTool() };
 }
 
-function createToolRunnerToolbox(approvalSecret: string) {
+function createToolRunnerToolbox(approvalSecret: string, secretResolver?: ToolSecretResolver) {
   const lookupOrder = createLookupOrderTool();
   const issueRefund = createTool({
     name: 'issue-refund',
@@ -255,6 +255,7 @@ function createToolRunnerToolbox(approvalSecret: string) {
   return createToolbox([lookupOrder, issueRefund], {
     approvalSecret,
     approvalPolicy: { mode: 'on-mutation' },
+    ...(secretResolver === undefined ? {} : { secretResolver }),
   });
 }
 
@@ -262,9 +263,14 @@ function createToolRunnerToolbox(approvalSecret: string) {
  * The seeded agents. `assistantGenerate` replaces the `assistant`'s script, for a test that needs a
  * run to stay in flight. `approvalSecret` signs the refund approvals `tool-runner` raises; the host
  * keeps one per installation in Bungalow's secrets so a restart can still resolve a pending
- * review.
+ * review. `secretResolver` reads a secret answer back for a tool that declares `acceptsSecrets`
+ * (COR-1920); the host passes the one over its Bureau's storage and answer keys.
  */
-export function createSeededAgents(approvalSecret: string, assistantGenerate?: GenerateFunction) {
+export function createSeededAgents(
+  approvalSecret: string,
+  assistantGenerate?: GenerateFunction,
+  secretResolver?: ToolSecretResolver,
+) {
   return {
     assistant: createAgent({
       name: 'assistant',
@@ -284,7 +290,7 @@ export function createSeededAgents(approvalSecret: string, assistantGenerate?: G
       description: 'Looks an order up, then asks for approval to refund it.',
       examples: ['Refund order 1234'],
       generate: toolRunnerGenerate(),
-      toolbox: createToolRunnerToolbox(approvalSecret),
+      toolbox: createToolRunnerToolbox(approvalSecret, secretResolver),
       stopWhen: [stopWhen.pendingApproval(), stopWhen.noToolCalls()],
     }),
     'request-human-input': createAgent({

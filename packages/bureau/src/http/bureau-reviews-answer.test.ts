@@ -19,6 +19,7 @@ import {
 import { createToolbox, type Toolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
+import { generateEncryptionKey } from '@lostgradient/cryptography';
 import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { AgentDefinitions } from '../agent-catalog';
@@ -170,6 +171,8 @@ async function askingBureau(
     },
     storage: new MemoryStorage(),
     durable: true,
+    // COR-1920: the secret kind is sealed under this key.
+    answerEncryption: { current: await generateEncryptionKey() },
     ...(inputSchemas === undefined ? {} : { humanInput: { inputSchemas } }),
   });
   const handler = createBureauHandler(bureau, { authentication });

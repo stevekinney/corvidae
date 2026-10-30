@@ -1,5 +1,10 @@
 import type { EventMap, HookReplayPolicy, RuntimeServices } from '@lostgradient/lifecycle';
 import {
+  createSecretAnswerStore,
+  type SecretAnswerStore,
+  secretResolverOf,
+} from './secret-answers';
+import {
   createDefaultRuntimeServices,
   HookRegistry,
   mergeHookRegistries,
@@ -2021,6 +2026,11 @@ export interface ScheduleFireEventMap extends EventMap {
 export interface RuntimeComposition {
   kv: ConditionalTextValueStore | undefined;
   /**
+   * COR-1920 — the stored secret answers, present when there is a `kv` and the Bureau was given
+   * `answerEncryption`. Without it a secret answer is refused before anything holds it.
+   */
+  secretAnswers: SecretAnswerStore | undefined;
+  /**
    * The durable run engine + checkpoint store, present whenever durable
    * execution resolves on (by default: a persistent `storage` backend is
    * configured and `durable` is not explicitly `false`). When present,
@@ -3065,7 +3075,23 @@ async function buildRuntimeComposition(
         beforeCleanup: dependencies.beforeSessionCleanup,
       })
     : undefined;
-  const baseToolbox: BureauToolbox = options.toolbox ?? createToolbox([], { context: {} });
+  // COR-1920: secret answers need somewhere durable to keep their ciphertext and a key to seal it
+  // with. The toolbox the Bureau builds itself reads them back for the run that asked; an author's
+  // toolbox keeps its own options, and takes `createSecretAnswerResolver` to do the same.
+  const secretAnswers =
+    kv !== undefined && options.answerEncryption !== undefined
+      ? createSecretAnswerStore({
+          kv,
+          keys: options.answerEncryption,
+          now: () => runtimeServices.clock.now(),
+        })
+      : undefined;
+  const baseToolbox: BureauToolbox =
+    options.toolbox ??
+    createToolbox([], {
+      context: {},
+      ...(secretAnswers === undefined ? {} : { secretResolver: secretResolverOf(secretAnswers) }),
+    });
   const hasSkillTools = options.skills !== undefined && options.skills.includeTools !== false;
   const fallbackToolbox: BureauToolbox =
     options.toolbox !== undefined || hasSkillTools ? baseToolbox : createUnavailableToolbox();
@@ -5202,6 +5228,7 @@ async function buildRuntimeComposition(
 
   const composition: RuntimeComposition = {
     kv,
+    secretAnswers,
     durable,
     workflowVersionMismatches,
     unrebuildableRecoveredRuns,

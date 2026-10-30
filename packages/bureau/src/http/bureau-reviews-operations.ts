@@ -472,6 +472,8 @@ const reviewsResolveInput = z
         'The `round` of the review the caller read. A re-gated tool approval keeps its id and advances its round; when this is given and the review is no longer at it, nothing is decided and the answer is a `Conflict`. A human wait is always at round 0. Omitted, the call is not fenced.',
       ),
   })
+  // COR-1920: a field the operation does not define is refused, not dropped.
+  .strict()
   .refine((input) => input.decision !== 'reject' || (input.reason ?? '').trim() !== '', {
     message: 'reject requires a reason',
     path: ['reason'],
