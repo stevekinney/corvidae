@@ -1,3 +1,4 @@
+import type { TimerFiredOutcome } from '../scheduler.ts';
 import type { ScheduleState, TimerEntry } from '../types.ts';
 import { WeftError } from '../weft-error.ts';
 import type { EngineInternals } from './internals.ts';
@@ -8,8 +9,6 @@ import {
   gapMisses,
   lateMisses,
   recordMissedFires,
-  type MissedScheduleOccurrences,
-  type RecordedMisses,
 } from './schedule-missed-fires.ts';
 import {
   collectDueScheduleTicks,
@@ -17,8 +16,14 @@ import {
   isSkippedOccurrence,
   type ScheduleTick,
 } from './schedule-occurrence.ts';
-import { drainQueuedScheduleRun } from './schedule-overlap.ts';
 import { loadScheduleState } from './schedule-state-read.ts';
+import {
+  drainQueuedRunInSection,
+  recordOccurrence,
+  scheduleAfterWork,
+  type PlannedScheduleTimerWork,
+  type ScheduleTimerWork,
+} from './schedule-timer-occurrence.ts';
 import {
   pauseScheduleAfterTimerFailure,
   persistScheduleTimerState,
@@ -49,24 +54,6 @@ const MAX_MISSED_FIRE_COUNT_PER_TICK = MAX_SCHEDULE_BACKFILL_OCCURRENCES_PER_TIC
 
 type ActiveScheduleTimerState = ScheduleState & { nextFireAt: number };
 
-type PlannedScheduleTimerWork = {
-  /** What this tick missed, one entry per reason; empty when it missed nothing. */
-  missed: MissedScheduleOccurrences[];
-  /** The occurrences that start a run. */
-  occurrencesToProcess: number[];
-  /**
-   * The last instant this tick accounted for, fired or missed. The schedule's next occurrence is
-   * the one after it, so what was accounted for is never offered again.
-   */
-  anchor: number;
-};
-
-/**
- * A tick's plan with what recording its misses changes (COR-1829): the counters and row writes
- * that go in the first write the tick makes, and what to announce when that write has landed.
- */
-type ScheduleTimerWork = PlannedScheduleTimerWork & { recorded: RecordedMisses };
-
 /**
  * One schedule timer tick, in serialized sections of the schedule's own write.
  *
@@ -83,7 +70,7 @@ export async function handleScheduleTimer(
   internals: EngineInternals,
   entry: TimerEntry,
   callbacks: ScheduleCallbacks,
-): Promise<void> {
+): Promise<TimerFiredOutcome> {
   let step = await runSerializedScheduleStateOperation(internals, entry.workflowId, () =>
     beginScheduleTimer(internals, entry, callbacks),
   );
@@ -99,6 +86,33 @@ export async function handleScheduleTimer(
       resumeScheduleTimer(internals, entry.workflowId, pending, callbacks),
     );
   }
+  return (await catchUpStillOwed(internals, entry)) ? 'retain' : undefined;
+}
+
+/**
+ * Whether the tick that fired `entry` has left a catch-up behind that nothing else would wake. A
+ * backfill commits each occurrence it starts (`lastFireAt`) and moves `nextFireAt`, and so replaces
+ * the entry, only with the last. A tick that stands aside because another engine went on with the
+ * catch-up (its start or write lost) leaves the schedule with `lastFireAt` at or past `nextFireAt`
+ * and the fired entry as its only timer; if that engine then dies before its last write, deleting
+ * the entry would leave an active schedule that no timer wakes until some engine boots
+ * (COR-1925). So the entry is kept, and delivered again, until the stored schedule shows the
+ * catch-up finished (`nextFireAt` moved, and the last write armed the next timer) or no longer
+ * active. A delivery that finds the remaining occurrences already started by the other engine
+ * starts none of them again: it resumes after `lastFireAt`, and its starts are conditioned on the
+ * schedule it read.
+ */
+async function catchUpStillOwed(internals: EngineInternals, entry: TimerEntry): Promise<boolean> {
+  if (internals.disposed) return false;
+  const loaded = await loadScheduleState(internals, entry.workflowId);
+  const state = loaded?.state;
+  return (
+    state?.status === 'active' &&
+    state.nextFireAt !== null &&
+    state.lastFireAt !== undefined &&
+    state.lastFireAt >= state.nextFireAt &&
+    resolveEffectiveScheduleFireAt(state, state.nextFireAt) === entry.fireAt
+  );
 }
 
 /**
@@ -154,6 +168,11 @@ type ScheduleTimerStep =
       readonly index: number;
       /** The schedule's `revision` as this tick left it, to tell whether anything else changed it. */
       readonly revision: number;
+      /**
+       * The occurrence this tick last started (`lastFireAt`). Another engine that goes on with the
+       * catch-up while this tick waits moves it, and then the occurrences left are its to start.
+       */
+      readonly lastFireAt: number | undefined;
     };
 
 /** Runs one section, pausing the schedule when its processing fails, as the whole tick used to. */
@@ -252,7 +271,8 @@ async function resumeScheduleTimer(
   if (
     loaded === null ||
     loaded.state.status !== 'active' ||
-    loaded.state.revision !== pending.revision
+    loaded.state.revision !== pending.revision ||
+    loaded.state.lastFireAt !== pending.lastFireAt
   ) {
     return { kind: 'done' };
   }
@@ -272,7 +292,12 @@ async function resumeScheduleTimer(
       nextState.currentWorkflowId === undefined &&
       nextState.queuedRuns.length > 0
     ) {
-      nextState = await drainQueuedScheduleRun(nextState, callbacks);
+      // The drain is conditioned on the bytes this section holds, and writes the schedule as it
+      // returns it, so that is what the key holds afterwards and the next write of this tick is
+      // conditioned on it (COR-1925). One that finds the schedule no longer the tick's ends it.
+      const drained = await drainQueuedRunInSection(internals, progress, nextState, callbacks);
+      if (drained === null) return { kind: 'done' };
+      nextState = drained;
     }
     if (index === work.occurrencesToProcess.length - 1) {
       nextState = { ...scheduleAfterWork(nextState, work), updatedAt: now };
@@ -305,19 +330,42 @@ function isCurrentActiveScheduleTimer(
   );
 }
 
+/**
+ * Where a tick starts: a backfill commits each occurrence it starts (`lastFireAt`) and moves
+ * `nextFireAt` only with the last, so a tick that finds `lastFireAt` at or past `nextFireAt` is
+ * resuming a catch-up another tick (or this one, before a restart) has begun, and what it has fired
+ * is not started again (COR-1925). `firedThrough` is that `lastFireAt`; when no occurrence is left
+ * after it, the cadence moves on past it.
+ */
+function resumePointOfCatchUp(state: ActiveScheduleTimerState): {
+  firedThrough: number | undefined;
+  firstDueAt: number;
+} {
+  const { lastFireAt, nextFireAt } = state;
+  if (lastFireAt === undefined || lastFireAt < nextFireAt) {
+    return { firedThrough: undefined, firstDueAt: nextFireAt };
+  }
+  return { firedThrough: lastFireAt, firstDueAt: getNextScheduleOccurrence(state, lastFireAt) };
+}
+
 function planScheduleTimerWork(
   state: ActiveScheduleTimerState,
   entry: TimerEntry,
   now: number,
   lateGraceMilliseconds: number,
 ): PlannedScheduleTimerWork | null {
+  const { firedThrough, firstDueAt } = resumePointOfCatchUp(state);
   const dueTicks = collectDueScheduleTicks(
     state,
-    state.nextFireAt,
+    firstDueAt,
     Math.max(now, entry.fireAt),
     state.backfill ? MAX_SCHEDULE_BACKFILL_OCCURRENCES_PER_TICK : 2,
   );
-  if (dueTicks.length === 0) return null;
+  if (dueTicks.length === 0) {
+    return firedThrough === undefined
+      ? null
+      : { missed: [], occurrencesToProcess: [], anchor: firedThrough };
+  }
 
   if (!state.backfill && now - entry.fireAt > lateGraceMilliseconds) {
     const missedTicks = collectMissedScheduleTicks(state, state.nextFireAt, now);
@@ -366,65 +414,6 @@ function collectMissedScheduleTicks(
 }
 
 /**
- * The schedule once the tick's work is done: its next occurrence is the one after the last instant
- * the tick accounted for, and a skip the tick has moved past is spent.
- */
-function scheduleAfterWork(state: ScheduleState, work: ScheduleTimerWork): ScheduleState {
-  const nextFireAt = resolveNextScheduleFireAt(state, work);
-  if (state.skipUntil === undefined || state.skipUntil > work.anchor) {
-    return { ...state, nextFireAt };
-  }
-  const { skipUntil: _spent, ...withoutSkip } = state;
-  return { ...withoutSkip, nextFireAt };
-}
-
-function resolveNextScheduleFireAt(state: ScheduleState, work: ScheduleTimerWork): number {
-  const next = getNextScheduleOccurrence(state, work.anchor);
-  if (next <= work.anchor) {
-    throw new Error(`Schedule "${state.id}" produced a non-advancing occurrence`);
-  }
-  return next;
-}
-
-/**
- * Writes the state after one occurrence, with what the tick missed when no earlier write carried it
- * (announced once it has landed). Resolves what was written, which carries what another engine
- * recorded meanwhile, or `null` when the schedule is no longer the tick's to write.
- */
-async function writeOccurrenceState(
-  internals: EngineInternals,
-  progress: ScheduleTimerProgress,
-  state: ScheduleState,
-  work: ScheduleTimerWork,
-  includeTimer: boolean,
-  withMisses: boolean,
-): Promise<ScheduleState | null> {
-  const persisted = await persistScheduleTimerState(internals, progress, state, {
-    includeTimer,
-    ...(withMisses && { additionalOperations: work.recorded.operations }),
-  });
-  if (!persisted) return null;
-  if (withMisses) dispatchMissedFires(internals, state.id, work.recorded.announce);
-  return progress.stored.state;
-}
-
-/** The schedule once `occurrence` has started its run, or has passed because it was skipped. */
-async function stateAfterOccurrence(
-  state: ScheduleState,
-  occurrence: number,
-  skipped: boolean,
-  now: number,
-  callbacks: ScheduleCallbacks,
-): Promise<ScheduleState> {
-  if (skipped) return { ...state, updatedAt: now };
-  return {
-    ...(await callbacks.applyScheduleOccurrence(state, occurrence)),
-    lastFireAt: occurrence,
-    updatedAt: now,
-  };
-}
-
-/**
  * Starts the occurrences from `fromIndex`, writing the state after each. A backfilled run that
  * is still the schedule's current one ends the section: the caller waits for it with the
  * serialization released and comes back through {@link resumeScheduleTimer}.
@@ -450,16 +439,18 @@ async function processScheduleTimerOccurrences(
     const finalOccurrence = index === work.occurrencesToProcess.length - 1;
     const skipped = isSkippedOccurrence(nextState, occurrence);
     if (skipped && !finalOccurrence) continue;
-    nextState = await stateAfterOccurrence(nextState, occurrence, skipped, now, callbacks);
-    if (finalOccurrence) nextState = scheduleAfterWork(nextState, work);
-    progress.state = nextState;
-    const written = await writeOccurrenceState(
+    const written = await recordOccurrence(
       internals,
       progress,
-      nextState,
-      work,
-      finalOccurrence,
-      missesUnwritten,
+      {
+        state: nextState,
+        occurrence,
+        finalOccurrence,
+        withMisses: missesUnwritten,
+        work,
+        now,
+      },
+      callbacks,
     );
     if (written === null) return { kind: 'done' };
     nextState = written;
@@ -472,6 +463,7 @@ async function processScheduleTimerOccurrences(
         now,
         index,
         revision: nextState.revision,
+        lastFireAt: nextState.lastFireAt,
       };
     }
   }

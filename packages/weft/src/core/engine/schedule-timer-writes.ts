@@ -36,17 +36,36 @@ export class ScheduleStatePersistenceError extends Error {
 export type ScheduleTimerProgress = { state: ScheduleState; stored: LoadedScheduleState };
 
 /**
+ * Records that the schedule key now holds `stored` for this tick, and that `state` is the latest
+ * the section has (the stored state unless it has already computed past it). The two move
+ * together: a pause is built from `state` and conditioned on `stored`, so a `stored` that
+ * advances past a `state` that does not would write the pause over what was committed in between
+ * (COR-1925). This is the only place `progress.stored` is assigned, which
+ * `schedule-timer-progress.test.ts` keeps true.
+ */
+export function advanceScheduleTimerProgress(
+  progress: ScheduleTimerProgress,
+  stored: LoadedScheduleState,
+  state: ScheduleState = stored.state,
+): void {
+  progress.stored = stored;
+  progress.state = state;
+}
+
+/**
  * Whether the schedule is still as this tick left it: active, at the `revision` the tick holds,
- * with the `nextFireAt` it holds. Another process's pause, update or cancel moves the revision,
+ * with the `nextFireAt` and `lastFireAt` it holds (COR-1925: another tick that fired the occurrence
+ * a backfill is catching up on moves `lastFireAt` before it moves `nextFireAt`). Another process's pause, update or cancel moves the revision,
  * and another process's timer tick moves `nextFireAt`. A run now, a skip next and a clearing of
  * the current run move neither: what they recorded is carried into the tick's write
  * ({@link carryConcurrentRecords}).
  */
-function isStillAsTickLeftIt(current: ScheduleState, left: ScheduleState): boolean {
+export function isStillAsTickLeftIt(current: ScheduleState, left: ScheduleState): boolean {
   return (
     current.status === 'active' &&
     current.revision === left.revision &&
-    current.nextFireAt === left.nextFireAt
+    current.nextFireAt === left.nextFireAt &&
+    current.lastFireAt === left.lastFireAt
   );
 }
 
@@ -72,7 +91,7 @@ export async function persistScheduleTimerState(
           ...options,
           extraConditions: scheduleReadConditions(internals, next.id, progress.stored),
         });
-        progress.stored = { state: next, bytes };
+        advanceScheduleTimerProgress(progress, { state: next, bytes });
         return true;
       } catch (error) {
         if (!(error instanceof ScheduleReadConditionLostError)) throw error;
@@ -82,7 +101,7 @@ export async function persistScheduleTimerState(
         return false;
       }
       next = carryConcurrentRecords(next, progress.stored.state, current.state);
-      progress.stored = current;
+      advanceScheduleTimerProgress(progress, current, next);
     }
   } catch (error) {
     throw new ScheduleStatePersistenceError(next.id, error);
@@ -103,7 +122,7 @@ export async function persistScheduleTimerState(
  * - A skip they recorded for an occurrence this tick has already passed without honoring moves to
  *   the next occurrence that fires, so it still skips exactly one run.
  */
-function carryConcurrentRecords(
+export function carryConcurrentRecords(
   ours: ScheduleState,
   base: ScheduleState,
   theirs: ScheduleState,

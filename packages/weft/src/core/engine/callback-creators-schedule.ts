@@ -1,3 +1,4 @@
+import type { TimerFiredOutcome } from '../scheduler.ts';
 import type { ScheduleState, TimerEntry } from '../types.ts';
 import {
   createInlineLaunchQueueCallbacks,
@@ -15,6 +16,7 @@ import {
   handleScheduledWorkflowTerminal,
   refreshScheduledWorkflowState,
 } from './schedule-current-run.ts';
+import type { OccurrenceCommit } from './schedule-occurrence-commit.ts';
 import type { ScheduledRunStartOptions } from './schedule-run.ts';
 import {
   handleScheduleTimer,
@@ -60,8 +62,8 @@ export function createScheduleCallbacks<TWorkflows extends object, TActivities e
     getWorkflowResult: (workflowId) => engine.getHandle(workflowId).result(),
     refreshScheduledWorkflowState: (state) => refreshScheduledWorkflowStateForEngine(engine, state),
     startScheduledRun: (state, options) => startScheduledRunForEngine(engine, state, options),
-    applyScheduleOccurrence: (state, occurrence, manual) =>
-      applyScheduleOccurrenceForEngine(engine, state, occurrence, manual),
+    applyScheduleOccurrence: (state, occurrence, manual, commit) =>
+      applyScheduleOccurrenceForEngine(engine, state, occurrence, manual, commit),
     flushQueuedInlineWorkflowStartsDirectly: () =>
       flushQueuedInlineWorkflowStartsDirectly(
         getInternals(engine),
@@ -136,8 +138,9 @@ export async function applyScheduleOccurrenceForEngine<
 >(
   engine: Engine<TWorkflows, TActivities>,
   state: ScheduleState,
-  occurrence?: number,
-  manual?: true,
+  occurrence: number | undefined,
+  manual: true | undefined,
+  commit: OccurrenceCommit,
 ): Promise<ScheduleState> {
   return applyScheduleOccurrence(
     getInternals(engine),
@@ -145,12 +148,13 @@ export async function applyScheduleOccurrenceForEngine<
     createScheduleCallbacks(engine),
     occurrence,
     manual,
+    commit,
   );
 }
 export async function handleScheduleTimerForEngine<
   TWorkflows extends object,
   TActivities extends object,
->(engine: Engine<TWorkflows, TActivities>, entry: TimerEntry): Promise<void> {
+>(engine: Engine<TWorkflows, TActivities>, entry: TimerEntry): Promise<TimerFiredOutcome> {
   return handleScheduleTimer(getInternals(engine), entry, createScheduleCallbacks(engine));
 }
 export async function handleScheduledWorkflowTerminalForEngine<

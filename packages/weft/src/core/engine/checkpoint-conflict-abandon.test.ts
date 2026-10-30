@@ -1903,7 +1903,8 @@ describe('rejecting a launch for an id this engine is already running', () => {
       expect(loser.status).toBe('rejected');
       expect((loser as PromiseRejectedResult).reason).toBeInstanceOf(WorkflowAlreadyExistsError);
       // The winner's own services object, not the loser's replacement and not nothing.
-      expect(resolved).toHaveLength(2);
+      // The loser is rejected before its batch commits (COR-1925), so it resolves nothing.
+      expect(resolved).toHaveLength(1);
       expect(internals.workflowServices.get(id)).toBe(resolved[0]);
       expect(internals.workflowsNeedingTerminalCleanup.has(id)).toBe(true);
 

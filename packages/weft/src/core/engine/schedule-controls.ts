@@ -3,14 +3,11 @@
  * skip the next run, and start one now.
  */
 
-import { storageValuesEqual } from '@lostgradient/storage';
-import { KEYS } from '../../storage/keys.ts';
 import { encode } from '../codec.ts';
 import { ScheduleAttemptedEvent, ScheduleSkippedEvent } from '../events.ts';
 import type { ScheduleState, ScheduleTransitionOptions, ScheduleTriggerResult } from '../types.ts';
-import { WorkflowAlreadyExistsError } from './errors.ts';
 import type { EngineInternals } from './internals.ts';
-import { StartIdempotencyRaceLostError } from './lifecycle/start-commit-errors.ts';
+import { startUnderScheduleRead } from './schedule-conditioned-start.ts';
 import { resolveEffectiveScheduleFireAt } from './schedule-jitter.ts';
 import { findFiringScheduleOccurrence, getNextScheduleOccurrence } from './schedule-occurrence.ts';
 import type { ScheduledRunStartOptions } from './schedule-run.ts';
@@ -246,8 +243,8 @@ async function recordBlockedRun(
 
 /**
  * Starts a run with `after`, the schedule that names it, in one batch that commits only while the
- * schedule key still holds `basis`. Resolves the bytes it wrote, or `null` when another engine
- * changed the schedule first: the batch did not commit, so no run launched.
+ * schedule key still holds `basis` ({@link startUnderScheduleRead}). Resolves the bytes it wrote, or
+ * `null` when another engine changed the schedule first.
  */
 async function startRecorded(
   internals: EngineInternals,
@@ -257,40 +254,11 @@ async function startRecorded(
   basis: Uint8Array,
   options: ScheduledRunStartOptions,
 ): Promise<Uint8Array | null> {
-  const startConditions = scheduleReadConditions(internals, state.id, { bytes: basis });
-  try {
-    await callbacks.startScheduledRun(state, {
-      ...options,
-      scheduleStateAfterStart: after,
-      startConditions,
-    });
-  } catch (error) {
-    if (
-      startConditions.length > 0 &&
-      (await lostToAnotherWriter(internals, state.id, basis, error))
-    ) {
-      return null;
-    }
-    throw error;
-  }
-  return encode(after);
-}
-
-/**
- * Whether a start failed because the schedule changed under it, so nothing it decided committed:
- * its condition on the schedule was lost, or the queued run it was starting was already started by
- * the engine that changed the schedule.
- */
-async function lostToAnotherWriter(
-  internals: EngineInternals,
-  scheduleId: string,
-  basis: Uint8Array,
-  error: unknown,
-): Promise<boolean> {
-  if (error instanceof StartIdempotencyRaceLostError) return true;
-  if (!(error instanceof WorkflowAlreadyExistsError)) return false;
-  const stored = await internals.storage.get(KEYS.schedule(scheduleId));
-  return stored === null || !storageValuesEqual(stored, basis);
+  const started = await startUnderScheduleRead(internals, callbacks, state, basis, {
+    ...options,
+    scheduleStateAfterStart: after,
+  });
+  return started ? encode(after) : null;
 }
 
 /** Writes `after` only while the schedule key still holds `basis`; `false` when it did not. */

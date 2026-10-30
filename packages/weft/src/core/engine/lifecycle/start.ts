@@ -55,7 +55,7 @@ import {
   resolveTerminalConflictForRestart,
 } from './start-terminal-conflict-purge.ts';
 import type { StartTransientState } from './start-transient-state.ts';
-import { createLaunchAdoption } from './start-transient-state.ts';
+import { createLaunchAdoption, installDeferredRunServices } from './start-transient-state.ts';
 import {
   mergeWorkerStartOverrideOperations,
   prepareWorkerStartOverrideConsumption,
@@ -473,6 +473,8 @@ export async function startWorkflow(
       },
       buildIdempotentStartOperations,
     );
+
+    await installDeferredRunServices(internals, workflowId, transientState);
 
     const handle = createWorkflowHandle(internals, workflowId, callbacks);
     await beginExecutionAwaitingLiveness(

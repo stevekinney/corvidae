@@ -15,7 +15,12 @@ import { ScheduleAttemptedEvent } from '../events.ts';
 import type { ScheduleState, WorkflowState } from '../types.ts';
 import { commitFencedEngineWrite } from './fenced-write.ts';
 import type { EngineInternals } from './internals.ts';
-import { applyBlockedScheduleOccurrence, drainQueuedScheduleRun } from './schedule-overlap.ts';
+import { startOccurrenceRun, type OccurrenceCommit } from './schedule-occurrence-commit.ts';
+import {
+  applyBlockedScheduleOccurrence,
+  drainQueuedScheduleRun,
+  drainQueuedScheduleRunUnderRead,
+} from './schedule-overlap.ts';
 import { decodeScheduleRunMetadata } from './schedule-run-metadata.ts';
 import { runIsolatedScheduleStateOperation } from './schedule-state-operations.ts';
 import {
@@ -74,17 +79,21 @@ export async function applyScheduleOccurrence(
   internals: EngineInternals,
   state: ScheduleState,
   callbacks: ScheduleCallbacks,
-  occurrence?: number,
-  manual?: true,
+  occurrence: number | undefined,
+  manual: true | undefined,
+  commit: OccurrenceCommit,
 ): Promise<ScheduleState> {
   // WFT-136/COR-105: the one observation point every occurrence passes through,
   // dispatched before the overlap policy is consulted so a consumer sees the
   // tick itself rather than only the outcomes that launch a run. The blocked
   // policies deliberately do not emit `schedule:fired`, so without this a
-  // `skip` collision and a stopped schedule look identical from outside.
-  internals.engine.dispatchEvent(
-    new ScheduleAttemptedEvent(state.id, internals.options.getNow(), occurrence),
-  );
+  // `skip` collision and a stopped schedule look identical from outside. A tick that decides
+  // the occurrence again after losing a start to another engine (COR-1925) is the same attempt.
+  if (!commit.retry) {
+    internals.engine.dispatchEvent(
+      new ScheduleAttemptedEvent(state.id, internals.options.getNow(), occurrence),
+    );
+  }
 
   const { state: refreshedState, currentWorkflowState } =
     await callbacks.refreshScheduledWorkflowState(state);
@@ -92,15 +101,23 @@ export async function applyScheduleOccurrence(
   let hasActiveWorkflow = hasActiveScheduledWorkflow(currentWorkflowState);
 
   if (!hasActiveWorkflow && stateForOccurrence.queuedRuns.length > 0) {
-    stateForOccurrence = await drainQueuedScheduleRun(stateForOccurrence, callbacks);
+    stateForOccurrence = await drainQueuedScheduleRun(stateForOccurrence, callbacks, commit);
     hasActiveWorkflow = true;
   }
 
   if (stateForOccurrence.overlap === 'allow') {
-    await callbacks.startScheduledRun(stateForOccurrence, {
+    const options = {
       ...(occurrence !== undefined && { occurrence }),
       ...(manual === true && { manual }),
-    });
+    };
+    await startOccurrenceRun(
+      commit,
+      callbacks,
+      stateForOccurrence,
+      stateForOccurrence,
+      options,
+      true,
+    );
     return stateForOccurrence;
   }
 
@@ -111,6 +128,7 @@ export async function applyScheduleOccurrence(
     callbacks,
     occurrence,
     manual,
+    commit,
   );
 }
 
@@ -182,7 +200,16 @@ export async function handleScheduledWorkflowTerminal(
       // Queue entries are accepted work. Keep draining them even if a later update
       // changes overlap; the new policy governs only future occurrences.
       if (drainsQueuedRun(clearedState)) {
-        await drainQueuedScheduleRun({ ...clearedState, updatedAt: now }, callbacks, workflowId);
+        // Conditioned on the bytes this was decided from: a pause, an update, or another engine's
+        // drain that landed since the read loses it, and the schedule is read again (COR-1925).
+        const drained = await drainQueuedScheduleRunUnderRead(
+          internals,
+          clearedState,
+          loaded.bytes,
+          callbacks,
+          workflowId,
+        );
+        if (drained === null) continue;
         return;
       }
       try {

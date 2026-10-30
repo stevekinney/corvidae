@@ -238,7 +238,7 @@ describe('a timer tick while another engine clears the run it replaced', () => {
 });
 
 describe('skipping the next run while another engine fires it (tick parked, skip commits)', () => {
-  it('moves the skip to the next fire when the tick already started the one it named', async () => {
+  it('starts no run for the occurrence the skip named, because the tick commits its run with the schedule (COR-1925)', async () => {
     const { clock, shared, b, engineA, engineB } = await openEngines();
     const before = await stateOf(shared);
     const first = before.nextFireAt!;
@@ -253,10 +253,13 @@ describe('skipping the next run while another engine fires it (tick parked, skip
     await ticking;
     await drainEngine();
 
+    // The tick's run was not started yet, so the skip landed first and the tick read it again.
     const state = await stateOf(shared);
-    expect(state.lastFireAt).toBe(first);
+    expect(await listRunningWorkflowIds(engineA)).toEqual([]);
+    expect(state.currentWorkflowId).toBeUndefined();
+    expect(state.lastFireAt).toBeUndefined();
     expect(state.nextFireAt).toBe(first + MINUTE);
-    expect(state.skipUntil).toBe(first + MINUTE);
+    expect(state.skipUntil).toBeUndefined();
   });
 });
 
