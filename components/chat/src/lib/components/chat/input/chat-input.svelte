@@ -1435,6 +1435,13 @@
     position: relative;
   }
 
+  /* Both layers reserve the same scrollbar gutter, so a classic scrollbar on
+   * a long draft narrows them alike and they wrap at the same places. */
+  .chat-input-editor-styled,
+  .chat-input-markdown {
+    scrollbar-gutter: stable;
+  }
+
   .chat-input-editor-styled {
     position: relative;
     color: transparent;

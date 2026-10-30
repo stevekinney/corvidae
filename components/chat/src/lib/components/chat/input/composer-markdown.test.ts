@@ -113,6 +113,16 @@ describe('applyComposerFormat', () => {
     const unlisted = applyComposerFormat('- one\n- two', 3, 7, 'list');
     expect(unlisted.text).toBe('one\ntwo');
   });
+
+  test('lists an empty first line when the caret is at offset zero', () => {
+    expect(applyComposerFormat('\none', 0, 0, 'list')).toEqual({
+      start: 0,
+      end: 0,
+      text: '- ',
+      selectionStart: 2,
+      selectionEnd: 2,
+    });
+  });
 });
 
 describe('composerShortcutFormat', () => {

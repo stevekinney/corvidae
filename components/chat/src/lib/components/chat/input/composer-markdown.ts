@@ -151,7 +151,8 @@ function linkSelection(value: string, start: number, end: number): ComposerForma
 }
 
 function listSelection(value: string, start: number, end: number): ComposerFormatEdit {
-  const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+  // `lastIndexOf` clamps a negative position to 0, so offset 0 must not search.
+  const lineStart = start === 0 ? 0 : value.lastIndexOf('\n', start - 1) + 1;
   const nextBreak = value.indexOf('\n', end);
   const lineEnd = nextBreak === -1 ? value.length : nextBreak;
   const lines = value.slice(lineStart, lineEnd).split('\n');

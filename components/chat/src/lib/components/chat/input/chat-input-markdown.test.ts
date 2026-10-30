@@ -55,6 +55,13 @@ describe('ChatInput — Markdown in place', () => {
     expect(sent).toEqual(['**Bold** and [a link](https://x.test)']);
   });
 
+  test('the textarea and backdrop reserve the same scrollbar gutter', async () => {
+    const source = await Bun.file(new URL('./chat-input.svelte', import.meta.url)).text();
+    expect(source).toMatch(
+      /\.chat-input-editor-styled,\s*\.chat-input-markdown\s*\{\s*scrollbar-gutter: stable;/,
+    );
+  });
+
   test('markdownStyling={false} renders the plain textarea', () => {
     const { container } = render(ChatInput, { id: 'markdown-off', markdownStyling: false });
 
