@@ -241,15 +241,29 @@ describe('ListDetail', () => {
     expect(primaryOf(container, 'beta').getAttribute('aria-current')).toBe('true');
   });
 
-  test('an explicit selectedKey wins over the URL', async () => {
+  test('an explicit selectedKey wins over the URL, and is written to it', async () => {
     const location = memoryLocation('beta');
+    const onSelectedKeyChange = mock();
     const { container } = render(ListDetailFixture, {
-      props: { selectionLocation: location, selectedKey: 'gamma' },
+      props: { selectionLocation: location, selectedKey: 'gamma', onSelectedKeyChange },
     });
     await tick();
 
     expect(detailText(container)).toBe('Gamma chat detail');
-    expect(location.read).not.toHaveBeenCalledWith('selected');
+    expect(location.write).toHaveBeenCalledWith('selected', 'gamma');
+    expect(location.read('selected')).toBe('gamma');
+    expect(onSelectedKeyChange).not.toHaveBeenCalled();
+  });
+
+  test('an explicit selectedKey is written to a URL that holds no selection', async () => {
+    const location = memoryLocation();
+    render(ListDetailFixture, {
+      props: { selectionLocation: location, selectedKey: 'alpha' },
+    });
+    await tick();
+
+    expect(location.write).toHaveBeenCalledTimes(1);
+    expect(location.write).toHaveBeenCalledWith('selected', 'alpha');
   });
 
   test('a URL key that names no row shows the empty detail', async () => {
@@ -422,6 +436,42 @@ describe('ListDetail', () => {
     });
     await measure(second.container, 1000);
     const listPane = second.container.querySelector<HTMLElement>('.cinder-resizable-panels__pane')!;
+    expect(listPane.getAttribute('style')).toContain(
+      `--_cinder-resizable-panel-size: ${remembered}px`,
+    );
+  });
+
+  test('restores a remembered width wider than half the container', async () => {
+    const storage = memoryStorage({ chats: '550' });
+    const { container } = render(ListDetailFixture, {
+      props: { selectionLocation: memoryLocation(), storage, storageKey: 'chats' },
+    });
+    await measure(container, 1000);
+
+    const listPane = container.querySelector<HTMLElement>('.cinder-resizable-panels__pane')!;
+    expect(listPane.getAttribute('style')).toContain('--_cinder-resizable-panel-size: 550px');
+  });
+
+  test('keeps the dragged width after narrowing below pushBelow and widening again', async () => {
+    const storage = memoryStorage();
+    const { container } = render(ListDetailFixture, {
+      props: { selectionLocation: memoryLocation(), storage, storageKey: 'chats' },
+    });
+    await measure(container, 1000);
+    const handle = container.querySelector<HTMLElement>('[role="separator"]')!;
+    await fireEvent.keyDown(handle, { key: 'ArrowRight' });
+    await tick();
+    const remembered = Number(storage.values.get('chats'));
+    expect(remembered).toBeGreaterThan(320);
+
+    await measure(container, 800);
+    expect(container.querySelector('.cinder-list-detail')!.getAttribute('data-cinder-layout')).toBe(
+      'stacked',
+    );
+    await measure(container, 1000);
+    await measure(container, 1000);
+
+    const listPane = container.querySelector<HTMLElement>('.cinder-resizable-panels__pane')!;
     expect(listPane.getAttribute('style')).toContain(
       `--_cinder-resizable-panel-size: ${remembered}px`,
     );

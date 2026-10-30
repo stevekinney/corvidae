@@ -98,11 +98,30 @@
   // never flashes before the width is known.
   const narrow = $derived(rootWidth > 0 && rootWidth < pushBelow);
 
-  // The divider starts where it was left. This is read once: later drags are the person's, not a
-  // prop's, so a new `defaultListWidth` does not move a divider that is already placed.
-  const initialListWidth = untrack(() =>
-    clampListWidth(readStoredListWidth(resolveStorage(storage), storageKey) ?? defaultListWidth),
+  // The divider starts where it was left. This is read when the panels mount, not on every render:
+  // later drags are the person's, not a prop's, so a new `defaultListWidth` does not move a divider
+  // that is already placed, and changing it while mounted would reset the layout mid-drag.
+  let initialListWidth = $state(
+    untrack(() =>
+      clampListWidth(readStoredListWidth(resolveStorage(storage), storageKey) ?? defaultListWidth),
+    ),
   );
+  // The last width the person dragged to, for a remount when there is no storage to read it from.
+  let draggedListWidth: number | null = null;
+  let wasNarrow = false;
+  // Narrowing unmounts the panels and widening mounts new ones, which start from
+  // `initialListWidth`, so refresh it from where the divider was left before they do.
+  $effect.pre(() => {
+    const isNarrow = narrow;
+    untrack(() => {
+      if (wasNarrow && !isNarrow) {
+        const stored = readStoredListWidth(resolveStorage(storage), storageKey);
+        const width = stored ?? draggedListWidth;
+        if (width !== null) initialListWidth = clampListWidth(width);
+      }
+      wasNarrow = isNarrow;
+    });
+  });
   const panes = $derived<ResizablePanelDefinition[]>([
     {
       id: 'list',
@@ -114,6 +133,10 @@
     {
       id: 'detail',
       label: detailLabel,
+      // Zero, so the detail asks for only its minimum and takes whatever the list leaves. Without a
+      // default it would ask for an equal share, and a list wider than half the container would be
+      // squeezed to make room for it.
+      defaultSize: { value: 0, unit: 'px' },
       minSize: { value: DETAIL_PANE_MINIMUM_WIDTH, unit: 'px' },
     },
   ]);
@@ -134,11 +157,14 @@
     // A rebase is the container changing size, not the person moving the divider.
     if (event.reason === 'rebase') return;
     const listSize = event.sizes.find((size) => size.id === 'list');
-    if (listSize) writeStoredListWidth(resolveStorage(storage), storageKey, listSize.pixelSize);
+    if (!listSize) return;
+    draggedListWidth = listSize.pixelSize;
+    writeStoredListWidth(resolveStorage(storage), storageKey, listSize.pixelSize);
   }
 
-  // The selection and the URL. On the first run an empty selection is filled from the URL; after
-  // that the URL follows the selection, and only when it differs, so a reload lands where it left.
+  // The selection and the URL. On the first run an empty selection is filled from the URL, while an
+  // explicit one is kept and written to it; after that the URL follows the selection, and only when
+  // it differs, so a reload lands where it left.
   let urlReady = false;
   $effect(() => {
     const parameter = selectionParameter;
@@ -147,15 +173,16 @@
     const location = selectionLocation ?? createBrowserSelectionLocation();
     if (!urlReady) {
       urlReady = true;
-      if (current !== null) return;
-      const fromUrl = location.read(parameter);
-      if (fromUrl === null || fromUrl === '') return;
-      untrack(() => {
-        selectedKey = fromUrl;
-        activeKey = fromUrl;
-        onSelectedKeyChange?.(fromUrl);
-      });
-      return;
+      if (current === null) {
+        const fromUrl = location.read(parameter);
+        if (fromUrl === null || fromUrl === '') return;
+        untrack(() => {
+          selectedKey = fromUrl;
+          activeKey = fromUrl;
+          onSelectedKeyChange?.(fromUrl);
+        });
+        return;
+      }
     }
     if (location.read(parameter) !== current) location.write(parameter, current);
   });

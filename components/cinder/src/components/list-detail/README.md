@@ -115,7 +115,7 @@ The `header` snippet sits above the rows. Put the title and the create action on
 
 ## Selection in the URL
 
-The open item's key is kept in the `selected` search parameter (`selectionParameter`; pass `null` to keep it out of the URL). On mount, an empty `selectedKey` is filled from the URL, so a reload or a shared link lands on the same item. The URL is updated with `history.replaceState`, so selecting does not add history entries, and other search parameters are kept. Pass `selectionLocation` with `read` and `write` to route differently or to test. A key that names no row shows the empty detail.
+The open item's key is kept in the `selected` search parameter (`selectionParameter`; pass `null` to keep it out of the URL). On mount, an empty `selectedKey` is filled from the URL, so a reload or a shared link lands on the same item. The URL is updated with `history.replaceState`, so selecting does not add history entries, and other search parameters are kept. Pass `selectionLocation` with `read` and `write` to route differently or to test. An explicit `selectedKey` wins over the URL and is written to it. A key that names no row shows the empty detail when the layout is split, and the list when it is stacked.
 
 `selectedKey` is bindable, and `onSelectedKeyChange` reports each change.
 
