@@ -1176,6 +1176,13 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     },
 
     async start(id, startOptions) {
+      // The caller owns `startOptions` and its input: snapshot them before the first await.
+      const { owner: starter, surface } = startOptions;
+      const requested = startOptions.input ?? null;
+      if (!z.json().safeParse(requested).success) {
+        throw options.createError('The input must be a JSON value.', 'BAD_REQUEST');
+      }
+      const input: unknown = structuredClone(requested);
       workflows.assertStartable(id);
       if (applyPending) queueApply();
       await settled();
@@ -1185,16 +1192,12 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       if (file === undefined || file.paused) {
         throw options.createError(`Workflow "${id}" does not exist`, 'NOT_FOUND');
       }
-      const input = startOptions.input ?? null;
-      if (!z.json().safeParse(input).success) {
-        throw options.createError('The input must be a JSON value.', 'BAD_REQUEST');
-      }
       const issues = file.inputSchema === null ? [] : inputSchemaIssues(file.inputSchema, input);
       if (issues.length > 0) throw new WorkflowInputInvalidError(id, issues);
       const origin: TaskOrigin = {
         kind: 'person',
-        principal: startOptions.owner,
-        surface: startOptions.surface ?? 'api',
+        principal: starter,
+        surface: surface ?? 'api',
       };
       const trigger = { kind: 'manual', input, origin };
       assertSendable('input', trigger);
