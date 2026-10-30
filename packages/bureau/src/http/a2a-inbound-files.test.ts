@@ -44,7 +44,7 @@ async function withAgents<T>(
     agents: Object.fromEntries(
       Object.entries(agents).map(([name, generate]) => [name, createAgent({ name, generate })]),
     ),
-    publish: Object.keys(agents),
+    a2aAgents: Object.keys(agents),
     handlerOptions: { publicUrl: PUBLIC_URL },
     ...options,
   });

@@ -196,7 +196,7 @@ describe('update', () => {
     // not appended a second time, and the line edit is not abandoned for a re-emit.
     await fixture.catalog.update(
       'researcher',
-      { model: KNOWN_MODEL, tools: [], published: true, instructions: 'Body.\n' },
+      { model: KNOWN_MODEL, tools: [], a2a: true, instructions: 'Body.\n' },
       { expectedHash: read?.hash ?? '' },
     );
     expect(await readFile(join(fixture.directory, 'researcher.md'), 'utf8')).toBe(
@@ -205,12 +205,51 @@ describe('update', () => {
         '# a comment the line edit keeps',
         'created: 2026-10-18',
         `model: ${KNOWN_MODEL}`,
-        'published: true',
+        'a2a: true',
         '---',
         'Body.',
         '',
       ].join('\n'),
     );
+  });
+
+  it('keeps the file’s a2a when an update leaves it out, and adds no a2a key to a file without one', async () => {
+    const fixture = await start({ watch: false });
+    await fixture.put(
+      'on.md',
+      `---\nmodel: ${KNOWN_MODEL}\na2a: true\ncreated: 2026-10-18\n---\nBody.\n`,
+    );
+    await fixture.put('bare.md', `---\nmodel: ${KNOWN_MODEL}\n---\nBody.\n`);
+    await fixture.catalog.refresh();
+    const on = await fixture.catalog.read('on');
+    const bare = await fixture.catalog.read('bare');
+    // The body changes and `a2a` is not mentioned: the opt-in stays, and so does everything else.
+    await fixture.catalog.update(
+      'on',
+      { model: KNOWN_MODEL, instructions: 'Changed.\n' },
+      { expectedHash: on?.hash ?? '' },
+    );
+    await fixture.catalog.update(
+      'bare',
+      { model: KNOWN_MODEL, name: 'Bare', instructions: 'Body.\n' },
+      { expectedHash: bare?.hash ?? '' },
+    );
+    expect(await readFile(join(fixture.directory, 'on.md'), 'utf8')).toBe(
+      `---\nmodel: ${KNOWN_MODEL}\na2a: true\ncreated: 2026-10-18\n---\nChanged.\n`,
+    );
+    expect(await readFile(join(fixture.directory, 'bare.md'), 'utf8')).not.toContain('a2a');
+    expect(fixture.catalog.list().map((listing) => [listing.id, listing.a2a])).toEqual([
+      ['bare', false],
+      ['on', true],
+    ]);
+    // Saying it turns it off.
+    const changed = await fixture.catalog.read('on');
+    await fixture.catalog.update(
+      'on',
+      { model: KNOWN_MODEL, instructions: 'Changed.\n', a2a: false },
+      { expectedHash: changed?.hash ?? '' },
+    );
+    expect(await readFile(join(fixture.directory, 'on.md'), 'utf8')).toContain('a2a: false');
   });
 
   it('rewrites nothing when nothing changes', async () => {

@@ -46,7 +46,7 @@ async function withManualBureau(
   try {
     const handler = createBureauHandler(bureau, {
       unauthenticatedAccess: 'allow',
-      publish: ['asker'],
+      a2aAgents: ['asker'],
       publicUrl: 'http://localhost',
     });
     await body({

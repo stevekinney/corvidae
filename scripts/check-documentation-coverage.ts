@@ -52,7 +52,8 @@ export interface EntryPoint {
  * Resolves `--entries` globs to entry points. Each pattern is matched against the files under
  * `directory`; a pattern that begins with `!` removes the files it matches from the others'
  * matches. The subpath of each entry point is its path relative to `directory`, with forward
- * slashes, and the result is sorted by it. A positive pattern that matches no file throws.
+ * slashes, and the result is sorted by it. A positive pattern that matches no file throws, and so
+ * does a list whose exclusions remove every match, because the check would then judge nothing.
  */
 export function expandEntries(directory: string, patterns: readonly string[]): EntryPoint[] {
   const included = patterns.filter((pattern) => !pattern.startsWith('!'));
@@ -68,8 +69,11 @@ export function expandEntries(directory: string, patterns: readonly string[]): E
     if (matches.length === 0) throw new Error(`${directory}: --entries ${pattern} matches no file`);
     for (const match of matches) paths.add(match);
   }
-  return [...paths]
-    .filter((path) => !excluded.some((glob) => glob.match(path)))
+  const surviving = [...paths].filter((path) => !excluded.some((glob) => glob.match(path)));
+  if (surviving.length === 0) {
+    throw new Error(`${directory}: --entries ${patterns.join(' ')} judges no file`);
+  }
+  return surviving
     .toSorted()
     .map((path) => ({ subpath: path, file: resolve(directory, path), optional: true }));
 }

@@ -259,13 +259,7 @@ test('defines an agent in the editor with the workflow tool, and chats with it u
   await page.getByRole('button', { name: AGENT_EDITOR_COPY.createAction }).click();
   await expect(page).toHaveURL(new RegExp(`/agents/${AUTHOR_ID}$`));
 
-  // A new agent is not published, so the editor's own switch is what lets a person chat with it.
-  await page.getByRole('link', { name: AGENT_EDITOR_COPY.editAction, exact: true }).click();
-  await page.getByRole('switch', { name: AGENT_EDITOR_COPY.publishedLabel }).click();
-  await expect(
-    page.getByRole('switch', { name: AGENT_EDITOR_COPY.publishedLabel }),
-  ).toHaveAttribute('aria-checked', 'true');
-  await page.goto(`/agents/${AUTHOR_ID}`);
+  // A new agent takes a chat as soon as it is saved: nothing has to be switched on first.
   await page.getByRole('link', { name: 'New chat' }).first().click();
   await expect(page).toHaveURL(new RegExp(`/chat/new\\?agent=${AUTHOR_ID}$`));
 

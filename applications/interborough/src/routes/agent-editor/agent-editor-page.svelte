@@ -1,7 +1,6 @@
 <script lang="ts">
   /**
-   * The agent editor (`/agents/new`, `/agents/:id/edit`): creates an agent, or edits, publishes,
-   * withdraws, and deletes one, and lists the versions of it that have run.
+   * The agent editor (`/agents/new`, `/agents/:id/edit`): creates an agent, or edits and deletes one, and lists the versions of it that have run.
    *
    * An agent is a Markdown file. The page reads it with its `hash`, builds the form once from what
    * it read, and names that hash in every write, so a file that changed on disk since is never
@@ -10,8 +9,8 @@
    * the view frame owns, so the page asks the frame to look again. A write that succeeds lands on
    * the agent's page, and a delete lands on the list.
    *
-   * What the form offers comes from `bureau.agents.catalog` and nothing else, and `published`
-   * changes only through publish and withdraw, never through a save. A catalog with no model offers
+   * What the form offers comes from `bureau.agents.catalog` and nothing else, and the A2A
+   * switch is saved with the rest of the definition. A catalog with no model offers
    * nothing a save could use, so the page shows where to configure a provider instead of the form.
    */
   import { untrack } from 'svelte';
@@ -33,9 +32,7 @@
     deleteAgent,
     getAgentCatalog,
     getAgentDefinition,
-    publishAgent,
     updateAgent,
-    withdrawAgent,
     type AgentFault,
   } from '../../lib/agent-definitions.ts';
   import { agentPath } from '../../lib/agent-paths.ts';
@@ -184,22 +181,6 @@
     onError: (error) => failWith(agentFaultOf(error), copy.saveFailed),
   }));
 
-  const publication = createMutation(() => ({
-    mutationFn: ({ form, next }: { form: AgentEditorState; next: boolean }) =>
-      next
-        ? publishAgent(form.identifier, form.hash ?? '')
-        : withdrawAgent(form.identifier, form.hash ?? ''),
-    onMutate: () => {
-      failure = null;
-    },
-    onSuccess: (result, { form, next }) => {
-      // The file has a new hash, and the next write must name it. Unsaved edits stay as they are.
-      form.adopt(result, next);
-      wasWritten();
-    },
-    onError: (error) => failWith(agentFaultOf(error), copy.publishFailed),
-  }));
-
   const removal = createMutation(() => ({
     mutationFn: (hash: string) => deleteAgent(agentId ?? '', hash),
     onMutate: () => {
@@ -212,14 +193,10 @@
     onError: (error) => failWith(agentFaultOf(error), copy.deleteFailed),
   }));
 
-  const busy = $derived(save.isPending || publication.isPending || removal.isPending);
+  const busy = $derived(save.isPending || removal.isPending);
 
   function submit(): void {
     if (editor !== undefined) save.mutate(editor);
-  }
-
-  function setPublished(next: boolean): void {
-    if (editor !== undefined) publication.mutate({ form: editor, next });
   }
 
   function confirmDelete(): void {
@@ -370,7 +347,6 @@
         {busy}
         onSave={submit}
         onCancel={cancel}
-        onPublishedChange={setPublished}
         onDelete={() => (confirmingDelete = true)}
       />
     {/key}

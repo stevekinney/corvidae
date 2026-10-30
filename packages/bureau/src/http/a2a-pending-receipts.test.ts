@@ -73,7 +73,7 @@ async function withCrashedAnswer(
 ): Promise<void> {
   const opened = await openBureau({
     agents: { asker: createAgent({ name: 'asker', generate: parksThenAnswers() }) },
-    publish: ['asker'],
+    a2aAgents: ['asker'],
   });
   try {
     const base = createDefaultRuntimeServices();

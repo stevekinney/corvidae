@@ -133,7 +133,6 @@ export async function openBureau(options: {
   });
   const handler = createBureauHandler(bureau, {
     unauthenticatedAccess: 'allow',
-    publish: ['assistant'],
     agUi: {},
   });
   return { bureau, handler };

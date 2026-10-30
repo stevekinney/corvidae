@@ -1,8 +1,8 @@
 /**
  * The agent editor page against a stand-in for the Bureau's management plane: what the form offers
- * from the catalog, what a save sends, what publishing and deleting name, and the states a write
- * can end in. Every write names the `hash` the form was filled from, `published` never rides a
- * save, and `skills` comes back as it was read.
+ * from the catalog, what a save sends, what deleting names, and the states a write can end in.
+ * Every write names the `hash` the form was filled from, a save carries the A2A switch with the
+ * rest of the definition, and `skillDescriptors` comes back as it was read.
  */
 import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
@@ -64,8 +64,6 @@ function bureau(
         hash: 'created',
       }),
       'bureau.agents.definitions.update': () => ({ id: agent.id, hash: 'hash-2' }),
-      'bureau.agents.definitions.publish': () => ({ id: agent.id, hash: 'hash-published' }),
-      'bureau.agents.definitions.withdraw': () => ({ id: agent.id, hash: 'hash-withdrawn' }),
       'bureau.agents.definitions.delete': () => ({ id: agent.id, hash: 'deleted' }),
     },
     {
@@ -243,7 +241,8 @@ describe('a new agent', () => {
             description: null,
             model: 'anthropic/claude-sonnet-5',
             tools: ['lookup-order'],
-            skills: [],
+            skillDescriptors: [],
+            a2a: false,
             instructions: 'Be careful.',
           },
         },
@@ -260,7 +259,7 @@ describe('a new agent', () => {
     expect(getByRole('button', { name: AGENT_EDITOR_COPY.createAction })).toBeDisabled();
   });
 
-  test('shows the file an identifier makes, and has no publish control, delete, or history', async () => {
+  test('shows the file an identifier makes, and has no delete or history', async () => {
     bureau();
     const { findByRole, getByTestId, queryByRole, queryByText } = mountEditor();
     await type(await findByRole('textbox', { name: /^Name/ }), 'Research Assistant');
@@ -268,7 +267,6 @@ describe('a new agent', () => {
     expect(getByTestId('agent-file-path').textContent).toBe(
       `${STUB_AGENT_DIRECTORY}/research-assistant.md`,
     );
-    expect(queryByRole('switch')).toBeNull();
     expect(queryByText(AGENT_EDITOR_COPY.revisions.heading)).toBeNull();
     expect(queryByRole('button', { name: AGENT_EDITOR_COPY.deleteAction })).toBeNull();
   });
@@ -351,8 +349,10 @@ describe('an agent that exists', () => {
     expect(path.textContent).toBe('agents/researcher.md');
   });
 
-  test('saves with the hash it read, keeps the skills, and never sends published', async () => {
-    const calls = bureau({ agent: readyAgent({ published: true }) });
+  test('saves with the hash it read, keeps the skill descriptors, and sends the A2A opt-in', async () => {
+    const calls = bureau({
+      agent: readyAgent({ a2a: true, definition: { ...readyAgent().definition!, a2a: true } }),
+    });
     const { findByRole, getByRole } = mountEditor('researcher');
     await type(await findByRole('textbox', { name: /^Instructions/ }), 'Changed.');
     await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction }));
@@ -368,7 +368,7 @@ describe('an agent that exists', () => {
         // The file wrote an alias, and an unchanged model is written back as it was.
         model: 'anthropic/sonnet',
         tools: ['lookup-order'],
-        skills: [
+        skillDescriptors: [
           {
             id: 'cite',
             name: 'Cite',
@@ -376,11 +376,10 @@ describe('an agent that exists', () => {
             tags: ['research'],
           },
         ],
+        a2a: true,
         instructions: 'Changed.',
       },
     });
-    const definition = (update?.params['definition'] ?? {}) as Record<string, unknown>;
-    expect(Object.keys(definition)).not.toContain('published');
   });
 
   test('keeps an unknown key of a skill when the agent is saved', async () => {
@@ -389,7 +388,7 @@ describe('an agent that exists', () => {
     const calls = bureau({
       agent: {
         ...detail,
-        definition: detail.definition && { ...detail.definition, skills: [skill] },
+        definition: detail.definition && { ...detail.definition, skillDescriptors: [skill] },
       },
     });
     const { findByRole, getByRole } = mountEditor('researcher');
@@ -397,7 +396,7 @@ describe('an agent that exists', () => {
     await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction }));
     await waitFor(() => expect(router.pathname).toBe('/agents/researcher'));
     const [update] = calls.callsTo('bureau.agents.definitions.update');
-    expect(update?.params['definition']).toMatchObject({ skills: [skill] });
+    expect(update?.params['definition']).toMatchObject({ skillDescriptors: [skill] });
   });
 
   test('sends the model it was changed to, and only a model the catalog offers can be chosen', async () => {
@@ -412,60 +411,34 @@ describe('an agent that exists', () => {
     expect(update?.params['definition']).toMatchObject({ model: 'anthropic/claude-haiku-5' });
   });
 
-  test('publishes and withdraws with the current hash, and a save after that names the new one', async () => {
+  test('saves the A2A switch with the rest of the definition, for an agent that exists', async () => {
     const calls = bureau();
     const { findByRole, getByRole } = mountEditor('researcher');
-    const published = await findByRole('switch', { name: AGENT_EDITOR_COPY.publishedLabel });
-    expect(published).toHaveAttribute('aria-checked', 'false');
+    const a2a = await findByRole('switch', { name: AGENT_EDITOR_COPY.a2aLabel });
+    expect(a2a).toHaveAttribute('aria-checked', 'false');
 
-    await fireEvent.click(published);
-    await waitFor(() => expect(published).toHaveAttribute('aria-checked', 'true'));
-    await fireEvent.click(published);
-    await waitFor(() => expect(published).toHaveAttribute('aria-checked', 'false'));
-
-    expect(calls.callsTo('bureau.agents.definitions.publish')[0]?.params).toEqual({
-      id: 'researcher',
-      expectedHash: 'hash-1',
-    });
-    expect(calls.callsTo('bureau.agents.definitions.withdraw')[0]?.params).toEqual({
-      id: 'researcher',
-      expectedHash: 'hash-published',
-    });
-
+    await fireEvent.click(a2a);
+    await waitFor(() => expect(a2a).toHaveAttribute('aria-checked', 'true'));
+    // Turning the switch sends nothing: it is saved with the definition.
+    expect(calls.callsTo('bureau.agents.definitions.update')).toEqual([]);
     await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction }));
+
     await waitFor(() => expect(router.pathname).toBe('/agents/researcher'));
-    expect(calls.callsTo('bureau.agents.definitions.update')[0]?.params['expectedHash']).toBe(
-      'hash-withdrawn',
-    );
-    // Publication moved through publish and withdraw only.
-    for (const call of calls.callsTo('bureau.agents.definitions.update')) {
-      expect(Object.keys(call.params['definition'] as object)).not.toContain('published');
-    }
+    const [update] = calls.callsTo('bureau.agents.definitions.update');
+    expect(update?.params['expectedHash']).toBe('hash-1');
+    expect(update?.params['definition']).toMatchObject({ a2a: true });
   });
 
-  test('keeps unsaved edits when publication changes, and does not save them', async () => {
+  test('keeps unsaved edits when the A2A switch changes', async () => {
     const calls = bureau();
     const { findByRole, getByRole } = mountEditor('researcher');
     await type(await findByRole('textbox', { name: /^Instructions/ }), 'Unsaved.');
-    const published = getByRole('switch', { name: AGENT_EDITOR_COPY.publishedLabel });
-    await fireEvent.click(published);
-    await waitFor(() => expect(published).toHaveAttribute('aria-checked', 'true'));
+    const a2a = getByRole('switch', { name: AGENT_EDITOR_COPY.a2aLabel });
+    await fireEvent.click(a2a);
+    await waitFor(() => expect(a2a).toHaveAttribute('aria-checked', 'true'));
 
     expect(getByRole('textbox', { name: /^Instructions/ })).toHaveValue('Unsaved.');
     expect(calls.callsTo('bureau.agents.definitions.update')).toEqual([]);
-  });
-
-  test('leaves the switch where it was, and says why, when publishing is refused', async () => {
-    const calls = bureau();
-    calls.on('bureau.agents.definitions.publish', () => {
-      throw faults.unprocessable('The model is not offered.');
-    });
-    const { findByRole, findByText } = mountEditor('researcher');
-    const published = await findByRole('switch', { name: AGENT_EDITOR_COPY.publishedLabel });
-    await fireEvent.click(published);
-
-    expect(await findByText('The model is not offered.')).not.toBeNull();
-    expect(published).toHaveAttribute('aria-checked', 'false');
   });
 });
 
@@ -511,16 +484,6 @@ describe('a file that changed outside Interborough', () => {
     expect(calls.callsTo('bureau.agents.definitions.update')[1]?.params['expectedHash']).toBe(
       'hash-on-disk',
     );
-  });
-
-  test('is the same state when a publication change meets it', async () => {
-    const calls = bureau();
-    calls.on('bureau.agents.definitions.publish', () => {
-      throw faults.stale('hash-on-disk');
-    });
-    const { findByRole, findByText } = mountEditor('researcher');
-    await fireEvent.click(await findByRole('switch', { name: AGENT_EDITOR_COPY.publishedLabel }));
-    expect(await findByText(AGENT_EDITOR_COPY.stale.title)).not.toBeNull();
   });
 });
 

@@ -130,7 +130,7 @@ async function open(options: { memory?: GovernedMemory | null } = {}) {
     ...(memory === undefined ? {} : { memory }),
   });
   opened.push(bureau);
-  const handler = createBureauHandler(bureau, { authentication, publish: ['assistant'] });
+  const handler = createBureauHandler(bureau, { authentication });
   return { bureau, handler, memory };
 }
 

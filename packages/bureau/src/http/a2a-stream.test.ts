@@ -128,7 +128,7 @@ async function withA2A<T>(
 ): Promise<T> {
   const opened = await openBureau({
     agents: { asker: createAgent({ name: 'asker', generate }) },
-    publish: ['asker'],
+    a2aAgents: ['asker'],
     ...(options.durableHistory === true ? { durableHistory: true } : {}),
     handlerOptions: { publicUrl: PUBLIC_URL },
   });

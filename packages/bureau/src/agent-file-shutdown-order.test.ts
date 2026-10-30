@@ -41,7 +41,7 @@ describe('disposing a Bureau while the agent directory is being scanned', () => 
       for (let index = 0; index < 5; index += 1) {
         await harness.put(
           `agent-${index}.md`,
-          agentFileText({ name: `Agent ${index}`, model: KNOWN_MODEL, published: 'true' }, 'Go.\n'),
+          agentFileText({ name: `Agent ${index}`, model: KNOWN_MODEL, a2a: 'true' }, 'Go.\n'),
         );
       }
       // A scan begins and is not awaited; the Bureau is disposed while it records revisions.

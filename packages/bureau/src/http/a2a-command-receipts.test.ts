@@ -60,7 +60,7 @@ async function withA2A<T>(
       asker: createAgent({ name: 'asker', generate }),
       ...(options.second === true ? { other: createAgent({ name: 'other', generate }) } : {}),
     },
-    publish: options.second === true ? ['asker', 'other'] : ['asker'],
+    a2aAgents: options.second === true ? ['asker', 'other'] : ['asker'],
     durableHistory: true,
     handlerOptions: { publicUrl: 'http://localhost' },
   });

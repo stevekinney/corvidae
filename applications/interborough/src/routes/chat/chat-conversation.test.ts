@@ -62,7 +62,7 @@ const INTERNAL = {
   ...AGENT,
   name: 'internal',
   displayName: 'Internal',
-  publishState: 'unpublished',
+  a2a: true,
 };
 
 const mount = (props: Record<string, unknown>) =>
@@ -107,7 +107,7 @@ describe('a new chat', () => {
       },
     );
 
-  test('offers the published agents in a searchable list above the composer, starting from the agent it was given', async () => {
+  test('offers every listed agent in a searchable list above the composer, starting from the agent it was given', async () => {
     restore = served().restore;
     landAt('/chat/new');
 
@@ -127,8 +127,8 @@ describe('a new chat', () => {
     const options = listbox.querySelectorAll('[role="option"]');
     const names = [...options].map((option) => option.textContent ?? '');
     expect(names.some((name) => name.includes('Researcher'))).toBe(true);
-    // An agent that is not published is not one to start a chat with.
-    expect(names.some((name) => name.includes('Internal'))).toBe(false);
+    // An agent that opts into A2A takes a chat as any other does.
+    expect(names.some((name) => name.includes('Internal'))).toBe(true);
   });
 
   test('shows the agent’s card with its prompts, and the other agents to choose from until one is chosen', async () => {
@@ -157,11 +157,11 @@ describe('a new chat', () => {
     expect(
       [...group.querySelectorAll('button')].map((button) => button.textContent?.trim()),
     ).toEqual(['Say hello', 'Plan the week', 'Summarise it']);
-    // The other published agents are cards to choose from, and an unpublished one is not.
+    // The other agents are cards to choose from.
     const others = await findByRole('heading', { name: 'Or start with another agent' });
     const grid = others.parentElement;
     expect(grid?.textContent).toContain('Finds things.');
-    expect(grid?.textContent).not.toContain('Internal');
+    expect(grid?.textContent).toContain('Internal');
     expect(queryByRole('group', { name: 'Example prompts' })).not.toBeNull();
   });
 

@@ -5,7 +5,7 @@
  *
  * - `Create` waits for recovery before it takes the task's fence (recovery reconciles tasks under
  *   their fences, so the other order deadlocks);
- * - on a withdrawn agent's mount, a task that ends while `Create` waits is refused with nothing
+ * - on an opted-out agent's mount, a task that ends while `Create` waits is refused with nothing
  *   committed, and one that ends between the cursor and the commit has its terminal event
  *   delivered to the new webhook.
  */
@@ -36,6 +36,7 @@ import { agentFileText, KNOWN_MODEL } from '../testing/agent-file-fixtures.test-
 import { eventually, type Json, Receiver, SIGNING_SECRET } from './a2a-push.test-support.ts';
 import { A2A_PUSH_CHECKPOINT_KEY_PREFIX } from './a2a-push-checkpoint.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
+import { optOutOfA2A } from './a2a-mount.test-support.ts';
 import { authentication } from './management/management-fixtures.test-support.ts';
 import { quietFor, yieldEventLoopTurn } from '@lostgradient/testing/wait-until';
 
@@ -112,7 +113,7 @@ async function createWorld(
   });
   await first.put(
     'writer.md',
-    agentFileText({ name: 'Writer', model: KNOWN_MODEL, published: 'true' }, 'Write.\n'),
+    agentFileText({ name: 'Writer', model: KNOWN_MODEL, a2a: 'true' }, 'Write.\n'),
   );
   await first.bureau.agents.refresh();
   cleanups.push(async () => {
@@ -225,12 +226,9 @@ async function createWorld(
       cleanups.push(() => served.stop());
       return served;
     },
-    async withdraw(served: Served): Promise<void> {
+    async optOut(served: Served): Promise<void> {
       const { bureau } = served.harness;
-      const hash = bureau.agents.list().find((agent) => agent.id === 'writer')?.definitionHash;
-      if (hash === undefined) throw new Error('expected the writer’s file');
-      await bureau.agents.withdraw('writer', { expectedHash: hash });
-      await bureau.agents.refresh();
+      await optOutOfA2A(bureau.agents, 'writer');
     },
   };
 }
@@ -244,7 +242,7 @@ const webhook = (receiver: Receiver, extra: Json = {}): Json => ({
 
 /** A parked task with one persisted push configuration (and so a checkpoint), then a restart. */
 async function parkedAcrossRestart(
-  options: { readonly withdraw?: boolean; readonly onCreate?: () => Promise<void> } = {},
+  options: { readonly optOut?: boolean; readonly onCreate?: () => Promise<void> } = {},
 ) {
   const world = await createWorld();
   const sent = await world.first.call('SendMessage', { message: message('park here') });
@@ -256,7 +254,7 @@ async function parkedAcrossRestart(
     ...webhook(world.receiver),
   });
   expect(created.error).toBeUndefined();
-  if (options.withdraw === true) await world.withdraw(world.first);
+  if (options.optOut === true) await world.optOut(world.first);
   const held = latch();
   const served = await world.restart(world.first, held, options.onCreate);
   return { world, served, held, taskId };
@@ -288,14 +286,14 @@ describe('push Create before start-up recovery has reached the task', () => {
   });
 });
 
-/** A live parked task on a withdrawn agent's mount, with a Bureau whose recovery is held. */
-async function parkedWithdrawn(options: { readonly onCreate?: () => Promise<void> } = {}) {
+/** A live parked task on an opted-out agent's mount, with a Bureau whose recovery is held. */
+async function parkedOptedOut(options: { readonly onCreate?: () => Promise<void> } = {}) {
   const held = latch();
   const world = await createWorld({ held, ...options });
   const sent = await world.first.call('SendMessage', { message: message('park here') });
   expect(sent.result.task.status.state).toBe('TASK_STATE_INPUT_REQUIRED');
   const taskId: string = sent.result.task.id;
-  await world.withdraw(world.first);
+  await world.optOut(world.first);
   return { world, served: world.first, held, taskId };
 }
 
@@ -308,9 +306,9 @@ async function cancelAndAwait(served: Served, taskId: string): Promise<void> {
   });
 }
 
-describe('a task that ends around a Create on a withdrawn agent’s mount', () => {
+describe('a task that ends around a Create on an opted-out agent’s mount', () => {
   it('refuses Create, committing nothing, when the task ends before the cursor is read', async () => {
-    const { world, served, held, taskId } = await parkedWithdrawn();
+    const { world, served, held, taskId } = await parkedOptedOut();
 
     // The request is admitted (the task is live) and waits behind start-up recovery.
     const pending = served.begin('CreateTaskPushNotificationConfig', {
@@ -342,7 +340,7 @@ describe('a task that ends around a Create on a withdrawn agent’s mount', () =
       reached = resolve;
     });
     const commit = latch();
-    const { world, served, held, taskId } = await parkedWithdrawn({
+    const { world, served, held, taskId } = await parkedOptedOut({
       onCreate: async () => {
         reached();
         await commit.wait;

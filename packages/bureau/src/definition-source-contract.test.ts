@@ -288,21 +288,27 @@ describe.each(SOURCES)('agent files over %s', (_name, makeHarness) => {
     });
   });
 
-  it('publishes and withdraws through the source, changing only the published key', async () => {
+  it('opts into and out of A2A through the source, changing only the a2a key', async () => {
     const { harness, fixture } = await start();
     await harness.put('helper', validAgentFile());
     await fixture.catalog.refresh();
     const hash = hashOf(validAgentFile());
-    const published = await fixture.catalog.publish('helper', { expectedHash: hash });
-    expect(await harness.text('helper')).toBe(
-      validAgentFile().replace(
-        `model: ${KNOWN_MODEL}\n`,
-        `model: ${KNOWN_MODEL}\npublished: true\n`,
-      ),
+    const definition = { name: 'Helper', model: KNOWN_MODEL, instructions: 'You are helpful.\n' };
+    const optedIn = await fixture.catalog.update(
+      'helper',
+      { ...definition, a2a: true },
+      { expectedHash: hash },
     );
-    expect(fixture.catalog.list()[0]).toMatchObject({ published: true });
-    await fixture.catalog.withdraw('helper', { expectedHash: published.hash });
-    expect(fixture.catalog.list()[0]).toMatchObject({ published: false });
+    expect(await harness.text('helper')).toBe(
+      validAgentFile().replace(`model: ${KNOWN_MODEL}\n`, `model: ${KNOWN_MODEL}\na2a: true\n`),
+    );
+    expect(fixture.catalog.list()[0]).toMatchObject({ a2a: true });
+    await fixture.catalog.update(
+      'helper',
+      { ...definition, a2a: false },
+      { expectedHash: optedIn.hash },
+    );
+    expect(fixture.catalog.list()[0]).toMatchObject({ a2a: false });
   });
 
   it('reads a definition back as its exact text and hash, and finds nothing for a missing one', async () => {

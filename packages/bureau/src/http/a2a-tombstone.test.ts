@@ -1,5 +1,5 @@
 /**
- * Tombstone mounts for withdrawn agents (COR-903): a withdrawn agent that still has a task keeps
+ * Tombstone mounts for opted-out agents (COR-903): an opted-out agent that still has a task keeps
  * its A2A path for those tasks, with no card and no new task, until the last task has passed its
  * retention.
  */
@@ -14,6 +14,7 @@ import {
 } from '../testing/agent-file-bureau.test-support.ts';
 import { agentFileText, KNOWN_MODEL } from '../testing/agent-file-fixtures.test-support.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
+import { optOutOfA2A } from './a2a-mount.test-support.ts';
 import { authentication } from './management/management-fixtures.test-support.ts';
 
 // A JSON-RPC body read back from the wire: each test asserts the shape it needs.
@@ -63,12 +64,12 @@ async function serveWriter(): Promise<Served> {
   harnesses.push(harness);
   await harness.put(
     'writer.md',
-    agentFileText({ name: 'Writer', model: KNOWN_MODEL, published: 'true' }, 'Write.\n'),
+    agentFileText({ name: 'Writer', model: KNOWN_MODEL, a2a: 'true' }, 'Write.\n'),
   );
   await harness.bureau.agents.refresh();
-  expect(
-    harness.bureau.agents.list().some((agent) => agent.id === 'writer' && agent.published),
-  ).toBe(true);
+  expect(harness.bureau.agents.list().some((agent) => agent.id === 'writer' && agent.a2a)).toBe(
+    true,
+  );
   const handler = createBureauHandler(harness.bureau, {
     authentication,
     publicUrl: 'http://localhost',
@@ -126,15 +127,10 @@ async function card(served: Served): Promise<number> {
   return response.status;
 }
 
-async function withdraw(served: Served): Promise<void> {
+async function optOut(served: Served): Promise<void> {
   const { bureau } = served.harness;
-  const hash = bureau.agents.list().find((agent) => agent.id === 'writer')?.definitionHash;
-  if (hash === undefined) throw new Error('expected the writer’s file');
-  await bureau.agents.withdraw('writer', { expectedHash: hash });
-  await bureau.agents.refresh();
-  expect(bureau.agents.list().some((agent) => agent.id === 'writer' && !agent.published)).toBe(
-    true,
-  );
+  await optOutOfA2A(bureau.agents, 'writer');
+  expect(bureau.agents.list().some((agent) => agent.id === 'writer' && !agent.a2a)).toBe(true);
 }
 
 async function settles(served: Served, id: string, state: string): Promise<void> {
@@ -144,7 +140,7 @@ async function settles(served: Served, id: string, state: string): Promise<void>
   }, `task ${id} never reached ${state}`);
 }
 
-describe('a withdrawn agent with tasks', () => {
+describe('an opted-out agent with tasks', () => {
   it('serves its remaining tasks, with no card and no new task', async () => {
     const served = await serveWriter();
     const parked = await sent(served, message('park here'));
@@ -152,7 +148,7 @@ describe('a withdrawn agent with tasks', () => {
     expect(parked.status.state).toBe('TASK_STATE_INPUT_REQUIRED');
     expect(finished.status.state).toBe('TASK_STATE_COMPLETED');
 
-    await withdraw(served);
+    await optOut(served);
 
     expect(await card(served)).toBe(404);
     const kept = await got(served, finished.id);
@@ -175,7 +171,7 @@ describe('a withdrawn agent with tasks', () => {
     const original = message('quick');
     const created = await sent(served, original);
 
-    await withdraw(served);
+    await optOut(served);
 
     const retried = await sent(served, original);
     expect(retried.id).toBe(created.id);
@@ -186,7 +182,7 @@ describe('a withdrawn agent with tasks', () => {
     const parked = await sent(served, message('park here'));
     expect(parked.status.state).toBe('TASK_STATE_INPUT_REQUIRED');
 
-    await withdraw(served);
+    await optOut(served);
 
     const answered = await sent(served, message('blue', { taskId: parked.id }));
     expect(answered.id).toBe(parked.id);
@@ -196,7 +192,7 @@ describe('a withdrawn agent with tasks', () => {
   it('reads as not found once its last task has passed its retention', async () => {
     const served = await serveWriter();
     const finished = await sent(served, message('quick'));
-    await withdraw(served);
+    await optOut(served);
     const kept = await got(served, finished.id);
     expect(kept.id).toBe(finished.id);
 
@@ -209,10 +205,10 @@ describe('a withdrawn agent with tasks', () => {
     expect(response.status).toBe(404);
   });
 
-  it('reads as not found when it was withdrawn with no task', async () => {
+  it('reads as not found when it opted out with no task', async () => {
     const served = await serveWriter();
     expect(await card(served)).toBe(200);
-    await withdraw(served);
+    await optOut(served);
     expect(await card(served)).toBe(404);
     const response = await rpc(served, 'GetTask', { id: 'anything' });
     expect(response.status).toBe(404);
@@ -227,7 +223,7 @@ describe('a withdrawn agent with tasks', () => {
       const view = await served.harness.bureau.internals.taskRegistry.get(run.id);
       return view?.status === 'completed';
     }, 'the run never completed');
-    await withdraw(served);
+    await optOut(served);
 
     // A task another surface made is not A2A's to serve, so no tombstone is kept for it.
     const response = await rpc(served, 'GetTask', { id: run.id });

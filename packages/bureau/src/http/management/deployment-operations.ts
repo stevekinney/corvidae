@@ -1,10 +1,10 @@
 /**
  * `bureau.deployment.get` and `bureau.agents.list`: what this Bureau is, and which
- * agents it publishes. Both need only authentication; neither reads a resource
+ * agents it has. Both need only authentication; neither reads a resource
  * with an owner.
  *
  * `bureau.deployment.get` returns exactly five keys and no other configuration:
- * the Bureau's identity, its lifecycle state, the agents it publishes, the
+ * the Bureau's identity, its lifecycle state, the agents it has, the
  * operations it serves with their schema versions, and its recovery status. A
  * test compares the key set.
  *
@@ -16,8 +16,6 @@ import { z } from 'zod';
 
 import type { AgentMediaCapabilities } from '../../agent-catalog.ts';
 import { agentExamplesSchema } from '../../agent-examples.ts';
-import { mayDiscloseUnpublishedAgents } from '../agent-access.ts';
-import type { BureauOwnershipHost } from '../owner-predicate.ts';
 import { unaryTransports as transports, unknownKeyPolicy } from './management-schemas.ts';
 
 /** One operation the handler serves. */
@@ -27,8 +25,8 @@ export type OperationDescriptor = {
   readonly schemaVersion: number;
 };
 
-/** One published agent. */
-export type PublishedAgent = {
+/** One agent the deployment lists: ready, and startable. */
+export type ListedAgent = {
   readonly name: string;
   readonly displayName: string;
   readonly description: string | null;
@@ -36,10 +34,10 @@ export type PublishedAgent = {
   /** `code` for a code-defined agent, `file` for a persisted one. */
   readonly kind: 'code' | 'file';
   /**
-   * `withdrawn` for a persisted agent whose file does not publish it, and `unpublished` for a
-   * code-defined agent the `publish` allowlist does not name.
+   * Whether the agent opts into A2A: a persisted agent's `a2a` frontmatter, or the handler's
+   * `a2aAgents` allowlist for a code-defined agent.
    */
-  readonly publishState: 'published' | 'withdrawn' | 'unpublished';
+  readonly a2a: boolean;
   /** What the agent's model takes in the way of media, or `null` when it names no model descriptor. */
   readonly media: AgentMediaCapabilities | null;
   /**
@@ -98,7 +96,7 @@ export type BureauDeploymentOperationHost = {
   readonly deployment: {
     readonly id: string;
     readonly state: () => 'ready' | 'draining' | 'stopped';
-    readonly publishedAgents: () => readonly PublishedAgent[];
+    readonly agents: () => readonly ListedAgent[];
     readonly operations: () => readonly OperationDescriptor[];
     readonly recovery: () => Promise<DeploymentRecovery>;
   };
@@ -108,7 +106,7 @@ const deploymentGetInput = z.object({});
 const deploymentGetOutput = z.object({
   id: z.string(),
   state: z.enum(['ready', 'draining', 'stopped']),
-  publishedAgents: z.array(z.string()),
+  agents: z.array(z.string()),
   operations: z.array(
     z.object({
       name: z.string(),
@@ -131,7 +129,7 @@ export const deploymentGetOperation = defineOperation<
   mcpExposable: false,
   summary: 'Describe this deployment',
   description:
-    'Returns the deployment’s identity (`BureauOptions.id`), its state (`ready`, `draining` once shutdown has closed admission, `stopped`), the names of the agents it publishes, the operations it serves with each one’s schema version, and its boot recovery status (`pending` while a deferred recovery has not finished). It returns nothing else of the deployment’s configuration. Any authenticated principal may read it.',
+    'Returns the deployment’s identity (`BureauOptions.id`), its state (`ready`, `draining` once shutdown has closed admission, `stopped`), the names of the agents it has, the operations it serves with each one’s schema version, and its boot recovery status (`pending` while a deferred recovery has not finished). It returns nothing else of the deployment’s configuration. Any authenticated principal may read it.',
   destructive: false,
   tags: ['Deployment'],
   inputSchema: deploymentGetInput,
@@ -144,10 +142,7 @@ export const deploymentGetOperation = defineOperation<
   invoke: async ({ host }) => ({
     id: host.deployment.id,
     state: host.deployment.state(),
-    publishedAgents: host.deployment
-      .publishedAgents()
-      .filter((agent) => agent.publishState === 'published')
-      .map((agent) => agent.name),
+    agents: host.deployment.agents().map((agent) => agent.name),
     operations: host.deployment.operations().map((operation) => ({ ...operation })),
     recovery: { ...(await host.deployment.recovery()) },
   }),
@@ -162,7 +157,7 @@ const agentsListOutput = z.object({
       description: z.string().nullable(),
       definitionRevision: z.number().int().positive(),
       kind: z.enum(['code', 'file']),
-      publishState: z.enum(['published', 'withdrawn', 'unpublished']),
+      a2a: z.boolean(),
       media: z
         .object({
           modalities: z.record(z.string(), z.object({ input: z.boolean(), output: z.boolean() })),
@@ -181,13 +176,13 @@ const agentsListOutput = z.object({
 export const agentsListOperation = defineOperation<
   typeof agentsListInput,
   typeof agentsListOutput,
-  BureauDeploymentOperationHost & BureauOwnershipHost
+  BureauDeploymentOperationHost
 >({
   name: 'bureau.agents.list',
   mcpExposable: true,
   summary: 'List the agents the caller may see',
   description:
-    'Returns the agents the deployment publishes, in definition order: its `name` (the catalog key every other operation calls `agentName`), `displayName`, `description`, `definitionRevision`, `kind` (`code` for a code-defined agent, `file` for a persisted one), `publishState`, and `media` (what the agent’s model takes in the way of media, as `modalities`, `mimeFamilies` and per-part `mediaLimits`, or `null` when the agent names no model descriptor; for a routed agent, what every route takes), and `tools` (the names of the tools the agent has, which a code-defined agent states and a persisted agent names in its file; omitted when the agent does not say, which differs from `[]`), and `examples` (prompts that show what a person might ask the agent, which a code-defined agent states and a persisted agent lists in its file; omitted when the agent has none). A code-defined agent is `published` when the `publish` allowlist names it, and any authenticated principal sees it then. A caller who owns the deployment’s agents or holds `bureau.agents:read` also sees the code-defined agents the allowlist does not name, as `unpublished`; to anyone else those agents do not exist. A persisted agent (`bureau.agents.definitions.*`) is published by its own file. Any authenticated principal sees the published agents. A caller who owns the deployment’s agents or holds `bureau.agents:read` also sees the persisted agents that are ready and not published, as `withdrawn`; to anyone else those agents do not exist, as they do not in `bureau.agents.definitions.get`. An invalid agent file is not listed.',
+    'Returns the agents the deployment has, in definition order: its `name` (the catalog key every other operation calls `agentName`), `displayName`, `description`, `definitionRevision`, `kind` (`code` for a code-defined agent, `file` for a persisted one), `a2a` (whether the agent opts into A2A: the handler’s `a2aAgents` allowlist names a code-defined agent, a persisted agent’s file says `a2a: true`), and `media` (what the agent’s model takes in the way of media, as `modalities`, `mimeFamilies` and per-part `mediaLimits`, or `null` when the agent names no model descriptor; for a routed agent, what every route takes), and `tools` (the names of the tools the agent has, which a code-defined agent states and a persisted agent names in its file; omitted when the agent does not say, which differs from `[]`), and `examples` (prompts that show what a person might ask the agent, which a code-defined agent states and a persisted agent lists in its file; omitted when the agent has none). Any authenticated principal sees every agent that is ready, code-defined or persisted (`bureau.agents.definitions.*`). An invalid agent file is not listed.',
   destructive: false,
   tags: ['Deployment'],
   inputSchema: agentsListInput,
@@ -197,24 +192,17 @@ export const agentsListOperation = defineOperation<
   discoverable: true,
   transports,
   unknownKeyPolicy,
-  invoke: async ({ host, principal }) => ({
-    agents: host.deployment
-      .publishedAgents()
-      .filter(
-        (agent) =>
-          agent.publishState === 'published' ||
-          mayDiscloseUnpublishedAgents(host.ownership, principal),
-      )
-      .map((agent) => ({
-        name: agent.name,
-        displayName: agent.displayName,
-        description: agent.description,
-        definitionRevision: agent.definitionRevision,
-        kind: agent.kind,
-        publishState: agent.publishState,
-        media: agent.media,
-        ...(agent.tools === undefined ? {} : { tools: [...agent.tools] }),
-        ...(agent.examples === undefined ? {} : { examples: [...agent.examples] }),
-      })),
+  invoke: async ({ host }) => ({
+    agents: host.deployment.agents().map((agent) => ({
+      name: agent.name,
+      displayName: agent.displayName,
+      description: agent.description,
+      definitionRevision: agent.definitionRevision,
+      kind: agent.kind,
+      a2a: agent.a2a,
+      media: agent.media,
+      ...(agent.tools === undefined ? {} : { tools: [...agent.tools] }),
+      ...(agent.examples === undefined ? {} : { examples: [...agent.examples] }),
+    })),
   }),
 });

@@ -2,12 +2,11 @@
   /**
    * `/agents/:id`: one agent, with its name once, its description, what it is made of (its model
    * when the Bureau can tell, its tools and skills), a Memory action that carries how many memories it has, a New
-   * chat action when it is published, and the chats the caller has had with it.
+   * chat action, and the chats the caller has had with it.
    *
    * An agent file shows the version of the file it runs, with a link to the history that lives in
    * its editor. An agent defined in code has no file, so it shows no version and no Edit action.
    * An agent whose listing carries no tools is not claimed to have none: see `agent-facts.svelte`.
-   * The only badge an agent carries is "Not published".
    */
   import { untrack } from 'svelte';
 
@@ -26,8 +25,7 @@
   import { router } from '../../lib/router.svelte.ts';
   import { agentsByName, sessionSummary } from '../chat/session-summary.ts';
   import AgentFacts from './agent-facts.svelte';
-  import AgentNotPublished from './agent-not-published.svelte';
-  import { canChat, memoryActionText, newChatPath, shortVersion } from './agent-presentation.ts';
+  import { memoryActionText, newChatPath, shortVersion } from './agent-presentation.ts';
 
   const PAGE_SIZE = 20;
   const id = untrack(() => router.current.params['id'] ?? '');
@@ -126,9 +124,6 @@
         {#if agent.displayName !== agent.name}
           <code class="ib-agent-id">{agent.name}</code>
         {/if}
-        {#if !canChat(agent)}
-          <AgentNotPublished />
-        {/if}
       </div>
       <div class="ib-agent__actions">
         <!-- An agent defined in code has no file, so there is nothing to edit. -->
@@ -146,14 +141,12 @@
           size="sm"
           onclick={(event) => goTo(event, memoryPath)}>{memoryLabel}</Button
         >
-        {#if canChat(agent)}
-          <Button
-            href={router.href(newChatPath(id))}
-            variant="primary"
-            size="sm"
-            onclick={openNewChat}>{CHAT_COPY.newChat}</Button
-          >
-        {/if}
+        <Button
+          href={router.href(newChatPath(id))}
+          variant="primary"
+          size="sm"
+          onclick={openNewChat}>{CHAT_COPY.newChat}</Button
+        >
       </div>
     </header>
 

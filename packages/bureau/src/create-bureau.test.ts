@@ -458,6 +458,7 @@ async function admitHandRegisteredRun(
     incarnation: '',
     agentName: null,
     owner: 'anonymous:local',
+    origin: { kind: 'api' },
     message: undefined,
   });
 }

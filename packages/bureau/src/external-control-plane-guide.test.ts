@@ -74,7 +74,6 @@ async function example(console: Recorder, storage: Storage): Promise<void> {
   // owns what it creates and reaches nothing of anyone else's.
   const keys = { 'alice-key': 'alice', 'bob-key': 'bob' } as const;
   const handler = createBureauHandler(bureau, {
-    publish: ['releaser'],
     authentication: {
       auditSink: () => undefined, // every authentication decision is passed here
       resolveApiKeyPrincipal: async (key) =>
@@ -99,10 +98,10 @@ async function example(console: Recorder, storage: Storage): Promise<void> {
   const unknownKey = await call('bureau.deployment.get', {}, 'no-such-key');
   console.log(unknownKey.status); // 401
 
-  // Discover: the deployment's identity, the agents it publishes, and the operations it serves.
+  // Discover: the deployment's identity, the agents it has, and the operations it serves.
   const { body: deployment } = await call('bureau.deployment.get', {});
   console.log(deployment.result.id); // 'acme'
-  console.log(deployment.result.publishedAgents); // ['releaser']
+  console.log(deployment.result.agents); // ['releaser']
   const served = deployment.result.operations.map((operation: { name: string }) => operation.name);
   console.log(served.includes('bureau.tasks.respond')); // true
 

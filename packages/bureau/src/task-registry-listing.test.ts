@@ -23,6 +23,7 @@ import {
   type TaskRegistry,
   type TaskView,
 } from './task-registry';
+import type { TaskOrigin } from './task-origin';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 
 const ALICE = 'api-key:alice';
@@ -66,7 +67,7 @@ const running: LiveTask = {
 async function admitMany(
   harness: ReturnType<typeof build>,
   count: number,
-  options: { owner?: string; prefix?: string; message?: string } = {},
+  options: { owner?: string; prefix?: string; message?: string; origin?: TaskOrigin } = {},
 ): Promise<string[]> {
   const ids: string[] = [];
   for (let index = 0; index < count; index += 1) {
@@ -77,6 +78,7 @@ async function admitMany(
       incarnation: 'incarnation-1',
       agentName: 'assistant',
       owner: options.owner ?? ALICE,
+      origin: options.origin ?? { kind: 'api' },
       message: options.message ?? `message of ${taskId}`,
     });
     ids.push(taskId);
@@ -118,6 +120,13 @@ async function refusal(promise: Promise<unknown>): Promise<TaskListingTokenFailu
   return (error as TaskListingTokenError).reason;
 }
 
+const CHAT_ORIGIN: TaskOrigin = {
+  kind: 'chat',
+  contextId: 'context-1',
+  agentName: 'assistant',
+  principal: ALICE,
+};
+
 describe('TaskRegistry.list', () => {
   it('orders by status timestamp, newest first, with the task id ascending breaking ties', async () => {
     const harness = build();
@@ -129,6 +138,7 @@ describe('TaskRegistry.list', () => {
       incarnation: 'incarnation-1',
       agentName: 'assistant',
       owner: ALICE,
+      origin: { kind: 'api' },
       message: undefined,
     });
     await harness.registry.recordAdmission({
@@ -137,6 +147,7 @@ describe('TaskRegistry.list', () => {
       incarnation: 'incarnation-1',
       agentName: 'assistant',
       owner: ALICE,
+      origin: { kind: 'api' },
       message: undefined,
     });
     await harness.runtime.advance(1);
@@ -156,6 +167,48 @@ describe('TaskRegistry.list', () => {
     expect(
       idsOf(await listAll(harness.registry, { principal: ALICE, owner: ALICE, limit: 1 })),
     ).toEqual(['task-00000', 'tie-a', 'tie-b', 'task-00002', 'task-00001']);
+  });
+
+  it('lists only the tasks of an origin kind, across pages, and counts only them', async () => {
+    const harness = build();
+    await admitMany(harness, 3, { prefix: 'api' });
+    await admitMany(harness, 3, { prefix: 'chat', origin: CHAT_ORIGIN });
+    await admitMany(harness, 2, {
+      prefix: 'fire',
+      origin: { kind: 'schedule', scheduleId: 'schedule-1', fireId: 'fire-1' },
+    });
+    // A record written before origins were kept has no origin and matches no kind.
+    await harness.kv?.set(
+      `${TASK_RECORD_KEY_PREFIX}legacy`,
+      JSON.stringify({
+        schemaVersion: 1,
+        taskId: 'legacy',
+        contextId: 'context-1',
+        incarnation: 'incarnation-1',
+        agentName: 'assistant',
+        owner: ALICE,
+        createdAt: '2026-10-22T00:00:00.000Z',
+        history: [],
+      }),
+    );
+
+    const first = await harness.registry.list({ principal: ALICE, limit: 2, origin: 'chat' });
+    const chat = await listAll(harness.registry, { principal: ALICE, limit: 2, origin: 'chat' });
+    const fires = await listAll(harness.registry, {
+      principal: ALICE,
+      limit: 1,
+      origin: 'schedule',
+    });
+    const none = await harness.registry.list({ principal: ALICE, limit: 5, origin: 'person' });
+    const everything = await listAll(harness.registry, { principal: ALICE, limit: 3 });
+
+    expect(first.totalSize).toBe(3);
+    expect(idsOf(chat)).toEqual(['chat-00002', 'chat-00001', 'chat-00000']);
+    expect(chat.every((task) => task.origin?.kind === 'chat')).toBe(true);
+    expect(idsOf(fires)).toEqual(['fire-00001', 'fire-00000']);
+    expect(none.tasks).toEqual([]);
+    expect(everything).toHaveLength(9);
+    expect(everything.find((task) => task.id === 'legacy')?.origin).toBeNull();
   });
 
   it('writes no snapshot for a listing that fits one page', async () => {
@@ -431,6 +484,7 @@ describe('a TaskRegistry.list page token', () => {
       { agentName: 'assistant' },
       { contextId: 'context-1' },
       { statusTimestampAfter: '2026-01-01T00:00:00.000Z' },
+      { origin: 'chat' },
     ] as const) {
       expect(
         await refusal(
@@ -438,6 +492,32 @@ describe('a TaskRegistry.list page token', () => {
         ),
       ).toBe('filters');
     }
+  });
+
+  it('is refused under another origin filter, whichever way it crosses', async () => {
+    const harness = build();
+    await admitMany(harness, 3, { prefix: 'chat', origin: CHAT_ORIGIN });
+    await admitMany(harness, 3, { prefix: 'api' });
+    const query = { principal: ALICE, owner: ALICE, limit: 1 } as const;
+    const chatPage = await harness.registry.list({ ...query, origin: 'chat' });
+    const unfilteredPage = await harness.registry.list(query);
+    const chatToken = chatPage.nextPageToken ?? '';
+    const unfilteredToken = unfilteredPage.nextPageToken ?? '';
+
+    expect(
+      await refusal(harness.registry.list({ ...query, origin: 'schedule', pageToken: chatToken })),
+    ).toBe('filters');
+    expect(await refusal(harness.registry.list({ ...query, pageToken: chatToken }))).toBe(
+      'filters',
+    );
+    expect(
+      await refusal(
+        harness.registry.list({ ...query, origin: 'chat', pageToken: unfilteredToken }),
+      ),
+    ).toBe('filters');
+    // The token still works for the filter it was issued for.
+    const next = await harness.registry.list({ ...query, origin: 'chat', pageToken: chatToken });
+    expect(next.tasks).toHaveLength(1);
   });
 
   it('is refused once its context was deleted and created again', async () => {
@@ -566,7 +646,7 @@ describe('TaskRegistry.expireListings', () => {
 
   it('pins the key version to the task view’s shape, so a snapshot saved without `kind` is never read', () => {
     // Bump this with the view: a stored view is parsed as the current shape by the next page.
-    expect(TASK_LISTING_KEY_PREFIX).toBe('bureau-task-listing:v2:');
+    expect(TASK_LISTING_KEY_PREFIX).toBe('bureau-task-listing:v3:');
   });
 
   it('stores under a prefix disjoint from the task records and the context index', () => {

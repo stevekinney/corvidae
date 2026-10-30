@@ -1,7 +1,7 @@
 /**
  * Where Bureau gets agent and workflow definitions from (COR-1702). A {@link DefinitionSource}
  * hands Bureau the raw bytes of each definition and takes bytes back; Bureau keeps parsing,
- * validation, snapshots, revisions, publication, and the write-through operations.
+ * validation, snapshots, revisions, and the write-through operations.
  *
  * This module has no file-system imports on purpose: Bureau's main entry imports it for the
  * types and for {@link SourceConflictError}, and the Node-only directory sources live behind the

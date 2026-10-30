@@ -170,8 +170,9 @@ export const AGENT_EDITOR_COPY = {
   toolDisclosure: 'What the agent is told',
   instructionsLabel: 'Instructions',
   instructionsDescription: 'What the agent should do. This is the body of its file.',
-  publishedLabel: 'Published',
-  publishedDescription: 'A published agent can start new chats. A withdrawn one keeps its history.',
+  a2aLabel: 'Available over A2A',
+  a2aDescription:
+    'Lets other agents and A2A clients find and call this agent. Chats with it work either way.',
   /** The action on the agent list that opens the form for a new agent. */
   newAction: 'New agent',
   /** The action on an agent's page that opens its editor. */
@@ -190,7 +191,6 @@ export const AGENT_EDITOR_COPY = {
     confirm: 'Delete agent',
   },
   saveFailed: 'The agent was not saved',
-  publishFailed: 'The agent’s publication was not changed',
   deleteFailed: 'The agent was not deleted',
   stale: {
     title: 'This agent changed outside Interborough',
@@ -711,13 +711,10 @@ export const AUDIT_COPY = {
 
 /**
  * The words the agent list and an agent's page use for what an agent is and has: its model, its
- * tools, how much it has been used, and the one badge an agent can carry.
- * Where an agent is defined, and that it is published, are facts for the developer or the normal
- * state, so neither is worded: only an agent that is not published says so.
+ * tools, and how much it has been used. Where an agent is defined is a fact for the developer, so
+ * it is not worded.
  */
 export const AGENTS_COPY = {
-  notPublished: 'Not published',
-  notPublishedHint: 'This agent is not published, so no one can start a chat with it.',
   modelLabel: 'Model',
   toolsLabel: 'Tools',
   skillsLabel: 'Skills',
@@ -1397,8 +1394,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     notFoundByPattern: {
       '/chat/new': {
         title: 'This agent was not found',
-        description:
-          'It may have been deleted, or it may not be published. Choose an agent from the list to start a chat.',
+        description: 'It may have been deleted. Choose an agent from the list to start a chat.',
       },
     },
   },
@@ -1406,7 +1402,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     label: 'Agents',
     loading: {
       title: 'Loading agents',
-      description: 'Asking the Bureau which agents it publishes.',
+      description: 'Asking the Bureau which agents it has.',
     },
     empty: {
       title: 'No agents to show',
@@ -1420,7 +1416,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     forbidden: { title: 'Agents are locked' },
     notFound: {
       title: 'This agent was not found',
-      description: 'It may have been deleted, or it may not be published. Open one from the list.',
+      description: 'It may have been deleted. Open one from the list.',
     },
     // An agent's memory page (`/agents/:id/memory`) asks the Bureau for what the agent remembers.
     loadingByPattern: {

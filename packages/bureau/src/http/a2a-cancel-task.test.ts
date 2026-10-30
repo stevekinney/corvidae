@@ -39,7 +39,7 @@ const untilAborted: GenerateFunction = ({ signal }) =>
 async function open(options: { cancelWaitMilliseconds?: number; stopping?: () => boolean } = {}) {
   const opened = await openBureau({
     agents: { runner: createAgent({ name: 'runner', generate: untilAborted }) },
-    publish: ['runner'],
+    a2aAgents: ['runner'],
   });
   const bureau = opened.bureau;
   const stopping = options.stopping ?? (() => false);

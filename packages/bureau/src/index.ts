@@ -1,3 +1,4 @@
+export { BUREAU_RESERVED_KEY_PREFIXES } from './reserved-key-prefixes';
 export type {
   AgentCatalogEntry,
   AgentDefinitions,
@@ -17,6 +18,7 @@ export type {
   AgentFileIssue,
   AgentFileProblem,
   AgentFileProblemCode,
+  AgentRetry,
 } from './agent-file';
 export {
   AGENT_IDENTIFIER_PATTERN,
@@ -383,6 +385,16 @@ export type {
 export { SETTINGS_TOOL_NAMES } from './settings/settings-tools';
 export type { TaskToolGrant } from './task-registry';
 export type {
+  ApiTaskOrigin,
+  ChatTaskOrigin,
+  PersonTaskOrigin,
+  ScheduleTaskOrigin,
+  StartTaskOrigin,
+  TaskOrigin,
+  TaskOriginKind,
+  TaskPersonSurface,
+} from './task-origin';
+export type {
   EvalScore,
   OnlineEvalJudge,
   OnlineEvalSampler,
@@ -588,7 +600,7 @@ export {
   type BureauHandlerSource,
   type BureauHandlerOptions,
   createBureauHandler,
-  PUBLISHED_AGENT_NAME_PATTERN,
+  A2A_AGENT_NAME_PATTERN,
 } from './http/create-bureau-handler';
 export { BUREAU_SCOPES, type BureauScope } from './http/bureau-scopes';
 export {

@@ -2,7 +2,7 @@
   /**
    * The line a fresh Interborough's chat welcome adds under its New chat link: "Agents:" and the
    * identifier of each agent a chat can start with, in monospace, from the Bureau's own list
-   * (`bureau.agents.list`, the published ones). It says nothing until the Bureau has answered, and
+   * (`bureau.agents.list`). It says nothing until the Bureau has answered, and
    * nothing when there is no agent to name, so a failed read never claims there are none.
    */
   import { createQuery } from '@tanstack/svelte-query';
@@ -10,7 +10,6 @@
   import { listAgents } from '../lib/bureau-client.ts';
   import { keyedByOccurrence } from '../lib/list-keys.ts';
   import { queryKeys } from '../lib/query.ts';
-  import { startableAgents } from '../routes/chat/new-chat.ts';
   import { CHAT_COPY } from './copy.ts';
 
   const agents = createQuery(
@@ -21,9 +20,7 @@
     }),
     undefined,
   );
-  const named = $derived(
-    keyedByOccurrence(startableAgents(agents.data ?? []), (agent) => agent.name),
-  );
+  const named = $derived(keyedByOccurrence(agents.data ?? [], (agent) => agent.name));
 </script>
 
 {#if named.length > 0}

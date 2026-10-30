@@ -30,7 +30,7 @@ export const AGENT = {
   description: 'Answers every message.',
   definitionRevision: 3,
   kind: 'code',
-  publishState: 'published',
+  a2a: false,
 };
 
 export type Call = { method: string; params: Record<string, unknown> };

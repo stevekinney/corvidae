@@ -63,7 +63,7 @@ const AGENTS = ['assistant', 'tool-runner'].map((name) => ({
   description: null,
   definitionRevision: 1,
   kind: 'code',
-  publishState: 'published',
+  a2a: false,
 }));
 
 /** The only validator this Bureau was configured with. */

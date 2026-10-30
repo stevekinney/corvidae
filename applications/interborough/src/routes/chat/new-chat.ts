@@ -13,11 +13,3 @@ export function examplePrompts(agent: Pick<AgentSummary, 'examples'>): readonly 
     .filter((prompt) => prompt !== '')
     .slice(0, MAXIMUM_EXAMPLE_PROMPTS);
 }
-
-/**
- * The agents a new chat can start with: the published ones, in the Bureau's order. A withdrawn or
- * unpublished agent cannot take a chat, so it is not offered.
- */
-export function startableAgents(agents: readonly AgentSummary[]): readonly AgentSummary[] {
-  return agents.filter((agent) => agent.publishState === 'published');
-}

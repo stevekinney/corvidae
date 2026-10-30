@@ -111,7 +111,7 @@ describe('bureau.agents.definitions.update', () => {
     const served = await withListedAgent();
     const got = await callAs(served.local, 'bureau.agents.definitions.get', { id: 'researcher' });
     const definition = got.result?.['definition'] as Record<string, unknown>;
-    const { published: _published, ...sent } = definition;
+    const { a2a: _a2a, ...sent } = definition;
 
     const body = await callAs(served.local, 'bureau.agents.definitions.update', {
       id: 'researcher',

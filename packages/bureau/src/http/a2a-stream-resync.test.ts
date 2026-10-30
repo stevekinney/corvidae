@@ -75,7 +75,7 @@ describe('SubscribeToTask across a lost run.completed append', () => {
     };
     const opened: OpenedBureau = await openBureau({
       agents: { asker: createAgent({ name: 'asker', generate }) },
-      publish: ['asker'],
+      a2aAgents: ['asker'],
       storage,
       handlerOptions: { publicUrl: 'http://localhost' },
     });
@@ -119,7 +119,7 @@ describe('SubscribeToTask when neither the run.completed append nor its repair c
     };
     const opened: OpenedBureau = await openBureau({
       agents: { asker: createAgent({ name: 'asker', generate }) },
-      publish: ['asker'],
+      a2aAgents: ['asker'],
       storage,
       handlerOptions: { publicUrl: 'http://localhost' },
     });
