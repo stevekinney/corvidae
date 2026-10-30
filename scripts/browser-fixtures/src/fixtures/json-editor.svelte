@@ -10,5 +10,4 @@
   description="Enter the JSON body sent with the request."
   {value}
   onValueChange={(nextValue) => (value = nextValue)}
-  highlight={true}
 />

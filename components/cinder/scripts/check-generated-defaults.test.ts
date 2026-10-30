@@ -77,7 +77,7 @@ const CASES: Record<string, string[]> = {
   'hover-card': ['openDelay', 'closeDelay', 'placement', 'offset'],
   'host-provider': ['platform', 'safeHeaderLeft', 'safeHeaderRight'],
   'inline-confirm': ['cancelLabel', 'destructive', 'open'],
-  'json-editor': ['rows', 'validFeedbackVisible', 'highlight'],
+  'json-editor': ['rows', 'validFeedbackVisible'],
   'kanban-board': ['collapsible', 'reorderColumns'],
   'key-value-editor': ['addLabel'],
   'load-more': ['buttonLabel', 'retryLabel', 'endOfListMessage', 'maxRetries'],

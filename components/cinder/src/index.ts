@@ -460,7 +460,7 @@ export { default as InlineLoading } from './components/inline-loading/index.ts';
 export type { InlineLoadingProps, InlineLoadingStatus } from './components/inline-loading/index.ts';
 
 export { default as JsonEditor } from './components/json-editor/index.ts';
-export type { JsonEditorProps } from './components/json-editor/index.ts';
+export type { JsonEditorProps, JsonEditorSchema } from './components/json-editor/index.ts';
 
 export { default as JsonSchemaEditor } from './components/json-schema-editor/index.ts';
 export type {
@@ -1192,7 +1192,6 @@ export type {
 } from './components/data-grid/index.ts';
 export type { DescriptionListDefinition } from './components/description-list/index.ts';
 export type { InvocationRuleBuilderSchemaProps } from './components/invocation-rule-builder/index.ts';
-export type { JsonLint } from './components/json-editor/json-editor-enhancement.ts';
 export type { KbdSize } from './components/kbd/index.ts';
 export type {
   PayloadInspectorSchemaProps,

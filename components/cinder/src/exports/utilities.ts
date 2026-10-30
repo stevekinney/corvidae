@@ -38,5 +38,4 @@ export type { FormDirtyGuard } from '../utilities/form-dirty-guard.ts';
 export { IDENTIFIER_ACRONYMS, humanizeIdentifier } from '../utilities/humanize-identifier.ts';
 export type { HumanizeIdentifierOptions } from '../utilities/humanize-identifier.ts';
 
-export { enhanceJson } from '../components/json-editor/json-editor-enhancement.ts';
 export type { Highlighter } from '../utilities/highlighter.ts';
