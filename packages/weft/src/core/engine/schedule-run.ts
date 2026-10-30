@@ -15,6 +15,14 @@ import type { ScheduleCallbacks } from './schedules.ts';
 type ScheduledRunServicesResolution =
   { status: 'available'; services: unknown } | { status: 'unavailable'; reason: string };
 
+/**
+ * The tag every run a schedule fire starts carries (COR-1902): `origin:schedule`, the spelling
+ * Bureau gives a task of that origin (`origin:<kind>`), so `engine.list({ tags })` finds a schedule's
+ * runs. It rides in the run's start options, so it is written in the same create batch as the
+ * run and the schedule record that names it, and a crash cannot leave a fired run without it.
+ */
+export const SCHEDULE_ORIGIN_TAG = 'origin:schedule';
+
 export type ScheduledRunStartOptions = {
   occurrence?: number;
   /** Present and `true` for a run a person triggered by hand (`engine.triggerSchedule`). */
@@ -97,7 +105,7 @@ export async function startScheduledRun(
   await callbacks.startWorkflow(
     state.workflowType,
     state.input,
-    { id: workflowId },
+    { id: workflowId, tags: [SCHEDULE_ORIGIN_TAG] },
     scheduleRunOperations,
     buildPinnedRevisionOverride(state),
     options.skipAdmissionIdCheck,

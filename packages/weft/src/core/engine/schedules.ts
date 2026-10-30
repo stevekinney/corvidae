@@ -69,7 +69,7 @@ export type ScheduleCallbacks = {
   startWorkflow: (
     type: string,
     input: unknown,
-    options: { id: string },
+    options: { id: string; tags?: string[] },
     additionalStartOperations?: BatchOperation[],
     revisionOverride?: string,
     skipAdmissionIdCheck?: boolean,
