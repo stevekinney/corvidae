@@ -16551,7 +16551,7 @@ async function constructBureau<const D extends AgentDefinitions>(
             principal: input.principal,
             ...(input.reason !== undefined ? { reason: input.reason } : {}),
             ...(result === undefined ? {} : { result }),
-            ...(secretAnswerAudit.length === 0 ? {} : { secretAnswers: secretAnswerAudit }),
+            secretAnswers: secretAnswerAudit,
           });
         }
         resolvingReviewIds.delete(review.id);
