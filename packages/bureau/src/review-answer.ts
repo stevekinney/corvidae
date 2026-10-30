@@ -199,14 +199,17 @@ export function validateReviewAnswer(
 
 /**
  * The value text typed to a wait stands for (COR-1804). A person answers in text, in the chat, the
- * reviews inbox, or the run's wait page, so a wait whose schema asks for more than a string reads
- * the text as JSON (`3` is the integer 3, `{"a":1}` an object). A schema that asks only for a
- * string (`type: "string"`, or `enum`/`const` of strings) takes the text as written, never as JSON.
- * Text that is not JSON is kept as the string it is, so {@link validateReviewAnswer} names the type
- * the schema wanted instead of a parse error.
+ * reviews inbox, or the run's wait page, so the text is the answer as written whenever that fits
+ * the schema (`8080` answers an `enum` of port strings with `x-allowOther`; `{"a":1}` answers a
+ * string question). Only text that does not fit is read as JSON (`3` is the integer 3,
+ * `{"a":1}` an object), and only when it parses. A schema that asks only for a string (`type:
+ * "string"`, or `enum`/`const` of strings) always takes the text as written, so a failure says
+ * what is wrong with the string and not that it should be a number. Text that does not fit and is
+ * not JSON stays the string it is, so {@link validateReviewAnswer} names the type the schema wanted
+ * instead of a parse error.
  */
 export function answerFromText(schema: HumanInputSchema, text: string): unknown {
-  if (takesPlainText(schema)) return text;
+  if (takesPlainText(schema) || validateReviewAnswer(schema, text).length === 0) return text;
   try {
     return JSON.parse(text);
   } catch {

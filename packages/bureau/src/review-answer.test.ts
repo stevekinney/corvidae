@@ -8,6 +8,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { InteractiveSurfaceSchemaCompiler } from './interactive-surface/validation.ts';
 import {
+  answerFromText,
   formatReviewAnswerIssues,
   REVIEW_ANSWER_MAXIMUM_ISSUES,
   validateReviewAnswer,
@@ -224,5 +225,46 @@ describe('validateReviewAnswer: no answer, and a schema it cannot use', () => {
     // And the cached validator of the answer check gives the same answer twice.
     expect(validateReviewAnswer(schema, 'nope')).toHaveLength(1);
     expect(validateReviewAnswer(schema, 'nope')).toHaveLength(1);
+  });
+});
+
+describe('answerFromText', () => {
+  const ports: HumanInputSchema = {
+    anyOf: [{ enum: ['8080', '3000'] }, { type: 'string' }],
+    'x-allowOther': true,
+  };
+  const object: HumanInputSchema = {
+    type: 'object',
+    properties: { replicas: { type: 'integer' } },
+    required: ['replicas'],
+  };
+
+  it.each([
+    ['an enum-plus-other question, a choice that looks like a number', ports, '8080', '8080'],
+    ['an enum-plus-other question, other text', ports, 'other text', 'other text'],
+    ['an enum-plus-other question, other digits', ports, '42', '42'],
+    ['an enum-plus-other question, other true', ports, 'true', 'true'],
+    ['a string question, JSON-looking text', { type: 'string' }, '{"a":1}', '{"a":1}'],
+    [
+      'a string question, digits that break its limit',
+      { type: 'string', maxLength: 2 },
+      '123',
+      '123',
+    ],
+  ] as const)('keeps the text as written for %s', (_name, schema, text, expected) => {
+    expect(answerFromText(schema, text)).toBe(expected);
+  });
+
+  it.each([
+    ['an integer', { type: 'integer' }, '3', 3],
+    ['a boolean', { type: 'boolean' }, 'true', true],
+    ['an object', object, '{"replicas":2}', { replicas: 2 }],
+  ] as const)('reads text that does not fit as JSON for %s', (_name, schema, text, expected) => {
+    expect(answerFromText(schema, text)).toEqual(expected);
+  });
+
+  it('keeps text that is neither a fit nor JSON, so the type it should be is named', () => {
+    expect(answerFromText({ type: 'integer' }, 'three')).toBe('three');
+    expect(validateReviewAnswer({ type: 'integer' }, 'three')[0]).toMatchObject({ code: 'type' });
   });
 });

@@ -407,6 +407,26 @@ describe('bureau.tasks.respond on a wait with an input schema', () => {
     }
   });
 
+  it('keeps text that fits an enum-plus-other question as written (COR-1804)', async () => {
+    const fixture = await open({
+      anyOf: [{ enum: ['8080', '3000'] }, { type: 'string' }],
+      'x-allowOther': true,
+    });
+    try {
+      const task = await fixture.start();
+
+      const applied = await respondToTask(fixture.host, fixture.principal, {
+        taskId: task.id,
+        messageId: 'r-ports',
+        answer: '8080',
+      });
+
+      expect(applied).toMatchObject({ kind: 'human-wait', receipt: 'applied' });
+    } finally {
+      await fixture.opened.dispose();
+    }
+  });
+
   it('asserts a date-time answer’s format, which the form check leaves as an annotation (COR-1804)', async () => {
     const fixture = await open({
       type: 'object',

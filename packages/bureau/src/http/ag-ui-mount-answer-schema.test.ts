@@ -255,3 +255,75 @@ describe('a typed answer to a question with a schema, over AG-UI (COR-1804)', ()
     );
   });
 });
+
+describe('a retried typed answer over AG-UI (COR-1804)', () => {
+  const kinds = (frames: Awaited<ReturnType<typeof readAgUiStream>>) =>
+    frames.map((frame) => frame.event as unknown as { type: string; code?: string });
+
+  it('answers an exact retry of a completed typed resume with its receipt, not a conflict', async () => {
+    await withHarness(
+      async (harness) => {
+        const { interrupts } = await startUntilInterrupted(harness);
+        const id = interrupts[0]!.id;
+        // The retry sends the same entries again, as a client does after a lost response.
+        const entries = [resolved(id, { decision: 'approve', answer: '3' })];
+
+        const first = await readAgUiStream(await harness.handler(resumeRequest(entries)));
+        const retry = await readAgUiStream(await harness.handler(resumeRequest(entries)));
+
+        expect(kinds(first).at(-1)).toMatchObject({ type: EventType.RUN_FINISHED });
+        expect(kinds(retry).map((event) => event.code)).not.toContain('RESUME_CONFLICT');
+        expect(kinds(retry).at(-1)).toMatchObject({
+          type: EventType.RUN_FINISHED,
+          outcome: { type: 'success' },
+        });
+      },
+      { type: 'integer', minimum: 1, maximum: 5 },
+    );
+  });
+
+  it('still refuses the same interrupt answered differently as a conflict', async () => {
+    await withHarness(
+      async (harness) => {
+        const { interrupts } = await startUntilInterrupted(harness);
+        const id = interrupts[0]!.id;
+
+        await readAgUiStream(
+          await harness.handler(
+            resumeRequest([resolved(id, { decision: 'approve', answer: '3' })]),
+          ),
+        );
+        const other = await readAgUiStream(
+          await harness.handler(
+            resumeRequest([resolved(id, { decision: 'approve', answer: '4' })]),
+          ),
+        );
+
+        expect(kinds(other).at(-1)).not.toMatchObject({ outcome: { type: 'success' } });
+      },
+      { type: 'integer', minimum: 1, maximum: 5 },
+    );
+  });
+
+  it('takes an enum-plus-other answer that looks like a number as the string it is', async () => {
+    const ports = {
+      anyOf: [{ enum: ['8080', '3000'] }, { type: 'string' }],
+      'x-allowOther': true,
+    };
+    for (const answer of ['8080', 'other text', '42']) {
+      await withHarness(async (harness) => {
+        const { interrupts } = await startUntilInterrupted(harness);
+        const frames = await readAgUiStream(
+          await harness.handler(
+            resumeRequest([resolved(interrupts[0]!.id, { decision: 'approve', answer })]),
+          ),
+        );
+
+        expect(kinds(frames).at(-1)).toMatchObject({
+          type: EventType.RUN_FINISHED,
+          outcome: { type: 'success' },
+        });
+      }, ports);
+    }
+  });
+});

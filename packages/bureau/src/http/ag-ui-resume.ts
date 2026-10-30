@@ -407,8 +407,10 @@ export function createResume(context: ResumeContext) {
     // refused before the command is claimed and before any entry of the resume is applied: a
     // resume of several interrupts is all-or-nothing in what it refuses, never half applied. A
     // client that can only type (the chat) sends the answer as text, which is read as the value
-    // the schema asks for (`answerFromText`); the value is what is delivered and what the command's
-    // digest covers, so an exact retry of the same text is the same command.
+    // the schema asks for (`answerFromText`); the value is what is delivered. The command's
+    // digest covers the entries as received, not as converted: a retry of a resume that
+    // has completed reads its review without the schema (the audit record omits it), so it could
+    // not convert, and the two attempts must still be the same command.
     const fitted: ResumeEntry[] = [];
     for (const entry of entries) {
       const review = reviews.get(entry.interruptId);
@@ -450,7 +452,7 @@ export function createResume(context: ResumeContext) {
     };
     const digest = digestCommandPayload({
       entries: canonicalJson(
-        request.entries
+        entries
           .map((entry) => ({
             interruptId: entry.interruptId,
             status: entry.status,
