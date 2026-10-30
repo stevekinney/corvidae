@@ -49,3 +49,39 @@ describe('a listener on any other port', () => {
     expect(refused(7234, { host: 'localhost:7234', origin: 'http://localhost:7234' })).toBe(false);
   });
 });
+
+describe('a guard given a public A2A origin (COR-1904)', () => {
+  const publicOrigin = new URL('https://agents.example.test:8443');
+
+  function refusedAt(path: string, headers: Record<string, string>): boolean {
+    const guard = createRequestGuard(() => 7234, publicOrigin);
+    return guard(new Request(`http://127.0.0.1${path}`, { headers }))?.status === 403;
+  }
+
+  test('accepts that origin for an A2A path, under any case, with no Origin or its own', () => {
+    expect(refusedAt('/bureau/a2a/open', { host: 'Agents.Example.Test:8443' })).toBe(false);
+    expect(
+      refusedAt('/bureau/a2a/open', {
+        host: 'agents.example.test:8443',
+        origin: 'https://agents.example.test:8443',
+      }),
+    ).toBe(false);
+  });
+
+  test('refuses that origin for any other path, another port, or a foreign Origin', () => {
+    expect(refusedAt('/bureau/jsonrpc', { host: 'agents.example.test:8443' })).toBe(true);
+    expect(refusedAt('/bureau/a2a', { host: 'agents.example.test:8443' })).toBe(true);
+    expect(refusedAt('/bureau/a2a/open', { host: 'agents.example.test' })).toBe(true);
+    expect(
+      refusedAt('/bureau/a2a/open', {
+        host: 'agents.example.test:8443',
+        origin: 'https://attacker.example',
+      }),
+    ).toBe(true);
+  });
+
+  test('still answers loopback as before', () => {
+    expect(refusedAt('/bureau/jsonrpc', { host: 'localhost:7234' })).toBe(false);
+    expect(refusedAt('/bureau/a2a/open', { host: 'attacker.example' })).toBe(true);
+  });
+});
