@@ -213,6 +213,10 @@ export type ToolSourceAuditEntry = {
     readonly kind: string;
     readonly owner: string;
     readonly commandLine?: string;
+    /** For a tool-settings change: the tools that were granted `acceptsSecrets`. Names only. */
+    readonly granted?: readonly string[];
+    /** The tools whose `acceptsSecrets` was revoked, by a settings change or by pointing the source elsewhere. Names only. */
+    readonly revoked?: readonly string[];
   };
 };
 
@@ -540,12 +544,15 @@ function revisionOf(source: ToolSourceDescription): string {
  * same default.
  */
 function settingsRevision(entry: ConfiguredToolSource): string {
-  return JSON.stringify(
-    [...entry.tools]
-      .filter(([, settings]) => settings.acceptsSecrets === true)
-      .map(([name]) => name)
-      .sort(),
-  );
+  return JSON.stringify(acceptingTools(entry.tools));
+}
+
+/** The names of the tools flagged `acceptsSecrets`, sorted. */
+function acceptingTools(tools: ReadonlyMap<string, ConfiguredToolSettings>): string[] {
+  return [...tools]
+    .filter(([, settings]) => settings.acceptsSecrets === true)
+    .map(([name]) => name)
+    .sort();
 }
 
 /**
@@ -891,6 +898,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
   async function record(
     type: ToolSourceAuditEntry['type'],
     source: ToolSourceDescription,
+    access: { readonly granted?: readonly string[]; readonly revoked?: readonly string[] } = {},
   ): Promise<void> {
     const commandLine = commandLineOf(source);
     try {
@@ -903,6 +911,13 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
           kind: source.kind,
           owner,
           ...(commandLine === undefined ? {} : { commandLine }),
+          // Tool names only: never an argument, a reference, or a value.
+          ...(access.granted === undefined || access.granted.length === 0
+            ? {}
+            : { granted: access.granted }),
+          ...(access.revoked === undefined || access.revoked.length === 0
+            ? {}
+            : { revoked: access.revoked }),
         },
       });
     } catch {
@@ -1034,7 +1049,12 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
             isOAuth(existing.source) &&
             isOAuth(source) &&
             JSON.stringify(existing.source) === JSON.stringify(source);
-          const next: ConfiguredToolSource = { source, tools: existing?.tools ?? new Map() };
+          // Per-tool settings, `acceptsSecrets` among them, were granted for the server the source
+          // went to: they are kept only while it still goes to the same place, like credentials.
+          const tools = sameRecipient && existing !== undefined ? existing.tools : new Map();
+          const next: ConfiguredToolSource = { source, tools };
+          const revoked =
+            existing === undefined || sameRecipient ? [] : acceptingTools(existing.tools);
           const nextSources =
             existing === undefined
               ? [...sources, next]
@@ -1086,7 +1106,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
             putPreviousBack();
             throw new Error('The tool-source configuration could not be written.');
           }
-          await record('tool.source.connected', source);
+          await record('tool.source.connected', source, { revoked });
           return { id, changed: true, restartRequired: true as const };
         }),
       );
@@ -1118,7 +1138,12 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
         if (!(await writeConfiguration(text))) {
           throw new Error('The tool-source configuration could not be written.');
         }
-        await record('tool.source.tools-configured', existing.source);
+        const before = new Set(acceptingTools(existing.tools));
+        const after = new Set(acceptingTools(tools));
+        await record('tool.source.tools-configured', existing.source, {
+          granted: [...after].filter((name) => !before.has(name)).sort(),
+          revoked: [...before].filter((name) => !after.has(name)).sort(),
+        });
         return { id, changed: true, restartRequired: true as const };
       });
     },

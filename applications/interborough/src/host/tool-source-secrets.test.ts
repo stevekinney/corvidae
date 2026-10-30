@@ -18,7 +18,11 @@ import {
 } from './tool-source-manager.ts';
 import { keysOf, memoryHome } from './tool-source-memory-home.test-support.ts';
 import { toolSourceRoutes } from './tool-source-routes.ts';
-import { petsDocument } from './tool-source-servers.test-support.ts';
+import {
+  petsDocument,
+  startMcpServer,
+  type TestServer,
+} from './tool-source-servers.test-support.ts';
 
 const owner = 'anonymous:local';
 
@@ -31,8 +35,10 @@ const petsSource = {
 };
 
 const closers: ToolSourceManager[] = [];
+const servers: TestServer[] = [];
 
 afterEach(async () => {
+  for (const server of servers.splice(0)) await server.stop();
   for (const manager of closers.splice(0)) await manager.close();
 });
 
@@ -41,6 +47,7 @@ async function managerOver(
   home: ReturnType<typeof memoryHome>,
   keys: AnswerEncryptionKeys,
   requests: string[] = [],
+  stubFetch = true,
 ) {
   const audited: ToolSourceAuditEntry[] = [];
   const warnings: string[] = [];
@@ -50,13 +57,17 @@ async function managerOver(
     audit: async (entry) => void audited.push(entry),
     origin: () => 'http://127.0.0.1:1',
     warn: (message) => void warnings.push(message),
-    fetch: Object.assign(
-      async (input: RequestInfo | URL) => {
-        requests.push(String(input instanceof Request ? input.url : input));
-        return Response.json({ ok: true });
-      },
-      { preconnect: () => undefined },
-    ),
+    ...(stubFetch
+      ? {
+          fetch: Object.assign(
+            async (input: RequestInfo | URL) => {
+              requests.push(String(input instanceof Request ? input.url : input));
+              return Response.json({ ok: true });
+            },
+            { preconnect: () => undefined },
+          ),
+        }
+      : {}),
   });
   closers.push(manager);
   return { manager, audited, warnings };
@@ -438,5 +449,186 @@ describe('acceptsSecrets on a saved source tool', () => {
       error: 'invalid',
       field: 'tools.delete-pet.acceptsSecrets',
     });
+  });
+});
+
+describe('acceptsSecrets when a source is pointed somewhere else', () => {
+  const flag = { 'delete-pet': { acceptsSecrets: true } };
+
+  test('is dropped with the credentials when an OpenAPI baseUrl changes, kept when something else does, and audited', async () => {
+    const home = memoryHome();
+    const keys = await keysOf();
+    const first = await managerOver(home, keys);
+    await connectPets(first.manager);
+    await first.manager.configureTools({ id: 'pets', tools: flag });
+
+    // The same place with a narrower allow-list: still the owner's grant.
+    await first.manager.connect({
+      id: 'pets',
+      source: { ...petsSource, allowOperations: ['deletePet', 'listPets'] },
+      principal: owner,
+    });
+    expect(JSON.parse(home.state.configuration ?? '{}').toolSources[0].tools).toEqual(flag);
+
+    // Another server: the flag was granted for the first one only.
+    await first.manager.connect({
+      id: 'pets',
+      source: { ...petsSource, baseUrl: 'http://other.test/' },
+      credentials: { key: 'other-key' },
+      principal: owner,
+    });
+    expect(JSON.parse(home.state.configuration ?? '{}').toolSources[0]).not.toHaveProperty('tools');
+    expect(first.audited.at(-1)).toMatchObject({
+      type: 'tool.source.connected',
+      detail: { revoked: ['delete-pet'] },
+    });
+    await first.manager.close();
+
+    const requests: string[] = [];
+    const second = await managerOver(home, keys, requests);
+    await second.manager.start();
+    expect(second.manager.tools()['pets__delete-pet']?.metadata).not.toHaveProperty(
+      'acceptsSecrets',
+    );
+    const refused = await runToolbox(
+      second.manager,
+      ['pets__delete-pet'],
+      async () => 'plain',
+    ).execute({
+      id: 'call-1',
+      name: 'pets__delete-pet',
+      arguments: { id: { secretRef: 'human-wait:run/password' } },
+    });
+    expect(JSON.stringify(refused)).toContain('secret-not-accepted');
+    expect(requests).toEqual([]);
+  });
+
+  test('is dropped when a stdio source runs another command or another environment, and kept for the same command', async () => {
+    const home = memoryHome();
+    const { manager, audited } = await managerOver(home, await keysOf());
+    const stdio = (command: string, env: Record<string, string> = {}) => ({
+      id: 'local',
+      kind: 'mcp',
+      transport: { type: 'stdio', command, args: ['serve'], env },
+    });
+    const saved = () => JSON.parse(home.state.configuration ?? '{}').toolSources[0];
+    await manager.connect({ id: 'local', source: stdio('first-server'), principal: owner });
+    await manager.configureTools({ id: 'local', tools: { lookup: { acceptsSecrets: true } } });
+
+    // Reconnecting the same command is the same place.
+    await manager.connect({ id: 'local', source: stdio('first-server'), principal: owner });
+    expect(saved().tools).toEqual({ lookup: { acceptsSecrets: true } });
+
+    await manager.connect({ id: 'local', source: stdio('second-server'), principal: owner });
+    expect(saved()).not.toHaveProperty('tools');
+    expect(audited.at(-1)).toMatchObject({ detail: { revoked: ['lookup'] } });
+
+    await manager.configureTools({ id: 'local', tools: { lookup: { acceptsSecrets: true } } });
+    await manager.connect({
+      id: 'local',
+      source: stdio('second-server', { TARGET: 'elsewhere' }),
+      principal: owner,
+    });
+    expect(saved()).not.toHaveProperty('tools');
+  });
+
+  test('names the tools granted and revoked in the audit record, and nothing else', async () => {
+    const home = memoryHome();
+    const { manager, audited } = await managerOver(home, await keysOf());
+    await connectPets(manager);
+
+    await manager.configureTools({
+      id: 'pets',
+      tools: { 'delete-pet': { acceptsSecrets: true }, 'create-pet': { acceptsSecrets: true } },
+    });
+    await manager.configureTools({
+      id: 'pets',
+      tools: { 'create-pet': { acceptsSecrets: false }, 'list-pets': { acceptsSecrets: true } },
+    });
+
+    const records = audited.filter((entry) => entry.type === 'tool.source.tools-configured');
+    expect(records.map((entry) => entry.detail)).toEqual([
+      {
+        sourceId: 'pets',
+        kind: 'openapi',
+        owner,
+        granted: ['create-pet', 'delete-pet'],
+      },
+      {
+        sourceId: 'pets',
+        kind: 'openapi',
+        owner,
+        granted: ['list-pets'],
+        revoked: ['create-pet'],
+      },
+    ]);
+  });
+});
+
+describe('acceptsSecrets on an MCP source tool', () => {
+  test('is applied to the rebuilt tool, which keeps its tier and MCP metadata, and the unflagged tool stays refused', async () => {
+    const server = await startMcpServer('mcp-token-fixture');
+    servers.push(server);
+    const home = memoryHome();
+    const keys = await keysOf();
+    const first = await managerOver(home, keys, [], false);
+    await first.manager.connect({
+      id: 'files',
+      source: {
+        id: 'files',
+        kind: 'mcp',
+        transport: {
+          type: 'http',
+          url: `${server.origin}/`,
+          authentication: { type: 'bearer', credential: 'token' },
+        },
+      },
+      credentials: { token: 'mcp-token-fixture' },
+      principal: owner,
+    });
+    await first.manager.start();
+    const original = toolOf(first.manager, 'files__lookup');
+    await first.manager.configureTools({
+      id: 'files',
+      tools: { lookup: { acceptsSecrets: true } },
+    });
+    await first.manager.close();
+
+    const second = await managerOver(home, keys, [], false);
+    await second.manager.start();
+
+    const flagged = toolOf(second.manager, 'files__lookup');
+    expect(flagged.metadata?.['acceptsSecrets']).toBe(true);
+    expect(flagged.metadata?.['readOnly']).toBe(true);
+    expect(flagged.metadata?.['mcp']).toEqual(original.metadata?.['mcp']);
+    expect(second.manager.tools()['files__wipe']?.metadata).not.toHaveProperty('acceptsSecrets');
+    const standing = await standingOf(second.manager);
+    expect(standing?.tools.find((tool) => tool.name === 'files__lookup')).toMatchObject({
+      tier: 'read-only',
+      acceptsSecrets: true,
+    });
+
+    const asked: string[] = [];
+    const toolbox = runToolbox(
+      second.manager,
+      ['files__lookup', 'files__wipe'],
+      async (reference) => {
+        asked.push(reference);
+        return 'plain';
+      },
+    );
+    const accepted = await toolbox.execute({
+      id: 'call-1',
+      name: 'files__lookup',
+      arguments: { note: { secretRef: 'human-wait:run/password' } },
+    });
+    const refused = await toolbox.execute({
+      id: 'call-2',
+      name: 'files__wipe',
+      arguments: { note: { secretRef: 'human-wait:run/password' } },
+    });
+    expect(accepted.outcome).toBe('success');
+    expect(JSON.stringify(refused)).toContain('secret-not-accepted');
+    expect(asked).toEqual(['human-wait:run/password']);
   });
 });
