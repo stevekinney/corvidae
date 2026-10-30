@@ -332,7 +332,11 @@ import {
   getComposedWorkflowInterceptor,
   swallowPromiseRejection,
 } from './strategy-helpers.ts';
-import { isEventFromSupersededGeneration } from './superseded-generation.ts';
+import { StreamChunkAnnouncer } from './stream-chunk-announcer.ts';
+import {
+  isEventFromSupersededGeneration,
+  isSupersededBySameIdRun,
+} from './superseded-generation.ts';
 import {
   cancelWorkflow as cancelWorkflowFromTermination,
   cleanupWaiters as cleanupWaitersFromTermination,
@@ -935,6 +939,11 @@ export class Engine<
     getInternals(this).reviewTimerIds = new Map();
     getInternals(this).pendingWebhooks = new Set();
     getInternals(this).pendingResultPollTimers = new Set();
+    getInternals(this).streamChunkAnnouncer = new StreamChunkAnnouncer(
+      (event) => this.dispatchEvent(event),
+      (workflowId, workflowExecutionToken) =>
+        isSupersededBySameIdRun(getInternals(this), workflowId, workflowExecutionToken),
+    );
     getInternals(this).pendingTimelineEntries = new Map();
     getInternals(this).pendingAtomicWorkflowCommitSideEffects = new Map();
     getInternals(this).pendingOperationAtomicWorkflowCommitSideEffects = new Map();
