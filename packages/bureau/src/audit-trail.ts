@@ -969,6 +969,9 @@ export const AUDIT_WORKFLOW_OWNER_PREFIX = 'workflow:';
 /** The `runId` prefix of a worker deployment's synthetic audit owner, `worker-deployment:<name>` (COR-1813). */
 export const AUDIT_WORKER_DEPLOYMENT_OWNER_PREFIX = 'worker-deployment:';
 
+/** The `runId` prefix of a hook's synthetic audit owner, `hook:<id>` (COR-1939). */
+export const AUDIT_HOOK_OWNER_PREFIX = 'hook:';
+
 /** The `runId` prefix of a skill source's synthetic audit owner, `skill-source:<id>` (COR-1818). */
 export const AUDIT_SKILL_SOURCE_OWNER_PREFIX = 'skill-source:';
 
@@ -987,6 +990,7 @@ export const AUDIT_SYNTHETIC_OWNER_PREFIXES: readonly string[] = [
   AUDIT_WORKFLOW_OWNER_PREFIX,
   AUDIT_WORKER_DEPLOYMENT_OWNER_PREFIX,
   AUDIT_SKILL_SOURCE_OWNER_PREFIX,
+  AUDIT_HOOK_OWNER_PREFIX,
   AUDIT_TOOL_SOURCE_OWNER_PREFIX,
 ];
 
@@ -1015,6 +1019,15 @@ export function auditTrailWorkflowOwnerId(workflowId: string): string {
  */
 export function auditTrailWorkerDeploymentOwnerId(deploymentName: string): string {
   return `${AUDIT_WORKER_DEPLOYMENT_OWNER_PREFIX}${deploymentName}`;
+}
+
+/**
+ * The synthetic `runId` a change to a hook, or an exhausted delivery of one, is filed under,
+ * `hook:<id>` (COR-1939). The entry's `detail.owner` is the hook's owner, read from the entry and
+ * never from the hook, which may be gone. `query({ runId })` with it retrieves one hook's entries.
+ */
+export function auditTrailHookOwnerId(hookId: string): string {
+  return `${AUDIT_HOOK_OWNER_PREFIX}${hookId}`;
 }
 
 /**

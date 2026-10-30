@@ -300,6 +300,8 @@ type TopLevelMembers =
   | 'peerCalls'
   // COR-1813: the worker rollouts.
   | 'deployments'
+  // COR-1939: the user-defined hooks.
+  | 'hooks'
   // COR-1941: the owner's notifications.
   | 'notifications';
 

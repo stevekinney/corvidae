@@ -28,6 +28,7 @@ export const RESERVED_NAMESPACES: readonly string[] = [
   'worker-deployment',
   'skill-source',
   'tool-source',
+  'hook',
   'bureau-goal-audit',
 ];
 

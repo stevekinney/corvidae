@@ -182,6 +182,7 @@ import type { DefinitionScannerHealth } from './definition-scanner';
 import { createAssetClaimReconciler } from './asset-claim-reconciliation';
 import {
   AUDIT_AGENT_OWNER_PREFIX,
+  AUDIT_HOOK_OWNER_PREFIX,
   AUDIT_SCHEDULE_OWNER_PREFIX,
   AUDIT_SESSION_OWNER_PREFIX,
   AUDIT_SKILL_SOURCE_OWNER_PREFIX,
@@ -609,7 +610,13 @@ import {
 } from './tasks/respond-to-task';
 import { createReviews } from './reviews/create-reviews';
 import { createSchedules } from './schedules/create-schedules';
-import { createWebhookNotifier, type WebhookNotifier } from './webhook-notifier';
+import {
+  createWebhookNotifier,
+  type WebhookDeliveryEngine,
+  type WebhookNotifier,
+  type WebhookNotifierOptions,
+} from './webhook-notifier';
+import { createHooks, type CreatedHooks } from './hooks/create-hooks';
 import { scheduleInputPreview } from './schedule-input-preview';
 import { ownEntry } from './own-entry';
 
@@ -2155,6 +2162,85 @@ export function createBureau<const D extends AgentDefinitions = Record<never, ne
   return result.promise;
 }
 
+/** COR-1939: hooks keep their records in the key-value store, so a Bureau with none cannot have them. */
+function rejectHooksWithoutStorage(
+  hooks: BureauOptions['hooks'],
+  kv: ConditionalTextValueStore | undefined,
+): void {
+  if (hooks !== undefined && kv === undefined) {
+    throw new BureauError(
+      'Hooks need durable storage: pass `storage`, so delivery records survive a restart',
+      'NOT_CONFIGURED',
+      'persistence',
+    );
+  }
+}
+
+/** Whether the webhook notifier is built: a fixed target is configured, or hooks need its engine. */
+function wantsWebhookNotifier(options: BureauOptions<AgentDefinitions>): boolean {
+  return (options.webhooks?.targets.length ?? 0) > 0 || options.hooks !== undefined;
+}
+
+/** The options the notifier is built with: the caller's `webhooks`, and the engine when hooks need it. */
+function webhookNotifierOptionsOf(
+  options: BureauOptions<AgentDefinitions>,
+  signal: AbortSignal,
+): WebhookNotifierOptions {
+  return {
+    targets: [],
+    ...options.webhooks,
+    signal,
+    ...(options.hooks === undefined ? {} : { engine: true }),
+  };
+}
+
+/**
+ * COR-1939: builds the hooks over the notifier's engine and resumes the deliveries a previous
+ * process left pending. The resume is tracked, so the notifier's `flush()` waits for it and for the
+ * deliveries it takes.
+ */
+function composeHooks(input: {
+  readonly options: BureauOptions<AgentDefinitions>['hooks'];
+  readonly engine: WebhookDeliveryEngine | undefined;
+  readonly kv: ConditionalTextValueStore | undefined;
+  readonly keys: AnswerEncryptionKeys | undefined;
+  readonly bureauId: string;
+  readonly runtimeServices: RuntimeServices;
+  readonly auditTrail: AuditTrail | undefined;
+  readonly diagnose: DiagnosticSink;
+}): CreatedHooks | undefined {
+  const { options, engine, kv, diagnose } = input;
+  if (options === undefined || engine === undefined || kv === undefined) return undefined;
+  const created = createHooks({
+    kv,
+    engine,
+    secrets: options.secrets,
+    keys: input.keys,
+    urlPolicy: options.urlPolicy,
+    requestTimeoutMilliseconds: options.requestTimeoutMilliseconds,
+    bureauId: input.bureauId,
+    newId: (kind) => input.runtimeServices.identifiers.next(kind),
+    audit: async (entry) => {
+      await input.auditTrail?.record(entry);
+    },
+    diagnose: (message, cause) =>
+      diagnose({ level: 'error', scope: 'hooks', message: `[bureau] ${message}`, cause }),
+  });
+  engine.track(
+    created.resume().then(
+      () => undefined,
+      (cause: unknown) =>
+        diagnose({
+          level: 'error',
+          scope: 'hooks',
+          message: '[bureau] Failed to resume pending hook deliveries',
+          cause,
+        }),
+    ),
+  );
+  return created;
+}
+
 async function constructBureau<const D extends AgentDefinitions>(
   options: BureauOptions<D>,
   construction: BureauConstruction<D>,
@@ -2302,7 +2388,14 @@ async function constructBureau<const D extends AgentDefinitions>(
   // and cannot drift from `BureauEventMap`. Events the feed has no
   // projection for are dropped by `publish`, which is what keeps the
   // supervisor's task and synthesis events off it.
-  const eventFeed = createBureauEventFeed({ bureauId, now: runtimeServices.clock.now });
+  // COR-1939: the hooks are built after the Bureau they listen to, so the feed reaches them through
+  // this cell.
+  let hooksInstance: CreatedHooks | undefined;
+  const eventFeed = createBureauEventFeed({
+    bureauId,
+    now: runtimeServices.clock.now,
+    onPublish: (envelope) => hooksInstance?.dispatch(envelope),
+  });
   // Guarded for the reason `emitLiveFrame` is (AB-96): `dispatchEvent` walks its all-events
   // listeners unguarded, so a throw here would propagate out of whichever `emitter.dispatch` call
   // was in flight — several of which run synchronously inside run setup, where an exception leaves a
@@ -10911,6 +11004,14 @@ async function constructBureau<const D extends AgentDefinitions>(
         if (runId.startsWith(AUDIT_WORKFLOW_OWNER_PREFIX)) {
           // COR-1529 — a workflow file has no owner field: it belongs to the deployment's owner.
           return ownerOrLocal(undefined);
+        }
+        if (runId.startsWith(AUDIT_HOOK_OWNER_PREFIX)) {
+          // COR-1939 — read from the entry, never from the hook, which may be gone.
+          const recorded =
+            typeof detail === 'object' && detail !== null
+              ? (detail as { owner?: unknown }).owner
+              : undefined;
+          return typeof recorded === 'string' ? recorded : undefined;
         }
         if (runId.startsWith(AUDIT_SESSION_OWNER_PREFIX)) {
           // Read from the entry, never from the session: it may be gone, or
@@ -20363,6 +20464,9 @@ async function constructBureau<const D extends AgentDefinitions>(
     },
     agents: Object.freeze({ ...agentCatalog, try: tryAgent }),
     workflows: workflowRuntime?.workflows,
+    get hooks() {
+      return hooksInstance?.hooks;
+    },
     deployments:
       options.workerDeployments === undefined
         ? undefined
@@ -20584,7 +20688,8 @@ async function constructBureau<const D extends AgentDefinitions>(
   // exhausted delivery is recorded there). Only created when at least one
   // target is configured — the common case (no `options.webhooks`) costs
   // nothing beyond the `undefined` check in `createWebhookNotifier`.
-  if (options.webhooks && options.webhooks.targets.length > 0) {
+  rejectHooksWithoutStorage(options.hooks, runtime.kv);
+  if (wantsWebhookNotifier(options)) {
     webhookNotifierInstance = createWebhookNotifier(
       bureau,
       runtime.kv,
@@ -20594,11 +20699,23 @@ async function constructBureau<const D extends AgentDefinitions>(
       // delivery's `fetchImpl` to abort — the mechanism `dispose()`'s prior
       // detached call gave up entirely, which is what let a delivery's
       // write race storage teardown (AB-206 review finding, PR #402).
-      { ...options.webhooks, signal: withBackgroundShutdownSignal(options.webhooks.signal) },
+      webhookNotifierOptionsOf(options, withBackgroundShutdownSignal(options.webhooks?.signal)),
       diagnose,
       runtimeServices,
     );
   }
+
+  // COR-1939: user-defined hooks, on the notifier's delivery engine.
+  hooksInstance = composeHooks({
+    options: options.hooks,
+    engine: webhookNotifierInstance?.engine,
+    kv: runtime.kv,
+    keys: answerEncryption,
+    bureauId,
+    runtimeServices,
+    auditTrail: auditTrailInstance,
+    diagnose,
+  });
 
   // COR-718: an expiry is a deletion, so each expiring session's owner is recorded for
   // its deletion's audit entry the way `deleteSession` records it, before the store

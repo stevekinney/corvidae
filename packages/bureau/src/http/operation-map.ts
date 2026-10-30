@@ -169,4 +169,12 @@ export const OPERATION_MAP = {
   'bureau.deployments.ramp': { member: 'deployments.ramp' },
   'bureau.deployments.promote': { member: 'deployments.promote' },
   'bureau.deployments.rollback': { member: 'deployments.rollBack' },
+
+  'bureau.hooks.create': { member: 'hooks.create' },
+  'bureau.hooks.update': { member: 'hooks.update' },
+  'bureau.hooks.delete': { member: 'hooks.delete' },
+  'bureau.hooks.get': { member: 'hooks.get' },
+  'bureau.hooks.list': { member: 'hooks.list' },
+  'bureau.hooks.test': { member: 'hooks.test' },
+  'bureau.hooks.deliveries': { member: 'hooks.deliveries' },
 } as const satisfies Readonly<Record<string, OperationBinding>>;

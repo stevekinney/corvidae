@@ -273,6 +273,38 @@ export interface WebhookNotifierOptions {
    * manual clock so no real sleeps are needed.
    */
   clock?: StallWatchdogClock;
+  /**
+   * Build the notifier even when `targets` is empty, so {@link WebhookNotifier.engine} is present
+   * for hook deliveries (COR-1939). Bureau sets it when `BureauOptions.hooks` is configured.
+   */
+  engine?: boolean;
+}
+
+/**
+ * The delivery machinery a hook delivery (COR-1939) borrows from the notifier instead of building a
+ * second engine: its HTTP client, clock, retry schedule, abandonable backoff wait, shutdown signal,
+ * tracking (so `flush()` and `dispose()` await it) and per-delivery liveness snapshot. Hook
+ * deliveries keep their own records, because they sign, capture the response, and resume.
+ */
+export interface WebhookDeliveryEngine {
+  /** The HTTP client every delivery sends with. */
+  readonly fetch: typeof fetch;
+  /** The injectable clock, in epoch milliseconds. */
+  readonly now: () => number;
+  /** How many attempts a delivery makes before it is exhausted. */
+  readonly maxAttempts: number;
+  /** The wait before the attempt that follows attempt number `attempt` (1-based); doubles each time. */
+  backoffMilliseconds(attempt: number): number;
+  /** Waits `milliseconds`, or less when the notifier is disposed or its signal aborts. */
+  wait(milliseconds: number): Promise<void>;
+  /** Whether the notifier was disposed or its signal aborted: no further attempt may start. */
+  shuttingDown(): boolean;
+  /** Aborts when the notifier is disposed or the owner's signal aborts; thread it into `fetch`. */
+  readonly signal: AbortSignal;
+  /** Registers a delivery so `flush()` and `dispose()` await it. */
+  track(promise: Promise<void>): void;
+  /** Runs `work` under a liveness snapshot named `id`, a child of `runId`. */
+  tracked<T>(id: string, runId: string, work: () => Promise<T>): Promise<T>;
 }
 
 /** The persisted record for a single webhook delivery. */
@@ -336,6 +368,11 @@ export interface WebhookNotifier extends LivenessObservable<WebhookDeliveryLiven
    * handle.
    */
   activeDeliverySnapshots(): WebhookDeliveryLivenessSnapshot[];
+  /**
+   * The machinery hook deliveries borrow (COR-1939). Present when the notifier has targets or was
+   * built with `engine: true`; `undefined` for the no-op notifier.
+   */
+  readonly engine?: WebhookDeliveryEngine | undefined;
 }
 
 // ── Key encoding ────────────────────────────────────────────────────
@@ -452,7 +489,7 @@ export function createWebhookNotifier<D extends AgentDefinitions = AgentDefiniti
   const diagnose = resolveDiagnosticSink(onDiagnostic);
   const targets = options?.targets ?? [];
 
-  if (targets.length === 0) {
+  if (targets.length === 0 && options?.engine !== true) {
     const noOpSnapshot: WebhookDeliveryLivenessSnapshot = Object.freeze({
       id: AGGREGATE_DELIVERY_ID,
       kind: 'webhook-delivery',
@@ -490,6 +527,7 @@ export function createWebhookNotifier<D extends AgentDefinitions = AgentDefiniti
       activeDeliverySnapshots() {
         return [];
       },
+      engine: undefined,
       snapshot() {
         return noOpSnapshot;
       },
@@ -925,7 +963,27 @@ export function createWebhookNotifier<D extends AgentDefinitions = AgentDefiniti
 
   bureau.addEventListener('action', listener);
 
+  const engine: WebhookDeliveryEngine = {
+    fetch: fetchImpl,
+    now,
+    maxAttempts,
+    backoffMilliseconds: (attempt) => backoffBaseMilliseconds * 2 ** (attempt - 1),
+    wait: abandonableSleep,
+    shuttingDown: () => disposed || backoffAbortSignal.aborted,
+    signal: backoffAbortSignal,
+    track: trackDelivery,
+    async tracked(id, runId, work) {
+      const handle = beginTrackedDelivery(id, runId);
+      try {
+        return await work();
+      } finally {
+        endTrackedDelivery(handle);
+      }
+    },
+  };
+
   return {
+    engine,
     async listDeliveries(): Promise<WebhookDeliveryRecord[]> {
       if (!kv) return [];
       const keys = await kv.list(PREFIX);

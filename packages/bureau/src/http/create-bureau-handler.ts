@@ -145,6 +145,10 @@ import {
   bureauWorkerDeploymentsOperations,
 } from './management/deployments-operations.ts';
 import {
+  type BureauHooksOperationHost,
+  bureauHooksOperations,
+} from './management/hooks-operations.ts';
+import {
   type BureauWorkflowsOperationHost,
   bureauWorkflowsOperations,
 } from './management/workflows-operations.ts';
@@ -225,6 +229,7 @@ export type BureauHandlerSource = Pick<
   | 'settings'
   | 'workflows'
   | 'deployments'
+  | 'hooks'
   | 'goals'
   | 'memory'
   | 'assets'
@@ -335,6 +340,7 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauAgentDefinitionsOperationHost &
   BureauWorkflowsOperationHost &
   BureauWorkerDeploymentsOperationHost &
+  BureauHooksOperationHost &
   BureauSchedulesOperationHost &
   BureauGoalsOperationHost &
   BureauMemoryOperationHost &
@@ -746,6 +752,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   ...bureauSettingsOperations,
   ...bureauSkillsOperations,
   ...bureauWorkerDeploymentsOperations,
+  ...bureauHooksOperations,
 ] as const;
 
 /**
@@ -1171,6 +1178,7 @@ export function buildBureauHandlerHost(
       return engine === undefined ? undefined : describeCodeWorkflow(engine, id);
     },
     deployments: bureau.deployments,
+    hooks: bureau.hooks,
     schedules: {
       create: bureau.schedules.create,
       get: bureau.schedules.get,
