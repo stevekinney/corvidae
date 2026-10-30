@@ -418,7 +418,7 @@ describe('registerStackDisposers', () => {
       options,
       {
         cleanupWorkflow() {},
-        dispose() {},
+        dispose: () => Promise.resolve(),
       },
       () => {},
     );
@@ -462,7 +462,7 @@ describe('registerStackDisposers', () => {
       options,
       {
         cleanupWorkflow() {},
-        dispose() {},
+        dispose: () => Promise.resolve(),
       },
       () => {},
     );
