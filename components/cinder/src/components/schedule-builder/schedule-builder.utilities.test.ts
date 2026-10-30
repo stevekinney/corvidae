@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
 
 import type { ScheduleRepeats } from './schedule-builder.types.ts';
 import {
@@ -7,6 +7,7 @@ import {
   REPEATS_OPTIONS,
   WEEKDAYS,
   availableTimeZones,
+  browserTimeZone,
   cronFieldsValid,
   cronForDraft,
   defaultScheduleValue,
@@ -20,6 +21,9 @@ import {
   validateCronField,
   valueFromDraft,
 } from './schedule-builder.utilities.ts';
+
+const originalResolvedOptions = Intl.DateTimeFormat.prototype.resolvedOptions;
+const originalSupportedValuesOf = Intl.supportedValuesOf;
 
 describe('schedule-builder utilities', () => {
   describe('constants', () => {
@@ -450,6 +454,49 @@ describe('schedule-builder utilities', () => {
       const zones = availableTimeZones();
       expect(zones).toContain('UTC');
       expect(zones).toContain('America/Los_Angeles');
+    });
+  });
+
+  describe('cronForDraft', () => {
+    const base = draftFromValue(defaultScheduleValue('UTC'));
+
+    test('an interval or custom-cron draft keeps the draft cron as written', () => {
+      expect(cronForDraft({ ...base, repeats: 'interval', cron: '*/15 * * * *' })).toBe(
+        '*/15 * * * *',
+      );
+      expect(cronForDraft({ ...base, repeats: 'cron', cron: '5 4 * * 2' })).toBe('5 4 * * 2');
+    });
+  });
+
+  describe('time zone fallbacks', () => {
+    afterEach(() => {
+      Intl.DateTimeFormat.prototype.resolvedOptions = originalResolvedOptions;
+      Intl.supportedValuesOf = originalSupportedValuesOf;
+    });
+
+    test('browserTimeZone falls back to UTC when the runtime throws', () => {
+      Intl.DateTimeFormat.prototype.resolvedOptions = () => {
+        throw new Error('no Intl');
+      };
+      expect(browserTimeZone()).toBe('UTC');
+    });
+
+    test('browserTimeZone returns the runtime zone when it reports one', () => {
+      expect(browserTimeZone()).toBe(
+        originalResolvedOptions.call(new Intl.DateTimeFormat()).timeZone,
+      );
+    });
+
+    test('availableTimeZones is just UTC when the runtime cannot list zones', () => {
+      Intl.supportedValuesOf = () => {
+        throw new Error('unsupported');
+      };
+      expect(availableTimeZones()).toEqual(['UTC']);
+    });
+
+    test('availableTimeZones prepends UTC when the runtime list omits it', () => {
+      Intl.supportedValuesOf = () => ['America/Los_Angeles'];
+      expect(availableTimeZones()).toEqual(['UTC', 'America/Los_Angeles']);
     });
   });
 });
