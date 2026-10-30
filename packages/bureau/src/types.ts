@@ -1919,10 +1919,12 @@ export interface BureauContexts {
   steering(contextId: string): Promise<SessionSteeringState | undefined>;
 
   /**
-   * Branches a session after a completed agent reply (COR-1560): a new session, owned by
+   * Branches a session at the end of a turn (COR-1560, COR-1910): a new session, owned by
    * `request.owner`, whose history is the parent's through `throughMessageId`, which must be the
-   * final assistant message of a run that ended `completed` in this session, with no tool approval
-   * pending and no tool call left without a result. The parent is unchanged. The new session
+   * last assistant reply of a run that has ended in this session (completed, errored or aborted),
+   * with no tool approval pending and no tool call left without a result. `throughMessageId: null`
+   * branches before the first message: the new session starts empty. Editing a sent message is a
+   * fork at the reply before it followed by a new run of the edited text on the fork. The parent is unchanged. The new session
    * records where it came from (`SessionSummary.parentContextId`, `forkedFromMessageId`) and keeps
    * the parent's model choice: its latest `model` override is admitted on the fork as
    * `<commandId>:model`, and that outcome is returned beside the new `contextId`; a refusal of it

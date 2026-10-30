@@ -14259,6 +14259,10 @@ async function constructBureau<const D extends AgentDefinitions>(
       // The parent was deleted, or the message with it, after the checks: nothing was created. The
       // command settles to that failure rather than staying pending, so a retry is refused alike.
       if (!(error instanceof ForkThroughMessageError)) throw error;
+      // A fork before the first message names no message: the parent itself is what went away.
+      if (error.messageId === null) {
+        throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
+      }
       const failure: ForkLedgerFailure = {
         failure: { reason: 'message-not-found', message: error.message },
       };

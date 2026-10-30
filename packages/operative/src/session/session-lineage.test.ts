@@ -288,6 +288,56 @@ describe('session.fork() through a message', () => {
     expect(await store.exists('source')).toBe(false);
   });
 
+  it('forks before the first message with null: an empty history, the parent recorded, no message', async () => {
+    const { store, handle, ids } = await source();
+
+    const forked = await handle.fork({ throughMessageId: null });
+
+    const session = await store.load(forked.id);
+    expect(session?.conversationHistory.ids).toEqual([]);
+    expect(session?.metadata).toEqual({
+      [SESSION_OWNER_METADATA_KEY]: 'alice',
+      [SESSION_PARENT_METADATA_KEY]: 'source',
+    });
+    const parent = await store.load('source');
+    expect(parent?.conversationHistory.ids).toEqual(ids);
+    const rows = await store.list({ owner: 'alice' });
+    expect(rows.find((row) => row.id === forked.id)).toMatchObject({
+      parentContextId: 'source',
+      forkedFromMessageId: null,
+      messageCount: 0,
+    });
+  });
+
+  it('creates nothing more when a fork before the first message is asked for again under its identifier, and refuses a message fork under it', async () => {
+    const { store, handle, ids } = await source();
+    const options = { throughMessageId: null, id: 'planned-root', owner: 'alice' };
+    await handle.fork(options);
+    const listedBefore = await store.list({});
+
+    const again = await handle.fork(options);
+
+    expect(again.id).toBe('planned-root');
+    const listedAfter = await store.list({});
+    expect(listedAfter.length).toBe(listedBefore.length);
+    expect(
+      await rejectionOf(
+        handle.fork({ throughMessageId: ids[1]!, id: 'planned-root', owner: 'alice' }),
+      ),
+    ).toBeInstanceOf(ForkIdentifierInUseError);
+  });
+
+  it('does not recreate a session deleted before a fork before its first message', async () => {
+    const { store, handle } = await source();
+    await store.delete('source');
+
+    const error = await rejectionOf(handle.fork({ throughMessageId: null }));
+
+    expect(error).toBeInstanceOf(ForkThroughMessageError);
+    expect((error as ForkThroughMessageError).messageId).toBeNull();
+    expect(await store.exists('source')).toBe(false);
+  });
+
   it('refuses a message the session does not hold, and creates nothing', async () => {
     const { store, handle } = await source();
     const listedBefore = await store.list({});

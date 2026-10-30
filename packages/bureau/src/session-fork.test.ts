@@ -114,7 +114,7 @@ const finalAssistantOf = (runId: string) => `${runId}:step:1`;
 const fork = (
   bureau: { readonly contexts: Pick<BureauContexts, 'fork'> },
   sessionId: string,
-  throughMessageId: string,
+  throughMessageId: string | null,
   commandId = 'fork-1',
   owner = ALICE,
 ) => bureau.contexts.fork(sessionId, { owner, commandId, throughMessageId });
@@ -213,6 +213,130 @@ describe('a fork after a completed reply', () => {
     expect(child?.conversationHistory.ids.at(-1)).toBe(finalAssistantOf(next.id));
     const parent = await bureau.contexts.get(run.contextId);
     expect(parent?.conversationHistory.ids).not.toContain(finalAssistantOf(next.id));
+  });
+});
+
+describe('editing a sent message: a fork before it, then the new input', () => {
+  it('forks from the root with null: an empty shared history, the parent recorded, no message', async () => {
+    const bureau = await openBureau();
+    const run = await completedSession(bureau);
+    const parentBefore = await bureau.contexts.get(run.contextId);
+
+    const result = await fork(bureau, run.contextId, null);
+
+    const child = await bureau.contexts.get(result.contextId);
+    expect(child?.conversationHistory.ids).toEqual([]);
+    expect(child?.metadata['sessionOwner']).toBe(ALICE);
+    expect(result.carriedOverride).toBeNull();
+    const rows = await bureau.contexts.list({ owner: ALICE });
+    expect(rows.find((row) => row.id === result.contextId)).toMatchObject({
+      parentContextId: run.contextId,
+      forkedFromMessageId: null,
+      owner: ALICE,
+    });
+    expect(await bureau.contexts.get(run.contextId)).toEqual(parentBefore);
+  });
+
+  it('answers an exact retry of a root fork with the original result, and refuses the same command for a message', async () => {
+    const bureau = await openBureau();
+    const run = await completedSession(bureau);
+    const first = await fork(bureau, run.contextId, null);
+    const count = await sessionCount(bureau);
+
+    expect(await fork(bureau, run.contextId, null)).toEqual(first);
+    expect(await sessionCount(bureau)).toBe(count);
+    expect(await refusalOf(fork(bureau, run.contextId, finalAssistantOf(run.id)))).toBe(
+      'command-conflict',
+    );
+  });
+
+  it('refuses a root fork of a context that does not exist, creating nothing', async () => {
+    const bureau = await openBureau();
+    const error = await fork(bureau, 'missing', null).then(
+      () => undefined,
+      (thrown: unknown) => thrown,
+    );
+
+    expect(error).toMatchObject({ code: 'NOT_FOUND' });
+    expect(await sessionCount(bureau)).toBe(0);
+  });
+
+  it('answers a root fork of a parent deleted while it is being branched as not found, creating nothing', async () => {
+    const bureau = await openBureau();
+    const run = await completedSession(bureau);
+    const store = bureau.internals.sessionStore!;
+    const load = store.load.bind(store);
+    let loads = 0;
+    store.load = async (id: string) => {
+      loads += 1;
+      if (id === run.contextId && loads === 2) await bureau.contexts.delete(run.contextId);
+      return load(id);
+    };
+
+    const error = await fork(bureau, run.contextId, null).then(
+      () => undefined,
+      (thrown: unknown) => thrown,
+    );
+
+    expect(error).toMatchObject({ code: 'NOT_FOUND' });
+    expect(await bureau.contexts.get(run.contextId)).toBeUndefined();
+    expect(await sessionCount(bureau)).toBe(0);
+  });
+
+  it('edits the first message: a root fork, then the edited text runs, and the original is unchanged', async () => {
+    const bureau = await openBureau();
+    const original = await completedSession(bureau, undefined, 'first draft');
+    const parentBefore = await bureau.contexts.get(original.contextId);
+
+    const edited = await fork(bureau, original.contextId, null);
+    const next = await completedSession(bureau, edited.contextId, 'second draft', 1);
+
+    const child = await bureau.contexts.get(edited.contextId);
+    const texts = (child?.conversationHistory.ids ?? []).map(
+      (id) => child?.conversationHistory.messages[id]?.content,
+    );
+    expect(texts[0]).toBe('second draft');
+    expect(texts).not.toContain('first draft');
+    expect(child?.conversationHistory.ids.at(-1)).toBe(finalAssistantOf(next.id));
+    expect(await bureau.contexts.get(original.contextId)).toEqual(parentBefore);
+  });
+
+  it('edits message 3: a fork at the reply before it, then the edited text ends the transcript, and the original is unchanged', async () => {
+    const bureau = await openBureau();
+    const first = await completedSession(bureau, undefined, 'one');
+    const second = await completedSession(bureau, first.contextId, 'two');
+    await completedSession(bureau, first.contextId, 'three');
+    const parentBefore = await bureau.contexts.get(first.contextId);
+
+    // Message 3 is the third user message; the reply before it is the second run's.
+    const edited = await fork(bureau, first.contextId, finalAssistantOf(second.id));
+    const next = await completedSession(bureau, edited.contextId, 'three, edited');
+
+    const child = await bureau.contexts.get(edited.contextId);
+    const history = child!.conversationHistory;
+    const userTexts = history.ids
+      .map((id) => history.messages[id])
+      .filter((message) => message?.role === 'user')
+      .map((message) => message?.content);
+    expect(userTexts).toEqual(['one', 'two', 'three, edited']);
+    expect(history.ids.at(-1)).toBe(finalAssistantOf(next.id));
+    expect(await bureau.contexts.get(first.contextId)).toEqual(parentBefore);
+  });
+
+  it('edits after an errored run: the fork at its last reply takes the new input', async () => {
+    const failing = await openBureau({ agent: twoStepAgent('fail-second-step') });
+    const errored = await completedSession(failing, undefined, 'go', 0);
+
+    const edited = await fork(failing, errored.contextId, `${errored.id}:step:0`);
+    const next = await completedSession(failing, edited.contextId, 'try this instead', 0);
+
+    const child = await failing.contexts.get(edited.contextId);
+    const history = child!.conversationHistory;
+    expect(history.ids).toContain(`${errored.id}:step:0`);
+    expect(history.ids).toContain(`${next.id}:step:0`);
+    expect(
+      history.messages[history.ids[history.ids.indexOf(`${errored.id}:step:0`) + 1]!]?.content,
+    ).toBe('try this instead');
   });
 });
 
@@ -352,17 +476,19 @@ describe('a message that is not a branch point', () => {
     );
   });
 
-  it('refuses the final message of a run that errored', async () => {
+  it('branches from the last reply of a run that errored, and the fork is a clean prefix', async () => {
     const failing = await openBureau({ agent: twoStepAgent('fail-second-step') });
     const errored = await completedSession(failing, undefined, 'go', 0);
 
-    expect(await refusalOf(fork(failing, errored.contextId, `${errored.id}:step:0`))).toBe(
-      'branch-from-errored-run',
-    );
-    expect(await sessionCount(failing)).toBe(1);
+    const result = await fork(failing, errored.contextId, `${errored.id}:step:0`);
+
+    const child = await failing.contexts.get(result.contextId);
+    expect(child?.conversationHistory.ids.at(-1)).toBe(`${errored.id}:step:0`);
+    expect(child?.metadata['sessionOwner']).toBe(ALICE);
+    expect(await sessionCount(failing)).toBe(2);
   });
 
-  it('refuses the final message of a run that was aborted', async () => {
+  it('branches from the last reply of a run that was aborted', async () => {
     const entered = Promise.withResolvers<void>();
     const holding = await openBureau({
       agent: twoStepAgent('hold-second-step', () => entered.resolve()),
@@ -373,10 +499,11 @@ describe('a message that is not a branch point', () => {
     await waitForTaskState(holding, run.id);
     await waitForStoredMessage(holding, run.contextId, `${run.id}:step:0`);
 
-    expect(await refusalOf(fork(holding, run.contextId, `${run.id}:step:0`))).toBe(
-      'branch-from-aborted-run',
-    );
-    expect(await sessionCount(holding)).toBe(1);
+    const result = await fork(holding, run.contextId, `${run.id}:step:0`);
+
+    const child = await holding.contexts.get(result.contextId);
+    expect(child?.conversationHistory.ids.at(-1)).toBe(`${run.id}:step:0`);
+    expect(await sessionCount(holding)).toBe(2);
   });
 
   it('refuses a fork while the run still has a pending approval', async () => {
@@ -414,7 +541,12 @@ describe('a message that is not a branch point', () => {
   };
 
   /** A session holding exactly `rows`, and the registry's record of its one completed run. */
-  async function craftRun(bureau: Bureau<AgentDefinitions>, runId: string, rows: CraftedRow[]) {
+  async function craftRun(
+    bureau: Bureau<AgentDefinitions>,
+    runId: string,
+    rows: CraftedRow[],
+    status: 'completed' | 'failed' | 'canceled' | 'live' = 'completed',
+  ) {
     const conversation = new Conversation(createConversationHistory());
     for (const row of rows) {
       conversation.appendMessages({
@@ -448,9 +580,10 @@ describe('a message that is not a branch point', () => {
       origin: { kind: 'api' },
       message: 'go',
     });
+    if (status === 'live') return;
     await bureau.internals.taskRegistry.recordSettled(runId, {
       at: new Date().toISOString(),
-      status: 'completed',
+      status,
       finishReason: 'stop-condition',
       message: null,
     });
@@ -524,6 +657,91 @@ describe('a message that is not a branch point', () => {
 
     const result = await fork(bureau, 'crafted', `${R}:step:1`);
 
+    const child = await bureau.contexts.get(result.contextId);
+    expect(child?.conversationHistory.ids.at(-1)).toBe(`${R}:step:1`);
+  });
+
+  it('refuses a message inside a turn that has not ended: its run is still live', async () => {
+    const bureau = await openBureau();
+    await craftRun(
+      bureau,
+      R,
+      [user, { id: `${R}:step:0`, role: 'assistant', content: 'so far' }],
+      'live',
+    );
+
+    expect(await refusalOf(fork(bureau, 'crafted', `${R}:step:0`))).toBe('not-a-branch-point');
+    expect(await sessionCount(bureau)).toBe(1);
+  });
+
+  it('branches from a settled turn while a later run of the context is live, and the live run is untouched', async () => {
+    const bureau = await openBureau();
+    const R2 = 'run-live';
+    await craftRun(bureau, R, [
+      user,
+      ...step0,
+      { id: 'user-2', role: 'user', content: 'and then' },
+      { id: `${R2}:step:0`, role: 'assistant', content: 'working' },
+    ]);
+    const saved = (await bureau.contexts.get('crafted'))!;
+    await bureau.internals.taskRegistry.recordAdmission({
+      taskId: R2,
+      contextId: 'crafted',
+      incarnation: saved.incarnation,
+      agentName: 'agent',
+      owner: ALICE,
+      origin: { kind: 'api' },
+      message: 'and then',
+    });
+
+    // The live run's own reply is mid-turn; the settled turn before it is a branch point.
+    expect(await refusalOf(fork(bureau, 'crafted', `${R2}:step:0`, 'live'))).toBe(
+      'not-a-branch-point',
+    );
+    const result = await fork(bureau, 'crafted', `${R}:step:0`, 'settled');
+
+    const child = await bureau.contexts.get(result.contextId);
+    expect(child?.conversationHistory.ids.at(-1)).toBe(`${R}:step:0`);
+    const parent = await bureau.contexts.get('crafted');
+    expect(parent?.conversationHistory.ids).toEqual(saved.conversationHistory.ids);
+  });
+
+  it.each(['failed', 'canceled'] as const)(
+    'branches from the last reply of a %s run, leaving a later step that never replied out of the fork',
+    async (status) => {
+      const bureau = await openBureau();
+      // Step 1 is a tool call that was answered, then the run died before any reply: the last
+      // reply is step 0, so that is where the turn ends.
+      await craftRun(
+        bureau,
+        R,
+        [
+          user,
+          ...step0,
+          { id: `${R}:step:1`, role: 'tool-call', call: 'c-2' },
+          { id: `${R}:step:1:result:c-2`, role: 'tool-result', call: 'c-2' },
+        ],
+        status,
+      );
+
+      const result = await fork(bureau, 'crafted', `${R}:step:0`);
+
+      const child = await bureau.contexts.get(result.contextId);
+      expect(child?.conversationHistory.ids.at(-1)).toBe(`${R}:step:0`);
+    },
+  );
+
+  it('still refuses an earlier reply of a run that errored: only the last one ends the turn', async () => {
+    const bureau = await openBureau();
+    await craftRun(
+      bureau,
+      R,
+      [user, ...step0, { id: `${R}:step:1`, role: 'assistant', content: 'second' }],
+      'failed',
+    );
+
+    expect(await refusalOf(fork(bureau, 'crafted', `${R}:step:0`))).toBe('not-a-branch-point');
+    const result = await fork(bureau, 'crafted', `${R}:step:1`, 'last');
     const child = await bureau.contexts.get(result.contextId);
     expect(child?.conversationHistory.ids.at(-1)).toBe(`${R}:step:1`);
   });
