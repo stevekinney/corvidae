@@ -15,6 +15,7 @@ import {
   AGENT_REFERENCE_SIZE_LIMIT,
   AGENT_REFERENCES_TOTAL_SIZE_LIMIT,
   AgentFileError,
+  parseAgentFile,
 } from './agent-file';
 import { readFileAgentBinding, REFERENCE_POLL_MILLISECONDS } from './agent-file-catalog';
 import {
@@ -145,6 +146,22 @@ describe('an agent whose references do not read', () => {
     expect(after.state).toBe('ready');
     // Raised for the empty document and again for the restored one: each is its own content.
     expect(after.definitionRevision).toBe((before ?? 0) + 2);
+  });
+
+  it('is reported as changed when the problem moves to another path', async () => {
+    const fixture = await start();
+    await fixture.put('one.md', 'One.\n');
+    await fixture.put(
+      'helper.md',
+      agentFileText({ model: KNOWN_MODEL, references: '[one.md, two.md]' }),
+    );
+    await fixture.catalog.refresh();
+    expect(entryOf(fixture).problem?.message).toContain('two.md');
+    const changed = fixture.nextChange((change) => change.changed.includes('helper'));
+    await rm(join(fixture.directory, 'one.md'));
+    await fixture.catalog.refresh();
+    await changed;
+    expect(entryOf(fixture).problem?.message).toContain('one.md');
   });
 
   it('is invalid when a document is over the size limit, or the documents add up to too much', async () => {
@@ -380,6 +397,17 @@ describe('restoring a version of an agent with references', () => {
       expectedHash: updated.hash,
     });
     expect(restored.hash).not.toBe(updated.hash);
+    // The restored file reads back as version 1's definition. Its bytes need not be version 1's: a
+    // rewrite keeps the file's own layout and `create` wrote its own.
+    const restoredFile = await fixture.catalog.read('helper');
+    const reread = parseAgentFile('helper', restoredFile?.text ?? '');
+    if (!reread.ok)
+      throw new Error(`Expected the restored file to parse: ${reread.problem.message}`);
+    expect(reread.file.definition).toMatchObject({
+      model: first?.definition.model,
+      references: ['one.md'],
+      instructions: first?.definition.instructions,
+    });
     const detail = await fixture.catalog.detail('helper');
     expect(detail?.definition?.references).toEqual(['one.md']);
     expect(bindingOf(fixture).referenceDocuments?.[0]?.content).toBe('First, edited.\n');

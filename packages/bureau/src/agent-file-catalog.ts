@@ -358,6 +358,8 @@ function sameSignature(left: FileEntry, right: FileEntry): boolean {
     left.hash === right.hash &&
     left.identity === right.identity &&
     left.problem?.code === right.problem?.code &&
+    // A problem that names another path (a second missing reference) is a change a listener hears.
+    left.problem?.message === right.problem?.message &&
     left.definitionRevision === right.definitionRevision
   );
 }
