@@ -7,6 +7,7 @@ import {
   selectNextValue,
   shiftLocalDateTime,
 } from './cron-formatter.ts';
+import { describeZonedCronTick, nextZonedCronTick, type CronTick } from './cron-zoned.ts';
 import { parseCronExpression } from './cron-parser.ts';
 import type {
   CronOccurrenceOptions,
@@ -184,6 +185,10 @@ const MAXIMUM_CRON_SEARCH_STEPS = 100_000;
  * `maximumSearchSteps` candidate steps. This is the search behind {@link getNextCronOccurrence},
  * which fixes the bound at {@link MAXIMUM_CRON_SEARCH_STEPS}; it is exported so a fast test can
  * exhaust the search with a small bound instead of the production one.
+ *
+ * It scans instants, so in a zone with daylight-saving transitions it offers a repeated hour's
+ * wall-clock time twice. A caller that resolves a time zone goes through {@link getNextCronTick},
+ * which scans the zone's calendar instead and so offers each wall-clock time once.
  */
 export function searchNextCronOccurrence(
   expression: string | ParsedCronExpression,
@@ -233,37 +238,118 @@ export function searchNextCronOccurrence(
   throw new Error(`Could not find the next cron occurrence for "${parsedExpression.expression}"`);
 }
 
+const DEFAULT_CRON_TIME_ZONE = 'UTC';
+
+function isUtc(options: CronOccurrenceOptions | undefined): boolean {
+  const timeZone = options?.timeZone ?? DEFAULT_CRON_TIME_ZONE;
+  return timeZone === DEFAULT_CRON_TIME_ZONE;
+}
+
+function utcScan(parsedExpression: ParsedCronExpression) {
+  return (afterLocal: number): number =>
+    searchNextCronOccurrence(
+      parsedExpression,
+      afterLocal,
+      { timeZone: DEFAULT_CRON_TIME_ZONE },
+      MAXIMUM_CRON_SEARCH_STEPS,
+    );
+}
+
+/**
+ * The next tick of a cron expression after a timestamp, in the options' time zone (UTC when
+ * omitted). A tick is an instant the schedule has to account for: one that fires, or the end of a
+ * daylight-saving gap that swallowed a match (see {@link CronTick}). In UTC every tick fires.
+ *
+ * A wall-clock time happens once: a time the clock skips when it springs forward is a tick that
+ * does not fire, and a time the clock repeats when it falls back is offered only the first time.
+ */
+export function getNextCronTick(
+  expression: string | ParsedCronExpression,
+  afterTimestamp: number,
+  options?: CronOccurrenceOptions,
+): CronTick {
+  const parsedExpression =
+    typeof expression === 'string' ? parseCronExpression(expression) : expression;
+  if (isUtc(options)) {
+    return {
+      at: getNextCronOccurrence(parsedExpression, afterTimestamp, options),
+      fires: true,
+      dstGapSkipped: 0,
+    };
+  }
+  return nextZonedCronTick(utcScan(parsedExpression), afterTimestamp, options!.timeZone!);
+}
+
+/**
+ * The next instant a cron expression fires after a timestamp. In a zone with daylight-saving
+ * transitions a gap tick is stepped over, so it never names a wall-clock time that does not exist.
+ */
 export function getNextCronOccurrence(
   expression: string | ParsedCronExpression,
   afterTimestamp: number,
   options?: CronOccurrenceOptions,
 ): number {
-  return searchNextCronOccurrence(expression, afterTimestamp, options, MAXIMUM_CRON_SEARCH_STEPS);
+  if (isUtc(options)) {
+    return searchNextCronOccurrence(
+      expression,
+      afterTimestamp,
+      { ...options, timeZone: DEFAULT_CRON_TIME_ZONE },
+      MAXIMUM_CRON_SEARCH_STEPS,
+    );
+  }
+  const parsedExpression =
+    typeof expression === 'string' ? parseCronExpression(expression) : expression;
+  let cursor = afterTimestamp;
+  for (;;) {
+    const tick = getNextCronTick(parsedExpression, cursor, options);
+    if (tick.fires) return tick.at;
+    cursor = tick.at;
+  }
 }
 
+function assertMaximumOccurrences(requested: number | undefined): number {
+  if (requested !== undefined && (!Number.isSafeInteger(requested) || requested <= 0)) {
+    throw new Error('Cron occurrence maxOccurrences must be a positive safe integer');
+  }
+  return requested ?? Number.POSITIVE_INFINITY;
+}
+
+/**
+ * Every tick of a cron expression in the inclusive window `[firstDueAt, throughTimestamp]`, up to
+ * `options.maxOccurrences`. `firstDueAt` is a bare instant, as a schedule stores it, so the first
+ * tick's `fires` and `dstGapSkipped` are re-derived from it.
+ */
+export function collectDueCronTicks(
+  expression: string | ParsedCronExpression,
+  firstDueAt: number,
+  throughTimestamp: number,
+  options?: CronOccurrenceOptions,
+): CronTick[] {
+  const parsedExpression =
+    typeof expression === 'string' ? parseCronExpression(expression) : expression;
+  const maximumOccurrences = assertMaximumOccurrences(options?.maxOccurrences);
+  const ticks: CronTick[] = [];
+  const utc = isUtc(options);
+  let next: CronTick = utc
+    ? { at: firstDueAt, fires: true, dstGapSkipped: 0 }
+    : describeZonedCronTick(utcScan(parsedExpression), firstDueAt, options!.timeZone!);
+
+  while (next.at <= throughTimestamp && ticks.length < maximumOccurrences) {
+    ticks.push(next);
+    next = getNextCronTick(parsedExpression, next.at, options);
+  }
+
+  return ticks;
+}
+
+/** The instants in `[firstDueAt, throughTimestamp]` at which a cron expression fires. */
 export function collectDueCronOccurrences(
   expression: string | ParsedCronExpression,
   firstDueAt: number,
   throughTimestamp: number,
   options?: CronOccurrenceOptions,
 ): number[] {
-  const parsedExpression =
-    typeof expression === 'string' ? parseCronExpression(expression) : expression;
-  const dueOccurrences: number[] = [];
-  const requestedMaxOccurrences = options?.maxOccurrences;
-  if (
-    requestedMaxOccurrences !== undefined &&
-    (!Number.isSafeInteger(requestedMaxOccurrences) || requestedMaxOccurrences <= 0)
-  ) {
-    throw new Error('Cron occurrence maxOccurrences must be a positive safe integer');
-  }
-  const maximumOccurrences = requestedMaxOccurrences ?? Number.POSITIVE_INFINITY;
-  let nextOccurrence = firstDueAt;
-
-  while (nextOccurrence <= throughTimestamp && dueOccurrences.length < maximumOccurrences) {
-    dueOccurrences.push(nextOccurrence);
-    nextOccurrence = getNextCronOccurrence(parsedExpression, nextOccurrence, options);
-  }
-
-  return dueOccurrences;
+  return collectDueCronTicks(expression, firstDueAt, throughTimestamp, options)
+    .filter((tick) => tick.fires)
+    .map((tick) => tick.at);
 }
