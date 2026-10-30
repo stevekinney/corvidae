@@ -128,7 +128,7 @@ describe('bureau.contexts.window', () => {
     });
   });
 
-  it('reports usedReported null for a chat whose step reported no usage', async () => {
+  it('reports usedReported null for a chat whose run has not finished a step', async () => {
     await withBureau(async (opened) => {
       const run = await opened.bureau.tasks.start('parked', 'wait', { principal: OWNER.alice });
       await waitForCondition(
