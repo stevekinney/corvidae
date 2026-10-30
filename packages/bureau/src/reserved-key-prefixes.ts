@@ -30,6 +30,7 @@ export const BUREAU_RESERVED_KEY_PREFIXES: readonly string[] = [
   'bureau-agent-version:v1:',
   'bureau-catalog-run:',
   'bureau-chat-spend:v1:',
+  'bureau-chat-spend:v2:',
   'bureau-child:parent:',
   'bureau-child:record:',
   'bureau-delegation:grant:',
