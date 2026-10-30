@@ -143,10 +143,12 @@
  * The two-arm `:is(.cinder-button, button)` selector intentionally mirrors the
  * radius-flattening rules below: a grouped item is contractually a `<Button>`,
  * a toggle `<button>`, or a `<Dropdown>` whose trigger is a button (see
- * button-group.a11y.md — the group is a visual container for button-shaped
- * actions, never a form input). So the seam and the transparent borders land on
- * the same elements that already get their corners flattened; if a future
- * non-button item type is supported, update both rule sets together. The
+ * button-group.a11y.md). So the seam and the transparent borders land on the
+ * same elements that already get their corners flattened; if a future
+ * button-shaped item type is supported, update both rule sets together. An
+ * `<Input>` is the one other supported member, and it is deliberately not part
+ * of this selector: it keeps its own border, so the "Field members" section
+ * below handles its seam and corners with rules of its own. The
  * `:not([role='menu'] *):not([role='menuitem'])` guard keeps a split-button's
  * dropdown menu items from being touched. */
   .cinder-button-group[data-cinder-orientation='horizontal']

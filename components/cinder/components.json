@@ -732,7 +732,8 @@
       "tags": ["action", "grouping"],
       "useWhen": [
         "Clustering related actions such as align-left/center/right that read as a single toolset.",
-        "Visually joining multiple buttons into a single segmented bar without implying selection."
+        "Visually joining multiple buttons into a single segmented bar without implying selection.",
+        "Pairing an Input with a trailing Button that shares its border, height and corners."
       ],
       "avoidWhen": [
         {
