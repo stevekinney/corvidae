@@ -27,6 +27,7 @@ export { default as ApprovalCard } from './components/approval-card/index.ts';
 export type {
   ApprovalCardCallbacks,
   ApprovalCardHeadingLevel,
+  ApprovalCardLayout,
   ApprovalCardProps,
   ApprovalCardSchemaProps,
   ApprovalOperation,

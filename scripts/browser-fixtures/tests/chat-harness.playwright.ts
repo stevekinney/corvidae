@@ -927,27 +927,19 @@ test.describe('chat harness — mounts cleanly', () => {
         const approvalChat = await openApprovalFixture();
         const card = approvalChat.locator('.cinder-approval-card');
         cinderCardCounts.push(await card.count());
-        await expect(card.getByText('Approval required for', { exact: false })).toBeVisible();
-        await expect(card.getByRole('heading', { name: 'deploy_to_production' })).toBeVisible();
+        await expect(card).toHaveAttribute('data-cinder-layout', 'row');
+        await expect(
+          card.getByRole('heading', { name: 'Approve running this tool before it executes?' }),
+        ).toBeVisible();
+        const viewInputButton = card.getByRole('button', { name: 'View input' });
+        await expect(viewInputButton).toHaveAttribute('aria-expanded', 'false');
+        await viewInputButton.click();
+        await expect(viewInputButton).toHaveAttribute('aria-expanded', 'true');
         await expect(
           card.getByText('deploy_to_production --environment production --version 2.4.1', {
             exact: true,
           }),
         ).toBeVisible();
-        const detailsButton = card.getByRole('button', { name: 'Details' });
-        await expect(detailsButton).toHaveAttribute('aria-expanded', 'false');
-        await detailsButton.click();
-        await expect(detailsButton).toHaveAttribute('aria-expanded', 'true');
-        await expect(
-          card
-            .getByRole('list', { name: 'Environment variable names only; values are never shown' })
-            .getByText('DEPLOY_TOKEN', { exact: true }),
-        ).toBeVisible();
-        const policyMetadata = card
-          .locator('.cinder-approval-card__metadata-item')
-          .filter({ hasText: 'Policy version' });
-        await expect(policyMetadata.locator('dt')).toHaveText('Policy version');
-        await expect(policyMetadata.locator('dd')).toContainText('approval-fixture-policy-v1');
         await approvalChat.getByRole('button', { name: 'Approve', exact: true }).click();
         await expectLastResolution({
           toolCallId: 'call-deploy-prod',
@@ -955,11 +947,10 @@ test.describe('chat harness — mounts cleanly', () => {
         });
 
         const denyChat = await openApprovalFixture();
-        await denyChat.getByRole('textbox', { name: 'Reason' }).fill('Too risky right now.');
         await denyChat.getByRole('button', { name: 'Deny' }).click();
         await expectLastResolution({
           toolCallId: 'call-deploy-prod',
-          resolution: { decision: 'deny', remember: false, reason: 'Too risky right now.' },
+          resolution: { decision: 'deny', remember: false },
         });
 
         const cancelChat = await openApprovalFixture();
@@ -967,23 +958,6 @@ test.describe('chat harness — mounts cleanly', () => {
         await expectLastResolution({
           toolCallId: 'call-deploy-prod',
           resolution: { decision: 'cancel', remember: false },
-        });
-
-        const editedChat = await openApprovalFixture();
-        await editedChat.getByRole('button', { name: 'Approve with edits' }).click();
-        const editedArguments = editedChat.getByRole('textbox', { name: 'Edited arguments JSON' });
-        // The field is a plain textarea until the JSON editor's chunk loads and replaces it, so wait
-        // for the editor, or `fill` can start on the textarea just before it is hidden.
-        await expect(editedArguments).toHaveAttribute('contenteditable', /^(true|false)$/);
-        await editedArguments.fill('{"environment":"production","version":"2.4.1","replicas":2}');
-        await editedChat.getByRole('button', { name: 'Confirm edited approval' }).click();
-        await expectLastResolution({
-          toolCallId: 'call-deploy-prod',
-          resolution: {
-            decision: 'approve_with_edits',
-            editedArgs: { environment: 'production', version: '2.4.1', replicas: 2 },
-            remember: false,
-          },
         });
 
         expect(
@@ -1364,25 +1338,15 @@ test.describe('chat harness — tool calls', () => {
       .toBeLessThanOrEqual(1);
   }
 
-  async function expectHeaderCentersAligned(step: Locator): Promise<void> {
-    const centers = await step.locator('.cinder-run-step-timeline__header').evaluate((header) => {
-      const icon = header.querySelector<HTMLElement>('.cinder-run-step-timeline__icon');
-      const label = header.querySelector<HTMLElement>('.cinder-run-step-timeline__label');
-      const status = header.querySelector<HTMLElement>('.cinder-run-step-timeline__status');
-      if (!label || !status) throw new Error('Header label/status missing.');
-      const center = (element: Element) => {
-        const box = element.getBoundingClientRect();
-        return box.top + box.height / 2;
-      };
-      return {
-        icon: icon ? center(icon) : null,
-        label: center(label),
-        status: center(status),
-      };
-    });
-    expect(Math.abs(centers.label - centers.status)).toBeLessThanOrEqual(2);
-    if (centers.icon !== null)
-      expect(Math.abs(centers.icon - centers.label)).toBeLessThanOrEqual(2);
+  /** Opens a tool activity's summary line and the call at `index`, unless already open. */
+  async function openToolCall(activity: Locator, index = -1): Promise<Locator> {
+    const toggle = activity.locator('.chat-tool-call-toggle');
+    if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+    const items = activity.locator('.chat-tool-call-item');
+    const item = index < 0 ? items.last() : items.nth(index);
+    const row = item.locator('.chat-tool-call-row');
+    if ((await row.getAttribute('aria-expanded')) !== 'true') await row.click();
+    return item;
   }
 
   async function expectContainerThreshold(activity: Locator, width: number): Promise<void> {
@@ -1443,7 +1407,7 @@ test.describe('chat harness — tool calls', () => {
             {
               outcome: 'action_required',
               argumentsText: 'null',
-              status: 'waiting_approval',
+              status: 'waiting',
               expectedText: 'null',
             },
           ] as const) {
@@ -1463,19 +1427,26 @@ test.describe('chat harness — tool calls', () => {
             await expect(activity).toContainText('exports_check');
             await expectContainerThreshold(activity, width);
 
-            const step = activity.locator('.cinder-run-step-timeline__item').last();
-            await expect(step).toHaveAttribute('data-cinder-status', status);
-            await expect(step.locator('.cinder-run-step-timeline__header')).toBeVisible();
-            await expectHeaderCentersAligned(step);
+            const item = activity.locator('.chat-tool-call-item').last();
+            await expect(item).toHaveAttribute('data-cinder-tool-call-status', status);
+            await expect(activity.locator('.chat-tool-call-toggle')).toBeVisible();
 
-            const disclosure = step.getByRole('button', { name: 'Arguments' });
-            await disclosure.focus();
-            await expect(disclosure).toBeFocused();
-            await page.keyboard.press('Enter');
+            const toggle = activity.locator('.chat-tool-call-toggle');
+            if ((await toggle.getAttribute('aria-expanded')) !== 'true') {
+              await toggle.focus();
+              await expect(toggle).toBeFocused();
+              await page.keyboard.press('Enter');
+            }
+            const disclosure = item.locator('.chat-tool-call-row');
+            // A failed call is already open; failures stay expanded.
+            if ((await disclosure.getAttribute('aria-expanded')) !== 'true') {
+              await disclosure.focus();
+              await expect(disclosure).toBeFocused();
+              await page.keyboard.press('Enter');
+            }
 
-            const details = step.locator('.cinder-run-step-timeline__details');
+            const details = item.locator('.chat-tool-call-details');
             await expect(details).toBeVisible();
-            await expect(details.locator('.tool-call-section-title')).toHaveCount(0);
 
             const codeBlock = details.locator('.cinder-code-block').first();
             await expect(codeBlock).toBeVisible();
@@ -1504,37 +1475,32 @@ test.describe('chat harness — tool calls', () => {
           await appendToolScenario(page, 'pending');
           const pending = harness.locator('.chat-tool-call-timeline').last();
           await expect(pending).toBeVisible();
-          await expect(pending.locator('.cinder-run-step-timeline__item')).toHaveAttribute(
-            'data-cinder-status',
+          await expect(pending.locator('.chat-tool-call-item')).toHaveAttribute(
+            'data-cinder-tool-call-status',
             'pending',
           );
-          await expect(pending.locator('.cinder-run-step-timeline__icon')).toHaveCount(0);
-          await expectHeaderCentersAligned(pending.locator('.cinder-run-step-timeline__item'));
+          await expect(pending.locator('.chat-tool-call-activity-icon')).toHaveCount(0);
 
           await appendToolScenario(page, 'text-success');
           const textActivity = harness.locator('.chat-tool-call-timeline').last();
           await expect(textActivity).toBeVisible();
-          await textActivity.getByRole('button', { name: 'Result' }).click();
-          await expect(
-            textActivity.locator('.cinder-run-step-timeline__detail-content'),
-          ).toContainText('plain text result from the tool');
+          const textItem = await openToolCall(textActivity);
+          await expect(textItem.locator('.chat-tool-call-payload-text')).toContainText(
+            'plain text result from the tool',
+          );
           await expect(textActivity.locator('.cinder-code-block')).toHaveCount(1);
 
           await enableHarnessAdapter(page);
           await appendToolScenario(page, 'json-success');
           const presentationActivity = harness.locator('.chat-tool-call-timeline').last();
           await expect(presentationActivity).toBeVisible();
-          await expect(
-            presentationActivity.locator('.cinder-run-step-timeline__icon'),
-          ).toBeVisible();
+          await openToolCall(presentationActivity);
+          await expect(presentationActivity.locator('.chat-tool-call-activity-icon')).toBeVisible();
           await expect(
             presentationActivity.locator('[data-cinder-tool-activity-active]'),
           ).toHaveCount(0);
-          await expect(
-            presentationActivity.locator('.cinder-run-step-timeline__label'),
-          ).toContainText('Checked exports_check');
-          await expectHeaderCentersAligned(
-            presentationActivity.locator('.cinder-run-step-timeline__item'),
+          await expect(presentationActivity.locator('.chat-tool-call-label')).toContainText(
+            'Checked exports_check',
           );
 
           await setHarnessCustomMessageSnippets(page, false);
@@ -1546,8 +1512,12 @@ test.describe('chat harness — tool calls', () => {
           await expect(harness.locator('[data-testid="harness-message-action"]')).toHaveCount(0);
           await expect(harness.locator('[data-testid="harness-message-status"]')).toHaveCount(0);
           await expect(grouped).toHaveAttribute('data-cinder-tool-call-count', '2');
-          await expect(grouped.locator('.cinder-run-step-timeline__item')).toHaveCount(2);
-          await grouped.getByRole('button', { name: 'Error' }).click();
+          await expect(grouped.locator('.chat-tool-call-item')).toHaveCount(2);
+          // The failure keeps the group and its call open without a click.
+          await expect(grouped.locator('.chat-tool-call-toggle')).toHaveAttribute(
+            'aria-expanded',
+            'true',
+          );
           await expect(grouped).toContainText('Type check failed for the chat package.');
 
           await captureHarnessScreenshot(
@@ -1565,9 +1535,9 @@ test.describe('chat harness — tool calls', () => {
   for (const { outcome, status } of [
     { outcome: 'success', status: 'succeeded' },
     { outcome: 'error', status: 'failed' },
-    { outcome: 'action_required', status: 'waiting_approval' },
+    { outcome: 'action_required', status: 'waiting' },
   ] as const) {
-    test(`injects a ${outcome} tool call rendering data-cinder-status="${status}"`, async ({
+    test(`injects a ${outcome} tool call rendering data-cinder-tool-call-status="${status}"`, async ({
       browser,
     }) => {
       const { harness, dispose } = await openHarness(browser);
@@ -1577,13 +1547,11 @@ test.describe('chat harness — tool calls', () => {
 
         const activity = harness.locator('.chat-tool-call-timeline').last();
         await expect(activity).toBeVisible();
-        await expect(activity.locator('.cinder-run-step-timeline__item')).toHaveAttribute(
-          'data-cinder-status',
+        await expect(activity.locator('.chat-tool-call-item')).toHaveAttribute(
+          'data-cinder-tool-call-status',
           status,
         );
-        await expect(activity.locator('.cinder-run-step-timeline__label')).toContainText(
-          'exports_check',
-        );
+        await expect(activity.locator('.chat-tool-call-name')).toContainText('exports_check');
         await expect(harness.locator('#harness-chat')).not.toContainText('[object Object]');
       } finally {
         await dispose();
@@ -1612,24 +1580,29 @@ test.describe('chat harness — tool calls', () => {
 
       const activity = harness.locator('.chat-tool-call-timeline').last();
       await expect(activity).toBeVisible();
-      await expect(activity.locator('.cinder-run-step-timeline__item')).toHaveAttribute(
-        'data-cinder-status',
+      await expect(activity.locator('.chat-tool-call-item')).toHaveAttribute(
+        'data-cinder-tool-call-status',
         'succeeded',
       );
-      await expect(activity.locator('.cinder-run-step-timeline__label')).toContainText(
-        'exports_check',
-      );
+      await expect(activity.locator('.chat-tool-call-name')).toContainText('exports_check');
 
-      const disclosure = activity.getByRole('button', { name: 'Arguments' });
+      const summary = activity.locator('.chat-tool-call-toggle');
+      await expect(summary).toBeVisible();
+      await summary.focus();
+      await expect(summary).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(summary).toHaveAttribute('aria-expanded', 'true');
+
+      const disclosure = activity.locator('.chat-tool-call-row');
       await expect(disclosure).toBeVisible();
       await disclosure.focus();
       await expect(disclosure).toBeFocused();
       await page.keyboard.press('Enter');
-      const argumentsPanel = activity.getByRole('region', { name: 'Arguments' });
-      await expect(argumentsPanel).toBeVisible();
-      await expect(argumentsPanel).toContainText('@lostgradient/cinder');
+      const details = activity.locator('.chat-tool-call-details');
+      await expect(details).toBeVisible();
+      await expect(details).toContainText('@lostgradient/cinder');
       await page.keyboard.press('Enter');
-      await expect(argumentsPanel).toHaveCount(0);
+      await expect(details).toBeHidden();
     } finally {
       await dispose();
     }

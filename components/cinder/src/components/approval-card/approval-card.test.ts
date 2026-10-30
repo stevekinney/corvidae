@@ -1190,3 +1190,72 @@ describe('ApprovalCard', () => {
     }
   });
 });
+
+describe('ApprovalCard row layout', () => {
+  test('renders one row with the question, View input, Deny, and Approve', () => {
+    const { container, getByRole } = render(ApprovalCard, {
+      props: approvalCardProps({ layout: 'row', question: 'Run deploy-cloud for staging?' }),
+    });
+
+    const article = getByRole('article', { name: 'Run deploy-cloud for staging?' });
+    expect(article.getAttribute('data-cinder-layout')).toBe('row');
+    const buttons = Array.from(
+      container.querySelectorAll('.cinder-approval-card__row button'),
+      (button) => button.textContent?.trim(),
+    );
+    expect(buttons).toEqual(['View input', 'Deny', 'Approve']);
+    expect(container.querySelector('.cinder-approval-card__details')).toBeNull();
+  });
+
+  test('defaults the question to the tool name', () => {
+    const { getByRole } = render(ApprovalCard, { props: approvalCardProps({ layout: 'row' }) });
+
+    expect(getByRole('article', { name: 'Run deploy-cloud?' })).not.toBeNull();
+  });
+
+  test('approve and deny forward resolutions without a reason', async () => {
+    const onResolve = mock((_resolution: unknown) => undefined);
+    const { getByRole } = render(ApprovalCard, {
+      props: approvalCardProps({ layout: 'row', onResolve }),
+    });
+
+    await fireEvent.click(getByRole('button', { name: 'Deny' }));
+    await fireEvent.click(getByRole('button', { name: 'Approve' }));
+
+    expect(onResolve.mock.calls).toEqual([
+      [{ decision: 'deny', remember: false }],
+      [{ decision: 'approve', remember: false }],
+    ]);
+  });
+
+  test('View input discloses the operation and arguments', async () => {
+    const { container, getByRole } = render(ApprovalCard, {
+      props: approvalCardProps({ layout: 'row' }),
+    });
+    const toggle = getByRole('button', { name: 'View input' });
+    const region = requiredInstance(
+      container.querySelector('.cinder-approval-card__row-input'),
+      HTMLElement,
+    );
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(region.hidden).toBe(true);
+    expect(toggle.getAttribute('aria-controls')).toBe(region.id);
+
+    await fireEvent.click(toggle);
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(region.hidden).toBe(false);
+    expect(region.textContent).toContain('bun run --filter=@lostgradient/cinder test');
+  });
+
+  test('a resolved row shows its state instead of the decision buttons', () => {
+    const { container, queryByRole } = render(ApprovalCard, {
+      props: approvalCardProps({ layout: 'row', state: 'denied' }),
+    });
+
+    expect(queryByRole('button', { name: 'Approve' })).toBeNull();
+    expect(queryByRole('button', { name: 'Deny' })).toBeNull();
+    expect(container.textContent).toContain('Denied');
+  });
+});
