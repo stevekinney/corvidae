@@ -5,10 +5,12 @@ import {
   type ApprovalStateStore,
 } from './approval-binding';
 import type { ToolError, ToolErrorCategory } from './core/errors';
+import { safeParseArgumentsWithSecretReferences } from './create-tool/secret-arguments';
 import type { ToolRequestContext } from './execution-context';
 import { approvalConsumeSymbol, approvalResumeSymbol } from './internal/approval-resume';
 import type { Tool } from './is-tool';
 import { providerCallIdField } from './provider-call-id';
+import { findSecretReferences, toolAcceptsSecrets } from './secrets';
 import { verifyAndSnapshotPendingApproval } from './toolbox-approval';
 import {
   createApprovalConsumption,
@@ -83,7 +85,7 @@ export async function resumeApproval(
     preparation;
   const validation = await context.validateArguments(
     verifiedApproval,
-    currentTool.input.safeParseAsync(executeArguments),
+    safeParseResumedArguments(currentTool, executeArguments),
     executeOptions,
     context.runtime,
   );
@@ -103,6 +105,24 @@ export async function resumeApproval(
     consumption,
     context,
   );
+}
+
+/**
+ * Validates the arguments a paused call resumes with. References are validated in place for a tool
+ * that declares `acceptsSecrets`. For one that does not, validation is left to the execution that
+ * follows, which fails the call with `secret-not-accepted` before it validates or consumes the
+ * approval, so a strict schema cannot hide that cause behind a type error.
+ */
+function safeParseResumedArguments(
+  tool: Tool,
+  argumentsValue: unknown,
+): ReturnType<Tool['input']['safeParseAsync']> {
+  if (findSecretReferences(argumentsValue).length === 0) {
+    return tool.input.safeParseAsync(argumentsValue);
+  }
+  return toolAcceptsSecrets(tool.configuration)
+    ? safeParseArgumentsWithSecretReferences(tool.input, argumentsValue)
+    : Promise.resolve({ success: true, data: argumentsValue });
 }
 
 async function executeResumedCall(

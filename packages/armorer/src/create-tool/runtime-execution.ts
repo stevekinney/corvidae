@@ -18,6 +18,7 @@ import type {
   ToolContext,
   ToolEventsMap,
 } from '../is-tool';
+import type { ToolCallSecrets } from '../secrets';
 import { ToolProgressEvent } from '../tool-stream-events';
 import { isAsyncIterable } from '../type-guards';
 import type { ToolExecutionResult } from '../types';
@@ -36,9 +37,12 @@ type RuntimeContextInput<E extends ToolEventsMap> = Pick<
   | 'effectiveRequestContext'
   | 'name'
   | 'dispatch'
+  | 'secrets'
 >;
 
 export type RuntimeExecutionInput<TInput, E extends ToolEventsMap, TReturn> = {
+  /** This call's secret gate and resolver; backs `context.resolveSecret`. */
+  secrets: ToolCallSecrets;
   parsed: TInput;
   typedToolCall: ToolCallWithArguments;
   configuration: ToolConfiguration;
@@ -217,6 +221,7 @@ function createToolContext<E extends ToolEventsMap>(
     dispatch: (event) => contextDispatch(event, input.baseDetail, input.dispatch),
     progress,
     meta: createMeta(input.name, input.typedToolCall.id),
+    resolveSecret: (reference) => input.secrets.resolve(reference),
     toolCall: input.typedToolCall,
     configuration: input.configuration,
     ...(input.effectiveRequestContext

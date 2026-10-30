@@ -243,9 +243,18 @@ export type {
   ToolPolicyDecision,
   ToolPolicyHooks,
   ToolRepairHint,
+  ToolSecretResolutionContext,
+  ToolSecretResolver,
   ToolValidationReport,
   ToolValidationWarning,
 } from './is-tool';
+export {
+  ToolSecretError,
+  isSecretReference,
+  secretNotAcceptedCode,
+  secretUnavailableCode,
+} from './secrets';
+export type { SecretReference, ToolSecretErrorCode } from './secrets';
 export {
   materializeToolCall,
   materializeToolCalls,

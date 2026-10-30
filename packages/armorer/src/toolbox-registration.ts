@@ -186,6 +186,7 @@ function applyToolLimits(
   if (concurrency !== undefined) options.concurrency = concurrency;
   if (context.telemetryEnabled) options.telemetry = true;
   if (configuration.diagnostics) options.diagnostics = configuration.diagnostics;
+  if (context.options.secretResolver) options.secretResolver = context.options.secretResolver;
   const idempotencyKey = readIdempotencyKey(configuration);
   if (idempotencyKey) options.idempotencyKey = idempotencyKey;
 }

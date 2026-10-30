@@ -239,6 +239,7 @@ function createToolboxBase(entries: ToolboxEntries = [], options: ToolboxOptions
     registryPolicyContext,
     approvalPolicy,
     approvalSecret,
+    secretResolver: options.secretResolver,
     approvalStateStore,
     grantStateStore,
     approvalBindingTtlMs,
