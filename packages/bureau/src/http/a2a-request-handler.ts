@@ -87,6 +87,7 @@ import {
 } from '../command-ledger.ts';
 import { BureauError } from '../create-bureau.ts';
 import { TaskListingTokenError } from '../task-list-snapshots.ts';
+import { isTopLevelTaskOrigin } from '../task-origin.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
 import { gateSecretAnswer, SecretAnswerRefusedError } from '../secret-answers.ts';
 import type { Bureau, BureauContexts, BureauReviews, BureauTasks } from '../types.ts';
@@ -853,13 +854,27 @@ export function createBureauA2ARequestHandler(
   const inFlight = new Map<string, Promise<Admitted>>();
   const continuationFences = new Map<string, Promise<void>>();
 
+  /**
+   * The caller's task on this agent that A2A may reach, or `undefined`. This is the one rule for
+   * what a peer can see: the task is the caller's, run by this agent, and top level (COR-1868). A
+   * child run, a goal attempt or a workflow step is a subordinate task and never reachable here,
+   * so a peer can neither read, continue, cancel nor subscribe to one, nor name it in
+   * `referenceTaskIds`. `ListTasks` applies the same rule through `topLevelOnly`.
+   */
+  async function reachableTask(taskId: string, owner: Owner): Promise<TaskView | undefined> {
+    const view = await bureau.internals.taskRegistry.get(taskId);
+    if (view === undefined || view.owner !== owner || view.agentName !== agentName) {
+      return undefined;
+    }
+    const record = await bureau.internals.taskRegistry.record(taskId);
+    return record !== undefined && isTopLevelTaskOrigin(record.origin) ? view : undefined;
+  }
+
   /** The caller's task on this agent, or the not-found answer a denial shares with absence. */
   async function ownTask(taskId: string, owner: Owner): Promise<TaskView> {
     if (taskId === '') throw invalid('A task id is required.');
-    const view = await bureau.internals.taskRegistry.get(taskId);
-    if (view === undefined || view.owner !== owner || view.agentName !== agentName) {
-      throw taskNotFound(taskId);
-    }
+    const view = await reachableTask(taskId, owner);
+    if (view === undefined) throw taskNotFound(taskId);
     return view;
   }
 
@@ -1098,8 +1113,7 @@ export function createBureauA2ARequestHandler(
       }
     }
     for (const referenced of message.referenceTaskIds) {
-      const view = await bureau.internals.taskRegistry.get(referenced);
-      if (view === undefined || view.owner !== owner || view.agentName !== agentName) {
+      if ((await reachableTask(referenced, owner)) === undefined) {
         throw invalid(
           `referenceTaskIds names '${referenced}', which is not your task on this agent.`,
         );
@@ -2172,6 +2186,7 @@ export function createBureauA2ARequestHandler(
           principal: owner,
           owner,
           agentName,
+          topLevelOnly: true,
           projection: 'a2a',
           ...(params.contextId === '' ? {} : { contextId: params.contextId }),
           ...(status === undefined ? {} : { status }),

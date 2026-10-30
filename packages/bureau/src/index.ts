@@ -433,8 +433,11 @@ export type {
 export { SETTINGS_TOOL_NAMES } from './settings/settings-tools';
 export type { TaskToolGrant } from './task-registry';
 export type {
+  AgentTaskOrigin,
   ApiTaskOrigin,
   ChatTaskOrigin,
+  GoalTaskOrigin,
+  ParentTaskOrigin,
   PersonTaskOrigin,
   ScheduleTaskOrigin,
   StartTaskOrigin,

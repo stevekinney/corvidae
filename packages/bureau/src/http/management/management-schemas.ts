@@ -67,6 +67,15 @@ export const taskOriginSchema = z.discriminatedUnion('kind', [
     manual: z.literal(true).optional(),
   }),
   z.object({ kind: z.literal('api') }),
+  z.object({
+    kind: z.literal('agent'),
+    parentRunId: z.string(),
+    parentContextId: z.string().optional(),
+    agentName: z.string(),
+    toolCallId: z.string().optional(),
+  }),
+  z.object({ kind: z.literal('goal'), goalRunId: z.string(), attemptId: z.string() }),
+  z.object({ kind: z.literal('parent'), parentRunId: z.string() }),
 ]);
 
 /** One task, as the management plane shows it. Message text is never part of it. */
@@ -91,6 +100,9 @@ export const taskViewSchema = z.object({
    * recorded before origins were kept. `chat`: a person's message in a chat. `person`: a person
    * who started the task directly, from a `surface`. `schedule`: one fire of a schedule, with
    * `manual` set when a person fired it by hand. `api`: a start with no Bureau context to name.
+   * `agent`: a child run another run started (`parentRunId`, the parent's `agentName`, and the
+   * parent's session and tool call when they are known). `goal`: one attempt of a goal run.
+   * `parent`: a step of a workflow instance. The last three are subordinate tasks.
    */
   origin: taskOriginSchema.nullable(),
   status: taskStateSchema,
