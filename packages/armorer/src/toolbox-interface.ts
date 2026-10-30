@@ -30,6 +30,7 @@ import type {
   ToolboxExecuteOptions,
   ToolboxOptions,
 } from './toolbox-contracts';
+import type { ToolResolution } from './toolbox-tool-access';
 import type {
   AvailableTools,
   MergeTools,
@@ -88,7 +89,21 @@ export interface Toolbox<TTools extends readonly Tool[] = readonly Tool[]> {
   ): Toolbox<MergeTools<TTools, TOtherTools>>;
   tools: () => TTools;
   getAvailable: () => Promise<AvailableTools<TTools>>;
+  /**
+   * Looks a tool up by id (`namespace:name@version`) or by name, returning it only when the
+   * reference names exactly one. A bare name two tools share, and a reference that matches
+   * nothing, both return `undefined`; use {@link Toolbox.resolveTool} to learn which.
+   */
   getTool(nameOrId: string): TTools[number] | undefined;
+  /**
+   * Resolves a tool reference to exactly one tool, or says why it cannot.
+   *
+   * A reference is an exact id (`a:search@1`), a floating `namespace:name` that uses whichever
+   * version is loaded, or a bare name. A pinned version resolves only that version: another
+   * loaded version is `version-mismatch`, never a silent substitute. A bare name or floating
+   * reference that several tools answer to is `ambiguous`, with every candidate id listed.
+   */
+  resolveTool(idOrName: string): ToolResolution<TTools[number]>;
   /**
    * Returns names of tools that are not present in this toolbox.
    * Useful for fail-soft agent gating.
@@ -226,7 +241,7 @@ export interface Toolbox<TTools extends readonly Tool[] = readonly Tool[]> {
  */
 export interface AnyToolbox extends Omit<
   Toolbox,
-  'execute' | 'extend' | 'tools' | 'getAvailable' | 'getTool'
+  'execute' | 'extend' | 'tools' | 'getAvailable' | 'getTool' | 'resolveTool'
 > {
   execute(call: ToolCallInput, options?: ToolboxExecuteOptions): Promise<ToolExecutionResult>;
   execute(calls: ToolCallInput[], options?: ToolboxExecuteOptions): Promise<ToolExecutionResult[]>;
@@ -235,6 +250,8 @@ export interface AnyToolbox extends Omit<
   tools: () => readonly Tool[];
   getAvailable: () => Promise<readonly Tool[]>;
   getTool(nameOrId: string): Tool | undefined;
+  /** Resolves a tool reference to exactly one tool, or says why it cannot; see {@link Toolbox.resolveTool}. */
+  resolveTool(idOrName: string): ToolResolution;
 }
 
 export interface LoopDetectorInstance {

@@ -25,7 +25,7 @@ import {
   createToolError,
   extractErrorCode,
 } from './toolbox-runtime-helpers';
-import { createToolAccessor } from './toolbox-tool-access';
+import { createToolAccessor, createToolResolver } from './toolbox-tool-access';
 import { createToolboxViewState } from './toolbox-view-state';
 import type { ToolCallInput } from './types';
 
@@ -42,7 +42,8 @@ function createToolboxBase<const TEntries extends ToolboxEntries>(
 function createToolboxBase(entries: ToolboxEntries = [], options: ToolboxOptions = {}): Toolbox {
   const toolsById = new Map<string, Tool>();
   const toolsByName = new Map<string, Tool[]>();
-  const getTool = createToolAccessor(toolsById, toolsByName);
+  const resolveTool = createToolResolver(toolsById, toolsByName);
+  const getTool = createToolAccessor(resolveTool);
   const storedConfigurations = new Map<string, ToolConfiguration>();
   const emitter = new CompletableEventTarget<ToolboxEventMap>();
   const state = resolveToolboxConstructionState(options);
@@ -204,6 +205,7 @@ function createToolboxBase(entries: ToolboxEntries = [], options: ToolboxOptions
     ...approvalApi,
     extend,
     getTool,
+    resolveTool,
     addEventListener,
     dispatchEvent,
     emit,

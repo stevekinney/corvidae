@@ -274,11 +274,11 @@ function createToolboxExecutor(toolbox: ToolboxLike): ToMCPToolsOptions['execute
       ...(request.elicit ? { elicit: request.elicit } : {}),
       ...(request.traceContext !== undefined ? { traceContext: request.traceContext } : {}),
     };
-    if (getTool(tool.name) === tool) {
+    if (getTool(tool.id) === tool) {
       return execute(
         {
           ...(request.callId !== undefined ? { id: request.callId } : {}),
-          name: tool.name,
+          name: tool.id,
           arguments: request.params ?? {},
         },
         shared,
