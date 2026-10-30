@@ -37,17 +37,29 @@ import { createHash } from 'node:crypto';
 import {
   canonicalWorkflowDocumentJson,
   type DocumentWorkflowHost,
-  validateWorkflowDocument,
   WorkflowDocumentValidationError,
   type WorkflowDocument,
   type WorkflowDocumentIssue,
 } from '@lostgradient/weft';
 
 import { AGENT_IDENTIFIER_PATTERN } from './agent-file';
+import { NAMESPACED_IDENTIFIER_SOURCE } from './namespaced-identifier';
+import { toWeftDocument, validateBureauWorkflowDocument } from './workflow-document-handlers';
 import { workflowSchemaIssues } from './workflow-schema';
 
-/** What a workflow's identifier must look like: a letter first, and it doubles as a path segment. */
-export const WORKFLOW_IDENTIFIER_PATTERN = /^[a-z](?:[a-z0-9-]*[a-z0-9])?$/;
+/**
+ * What an owner's workflow file stem must look like: a letter first, and it doubles as a path
+ * segment. No colon, so an owner file cannot claim a plugin's namespace (COR-1871).
+ */
+export const WORKFLOW_FILE_STEM_PATTERN = /^[a-z](?:[a-z0-9-]*[a-z0-9])?$/;
+
+/**
+ * What a workflow's identifier must look like: an owner's bare stem, or the `plugin:name` a plugin
+ * contributes. Percent-encode it where it becomes a URL path segment.
+ */
+export const WORKFLOW_IDENTIFIER_PATTERN = new RegExp(
+  `^(?:${WORKFLOW_FILE_STEM_PATTERN.source.slice(1, -1)}|${NAMESPACED_IDENTIFIER_SOURCE})$`,
+);
 
 /** The longest identifier, so the ids Bureau derives from it stay inside Weft's 128 characters. */
 export const WORKFLOW_IDENTIFIER_MAXIMUM_LENGTH = 64;
@@ -120,14 +132,14 @@ export type ParsedWorkflowFile =
   | { readonly ok: true; readonly file: WorkflowFileContents }
   | { readonly ok: false; readonly problem: WorkflowFileProblem };
 
-/** Why `id` cannot be a workflow identifier, or `undefined` when it can. */
+/** Why `id`, an owner file's stem, cannot be a workflow identifier, or `undefined` when it can. */
 export function checkWorkflowIdentifier(id: string): WorkflowFileProblem | undefined {
-  if (id.length <= WORKFLOW_IDENTIFIER_MAXIMUM_LENGTH && WORKFLOW_IDENTIFIER_PATTERN.test(id)) {
+  if (id.length <= WORKFLOW_IDENTIFIER_MAXIMUM_LENGTH && WORKFLOW_FILE_STEM_PATTERN.test(id)) {
     return undefined;
   }
   return {
     code: 'invalid-identifier',
-    message: `"${id}" is not a valid workflow identifier: it must match ${WORKFLOW_IDENTIFIER_PATTERN.source} and be at most ${WORKFLOW_IDENTIFIER_MAXIMUM_LENGTH} characters.`,
+    message: `"${id}" is not a valid workflow identifier: it must match ${WORKFLOW_FILE_STEM_PATTERN.source} and be at most ${WORKFLOW_IDENTIFIER_MAXIMUM_LENGTH} characters.`,
   };
 }
 
@@ -142,7 +154,10 @@ export function hashWorkflowFileBytes(bytes: Uint8Array): string {
  * synchronous per file.
  */
 export function workflowVersionOf(document: WorkflowDocument): string {
-  return `sha256:${createHash('sha256').update(canonicalWorkflowDocumentJson(document)).digest('hex')}`;
+  // Weft derives the version from the document it is given, which carries the mapped handler names.
+  return `sha256:${createHash('sha256')
+    .update(canonicalWorkflowDocumentJson(toWeftDocument(document)))
+    .digest('hex')}`;
 }
 
 /** Decode a file's bytes as UTF-8, or `undefined` when they are not valid UTF-8. */
@@ -237,7 +252,7 @@ export function parseWorkflowFile(
   }
   let document: WorkflowDocument | undefined;
   try {
-    document = validateWorkflowDocument(documentInput, host);
+    document = validateBureauWorkflowDocument(documentInput, host);
   } catch (error) {
     if (!(error instanceof WorkflowDocumentValidationError)) throw error;
     issues.push(...error.issues);

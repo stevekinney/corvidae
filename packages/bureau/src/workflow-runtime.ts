@@ -31,7 +31,6 @@ import {
   encode,
   type Engine,
   type RegisteredWorkflowDocument,
-  validateWorkflowDocument,
   WorkflowDocumentValidationError,
   type WorkflowCompatibilityVerdict,
   type WorkflowDocument,
@@ -53,7 +52,12 @@ import {
   type WorkflowFileWriteResult,
   type WorkflowListing,
 } from './workflow-file-catalog';
-import { registerBureauWorkflowDocuments, type ScheduleOverlapPolicy } from './workflow-host';
+import { toWeftDocument, validateBureauWorkflowDocument } from './workflow-document-handlers';
+import {
+  bridgeEngineActivities,
+  registerBureauWorkflowDocuments,
+  type ScheduleOverlapPolicy,
+} from './workflow-host';
 import {
   type DesiredWorkflowSchedule,
   parseWorkflowScheduleId,
@@ -461,7 +465,8 @@ function scheduleOf(file: ReadyWorkflowFile): DesiredWorkflowSchedule | undefine
 export { createWorkflowSnapshotStore };
 
 export function createWorkflowRuntime(options: WorkflowRuntimeOptions): WorkflowRuntime {
-  const { engine, host, snapshotStore: snapshots } = options;
+  const { engine, snapshotStore: snapshots } = options;
+  const host = bridgeEngineActivities(engine, options.host);
   const owner = ownerOrLocal(undefined);
   /** The workflow types Bureau registered from a file in this process. */
   const registeredTypes = new Set<string>();
@@ -614,7 +619,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
           retained.push({
             id,
             version,
-            document: validateWorkflowDocument(snapshot.document, host),
+            document: validateBureauWorkflowDocument(snapshot.document, host),
           });
         } catch (error) {
           if (!(error instanceof WorkflowDocumentValidationError)) throw error;
@@ -996,7 +1001,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     const current = catalog.find(id);
     const manifestOf = async (document: WorkflowDocument) => {
       try {
-        return await buildWorkflowDocumentManifest(document, host);
+        return await buildWorkflowDocumentManifest(toWeftDocument(document), host);
       } catch (error) {
         options.diagnose(`Could not build the manifest of a revision of workflow "${id}".`, error);
         return undefined;

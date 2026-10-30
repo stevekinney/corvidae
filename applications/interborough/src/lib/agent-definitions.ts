@@ -14,7 +14,7 @@ import { callBureau, type Fetcher } from './bureau-client.ts';
 
 /**
  * What an agent's identifier must look like, and the longest it may be. The Bureau owns both rules
- * (`AGENT_IDENTIFIER_PATTERN` and `AGENT_IDENTIFIER_MAX_LENGTH` in its `agent-file.ts`); the
+ * (`AGENT_FILE_STEM_PATTERN` and `AGENT_IDENTIFIER_MAX_LENGTH` in its `agent-file.ts`; an owner's file never carries a plugin's `plugin:name`); the
  * browser cannot import that module, so the editor repeats them to answer while the person types,
  * and `src/host/host-agent-definitions.test.ts` fails if the two drift apart. The Bureau still
  * refuses an identifier that breaks them.
