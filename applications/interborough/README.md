@@ -214,7 +214,7 @@ The Playwright suite locks `workflowVersion` on the main host to show a locked k
 - It chats with the `barrier` agent, sends a follow-up while the run is held, and sees the same run answer it.
 - It starts from `/` and lands in the session it just made, starts a second session with the same agent from the agent's page, and returns to the first from `/chat`.
 - It reloads while `request-human-input` waits on its question and answers it from `/reviews`.
-- It defines an agent in the editor with the `workflows-create` tool and chats with it until it writes `journey-digest`, a workflow with a 5 second schedule.
+- It defines an agent in the editor with the `workflows-create` tool, sets that tool to `never` in the agent's `toolApproval` through `bureau.agents.definitions.update` (a tool that changes something asks before each call by default, and nothing in the journey answers the inbox for it), and chats with it until it writes `journey-digest`, a workflow with a 5 second schedule.
 - It opens the workflow from `/workflows`, waits until its schedule's fire is listed as a run, and opens that run at `/runs/:id`. A runs page that opens before the first fire says there are none, and asks again every five seconds (`recheckMs` on its view probe) until there is one, so the stage waits for the first row on the page itself.
 - It follows the schedule's "Edit workflow" action from `/schedules`, changes the trigger to `1h` in the editor at `/workflows/journey-digest/edit`, and sees the one-hour cadence on `/schedules`, which also stops the 5 second fires for the rest of the run.
 - It attaches an image to `echo-image`, sees `Echoed 1 image.` and the returned image decode.

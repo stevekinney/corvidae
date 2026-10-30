@@ -25,7 +25,7 @@ import {
   WORKFLOW_COPY,
 } from '../../src/app/copy.ts';
 import { describeCadence } from '../../src/routes/schedules/cadence.ts';
-import { bureau, removeAgent } from './agent-support.ts';
+import { bureau, readAgent, removeAgent } from './agent-support.ts';
 import { E2E_BARRIER_URL, E2E_JOURNEY_URL } from './e2e-constants.ts';
 import { IMAGE_ECHO_AGENT_NAME } from './echo-agent.ts';
 import { expect, test } from './fixtures.ts';
@@ -258,6 +258,17 @@ test('defines an agent in the editor with the workflow tool, and chats with it u
   await page.getByRole('checkbox', { name: new RegExp(JOURNEY_TOOL_NAME) }).check();
   await page.getByRole('button', { name: AGENT_EDITOR_COPY.createAction }).click();
   await expect(page).toHaveURL(new RegExp(`/agents/${AUTHOR_ID}$`));
+
+  // `workflows-create` changes the deployment, so a new agent asks before each call, and no one in
+  // this journey answers the inbox for it. The file sets the tool to `never`, as a person who
+  // trusts the agent with it would, through the management plane the editor saves with.
+  const created = await readAgent(request, AUTHOR_ID);
+  const approved = await bureau(request, 'bureau.agents.definitions.update', {
+    id: AUTHOR_ID,
+    expectedHash: created.hash,
+    definition: { ...created.definition, toolApproval: { [JOURNEY_TOOL_NAME]: 'never' } },
+  });
+  expect(approved.fault, 'setting the tool to never').toBeUndefined();
 
   // A new agent takes a chat as soon as it is saved: nothing has to be switched on first.
   await page.getByRole('link', { name: 'New chat' }).first().click();

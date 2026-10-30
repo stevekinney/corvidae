@@ -47,7 +47,39 @@ function jsonOrNull(value: unknown): JSONValue | null {
   return isJSONValue(value) ? value : (JSON.parse(JSON.stringify(value)) as JSONValue);
 }
 
-/** A step's result from the finished run, or the failure the run ended in. */
+/**
+ * Where Armorer's message begins when a call needed an approval it could not issue because the run
+ * had no request context to bind it to (an unattended run: a workflow step has no requester). The
+ * `workflow-agent-step-approval` test runs a real step, so a change to the text fails it.
+ */
+const APPROVAL_UNAVAILABLE_MESSAGE_START = 'Approval authorization requires';
+
+/**
+ * The first tool call of the run that needed a person's approval, which an unattended run cannot
+ * get: it ended `action_required`, or Armorer could not issue the approval at all. `undefined` when
+ * no call did.
+ */
+function toolNeedingApproval(result: RunResult<unknown, true>): string | undefined {
+  for (const step of result.steps) {
+    for (const call of step.results) {
+      if (call.outcome === 'action_required') return call.toolName;
+      if (
+        call.outcome === 'error' &&
+        (call.error?.message ?? call.errorMessage)?.startsWith(APPROVAL_UNAVAILABLE_MESSAGE_START)
+      ) {
+        return call.toolName;
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * A step's result from the finished run, or the failure the run ended in. A run in which a tool
+ * call needed an approval fails the step too (COR-1913): the model was told the call did not run
+ * and went on, so the run looks finished while the change it was started for was never made. A
+ * workflow step has no one to ask, so a tool it uses to change something has to say `never`.
+ */
 export function agentStepResultFromRun(
   agent: string,
   result: RunResult<unknown, true>,
@@ -58,6 +90,14 @@ export function agentStepResultFromRun(
       agent,
       finishReason,
       result.error === undefined ? undefined : serializeUnknownError(result.error),
+    );
+  }
+  const needing = toolNeedingApproval(result);
+  if (needing !== undefined) {
+    throw new WorkflowAgentStepError(
+      'agent-run-failed',
+      agent,
+      `Agent "${agent}" called "${needing}", which needs a person's approval, and a workflow step has no one to ask, so the call did not run. Set "${needing}" to "never" in the agent file's toolApproval to let a workflow use it, or take the tool away from the agent.`,
     );
   }
   return {

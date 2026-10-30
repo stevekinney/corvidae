@@ -55,6 +55,11 @@ export interface WorkflowToolsHarness {
     readonly outcome: unknown;
     readonly runId: string;
   }>;
+  /**
+   * Makes the model of every run from now on ask for `tool` once with `args`, until `plan` is
+   * called with `undefined`. For a run `callTool` does not start, such as a workflow's agent step.
+   */
+  plan(tool: string | undefined, args?: Record<string, unknown>): void;
   /** The names of the tools each model call was offered, in order. */
   readonly offered: string[][];
   /**
@@ -147,6 +152,9 @@ export async function startWorkflowToolsBureau(
     agentsPath,
     offered,
     putAgent,
+    plan(tool, args = {}) {
+      plan = tool === undefined ? undefined : { tool, args };
+    },
     async callTool(tool, args, callOptions = {}) {
       plan = { tool, args };
       captured = undefined;
