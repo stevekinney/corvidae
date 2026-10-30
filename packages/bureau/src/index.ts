@@ -119,6 +119,23 @@ export {
   toWeftHandlerName,
 } from './namespaced-identifier';
 export {
+  createVersionedCatalog,
+  formatVersionedId,
+  parseVersionedId,
+  VERSIONED_CATALOG_KINDS,
+} from './versioned-catalog';
+export type {
+  VersionedCatalog,
+  VersionedCatalogEntry,
+  VersionedCatalogKind,
+  VersionedCatalogReference,
+  VersionedCatalogRegistration,
+  VersionedCatalogRegistrationResult,
+  VersionedCatalogRequest,
+  VersionedCatalogResolution,
+  VersionedCatalogSource,
+} from './versioned-catalog';
+export {
   WORKFLOW_FILE_STEM_PATTERN,
   WORKFLOW_IDENTIFIER_PATTERN,
   WorkflowFileConflictError,
@@ -309,6 +326,7 @@ export {
   classifyRecoveredRun,
   classifyRecoveredRunDetailed,
   createBureau,
+  PinnedToolUnavailableError,
   ReviewAnswerInvalidError,
   ReviewRoundChangedError,
   ScheduleLocatorUnavailableError,

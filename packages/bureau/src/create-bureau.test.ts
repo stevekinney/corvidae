@@ -13100,6 +13100,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
         judges: [
           {
             name: 'gated-judge',
+            version: '1.0.0',
             async evaluate() {
               evaluateCalls += 1;
               await judgeGate;
@@ -18753,6 +18754,7 @@ describe('AB-260: BureauOptions.runtime composition', () => {
         judges: [
           {
             name: 'always-breaches',
+            version: '1.0.0',
             async evaluate() {
               return { pass: false, score: 0, message: 'always fails' };
             },
