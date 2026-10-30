@@ -14,6 +14,8 @@ const FILE: WorkflowFileListing = {
   description: null,
   agent: 'assistant',
   paused: false,
+  inputSchema: null,
+  outputSchema: null,
   version: 'v1',
   trigger: { kind: 'schedule', spec: '1h' },
   runs: { active: 0, last24Hours: 0, lastRunAt: null },

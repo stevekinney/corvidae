@@ -667,7 +667,7 @@ describe('send signal', () => {
   test('sends the name and the parsed payload, and shows how many were started and reached', async () => {
     const { container, findByRole, getByRole } = open('/workflows/digest');
     await ready(container);
-    stub!.world.signalAnswer = { started: ['run-1'], delivered: ['run-2', 'run-3'] };
+    stub!.world.signalAnswer = { started: ['run-1'], delivered: ['run-2', 'run-3'], rejected: [] };
 
     await fireEvent.input(getByRole('textbox', { name: WORKFLOW_COPY.signal.payloadLabel }), {
       target: { value: '{"approved": true}' },
