@@ -3422,3 +3422,70 @@ describe('withToolboxIdempotency settled events (COR-1391)', () => {
     expect(settledResults).toEqual(['charged:order-1', 'charged:order-1']);
   });
 });
+
+describe('withToolboxIdempotency keys on the resolved tool identity', () => {
+  const requestContext = createTestRequestContext('tenant-a');
+  const executions: string[] = [];
+
+  function searchTool(namespace: string) {
+    return createTool({
+      name: 'search',
+      namespace,
+      version: '1',
+      description: `Search in ${namespace}`,
+      input: z.object({}),
+      async execute() {
+        executions.push(namespace);
+        return namespace;
+      },
+    });
+  }
+
+  function build() {
+    executions.length = 0;
+    const cache = createToolResultCache({
+      store: createTestStore(),
+      defaultTTL: 60_000,
+      now: () => 0,
+    });
+    return createIdempotentToolbox(createToolbox([searchTool('a'), searchTool('b')]), {
+      cache,
+      tenantId: 'tenant-a',
+      toolRevision: 'release:1',
+    });
+  }
+
+  it('keeps two same-named tools apart under an overridden toolRevision', async () => {
+    const toolbox = build();
+
+    const first = await toolbox.execute(
+      { id: 'call-a', name: 'a:search@1', arguments: {} },
+      { requestContext, idempotencyKey: 'op' },
+    );
+    const second = await toolbox.execute(
+      { id: 'call-b', name: 'b:search@1', arguments: {} },
+      { requestContext, idempotencyKey: 'op' },
+    );
+
+    expect(first.content).toBe('a');
+    expect(second.content).toBe('b');
+    expect(second.idempotency?.outcome).toBe('fresh');
+    expect(executions).toEqual(['a', 'b']);
+  });
+
+  it('shares one entry between an id call and a namespace:name call for the same tool', async () => {
+    const toolbox = build();
+
+    await toolbox.execute(
+      { id: 'call-1', name: 'a:search@1', arguments: {} },
+      { requestContext, idempotencyKey: 'op' },
+    );
+    const repeat = await toolbox.execute(
+      { id: 'call-2', name: 'a:search', arguments: {} },
+      { requestContext, idempotencyKey: 'op' },
+    );
+
+    expect(repeat.idempotency?.outcome).toBe('deduped');
+    expect(executions).toEqual(['a']);
+  });
+});
