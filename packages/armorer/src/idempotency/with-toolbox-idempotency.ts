@@ -642,13 +642,12 @@ export function withToolboxIdempotency(
     if (!tool) {
       return originalExecute(call, executeOptions);
     }
-    // Key and record under one canonical name per tool, so a call that names it by id, by
-    // `namespace:name`, or by bare name shares one entry. That is the bare name while it reaches
-    // only this tool (which keeps every existing key), and the full id once another tool shares it,
-    // so two tools never share an entry even under an overridden `toolRevision`.
-    const toolName = toolbox.getTool(tool.name) === tool ? tool.name : tool.id;
+    // The entry is keyed on the resolved tool's full id, so a call that names the tool by id, by
+    // `namespace:name`, or by bare name shares one entry, and the key never depends on which other
+    // tools happen to be registered. The recorded name stays the bare name.
+    const toolName = tool.name;
     const revision = toolRevision ?? formatToolRevision(tool);
-    const baseKey = namespacedKey(toolName, externalKey ?? keyFn!(fields.arguments));
+    const baseKey = namespacedKey(tool.id, externalKey ?? keyFn!(fields.arguments));
     if (!revision) {
       throw new Error(`Idempotency requires a complete revision for tool ${toolName}.`);
     }
