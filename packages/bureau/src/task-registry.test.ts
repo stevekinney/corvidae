@@ -20,7 +20,7 @@ import {
   type TaskRegistryHost,
 } from './task-registry';
 import type { TaskOrigin } from './task-origin';
-import { rejectionOf } from '@lostgradient/testing/promise-outcome';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { CancelDurableRunOutcome, PendingReview } from './types';
 
 const OWNER = 'api-key:alice';
@@ -1214,9 +1214,11 @@ describe('a task record whose origin this release cannot read (COR-1867)', () =>
   it('refuses at admission an origin the reader could not store', async () => {
     const { registry } = build();
 
-    await expect(
-      admit(registry, 'run-bad', { origin: { kind: '' } as unknown as TaskOrigin }),
-    ).rejects.toThrow('origin');
+    expect(
+      await throwingRejectionOf(
+        admit(registry, 'run-bad', { origin: { kind: '' } as unknown as TaskOrigin }),
+      ),
+    ).toThrow('origin');
     expect(await registry.record('run-bad')).toBeUndefined();
   });
 });
