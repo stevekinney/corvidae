@@ -464,6 +464,16 @@ describe('ApprovalCard', () => {
     ).toBe(true);
   });
 
+  test('shows the arguments an approver signs off on as exact JSON', () => {
+    const { container } = render(ApprovalCard, {
+      ...approvalCardProps({
+        operation: { kind: 'command', command: 'run', argsPreview: { count: 1, label: '1' } },
+      }),
+    });
+    expect(container.querySelector('.cinder-json-viewer')).not.toBeNull();
+    expect(container.textContent).toContain('"1"');
+  });
+
   test('edits arguments as JSON before approving with edits', async () => {
     const onResolve = mock();
     const { getByLabelText, getByRole, queryByRole } = render(ApprovalCard, {

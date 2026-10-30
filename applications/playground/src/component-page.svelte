@@ -1635,7 +1635,7 @@
                             {@html overviewExampleHtml}
                           {:else}
                             <div class="preview-loading" role="status">
-                              <StatusDot status="pending" />
+                              <StatusDot status="pending" labelVisible={false} />
                               <span>Loading preview…</span>
                             </div>
                           {/if}

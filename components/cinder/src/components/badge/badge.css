@@ -6,6 +6,9 @@
 
   .cinder-badge {
     display: inline-flex;
+    /* A badge hugs its text: a grid or flex parent stretches its items across the cell, and a
+     * stretched badge reads as a bar instead of a label (COR-1821). */
+    inline-size: fit-content;
     align-items: center;
     gap: var(--cinder-space-1);
     padding: var(--cinder-space-0-5) var(--cinder-space-2);

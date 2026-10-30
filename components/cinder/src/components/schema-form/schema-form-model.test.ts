@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   arrayValueAtPath,
+  choiceBranchForValue,
   cloneJsonCompatible,
   collectJsonFields,
   createSchemaFormModel,
@@ -229,6 +230,36 @@ describe('schema-form model', () => {
     expect(tags?.item).toBeDefined();
     const item = rebaseFieldPath(tags!.item!, ['tags', '2']);
     expect(item.path).toEqual(['tags', '2']);
+  });
+
+  test('picks the literal branch of a choice for a literal and the object branch for a record', () => {
+    const choice = createSchemaFormModel({
+      type: 'object',
+      properties: {
+        refund: {
+          oneOf: [
+            { const: 'whole' },
+            { type: 'object', properties: { amount: { type: 'integer' } } },
+          ],
+        },
+      },
+    }).field.fields[0]!;
+    const [literalBranch, objectBranch] = choice.fields;
+    expect(choiceBranchForValue(choice, 'whole')).toBe(literalBranch!);
+    expect(choiceBranchForValue(choice, { amount: 4 })).toBe(objectBranch!);
+  });
+
+  test('refuses a choice that does not hold both branches', () => {
+    const choice = createSchemaFormModel({
+      type: 'object',
+      properties: { refund: { oneOf: [{ const: 'whole' }, { type: 'object' }] } },
+    }).field.fields[0]!;
+    expect(() => choiceBranchForValue({ ...choice, fields: [] }, 'whole')).toThrow(
+      'SchemaForm choice fields hold a literal branch and an object branch.',
+    );
+    expect(() =>
+      choiceBranchForValue({ ...choice, fields: choice.fields.slice(0, 1) }, {}),
+    ).toThrow('SchemaForm choice fields hold a literal branch and an object branch.');
   });
 
   test('encodes path and enum values for DOM-safe ids and select values', () => {

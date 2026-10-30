@@ -2,21 +2,21 @@
 @import '../badge/badge.css';
 @import '../copy-button/copy-button.css';
 @import '../json-viewer/json-viewer.css';
+@import '../segmented-control/segmented-control.css';
 
 @layer cinder.components {
+  /* Flat: the inspector draws no frame of its own. The heading row sits on the
+   * surface, and the value below it is the content. */
   .cinder-payload-inspector {
     display: flex;
     flex-direction: column;
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-md);
-    overflow: hidden;
-    background: var(--cinder-surface);
+    gap: var(--cinder-space-2);
     font-size: var(--cinder-text-sm);
     user-select: none;
   }
 
   /* ----------------------------------------
-   * Header bar
+   * Heading row
    * ---------------------------------------- */
 
   .cinder-payload-inspector__header {
@@ -24,18 +24,13 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--cinder-space-2);
-    padding: var(--cinder-space-1) var(--cinder-space-2) var(--cinder-space-1) var(--cinder-space-3);
-    background: var(--cinder-surface-raised);
-    border-bottom: 1px solid var(--cinder-border-muted);
     flex-wrap: wrap;
   }
 
   .cinder-payload-inspector__label {
-    font-size: var(--cinder-text-xs);
+    font-size: var(--cinder-text-sm);
     font-weight: var(--cinder-font-medium);
-    color: var(--cinder-text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    color: var(--cinder-text-default);
   }
 
   .cinder-payload-inspector__header-actions {
@@ -59,18 +54,80 @@
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-2);
-    padding: var(--cinder-space-2);
     overflow: auto;
   }
 
-  /* JsonViewer carries its own border/background/padding for standalone use,
-     but nested here it would double the framing this component's own header
-     bar + outer border already provide — strip it back to flush content. */
   .cinder-payload-inspector__panel .cinder-json-viewer {
-    padding: 0;
-    border: none;
-    border-radius: 0;
-    background: transparent;
+    user-select: text;
+  }
+
+  /* ----------------------------------------
+   * Fields view
+   * ---------------------------------------- */
+
+  .cinder-payload-inspector__field-view {
+    user-select: text;
+  }
+
+  .cinder-payload-inspector__fields {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1-5);
+    margin: 0;
+  }
+
+  .cinder-payload-inspector__field {
+    display: grid;
+    grid-template-columns: minmax(8rem, 1fr) 3fr;
+    align-items: baseline;
+    gap: var(--cinder-space-3);
+  }
+
+  .cinder-payload-inspector__field-label {
+    margin: 0;
+    color: var(--cinder-text-muted);
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-payload-inspector__field-value {
+    margin: 0;
+    min-inline-size: 0;
+    color: var(--cinder-text-default);
+    overflow-wrap: anywhere;
+  }
+
+  /* A nested object or array reads as a sub-list under its label, set in from the
+   * left by a hairline, so the nesting is visible without boxes. */
+  .cinder-payload-inspector__field-value > .cinder-payload-inspector__fields {
+    padding-inline-start: var(--cinder-space-3);
+    border-inline-start: 1px solid var(--cinder-border-muted);
+  }
+
+  .cinder-payload-inspector__identifier,
+  .cinder-payload-inspector__link[data-cinder-identifier] {
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+  }
+
+  .cinder-payload-inspector__number {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cinder-payload-inspector__null,
+  .cinder-payload-inspector__more {
+    margin: 0;
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-payload-inspector__link {
+    color: var(--cinder-accent-text);
+  }
+
+  @media (max-width: 30rem) {
+    .cinder-payload-inspector__field {
+      grid-template-columns: 1fr;
+      gap: 0;
+    }
   }
 
   .cinder-payload-inspector__primitive {
@@ -84,10 +141,6 @@
     border: 1px solid var(--cinder-border);
     white-space: pre-wrap;
     word-break: break-all;
-    user-select: text;
-  }
-
-  .cinder-payload-inspector__panel .cinder-json-viewer {
     user-select: text;
   }
 

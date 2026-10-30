@@ -27,8 +27,6 @@
   .cinder-keyboard-shortcuts__group-label {
     font-size: var(--cinder-text-xs);
     font-weight: var(--cinder-font-semibold);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
     color: var(--cinder-text-muted);
     margin: 0;
   }

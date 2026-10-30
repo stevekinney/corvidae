@@ -3,30 +3,37 @@
    * @cinder
    * @category data-display
    * @status stable
-   * @purpose Compact inspector for structured payloads: a labeled tree view with a copy action and size/truncation status.
+   * @purpose Inspector for structured payloads: labelled fields by default with a Fields / JSON switch, a copy action, and size and truncation status.
    * @tag json
    * @tag inspector
    * @tag payload
    * @useWhen Inspecting workflow inputs, signal payloads, activity results, or API response bodies in a dashboard.
    * @useWhen Displaying a structured payload with a visible label, byte size, and copy affordance.
+   * @useWhen Reading a payload as data first, with the raw JSON one switch away.
    * @avoidWhen Rendering a raw code block only — use code-block directly instead.
    * @avoidWhen Needing search, filtering, or virtualization over large collections — compose a custom viewer.
-   * @related json-viewer, code-block, copy-button
+   * @related json-viewer, code-block, copy-button, schema-view
    */
   export type {
+    PayloadInspectorField,
     PayloadInspectorProps,
     PayloadInspectorSchemaProps,
     PayloadInspectorSchemaValue,
+    PayloadInspectorView,
   } from './payload-inspector.types.ts';
 </script>
 
 <script lang="ts">
-  import type { PayloadInspectorProps } from './payload-inspector.types.ts';
+  import type { PayloadInspectorProps, PayloadInspectorView } from './payload-inspector.types.ts';
 
   import Badge from '../badge/badge.svelte';
   import CopyButton from '../copy-button/copy-button.svelte';
   import JsonViewer from '../json-viewer/json-viewer.svelte';
+  import Segment from '../segment/segment.svelte';
+  import SegmentedControl from '../segmented-control/segmented-control.svelte';
   import { classNames } from '../../utilities/class-names.ts';
+  import { humanizeIdentifier } from '../../utilities/humanize-identifier.ts';
+  import { isIdentifierField, readPayloadEntries } from './payload-inspector-fields.ts';
 
   let {
     value,
@@ -36,9 +43,13 @@
     maxBytes = 1_048_576,
     parse,
     label = 'Payload inspector',
+    view = $bindable('fields'),
+    linkFor,
     class: className,
     ...rest
   }: PayloadInspectorProps = $props();
+
+  const switchId = $props.id();
 
   // --------------------------------------------------------------------------
   // Parsing: preserve plain string values, while still accepting serialized JSON
@@ -141,13 +152,104 @@
   });
 
   const canCopy = $derived(!isEmpty && copyText !== '');
+
+  // Fields and JSON describe a structured payload. A primitive, an empty value,
+  // a parse failure and an unserializable value have nothing to switch between.
+  const isStructured = $derived(
+    parseResult.ok &&
+      !unserializable &&
+      !isEmpty &&
+      !isPrimitive &&
+      typeof parsedValue === 'object',
+  );
+
+  const tooLarge = $derived(sizeResult.ok && sizeResult.bytes > maxBytes);
+
+  function selectView(next: PayloadInspectorView): void {
+    view = next;
+  }
+
+  function handleViewChange(next: string): void {
+    if (next === 'fields' || next === 'json') selectView(next);
+  }
+
+  // Fields view only: how many entries of one object or array render before the
+  // rest are summarised, so a very wide payload cannot build an unbounded DOM.
+  const FIELD_ENTRY_LIMIT = 100;
 </script>
 
+{#snippet scalar(key: string, value: unknown, path: string[])}
+  {@const href = linkFor?.({ path, key, value })}
+  {#if value === null}
+    <span class="cinder-payload-inspector__null">null</span>
+  {:else if typeof value === 'string' && value === ''}
+    <span class="cinder-payload-inspector__null">Empty</span>
+  {:else if href !== undefined}
+    <a
+      class="cinder-payload-inspector__link"
+      data-cinder-identifier={isIdentifierField(key, value) || undefined}
+      {href}>{String(value)}</a
+    >
+  {:else if isIdentifierField(key, value)}
+    <code class="cinder-payload-inspector__identifier">{String(value)}</code>
+  {:else if typeof value === 'number' || typeof value === 'bigint'}
+    <span class="cinder-payload-inspector__number">{String(value)}</span>
+  {:else}
+    <span class="cinder-payload-inspector__text">{String(value)}</span>
+  {/if}
+{/snippet}
+
+{#snippet fieldRows(source: unknown, path: string[], depth: number)}
+  {@const entries = readPayloadEntries(source)}
+  {#if entries.length === 0}
+    <span class="cinder-payload-inspector__null"
+      >{Array.isArray(source) ? 'No items' : 'No fields'}</span
+    >
+  {:else}
+    <dl class="cinder-payload-inspector__fields">
+      {#each entries.slice(0, FIELD_ENTRY_LIMIT) as entry (entry.key)}
+        <div class="cinder-payload-inspector__field">
+          <dt class="cinder-payload-inspector__field-label">
+            {entry.isIndex ? entry.key : humanizeIdentifier(entry.key)}
+          </dt>
+          <dd class="cinder-payload-inspector__field-value">
+            {#if entry.nested && depth < maxDepth}
+              {@render fieldRows(entry.value, [...path, entry.key], depth + 1)}
+            {:else if entry.nested}
+              <span class="cinder-payload-inspector__null">Too deep to show here.</span>
+            {:else}
+              {@render scalar(entry.key, entry.value, [...path, entry.key])}
+            {/if}
+          </dd>
+        </div>
+      {/each}
+    </dl>
+    {#if entries.length > FIELD_ENTRY_LIMIT}
+      <p class="cinder-payload-inspector__more">
+        {entries.length - FIELD_ENTRY_LIMIT} more not shown. Switch to JSON to see them.
+      </p>
+    {/if}
+  {/if}
+{/snippet}
+
 <div {...rest} class={classNames('cinder-payload-inspector', className)}>
-  <!-- Header bar: label, size, copy action -->
+  <!-- Heading row: label on the left; size, view switch and copy on the right -->
   <div class="cinder-payload-inspector__header">
     <span class="cinder-payload-inspector__label">{label}</span>
     <div class="cinder-payload-inspector__header-actions">
+      {#if isStructured}
+        <SegmentedControl
+          id={switchId}
+          label={`${label} view`}
+          labelVisible={false}
+          size="sm"
+          value={view}
+          onValueChange={handleViewChange}
+        >
+          <Segment value="fields">Fields</Segment>
+          <Segment value="json">JSON</Segment>
+        </SegmentedControl>
+      {/if}
       {#if sizeResult.ok}
         <span class="cinder-payload-inspector__size" aria-label={`${byteLabel} payload size`}>
           {byteLabel}
@@ -188,8 +290,18 @@
       </div>
     {:else if isPrimitive}
       <pre class="cinder-payload-inspector__primitive">{String(parsedValue)}</pre>
-    {:else}
+    {:else if view === 'json'}
       <JsonViewer value={parsedValue} {initialDepth} {maxDepth} {maxBytes} />
+    {:else if tooLarge}
+      <div class="cinder-payload-inspector__notice" role="status">
+        Payload too large to show as fields (~{Math.round(
+          (sizeResult.ok ? sizeResult.bytes : 0) / 1024,
+        )} KB; cap is {Math.round(maxBytes / 1024)} KB). Copy it to inspect the raw JSON.
+      </div>
+    {:else}
+      <div class="cinder-payload-inspector__field-view">
+        {@render fieldRows(parsedValue, [], 0)}
+      </div>
     {/if}
   </div>
 </div>

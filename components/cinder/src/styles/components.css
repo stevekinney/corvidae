@@ -9,6 +9,7 @@
 @import './components/_floating-surface.css';
 @import './components/_form-field-error.css';
 @import './components/_label-value.css';
+@import './components/_option-group.css';
 @import './components/_row-item.css';
 @import './components/_input-frame.css';
 
@@ -138,6 +139,7 @@
 @import '../components/run-step-timeline/run-step-timeline.css';
 @import '../components/schedule-builder/schedule-builder.css';
 @import '../components/schema-form/schema-form.css';
+@import '../components/schema-view/schema-view.css';
 @import '../components/scroll-area/scroll-area.css';
 @import '../components/search-field/search-field.css';
 @import '../components/secret-value-field/secret-value-field.css';
@@ -188,6 +190,7 @@
 @import '../components/time-field/time-field.css';
 @import '../components/timeline/timeline.css';
 @import '../components/toast-region/toast-region.css';
+@import '../components/theme-switch/theme-switch.css';
 @import '../components/toggle/toggle.css';
 @import '../components/toolbar/toolbar.css';
 @import '../components/tooltip/tooltip.css';

@@ -1,0 +1,19 @@
+{
+  "$schema": "../../schemas/examples.schema.json",
+  "component": "theme-switch",
+  "import": "@lostgradient/cinder",
+  "examples": [
+    {
+      "id": "basic",
+      "title": "Basic theme switch",
+      "description": "Three positions on a sky and night track: Light, System, Dark. Click a position or use the arrow keys, Home and End; the switch reports the selected value.",
+      "code": "<script lang=\"ts\">\n  import { ThemeSwitch, type ThemeSwitchValue } from '@lostgradient/cinder';\n\n  let theme = $state<ThemeSwitchValue>('system');\n</script>\n\n<ThemeSwitch bind:value={theme} label=\"Color theme\" />\n<p style=\"margin-top: 0.5rem; color: var(--cinder-text-muted);\">Selected: {theme}</p>\n"
+    },
+    {
+      "id": "disabled",
+      "title": "Disabled theme switch",
+      "description": "A disabled switch keeps its selection and ignores the pointer and the keyboard.",
+      "code": "<script lang=\"ts\">\n  import { ThemeSwitch } from '@lostgradient/cinder';\n</script>\n\n<ThemeSwitch value=\"dark\" label=\"Color theme\" disabled />\n"
+    }
+  ]
+}

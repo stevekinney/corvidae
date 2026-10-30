@@ -142,6 +142,15 @@ describe('steering log', () => {
     expect(
       await throwingRejectionOf(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)),
     ).toThrow(SteeringLogCorruptError);
+    await kv.set(
+      entryKey,
+      JSON.stringify(
+        admit({ requestedValue: { target: 'permission-mode', override: 'plan' } as never }),
+      ),
+    );
+    expect(
+      await throwingRejectionOf(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)),
+    ).toThrow(SteeringLogCorruptError);
     const refused = (failure: Record<string, unknown>) =>
       JSON.stringify({
         type: 'refused',

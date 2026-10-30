@@ -33,6 +33,48 @@ export function withAcceptsSecrets(tool: Tool): Tool {
   return rebuilt;
 }
 
+/**
+ * A copy of `tool` that refuses to run once `refusal` returns a message, rebuilt the way
+ * {@link withAcceptsSecrets} rebuilds one (COR-1931). A saved source's tools are connected to their
+ * server with whatever the loader captured when it loaded (a key or token read once, a child
+ * process's environment, an open session), and removing the source cannot reach into each
+ * transport to take that back. The check sits where the host builds every saved source's tools, so
+ * no kind of source (MCP over HTTP or stdio, OpenAPI from a URL or inline) can send a request, or
+ * use a credential, after the host retired it. The configuration is copied whole, so the name,
+ * description, schema, tags and metadata (the tier and approval metadata) are the original's.
+ */
+export function refusingWhen(tool: Tool, refusal: () => string | undefined): Tool {
+  const refuseWhenRetired = (): void => {
+    const reason = refusal();
+    if (reason !== undefined) throw new Error(reason);
+  };
+  const execute = tool.configuration.execute;
+  // A toolbox runs `rawExecute` when a configuration carries one, and `execute` otherwise, so both are guarded.
+  const raw: unknown = Reflect.get(tool.configuration, 'rawExecute');
+  const [rebuilt] = createToolbox([
+    {
+      ...tool.configuration,
+      execute: async (params: unknown, context?: unknown) => {
+        refuseWhenRetired();
+        const run = await execute;
+        return run(params, context);
+      },
+      ...(typeof raw === 'function'
+        ? {
+            rawExecute: async (params: unknown, context: unknown) => {
+              refuseWhenRetired();
+              return Reflect.apply(raw, undefined, [params, context]);
+            },
+          }
+        : {}),
+    },
+  ]).tools();
+  if (rebuilt === undefined) {
+    throw new Error(`Tool "${tool.name}" could not be gated.`);
+  }
+  return rebuilt;
+}
+
 /** A setting that names a tool the source does not offer. */
 export type UnmatchedToolSetting = {
   /** The tool name the setting is keyed by. */

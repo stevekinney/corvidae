@@ -29,9 +29,15 @@ const schema = {
       enum: ['card', 'well'],
       description: 'Visual container style. `card` is raised; `well` is flatter and inset.',
     },
-    elevation: {
-      enum: ['none', 'sm', 'md', 'lg'],
-      description: 'Elevation shadow applied to the card surface.',
+    edge: {
+      enum: ['border', 'shadow'],
+      description:
+        'The one edge the card draws: a `border` (default) or a `shadow`, never both. An interactive\ncard strengthens whichever edge it has on hover.',
+    },
+    headerDivider: {
+      type: 'boolean',
+      description:
+        'Draw a divider rule under the header. Off by default: the header is separated from the body\nby its surface alone, and a divider is opt-in.',
     },
     tone: {
       enum: ['default', 'danger'],
@@ -51,7 +57,7 @@ const schema = {
       description: 'Remove side borders/radius and bleed to the viewport edge on narrow screens.',
     },
     padding: {
-      enum: ['none', 'default'],
+      enum: ['default', 'none'],
       description:
         'Body padding. `none` leaves header and footer padding intact while making body content flush with the card edges.',
     },

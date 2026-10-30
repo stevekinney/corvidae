@@ -490,6 +490,7 @@ describe('bureau.contexts.get', () => {
         'origin',
         'owner',
         'parentContextId',
+        'permissionMode',
         'title',
         'updatedAt',
       ]);

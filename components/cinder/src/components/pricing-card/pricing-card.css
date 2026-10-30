@@ -83,8 +83,6 @@
     font-weight: var(--cinder-font-semibold);
     color: var(--cinder-text-default);
     margin: 0;
-    letter-spacing: 0.025em;
-    text-transform: uppercase;
   }
 
   .cinder-pricing-card[data-cinder-selected] .cinder-pricing-card__name {

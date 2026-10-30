@@ -133,7 +133,7 @@ describe('bureau.contexts.steer effort', () => {
     });
   });
 
-  it('refuses a request with both or neither of override and effort, naming the field, and changes nothing', async () => {
+  it('refuses a request with several or none of override, effort and permissionMode, naming the field, and changes nothing', async () => {
     const { stepped, picker } = steppedPicker();
     stepped.releaseFirstStep();
     await withBureau(picker, async (opened) => {
@@ -150,7 +150,7 @@ describe('bureau.contexts.steer effort', () => {
         {
           path: ['effort'],
           message:
-            'Exactly one of `override` and `effort` is allowed; `override` and `effort` were sent',
+            'Exactly one of `override`, `effort` and `permissionMode` is allowed; `override` and `effort` were sent',
           code: 'custom',
         },
       ]);
@@ -158,7 +158,8 @@ describe('bureau.contexts.steer effort', () => {
       expect(issuesOf(neither)).toEqual([
         {
           path: ['override'],
-          message: 'Exactly one of `override` and `effort` is required; none was sent',
+          message:
+            'Exactly one of `override`, `effort` and `permissionMode` is required; none was sent',
           code: 'custom',
         },
       ]);
@@ -176,30 +177,36 @@ describe('bureau.contexts.steer effort', () => {
 });
 
 describe('the exactly-one rule reads its keys from one list', () => {
-  const keys = ['override', 'effort', 'permissionMode'];
+  const keys = ['override', 'effort', 'permissionMode', 'tone'];
 
-  it('counts and names a hypothetical third setting', () => {
+  it('counts and names a hypothetical fourth setting', () => {
     expect(exactlyOneSettingIssue({}, keys)).toEqual({
       path: ['override'],
       message:
-        'Exactly one of `override`, `effort` and `permissionMode` is required; none was sent',
+        'Exactly one of `override`, `effort`, `permissionMode` and `tone` is required; none was sent',
     });
-    expect(exactlyOneSettingIssue({ effort: 'low', permissionMode: 'plan' }, keys)).toEqual({
-      path: ['permissionMode'],
+    expect(exactlyOneSettingIssue({ effort: 'low', tone: 'terse' }, keys)).toEqual({
+      path: ['tone'],
       message:
-        'Exactly one of `override`, `effort` and `permissionMode` is allowed; `effort` and `permissionMode` were sent',
+        'Exactly one of `override`, `effort`, `permissionMode` and `tone` is allowed; `effort` and `tone` were sent',
     });
-    expect(exactlyOneSettingIssue({ permissionMode: 'plan' }, keys)).toBeUndefined();
-    expect(steeredSettingKey({ permissionMode: 'plan' }, keys)).toBe('permissionMode');
+    expect(exactlyOneSettingIssue({ tone: 'terse' }, keys)).toBeUndefined();
+    expect(steeredSettingKey({ tone: 'terse' }, keys)).toBe('tone');
   });
 
   it('does not read a request naming only another setting as an effort', () => {
-    const third = { contextId: 'c', commandId: 'k', permissionMode: 'plan' };
+    const fourth = { contextId: 'c', commandId: 'k', tone: 'terse' };
 
-    expect(() => requestedValueOf(third as never)).toThrow('names none of the settings');
+    expect(() => requestedValueOf(fourth as never)).toThrow('names none of the settings');
     expect(requestedValueOf({ contextId: 'c', commandId: 'k', effort: 'low' })).toEqual({
       target: 'effort',
       override: 'low',
+    });
+    expect(
+      requestedValueOf({ contextId: 'c', commandId: 'k', permissionMode: 'read-only' }),
+    ).toEqual({
+      target: 'permission-mode',
+      override: 'read-only',
     });
   });
 });

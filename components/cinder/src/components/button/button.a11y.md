@@ -30,7 +30,7 @@ Button sizes read the shared `--cinder-control-height-*` scale, so a Button is t
 - `xs`: 24px
 - `sm`: 28px, the toolbar size, so it lines up with toolbar SegmentedControl and Chip
 - `md` (default): 32px
-- `lg`: 40px
+- `lg`: 40px, for page-level primary actions only; inline actions use `md`
 
 These are visual component sizes, not guaranteed touch-target sizes. Use spacing around the button, a larger containing row, or an app-level hit target pattern when a touch-first surface needs to satisfy [WCAG 2.5.5 AAA target size](https://www.w3.org/WAI/WCAG22/Understanding/target-size-enhanced.html).
 

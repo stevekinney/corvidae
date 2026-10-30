@@ -67,8 +67,8 @@
  *   provider's API key.
  * - `/host/providers`, `/host/providers/<name>`, `/host/providers/reload`, and `/host/catalog`:
  *   read and change the provider configuration (`provider-routes.ts`).
- * - `/host/tool-sources`, `/host/tool-sources/<id>`, `/host/tool-sources/<id>/authorize`, and
- *   `/host/oauth/callback/<id>`: the saved MCP and OpenAPI tool sources in `configuration.json`
+ * - `/host/tool-sources`, `/host/tool-sources/<id>`, `/host/tool-sources/<id>/affected-agents`,
+ *   `/host/tool-sources/<id>/authorize`, and `/host/oauth/callback/<id>`: the saved MCP and OpenAPI tool sources in `configuration.json`
  *   (`toolSources`), their encrypted credentials, and the OAuth sign-in (`tool-source-routes.ts`).
  *   The sources load before the Bureau is built, so an agent file lists their tools as
  *   `<id>__<tool>` after the host starts again. A remote host refuses a change with the reason
@@ -170,6 +170,7 @@ import {
 import { isShellNavigation } from './shell-request.ts';
 import { createSkillManager, type SkillManager } from './skill-manager.ts';
 import { skillRoutes } from './skill-routes.ts';
+import { agentToolUseOf } from './tool-source-agents.ts';
 import { createToolSourceManager, type ToolSourceManager } from './tool-source-manager.ts';
 import { toolSourceRoutes } from './tool-source-routes.ts';
 
@@ -369,7 +370,13 @@ export type Host = {
    */
   readonly toolSources: Pick<
     ToolSourceManager,
-    'connect' | 'configureTools' | 'remove' | 'snapshot' | 'authorize' | 'completeAuthorization'
+    | 'connect'
+    | 'configureTools'
+    | 'remove'
+    | 'affectedAgents'
+    | 'snapshot'
+    | 'authorize'
+    | 'completeAuthorization'
   >;
   /**
    * A point-in-time reading of the host's own state: the Bureau's diagnostics, the engine server's
@@ -576,6 +583,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       audit: async (entry) => {
         await held.bureau?.internals.auditTrail?.record(entry);
       },
+      // The Bureau is built after the sources, so the agent files are read through `held`.
+      agentToolUse: async () =>
+        held.bureau === undefined ? [] : agentToolUseOf(held.bureau.agents)(),
       origin: () => hostOrigin ?? `http://${LOOPBACK}:${startPort}`,
       warn: options.warn ?? ((message) => console.warn(message)),
     });
@@ -885,6 +895,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         connect: (request) => toolSources.connect(request),
         configureTools: (request) => toolSources.configureTools(request),
         remove: (request) => toolSources.remove(request),
+        affectedAgents: (id) => toolSources.affectedAgents(id),
         snapshot: () => toolSources.snapshot(),
         authorize: (id) => toolSources.authorize(id),
         completeAuthorization: (id, callbackUrl) =>

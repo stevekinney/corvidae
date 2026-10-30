@@ -26,6 +26,8 @@ Keep focus indicators visible. If you wrap or restyle StatusDot, verify the focu
 
 Use the public props and documented examples to provide accessible names, descriptions, current state, disabled state, selection state, or value text. Do not rely on color, icon shape, placeholder text, or layout position as the only way to communicate meaning.
 
+A dot with only `status` renders a default word derived from it (for example "Online"), so the status is never communicated by color alone. That word is also the accessible name; with `labelVisible={false}` it stays the name without being drawn.
+
 When StatusDot accepts snippets or arbitrary children, the caller owns the semantics inside those children. Prefer native elements first, and add ARIA only when it matches the rendered behavior.
 
 ## Verification

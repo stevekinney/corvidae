@@ -41,6 +41,18 @@
     error: 'Error',
   };
 
+  /** The word a bare dot shows, so a status is never a dot alone. */
+  const statusWords: Record<StatusDotStatus, string> = {
+    online: 'Online',
+    offline: 'Offline',
+    warning: 'Warning',
+    danger: 'Danger',
+    pending: 'Pending',
+    neutral: 'Neutral',
+    success: 'Success',
+    accent: 'Accent',
+  };
+
   let {
     status,
     connectionState,
@@ -61,9 +73,12 @@
   const normalizedLabel = $derived(
     label?.trim()
       ? label.trim()
-      : connectionState === undefined
-        ? undefined
-        : connectionLabels[connectionState],
+      : connectionState !== undefined
+        ? connectionLabels[connectionState]
+        : // Only an absent label falls back to the status word; a blank one is an explicit "no word".
+          label === undefined
+          ? statusWords[resolvedStatus]
+          : undefined,
   );
   const hasVisibleLabel = $derived(labelVisible && normalizedLabel !== undefined);
 

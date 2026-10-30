@@ -98,12 +98,7 @@ const VARIANTS: Readonly<Record<string, CalloutVariant>> = {
 const MARKER = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][^\S\r\n]*([^\r\n]*)(?:\r?\n|$)/i;
 
 /** Class list mirroring callout.svelte's root element. */
-const ROOT_CLASSES = [
-  'cinder-callout',
-  'cinder-_status-surface',
-  'cinder-_status-surface-border',
-  'cinder-_status-surface-stripe',
-];
+const ROOT_CLASSES = ['cinder-callout', 'cinder-_status-surface', 'cinder-_status-surface-border'];
 
 /**
  * Read the alert marker off a blockquote, consuming it from the tree.

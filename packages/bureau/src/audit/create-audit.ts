@@ -79,6 +79,11 @@ const DETAIL_ALLOWLIST: readonly string[] = [
   // COR-1930: a local-command tool source names the command line it runs, so the owner can see
   // what was added. It never holds an environment value or a credential.
   'commandLine',
+  // COR-1931: removing a tool source names the agent files that listed its tools (identifiers
+  // joined by commas, which an identifier cannot hold) and how many there were, because the
+  // string is cut at the limit above.
+  'affectedAgents',
+  'affectedAgentCount',
 ];
 
 function detailOf(detail: unknown): AuditQueryRecord['detail'] {

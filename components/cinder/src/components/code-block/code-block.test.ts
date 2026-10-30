@@ -126,29 +126,48 @@ describe('CodeBlock — static structure', () => {
     expect(css).toContain('.cinder-code-block :where(pre.shiki)');
   });
 
-  test('language prop renders a language label in the header', () => {
+  test('renders no header bar and no border frame, even with a language label and copy button', async () => {
+    const { container } = render(CodeBlock, {
+      code: 'const x',
+      language: 'ts',
+      highlight: false,
+      copyable: true,
+    });
+    expect(container.querySelector('header')).toBeNull();
+    expect(container.querySelector('.cinder-code-block__header')).toBeNull();
+
+    const css = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
+    expect(css).not.toContain('.cinder-code-block__header');
+    expect(css).toMatch(/\.cinder-code-block\s*\{(?:(?!\}).)*\}/s);
+    const rootRule = /\.cinder-code-block\s*\{([^}]*)\}/s.exec(css)?.[1] ?? '';
+    expect(rootRule).not.toMatch(/\bborder\s*:/);
+    const metaRule = /\.cinder-code-block__meta\s*\{([^}]*)\}/s.exec(css)?.[1] ?? '';
+    expect(metaRule).not.toMatch(/\bborder(?:-[a-z]+)?\s*:/);
+  });
+
+  test('language prop renders a language label above the code', () => {
     const { container } = render(CodeBlock, { code: 'const x', language: 'ts', highlight: false });
     const label = container.querySelector('.cinder-code-block__language');
     expect(label?.textContent?.trim()).toBe('ts');
   });
 
-  test('header is omitted when neither language nor copyable is set', () => {
+  test('meta row is omitted when neither language nor copyable is set', () => {
     const { container } = render(CodeBlock, { code: 'plain' });
-    expect(container.querySelector('.cinder-code-block__header')).toBeNull();
+    expect(container.querySelector('.cinder-code-block__meta')).toBeNull();
   });
 
-  test('languageLabelVisible=false suppresses the header while keeping language semantics', () => {
+  test('languageLabelVisible=false suppresses the meta row while keeping language semantics', () => {
     const { container } = render(CodeBlock, {
       code: 'const x',
       language: 'ts',
       highlight: false,
       languageLabelVisible: false,
     });
-    expect(container.querySelector('.cinder-code-block__header')).toBeNull();
+    expect(container.querySelector('.cinder-code-block__meta')).toBeNull();
     expect(container.querySelector('.cinder-code-block__language')).toBeNull();
   });
 
-  test('languageLabelVisible=false keeps the header when copyable is set', () => {
+  test('languageLabelVisible=false keeps the meta row when copyable is set', () => {
     const { container } = render(CodeBlock, {
       code: 'const x',
       language: 'ts',
@@ -156,14 +175,14 @@ describe('CodeBlock — static structure', () => {
       copyable: true,
       languageLabelVisible: false,
     });
-    expect(container.querySelector('.cinder-code-block__header')).not.toBeNull();
+    expect(container.querySelector('.cinder-code-block__meta')).not.toBeNull();
     expect(container.querySelector('.cinder-code-block__language')).toBeNull();
     expect(container.querySelector('.cinder-copy-button')).not.toBeNull();
   });
 
-  test('copyable=true renders a copy button in the header', () => {
+  test('copyable=true renders a copy button in the meta row', () => {
     const { container } = render(CodeBlock, { code: 'x', copyable: true });
-    expect(container.querySelector('.cinder-code-block__header')).not.toBeNull();
+    expect(container.querySelector('.cinder-code-block__meta')).not.toBeNull();
     expect(container.querySelector('.cinder-copy-button')).not.toBeNull();
   });
 
@@ -178,7 +197,7 @@ describe('CodeBlock — static structure', () => {
   test('copy button focus ring is inset inside the overflow-hidden shell', async () => {
     const css = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
     expect(css).toContain(
-      '.cinder-code-block .cinder-code-block__header .cinder-copy-button:focus-visible',
+      '.cinder-code-block .cinder-code-block__meta .cinder-copy-button:focus-visible',
     );
     expect(css).toContain(
       'box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);',

@@ -20,6 +20,12 @@
       "title": "Typed options with as const",
       "description": "Use `as const` on the options array to infer a precise literal-union type for `T`. TypeScript then rejects any `value` that is not a member of the union (or the empty-string sentinel) at compile time.",
       "code": "<script lang=\"ts\">\n  import { Combobox } from '@lostgradient/cinder';\n\n  // `as const` narrows value types to the literal union 'apple' | 'banana' | …\n  // T is inferred from `options`; passing value=\"invalid\" would be a compile error.\n  const fruits = [\n    { value: 'apple', label: 'Apple' },\n    { value: 'banana', label: 'Banana' },\n    { value: 'cherry', label: 'Cherry' },\n    { value: 'grape', label: 'Grape' },\n    { value: 'mango', label: 'Mango' },\n  ] as const;\n\n  type FruitValue = (typeof fruits)[number]['value'];\n  let selected = $state<FruitValue | ''>('');\n</script>\n\n<Combobox\n  id=\"combobox-typed\"\n  label=\"Favorite fruit\"\n  placeholder=\"Start typing…\"\n  options={fruits}\n  bind:value={selected}\n/>\n<p style=\"margin-top: 0.5rem; color: var(--cinder-text-muted);\">Selected: {selected || '(none)'}</p>\n"
+    },
+    {
+      "id": "grouped",
+      "title": "Grouped options",
+      "description": "Give options a group to render them under headings with counts. Typing filters across groups and keeps the headings of groups that still match.",
+      "code": "<script lang=\"ts\">\n  import { Combobox } from '@lostgradient/cinder';\n\n  const workflows = [\n    { value: 'chat', label: 'Chat with an agent', group: 'Built in' },\n    { value: 'digest', label: 'Daily digest', group: 'Recent' },\n    { value: 'triage', label: 'Triage issues', group: 'Built in' },\n    { value: 'release', label: 'Release notes', group: 'All workflows' },\n    { value: 'review', label: 'Review a pull request', group: 'Recent' },\n    { value: 'backup', label: 'Nightly backup', group: 'All workflows' },\n  ];\n\n  let selected = $state('');\n</script>\n\n<Combobox\n  id=\"workflow\"\n  label=\"Workflow\"\n  placeholder=\"Search workflows…\"\n  options={workflows}\n  bind:value={selected}\n/>\n"
     }
   ]
 }

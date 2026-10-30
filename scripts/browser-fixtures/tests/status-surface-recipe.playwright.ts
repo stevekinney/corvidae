@@ -5,9 +5,9 @@
  * browser — the consolidation moved the `light-dark(oklch(from …))` algebra out
  * of each component and into a shared partial driven by `--_cinder-status-base`
  * plus per-variant chroma inputs. These checks confirm the composed recipe
- * actually paints (not flattened to the neutral surface) and that Callout's
- * decomposed stripe reads as visibly stronger than its soft border — the
- * properties the unit tests can only assert against CSS source.
+ * actually paints (not flattened to the neutral surface) and that Callout draws
+ * one edge with no accent stripe — the properties the unit tests can only assert
+ * against CSS source.
  *
  * Markup is injected directly (rather than relying on whichever playground
  * examples happen to render which variant) so the recipe is exercised
@@ -45,8 +45,8 @@ test.describe('status-surface recipe — composed soft surfaces paint correctly'
     await loadStyledPage(page);
     await inject(
       page,
-      `<aside class="cinder-callout cinder-_status-surface cinder-_status-surface-border cinder-_status-surface-stripe" data-cinder-variant="danger">danger</aside>
-       <aside class="cinder-callout cinder-_status-surface cinder-_status-surface-border cinder-_status-surface-stripe" data-cinder-variant="info">info</aside>`,
+      `<aside class="cinder-callout cinder-_status-surface cinder-_status-surface-border" data-cinder-variant="danger">danger</aside>
+       <aside class="cinder-callout cinder-_status-surface cinder-_status-surface-border" data-cinder-variant="info">info</aside>`,
     );
 
     const dangerBg = await page
@@ -65,32 +65,31 @@ test.describe('status-surface recipe — composed soft surfaces paint correctly'
     expect(dangerBg).not.toBe(infoBg);
   });
 
-  test('Callout stripe reads stronger than its soft border (decomposed recipe)', async ({
-    page,
-  }) => {
+  test('Callout draws one edge: the inline-start border matches the others', async ({ page }) => {
     await loadStyledPage(page);
     await inject(
       page,
-      `<aside class="cinder-callout cinder-_status-surface cinder-_status-surface-border cinder-_status-surface-stripe" data-cinder-variant="danger">danger</aside>`,
+      `<aside class="cinder-callout cinder-_status-surface cinder-_status-surface-border" data-cinder-variant="danger">danger</aside>`,
     );
 
-    const { stripe, border } = await page
+    const { start, top, startWidth, topWidth } = await page
       .locator("#status-surface-fixture .cinder-callout[data-cinder-variant='danger']")
       .first()
       .evaluate((node) => {
         const style = getComputedStyle(node);
         return {
-          stripe: style.borderInlineStartColor,
-          border: style.borderTopColor,
+          start: style.borderInlineStartColor,
+          top: style.borderTopColor,
+          startWidth: style.borderInlineStartWidth,
+          topWidth: style.borderTopWidth,
         };
       });
 
-    // Both resolve to real colors, and the stripe differs from the soft border —
-    // the stripe class composes after the border class and wins the inline-start
-    // edge with a higher chroma.
-    expect(stripe).not.toBe('');
-    expect(border).not.toBe('');
-    expect(stripe).not.toBe(border);
+    // A status surface is a tint and an icon inside one edge: no thicker or more saturated
+    // inline-start stripe.
+    expect(start).not.toBe('');
+    expect(start).toBe(top);
+    expect(startWidth).toBe(topWidth);
   });
 
   test('Surface-only Alert recipe keeps a neutral border (P7)', async ({ page }) => {
@@ -127,11 +126,11 @@ test.describe('status-surface recipe — composed soft surfaces paint correctly'
     expect(dangerBorder).not.toBe(successBorder);
   });
 
-  test('forced-colors: the recipe yields to system colors (border/stripe → CanvasText)', async ({
+  test('forced-colors: the recipe yields to system colors (border → CanvasText)', async ({
     browser,
   }) => {
     // The recipe is imported after the component CSS, so its own
-    // @media (forced-colors: active) reset must keep the stripe/border pinned to
+    // @media (forced-colors: active) reset must keep the border pinned to
     // the system color rather than letting the oklch() value win by source order.
     const context = await browser.newContext({ forcedColors: 'active' });
     try {
@@ -139,24 +138,22 @@ test.describe('status-surface recipe — composed soft surfaces paint correctly'
       await loadStyledPage(page);
       await inject(
         page,
-        `<aside class="cinder-callout cinder-_status-surface cinder-_status-surface-border cinder-_status-surface-stripe" data-cinder-variant="danger">danger</aside>`,
+        `<aside class="cinder-callout cinder-_status-surface cinder-_status-surface-border" data-cinder-variant="danger">danger</aside>`,
       );
 
-      const { stripe, border } = await page
+      const { start, border } = await page
         .locator("#status-surface-fixture .cinder-callout[data-cinder-variant='danger']")
         .first()
         .evaluate((node) => {
           const style = getComputedStyle(node);
-          return { stripe: style.borderInlineStartColor, border: style.borderTopColor };
+          return { start: style.borderInlineStartColor, border: style.borderTopColor };
         });
 
-      // In forced-colors mode both resolve to the SAME system color (CanvasText)
-      // — the oklch tint does not leak through. Before the recipe's own
-      // forced-colors reset, the relocated stripe oklch() would have won the
-      // inline-start edge and differed from the border.
-      expect(stripe).not.toBe('');
+      // In forced-colors mode every edge resolves to the SAME system color (CanvasText)
+      // — the oklch tint does not leak through.
+      expect(start).not.toBe('');
       expect(border).not.toBe('');
-      expect(stripe).toBe(border);
+      expect(start).toBe(border);
     } finally {
       await context.close();
     }

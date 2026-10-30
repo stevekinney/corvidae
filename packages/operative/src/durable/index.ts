@@ -130,10 +130,12 @@ export {
   selectToolCallStallPolicy,
 } from './tool-activity-liveness';
 export type { ToolCallLivenessWatchdog, ToolCallProgressUpdate } from './tool-activity-liveness';
+export { PERMISSION_MODES } from './types';
 export type {
   ClaimedSessionInput,
   DurableRunDeps,
   PendingWakeup,
+  PermissionMode,
   RunCheckpoint,
   RunCursor,
   SessionInputAdmissionOutcome,

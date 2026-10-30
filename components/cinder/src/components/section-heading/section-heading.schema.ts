@@ -37,7 +37,7 @@ const schema = {
         name: 'label',
         reason: 'function-or-snippet',
         description:
-          'Optional small uppercase "eyebrow" label. When present, the label is\n rendered as a `<p>` inside an `<hgroup>` that also contains the heading.\n\n The `<hgroup>` content model only permits `<p>` elements plus one\n heading element, so the snippet **must render phrasing content only** —\n plain text, `<span>`, `<strong>`, `<em>`, `<a>`, icons, etc. Do not\n render block elements (`<div>`, `<nav>`, `<button>` wrappers, additional\n headings) into this snippet; doing so produces invalid HTML inside\n `<hgroup>`.',
+          'Optional small sentence-case "eyebrow" label. When present, the label is\n rendered as a `<p>` inside an `<hgroup>` that also contains the heading.\n\n The `<hgroup>` content model only permits `<p>` elements plus one\n heading element, so the snippet **must render phrasing content only** —\n plain text, `<span>`, `<strong>`, `<em>`, `<a>`, icons, etc. Do not\n render block elements (`<div>`, `<nav>`, `<button>` wrappers, additional\n headings) into this snippet; doing so produces invalid HTML inside\n `<hgroup>`.',
       },
       {
         name: 'tabs',

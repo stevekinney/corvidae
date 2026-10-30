@@ -51,6 +51,8 @@ import {
   type OnStepHook,
   OPERATIVE_RESOLVE_RUN_OPTIONS,
   parseSessionInputPayload,
+  PERMISSION_MODES,
+  type PermissionMode,
   readGenerationProfile,
   reattachDurableActiveRun,
   type RecoveredRunHandle,
@@ -101,6 +103,7 @@ import {
   isFailureFinishReason,
   readDurableRunResult,
   humanInputSchemaOf,
+  sessionOwnerOf,
 } from '@lostgradient/operative';
 import {
   SkillActivatedEvent,
@@ -127,6 +130,7 @@ import {
   WorkflowRecoverySkippedEvent,
 } from '@lostgradient/weft';
 import {
+  type AnyToolbox,
   type SignedPendingToolApproval,
   type Tool,
   type ToolExecutionResult,
@@ -569,6 +573,7 @@ import type {
   CancelDurableRunOutcome,
   CleanupAcknowledgement,
   ContextDeletionReport,
+  ContextWindowReport,
   CreateRunRequest,
   LocateRunCreationReceiptRequest,
   StartTaskOptions,
@@ -604,6 +609,12 @@ import { isSettlingRunAction, settledActionTimestamp } from './run-settlement';
 import { createAudit } from './audit/create-audit';
 import { createNotifications } from './notifications/create-notifications';
 import type { BureauNotifications } from './notifications/notification-types';
+import {
+  buildContextWindow,
+  type ContextWindowTool,
+  type ReportedStepUsage,
+  sizeManagedAssets,
+} from './contexts/context-window';
 import { createContexts } from './contexts/create-contexts';
 import { createTaskHandle, createTasks, seedsConversation } from './tasks/create-tasks';
 import {
@@ -625,6 +636,9 @@ import { scheduleInputPreview } from './schedule-input-preview';
 import { ownEntry } from './own-entry';
 
 const BUREAU_AGENT_NAME = 'bureau';
+
+/** COR-1937: how many of a context's newest tasks `contexts.window` looks through for its latest step. */
+const CONTEXT_WINDOW_TASK_SCAN_LIMIT = 50;
 
 const SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS = 3;
 const SESSION_PERSISTENCE_RETRY_DELAY_MILLISECONDS = 10;
@@ -2954,6 +2968,8 @@ async function constructBureau<const D extends AgentDefinitions>(
                 : { approvalSecret: options.agentApprovalSecret }),
               // COR-1828: a tool a person allowed for the rest of the chat skips its `on-changes` ask.
               rememberedTools: approvalGrantsOfRun,
+              // COR-1936: and the chat's permission mode is read for every call.
+              permissionModeOfRun,
               // COR-1920: a file agent's per-run toolbox resolves secret answers as the Bureau's does.
               ...(runtime.secretAnswers === undefined
                 ? {}
@@ -10172,6 +10188,23 @@ async function constructBureau<const D extends AgentDefinitions>(
       if (repaired !== undefined) {
         taskResyncBootPass = Promise.all([taskResyncBootPass, repaired]).then(() => undefined);
       }
+      // COR-1945: a failed run whose process died after its settlement committed and before its
+      // notification was written, or whose notification write failed, still has its outbox entry.
+      // Held in the same boot pass, so the boot takes no extra turn and `shutdown()` waits for it.
+      const notificationsRepaired = notificationsComposition.repair().then(
+        () => undefined,
+        (error: unknown) => {
+          diagnose({
+            level: 'error',
+            scope: 'recovery',
+            message: `[bureau] Could not repair the owed notifications at boot: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        },
+      );
+      taskResyncBootPass = Promise.all([taskResyncBootPass, notificationsRepaired]).then(
+        () => undefined,
+      );
       return report;
     } finally {
       recoveryPassActive = false;
@@ -14999,6 +15032,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         contextId: runtimeServices.identifiers.next('session'),
         override: parentRequest ?? parentSteering?.model ?? null,
         effort: parentSteering?.effort ?? null,
+        permissionMode: parentSteering?.permissionMode ?? null,
       });
     } catch (error) {
       if (error instanceof BureauLedgerConflictError) throw forkConflict(request);
@@ -15061,10 +15095,20 @@ async function constructBureau<const D extends AgentDefinitions>(
             principal: request.owner,
             requestedValue: { target: 'effort', override: claim.effort },
           });
+    // COR-1936: and the permission mode, so a branch of a read-only chat is read-only.
+    const carriedPermissionMode =
+      claim.permissionMode === undefined || claim.permissionMode === null
+        ? null
+        : await submitSteeringCommand(claim.contextId, {
+            id: `${request.commandId}:permission-mode`,
+            principal: request.owner,
+            requestedValue: { target: 'permission-mode', override: claim.permissionMode },
+          });
     const result: ForkSessionResult = {
       contextId: claim.contextId,
       carriedOverride: carried,
       carriedEffort,
+      carriedPermissionMode,
     };
     const completed = await forkLedger.complete(outcome.entry, result);
     return answerOfFork(completed.result);
@@ -15160,8 +15204,118 @@ async function constructBureau<const D extends AgentDefinitions>(
           ? null
           : { provider: desired.modelProvider ?? null, model: desired.model },
       effort: desired?.effort ?? null,
+      permissionMode: desired?.permissionMode ?? null,
       configVersion: gate?.getConfigVersion() ?? 0,
     };
+  }
+
+  /**
+   * COR-1937 — the context-window report of a context. Read-only: the history is the session's
+   * persisted one, the instructions and tool schemas come from the agent (or, while this process
+   * holds the context's latest run, that run's own toolbox), and the reported usage comes from the
+   * latest step recorded for the context. No model is called and nothing is written.
+   */
+  async function getContextWindow(
+    contextId: string,
+    windowOptions?: { readonly incarnation?: string | undefined },
+  ): Promise<ContextWindowReport | undefined> {
+    // Read before the first await: the caller's options are not read again.
+    const expectedIncarnation = windowOptions?.incarnation;
+    const sessions = requireSessionStore();
+    const session = await sessions.load(contextId);
+    if (session === undefined) return undefined;
+    if (expectedIncarnation !== undefined && session.incarnation !== expectedIncarnation) {
+      return undefined;
+    }
+    const steering = await getSessionSteering(contextId);
+    // Deleted while its steering was read.
+    if (steering === undefined) return undefined;
+    const agent = agentCatalog.find(session.agentName) ?? tryAgents.peek(session.agentName);
+    const catalog = models.catalog().descriptors;
+    const named =
+      steering.model ?? (agent === undefined ? null : describeAgentModels(agent, catalog).default);
+    const model =
+      named === null
+        ? undefined
+        : catalog.find(
+            (row) =>
+              row.model === named.model &&
+              (named.provider === null || row.provider === named.provider),
+          );
+
+    // Newest first; a context's latest step is the last step of its newest task that has one. One
+    // page of `CONTEXT_WINDOW_TASK_SCAN_LIMIT` tasks bounds the reads of a report that clients
+    // poll: a context whose newest tasks all ended before a step reports `usedReported: null`.
+    const latest = await tasks.enumerate({
+      contextId,
+      limit: CONTEXT_WINDOW_TASK_SCAN_LIMIT,
+      offset: 0,
+    });
+    let reported: ReportedStepUsage | undefined;
+    for (const task of latest.tasks) {
+      const liveStep = store.getRun(task.id)?.steps.at(-1);
+      // A run this process no longer holds keeps its steps in the durable checkpoint.
+      const checkpointed =
+        liveStep === undefined ? await runtime.durable?.checkpointStore.loadSteps(task.id) : [];
+      const step = liveStep ?? checkpointed?.at(-1);
+      if (step === undefined) continue;
+      reported = step.usage;
+      break;
+    }
+
+    const liveToolbox = latest.tasks.map((task) => runToolboxesByRunId.get(task.id)).find(Boolean);
+    let toolbox: Pick<AnyToolbox, 'tools'> | undefined = liveToolbox;
+    if (toolbox === undefined && agent !== undefined && hasDefinitionResolver(agent)) {
+      // The agent's own definition resolves to the toolbox a run of it would start with: a pure
+      // build, no run and no model call.
+      const resolved = await agent[OPERATIVE_RESOLVE_RUN_OPTIONS]('window', {});
+      toolbox = resolved.toolbox;
+    }
+    const tools: ContextWindowTool[] = (toolbox?.tools() ?? []).map((tool) => {
+      const described = tool.toJSON();
+      return {
+        name: described.name,
+        description: described.description,
+        input: described.input,
+      };
+    });
+
+    // Every read above belongs to the incarnation loaded first: an id deleted and created again
+    // while they ran is a different context, and this report would mix the two.
+    const current = await sessions.load(contextId);
+    if (current?.incarnation !== session.incarnation) return undefined;
+
+    // A managed asset is sized from its descriptor as the session's owner, so no bytes are read.
+    const assetService = assetServiceHolder.current;
+    const owner = ownerOrLocal(sessionOwnerOf(session.metadata) ?? undefined);
+    const resolvedSources =
+      assetService === undefined
+        ? undefined
+        : await sizeManagedAssets(session.conversationHistory, async (assetId) => {
+            const descriptor = await assetService.inspect(assetId, { id: owner });
+            return {
+              state: descriptor.state,
+              custody: descriptor.custody,
+              mediaType: descriptor.mediaType,
+              byteLength: descriptor.byteLength,
+            };
+          });
+
+    return buildContextWindow({
+      history: session.conversationHistory,
+      instructions: agent === undefined ? undefined : instructionsOf(agent),
+      tools,
+      model,
+      catalog,
+      reported,
+      resolvedSources,
+    });
+  }
+
+  /** The system instructions an agent was created with (`createAgent`'s `instructions`), if it declares any. */
+  function instructionsOf(agent: object): string | undefined {
+    const declared: unknown = Reflect.get(agent, 'instructions');
+    return typeof declared === 'string' ? declared : undefined;
   }
 
   async function admitSteeringRequest(
@@ -15357,7 +15511,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       // once here rather than casting at each field access.
       const configurationRequest = request.requestedValue as Extract<
         SteeringRequestedValue,
-        { target: 'route' | 'model' | 'provider' | 'effort' }
+        { target: 'route' | 'model' | 'provider' | 'effort' | 'permission-mode' }
       >;
 
       // COR-1227 — resolve a `policyRef` to a concrete coordinate.
@@ -15400,11 +15554,15 @@ async function constructBureau<const D extends AgentDefinitions>(
               ? profile.exactOverride?.provider
               : steeringTarget === 'route'
                 ? profile.exactOverride?.route
-                : // `effort` has a dedicated profile field beside the
-                  // override, and it is the more natural place for a policy
-                  // to express one — `exactOverride.effort` still wins when
-                  // both are set, matching the override's name.
-                  (profile.exactOverride?.effort ?? profile.defaultEffort);
+                : // COR-1936: a policy profile states no permission mode, so there is nothing
+                  // to resolve one from.
+                  steeringTarget === 'permission-mode'
+                  ? undefined
+                  : // `effort` has a dedicated profile field beside the
+                    // override, and it is the more natural place for a policy
+                    // to express one — `exactOverride.effort` still wins when
+                    // both are set, matching the override's name.
+                    (profile.exactOverride?.effort ?? profile.defaultEffort);
         if (override === undefined) {
           // The profile exists but specifies nothing for this coordinate.
           // Admitting anything here would be inventing a value the policy
@@ -15422,7 +15580,9 @@ async function constructBureau<const D extends AgentDefinitions>(
         resolvedRequestedValue = (
           steeringTarget === 'effort'
             ? { target: 'effort', override: override as Effort }
-            : { target: steeringTarget, override }
+            : steeringTarget === 'permission-mode'
+              ? { target: 'permission-mode', override: override as PermissionMode }
+              : { target: steeringTarget, override }
         ) satisfies ImplementedSteeringCommand['requestedValue'];
       }
       const { descriptors } = models.catalog();
@@ -15446,15 +15606,18 @@ async function constructBureau<const D extends AgentDefinitions>(
               ? descriptors.some((descriptor) =>
                   descriptor.effort.portable.includes(override as Effort),
                 )
-              : // `route`: a routing entry is configured on the generate
-                // function (`RoutingOptions.routes`), not in the model
-                // catalog, and Bureau does not hold that table. There is
-                // nothing here to validate against, so admission accepts
-                // the name and the routing layer rejects an unknown route
-                // at generate time. Recorded rather than faked: a
-                // membership test against a catalog that structurally
-                // cannot contain routes would reject every valid route.
-                true;
+              : // COR-1936: a permission mode is Bureau's own, not a catalog row.
+                steeringTarget === 'permission-mode'
+                ? (PERMISSION_MODES as readonly string[]).includes(override as string)
+                : // `route`: a routing entry is configured on the generate
+                  // function (`RoutingOptions.routes`), not in the model
+                  // catalog, and Bureau does not hold that table. There is
+                  // nothing here to validate against, so admission accepts
+                  // the name and the routing layer rejects an unknown route
+                  // at generate time. Recorded rather than faked: a
+                  // membership test against a catalog that structurally
+                  // cannot contain routes would reject every valid route.
+                  true;
       if (!known) {
         return refuseSteering(
           {
@@ -17643,18 +17806,62 @@ async function constructBureau<const D extends AgentDefinitions>(
     const sessions = runtime.sessionStore;
     if (sessions === undefined) return new Set();
     try {
-      // A run this process holds names its session; one recovered after a restart is found by
-      // its task record, which every session run writes before it starts.
-      const runState = store.getRun(runId);
-      const live = runState === undefined ? '' : getRunSessionIdentifier(runState);
-      const task = live !== '' ? undefined : await tasks.get(runId);
-      const sessionId = live !== '' ? live : task?.contextId;
+      const sessionId = await sessionIdOfRun(runId);
       if (sessionId === undefined) return new Set();
       const session = await sessions.load(sessionId);
       return new Set(approvalGrantsOf(session?.metadata));
     } catch {
       return new Set();
     }
+  }
+
+  /**
+   * The session `runId` belongs to, or `undefined` for a run no session holds. A run this process
+   * holds names its session; one recovered after a restart is found by its task record, which
+   * every session run writes before it starts.
+   */
+  async function sessionIdOfRun(runId: string): Promise<string | undefined> {
+    const runState = store.getRun(runId);
+    const live = runState === undefined ? '' : getRunSessionIdentifier(runState);
+    const task = live !== '' ? undefined : await tasks.get(runId);
+    return live !== '' ? live : task?.contextId;
+  }
+
+  /**
+   * COR-1936 — the permission mode of the chat `runId` belongs to, read when a tool call is
+   * decided: the mode the session's steering holds, caught up from the durable log first (so a
+   * mode another process admitted is seen), so a steer is in force for the calls decided after it. `undefined` for a run no session holds, which has no chat to steer.
+   * A chat that was never steered is `on-changes`. A read that fails rejects, and the approval
+   * hook treats that as `read-only`.
+   */
+  async function permissionModeOfRun(runId: string): Promise<PermissionMode | undefined> {
+    if (runtime.sessionStore === undefined) return undefined;
+    const sessionId = await sessionIdOfRun(runId);
+    if (sessionId === undefined) return undefined;
+    // Read through the log catch-up, not the gate alone: another process on a shared durable
+    // backend may have admitted a mode since this process last polled.
+    const incarnation = runSessionIncarnations.get(runId);
+    const kv = durableSteeringStore();
+    if (incarnation !== undefined && kv !== undefined) {
+      // Pinned to the incarnation the run started in: a chat deleted, or deleted and recreated,
+      // by another process rejects (the hook counts that as `read-only`) instead of reading
+      // the replacement's mode, or none.
+      const current = await runtime.sessionStore.load(sessionId);
+      if (current?.incarnation !== incarnation) {
+        throw new BureauError(
+          `Session "${sessionId}" no longer has incarnation "${incarnation}".`,
+          'CONFLICT',
+        );
+      }
+      const cursor = await enqueueSteering(sessionId, () =>
+        catchUpSteering(kv, sessionId, incarnation),
+      );
+      return cursor.gate.getDesiredState().permissionMode ?? 'on-changes';
+    }
+    // A run with no incarnation yet (a fresh schedule fire whose session does not exist) has no
+    // chat to steer.
+    const steering = await getSessionSteering(sessionId);
+    return steering?.permissionMode ?? 'on-changes';
   }
 
   /**
@@ -20387,6 +20594,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     steer: submitSteeringCommand,
     steering: getSessionSteering,
     fork: forkSession,
+    window: getContextWindow,
     eventHistory: readEventHistory,
     subscribeEventHistory: subscribeToEventHistory,
   });

@@ -1167,3 +1167,30 @@ describe('DataTable — virtualized rows', () => {
     expect(bodyDataRows(container)[0]?.getAttribute('tabindex')).toBe('0');
   });
 });
+
+describe('DataTable — truncating columns', () => {
+  const storageKey = `storage/${'segment-'.repeat(250)}`;
+
+  test('a truncate column ellipsizes its text and keeps the full value in the title', () => {
+    const { container } = render(DataTable, {
+      columns: [
+        { key: 'key', label: 'Key', truncate: true },
+        { key: 'owner', label: 'Owner' },
+      ],
+      rows: [{ key: storageKey, owner: 'ops' }],
+    });
+    const truncated = container.querySelectorAll(
+      'td[data-cinder-truncate], th[data-cinder-truncate]',
+    );
+    expect(truncated).toHaveLength(1);
+    const text = truncated[0]?.querySelector('.cinder-table__cell-text');
+    expect(text?.getAttribute('title')).toBe(storageKey);
+
+    // A column without the option is untouched.
+    const owner = Array.from(container.querySelectorAll('tbody td')).find(
+      (cell) => cell.textContent?.trim() === 'ops',
+    );
+    expect(owner?.hasAttribute('data-cinder-truncate')).toBe(false);
+    expect(owner?.querySelector('.cinder-table__cell-text')).toBeNull();
+  });
+});

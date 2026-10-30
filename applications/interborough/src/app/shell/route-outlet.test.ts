@@ -345,6 +345,7 @@ describe('a page that asks to be kept', () => {
               forkedFromMessageId: null,
               model: null,
               effort: null,
+              permissionMode: 'on-changes',
               configVersion: 0,
               messageCount: 0,
               createdAt: '2026-10-19T00:00:00.000Z',

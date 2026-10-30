@@ -192,14 +192,12 @@ The identical `light-dark(oklch(from … L C h))` algebra that was duplicated ac
 | -------------------------------- | ---------------------------- | ---------------------- |
 | `.cinder-_status-surface`        | `background-color` + `color` | Alert, Banner, Callout |
 | `.cinder-_status-surface-border` | `border-color`               | Banner, Callout        |
-| `.cinder-_status-surface-stripe` | `border-inline-start-color`  | Callout only           |
 
-Alert composes the surface only (P7 neutral border); Banner adds the soft border; Callout adds the border and the saturated stripe. Each component sets the recipe's inputs per variant on its own root element:
+Alert composes the surface only (P7 neutral border); Banner and Callout add the soft border. The saturated inline-start stripe (`.cinder-_status-surface-stripe`) that Callout once composed is gone (COR-1821): a status surface is a tint and an icon inside one edge. Each component sets the recipe's inputs per variant on its own root element:
 
 - `--_cinder-status-base` — the status base color (`var(--cinder-status-info-solid)` etc.; Alert keeps `var(--cinder-alert-info)` for its info variant).
 - `--_cinder-status-fg-chroma-light` / `--_cinder-status-fg-chroma-dark` — the foreground chroma, which **escalates per status severity** (info `0.12` → danger `0.18` light) and so cannot be a single baked constant.
-- `--_cinder-status-stripe-chroma` — Callout's stripe chroma (info `0.13` → danger `0.18`).
 
-The L values and the background/border chroma are uniform across variants, so they are baked into the recipe; only the foreground and stripe chroma vary.
+The L values and the background/border chroma are uniform across variants, so they are baked into the recipe; only the foreground chroma varies.
 
 **This consolidation preserves every rendered value exactly** — it is a pure dedup, not a visual change. The L=20% dark soft-surface background that this document measured against the L=28% triple is unchanged; the ~8-oklch-L-point discrepancy that blocked the triple migration is preserved verbatim. Reconciling the soft surface with the triples remains separate, screenshot-gated work.

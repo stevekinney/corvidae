@@ -31,6 +31,8 @@ export type ContextsDependencies = {
   readonly steering: BureauContexts['steering'];
   /** {@link BureauContexts.fork}. */
   readonly fork: BureauContexts['fork'];
+  /** {@link BureauContexts.window}. */
+  readonly window: BureauContexts['window'];
   /** The Bureau's durable event history read, which {@link BureauContexts.events} narrows to the session owner. */
   readonly eventHistory: DurableEventHistoryRead;
   /** The Bureau's durable event history subscription, which {@link BureauContexts.subscribeEvents} narrows to the session owner. */
@@ -55,6 +57,7 @@ export function createContexts(dependencies: ContextsDependencies): BureauContex
     steer: dependencies.steer,
     steering: dependencies.steering,
     fork: dependencies.fork,
+    window: dependencies.window,
     events: (contextId, options) =>
       dependencies.eventHistory({ kind: 'session', id: contextId }, options),
     subscribeEvents: (contextId, listener, options) =>

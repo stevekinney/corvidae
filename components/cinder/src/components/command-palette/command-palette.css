@@ -181,8 +181,6 @@
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-xs);
     font-weight: var(--cinder-font-medium);
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
   }
 
   /* ----------------------------------------

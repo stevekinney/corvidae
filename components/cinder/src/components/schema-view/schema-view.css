@@ -1,0 +1,91 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@import '../collapsible/collapsible.css';
+@import '../json-viewer/json-viewer.css';
+
+@layer cinder.components {
+  /* ========================================
+ * SCHEMA VIEW
+ * Read-only schema: one line per field, nested objects indented.
+ * ======================================== */
+
+  .cinder-schema-view {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-3);
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-schema-view__fields {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  /* A nested list sits under its field's line, indented by one step with a
+   * hairline that connects the children to their parent. */
+  .cinder-schema-view__field > .cinder-schema-view__fields {
+    margin-block-start: var(--cinder-space-2);
+    margin-inline-start: var(--cinder-space-2);
+    padding-inline-start: var(--cinder-space-4);
+    border-inline-start: 1px solid var(--cinder-border-muted);
+  }
+
+  /* One line per field: label, required dot, type, description. It wraps
+   * only when the description is longer than the room beside the type. */
+  .cinder-schema-view__line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: var(--cinder-space-2);
+    row-gap: var(--cinder-space-0-5);
+  }
+
+  .cinder-schema-view__label {
+    font-weight: var(--cinder-font-medium);
+    color: var(--cinder-text-default);
+  }
+
+  /* The required marker is a small red dot beside the label, not an asterisk. */
+  .cinder-schema-view__required {
+    align-self: center;
+    flex: 0 0 auto;
+    inline-size: 0.4375rem;
+    block-size: 0.4375rem;
+    border-radius: var(--cinder-radius-full);
+    background: var(--cinder-status-danger-solid);
+  }
+
+  .cinder-schema-view__type {
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-schema-view__description {
+    flex: 1 1 12rem;
+    min-inline-size: 0;
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-schema-view__truncated,
+  .cinder-schema-view__empty {
+    margin: 0;
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-schema-view__document {
+    padding-block-start: var(--cinder-space-2);
+    user-select: text;
+  }
+
+  @media (forced-colors: active) {
+    .cinder-schema-view__required {
+      background: CanvasText;
+    }
+  }
+}
