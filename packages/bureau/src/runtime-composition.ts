@@ -3416,6 +3416,9 @@ async function buildRuntimeComposition(
       // persistence of what the client decided.
       const skillClient = createSkillClient({
         catalog: skillCatalog,
+        ...(options.skills.currentCatalog === undefined
+          ? {}
+          : { currentCatalog: options.skills.currentCatalog }),
         // Routed by source kind rather than fixed to the filesystem: a catalog can mix a host's
         // filesystem roots with the bureau's own store, and a `storage` record's `sourceLocation`
         // is a store namespace that no filesystem read can follow.

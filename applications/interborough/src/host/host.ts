@@ -659,8 +659,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const skills = await createSkillManager({
       bungalow,
       configurationQueue,
+      // Strict, so a failed write rejects and the trust route answers `partial` (COR-1926).
       audit: async (entry) => {
-        await bureau.internals.auditTrail?.record(entry);
+        await bureau.internals.auditTrail?.record({ ...entry, strict: true });
       },
     });
     held.skills = skills;

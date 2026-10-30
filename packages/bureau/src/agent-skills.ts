@@ -108,6 +108,13 @@ export interface AgentSkillsOptions {
    */
   readonly catalog: SkillCatalogRevision;
   /**
+   * The host's catalog as it is now, read each time a skill is used (COR-1926). It narrows what
+   * {@link catalog} offered and never widens it: a run holding this revision is refused a skill
+   * the current catalog no longer trusts at its next use, including a run that started before the
+   * change. See `CreateSkillClientOptions.currentCatalog`.
+   */
+  readonly currentCatalog?: (() => SkillCatalogRevision) | undefined;
+  /**
    * Whether the model is handed `activate_skill`, `load_skill_resource` and
    * `deactivate_skill` and shown the catalog at step 0. Defaults to `true`.
    * `false` keeps the catalog out of the model's reach, so nothing can
@@ -188,6 +195,7 @@ export function createAgentSkills(options: AgentSkillsOptions): AgentSkills {
           : createSkillGuardrailOptions(run.guardrails.configuration, run.guardrails.hooks);
       const client = createSkillClient({
         catalog: options.catalog,
+        ...(options.currentCatalog === undefined ? {} : { currentCatalog: options.currentCatalog }),
         loadArtifact: options.loadArtifact ?? createSkillArtifactLoader({}),
         runtime: run.runtime,
         correlation: { agentName: run.agentName },

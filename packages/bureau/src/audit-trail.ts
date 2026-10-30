@@ -408,6 +408,16 @@ export interface AuditTrail {
      * exists to close (just at shutdown instead of a crash).
      */
     dedupeKey?: string | undefined;
+    /**
+     * COR-1926: when `true`, this call's returned promise REJECTS when the record cannot be
+     * written (a storage failure, an invalid `timestampMs`, or an already-aborted shutdown
+     * signal) instead of resolving after a diagnostic, which is what the default does. It adds
+     * no deduplication: every strict call that succeeds appends one record. For a caller that
+     * answers a person for the write, such as the host's skill trust route, which must not report
+     * a change as recorded when it was not. Callers that omit it keep the best-effort,
+     * never-rejecting path. A trail with no KV store still resolves without writing.
+     */
+    strict?: boolean | undefined;
   }): Promise<void>;
   /**
    * AB-388: delete every durable record whose `timestampMs` is strictly
@@ -1407,6 +1417,14 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
         return Promise.reject(
           new Error(
             `[audit-trail] Refusing dedupeKey-guarded write for "${writeOptions.dedupeKey}": the audit trail's shutdown signal is already aborted.`,
+          ),
+        );
+      }
+      // COR-1926: a `strict` caller asked to be told when the record is not written.
+      if (writeOptions?.strict) {
+        return Promise.reject(
+          new Error(
+            `[audit-trail] Refusing strict write of the "${entry.type}" record for "${entry.runId}": the audit trail's shutdown signal is already aborted.`,
           ),
         );
       }
@@ -2489,10 +2507,12 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
       principal?: string;
       timestampMs?: number | undefined;
       dedupeKey?: string | undefined;
+      strict?: boolean | undefined;
     }): Promise<void> {
       await writeOutOfBandRecord(entry, {
         timestampMs: entry.timestampMs,
         dedupeKey: entry.dedupeKey,
+        ...(entry.strict === true ? { strict: true } : {}),
       });
     },
 
