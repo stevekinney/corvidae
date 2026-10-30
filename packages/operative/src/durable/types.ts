@@ -9,7 +9,7 @@ import type {
 import type { HumanInputSchema } from '../human-input-schema';
 
 import type { AccumulatedCost } from '../cost-estimation';
-import type { EffectiveContextRecord } from '../effective-context-record';
+import type { EffectiveContextDelta } from '../effective-context-record';
 import type { GeneratedMediaAdmission } from '../generated-media';
 import type { PlanReason } from '../providers/plan-reason';
 import type { Effort } from '../providers/types';
@@ -116,12 +116,15 @@ export interface StepRecord {
    */
   planReason?: PlanReason | undefined;
   /**
-   * What the step's model saw (COR-1810, `StepResult.effectiveContext`): digests and message ids,
-   * capped at 256 KiB, kept with the run's checkpoint and so for as long as the run's checkpoints
-   * are. Optional, so it adds no record version: a record written before it existed reads as a step
+   * What the step's model saw (COR-1810, `StepResult.effectiveContext`), as the delta from the
+   * previous step's: the epoch's sources and digest, and only the message digests and ids added
+   * since. A step's write is therefore the same size however long the conversation is (COR-1376);
+   * `rebuildEffectiveContexts` rebuilds each step's whole record, capped at 256 KiB, from the
+   * run's records. Kept with the run's checkpoint and so for as long as the run's checkpoints are.
+   * Optional, so it adds no record version: a record written before it existed reads as a step
    * with none.
    */
-  effectiveContext?: EffectiveContextRecord | undefined;
+  effectiveContext?: EffectiveContextDelta | undefined;
   final: boolean;
 }
 

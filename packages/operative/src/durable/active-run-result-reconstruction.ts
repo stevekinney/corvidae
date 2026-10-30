@@ -62,9 +62,8 @@ export async function readRunStateFromCheckpoint(
       messageId: record.messageId,
       ...(record.contextEpochId === undefined ? {} : { contextEpochId: record.contextEpochId }),
       ...(record.planReason === undefined ? {} : { planReason: record.planReason }),
-      ...(record.effectiveContext === undefined
-        ? {}
-        : { effectiveContext: record.effectiveContext }),
+      // The effective context is stored as per-step deltas and rebuilt on read by
+      // `rebuildEffectiveContexts`; a recovered run's `StepResult` carries none (COR-1810).
       toolCalls: record.toolCalls,
       results: record.results,
       ...(record.usage ? { usage: record.usage } : {}),

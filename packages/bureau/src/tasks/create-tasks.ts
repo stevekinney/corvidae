@@ -1,4 +1,10 @@
-import type { AgentRun, RunEvent, RunResult, StepRecord } from '@lostgradient/operative';
+import {
+  rebuildEffectiveContexts,
+  type AgentRun,
+  type RunEvent,
+  type RunResult,
+  type StepRecord,
+} from '@lostgradient/operative';
 
 import type { BureauChildren } from '../child-topology.ts';
 import type { RunCreationReceipt } from '../command-ledger.ts';
@@ -89,6 +95,15 @@ export function createTasks(dependencies: TasksDependencies): BureauTasks {
         asked === undefined
           ? records.slice(-INSPECTED_STEP_LIMIT)
           : records.filter((record) => record.step === asked);
+      // The records store each step's effective context as a delta from the previous step's; one
+      // step's whole record is rebuilt, and capped, only when that step is asked for.
+      const rebuilt =
+        asked === undefined
+          ? []
+          : rebuildEffectiveContexts(
+              records.map((record) => record.effectiveContext),
+              (index) => records[index]?.step === asked,
+            );
       return {
         task,
         liveness: dependencies.detail(id)?.liveness,
@@ -109,7 +124,7 @@ export function createTasks(dependencies: TasksDependencies): BureauTasks {
           contextEpochId: record.contextEpochId ?? null,
           planReason: record.planReason ?? null,
           hasEffectiveContext: record.effectiveContext !== undefined,
-          effectiveContext: asked === undefined ? null : (record.effectiveContext ?? null),
+          effectiveContext: rebuilt[records.indexOf(record)] ?? null,
         })),
       };
     },

@@ -395,7 +395,8 @@ export interface StepResult {
   planReason?: PlanReason | undefined;
   /**
    * What the model saw for this step (COR-1810): the effective context of the attempt that produced
-   * it, as digests and message ids, capped at 256 KiB. Absent when the run has no `contextEpoch` sealer.
+   * it, as digests and message ids, capped at 256 KiB. Absent on a step of a durable run read back from
+   * its checkpoint, which stores it as a delta (`bureau.tasks.inspect` rebuilds it).
    */
   effectiveContext?: EffectiveContextRecord | undefined;
   final: boolean;

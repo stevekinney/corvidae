@@ -640,9 +640,9 @@ describe('createCheckpointStore', () => {
           epochId: 'epoch-1',
           baselineDigest: '0123456789abcdef',
           sources: [{ sourceId: 'conversation', trust: 'per-message', disposition: 'included' }],
+          messagesFrom: 0,
           messages: [{ id: 'message-1', role: 'user', digest: 'fedcba9876543210' }],
           messageCount: 1,
-          truncated: false,
         },
         final: true,
       };

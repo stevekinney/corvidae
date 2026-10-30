@@ -2,6 +2,7 @@ import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { WorkflowContext, WorkflowOperation } from '@lostgradient/weft';
 import { Conversation, type MessageInput, type MultiModalContent } from 'conversationalist';
 
+import { toEffectiveContextDelta } from '../effective-context-record';
 import { toAgentRunError } from '../errors';
 import { buildStepDeps, createRunState } from '../loop';
 import { runStep } from '../run-step';
@@ -211,7 +212,13 @@ export function runStepMemo(
           ...(pushed.planReason === undefined ? {} : { planReason: pushed.planReason }),
           ...(pushed.effectiveContext === undefined
             ? {}
-            : { effectiveContext: pushed.effectiveContext }),
+            : {
+                effectiveContext: toEffectiveContextDelta(
+                  pushed.effectiveContext,
+                  runId,
+                  pushed.step,
+                ),
+              }),
           toolCalls: pushed.toolCalls,
           results: pushed.results,
           ...(pushed.usage ? { usage: pushed.usage } : {}),

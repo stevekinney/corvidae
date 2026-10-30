@@ -309,8 +309,11 @@ export type {
 export {
   EFFECTIVE_CONTEXT_RECORD_LIMIT_BYTES,
   composeEffectiveContextRecord,
+  rebuildEffectiveContexts,
+  toEffectiveContextDelta,
 } from './effective-context-record';
 export type {
+  EffectiveContextDelta,
   EffectiveContextMessage,
   EffectiveContextRecord,
   EffectiveContextSource,
