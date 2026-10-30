@@ -58,6 +58,7 @@ export const SESSION_AGENT_OPTION_DISPOSITIONS = {
   durableOperationKeys: 'agent',
   toolChoice: 'agent',
   costEstimation: 'agent',
+  costBudget: 'agent',
   selection: 'agent',
   contextEpoch: 'agent',
 

@@ -18,6 +18,9 @@ import type { AgentSkillDescriptor } from './agent-skill-descriptor';
 import { noToolCalls } from './conditions/predicates';
 import type { ContextEpochSealer } from './context-epoch';
 import type { MediaCostEstimator } from './context/types';
+import type { RunCostBudget } from './cost-budget';
+import { validateRunCostBudget } from './cost-budget';
+import { getModelPricing } from './cost-estimation';
 import { createActiveRun } from './create-run';
 import type { GeneratedMediaAdmitter } from './generated-media';
 import type { AgentGenerationProfile, AgentPreferences } from './generation-profile';
@@ -137,6 +140,18 @@ export interface CreateAgentOptionsBase {
 
   /** Retry configuration for transient generate failures. */
   retry?: RetryOptions | undefined;
+
+  /**
+   * Prices each request of a run, so the run reports a `costEstimate` and can keep to a
+   * {@link CreateAgentOptionsBase.costBudget}; see `RunOptions.costEstimation`.
+   */
+  costEstimation?: RunOptions['costEstimation'];
+
+  /**
+   * What one run may spend, in US dollars (COR-1914); see `RunOptions.costBudget`. It needs
+   * `costEstimation` with a priced model, and `createAgent` throws without one.
+   */
+  costBudget?: RunCostBudget | undefined;
 
   /** Context window management (compaction). */
   contextManagement?: ContextManagementOptions | undefined;
@@ -486,6 +501,21 @@ function validateCreateAgentOptions(options: CreateAgentOptions): void {
   }
 
   validateExamples(options.examples);
+
+  if (options.costBudget !== undefined) {
+    const problem = validateRunCostBudget(options.costBudget);
+    if (problem !== undefined) throw new Error(`createAgent: ${problem}`);
+    const { costEstimation } = options;
+    if (
+      costEstimation === undefined ||
+      getModelPricing(costEstimation.model, costEstimation.pricing) === undefined
+    ) {
+      throw new Error(
+        'createAgent: `costBudget` needs `costEstimation` naming a model with a price, because ' +
+          'the budget is measured against the run’s priced cost. Without one it could not be enforced.',
+      );
+    }
+  }
 
   if (options.toolbox && options.permissions) {
     throw new Error(

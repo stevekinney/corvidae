@@ -3,8 +3,11 @@ import type { ToolCall } from 'armorer/protocol';
 import type { MultiModalContent } from 'conversationalist';
 import { Conversation } from 'conversationalist';
 
+import { crossedThresholds, isRunCostBudgetExceeded, totalAccumulatedCost } from './cost-budget';
 import type { EffectiveContextRecord } from './effective-context-record';
+import { BudgetExceededError } from './errors';
 import {
+  BudgetThresholdEvent,
   ResponseSchemaFailedEvent,
   RunErrorEvent,
   StepCompletedEvent,
@@ -31,6 +34,10 @@ export interface StepFinalizationDependencies {
   contextEpochId: string | undefined;
   planReason?: PlanReason | undefined;
   effectiveContext?: EffectiveContextRecord | undefined;
+  /** The run's spend before this step's request was priced into `runState.cost` (COR-1914). */
+  costBefore?: number | undefined;
+  /** The model this step's request was priced at; `undefined` when the run prices nothing. */
+  costModel?: string | undefined;
 }
 
 export async function finalizeStep(input: StepFinalizationDependencies): Promise<StepOutcome> {
@@ -48,6 +55,8 @@ export async function finalizeStep(input: StepFinalizationDependencies): Promise
     contextEpochId,
     planReason,
     effectiveContext,
+    costBefore = 0,
+    costModel,
   } = input;
   const { hooks } = deps;
   const { content, usage, metadata } = response;
@@ -99,6 +108,9 @@ export async function finalizeStep(input: StepFinalizationDependencies): Promise
   // afford.
   let shouldStop: boolean;
   try {
+    // The budget is checked before the stop conditions: a step that spent the whole budget ends the
+    // run as `budget-exceeded` even when a stop condition would also have ended it.
+    checkCostBudget({ deps, runState, emitter, step, costBefore, costModel });
     shouldStop = await evaluateStopConditions(deps.stopConditions, stepResult);
   } catch (error) {
     emitter?.dispatch(new StepCompletedEvent(stepResult));
@@ -172,4 +184,39 @@ export async function finalizeStep(input: StepFinalizationDependencies): Promise
   }
 
   return { kind: 'next' };
+}
+
+/**
+ * Applies the run's `costBudget` after a step (COR-1914): publishes a `budget.threshold` event for
+ * each `warnAt` fraction the step's spend crossed, then throws a {@link BudgetExceededError} naming
+ * `perRunUsd` when the run has spent the whole budget. It reads `runState.cost`, which a durable
+ * run keeps in its cursor, so a recovered run counts what it spent before the crash and does not
+ * announce a fraction it had already crossed. Does nothing for a run with no budget or no
+ * `costEstimation` to price it.
+ */
+function checkCostBudget(input: {
+  deps: StepDeps;
+  runState: RunState;
+  emitter: EventDispatcher | undefined;
+  step: number;
+  costBefore: number;
+  costModel: string | undefined;
+}): void {
+  const { deps, runState, emitter, step, costBefore, costModel } = input;
+  const budget = deps.costBudget;
+  if (budget === undefined || costModel === undefined) return;
+  const costAfter = totalAccumulatedCost(runState.cost);
+  for (const threshold of crossedThresholds(budget, costBefore, costAfter)) {
+    emitter?.dispatch(
+      new BudgetThresholdEvent(
+        { threshold, currentCost: costAfter, budget: budget.perRunUsd, model: costModel },
+        step,
+      ),
+    );
+  }
+  if (isRunCostBudgetExceeded(budget, costAfter)) {
+    throw new BudgetExceededError(
+      `The run spent $${costAfter.toFixed(6)}, which reached its cost budget (perRunUsd: $${budget.perRunUsd}).`,
+    );
+  }
 }

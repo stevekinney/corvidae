@@ -19,10 +19,13 @@ export type {
   AgentFileIssue,
   AgentFileProblem,
   AgentFileProblemCode,
+  AgentCostBudget,
   AgentGuardrailPreset,
   AgentRetry,
 } from './agent-file';
 export {
+  AGENT_COST_BUDGET_MAXIMUM_USD,
+  AGENT_COST_BUDGET_MAXIMUM_WARNINGS,
   AGENT_GUARDRAIL_PRESETS,
   AGENT_IDENTIFIER_PATTERN,
   agentFileFrontmatterSchema,

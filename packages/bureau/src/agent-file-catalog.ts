@@ -61,6 +61,7 @@ import {
   parseAgentFile,
 } from './agent-file';
 import { createFileAgentGenerate } from './file-agent-generate';
+import { costBudgetOptions, usdPricingOfRow } from './file-agent-cost-budget';
 import { guardrailsOfPreset } from './guardrail-presets';
 import { type AgentRevisionRecord, createAgentRevisionStore } from './agent-revision-store';
 import {
@@ -318,9 +319,15 @@ const DETAIL_SETTLE_ATTEMPTS = 3;
 function inputOf(definition: AgentFileDefinition): AgentFileDefinitionInput {
   // A rest, so a key the definition gains is carried into the input and not dropped here.
   const { examples: _examples, ...input } = definition;
-  // An update that omits `stepLimit` or `retry` keeps the file's value, and a version that has
-  // none must remove it: `null` says so.
-  return { ...input, stepLimit: definition.stepLimit ?? null, retry: definition.retry ?? null };
+  // An update that omits one of these keeps the file's value, and a version that has none must
+  // remove it: `null` says so.
+  return {
+    ...input,
+    stepLimit: definition.stepLimit ?? null,
+    retry: definition.retry ?? null,
+    guardrails: definition.guardrails ?? null,
+    costBudget: definition.costBudget ?? null,
+  };
 }
 
 export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentFileCatalog {
@@ -377,6 +384,20 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
   ): { readonly descriptor: BackendDescriptor } | { readonly problem: AgentFileProblem } {
     const resolved = resolveModelDescriptor(definition.model, options.models.catalog().descriptors);
     if (isProblem(resolved)) return { problem: resolved };
+    if (definition.costBudget !== undefined && usdPricingOfRow(resolved) === undefined) {
+      return {
+        problem: {
+          code: 'invalid-frontmatter',
+          message: `The model "${definition.model}" has no price in US dollars in the model catalog, so the file's costBudget could not be enforced. Use a model that has one, or remove costBudget.`,
+          issues: [
+            {
+              path: 'costBudget',
+              message: `"${definition.model}" has no price in US dollars in the model catalog`,
+            },
+          ],
+        },
+      };
+    }
     const missing = missingTools(definition.tools);
     if (missing.length > 0) {
       return {
@@ -449,6 +470,13 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       ...(definition.guardrails === undefined
         ? {}
         : { guardrails: guardrailsOfPreset(definition.guardrails) }),
+      ...(definition.costBudget === undefined
+        ? {}
+        : costBudgetOptions(
+            definition.costBudget,
+            descriptor,
+            allowedDescriptorsOfFileAgent(definition.models, options.models.catalog().descriptors),
+          )),
       ...(definition.stepLimit === undefined ? {} : { maximumSteps: definition.stepLimit }),
       ...(definition.retry === undefined
         ? {}

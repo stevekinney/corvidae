@@ -83,6 +83,7 @@ export function buildStepDeps(options: RunOptions): StepDeps {
     runtime: options.runtime ?? createDefaultRuntimeServices(),
     agentName: options.agentName,
     costEstimation: options.costEstimation,
+    costBudget: options.costBudget,
   };
 }
 

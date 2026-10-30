@@ -5,6 +5,7 @@ import { Conversation } from 'conversationalist';
 import type { ZodType } from 'zod';
 
 import type { ContextEpochSealer } from './context-epoch';
+import { totalAccumulatedCost } from './cost-budget';
 import type { AccumulatedCost } from './cost-estimation';
 import type { EffectiveContextTail, StoredEffectiveContext } from './effective-context-record';
 import { type AgentRunErrorKind, GeneratedMediaNotAdmittedError } from './errors';
@@ -21,7 +22,7 @@ import { executeGeneration } from './run-step-generation';
 import { prepareStep } from './run-step-preparation';
 import { partsOf, settleResponse } from './run-step-response';
 import { commitAssistantRow } from './run-step-row';
-import { accumulateUsage } from './run-step-support';
+import { accumulateUsage, costModelOfStep } from './run-step-support';
 import { executeTools } from './run-step-tools';
 import { explicitAbortReason, guardrailReporter } from './run-step-utilities';
 import type { SelectionGate } from './selection-gate';
@@ -148,6 +149,11 @@ export interface StepDeps {
   readonly agentName: string | undefined;
   /** Prices each request's usage into `RunState.cost`; `undefined` accumulates no cost. */
   readonly costEstimation: RunOptions['costEstimation'];
+  /**
+   * The run's spend limit (COR-1914). Checked after each step against `RunState.cost`, so it has
+   * no effect without `costEstimation`.
+   */
+  readonly costBudget: RunOptions['costBudget'];
   /**
    * AB-204: when supplied, every run-owned hook's fire-and-forget promise
    * (`onLLMInput`/`onLLMOutput` here; `onRunComplete`/`onRunAbort`/
@@ -440,7 +446,14 @@ export async function runStep(
     } catch (error) {
       // See the comment on the validateResponseHooks catch above — the
       // response has already been billed by the provider.
-      accumulateUsage(runState, emitter, step, response.usage, deps.costEstimation);
+      accumulateUsage(
+        runState,
+        emitter,
+        step,
+        response.usage,
+        deps.costEstimation,
+        steeringDesiredState?.model,
+      );
       // A cancellation that interrupted a media admission is the cancellation, not an error.
       if (error instanceof GeneratedMediaNotAdmittedError && signal?.aborted) {
         return { kind: 'abort', reason: explicitAbortReason(signal) };
@@ -495,7 +508,8 @@ export async function runStep(
   runState.lastContent = content;
   runState.lastParts = parts;
   runState.finalRowIsReplacement = false;
-  accumulateUsage(runState, emitter, step, usage, deps.costEstimation);
+  const costBefore = totalAccumulatedCost(runState.cost);
+  accumulateUsage(runState, emitter, step, usage, deps.costEstimation, steeringDesiredState?.model);
 
   // COR-713: the row carries the settled parts, not only the text. A step that is a thinking block
   // and a tool call has no text and still has a row to keep. The row takes the id a streaming client
@@ -565,5 +579,9 @@ export async function runStep(
     contextEpochId: generation.contextEpochId,
     planReason: generation.planReason,
     effectiveContext: generation.effectiveContext,
+    costBefore,
+    costModel: deps.costEstimation
+      ? costModelOfStep(deps.costEstimation, steeringDesiredState?.model)
+      : undefined,
   });
 }

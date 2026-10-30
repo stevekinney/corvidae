@@ -22,6 +22,7 @@ import type { ChildRunRegistry } from './child-run';
 import type { ChildSignalPort } from './child-signals';
 import type { ContextEpochSealer } from './context-epoch';
 import type { MediaCostEstimator } from './context/types';
+import type { RunCostBudget } from './cost-budget';
 import type { CostEstimate, CostEstimationOptions } from './cost-estimation';
 import type { SessionInputGate, SteeringDesiredState } from './durable/types';
 import type { EffectiveContextRecord } from './effective-context-record';
@@ -847,6 +848,15 @@ export interface RunOptionsBase {
    * explicit model.
    */
   costEstimation?: { model: string; pricing?: CostEstimationOptions } | undefined;
+  /**
+   * What one run may spend (COR-1914). Measured against the run's own cost estimate, so it needs
+   * `costEstimation` with a priced model; `createAgent` refuses a budget without one. A run that
+   * reaches `perRunUsd` ends with the finish reason `budget-exceeded` and an error naming
+   * `perRunUsd`, and each `warnAt` fraction publishes one `budget.threshold` event as the run
+   * crosses it. A durable run keeps its spend across a recovery, so it neither forgets the cost
+   * already incurred nor announces a threshold twice.
+   */
+  costBudget?: RunCostBudget | undefined;
   /**
    * The AB-64/AB-250 selection-revalidation gate, read at the same `runStep`
    * boundary as `steering` (after the pause-wait loop, before backpressure):
