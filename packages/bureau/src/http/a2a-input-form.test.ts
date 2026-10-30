@@ -293,6 +293,60 @@ describe('an INPUT_REQUIRED task whose wait carries an input schema', () => {
   });
 });
 
+describe('a wait whose schema asks for a secret, over A2A (COR-1920)', () => {
+  const secretSchema = {
+    type: 'object',
+    properties: { token: { type: 'string', writeOnly: true, 'x-secret': true } },
+    required: ['token'],
+  } as const;
+
+  it('offers no form, and refuses a form submission, a { response }, and text alike', async () => {
+    const fixture = await open(secretSchema);
+    try {
+      const task = await fixture.start();
+      const read = await fixture.read(task.id, [A2UI_EXTENSION_URI]);
+      expect(
+        (read.status?.message?.parts ?? []).filter((part) => part.content?.$case === 'data'),
+      ).toEqual([]);
+
+      for (const [messageId, part] of [
+        ['m-data', { data: { token: 'sk-a2a-plaintext' } }],
+        ['m-response', { data: { response: '{"token":"sk-a2a-plaintext"}' } }],
+        ['m-text', { text: '{"token":"sk-a2a-plaintext"}' }],
+      ] as const) {
+        const refusal = await rejectionOf(fixture.send(userMessage(messageId, task.id, part)));
+        expect(refusal, messageId).toBeInstanceOf(RequestMalformedError);
+      }
+      // Text is an answer the wait could take, so its refusal says why it is not taken here.
+      const text = await rejectionOf(fixture.send(userMessage('m-plain', task.id, { text: 'x' })));
+      expect((text as Error).message).toContain('answered only in the chat');
+
+      expect(await statusOf(fixture.bureau, task.id)).toBe('input-required');
+      // Nothing recorded the refused messages: the task's history holds no part of them.
+      const history = await fixture.read(task.id, []);
+      expect(JSON.stringify(history)).not.toContain('sk-a2a-plaintext');
+    } finally {
+      await fixture.opened.dispose();
+    }
+  });
+
+  it('still lets the wait be denied, which carries no answer', async () => {
+    const fixture = await open(secretSchema);
+    try {
+      const task = await fixture.start();
+
+      await fixture.send(userMessage('m-deny', task.id, { data: { decision: 'deny' } }));
+
+      await waitForCondition(
+        async () => (await statusOf(fixture.bureau, task.id)) === 'completed',
+        'the denied task never completed',
+      );
+    } finally {
+      await fixture.opened.dispose();
+    }
+  });
+});
+
 describe('a data answer to a wait with no schema', () => {
   it('is refused as a continuation', async () => {
     const fixture = await open(undefined);

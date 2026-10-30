@@ -69,6 +69,7 @@ const weftStorageFiles = [
   'key-prefixes.ts',
   'keys.ts',
   'lease-keys.ts',
+  'log-keys.ts',
   'mailbox-keys.ts',
   'outbox-keys.ts',
   'ownership-keys.ts',

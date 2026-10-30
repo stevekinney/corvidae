@@ -1,4 +1,4 @@
-import type { BatchOperation } from '@lostgradient/storage';
+import type { BatchOperation, ConditionalBatchCondition } from '@lostgradient/storage';
 import { KEYS } from '../../storage/keys.ts';
 import { encode } from '../codec.ts';
 import { ScheduleFiredEvent } from '../events.ts';
@@ -17,12 +17,20 @@ type ScheduledRunServicesResolution =
 
 export type ScheduledRunStartOptions = {
   occurrence?: number;
+  /** Present and `true` for a run a person triggered by hand (`engine.triggerSchedule`). */
+  manual?: true;
   /** Reserved queue identity. A fresh id is minted when omitted. */
   workflowId?: string;
   /** Schedule state committed atomically with the workflow start. */
   scheduleStateAfterStart?: ScheduleState;
   /** Prior terminal run whose transient schedule metadata is now settled. */
   completedWorkflowId?: string;
+  /**
+   * Conditions the start batch commits under (COR-1829): a run now passes the condition that the
+   * schedule key still holds the bytes it decided from, with `scheduleStateAfterStart`, so the run
+   * and the schedule that names it land together or not at all.
+   */
+  startConditions?: ConditionalBatchCondition[];
   /**
    * Internal only (WFT-95). Set by `drainQueuedScheduleRun()` when `workflowId`
    * is a persisted `queuedRuns[].workflowId` being replayed, not a freshly
@@ -55,7 +63,8 @@ export async function startScheduledRun(
 ): Promise<string> {
   const workflowId = options.workflowId ?? crypto.randomUUID();
   const occurrence = options.occurrence;
-  const metadata = encodeScheduleRunMetadata(state.id, occurrence);
+  const manual = options.manual;
+  const metadata = encodeScheduleRunMetadata(state.id, occurrence, manual);
   const scheduleRunOperations: BatchOperation[] = [
     {
       type: 'put',
@@ -93,7 +102,13 @@ export async function startScheduledRun(
     });
   }
 
-  const resolution = await resolveScheduledRunServices(internals, workflowId, state, occurrence);
+  const resolution = await resolveScheduledRunServices(
+    internals,
+    workflowId,
+    state,
+    occurrence,
+    manual,
+  );
 
   if (resolution !== null) {
     // Write the "expects services" marker atomically with the workflow record.
@@ -131,6 +146,7 @@ export async function startScheduledRun(
     buildPinnedRevisionOverride(state),
     options.skipAdmissionIdCheck,
     buildScheduledRunTransientState(resolution),
+    options.startConditions,
   );
 
   // The run launched, so the occurrence fired. Emit before the unavailable
@@ -185,6 +201,7 @@ async function resolveScheduledRunServices(
   workflowId: string,
   state: ScheduleState,
   occurrence: number | undefined,
+  manual: true | undefined,
 ): Promise<ScheduledRunServicesResolution> {
   const resolver = internals.options.resolveWorkflowServices;
   if (internals.inlineStrategy === null || !resolver) {
@@ -200,6 +217,7 @@ async function resolveScheduledRunServices(
       schedule: {
         id: state.id,
         ...(occurrence !== undefined ? { occurrence } : {}),
+        ...(manual === true ? { manual } : {}),
       },
     });
   } catch (error) {

@@ -85,6 +85,15 @@ function enumValuesOf(node: SchemaNode): string[] {
   return values;
 }
 
+/** Whether `path` reaches its node through `properties` alone: the answer itself, or a named field of it. */
+function isFieldPath(path: Path): boolean {
+  if (path.length % 2 !== 0) return false;
+  for (let index = 0; index < path.length; index += 2) {
+    if (path[index] !== 'properties' || typeof path[index + 1] !== 'string') return false;
+  }
+  return true;
+}
+
 function checkSecret(node: SchemaNode, path: Path, add: Adder): void {
   const value = node['x-secret'];
   if (typeof value !== 'boolean')
@@ -95,6 +104,42 @@ function checkSecret(node: SchemaNode, path: Path, add: Adder): void {
   if (node['writeOnly'] !== true) {
     add([...path, 'x-secret'], 'x-secret needs writeOnly: true beside it.');
   }
+  // A secret is sealed where it sits in the answer, so it must sit at one place the schema names:
+  // the answer itself, or a field reached through `properties`. One inside an array item, a
+  // union branch, or a definition could be anywhere, and an answer could carry it unsealed.
+  if (!isFieldPath(path)) {
+    add(
+      [...path, 'x-secret'],
+      'x-secret may mark only the answer itself or a field reached through "properties", not a value inside an array, a union, or a definition.',
+    );
+  }
+}
+
+/** Escapes one JSON Pointer segment (RFC 6901). */
+function pointerSegment(name: string): string {
+  return name.replaceAll('~', '~0').replaceAll('/', '~1');
+}
+
+/**
+ * The fields a human-input schema marks secret (`x-secret: true`), each as a JSON Pointer
+ * (RFC 6901) into the answer: `""` when the answer itself is the secret, `"/password"` for a
+ * field, `"/account/token"` for a field of a field. Only the answer and the fields reached through
+ * `properties` are read, the only places {@link humanInputSchemaExtensionIssues} lets `x-secret`
+ * sit. An empty list means the answer holds no secret.
+ */
+export function humanInputSecretFields(schema: Readonly<Record<string, unknown>>): string[] {
+  const fields: string[] = [];
+  const visit = (node: SchemaNode, pointer: string): void => {
+    if (node['x-secret'] === true) fields.push(pointer);
+    const properties: unknown = Object.hasOwn(node, 'properties') ? node['properties'] : undefined;
+    if (!isNode(properties)) return;
+    for (const name of Object.keys(properties)) {
+      const child: unknown = Object.hasOwn(properties, name) ? properties[name] : undefined;
+      if (isNode(child)) visit(child, `${pointer}/${pointerSegment(name)}`);
+    }
+  };
+  visit(schema, '');
+  return fields;
 }
 
 function checkAsset(node: SchemaNode, path: Path, add: Adder): void {
@@ -184,6 +229,9 @@ function checkLabels(node: SchemaNode, path: Path, add: Adder): void {
 
 type Adder = (path: Path, message: string) => void;
 
+/** The keywords that make one schema stand for another. */
+const REFERENCE_KEYWORDS = ['$ref', '$dynamicRef', '$recursiveRef'] as const;
+
 /**
  * Checks every `x-` keyword in a schema and returns one issue per misuse, or `[]`. The schema is
  * already known to be a valid 2020-12 schema; this checks only the shapes the `x-` keywords promise.
@@ -192,7 +240,20 @@ export function humanInputSchemaExtensionIssues(
   schema: Readonly<Record<string, unknown>>,
 ): HumanInputSchemaIssue[] {
   const issues: HumanInputSchemaIssue[] = [];
+  // A reference could make a second field the same secret schema under another name, which no
+  // walk of `properties` would see; so a schema that asks for a secret refers to nothing.
+  const asksForSecret = [...schemaNodes(schema, [])].some(({ node }) => node['x-secret'] === true);
   for (const { node, path } of schemaNodes(schema, [])) {
+    if (asksForSecret) {
+      for (const keyword of REFERENCE_KEYWORDS) {
+        if (Object.hasOwn(node, keyword)) {
+          issues.push({
+            path: [...path, keyword],
+            message: `A schema that marks a field x-secret may not use ${keyword}: every secret field must be declared where it sits.`,
+          });
+        }
+      }
+    }
     const add: Adder = (at, message) => {
       issues.push({ path: at, message });
     };

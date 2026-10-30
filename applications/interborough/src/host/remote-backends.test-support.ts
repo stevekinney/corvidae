@@ -7,6 +7,9 @@ import type { S3TestServer } from '@lostgradient/testing/s3-server';
 /** The secret that signs approvals, for the remote hosts a test starts; every host must share it. */
 export const TEST_APPROVAL_SECRET = 'remote-test-approval-secret-0123456789abcdef';
 
+/** The key secret answers are sealed with (base64url of 32 bytes), for the remote hosts a test starts. */
+export const TEST_ANSWER_ENCRYPTION_KEY = 'AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5wMfO1dw';
+
 /**
  * A database no earlier run touched, on the server `database` names: a supplied server is shared
  * between runs, so a suite makes its own. `password` is put in the returned URL, which a trusting
@@ -46,5 +49,6 @@ export function remoteEnvironment(
     S3_ACCESS_KEY_ID: client.accessKeyId,
     S3_SECRET_ACCESS_KEY: client.secretAccessKey,
     INTERBOROUGH_SECRET_APPROVAL_SECRET: TEST_APPROVAL_SECRET,
+    INTERBOROUGH_SECRET_ANSWER_ENCRYPTION_KEY: TEST_ANSWER_ENCRYPTION_KEY,
   };
 }

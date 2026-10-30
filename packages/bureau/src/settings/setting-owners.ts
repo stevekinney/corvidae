@@ -63,8 +63,15 @@ export const SETTING_OWNERS: readonly SettingOwner[] = [
       'retention.tasks',
       'retention.receipts',
       'retention.memory',
+      'retention.logs',
       'retention.checkpoints',
     ],
+    reads: 'literal',
+  },
+  {
+    name: 'workflow log lines per run',
+    module: 'create-bureau.ts',
+    keys: ['logs.maximumLinesPerRun'],
     reads: 'literal',
   },
   {

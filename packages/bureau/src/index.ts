@@ -1,4 +1,9 @@
 export { BUREAU_RESERVED_KEY_PREFIXES } from './reserved-key-prefixes';
+export {
+  type AnswerEncryptionKeys,
+  createSecretAnswerResolver,
+  SECRET_ANSWER_KEY_PREFIX,
+} from './secret-answers';
 export type {
   AgentCatalogEntry,
   AgentDefinitions,
@@ -524,6 +529,8 @@ export type {
   BureauInternals,
   BureauMemoryAuthorityOptions,
   BureauOptions,
+  BureauLogsOptions,
+  BureauLogsRetentionOption,
   BureauMemoryRetentionOption,
   BureauReceiptRetentionOption,
   BureauRetentionOptions,

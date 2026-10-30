@@ -196,9 +196,11 @@ describe('Branch from here', () => {
 
   const refusals: ReadonlyArray<readonly [string, StubFault, string]> = [
     [
-      'a turn that ended in an error',
-      new StubFault('Conflict', 409, 'It ended in error.', { reason: 'branch-from-errored-run' }),
-      CHAT_COPY.branch.refused['branch-from-errored-run'],
+      'a turn that is waiting for an approval',
+      new StubFault('Conflict', 409, 'An approval is pending.', {
+        reason: 'branch-with-pending-approval',
+      }),
+      CHAT_COPY.branch.refused['branch-with-pending-approval'],
     ],
     [
       'a message that is not a branch point',

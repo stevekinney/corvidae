@@ -173,7 +173,9 @@ export interface SessionHandle {
    * inclusive, and records its lineage in the reserved metadata keys
    * `SESSION_PARENT_METADATA_KEY` and `SESSION_FORKED_FROM_MESSAGE_METADATA_KEY`, which the
    * summary index carries, so a listing shows where it came from before it has a run (COR-1560).
-   * A message the session does not hold rejects with `ForkThroughMessageError` before anything is
+   * `throughMessageId: null` forks before the first message (COR-1910): an empty history, the
+   * parent recorded, and no message. A message the session does not hold, or a `null` fork of a
+   * session that does not exist, rejects with `ForkThroughMessageError` before anything is
    * persisted; naming `throughRun` too is a `TypeError`. `owner` replaces the source's owner
    * of record, for a branch made on behalf of another principal. `id` creates the fork under an
    * identifier the caller chose, so a caller that records the identifier before it forks can find
@@ -455,23 +457,31 @@ export interface SessionForkOptions {
   readonly throughRun?: number | undefined;
   /**
    * The message the fork branches at: the fork's history is the session's stored history through
-   * that message, inclusive, and the fork records its lineage. Excludes `throughRun`.
+   * that message, inclusive, and the fork records its lineage. `null` branches before the first
+   * message: the fork starts empty and records only its parent. Excludes `throughRun`.
    */
-  readonly throughMessageId?: string | undefined;
+  readonly throughMessageId?: string | null | undefined;
   /** The identifier the fork is created under; a fresh one is minted when omitted. */
   readonly id?: string | undefined;
   /** The fork's owner of record; the source's owner when omitted. */
   readonly owner?: string | undefined;
 }
 
-/** Thrown when `fork({ throughMessageId })` names a message the session does not hold. */
+/**
+ * Thrown when `fork({ throughMessageId })` names a message the session does not hold, or forks a
+ * session that does not exist before its first message (`messageId` is then `null`).
+ */
 export class ForkThroughMessageError extends Error {
   readonly code = 'ForkThroughMessageError';
   readonly sessionId: string;
-  readonly messageId: string;
+  readonly messageId: string | null;
 
-  constructor(sessionId: string, messageId: string) {
-    super(`Session "${sessionId}" holds no message "${messageId}" to fork through.`);
+  constructor(sessionId: string, messageId: string | null) {
+    super(
+      messageId === null
+        ? `Session "${sessionId}" does not exist to fork from.`
+        : `Session "${sessionId}" holds no message "${messageId}" to fork through.`,
+    );
     this.name = 'ForkThroughMessageError';
     this.sessionId = sessionId;
     this.messageId = messageId;

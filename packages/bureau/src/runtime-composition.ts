@@ -1,5 +1,10 @@
 import type { EventMap, HookReplayPolicy, RuntimeServices } from '@lostgradient/lifecycle';
 import {
+  createSecretAnswerStore,
+  type SecretAnswerStore,
+  secretResolverOf,
+} from './secret-answers';
+import {
   createDefaultRuntimeServices,
   HookRegistry,
   mergeHookRegistries,
@@ -97,11 +102,14 @@ import type { TaskToolGrant } from './task-registry';
 import { withAddedTools, withToolboxLayer } from './toolbox-additions';
 import {
   type AnyWorkflowDefinition,
+  createWorkflowLogStore,
   decode,
   deserializeCheckpoint,
   encode,
   KEYS,
   type RecoverAllOptions,
+  type WorkflowLogRecord,
+  type WorkflowLogStore,
   WorkflowCancelledEvent,
   WorkflowTimedOutEvent,
   WorkflowCompletedEvent,
@@ -1600,6 +1608,18 @@ export type RuntimeCompositionDependencies = {
     principalId: string | undefined,
     rowHolder: MediaRowHolder,
   ) => GeneratedMediaAdmitter | undefined;
+  /**
+   * COR-1811 — persist the `ctx.log` lines of durable workflows. Set, the composition creates a Weft
+   * log store over the durable storage, feeds it every line the engine emits (the human-wait park
+   * marker excepted, and `BureauOptions.onLog` still receives each), and hands it to the engine
+   * to serve, flush on shutdown, and clear with a purged run. `maximumLinesPerRun` is read on every
+   * line, so a host can change the cap while the engine runs; `undefined` is Weft's default of
+   * 500. `onError` is told about a write that failed.
+   */
+  workflowLogs?: {
+    maximumLinesPerRun(): number | undefined;
+    onError(error: unknown): void;
+  };
 };
 
 /** What {@link RuntimeCompositionDependencies.onScheduledFire} is told about one fire. */
@@ -1612,6 +1632,8 @@ export type ScheduledFireNotice = {
   readonly owner: string;
   /** The text the fire delivers to its agent: the originating message of the fire's task. */
   readonly message: string;
+  /** `true` when a person started this fire with `schedules.runNow` instead of the cadence (COR-1829). */
+  readonly manual?: true | undefined;
 };
 
 /** What {@link RuntimeCompositionDependencies.onScheduledFireSettled} is told about one fire. */
@@ -1979,6 +2001,12 @@ export interface DurableComposition {
    * rest of the composition was still being built.
    */
   missedFires: MissedFireBuffer;
+  /**
+   * COR-1811 — the Weft log store behind the engine's persisted `ctx.log` lines, present only when
+   * the composition was asked for one (`RuntimeCompositionDependencies.workflowLogs`).
+   * `createBureau` prunes it on each maintenance pass.
+   */
+  workflowLogs?: WorkflowLogStore | undefined;
 }
 
 /**
@@ -1997,6 +2025,11 @@ export interface ScheduleFireEventMap extends EventMap {
 
 export interface RuntimeComposition {
   kv: ConditionalTextValueStore | undefined;
+  /**
+   * COR-1920 — the stored secret answers, present when there is a `kv` and the Bureau was given
+   * `answerEncryption`. Without it a secret answer is refused before anything holds it.
+   */
+  secretAnswers: SecretAnswerStore | undefined;
   /**
    * The durable run engine + checkpoint store, present whenever durable
    * execution resolves on (by default: a persistent `storage` backend is
@@ -2760,6 +2793,17 @@ async function buildRuntimeComposition(
 
   const effectiveObservability = options.observability;
   const effectiveOnLog = options.onLog;
+  // COR-1811: persisted `ctx.log` lines. The store shares the engine's own storage, because the
+  // engine reads, flushes, and purges through it; it exists only for a durable composition.
+  const logStore =
+    suppliedDependencies.workflowLogs === undefined || durableStorage === undefined
+      ? undefined
+      : createWorkflowLogStore(durableStorage, {
+          maximumLinesPerRun: () => suppliedDependencies.workflowLogs?.maximumLinesPerRun(),
+          // The retention window is measured on the Bureau's clock, as every other one is.
+          getNow: () => runtimeServices.clock.now(),
+          onError: (error) => suppliedDependencies.workflowLogs?.onError(error),
+        });
 
   // Durable execution is ON BY DEFAULT whenever a PERSISTENT storage backend is
   // configured. The default follows persistence because that is the only place resume is real:
@@ -2814,7 +2858,20 @@ async function buildRuntimeComposition(
         ? {}
         : { goalWorkflow: dependencies.goalWorkflow }),
       ...(effectiveObservability !== undefined ? { observability: effectiveObservability } : {}),
-      ...(effectiveOnLog ? { onLog: effectiveOnLog } : {}),
+      ...(logStore === undefined
+        ? effectiveOnLog
+          ? { onLog: effectiveOnLog }
+          : {}
+        : {
+            // The store keeps the lines; the host's own sink, or the console without one, still
+            // receives each, as it did before lines were kept.
+            onLog: (record: WorkflowLogRecord) => {
+              logStore.sink(record);
+              if (effectiveOnLog) effectiveOnLog(record);
+              else console[record.level](record);
+            },
+            workflowLogs: logStore,
+          }),
       // durableGuardrails is a Pick of these exact CreateRunEngineOptions fields, so
       // it spreads straight through; createRunEngine guards each one internally, so
       // passing `undefined` members is harmless.
@@ -2844,7 +2901,11 @@ async function buildRuntimeComposition(
     });
     // The poller started inside `Engine.create`, so listen for a missed fire now, with nothing
     // awaited in between, and let `createBureau` take what was held once it can forward it.
-    durable = { ...createdEngine, missedFires: bufferMissedFires(createdEngine.engine) };
+    durable = {
+      ...createdEngine,
+      missedFires: bufferMissedFires(createdEngine.engine),
+      workflowLogs: logStore,
+    };
 
     // AB-223: schedule-fire terminal events. `workflow:completed`/
     // `workflow:failed` fire on the engine for EVERY workflow (scheduled or
@@ -3014,7 +3075,23 @@ async function buildRuntimeComposition(
         beforeCleanup: dependencies.beforeSessionCleanup,
       })
     : undefined;
-  const baseToolbox: BureauToolbox = options.toolbox ?? createToolbox([], { context: {} });
+  // COR-1920: secret answers need somewhere durable to keep their ciphertext and a key to seal it
+  // with. The toolbox the Bureau builds itself reads them back for the run that asked; an author's
+  // toolbox keeps its own options, and takes `createSecretAnswerResolver` to do the same.
+  const secretAnswers =
+    kv !== undefined && options.answerEncryption !== undefined
+      ? createSecretAnswerStore({
+          kv,
+          keys: options.answerEncryption,
+          now: () => runtimeServices.clock.now(),
+        })
+      : undefined;
+  const baseToolbox: BureauToolbox =
+    options.toolbox ??
+    createToolbox([], {
+      context: {},
+      ...(secretAnswers === undefined ? {} : { secretResolver: secretResolverOf(secretAnswers) }),
+    });
   const hasSkillTools = options.skills !== undefined && options.skills.includeTools !== false;
   const fallbackToolbox: BureauToolbox =
     options.toolbox !== undefined || hasSkillTools ? baseToolbox : createUnavailableToolbox();
@@ -4626,6 +4703,7 @@ async function buildRuntimeComposition(
       agentName,
       owner,
       message: payloadText(scheduledInput.input),
+      ...(info.schedule?.manual === true ? { manual: true as const } : {}),
     });
 
     // COR-323 — a fire runs as a named catalog agent: its own `generate`, tools, stop condition,
@@ -5150,6 +5228,7 @@ async function buildRuntimeComposition(
 
   const composition: RuntimeComposition = {
     kv,
+    secretAnswers,
     durable,
     workflowVersionMismatches,
     unrebuildableRecoveredRuns,

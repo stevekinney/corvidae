@@ -472,6 +472,20 @@ describe('remote mode: the handle', () => {
     expect((thrown as Error).message).not.toContain('new-sentinel-value');
   });
 
+  test('refuses to write the configuration, naming neither the text nor the location', async () => {
+    const server = startServer();
+    using bungalow = await openRemote(server.endpoint);
+    let thrown: unknown;
+    try {
+      bungalow.writeConfiguration('sentinel-configuration-text');
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(BungalowStateError);
+    expect((thrown as Error).message).not.toContain('sentinel-configuration-text');
+    expect((thrown as Error).message).not.toContain(bungalow.configurationLocation);
+  });
+
   test('secrets are read from the environment as it was when the open began', async () => {
     const server = startServer();
     const environment = remoteEnvironment(server.endpoint);

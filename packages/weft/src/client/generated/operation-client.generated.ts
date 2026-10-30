@@ -4,6 +4,7 @@ import type { AttributesOperationTypes } from './attributes-operations.generated
 import type { BulkWorkflowsOperationTypes } from './bulk-workflows-operations.generated.ts';
 import type { CheckpointsOperationTypes } from './checkpoints-operations.generated.ts';
 import type { EventsOperationTypes } from './events-operations.generated.ts';
+import type { LogsOperationTypes } from './logs-operations.generated.ts';
 import type { ObservabilityOperationTypes } from './observability-operations.generated.ts';
 import type { ReviewsOperationTypes } from './reviews-operations.generated.ts';
 import type { SchedulesOperationTypes } from './schedules-operations.generated.ts';
@@ -62,8 +63,11 @@ export const CATALOG_OPERATION_NAMES = [
   'weft.schedules.create',
   'weft.schedules.get',
   'weft.schedules.list',
+  'weft.schedules.missed',
   'weft.schedules.pause',
   'weft.schedules.resume',
+  'weft.schedules.runnow',
+  'weft.schedules.skipnext',
   'weft.schedules.update',
   'weft.storage.capabilities',
   'weft.system.lease',
@@ -110,6 +114,7 @@ export const CATALOG_OPERATION_NAMES = [
   'weft.workflows.fork',
   'weft.workflows.get',
   'weft.workflows.list',
+  'weft.workflows.logs.list',
   'weft.workflows.purge',
   'weft.workflows.query',
   'weft.workflows.refresh',
@@ -191,8 +196,11 @@ export const CLIENT_OPERATION_NAMES = [
   'weft.schedules.create',
   'weft.schedules.get',
   'weft.schedules.list',
+  'weft.schedules.missed',
   'weft.schedules.pause',
   'weft.schedules.resume',
+  'weft.schedules.runnow',
+  'weft.schedules.skipnext',
   'weft.schedules.update',
   'weft.storage.capabilities',
   'weft.system.lease',
@@ -240,6 +248,7 @@ export const CLIENT_OPERATION_NAMES = [
   'weft.workflows.fork',
   'weft.workflows.get',
   'weft.workflows.list',
+  'weft.workflows.logs.list',
   'weft.workflows.purge',
   'weft.workflows.query',
   'weft.workflows.refresh',
@@ -334,6 +343,7 @@ export type ClientOperationTypes = ActivitiesOperationTypes &
   BulkWorkflowsOperationTypes &
   CheckpointsOperationTypes &
   EventsOperationTypes &
+  LogsOperationTypes &
   ObservabilityOperationTypes &
   ReviewsOperationTypes &
   SchedulesOperationTypes &

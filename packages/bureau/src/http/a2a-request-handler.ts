@@ -88,6 +88,7 @@ import {
 import { BureauError } from '../create-bureau.ts';
 import { TaskListingTokenError } from '../task-list-snapshots.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
+import { gateSecretAnswer, SecretAnswerRefusedError } from '../secret-answers.ts';
 import type { Bureau, BureauContexts, BureauReviews, BureauTasks } from '../types.ts';
 import { A2UI_EXTENSION_URI, supportedCatalogIdsOf } from '../a2ui/catalogs.ts';
 import { surfaceActionOf } from './a2a-surface-actions.ts';
@@ -624,6 +625,67 @@ async function surfaceAnswerOf(
     surfaceId: found.stale.surfaceId,
     currentRevision: String(found.stale.currentRevision),
   });
+}
+
+/** The message metadata a bare decision may carry: which wait it decides. */
+const DECISION_METADATA_KEYS = new Set([SIGNAL_NAME_METADATA_KEY, CALL_ID_METADATA_KEY]);
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Whether the message, as it will be digested and recorded, is a bare decision and nothing else: one
+ * data part holding only `decision` and an optional `reason`, no text, no file, no part metadata,
+ * and message metadata that names at most the wait it decides. Judged on the raw message, every
+ * part of it, because the send ledger digests and the task's history keeps the raw message.
+ */
+function isBareDecisionMessage(message: Message): boolean {
+  if (message.parts.length !== 1 || message.extensions.length > 0) return false;
+  if (message.referenceTaskIds.length > 0) return false;
+  const [part] = message.parts;
+  if (part?.content?.$case !== 'data' || (part.filename ?? '') !== '') return false;
+  if (part.metadata !== undefined && Object.keys(part.metadata).length > 0) return false;
+  const value: unknown = part.content.value;
+  if (!isPlainRecord(value) || typeof value['decision'] !== 'string') return false;
+  if (value['reason'] !== undefined && typeof value['reason'] !== 'string') return false;
+  if (Object.keys(value).some((key) => key !== 'decision' && key !== 'reason')) return false;
+  const metadata = message.metadata ?? {};
+  return Object.entries(metadata).every(
+    ([key, held]) => DECISION_METADATA_KEYS.has(key) && typeof held === 'string',
+  );
+}
+
+/**
+ * Refuses an answer while a wait whose question asks for a secret is open (COR-1920), through the
+ * shared gate, before the send ledger digests the message or the task's history records it. A2A
+ * keeps the raw message, not the command parsed from it, so what the gate judges is the raw
+ * message: while any open human wait asks for a secret, only a bare decision (see
+ * {@link isBareDecisionMessage}) is let through, and a secret is answered in the chat alone. A wait
+ * that cannot be read is refused.
+ */
+async function refuseSecretAnswer(
+  bureau: { readonly reviews: Pick<BureauReviews, 'get'> },
+  view: TaskView | undefined,
+  message: Message,
+): Promise<void> {
+  // Whatever the message parses to (an answer, input, or nothing, as an expired command does), it
+  // is digested and may be kept, so a message to a task with an open wait is judged here.
+  if (view === undefined || isBareDecisionMessage(message)) return;
+  // Every open human wait: the raw message is kept whichever wait it names.
+  const candidates = view.openWaits
+    .filter((wait) => wait.kind === 'human-wait')
+    .map((wait) => wait.reviewId);
+  try {
+    await gateSecretAnswer({
+      candidates,
+      read: (reviewId) => bureau.reviews.get(reviewId),
+      seals: false,
+    });
+  } catch (error) {
+    if (error instanceof SecretAnswerRefusedError) throw invalid(error.message);
+    throw error;
+  }
 }
 
 /** A continuation as the boundary parsed it: everything it needs, validated before any effect. */
@@ -1665,6 +1727,10 @@ export function createBureauA2ARequestHandler(
       continued === undefined
         ? undefined
         : (pending?.path ?? (continued.status === 'input-required' ? 'answer' : 'input'));
+    // COR-1920: a message to a task while a question that asks for a secret is open is judged
+    // here, before a surface admits an action, the send ledger digests the message, or the task's
+    // history records it.
+    await refuseSecretAnswer(bureau, continued, message);
     // An A2UI action on one of the task's surfaces is admitted by the surface store first; the
     // answer it stands for then travels the same path as any other answer.
     const answerOwed =

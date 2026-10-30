@@ -70,7 +70,8 @@ describe('EngineOptions.onLog host sink', () => {
     expect(sunk.some((record) => record.message === 'marker:host-owned')).toBe(true);
     const events = await engine.getEvents(handle.id);
     expect(events.some((event) => JSON.stringify(event).includes('marker:host-owned'))).toBe(false);
-    expect('getLogs' in engine).toBe(false);
+    // Without a `workflowLogs` store the engine keeps no lines to serve (COR-1811).
+    expect(await engine.getLogs(handle.id)).toEqual({ lines: [], dropped: 0 });
   });
 
   it('falls back to the console when no onLog sink is configured', async () => {

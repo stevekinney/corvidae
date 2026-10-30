@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { startHost, type Host } from './host.ts';
+import { TEST_ANSWER_ENCRYPTION_KEY } from './remote-backends.test-support.ts';
 
 const directories: string[] = [];
 const hosts: Host[] = [];
@@ -77,6 +78,33 @@ describe('remote mode needs the approval secret', () => {
       await listener.stop(true);
     },
   );
+});
+
+describe('remote mode needs the answer encryption key (COR-1920)', () => {
+  test('stops a host without INTERBOROUGH_SECRET_ANSWER_ENCRYPTION_KEY, before any listener', async () => {
+    const server = createS3TestServer();
+    servers.push(server);
+    const port = await freePort();
+    const environment = {
+      ...remoteVariables(server),
+      INTERBOROUGH_SECRET_APPROVAL_SECRET: 'approval-secret-for-the-test-0123456789',
+    };
+
+    const failure = await startHost({ environment, port }).then(
+      (host) => {
+        hosts.push(host);
+        return undefined;
+      },
+      (error: unknown) => error,
+    );
+
+    expect(failure).toBeInstanceOf(Error);
+    const message = (failure as Error).message;
+    expect(message).toContain('INTERBOROUGH_SECRET_ANSWER_ENCRYPTION_KEY');
+    expect(message).not.toContain('never-shown');
+    const listener = Bun.serve({ port, fetch: () => new Response() });
+    await listener.stop(true);
+  });
 });
 
 describe('local mode', () => {
@@ -162,6 +190,7 @@ describe('a malformed database URL', () => {
       ...remoteVariables(server),
       INTERBOROUGH_DATABASE_URL: 'not a url with password hunter2-never-shown',
       INTERBOROUGH_SECRET_APPROVAL_SECRET: 'approval-secret-for-the-test-0123456789',
+      INTERBOROUGH_SECRET_ANSWER_ENCRYPTION_KEY: TEST_ANSWER_ENCRYPTION_KEY,
     };
 
     const failure = await startHost({ environment, port: 0 }).then(

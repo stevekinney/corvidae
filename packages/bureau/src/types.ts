@@ -1,4 +1,5 @@
 import type { BureauWorkflows } from './workflow-runtime';
+import type { AnswerEncryptionKeys } from './secret-answers';
 import type { BureauWorkerDeployments } from './worker-deployments';
 import type {
   EventIteratorOptions,
@@ -62,7 +63,9 @@ import type {
   PaginatedResult,
   RegistryAgnosticEngine,
   ScheduleFilter,
+  ScheduleMissedFire,
   ScheduleSummary,
+  ScheduleTriggerResult,
   WorkflowLogRecord,
   WorkflowState,
   WorkflowSummary,
@@ -362,6 +365,29 @@ export interface BureauRetentionOptions {
    * `createBureau` throws `BureauError(..., 'BAD_REQUEST')`.
    */
   memory?: BureauMemoryRetentionOption | undefined;
+  /**
+   * COR-1811 — how long a finished run's persisted `ctx.log` lines are kept after the run last
+   * wrote one, swept by each maintenance pass. A run that is still active (running, suspended, or
+   * parked on a signal, a review, or a timer) keeps its lines whatever their age. Leave it out to keep them until the run is purged. Has effect
+   * only on a Bureau composed with {@link BureauOptions.logs}. `olderThan` must be a positive
+   * integer; otherwise `createBureau` throws `BureauError(..., 'BAD_REQUEST')`.
+   */
+  logs?: BureauLogsRetentionOption | undefined;
+}
+
+/**
+ * COR-1811 — the window of {@link BureauRetentionOptions.logs}. Only `{ olderThan }` exists:
+ * keeping lines forever is leaving the option out.
+ */
+export interface BureauLogsRetentionOption {
+  /** Milliseconds after a run last wrote a line; a positive integer. */
+  readonly olderThan: number;
+}
+
+/** COR-1811 — {@link BureauOptions.logs}: the bounds of a run's persisted `ctx.log` lines. */
+export interface BureauLogsOptions {
+  /** How many lines a run keeps; the oldest is evicted past it. A positive integer of at most 5000; default 500. */
+  readonly maximumLinesPerRun?: number | undefined;
 }
 
 /**
@@ -509,6 +535,15 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    */
   storage?: Storage;
   /**
+   * COR-1920 — the keys a secret answer is sealed with: a question field marked `writeOnly` and
+   * `x-secret` is encrypted under `current` before anything holds it, and its ciphertext is kept in
+   * `storage`, readable only by a tool of the run that asked (see `secret-answers.md`). A key
+   * retired by a rotation stays readable through `retired`. Without this option, or without
+   * `storage`, an answer to a question that asks for a secret is refused (`NOT_CONFIGURED`,
+   * subject `encryption`) and nothing is delivered.
+   */
+  answerEncryption?: AnswerEncryptionKeys;
+  /**
    * Override for Weft-backed durable execution. Durable execution is **on by
    * default whenever a persistent `storage` backend (`sqlite`/`lmdb`) is
    * configured** — every task is then checkpointed on the same backend
@@ -645,6 +680,20 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * structured logging). Has effect only when a durable engine is composed.
    */
   onLog?: (record: WorkflowLogRecord) => void;
+  /**
+   * COR-1811 — keep the `ctx.log` lines of durable workflows with their runs. Setting it (even to
+   * `{}`) composes a Weft log store over the durable storage: every non-replayed line, inline and
+   * worker-forwarded, is written beside the run (the human-wait park marker excepted), and
+   * `engine.getLogs` and `weft.workflows.logs.list` serve it per run and per step. {@link onLog}
+   * still receives every line. A run keeps its newest `maximumLinesPerRun` lines (500 by default);
+   * each older line the cap evicts is counted as dropped. A line's message and attributes together are held to
+   * 2 KiB: a long message is cut with a marker, and attributes that do not fit are dropped. Lines are kept {@link BureauRetentionOptions.logs} (unset keeps them until the run is purged),
+   * and the `logs.maximumLinesPerRun` and `retention.logs` settings replace these at runtime. The
+   * sink is buffered, so a crash can lose the last turn's lines; shutdown flushes it. Has effect
+   * only when a durable engine is composed. A `maximumLinesPerRun` that is not a positive integer of
+   * at most 5000 throws `BureauError(..., 'BAD_REQUEST')`.
+   */
+  logs?: BureauLogsOptions;
   /**
    * History/checkpoint guardrails for durable runs. `history.maxEvents` is a
    * circuit breaker (a breach terminates the run as an error, classified
@@ -927,6 +976,12 @@ export interface PendingHumanWaitReview {
    * shape of the answer the wait expects. An A2A task projects it as a form.
    */
   inputSchema?: HumanInputSchema | undefined;
+  /**
+   * COR-1920 — the fields of the answer the schema marks secret, as JSON Pointers (`""` for the
+   * answer itself). Set on a review read back from the audit trail, which keeps these and not the
+   * schema, so a retry after the review closed can still tell which fields to keep out of a digest.
+   */
+  secretFields?: readonly string[] | undefined;
   /** Epoch-ms timestamp the run parked. */
   requestedAt: number;
   /** Milliseconds elapsed since `requestedAt`, computed at read time. */
@@ -1696,6 +1751,42 @@ export interface BureauSchedules {
   ): Promise<true | undefined>;
 
   /**
+   * Skip the next run of an active durable schedule (COR-1829), by wrapping Weft's
+   * `skipNextScheduleOccurrence`: the next occurrence that would start a run starts none, and the one
+   * after it runs as usual. That occurrence is the summary's `skipUntil` until the schedule moves
+   * past it, and it is not always `nextFireAt`: in a time zone `nextFireAt` can be the end of a
+   * daylight-saving gap that fires nothing. The skip leaves the schedule's `revision` as it is,
+   * and skipping again before that run has passed changes nothing.
+   * Resolves `true`, or `undefined` when no durable engine is composed. A schedule that does not
+   * exist, and a workflow file's schedule, reject with `NOT_FOUND`; a schedule that is paused or
+   * cancelled has no next run and rejects. `guard` as for {@link BureauSchedules.pause}.
+   */
+  skipNext(scheduleId: string, guard?: ScheduleRevisionGuard): Promise<true | undefined>;
+
+  /**
+   * Start one run of a durable schedule now (COR-1829), by wrapping Weft's `triggerSchedule`, under
+   * the schedule's overlap policy: the result says whether the run `started` (with its run id, which
+   * is the id of the task it creates), was `queued`, or was `skipped` because a run was still going.
+   * The run is a task whose origin is `{ kind: 'schedule', manual: true }`; the schedule's
+   * `nextFireAt` and `revision` do not change. A paused schedule can be run. Resolves `undefined` when
+   * no durable engine is composed. A schedule that does not exist, and a workflow file's schedule,
+   * reject with `NOT_FOUND`; a cancelled one rejects.
+   */
+  runNow(scheduleId: string): Promise<ScheduleTriggerResult | undefined>;
+
+  /**
+   * The occurrences a durable schedule missed, newest first (COR-1829), at most `options.limit` of the
+   * schedule's most recent 100: a miss is `late` (the engine was down) or `dst-gap` (the clock
+   * sprang forward past the time). Resolves `null` when the schedule does not exist and `undefined`
+   * when no durable engine is composed. It does not check who may see the schedule, so a caller
+   * answers to {@link Bureau.ownerOf} first.
+   */
+  missed(
+    scheduleId: string,
+    options?: { readonly limit?: number | undefined },
+  ): Promise<ScheduleMissedFire[] | null | undefined>;
+
+  /**
    * The name of the catalog agent an agent schedule runs, or `undefined` when there is no such
    * schedule, when it is a workflow file's schedule (which runs no agent of its own), or when no
    * durable engine is composed. It is read from the schedule's stored input and is the only part
@@ -1930,10 +2021,12 @@ export interface BureauContexts {
   steering(contextId: string): Promise<SessionSteeringState | undefined>;
 
   /**
-   * Branches a session after a completed agent reply (COR-1560): a new session, owned by
+   * Branches a session at the end of a turn (COR-1560, COR-1910): a new session, owned by
    * `request.owner`, whose history is the parent's through `throughMessageId`, which must be the
-   * final assistant message of a run that ended `completed` in this session, with no tool approval
-   * pending and no tool call left without a result. The parent is unchanged. The new session
+   * last assistant reply of a run that has ended in this session (completed, errored or aborted),
+   * with no tool approval pending and no tool call left without a result. `throughMessageId: null`
+   * branches before the first message: the new session starts empty. Editing a sent message is a
+   * fork at the reply before it followed by a new run of the edited text on the fork. The parent is unchanged. The new session
    * records where it came from (`SessionSummary.parentContextId`, `forkedFromMessageId`) and keeps
    * the parent's model choice: its latest `model` override is admitted on the fork as
    * `<commandId>:model`, and that outcome is returned beside the new `contextId`; a refusal of it

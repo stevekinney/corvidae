@@ -19,6 +19,7 @@ import {
   resolveScheduleCreationRevision,
   resolveScheduleRevisionForPin,
 } from './pinned-schedule-revision.ts';
+import { withoutSkip } from './schedule-controls.ts';
 import { ScheduleHandle } from './schedule-handle.ts';
 import { getNextScheduleOccurrence } from './schedule-occurrence.ts';
 import type { ScheduledRunStartOptions } from './schedule-run.ts';
@@ -59,6 +60,10 @@ export type ScheduleCallbacks = {
    * `transientState` (internal only) is threaded straight through to `startWorkflow`'s parameter
    * of the same name: the occurrence's resolved services, and the run's membership in terminal
    * cleanup, which `startWorkflow` installs when its launch adopts the id.
+   *
+   * `startConditions` (COR-1829) makes the start batch conditional on them, as an idempotent
+   * start's mapping is: a run now commits its run only while the schedule key still holds the
+   * bytes it decided from, so another engine's change makes the start fail and nothing launches.
    */
   startWorkflow: (
     type: string,
@@ -68,13 +73,18 @@ export type ScheduleCallbacks = {
     revisionOverride?: string,
     skipAdmissionIdCheck?: boolean,
     transientState?: StartTransientState,
+    startConditions?: ConditionalBatchCondition[],
   ) => Promise<void>;
   loadWorkflowState: (workflowId: string) => Promise<WorkflowState | null | undefined>;
   cancelWorkflow: (workflowId: string) => Promise<void>;
   getWorkflowResult: (workflowId: string) => Promise<unknown>;
   refreshScheduledWorkflowState: (state: ScheduleState) => Promise<RefreshedScheduleState>;
   startScheduledRun: (state: ScheduleState, options?: ScheduledRunStartOptions) => Promise<string>;
-  applyScheduleOccurrence: (state: ScheduleState, occurrence?: number) => Promise<ScheduleState>;
+  applyScheduleOccurrence: (
+    state: ScheduleState,
+    occurrence?: number,
+    manual?: true,
+  ) => Promise<ScheduleState>;
   flushQueuedInlineWorkflowStartsDirectly: () => Promise<void>;
   failWorkflow: (workflowId: string, error: Error) => Promise<void>;
   handleCleanupError: (source: string, error: unknown, workflowId: string) => void;
@@ -275,7 +285,7 @@ export async function pauseSchedule(
       if (state.status !== 'active') return;
       const now = internals.options.getNow();
       const updatedState: ScheduleState = {
-        ...state,
+        ...withoutSkip(state),
         status: 'paused',
         revision: state.revision + 1,
         updatedAt: now,
@@ -347,7 +357,7 @@ export async function cancelSchedule(
     expectedRevision,
     async (state, readConditions) => {
       const updatedState: ScheduleState = {
-        ...state,
+        ...withoutSkip(state),
         status: 'cancelled',
         revision: state.status === 'cancelled' ? state.revision : state.revision + 1,
         updatedAt: internals.options.getNow(),
@@ -390,6 +400,8 @@ export async function updateSchedule(
         cronExpression: _droppedCron,
         intervalMs: _droppedInterval,
         pinnedRevision: _droppedPinnedRevision,
+        // A new cadence is a new grid: the occurrence a person skipped may not be on it.
+        skipUntil: _droppedSkip,
         ...stateWithoutCadenceOrPin
       } = state;
       const cadenceFields =

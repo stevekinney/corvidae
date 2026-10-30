@@ -10,6 +10,7 @@
 import type { HumanInputSchema } from '@lostgradient/operative';
 
 import type { AuditRecord, AuditTrail } from '../audit-trail.ts';
+import { secretFieldsOfReview } from '../secret-answers.ts';
 import type { TaskView } from '../task-registry.ts';
 import type { BureauReviews } from '../types.ts';
 
@@ -107,7 +108,7 @@ export async function withPreviousForms(
 
 /**
  * The forms a task's open human waits ask for, in wait order. A task that is not waiting, or whose
- * waits carry no schema, has none. A review that cannot be read leaves its wait without a form: the
+ * waits carry no schema, has none, and a wait whose schema asks for a secret has none (COR-1920). A review that cannot be read leaves its wait without a form: the
  * task is still projected, with the text that names the wait.
  */
 export async function formsOf(bureau: FormsBureau, view: TaskView): Promise<WaitForm[]> {
@@ -117,6 +118,10 @@ export async function formsOf(bureau: FormsBureau, view: TaskView): Promise<Wait
       if (wait.kind !== 'human-wait') return undefined;
       const review = await bureau.reviews.get(wait.reviewId).catch(() => undefined);
       if (review?.kind !== 'human-wait' || review.inputSchema === undefined) return undefined;
+      // COR-1920: a question that asks for a secret is answered in the chat alone. A2UI has no
+      // control that keeps a value out of what A2A records, so no form is offered for it, and an
+      // answer sent to it anyway is refused before anything is recorded.
+      if (secretFieldsOfReview(review).length > 0) return undefined;
       return {
         reviewId: wait.reviewId,
         signalName: wait.signalName,

@@ -18,7 +18,8 @@
  *   `PendingToolApprovalReview.round`, or `0` for a human wait;
  * - value: JSON `{ "decision": "approve" | "deny" | "reject", "principal": string,
  *   "reason"?: string, "digest": string, "recorded": boolean }`. `digest` is the SHA-256 of the
- *   canonical JSON of what the decision delivers: a human wait's payload (`input.payload` on
+ *   canonical JSON of what the decision delivers, each sealed secret answer in it reduced to its
+ *   `{ secretRef }` (COR-1920): a human wait's payload (`input.payload` on
  *   approve, the denial sentinel otherwise), or a tool approval's `input.arguments` when the caller
  *   passes them and `null` otherwise; an absent (`undefined`) value digests as `null`, so an approve
  *   with no payload and one with `payload: null` make the same decision. Canonical JSON sorts
@@ -67,6 +68,7 @@ import { sha256HexSync } from '@lostgradient/cryptography';
 import { type ConditionalTextValueStore, encodeStorageKeyComponent } from '@lostgradient/storage';
 
 import { canonicalJson } from './command-ledger';
+import { withoutCiphertext } from './secret-answers';
 import type { ResolveReviewInput } from './types';
 
 export const REVIEW_DECISION_KEY_PREFIX = 'review-decision:v1';
@@ -95,9 +97,14 @@ export function reviewDecisionKey(reviewId: string, round: number): string {
   return `${REVIEW_DECISION_KEY_PREFIX}:${encodeStorageKeyComponent(boundedReviewId(reviewId, kind))}:${String(round)}`;
 }
 
-/** SHA-256 of the canonical JSON of what a decision delivers; `undefined` digests as `null`. */
+/**
+ * SHA-256 of the canonical JSON of what a decision delivers; `undefined` digests as `null`. A
+ * sealed secret answer digests as its `{ secretRef }` (COR-1920): sealing draws a fresh IV, so a
+ * digest of the ciphertext would make a same-decision retry a conflict, and a digest of the
+ * plaintext would keep something a guess could be checked against.
+ */
 export function digestReviewDelivery(value: unknown): string {
-  return sha256HexSync(canonicalJson(value === undefined ? null : value));
+  return sha256HexSync(canonicalJson(value === undefined ? null : withoutCiphertext(value)));
 }
 
 /** What a resolver asks to record. */

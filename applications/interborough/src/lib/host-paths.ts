@@ -7,6 +7,7 @@
 import { z } from 'zod';
 
 import type { Fetcher } from './bureau-client.ts';
+import { SETTING_LOCK_REASONS } from './bureau-settings.ts';
 
 /** The route the host answers with {@link HostPaths}. */
 export const HOST_PATHS_ROUTE = '/host/paths';
@@ -31,6 +32,15 @@ const hostPathsSchema = z.object({
   workflowDirectory: z.string(),
   /** `configuration.json` in the state directory (an `s3://` location in remote mode), where the model providers are named. */
   configurationFile: z.string(),
+  /**
+   * The writes the host refuses, each with the reason `settings.get` gives a locked key. Empty when
+   * the home is local. A remote home keeps the configuration and the API keys in its deployment, so
+   * `configuration` and `providerKeys` are both `deployment`.
+   */
+  locked: z.object({
+    configuration: z.enum(SETTING_LOCK_REASONS).optional(),
+    providerKeys: z.enum(SETTING_LOCK_REASONS).optional(),
+  }),
   /**
    * The provider names the configuration accepts, each with where its API key lives: a file's path,
    * or in remote mode the environment variable's name. Never the key itself.

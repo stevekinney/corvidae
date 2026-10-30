@@ -1,5 +1,5 @@
 /**
- * Branching a session after a completed agent reply (COR-1560): which messages are a branch point,
+ * Branching a session at the end of a turn (COR-1560, COR-1910): which messages are a branch point,
  * why one is refused, and the durable command record that makes a retry safe.
  *
  * A Bureau session keeps no per-run records of its own (`AgentSession.runs` stays empty), so a
@@ -10,14 +10,21 @@
  *
  * - it is in this session's stored history, as an assistant row of a run's step;
  * - the registry holds that run's record, and the record belongs to this session;
- * - it is the last assistant row of that run in the history;
- * - the run has no pending tool approval, ended `completed` (not in error, not aborted), and left
- *   no tool call of that message without a result.
+ * - the run has ended (a live run's own replies are mid-turn) and has no pending tool approval;
+ * - it is the last reply of that run: the final step of a run that `completed`, which has no tool
+ *   call without a result, or the last step that has reply text in a run that ended in error or
+ *   was aborted. A fork ends at the reply's text row, so the rows of a failed step after it are
+ *   not carried, and no tool call without a result is.
+ *
+ * A fork may also branch before the first message (`throughMessageId: null`), which needs no
+ * evidence: it carries no history. An earlier turn of the same context is a branch point whether or
+ * not a later run is live, because a fork reads a settled prefix and touches nothing else.
  *
  * @module session-fork
  */
 
 import { type AgentSession, parseStepRowIdentifier } from '@lostgradient/operative';
+import type { ConversationHistory } from 'conversationalist';
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import {
@@ -41,12 +48,8 @@ export const FORK_OPERATION_VERSION = 'bureau.fork.v1';
 export type SessionForkRefusalReason =
   /** The message is not in this session's history. */
   | 'message-not-found'
-  /** The message is not the final assistant message of a run that has ended in this session. */
+  /** The message is not the last assistant reply of a run that has ended in this session. */
   | 'not-a-branch-point'
-  /** The message's run ended in error. */
-  | 'branch-from-errored-run'
-  /** The message's run was aborted. */
-  | 'branch-from-aborted-run'
   /** The message's run still has an unresolved tool approval. */
   | 'branch-with-pending-approval'
   /** The message has a tool call with no matching result. */
@@ -71,8 +74,11 @@ export interface ForkSessionRequest {
   readonly owner: string;
   /** The caller's own identifier for the command; an exact retry of it returns the original result. */
   readonly commandId: string;
-  /** The final assistant message of a completed run in the session, which the branch ends at. */
-  readonly throughMessageId: string;
+  /**
+   * The last assistant reply of a run that has ended in the session, which the branch ends at, or
+   * `null` to branch before the first message (the fork starts empty and records only its parent).
+   */
+  readonly throughMessageId: string | null;
 }
 
 /** What {@link BureauContexts.fork} answers, and what the ledger keeps for a retry. */
@@ -89,11 +95,19 @@ export interface ForkSessionResult {
 
 /**
  * How an attempt ended when the branch could not be made after it had been claimed: the parent
- * session or the message went away between the checks and the fork. The ledger keeps it as the
+ * session or the message went away between the checks and the fork (a fork before the first message
+ * names no message, so only the parent can). The ledger keeps it as the
  * entry's result, so the command does not stay pending and an exact retry is refused the same way.
  */
 export interface ForkLedgerFailure {
-  readonly failure: { readonly reason: 'message-not-found'; readonly message: string };
+  readonly failure: {
+    /**
+     * `message-not-found` when the message went away; `context-not-found` when the parent did,
+     * which a fork before the first message (no message to name) settles to.
+     */
+    readonly reason: 'message-not-found' | 'context-not-found';
+    readonly message: string;
+  };
 }
 
 /** What the fork ledger keeps for a command: the answer it gave, or the failure it settled to. */
@@ -134,9 +148,11 @@ export interface BranchPointEvidence {
  */
 export async function assertBranchPoint(
   session: AgentSession,
-  throughMessageId: string,
+  throughMessageId: string | null,
   evidence: BranchPointEvidence,
 ): Promise<void> {
+  // Before the first message there is no run to judge.
+  if (throughMessageId === null) return;
   const refuse = (reason: SessionForkRefusalReason, message: string): never => {
     throw new SessionForkRefusedError(reason, message);
   };
@@ -168,18 +184,24 @@ export async function assertBranchPoint(
     return refuse('branch-with-pending-approval', 'The run still has a tool approval waiting.');
   }
   const status = record.settled?.status;
-  if (status === 'failed') return refuse('branch-from-errored-run', 'The run ended in error.');
-  if (status === 'canceled') return refuse('branch-from-aborted-run', 'The run was aborted.');
   if (status === undefined) {
     return refuse('not-a-branch-point', 'The run that made this reply has not ended.');
   }
   const steps = stepsOfRun(history, runId);
-  const finalStep = Math.max(...steps.keys());
+  // A run that completed ends at its final step, which must be a reply. A run that ended in error
+  // or was aborted ends at the last step that replied: later steps (a tool call that was never
+  // answered, a model call that failed) left no reply to end a turn at.
+  const replySteps = [...steps].filter(([, rows]) => rows.hasText).map(([step]) => step);
+  const finalStep = status === 'completed' ? Math.max(...steps.keys()) : Math.max(...replySteps);
   const last = steps.get(finalStep);
   if (through.step !== finalStep || last === undefined) {
-    return refuse('not-a-branch-point', 'Only the final step of a run can be branched from.');
+    return refuse('not-a-branch-point', 'Only the last reply of a run can be branched from.');
   }
-  if ([...last.calls].some((callId) => !last.answered.has(callId))) {
+  // What the fork carries must not leave a tool call without its result. A run that completed
+  // answered every call of its final step; for the others only the rows up to the reply count.
+  const carried =
+    status === 'completed' ? last : stepsOfRun(history, runId, throughMessageId).get(finalStep)!;
+  if ([...carried.calls].some((callId) => !carried.answered.has(callId))) {
     return refuse(
       'branch-with-unresolved-tool-call',
       'The final step has a tool call with no result.',
@@ -199,17 +221,33 @@ interface StepRows {
 }
 
 /**
+ * Whether a stored row is a step's reply: an assistant row holding visible text, as a string or as
+ * a `text` part. A step that only thought (a `thinking` or redacted part) or only used a server
+ * tool stores an assistant row too, but it has said nothing a turn could end at.
+ */
+function isReplyRow(row: ConversationHistory['messages'][string]): boolean {
+  if (row.role !== 'assistant') return false;
+  if (typeof row.content === 'string') return row.content.length > 0;
+  return row.content.some((part) => part.type === 'text');
+}
+
+/**
  * The rows of every step of `runId` in `history`, by step number, read through Operative's own
  * row identifier parser. A step with no text stores its first tool call under the step's own id,
- * so a `tool-call` row at a step id is a call, and an `assistant` row there is the text. Results
- * are matched by the call they answer, from the row itself.
+ * so a `tool-call` row at a step id is a call, and an `assistant` row there is the step's reply
+ * only when it holds visible text (`isReplyRow`): a step that only thought has an assistant row and
+ * no reply. Results
+ * are matched by the call they answer, from the row itself. With `throughMessageId`, only the rows
+ * up to and including it are read, which is what a fork ending there carries.
  */
 function stepsOfRun(
   history: AgentSession['conversationHistory'],
   runId: string,
+  throughMessageId?: string,
 ): Map<number, StepRows> {
   const steps = new Map<number, StepRows>();
-  for (const id of history.ids) {
+  const end = throughMessageId === undefined ? -1 : history.ids.indexOf(throughMessageId);
+  for (const id of end < 0 ? history.ids : history.ids.slice(0, end + 1)) {
     const parsed = parseStepRowIdentifier(id);
     const row = getOwn(history.messages, id);
     if (parsed?.runId !== runId || row === undefined) continue;
@@ -218,7 +256,7 @@ function stepsOfRun(
       rows = { hasText: false, calls: new Set(), answered: new Set() };
       steps.set(parsed.step, rows);
     }
-    if (row.role === 'assistant' && parsed.kind === 'step') rows.hasText = true;
+    if (parsed.kind === 'step' && isReplyRow(row)) rows.hasText = true;
     if (row.role === 'tool-call' && row.toolCall !== undefined) rows.calls.add(row.toolCall.id);
     if (row.role === 'tool-result' && row.toolResult !== undefined) {
       rows.answered.add(row.toolResult.callId);

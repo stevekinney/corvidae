@@ -24,6 +24,12 @@ export type SchedulesDependencies = {
   readonly cancel: BureauSchedules['cancel'];
   /** {@link BureauSchedules.update}. */
   readonly update: BureauSchedules['update'];
+  /** {@link BureauSchedules.skipNext}. */
+  readonly skipNext: BureauSchedules['skipNext'];
+  /** {@link BureauSchedules.runNow}. */
+  readonly runNow: BureauSchedules['runNow'];
+  /** {@link BureauSchedules.missed}. */
+  readonly missed: BureauSchedules['missed'];
   /** {@link BureauSchedules.agentName}. */
   readonly agentName: BureauSchedules['agentName'];
   /** {@link BureauSchedules.inputPreview}. */
@@ -47,6 +53,9 @@ export function createSchedules(dependencies: SchedulesDependencies): BureauSche
     resume: dependencies.resume,
     cancel: dependencies.cancel,
     update: dependencies.update,
+    skipNext: dependencies.skipNext,
+    runNow: dependencies.runNow,
+    missed: dependencies.missed,
     agentName: dependencies.agentName,
     inputPreview: dependencies.inputPreview,
     events: (scheduleId, options) =>

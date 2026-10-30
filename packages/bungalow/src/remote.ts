@@ -234,6 +234,12 @@ export async function openRemoteBungalow(
       assertOpen();
       return readObject(client, configurationKey, 'read configuration');
     },
+    writeConfiguration() {
+      assertOpen();
+      throw new BungalowStateError(
+        'A remote Bungalow keeps its configuration in the bucket and cannot write it.',
+      );
+    },
     secretLocation(key) {
       assertOpen();
       return secretVariable(name, key);

@@ -9,6 +9,7 @@
  * `Unprocessable` for a key the deployment locked, and `InvalidParams` for an unknown key or a value
  * the key does not take. {@link settingsFaultOf} sorts them for the page.
  */
+import type { SettingLockReason } from '@lostgradient/bureau';
 import { HttpClientError } from '@lostgradient/weft';
 import { z } from 'zod';
 
@@ -17,12 +18,29 @@ import { readServerSentEventStream } from './live-source/sse-reader.ts';
 
 type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
 
+/**
+ * Why a key is locked, as `bureau.settings.get` reports it. The browser cannot import the list
+ * from Bureau, whose index is server code, so it is spelled here, and `satisfies` and the
+ * exhaustiveness check below fail the type-check when Bureau's list and this one differ. A test
+ * compares them as values too (`bureau-settings.test.ts`).
+ */
+export const SETTING_LOCK_REASONS = [
+  'deployment',
+  'shared-storage',
+] as const satisfies readonly SettingLockReason[];
+
+// Fails to compile when Bureau adds a reason this list lacks.
+const lockReasonsAreExhaustive: SettingLockReason extends (typeof SETTING_LOCK_REASONS)[number]
+  ? true
+  : never = true;
+void lockReasonsAreExhaustive;
+
 /** How one key stands: how it applies, whether the deployment locked it, and whether a stored value waits for a restart. */
 const keyStateSchema = z.object({
   apply: z.enum(['live', 'restart']),
   locked: z.boolean(),
   /** Why the key is locked; present exactly when `locked` is `true`. */
-  lockReason: z.enum(['deployment', 'shared-storage']).optional(),
+  lockReason: z.enum(SETTING_LOCK_REASONS).optional(),
   pendingRestart: z.boolean(),
 });
 

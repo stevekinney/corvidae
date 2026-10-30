@@ -28,6 +28,31 @@ describe('getHostPaths', () => {
     expect(paths.providers).toEqual(STUB_PROVIDERS);
   });
 
+  test('reports the writes a remote host refuses, each with the reason', async () => {
+    const remote = await getHostPaths({
+      fetch: async () => Response.json(stubHostPaths('/agents', '/workflows', 'remote')),
+    });
+    expect(remote.locked).toEqual({ configuration: 'deployment', providerKeys: 'deployment' });
+    const local = await getHostPaths({
+      fetch: async () => Response.json(stubHostPaths('/agents', '/workflows')),
+    });
+    expect(local.locked).toEqual({});
+  });
+
+  test('refuses a reason that is not one settings.get gives', async () => {
+    const failure = await getHostPaths({
+      fetch: async () =>
+        Response.json({
+          ...stubHostPaths('/agents', '/workflows'),
+          locked: { configuration: 'because' },
+        }),
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeDefined();
+  });
+
   test('passes an abort signal through, and uses the global fetch by default', async () => {
     const controller = new AbortController();
     const signals: (AbortSignal | null | undefined)[] = [];

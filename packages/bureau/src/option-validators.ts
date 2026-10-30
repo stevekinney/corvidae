@@ -7,6 +7,7 @@
  */
 
 import type { CheckpointRetentionOption } from './audit-trail.ts';
+import { MAXIMUM_WORKFLOW_LOG_LINES_PER_RUN } from './settings/settings-schema.ts';
 import type {
   BureauChildrenOptions,
   BureauRetentionOptions,
@@ -138,6 +139,33 @@ export function validateMemoryRetentionOption(value: unknown, badRequest: BadReq
   }
 }
 
+/** COR-1811 — `BureauRetentionOptions.logs` is `{ olderThan }`, a positive integer of milliseconds. */
+export function validateLogsRetentionOption(value: unknown, badRequest: BadRequest): void {
+  if (value === undefined) return;
+  if (typeof value !== 'object' || value === null) {
+    badRequest('"options.retention.logs" must be { olderThan: number }');
+  }
+  const olderThan = (value as { readonly olderThan?: unknown }).olderThan;
+  if (typeof olderThan !== 'number' || !Number.isSafeInteger(olderThan) || olderThan <= 0) {
+    badRequest('"options.retention.logs.olderThan" must be a positive integer');
+  }
+}
+
+/** COR-1811 — `BureauLogsOptions.maximumLinesPerRun` is a positive integer, at most 5000, when given. */
+export function validateLogsMaximumLinesPerRun(value: unknown, badRequest: BadRequest): void {
+  if (value === undefined) return;
+  if (
+    typeof value !== 'number' ||
+    !Number.isSafeInteger(value) ||
+    value <= 0 ||
+    value > MAXIMUM_WORKFLOW_LOG_LINES_PER_RUN
+  ) {
+    badRequest(
+      `"options.logs.maximumLinesPerRun" must be a positive integer of at most ${MAXIMUM_WORKFLOW_LOG_LINES_PER_RUN}`,
+    );
+  }
+}
+
 export function validateRetentionOptions(
   retention: BureauRetentionOptions | undefined,
   badRequest: BadRequest,
@@ -151,6 +179,7 @@ export function validateRetentionOptions(
   validateCheckpointRetentionOption(retention?.checkpoints, badRequest);
   validateReceiptRetentionOption(retention?.receipts, badRequest);
   validateMemoryRetentionOption(retention?.memory, badRequest);
+  validateLogsRetentionOption(retention?.logs, badRequest);
 }
 
 /**

@@ -261,6 +261,9 @@ export type BureauHandlerSource = Pick<
     | 'resume'
     | 'cancel'
     | 'update'
+    | 'skipNext'
+    | 'runNow'
+    | 'missed'
     | 'agentName'
     | 'inputPreview'
   >;
@@ -1134,6 +1137,9 @@ export function buildBureauHandlerHost(
       resume: bureau.schedules.resume,
       cancel: bureau.schedules.cancel,
       update: bureau.schedules.update,
+      skipNext: bureau.schedules.skipNext,
+      runNow: bureau.schedules.runNow,
+      missed: bureau.schedules.missed,
       owner: (scheduleId) => bureau.ownerOf({ kind: 'schedule', id: scheduleId }),
       agentName: bureau.schedules.agentName,
       inputPreview: bureau.schedules.inputPreview,

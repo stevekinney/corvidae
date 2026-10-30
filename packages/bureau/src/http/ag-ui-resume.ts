@@ -62,6 +62,12 @@ import {
   formatReviewAnswerIssues,
   validateReviewAnswer,
 } from '../review-answer.ts';
+import {
+  gateSecretAnswer,
+  secretFieldsOfReview,
+  secretReferenceForm,
+  secretReferenceFormOfInput,
+} from '../secret-answers.ts';
 import { type AgUiResumePayload, interruptKey, roundOfEntry } from './ag-ui-interrupts.ts';
 import {
   RESUME_ATTEMPT_FAILED_MESSAGES,
@@ -150,9 +156,14 @@ export type ResumeRequest = {
 
 const CANCELLED_REASON = 'cancelled by the client';
 
+/** The fields a resume payload may hold, as the interrupt's `responseSchema` advertises (`additionalProperties: false`). */
+const RESUME_PAYLOAD_KEYS = new Set(['decision', 'reason', 'arguments', 'answer']);
+
 function isPayload(value: unknown): value is AgUiResumePayload {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const payload = value as Record<string, unknown>;
+  // COR-1920: a field the schema does not define is refused, so the digest covers only what is judged.
+  if (Object.keys(payload).some((key) => !RESUME_PAYLOAD_KEYS.has(key))) return false;
   if (
     payload['decision'] !== 'approve' &&
     payload['decision'] !== 'deny' &&
@@ -303,9 +314,19 @@ export function createResume(context: ResumeContext) {
       const id = humanWaitAnswerRowIdentifier(review);
       if (id === undefined) continue;
       const resolution = resolutionFor(entry, review, request.owner);
+      // COR-1920: the row shows each secret as the reference the run was given, as the run's own
+      // conversation does: a value the schema read is in its reference form, and text a retry
+      // carries (read without the schema) is read the way the command's digest reads it.
+      const fields = secretFieldsOfReview(review);
+      const answer =
+        fields.length === 0
+          ? resolution.payload
+          : typeof resolution.payload === 'string' && !fields.includes('')
+            ? secretReferenceFormOfInput(resolution.payload, fields, review.id)
+            : secretReferenceForm(resolution.payload, fields, review.id);
       const payload =
         resolution.decision === 'approve'
-          ? resolution.payload
+          ? answer
           : humanWaitDenialPayload(resolution.decision, resolution.reason);
       rows.push({
         id,
@@ -413,6 +434,20 @@ export function createResume(context: ResumeContext) {
     // digest covers the entries as received, not as converted: a retry of a resume that
     // has completed reads its review without the schema (the audit record omits it), so it could
     // not convert, and the two attempts must still be the same command.
+    // COR-1920: a payload carries only what its interrupt's kind defines (a question's `answer`, an
+    // approval's `arguments`), so nothing is digested that no check judged.
+    for (const entry of entries) {
+      const review = reviews.get(entry.interruptId);
+      const payload = entry.payload as AgUiResumePayload | undefined;
+      if (entry.status !== 'resolved' || payload === undefined || review === undefined) continue;
+      const foreign = review.kind === 'human-wait' ? 'arguments' : 'answer';
+      if (Object.hasOwn(payload, foreign)) {
+        return context.refuse(
+          'INVALID_INPUT',
+          `The answer to interrupt "${entry.interruptId}" carries "${foreign}", which its kind does not take`,
+        );
+      }
+    }
     const fitted: ResumeEntry[] = [];
     for (const entry of entries) {
       const review = reviews.get(entry.interruptId);
@@ -452,13 +487,35 @@ export function createResume(context: ResumeContext) {
       requestId: interruptKey([...reviews.values()]),
       operationVersion: AG_UI_OPERATION_VERSION,
     };
+    // The shared gate (COR-1920): each entry names the one interrupt it answers, and this path
+    // seals for it, so it passes; it is asked here so that every answer path asks it before writing.
+    for (const entry of entries) {
+      await gateSecretAnswer({
+        candidates: [entry.interruptId],
+        read: async (reviewId) => reviews.get(reviewId),
+        seals: true,
+      });
+    }
+    // COR-1920: the answer to a question that asks for a secret is digested in reference form, read
+    // from the fields its review marks secret (which a closed review still names), so a retry
+    // digests alike and no digest of a secret's plaintext is kept.
+    const digestedPayload = (entry: ResumeEntry): unknown => {
+      if (entry.status !== 'resolved') return null;
+      const review = reviews.get(entry.interruptId);
+      const fields = review?.kind === 'human-wait' ? secretFieldsOfReview(review) : [];
+      const payload = entry.payload as AgUiResumePayload;
+      if (review === undefined || fields.length === 0 || payload.answer === undefined) {
+        return entry.payload;
+      }
+      return { ...payload, answer: secretReferenceFormOfInput(payload.answer, fields, review.id) };
+    };
     const digest = digestCommandPayload({
       entries: canonicalJson(
         entries
           .map((entry) => ({
             interruptId: entry.interruptId,
             status: entry.status,
-            payload: entry.status === 'resolved' ? entry.payload : null,
+            payload: digestedPayload(entry),
           }))
           .toSorted((left, right) => (left.interruptId < right.interruptId ? -1 : 1)),
       ),

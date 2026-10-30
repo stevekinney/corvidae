@@ -215,6 +215,12 @@ export interface AgentFileCatalogOptions {
    * unsigned and `reviews.resolve` refuses to approve it (`NOT_CONFIGURED`); it can only be denied.
    */
   readonly approvalSecret?: string | undefined;
+  /**
+   * Reads a secret answer back for a tool that declares `acceptsSecrets` (COR-1920). A file
+   * agent's per-run toolbox is built here, so it is handed the resolver the Bureau's own toolbox
+   * has; without one such a tool sees no secret.
+   */
+  readonly secretResolver?: ToolSecretResolver | undefined;
   /** Where watcher and scan failures are reported. */
   readonly diagnose: (message: string, cause: unknown) => void;
   /**
@@ -626,6 +632,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         // Only the agent's own tools: the toolbox also holds the tools Bureau adds to a run.
         policy: createToolApprovalHooks(definition.toolApproval, { tools: definition.tools }),
         ...(options.approvalSecret === undefined ? {} : { approvalSecret: options.approvalSecret }),
+        ...(options.secretResolver === undefined ? {} : { secretResolver: options.secretResolver }),
       }),
       // A call that asks parks the run on the approval: the answer comes from a person, not the
       // model, and a model that is told "action required" would only ask again.

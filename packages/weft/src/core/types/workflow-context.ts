@@ -189,7 +189,7 @@ export interface WorkflowContext<
    * `workflowType`. Replay-safe in both inline and worker execution modes: log
    * calls in the already-committed replay window are suppressed so a recovered
    * run does not re-emit logs. See {@link WorkflowLogger} for the full contract
-   * (method set, the after-last-step caveat, and parallel-branch semantics).
+   * (method set, the crash-window caveat, and parallel-branch semantics).
    *
    * Optional on the interface so existing structural `WorkflowContext`
    * implementors (test stubs and the like) are not source-broken — the same

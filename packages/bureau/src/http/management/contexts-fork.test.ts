@@ -181,6 +181,61 @@ describe('bureau.contexts.fork', () => {
     });
   });
 
+  it('forks before the first message with a null throughMessageId, owned by the caller, and takes the edited input', async () => {
+    await withBureau(async (opened) => {
+      const run = await finishedSession(opened);
+      const before = await opened.bureau.contexts.get(run.contextId);
+
+      const body = await forkCall(opened, run.contextId, 'alice-key', { throughMessageId: null });
+
+      expect(body.error).toBeUndefined();
+      const contextId = body.result?.['contextId'] as string;
+      const get = await rpc(opened.handler, 'bureau.contexts.get', { contextId }, 'alice-key');
+      expect(get.result).toMatchObject({
+        parentContextId: run.contextId,
+        forkedFromMessageId: null,
+        owner: OWNER.alice,
+        messageCount: 0,
+      });
+      // The edited text goes to the fork, as a new turn on it; the original is unchanged.
+      const edited = await opened.bureau.tasks.start('agent', 'the edited first message', {
+        contextId,
+        principal: OWNER.alice,
+      });
+      await waitForTaskState(opened.bureau, edited.id);
+      const fork = await opened.bureau.contexts.get(contextId);
+      const first = fork?.conversationHistory.ids[0];
+      expect(fork?.conversationHistory.messages[first ?? '']?.content).toBe(
+        'the edited first message',
+      );
+      expect(await opened.bureau.contexts.get(run.contextId)).toEqual(before);
+    });
+  });
+
+  it('answers a null fork of another owner’s context and of a missing one as the same context not found', async () => {
+    await withBureau(async (opened) => {
+      const run = await finishedSession(opened);
+
+      const foreign = await forkCall(opened, run.contextId, 'bob-key', { throughMessageId: null });
+      const missing = await forkCall(opened, 'no-such-context', 'alice-key', {
+        throughMessageId: null,
+      });
+
+      expect(foreign.error?.data).toMatchObject({ weftCode: 'NotFound', resource: 'context' });
+      expect(missing.error?.data).toMatchObject({ weftCode: 'NotFound', resource: 'context' });
+    });
+  });
+
+  it('still rejects an empty throughMessageId', async () => {
+    await withBureau(async (opened) => {
+      const run = await finishedSession(opened);
+
+      const body = await forkCall(opened, run.contextId, 'alice-key', { throughMessageId: '' });
+
+      expect(body.error?.data).toMatchObject({ weftCode: 'InvalidParams' });
+    });
+  });
+
   it('answers another owner’s context and a missing one as the same not found, and lets an operator holding read and write branch any', async () => {
     await withBureau(async (opened) => {
       const run = await finishedSession(opened);
@@ -281,8 +336,6 @@ describe('bureau.contexts.fork refusals', () => {
 
   it.each([
     'not-a-branch-point',
-    'branch-from-errored-run',
-    'branch-from-aborted-run',
     'branch-with-pending-approval',
     'branch-with-unresolved-tool-call',
     'command-conflict',

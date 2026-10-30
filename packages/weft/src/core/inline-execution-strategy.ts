@@ -11,7 +11,7 @@
  */
 
 import type { ContextOperationRequest } from './context.ts';
-import { Context, setContextWorkflowInterceptor } from './context.ts';
+import { Context, endResumeReplay, setContextWorkflowInterceptor } from './context.ts';
 import type { ExecutionStrategy } from './execution-strategy.ts';
 import {
   classifyErrorAsFailureCategory,
@@ -367,9 +367,14 @@ export class InlineExecutionStrategy implements ExecutionStrategy {
 
           const iterationResult = await advance();
           if (this.#generators.get(workflowId) !== generator) return;
+          // The body handed control back: a relaunched run has now replayed up to the operation
+          // it was parked on, so what it logs after that is new. After the identity check, so a
+          // superseded generation settling late never ends the replay of the context that replaced it.
+          this.#endReplay(workflowId);
           this.#handleIterationResult(workflowId, iterationResult);
         } catch (error) {
           if (this.#generators.get(workflowId) !== generator) return;
+          this.#endReplay(workflowId);
           this.#cleanup(workflowId, {
             preserveTrackedAdvance: true,
             preserveTrackedTurn: true,
@@ -391,6 +396,11 @@ export class InlineExecutionStrategy implements ExecutionStrategy {
         }
       })(),
     );
+  }
+
+  #endReplay(workflowId: string): void {
+    const context = this.#contexts.get(workflowId);
+    if (context !== undefined) endResumeReplay(context);
   }
 
   #handleIterationResult(

@@ -1,4 +1,5 @@
 import type { Bungalow, ContentLocation, DatabaseLocation } from '@lostgradient/bungalow';
+import type { SettingLockReason } from '@lostgradient/bureau';
 import type { AgentSource, WorkflowSource } from '@lostgradient/bureau/sources';
 import {
   agentFileDirectory,
@@ -42,6 +43,23 @@ export function redactDatabase(database: DatabaseLocation): HostDatabase {
   return { kind: 'postgres', location: `${url.host}${url.pathname}` };
 }
 
+/**
+ * The writes a home can refuse, by the name `/host/paths` reports them under: `configuration` is
+ * `configuration.json`, and `providerKeys` are the API-key secrets. A local home writes both. A
+ * remote home keeps the configuration in a bucket and the secrets in the environment, so it
+ * refuses both for the reason `deployment`, the same codes `settings.get` gives a locked key.
+ */
+export type HostWriteLocks = Readonly<
+  Partial<Record<'configuration' | 'providerKeys', SettingLockReason>>
+>;
+
+/** The writes `bungalow`'s home refuses and why. Empty for a local home. */
+export function hostWriteLocks(bungalow: Pick<Bungalow, 'mode'>): HostWriteLocks {
+  return bungalow.mode === 'remote'
+    ? { configuration: 'deployment', providerKeys: 'deployment' }
+    : {};
+}
+
 /** What `/host/paths` answers: where the host keeps its state, with no credential in any of it. */
 export type HostPathsReport = {
   /** `local` for a state directory and a SQLite file, `remote` for Postgres and an S3 bucket. */
@@ -54,6 +72,8 @@ export type HostPathsReport = {
   readonly workflowDirectory: string;
   /** `configuration.json`: a path, or an `s3://` location. */
   readonly configurationFile: string;
+  /** The writes the host refuses, each with its reason: empty when the home is local. */
+  readonly locked: HostWriteLocks;
   /** Each provider and where its API key lives (a file's path, or an environment variable's name), never the key. */
   readonly providers: readonly { readonly name: string; readonly secretFile: string }[];
 };
@@ -73,6 +93,7 @@ export function hostPathsReport(
     agentDirectory: describeContent(content.agents),
     workflowDirectory: describeContent(content.workflows),
     configurationFile: bungalow.configurationLocation,
+    locked: hostWriteLocks(bungalow),
     providers: providers.map(({ name, secretKey }) => ({
       name,
       secretFile: bungalow.secretLocation(secretKey),
