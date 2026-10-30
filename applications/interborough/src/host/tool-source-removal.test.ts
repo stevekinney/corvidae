@@ -543,7 +543,8 @@ describe('the tools of a removed source', () => {
     const read = manager.tools()['local__read-environment'];
     expect(await read?.execute({ name: 'SOURCE_TOKEN' })).toBe('child-secret-value');
     // The load may start a short-lived sibling first; the process that serves is the last one.
-    const pids = (await readFile(pidFile, 'utf8')).split('\n').filter(Boolean).map(Number);
+    const recorded = await readFile(pidFile, 'utf8');
+    const pids = recorded.split('\n').filter(Boolean).map(Number);
     const serving = pids.at(-1) ?? 0;
     expect(isRunning(serving)).toBe(true);
 

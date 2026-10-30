@@ -365,7 +365,11 @@ export function createToolSourceVault(options: ToolSourceVaultOptions): ToolSour
         load: () =>
           fence === undefined
             ? read(sourceId).then((secrets) => ({ ...secrets.oauth }))
-            : run(async () => ((await fence()) ? { ...(await read(sourceId)).oauth } : {})),
+            : run(async () => {
+                if (!(await fence())) return {};
+                const secrets = await read(sourceId);
+                return { ...secrets.oauth };
+              }),
         save: (patch) =>
           run(() =>
             fenced(async () => {

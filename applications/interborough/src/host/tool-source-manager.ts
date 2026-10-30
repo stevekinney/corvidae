@@ -1019,7 +1019,8 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
    */
   async function isCurrent(id: string, revision: string): Promise<boolean> {
     try {
-      return revisionOf((await configured(id)).source) === revision;
+      const entry = await configured(id);
+      return revisionOf(entry.source) === revision;
     } catch {
       return false;
     }
