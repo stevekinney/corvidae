@@ -354,6 +354,7 @@ const SIDEBAR_BASELINE = [
   'terminal-output',
   'text',
   'textarea',
+  'theme-switch',
   'time-field',
   'timeline',
   'toast-region',

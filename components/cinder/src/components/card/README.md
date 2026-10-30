@@ -20,13 +20,17 @@ Surface container for grouping related content and actions into a distinct visua
 
 Use `tone="danger"` when a settings section or action group has destructive, irreversible, or broad-scope consequences. The tone paints the Card container, border, and generated title icon so applications do not need to hand-roll danger-zone borders or backgrounds. Put the concrete state or action in the body and use `ConfirmDialog` for irreversible or workspace-wide changes.
 
-## Elevation
+## Edge
 
-The `elevation` prop applies across every `variant` and `tone` combination, including `variant="well"` and `tone="danger"`. Those two surfaces ship flat (`box-shadow: none`) at the default `elevation="sm"`, matching their existing look — set `elevation="md"` or `elevation="lg"` explicitly on a well or danger card to raise it above that flat baseline. The flat baseline applies to non-interactive cards only: a well or danger card that is also interactive keeps its hover and focus elevation, so its resting state is not pinned flat.
+A card draws one edge, never two. `edge="border"` (the default) is a hairline outline with no shadow; `edge="shadow"` is a soft shadow with no visible border. There is no prop that asks for both, so a card cannot end up with a border and a shadow together. The choice applies across every `variant` and `tone`, including `variant="well"` and `tone="danger"`.
+
+## Header divider
+
+The header is separated from the body by its surface alone. Pass `headerDivider` to draw a rule under it; the divider is opt-in, so a card that already has an edge is not ruled a second time.
 
 ## Interaction States
 
-A card becomes interactive when it receives `href` (the whole card renders as an anchor) or `onclick` (the whole card renders as a `<div>` with a stretched hit-target `<button>` covering it). Either way, hover raises the card's elevation and darkens its border under a hover-capable pointer, and keyboard focus paints a visible ring on the outer card itself — never only on the inner control — so the whole-card-is-a-link pattern gets a correct focus indicator without a consumer needing to do anything extra.
+A card becomes interactive when it receives `href` (the whole card renders as an anchor) or `onclick` (the whole card renders as a `<div>` with a stretched hit-target `<button>` covering it). Either way, hover strengthens whichever edge the card has (a darker border for `edge="border"`, a deeper shadow for `edge="shadow"`) under a hover-capable pointer, and keyboard focus paints a visible ring on the outer card itself — never only on the inner control — so the whole-card-is-a-link pattern gets a correct focus indicator without a consumer needing to do anything extra.
 
 ## Props
 
@@ -37,12 +41,13 @@ A card becomes interactive when it receives `href` (the whole card renders as an
 | `bodyTone` | `"default"` \| `"muted"` | no | — | Body surface treatment. `muted` renders a grey/inset body region. |
 | `class` | `string` | no | — | Custom class merged with `.cinder-card`. |
 | `description` | `string` | no | — | Optional subheading rendered as a paragraph below the title inside the header. |
+| `edge` | `"border"` \| `"shadow"` | no | — | The one edge the card draws: a `border` (default) or a `shadow`, never both. An interactive card strengthens whichever edge it has on hover. |
 | `edgeToEdgeOnMobile` | `boolean` | no | — | Remove side borders/radius and bleed to the viewport edge on narrow screens. |
-| `elevation` | `"none"` \| `"sm"` \| `"md"` \| `"lg"` | no | — | Elevation shadow applied to the card surface. |
 | `footerTone` | `"default"` \| `"muted"` | no | — | Footer surface treatment. `muted` renders a grey/inset footer region. |
+| `headerDivider` | `boolean` | no | — | Draw a divider rule under the header. Off by default: the header is separated from the body by its surface alone, and a divider is opt-in. |
 | `headingLevel` | `2` \| `3` \| `4` \| `5` \| `6` | no | — | Heading level for the generated title. Defaults to `3`. Set this so the card title nests correctly within the surrounding document outline. |
 | `href` | `string` | no | — | Destination URL that makes the entire card an anchor. |
-| `padding` | `"none"` \| `"default"` | no | — | Body padding. `none` leaves header and footer padding intact while making body content flush with the card edges. |
+| `padding` | `"default"` \| `"none"` | no | — | Body padding. `none` leaves header and footer padding intact while making body content flush with the card edges. |
 | `title` | `string` | no | — | Primary heading text rendered inside the card's header region. |
 | `tone` | `"default"` \| `"danger"` | no | — | Container risk treatment. `danger` renders a danger-zone surface for high-risk settings or destructive actions. |
 | `variant` | `"card"` \| `"well"` | no | — | Visual container style. `card` is raised; `well` is flatter and inset. |

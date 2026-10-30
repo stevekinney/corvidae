@@ -12,6 +12,8 @@ A semantic status indicator that pairs a colored dot with an accessible label.
 <StatusDot status="online" label="Online" />
 ```
 
+A status is a dot and a word, never a dot alone. With only `status`, the component renders a default word derived from it (`online` renders "Online", `danger` renders "Danger"), so `<StatusDot status="online" />` shows the same dot and word as the example above. Pass `label` to say something more specific, such as "Healthy" or "Deploying", and pass `labelVisible={false}` only where the word sits right next to the dot in the surrounding text; the word stays the accessible name either way.
+
 ## Props
 
 <!-- generated:props:start -->
@@ -20,7 +22,7 @@ A semantic status indicator that pairs a colored dot with an accessible label.
 | --- | --- | --- | --- | --- |
 | `class` | `string` | no | — | Extra classes appended to the root element. |
 | `connectionState` | `"connected"` \| `"connecting"` \| `"disconnected"` \| `"error"` | no | — | Realtime connection preset. Sets status, default label, and live-region semantics. |
-| `label` | `string` | no | — | Optional human label. Rendered visibly when `labelVisible` is true; used as the accessible name either way. |
+| `label` | `string` | no | — | Human label. Rendered visibly when `labelVisible` is true; used as the accessible name either way. Defaults to a word derived from `status` (for example "Online"), so a bare StatusDot is a dot and a word, never a dot alone. |
 | `labelVisible` | `boolean` | no | `true` | Whether to render the visible label. |
 | `live` | `boolean` | no | — | Use role="status" with polite live-region attributes. Defaults true when connectionState is provided. |
 | `size` | `"sm"` \| `"md"` | no | `"md"` | Dot size. |

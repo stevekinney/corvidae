@@ -190,6 +190,7 @@
 @import '../components/time-field/time-field.css';
 @import '../components/timeline/timeline.css';
 @import '../components/toast-region/toast-region.css';
+@import '../components/theme-switch/theme-switch.css';
 @import '../components/toggle/toggle.css';
 @import '../components/toolbar/toolbar.css';
 @import '../components/tooltip/tooltip.css';

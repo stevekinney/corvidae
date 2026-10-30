@@ -71,8 +71,6 @@
     margin: 0;
     font-size: var(--cinder-text-2xs);
     font-weight: var(--cinder-font-semibold);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
     color: var(--cinder-text-subtle);
   }
 
@@ -211,8 +209,10 @@
     margin-block: var(--cinder-space-1) 0;
   }
 
-  .cinder-jse-property-row[data-cinder-invalid] > .cinder-table__cell:first-child {
-    border-inline-start: 2px solid var(--cinder-status-danger-border);
+  /* An invalid row is a tint; the error-count badge in the row carries the status as text,
+     so it stays legible when forced colors drop the tint. */
+  .cinder-jse-property-row[data-cinder-invalid] > .cinder-table__cell {
+    background-color: var(--cinder-status-danger-background);
   }
 
   .cinder-jse-property-row__key {

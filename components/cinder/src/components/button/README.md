@@ -14,6 +14,14 @@ A clickable button or anchor with built-in loading state, icon slots, and a disc
 
 When `href` is set, the component renders as `<a>`; otherwise it renders as `<button>`. Setting `loading` swaps in a spinner, blocks the consumer's `onclick`, forces `aria-disabled` / `aria-busy`, and strips `href` to prevent navigation.
 
+## Sizes
+
+`md` is the default and the size for inline actions: the buttons in a row, a card, a dialog footer, or a toolbar. Use `sm` or `xs` where space is tight. Reserve `lg` for a page-level primary action, such as the one call to action that a page is organized around. A screen with several `lg` buttons has no primary action.
+
+## Disabled
+
+A disabled button looks the same in every variant: a neutral surface (or none, for `ghost` and `ghost-danger`), `--cinder-text-disabled` text, and the shared disabled opacity. It never keeps its tone while disabled, so a disabled `danger` or `ghost-danger` button does not read as a faded red button. A primary button also never takes a tone from its container: inside a danger `Card` it is still the primary button.
+
 ## Props
 
 <!-- generated:props:start -->
@@ -26,7 +34,7 @@ When `href` is set, the component renders as `<a>`; otherwise it renders as `<bu
 | `iconOnly` | `boolean` | no | `false` | Render the button with only an icon. Requires an accessible name source. |
 | `label` | `string` | no | — | Visible text label. Must be non-empty if provided. |
 | `loading` | `boolean` | no | `false` | Disable the button and show a spinner. |
-| `size` | `"xs"` \| `"sm"` \| `"md"` \| `"lg"` | no | `"md"` | Size of the button. |
+| `size` | `"xs"` \| `"sm"` \| `"md"` \| `"lg"` | no | `"md"` | Size of the button. `lg` is for page-level primary actions only; inline actions use `md`. |
 | `variant` | `"primary"` \| `"secondary"` \| `"soft"` \| `"danger"` \| `"soft-danger"` \| `"ghost"` \| `"ghost-danger"` | no | `"secondary"` | Visual style. |
 | `children` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
 | `leadingIcon` | `(opaque)` | no | — | DECORATIVE icon rendered before the label/children. Always wrapped in aria-hidden. If the icon conveys meaning, supply accessible text via `label`/`aria-label` instead. Not expressible in JSON Schema; see the component types for the signature. |

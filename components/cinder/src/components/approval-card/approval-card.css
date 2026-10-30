@@ -374,8 +374,6 @@
     color: var(--cinder-text-default);
     font-size: var(--cinder-text-xs);
     font-weight: var(--cinder-font-semibold);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
   }
 
   .cinder-approval-card__details-label .cinder-approval-card__muted {

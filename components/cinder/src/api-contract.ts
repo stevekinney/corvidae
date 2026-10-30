@@ -198,7 +198,8 @@ export const CONTRACT: Record<string, ComponentContract> = {
     props: {
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
       variant: { optional: true, type_kind: 'TSTypeReference', default: L('card') },
-      elevation: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
+      edge: { optional: true, type_kind: 'TSTypeReference', default: L('border') },
+      headerDivider: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       tone: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
       bodyTone: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
       footerTone: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
@@ -561,6 +562,19 @@ export const CONTRACT: Record<string, ComponentContract> = {
       variant: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
       countVisible: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       size: { optional: true, type_kind: 'TSUnionType', default: L('md') },
+      class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
+    },
+    snippets: {},
+  },
+
+  'theme-switch': {
+    kind: 'literal',
+    props: {
+      id: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      value: { optional: true, type_kind: 'TSTypeReference', default: B('system') },
+      onValueChange: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
+      label: { optional: true, type_kind: 'TSStringKeyword', default: L('Theme') },
+      disabled: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
     },
     snippets: {},

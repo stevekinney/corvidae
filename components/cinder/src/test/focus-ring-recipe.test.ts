@@ -469,7 +469,8 @@ describe('vertical navigation-item geometry lives on the item', () => {
     );
     expect(rule).toBeDefined();
     expect(declValue(rule!, 'background-color')).toBe('var(--cinder-surface-inset)');
-    expect(declValue(rule!, 'border-inline-start-color')).toBe('var(--cinder-accent-solid)');
+    // A selected row is a tint, never an accent stripe (COR-1821).
+    expect(declValue(rule!, 'border-inline-start-color')).toBeUndefined();
     expect(rule!.toString()).not.toContain('color-mix(');
   });
 

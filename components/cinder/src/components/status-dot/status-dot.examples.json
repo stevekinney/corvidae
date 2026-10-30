@@ -14,6 +14,12 @@
       "title": "Status dot statuses",
       "description": "All eight semantic status values.",
       "code": "<script lang=\"ts\">\n  import { StatusDot } from '@lostgradient/cinder';\n</script>\n\n<div class=\"example-preview-row\">\n  <StatusDot status=\"online\" label=\"Online\" />\n  <StatusDot status=\"offline\" label=\"Offline\" />\n  <StatusDot status=\"warning\" label=\"Warning\" />\n  <StatusDot status=\"danger\" label=\"Danger\" />\n  <StatusDot status=\"pending\" label=\"Pending\" />\n  <StatusDot status=\"neutral\" label=\"Neutral\" />\n  <StatusDot status=\"success\" label=\"Success\" />\n  <StatusDot status=\"accent\" label=\"Accent\" />\n</div>\n"
+    },
+    {
+      "id": "default-word",
+      "title": "Status dot default word",
+      "description": "With only a status, a StatusDot renders a word derived from it, so a status is never a dot alone.",
+      "code": "<script lang=\"ts\">\n  import { StatusDot } from '@lostgradient/cinder';\n</script>\n\n<div class=\"example-preview-row\">\n  <StatusDot status=\"online\" />\n  <StatusDot status=\"warning\" />\n  <StatusDot status=\"danger\" />\n  <StatusDot status=\"pending\" label=\"Deploying\" />\n</div>\n"
     }
   ]
 }

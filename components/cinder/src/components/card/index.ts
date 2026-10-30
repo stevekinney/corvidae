@@ -3,7 +3,7 @@ import Card from './card.svelte';
 
 export default Card;
 export type {
-  CardElevation,
+  CardEdge,
   CardPadding,
   CardProps,
   CardSurfaceTone,
