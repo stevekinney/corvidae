@@ -1,5 +1,21 @@
 export { BUREAU_RESERVED_KEY_PREFIXES } from './reserved-key-prefixes';
 export {
+  BUILT_IN_NOTIFICATION_KINDS,
+  NOTIFICATION_KIND_PATTERN,
+  NOTIFICATION_LIMIT_PER_OWNER,
+  NotificationPageTokenError,
+} from './notifications/notification-types';
+export type {
+  BuiltInNotificationKind,
+  BureauNotification,
+  BureauNotifications,
+  NotificationInput,
+  NotificationListQuery,
+  NotificationPage,
+  NotificationSelection,
+  NotificationSubject,
+} from './notifications/notification-types';
+export {
   type AnswerEncryptionKeys,
   createSecretAnswerResolver,
   SECRET_ANSWER_KEY_PREFIX,
@@ -329,6 +345,7 @@ export {
   GOAL_EVENT_KINDS,
   GoalLifecycleEvent,
   MemoryGovernanceEvent,
+  NotificationCreatedEvent,
   ScheduleMissedEvent,
   TaskCleanupAcknowledgedEvent,
   RecoveryAttemptedEvent,
@@ -546,6 +563,7 @@ export type {
   BureauOptions,
   BureauLogsOptions,
   BureauLogsRetentionOption,
+  BureauNotificationsRetentionOption,
   BureauMemoryRetentionOption,
   BureauReceiptRetentionOption,
   BureauRetentionOptions,

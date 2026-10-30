@@ -4,11 +4,11 @@
  */
 import { describe, expect, test } from 'bun:test';
 
+import type { BureauNotification } from '../lib/bureau-notifications.ts';
 import type { BureauReview } from '../lib/bureau-reviews.ts';
 import type { TaskView } from '../lib/bureau-tasks.ts';
 import {
   buildNotificationEntries,
-  firstErrorLine,
   RECENT_RUN_WINDOW_MS,
   type NotificationSources,
 } from './notification-items.ts';
@@ -77,10 +77,26 @@ function task(overrides: Partial<TaskView> = {}): TaskView {
   };
 }
 
+function notification(overrides: Partial<BureauNotification> = {}): BureauNotification {
+  return {
+    id: 'notification-1',
+    kind: 'run.failed',
+    title: 'echo failed',
+    body: 'The model refused',
+    link: null,
+    subject: { runId: 'run-3', contextId: 'session-echo', agentName: 'echo' },
+    createdAt: minutesAgo(3),
+    readAt: null,
+    dismissedAt: null,
+    ...overrides,
+  };
+}
+
 function sources(overrides: Partial<NotificationSources> = {}): NotificationSources {
   return {
     reviews: [],
     tasks: [],
+    notifications: [],
     chats: new Map<string, string | null>([
       ['session-refund', 'Refund order 1234'],
       ['session-release', 'Ship the release'],
@@ -174,9 +190,9 @@ describe('buildNotificationEntries', () => {
   test('a run whose chat the Bureau does not list is not an item, finished or failed', () => {
     const entries = buildNotificationEntries(
       sources({
-        tasks: [
-          task({ id: 'catalog-run', contextId: 'context-with-no-chat' }),
-          task({ id: 'catalog-failure', contextId: 'another-context', status: 'failed' }),
+        tasks: [task({ id: 'catalog-run', contextId: 'context-with-no-chat' })],
+        notifications: [
+          notification({ subject: { runId: 'catalog-failure', contextId: 'another-context' } }),
         ],
       }),
     );
@@ -271,16 +287,11 @@ describe('buildNotificationEntries', () => {
     expect(entries.map((entry) => entry.identifiers)).toEqual([['tool-runner'], [], ['echo']]);
   });
 
-  test('a chat is one item: its latest run stands for the earlier ones', () => {
+  test('a chat is one answer: its latest run stands for the earlier ones', () => {
     const entries = buildNotificationEntries(
       sources({
         tasks: [
-          task({
-            id: 'run-old',
-            status: 'failed',
-            statusMessage: 'Boom',
-            updatedAt: minutesAgo(30),
-          }),
+          task({ id: 'run-old', updatedAt: minutesAgo(30) }),
           task({ id: 'run-new', updatedAt: minutesAgo(1) }),
         ],
       }),
@@ -322,29 +333,130 @@ describe('buildNotificationEntries', () => {
     expect(buildNotificationEntries(sources({ tasks: [task({ updatedAt: old })] }))).toEqual([]);
   });
 
-  test('a failed run names its agent and its chat, and needs the person', () => {
-    const [entry] = buildNotificationEntries(
-      sources({ tasks: [task({ status: 'failed', statusMessage: 'The model refused' })] }),
-    );
+  test('a failed run names its agent and its chat, needs the person, and is the Bureau’s record', () => {
+    const [entry] = buildNotificationEntries(sources({ notifications: [notification()] }));
 
     expect(entry).toMatchObject({
+      id: 'notification:notification-1',
+      notificationId: 'notification-1',
+      serverRead: false,
       kind: 'failed',
       tier: 'warning',
       title: 'echo failed',
+      identifiers: ['echo'],
       detail: 'Hello echo, say this back',
+      href: '/chat/session-echo',
+      sessionId: 'session-echo',
     });
   });
 
-  test('a failed schedule fire names the schedule and gives the first line of its error', () => {
-    const failed = task({
-      status: 'failed',
-      actor: 'service:scheduler',
-      statusMessage: '\n  Provider quota exceeded\nat generate (provider.ts:12)',
+  test('a run that exceeded its budget is its own kind, worded as such', () => {
+    const [entry] = buildNotificationEntries(
+      sources({ notifications: [notification({ kind: 'run.budget-exceeded' })] }),
+    );
+
+    expect(entry).toMatchObject({
+      kind: 'budget',
+      tier: 'warning',
+      title: 'echo exceeded its budget',
     });
+  });
+
+  test('a notification the Bureau holds as read is read here too', () => {
+    const [entry] = buildNotificationEntries(
+      sources({ notifications: [notification({ readAt: minutesAgo(1) })] }),
+    );
+
+    expect(entry?.serverRead).toBe(true);
+  });
+
+  test('a read notification older than the window is history, an unread one is not', () => {
+    const old = new Date(NOW - RECENT_RUN_WINDOW_MS - 1).toISOString();
+    const entries = buildNotificationEntries(
+      sources({
+        notifications: [
+          notification({ id: 'read-old', readAt: old, createdAt: old }),
+          notification({ id: 'unread-old', createdAt: old }),
+        ],
+      }),
+    );
+
+    expect(entries.map((entry) => entry.notificationId)).toEqual(['unread-old']);
+  });
+
+  test('the Bureau’s review.waiting notification is not listed: the pending review is the item', () => {
+    const entries = buildNotificationEntries(
+      sources({
+        reviews: [approval()],
+        notifications: [
+          notification({
+            kind: 'review.waiting',
+            subject: { reviewId: 'approval:run-1:call-1', contextId: 'session-refund' },
+          }),
+        ],
+      }),
+    );
+
+    expect(entries.map((entry) => entry.kind)).toEqual(['approval']);
+  });
+
+  test('a failure in a chat that is waiting on the person is not also listed', () => {
+    const entries = buildNotificationEntries(
+      sources({
+        reviews: [approval({ sessionId: 'session-echo' })],
+        notifications: [notification()],
+      }),
+    );
+
+    expect(entries.map((entry) => entry.kind)).toEqual(['approval']);
+  });
+
+  test('a notification of a kind the Bureau does not write is a notice, with its link and text', () => {
     const [entry] = buildNotificationEntries(
       sources({
-        tasks: [failed],
-        scheduleNames: new Map([[failed.id, { name: 'Daily summary', identifier: false }]]),
+        notifications: [
+          notification({
+            kind: 'hook.note',
+            title: 'The backup finished',
+            body: '3 files',
+            link: '/runs',
+            subject: null,
+          }),
+        ],
+      }),
+    );
+
+    expect(entry).toMatchObject({
+      kind: 'notice',
+      tier: 'warning',
+      title: 'The backup finished',
+      detail: '3 files',
+      href: '/runs',
+    });
+  });
+
+  test('a notice never links off the app', () => {
+    const [entry] = buildNotificationEntries(
+      sources({
+        notifications: [
+          notification({ kind: 'hook.note', link: 'https://example.com/x', subject: null }),
+        ],
+      }),
+    );
+
+    expect(entry?.href).toBe('/');
+  });
+
+  test('a failed schedule fire names the schedule and gives the Bureau’s first line of its error', () => {
+    const [entry] = buildNotificationEntries(
+      sources({
+        notifications: [
+          notification({
+            body: 'Provider quota exceeded',
+            subject: { runId: 'run-3', contextId: 'session-echo', scheduleId: 's-1' },
+          }),
+        ],
+        scheduleNames: new Map([['s-1', { name: 'Daily summary', identifier: false }]]),
       }),
     );
 
@@ -358,11 +470,12 @@ describe('buildNotificationEntries', () => {
   });
 
   test('a schedule named by its agent is an identifier, and one named by its description is prose', () => {
-    const failed = task({ status: 'failed', actor: 'service:scheduler' });
     const [byAgent] = buildNotificationEntries(
       sources({
-        tasks: [failed],
-        scheduleNames: new Map([[failed.id, { name: 'assistant', identifier: true }]]),
+        notifications: [
+          notification({ subject: { contextId: 'session-echo', scheduleId: 's-1' } }),
+        ],
+        scheduleNames: new Map([['s-1', { name: 'assistant', identifier: true }]]),
       }),
     );
 
@@ -371,10 +484,43 @@ describe('buildNotificationEntries', () => {
 
   test('a failed fire whose schedule is unknown is worded as a failed run of its agent', () => {
     const [entry] = buildNotificationEntries(
-      sources({ tasks: [task({ status: 'failed', actor: 'service:scheduler' })] }),
+      sources({
+        notifications: [
+          notification({
+            subject: { contextId: 'session-echo', agentName: 'echo', scheduleId: 's-gone' },
+          }),
+        ],
+      }),
     );
 
     expect(entry?.title).toBe('echo failed');
+  });
+
+  test('a run a parent run, a goal or an agent started is not an answer', () => {
+    const entries = buildNotificationEntries(
+      sources({
+        tasks: [
+          task({ id: 'a', contextId: 'one', origin: { kind: 'agent' } }),
+          task({ id: 'b', contextId: 'two', origin: { kind: 'goal' } }),
+          task({ id: 'c', contextId: 'three', origin: { kind: 'parent' } }),
+          task({ id: 'd', contextId: 'four', origin: { kind: 'chat' } }),
+        ],
+        chats: new Map([
+          ['one', null],
+          ['two', null],
+          ['three', null],
+          ['four', null],
+        ]),
+      }),
+    );
+
+    expect(entries.map((entry) => entry.id)).toEqual(['task:d']);
+  });
+
+  test('a run that failed is no answer, and the notification is what tells of it', () => {
+    const entries = buildNotificationEntries(sources({ tasks: [task({ status: 'failed' })] }));
+
+    expect(entries).toEqual([]);
   });
 
   test('an answer is info, and approvals, questions and failures are not', () => {
@@ -385,10 +531,8 @@ describe('buildNotificationEntries', () => {
           ['one', null],
           ['two', null],
         ]),
-        tasks: [
-          task({ id: 'a', contextId: 'one' }),
-          task({ id: 'b', contextId: 'two', status: 'failed' }),
-        ],
+        tasks: [task({ id: 'a', contextId: 'one' })],
+        notifications: [notification({ subject: { contextId: 'two', agentName: 'echo' } })],
       }),
     );
 
@@ -398,23 +542,5 @@ describe('buildNotificationEntries', () => {
       failed: 'warning',
       answered: 'info',
     });
-  });
-});
-
-describe('firstErrorLine', () => {
-  test('is the first line with text in it', () => {
-    expect(firstErrorLine('\n\n  Boom  \nstack')).toBe('Boom');
-  });
-
-  test('is nothing for no message or a blank one', () => {
-    expect(firstErrorLine(null)).toBeUndefined();
-    expect(firstErrorLine('  \n ')).toBeUndefined();
-  });
-
-  test('cuts a long line to a readable length', () => {
-    const line = firstErrorLine('x'.repeat(500)) ?? '';
-
-    expect(line.length).toBe(120);
-    expect(line.endsWith('…')).toBe(true);
   });
 });

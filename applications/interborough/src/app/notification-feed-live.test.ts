@@ -1,7 +1,7 @@
 /**
  * The notification feed follows `bureau.events` (COR-1725): the recent tasks are read again on a
  * timer only while the Bureau’s feed is not live, and once for a run event; the chats’ titles
- * likewise for a session event. The feed is the real source over a stubbed stream, and TanStack
+ * likewise for a session event, and the notifications for a `notification.created`. The feed is the real source over a stubbed stream, and TanStack
  * Query’s refetch interval is the timer, so the clock is faked and moved by hand.
  */
 import { cleanup, render } from '@testing-library/svelte';
@@ -38,6 +38,7 @@ function open(): void {
     'bureau.reviews.list': () => ({ reviews: [] }),
     'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
     'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }),
+    'bureau.notifications.list': () => ({ notifications: [], nextPageToken: null }),
     'bureau.deployment.get': () => ({ id: 'bureau-1' }),
   });
   restore = stub.restore;
@@ -56,6 +57,11 @@ function open(): void {
 const SITES = [
   { site: 'the recent tasks', operation: 'bureau.tasks.list', event: 'run.settled' },
   { site: 'the chats’ titles', operation: 'bureau.contexts.list', event: 'session.created' },
+  {
+    site: 'the notifications',
+    operation: 'bureau.notifications.list',
+    event: 'notification.created',
+  },
 ] as const;
 
 const reads = (operation: string): number =>

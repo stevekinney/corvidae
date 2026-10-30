@@ -88,6 +88,7 @@ import type {
   BureauContexts,
   BureauSchedules,
 } from '../types.ts';
+import type { BureauNotifications } from '../notifications/notification-types.ts';
 import { describeCodeWorkflow } from '../workflow-runtime.ts';
 import { bureauReviewsOperations } from './bureau-reviews-operations.ts';
 import { bureauRunEventsSubscriptionOperation } from './bureau-run-events-operation.ts';
@@ -150,6 +151,10 @@ import {
   auditQueryOperation,
   type BureauAuditOperationHost,
 } from './management/audit-operations.ts';
+import {
+  type BureauNotificationsOperationHost,
+  bureauNotificationsOperations,
+} from './management/notifications-operations.ts';
 import {
   type BureauAssetsOperationHost,
   bureauAssetsOperations,
@@ -243,6 +248,7 @@ export type BureauHandlerSource = Pick<
 } & {
   readonly reviews: Pick<BureauReviews, 'list' | 'get' | 'resolve' | 'pendingOf'>;
   readonly audit: Pick<BureauAudit, 'query'>;
+  readonly notifications: Pick<BureauNotifications, 'list' | 'markRead' | 'dismiss'>;
   readonly contexts: Pick<
     BureauContexts,
     | 'list'
@@ -332,6 +338,7 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauGoalsOperationHost &
   BureauMemoryOperationHost &
   BureauAuditOperationHost &
+  BureauNotificationsOperationHost &
   BureauAssetsOperationHost &
   BureauDecisionsOperationHost &
   BureauSettingsOperationHost &
@@ -729,6 +736,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   ...bureauGoalsOperations,
   ...bureauMemoryOperations,
   auditQueryOperation,
+  ...bureauNotificationsOperations,
   ...bureauAssetsOperations,
   ...bureauDecisionsOperations,
   ...bureauSettingsOperations,
@@ -1185,6 +1193,7 @@ export function buildBureauHandlerHost(
       keepsTrail: () => bureau.internals.auditTrail !== undefined,
       query: bureau.audit.query,
     },
+    notifications: bureau.notifications,
     assets: bureau.assets,
     decisions: bureau.decisions,
     settings: bureau.settings,

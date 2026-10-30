@@ -1,33 +1,13 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { installBureauStub, type BureauStub } from '../lib/bureau-stub.test-support.ts';
-import type { TaskView } from '../lib/bureau-tasks.ts';
-import { isScheduledFailure, loadChats, loadScheduleNames } from './notification-sources.ts';
+import { loadChats, loadScheduleNames } from './notification-sources.ts';
 
 let stub: BureauStub | undefined;
 afterEach(() => {
   stub?.restore();
   stub = undefined;
 });
-
-function task(overrides: Partial<TaskView> = {}): TaskView {
-  return {
-    id: 'run-1',
-    contextId: 'session-1',
-    agentName: 'assistant',
-    owner: 'anonymous:local',
-    actor: 'service:scheduler',
-    kind: 'chat',
-    status: 'failed',
-    finishReason: null,
-    statusMessage: 'Boom',
-    createdAt: '2026-10-23T09:00:00.000Z',
-    updatedAt: '2026-10-23T09:00:01.000Z',
-    cleanup: null,
-    openWaits: [],
-    ...overrides,
-  };
-}
 
 function schedule(id: string, description: string | null, agentName: string | null) {
   return {
@@ -48,22 +28,6 @@ function schedule(id: string, description: string | null, agentName: string | nu
     skippedCount: 0,
     createdAt: '2026-10-19T08:00:00.000Z',
     updatedAt: '2026-10-19T08:00:00.000Z',
-  };
-}
-
-function fired(scheduleId: unknown) {
-  return {
-    records: [
-      {
-        sequence: 1,
-        timestamp: '2026-10-23T09:00:00.000Z',
-        type: 'schedule.fired',
-        resource: 'run-1',
-        principal: 'service:scheduler',
-        detail: { scheduleId },
-      },
-    ],
-    nextCursor: null,
   };
 }
 
@@ -97,70 +61,55 @@ describe('loadChats', () => {
   });
 });
 
-describe('isScheduledFailure', () => {
-  test('is a failed task a schedule started', () => {
-    expect(isScheduledFailure(task())).toBe(true);
-    expect(isScheduledFailure(task({ actor: null }))).toBe(false);
-    expect(isScheduledFailure(task({ status: 'completed' }))).toBe(false);
-  });
-});
-
 describe('loadScheduleNames', () => {
-  test('asks nothing when no failed task was started by a schedule', async () => {
+  test('asks nothing when no notification names a schedule', async () => {
     stub = installBureauStub({});
 
-    const names = await loadScheduleNames([task({ actor: null }), task({ status: 'completed' })]);
+    const names = await loadScheduleNames([]);
 
     expect(names.size).toBe(0);
     expect(stub.calls).toEqual([]);
   });
 
-  test('names a task’s schedule by its description, from the fire the audit trail recorded', async () => {
+  test('names a schedule by its description, and only the schedules asked about', async () => {
     stub = installBureauStub({
-      'bureau.audit.query': () => fired('s-1'),
       'bureau.schedules.list': () => ({
-        schedules: [schedule('s-1', 'Daily summary', 'assistant')],
+        schedules: [
+          schedule('s-1', 'Daily summary', 'assistant'),
+          schedule('s-2', 'Weekly digest', 'assistant'),
+        ],
         nextOffset: null,
       }),
     });
 
-    const names = await loadScheduleNames([task()]);
+    const names = await loadScheduleNames(['s-1']);
 
-    expect([...names]).toEqual([['run-1', { name: 'Daily summary', identifier: false }]]);
-    expect(stub.callsTo('bureau.audit.query')[0]?.params).toMatchObject({
-      runId: 'run-1',
-      type: 'schedule.fired',
-      limit: 1,
-    });
+    expect([...names]).toEqual([['s-1', { name: 'Daily summary', identifier: false }]]);
   });
 
   test('falls back to the agent the schedule runs when it has no description', async () => {
     stub = installBureauStub({
-      'bureau.audit.query': () => fired('s-1'),
       'bureau.schedules.list': () => ({
         schedules: [schedule('s-1', null, 'assistant')],
         nextOffset: null,
       }),
     });
 
-    expect([...(await loadScheduleNames([task()]))]).toEqual([
-      ['run-1', { name: 'assistant', identifier: true }],
+    expect([...(await loadScheduleNames(['s-1']))]).toEqual([
+      ['s-1', { name: 'assistant', identifier: true }],
     ]);
   });
 
-  test('leaves out a task whose fire the trail does not name or whose schedule is gone', async () => {
+  test('leaves out a schedule that is gone', async () => {
     stub = installBureauStub({
-      'bureau.audit.query': () => fired(undefined),
       'bureau.schedules.list': () => ({
         schedules: [schedule('s-1', 'Daily summary', 'assistant')],
         nextOffset: null,
       }),
     });
-    const unnamed = await loadScheduleNames([task()]);
-    expect(unnamed.size).toBe(0);
 
-    stub.on('bureau.audit.query', () => fired('s-gone'));
-    const gone = await loadScheduleNames([task()]);
-    expect(gone.size).toBe(0);
+    const names = await loadScheduleNames(['s-gone']);
+
+    expect(names.size).toBe(0);
   });
 });

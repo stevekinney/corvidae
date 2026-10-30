@@ -6,18 +6,25 @@
  *
  * - `approval`: a tool the agent wants to run is waiting for a decision (`bureau.reviews.list`).
  * - `question`: the agent asked the person something (`bureau.reviews.list`).
- * - `failed`: the latest run of a chat, or a schedule's fire, failed (`bureau.tasks.list`).
- * - `answered`: the latest run of a chat finished. It is listed, but nothing is waiting on the
+ * - `failed`: a top-level run, or a schedule's fire, failed (`bureau.notifications.list`, COR-1941),
+ *   and `budget`: one ended because it exceeded its budget. The Bureau writes both when the run
+ *   ends, for the top-level run only, so a run that fans out into children is one item and the
+ *   items do not depend on how many tasks a run creates.
+ * - `notice`: any other notification the Bureau holds for the person, such as one a host wrote.
+ * - `answered`: the latest run of a chat finished (`bureau.tasks.list`). It is listed, but nothing is waiting on the
  *   person, so it never counts. Opening the chat reads it, including one that finishes while the
  *   chat is open.
  *
  * A chat is one item: of the reviews waiting in it, the one waiting longest stands for them all
  * (an approval before a question when they asked at the same moment), a pending review wins over a
- * failure, a failure over an answer, and the latest run of a chat stands for all its earlier ones.
+ * failure, and the latest run of a chat stands for all its earlier answers. The Bureau also writes a
+ * `review.waiting` notification for each pending review; the bell does not list it, because the
+ * pending review above says the same thing and leaves the list the moment it is decided.
  * A run whose chat the Bureau does not list is not a chat to open, so it is not an item. The items
  * are derived, not accumulated, so a decision made anywhere removes the item at the next read, and
  * a review the Bureau asks again (an approval's next round) is a new item.
  */
+import type { BureauNotification } from '../lib/bureau-notifications.ts';
 import type { BureauReview } from '../lib/bureau-reviews.ts';
 import type { TaskView } from '../lib/bureau-tasks.ts';
 import { chatSessionPath } from '../lib/identifier-paths.ts';
@@ -27,14 +34,15 @@ import { CHAT_COPY, NOTIFICATION_COPY } from './copy.ts';
 /** How the bell grades an item: `info` never counts toward the badge. */
 export type NotificationTier = 'critical' | 'warning' | 'info';
 
-export type NotificationKind = 'approval' | 'question' | 'failed' | 'answered' | 'engine';
+export type NotificationKind =
+  'approval' | 'question' | 'failed' | 'budget' | 'notice' | 'answered' | 'engine';
 
 /** An item before the store decides whether it was read. */
 export interface NotificationEntry {
   /**
    * Stable across reads, so a read item stays read: `review:<id>` (`review:<id>:<round>` for an
    * approval, which the Bureau asks again under the same id when a round supersedes it),
-   * `task:<id>`, or `engine-status`.
+   * `notification:<id>` (the Bureau's own record of it), `task:<id>`, or `engine-status`.
    */
   readonly id: string;
   readonly kind: NotificationKind;
@@ -54,13 +62,14 @@ export interface NotificationEntry {
   /** Deep link path (router-relative). */
   readonly href: string;
   readonly emittedAtMs: number;
+  /** The Bureau's identifier of the notification this item is, so reading it can be told to the Bureau. */
+  readonly notificationId?: string;
+  /** The Bureau already holds the notification as read, from this browser or another. */
+  readonly serverRead?: boolean;
 }
 
 /** A finished run older than this is history, not news. */
 export const RECENT_RUN_WINDOW_MS = 24 * 60 * 60 * 1_000;
-
-/** The longest an error line is shown before it is cut. */
-const ERROR_LINE_LIMIT = 120;
 
 /** What a schedule is called, and whether that is an identifier (an agent's name) rather than prose (its description). */
 export interface ScheduleName {
@@ -71,27 +80,19 @@ export interface ScheduleName {
 export interface NotificationSources {
   /** The Bureau's pending reviews. */
   readonly reviews: readonly BureauReview[];
-  /** The Bureau's most recently changed tasks. */
+  /** The Bureau's most recently changed tasks, for the answers. */
   readonly tasks: readonly TaskView[];
+  /** The caller's notifications, newest first. */
+  readonly notifications: readonly BureauNotification[];
   /**
    * The chats the Bureau lists, by session, with the title of each (`null` for a chat that has
    * none, which is called by the words for an untitled chat). The listing is the most recently
    * changed chats, which is where a recent run's chat is.
    */
   readonly chats: ReadonlyMap<string, string | null>;
-  /** The schedule's name by the id of a task it started, for the tasks it started that failed. */
+  /** A schedule's name by its id, for the notifications that name one. */
   readonly scheduleNames: ReadonlyMap<string, ScheduleName>;
   readonly nowMs: number;
-}
-
-/** The first non-empty line of an error, cut to a readable length. */
-export function firstErrorLine(message: string | null): string | undefined {
-  const line = message
-    ?.split('\n')
-    .map((candidate) => candidate.trim())
-    .find((candidate) => candidate !== '');
-  if (line === undefined) return undefined;
-  return line.length > ERROR_LINE_LIMIT ? `${line.slice(0, ERROR_LINE_LIMIT - 1)}…` : line;
 }
 
 function agentOf(name: string | undefined | null): string {
@@ -134,56 +135,106 @@ function reviewEntry(
   };
 }
 
-function taskEntry(
+function answeredEntry(
   task: TaskView,
   chats: ReadonlyMap<string, string | null>,
-  scheduleNames: ReadonlyMap<string, ScheduleName>,
 ): NotificationEntry {
-  const updatedAtMs = Date.parse(task.updatedAt);
-  const href = chatSessionPath(task.contextId);
-  const base = { id: `task:${task.id}`, sessionId: task.contextId, href, emittedAtMs: updatedAtMs };
-  if (task.status === 'completed') {
-    return {
-      ...base,
-      kind: 'answered',
-      tier: 'info',
-      icon: 'message-circle-check',
-      title: NOTIFICATION_COPY.answered(agentOf(task.agentName)),
-      identifiers: task.agentName === null ? [] : [task.agentName],
-      detail: chatTitle(chats, task.contextId),
-      joiner: NOTIFICATION_COPY.inJoiner,
-    };
-  }
-  const error = firstErrorLine(task.statusMessage);
-  const schedule = scheduleNames.get(task.id);
-  if (schedule !== undefined) {
-    return {
-      ...base,
-      kind: 'failed',
-      tier: 'warning',
-      icon: 'circle-x',
-      title: NOTIFICATION_COPY.failed(schedule.name),
-      identifiers: schedule.identifier ? [schedule.name] : [],
-      detail: error ?? NOTIFICATION_COPY.noErrorText,
-      joiner: NOTIFICATION_COPY.errorJoiner,
-    };
-  }
   return {
-    ...base,
-    kind: 'failed',
-    tier: 'warning',
-    icon: 'circle-x',
-    title: NOTIFICATION_COPY.failed(agentOf(task.agentName)),
+    id: `task:${task.id}`,
+    sessionId: task.contextId,
+    href: chatSessionPath(task.contextId),
+    emittedAtMs: Date.parse(task.updatedAt),
+    kind: 'answered',
+    tier: 'info',
+    icon: 'message-circle-check',
+    title: NOTIFICATION_COPY.answered(agentOf(task.agentName)),
     identifiers: task.agentName === null ? [] : [task.agentName],
     detail: chatTitle(chats, task.contextId),
     joiner: NOTIFICATION_COPY.inJoiner,
   };
 }
 
-/** Whether a task ended with a result the person wants to hear about. */
-function isNews(task: TaskView): boolean {
-  return task.status === 'completed' || task.status === 'failed';
+/**
+ * The item for one of the caller's notifications, or `undefined` when the bell does not list it: a
+ * `review.waiting` (the pending review is the item), or a failure of a run whose chat the Bureau does
+ * not list (a run started without a chat names a context there is nothing to open for).
+ */
+function notificationEntry(
+  notification: BureauNotification,
+  chats: ReadonlyMap<string, string | null>,
+  scheduleNames: ReadonlyMap<string, ScheduleName>,
+): NotificationEntry | undefined {
+  if (notification.kind === 'review.waiting') return undefined;
+  const subject = notification.subject;
+  const base = {
+    id: `notification:${notification.id}`,
+    notificationId: notification.id,
+    serverRead: notification.readAt !== null,
+    emittedAtMs: Date.parse(notification.createdAt),
+    ...(subject?.contextId === undefined ? {} : { sessionId: subject.contextId }),
+  };
+  if (notification.kind !== 'run.failed' && notification.kind !== 'run.budget-exceeded') {
+    const link = notification.link;
+    return {
+      ...base,
+      kind: 'notice',
+      tier: 'warning',
+      icon: 'triangle-alert',
+      title: notification.title,
+      identifiers: [],
+      detail: notification.body ?? '',
+      joiner: NOTIFICATION_COPY.errorJoiner,
+      href: link !== null && link.startsWith('/') ? link : '/',
+    };
+  }
+  const contextId = subject?.contextId;
+  if (contextId !== undefined && !chats.has(contextId)) return undefined;
+  const budget = notification.kind === 'run.budget-exceeded';
+  const schedule =
+    subject?.scheduleId === undefined ? undefined : scheduleNames.get(subject.scheduleId);
+  const common = {
+    ...base,
+    kind: budget ? 'budget' : 'failed',
+    tier: 'warning',
+    icon: 'circle-x',
+  } as const;
+  const href = contextId === undefined ? '/' : chatSessionPath(contextId);
+  if (schedule !== undefined) {
+    return {
+      ...common,
+      title: budget
+        ? NOTIFICATION_COPY.budgetExceeded(schedule.name)
+        : NOTIFICATION_COPY.failed(schedule.name),
+      identifiers: schedule.identifier ? [schedule.name] : [],
+      detail: notification.body ?? NOTIFICATION_COPY.noErrorText,
+      joiner: NOTIFICATION_COPY.errorJoiner,
+      href,
+    };
+  }
+  const agent = subject?.agentName;
+  return {
+    ...common,
+    title: budget
+      ? NOTIFICATION_COPY.budgetExceeded(agentOf(agent))
+      : NOTIFICATION_COPY.failed(agentOf(agent)),
+    identifiers: agent === undefined ? [] : [agent],
+    detail: chatTitle(chats, contextId),
+    joiner: NOTIFICATION_COPY.inJoiner,
+    href,
+  };
 }
+
+/**
+ * Whether a task is an answer the person wants to hear about: a completed run that is not one a
+ * parent run, a goal or an agent tool call started, because a child's answer is its parent's to
+ * report.
+ */
+function isNews(task: TaskView): boolean {
+  return task.status === 'completed' && !SUBORDINATE_ORIGIN_KINDS.has(task.origin?.kind ?? '');
+}
+
+/** The origin kinds of a task that something else started and will report on. */
+const SUBORDINATE_ORIGIN_KINDS: ReadonlySet<string> = new Set(['agent', 'goal', 'parent']);
 
 /**
  * The review that stands for a chat that is waiting on the person: the one waiting longest, and an
@@ -220,7 +271,7 @@ function onePerChat(pending: readonly BureauReview[]): BureauReview[] {
  * questions, failures) before what only finished.
  */
 export function buildNotificationEntries(sources: NotificationSources): NotificationEntry[] {
-  const { reviews, tasks, chats, scheduleNames, nowMs } = sources;
+  const { reviews, tasks, notifications, chats, scheduleNames, nowMs } = sources;
   const pending = reviews.filter((review) => review.status === 'pending');
   const entries: NotificationEntry[] = onePerChat(pending).map((review) =>
     reviewEntry(review, chats),
@@ -229,6 +280,20 @@ export function buildNotificationEntries(sources: NotificationSources): Notifica
     pending.flatMap((review) => (review.sessionId === undefined ? [] : [review.sessionId])),
   );
 
+  // A notification stays until it is read, and a read one for a day, like a finished run.
+  for (const notification of notifications) {
+    const contextId = notification.subject?.contextId;
+    if (contextId !== undefined && waiting.has(contextId)) continue;
+    if (
+      notification.readAt !== null &&
+      nowMs - Date.parse(notification.readAt) > RECENT_RUN_WINDOW_MS
+    ) {
+      continue;
+    }
+    const entry = notificationEntry(notification, chats, scheduleNames);
+    if (entry !== undefined) entries.push(entry);
+  }
+
   // The latest run of each chat stands for it; a chat that is waiting on the person says so once.
   for (const task of latestRunByChat(tasks).values()) {
     if (!isNews(task) || waiting.has(task.contextId)) continue;
@@ -236,7 +301,7 @@ export function buildNotificationEntries(sources: NotificationSources): Notifica
     // A run started without a chat (`bureau.run()` from the catalog) names a context the Bureau
     // does not hold, and there is no chat to open for it.
     if (!chats.has(task.contextId)) continue;
-    entries.push(taskEntry(task, chats, scheduleNames));
+    entries.push(answeredEntry(task, chats));
   }
 
   const needsPerson = (entry: NotificationEntry) => entry.tier !== 'info';

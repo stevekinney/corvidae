@@ -12,6 +12,9 @@
  *   (`bureau.run()`) is announced by `run.settled` alone: its registration, actions and release are
  *   not published (`packages/bureau/src/create-bureau.ts`, COR-1302), so a view of runs reads such a
  *   run when it settles, and polls only while this feed is not live (COR-1730, COR-1725).
+ * - `notification.created`: the caller's notifications (`['bureau-notifications']`). The Bureau writes
+ *   a built-in notification after the event that caused it is published, so this one is what tells
+ *   the bell it exists; a host's own notification has no other event.
  * - `session.created`, `session.saved`, `session.deleted`: the chats (`['contexts']`), whose titles
  *   the notification feed and the runs list read.
  * - `goal.*`: the goals (`['goals']`).
@@ -36,6 +39,7 @@ import { invalidateReviewQueries } from '../lib/review-queries.ts';
 const BUREAU_TASKS_KEY_PREFIX = ['bureau-tasks'] as const;
 const CONTEXTS_KEY_PREFIX = ['contexts'] as const;
 const GOALS_KEY_PREFIX = ['goals'] as const;
+const NOTIFICATIONS_KEY_PREFIX = ['bureau-notifications'] as const;
 
 const RUN_EVENT_KINDS: ReadonlySet<string> = new Set([
   'run.registered',
@@ -80,6 +84,7 @@ export function invalidateBureauDrivenQueries(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: BUREAU_TASKS_KEY_PREFIX });
   void queryClient.invalidateQueries({ queryKey: CONTEXTS_KEY_PREFIX });
   void queryClient.invalidateQueries({ queryKey: GOALS_KEY_PREFIX });
+  void queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY_PREFIX });
   invalidateEmptyViews(queryClient);
 }
 
@@ -111,6 +116,10 @@ export function invalidateForBureauEvent(
   }
   if (SESSION_EVENT_KINDS.has(frame.kind)) {
     void queryClient.invalidateQueries({ queryKey: CONTEXTS_KEY_PREFIX });
+    handled = true;
+  }
+  if (frame.kind === 'notification.created') {
+    void queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY_PREFIX });
     handled = true;
   }
   if (isBureauGoalEventKind(frame.kind)) {
