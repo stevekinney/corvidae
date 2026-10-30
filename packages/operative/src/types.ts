@@ -24,10 +24,12 @@ import type { ContextEpochSealer } from './context-epoch';
 import type { MediaCostEstimator } from './context/types';
 import type { CostEstimate, CostEstimationOptions } from './cost-estimation';
 import type { SessionInputGate, SteeringDesiredState } from './durable/types';
+import type { EffectiveContextRecord } from './effective-context-record';
 import type { AgentRunErrorCode, AgentRunErrorKind } from './errors';
 import type { GeneratedMediaAdmitter, StepGeneratedMediaAdmitter } from './generated-media';
 import type { AssetSafetyPolicy } from './guardrails/types';
 import type { OperativeHookMap } from './hooks';
+import type { PlanReason } from './providers/plan-reason';
 import type { DelegatedAuthority } from './providers/policy.ts';
 import type { RetryMutator } from './retry/types';
 import type { SelectionGate } from './selection-gate';
@@ -386,6 +388,17 @@ export interface StepResult {
    * no `contextEpoch` sealer (COR-768).
    */
   contextEpochId?: string | undefined;
+  /**
+   * Why this step's generation ran on the model it did (COR-1810). Absent when the run has neither a
+   * selection gate nor a steering override.
+   */
+  planReason?: PlanReason | undefined;
+  /**
+   * What the model saw for this step (COR-1810): the effective context of the attempt that produced
+   * it, as digests and message ids, capped at 256 KiB. Absent on a step of a durable run read back from
+   * its checkpoint, which stores it as a delta (`bureau.tasks.inspect` rebuilds it).
+   */
+  effectiveContext?: EffectiveContextRecord | undefined;
   final: boolean;
 }
 

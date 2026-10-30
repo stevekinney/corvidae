@@ -158,6 +158,12 @@ const REMOTE_LOCKED_SETTINGS = {
   'engine.workflowClaimRenewInterval': 'shared-storage',
 } as const satisfies NonNullable<SettingsOptions['locked']>;
 
+/**
+ * How long the host keeps its audit trail by default: 90 days, in milliseconds (COR-1810). It is
+ * the `retention.audit` window the Bureau starts with; a value stored on the Settings page replaces it.
+ */
+export const AUDIT_RETENTION_MILLISECONDS = 90 * 24 * 60 * 60 * 1000;
+
 /** The directory of agent files under the Interborough home: `researcher.md` is the agent `researcher`. */
 export const AGENT_DIRECTORY_NAME = 'agents';
 
@@ -496,6 +502,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         },
       },
       storage,
+      // The audit trail is kept 90 days (COR-1810); a person changes it on the Settings page, and
+      // the stored value then replaces this default.
+      retention: { audit: { olderThan: AUDIT_RETENTION_MILLISECONDS } },
       // Governed memory (COR-1546): an agent remembers across every chat its owner has with it, and
       // the Memory page lists, searches, forgets, and corrects what it remembers.
       memory: createHostMemory(storage),

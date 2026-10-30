@@ -89,7 +89,12 @@ function stripStepConversation(step: unknown): object {
   if (step === null || (typeof step !== 'object' && typeof step !== 'function')) {
     throw new TypeError('A run completion step must be an object');
   }
-  return stripConversation(step);
+  // COR-1810: the step record is the effective context's home; a completion record repeats each
+  // step (and its result's steps), so it would carry the record twice.
+  const { effectiveContext: _effectiveContext, ...rest } = stripConversation(step) as {
+    effectiveContext?: unknown;
+  };
+  return rest;
 }
 
 function projectRunCompletionRecord(record: object): Record<string, unknown> {

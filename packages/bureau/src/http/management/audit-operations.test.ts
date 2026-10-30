@@ -92,6 +92,7 @@ async function seed(): Promise<Seeded> {
 
 type View = {
   sequence: number | null;
+  timestamp: string;
   type: string;
   resource: string;
   principal: string | null;
@@ -376,12 +377,179 @@ describe('bureau.audit.query in process (COR-1705)', () => {
       { limit: 0 },
       { limit: 101 },
       { since: -1 },
+      { until: -1 },
+      { principal: '' },
       { runId: '' },
       { type: '' },
     ]) {
       const refusal = await opened.bureau.audit.query(filter).catch((error: unknown) => error);
       expect([filter, (refusal as { code?: string }).code]).toEqual([filter, 'BAD_REQUEST']);
     }
+  });
+});
+
+describe('until, principal, and the JSON Lines export (COR-1810)', () => {
+  const BASE = 1_700_000_000_000;
+
+  async function seedTimeline() {
+    const opened = await openBureau();
+    cleanups.push(() => opened.dispose());
+    const trail = opened.bureau.internals.auditTrail!;
+    const schedule = await opened.bureau.schedules.create({
+      agentName: 'default',
+      spec: '1h',
+      input: 'tick',
+      principal: OWNER.alice,
+    });
+    const resource = `schedule:${schedule!.id}`;
+    // Five notes, a minute apart, alternating between two actors; the third carries what must not leave.
+    for (let index = 0; index < 5; index += 1) {
+      await trail.record({
+        runId: resource,
+        type: 'schedule.note',
+        timestampMs: BASE + index * 60_000,
+        principal: index % 2 === 0 ? 'api-key:ada' : 'api-key:grace',
+        detail:
+          index === 2
+            ? { kind: 'k'.repeat(500), apiKey: SECRET, content: MEMORY, status: 'ok', index }
+            : { status: 'ok', index },
+      });
+    }
+    return { opened, resource };
+  }
+
+  const timesOf = (body: RpcBody) =>
+    recordsOf(body).map((record) => (record.detail as { status?: string } | null)?.status);
+
+  it('narrows to a time range with both ends inclusive', async () => {
+    const { opened } = await seedTimeline();
+
+    const range = await rpc(
+      opened.handler,
+      'bureau.audit.query',
+      { type: 'schedule.note', since: BASE + 60_000, until: BASE + 3 * 60_000 },
+      'operator-key',
+    );
+    const until = await rpc(
+      opened.handler,
+      'bureau.audit.query',
+      { type: 'schedule.note', until: BASE },
+      'operator-key',
+    );
+
+    expect(recordsOf(range).map((record) => Date.parse(record.timestamp))).toEqual([
+      BASE + 60_000,
+      BASE + 2 * 60_000,
+      BASE + 3 * 60_000,
+    ]);
+    expect(recordsOf(until)).toHaveLength(1);
+    expect(range.result!['nextCursor']).toBeNull();
+  });
+
+  it('narrows to one actor, paging past the records it drops', async () => {
+    const { opened } = await seedTimeline();
+
+    const seen: Array<string | null> = [];
+    let cursor: string | undefined;
+    do {
+      const page = await rpc(
+        opened.handler,
+        'bureau.audit.query',
+        {
+          type: 'schedule.note',
+          principal: 'api-key:ada',
+          limit: 1,
+          ...(cursor === undefined ? {} : { cursor }),
+        },
+        'operator-key',
+      );
+      seen.push(...recordsOf(page).map((record) => record.principal));
+      cursor = (page.result!['nextCursor'] as string | null) ?? undefined;
+    } while (cursor !== undefined);
+
+    expect(seen).toEqual(['api-key:ada', 'api-key:ada', 'api-key:ada']);
+  });
+
+  it('returns the page as JSON Lines with the same redaction as the JSON read', async () => {
+    const { opened } = await seedTimeline();
+    const filter = { type: 'schedule.note', since: BASE, until: BASE + 4 * 60_000 };
+
+    const json = await rpc(opened.handler, 'bureau.audit.query', filter, 'operator-key');
+    const jsonl = await rpc(
+      opened.handler,
+      'bureau.audit.query',
+      { ...filter, format: 'jsonl' },
+      'operator-key',
+    );
+
+    expect(jsonl.error).toBeUndefined();
+    expect(jsonl.result!['format']).toBe('jsonl');
+    const body = jsonl.result!['body'] as string;
+    expect(body.endsWith('\n')).toBe(true);
+    const lines = body.split('\n').slice(0, -1);
+    expect(lines).toHaveLength(5);
+    // Parity: every line is the JSON read's record, key for key.
+    expect(lines.map((line) => JSON.parse(line) as unknown)).toEqual(recordsOf(json));
+    expect(Object.keys(JSON.parse(lines[0]!) as object)).toEqual([
+      'sequence',
+      'timestamp',
+      'type',
+      'resource',
+      'principal',
+      'detail',
+    ]);
+    // The record that stored a secret, memory content, and a long scalar leaves redacted in both.
+    for (const text of [JSON.stringify(json.result), body]) {
+      expect(text.includes(SECRET)).toBe(false);
+      expect(text.includes(MEMORY)).toBe(false);
+      expect(text.includes('k'.repeat(201))).toBe(false);
+      expect(text.includes('k'.repeat(200))).toBe(true);
+    }
+    expect(jsonl.result!['nextCursor']).toBe(json.result!['nextCursor']);
+  });
+
+  it('exports every page of a filtered trail through the cursor, as the owner sees it', async () => {
+    const { opened } = await seedTimeline();
+    const lines: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await rpc(
+        opened.handler,
+        'bureau.audit.query',
+        {
+          type: 'schedule.note',
+          format: 'jsonl',
+          limit: 2,
+          ...(cursor === undefined ? {} : { cursor }),
+        },
+        'alice-key',
+      );
+      lines.push(...(page.result!['body'] as string).split('\n').filter((line) => line !== ''));
+      cursor = (page.result!['nextCursor'] as string | null) ?? undefined;
+    } while (cursor !== undefined);
+    const bob = await rpc(
+      opened.handler,
+      'bureau.audit.query',
+      { type: 'schedule.note', format: 'jsonl' },
+      'bob-key',
+    );
+
+    expect(lines).toHaveLength(5);
+    expect(bob.result!['body']).toBe('');
+  });
+
+  it('keeps the JSON output as it was when no format is asked for', async () => {
+    const { opened } = await seedTimeline();
+
+    const json = await rpc(
+      opened.handler,
+      'bureau.audit.query',
+      { type: 'schedule.note' },
+      'operator-key',
+    );
+
+    expect(Object.keys(json.result!).toSorted()).toEqual(['nextCursor', 'records']);
+    expect(timesOf(json)).toHaveLength(5);
   });
 });
 

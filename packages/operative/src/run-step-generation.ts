@@ -2,7 +2,13 @@ import type { AnyToolbox } from 'armorer';
 import type { ResolvedMediaSources } from 'conversationalist';
 import { Conversation } from 'conversationalist';
 
+import { type ContextEpochSealInput, sealContextEpoch } from './context-epoch';
 import type { SteeringDesiredState } from './durable/types';
+import {
+  composeEffectiveContext,
+  type EffectiveContextRecord,
+  type StoredEffectiveContext,
+} from './effective-context-record';
 import {
   GeneratedMediaNotAdmittedError,
   GuardrailTripwireError,
@@ -20,6 +26,7 @@ import { composeGenerationSelectionRecord } from './generation-selection-record'
 import type { ErrorRecoveryAction } from './hooks/types';
 import { assistantMessageIdentifier } from './message-identifiers';
 import { isProviderContractError } from './providers/errors';
+import { type PlanReason, planReasonForStep } from './providers/plan-reason';
 import { readDroppedReplayData } from './providers/shared/replay-data';
 import type { EventDispatcher, RunState, StepDeps, StepOutcome } from './run-step';
 import type { StepMediaAdmission } from './run-step-media';
@@ -34,6 +41,11 @@ import {
 } from './run-step-utilities';
 import type { ToolChoice } from './structured-output/types';
 import type { GenerateContext, GenerateResponse } from './types';
+
+/** The epoch of a run that has no sealer: sealed once, never minted an id, so the record that flattens it names none. */
+function sealUnsealed(input: ContextEpochSealInput) {
+  return sealContextEpoch({ ...input, epochId: '' });
+}
 
 export interface GenerationDependencies {
   deps: StepDeps;
@@ -68,6 +80,10 @@ export interface GenerationResult {
   generateDurationMilliseconds: number | undefined;
   /** The epoch the producing attempt sealed; a retried step reports its last attempt's. */
   contextEpochId: string | undefined;
+  /** Why this step's generation ran on the model it did (COR-1810), when the run has a plan or a steering override. */
+  planReason: PlanReason | undefined;
+  /** What the producing attempt's model saw (COR-1810); `undefined` when the run seals no epoch. */
+  effectiveContext: EffectiveContextRecord | undefined;
 }
 
 export async function executeGeneration(
@@ -91,10 +107,14 @@ export async function executeGeneration(
   } = input;
   const { hooks, hookTracker, backpressure, signal } = deps;
   const assistantMessageId = assistantMessageIdentifier(deps.runId, step);
+  runState.storedEffectiveContext = undefined;
   let response: GenerateResponse = undefined!;
   let streamedRowId: string | undefined;
   let stepRetryCount = 0;
   let contextEpochId: string | undefined;
+  let effectiveContext: EffectiveContextRecord | undefined;
+  let storedEffectiveContext: StoredEffectiveContext | undefined;
+  let planReason: PlanReason | undefined;
   let shouldRetryStep: boolean;
   let stepSkipped = false;
   // AB-302: hoisted out of the generate block below so `GenerateCompletedEvent`
@@ -112,6 +132,11 @@ export async function executeGeneration(
     shouldRetryStep = false;
     generateDurationMilliseconds = undefined;
     streamedRowId = undefined;
+    // COR-1810: a reply a hook supplies after a failed attempt was not produced by that attempt, so
+    // the attempt's reply details are not carried into it.
+    planReason = undefined;
+    effectiveContext = undefined;
+    storedEffectiveContext = undefined;
     try {
       let prepareResult: GenerateResponse | void = undefined;
       if (hooks?.has('prepareStep')) {
@@ -277,6 +302,24 @@ export async function executeGeneration(
           consumer: { runId: deps.runId, step, attempt: stepRetryCount },
         });
         contextEpochId = sealedEpoch?.epochId;
+        // COR-1810: a run with no sealer still records what the model saw. The record is built with
+        // the pure sealer and names no epoch, so run events and memory correlation, which read only
+        // the sealer's epoch, are unchanged.
+        const recordedEpoch =
+          sealedEpoch ??
+          sealUnsealed({
+            conversation: generateContext.conversation,
+            steering: steeringDesiredState,
+            plan: deps.selection?.getPlan(),
+            toolNames: generateContext.toolbox.tools().map((tool) => tool.name),
+            consumer: { runId: deps.runId, step, attempt: stepRetryCount },
+          });
+        ({ record: effectiveContext, stored: storedEffectiveContext } = composeEffectiveContext(
+          sealedEpoch === undefined ? { ...recordedEpoch, epochId: undefined } : recordedEpoch,
+          generateContext.conversation,
+          runState.effectiveContextTail,
+        ));
+        planReason = planReasonForStep(deps.selection?.getPlan(), steeringDesiredState);
 
         // AB-68: record the configuration this call is issued under. Read
         // from the gate rather than re-planning — `prepareStep` already
@@ -304,28 +347,38 @@ export async function executeGeneration(
           const derived = await admission.derive(mutatedContext.conversation);
           return { ...mutatedContext, resolvedSources: derived.resolvedSources };
         };
-        const sealMutatedEpoch =
-          deps.contextEpoch === undefined
-            ? undefined
-            : (mutatedContext: GenerateContext, providerAttempt: number): string => {
-                const mutatedEpochId = deps.contextEpoch!.seal({
-                  conversation: mutatedContext.conversation,
-                  steering: steeringDesiredState,
-                  plan: deps.selection?.getPlan(),
-                  toolNames: mutatedContext.toolbox.tools().map((tool) => tool.name),
-                  consumer: {
-                    runId: deps.runId,
-                    step,
-                    // Offset past the error-recovery attempt index so a
-                    // provider retry and an error-recovery retry of the
-                    // same step are never reported as the same attempt.
-                    attempt: stepRetryCount + providerAttempt,
-                  },
-                }).epochId;
-                // The mutated request is what a successful retry sends, so the step names its epoch.
-                contextEpochId = mutatedEpochId;
-                return mutatedEpochId;
-              };
+        // The callback runs for a run without a sealer too: it refreshes the step's effective
+        // context to the mutated request, and returns no epoch id, which the retry event then omits.
+        const sealMutatedEpoch = (
+          mutatedContext: GenerateContext,
+          providerAttempt: number,
+        ): string | undefined => {
+          const mutatedEpoch = (deps.contextEpoch?.seal.bind(deps.contextEpoch) ?? sealUnsealed)({
+            conversation: mutatedContext.conversation,
+            steering: steeringDesiredState,
+            plan: deps.selection?.getPlan(),
+            toolNames: mutatedContext.toolbox.tools().map((tool) => tool.name),
+            consumer: {
+              runId: deps.runId,
+              step,
+              // Offset past the error-recovery attempt index so a
+              // provider retry and an error-recovery retry of the
+              // same step are never reported as the same attempt.
+              attempt: stepRetryCount + providerAttempt,
+            },
+          });
+          // The mutated request is what a successful retry sends, so the step names its epoch
+          // and records what that request carried.
+          contextEpochId = deps.contextEpoch === undefined ? undefined : mutatedEpoch.epochId;
+          ({ record: effectiveContext, stored: storedEffectiveContext } = composeEffectiveContext(
+            deps.contextEpoch === undefined
+              ? { ...mutatedEpoch, epochId: undefined }
+              : mutatedEpoch,
+            mutatedContext.conversation,
+            runState.effectiveContextTail,
+          ));
+          return contextEpochId;
+        };
         try {
           response =
             deps.parentContext !== undefined && deps.withTraceContext !== undefined
@@ -547,7 +600,17 @@ export async function executeGeneration(
     }
   } while (shouldRetryStep);
 
-  return { response, streamedRowId, stepSkipped, generateDurationMilliseconds, contextEpochId };
+  // COR-1810: the durable step writer stores this with the step it produced.
+  runState.storedEffectiveContext = storedEffectiveContext;
+  return {
+    response,
+    streamedRowId,
+    stepSkipped,
+    generateDurationMilliseconds,
+    contextEpochId,
+    planReason,
+    effectiveContext,
+  };
 }
 
 /**
