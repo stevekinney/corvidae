@@ -8,6 +8,7 @@ import {
   createAgent,
   createOutputPIIValidator,
   createScriptedGenerate,
+  type GuardrailsOptions,
   stopWhen,
   type ScriptedGenerateStep,
   type Toolbox,
@@ -184,7 +185,8 @@ describe('reasoning', () => {
         const late = new FrameReader(await handler(attachRunRequest(runId)));
         await late.until(EventType.STATE_SNAPSHOT);
         await waitForCondition(
-          () => bureau.tasks.detail(runId)?.events.some((e) => e.event === 'tools.executing'),
+          () =>
+            bureau.tasks.detail(runId)?.events.some((e) => e.event === 'tools.executing') === true,
           'the tool did not start',
         );
         release();
@@ -212,10 +214,10 @@ describe('reasoning', () => {
 
 describe('a validate-mode agent (guardrails that scan the output)', () => {
   const PII = 'jane.doe@example.com';
-  const validating = {
+  const validating: GuardrailsOptions = {
     mode: 'validate',
     output: { validators: [createOutputPIIValidator()], action: 'redact' },
-  } as const;
+  };
 
   it('streams no frame that carries the PII of a response its guardrail redacted', async () => {
     await withHarness(
