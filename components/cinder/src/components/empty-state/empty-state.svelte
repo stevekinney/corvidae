@@ -8,15 +8,22 @@
    * @tag empty
    * @useWhen Communicating that a list, table, or workspace has no items yet and suggesting a next step.
    * @useWhen Replacing a primary content region after a filter or search returns no results.
+   * @useWhen Confirming that all work is finished with the done kind, or that a filter hid every item with the filtered kind.
    * @avoidWhen Indicating that data is still loading — use skeleton or spinner instead.
    * @avoidWhen Reporting a transient error — use alert, banner, or toast-region.
    * @related skeleton, spinner
    */
-  export type { EmptyStateAlign, EmptyStateProps } from './empty-state.types.ts';
+  export type {
+    EmptyStateAlign,
+    EmptyStateKind,
+    EmptyStateProps,
+    EmptyStateSize,
+  } from './empty-state.types.ts';
 </script>
 
 <script lang="ts">
   import type { EmptyStateProps } from './empty-state.types.ts';
+  import Button from '../button/button.svelte';
   import { classNames } from '../../utilities/class-names.ts';
 
   let {
@@ -25,6 +32,10 @@
     class: className,
     headingLevel = 3,
     align = 'center',
+    kind = 'first-use',
+    size = 'default',
+    onClearFilters,
+    clearFiltersLabel = 'Clear filters',
     icon,
     action,
     ...rest
@@ -42,6 +53,13 @@
       : 3,
   );
   const tag = $derived(`h${safeLevel}`);
+
+  // Normalise at runtime: an unknown kind or size behaves as the default rather than
+  // producing a root attribute no stylesheet rule matches.
+  const safeKind = $derived(kind === 'filtered' || kind === 'done' ? kind : 'first-use');
+  const safeSize = $derived(size === 'compact' ? 'compact' : 'default');
+  const showClearFilters = $derived(safeKind === 'filtered' && onClearFilters !== undefined);
+  const showAction = $derived(safeKind !== 'done' && action !== undefined);
 </script>
 
 <div
@@ -49,6 +67,8 @@
   class={classNames('cinder-empty-state', className)}
   role="group"
   data-cinder-align={align === 'start' ? 'start' : undefined}
+  data-cinder-kind={safeKind}
+  data-cinder-size={safeSize}
   aria-labelledby={titleId}
 >
   {#if icon}
@@ -62,9 +82,19 @@
   {#if description}
     <p class="cinder-empty-state-description">{description}</p>
   {/if}
-  {#if action}
+  {#if showClearFilters || showAction}
     <div class="cinder-empty-state-action">
-      {@render action()}
+      {#if showClearFilters}
+        <Button
+          variant="secondary"
+          size={safeSize === 'compact' ? 'sm' : 'md'}
+          label={clearFiltersLabel}
+          onclick={() => onClearFilters?.()}
+        />
+      {/if}
+      {#if showAction && action}
+        {@render action()}
+      {/if}
     </div>
   {/if}
 </div>

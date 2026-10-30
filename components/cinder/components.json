@@ -611,6 +611,7 @@
       "tags": ["feedback", "notice"],
       "useWhen": [
         "Communicating a persistent page-level status the user can dismiss, such as a maintenance window or trial expiry.",
+        "Reporting that the server or connection is unreachable with the unreachable preset, a Retry action, and the age of the data still shown.",
         "Pinning a non-urgent message above page content that should remain readable until acknowledged."
       ],
       "avoidWhen": [
@@ -2095,7 +2096,8 @@
       "tags": ["feedback", "empty"],
       "useWhen": [
         "Communicating that a list, table, or workspace has no items yet and suggesting a next step.",
-        "Replacing a primary content region after a filter or search returns no results."
+        "Replacing a primary content region after a filter or search returns no results.",
+        "Confirming that all work is finished with the done kind, or that a filter hid every item with the filtered kind."
       ],
       "avoidWhen": [
         {
@@ -4793,7 +4795,7 @@
       "exportName": "Skeleton",
       "category": "feedback",
       "status": "stable",
-      "purpose": "Decorative placeholder block that reserves layout space while real content loads.",
+      "purpose": "Decorative placeholder that reserves layout space while real content loads, as a single block or a group of lines or a card, with optional delayed appearance and a \"Still loading\" status.",
       "tags": ["feedback", "loading"],
       "useWhen": [
         "Reserving the rough shape of incoming content during an initial fetch to avoid layout shift.",

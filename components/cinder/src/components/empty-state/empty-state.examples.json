@@ -14,6 +14,18 @@
       "title": "With icon",
       "description": "An icon snippet above the title.",
       "code": "<script lang=\"ts\">\n  import { EmptyState } from '@lostgradient/cinder';\n</script>\n\n<EmptyState title=\"No documents\" description=\"Upload your first document to get started.\">\n  {#snippet icon()}\n    <svg\n      xmlns=\"http://www.w3.org/2000/svg\"\n      width=\"48\"\n      height=\"48\"\n      viewBox=\"0 0 24 24\"\n      fill=\"none\"\n      stroke=\"currentColor\"\n      stroke-width=\"1.5\"\n      aria-hidden=\"true\"\n    >\n      <path d=\"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z\"></path>\n      <polyline points=\"14 2 14 8 20 8\"></polyline>\n    </svg>\n  {/snippet}\n</EmptyState>\n"
+    },
+    {
+      "id": "kinds",
+      "title": "First use, filtered, and done",
+      "description": "Three reasons a view is empty: nothing yet, a filter hid everything, and all work finished.",
+      "code": "<script lang=\"ts\">\n  import { Button, EmptyState } from '@lostgradient/cinder';\n</script>\n\n<div style=\"display: grid; gap: 1.5rem;\">\n  <EmptyState kind=\"first-use\" title=\"No runs yet\" description=\"Start a workflow to see its runs here.\">\n    {#snippet action()}\n      <Button variant=\"primary\" label=\"Start a run\" />\n    {/snippet}\n  </EmptyState>\n  <EmptyState\n    kind=\"filtered\"\n    title=\"No runs match\"\n    description=\"Nothing matches the current filters. Clear them to see every run.\"\n    onClearFilters={() => {}}\n  />\n  <EmptyState kind=\"done\" title=\"All caught up\" description=\"Every approval has been answered.\" />\n</div>\n"
+    },
+    {
+      "id": "compact",
+      "title": "Compact for tabs and panels",
+      "description": "size=\"compact\" tightens the padding, disc, and type for a tab or a panel.",
+      "code": "<script lang=\"ts\">\n  import { EmptyState } from '@lostgradient/cinder';\n</script>\n\n<EmptyState size=\"compact\" title=\"No comments yet\" description=\"Replies appear here.\" />\n"
     }
   ]
 }
