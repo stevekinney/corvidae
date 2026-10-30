@@ -23,7 +23,12 @@
  * @module session-fork
  */
 
-import { type AgentSession, type Effort, parseStepRowIdentifier } from '@lostgradient/operative';
+import {
+  type AgentSession,
+  type Effort,
+  type PermissionMode,
+  parseStepRowIdentifier,
+} from '@lostgradient/operative';
 import type { ConversationHistory } from 'conversationalist';
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
@@ -98,6 +103,13 @@ export interface ForkSessionResult {
    * none, which reads as `null`.
    */
   readonly carriedEffort?: SteeringCommandAdmissionOutcome | null;
+  /**
+   * The outcome of admitting the parent's `permission-mode` on the new session, as
+   * `<commandId>:permission-mode` (COR-1936); `null` when the parent had none. A branch is the
+   * same conversation, so it keeps the mode its parent was in. A result the ledger kept before the
+   * field existed has none, which reads as `null`.
+   */
+  readonly carriedPermissionMode?: SteeringCommandAdmissionOutcome | null;
 }
 
 /**
@@ -142,6 +154,11 @@ export interface ForkLedgerClaim {
    * when it had none. A claim written before the field existed has none, and carries no effort.
    */
   readonly effort?: Effort | null;
+  /**
+   * The permission mode the parent's steering had settled on when the attempt began (COR-1936);
+   * `null` when it had none. A claim written before the field existed has none.
+   */
+  readonly permissionMode?: PermissionMode | null;
 }
 
 /** What the branch-point checks read besides the session. */

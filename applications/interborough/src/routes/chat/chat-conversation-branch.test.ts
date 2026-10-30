@@ -353,6 +353,7 @@ describe('the model picker in a session’s composer', () => {
         ...CONTEXT,
         model: { provider: 'anthropic', model: 'claude-haiku-4-5' },
         effort: null,
+        permissionMode: 'on-changes',
         configVersion: 4,
       }),
     });
@@ -379,6 +380,7 @@ describe('the model picker in a session’s composer', () => {
         ...CONTEXT,
         model: switched ? { provider: 'anthropic', model: 'claude-haiku-4-5' } : null,
         effort: null,
+        permissionMode: 'on-changes',
         configVersion: switched ? 2 : 1,
       }),
       'bureau.contexts.steer': () => {

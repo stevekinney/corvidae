@@ -513,7 +513,21 @@ export interface SessionInputGate {
 // section for the full contract these types are drawn from verbatim.
 
 /**
- * The seven configuration-facing operations `SteeringCommand` covers. Agent,
+ * The permission modes a chat can be set to (COR-1936): how readily its tool calls ask a person.
+ * Operative only carries the value through steering; Bureau decides what each one does to a call.
+ *
+ * - `on-changes`: the default; each tool asks as its own approval setting says.
+ * - `always`: every call asks.
+ * - `read-only`: a call to a tool that is not read-only is denied.
+ * - `allow-all`: a tool that would ask because of `on-changes` runs without asking.
+ */
+export const PERMISSION_MODES = ['always', 'on-changes', 'allow-all', 'read-only'] as const;
+
+/** A permission mode a chat can be set to; see {@link PERMISSION_MODES}. */
+export type PermissionMode = (typeof PERMISSION_MODES)[number];
+
+/**
+ * The eight configuration-facing operations `SteeringCommand` covers. Agent,
  * provider, model, route, and effort changes apply no earlier than the entry
  * of the next `runStep` call; agent-identity applies at step 0 of the
  * session's next `bureau.run` call; pause and resume gate that same
@@ -523,7 +537,14 @@ export interface SessionInputGate {
  * terminal-behavior table.
  */
 export type SteeringTargetKind =
-  'agent-identity' | 'route' | 'model' | 'provider' | 'effort' | 'pause' | 'resume';
+  | 'agent-identity'
+  | 'route'
+  | 'model'
+  | 'provider'
+  | 'effort'
+  | 'permission-mode'
+  | 'pause'
+  | 'resume';
 
 /**
  * Discriminated by `target`. `pause`/`resume` carry no value: the target
@@ -589,7 +610,14 @@ export type SteeringRequestedValue =
       readonly target: 'effort';
       readonly override: Effort;
       readonly policyRef?: undefined;
-    }; // packages/operative/src/providers/types.ts
+    } // packages/operative/src/providers/types.ts
+  // COR-1936: a chat's permission mode. Not a generation coordinate, so it has no `policyRef`
+  // form (no policy profile names one) and no step selection reads it.
+  | {
+      readonly target: 'permission-mode';
+      readonly override: PermissionMode;
+      readonly policyRef?: undefined;
+    };
 
 /**
  * A versioned steering command: a caller's request to change one of
@@ -732,6 +760,8 @@ export interface SteeringDesiredState {
   readonly modelProvider?: string | undefined;
   readonly provider?: string | undefined;
   readonly effort?: Effort | undefined;
+  /** The chat's permission mode (COR-1936); absent until one is set, which is `on-changes`. */
+  readonly permissionMode?: PermissionMode | undefined;
   readonly paused: boolean;
   readonly configVersion: number;
 }

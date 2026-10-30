@@ -6597,6 +6597,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       model: { target: 'model', override: 'claude-sonnet-5' },
       provider: { target: 'provider', override: 'anthropic' },
       effort: { target: 'effort', override: 'high' },
+      'permission-mode': { target: 'permission-mode', override: 'read-only' },
     } satisfies {
       [Target in SteeringRequestedValue['target']]: Extract<
         SteeringRequestedValue,
@@ -6643,6 +6644,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
         model: 'accepted',
         provider: 'accepted',
         effort: 'accepted',
+        'permission-mode': 'accepted',
       });
     } finally {
       await bureau.dispose();
