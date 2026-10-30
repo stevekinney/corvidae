@@ -25,7 +25,10 @@ afterEach(async () => {
 });
 
 /** A home in `mode` whose configuration is `text`, recording what it is asked to write. */
-async function fakeHome(mode: 'local' | 'remote') {
+async function fakeHome(
+  mode: 'local' | 'remote',
+  failure?: { readonly replaces: boolean; readonly error: Error },
+) {
   const skills = await mkdtemp(join(tmpdir(), 'interborough-skill-manager-'));
   directories.push(skills);
   await mkdir(join(skills, 'deploy'));
@@ -45,7 +48,13 @@ async function fakeHome(mode: 'local' | 'remote') {
       readConfiguration: async () => text,
       writeConfiguration: (next: string) => {
         writes.push(next);
-        text = next;
+        if (failure === undefined) {
+          text = next;
+          return;
+        }
+        // Bungalow renames the file and then syncs the directory, so a throw may follow the replace.
+        if (failure.replaces) text = next;
+        throw failure.error;
       },
     },
     audit: async (entry) => {
@@ -113,5 +122,93 @@ describe('a local home', () => {
     expect((failure as Error).name).toBe('SkillAuditError');
     expect(writes).toHaveLength(1);
     expect(manager.standing().catalog.records[0]?.available).toBe(true);
+  });
+
+  test('records a change that could not be recorded when the same request is made again (COR-1926)', async () => {
+    const { options, audited } = await fakeHome('local');
+    let down = true;
+    const manager = await createSkillManager({
+      ...options,
+      audit: async (entry) => {
+        if (down) throw new Error('the trail is down');
+        audited.push(entry);
+      },
+    });
+
+    const failures = [
+      await manager
+        .setTrust({ source: 'workspace', trusted: true })
+        .catch((error: unknown) => error),
+      await manager
+        .setTrust({ source: 'workspace', trusted: true })
+        .catch((error: unknown) => error),
+    ];
+    expect(failures.map((failure) => (failure as Error).name)).toEqual([
+      'SkillAuditError',
+      'SkillAuditError',
+    ]);
+    expect(audited).toEqual([]);
+
+    down = false;
+    const retried = await manager.setTrust({ source: 'workspace', trusted: true });
+
+    expect(retried).toMatchObject({ source: 'workspace', trusted: true, changed: false });
+    expect(audited.map((entry) => entry.type)).toEqual(['skill.source.trusted']);
+    // Recorded once: a further request owes nothing.
+    await manager.setTrust({ source: 'workspace', trusted: true });
+    expect(audited).toHaveLength(1);
+  });
+
+  test('records the owed change before the opposite change, so the trail keeps its order', async () => {
+    const { options, audited } = await fakeHome('local');
+    let down = true;
+    const manager = await createSkillManager({
+      ...options,
+      audit: async (entry) => {
+        if (down) throw new Error('the trail is down');
+        audited.push(entry);
+      },
+    });
+    await manager.setTrust({ source: 'workspace', trusted: true }).catch(() => undefined);
+
+    down = false;
+    const revoked = await manager.setTrust({ source: 'workspace', trusted: false });
+
+    expect(revoked.changed).toBe(true);
+    expect(audited.map((entry) => entry.type)).toEqual([
+      'skill.source.trusted',
+      'skill.source.untrusted',
+    ]);
+  });
+
+  test('reads the file back when the write throws after replacing it, and reports the write', async () => {
+    const error = new Error('the directory could not be synced');
+    const { options, audited } = await fakeHome('local', { replaces: true, error });
+    const manager = await createSkillManager(options);
+    expect(manager.standing().catalog.records[0]?.available).toBe(false);
+
+    const failure = await manager
+      .setTrust({ source: 'workspace', trusted: true })
+      .catch((caught: unknown) => caught);
+
+    expect(failure).toBe(error);
+    // The file says trusted, so the host serves trusted, with a new revision.
+    expect(manager.standing().catalog.records[0]?.available).toBe(true);
+    expect(manager.standing().sources[0]?.trust).toBe('trusted');
+    expect(audited).toEqual([]);
+  });
+
+  test('keeps serving the file it read when the write throws without replacing it', async () => {
+    const error = new Error('disk full');
+    const { options } = await fakeHome('local', { replaces: false, error });
+    const manager = await createSkillManager(options);
+
+    const failure = await manager
+      .setTrust({ source: 'workspace', trusted: true })
+      .catch((caught: unknown) => caught);
+
+    expect(failure).toBe(error);
+    expect(manager.standing().catalog.records[0]?.available).toBe(false);
+    expect(manager.standing().sources[0]?.trust).toBe('untrusted');
   });
 });

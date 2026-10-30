@@ -12,11 +12,21 @@
  *   (`configuration-queue.ts`), reads the result back through the same checks the next start
  *   applies, discovers the catalog again, and then records the change in the audit trail as
  *   `skill.source.trusted` or `skill.source.untrusted`, filed under `skill-source:<id>` and made
- *   by the owner. A change that changes nothing writes and records nothing.
+ *   by the owner. A change that changes nothing writes and records nothing, unless an earlier
+ *   change to that source was applied and could not be recorded (below).
+ * - **A change that could not be recorded is retried.** When the audit write fails, the change
+ *   stands and {@link SkillAuditError} reports it. The manager keeps the entry, in memory only (it
+ *   does not survive a restart), and writes it first on the next trust request for that source:
+ *   the same request again answers `changed: false` once the record is made, and
+ *   {@link SkillAuditError} again while the trail is still failing.
+ * - **A failed write is read back.** When `writeConfiguration` throws, the file may still have been
+ *   replaced (Bungalow renames it, then syncs the directory), so the manager reads the file back
+ *   and serves what a restart would, then reports the original failure.
  * - **Local only.** A remote home keeps its configuration in a bucket the host cannot write, so a
  *   change there is refused with the lock reason `deployment` ({@link SkillWriteLockedError}).
- * - **A catalog is replaced, never edited.** Each discovery makes a new revision; a skill client
- *   keeps the revision it was built with.
+ * - **A catalog is replaced, never edited.** Each discovery makes a new revision. A skill client
+ *   offers the revision it was built with but checks a skill against {@link SkillManager.standing}'s
+ *   catalog when the skill is used, so a source revoked here is refused by runs already in flight.
  *
  * @module skill-manager
  */
@@ -147,7 +157,10 @@ export type SkillManagerOptions = {
   >;
   /** The queue every writer of `configuration.json` shares. Defaults to a new one. */
   readonly configurationQueue?: ConfigurationQueue;
-  /** Appends one record to the audit trail; resolves without writing when the Bureau keeps none. */
+  /**
+   * Appends one record to the audit trail; resolves without writing when the Bureau keeps none.
+   * It must reject when the record cannot be written, so the manager can report and retry it.
+   */
   readonly audit: (entry: SkillAuditEntry) => Promise<void>;
   /** The owner a change is made by. Defaults to the local owner, the one principal of a single-user host. */
   readonly owner?: string;
@@ -165,6 +178,8 @@ export async function createSkillManager(options: SkillManagerOptions): Promise<
   const configurationQueue = options.configurationQueue ?? createConfigurationQueue();
   let closed = false;
   let current: SkillsStanding | undefined;
+  /** Changes that were applied and not recorded, oldest first. In memory: a restart drops them. */
+  const unrecorded: SkillAuditEntry[] = [];
 
   const lockReason = (): SettingLockReason | undefined => hostWriteLocks(bungalow).configuration;
   const serialized = <Result>(work: () => Promise<Result>): Promise<Result> =>
@@ -212,6 +227,30 @@ export async function createSkillManager(options: SkillManagerOptions): Promise<
     return current;
   };
 
+  /** Record what an earlier change to `source` left unrecorded, in order; stops at the first failure. */
+  async function recordUnrecorded(source: string): Promise<void> {
+    while (true) {
+      const index = unrecorded.findIndex((entry) => entry.detail.sourceId === source);
+      const entry = unrecorded[index];
+      if (entry === undefined) return;
+      try {
+        await options.audit(entry);
+      } catch {
+        throw new SkillAuditError(source, entry.detail.trusted);
+      }
+      unrecorded.splice(index, 1);
+    }
+  }
+
+  /** Read the file back after a write that threw, so the host serves what a restart would. */
+  async function readBackAfterFailure(): Promise<void> {
+    try {
+      await discover(readSkillsConfiguration(await readText(), location));
+    } catch {
+      // The failure to report is the write's; a file that cannot be read back is reported on the next refresh.
+    }
+  }
+
   await discover(readSkillsConfiguration(await readText(), location));
 
   return {
@@ -223,6 +262,10 @@ export async function createSkillManager(options: SkillManagerOptions): Promise<
     refresh: () =>
       serialized(async () => {
         const standing = await discover(readSkillsConfiguration(await readText(), location));
+        // A refresh answers for the catalog, so a trail that is still down is left for the next trust request.
+        for (const source of new Set(unrecorded.map((entry) => entry.detail.sourceId))) {
+          await recordUnrecorded(source).catch(() => undefined);
+        }
         return { revision: standing.catalog.revision };
       }),
     // The request is read, checked, and copied before the first `await`: the caller owns it, and
@@ -239,6 +282,9 @@ export async function createSkillManager(options: SkillManagerOptions): Promise<
         throw new SkillInputError('trusted', 'expected true or false.');
       }
       return serialized(async () => {
+        // An earlier change to this source that was not recorded is recorded first, so the trail
+        // keeps its order and a repeated request answers for the record it still owes.
+        await recordUnrecorded(source);
         const text = await readText();
         // Parsed first as the host reads it, so a file that is already invalid is refused, not overwritten.
         if (text !== undefined) parseProviderConfiguration(text, location);
@@ -259,16 +305,24 @@ export async function createSkillManager(options: SkillManagerOptions): Promise<
         // The same check the next start applies, before a byte is written.
         const applied = parseSkillsConfiguration(nextDocument.skills, location);
         const next = `${JSON.stringify(nextDocument, null, 2)}\n`;
-        bungalow.writeConfiguration(next);
-        const standing = await discover(applied);
         try {
-          await options.audit({
-            runId: auditTrailSkillSourceOwnerId(source),
-            type: trusted ? 'skill.source.trusted' : 'skill.source.untrusted',
-            principal: owner,
-            detail: { sourceId: source, trusted, owner },
-          });
+          bungalow.writeConfiguration(next);
+        } catch (error) {
+          // A write that throws may still have replaced the file, so the disk decides what is served.
+          await readBackAfterFailure();
+          throw error;
+        }
+        const standing = await discover(applied);
+        const entry: SkillAuditEntry = {
+          runId: auditTrailSkillSourceOwnerId(source),
+          type: trusted ? 'skill.source.trusted' : 'skill.source.untrusted',
+          principal: owner,
+          detail: { sourceId: source, trusted, owner },
+        };
+        try {
+          await options.audit(entry);
         } catch {
+          unrecorded.push(entry);
           throw new SkillAuditError(source, trusted);
         }
         return { source, trusted, changed: true, revision: standing.catalog.revision };

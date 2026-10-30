@@ -140,6 +140,13 @@ export interface SkillRuntimeConfiguration {
    * underneath it mid-conversation.
    */
   catalog?: SkillCatalogRevision;
+  /**
+   * The host's catalog as it is now, read each time a skill is used (COR-1926). `catalog` decides
+   * what a run is offered; this decides whether a skill it was offered may still be used, so a
+   * source the host stops trusting is refused at the next use by a run already in flight. It
+   * narrows and never widens. Omit it and a run uses the revision it started with.
+   */
+  currentCatalog?: () => SkillCatalogRevision;
   includeTools?: boolean;
   skillPolicy?: ToolPolicy;
 }
