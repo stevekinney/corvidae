@@ -246,6 +246,7 @@ describe('pipe()', () => {
           {
             dispatch: () => true,
             progress: () => {},
+            resolveSecret: async () => '',
             signal: controller.signal,
             toolCall: createToolCall(pipeline.name, { str: '5' }),
             configuration: pipeline.configuration,

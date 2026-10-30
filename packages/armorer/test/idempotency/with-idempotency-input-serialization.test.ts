@@ -208,7 +208,10 @@ describe('withIdempotency', () => {
     };
 
     await wrapped.execute(input, { requestContext });
-    expect(reads).toBe(6);
+    // The six reads counted before this scan, plus the one structural scan for `{ secretRef }`
+    // values that execution makes of the caller's arguments and shares between admission and
+    // the callback.
+    expect(reads).toBe(7);
   });
 
   it('serializes accepted retry inputs before replacing an unknown started marker', async () => {
