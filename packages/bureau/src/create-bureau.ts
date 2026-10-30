@@ -127,6 +127,7 @@ import {
   WorkflowRecoverySkippedEvent,
 } from '@lostgradient/weft';
 import {
+  type AnyToolbox,
   type SignedPendingToolApproval,
   type Tool,
   type ToolExecutionResult,
@@ -566,6 +567,7 @@ import type {
   CancelDurableRunOutcome,
   CleanupAcknowledgement,
   ContextDeletionReport,
+  ContextWindowReport,
   CreateRunRequest,
   LocateRunCreationReceiptRequest,
   StartTaskOptions,
@@ -600,6 +602,11 @@ import {
 import { isSettlingRunAction, settledActionTimestamp } from './run-settlement';
 import { createAudit } from './audit/create-audit';
 import { createNotifications } from './notifications/create-notifications';
+import {
+  buildContextWindow,
+  type ContextWindowTool,
+  type ReportedStepUsage,
+} from './contexts/context-window';
 import { createContexts } from './contexts/create-contexts';
 import { createTaskHandle, createTasks, seedsConversation } from './tasks/create-tasks';
 import {
@@ -15036,6 +15043,92 @@ async function constructBureau<const D extends AgentDefinitions>(
     };
   }
 
+  /**
+   * COR-1937 — the context-window report of a context. Read-only: the history is the session's
+   * persisted one, the instructions and tool schemas come from the agent (or, while this process
+   * holds the context's latest run, that run's own toolbox), and the reported usage comes from the
+   * latest step recorded for the context. No model is called and nothing is written.
+   */
+  async function getContextWindow(
+    contextId: string,
+    windowOptions?: { readonly incarnation?: string | undefined },
+  ): Promise<ContextWindowReport | undefined> {
+    // Read before the first await: the caller's options are not read again.
+    const expectedIncarnation = windowOptions?.incarnation;
+    const sessions = requireSessionStore();
+    const session = await sessions.load(contextId);
+    if (session === undefined) return undefined;
+    if (expectedIncarnation !== undefined && session.incarnation !== expectedIncarnation) {
+      return undefined;
+    }
+    const steering = await getSessionSteering(contextId);
+    // Deleted while its steering was read.
+    if (steering === undefined) return undefined;
+    const agent = agentCatalog.find(session.agentName) ?? tryAgents.peek(session.agentName);
+    const catalog = models.catalog().descriptors;
+    const named =
+      steering.model ?? (agent === undefined ? null : describeAgentModels(agent, catalog).default);
+    const model =
+      named === null
+        ? undefined
+        : catalog.find(
+            (row) =>
+              row.model === named.model &&
+              (named.provider === null || row.provider === named.provider),
+          );
+
+    // Newest first; a context's latest step is the last step of its newest task that has one.
+    const latest = await tasks.enumerate({ contextId, limit: 5, offset: 0 });
+    let reported: ReportedStepUsage | undefined;
+    for (const task of latest.tasks) {
+      const liveStep = store.getRun(task.id)?.steps.at(-1);
+      // A run this process no longer holds keeps its steps in the durable checkpoint.
+      const checkpointed =
+        liveStep === undefined ? await runtime.durable?.checkpointStore.loadSteps(task.id) : [];
+      const step = liveStep ?? checkpointed?.at(-1);
+      if (step === undefined) continue;
+      reported = step.usage;
+      break;
+    }
+
+    const liveToolbox = latest.tasks.map((task) => runToolboxesByRunId.get(task.id)).find(Boolean);
+    let toolbox: Pick<AnyToolbox, 'tools'> | undefined = liveToolbox;
+    if (toolbox === undefined && agent !== undefined && hasDefinitionResolver(agent)) {
+      // The agent's own definition resolves to the toolbox a run of it would start with: a pure
+      // build, no run and no model call.
+      const resolved = await agent[OPERATIVE_RESOLVE_RUN_OPTIONS]('window', {});
+      toolbox = resolved.toolbox;
+    }
+    const tools: ContextWindowTool[] = (toolbox?.tools() ?? []).map((tool) => {
+      const described = tool.toJSON();
+      return {
+        name: described.name,
+        description: described.description,
+        input: described.input,
+      };
+    });
+
+    // Every read above belongs to the incarnation loaded first: an id deleted and created again
+    // while they ran is a different context, and this report would mix the two.
+    const current = await sessions.load(contextId);
+    if (current?.incarnation !== session.incarnation) return undefined;
+
+    return buildContextWindow({
+      history: session.conversationHistory,
+      instructions: agent === undefined ? undefined : instructionsOf(agent),
+      tools,
+      model,
+      catalog,
+      reported,
+    });
+  }
+
+  /** The system instructions an agent was created with (`createAgent`'s `instructions`), if it declares any. */
+  function instructionsOf(agent: object): string | undefined {
+    const declared: unknown = Reflect.get(agent, 'instructions');
+    return typeof declared === 'string' ? declared : undefined;
+  }
+
   async function admitSteeringRequest(
     sessionId: string,
     request: SteeringCommandRequest,
@@ -20259,6 +20352,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     steer: submitSteeringCommand,
     steering: getSessionSteering,
     fork: forkSession,
+    window: getContextWindow,
     eventHistory: readEventHistory,
     subscribeEventHistory: subscribeToEventHistory,
   });
