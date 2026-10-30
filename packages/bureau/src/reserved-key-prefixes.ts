@@ -61,4 +61,5 @@ export const BUREAU_RESERVED_KEY_PREFIXES: readonly string[] = [
   'steering-key:v1',
   'steering-log:v1',
   'webhook-delivery:v1:',
+  'worker-deployment:',
 ];

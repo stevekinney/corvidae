@@ -136,6 +136,10 @@ import {
   mayNameAgent,
 } from './management/deployment-operations.ts';
 import {
+  type BureauWorkerDeploymentsOperationHost,
+  bureauWorkerDeploymentsOperations,
+} from './management/deployments-operations.ts';
+import {
   type BureauWorkflowsOperationHost,
   bureauWorkflowsOperations,
 } from './management/workflows-operations.ts';
@@ -206,6 +210,7 @@ export type BureauHandlerSource = Pick<
   | 'decisions'
   | 'settings'
   | 'workflows'
+  | 'deployments'
   | 'goals'
   | 'memory'
   | 'assets'
@@ -300,6 +305,7 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauAgentModelsOperationHost &
   BureauAgentDefinitionsOperationHost &
   BureauWorkflowsOperationHost &
+  BureauWorkerDeploymentsOperationHost &
   BureauSchedulesOperationHost &
   BureauGoalsOperationHost &
   BureauMemoryOperationHost &
@@ -691,6 +697,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   ...bureauAssetsOperations,
   ...bureauDecisionsOperations,
   ...bureauSettingsOperations,
+  ...bureauWorkerDeploymentsOperations,
 ] as const;
 
 /**
@@ -1102,6 +1109,7 @@ export function buildBureauHandlerHost(
       },
     },
     workflows: bureau.workflows,
+    deployments: bureau.deployments,
     schedules: {
       create: bureau.schedules.create,
       get: bureau.schedules.get,

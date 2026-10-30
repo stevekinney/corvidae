@@ -226,6 +226,7 @@ export type {
   DeploymentSelectionResult,
   WorkerDeploymentRemovalOutcome,
   WorkerDeploymentRouting,
+  WorkerDeploymentRoutingWrite,
   WorkerDeploymentVersion,
   WorkerDeploymentVersionReport,
   WorkerDeploymentVersionState,
