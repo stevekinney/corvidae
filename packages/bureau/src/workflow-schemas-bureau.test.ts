@@ -4,7 +4,8 @@
  * file's `inputSchema`, a result that breaks the `outputSchema` fails the run with `output-invalid`,
  * and the schemas survive being paused, rewritten, and read back as a revision.
  */
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { waitUntil } from '@lostgradient/testing/wait-until';
@@ -18,6 +19,7 @@ import {
 import { AGENT_STEP } from './testing/workflow-file-fixtures.test-support';
 import type { BureauWorkflows } from './workflow-runtime';
 import { WorkflowInputInvalidError } from './workflow-schema';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const harnesses: WorkflowBureauHarness[] = [];
 afterEach(async () => {
@@ -309,6 +311,41 @@ describe('an outputSchema', () => {
 
     await finished(harness, result.runId);
     expect(await finishReasonAfter(harness, result.runId)).toBeNull();
+  });
+});
+
+describe('the finish reason of a failed run after a restart (COR-1927)', () => {
+  it('is still read from the stored run, which keeps the class of the error that failed it', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'bureau-workflow-finish-reason-'));
+    const database = createSqliteStorageFixture({ path: join(root, 'bureau.sqlite') });
+    try {
+      const overrides = {
+        // A getter: each Bureau started with these overrides opens its own handle.
+        get storage() {
+          return database.open();
+        },
+        durableOwnership: { ownership: 'none' },
+        onDiagnostic: () => undefined,
+      } as const;
+      const directory = join(root, 'workflows');
+      const first = await startWorkflowBureau({ directory, overrides });
+      await first.putWorkflow('summary', { trigger: ON_GO, outputSchema: { type: 'string' } });
+      const result = await workflowsOf(first).start('summary', { owner: 'anonymous:local' });
+      await finished(first, result.runId);
+      const before = await workflowsOf(first).getRun(result.runId);
+      expect(before?.finishReason).toBe('output-invalid');
+      await first.dispose();
+
+      const second = await startWorkflowBureau({ directory, overrides });
+      harnesses.push(second);
+      const run = await workflowsOf(second).getRun(result.runId);
+      expect(run?.status).toBe('failed');
+      expect(run?.finishReason).toBe('output-invalid');
+    } finally {
+      for (const harness of harnesses.splice(0).toReversed()) await harness.dispose();
+      await database.dispose();
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
 
