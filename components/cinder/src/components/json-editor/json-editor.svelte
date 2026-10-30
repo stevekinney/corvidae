@@ -43,6 +43,7 @@
     required = false,
     placeholder,
     disabled = false,
+    readonly = false,
     onValueChange,
     class: className,
     autofocus = false,
@@ -70,6 +71,7 @@
   function editorOptions(): JsonEditorDynamicOptions {
     return {
       disabled,
+      readonly,
       wrap: wrap !== 'off',
       schema,
       placeholder: placeholderText,
@@ -197,16 +199,18 @@
     if (describedBy) attributes['aria-describedby'] = describedBy;
     if (ariaInvalid === true || ariaInvalid === 'true') attributes['aria-invalid'] = 'true';
     if (required) attributes['aria-required'] = 'true';
+    if (readonly) attributes['aria-readonly'] = 'true';
     if (disabled) attributes['aria-disabled'] = 'true';
     return attributes;
   });
   // With an external error the draft is not parsed, so Format stays available and simply does
   // nothing for source that is not valid JSON.
   const canFormat = $derived(
-    !disabled && (externalError ? true : parseIsValid && !isBlankJson(draftValue)),
+    !disabled && !readonly && (externalError ? true : parseIsValid && !isBlankJson(draftValue)),
   );
 
   function formatDraft(): void {
+    if (readonly) return;
     if (editorHandle) {
       editorHandle.format();
       return;
@@ -243,8 +247,9 @@
       {autofocus}
       {wrap}
       {disabled}
+      {readonly}
       placeholder={placeholderText}
-      required={editorHandle ? undefined : required}
+      {required}
       hidden={editorHandle !== undefined}
       value={draftValue}
       spellcheck="false"
@@ -256,6 +261,13 @@
         onValueChange?.(draftValue);
       }}
       onfocus={() => editorHandle?.focus()}
+      oninvalid={(event) => {
+        // Native validation tries to focus the first invalid control, but once the editor mounts
+        // this textarea is hidden and cannot take focus, so the visible editor takes it instead.
+        const consumerHandler = rest.oninvalid;
+        if (typeof consumerHandler === 'function') consumerHandler.call(event.currentTarget, event);
+        editorHandle?.focus();
+      }}
       {@attach (element) => {
         if (autofocus) element.focus();
       }}></textarea>

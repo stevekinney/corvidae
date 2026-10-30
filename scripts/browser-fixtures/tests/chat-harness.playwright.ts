@@ -971,9 +971,11 @@ test.describe('chat harness — mounts cleanly', () => {
 
         const editedChat = await openApprovalFixture();
         await editedChat.getByRole('button', { name: 'Approve with edits' }).click();
-        await editedChat
-          .getByRole('textbox', { name: 'Edited arguments JSON' })
-          .fill('{"environment":"production","version":"2.4.1","replicas":2}');
+        const editedArguments = editedChat.getByRole('textbox', { name: 'Edited arguments JSON' });
+        // The field is a plain textarea until the JSON editor's chunk loads and replaces it, so wait
+        // for the editor, or `fill` can start on the textarea just before it is hidden.
+        await expect(editedArguments).toHaveAttribute('contenteditable', /^(true|false)$/);
+        await editedArguments.fill('{"environment":"production","version":"2.4.1","replicas":2}');
         await editedChat.getByRole('button', { name: 'Confirm edited approval' }).click();
         await expectLastResolution({
           toolCallId: 'call-deploy-prod',

@@ -18,6 +18,7 @@ type PathSegment = string | typeof ITEMS;
 const MAXIMUM_DEPTH = 16;
 
 const VALUE_NODE_NAMES = new Set(['String', 'Number', 'True', 'False', 'Null']);
+const ROOT_VALUE_NODE_NAMES = new Set([...VALUE_NODE_NAMES, 'Object', 'Array']);
 
 type CompletionSite =
   | { kind: 'key'; object: SyntaxNode; tokenFrom: number; tokenTo: number; typedFrom: number }
@@ -136,9 +137,25 @@ function keySite(
   return { kind: 'key', object, tokenFrom: typedFrom, tokenTo: position, typedFrom };
 }
 
+/** Whether the document root already holds a value, so a second one does not belong beside it. */
+function rootHasValue(root: SyntaxNode): boolean {
+  for (let child = root.firstChild; child !== null; child = child.nextSibling) {
+    if (ROOT_VALUE_NODE_NAMES.has(child.name)) return true;
+  }
+  return false;
+}
+
+/** The site for a value written directly at the document root, whose path is empty. */
+function rootValueSite(tokenFrom: number, tokenTo: number): CompletionSite {
+  return { kind: 'value', path: [], tokenFrom, tokenTo };
+}
+
 function siteAt(state: EditorState, position: number): CompletionSite | undefined {
   const node = syntaxTree(state).resolveInner(position, -1);
   const parent = node.parent;
+
+  // An empty or whitespace-only document, where a root value is about to be written.
+  if (node.name === 'JsonText' && !rootHasValue(node)) return rootValueSite(position, position);
 
   if (node.name === 'PropertyName' || (node.name === 'String' && parent?.name === 'PropertyName')) {
     const name = node.name === 'PropertyName' ? node : parent;
@@ -148,7 +165,9 @@ function siteAt(state: EditorState, position: number): CompletionSite | undefine
   }
 
   if (VALUE_NODE_NAMES.has(node.name) && parent !== null) {
-    if (parent.name !== 'Property' && parent.name !== 'Array') return undefined;
+    if (parent.name !== 'Property' && parent.name !== 'Array' && parent.name !== 'JsonText') {
+      return undefined;
+    }
     const path = pathOf(state, node);
     return path === undefined
       ? undefined
@@ -183,6 +202,9 @@ function siteAt(state: EditorState, position: number): CompletionSite | undefine
 
   if (node.name === '⚠' && parent !== null) {
     const token = { from: node.from, to: Math.max(node.to, position) };
+    if (parent.name === 'JsonText') {
+      return rootHasValue(parent) ? undefined : rootValueSite(token.from, token.to);
+    }
     if (parent.name === 'Object') return keySite(state, parent, position, token);
     if (parent.name === 'Property' || parent.name === 'Array') {
       const path = pathOf(state, node);

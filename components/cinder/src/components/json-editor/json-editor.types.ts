@@ -55,6 +55,8 @@ export type JsonEditorProps = Omit<
   rows?: number;
   /** Disables the editor. A disabled field is not posted with its form. */
   disabled?: boolean;
+  /** Makes the editor read-only. A read-only field stays focusable and selectable and is posted with its form, but cannot be edited or formatted. */
+  readonly?: boolean;
   /** Marks the editor as required. An empty value is valid and reads "Not set" unless the field is required. */
   required?: boolean;
   /** Whether valid JSON should render an announced success message. Defaults to true. @default true */

@@ -8,6 +8,11 @@ const schema = {
       type: 'boolean',
       description: 'Disables the editor. A disabled field is not posted with its form.',
     },
+    readonly: {
+      type: 'boolean',
+      description:
+        'Makes the editor read-only. A read-only field stays focusable and selectable and is posted with its form, but cannot be edited or formatted.',
+    },
     required: {
       type: 'boolean',
       description:

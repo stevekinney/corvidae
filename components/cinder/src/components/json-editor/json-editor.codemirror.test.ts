@@ -145,6 +145,88 @@ describe('JsonEditor — CodeMirror runtime', () => {
     expect(textareaOf(view).disabled).toBe(true);
   });
 
+  test('names the editable area as the one tab stop, and leaves a disabled editor out of the tab order', async () => {
+    const enabled = await mountedView(
+      render(JsonEditor, { id: 'enabled', label: 'Enabled', value: '{}' }),
+    );
+    expect(enabled.contentDOM.getAttribute('tabindex')).toBe('0');
+
+    const disabled = await mountedView(
+      render(JsonEditor, { id: 'off', label: 'Off', value: '{}', disabled: true }),
+    );
+    expect(disabled.contentDOM.hasAttribute('tabindex')).toBe(false);
+  });
+
+  test('forwards readonly to the editor: focusable and selectable but not editable', async () => {
+    const view = render(JsonEditor, {
+      id: 'payload',
+      label: 'Payload',
+      name: 'payload',
+      value: '{"a":1}',
+      readonly: true,
+    });
+    const editor = await mountedView(view);
+
+    expect(editor.state.readOnly).toBe(true);
+    expect(editor.contentDOM.getAttribute('contenteditable')).toBe('true');
+    expect(editor.contentDOM.getAttribute('aria-readonly')).toBe('true');
+    expect(textareaOf(view).readOnly).toBe(true);
+    expect(textareaOf(view).disabled).toBe(false);
+  });
+
+  test('applies readonly that changes while the editor stays mounted', async () => {
+    const view = render(JsonEditor, { id: 'payload', label: 'Payload', value: '{}' });
+    const editor = await mountedView(view);
+    expect(editor.state.readOnly).toBe(false);
+
+    await view.rerender({ id: 'payload', label: 'Payload', value: '{}', readonly: true });
+    await waitFor(() => expect(editor.state.readOnly).toBe(true));
+
+    await view.rerender({ id: 'payload', label: 'Payload', value: '{}', readonly: false });
+    await waitFor(() => expect(editor.state.readOnly).toBe(false));
+    expect(editor.contentDOM.hasAttribute('aria-readonly')).toBe(false);
+  });
+
+  test('keeps the required constraint on the posted textarea once the editor mounts', async () => {
+    const form = document.createElement('form');
+    form.id = 'required-form';
+    document.body.append(form);
+    const view = render(JsonEditor, {
+      id: 'payload',
+      label: 'Payload',
+      name: 'payload',
+      form: form.id,
+      value: '',
+      required: true,
+    });
+    const editor = await mountedView(view);
+
+    expect(textareaOf(view).required).toBe(true);
+    expect(form.checkValidity()).toBe(false);
+
+    typeInto(editor, '{}');
+    await waitFor(() => expect(form.checkValidity()).toBe(true));
+  });
+
+  test('sends invalid-field focus to the visible editor, not the hidden textarea', async () => {
+    const form = document.createElement('form');
+    form.id = 'required-focus-form';
+    document.body.append(form);
+    const view = render(JsonEditor, {
+      id: 'payload',
+      label: 'Payload',
+      form: form.id,
+      value: '',
+      required: true,
+    });
+    const editor = await mountedView(view);
+    const focus = spyOn(editor, 'focus');
+
+    form.checkValidity();
+
+    expect(focus).toHaveBeenCalled();
+  });
+
   test('caps the height at the rows prop instead of reserving a large empty box', async () => {
     const view = render(JsonEditor, { id: 'payload', label: 'Payload', value: '{}', rows: 4 });
     await mountedView(view);
@@ -201,8 +283,8 @@ describe('JsonEditor — empty optional value', () => {
     expect(view.getByRole('alert').textContent).toBe('Enter valid JSON.');
     expect(editor.contentDOM.getAttribute('aria-required')).toBe('true');
     expect(textareaOf(view).placeholder).toBe('');
-    // Native validation would point at the hidden textarea, so the editor owns it once mounted.
-    expect(textareaOf(view).required).toBe(false);
+    // The hidden textarea keeps the native constraint so an empty required field blocks submit.
+    expect(textareaOf(view).required).toBe(true);
   });
 
   test('is an error again as soon as the user types invalid JSON', async () => {
@@ -321,6 +403,47 @@ describe('JsonEditor — format', () => {
     expect(editor.state.doc.toString()).toBe('{\n  "a": 1\n}');
   });
 
+  test('Format does nothing for a read-only value, by button, command, or keyboard', async () => {
+    const onValueChange = mock();
+    const view = render(JsonEditor, {
+      id: 'payload',
+      label: 'Payload',
+      value: '{"a":1}',
+      readonly: true,
+      onValueChange,
+    });
+    const editor = await mountedView(view);
+
+    expect((view.getByRole('button', { name: 'Format' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(formatJsonDocument(editor)).toBe(false);
+    const event = new KeyboardEvent('keydown', {
+      key: 'F',
+      code: 'KeyF',
+      shiftKey: true,
+      altKey: true,
+    });
+    Object.defineProperty(event, 'keyCode', { value: 70 });
+    runScopeHandlers(editor, event, 'editor');
+
+    expect(editor.state.doc.toString()).toBe('{"a":1}');
+    expect(onValueChange).not.toHaveBeenCalled();
+  });
+
+  test('Format leaves a read-only textarea fallback alone', async () => {
+    const onValueChange = mock();
+    const view = render(JsonEditor, {
+      id: 'payload',
+      label: 'Payload',
+      value: '{"a":1}',
+      readonly: true,
+      onValueChange,
+    });
+
+    expect((view.getByRole('button', { name: 'Format' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(textareaOf(view).value).toBe('{"a":1}');
+    expect(onValueChange).not.toHaveBeenCalled();
+  });
+
   test('formats the textarea fallback when the editor has not loaded', async () => {
     const onValueChange = mock();
     const view = render(JsonEditor, {
@@ -367,12 +490,16 @@ describe('JsonEditor — schema completion', () => {
   };
 
   /** Run the schema source at the `|` marker of a document and return its options. */
-  function completeAt(marked: string, explicit = true): readonly Completion[] {
+  function completeAt(
+    marked: string,
+    explicit = true,
+    source: JsonEditorSchema = schema,
+  ): readonly Completion[] {
     const position = marked.indexOf('|');
     const document = marked.replace('|', '');
     const state = EditorState.create({ doc: document, extensions: [json()] });
     ensureSyntaxTree(state, state.doc.length, 5000);
-    const result = createSchemaCompletionSource(schema)(
+    const result = createSchemaCompletionSource(source)(
       new CompletionContext(state, position, explicit),
     );
     return (result instanceof Promise ? [] : result?.options) ?? [];
@@ -413,6 +540,34 @@ describe('JsonEditor — schema completion', () => {
   test('offers nothing where the schema is silent', () => {
     expect(completeAt('{"unknown": {|}}')).toEqual([]);
     expect(completeAt('{"name": |}')).toEqual([]);
+  });
+
+  describe('at the document root', () => {
+    const rootSchema: JsonEditorSchema = { enum: ['fast', 'safe'] };
+
+    test('offers the root enum in an empty document', () => {
+      expect(labels(completeAt('|', true, rootSchema))).toEqual(['"fast"', '"safe"']);
+      expect(labels(completeAt('  |', true, rootSchema))).toEqual(['"fast"', '"safe"']);
+    });
+
+    test('waits for a typed character in an empty document unless completion was requested', () => {
+      expect(completeAt('|', false, rootSchema)).toEqual([]);
+    });
+
+    test('offers the root enum for a string and for a bare word being typed', () => {
+      expect(labels(completeAt('"f|"', true, rootSchema))).toEqual(['"fast"', '"safe"']);
+      expect(labels(completeAt('"f|', false, rootSchema))).toEqual(['"fast"', '"safe"']);
+      expect(labels(completeAt('f|', false, rootSchema))).toEqual(['"fast"', '"safe"']);
+    });
+
+    test('offers true and false for a root boolean', () => {
+      expect(labels(completeAt('|', true, { type: 'boolean' }))).toEqual(['true', 'false']);
+    });
+
+    test('offers nothing once the root already holds a value the cursor is not in', () => {
+      expect(completeAt('{} |', true, rootSchema)).toEqual([]);
+      expect(completeAt('"fast" |', true, rootSchema)).toEqual([]);
+    });
   });
 
   test('survives a reference cycle', () => {

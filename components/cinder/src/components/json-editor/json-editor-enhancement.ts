@@ -33,8 +33,10 @@ import type { JsonEditorSchema } from './json-editor.types.ts';
 
 /** The settings that can change while an editor stays mounted. */
 export interface JsonEditorDynamicOptions {
-  /** Whether the editor refuses edits. */
+  /** Whether the editor refuses edits and keyboard focus. */
   disabled: boolean;
+  /** Whether the editor refuses edits but stays focusable and selectable. */
+  readonly: boolean;
   /** Whether long lines wrap instead of scrolling sideways. */
   wrap: boolean;
   /** The schema that drives completion, if any. */
@@ -63,7 +65,7 @@ export interface JsonEditorHandle {
   setDocument: (text: string) => void;
   /** Apply settings that may change while the editor stays mounted. */
   update: (options: JsonEditorDynamicOptions) => void;
-  /** Pretty-print the document. Returns `false` when it is empty or invalid and nothing changed. */
+  /** Pretty-print the document. Returns `false` when it is empty, invalid, or read-only and nothing changed. */
   format: () => boolean;
   /** Move keyboard focus into the editor. */
   focus: () => void;
@@ -187,8 +189,9 @@ export function lintJsonDocument(view: EditorView): Diagnostic[] {
   }
 }
 
-/** Pretty-print the whole document. Returns `false` when it is empty or invalid. */
+/** Pretty-print the whole document. Returns `false` when it is empty, invalid, or read-only. */
 export function formatJsonDocument(view: EditorView): boolean {
+  if (view.state.readOnly) return false;
   const formatted = formatJson(view.state.doc.toString());
   if (formatted === undefined) return false;
   if (formatted === view.state.doc.toString()) return true;
@@ -202,7 +205,8 @@ export function formatJsonDocument(view: EditorView): boolean {
 
 function dynamicExtensions(options: JsonEditorDynamicOptions): Extension[] {
   return [
-    options.disabled ? [EditorView.editable.of(false), EditorState.readOnly.of(true)] : [],
+    options.disabled ? EditorView.editable.of(false) : [],
+    options.disabled || options.readonly ? EditorState.readOnly.of(true) : [],
     options.wrap ? EditorView.lineWrapping : [],
     options.schema === undefined
       ? []
@@ -212,6 +216,10 @@ function dynamicExtensions(options: JsonEditorDynamicOptions): Extension[] {
         }),
     options.placeholder === undefined ? [] : placeholderExtension(options.placeholder),
     EditorView.contentAttributes.of({
+      // The editable area is the scroll region's only focusable content, but axe does not count a
+      // bare `contenteditable` as focusable, so a scrolling editor would fail its keyboard-access
+      // rule. An explicit zero keeps the one tab stop and names it; a disabled editor has none.
+      ...(options.disabled ? {} : { tabindex: '0' }),
       spellcheck: 'false',
       autocorrect: 'off',
       autocapitalize: 'off',
