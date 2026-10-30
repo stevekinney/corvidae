@@ -31,7 +31,7 @@ describe('purgeChatLedgerEntries', () => {
     ]);
   });
 
-  it('deletes the entries that name a run, a task target or the chat, with their conflicts, and leaves the rest', async () => {
+  it('deletes the entries of commands on the runs, with their conflicts, and leaves the rest, a recreated context’s included', async () => {
     const kv = textValueStore(new MemoryStorage());
     const runtime = createManualRuntimeServices();
     const clock = runtime.clock;
@@ -61,24 +61,25 @@ describe('purgeChatLedgerEntries', () => {
     await send.complete(continued.entry as never, { taskId: 'run-1' });
     const created = await send.claim(identity('agent:helper', 'm-3'), 'd', {});
     await send.complete(created.entry as never, { taskId: 'run-2' });
-    await creation.claim(identity('helper', 'm-4'), 'd', { runId: 'run-9', sessionId: 'chat-1' });
-    // Another chat's entries.
-    await respond.claim(identity('run-7', 'm-5'), 'd', { submission: { value: 'KEPT' } });
+    await creation.claim(identity('helper', 'm-4'), 'd', { runId: 'run-2', sessionId: 'chat-1' });
+    // Another chat's entries, and a run of a context recreated under the deleted chat's id, whose
+    // receipt the live context still replays; a value that merely equals a run id is not ownership.
+    await respond.claim(identity('run-7', 'm-5'), 'd', { submission: { value: 'run-1' } });
     const theirs = await send.claim(identity('agent:helper', 'm-6'), 'd', {});
     await send.complete(theirs.entry as never, { taskId: 'run-8' });
+    await creation.claim(identity('helper', 'm-7'), 'd', { runId: 'run-9', sessionId: 'chat-1' });
     const conflicts = await kv.list(`${TASKS_RESPOND_LEDGER_KEY_PREFIX}:conflict:`);
     expect(conflicts).toHaveLength(1);
 
-    const deleted = await purgeChatLedgerEntries(kv, new Set(['run-1', 'run-2']), 'chat-1');
+    const deleted = await purgeChatLedgerEntries(kv, new Set(['run-1', 'run-2']));
 
     expect(deleted).toBe(4);
     const left = await kv.list('command-ledger:');
     expect(left.filter((key) => key.includes(':conflict:'))).toEqual([]);
-    expect(left.map((key) => key.split(':').at(-2))).toEqual(
-      expect.arrayContaining(['m-5', 'm-6']),
+    expect(new Set(left.map((key) => key.split(':').at(-2)))).toEqual(
+      new Set(['m-5', 'm-6', 'm-7']),
     );
-    expect(left).toHaveLength(2);
     for (const key of left) expect(await kv.get(key)).not.toContain('SECRET');
-    expect(await purgeChatLedgerEntries(kv, new Set(['run-1', 'run-2']), 'chat-1')).toBe(0);
+    expect(await purgeChatLedgerEntries(kv, new Set(['run-1', 'run-2']))).toBe(0);
   });
 });

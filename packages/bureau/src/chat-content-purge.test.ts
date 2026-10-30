@@ -419,4 +419,27 @@ describe('the fence and the failure isolation of a pass (COR-1934)', () => {
     expect(await purge.pruneTombstones(1_001)).toBe(2);
     expect(await kv.list(CHAT_CONTENT_TOMBSTONE_PREFIX)).toEqual([]);
   });
+
+  it('keeps the records that lead to a run whose own step failed, and names a child it found in the pending record before failing', async () => {
+    const { kv, calls, purge } = setup({
+      descendants: () => ({ 'run-2': ['child-1'] }),
+      purgeRun: async (runId) => {
+        if (runId === 'child-1') throw new Error('injected: engine down');
+      },
+    });
+    await purge.record(CHAT);
+
+    const failure = await purge.run(CHAT).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(ChatPurgeIncompleteError);
+    // The child's own records stay, so the pass that retries it can find it; the others go.
+    expect(calls.records).toEqual(['run-2', 'run-1']);
+    // And the record now names the child, whether or not those records survive.
+    const [key] = await kv.list(PENDING_PREFIX);
+    expect(JSON.parse((await kv.get(key!))!)).toEqual({
+      sessionId: 'chat-1',
+      incarnation: 'one',
+      runIds: ['run-1', 'run-2', 'child-1'],
+    });
+  });
 });

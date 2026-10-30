@@ -13757,8 +13757,8 @@ async function constructBureau<const D extends AgentDefinitions>(
     purgeLedgers:
       runtime.kv === undefined
         ? undefined
-        : async (runIds, sessionId) => {
-            await purgeChatLedgerEntries(runtime.kv!, runIds, sessionId);
+        : async (runIds) => {
+            await purgeChatLedgerEntries(runtime.kv!, runIds);
           },
     redactTaskRecords: async (runIds) => {
       for (const runId of runIds) await tasks.redactSettlement(runId);

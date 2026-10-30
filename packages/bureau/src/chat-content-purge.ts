@@ -154,12 +154,11 @@ export interface ChatContentPurgeDependencies {
   readonly taskIdsOf:
     ((sessionId: string, incarnation: string) => Promise<readonly string[]>) | undefined;
   /**
-   * Removes the command-ledger entries that name the runs or the chat: the receipts of A2A sends,
+   * Removes the command-ledger entries of commands on the runs: the receipts of A2A sends,
    * `tasks.respond` commands and run creations, whose claims and results keep what the command
    * carried. `undefined` without a KV store.
    */
-  readonly purgeLedgers:
-    ((runIds: ReadonlySet<string>, sessionId: string) => Promise<void>) | undefined;
+  readonly purgeLedgers: ((runIds: ReadonlySet<string>) => Promise<void>) | undefined;
   /**
    * Drops the text of the runs' task settlements (a failure message, a catalog task's answer);
    * the records themselves stay. `undefined` without a task registry.
@@ -264,6 +263,8 @@ export class ChatPurgeIncompleteError extends Error {
   constructor(
     readonly sessionId: string,
     readonly failures: readonly { readonly runId: string | undefined; readonly error: unknown }[],
+    /** Every run the pass found, children included, so the pending record can name them. */
+    readonly covered: readonly string[],
   ) {
     super(
       `The content purge of deleted chat "${sessionId}" could not finish ${failures.length} of its steps: ${failures
@@ -362,15 +363,18 @@ export function createChatContentPurge(
       await step(runId, () => dependencies.purgeRun?.(runId) ?? Promise.resolve());
     await step(undefined, async () => dependencies.audit()?.redact(runIds));
     await step(undefined, async () => dependencies.purgeReviews?.(runIds));
-    await step(undefined, async () => dependencies.purgeLedgers?.(runIds, chat.sessionId));
+    await step(undefined, async () => dependencies.purgeLedgers?.(runIds));
     await step(undefined, async () => dependencies.redactTaskRecords?.(runIds));
 
     // What belongs to the chat as a whole is left while one of its runs is still live: that run
     // reads the chat's input and writes its A2A history until it ends.
     if (unended.length === 0) {
       // Last, and the deepest child first: these records are how a retry finds the children, so
-      // none goes while a run below it could still be waiting.
+      // none goes while a run below it could still be waiting, and a run whose own steps failed
+      // keeps them, so the pass that retries it finds it again.
+      const failed = new Set(failures.map((failure) => failure.runId));
       for (const runId of [...runIds].toReversed()) {
+        if (failed.has(runId)) continue;
         await step(runId, () => dependencies.purgeRunRecords?.(runId) ?? Promise.resolve());
       }
       await step(undefined, async () => {
@@ -382,7 +386,7 @@ export function createChatContentPurge(
         dependencies.purgeSessionInput?.(chat.sessionId, chat.incarnation),
       );
     }
-    if (failures.length > 0) throw new ChatPurgeIncompleteError(chat.sessionId, failures);
+    if (failures.length > 0) throw new ChatPurgeIncompleteError(chat.sessionId, failures, owned);
     // Owed, not lost: the runs that have not ended keep their content, and the pending record
     // stays, until the pass that finds them ended.
     if (unended.length > 0) throw new ChatRunsNotEndedError(chat.sessionId, unended);
@@ -394,7 +398,21 @@ export function createChatContentPurge(
     const existing = inFlight.get(key);
     if (existing !== undefined) return existing;
     const pass = (async () => {
-      const covered = await purgeContent(chat);
+      let covered: string[];
+      try {
+        covered = await purgeContent(chat);
+      } catch (error: unknown) {
+        // A pass that found runs the record does not name (a child dispatched after the delete
+        // began) writes them into the record before it fails, so the next pass starts from them
+        // whether or not the records that led to them are still there.
+        if (error instanceof ChatPurgeIncompleteError && kv !== undefined) {
+          const named = new Set(chat.runIds);
+          if (error.covered.some((runId) => !named.has(runId))) {
+            await kv.set(key, pendingValue({ ...chat, runIds: error.covered }));
+          }
+        }
+        throw error;
+      }
       if (chat.settledAt === undefined) {
         // Settled, not dropped: the record is what brings the second pass. It names every run the
         // first covered, children included, because the first removes the records that led to them.
