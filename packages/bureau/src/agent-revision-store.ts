@@ -175,7 +175,13 @@ export function createAgentRevisionStore(options: AgentRevisionStoreOptions): Ag
       savedBy: version.savedBy,
       owner: version.owner,
       definition: version.definition,
-      changedKeys: changedDefinitionKeys(previous?.definition, version.definition),
+      ...(version.referenceDigests === undefined
+        ? {}
+        : { referenceDigests: version.referenceDigests }),
+      changedKeys: changedDefinitionKeys(previous?.definition, version.definition, {
+        previous: previous?.referenceDigests,
+        next: version.referenceDigests,
+      }),
     };
     const doomed = versionKeysToPrune({
       id,

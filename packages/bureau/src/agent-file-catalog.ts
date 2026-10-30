@@ -31,12 +31,29 @@
  * The model catalog is not part of a file's content: a revalidation against a new model catalog
  * keeps the revision.
  *
+ * ## References and compaction (COR-1866)
+ *
+ * A file's `references` name documents beside it (`agent-reference-documents.ts`). Every scan reads
+ * them again, even for a file whose bytes did not change, because a document changes the agent
+ * without changing the file. The revision identity is then not the file's hash but the identity
+ * hash that folds in each document's digest (the file's own hash when there are no references), so
+ * editing a document raises the `definitionRevision`; `definitionHash` and `expectedHash` stay the
+ * file's bytes. While any agent has references the catalog also re-reads them once a second
+ * ({@link REFERENCE_POLL_MILLISECONDS}) and rescans when one moved, because a source reports
+ * changes to agent files and not to the documents they name.
+ *
+ * A file with `compaction` enabled is `invalid` (`invalid-frontmatter`, path `compaction`) while
+ * the deployment has no summarizer (`models.summarizer()`). Nothing tells the catalog the
+ * `context.summarizerModel` setting changed, so the Bureau calls {@link AgentFileCatalog.revalidate}
+ * when it does; a model catalog replace revalidates on its own.
+ *
  * @module agent-file-catalog
  */
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import {
   type BackendDescriptor,
+  type ContextManagementOptions,
   createAgent,
   type GenerateFunction,
   shouldRetryProviderError,
@@ -50,6 +67,7 @@ import { readToolShortDescription, type Tool } from 'armorer';
 
 import type { AnyRunnableAgent } from './agent-catalog';
 import {
+  AGENT_COMPACTION_DEFAULT_THRESHOLD_PERCENT,
   AGENT_FILE_SIZE_LIMIT,
   type AgentFileDefinition,
   type AgentFileDefinitionInput,
@@ -60,6 +78,14 @@ import {
   decodeAgentFile,
   parseAgentFile,
 } from './agent-file';
+import {
+  type AgentReferenceDocument,
+  digestsOf,
+  loadReferenceDocuments,
+  referenceIdentity,
+  renderInstructions,
+} from './agent-reference-documents';
+import { createFileAgentCompactor } from './file-agent-compaction';
 import { createFileAgentGenerate } from './file-agent-generate';
 import { type AgentRevisionRecord, createAgentRevisionStore } from './agent-revision-store';
 import {
@@ -142,8 +168,14 @@ export interface AgentCatalogChange {
 /** The tie between a file agent object and the definition it was built from. */
 export interface FileAgentBinding {
   readonly id: string;
+  /**
+   * The agent's identity hash: the SHA-256 of the file's bytes, or, for an agent with references,
+   * the hash that also folds in the digest of each document it read. A snapshot is keyed by it.
+   */
   readonly hash: string;
   readonly definition: AgentFileDefinition;
+  /** The documents the definition's `references` named, as the agent was given them. */
+  readonly referenceDocuments?: readonly AgentReferenceDocument[];
   /**
    * The definition revision the agent was built at, which a run keeps on its reference. Absent
    * for an agent rebuilt from a snapshot for a run that recorded none, so that rebuilding does not
@@ -166,7 +198,7 @@ export interface AgentFileCatalogOptions {
   readonly reservedIdentifiers: ReadonlySet<string>;
   /** The deployment's tool catalog, by the name an agent file uses. */
   readonly tools: Readonly<Record<string, Tool>>;
-  readonly models: Pick<Models, 'catalog'>;
+  readonly models: Pick<Models, 'catalog' | 'summarizer'>;
   /** Turns a catalog model into the function a run calls. The host holds the credentials. */
   readonly resolveGenerate: (descriptor: BackendDescriptor) => GenerateFunction;
   readonly runtime: RuntimeServices;
@@ -192,11 +224,15 @@ export interface AgentFileVersions {
   /**
    * Write the definition of the version of `id` at `revision` back through the writer, as a new
    * revision (and so a new version) saved by `options.savedBy`, if the file still hashes to
-   * `options.expectedHash`. The version's reference documents and `examples` are not restored:
-   * they stay as the file has them. Fails with `AgentFileError` `agent-version-not-found` when no
+   * `options.expectedHash`. The version's `references` list is restored with the rest of the
+   * definition, but a document is not: it is whatever the path names when the file is read
+   * again, and the version's `referenceDigests` say what it was. `examples` are not restored
+   * either: they stay as the file has them. Fails with `AgentFileError` `agent-version-not-found` when no
    * such version is stored, with `AgentFileConflictError` when the file has moved, and with
-   * `AgentFileError` `unknown-model` or `unknown-tool` when the definition no longer resolves
-   * against the deployment; each writes nothing. Restoring the definition the file already has
+   * `AgentFileError` `unknown-model`, `unknown-tool`, `missing-reference` or
+   * `reference-too-large` when the definition no longer resolves against the deployment, and with
+   * `invalid-frontmatter` when it enables compaction and no summarizer is configured; each
+   * writes nothing. Restoring the definition the file already has
    * writes nothing and returns the file's current hash.
    */
   restore(
@@ -224,6 +260,13 @@ export interface AgentFileCatalog extends AgentFileWriter {
   find(id: string): AnyRunnableAgent | undefined;
   /** Rescan the directory; resolves once the catalog reflects it. */
   refresh(): Promise<void>;
+  /**
+   * Check every file again against the deployment as it is now, whether or not the model catalog
+   * changed, and resolve once the catalog reflects it. The Bureau calls it when the summarizer
+   * setting changes, which turns the files that enable compaction valid or invalid. A rescan
+   * keeps a file's revision when the file did not change.
+   */
+  revalidate(): Promise<void>;
   /** When the directory was last scanned and the message of that scan's error (COR-1731). */
   health(): DefinitionScannerHealth;
   /** Called after every rescan that added, changed, or removed an agent. Returns its unsubscribe. */
@@ -247,6 +290,14 @@ interface FileEntry {
   /** The model the file named, resolved, kept so the agent can be rebuilt at another revision. */
   readonly descriptor?: BackendDescriptor;
   readonly agent?: AnyRunnableAgent;
+  /**
+   * The identity hash `agent` was built at, set only for a file with references: `hash`, folded
+   * with the digest of each document read. A file without references has none, and its identity
+   * is `hash`.
+   */
+  readonly identity?: string;
+  /** The documents `agent` was given, for a file with references. */
+  readonly documents?: readonly AgentReferenceDocument[];
   /** The revision `agent` was built at; this is not `revision`, which is the model catalog's. */
   readonly definitionRevision?: number;
   readonly problem?: AgentFileProblem;
@@ -305,6 +356,7 @@ function isProblem(value: BackendDescriptor | AgentFileProblem): value is AgentF
 function sameSignature(left: FileEntry, right: FileEntry): boolean {
   return (
     left.hash === right.hash &&
+    left.identity === right.identity &&
     left.problem?.code === right.problem?.code &&
     left.definitionRevision === right.definitionRevision
   );
@@ -317,13 +369,50 @@ const DETAIL_SETTLE_ATTEMPTS = 3;
 function inputOf(definition: AgentFileDefinition): AgentFileDefinitionInput {
   // A rest, so a key the definition gains is carried into the input and not dropped here.
   const { examples: _examples, ...input } = definition;
-  // An update that omits `stepLimit` or `retry` keeps the file's value, and a version that has
-  // none must remove it: `null` says so.
-  return { ...input, stepLimit: definition.stepLimit ?? null, retry: definition.retry ?? null };
+  // An update that omits `stepLimit`, `retry`, `compaction` or `references` keeps the file's value,
+  // and a version that has none must remove it: `null` says so.
+  return {
+    ...input,
+    stepLimit: definition.stepLimit ?? null,
+    retry: definition.retry ?? null,
+    compaction: definition.compaction ?? null,
+    references: definition.references ?? null,
+  };
+}
+
+/**
+ * How often the catalog reads the reference documents again, in milliseconds, while any agent has
+ * references. The same period as the directory source's safety rescan.
+ */
+export const REFERENCE_POLL_MILLISECONDS = 1000;
+
+/** Whether `entry` is a file whose references are read on every scan. */
+function hasReferences(entry: FileEntry): boolean {
+  return (
+    entry.hash !== undefined &&
+    entry.descriptor !== undefined &&
+    entry.definition?.references !== undefined &&
+    entry.definition.references.length > 0
+  );
 }
 
 export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentFileCatalog {
   const owner = ownerOrLocal(undefined);
+  /**
+   * What the scanner compares an entry's deployment state with. It rises when the model catalog's
+   * revision moves and when {@link AgentFileCatalog.revalidate} is called, so a change the model
+   * catalog does not carry (the summarizer setting) still re-evaluates every file.
+   */
+  let validationEpoch = 0;
+  let seenCatalogRevision = options.models.catalog().revision;
+  function deploymentRevision(): number {
+    const current = options.models.catalog().revision;
+    if (current !== seenCatalogRevision) {
+      seenCatalogRevision = current;
+      validationEpoch += 1;
+    }
+    return validationEpoch;
+  }
   const revisionRecords = options.revisionStore ?? textValueStore(new MemoryStorage());
   const revisions = createAgentRevisionStore({ store: revisionRecords });
   const versionStore = createAgentVersionStore({ store: revisionRecords });
@@ -405,7 +494,48 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         },
       };
     }
-    return checkResources(definition);
+    const resources = checkResources(definition);
+    if ('problem' in resources) return resources;
+    if (definition.compaction?.enabled === true && options.models.summarizer() === undefined) {
+      const message =
+        'Compaction is enabled, but the deployment has no summarizer model. Set the context.summarizerModel setting to a model in the catalog, or turn compaction off.';
+      return {
+        problem: {
+          code: 'invalid-frontmatter',
+          message,
+          issues: [{ path: 'compaction', message }],
+        },
+      };
+    }
+    return resources;
+  }
+
+  /** What a run needs to compact its conversation, or nothing when the file does not ask for it. */
+  function contextManagementOf(
+    id: string,
+    definition: AgentFileDefinition,
+    descriptor: BackendDescriptor,
+  ): { readonly contextManagement: ContextManagementOptions } | Record<string, never> {
+    const { compaction } = definition;
+    const maxTokens = descriptor.contextWindowTokens;
+    if (compaction?.enabled !== true || !Number.isFinite(maxTokens) || maxTokens <= 0) return {};
+    const percent = compaction.thresholdPercent ?? AGENT_COMPACTION_DEFAULT_THRESHOLD_PERCENT;
+    return {
+      contextManagement: {
+        // The default model's window; a session switched to a smaller model leans on Operative's
+        // overflow recovery.
+        maxTokens,
+        compactionThreshold: Math.floor((maxTokens * percent) / 100),
+        onCompact: createFileAgentCompactor({
+          agentId: id,
+          diagnose: options.diagnose,
+          summarizer: () => {
+            const row = options.models.summarizer();
+            return row === undefined ? undefined : options.resolveGenerate(row);
+          },
+        }),
+      },
+    };
   }
 
   function buildAgent(
@@ -414,12 +544,13 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     definition: AgentFileDefinition,
     descriptor: BackendDescriptor,
     revision: number | undefined,
+    documents: readonly AgentReferenceDocument[] = [],
   ): AnyRunnableAgent {
     const tools: Record<string, Tool> = {};
     for (const name of definition.tools) {
       tools[name] = (Object.hasOwn(options.tools, name) ? options.tools[name] : undefined) as Tool;
     }
-    const instructions = definition.instructions.trim();
+    const instructions = renderInstructions(definition.instructions.trim(), documents);
     const agent = createAgent({
       // The Bureau's own services: an agent rebuilt on every rescan must share its clock, not
       // mint a default instance and stamp its profile from the wall clock.
@@ -446,6 +577,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       ...(instructions === '' ? {} : { instructions }),
       ...(Object.keys(tools).length === 0 ? {} : { tools }),
       ...(definition.stepLimit === undefined ? {} : { maximumSteps: definition.stepLimit }),
+      ...contextManagementOf(id, definition, descriptor),
       ...(definition.retry === undefined
         ? {}
         : {
@@ -461,6 +593,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       id,
       hash,
       definition,
+      ...(documents.length === 0 ? {} : { referenceDocuments: documents }),
       ...(revision === undefined ? {} : { definitionRevision: revision }),
     });
     return agent;
@@ -493,6 +626,10 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     const { definition } = parsed.file;
     const checked = checkDeployment(id, definition);
     if ('problem' in checked) return { id, hash, revision, definition, problem: checked.problem };
+    // The documents are read when the scan settles, which is async: the entry waits for them.
+    if (definition.references !== undefined) {
+      return { id, hash, revision, definition, descriptor: checked.descriptor };
+    }
     try {
       // Built at the last revision this catalog knows; a changed file is rebuilt at its new one
       // when the scan settles (`settle`), before anything reads it.
@@ -553,15 +690,16 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
    * first after a success, or at a different hash), not on every scan that finds the store still
    * down.
    */
-  async function revisionOf(
-    id: string,
-    hash: string,
-    definition: AgentFileDefinition,
-  ): Promise<number> {
+  async function revisionOf(id: string, entry: FileEntry): Promise<number> {
+    const { definition } = entry;
+    // The record describes the identity hash; a writer declares the file's own bytes (`savers`).
+    const fileHash = entry.hash ?? '';
+    const hash = entry.identity ?? fileHash;
+    if (definition === undefined) return recorded.get(id)?.revision ?? 1;
     const known = recorded.get(id);
     try {
       const record = await revisions.advance(id, hash, {
-        version: versionOf(id, hash, definition),
+        version: versionOf(id, fileHash, definition, entry.documents),
         // Only a catalog whose own last-recorded hash is the file's can tell a stale reading from
         // a change: a reading that matches what it last recorded is the one a peer may have
         // overtaken. Once per record hash.
@@ -595,10 +733,18 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
    * The version to record if the revision is raised for `hash`: the definition, when, and by whom.
    * A hash no writer declared is an edit made outside it, and has no saver.
    */
-  function versionOf(id: string, hash: string, definition: AgentFileDefinition): AgentVersionInput {
+  function versionOf(
+    id: string,
+    hash: string,
+    definition: AgentFileDefinition,
+    documents: readonly AgentReferenceDocument[] | undefined,
+  ): AgentVersionInput {
     const { retainedRevisions } = options;
     return {
       definition,
+      ...(documents === undefined || documents.length === 0
+        ? {}
+        : { referenceDigests: digestsOf(documents) }),
       savedAt: options.runtime.clock.nowISO(),
       savedBy: savers.get(`${id}:${hash}`) ?? null,
       owner,
@@ -615,7 +761,14 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     try {
       return {
         ...entry,
-        agent: buildAgent(id, hash, definition, descriptor, revision),
+        agent: buildAgent(
+          id,
+          entry.identity ?? hash,
+          definition,
+          descriptor,
+          revision,
+          entry.documents,
+        ),
         definitionRevision: revision,
       };
     } catch (error) {
@@ -630,15 +783,69 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     }
   }
 
+  /**
+   * `entry`, a file with references, with the documents read now: the entry itself when they are
+   * what it was built with, otherwise an entry that is `invalid` (a document is missing, unreadable
+   * or too large) or ready, with its agent built at the last revision this catalog knows. The
+   * revision is settled afterwards, by {@link settleRevisions}.
+   */
+  async function withReferences(entry: FileEntry): Promise<FileEntry> {
+    const { id, hash, revision, definition, descriptor } = entry;
+    if (hash === undefined || definition?.references === undefined || descriptor === undefined) {
+      return entry;
+    }
+    const loaded = await loadReferenceDocuments(options.source, definition.references);
+    if (!loaded.ok) return { id, hash, revision, definition, descriptor, problem: loaded.problem };
+    const identity = referenceIdentity(hash, loaded.documents);
+    if (entry.agent !== undefined && entry.identity === identity) return entry;
+    const definitionRevision = recorded.get(id)?.revision ?? 1;
+    try {
+      return {
+        id,
+        hash,
+        revision,
+        definition,
+        descriptor,
+        identity,
+        documents: loaded.documents,
+        agent: buildAgent(
+          id,
+          identity,
+          definition,
+          descriptor,
+          definitionRevision,
+          loaded.documents,
+        ),
+        definitionRevision,
+      };
+    } catch (error) {
+      return { id, hash, revision, definition, problem: modelSetupProblem(definition, error) };
+    }
+  }
+
+  /** Whether reading the references again found something `before` does not describe. */
+  function referencesMoved(before: FileEntry, after: FileEntry): boolean {
+    return (
+      before.identity !== after.identity ||
+      before.problem?.code !== after.problem?.code ||
+      before.problem?.message !== after.problem?.message
+    );
+  }
+
   /** Settles the revision of every ready file in a scan (see the module documentation). */
   async function settleRevisions(
     loaded: ReadonlyMap<string, FileEntry>,
   ): Promise<ReadonlyMap<string, FileEntry>> {
     const settled = new Map(loaded);
-    for (const [id, entry] of loaded) {
+    for (const [id, scanned] of loaded) {
+      let entry = scanned;
+      if (hasReferences(entry)) {
+        entry = await withReferences(entry);
+        settled.set(id, entry);
+      }
       if (entry.problem !== undefined || entry.hash === undefined) continue;
       if (entry.definition === undefined) continue; // A ready entry always has one.
-      const revision = await revisionOf(id, entry.hash, entry.definition);
+      const revision = await revisionOf(id, entry);
       if (revision !== entry.definitionRevision) settled.set(id, atRevision(entry, revision));
     }
     return settled;
@@ -649,15 +856,53 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     label: 'agent directory',
     runtime: options.runtime,
     diagnose: options.diagnose,
-    revision: () => options.models.catalog().revision,
+    revision: deploymentRevision,
     evaluate,
     tooLarge,
     unreadable,
     sameSignature,
     isRejected: (entry) => entry.problem !== undefined,
     settle: settleRevisions,
+    afterScan: () => scheduleReferencePoll(),
   });
   const { refresh } = directoryWatcher;
+
+  let closing = false;
+  let referenceTimer: unknown;
+  /** The poll that is reading references now, so `close()` can wait for it. */
+  let polling: Promise<void> | undefined;
+
+  /**
+   * Arms the next read of the references while any agent has some. A source reports changes to
+   * agent files, not to the documents they name, so nothing else would notice an edit to one.
+   */
+  function scheduleReferencePoll(): void {
+    if (closing || referenceTimer !== undefined) return;
+    if (![...directoryWatcher.entries().values()].some(hasReferences)) return;
+    referenceTimer = options.runtime.timers.setTimeout(() => {
+      referenceTimer = undefined;
+      polling = pollReferences().finally(() => {
+        polling = undefined;
+      });
+    }, REFERENCE_POLL_MILLISECONDS);
+  }
+
+  /** Read every agent's references; rescan if one moved. Never rejects. */
+  async function pollReferences(): Promise<void> {
+    try {
+      for (const entry of directoryWatcher.entries().values()) {
+        if (closing || !hasReferences(entry)) continue;
+        if (referencesMoved(entry, await withReferences(entry))) {
+          await refresh();
+          return;
+        }
+      }
+    } catch (error) {
+      options.diagnose('The reference documents of the agent files could not be read.', error);
+    } finally {
+      scheduleReferencePoll();
+    }
+  }
 
   /** The definition as the source holds it now, read from the source and not from the last scan. */
   async function readFresh(id: string): Promise<DefinitionEntry | undefined> {
@@ -668,7 +913,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
   const writer = createAgentFileWriter({
     source: options.source,
     read: readFresh,
-    validate(id, definition) {
+    async validate(id, definition) {
       const checked = checkDeployment(id, definition);
       if ('problem' in checked) return checked.problem;
       // The host's resolver is asked here too, so a write is refused for a model it cannot set
@@ -677,6 +922,11 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         options.resolveGenerate(checked.descriptor);
       } catch (error) {
         return modelSetupProblem(definition, error);
+      }
+      // A reference the source cannot read would list the file `invalid` as soon as it was written.
+      if (definition.references !== undefined) {
+        const loaded = await loadReferenceDocuments(options.source, definition.references);
+        if (!loaded.ok) return loaded.problem;
       }
       return undefined;
     },
@@ -725,7 +975,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         if (known === undefined) return undefined;
         const raw = await readFresh(id);
         if (raw === undefined) return undefined;
-        const revision = options.models.catalog().revision;
+        const revision = deploymentRevision();
         let entry: FileEntry;
         let text: string | undefined;
         if (raw.problem !== undefined) {
@@ -734,7 +984,11 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
               ? tooLarge(id, raw.problem.size ?? 0, revision)
               : unreadable(id, new Error(raw.problem.message), revision);
         } else {
-          if (known.hash !== raw.hash && attempt < DETAIL_SETTLE_ATTEMPTS) {
+          // The documents an agent names are read again too: they can have changed since the scan.
+          const stale =
+            known.hash !== raw.hash ||
+            (hasReferences(known) && referencesMoved(known, await withReferences(known)));
+          if (stale && attempt < DETAIL_SETTLE_ATTEMPTS) {
             await refresh();
             continue;
           }
@@ -743,6 +997,10 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
               known.hash === raw.hash && known.revision === revision
                 ? known
                 : evaluate(id, raw.bytes, raw.hash, revision);
+            // An entry evaluated here has not read its documents yet.
+            if (entry.agent === undefined && hasReferences(entry)) {
+              entry = await withReferences(entry);
+            }
             text = decodeAgentFile(raw.bytes);
           } catch (error) {
             entry = unreadable(id, error, revision);
@@ -768,6 +1026,11 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
 
     refresh,
 
+    revalidate() {
+      validationEpoch += 1;
+      return refresh();
+    },
+
     health: directoryWatcher.health,
 
     onChange: directoryWatcher.onChange,
@@ -790,10 +1053,17 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         snapshot.definition,
         checked.descriptor,
         revision,
+        snapshot.referenceDocuments,
       );
     },
 
-    close: directoryWatcher.close,
+    async close() {
+      closing = true;
+      if (referenceTimer !== undefined) options.runtime.timers.clearTimeout(referenceTimer);
+      referenceTimer = undefined;
+      await polling;
+      await directoryWatcher.close();
+    },
   };
 }
 

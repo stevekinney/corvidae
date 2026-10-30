@@ -23,6 +23,7 @@ import {
   type DefinitionSource,
   type DefinitionSourceHost,
   hashDefinitionBytes,
+  type SiblingRead,
   SourceConflictError,
 } from './definition-source';
 import {
@@ -110,11 +111,19 @@ function validate(
   };
 }
 
+/**
+ * A {@link DefinitionSource} over the objects under a key prefix. `readBeside` reads another
+ * object under the same prefix by its path (`agent-object-source.ts` checks the path first).
+ */
+export type ObjectSource = DefinitionSource & {
+  readBeside(path: string, options: { readonly limit: number }): Promise<SiblingRead>;
+};
+
 /** A {@link DefinitionSource} over the objects under a key prefix. */
 export function createObjectSource(
   shape: ObjectSourceShape,
   options: ObjectSourceOptions,
-): DefinitionSource {
+): ObjectSource {
   // Everything the source reads from the caller's objects is taken now, before any await.
   const { bucket, prefix, pollInterval } = validate(shape.location, options);
   const operations =
@@ -156,6 +165,20 @@ export function createObjectSource(
   return {
     attach(lent) {
       host = lent;
+    },
+
+    async readBeside(path, { limit }) {
+      const key = `${prefix}${path}`;
+      // The listing reports a size, so an object over the limit is never read in full. The key
+      // itself is the first match of its own prefix, so it is on the first page when it exists.
+      const page = await operations.list(key);
+      const listed = page.objects.find((candidate) => candidate.key === key);
+      if (listed === undefined) return { kind: 'missing' };
+      if (listed.size > limit) return { kind: 'too-large', size: listed.size };
+      const read = await operations.read(key);
+      if (read === undefined) return { kind: 'missing' };
+      if (read.bytes.byteLength > limit) return { kind: 'too-large', size: read.bytes.byteLength };
+      return { kind: 'found', bytes: read.bytes };
     },
 
     async load(): Promise<readonly DefinitionEntry[]> {

@@ -11,6 +11,7 @@ import {
   SourceConflictError,
   type WorkflowSource,
 } from '../sources/definition-source.ts';
+import { assertReferencePath } from '../sources/reference-path.ts';
 
 export interface MemoryDefinitionSource<TSource extends AgentSource | WorkflowSource> {
   readonly source: TSource;
@@ -18,6 +19,10 @@ export interface MemoryDefinitionSource<TSource extends AgentSource | WorkflowSo
   set(id: string, text: string): void;
   /** Remove a definition from outside Bureau, reporting nothing. */
   remove(id: string): void;
+  /** Put a document beside the definitions, which an agent source reads by path (a `references` entry). */
+  setSibling(path: string, text: string | Uint8Array): void;
+  /** Remove a document beside the definitions. */
+  removeSibling(path: string): void;
   /** The text of a definition, or `undefined`. */
   text(id: string): string | undefined;
   /** Report a change to every watcher, as a source does when it sees one. */
@@ -40,6 +45,7 @@ export function createMemoryDefinitionSource<TKind extends 'agent' | 'workflow'>
   extras: Record<string, unknown> = {},
 ): MemoryDefinitionSource<TKind extends 'agent' ? AgentSource : WorkflowSource> {
   const held = new Map<string, Uint8Array>();
+  const siblings = new Map<string, Uint8Array>();
   const listeners = new Set<(change: DefinitionSourceChange) => void>();
   let hook: (() => void) | undefined;
   let failure: Error | undefined;
@@ -63,6 +69,13 @@ export function createMemoryDefinitionSource<TKind extends 'agent' | 'workflow'>
         throw error;
       }
       return [...held].map(([id, bytes]) => entryOf(id, bytes));
+    },
+    async readSibling(path: string, options: { limit: number }) {
+      assertReferencePath(path);
+      const bytes = siblings.get(path);
+      if (bytes === undefined) return { kind: 'missing' };
+      if (bytes.byteLength > options.limit) return { kind: 'too-large', size: bytes.byteLength };
+      return { kind: 'found', bytes };
     },
     watch(listener: (change: DefinitionSourceChange) => void) {
       listeners.add(listener);
@@ -102,6 +115,9 @@ export function createMemoryDefinitionSource<TKind extends 'agent' | 'workflow'>
     source,
     set: (id, text) => void held.set(id, encoder.encode(text)),
     remove: (id) => void held.delete(id),
+    setSibling: (path, text) =>
+      void siblings.set(path, typeof text === 'string' ? encoder.encode(text) : text),
+    removeSibling: (path) => void siblings.delete(path),
     text: (id) => {
       const bytes = held.get(id);
       return bytes === undefined ? undefined : decoder.decode(bytes);

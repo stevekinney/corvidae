@@ -18,6 +18,7 @@ export type {
   AgentFileIssue,
   AgentFileProblem,
   AgentFileProblemCode,
+  AgentCompaction,
   AgentRetry,
 } from './agent-file';
 export {
@@ -36,6 +37,7 @@ export type {
 export type { AgentFileWriteResult } from './agent-file-writer';
 export type {
   AgentSource,
+  SiblingRead,
   DefinitionEntry,
   DefinitionEntryProblem,
   DefinitionSource,
@@ -46,6 +48,7 @@ export type {
 export { hashDefinitionBytes, SourceConflictError } from './sources/definition-source';
 export type { AgentRevision } from './agent-snapshot-store';
 export type { AgentVersionRecord } from './agent-version-store';
+export type { AgentReferenceDigest, AgentReferenceDocument } from './agent-reference-documents';
 export type {
   WorkflowDetail,
   WorkflowRunDetail,

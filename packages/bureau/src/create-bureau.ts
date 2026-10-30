@@ -2626,6 +2626,23 @@ async function constructBureau<const D extends AgentDefinitions>(
         await auditTrailInstance?.record(entry);
       },
       applyLive: (values, keys) => {
+        // COR-1866: a file agent that enables compaction is valid only while a summarizer is
+        // configured, and the model catalog does not carry the setting, so the files are checked
+        // again here. Unset at boot there is no catalog yet, and its first scan reads the setting.
+        if (
+          fileAgents !== undefined &&
+          keys.includes('context.summarizerModel') &&
+          !runAdmissionClosed
+        ) {
+          fileAgents.files.revalidate().catch((cause: unknown) =>
+            diagnose({
+              level: 'error',
+              scope: 'agent-files',
+              message: '[bureau] could not validate agent files against the summarizer setting',
+              cause,
+            }),
+          );
+        }
         const engine = runtime.durable?.engine;
         const patch = enginePatchOf(values, keys);
         if (engine === undefined || patch === undefined) return;
