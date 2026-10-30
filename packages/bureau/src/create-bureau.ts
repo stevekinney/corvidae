@@ -202,6 +202,7 @@ import {
   type ChildTopologyParent,
   createChildTopology,
 } from './child-topology';
+import { childActionOf } from './child-announcement';
 import { createChildTopologyStore } from './child-topology-store';
 import {
   type CommandLedger,
@@ -18879,6 +18880,14 @@ async function constructBureau<const D extends AgentDefinitions>(
         ...entry,
         ...(principal === undefined ? {} : { principal }),
       });
+    },
+    // COR-1806: a child shows on its parent run's stream as a child a tool dispatched does. A
+    // parent this process does not hold has no action log here, and the record is dropped.
+    announce: (announcement) => {
+      const action = childActionOf(announcement);
+      if (action !== undefined) {
+        store.recordAction(announcement.record.parentRunId, action.type, action.detail);
+      }
     },
     resolveParent: resolveChildParent,
     isKnownRun,

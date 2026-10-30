@@ -9,6 +9,7 @@ import type {
 } from './create-schedule-wakeup-tool';
 import { createScheduleWakeupTool } from './create-schedule-wakeup-tool';
 import { DurableCapabilityUnavailableError } from './durable/durable-capability-unavailable-error';
+import { WakeupScheduledEvent } from './events';
 
 describe('createScheduleWakeupTool', () => {
   function makeContext(durable = true): ScheduleWakeupContext {
@@ -301,6 +302,74 @@ describe('createScheduleWakeupTool', () => {
 
       expect(() => tool.execute({ in: '6h' })).toThrow(DurableCapabilityUnavailableError);
       expect(context.pendingWakeup).toEqual({ duration: '1h' });
+    });
+  });
+
+  describe('WakeupScheduledEvent (COR-1806)', () => {
+    function collect(): { dispatchEvent(event: Event): boolean; readonly events: Event[] } {
+      const events: Event[] = [];
+      return {
+        events,
+        dispatchEvent: (event) => {
+          events.push(event);
+          return true;
+        },
+      };
+    }
+
+    it('dispatches the duration as asked, the note and when the run is due, on the injected clock', () => {
+      const emitter = collect();
+      const tool = createScheduleWakeupTool({
+        context: makeContext(),
+        emitter,
+        now: () => 1_000,
+      });
+
+      tool.execute({ in: '2h', note: 'check the deploy' });
+
+      expect(emitter.events).toHaveLength(1);
+      const event = emitter.events[0] as WakeupScheduledEvent;
+      expect(event).toBeInstanceOf(WakeupScheduledEvent);
+      expect(event.type).toBe('schedule.wakeup');
+      expect(event.duration).toBe('2h');
+      expect(event.note).toBe('check the deploy');
+      expect(event.wakeAt).toBe(1_000 + 7_200_000);
+    });
+
+    it('takes a numeric duration as milliseconds', () => {
+      const emitter = collect();
+      createScheduleWakeupTool({ context: makeContext(), emitter, now: () => 5 }).execute({
+        in: 250,
+      });
+      expect((emitter.events[0] as WakeupScheduledEvent).wakeAt).toBe(255);
+    });
+
+    it('dispatches nothing for a request the step refused, or one the tool could not run', () => {
+      const emitter = collect();
+      const parked = {
+        pendingWakeup: undefined,
+        pendingHumanWait: { signalName: 'human' },
+        durable: true,
+      };
+      createScheduleWakeupTool({ context: parked, emitter, now: () => 0 }).execute({ in: '1h' });
+      expect(emitter.events).toEqual([]);
+      expect(() =>
+        createScheduleWakeupTool({ context: makeContext(false), emitter, now: () => 0 }).execute({
+          in: '1h',
+        }),
+      ).toThrow(DurableCapabilityUnavailableError);
+      expect(emitter.events).toEqual([]);
+    });
+
+    it('still schedules a duration the scheduler cannot turn into a wake time, and announces none', () => {
+      const emitter = collect();
+      const context = makeContext();
+      const outcome = createScheduleWakeupTool({ context, emitter, now: () => 0 }).execute({
+        in: 'PT6H',
+      });
+      expect(outcome.scheduled).toBe(true);
+      expect(context.pendingWakeup?.duration).toBe('PT6H');
+      expect(emitter.events).toEqual([]);
     });
   });
 

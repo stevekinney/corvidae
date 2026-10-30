@@ -2469,7 +2469,7 @@ Event types: `memory.write.admitted`, `memory.write.quarantined`, `memory.write.
 | Tool | Input | Output |
 | --- | --- | --- |
 | `memory_recall` | `{ query, limit? }`, with `limit` capped at `maximumRecallLimit` (10 by default) | `{ found, evidence, withheld }`, where `evidence` is the rendered block |
-| `memory_store` | `{ content, tags?, importance? }`, written as a `model-tool` source | `{ stored: true, id }` when admitted or a duplicate, and `{ stored: false }` otherwise |
+| `memory_store` | `{ content, tags?, importance? }`, written as a `model-tool` source | `{ stored: true, id, collection, memoryClass }` when admitted or a duplicate, and `{ stored: false }` otherwise |
 | `memory_forget` | `{ id }`, run as a `source-deletion` | `{ deleted: true }` only when the record was removed (`deletion: 'completed'`). Otherwise `{ deleted: false, reason }` (`MemoryForgetToolOutput`): `held` under a legal hold, `failed` when storage did not remove the record and a later call can retry, or `refused` for a call without authority, a record the caller cannot delete, or a record that is not source evidence. |
 
 No `reason` carries a diagnostic, a policy detail, or another principal's data, and a refused, rejected, or quarantined call tells the model nothing about why.

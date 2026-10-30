@@ -59,7 +59,12 @@ import {
   createSurfaceSource,
   type SurfaceSource,
 } from './ag-ui-surface-source.ts';
-import { type AgUiErrorCode, type EventStamp, stamp } from './ag-ui-vocabulary.ts';
+import {
+  type AgUiErrorCode,
+  type EventStamp,
+  isReasoningEvent,
+  stamp,
+} from './ag-ui-vocabulary.ts';
 import type {
   AgUiLiveFeedRegistry,
   AgUiLiveSubscription,
@@ -101,6 +106,12 @@ export type OpenRunStream = {
    * decided must not hand its data to the caller.
    */
   readonly owner: string;
+  /**
+   * Whether the caller is the run's owner, as opposed to an operator whose `bureau.tasks:read` scope
+   * lets it attach. Only the owner is sent the run's reasoning (`REASONING_*`); absent, the stream
+   * carries none. `owner` above is the resource's owner and cannot tell the two apart.
+   */
+  readonly viewerIsOwner?: boolean | undefined;
   /** The parent's native id, on the stream of a child run. */
   readonly parentRunId?: string | undefined;
   /**
@@ -451,9 +462,20 @@ export function openRunStream(
     onClosed: dispose,
   });
 
-  const writeEvents = (events: ReadonlyArray<Event>, cursor?: string): void => {
+  /**
+   * Reasoning is the model's chain of thought: it is sent to the run's owner, as the run produces
+   * it, and to no one else. A stream that replays what already happened (an attach, or a reconnect
+   * with a cursor) is sent none, so a snapshot, a replay and a second reader never hold it; a stream
+   * that starts or continues a run replays from its beginning because its client holds nothing.
+   */
+  const mayReceive = (event: Event, replayed: boolean): boolean =>
+    !isReasoningEvent(event) ||
+    (request.viewerIsOwner === true && !(replayed && request.replay !== 'beginning'));
+
+  const writeEvents = (events: ReadonlyArray<Event>, cursor?: string, replayed = false): void => {
     for (const event of events) {
       if (ended) return;
+      if (!mayReceive(event, replayed)) continue;
       if (opened ? !sink.writeLive(event, cursor) : (sink.writeOpening(event, cursor), false)) {
         fail('STREAM_OVERFLOW', 'The stream fell too far behind; attach again.');
         return;
@@ -1014,7 +1036,7 @@ export function openRunStream(
       highestSequence = Math.max(highestSequence, event.sequence);
       if (projector === undefined) break;
       const projection = projector.handleRecorded(event.event, event.detail);
-      writeEvents(projection.events);
+      writeEvents(projection.events, undefined, true);
       if (ended) return;
       if (projection.terminal !== undefined) ending = projection.terminal;
       else if (projection.parked === true) {
@@ -1033,7 +1055,7 @@ export function openRunStream(
 
     if (liveSubscription !== undefined) {
       for (const envelope of liveSubscription.opening)
-        writeEvents([envelope.event], envelope.cursor);
+        writeEvents([envelope.event], envelope.cursor, true);
       ending = liveSubscription.terminal;
     }
 
