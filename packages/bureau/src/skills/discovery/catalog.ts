@@ -45,6 +45,8 @@ export interface SkillCatalogRecord {
   readonly sourceKind: SkillSourceKind;
   /** The source's canonical location, as configured. Never carries a credential. */
   readonly sourceLocation: string;
+  /** The plugin that ships the skill, for a `plugin` source (COR-1873). */
+  readonly sourcePlugin?: string;
   readonly bundleSupport: SkillBundleSupport;
   readonly trust: SkillTrustState;
   /** Why the trust decision went the way it did. */

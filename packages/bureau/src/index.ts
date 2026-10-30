@@ -85,7 +85,11 @@ export type {
   DefinitionSourceHost,
   WorkflowSource,
 } from './sources/definition-source';
-export { hashDefinitionBytes, SourceConflictError } from './sources/definition-source';
+export {
+  hashDefinitionBytes,
+  SourceConflictError,
+  SourceReadOnlyError,
+} from './sources/definition-source';
 export type { AgentRevision } from './agent-snapshot-store';
 export type { AgentVersionRecord } from './agent-version-store';
 export type { AgentReferenceDigest, AgentReferenceDocument } from './agent-reference-documents';

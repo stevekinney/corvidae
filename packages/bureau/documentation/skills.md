@@ -181,17 +181,19 @@ generalCatalogProjection(service.catalog()); // [{ name, description }]
 
 A `SkillSource` has an `id` (stable identity), a `kind`, a `location` (canonical, never credential-bearing), and an explicit `precedence`. Precedence lives on the source rather than on the array, so reordering configuration cannot silently change which skill shadows which.
 
+A plugin ships skills through a `plugin` source (COR-1873): `{ id, kind: 'plugin', plugin: 'linear', location, precedence }`, where `plugin` names the plugin. Its default precedence, 35, sits beneath the owner's `project`, `user` and `storage` sources, so an owner's skill shadows a plugin's of the same name.
+
 `defaultSkillSources()` builds the documented defaults: `<project>/.agents/skills` and `<home>/.agents/skills`. The `.claude/skills` compatibility root is **opt-in** via `includeCompatibilityRoots` — a workspace that happens to have one is not thereby asking this runtime to load it.
 
 ### Trust
 
-Project sources are **untrusted by default**, and that is the point: opening a repository must not be the same act as granting its `.agents/skills` directory the ability to put instructions in front of a model. User and built-in sources reflect a deliberate installation. Remote sources are untrusted until an integrity policy admits them.
+Project sources are **untrusted by default**, and that is the point: opening a repository must not be the same act as granting its `.agents/skills` directory the ability to put instructions in front of a model. User and built-in sources reflect a deliberate installation. Remote sources are untrusted until an integrity policy admits them. Plugin sources are trusted: a plugin is trusted, in-process code the host loads.
 
 An untrusted source's skills are still **discovered** — they appear in the catalog, unavailable, with the reason attached — so a host can offer "this workspace has 3 skills, trust it?" rather than pretending they do not exist.
 
 ### Catalog entries
 
-Each `SkillCatalogRecord` carries `name`, `description`, `directoryName`, `sourceId`, `sourceKind`, `sourceLocation`, `bundleSupport`, `trust` and `trustReason`, `artifactDigest`, a `compatibility` verdict, and `available` with an `unavailableReason` (`source-untrusted`, `source-revoked`, `shadowed`, `invalid`, `unreadable`). A shadowed entry stays in the catalog marked as such, with `shadowedBy` — an operator asking "why is my project skill not the one running" needs to see both.
+Each `SkillCatalogRecord` carries `name`, `description`, `directoryName`, `sourceId`, `sourceKind`, `sourceLocation`, `sourcePlugin` (for a `plugin` source), `bundleSupport`, `trust` and `trustReason`, `artifactDigest`, a `compatibility` verdict, and `available` with an `unavailableReason` (`source-untrusted`, `source-revoked`, `shadowed`, `invalid`, `unreadable`). A shadowed entry stays in the catalog marked as such, with `shadowedBy` — an operator asking "why is my project skill not the one running" needs to see both.
 
 Its `digest` covers every field the catalog exposes, including `sourceLocation`, `bundleSupport` and the source diagnostics — a digest blind to those reports `unchanged` after a source moves, and keeps serving the stale value for ever.
 

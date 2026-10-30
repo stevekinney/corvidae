@@ -13,6 +13,7 @@ import { decisionModelNames } from '../decisions/create-decisions.ts';
 import type { AgentDefinitions } from '../agent-catalog.ts';
 import type { TaskToolGrant } from '../task-registry.ts';
 import type { BureauModelPolicyOptions } from '../model-policy.ts';
+import type { AgentSource } from '../sources/definition-source.ts';
 import type { BureauOptions } from '../types.ts';
 import { effectiveSettings, readSettingsRecord, type StoredSettings } from './create-settings.ts';
 import {
@@ -148,7 +149,7 @@ export function enginePatchOf(
  * tool, which Bureau adds to the tool catalog itself. Returns the locked keys and why each is locked.
  */
 export function validateSettingsOptions<D extends AgentDefinitions>(
-  options: Pick<BureauOptions<D>, 'settings' | 'agentSource'>,
+  options: Pick<BureauOptions<D>, 'settings'> & { readonly agentSource?: AgentSource | undefined },
   badRequest: (message: string) => never,
 ): ReadonlyMap<SettingKey, SettingLockReason> {
   const colliding = collidingSettingsToolName(options.agentSource?.tools);

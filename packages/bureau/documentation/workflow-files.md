@@ -92,6 +92,10 @@ const bureau = await createBureau({
 
 Bureau registers the workflows before the engine recovers, and starts the engine's scheduler only after that, so a schedule that is due the moment the process starts cannot fire a workflow type Weft does not have yet. A Bureau with no `workflowSource` starts its scheduler exactly as it always did. `bureau.workflows` is `undefined` for a Bureau with no workflow source.
 
+## Plugin layers
+
+`workflowFileDirectory(path, { plugin: 'linear' })` is a plugin's read-only layer of workflow files (COR-1873), and `workflowSource` takes a list layered with `layeredWorkflowSource`, as `agentSource` does (see the agent files' Plugin layers). A plugin's workflow is named `linear:<name>`, reloads when its file changes, and refuses every write with `WorkflowFileError` `workflow-file-read-only`.
+
 ## Watching
 
 `workflowFileDirectory(path, { watch?, watchFactory? })` is a `WorkflowSource`, the same contract the agent files use (see [agent files](agent-files.md#sources)): `load()`, `watch()`, and `write` and `delete` with an `expectedHash`. Bureau calls `load()` after each of its own writes, and `bureau.workflows.refresh()` calls `load()`. `watch: false` means no `fs.watch` and no poll.

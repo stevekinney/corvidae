@@ -8,6 +8,7 @@
 import { WORKFLOW_FILE_EXTENSION, WORKFLOW_FILE_SIZE_LIMIT } from '../workflow-file';
 import type { WorkflowSource } from './definition-source';
 import { createDirectorySource, type DirectorySourceOptions } from './directory-source';
+import { pluginLayer } from './plugin-layer';
 
 /** What {@link workflowFileDirectory} takes. */
 export type WorkflowFileDirectoryOptions = DirectorySourceOptions;
@@ -15,7 +16,8 @@ export type WorkflowFileDirectoryOptions = DirectorySourceOptions;
 /**
  * A directory of JSON workflow files. Every `*.json` file in it is a workflow whose identifier is
  * the filename without the extension. Bureau reads, watches, and writes the directory; a directory
- * that does not exist is an empty one. See `documentation/workflow-files.md`.
+ * that does not exist is an empty one. With `options.plugin` the directory is that plugin's
+ * read-only layer (COR-1873). See `documentation/workflow-files.md`.
  */
 export function workflowFileDirectory(
   path: string,
@@ -30,5 +32,8 @@ export function workflowFileDirectory(
     },
     options,
   );
-  return Object.assign(source, { kind: 'workflow' as const });
+  const workflowSource: WorkflowSource = Object.assign(source, { kind: 'workflow' as const });
+  return options.plugin === undefined
+    ? workflowSource
+    : pluginLayer(workflowSource, options.plugin);
 }

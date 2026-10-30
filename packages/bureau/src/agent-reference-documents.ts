@@ -146,31 +146,47 @@ function problemFor(
 }
 
 /**
- * The bytes of the documents read last, by path, with the stamp the source gave each. A source
+ * The bytes of the documents read last, by {@link referenceCacheKey}, with the stamp the source gave each. A source
  * that can tell a document is unchanged by its stamp answers `unchanged` and the bytes here are
  * used, so a poll that finds nothing moved reads no content.
  */
 export type ReferenceCache = Map<string, { readonly stamp: string; readonly bytes: Uint8Array }>;
 
 /**
+ * The key a document is cached under: its path, within the layer that holds the agent naming it
+ * (COR-1873). A plugin's documents sit beside the plugin's files, so `guide.md` of `linear:triager`
+ * and `guide.md` of the owner's agent are two documents.
+ */
+export function referenceCacheKey(definitionId: string | undefined, path: string): string {
+  const separator = definitionId?.indexOf(':') ?? -1;
+  return separator === -1 || definitionId === undefined
+    ? path
+    : `${definitionId.slice(0, separator)}:${path}`;
+}
+
+/**
  * Read the documents `paths` name through `source`, one after another so the first problem in the
  * file's order is the one reported. With a `cache`, a document the source reports unchanged is not
- * read again, and each document read is remembered by its stamp. Never rejects.
+ * read again, and each document read is remembered by its stamp. `definitionId` is the agent that
+ * names them, which a layered source reads them for from that agent's layer. Never rejects.
  */
 export async function loadReferenceDocuments(
   source: Pick<AgentSource, 'readSibling'>,
   paths: readonly string[],
   cache?: ReferenceCache,
+  definitionId?: string,
 ): Promise<ReferenceLoad> {
   const documents: AgentReferenceDocument[] = [];
   let total = 0;
   for (const [index, path] of paths.entries()) {
     let read: Exclude<SiblingRead, { kind: 'unchanged' }>;
     try {
-      const cached = cache?.get(path);
+      const key = referenceCacheKey(definitionId, path);
+      const cached = cache?.get(key);
       const answer = await source.readSibling(path, {
         limit: AGENT_REFERENCE_SIZE_LIMIT,
         ...(cached === undefined ? {} : { unlessStamp: cached.stamp }),
+        ...(definitionId === undefined ? {} : { definitionId }),
       });
       if (answer.kind === 'unchanged') {
         // A source answers `unchanged` only to a stamp it was given, which came with these bytes.
@@ -181,9 +197,9 @@ export async function loadReferenceDocuments(
       } else {
         read = answer;
         if (answer.kind === 'found' && answer.stamp !== undefined) {
-          cache?.set(path, { stamp: answer.stamp, bytes: answer.bytes });
+          cache?.set(key, { stamp: answer.stamp, bytes: answer.bytes });
         } else {
-          cache?.delete(path);
+          cache?.delete(key);
         }
       }
     } catch (error) {
