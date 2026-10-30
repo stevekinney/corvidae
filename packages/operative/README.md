@@ -2171,7 +2171,9 @@ const catalog = createModelCatalog();
 const anthropicRows = catalog.descriptors.filter((d) => d.provider === 'anthropic');
 ```
 
-`getProviderCapabilities` is now implemented as a projection over `createModelCatalog`'s descriptors—its public signature and every previously published answer are unchanged.
+`getProviderCapabilities` is now implemented as a projection over `createModelCatalog`'s descriptors—every previously published answer is unchanged.
+
+`ProviderName` is an open `string`, not a union of the built-in names. A well-formed name matches `PROVIDER_NAME_PATTERN` (`^[a-z](?:[a-z0-9-]*[a-z0-9])?$`, the plugin-name grammar, bare with no `plugin:` prefix), and `isProviderName` narrows an `unknown` to it. A provider package contributes its own rows with `createModelCatalog({ descriptors })` and its capability answer with `getProviderCapabilities(name, { descriptors })`; no edit to this package is needed. A name that no loaded row carries is unavailable: every capability flag is `false`, and a selection restricted to it by `allowedProviders` returns `no-candidate`.
 
 ### Agent Generation Profile (AB-64, AB-245)
 
@@ -3213,7 +3215,7 @@ When the pinned spec revision changes, re-diff these two files against the new c
 | `{chat\|generate_content} {model}` (`@lostgradient/operative`) | Inference | `{gen_ai.operation.name} {model}` | CLIENT | `gen_ai.operation.name` (`chat`, or `generate_content` for Gemini), `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.request.max_tokens`, `gen_ai.usage.*` | None—full compliance. This is the canonical span for a single LLM inference call. |
 | `execute_tool {name}` (`armorer`) | Execute tool | `execute_tool {gen_ai.tool.name}` | INTERNAL | `gen_ai.operation.name=execute_tool`, `gen_ai.tool.name`, `gen_ai.tool.call.id`, `gen_ai.tool.description`, `error.type` | `gen_ai.tool.call.arguments`/`gen_ai.tool.call.result` are Opt-In under the conventions and deliberately not emitted—they can carry privileged tool arguments/results (AB-87/AB-230). `armorer.tool.*` carries duration/digest/status extensions the spec doesn't define. |
 
-`gen_ai.provider.name` values are mapped from operative's internal `ProviderName` to the conventions' well-known values where one is registered:
+`gen_ai.provider.name` values are mapped from a `ProviderName` to the conventions' well-known values where one is registered, and any other name passes through unchanged (the conventions permit a custom value):
 
 | `ProviderName` | `gen_ai.provider.name` | Note |
 | --- | --- | --- |

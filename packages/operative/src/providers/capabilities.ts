@@ -1,9 +1,5 @@
-import { createModelCatalog } from './model-catalog.ts';
+import { type BackendDescriptor, createModelCatalog } from './model-catalog.ts';
 import type { ProviderName } from './types.ts';
-
-function unreachable(value: never): never {
-  throw new Error(`Unsupported provider: ${String(value)}`);
-}
 
 /**
  * What a provider can be asked to do beyond a plain generate call.
@@ -134,33 +130,34 @@ const NO_CAPABILITIES: ProviderCapabilities = {
  * pre-AB-64 behavior for all five `ProviderName` values across four
  * environment states.
  *
+ * A name with no catalog row, whether it names no provider at all or a provider that is not loaded,
+ * reports every flag `false`, the same answer `voyage` and `ollama` always gave.
+ *
  * @param provider - The provider to report on.
  * @param options.baseURL - The base URL that would be passed to the provider
  *   factory, if any. Only consulted for `openai`. Leaving it unset does not
  *   assert the default endpoint — `OPENAI_BASE_URL` is consulted next.
+ * @param options.descriptors - Rows a loaded provider contributes beyond the seed, folded into the
+ *   answer for a provider they name. Each must name its provider in the
+ *   provider-name grammar.
  */
 export function getProviderCapabilities(
   provider: ProviderName,
-  options?: { readonly baseURL?: string },
+  options?: {
+    readonly baseURL?: string;
+    readonly descriptors?: readonly BackendDescriptor[] | undefined;
+  },
 ): ProviderCapabilities {
-  switch (provider) {
-    case 'anthropic':
-    case 'openai':
-    case 'gemini': {
-      const rows = createModelCatalog({ openAIBaseURL: options?.baseURL }).descriptors.filter(
-        (descriptor) => descriptor.provider === provider,
-      );
-      return {
-        batchInference: rows.every((row) => row.batchInference),
-        explicitThinkingRequest: rows.every((row) => row.explicitThinkingRequest),
-        requestControlledContextCaching: rows.every((row) => row.caching),
-        serverSideTokenCounting: rows.every((row) => row.serverSideTokenCounting),
-      };
-    }
-    case 'voyage':
-    case 'ollama':
-      return NO_CAPABILITIES;
-    default:
-      return unreachable(provider);
-  }
+  const rows = createModelCatalog({
+    openAIBaseURL: options?.baseURL,
+    descriptors: options?.descriptors,
+  }).descriptors.filter((descriptor) => descriptor.provider === provider);
+  // A provider with no rows is unavailable, and an empty `every` would otherwise answer `true`.
+  if (rows.length === 0) return NO_CAPABILITIES;
+  return {
+    batchInference: rows.every((row) => row.batchInference),
+    explicitThinkingRequest: rows.every((row) => row.explicitThinkingRequest),
+    requestControlledContextCaching: rows.every((row) => row.caching),
+    serverSideTokenCounting: rows.every((row) => row.serverSideTokenCounting),
+  };
 }
