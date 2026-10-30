@@ -63,7 +63,19 @@ describe('mergeWorkflowCheckpointEvents', () => {
       'workflow:checkpoint@10',
       'activity:completed@20',
       'workflow:checkpoint@30',
+      'workflow:completed@99',
     ]);
+  });
+
+  test('does not repeat a cached non-checkpoint entry the fetch also returns', () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData<WorkflowEvent[]>(workflowEventsKey('wf_1'), [
+      event('workflow:started', 5, { reason: 'kickoff' }),
+    ]);
+    mergeWorkflowCheckpointEvents(queryClient, 'wf_1', [
+      event('workflow:started', 5, { reason: 'kickoff' }),
+    ]);
+    expect(queryClient.getQueryData<WorkflowEvent[]>(workflowEventsKey('wf_1'))).toHaveLength(1);
   });
 
   test('creates the cache when only a fetch has arrived', () => {
