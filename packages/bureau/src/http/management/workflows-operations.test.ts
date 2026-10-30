@@ -36,7 +36,7 @@ function listOf(response: RpcBody, key: string): Array<{ id: string }> {
 const DEFINITION = { agent: 'writer', trigger: FAST_SCHEDULE, steps: [AGENT_STEP] };
 
 describe('the operations list', () => {
-  it('serves the eleven workflow operations, with their scopes registered', () => {
+  it('serves the thirteen workflow operations, with their scopes registered', () => {
     expect(bureauWorkflowsOperations.map((operation) => operation.name)).toEqual([
       'bureau.workflows.create',
       'bureau.workflows.update',
@@ -48,6 +48,8 @@ describe('the operations list', () => {
       'bureau.workflows.revisions',
       'bureau.workflows.runs.list',
       'bureau.workflows.runs.get',
+      'bureau.workflows.start',
+      'bureau.workflows.internal.get',
       'bureau.workflows.signal',
     ]);
     expect(BUREAU_SCOPES).toContain('bureau.workflows:read');
@@ -107,6 +109,12 @@ const CALLS: readonly Call[] = [
     params: (hash) => ({ id: 'digest', expectedHash: hash }),
     scope: 'write',
   },
+  { method: 'bureau.workflows.start', params: () => ({ id: 'digest' }), scope: 'write' },
+  {
+    method: 'bureau.workflows.internal.get',
+    params: () => ({ id: 'agentRun' }),
+    scope: 'read',
+  },
   { method: 'bureau.workflows.signal', params: () => ({ name: 'go' }), scope: 'write' },
 ];
 
@@ -127,7 +135,7 @@ describe('the owner predicate, with several principals', () => {
         const response = await rpc(served.keyed, call.method, call.params(hash), 'alice-key');
         if (call.method === 'bureau.workflows.signal') {
           expect(response.error).toBeUndefined();
-          expect(response.result).toEqual({ started: [], delivered: [] });
+          expect(response.result).toEqual({ started: [], delivered: [], rejected: [] });
         } else if (
           call.method === 'bureau.workflows.list' ||
           call.method === 'bureau.workflows.runs.list'

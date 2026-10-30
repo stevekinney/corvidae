@@ -10,7 +10,12 @@
  * @module run-step-cost-budget
  */
 
-import { crossedThresholds, isRunCostBudgetExceeded, totalAccumulatedCost } from './cost-budget';
+import {
+  crossedThresholds,
+  isChatCostBudgetExhausted,
+  isRunCostBudgetExceeded,
+  totalAccumulatedCost,
+} from './cost-budget';
 import { BudgetExceededError } from './errors';
 import { BudgetThresholdEvent } from './events';
 import type { EventDispatcher, RunState, StepDeps } from './run-step';
@@ -63,4 +68,19 @@ export function checkCostBudget(input: {
       `The run spent $${costAfter.toFixed(6)}, which reached its cost budget (perRunUsd: $${budget.perRunUsd}).`,
     );
   }
+}
+
+/**
+ * Throws a {@link BudgetExceededError} naming `perChatUsd` when the chat the run belongs to had
+ * already spent its budget before the run began (COR-1915). It is asked once, before the run's
+ * first step: a run that is under way, or one recovered past its first step, is never stopped by
+ * what its siblings spent meanwhile, so the run that crosses the limit finishes and the one after
+ * it is the one that stops.
+ */
+export function checkChatCostBudget(deps: StepDeps): void {
+  const budget = deps.costBudget;
+  if (budget === undefined || !isChatCostBudgetExhausted(budget)) return;
+  throw new BudgetExceededError(
+    `The chat had spent $${(budget.priorChatSpendUsd ?? 0).toFixed(6)}, which reached its cost budget (perChatUsd: $${budget.perChatUsd}), so this run did not start.`,
+  );
 }

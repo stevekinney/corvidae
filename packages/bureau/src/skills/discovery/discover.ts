@@ -124,6 +124,7 @@ function recordsFromArtifacts(
         trust: trust.state,
         trustReason: trust.reason,
         artifactDigest: artifact.digest,
+        allowedTools: allowedToolsOf(imported),
         compatibility,
         available: unavailableReason === undefined,
         ...(unavailableReason === undefined ? {} : { unavailableReason }),
@@ -312,6 +313,15 @@ async function listCandidates(
   return { candidates, diagnostics, cancelled: cancelled || isAborted(signal) };
 }
 
+/**
+ * The tools a skill's `allowed-tools` asks to keep, in the order the manifest lists them. Empty
+ * when the skill states none, which is different from a skill that narrows to nothing: an empty
+ * `allowed-tools` is not a request at all.
+ */
+function allowedToolsOf(imported: ReturnType<typeof importSkillMarkdown>): readonly string[] {
+  return [...(imported.content.metadata.toolPolicy?.allowList ?? [])];
+}
+
 function compatibilityFrom(imported: ReturnType<typeof importSkillMarkdown>): SkillCompatibility {
   return {
     conformant: imported.conformant,
@@ -344,6 +354,7 @@ async function readCandidate(
       readonly compatibility: SkillCompatibility;
       readonly name: string;
       readonly description: string;
+      readonly allowedTools: readonly string[];
     }
   | { readonly ok: false; readonly diagnostic: SkillSourceDiagnostic }
 > {
@@ -386,6 +397,7 @@ async function readCandidate(
       compatibility: compatibilityFrom(imported),
       name: imported.content.metadata.name,
       description: imported.content.metadata.description,
+      allowedTools: allowedToolsOf(imported),
     };
   } catch (error) {
     return {
@@ -433,6 +445,7 @@ function buildRecord(
     trust: trust.state,
     trustReason: trust.reason,
     artifactDigest: read.artifact.digest,
+    allowedTools: read.allowedTools,
     compatibility: read.compatibility,
     available: unavailableReason === undefined,
     ...(unavailableReason === undefined ? {} : { unavailableReason }),

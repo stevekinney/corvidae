@@ -23,7 +23,9 @@
 
 import {
   type ApprovalMode,
+  type CapabilityTier,
   createApprovalPolicyHooks,
+  evaluateApprovalStatus,
   type ToolPolicyContext,
   type ToolPolicyDecision,
   type ToolPolicyHooks,
@@ -55,6 +57,18 @@ const ARMORER_MODE: Readonly<Record<ToolApprovalMode, ApprovalMode>> = {
   always: 'always',
   blocked: 'deny',
 };
+
+/**
+ * What a call to a tool of capability `tier` does when its agent's `toolApproval` says nothing
+ * about it: `allow`, or `ask`. The default mode never denies, so those are the only two. A tool
+ * with no tier (it declares none) asks, because Armorer never lets a call it cannot classify
+ * through unasked. The tool catalog reports it as each tool's default approval.
+ */
+export function defaultToolApproval(tier: CapabilityTier | undefined): 'allow' | 'ask' {
+  return evaluateApprovalStatus(tier, ARMORER_MODE[TOOL_APPROVAL_DEFAULT_MODE]) === 'allow'
+    ? 'allow'
+    : 'ask';
+}
 
 /** What {@link createToolApprovalHooks} takes. */
 export interface ToolApprovalHooksOptions {

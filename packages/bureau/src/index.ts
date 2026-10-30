@@ -34,20 +34,25 @@ export type {
   AgentCostBudget,
   AgentGuardrailPreset,
   AgentRetry,
+  AgentToolBudget,
 } from './agent-file';
 export {
   AGENT_COST_BUDGET_MAXIMUM_USD,
   AGENT_COST_BUDGET_MAXIMUM_WARNINGS,
   AGENT_GUARDRAIL_PRESETS,
   AGENT_IDENTIFIER_PATTERN,
+  AGENT_TOOL_BUDGET_MAXIMUM_CALLS,
+  AGENT_TOOL_BUDGET_MAXIMUM_DURATION_SECONDS,
   agentFileFrontmatterSchema,
   agentToolApprovalSchema,
+  agentToolBudgetSchema,
   AgentFileConflictError,
   AgentFileError,
   AgentSnapshotError,
 } from './agent-file';
 export type {
   AgentCatalogChange,
+  AgentCodeDefinition,
   AgentFileDetail,
   AgentListing,
   AgentToolDescription,
@@ -68,12 +73,18 @@ export type { AgentRevision } from './agent-snapshot-store';
 export type { AgentVersionRecord } from './agent-version-store';
 export type { AgentReferenceDigest, AgentReferenceDocument } from './agent-reference-documents';
 export type {
+  WorkflowCodeDetail,
   WorkflowDetail,
   WorkflowRunDetail,
   WorkflowRunFilter,
   WorkflowRunSummary,
+  WorkflowSignalResult,
+  WorkflowStartOptions,
+  WorkflowStartResult,
   BureauWorkflows,
 } from './workflow-runtime';
+export type { WorkflowFinishReason, WorkflowSchemaIssue } from './workflow-schema';
+export { WorkflowInputInvalidError } from './workflow-schema';
 export type {
   WorkflowFileDefinition,
   WorkflowFileErrorCode,
@@ -191,6 +202,7 @@ export type {
 } from './audit-trail';
 export {
   AUDIT_EVENT_TYPES,
+  auditTrailSkillSourceOwnerId,
   computeInitialAuditSequence,
   createAuditTrail,
   encodeKey as encodeAuditEntryKey,
@@ -643,6 +655,7 @@ export {
   A2A_AGENT_NAME_PATTERN,
 } from './http/create-bureau-handler';
 export { BUREAU_SCOPES, type BureauScope } from './http/bureau-scopes';
+export type { SkillSourceStanding, SkillsStanding } from './http/management/skills-operations';
 export {
   RESUME_ATTEMPT_FAILED_MESSAGES,
   RESUME_ATTEMPT_STILL_GOING_MESSAGES,

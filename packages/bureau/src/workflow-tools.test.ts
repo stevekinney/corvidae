@@ -443,6 +443,8 @@ describe('workflows-list', () => {
           paused: false,
           triggerKind: null,
           description: null,
+          inputSchema: null,
+          outputSchema: null,
           problem: 'invalid-json',
         },
         {
@@ -452,6 +454,8 @@ describe('workflows-list', () => {
           paused: false,
           triggerKind: 'schedule',
           description: null,
+          inputSchema: null,
+          outputSchema: null,
           problem: null,
         },
         {
@@ -461,6 +465,8 @@ describe('workflows-list', () => {
           paused: true,
           triggerKind: 'signal',
           description: null,
+          inputSchema: null,
+          outputSchema: null,
           problem: null,
         },
       ],
@@ -503,8 +509,61 @@ describe('workflows-list', () => {
       workflows: () => undefined,
       runIdentity: async () => ({ agent: undefined, owner: undefined }),
     });
-    expect(tools['workflows-update']?.description).toContain('description included');
+    expect(tools['workflows-update']?.description).toContain('description and schemas included');
     expect(tools['workflows-list']?.description).toContain('description');
+  });
+
+  it('writes the schemas it is given, lists them, and drops them when an update leaves them out', async () => {
+    const harness = await start();
+    const inputSchema = { type: 'object', required: ['city'] };
+    const outputSchema = { type: 'object' };
+
+    await harness.callTool('workflows-create', {
+      name: 'Digest',
+      trigger: { kind: 'signal', name: 'go' },
+      steps: STEPS,
+      inputSchema,
+      outputSchema,
+    });
+
+    expect(await fileOf(harness, 'digest')).toMatchObject({ inputSchema, outputSchema });
+    const listed = await harness.callTool('workflows-list', {});
+    expect(listed.result).toMatchObject({
+      workflows: [{ id: 'digest', inputSchema, outputSchema }],
+    });
+    // An update that passes the listed schemas back keeps them; one that leaves them out has none.
+    const kept = await harness.callTool('workflows-update', {
+      id: 'digest',
+      expectedHash: hashOf(harness, 'digest'),
+      trigger: { kind: 'signal', name: 'go' },
+      steps: STEPS,
+      inputSchema,
+      outputSchema,
+    });
+    expect(kept.result).toMatchObject({ status: 'ok' });
+    expect(harness.bureau.workflows!.list()[0]?.inputSchema).toEqual(inputSchema);
+    await harness.callTool('workflows-update', {
+      id: 'digest',
+      expectedHash: hashOf(harness, 'digest'),
+      trigger: { kind: 'signal', name: 'go' },
+      steps: STEPS,
+    });
+    expect(await fileOf(harness, 'digest')).not.toHaveProperty('inputSchema');
+  });
+
+  it('refuses a schema outside the answer-schema limits as an invalid document naming the field', async () => {
+    const harness = await start();
+
+    const { result } = await harness.callTool('workflows-create', {
+      name: 'Digest',
+      trigger: { kind: 'signal', name: 'go' },
+      steps: STEPS,
+      inputSchema: { type: 'string', pattern: '^a' },
+    });
+
+    expect(result).toMatchObject({ status: 'invalid', code: 'invalid-document' });
+    expect(JSON.stringify(result)).toContain('inputSchema');
+    expect(harness.bureau.workflows!.list()).toEqual([]);
   });
 
   it('hands the hash it lists to the tools that change a file', async () => {

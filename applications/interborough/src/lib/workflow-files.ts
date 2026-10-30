@@ -28,6 +28,9 @@ const problemSchema = z.object({
  */
 export type WorkflowProblem = z.infer<typeof problemSchema>;
 
+/** A JSON Schema as a workflow file declares it. */
+const jsonSchemaField = z.record(z.string(), z.unknown());
+
 const fileSchema = z.object({
   id: z.string(),
   state: z.enum(['ready', 'invalid']),
@@ -37,6 +40,10 @@ const fileSchema = z.object({
   description: z.string().nullable(),
   agent: z.string().nullable(),
   paused: z.boolean(),
+  /** The JSON Schema an instance's input must satisfy, or `null` when the file declares none. */
+  inputSchema: jsonSchemaField.nullable(),
+  /** The JSON Schema an instance's result must satisfy, or `null` when the file declares none. */
+  outputSchema: jsonSchemaField.nullable(),
   version: z.string().nullable(),
   /** The trigger as written (`kind`, and `spec` or `name`), for a file that loaded. */
   trigger: z.record(z.string(), z.unknown()).nullable(),
@@ -87,6 +94,8 @@ const revisionsSchema = z.object({
         name: z.string(),
         trigger: z.record(z.string(), z.unknown()),
         steps: z.array(z.record(z.string(), z.unknown())),
+        inputSchema: jsonSchemaField.nullable(),
+        outputSchema: jsonSchemaField.nullable(),
       }),
     }),
   ),
@@ -103,9 +112,18 @@ export type WorkflowWriteResult = z.infer<typeof writeResultSchema>;
 const signalResultSchema = z.object({
   started: z.array(z.string()),
   delivered: z.array(z.string()),
+  /** The matching workflows whose `inputSchema` the payload broke: nothing started for them. */
+  rejected: z.array(
+    z.object({
+      id: z.string(),
+      issues: z.array(
+        z.object({ path: z.array(z.union([z.string(), z.number()])), message: z.string() }),
+      ),
+    }),
+  ),
 });
 
-/** The instances a signal started, and the ones it was delivered to. */
+/** The instances a signal started and was delivered to, and the workflows that refused its payload. */
 export type SignalResult = z.infer<typeof signalResultSchema>;
 
 /** The largest page `bureau.workflows.list` answers. */

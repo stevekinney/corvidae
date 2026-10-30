@@ -67,6 +67,7 @@ export const AGENT_FILE_KNOWN_KEYS = [
   'references',
   'guardrails',
   'costBudget',
+  'toolBudget',
   'toolApproval',
 ] as const;
 
@@ -159,11 +160,42 @@ export const AGENT_COST_BUDGET_MAXIMUM_WARNINGS = RUN_COST_BUDGET_MAXIMUM_WARNIN
  * with `budget-exceeded`. `warnAt` lists fractions of it, each strictly between 0 and 1, at which
  * the run's activity shows one `budget.threshold` event. Any order and repeats are accepted; the
  * definition holds them sorted and without repeats.
+ *
+ * `perChatUsd` (COR-1915) is the most a chat may spend across its runs, counted from the same
+ * per-run estimates the chat's spend ledger records. It is checked when a run starts: once the
+ * chat's earlier runs have spent it, the next run finishes `budget-exceeded` naming `perChatUsd`
+ * before it asks the model anything, and a run already under way is not stopped by it. `warnAt`
+ * stays a fraction of `perRunUsd`.
  */
 export const agentCostBudgetSchema = z.strictObject({
   perRunUsd: z.number().positive().max(AGENT_COST_BUDGET_MAXIMUM_USD),
+  perChatUsd: z.number().positive().max(AGENT_COST_BUDGET_MAXIMUM_USD).optional(),
   warnAt: z.array(z.number().gt(0).lt(1)).max(AGENT_COST_BUDGET_MAXIMUM_WARNINGS).optional(),
 });
+
+/** The most tool calls a file's `toolBudget.maxCalls` may allow one run. */
+export const AGENT_TOOL_BUDGET_MAXIMUM_CALLS = 100_000;
+/** The longest a file's `toolBudget.maxDurationSeconds` may allow one run, in seconds (one day). */
+export const AGENT_TOOL_BUDGET_MAXIMUM_DURATION_SECONDS = 86_400;
+
+/**
+ * What one run's tools may use (COR-1915): `maxCalls` is how many tool calls the run may make, and
+ * `maxDurationSeconds` how long the run's tools may be called, counted from the start of the run.
+ * The first call after either limit is reached ends the run with the finish reason
+ * `budget-exceeded`. At least one of the two is required.
+ */
+export const agentToolBudgetSchema = z
+  .strictObject({
+    maxCalls: z.number().int().min(1).max(AGENT_TOOL_BUDGET_MAXIMUM_CALLS).optional(),
+    maxDurationSeconds: z
+      .number()
+      .positive()
+      .max(AGENT_TOOL_BUDGET_MAXIMUM_DURATION_SECONDS)
+      .optional(),
+  })
+  .refine((budget) => budget.maxCalls !== undefined || budget.maxDurationSeconds !== undefined, {
+    message: 'toolBudget needs maxCalls, maxDurationSeconds, or both',
+  });
 
 /**
  * A file's `toolApproval` (COR-1913): a tool name mapped to when it asks a person before it runs,
@@ -316,6 +348,11 @@ export const agentFileFrontmatterSchema = z
      */
     costBudget: agentCostBudgetSchema.nullish(),
     /**
+     * What one run's tools may use: a count of calls, a length of time, or both. Absent, a run's
+     * tools have no limit.
+     */
+    toolBudget: agentToolBudgetSchema.nullish(),
+    /**
      * When each tool asks a person before it runs. A tool the map leaves out asks on changes. Each
      * name must be one of `tools`.
      */
@@ -408,6 +445,8 @@ export const agentFileDefinitionSchema = z.object({
   /** Absent from a snapshot written before the field existed, and from a file that has none. */
   costBudget: agentCostBudgetSchema.optional(),
   /** Absent from a snapshot written before the field existed, and from a file that has none. */
+  toolBudget: agentToolBudgetSchema.optional(),
+  /** Absent from a snapshot written before the field existed, and from a file that has none. */
   toolApproval: agentToolApprovalSchema.optional(),
   /** Prompts a new chat offers (see the frontmatter's `examples`); absent for a file that has none. */
   examples: agentExamplesSchema.optional(),
@@ -418,8 +457,18 @@ export const agentFileDefinitionSchema = z.object({
 export interface AgentCostBudget {
   /** The most one run may spend, in US dollars. */
   readonly perRunUsd: number;
+  /** The most a chat may spend across its runs, in US dollars; see {@link agentCostBudgetSchema}. */
+  readonly perChatUsd?: number | undefined;
   /** Fractions of `perRunUsd` at which the run warns, ascending and without repeats. */
   readonly warnAt?: readonly number[] | undefined;
+}
+
+/** A file's `toolBudget`; see {@link agentToolBudgetSchema}. */
+export interface AgentToolBudget {
+  /** The most tool calls one run may make. */
+  readonly maxCalls?: number | undefined;
+  /** The most seconds, from the start of the run, its tools may be called. */
+  readonly maxDurationSeconds?: number | undefined;
 }
 
 /** A file's `retry`, as written. */
@@ -482,6 +531,11 @@ export interface AgentFileDefinition {
    */
   readonly costBudget?: AgentCostBudget;
   /**
+   * What one run's tools may use, as the file's `toolBudget` states it. Absent when the file sets
+   * none: a run's tools have no limit.
+   */
+  readonly toolBudget?: AgentToolBudget;
+  /**
    * When each tool asks a person before it runs, as the file's `toolApproval` states it, with the
    * names in alphabetical order. Absent when the file sets none, which asks on changes for every
    * tool. Every name is one of `tools`; the catalog refuses the file otherwise
@@ -514,6 +568,7 @@ const definitionKeyTable: Record<keyof AgentFileDefinition, true> = {
   references: true,
   guardrails: true,
   costBudget: true,
+  toolBudget: true,
   toolApproval: true,
   examples: true,
   instructions: true,
@@ -581,6 +636,11 @@ export interface AgentFileDefinitionInput {
    * `null` removes it.
    */
   readonly costBudget?: AgentCostBudget | null | undefined;
+  /**
+   * See {@link AgentFileDefinition.toolBudget}. An update that omits it keeps the file's value;
+   * `null` removes it.
+   */
+  readonly toolBudget?: AgentToolBudget | null | undefined;
   /**
    * See {@link AgentFileDefinition.toolApproval}. An update that omits it keeps the file's value;
    * `null`, or an empty map, removes it.
@@ -682,7 +742,18 @@ function costBudgetOf(budget: AgentCostBudget): AgentCostBudget {
   const warnAt = [...new Set(budget.warnAt ?? [])].toSorted((left, right) => left - right);
   return {
     perRunUsd: budget.perRunUsd,
+    ...(budget.perChatUsd === undefined ? {} : { perChatUsd: budget.perChatUsd }),
     ...(warnAt.length === 0 ? {} : { warnAt }),
+  };
+}
+
+/** A tool budget without the keys it leaves out, so a definition holds exactly what a file wrote. */
+function toolBudgetOf(budget: AgentToolBudget): AgentToolBudget {
+  return {
+    ...(budget.maxCalls === undefined ? {} : { maxCalls: budget.maxCalls }),
+    ...(budget.maxDurationSeconds === undefined
+      ? {}
+      : { maxDurationSeconds: budget.maxDurationSeconds }),
   };
 }
 
@@ -741,6 +812,7 @@ function toDefinition(
     ...(frontmatter.guardrails == null ? {} : { guardrails: frontmatter.guardrails }),
     ...optionalToolApproval(frontmatter.toolApproval),
     ...(frontmatter.costBudget == null ? {} : { costBudget: costBudgetOf(frontmatter.costBudget) }),
+    ...(frontmatter.toolBudget == null ? {} : { toolBudget: toolBudgetOf(frontmatter.toolBudget) }),
     ...(frontmatter.examples == null ? {} : { examples: frontmatter.examples }),
     instructions,
   };
@@ -846,6 +918,7 @@ function knownFrontmatter(definition: AgentFileDefinitionInput): Record<string, 
   }
   if (definition.guardrails != null) known['guardrails'] = definition.guardrails;
   if (definition.costBudget != null) known['costBudget'] = costBudgetOf(definition.costBudget);
+  if (definition.toolBudget != null) known['toolBudget'] = toolBudgetOf(definition.toolBudget);
   const toolApproval =
     definition.toolApproval == null ? undefined : toolApprovalOf(definition.toolApproval);
   if (toolApproval !== undefined) known['toolApproval'] = toolApproval;
@@ -882,6 +955,7 @@ export function resolveAgentFileDefinition(
       : { references: [...input.references] }),
     ...(input.guardrails == null ? {} : { guardrails: input.guardrails }),
     ...(input.costBudget == null ? {} : { costBudget: costBudgetOf(input.costBudget) }),
+    ...(input.toolBudget == null ? {} : { toolBudget: toolBudgetOf(input.toolBudget) }),
     ...optionalToolApproval(input.toolApproval),
     instructions: input.instructions,
   };
@@ -903,7 +977,7 @@ export function serializeUpdatedAgentFile(
 ): Uint8Array | undefined {
   const before = existing.definition;
   // A key the caller leaves out (`a2a`, `stepLimit`, `retry`, `compaction`, `references`,
-  // `guardrails`, `costBudget`, `toolApproval`) is not a change to it: the file keeps the value it has, and a file
+  // `guardrails`, `costBudget`, `toolBudget`, `toolApproval`) is not a change to it: the file keeps the value it has, and a file
   // with no such key is not given one.
   const keptA2a = input.a2a === undefined;
   const next = resolveAgentFileDefinition(id, {
@@ -915,6 +989,7 @@ export function serializeUpdatedAgentFile(
     ...(input.references === undefined ? { references: before.references } : {}),
     ...(input.guardrails === undefined ? { guardrails: before.guardrails } : {}),
     ...(input.costBudget === undefined ? { costBudget: before.costBudget } : {}),
+    ...(input.toolBudget === undefined ? { toolBudget: before.toolBudget } : {}),
     ...(input.toolApproval === undefined ? { toolApproval: before.toolApproval } : {}),
   });
   // `examples` is the file's own and an input never carries it, so it is not a change.
@@ -939,6 +1014,7 @@ export function serializeUpdatedAgentFile(
         ...(input.references === undefined ? { references: before.references } : {}),
         ...(input.guardrails === undefined ? { guardrails: before.guardrails } : {}),
         ...(input.costBudget === undefined ? { costBudget: before.costBudget } : {}),
+        ...(input.toolBudget === undefined ? { toolBudget: before.toolBudget } : {}),
         ...(input.toolApproval === undefined ? { toolApproval: before.toolApproval } : {}),
       }),
       AGENT_FILE_KNOWN_KEYS,

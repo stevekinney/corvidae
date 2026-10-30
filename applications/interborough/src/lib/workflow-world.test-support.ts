@@ -19,6 +19,7 @@ import {
   urlOf,
 } from './bureau-stub.test-support.ts';
 import { installFetchImplementation } from './live-source/fetch.test-support.ts';
+import type { SignalResult } from './workflow-files.ts';
 
 export type Call = { readonly method: string; readonly params: Record<string, unknown> };
 
@@ -48,6 +49,8 @@ export type FileFixture = {
   description: string | null;
   agent: string | null;
   paused: boolean;
+  inputSchema: Record<string, unknown> | null;
+  outputSchema: Record<string, unknown> | null;
   version: string | null;
   trigger: Record<string, unknown> | null;
   /** What `bureau.workflows.list` counts for the file, or `null` for one the Bureau cannot use. */
@@ -94,7 +97,13 @@ export type RevisionFixture = {
   workflowVersion: string;
   firstRunAt: string;
   lastRunAt: string;
-  document: { name: string; trigger: Record<string, unknown>; steps: Record<string, unknown>[] };
+  document: {
+    name: string;
+    trigger: Record<string, unknown>;
+    steps: Record<string, unknown>[];
+    inputSchema?: Record<string, unknown> | null;
+    outputSchema?: Record<string, unknown> | null;
+  };
 };
 
 export const DOCUMENT_TEXT = JSON.stringify(
@@ -157,6 +166,8 @@ export function readyFile(id: string, overrides: Partial<FileFixture> = {}): Fil
     description: null,
     agent: 'writer',
     paused: false,
+    inputSchema: null,
+    outputSchema: null,
     version: 'version-1',
     trigger: { kind: 'schedule', spec: '0 6 * * *' },
     runs: { active: 0, last24Hours: 0, lastRunAt: null },
@@ -177,6 +188,8 @@ export function invalidFile(id: string, overrides: Partial<FileFixture> = {}): F
     description: null,
     agent: null,
     paused: false,
+    inputSchema: null,
+    outputSchema: null,
     version: null,
     trigger: null,
     runs: null,
@@ -271,7 +284,7 @@ export type World = {
   /** What `weft.workflows.revisions.list` answers, by name: every installed version, run or not. */
   installedRevisions: Record<string, unknown[]>;
   /** What `bureau.workflows.signal` answers. */
-  signalAnswer: { started: string[]; delivered: string[] };
+  signalAnswer: SignalResult;
   /** The directory `/host/paths` reports, or `null` for a host that does not say. */
   workflowDirectory: string | null;
   /** `remote` makes `/host/paths` answer as a host that keeps its state in Postgres and a bucket. */
@@ -298,7 +311,7 @@ export function emptyWorld(overrides: Partial<World> = {}): World {
     runs: [],
     revisions: {},
     installedRevisions: {},
-    signalAnswer: { started: [], delivered: [] },
+    signalAnswer: { started: [], delivered: [], rejected: [] },
     workflowDirectory: STUB_WORKFLOW_DIRECTORY,
     hostMode: 'local',
     failSchedules: false,
@@ -543,7 +556,17 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       if (revisions === undefined) {
         throw workflowFaults.notFound(`workflow ${String(params['id'])}`);
       }
-      return { revisions };
+      // The Bureau always answers both schemas, `null` for a file that declares none.
+      return {
+        revisions: revisions.map((revision) => ({
+          ...revision,
+          document: {
+            ...revision.document,
+            inputSchema: revision.document.inputSchema ?? null,
+            outputSchema: revision.document.outputSchema ?? null,
+          },
+        })),
+      };
     },
     'bureau.workflows.pause': (params) => {
       const file = guarded(params);

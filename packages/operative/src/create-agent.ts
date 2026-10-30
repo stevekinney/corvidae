@@ -675,6 +675,14 @@ export interface StandaloneAgent<
   readonly skills?: AgentSkills | undefined;
 
   /**
+   * The system instructions this agent was created with (`options.instructions`), exactly as
+   * given. Omitted when the agent was created with none or with an empty string. Read-only
+   * description for a host that shows or duplicates the agent (COR-1818): a run is given the same
+   * text as its step 0 system message, and changing this value changes nothing.
+   */
+  readonly instructions?: string | undefined;
+
+  /**
    * The names of the tools this agent was created with, in definition order: the keys of
    * `options.tools` (the canonical names the model calls them by), or the names of the tools in
    * `options.toolbox`, each name once even when the toolbox holds two tools under it. Read-only
@@ -1120,6 +1128,8 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
     // COR-1367 — omitted when not declared, matching `hooks` above.
     ...(declaredGuardrails === undefined ? {} : { guardrails: declaredGuardrails }),
     ...(skills === undefined ? {} : { skills }),
+    // COR-1818 — omitted when undeclared or empty, matching `skills` above.
+    ...(instructions === undefined || instructions === '' ? {} : { instructions }),
     toolNames,
     [OPERATIVE_RESOLVES_GUARDRAILS]: true,
     run(input: AgentInput, context?: AgentRunContext): AgentRun<unknown, boolean> {

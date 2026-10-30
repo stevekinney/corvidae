@@ -181,6 +181,24 @@ describe('createAgent: tool names', () => {
   });
 });
 
+describe('createAgent instructions', () => {
+  it('reports the instructions it was created with, exactly as given', () => {
+    const agent = createAgent({
+      generate: mockGenerate(),
+      instructions: '  You are a research assistant.\n',
+    });
+
+    expect(agent.instructions).toBe('  You are a research assistant.\n');
+  });
+
+  it('omits the member for an agent created with none or with an empty string', () => {
+    expect('instructions' in createAgent({ generate: mockGenerate() })).toBe(false);
+    expect('instructions' in createAgent({ generate: mockGenerate(), instructions: '' })).toBe(
+      false,
+    );
+  });
+});
+
 describe('createAgent examples', () => {
   it('reports the prompts it was created with, in order, as a frozen copy', () => {
     const given = ['Refund order 1234', 'Look up order 1001'];

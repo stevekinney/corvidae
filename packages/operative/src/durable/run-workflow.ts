@@ -113,7 +113,11 @@ export function createRunWorkflow(
   const storage = createStorageActivities(checkpointStore);
   const workflowVersion = options.version;
   return (
-    workflow({ name: 'agentRun' })
+    workflow({
+      name: 'agentRun',
+      description:
+        'Runs one agent turn by turn, checkpointing each step so the run resumes after a restart.',
+    })
       .activities({
         saveCursor: storage.saveCursor,
         saveConversation: storage.saveConversation,

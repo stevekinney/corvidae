@@ -65,6 +65,9 @@ export const OPERATION_MAP = {
   'bureau.events': { exempt: 'a transport subscription over the Bureau’s event feed' },
   'operative.runs.events': { exempt: 'a transport subscription over a run’s event feed' },
   'bureau.agents.catalog': { exempt: 'composed from the catalog, the opt-ins, and the models' },
+  'bureau.skills.list': {
+    exempt: 'the host discovers skills and decides their trust; the handler only reports it',
+  },
 
   'bureau.tasks.list': { member: 'tasks.list' },
   'bureau.tasks.get': { member: 'tasks.get' },
@@ -111,6 +114,8 @@ export const OPERATION_MAP = {
   'bureau.workflows.revisions': { member: 'workflows.revisions' },
   'bureau.workflows.runs.list': { member: 'workflows.listRuns' },
   'bureau.workflows.runs.get': { member: 'workflows.getRun' },
+  'bureau.workflows.start': { member: 'workflows.start' },
+  'bureau.workflows.internal.get': { member: 'workflows.getCode' },
   'bureau.workflows.signal': { member: 'workflows.signal' },
 
   'bureau.memory.list': { member: 'memory.list' },

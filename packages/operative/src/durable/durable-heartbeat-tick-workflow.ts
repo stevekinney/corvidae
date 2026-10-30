@@ -166,7 +166,10 @@ async function notifyFailure(
 
 export function createDurableHeartbeatTickWorkflow() {
   return (
-    workflow({ name: DURABLE_HEARTBEAT_TICK_WORKFLOW_TYPE })
+    workflow({
+      name: DURABLE_HEARTBEAT_TICK_WORKFLOW_TYPE,
+      description: 'Runs one scheduled heartbeat tick for an agent.',
+    })
       .services<DurableHeartbeatTickServices>()
       // eslint-disable-next-line @typescript-eslint/require-await -- Weft workflow bodies must be async generators, and the durable work is delegated through ctx.memo.
       .execute(async function* (

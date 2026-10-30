@@ -400,6 +400,39 @@ describe('results', () => {
     expect(refused.error?.data).toMatchObject({ reason: 'unknown-approval-tool' });
   });
 
+  it('takes the definition a read answers back as an update, with a perChatUsd and a toolBudget added (COR-1915)', async () => {
+    const served = await serve();
+    const hash = await seed(served);
+    const read = await callAs(served.owner, 'bureau.agents.definitions.get', { id: 'researcher' });
+    const definition = read.result?.['definition'] as Record<string, unknown>;
+    expect(definition['toolBudget']).toBeNull();
+
+    const updated = await callAs(served.owner, 'bureau.agents.definitions.update', {
+      id: 'researcher',
+      expectedHash: hash,
+      definition: {
+        ...definition,
+        costBudget: { perRunUsd: 1, perChatUsd: 5 },
+        toolBudget: { maxCalls: 3, maxDurationSeconds: 60 },
+      },
+    });
+
+    expect(updated.error).toBeUndefined();
+    const afterwards = await callAs(served.owner, 'bureau.agents.definitions.get', {
+      id: 'researcher',
+    });
+    expect(afterwards.result?.['definition']).toMatchObject({
+      costBudget: { perRunUsd: 1, perChatUsd: 5 },
+      toolBudget: { maxCalls: 3, maxDurationSeconds: 60 },
+    });
+    const refused = await callAs(served.owner, 'bureau.agents.definitions.update', {
+      id: 'researcher',
+      expectedHash: served.hashOf('researcher'),
+      definition: { ...definition, toolBudget: {} },
+    });
+    expect(refused.error).toBeDefined();
+  });
+
   it('writes nothing for an update that changes nothing, and returns the same hash', async () => {
     const served = await serve();
     const hash = await seed(served);
@@ -907,7 +940,11 @@ describe('bureau.agents.catalog', () => {
     const response = await callAs(served.owner, 'bureau.agents.catalog', {});
     // COR-1710: Bureau's own settings tools are in every catalog, for an agent file to name.
     expect(response.result?.['tools']).toEqual([
-      { name: 'lookup-order', description: 'Looks an order up', shortDescription: null },
+      expect.objectContaining({
+        name: 'lookup-order',
+        description: 'Looks an order up',
+        shortDescription: null,
+      }),
       expect.objectContaining({ name: 'settings-get' }),
       expect.objectContaining({ name: 'settings-update' }),
     ]);

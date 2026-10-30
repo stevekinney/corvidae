@@ -50,6 +50,8 @@ export interface ServeOptions {
   readonly onDiagnostic?: (event: { level: string; message: string }) => void;
   /** The code-defined agents. Defaults to `writer`, which answers "written". */
   readonly agents?: AgentDefinitions;
+  /** Build a durable Bureau with no `workflowSource`, so it has no workflow directory. */
+  readonly withoutDirectory?: boolean;
 }
 
 export async function serveWorkflows(
@@ -63,7 +65,9 @@ export async function serveWorkflows(
     agents: {
       ...(options.agents ?? agents),
     },
-    workflowSource: workflowFileDirectory(directory),
+    ...(options.withoutDirectory === true
+      ? {}
+      : { workflowSource: workflowFileDirectory(directory) }),
     storage: new MemoryStorage(),
     durable: true,
     ...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),

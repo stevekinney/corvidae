@@ -41,6 +41,7 @@ import {
 import { z } from 'zod';
 
 import { auditTrailWorkflowOwnerId } from './audit-trail';
+import { taskOriginTag, type TaskOrigin, type TaskPersonSurface } from './task-origin';
 import { ownerOrLocal } from './owner-of-record';
 import type { DefinitionChange, DefinitionScannerHealth } from './definition-scanner';
 import type { WorkflowSource } from './sources/definition-source';
@@ -58,6 +59,13 @@ import {
   parseWorkflowScheduleId,
   reconcileWorkflowSchedules,
 } from './workflow-schedule';
+import {
+  finishReasonOf,
+  inputSchemaIssues,
+  type WorkflowFinishReason,
+  WorkflowInputInvalidError,
+  type WorkflowSchemaIssue,
+} from './workflow-schema';
 import {
   createWorkflowSnapshotStore,
   type WorkflowRevision,
@@ -106,6 +114,76 @@ export interface WorkflowRunDetail extends WorkflowRunSummary {
   readonly result?: unknown;
   /** Why the instance failed, for a run that did, including a failed agent step. */
   readonly error?: string;
+  /**
+   * `input-invalid` or `output-invalid` when the instance failed because its input or its result
+   * broke the workflow's schema (the issues are in `error`), and `null` otherwise.
+   */
+  readonly finishReason: WorkflowFinishReason | null;
+}
+
+/** What {@link BureauWorkflows.start} started. */
+export interface WorkflowStartResult {
+  /** The identifier of the instance, for `runs.get`. */
+  readonly runId: string;
+  /** The workflow that was started. */
+  readonly workflow: string;
+  /** The revision the instance runs: the file's current one. */
+  readonly workflowVersion: string;
+}
+
+/** Who started a workflow and from where, for {@link BureauWorkflows.start}. */
+export interface WorkflowStartOptions {
+  /** The input the workflow's `inputSchema` describes; absent is `null`. */
+  readonly input?: unknown;
+  /** The principal that started it, recorded as the instance's owner. */
+  readonly owner: string;
+  /** Where the person started it from; `api` unless the caller says. */
+  readonly surface?: TaskPersonSurface | undefined;
+}
+
+/**
+ * A workflow file's source as a code-defined workflow has one. A code workflow has no file, so
+ * its `text` is its description and its registered contract, not code.
+ */
+export interface WorkflowCodeDetail {
+  /** The workflow's type name. */
+  readonly id: string;
+  /** What the workflow is for, in a sentence, or `null` when the code declares none. */
+  readonly description: string | null;
+  /** The workflow's Weft `version`, or `null` when it declares none. */
+  readonly version: string | null;
+  /** Always `code`: this workflow is registered by code, not by a file. */
+  readonly source: { readonly kind: 'code'; readonly text: string };
+}
+
+/**
+ * The source of the workflow `id` the engine has from code, or `undefined` when it has none. It
+ * does not know which names a workflow directory registered: a caller that has a directory
+ * excludes those itself, as `getCode` does, and one without a directory has none to exclude.
+ */
+export function describeCodeWorkflow(
+  engine: Pick<Engine, 'getWorkflowDefinition'>,
+  id: string,
+): WorkflowCodeDetail | undefined {
+  const definition = engine.getWorkflowDefinition(id);
+  if (definition === undefined) return undefined;
+  const description = definition.description ?? null;
+  const contract = {
+    type: definition.type,
+    version: definition.version,
+    tags: [...definition.tags],
+    signals: Object.keys(definition.signals ?? {}),
+    updates: Object.keys(definition.updates ?? {}),
+    queries: Object.keys(definition.queries ?? {}),
+    uses: Object.keys(definition.uses ?? {}),
+  };
+  const text = `${description === null ? '' : `${description}\n\n`}${JSON.stringify(contract, null, 2)}\n`;
+  return {
+    id,
+    description,
+    version: definition.version === '' ? null : definition.version,
+    source: { kind: 'code', text },
+  };
 }
 
 /** A revision of a workflow that has run, with whether it is compatible with the workflow's current revision. */
@@ -152,6 +230,11 @@ export interface WorkflowSignalResult {
   readonly started: string[];
   /** The identifiers of the running instances whose `await-signal` wait it satisfied. */
   readonly delivered: string[];
+  /**
+   * The workflows whose signal trigger matched but whose `inputSchema` the payload does not
+   * satisfy, with every issue. No instance was started for them; the others started as usual.
+   */
+  readonly rejected: { readonly id: string; readonly issues: readonly WorkflowSchemaIssue[] }[];
 }
 
 /** The audit entry types a write to a workflow file appends. */
@@ -213,6 +296,20 @@ export interface BureauWorkflows {
    * could not be read (the failure is reported through the Bureau's diagnostics).
    */
   readonly runCounts: (id: string) => Promise<WorkflowRunCounts | null>;
+  /**
+   * Start an instance of the ready, unpaused workflow `id` (COR-1812): the one start that names a
+   * workflow. `input` is checked against the file's `inputSchema` first, and an input that fails
+   * throws {@link WorkflowInputInvalidError} with every issue and starts nothing. The instance is
+   * started with the trigger `{ kind: 'manual', input, origin }`, where `origin` is the `person`
+   * origin (COR-1867) naming `owner`, and with the tag that mirrors it. It throws `NOT_FOUND`
+   * for a workflow that is missing, invalid, or paused, as `signal` does.
+   */
+  readonly start: (id: string, options: WorkflowStartOptions) => Promise<WorkflowStartResult>;
+  /**
+   * The source of the code-defined workflow `id`, or `undefined` when the engine has no such
+   * workflow or `id` is a workflow Bureau registered from a file (read those with `get`).
+   */
+  readonly getCode: (id: string) => WorkflowCodeDetail | undefined;
   /** Rescan the directory; resolves once the engine and the schedules match it. */
   readonly refresh: () => Promise<void>;
   /** Called after every rescan that added, changed, or removed a workflow. Returns its unsubscribe. */
@@ -784,6 +881,29 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
   }
 
   /**
+   * Refuse, before any effect, a start whose trigger the engine could not take: one it cannot
+   * encode, or one over its payload limit. `what` names the caller's part of it in the message.
+   */
+  function assertSendable(what: string, trigger: unknown): void {
+    const limit = options.payloadMaximumBytes ?? null;
+    let size: number;
+    try {
+      size = encode(trigger).byteLength;
+    } catch (error) {
+      throw options.createError(
+        `The ${what} cannot be sent: ${error instanceof Error ? error.message : String(error)}`,
+        'BAD_REQUEST',
+      );
+    }
+    if (limit !== null && size > limit) {
+      throw options.createError(
+        `The ${what} is ${String(size)} bytes encoded, over the engine's ${String(limit)} byte limit.`,
+        'BAD_REQUEST',
+      );
+    }
+  }
+
+  /**
    * Refuse, before any effect, what the engine would refuse: an empty name, a `signalId` that is
    * empty or over Weft's 128 bytes (counted in UTF-8 bytes, not characters), a payload that is not
    * a JSON value, and a payload that cannot be encoded or is over the engine's payload limit, which
@@ -1035,6 +1155,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         trigger: state.input,
         ...(state.result === undefined ? {} : { result: state.result }),
         ...(error === undefined ? {} : { error }),
+        finishReason: state.status === 'failed' ? finishReasonOf(error) : null,
       };
     },
 
@@ -1060,6 +1181,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       }
       const trigger = { kind: 'signal', name, payload: payload ?? null };
       const startedIds: string[] = [];
+      const rejected: WorkflowSignalResult['rejected'] = [];
       for (const listing of catalog.list()) {
         const file = catalog.find(listing.id);
         if (file?.document.trigger.kind !== 'signal' || file.document.trigger['name'] !== name) {
@@ -1070,10 +1192,51 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         } catch {
           continue;
         }
+        // A payload the workflow's schema refuses starts nothing for that workflow, and says why.
+        const issues =
+          file.inputSchema === null ? [] : inputSchemaIssues(file.inputSchema, trigger.payload);
+        if (issues.length > 0) {
+          rejected.push({ id: file.id, issues });
+          continue;
+        }
         const handle = await engine.start(file.id, trigger);
         startedIds.push(handle.id);
       }
-      return { started: startedIds, delivered };
+      return { started: startedIds, delivered, rejected };
+    },
+
+    async start(id, startOptions) {
+      // The caller owns `startOptions` and its input: snapshot them before the first await.
+      const { owner: starter, surface } = startOptions;
+      const requested = startOptions.input ?? null;
+      if (!z.json().safeParse(requested).success) {
+        throw options.createError('The input must be a JSON value.', 'BAD_REQUEST');
+      }
+      const input: unknown = structuredClone(requested);
+      workflows.assertStartable(id);
+      if (applyPending) queueApply();
+      await settled();
+      if (applyFailure !== undefined) throw new WorkflowApplyError(applyFailure);
+      // The apply may have changed the file: judge the input against the revision that will run.
+      const file = catalog.find(id);
+      if (file === undefined || file.paused) {
+        throw options.createError(`Workflow "${id}" does not exist`, 'NOT_FOUND');
+      }
+      const issues = file.inputSchema === null ? [] : inputSchemaIssues(file.inputSchema, input);
+      if (issues.length > 0) throw new WorkflowInputInvalidError(id, issues);
+      const origin: TaskOrigin = {
+        kind: 'person',
+        principal: starter,
+        surface: surface ?? 'api',
+      };
+      const trigger = { kind: 'manual', input, origin };
+      assertSendable('input', trigger);
+      const handle = await engine.start(id, trigger, { tags: [taskOriginTag(origin)] });
+      return { runId: handle.id, workflow: id, workflowVersion: file.version };
+    },
+
+    getCode(id) {
+      return registeredTypes.has(id) ? undefined : describeCodeWorkflow(engine, id);
     },
 
     onChange: (listener) => catalog.onChange(listener),

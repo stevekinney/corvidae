@@ -55,12 +55,35 @@ export type DocumentTriggerValidator = (
   trigger: Readonly<Record<string, JSONValue>>,
 ) => string | undefined;
 
+/** Where in a run a schema is checked: the instance's start input, or the value it finishes with. */
+export type DocumentSchemaPoint = 'input' | 'output';
+
+/**
+ * Checks `value` against a document's `inputSchema` or `outputSchema` and returns every way it
+ * fails, or `[]` when it satisfies the schema. At the `'input'` point `value` is the instance's
+ * start input, the trigger the engine started it with, and the host decides which part of it the
+ * schema describes. At the `'output'` point `value` is the result of the document's last step.
+ * Weft never reads a schema itself: what a schema means and which rules it is held to belong to
+ * the host.
+ */
+export type DocumentSchemaChecker = (
+  point: DocumentSchemaPoint,
+  schema: Readonly<Record<string, JSONValue>>,
+  value: unknown,
+) => readonly WorkflowDocumentIssue[];
+
 /** What a host registers so documents can name its activities and trigger kinds. */
 export interface DocumentWorkflowHost {
   /** Activity handlers keyed by the name a document's `activity` step uses. */
   readonly activities: Readonly<Record<string, DocumentActivityHandler>>;
   /** Trigger validators keyed by the `kind` a document's `trigger` uses. */
   readonly triggerKinds: Readonly<Record<string, DocumentTriggerValidator>>;
+  /**
+   * Checks a value against a document's `inputSchema` or `outputSchema`. A document that declares
+   * either needs a host that has this, and is refused by {@link validateWorkflowDocument}
+   * otherwise, because a schema nothing checks would promise a guarantee nobody keeps.
+   */
+  readonly checkSchema?: DocumentSchemaChecker | undefined;
 }
 
 /** One step of a {@link WorkflowDocument}. */
@@ -77,9 +100,28 @@ export interface WorkflowDocument {
   readonly trigger: Readonly<{ kind: string } & Record<string, JSONValue>>;
   /** Run in order; at least one. */
   readonly steps: readonly WorkflowDocumentStep[];
+  /**
+   * A JSON Schema describing the input an instance starts with, checked by the host's
+   * {@link DocumentWorkflowHost.checkSchema} when the instance begins. Optional: a document
+   * without it is the document it always was, with the version it always had.
+   */
+  readonly inputSchema?: Readonly<Record<string, JSONValue>>;
+  /**
+   * A JSON Schema describing the value the instance finishes with, checked by the host's
+   * {@link DocumentWorkflowHost.checkSchema} when the last step is done. An instance whose result
+   * does not satisfy it fails with {@link WorkflowDocumentSchemaError}. Optional like
+   * `inputSchema`.
+   */
+  readonly outputSchema?: Readonly<Record<string, JSONValue>>;
 }
 
 const jsonValueSchema = z.custom<JSONValue>(isJSONValue, 'must be a JSON value');
+
+const jsonObjectSchema = z.custom<Record<string, JSONValue>>(
+  (value) =>
+    typeof value === 'object' && value !== null && !Array.isArray(value) && isJSONValue(value),
+  'must be a JSON object',
+);
 
 const nameSchema = z.string().superRefine((name, context) => {
   try {
@@ -126,6 +168,8 @@ export const workflowDocumentSchema = z.strictObject({
     }
   }),
   steps: z.array(stepSchema).min(1),
+  inputSchema: jsonObjectSchema.optional(),
+  outputSchema: jsonObjectSchema.optional(),
 });
 
 /** One reason a document was rejected, located by a path such as `steps[2].handler`. */
@@ -141,6 +185,28 @@ export class WorkflowDocumentValidationError extends Error {
       .join('; ');
     super(`Invalid workflow document: ${summary}`);
     this.name = 'WorkflowDocumentValidationError';
+    this.issues = issues;
+  }
+}
+
+/**
+ * A run ended because its input or output did not satisfy the document's schema. The message
+ * begins with `code`, then `: `, then each issue as `path: message` joined by `; `, so a host that
+ * reads only a failed run's `error` text can tell the two apart.
+ */
+export class WorkflowDocumentSchemaError extends Error {
+  /** Which schema the value broke. */
+  readonly code: 'input-invalid' | 'output-invalid';
+  /** Every way the value failed the schema. */
+  readonly issues: readonly WorkflowDocumentIssue[];
+
+  constructor(code: 'input-invalid' | 'output-invalid', issues: readonly WorkflowDocumentIssue[]) {
+    const summary = issues
+      .map((issue) => (issue.path === '' ? issue.message : `${issue.path}: ${issue.message}`))
+      .join('; ');
+    super(`${code}: ${summary}`);
+    this.name = 'WorkflowDocumentSchemaError';
+    this.code = code;
     this.issues = issues;
   }
 }
@@ -167,11 +233,25 @@ function activityNameIssue(name: string): string | undefined {
   }
 }
 
+/** A document that declares a schema needs a host that checks it. */
+function schemaHostIssues(
+  document: WorkflowDocument,
+  host: DocumentWorkflowHost,
+): WorkflowDocumentIssue[] {
+  if (host.checkSchema !== undefined) return [];
+  return (['inputSchema', 'outputSchema'] as const)
+    .filter((key) => document[key] !== undefined)
+    .map((key) => ({
+      path: key,
+      message: `this host does not check schemas, so a document cannot declare "${key}"`,
+    }));
+}
+
 function hostIssues(
   document: WorkflowDocument,
   host: DocumentWorkflowHost,
 ): WorkflowDocumentIssue[] {
-  const issues: WorkflowDocumentIssue[] = [];
+  const issues: WorkflowDocumentIssue[] = schemaHostIssues(document, host);
   const validator = Object.hasOwn(host.triggerKinds, document.trigger.kind)
     ? host.triggerKinds[document.trigger.kind]
     : undefined;

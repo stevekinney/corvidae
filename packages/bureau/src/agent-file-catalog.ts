@@ -54,6 +54,7 @@
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import {
+  type AgentSkillDescriptor,
   type BackendDescriptor,
   type ContextManagementOptions,
   createAgent,
@@ -66,7 +67,14 @@ import {
   MemoryStorage,
   textValueStore,
 } from '@lostgradient/storage';
-import { readToolShortDescription, type Tool, type ToolSecretResolver } from 'armorer';
+import {
+  type ApprovalStatus,
+  type CapabilityTier,
+  readToolShortDescription,
+  resolveCapabilityTier,
+  type Tool,
+  type ToolSecretResolver,
+} from 'armorer';
 
 import type { AnyRunnableAgent } from './agent-catalog';
 import {
@@ -91,9 +99,9 @@ import {
 } from './agent-reference-documents';
 import { createFileAgentCompactor } from './file-agent-compaction';
 import { createFileAgentGenerate } from './file-agent-generate';
-import { costBudgetOptions, usdPricingOfRow } from './file-agent-cost-budget';
+import { costBudgetOptions, toolboxBudgetOf, usdPricingOfRow } from './file-agent-cost-budget';
 import { guardrailsOfPreset } from './guardrail-presets';
-import { createToolApprovalHooks } from './tool-approval';
+import { createToolApprovalHooks, defaultToolApproval } from './tool-approval';
 import { type AgentRevisionRecord, createAgentRevisionStore } from './agent-revision-store';
 import {
   type AgentFileSaveOptions,
@@ -112,8 +120,45 @@ import { ownerOrLocal } from './owner-of-record';
 import { createDefinitionScanner, type DefinitionScannerHealth } from './definition-scanner';
 import type { AgentSource, DefinitionEntry } from './sources/definition-source';
 
+/**
+ * What a code-defined agent states about itself, read-only (COR-1818), so an editor can show it and
+ * offer to duplicate it into an agent file. It is read from the agent object, never from a file:
+ * an agent that is not a `createAgent` result states less, and each statement it does not make is
+ * `null` or empty here.
+ */
+export interface AgentCodeDefinition {
+  /** The agent's display name. */
+  readonly name: string;
+  /** The agent's description, or `null` when it declares none. */
+  readonly description: string | null;
+  /**
+   * The model the agent's next step would use with no override, written `<provider>/<model>`, or
+   * `null` when the agent's generate attaches no single model (a scripted or routed agent).
+   */
+  readonly model: string | null;
+  /** The models a session of the agent may be switched to, written `<provider>/<model>`. */
+  readonly models: readonly string[];
+  /** The names the model calls the agent's tools by (`StandaloneAgent.toolNames`). */
+  readonly tools: readonly string[];
+  /**
+   * The executable skills the agent can activate, by name: the skills available in the catalog
+   * revision it was composed with (`createAgentSkills`). Not `skillDescriptors`, which only
+   * describe the agent.
+   */
+  readonly skills: readonly string[];
+  /** The descriptive Agent Card skills the agent declares. */
+  readonly skillDescriptors: readonly AgentSkillDescriptor[];
+  /** The system instructions the agent was created with, or `null` when it has none. */
+  readonly instructions: string | null;
+}
+
 /** One agent as an editor needs it: the listing, the file's exact text, and what it parses to. */
 export interface AgentFileDetail extends AgentListing {
+  /**
+   * For a code-defined agent, what it states about itself; absent for a file agent, whose
+   * {@link AgentFileDetail.definition} is the parsed file.
+   */
+  readonly codeDefinition?: AgentCodeDefinition | undefined;
   /** The file's exact text, or `null` when its bytes could not be read as UTF-8. */
   readonly text: string | null;
   /** What the frontmatter and body parse to, or `null` when the file does not parse. */
@@ -130,6 +175,59 @@ export interface AgentToolDescription {
    * declares none, in which case a screen derives a line from `description`.
    */
   readonly shortDescription: string | null;
+  /**
+   * The tool's input as a JSON Schema (draft 2020-12, the `input` side), or `null` when the schema
+   * cannot be written as one. Another process never receives a function, so a screen that shows
+   * what the tool takes reads this.
+   */
+  readonly inputSchema: Readonly<Record<string, unknown>> | null;
+  /**
+   * What the tool may technically do, from the tool's own `metadata` (`readOnly`, `mutates`,
+   * `dangerous`) or its `readonly`/`mutating`/`dangerous` tags, or `null` when it declares none:
+   * Armorer never reads an unclassified tool as read-only.
+   */
+  readonly tier: CapabilityTier | null;
+  /**
+   * What happens by default when an agent calls the tool: the rule a file agent's tool follows
+   * when its `toolApproval` says nothing (COR-1913, `TOOL_APPROVAL_DEFAULT_MODE`, `on-changes`)
+   * applied to {@link AgentToolDescription.tier}, so `allow` for a read-only tool and `ask` for a
+   * tool that changes something, is dangerous, or declares nothing. A file's own `toolApproval`
+   * entry for the tool replaces it for that agent: this is the default, not any one agent's setting.
+   */
+  readonly defaultApproval: Exclude<ApprovalStatus, 'deny'>;
+  /**
+   * Where the tool comes from: `bureau` for a tool Bureau adds itself (the settings and workflow
+   * tools), `host` for a tool the host passed in `agentSource.tools`.
+   */
+  readonly source: 'host' | 'bureau';
+  /**
+   * The identifiers of the agents that use the tool now, sorted: a ready agent file that lists it
+   * in `tools`, and a code-defined agent that names it. Read from the definitions as they stand,
+   * so it changes when a file does.
+   */
+  readonly users: readonly string[];
+}
+
+/**
+ * A tool's input schema, capability tier, and default approval. The schema is the one Armorer
+ * serializes the tool with; a tool whose schema cannot be written as JSON Schema reports `null`
+ * rather than failing the whole catalog.
+ */
+export function describeToolCapability(
+  tool: Pick<Tool, 'metadata' | 'tags' | 'toJSON'>,
+): Pick<AgentToolDescription, 'inputSchema' | 'tier' | 'defaultApproval'> {
+  const tier = resolveCapabilityTier(tool.metadata, tool.tags);
+  let inputSchema: Readonly<Record<string, unknown>> | null;
+  try {
+    inputSchema = { ...tool.toJSON().input };
+  } catch {
+    inputSchema = null;
+  }
+  return {
+    inputSchema,
+    tier: tier ?? null,
+    defaultApproval: defaultToolApproval(tier),
+  };
 }
 
 /** The reserved name of the implicit Bureau-wide agent, which no longer exists. No file may take its name. */
@@ -205,6 +303,11 @@ export interface AgentFileCatalogOptions {
   readonly reservedIdentifiers: ReadonlySet<string>;
   /** The deployment's tool catalog, by the name an agent file uses. */
   readonly tools: Readonly<Record<string, Tool>>;
+  /**
+   * The names in {@link AgentFileCatalogOptions.tools} that Bureau added itself rather than the
+   * host (`AgentToolDescription.source`). Omitted, every tool is the host's.
+   */
+  readonly bureauToolNames?: ReadonlySet<string> | undefined;
   readonly models: Pick<Models, 'catalog' | 'summarizer'>;
   /** Turns a catalog model into the function a run calls. The host holds the credentials. */
   readonly resolveGenerate: (descriptor: BackendDescriptor) => GenerateFunction;
@@ -397,7 +500,7 @@ function inputOf(definition: AgentFileDefinition): AgentFileDefinitionInput {
   // A rest, so a key the definition gains is carried into the input and not dropped here.
   const { examples: _examples, ...input } = definition;
   // An update that omits `stepLimit`, `retry`, `compaction`, `references`, `guardrails`,
-  // `costBudget` or `toolApproval` keeps the file's value, and a version that has none must remove
+  // `costBudget`, `toolBudget` or `toolApproval` keeps the file's value, and a version that has none must remove
   // it: `null` says so.
   return {
     ...input,
@@ -407,6 +510,7 @@ function inputOf(definition: AgentFileDefinition): AgentFileDefinitionInput {
     references: definition.references ?? null,
     guardrails: definition.guardrails ?? null,
     costBudget: definition.costBudget ?? null,
+    toolBudget: definition.toolBudget ?? null,
     toolApproval: definition.toolApproval ?? null,
   };
 }
@@ -651,6 +755,11 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
                   },
                 }),
           }),
+          // COR-1915: the toolbox is built for this run, so its counters are the run's own. It
+          // counts every call the run makes through it, the tools Bureau adds included.
+          ...(definition.toolBudget === undefined
+            ? {}
+            : { budget: toolboxBudgetOf(definition.toolBudget) }),
           ...(options.approvalSecret === undefined
             ? {}
             : { approvalSecret: options.approvalSecret }),
@@ -1118,11 +1227,21 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     },
 
     tools() {
+      const users = new Map<string, string[]>();
+      for (const entry of directoryWatcher.entries().values()) {
+        if (entry.agent === undefined || entry.definition === undefined) continue;
+        for (const name of entry.definition.tools) {
+          users.set(name, [...(users.get(name) ?? []), entry.id]);
+        }
+      }
       return Object.entries(options.tools)
-        .map(([name, tool]) => ({
+        .map(([name, tool]): AgentToolDescription => ({
           name,
           description: tool.description,
           shortDescription: readToolShortDescription(tool.metadata) ?? null,
+          ...describeToolCapability(tool),
+          source: options.bureauToolNames?.has(name) === true ? 'bureau' : 'host',
+          users: (users.get(name) ?? []).toSorted(),
         }))
         .toSorted((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
     },

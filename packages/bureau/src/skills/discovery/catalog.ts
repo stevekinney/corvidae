@@ -51,6 +51,13 @@ export interface SkillCatalogRecord {
   readonly trustReason: string;
   /** SHA-256 over the artifact's ordered path/content digests. */
   readonly artifactDigest: string;
+  /**
+   * The tools the skill's `allowed-tools` asks to keep, in the order it lists them; empty when it
+   * states none. A request, never a grant (see `SkillActivationRecord.requestedTools`). Read from
+   * the same manifest the artifact digest covers, so it is not a separate input to the revision
+   * digest: a changed list changes the artifact digest.
+   */
+  readonly allowedTools: readonly string[];
   readonly compatibility: SkillCompatibility;
   /**
    * Whether this entry may be activated.

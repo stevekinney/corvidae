@@ -58,6 +58,8 @@ export const SESSION_AGENT_OPTION_DISPOSITIONS = {
   durableOperationKeys: 'agent',
   toolChoice: 'agent',
   costEstimation: 'agent',
+  // COR-1915: a fresh session run overrides it with the chat's spend so far (`chatCostBudgetOf`,
+  // `create-bureau.ts`); a recovered or reattached run takes the agent's as it is.
   costBudget: 'agent',
   selection: 'agent',
   contextEpoch: 'agent',

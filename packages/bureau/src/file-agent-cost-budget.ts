@@ -21,7 +21,7 @@ import {
   type RunOptions,
 } from '@lostgradient/operative';
 
-import type { AgentCostBudget } from './agent-file';
+import type { AgentCostBudget, AgentToolBudget } from './agent-file';
 
 /**
  * The price of a catalog row as Operative prices a request, or `undefined` when the row has no
@@ -88,10 +88,29 @@ export function costBudgetOptions(
   }
   const runBudget: RunCostBudget = {
     perRunUsd: budget.perRunUsd,
+    // The chat's earlier spend is not known to an agent, only to the Bureau that starts a chat's
+    // run: it passes it as `priorChatSpendUsd` (`chat-spend-ledger.ts`).
+    ...(budget.perChatUsd === undefined ? {} : { perChatUsd: budget.perChatUsd }),
     ...(budget.warnAt === undefined ? {} : { warnAt: [...budget.warnAt] }),
   };
   return {
     costBudget: runBudget,
     costEstimation: { model: descriptor.model, pricing: { customPricing } },
+  };
+}
+
+/**
+ * A file's `toolBudget` as Armorer's `ToolboxOptions.budget` states it (COR-1915): seconds become
+ * milliseconds, and a limit the file leaves out is left out.
+ */
+export function toolboxBudgetOf(budget: AgentToolBudget): {
+  maxCalls?: number;
+  maxDurationMs?: number;
+} {
+  return {
+    ...(budget.maxCalls === undefined ? {} : { maxCalls: budget.maxCalls }),
+    ...(budget.maxDurationSeconds === undefined
+      ? {}
+      : { maxDurationMs: Math.ceil(budget.maxDurationSeconds * 1000) }),
   };
 }
