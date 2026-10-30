@@ -15,6 +15,7 @@ import {
   type BuiltInNotificationsOptions,
   startBuiltInNotifications,
 } from './built-in-notifications.ts';
+import { createNotificationOutbox } from './notification-outbox.ts';
 import { createNotificationStore } from './notification-store.ts';
 import type { BureauNotification, BureauNotifications } from './notification-types.ts';
 
@@ -45,6 +46,11 @@ export interface Notifications {
   stop(): void;
   /** Resolves when every write the built-in notifications started has settled. */
   drain(): Promise<void>;
+  /**
+   * Writes the notifications the outbox still owes (COR-1945): the failure of a run that settled
+   * before a crash or a storage error kept its notification from being written.
+   */
+  repair(): Promise<void>;
 }
 
 /** Creates the notifications and starts listening for the events that write the built-in kinds. */
@@ -71,6 +77,7 @@ export function createNotifications(options: CreateNotificationsOptions): Notifi
     store: { create, dismissByDedupeKey: (dedupeKey) => store.dismissByDedupeKey(dedupeKey) },
     tasks: options.tasks,
     diagnose: options.diagnose,
+    outbox: createNotificationOutbox(options.kv),
   });
   return {
     notifications: {
@@ -82,5 +89,6 @@ export function createNotifications(options: CreateNotificationsOptions): Notifi
     prune: (olderThanMilliseconds) => store.prune(options.clock.now() - olderThanMilliseconds),
     stop: () => builtIn.stop(),
     drain: () => builtIn.drain(),
+    repair: () => builtIn.repair(),
   };
 }

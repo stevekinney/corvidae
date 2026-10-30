@@ -22,6 +22,13 @@
  * process. An event that is dispatched again after a restart, or seen by a second process, finds
  * the first notification and writes nothing.
  *
+ * A failed run's notification is owed from the moment its settlement commits (COR-1945): the task
+ * registry writes an outbox entry (`notification-outbox.ts`) in the same conditional batch as the
+ * settlement, and a write clears it once the notification exists. A process that dies in between, or
+ * a storage error on the write, leaves the entry, and `repair()` at the next boot writes the
+ * notification from the task record; the dedupe key makes a repeat, or a repair beside the live
+ * write, a no-op, so a failed run has one notification, never none and never two.
+ *
  * Writes are applied one at a time in the order the events arrived, so a review that closes right
  * after it opened dismisses a notification that exists. A write that fails is diagnosed and does
  * not stop the next; `drain()` resolves when every write started so far has settled, which
@@ -40,6 +47,7 @@ import { boundedReviewId } from '../review-decision-record.ts';
 import { serializeUnknownError } from '../serialization.ts';
 import type { TaskView } from '../task-registry.ts';
 import type { DiagnosticSink } from '../types.ts';
+import type { NotificationOutbox } from './notification-outbox.ts';
 import type { NotificationStore } from './notification-store.ts';
 import {
   type BuiltInNotificationKind,
@@ -64,6 +72,11 @@ export interface BuiltInNotificationsOptions {
   /** Reads a task's record by id. */
   readonly tasks: { get(taskId: string): Promise<TaskView | undefined> };
   readonly diagnose: DiagnosticSink;
+  /**
+   * The failed runs whose notification is still owed (COR-1945). Absent, nothing is owed or
+   * repaired.
+   */
+  readonly outbox?: NotificationOutbox | undefined;
 }
 
 /** The running built-in notifications. */
@@ -72,6 +85,12 @@ export interface BuiltInNotifications {
   stop(): void;
   /** Resolves when every write started so far, and any they start in turn, has settled. */
   drain(): Promise<void>;
+  /**
+   * Writes the notification of each failed run the outbox still owes (COR-1945), after a restart
+   * or a failed write. Resolves when they have settled. A run whose notification already exists
+   * writes nothing, so repairing twice, or beside the live write, produces one notification.
+   */
+  repair(): Promise<void>;
 }
 
 /** The dedupe key of a run's outcome: one per run, whichever kind it wrote. */
@@ -170,9 +189,11 @@ export function startBuiltInNotifications(
 
   async function onRunSettled(runId: string): Promise<void> {
     const task = await options.tasks.get(runId);
-    if (task === undefined) return;
-    const input = notificationForSettledTask(task);
+    const input = task === undefined ? undefined : notificationForSettledTask(task);
     if (input !== undefined) await options.store.create(input);
+    // Cleared only once the notification exists (written now, or found under the run's dedupe
+    // key), or the run calls for none; a write that threw above leaves the debt for the repair.
+    await options.outbox?.clear(runId);
   }
 
   async function onReviewRequested(event: ReviewRequestedEvent): Promise<void> {
@@ -220,14 +241,23 @@ export function startBuiltInNotifications(
     }
   });
 
+  const drain = async (): Promise<void> => {
+    let seen: Promise<void>;
+    do {
+      seen = tail;
+      await seen;
+    } while (seen !== tail);
+  };
+
   return {
     stop: () => subscription.unsubscribe(),
-    async drain() {
-      let seen: Promise<void>;
-      do {
-        seen = tail;
-        await seen;
-      } while (seen !== tail);
+    drain,
+    async repair() {
+      if (options.outbox === undefined) return;
+      for (const runId of await options.outbox.pending()) {
+        enqueue(`run "${runId}"`, () => onRunSettled(runId));
+      }
+      await drain();
     },
   };
 }

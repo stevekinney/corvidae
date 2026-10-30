@@ -10052,6 +10052,23 @@ async function constructBureau<const D extends AgentDefinitions>(
       if (repaired !== undefined) {
         taskResyncBootPass = Promise.all([taskResyncBootPass, repaired]).then(() => undefined);
       }
+      // COR-1945: a failed run whose process died after its settlement committed and before its
+      // notification was written, or whose notification write failed, still has its outbox entry.
+      // Held in the same boot pass, so the boot takes no extra turn and `shutdown()` waits for it.
+      const notificationsRepaired = notificationsComposition.repair().then(
+        () => undefined,
+        (error: unknown) => {
+          diagnose({
+            level: 'error',
+            scope: 'recovery',
+            message: `[bureau] Could not repair the owed notifications at boot: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        },
+      );
+      taskResyncBootPass = Promise.all([taskResyncBootPass, notificationsRepaired]).then(
+        () => undefined,
+      );
       return report;
     } finally {
       recoveryPassActive = false;
