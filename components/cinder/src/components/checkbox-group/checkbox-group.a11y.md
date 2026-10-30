@@ -29,7 +29,7 @@ The `disabled` prop sets the native `disabled` attribute on `<fieldset>`. The br
 
 ## Required
 
-The `required` prop sets `aria-required="true"` and `data-cinder-required` on the fieldset, and renders the required asterisk in the legend. It does **not** set `required` on any child `<input>` and does not enforce native constraint validation — per-control `required` must be set on the individual `<Checkbox>`.
+The `required` prop sets `aria-required="true"` and `data-cinder-required` on the fieldset, and renders the required dot in the legend. It does **not** set `required` on any child `<input>` and does not enforce native constraint validation — per-control `required` must be set on the individual `<Checkbox>`.
 
 It does **not** set the `required` attribute on any child `<input>` and does **not** enforce constraint validation. To enforce that at least one checkbox is checked, either:
 

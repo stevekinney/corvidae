@@ -25,12 +25,15 @@
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import {
+  buildWorkflowDocumentManifest,
+  checkWorkflowCompatibility,
   type DocumentWorkflowHost,
   encode,
   type Engine,
   type RegisteredWorkflowDocument,
   validateWorkflowDocument,
   WorkflowDocumentValidationError,
+  type WorkflowCompatibilityVerdict,
   type WorkflowDocument,
   type WorkflowState,
   type WorkflowStatus,
@@ -103,6 +106,18 @@ export interface WorkflowRunDetail extends WorkflowRunSummary {
   readonly result?: unknown;
   /** Why the instance failed, for a run that did, including a failed agent step. */
   readonly error?: string;
+}
+
+/** A revision of a workflow that has run, with whether it is compatible with the workflow's current revision. */
+export interface WorkflowRevisionReport extends WorkflowRevision {
+  /**
+   * Weft's compatibility verdict for this revision against the file's current revision
+   * (`checkWorkflowCompatibility` over the manifests of the two documents): `{ compatible: true }`,
+   * or `{ compatible: false, reasons }` naming every applicable reason. The current revision is
+   * compatible with itself. `null` when there is nothing to compare: the workflow has no file now
+   * (it was deleted, or its file is invalid), or a manifest could not be built from a document.
+   */
+  readonly compatibility: WorkflowCompatibilityVerdict | null;
 }
 
 /** How busy one workflow is: what the workflow list shows beside each row. */
@@ -183,8 +198,11 @@ export interface BureauWorkflows {
     id: string,
     options: { readonly expectedHash: string } & WorkflowWriteContext,
   ) => Promise<WorkflowFileWriteResult>;
-  /** The revisions of `id` that have run, newest first; `undefined` when there is no such workflow. */
-  readonly revisions: (id: string) => Promise<readonly WorkflowRevision[] | undefined>;
+  /**
+   * The revisions of `id` that have run, newest first, each with its compatibility verdict against
+   * the workflow's current revision; `undefined` when there is no such workflow.
+   */
+  readonly revisions: (id: string) => Promise<readonly WorkflowRevisionReport[] | undefined>;
   readonly listRuns: (filter: WorkflowRunFilter) => Promise<{
     readonly runs: readonly WorkflowRunSummary[];
     readonly nextOffset: number | null;
@@ -845,6 +863,44 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     return delivered;
   }
 
+  /**
+   * Each revision with Weft's verdict against the file's current revision. A manifest is built
+   * from a document by the pipeline registration runs, so it never calls a handler. A document
+   * whose manifest cannot be built is reported through `diagnose` and its verdict is `null`; so is
+   * every verdict when the workflow has no valid file to compare against.
+   */
+  async function withCompatibility(
+    id: string,
+    revisions: readonly WorkflowRevision[],
+  ): Promise<readonly WorkflowRevisionReport[]> {
+    const current = catalog.find(id);
+    const manifestOf = async (document: WorkflowDocument) => {
+      try {
+        return await buildWorkflowDocumentManifest(document, host);
+      } catch (error) {
+        options.diagnose(`Could not build the manifest of a revision of workflow "${id}".`, error);
+        return undefined;
+      }
+    };
+    const currentManifest = current === undefined ? undefined : await manifestOf(current.document);
+    return Promise.all(
+      revisions.map(async (revision): Promise<WorkflowRevisionReport> => {
+        if (current === undefined || currentManifest === undefined) {
+          return { ...revision, compatibility: null };
+        }
+        if (revision.workflowVersion === current.version) {
+          return { ...revision, compatibility: { compatible: true } };
+        }
+        const manifest = await manifestOf(revision.document);
+        return {
+          ...revision,
+          compatibility:
+            manifest === undefined ? null : checkWorkflowCompatibility(currentManifest, manifest),
+        };
+      }),
+    );
+  }
+
   const workflows: BureauWorkflows = {
     owner,
     list: () => catalog.list(),
@@ -881,7 +937,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       // start event can arrive after the call that made the instance, or never (a crash).
       await syncRunHistory(id);
       const revisions = await snapshots.revisions(id);
-      if (revisions.length > 0) return revisions;
+      if (revisions.length > 0) return withCompatibility(id, revisions);
       if (catalog.list().some((entry) => entry.id === id)) return [];
       const stored = await snapshots.snapshotsOf(id);
       return stored.length > 0 ? [] : undefined;

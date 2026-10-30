@@ -3,10 +3,19 @@ import type { Decision, DecisionModel, DecisionRequest } from '@lostgradient/ope
 /** The `decisions` option of `createBureau`. Every field is a code default a host may leave out. */
 export interface DecisionsOptions {
   /**
-   * A model that answers the kinds in its `kinds` set (Interborough passes `typesafeJev` from `@lostgradient/operative-typesafe`). A
-   * request whose kind it does not serve goes to the language-model fallback.
+   * The decision models a host offers, by name (Interborough registers `typesafe`, built with
+   * `typesafeJev` from `@lostgradient/operative-typesafe`). Which one answers is the
+   * `decisions.model` setting, read on every decision. A request whose kind the chosen model does
+   * not serve goes to the language-model fallback. `catalog` names the fallback alone and is
+   * reserved: it cannot be registered here.
    */
-  readonly model?: DecisionModel;
+  readonly models?: Readonly<Record<string, DecisionModel>>;
+  /**
+   * The name in {@link DecisionsOptions.models} that answers by default, and the default of the
+   * `decisions.model` setting. Omit it, or name `catalog`, to send every kind to the
+   * language-model fallback until the setting names a model.
+   */
+  readonly model?: string;
   /**
    * The catalog row the language-model fallback uses, as `<provider>/<model>`. Defaults to
    * `anthropic/claude-haiku-5-5`. When that row is not in the catalog, is `unavailable`, or has no
@@ -54,8 +63,9 @@ export interface BureauDecideOptions {
  */
 export interface BureauDecisions {
   /**
-   * Answers `request`. A request whose kind {@link DecisionsOptions.model} serves goes to it;
-   * every other kind goes to the language-model fallback chosen by {@link DecisionsOptions.fallbackModel}.
+   * Answers `request`. A request whose kind the model named by the `decisions.model` setting
+   * ({@link DecisionsOptions.model} by default) serves goes to it, and is looked up again on every
+   * call, so the next decision uses a model changed in the settings. Every other kind goes to the language-model fallback chosen by {@link DecisionsOptions.fallbackModel}.
    *
    * Rejects `BureauError` `BAD_REQUEST` for a malformed request, `NOT_CONFIGURED` when no model
    * can answer (no eligible fallback row, or `models.generate` absent or throwing), and with

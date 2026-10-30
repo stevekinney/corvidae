@@ -177,6 +177,7 @@ import {
   AUDIT_AGENT_OWNER_PREFIX,
   AUDIT_SCHEDULE_OWNER_PREFIX,
   AUDIT_SESSION_OWNER_PREFIX,
+  AUDIT_WORKER_DEPLOYMENT_OWNER_PREFIX,
   AUDIT_WORKFLOW_OWNER_PREFIX,
   type AuditTrail,
   auditTrailSessionOwnerId,
@@ -258,10 +259,15 @@ import type { BureauGoals } from './goal-types';
 import { createGoalValidatorCatalog } from './goal-validator-catalog';
 import { composeBureauGoals } from './goals-composition';
 import { leaseEvidenceFromLostHealth } from './liveness-projection';
-import { createDecisions, validateDecisionsOptions } from './decisions/create-decisions';
+import {
+  createDecisions,
+  decisionModelNames,
+  validateDecisionsOptions,
+} from './decisions/create-decisions';
 import { createLateDecisions } from './decisions/late-decisions';
 import { createSettings, type SettingsComposition } from './settings/create-settings';
 import type { SettingsValues } from './settings/settings-schema';
+import { summarizerFailures } from './settings/settings-validation';
 import {
   bootSettings,
   enginePatchOf,
@@ -336,6 +342,13 @@ import {
   type TaskRegistry,
   type TaskToolGrant,
 } from './task-registry';
+import {
+  parseStartTaskOrigin,
+  type StartTaskOrigin,
+  type TaskOrigin,
+  taskOriginOfStart,
+  taskOriginTag,
+} from './task-origin';
 import { createTaskResync, type TaskResync } from './task-resync';
 import {
   ANONYMOUS_LOCAL_OWNER,
@@ -366,6 +379,7 @@ import {
   payloadMaximumBytesOf,
   type WorkflowRuntime,
 } from './workflow-runtime';
+import { createBureauWorkerDeployments } from './worker-deployments';
 import { validateDefinitionSource } from './sources/validate-definition-source';
 import { collidingWorkflowToolName, createWorkflowTools } from './workflow-tools';
 import { createSettingsTools } from './settings/settings-tools';
@@ -416,6 +430,11 @@ import {
   digestReviewDelivery,
   type ReviewDecisionRequest,
 } from './review-decision-record';
+import {
+  formatReviewAnswerIssues,
+  type ReviewAnswerIssue,
+  validateReviewAnswer,
+} from './review-answer';
 import {
   createRunHumanWaits,
   humanWaitDecisionPayload,
@@ -1053,6 +1072,26 @@ class ReviewRoundChangedError extends BureauError {
 }
 
 /**
+ * `reviews.resolve` was given an answer that does not satisfy the schema of the human wait it
+ * answers (COR-1804), or none where the schema needs one. Nothing was claimed, delivered or
+ * audited, so the review stays pending and the caller may answer again. It is a `BAD_REQUEST`
+ * `BureauError`; the catalog maps it to `InvalidParams` with the issues under `data.issues`.
+ */
+class ReviewAnswerInvalidError extends BureauError {
+  /** Every way the answer fails its schema; paths are relative to the answer. */
+  readonly issues: readonly ReviewAnswerIssue[];
+
+  constructor(issues: readonly ReviewAnswerIssue[]) {
+    super(
+      `The answer does not satisfy the question’s schema: ${formatReviewAnswerIssues(issues)}`,
+      'BAD_REQUEST',
+    );
+    this.name = 'ReviewAnswerInvalidError';
+    this.issues = issues;
+  }
+}
+
+/**
  * A command was refused because Bureau had closed admission (COR-1559). It is a `CONFLICT`
  * `BureauError`, so every caller that handled the throw still does, and it carries when Bureau
  * refused it, on the Bureau's own clock, for a caller that answers with data instead of a throw.
@@ -1077,12 +1116,15 @@ class BureauShuttingDownError extends BureauError {
 class TaskRespondError extends BureauError {
   readonly field: string | undefined;
   readonly reason: string | undefined;
+  /** Every field of the answer that failed the wait's schema, when that is what was refused (COR-1804). */
+  readonly issues: TaskRespondRefusal['issues'];
 
   constructor(refusal: TaskRespondRefusal) {
     super(refusal.message, refusal.code);
     this.name = 'TaskRespondError';
     this.field = refusal.field;
     this.reason = refusal.reason;
+    this.issues = refusal.issues;
   }
 }
 
@@ -1090,6 +1132,7 @@ export {
   ApprovalOutcomeNotWrittenError,
   BureauError,
   BureauShuttingDownError,
+  ReviewAnswerInvalidError,
   ReviewRoundChangedError,
   TaskRespondError,
 };
@@ -1277,6 +1320,8 @@ function validateMessageRequest(
  */
 type SessionTaskFields = {
   readonly taskInput?: TaskInput | undefined;
+  /** Where the task came from, as the caller declared it. See {@link StartTaskOptions.origin}. */
+  readonly origin?: StartTaskOrigin | undefined;
   readonly inputParts?: Exclude<SessionInputPayload, string> | undefined;
   readonly onActiveRun?: ((activeRun: ActiveRun) => void) | undefined;
   /**
@@ -1459,6 +1504,7 @@ function snapshotStartOptions(options: StartTaskOptions): StartTaskOptions {
     principal,
     commandId,
     requestContext,
+    origin,
     signal,
     traceContext,
     withTraceContext,
@@ -1469,11 +1515,18 @@ function snapshotStartOptions(options: StartTaskOptions): StartTaskOptions {
   if (withTraceContext !== undefined && typeof withTraceContext !== 'function') {
     toBadRequest('"options.withTraceContext" must be a function');
   }
+  let declaredOrigin: StartTaskOrigin | undefined;
+  try {
+    declaredOrigin = parseStartTaskOrigin(origin);
+  } catch (error) {
+    return toBadRequest(error instanceof Error ? error.message : '"options.origin" is not valid');
+  }
   return {
     ...(contextId === undefined ? {} : { contextId }),
     ...(principal === undefined ? {} : { principal }),
     ...(commandId === undefined ? {} : { commandId }),
     ...(requestContext === undefined ? {} : { requestContext }),
+    ...(declaredOrigin === undefined ? {} : { origin: declaredOrigin }),
     ...(signal === undefined ? {} : { signal }),
     ...(traceContext === undefined ? {} : { traceContext }),
     ...(withTraceContext === undefined ? {} : { withTraceContext }),
@@ -2512,6 +2565,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         );
       },
       agents: agentsSnapshot,
+      settings: currentSettings,
       modelPolicy: () => modelPolicyOf(currentSettings()),
     });
     // COR-1709: decisions read the model catalog and write to the audit trail, which is built
@@ -2540,6 +2594,9 @@ async function constructBureau<const D extends AgentDefinitions>(
       persisted: booted.persisted,
       defaults: settingsDefaults,
       locked: settingsLocked,
+      decisionModels: decisionModelNames(options.decisions),
+      // A summarizer must name a row of the catalog as it is at the write (COR-1899).
+      checkPatch: (values) => summarizerFailures(values, models.catalog().descriptors),
       boot: booted.stored,
       nowISO: runtimeServices.clock.nowISO,
       diagnose: diagnoseSettings,
@@ -7224,6 +7281,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       ...(startOptions.withTraceContext === undefined
         ? {}
         : { withTraceContext: startOptions.withTraceContext }),
+      ...(startOptions.origin === undefined ? {} : { origin: startOptions.origin }),
       ...(startOptions.signal === undefined ? {} : { signal: startOptions.signal }),
       taskInput: input,
       onActiveRun(activeRun) {
@@ -7360,6 +7418,13 @@ async function constructBureau<const D extends AgentDefinitions>(
       throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
     }
     const agentName = resolveRunAgentName(sessionId, session, request.agentName);
+    // COR-1867 — where the task came from, as its record and its run's `origin:<kind>` tag keep
+    // it. A chat's identifiers are this start's own, never the caller's.
+    const taskOrigin: TaskOrigin = taskOriginOfStart(request.origin, {
+      sessionId,
+      agentName,
+      owner,
+    });
     // COR-323 — every run belongs to a catalog agent. The implicit `bureau` agent, which ran on
     // Bureau-wide `generate`/`toolbox` options, no longer exists, so a session stored under it
     // answers as any unknown agent does.
@@ -7786,6 +7851,7 @@ async function constructBureau<const D extends AgentDefinitions>(
           incarnation: runSessionIncarnations.get(runId) ?? savedAsRunning?.incarnation ?? '',
           agentName,
           owner,
+          origin: taskOrigin,
           // The text the run began with, whether it came as `message` or as an appended user row.
           message: request.message ?? (requestText === '' ? undefined : requestText),
           tools: toolGrant,
@@ -7884,9 +7950,12 @@ async function constructBureau<const D extends AgentDefinitions>(
                 sessionId,
                 // Lets durable steering in any process find this run as live
                 // for this session incarnation (`liveSessionRunIdsEverywhere`).
-                ...(steeringSession !== undefined
-                  ? { tags: [steeringSessionRunTag(sessionId, steeringSession.incarnation)] }
-                  : {}),
+                tags: [
+                  taskOriginTag(taskOrigin),
+                  ...(steeringSession === undefined
+                    ? []
+                    : [steeringSessionRunTag(sessionId, steeringSession.incarnation)]),
+                ],
                 ...(humanInputEmitter ? { emitter: humanInputEmitter } : {}),
                 ...(durableServicesOnServices ? { onServices: durableServicesOnServices } : {}),
               }
@@ -9365,6 +9434,8 @@ async function constructBureau<const D extends AgentDefinitions>(
           incarnation: '',
           agentName: loaded.record.agentName,
           owner: ownerOrLocal(loaded.record.principal),
+          // The run's original start is gone with its record: nothing names a surface for it.
+          origin: { kind: 'api' },
           message: originatingMessageText(loaded.record.input),
           createdAt: new Date(summary.createdAt).toISOString(),
         });
@@ -10230,6 +10301,10 @@ async function constructBureau<const D extends AgentDefinitions>(
         }
         if (runId.startsWith(AUDIT_AGENT_OWNER_PREFIX)) {
           // COR-1526 — an agent file has no owner field: it belongs to the deployment's owner.
+          return ownerOrLocal(undefined);
+        }
+        if (runId.startsWith(AUDIT_WORKER_DEPLOYMENT_OWNER_PREFIX)) {
+          // COR-1813 — a worker deployment has no owner field: it belongs to the deployment's owner.
           return ownerOrLocal(undefined);
         }
         if (runId.startsWith(AUDIT_WORKFLOW_OWNER_PREFIX)) {
@@ -16606,11 +16681,43 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
+   * COR-1804 — returns the input to resolve, or refuses, before any resolver claims the review, an
+   * approval of a human wait whose `payload` does not satisfy the schema the wait was parked with (the model's per-call
+   * `answerSchema`, else the author's per-signal one). Every answer reaches a human wait through
+   * {@link resolveAnyReview}, so this is the one place the answer is judged, whichever path
+   * (`bureau.reviews.resolve`, `tasks.respond`, an AG-UI resume) carried it. A wait with no schema
+   * takes any answer, and a deny or reject carries none. The refusal changes nothing: the review
+   * stays pending. A review this process cannot find is left to the resolver that reports it.
+   */
+  async function humanWaitAnswerFittingItsSchema(
+    input: ResolveReviewInput,
+  ): Promise<ResolveReviewInput> {
+    if (input.decision !== 'approve') return input;
+    // The caller owns `payload`, and this reads the review across awaits: the answer that is
+    // checked is a copy taken now, and it is the copy that is delivered when a schema applies.
+    let snapshot: unknown = input.payload;
+    try {
+      snapshot = structuredClone(input.payload);
+    } catch {
+      // Not cloneable, so not JSON: a schema refuses it below, and a wait without one takes it as given.
+    }
+    const review =
+      listPendingReviews().find((candidate) => candidate.id === input.id) ??
+      runHumanWaits.find(input.id) ??
+      (await derivedHumanWait(input.id));
+    if (review?.kind !== 'human-wait' || review.inputSchema === undefined) return input;
+    const issues = validateReviewAnswer(review.inputSchema, snapshot);
+    if (issues.length > 0) throw new ReviewAnswerInvalidError(issues);
+    return snapshot === undefined ? input : { ...input, payload: snapshot };
+  }
+
+  /**
    * `bureau.resolveReview`: a catalog park this process lists resolves through the engine by run
    * id (COR-1577), a park another process holds is derived first (COR-1579), and every other
    * review resolves through the session path.
    */
-  async function resolveAnyReview(input: ResolveReviewInput): Promise<ResolveReviewResult> {
+  async function resolveAnyReview(requested: ResolveReviewInput): Promise<ResolveReviewResult> {
+    const input = await humanWaitAnswerFittingItsSchema(requested);
     if (runHumanWaits.has(input.id)) {
       assertExpectedReviewRound(input, { id: input.id, kind: 'human-wait' });
       return runHumanWaits.resolve(input);
@@ -18969,6 +19076,21 @@ async function constructBureau<const D extends AgentDefinitions>(
     },
     agents: agentCatalog,
     workflows: workflowRuntime?.workflows,
+    deployments:
+      options.workerDeployments === undefined
+        ? undefined
+        : createBureauWorkerDeployments({
+            catalog: options.workerDeployments,
+            now: () => runtimeServices.clock.now(),
+            audit: async (entry) => auditTrailInstance?.record(entry),
+            diagnose: (message, cause) =>
+              diagnose({
+                level: 'error',
+                scope: 'worker-deployments',
+                message: `[bureau] ${message}`,
+                cause,
+              }),
+          }),
     models,
     decisions: lateDecisions.decisions,
     // COR-1710: composed with the runtime, before this object exists.
@@ -19237,6 +19359,12 @@ async function constructBureau<const D extends AgentDefinitions>(
         owner: fire.owner,
         actor: SCHEDULER_ACTOR,
         kind: 'schedule-fire',
+        // COR-1867: the fire is its run id. Without a schedule id (a branch the composition's own
+        // preconditions rule out) the origin is not recorded, and reads `null`, not a guess.
+        origin:
+          fire.scheduleId === undefined
+            ? undefined
+            : { kind: 'schedule', scheduleId: fire.scheduleId, fireId: fire.runId },
         message: fire.message,
         // COR-1710: the fire's grant, recorded once with it; a rebuilt fire reads it back.
         tools: toolGrantNow(),

@@ -86,6 +86,17 @@ describe('a schedule fire is a task of the schedule’s owner', () => {
     });
     const awaited6 = await opened.bureau.internals.taskRegistry.record(task.id);
     expect(awaited6?.actor).toBe('system:scheduler');
+    // COR-1867: the fire says which schedule it is a fire of, and is its own run id.
+    expect(awaited6?.origin).toEqual({ kind: 'schedule', scheduleId, fireId: task.id });
+    const byOrigin = await rpc(
+      opened.handler,
+      'bureau.tasks.list',
+      { origin: 'schedule' },
+      'alice-key',
+    );
+    expect(tasksOf(byOrigin).map((entry) => entry.id)).toContain(task.id);
+    const notChat = await rpc(opened.handler, 'bureau.tasks.list', { origin: 'chat' }, 'alice-key');
+    expect(tasksOf(notChat)).toEqual([]);
     expect(await opened.bureau.ownerOf({ kind: 'run', id: task.id })).toBe(OWNER.alice);
 
     // Read.

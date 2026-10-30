@@ -5,6 +5,7 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgent } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from '../agent-catalog';
@@ -98,7 +99,7 @@ describe('bureau.settings on a Bureau', () => {
   it('refuses a locked key with `locked` and reports it locked', async () => {
     const bureau = await open({
       storage: new MemoryStorage(),
-      settings: { locked: ['tools.humanInput'] },
+      settings: { locked: { 'tools.humanInput': 'deployment' } },
     });
     try {
       const result = await bureau.settings.update(
@@ -117,6 +118,44 @@ describe('bureau.settings on a Bureau', () => {
       expect(snapshot.revision).toBe(0);
     } finally {
       await bureau.dispose();
+    }
+  });
+
+  it('reports a reason for every locked key and none for an unlocked one', async () => {
+    const bureau = await open({
+      storage: new MemoryStorage(),
+      settings: {
+        locked: {
+          'tools.humanInput': 'deployment',
+          'durableOwnership.ownership': 'shared-storage',
+        },
+      },
+    });
+    try {
+      const { keys } = await bureau.settings.get();
+      const locked = Object.entries(keys).filter(([, state]) => state.locked);
+      expect(locked.map(([key, state]) => [key, state.lockReason])).toEqual([
+        ['tools.humanInput', 'deployment'],
+        ['durableOwnership.ownership', 'shared-storage'],
+      ]);
+      expect(Object.values(keys).filter((state) => !state.locked && 'lockReason' in state)).toEqual(
+        [],
+      );
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('refuses a locked list, an unknown key, and an unknown reason at construction', async () => {
+    for (const locked of [
+      ['tools.humanInput'],
+      { 'tools.teleport': 'deployment' },
+      { durable: 'because' },
+    ]) {
+      const failure = await rejectionOf(
+        open({ storage: new MemoryStorage(), settings: { locked } as never }),
+      );
+      expect(String(failure)).toContain('options.settings.locked');
     }
   });
 

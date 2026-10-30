@@ -45,6 +45,7 @@
     required,
     maxVisibleOptions = 200,
     customValueAllowed = false as AllowCustom,
+    size = 'md',
     class: className,
     'aria-describedby': consumerDescribedBy,
   }: ComboboxProps<T, AllowCustom> = $props();
@@ -504,6 +505,7 @@
       type="text"
       role="combobox"
       class="cinder-combobox__input"
+      data-cinder-size={size}
       autocomplete="off"
       autocorrect="off"
       spellcheck="false"

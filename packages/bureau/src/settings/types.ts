@@ -4,13 +4,20 @@
  * @module settings-types
  */
 
-import type { SettingApply, SettingKey, SettingsValues } from './settings-schema.ts';
+import type {
+  SettingApply,
+  SettingKey,
+  SettingLockReason,
+  SettingsValues,
+} from './settings-schema.ts';
 
 /** How one key stands: how it applies, whether the deployment locked it, and whether a stored value waits for a restart. */
 export interface SettingKeyState {
   readonly apply: SettingApply;
   /** Named in {@link SettingsOptions.locked}: the store may not override the code option. */
   readonly locked: boolean;
+  /** Why the key is locked; present exactly when {@link SettingKeyState.locked} is `true`. */
+  readonly lockReason?: SettingLockReason;
   /** A `restart` key whose stored value differs from the value this process booted with. */
   readonly pendingRestart: boolean;
 }
@@ -81,8 +88,13 @@ export interface BureauSettings {
   subscribe(listener: (change: SettingsChange) => void): () => void;
 }
 
-/** {@link BureauOptions.settings}: which keys the store may not override. */
+/** {@link BureauOptions.settings}: which keys the store may not override, and why. */
 export interface SettingsOptions {
-  /** Keys whose code option always applies: `update` refuses them with `locked`, and a stored value is ignored. */
-  readonly locked?: readonly SettingKey[];
+  /**
+   * Keys whose code option always applies, each with the reason it is held: `update` refuses them
+   * with `locked`, a stored value is ignored, and `get` reports the reason as
+   * {@link SettingKeyState.lockReason}. `deployment` is the reason for a key the deployment's own
+   * code holds; `shared-storage` is for a key that processes sharing one store must agree on.
+   */
+  readonly locked?: Readonly<Partial<Record<SettingKey, SettingLockReason>>>;
 }

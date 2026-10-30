@@ -14,6 +14,7 @@ import { defineOperation, type OperationFault, type Principal } from '@lostgradi
 import { z } from 'zod';
 
 import { TaskListingTokenError } from '../../task-list-snapshots.ts';
+import { TASK_ORIGIN_KINDS } from '../../task-origin.ts';
 import type { TaskRegistry } from '../../task-registry.ts';
 import type { BureauScope } from '../bureau-scopes.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
@@ -64,6 +65,12 @@ const tasksListInput = z.object({
     .describe('Only the tasks in this context’s current incarnation.'),
   agentName: z.string().min(1).optional().describe('Only the tasks run by this agent.'),
   status: taskStateSchema.optional().describe('Only the tasks in this state.'),
+  origin: z
+    .enum(TASK_ORIGIN_KINDS)
+    .optional()
+    .describe(
+      'Only the tasks recorded with an origin of this kind. A task recorded before origins were kept has none and matches no kind.',
+    ),
   statusTimestampAfter: z.iso
     .datetime({ offset: true })
     .optional()
@@ -106,7 +113,7 @@ export const tasksListOperation = defineOperation<
   mcpExposable: true,
   summary: 'List tasks',
   description:
-    'Lists the caller’s own tasks, most recently changed first (by status timestamp, then task id ascending); a caller holding `bureau.tasks:read` lists every owner’s. `contextId` returns only that context’s tasks in its current incarnation, and `statusTimestampAfter` (ISO 8601) only tasks whose status timestamp is strictly later. Pages with `limit` (1 to 100, default 50, free to change between pages) and `pageToken`; `nextPageToken` is `null` when no entries remain. The first page of a listing with a next page records the listing, and every later page returns the tasks exactly as they matched then, so a task that changes mid-enumeration keeps its place and appears once; a task removed since is skipped, so a page can hold fewer than `limit` tasks. A token is opaque, valid for 15 minutes from the first page, and only with the principal, reach, wire projection (never the one of A2A `ListTasks`), and filters (`contextId`, `agentName`, `status`, `statusTimestampAfter`) it was issued for, and only while the context is the incarnation it was issued for; any other token is `InvalidParams`. A principal holds at most 16 live listings, and starting another ends its oldest.',
+    'Lists the caller’s own tasks, most recently changed first (by status timestamp, then task id ascending); a caller holding `bureau.tasks:read` lists every owner’s. `contextId` returns only that context’s tasks in its current incarnation, `origin` only the tasks recorded with an origin of that kind (`chat`, `person`, `schedule`, or `api`), and `statusTimestampAfter` (ISO 8601) only tasks whose status timestamp is strictly later. Pages with `limit` (1 to 100, default 50, free to change between pages) and `pageToken`; `nextPageToken` is `null` when no entries remain. The first page of a listing with a next page records the listing, and every later page returns the tasks exactly as they matched then, so a task that changes mid-enumeration keeps its place and appears once; a task removed since is skipped, so a page can hold fewer than `limit` tasks. A token is opaque, valid for 15 minutes from the first page, and only with the principal, reach, wire projection (never the one of A2A `ListTasks`), and filters (`contextId`, `agentName`, `status`, `origin`, `statusTimestampAfter`) it was issued for, and only while the context is the incarnation it was issued for; any other token is `InvalidParams`. A principal holds at most 16 live listings, and starting another ends its oldest.',
   destructive: false,
   tags: ['Tasks'],
   inputSchema: tasksListInput,
@@ -128,6 +135,7 @@ export const tasksListOperation = defineOperation<
         ...(input.contextId === undefined ? {} : { contextId: input.contextId }),
         ...(input.agentName === undefined ? {} : { agentName: input.agentName }),
         ...(input.status === undefined ? {} : { status: input.status }),
+        ...(input.origin === undefined ? {} : { origin: input.origin }),
         ...(input.statusTimestampAfter === undefined
           ? {}
           : { statusTimestampAfter: input.statusTimestampAfter }),

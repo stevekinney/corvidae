@@ -130,6 +130,7 @@ export const SETTING_GROUPS = [
   { id: 'tools', label: 'Tools' },
   { id: 'modelPolicy', label: 'Model policy' },
   { id: 'decisions', label: 'Decisions' },
+  { id: 'context', label: 'Context' },
   { id: 'retention', label: 'Retention' },
   { id: 'sessionInput', label: 'Session input' },
   { id: 'children', label: 'Children' },
@@ -167,11 +168,6 @@ export function groupsOf(keys: readonly string[]): readonly string[] {
   const known = SETTING_GROUPS.map((group) => group.id).filter((id) => present.has(id));
   const other = [...present].filter((id) => !SETTING_GROUPS.some((group) => group.id === id));
   return [...known, ...other];
-}
-
-/** A property name as words: `olderThan` is "older than". */
-export function fieldWords(name: string): string {
-  return name.replaceAll(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase();
 }
 
 /** Whether a property of an object-valued setting is a duration, which every setting takes in milliseconds. */

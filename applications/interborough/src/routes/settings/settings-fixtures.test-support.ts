@@ -61,6 +61,8 @@ export type SettingsServed = {
   revision: number;
   persisted: boolean;
   locked: Set<string>;
+  /** Why a locked key is locked, by key. A locked key with no entry is held for `deployment`. */
+  lockReasons: Record<string, 'deployment' | 'shared-storage'>;
 };
 
 export function servedSettings(overrides: Partial<SettingsServed> = {}): SettingsServed {
@@ -69,6 +71,7 @@ export function servedSettings(overrides: Partial<SettingsServed> = {}): Setting
     revision: 3,
     persisted: true,
     locked: new Set(),
+    lockReasons: {},
     ...overrides,
   };
 }
@@ -77,7 +80,14 @@ function keyStates(served: SettingsServed): Record<string, SettingKeyState> {
   return Object.fromEntries(
     SETTING_KEYS.map((key): [string, SettingKeyState] => [
       key,
-      { apply: SETTING_APPLY[key], locked: served.locked.has(key), pendingRestart: false },
+      {
+        apply: SETTING_APPLY[key],
+        locked: served.locked.has(key),
+        ...(served.locked.has(key)
+          ? { lockReason: served.lockReasons[key] ?? ('deployment' as const) }
+          : {}),
+        pendingRestart: false,
+      },
     ]),
   );
 }

@@ -25,19 +25,18 @@ When `iconOnly={true}`, `children` is also wrapped in an `aria-hidden` span and 
 
 ## Touch targets
 
-Button sizes intentionally follow a compact visual ladder:
+Button sizes read the shared `--cinder-control-height-*` scale, so a Button is the same height as an Input, Select, Combobox, MultiSelect, SearchField, or SegmentedControl of the same size:
 
 - `xs`: 24px
-- `sm`: 32px, the shared `--cinder-control-height-sm`, so it lines up with toolbar SegmentedControl and Chip
+- `sm`: 28px, the toolbar size, so it lines up with toolbar SegmentedControl and Chip
 - `md` (default): 32px
-- `lg`: 36px
-- `xl`: 40px
+- `lg`: 40px
 
 These are visual component sizes, not guaranteed touch-target sizes. Use spacing around the button, a larger containing row, or an app-level hit target pattern when a touch-first surface needs to satisfy [WCAG 2.5.5 AAA target size](https://www.w3.org/WAI/WCAG22/Understanding/target-size-enhanced.html).
 
 ### Follow-up
 
-A [Playwright](https://playwright.dev/) check for rendered `md`/`lg`/`xl` heights is tracked as a future task once the playground has browser coverage.
+A [Playwright](https://playwright.dev/) check for rendered `md`/`lg` heights is tracked as a future task once the playground has browser coverage.
 
 ## Loading state
 

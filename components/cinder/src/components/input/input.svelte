@@ -38,6 +38,7 @@
     required,
     type = 'text',
     variant = 'default',
+    size = 'md',
     inputAttachment,
     groupClassName,
     class: className,
@@ -178,6 +179,7 @@
     class={classNames('cinder-input', className)}
     data-cinder-full-width
     data-cinder-variant={variant}
+    data-cinder-size={size}
     data-cinder-native-date={rendersNativeDateIcon ? '' : undefined}
     aria-invalid={resolvedAriaInvalid}
     aria-describedby={describedBy}

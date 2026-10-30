@@ -38,6 +38,12 @@ const schema = {
       type: 'string',
       description: 'Validation error message; sets `aria-invalid="true"` and `aria-describedby`.',
     },
+    size: {
+      enum: ['sm', 'md', 'lg'],
+      description:
+        'Size step shared with the other fields. A textarea is taller than one line, so `size`\nsets only its block padding: `sm` 6px, `md` 8px, `lg` 10px, matching the inset of the\nfields beside it rather than their height.',
+      default: 'md',
+    },
     class: {
       type: 'string',
       description: 'Extra class names merged with `.cinder-textarea`.',

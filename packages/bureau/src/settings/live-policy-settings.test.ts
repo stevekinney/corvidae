@@ -23,6 +23,7 @@ import { createBureau } from '../create-bureau.ts';
 import { runTask } from '../test/index.ts';
 import type { Bureau, BureauOptions } from '../types.ts';
 import { MemoryStorage } from '@lostgradient/storage';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 
 const ORIGIN = '2026-10-13T00:00:00.000Z';
 
@@ -136,6 +137,147 @@ describe('decisions.fallbackModel', () => {
   });
 });
 
+describe('decisions.model', () => {
+  const scripted = (name: string): DecisionModel => ({
+    name: `${name}/model`,
+    kinds: new Set(['boolean']),
+    decide: async () => ({ value: name === 'first', provider: name, model: 'model' }),
+  });
+
+  it('the next decide uses the model the setting now names', async () => {
+    const generate = createMockGenerate([{ content: '{"answer":true}', toolCalls: [] }]);
+    const bureau = await open({
+      models: { catalog: [row('anthropic', 'fallback')], generate: () => generate },
+      decisions: {
+        models: { first: scripted('first'), second: scripted('second') },
+        model: 'first',
+        fallbackModel: 'anthropic/fallback',
+      },
+    });
+    const ask = () => bureau.decisions.decide({ kind: 'boolean', question: 'Is it?' });
+    expect(await ask()).toMatchObject({ provider: 'first' });
+
+    await change(bureau, { 'decisions.model': 'second' });
+    expect(await ask()).toMatchObject({ provider: 'second' });
+
+    await change(bureau, { 'decisions.model': 'catalog' });
+    expect(await ask()).toMatchObject({ value: true });
+    expect(generate.callCount).toBe(1);
+  });
+
+  it('refuses a name no decision model is registered under, and names the choices', async () => {
+    const bureau = await open({
+      decisions: { models: { first: scripted('first') }, model: 'first' },
+    });
+    const { revision } = await bureau.settings.get();
+    const result = await bureau.settings.update(
+      { 'decisions.model': 'nothing' },
+      { expectedRevision: revision },
+    );
+    expect(result).toMatchObject({
+      outcome: 'rejected',
+      reason: 'invalid-value',
+      keys: ['decisions.model'],
+    });
+    expect(result.outcome === 'rejected' && result.message).toContain('catalog, first');
+  });
+
+  it('ignores a stored name this process cannot serve and keeps the code default', async () => {
+    const storage = new MemoryStorage();
+    const diagnostics: string[] = [];
+    const first = await open({
+      storage,
+      decisions: {
+        models: { first: scripted('first'), second: scripted('second') },
+        model: 'first',
+      },
+    });
+    await change(first, { 'decisions.model': 'second' });
+    await first.dispose();
+
+    const second = await open({
+      storage,
+      decisions: { models: { first: scripted('first') }, model: 'first' },
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
+    });
+    expect(await second.decisions.decide({ kind: 'boolean', question: 'Is it?' })).toMatchObject({
+      provider: 'first',
+    });
+    expect(diagnostics.join('\n')).toContain('Dropped the stored setting "decisions.model"');
+  });
+});
+
+describe('decisions options', () => {
+  const refused = (decisions: unknown) =>
+    open({ decisions } as Partial<BureauOptions<AgentDefinitions>>);
+
+  it('refuses a model that is not registered, and a registration named catalog', async () => {
+    const model: DecisionModel = {
+      name: 'm/m',
+      kinds: new Set(['boolean']),
+      decide: async () => ({ value: true, provider: 'm', model: 'm' }),
+    };
+    expect(String(await rejectionOf(refused({ model: 'nothing' })))).toContain('decisions.model');
+    expect(String(await rejectionOf(refused({ models: { catalog: model } })))).toContain(
+      'reserved',
+    );
+    expect(String(await rejectionOf(refused({ models: { odd: {} } })))).toContain(
+      'decisions.models.odd',
+    );
+    expect(String(await rejectionOf(refused({ model })))).toContain('decisions.model');
+  });
+});
+
+describe('context.summarizerModel', () => {
+  const catalog = [
+    row('anthropic', 'first'),
+    { ...row('openai', 'off'), availability: 'unavailable' as const },
+  ];
+
+  it('is unset by default, and the summarizer is the row the setting names', async () => {
+    const bureau = await open({ models: { catalog } });
+    const { values } = await bureau.settings.get();
+    expect(values['context.summarizerModel']).toBeUndefined();
+    expect(bureau.models.summarizer()).toBeUndefined();
+
+    await change(bureau, { 'context.summarizerModel': 'anthropic/first' });
+    expect(bureau.models.summarizer()?.model).toBe('first');
+  });
+
+  it('refuses a row the catalog lacks or has turned off', async () => {
+    const bureau = await open({ models: { catalog } });
+    for (const name of ['anthropic/missing', 'openai/off']) {
+      const { revision } = await bureau.settings.get();
+      expect(
+        await bureau.settings.update(
+          { 'context.summarizerModel': name },
+          { expectedRevision: revision },
+        ),
+      ).toMatchObject({
+        outcome: 'rejected',
+        reason: 'invalid-value',
+        keys: ['context.summarizerModel'],
+      });
+    }
+    const { revision } = await bureau.settings.get();
+    expect(
+      await bureau.settings.update(
+        { 'context.summarizerModel': 'nonsense' },
+        { expectedRevision: revision },
+      ),
+    ).toMatchObject({ outcome: 'rejected', reason: 'invalid-value' });
+  });
+
+  it('reports no summarizer once a replace removes the row, and again when it returns', async () => {
+    const bureau = await open({ models: { catalog } });
+    await change(bureau, { 'context.summarizerModel': 'anthropic/first' });
+    bureau.models.replace([row('anthropic', 'other')]);
+    expect(bureau.models.summarizer()).toBeUndefined();
+    bureau.models.replace(catalog);
+    expect(bureau.models.summarizer()?.model).toBe('first');
+  });
+});
+
 describe('decisions.maximumPerTask', () => {
   it('the next task is capped at the new count', async () => {
     const asked: string[] = [];
@@ -172,7 +314,7 @@ describe('decisions.maximumPerTask', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      decisions: { model, maximumPerTask: 3 },
+      decisions: { models: { host: model }, model: 'host', maximumPerTask: 3 },
     });
 
     await runTask(bureau, 'worker', 'first');

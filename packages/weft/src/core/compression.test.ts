@@ -58,7 +58,7 @@ describe('resolveCompressionOptions', () => {
       },
     } as unknown as typeof globalThis.process;
 
-    await withRuntimeOverrides({ bun: undefined, process: processStub }, async () => {
+    await withRuntimeOverrides({ process: processStub }, async () => {
       const compressor = createBunCompressor('brotli');
       expect(() => compressor.compress(new Uint8Array([1, 2, 3]))).toThrow(
         'Brotli compression requires Bun or Node 22.5+ with process.getBuiltinModule support. Use gzip compression for browser/edge runtimes.',

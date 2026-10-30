@@ -557,7 +557,12 @@ export const SETTINGS_COPY = {
   apply: { live: 'Applies live', restart: 'Needs a restart' },
   pendingRestart: 'Restart pending',
   locked: 'Locked',
-  lockedNote: 'The deployment sets this one, and it cannot be changed here.',
+  /** Why a locked key cannot be changed, by the reason the Bureau reports. */
+  lockedNote: {
+    deployment: 'The deployment sets this one, and it cannot be changed here.',
+    'shared-storage':
+      'Every host on this shared storage has to run the same value, so it is set by the deployment and cannot be changed here.',
+  },
   notPersisted:
     'This Bureau does not keep its settings. They go back to the code defaults when the host stops.',
   saved: {

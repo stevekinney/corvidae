@@ -32,6 +32,7 @@ import {
   type OperationHandlerMount,
   type Outbox,
   type AuthenticatedPrincipal,
+  type Principal,
   unauthenticatedLocalAuthContext,
 } from '@lostgradient/weft';
 import {
@@ -132,7 +133,12 @@ import {
   type DeploymentRecovery,
   describeOperations,
   type ListedAgent,
+  mayNameAgent,
 } from './management/deployment-operations.ts';
+import {
+  type BureauWorkerDeploymentsOperationHost,
+  bureauWorkerDeploymentsOperations,
+} from './management/deployments-operations.ts';
 import {
   type BureauWorkflowsOperationHost,
   bureauWorkflowsOperations,
@@ -204,6 +210,7 @@ export type BureauHandlerSource = Pick<
   | 'decisions'
   | 'settings'
   | 'workflows'
+  | 'deployments'
   | 'goals'
   | 'memory'
   | 'assets'
@@ -298,6 +305,7 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauAgentModelsOperationHost &
   BureauAgentDefinitionsOperationHost &
   BureauWorkflowsOperationHost &
+  BureauWorkerDeploymentsOperationHost &
   BureauSchedulesOperationHost &
   BureauGoalsOperationHost &
   BureauMemoryOperationHost &
@@ -312,9 +320,11 @@ export type BureauHandlerOptions = {
    * code-defined agents and match {@link A2A_AGENT_NAME_PATTERN}, because a name served over A2A
    * becomes a URL path segment. Omitted, no code-defined agent opts in.
    *
-   * It governs code-defined agents only, and only the A2A mount: every ready agent, code-defined
-   * or persisted, is listed and can be started over AG-UI. A persisted agent (an agent file,
-   * COR-1524) opts in with `a2a: true` in its own frontmatter and is never named here.
+   * It governs code-defined agents only, and the A2A mount and what a caller without
+   * `bureau.agents:read` may list, start, schedule, or set goals for (COR-1904): every ready agent,
+   * code-defined or persisted, is listed to a caller holding that scope and can be started by it
+   * over AG-UI. A persisted agent (an agent file, COR-1524) opts in with `a2a: true` in its own
+   * frontmatter and is never named here.
    *
    * `bureau.agents.list`, `bureau.deployment.get`, and the A2A mount read the opt-in on every
    * request.
@@ -370,7 +380,8 @@ export type BureauHandlerOptions = {
    * is the owner (`api-key:<encodeURIComponent(subject)>`), so keys share an owner
    * only by returning the same subject. A subject in the reserved `system:` or
    * `anonymous:` namespace is refused with 401. Required unless
-   * `unauthenticatedAccess` is `'allow'`, and refused with it.
+   * `unauthenticatedAccess` is `'allow'`; with it, a request that carries a
+   * credential is authenticated by it, and A2A requires one (COR-1904).
    */
   readonly authentication?: AuthConfig;
   /**
@@ -379,10 +390,16 @@ export type BureauHandlerOptions = {
    * as the one local caller: its `authenticate` hook returns method
    * `unauthenticated-local` with every built-in Weft scope and every scope in
    * {@link BUREAU_SCOPES}, and Bureau owns what it creates as `anonymous:local`,
-   * so two uncredentialed callers see each other's resources. It cannot be
-   * combined with `authentication`. `'allow'` has no loopback guard: binding the
-   * port, and keeping an unauthenticated handler off a public interface, belongs
-   * to the host that binds it (COR-1488).
+   * so two uncredentialed callers see each other's resources. `'allow'` has no
+   * loopback guard: binding the port, and keeping an unauthenticated handler off a
+   * public interface, belongs to the host that binds it (COR-1488).
+   *
+   * Combined with `authentication` (COR-1904), a request that carries a credential
+   * (an `X-API-Key` or an `Authorization` header) is authenticated by it, and one
+   * the authentication refuses is answered 401, never served as the local caller.
+   * A request with neither header is the local caller everywhere except A2A, whose
+   * JSON-RPC routes then need a credential, as the Agent Cards advertise. A host
+   * thereby keeps its own pages anonymous while A2A clients present a key.
    */
   readonly unauthenticatedAccess?: 'reject' | 'allow';
   /** Protocol adapters, each claiming a path prefix ahead of the catalog. */
@@ -393,7 +410,10 @@ export type BureauHandlerOptions = {
    * one, and cancel one, as AG-UI 1.0 Server-Sent Events. Omitted, nothing is
    * mounted and those paths are the handler's ordinary 404.
    *
-   * Any ready agent can be started. The mount needs
+   * Any ready agent can be started by a caller holding `bureau.agents:read`; a
+   * caller without it starts only an agent that opts into A2A, and any other is
+   * `THREAD_NOT_FOUND`, as an unknown name is (COR-1904). Resuming a run does not
+   * ask. The mount needs
    * a Bureau with a durable engine, because its human-wait parks and its
    * run-creation receipts both do, and `createBureauHandler` throws at
    * construction without one. It is prepended to `mounts`, so Weft still refuses a
@@ -479,9 +499,6 @@ function assertAuthentication(
       );
     }
     return;
-  }
-  if (unauthenticatedAccess === 'allow') {
-    fail("authentication cannot be combined with unauthenticatedAccess: 'allow'");
   }
   if (authentication.jwt !== undefined) {
     fail('authentication.jwt is not supported yet; only API-key authentication is');
@@ -680,6 +697,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   ...bureauAssetsOperations,
   ...bureauDecisionsOperations,
   ...bureauSettingsOperations,
+  ...bureauWorkerDeploymentsOperations,
 ] as const;
 
 /**
@@ -706,6 +724,41 @@ const authenticateLocalCaller: OperationHandlerAuthenticate = async () => ({
   method: 'unauthenticated-local' as const,
   principal: createLocalPrincipal(),
 });
+
+/**
+ * Whether a request presents a credential: an `X-API-Key` or an `Authorization` header, empty or
+ * not. Presence alone decides, so a malformed or empty credential reaches the authenticator and is
+ * refused rather than served as the local caller.
+ */
+function presentsCredential(request: Request): boolean {
+  return request.headers.has('x-api-key') || request.headers.has('authorization');
+}
+
+/**
+ * The `authenticate` hook for `authentication` with `unauthenticatedAccess: 'allow'` (COR-1904): a
+ * request that presents a credential is authenticated by it, and one that presents none is the
+ * local caller.
+ */
+function withLocalCaller(
+  authenticateCredential: OperationHandlerAuthenticate,
+): OperationHandlerAuthenticate {
+  return (request) =>
+    presentsCredential(request)
+      ? authenticateCredential(request)
+      : authenticateLocalCaller(request);
+}
+
+/** The handler's `authenticate` hook for its `authentication` and `unauthenticatedAccess`. */
+function handlerAuthenticate(
+  authentication: AuthConfig | undefined,
+  unauthenticatedAccess: 'reject' | 'allow',
+): OperationHandlerAuthenticate {
+  if (authentication === undefined) return authenticateLocalCaller;
+  const authenticateCredential = createApiKeyAuthenticate(authentication);
+  return unauthenticatedAccess === 'allow'
+    ? withLocalCaller(authenticateCredential)
+    : authenticateCredential;
+}
 
 /**
  * The API-key authenticator, with the credentials Bureau cannot own resources
@@ -831,13 +884,20 @@ function listedAgentsOf(
 }
 
 /**
- * Whether an adapter may start `name`: the Bureau has a ready agent by that name, code-defined or
- * persisted. Read when asked, so an agent created or deleted takes effect on the next request.
+ * Whether a caller may start `name` through an adapter: the Bureau has a ready agent by that name,
+ * code-defined or persisted, and the caller may name it (`mayNameAgent`, COR-1904): any ready
+ * agent with `bureau.agents:read`, only one that opts into A2A without it. Read when asked, so an
+ * agent created or deleted takes effect on the next request.
  */
-function createStartable(bureau: BureauHandlerSource): {
-  readonly includes: (agentName: string) => boolean;
-} {
-  return { includes: (agentName) => bureau.agents.find(agentName) !== undefined };
+function createStartable(
+  bureau: BureauHandlerSource,
+  a2aAgents: readonly string[],
+): { readonly includes: (agentName: string, principal: Principal) => boolean } {
+  return {
+    includes: (agentName, principal) =>
+      bureau.agents.find(agentName) !== undefined &&
+      mayNameAgent(principal, agentName, () => listedAgentsOf(bureau, a2aAgents)),
+  };
 }
 
 /**
@@ -1049,6 +1109,7 @@ export function buildBureauHandlerHost(
       },
     },
     workflows: bureau.workflows,
+    deployments: bureau.deployments,
     schedules: {
       create: bureau.schedules.create,
       get: bureau.schedules.get,
@@ -1063,6 +1124,10 @@ export function buildBureauHandlerHost(
       hasAgent: (name) => bureau.agents.find(name) !== undefined,
     },
     goals: bureau.goals,
+    agentVisibility: {
+      mayName: (principal, agentName) =>
+        mayNameAgent(principal, agentName, () => listedAgentsOf(bureau, a2aAgents)),
+    },
     memory: { governed: bureau.memory, tenantId: bureau.id },
     audit: {
       keepsTrail: () => bureau.internals.auditTrail !== undefined,
@@ -1127,10 +1192,7 @@ export function createBureauHandler(
   return createOperationHandler({
     operations: BUREAU_HANDLER_OPERATIONS,
     host,
-    authenticate:
-      options.authentication === undefined
-        ? authenticateLocalCaller
-        : createApiKeyAuthenticate(options.authentication),
+    authenticate: handlerAuthenticate(options.authentication, unauthenticatedAccess),
     ...(options.maxRequestBodyBytes === undefined
       ? {}
       : { maxRequestBodyBytes: options.maxRequestBodyBytes }),
@@ -1145,7 +1207,7 @@ export function createBureauHandler(
                 mayAccess: host.ownership.mayAccess,
                 ownerOf: (resource) => bureau.ownerOf(resource),
               },
-              createStartable(bureau),
+              createStartable(bureau, options.a2aAgents ?? []),
               options.agUi,
             ),
           ]),

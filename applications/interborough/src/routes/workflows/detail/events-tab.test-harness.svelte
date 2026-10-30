@@ -5,9 +5,10 @@
 
   import EventsTab from './events-tab.svelte';
 
-  let props: ComponentProps<typeof EventsTab> = $props();
-
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  let {
+    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+    ...props
+  }: ComponentProps<typeof EventsTab> & { queryClient?: QueryClient } = $props();
 </script>
 
 <QueryClientProvider client={queryClient}>

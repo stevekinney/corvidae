@@ -1,7 +1,7 @@
 {
   "$schema": "https://www.designtokens.org/schemas/2025.10/format.json",
   "button": {
-    "$description": "Button component tokens. Most values alias shared foundation/semantic tokens (kept here, per component, for discoverability and ownership reporting); the height ladder is genuinely Button-owned, using its own tighter Tailwind-style scale instead of the shared `control.height.*` tier (per-component height tokens alias the shared family where the values happen to match, as `height.xs` does here).",
+    "$description": "Button component tokens. Most values alias shared foundation/semantic tokens (kept here, per component, for discoverability and ownership reporting); each height aliases the shared `control.height.*` scale, so a Button and a field of one size are the same height.",
     "background": {
       "$type": "color",
       "$value": "{surface.raised}",
@@ -114,27 +114,14 @@
             "cssRecipe": null
           }
         }
-      },
-      "xl": {
-        "$value": "{radius.medium}",
-        "$description": "Extra-large button corner radius.",
-        "$extensions": {
-          "com.lostgradient.cinder": {
-            "cssProperty": "--cinder-button-radius-xl",
-            "public": true,
-            "category": "radius",
-            "component": "button",
-            "cssRecipe": null
-          }
-        }
       }
     },
     "height": {
       "$type": "dimension",
-      "$description": "Button's own tighter Tailwind-style height ladder, distinct from the shared `control.height.*` tier.",
+      "$description": "Button heights, one alias per step of the shared `control.height.*` scale.",
       "xs": {
         "$value": "{control.height.xs}",
-        "$description": "Extra-small button height (24px), aliasing the shared control-height tier.",
+        "$description": "Extra-small button height: `control.height.xs` (24px).",
         "$extensions": {
           "com.lostgradient.cinder": {
             "cssProperty": "--cinder-button-height-xs",
@@ -147,7 +134,7 @@
       },
       "sm": {
         "$value": "{control.height.sm}",
-        "$description": "Small button height: `control.height.sm` (32px), so a small Button lines up with a toolbar SegmentedControl and a toolbar Chip.",
+        "$description": "Small button height: `control.height.sm` (28px), so a small Button lines up with a toolbar SegmentedControl and a toolbar Chip.",
         "$extensions": {
           "com.lostgradient.cinder": {
             "cssProperty": "--cinder-button-height-sm",
@@ -159,11 +146,8 @@
         }
       },
       "md": {
-        "$value": {
-          "value": 2,
-          "unit": "rem"
-        },
-        "$description": "Medium button height (32px).",
+        "$value": "{control.height.md}",
+        "$description": "Medium button height: `control.height.md` (32px).",
         "$extensions": {
           "com.lostgradient.cinder": {
             "cssProperty": "--cinder-button-height-md",
@@ -175,30 +159,11 @@
         }
       },
       "lg": {
-        "$value": {
-          "value": 2.25,
-          "unit": "rem"
-        },
-        "$description": "Large button height (36px).",
+        "$value": "{control.height.lg}",
+        "$description": "Large button height: `control.height.lg` (40px).",
         "$extensions": {
           "com.lostgradient.cinder": {
             "cssProperty": "--cinder-button-height-lg",
-            "public": true,
-            "category": "size",
-            "component": "button",
-            "cssRecipe": null
-          }
-        }
-      },
-      "xl": {
-        "$value": {
-          "value": 2.5,
-          "unit": "rem"
-        },
-        "$description": "Extra-large button height (40px).",
-        "$extensions": {
-          "com.lostgradient.cinder": {
-            "cssProperty": "--cinder-button-height-xl",
             "public": true,
             "category": "size",
             "component": "button",
@@ -261,19 +226,6 @@
               "cssRecipe": null
             }
           }
-        },
-        "xl": {
-          "$value": "{space.3-5}",
-          "$description": "Extra-large button horizontal padding.",
-          "$extensions": {
-            "com.lostgradient.cinder": {
-              "cssProperty": "--cinder-button-padding-x-xl",
-              "public": true,
-              "category": "spacing",
-              "component": "button",
-              "cssRecipe": null
-            }
-          }
         }
       },
       "y": {
@@ -291,8 +243,8 @@
           }
         },
         "sm": {
-          "$value": "{space.1-5}",
-          "$description": "Small button vertical padding: the same as `md`, since the two share a 32px height and the label centers within it.",
+          "$value": "{space.one}",
+          "$description": "Small button vertical padding (4px), so a 16px icon, the padding and the border fit inside the 28px `control.height.sm`.",
           "$extensions": {
             "com.lostgradient.cinder": {
               "cssProperty": "--cinder-button-padding-y-sm",
@@ -322,19 +274,6 @@
           "$extensions": {
             "com.lostgradient.cinder": {
               "cssProperty": "--cinder-button-padding-y-lg",
-              "public": true,
-              "category": "spacing",
-              "component": "button",
-              "cssRecipe": null
-            }
-          }
-        },
-        "xl": {
-          "$value": "{space.2-5}",
-          "$description": "Extra-large button vertical padding.",
-          "$extensions": {
-            "com.lostgradient.cinder": {
-              "cssProperty": "--cinder-button-padding-y-xl",
               "public": true,
               "category": "spacing",
               "component": "button",
@@ -392,19 +331,6 @@
           "$extensions": {
             "com.lostgradient.cinder": {
               "cssProperty": "--cinder-button-font-size-lg",
-              "public": true,
-              "category": "typography",
-              "component": "button",
-              "cssRecipe": null
-            }
-          }
-        },
-        "xl": {
-          "$value": "{font.size.lg}",
-          "$description": "Extra-large button label font size.",
-          "$extensions": {
-            "com.lostgradient.cinder": {
-              "cssProperty": "--cinder-button-font-size-xl",
               "public": true,
               "category": "typography",
               "component": "button",

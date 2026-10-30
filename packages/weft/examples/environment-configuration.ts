@@ -27,7 +27,7 @@ export function resolveExampleEnvironment() {
     'HOST',
     'A2A_EXAMPLE_TRUST_LOOPBACK_WEBHOOKS',
   ]) {
-    const value = Bun.env[name];
+    const value = process.env[name];
     if (value !== undefined) env[name] = value;
   }
   return environmentalist.sync({

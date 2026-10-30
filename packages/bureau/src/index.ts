@@ -1,3 +1,4 @@
+export { BUREAU_RESERVED_KEY_PREFIXES } from './reserved-key-prefixes';
 export type {
   AgentCatalogEntry,
   AgentDefinitions,
@@ -17,6 +18,7 @@ export type {
   AgentFileIssue,
   AgentFileProblem,
   AgentFileProblemCode,
+  AgentRetry,
 } from './agent-file';
 export {
   AGENT_IDENTIFIER_PATTERN,
@@ -64,7 +66,18 @@ export {
 } from './workflow-file';
 export type { WorkflowListing, WorkflowFileWriteResult } from './workflow-file-catalog';
 export type { WorkflowRevision } from './workflow-snapshot-store';
+export type { WorkflowRevisionReport } from './workflow-runtime';
 export { WorkflowAgentStepError, WorkflowHostConflictError } from './workflow-host';
+export { WorkerDeploymentRolloutError } from './worker-deployments';
+export type {
+  BureauWorkerDeploymentRouting,
+  BureauWorkerDeployments,
+  WorkerDeploymentMoveInput,
+  WorkerDeploymentRampInput,
+  WorkerDeploymentRolloutContext,
+  WorkerDeploymentRolloutFence,
+  WorkerDeploymentRolloutReason,
+} from './worker-deployments';
 export type { AgentSkillsOptions } from './agent-skills';
 export { createAgentSkills } from './agent-skills';
 export type { AssetServiceOptions, BureauAssetOptions } from './assets/asset-service';
@@ -234,6 +247,7 @@ export {
   classifyRecoveredRun,
   classifyRecoveredRunDetailed,
   createBureau,
+  ReviewAnswerInvalidError,
   ReviewRoundChangedError,
   ScheduleLocatorUnavailableError,
   TaskRespondError,
@@ -365,9 +379,11 @@ export type { DecideRefusalReason, DecideToolResult } from './decisions/decide-t
 export {
   SETTING_APPLY,
   SETTING_KEYS,
+  SETTING_LOCK_REASONS,
   settingsSchema,
   type SettingApply,
   type SettingKey,
+  type SettingLockReason,
   type SettingsValues,
 } from './settings/settings-schema';
 export type {
@@ -382,6 +398,16 @@ export type {
 } from './settings/types';
 export { SETTINGS_TOOL_NAMES } from './settings/settings-tools';
 export type { TaskToolGrant } from './task-registry';
+export type {
+  ApiTaskOrigin,
+  ChatTaskOrigin,
+  PersonTaskOrigin,
+  ScheduleTaskOrigin,
+  StartTaskOrigin,
+  TaskOrigin,
+  TaskOriginKind,
+  TaskPersonSurface,
+} from './task-origin';
 export type {
   EvalScore,
   OnlineEvalJudge,

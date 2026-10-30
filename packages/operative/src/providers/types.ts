@@ -10,9 +10,14 @@ export type {
 } from '../types.ts';
 
 /**
- * Provider names supported by operative providers.
+ * The name a model provider registers under: a `ProviderDefinition`'s `name`, a catalog row's
+ * `provider`, and the provider fields of stored settings and delegated grants.
+ *
+ * The set is open, so a provider package or plugin adds a name without an edit here. A well-formed
+ * name matches `PROVIDER_NAME_PATTERN`; a name no loaded provider carries is unavailable, not
+ * invalid.
  */
-export type ProviderName = 'anthropic' | 'openai' | 'gemini' | 'voyage' | 'ollama';
+export type ProviderName = string;
 
 /**
  * Provider-neutral reasoning-effort tier. Superset of Tribunal's

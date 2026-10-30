@@ -60,9 +60,15 @@ describe('weft.system.principal', () => {
 });
 
 describe('bureau.deployment.get', () => {
-  it('requires only authentication and returns exactly its five keys', async () => {
+  // COR-1904: it names every agent and every operation, so it needs `bureau.agents:read`; it used
+  // to need only authentication.
+  it('requires bureau.agents:read and returns exactly its five keys', async () => {
     await withBureau({ id: 'deployment-one' }, async ({ handler }) => {
-      const body = await rpc(handler, 'bureau.deployment.get', {}, 'alice-key');
+      const refused = await rpc(handler, 'bureau.deployment.get', {}, 'alice-key');
+      expect(refused.error?.data?.httpStatus).toBe(403);
+      expect(refused.result).toBeUndefined();
+
+      const body = await rpc(handler, 'bureau.deployment.get', {}, 'agents-reader-key');
 
       expect(Object.keys(body.result ?? {}).toSorted()).toEqual([
         'agents',
@@ -81,7 +87,7 @@ describe('bureau.deployment.get', () => {
 
   it('lists every served operation with its kind and schema version, and nothing is missing', async () => {
     await withBureau({}, async ({ handler }) => {
-      const body = await rpc(handler, 'bureau.deployment.get', {}, 'alice-key');
+      const body = await rpc(handler, 'bureau.deployment.get', {}, 'agents-reader-key');
       const operations = body.result?.['operations'] as Array<{
         name: string;
         kind: string;
@@ -124,7 +130,7 @@ describe('bureau.deployment.get', () => {
 
   it('reports a recovery that did not need to run, and the agents by name', async () => {
     await withBureau({ agents: { writer, hidden }, a2aAgents: ['writer'] }, async ({ handler }) => {
-      const body = await rpc(handler, 'bureau.deployment.get', {}, 'alice-key');
+      const body = await rpc(handler, 'bureau.deployment.get', {}, 'agents-reader-key');
 
       expect(body.result?.['agents']).toEqual(['writer', 'hidden', 'default']);
       expect(body.result?.['recovery']).toEqual({
@@ -144,12 +150,12 @@ describe('bureau.deployment.get', () => {
         () => opened.bureau.tasks.detail(run.id)?.status === 'running',
         'running',
       );
-      const before = await rpc(opened.handler, 'bureau.deployment.get', {}, 'alice-key');
+      const before = await rpc(opened.handler, 'bureau.deployment.get', {}, 'agents-reader-key');
       const shutdown = opened.bureau.shutdown({ policy: 'drain' });
       try {
         await waitForCondition(() => opened.bureau.lifecycle === 'draining', 'never draining');
 
-        const during = await rpc(opened.handler, 'bureau.deployment.get', {}, 'alice-key');
+        const during = await rpc(opened.handler, 'bureau.deployment.get', {}, 'agents-reader-key');
 
         expect(before.result?.['state']).toBe('ready');
         expect(during.result?.['state']).toBe('draining');
@@ -164,7 +170,7 @@ describe('bureau.deployment.get', () => {
 
   it('exposes no configuration beyond those keys: the response carries no storage or credential setting', async () => {
     await withBureau({ id: 'deployment-two' }, async ({ handler }) => {
-      const body = await rpc(handler, 'bureau.deployment.get', {}, 'alice-key');
+      const body = await rpc(handler, 'bureau.deployment.get', {}, 'agents-reader-key');
       const text = JSON.stringify(body);
 
       // The storage setting would serialize as the quoted string `"memory"`; the operation names
@@ -174,7 +180,7 @@ describe('bureau.deployment.get', () => {
         'sqlite',
         '"durable"',
         'resolveApiKeyPrincipal',
-        'alice-key',
+        'agents-reader-key',
       ]) {
         expect(text).not.toContain(leaked);
       }
@@ -183,11 +189,11 @@ describe('bureau.deployment.get', () => {
 });
 
 describe('bureau.agents.list', () => {
-  it('requires only authentication and lists every agent with name, display name, description, revision and A2A opt-in', async () => {
+  it('lists every agent with name, display name, description, revision and A2A opt-in to a caller holding bureau.agents:read', async () => {
     await withBureau(
       { agents: { writer, 'plain-agent': unnamed }, a2aAgents: ['writer'] },
       async ({ handler }) => {
-        const body = await rpc(handler, 'bureau.agents.list', {}, 'alice-key');
+        const body = await rpc(handler, 'bureau.agents.list', {}, 'agents-reader-key');
 
         expect(body.result).toEqual({
           agents: [
@@ -229,15 +235,16 @@ describe('bureau.agents.list', () => {
     );
   });
 
-  it('lists an agent outside the A2A allowlist to a caller with no scope, with a2a false', async () => {
-    await withBureau({ agents: { writer } }, async ({ handler }) => {
-      const body = await rpc(handler, 'bureau.agents.list', {}, 'bob-key');
-      const agents = (body.result?.['agents'] ?? []) as Array<{ name: string; a2a: boolean }>;
-      const listed = agents.map((agent) => [agent.name, agent.a2a]);
-      expect(listed).toEqual([
-        ['writer', false],
-        ['default', false],
-      ]);
-    });
+  // COR-1904: a caller without `bureau.agents:read`, such as an A2A credential, used to see every
+  // ready agent; it now sees only the ones that opt into A2A.
+  it('lists only the agents that opt into A2A to a caller without bureau.agents:read', async () => {
+    await withBureau(
+      { agents: { writer, 'plain-agent': unnamed }, a2aAgents: ['writer'] },
+      async ({ handler }) => {
+        const body = await rpc(handler, 'bureau.agents.list', {}, 'bob-key');
+        const agents = (body.result?.['agents'] ?? []) as Array<{ name: string; a2a: boolean }>;
+        expect(agents.map((agent) => [agent.name, agent.a2a])).toEqual([['writer', true]]);
+      },
+    );
   });
 });

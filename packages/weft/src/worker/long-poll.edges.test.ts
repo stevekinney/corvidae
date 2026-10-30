@@ -83,6 +83,7 @@ describe('LongPollWorker registration', () => {
     });
     worker = createWorker(server, {
       artifactDigest: 'sha256:edge-artifact',
+      runtimeName: 'edge-runtime',
       runtimeVersion: '9.9.9',
       capabilities: { streaming: true },
     });
@@ -91,6 +92,7 @@ describe('LongPollWorker registration', () => {
     const body = await registered.promise;
 
     expect(body['manifest'].deployment.artifactDigest).toBe('sha256:edge-artifact');
+    expect(body['manifest'].runtime.name).toBe('edge-runtime');
     expect(body['manifest'].runtime.version).toBe('9.9.9');
     expect(body['manifest'].capabilities).toEqual({ streaming: true });
   });
@@ -108,9 +110,9 @@ describe('LongPollWorker registration', () => {
     ],
     ['answers with a body that is not JSON', () => new Response('not json', { status: 200 })],
   ])('stays not ready and registers again when the server %s', async (_label, answer) => {
-    // Without the pause the retry would wait a second; a second attempt proves the first answer
+    // The injected pause skips the one-second retry wait; a second attempt proves the first answer
     // was fully handled.
-    const sleepSpy = spyOn(Bun, 'sleep').mockImplementation(() => Promise.resolve());
+    const pauses: number[] = [];
     let attempts = 0;
     server = scriptedServer({
       register: () => {
@@ -118,16 +120,20 @@ describe('LongPollWorker registration', () => {
         return answer();
       },
     });
-    worker = createWorker(server);
+    worker = createWorker(server, {
+      sleep: async (milliseconds) => {
+        pauses.push(milliseconds);
+      },
+    });
 
     try {
       worker.start();
       await waitForCondition(() => attempts >= 2, { label: 'second registration attempt' });
 
       expect(worker.ready).toBe(false);
+      expect(pauses).toContain(1000);
     } finally {
       await worker.stop();
-      sleepSpy.mockRestore();
     }
   });
 });
@@ -141,7 +147,7 @@ describe('LongPollWorker polling and shutdown', () => {
   });
 
   it('backs off after a failing poll and then polls again', async () => {
-    const sleepSpy = spyOn(Bun, 'sleep').mockImplementation(() => Promise.resolve());
+    const pauses: number[] = [];
     let polls = 0;
     server = scriptedServer({
       poll: () => {
@@ -149,16 +155,19 @@ describe('LongPollWorker polling and shutdown', () => {
         return new Response('boom', { status: 500 });
       },
     });
-    const worker = createWorker(server);
+    const worker = createWorker(server, {
+      sleep: async (milliseconds) => {
+        pauses.push(milliseconds);
+      },
+    });
 
     try {
       worker.start();
       await waitForCondition(() => polls >= 3, { label: 'repeated polls' });
 
-      expect(sleepSpy.mock.calls.some(([milliseconds]) => milliseconds === 1000)).toBe(true);
+      expect(pauses).toContain(1000);
     } finally {
       await worker.stop();
-      sleepSpy.mockRestore();
     }
   });
 

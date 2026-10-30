@@ -24,5 +24,6 @@ export type {
   WorkflowDocumentIssue,
   WorkflowDocumentStep,
 } from './document.ts';
+export { buildWorkflowDocumentManifest } from './manifest.ts';
 export { registerWorkflowDocuments } from './register.ts';
 export type { RegisteredWorkflowDocument, WorkflowDocumentSet } from './register.ts';

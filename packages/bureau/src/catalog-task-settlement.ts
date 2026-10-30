@@ -80,6 +80,8 @@ export function createCatalogTaskSettler({
       incarnation: '',
       agentName: loaded.record.agentName,
       owner: ownerOf(loaded.record.principal),
+      // The run's original start is gone with its record: nothing names a surface for it.
+      origin: { kind: 'api' },
       message: originatingMessage(loaded.record.input),
       ...(createdAt === undefined ? {} : { createdAt }),
     });

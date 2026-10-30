@@ -8,9 +8,9 @@ The `<label>` element is given an id of `${id}-label` so that grouped-control pa
 
 ## Required marker
 
-When `required` is set, FormField renders a `<span aria-hidden="true">*</span>` inside the label. The asterisk is hidden from assistive technology because the `required` attribute (or `aria-required`) is the machine-readable signal. Opted-in controls (Input in PR-A) receive `required: true` through context and set the native `required` attribute, which screen readers announce as "required".
+When `required` is set, FormField renders an empty `<span aria-hidden="true">` after the label text, drawn as a small red dot. The dot is hidden from assistive technology because the `required` attribute (or `aria-required`) is the machine-readable signal. Opted-in controls (Input in PR-A) receive `required: true` through context and set the native `required` attribute, which screen readers announce as "required".
 
-Convention: place a "fields marked with \* are required" legend near the form so sighted users understand the asterisk convention. FormField and FormSection do not auto-render this legend.
+Convention: place a "fields marked with a red dot are required" legend near the form so sighted users understand the dot convention. FormField and FormSection do not auto-render this legend.
 
 ## Error semantics
 

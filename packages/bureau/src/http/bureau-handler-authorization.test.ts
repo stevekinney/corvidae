@@ -144,6 +144,16 @@ const GOAL_PARAMETERS = {
   bounds: { maximumAttempts: 1, maximumTotalSteps: 1 },
 } as const;
 
+/**
+ * What the worker deployment operations (COR-1813) need: a deployment and a build nothing holds,
+ * and a ramp share, so a probe reaches its own check and can never move a real routing pointer.
+ */
+const DEPLOYMENT_PARAMETERS = {
+  deploymentName: 'x',
+  buildId: 'x',
+  rampBasisPoints: 1,
+} as const;
+
 /** What the memory operations need beside the identifier a probe varies. */
 const MEMORY_PARAMETERS = {
   agentId: 'support',
@@ -186,6 +196,7 @@ function definitionParameters(operation: CatalogOperation) {
   if (operation.name.startsWith('bureau.assets.')) return ASSET_PARAMETERS;
   if (operation.name.startsWith('bureau.schedules.')) return SCHEDULE_PARAMETERS;
   if (operation.name.startsWith('bureau.goals.')) return GOAL_PARAMETERS;
+  if (operation.name.startsWith('bureau.deployments.')) return DEPLOYMENT_PARAMETERS;
   return operation.name.startsWith('bureau.agents.')
     ? AGENT_DEFINITION_PARAMETERS
     : WORKFLOW_PARAMETERS;
@@ -1214,7 +1225,7 @@ describe('the AG-UI routes owner predicate', () => {
       const mount = createAgUiMount(
         harness.bureau,
         { mayAccess: counting, ownerOf: (resource) => harness.bureau.ownerOf(resource) },
-        ['assistant'],
+        { includes: (agentName) => agentName === 'assistant' },
         {},
       );
       const handler = createOperationHandler({

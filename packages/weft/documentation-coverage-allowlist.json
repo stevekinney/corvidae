@@ -29,7 +29,6 @@
     ". WORKER_DEPLOYMENT_ROUTING_PREFIX",
     ". WORKER_DEPLOYMENT_VERSION_PREFIX",
     ". WorkerConflictReason",
-    ". WorkerDeploymentRouting",
     ". WorkerDeploymentVersion",
     ". WorkerDeploymentVersionState",
     ". WorkerStartOverridePreview",

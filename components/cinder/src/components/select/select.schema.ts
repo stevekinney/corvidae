@@ -35,6 +35,12 @@ const schema = {
       description:
         'Validation error message; sets `aria-invalid="true"` and is wired via `aria-describedby`.',
     },
+    size: {
+      enum: ['sm', 'md', 'lg'],
+      description:
+        'Height step from the shared `--cinder-control-height-*` scale: `sm` 28px, `md` 32px,\n`lg` 40px. Replaces the native list-box `size` attribute, which Cinder does not forward.',
+      default: 'md',
+    },
     class: {
       type: 'string',
       description: 'Extra class names merged with `.cinder-select-field`.',

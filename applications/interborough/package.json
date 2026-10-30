@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun --watch src/host/dev.ts",
+    "dev": "bun src/host/supervisor.ts dev",
+    "start": "bun src/host/supervisor.ts serve",
     "build": "NODE_ENV=production bun scripts/build.ts",
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src fixtures scripts tests playwright.config.ts && bun ../../scripts/check-documentation-coverage.ts --entries 'src/host/**/*.ts' 'src/lib/**/*.ts' '!**/*.test.ts' '!**/*.test-support.ts'",
     "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src fixtures scripts tests playwright.config.ts",
