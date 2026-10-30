@@ -202,7 +202,11 @@ function decodeSegment(segment: string): string | undefined {
 export function createAgUiMount(
   bureau: AgUiBureau,
   authorization: AgUiAuthorization,
-  startable: { readonly includes: (agentName: string) => boolean },
+  /**
+   * Whether `principal` may start a new run of `agentName`: the agent exists and the caller may
+   * name it (COR-1904). Resuming a run does not ask.
+   */
+  startable: { readonly includes: (agentName: string, principal: Principal) => boolean },
   options: AgUiOptions,
 ): OperationHandlerMount {
   const pathPrefix = (options.pathPrefix ?? DEFAULT_AG_UI_PATH_PREFIX).replace(/\/+$/, '');
@@ -605,7 +609,7 @@ export function createAgUiMount(
       });
     }
     // Whether the agent can be started gates a new run only.
-    if (!startable.includes(agentName)) {
+    if (!startable.includes(agentName, principal)) {
       return refuse('THREAD_NOT_FOUND', `Thread "${input.threadId}" was not found`);
     }
     // Only the thread's owner starts a run on a thread that exists: a start adds to

@@ -7,7 +7,10 @@
  * at `<path>/.well-known/agent-card.json`, and, when `signing` is set, the card-signing key at
  * `<path>/.well-known/jwks.json`. The card and key routes are served without credentials; every
  * other request has already been authenticated by the handler before it reaches the mount, and
- * a caller that can own nothing is refused.
+ * a caller that can own nothing is refused. Where the handler enforces credentials (`security`
+ * is set, and the card advertises it), every other request needs one (COR-1904): the local caller
+ * a handler that also allows unauthenticated access serves a request without a credential as is
+ * refused here with the handler's own 401, so an A2A client reaches an agent only with a key.
  *
  * The opt-in is read on every request, so an agent that opts in or out later is served or
  * refused without a restart: an agent that has not opted in has no card, starts no task, and
@@ -67,7 +70,11 @@ export type BureauA2AMountOptions = BureauA2AOptions & {
   readonly describe: (
     agentName: string,
   ) => Omit<A2AAgentCardSource, 'security' | 'durableHistory' | 'pushNotifications'> | undefined;
-  /** The credentials the handler enforces; `undefined` when every request is the local caller. */
+  /**
+   * The credentials the handler enforces, which every card advertises; `undefined` when every
+   * request is the local caller. Set, every request but the card and key routes needs a credential,
+   * and the local caller is refused.
+   */
   readonly security: A2ASecurityDeclaration | undefined;
   readonly records: A2ATaskRecords;
   readonly ledger: A2ASendLedger;
@@ -123,6 +130,18 @@ function agentOf(pathname: string): string | undefined {
 
 function notFound(): Response {
   return Response.json({ error: 'Not found' }, { status: 404 });
+}
+
+/**
+ * The refusal of an A2A request that carries no credential where the card requires one: the same
+ * 401, body, and `WWW-Authenticate` challenge Weft's authenticator answers a missing credential
+ * with, so a client cannot tell which layer refused it.
+ */
+function credentialRequired(): Response {
+  return Response.json(
+    { error: 'No valid credentials provided' },
+    { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } },
+  );
 }
 
 /** The card of no agent, built only to have the kit check a signing key at construction. */
@@ -260,6 +279,9 @@ export function createBureauA2AMount(options: BureauA2AMountOptions): OperationH
         return notFound();
       }
       if (!PUBLIC_ROUTE.test(pathname)) {
+        if (options.security !== undefined && context.principal.method !== 'api-key') {
+          return credentialRequired();
+        }
         if (ownerOfPrincipal(context.principal) === undefined) {
           return Response.json(
             { error: 'Serving A2A requires an API-key or local caller' },
