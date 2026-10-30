@@ -242,9 +242,11 @@ export interface TaskAdmission {
   readonly kind?: TaskKind | undefined;
   /**
    * See {@link TaskRecord.origin}. Required so that a site that admits a task has to decide what
-   * it is; `undefined` records none, as a schedule fire does when its schedule is not known.
+   * it is; `undefined` records none, as a schedule fire does when its schedule is not known. A
+   * subordinate task is admitted with the origin its run's claim stores, which may be of a kind
+   * this release does not know ({@link StoredTaskOrigin}); it is kept as written.
    */
-  readonly origin: TaskOrigin | undefined;
+  readonly origin: StoredTaskOrigin | undefined;
   /** The originating user message's text, when the request had one. */
   readonly message: string | undefined;
   /** See {@link TaskRecord.tools}. */
@@ -317,6 +319,16 @@ export interface TaskRegistryHost {
   /** Cancels a durable run this process holds no live run for. */
   readonly cancelDurable: (taskId: string) => Promise<CancelDurableRunOutcome>;
   /**
+   * Cancels the child run a task of origin `agent` stands for, through the topology that owns it
+   * (`children.cancel`), which is the one cancel a child has (COR-1868). `requested` when the
+   * child is being stopped, `already-terminal` when it had ended, `not-found` when the topology
+   * holds no such child. A refusal of the cancel itself rejects.
+   */
+  readonly cancelChild: (child: {
+    readonly parentRunId: string;
+    readonly childRunId: string;
+  }) => Promise<'requested' | 'already-terminal' | 'not-found'>;
+  /**
    * Drops this process's own copy of a review another process closed (COR-1613): the durable
    * history says it was decided or expired, so what this process still lists for it is stale.
    */
@@ -332,8 +344,16 @@ export type TaskCancelReceipt = TaskCleanupState | 'rejected';
 /** What `cancel` found and did. */
 export interface TaskCancelOutcome {
   readonly receipt: TaskCancelReceipt;
-  readonly reason?: 'already-terminal';
+  /**
+   * Why a `rejected` receipt was given: the task had `already-terminal`, or it is `owned-by-goal`
+   * (a goal attempt, cancelled by cancelling the goal) or `owned-by-workflow` (a workflow step,
+   * cancelled with its instance), so no cancel of its own reaches the run (COR-1868).
+   */
+  readonly reason?: TaskCancelRejection;
 }
+
+/** Why a task's cancel was rejected. See {@link TaskCancelOutcome.reason}. */
+export type TaskCancelRejection = 'already-terminal' | 'owned-by-goal' | 'owned-by-workflow';
 
 /** A page of tasks, by offset: what {@link TaskRegistry.enumerate} answers. */
 export interface TaskPage {
@@ -1790,8 +1810,38 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     async cancel(taskId, waitMilliseconds) {
       const record = await read(taskId);
       if (record === undefined) return undefined;
+      // A goal attempt and a workflow step belong to the goal and the instance that own them: the
+      // goal stops its attempt in an order of its own (tombstone, then cancel), and a cancelled
+      // step fails its instance. No engine cancel is reached from here, for either (COR-1868).
+      if (record.origin?.kind === 'goal') {
+        return { receipt: 'rejected', reason: 'owned-by-goal' };
+      }
+      if (record.origin?.kind === 'parent') {
+        return { receipt: 'rejected', reason: 'owned-by-workflow' };
+      }
       const reviews = host.pendingReviews().filter((review) => review.runId === taskId);
       const before = viewOf(record, reviews);
+      // A child run is stopped by the topology that owns it, the same stop `children.cancel` makes.
+      if (record.origin?.kind === 'agent' && record.settled === undefined) {
+        // An origin this release cannot read names no parent, so there is no child to stop.
+        const parentRunId = taskOriginParentOf(record.origin);
+        const stopped =
+          parentRunId === null
+            ? 'not-found'
+            : await host.cancelChild({ parentRunId, childRunId: taskId });
+        if (stopped !== 'requested') return { receipt: 'rejected', reason: 'already-terminal' };
+        const watched = watchers.get(taskId);
+        if (watched === undefined || waitMilliseconds <= 0) {
+          const view = (await this.get(taskId)) ?? before;
+          return { receipt: receiptFor(view, observed.get(taskId), watchers.has(taskId)) };
+        }
+        const settled = await Promise.race([
+          watched,
+          host.sleep(waitMilliseconds).then(() => undefined),
+        ]);
+        const view = (await this.get(taskId)) ?? before;
+        return { receipt: receiptFor(view, settled, true) };
+      }
       const live = host.liveTask(taskId);
       const isLive =
         live?.phase === 'submitted' || live?.phase === 'running' || live?.phase === 'aborting';

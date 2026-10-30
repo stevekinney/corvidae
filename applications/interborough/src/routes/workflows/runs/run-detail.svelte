@@ -11,8 +11,8 @@
    * stream (`bureau.tasks.events`) reports a change, and whenever `bureau.events` reports a run or
    * the cleanup of a cancellation (`task.cleanup-acknowledged`), on a timer only while that feed is
    * not live; the answer is the stream's, because the
-   * management plane's task view carries none. A run that is not a task (a goal's attempt, which the
-   * Bureau does not make one) is shown from the goal that made it. The Engine tab reads the engine,
+   * management plane's task view carries none. A run that is not a task (a goal's attempt started
+   * before attempts were tasks, COR-1868) is shown from the goal that made it. The Engine tab reads the engine,
    * so it is there only for a caller who holds `workflows:read`; everything else is the Bureau's.
    * A Bureau that does not know the run (a missing task, or one removed while the page was open) is a
    * run that was not found, and any other failure to read it is an error that can be retried.

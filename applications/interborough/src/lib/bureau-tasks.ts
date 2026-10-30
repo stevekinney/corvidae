@@ -168,7 +168,7 @@ export async function getTask(taskId: string, options?: Options): Promise<TaskVi
 const cancelAnswerSchema = z.object({
   taskId: z.string(),
   receipt: taskCancelReceiptSchema,
-  reason: z.literal('already-terminal').optional(),
+  reason: z.enum(['already-terminal', 'owned-by-goal', 'owned-by-workflow']).optional(),
   task: taskViewSchema.optional(),
 });
 
