@@ -1717,3 +1717,47 @@ describe('a context’s activity with a schedule fire in it (COR-1482)', () => {
     expect(activity.get('context-1')).toBe('idle');
   });
 });
+
+describe('redactSettlement (COR-1934)', () => {
+  it('drops the settlement’s message and answer, keeps its status, and changes nothing twice', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    await registry.recordSettled('run-1', {
+      at: '2026-10-18T01:00:00.000Z',
+      status: 'failed',
+      finishReason: 'error',
+      message: 'the model said SECRET',
+      answer: { text: 'SECRET', truncated: false },
+    });
+    await admit(registry, 'run-2');
+
+    expect(await registry.redactSettlement('run-1')).toBe(true);
+    const redacted = await registry.record('run-1');
+    expect(redacted?.settled).toEqual({
+      at: '2026-10-18T01:00:00.000Z',
+      status: 'failed',
+      finishReason: 'error',
+      message: null,
+    });
+    expect(await registry.redactSettlement('run-1')).toBe(false);
+    // An unsettled task, and one that does not exist, are left as they are.
+    expect(await registry.redactSettlement('run-2')).toBe(false);
+    expect(await registry.redactSettlement('run-9')).toBe(false);
+  });
+
+  it('empties the history of a settled task that is a context of its own, such as a delegated child’s', async () => {
+    const { registry } = build();
+    await admit(registry, 'child-1', { contextId: 'child-1', incarnation: '' });
+    await registry.recordSettled('child-1', {
+      at: '2026-10-18T01:00:00.000Z',
+      status: 'completed',
+      finishReason: 'stop-condition',
+      message: null,
+    });
+    expect(await registry.history('child-1')).not.toEqual([]);
+
+    expect(await registry.redactSettlement('child-1')).toBe(true);
+    expect(await registry.history('child-1')).toEqual([]);
+    expect(await registry.redactSettlement('child-1')).toBe(false);
+  });
+});

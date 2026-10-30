@@ -1,4 +1,10 @@
-export { BUREAU_RESERVED_KEY_PREFIXES } from './reserved-key-prefixes';
+export {
+  BUREAU_RESERVED_KEY_FAMILIES,
+  BUREAU_RESERVED_KEY_PREFIXES,
+  type ChatDeleteClassification,
+  type ReservedKeyFamily,
+  SHARED_KEY_FAMILIES_OF_A_CHAT,
+} from './reserved-key-prefixes';
 export {
   BUILT_IN_NOTIFICATION_KINDS,
   NOTIFICATION_KIND_PATTERN,

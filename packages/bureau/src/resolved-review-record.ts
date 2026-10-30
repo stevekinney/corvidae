@@ -47,7 +47,8 @@ export const RESOLVED_REVIEW_KEY_PREFIX = 'bureau-resolved-review:v1:';
 /** The decision a record can hold. */
 type Decision = ResolvedReview['decision'];
 
-function keyOf(reviewId: string): string {
+/** The key of one review's record. */
+export function resolvedReviewKey(reviewId: string): string {
   const kind = reviewId.startsWith('approval:') ? 'approval' : 'human-wait';
   return `${RESOLVED_REVIEW_KEY_PREFIX}${encodeStorageKeyComponent(boundedReviewId(reviewId, kind))}`;
 }
@@ -240,14 +241,14 @@ export function createResolvedReviewStore(
   }
   return {
     async record(resolved) {
-      const key = keyOf(resolved.review.id);
+      const key = resolvedReviewKey(resolved.review.id);
       return kv.conditionalBatch(
         [{ key, expectedValue: null }],
         [{ type: 'set', key, value: serialize(resolved) }],
       );
     },
     async get(reviewId) {
-      const raw = await kv.get(keyOf(reviewId));
+      const raw = await kv.get(resolvedReviewKey(reviewId));
       return raw === null ? undefined : parse(raw);
     },
     async list() {

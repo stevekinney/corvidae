@@ -127,6 +127,12 @@ export interface SessionInputSettlement {
     delivered: ReadonlySet<string>,
   ): Promise<string[]>;
   /**
+   * Removes the marker of an incarnation whose mailbox has been purged (COR-1934), which the sweep
+   * kept only to reach that mailbox. An admission that raced the purge writes it again, and the
+   * sweep then settles that admission as it settles any input of a retired incarnation.
+   */
+  forget(sessionId: string, incarnation: string): Promise<void>;
+  /**
    * Visits every marked incarnation: a current one with no live or starting
    * run has its open input cancelled, and its marker removed once nothing is
    * open; a retired one has its open input cancelled, is maintained until
@@ -326,6 +332,9 @@ export function createSessionInputSettlement(
   return {
     markOpen: bumpMarker,
     cancelUndelivered,
+    async forget(sessionId, incarnation) {
+      await kv.delete(markerKey(sessionId, incarnation));
+    },
     async sweep() {
       if (dependencies.isClosed()) return;
       for (const key of await kv.list(MARKER_PREFIX)) {

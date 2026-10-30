@@ -163,7 +163,6 @@
     ". AssetService.auditRecords",
     ". AssetService.beginUpload",
     ". AssetService.collectGarbage",
-    ". AssetService.delete",
     ". AssetService.durability",
     ". AssetService.expire",
     ". AssetService.inspect",

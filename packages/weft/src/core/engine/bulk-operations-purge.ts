@@ -27,6 +27,7 @@ import { createTerminalCleanupTimerId } from './state-utilities.ts';
 import {
   buildExternalTerminalRotationFragment,
   deriveWorkflowResultFromState,
+  loadWorkflowState,
 } from './storage-io.ts';
 import { forgetBranchActivityReceipts } from './timeline-coordinator-detail.ts';
 import { isTerminalWorkflowStatus } from './validation.ts';
@@ -141,6 +142,18 @@ async function shouldPurgeWorkflowState(
 
   const deadline = await getWorkflowRetentionDeadline(internals, state);
   return deadline !== null && deadline <= now;
+}
+
+/** Purge one terminal workflow by its exact id (COR-1934), as `Engine.purgeById` documents it. */
+export async function purgeWorkflowById(
+  internals: EngineInternals,
+  workflowId: string,
+  cleanupWaiters: CleanupWaiters,
+): Promise<boolean> {
+  const state = await loadWorkflowState(internals, workflowId);
+  // Not `expiredOnly`, so `now` is never read: the caller means this run whatever its age.
+  if (state === null || !(await shouldPurgeWorkflowState(internals, state, false, 0))) return false;
+  return purgeWorkflow(internals, state, cleanupWaiters);
 }
 
 export async function purgeWorkflow(

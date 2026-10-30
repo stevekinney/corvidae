@@ -18,7 +18,13 @@ import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 
-import { type AuditRecord, computeInitialAuditSequence, createAuditTrail } from './audit-trail';
+import {
+  type AuditRecord,
+  computeInitialAuditSequence,
+  createAuditTrail,
+  redactAuditDetail,
+} from './audit-trail';
+import { runTombstoneKey } from './chat-content-tombstone';
 import { ActionEvent, type BureauEventMap } from './events';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau } from './types';
@@ -3468,6 +3474,239 @@ describe('createAuditTrail', () => {
 // `createDefaultRuntimeServices()` instance the caller never sees. The writes
 // tracked on that instance's `deferred` ledger must still be drained by the
 // trail's own `dispose()`, so the hidden ledger is never the only path to them.
+describe('redact() (COR-1934)', () => {
+  const ANSWER_DETAIL = {
+    isTrusted: false,
+    step: 0,
+    content: 'the answer',
+    parts: [{ type: 'text', text: 'the answer' }],
+    messageId: 'run-1:step:0',
+    toolCalls: [{ id: 'c', name: 'search', arguments: { q: 'the answer' } }],
+    final: true,
+    usage: { prompt: 3, completion: 4, total: 7 },
+    result: { steps: [{ content: 'the answer' }] },
+    finishReason: 'stop-condition',
+  };
+  const TOOL_STARTED = {
+    isTrusted: false,
+    agentName: 'helper',
+    runId: 'run-1',
+    step: 1,
+    toolName: 'search',
+    toolCallId: 'c',
+    params: { q: 'the params' },
+    startedAt: 5,
+  };
+  const TOOL_SETTLED = {
+    agentName: 'helper',
+    runId: 'run-1',
+    step: 1,
+    toolName: 'search',
+    toolCallId: 'c',
+    status: 'success',
+    result: { text: 'the result' },
+  };
+  const TOOL_ERROR = {
+    toolName: 'search',
+    toolCallId: 'c',
+    error: {
+      code: 'EXECUTION_ERROR',
+      category: 'internal',
+      retryable: false,
+      message: 'quoted text',
+    },
+  };
+  const REVIEW_DECIDED = {
+    review: {
+      kind: 'tool-approval',
+      id: 'approval:run-1:c',
+      runId: 'run-1',
+      sessionId: 'chat-1',
+      agentName: 'helper',
+      approval: {
+        callId: 'c',
+        toolName: 'search',
+        arguments: { q: 'the asked' },
+        action: { message: 'the message' },
+        reason: 'the policy reason',
+        approvalToken: 'token',
+      },
+      requestedAt: 4,
+      status: 'approved',
+      round: 1,
+    },
+    decision: 'approve',
+    reason: 'the free text',
+    owner: 'alice',
+    answerDigest: 'digest',
+    secretAnswers: [{ field: '/password', digest: 'ciphertext digest' }],
+  };
+
+  async function seedWithDetail(
+    kv: ReturnType<typeof textValueStore>,
+    sequence: number,
+    runId: string,
+    type: string,
+    detail: unknown,
+  ) {
+    await seedRecord(kv, { ...makeRecord(sequence, { runId, type }), detail });
+  }
+
+  it('keeps the structure of a step or run completion and drops everything else', () => {
+    expect(redactAuditDetail('step.completed', ANSWER_DETAIL)).toEqual({
+      redacted: true,
+      isTrusted: false,
+      step: 0,
+      final: true,
+      finishReason: 'stop-condition',
+      messageId: 'run-1:step:0',
+      usage: { prompt: 3, completion: 4, total: 7 },
+    });
+    expect(
+      redactAuditDetail('run.completed', {
+        finishReason: { text: 'nested' },
+        usage: { prompt: 'x' },
+      }),
+    ).toEqual({ redacted: true });
+    expect(redactAuditDetail('run.completed', 'a string')).toEqual({ redacted: true });
+    expect(redactAuditDetail('run.completed', null)).toEqual({ redacted: true });
+  });
+
+  it('drops the parameters and result of a tool call, and the message of a failure but not its class', () => {
+    expect(redactAuditDetail('tool.started', TOOL_STARTED)).toEqual({
+      redacted: true,
+      isTrusted: false,
+      step: 1,
+      agentName: 'helper',
+      runId: 'run-1',
+      toolName: 'search',
+      toolCallId: 'c',
+      startedAt: 5,
+    });
+    expect(redactAuditDetail('tool.settled', TOOL_SETTLED)).toEqual({
+      redacted: true,
+      step: 1,
+      agentName: 'helper',
+      runId: 'run-1',
+      toolName: 'search',
+      toolCallId: 'c',
+      status: 'success',
+    });
+    expect(redactAuditDetail('tool.error', TOOL_ERROR)).toEqual({
+      redacted: true,
+      toolName: 'search',
+      toolCallId: 'c',
+      error: { code: 'EXECUTION_ERROR', category: 'internal', retryable: false },
+    });
+    // A failure that was serialized to a string can quote what was said, so nothing of it stays.
+    expect(
+      redactAuditDetail('run.error', { error: 'Error: quoted text', finishReason: 'error' }),
+    ).toEqual({ redacted: true, finishReason: 'error' });
+    expect(redactAuditDetail('run.aborted', { reason: 'quoted text', step: 2 })).toEqual({
+      redacted: true,
+      step: 2,
+    });
+  });
+
+  it('keeps who decided a review, and which, and drops what it asked, its arguments, its reason and its answers', () => {
+    const redacted = redactAuditDetail('review.tool-approval.approved', REVIEW_DECIDED);
+
+    expect(redacted).toEqual({
+      redacted: true,
+      decision: 'approve',
+      owner: 'alice',
+      review: {
+        id: 'approval:run-1:c',
+        kind: 'tool-approval',
+        runId: 'run-1',
+        sessionId: 'chat-1',
+        agentName: 'helper',
+        status: 'approved',
+        round: 1,
+        requestedAt: 4,
+        toolName: 'search',
+      },
+    });
+    expect(JSON.stringify(redacted)).not.toMatch(/asked|free text|policy reason|digest|token/);
+    // A question to a person: its prompt and signal stay out of the redacted review's text fields.
+    expect(
+      redactAuditDetail('review.human-wait.approved', {
+        review: { kind: 'human-wait', id: 'human-wait:run-1:s:0', runId: 'run-1', prompt: 'ask' },
+        inputForm: true,
+        decision: 'approve',
+      }),
+    ).toEqual({
+      redacted: true,
+      decision: 'approve',
+      inputForm: true,
+      review: { id: 'human-wait:run-1:s:0', kind: 'human-wait', runId: 'run-1' },
+    });
+  });
+
+  it('is its own fixed point, and keeps an entry that holds no text whole', () => {
+    for (const [type, detail] of [
+      ['step.completed', ANSWER_DETAIL],
+      ['tool.started', TOOL_STARTED],
+      ['tool.error', TOOL_ERROR],
+      ['review.tool-approval.approved', REVIEW_DECIDED],
+    ] as const) {
+      const once = redactAuditDetail(type, detail);
+      expect(redactAuditDetail(type, once)).toEqual(once);
+    }
+    const cleanup = { acknowledgement: { status: 'not-required' } };
+    expect(redactAuditDetail('run.cleanup-settled', cleanup)).toBe(cleanup);
+  });
+
+  it('redacts every entry of the given runs in place, and nothing else', async () => {
+    const kv = textValueStore(new MemoryStorage());
+    const { bureau } = createStubBureau();
+    await seedWithDetail(kv, 1, 'run-1', 'step.completed', ANSWER_DETAIL);
+    await seedWithDetail(kv, 2, 'run-1', 'run.completed', ANSWER_DETAIL);
+    await seedWithDetail(kv, 3, 'run-1', 'tool.started', TOOL_STARTED);
+    await seedWithDetail(kv, 4, 'run-10', 'run.completed', ANSWER_DETAIL);
+    await seedWithDetail(kv, 5, 'session:chat-1', 'session.deleted', { sessionId: 'chat-1' });
+    await seedWithDetail(kv, 6, 'run-1', 'review.tool-approval.approved', REVIEW_DECIDED);
+    await seedWithDetail(kv, 7, 'run-1', 'run.cleanup-settled', {
+      acknowledgement: { status: 'not-required' },
+    });
+    const trail = createAuditTrail(bureau, kv);
+    const before = await trail.query();
+
+    expect(await trail.redact(new Set(['run-1', 'session:chat-1']))).toBe(5);
+
+    const after = await trail.query();
+    expect(after.map((entry) => ({ ...entry, detail: undefined }))).toEqual(
+      before.map((entry) => ({ ...entry, detail: undefined })),
+    );
+    expect(after.map((entry) => entry.detail)).toEqual([
+      redactAuditDetail('step.completed', ANSWER_DETAIL),
+      redactAuditDetail('run.completed', ANSWER_DETAIL),
+      redactAuditDetail('tool.started', TOOL_STARTED),
+      // Another run, whose id begins with the redacted one's, is untouched.
+      ANSWER_DETAIL,
+      redactAuditDetail('session.deleted', { sessionId: 'chat-1' }),
+      redactAuditDetail('review.tool-approval.approved', REVIEW_DECIDED),
+      { acknowledgement: { status: 'not-required' } },
+    ]);
+    // Repeating it rewrites nothing.
+    expect(await trail.redact(new Set(['run-1']))).toBe(0);
+    expect(await trail.redact(new Set())).toBe(0);
+    await trail.dispose();
+  });
+
+  it('redacts a run whose id holds colons, and does nothing without a store', async () => {
+    const kv = textValueStore(new MemoryStorage());
+    const { bureau } = createStubBureau();
+    await seedWithDetail(kv, 1, 'schedule:s:1', 'run.completed', ANSWER_DETAIL);
+    const trail = createAuditTrail(bureau, kv);
+
+    expect(await trail.redact(new Set(['schedule:s:1']))).toBe(1);
+    expect(JSON.stringify(await trail.query())).not.toContain('the answer');
+    await trail.dispose();
+    expect(await createAuditTrail(bureau, undefined).redact(new Set(['run-1']))).toBe(0);
+  });
+});
+
 describe('COR-89 — omitted runtime', () => {
   it("dispose() drains every write tracked on the internal default runtime's deferred ledger", async () => {
     const factory = spyOn(lifecycle, 'createDefaultRuntimeServices');
@@ -3526,5 +3765,43 @@ describe('COR-89 — omitted runtime', () => {
     } finally {
       factory.mockRestore();
     }
+  });
+});
+
+describe('the fence of a purged run (COR-1934)', () => {
+  it('writes an entry of a purged run with its content redacted, dedupe-keyed or not, and another run’s whole', async () => {
+    const kv = textValueStore(new MemoryStorage());
+    const { bureau } = createStubBureau();
+    const trail = createAuditTrail(bureau, kv);
+    await kv.set(runTombstoneKey('run-1'), JSON.stringify({ runId: 'run-1', purgedAt: 1 }));
+
+    await trail.record({ runId: 'run-1', type: 'run.completed', detail: { content: 'SECRET' } });
+    await trail.record({
+      runId: 'run-1',
+      type: 'tool.settled',
+      detail: { toolName: 'lookup', result: 'SECRET' },
+      dedupeKey: 'late-tool',
+    });
+    await trail.record({ runId: 'run-2', type: 'run.completed', detail: { content: 'SECRET' } });
+
+    const purged = await trail.query({ runId: 'run-1' });
+    expect(purged.map((entry) => [entry.type, entry.detail])).toEqual([
+      ['run.completed', { redacted: true }],
+      ['tool.settled', { redacted: true, toolName: 'lookup' }],
+    ]);
+    const whole = await trail.query({ runId: 'run-2' });
+    expect(whole.map((entry) => entry.detail)).toEqual([{ content: 'SECRET' }]);
+    // The dedupe marker was still written: an exact replay records nothing more.
+    await trail.record({
+      runId: 'run-1',
+      type: 'tool.settled',
+      detail: { toolName: 'lookup', result: 'SECRET' },
+      dedupeKey: 'late-tool',
+    });
+    expect(await trail.query({ runId: 'run-1' })).toHaveLength(2);
+    for (const key of await kv.list('audit:v1:')) {
+      if (key.endsWith(':run-1')) expect(await kv.get(key)).not.toContain('SECRET');
+    }
+    trail.dispose();
   });
 });

@@ -317,9 +317,9 @@ export async function createAssetService(options: AssetServiceOptions): Promise<
       guarded(() => lifecycle.releaseHold(internals, assetId, principal, holdId)),
     expire: (assetId, principal) => guarded(() => lifecycle.expire(internals, assetId, principal)),
 
-    delete(assetId, principal) {
+    delete(assetId, principal, deletion) {
       open();
-      return lifecycle.startDeletion(internals, assetId, principal);
+      return lifecycle.startDeletion(internals, assetId, principal, deletion);
     },
 
     transform: (assetId, principal, request) =>

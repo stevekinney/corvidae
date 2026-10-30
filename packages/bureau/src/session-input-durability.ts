@@ -824,11 +824,23 @@ export async function admitSessionInput(
       };
     }
     case 'rejected':
+      if (admission.reason === 'purged') throw new SessionInputMailboxPurgedError(sessionId);
       return {
         outcome: 'backlog-exhausted',
         scope: 'session',
         limit: admission.capacity.limit,
       };
+  }
+}
+
+/**
+ * COR-1934 — the session's mailbox was purged with the deleted chat before this admission could
+ * commit: the chat is gone, and the input is refused as input to a chat that does not exist.
+ */
+export class SessionInputMailboxPurgedError extends Error {
+  constructor(readonly sessionId: string) {
+    super(`Session "${sessionId}" was deleted; its input mailbox takes no further input`);
+    this.name = 'SessionInputMailboxPurgedError';
   }
 }
 

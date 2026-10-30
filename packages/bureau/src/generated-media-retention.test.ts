@@ -135,6 +135,11 @@ async function assetIdsOf(opened: Opened, sessionId: string): Promise<string[]> 
   return rows.flatMap(assetsOf);
 }
 
+async function stateOf({ bureau }: Opened, assetId: string): Promise<string> {
+  const descriptor = await bureau.assets!.inspect(assetId, alice);
+  return descriptor.state;
+}
+
 async function resolves({ bureau }: Opened, assetId: string): Promise<boolean> {
   try {
     await bureau.assets!.resolve({ kind: 'managed-asset', assetId }, alice);
@@ -145,7 +150,7 @@ async function resolves({ bureau }: Opened, assetId: string): Promise<boolean> {
 }
 
 describe('a generated image a session row references', () => {
-  it('survives collection past the retention floor, and is released when the session is deleted', async () => {
+  it('survives collection past the retention floor, and is deleted with the session, which leaves it unreferenced', async () => {
     const opened = await openBureau();
     const { bureau, runtime } = opened;
     const created = await paint(opened, 'trunk');
@@ -158,9 +163,10 @@ describe('a generated image a session row references', () => {
     expect(await resolves(opened, assetId!)).toBe(true);
 
     await bureau.contexts.delete(created.contextId);
-    const afterDelete = await collect(opened);
 
-    expect(afterDelete.expired).toContain(assetId!);
+    // Deleted at the delete (COR-1934), not left for the floor to expire.
+    expect(await resolves(opened, assetId!)).toBe(false);
+    expect(await stateOf(opened, assetId!)).toBe('deleted');
   });
 
   it('is still expired by the floor when no row ever referenced it', async () => {
@@ -215,15 +221,16 @@ describe('a row copied into another session (appendMessages)', () => {
     },
   );
 
-  it('expires the shared asset once both sessions are gone', async () => {
+  it('deletes the shared asset once both sessions are gone', async () => {
     const { opened, assetId } = await trunkAndCopy();
 
     await opened.bureau.contexts.delete('trunk');
+    // The copy still holds it, so the first delete leaves it.
+    expect(await resolves(opened, assetId)).toBe(true);
     await opened.bureau.contexts.delete('copy');
-    await opened.runtime.advance(5_000);
-    const report = await collect(opened);
 
-    expect(report.expired).toContain(assetId);
+    expect(await resolves(opened, assetId)).toBe(false);
+    expect(await stateOf(opened, assetId)).toBe('deleted');
   });
 });
 
@@ -249,7 +256,7 @@ describe('a supplied image a user row references', () => {
     return { assetId: admission.assetId, created };
   }
 
-  it('survives collection past the floor and replays, and expires after the session is deleted', async () => {
+  it('survives collection past the floor and replays, and is deleted with the session', async () => {
     const opened = await openBureau();
     const { assetId, created } = await sessionWithSuppliedImage(opened);
 
@@ -260,9 +267,9 @@ describe('a supplied image a user row references', () => {
     expect(await resolves(opened, assetId)).toBe(true);
 
     await opened.bureau.contexts.delete(created.contextId);
-    const afterDelete = await collect(opened);
 
-    expect(afterDelete.expired).toContain(assetId);
+    expect(await resolves(opened, assetId)).toBe(false);
+    expect(await stateOf(opened, assetId)).toBe('deleted');
   });
 });
 
@@ -382,9 +389,16 @@ describe('a session recreated under the id of a deleted one', () => {
     await paint(opened, 'same-id', { appendMessages: rows });
     const oldSession = await opened.bureau.contexts.get('same-id');
     const oldIncarnation = oldSession!.incarnation;
+    // Another holder keeps the asset alive through the delete, which deletes what nothing holds
+    // (COR-1934); the old incarnation's late release is then what the test is about.
+    await opened.bureau.assets!.retain(admission.assetId, alice, {
+      holderId: 'external-holder',
+      until: '2999-01-01T00:00:00.000Z',
+    });
     // The old incarnation is deleted, and a new session takes the id with the same row id and asset.
     await opened.bureau.contexts.delete('same-id');
     await paint(opened, 'same-id', { appendMessages: rows });
+    await opened.bureau.assets!.release(admission.assetId, alice, 'external-holder');
 
     // The old incarnation's release lands late, after the new session claimed.
     await opened.bureau.assets!.release(

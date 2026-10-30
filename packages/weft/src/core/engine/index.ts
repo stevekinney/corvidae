@@ -120,6 +120,7 @@ import {
   recoverPendingAsyncActivities,
 } from './async-activity-records.ts';
 import { broadcast as broadcastFromInternals, type BroadcastCallbacks } from './broadcast.ts';
+import { purgeWorkflowById } from './bulk-operations-purge.ts';
 import {
   cancelAll as cancelAllWorkflows,
   deleteAll as deleteAllWorkflows,
@@ -2276,6 +2277,19 @@ export class Engine<
         workflowId,
         this.#createTerminationCallbacks(),
       ),
+    );
+  }
+  /**
+   * Purge one terminal workflow by its exact id: everything `purge()` deletes for a run, for a
+   * caller that means one run and no other. `purge({ idPrefix })` also matches every workflow
+   * whose id begins with the prefix, and refuses an id outside its `[A-Za-z0-9_-]` alphabet; this
+   * reads the id as given and reaches nothing else. Resolves `true` when the workflow was deleted,
+   * and `false` when nothing is stored under the id, the workflow is not terminal, it still owes
+   * its finalizer, or it moved before the delete committed. Safe to repeat.
+   */
+  async purgeById(workflowId: string): Promise<boolean> {
+    return purgeWorkflowById(getInternals(this), workflowId, (id) =>
+      cleanupWaitersFromTermination(getInternals(this), id, this.#createTerminationCallbacks()),
     );
   }
   async cancelAll(
