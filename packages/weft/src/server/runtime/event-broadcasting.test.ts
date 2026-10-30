@@ -436,7 +436,10 @@ describe('registerWorkflowEventLifecycle — cancellation propagation', () => {
     const dispose = registerWorkflowEventLifecycle(
       engine,
       context,
-      { dispose: () => {}, cleanupWorkflow: (workflowId) => cleanedUpWorkflows.push(workflowId) },
+      {
+        dispose: () => Promise.resolve(),
+        cleanupWorkflow: (workflowId) => cleanedUpWorkflows.push(workflowId),
+      },
       options,
     );
 

@@ -9,12 +9,17 @@
  * extra call. B then sees the review, resolves it, and the run completes. The tool that ran before
  * the run parked is never replayed, so its counter stays at 1.
  *
+ * COR-1798: closing a host while a run's events are still being written loses none of them. Closing
+ * stops Weft's server, which waits for the event writes in flight, before Bureau detaches and the
+ * pool is disposed, so nothing writes to a disposed pool and a second host finds every event.
+ *
  * The suite needs a live PostgreSQL (`@lostgradient/testing/postgres-server`) and skips without one.
  */
 import { createAgent, stopWhen, type GenerateFunction } from '@lostgradient/operative';
 import { openPostgresTestDatabase } from '@lostgradient/testing/postgres-server';
 import { createS3TestServer, type S3TestServer } from '@lostgradient/testing/s3-server';
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
+import { KEYS } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { afterAll, afterEach, beforeAll, describe, expect, mock, spyOn, test } from 'bun:test';
 import { z } from 'zod';
@@ -30,6 +35,20 @@ const OVERLAP_AGENT = 'counted-human-input';
 const COUNTING_TOOL = 'count-step';
 
 const hosts: Host[] = [];
+
+/** What a write that outlives the host's close reports: the disposed pool, the fence, a failed event write. */
+const WRITE_AFTER_CLOSE =
+  /pool has been disposed|stopped writing to its storage|\[weft\] (Failed to|Retrying)/;
+
+/** The events of a workflow's own history that Weft persists for its events endpoint. */
+const WORKFLOW_EVENT_TYPES = [
+  'workflow:started',
+  'workflow:suspended',
+  'workflow:resumed',
+  'workflow:completed',
+  'activity:started',
+  'activity:completed',
+] as const;
 
 afterAll(async () => {
   await database?.[Symbol.asyncDispose]();
@@ -197,5 +216,70 @@ describe.skipIf(database === null)('two hosts on one Postgres database and one b
           line.includes(`goal:${SEEDED_GOAL_RUN_IDENTIFIER}`),
       ),
     ).toEqual([]);
+    // Closing host A, which detached from the parked run, left no event write against its pool.
+    expect(reported.filter((line) => WRITE_AFTER_CLOSE.test(line))).toEqual([]);
+  });
+
+  test('closing a host loses no event of a run it parked, and writes nothing after the pool is disposed', async () => {
+    const counter = { count: 0 };
+    const reported: string[] = [];
+    for (const level of ['error', 'warn'] as const) {
+      spyOn(console, level).mockImplementation((...parts: unknown[]) => {
+        reported.push(parts.map(String).join(' '));
+      });
+    }
+    const environment = remoteEnvironment(
+      await createFreshDatabaseUrl(database),
+      server,
+      `detach/${crypto.randomUUID()}`,
+    );
+    const hostA = await startOverlapHost(environment, counter);
+
+    // The seeded goal's controller outlives a detach and records its last transitions to the event
+    // history after Bureau's shutdown returns, which is not what this test is about, so it finishes
+    // first.
+    await waitUntil(
+      async () => {
+        const goal = await hostA.bureau.goals.get(SEEDED_GOAL_RUN_IDENTIFIER);
+        return goal?.status === 'succeeded';
+      },
+      { message: 'the seeded goal to succeed' },
+    );
+
+    // Every workflow event host A's engine dispatches, per workflow, from here on.
+    const dispatched = new Map<string, number>();
+    const abort = new AbortController();
+    for (const type of WORKFLOW_EVENT_TYPES) {
+      hostA.engine.addEventListener(
+        type,
+        (event) => {
+          const { workflowId } = event as unknown as { workflowId?: unknown };
+          if (typeof workflowId !== 'string') return;
+          dispatched.set(workflowId, (dispatched.get(workflowId) ?? 0) + 1);
+        },
+        { signal: abort.signal },
+      );
+    }
+
+    const task = await hostA.bureau.tasks.start(OVERLAP_AGENT, 'Ship the release');
+    await waitUntil(() => hostA.bureau.reviews.list().some((review) => review.runId === task.id), {
+      message: 'host A to park the run on a review',
+    });
+
+    // Closing right after the park leaves the run's last events still being written.
+    const beforeClose = new Map(dispatched);
+    expect(beforeClose.get(task.id)).toBeGreaterThan(0);
+    await hostA.close();
+    abort.abort();
+
+    const hostB = await startOverlapHost(environment, counter);
+    for (const [workflowId, count] of beforeClose) {
+      const keys: string[] = [];
+      for await (const [key] of hostB.engine.storage.scan(KEYS.watchEventPrefix(workflowId))) {
+        keys.push(key);
+      }
+      expect({ workflowId, stored: keys.length >= count }).toEqual({ workflowId, stored: true });
+    }
+    expect(reported.filter((line) => WRITE_AFTER_CLOSE.test(line))).toEqual([]);
   });
 });
