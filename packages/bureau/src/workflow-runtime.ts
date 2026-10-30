@@ -144,6 +144,13 @@ export interface WorkflowStartOptions {
   readonly owner: string;
   /** Where the person started it from; `api` unless the caller says. */
   readonly surface?: TaskPersonSurface | undefined;
+  /**
+   * Makes the start at-most-once (Weft's `idempotencyKey`): a second start with the same key
+   * starts nothing and answers the instance the first one started, however long ago and whether or
+   * not that instance has finished. A hook's `start-workflow` action sets it, so a delivery that is
+   * retried or resumed starts one instance.
+   */
+  readonly idempotencyKey?: string | undefined;
 }
 
 /**
@@ -1273,7 +1280,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
 
     async start(id, startOptions) {
       // The caller owns `startOptions` and its input: snapshot them before the first await.
-      const { owner: starter, surface } = startOptions;
+      const { owner: starter, surface, idempotencyKey } = startOptions;
       const requested = startOptions.input ?? null;
       if (!z.json().safeParse(requested).success) {
         throw options.createError('The input must be a JSON value.', 'BAD_REQUEST');
@@ -1297,7 +1304,10 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       };
       const trigger = { kind: 'manual', input, origin };
       assertSendable('input', trigger);
-      const handle = await engine.start(id, trigger, { tags: [taskOriginTag(origin)] });
+      const handle = await engine.start(id, trigger, {
+        tags: [taskOriginTag(origin)],
+        ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+      });
       // The revision the run is pinned to is the engine's to say: the catalog can already hold a
       // newer file than the one the engine registered (COR-1927). A run the engine cannot read
       // back is reported on the catalog's revision, the one it was started from.

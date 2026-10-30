@@ -113,6 +113,28 @@ describe('bureau.workflows.start', () => {
     expect(harness.calls[0]?.message).toContain('"city": "Oslo"');
   });
 
+  it('starts one instance for a repeated idempotency key, and answers the first instance again', async () => {
+    const harness = await start();
+    await harness.putWorkflow('lookup', { trigger: ON_GO });
+
+    const first = await workflowsOf(harness).start('lookup', {
+      owner: 'anonymous:local',
+      idempotencyKey: 'hook:a:b',
+    });
+    const again = await workflowsOf(harness).start('lookup', {
+      owner: 'anonymous:local',
+      idempotencyKey: 'hook:a:b',
+    });
+    const other = await workflowsOf(harness).start('lookup', {
+      owner: 'anonymous:local',
+      idempotencyKey: 'hook:a:c',
+    });
+
+    expect(again.runId).toBe(first.runId);
+    expect(other.runId).not.toBe(first.runId);
+    expect(await instances(harness, 'lookup')).toHaveLength(2);
+  });
+
   it('records the api surface when the caller names none', async () => {
     const harness = await start();
     await harness.putWorkflow('lookup', { trigger: ON_GO });

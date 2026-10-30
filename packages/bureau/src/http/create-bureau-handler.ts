@@ -197,6 +197,7 @@ import {
   type BureauTasksInspectOperationHost,
   tasksInspectOperation,
 } from './management/tasks-inspect-operation.ts';
+import { eventsCatalogOperation } from './management/events-catalog-operation.ts';
 import {
   type BureauTasksOperationHost,
   tasksCancelOperation,
@@ -740,6 +741,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   ...bureauAgentDefinitionsOperations,
   ...bureauWorkflowsOperations,
   defineBureauEventsSubscriptionOperation('bureau.events:observe-all'),
+  eventsCatalogOperation,
   bureauRunEventsSubscriptionOperation,
   ...bureauReviewsOperations,
   ...bureauSchedulesOperations,

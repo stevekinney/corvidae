@@ -581,6 +581,7 @@ describe('createBureauHandler catalog', () => {
         'bureau.deployments.rollback',
         'bureau.diagnostics.get',
         'bureau.events',
+        'bureau.events.catalog',
         'bureau.goals.cancel',
         'bureau.goals.create',
         'bureau.goals.get',

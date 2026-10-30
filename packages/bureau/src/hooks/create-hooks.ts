@@ -12,7 +12,33 @@
  * (a remote Interborough home) has its port report a write lock, and a write then fails with
  * {@link HookError} `locked` and the port's reason, `deployment`.
  *
+ * ## Actions
+ *
+ * A hook does one of three things for each event it matches (`HookAction`, tagged by `type`):
+ *
+ * - `webhook` sends the event, signed, to a URL, as above. The only action with a signing secret.
+ * - `start-workflow` starts a workflow as the hook's owner. The workflow's input is the event's
+ *   payload, or `{ kind, bureauId, emittedAtMs, payload }` when the action says `input: 'event'`.
+ *   Input the workflow's `inputSchema` refuses is recorded on the delivery as a `rejected` attempt
+ *   and ends it `failed`: it is not retried, because the same event gives the same input. A start
+ *   is keyed `hook:<hookId>:<deliveryId>` (Weft's `idempotencyKey`), so a delivery retried or
+ *   resumed after an interrupted attempt starts one run. The hook owner's authority is checked when
+ *   the hook is written and again for every delivery: in v1 only the deployment's owner of record
+ *   (`anonymous:local`) may own such a hook, because the Bureau knows an owner but not the scopes
+ *   its credential held, so it cannot re-check a scope when an event fires.
+ * - `notify` writes a notification for the hook's owner, never for anyone else, keyed
+ *   `hook:<hookId>:<deliveryId>` so a replayed delivery writes one. It cannot list
+ *   `notification.created`, which the notification it writes would fire again; this is refused when
+ *   the hook is written and checked again as the event is dispatched.
+ *
+ * A hook's action type is fixed when it is created; `update` changes the fields of the action.
+ * A record stored before actions existed has a top-level `url` and reads as a webhook.
+ *
  * ## Matching
+ *
+ * `hooks.test` sends a test delivery to a webhook hook only: for the other actions it would start a
+ * real run or write a real notification, so it is refused.
+ *
  *
  * A hook fires on the published event kinds it lists (`PUBLISHED_BUREAU_EVENT_KINDS`), for events
  * of the whole Bureau: the feed is fleet-wide, so the operations require `bureau.events:observe-all`
@@ -22,13 +48,17 @@
  * @module create-hooks
  */
 
-import { ownerFromPrincipal } from '../owner-of-record.ts';
+import { ownerFromPrincipal, ownerOrLocal } from '../owner-of-record.ts';
+import type { BureauNotifications } from '../notifications/notification-types.ts';
+import { NOTIFICATION_FIELD_LIMITS } from '../notifications/notification-types.ts';
+import type { BureauWorkflows } from '../workflow-runtime.ts';
 import { PUBLISHED_BUREAU_EVENT_KINDS, type BureauEventEnvelope } from '../bureau-event-feed.ts';
 import type { AnswerEncryptionKeys } from '../secret-answers.ts';
 import type { WebhookDeliveryEngine } from '../webhook-notifier.ts';
 import {
   createHookDeliveries,
   DEFAULT_HOOK_REQUEST_TIMEOUT_MILLISECONDS,
+  type HookActionRunner,
   type HookEventToDeliver,
 } from './hook-delivery.ts';
 import {
@@ -39,12 +69,16 @@ import {
   type Stored,
 } from './hook-store.ts';
 import {
+  HookActionError,
   HookError,
+  NOTIFICATION_CREATED_EVENT_KIND,
   type Hook,
+  type HookAction,
   type HookDelivery,
   type HookDeliveryRecord,
   type HookRecord,
   type HookSecretStore,
+  type HookWorkflowInput,
 } from './hook-types.ts';
 import { type HookUrlPolicy, hookUrlDefect } from './hook-url-policy.ts';
 import type { EncryptedValue } from '@lostgradient/cryptography';
@@ -67,14 +101,36 @@ const HOOK_CACHE_MILLISECONDS = 5_000;
 
 const PUBLISHED_KINDS: ReadonlySet<string> = new Set(PUBLISHED_BUREAU_EVENT_KINDS);
 
-/** What `hooks.create` takes. */
+/** What a hook is asked to do, as `hooks.create` and `hooks.update` take it. */
+export type HookActionInput =
+  | {
+      readonly type: 'webhook';
+      /** Where each delivery is POSTed. */
+      readonly url: string;
+    }
+  | {
+      readonly type: 'start-workflow';
+      /** The workflow to start, as the hook's owner. It must be ready and unpaused. */
+      readonly workflowId: string;
+      /** What of the event is the input; `payload` when omitted. */
+      readonly input?: HookWorkflowInput | undefined;
+    }
+  | {
+      readonly type: 'notify';
+      /** The notification's title, at most 200 characters; without one it names the event kind. */
+      readonly title?: string | undefined;
+    };
+
+/** What `hooks.create` takes. Name the action with `action`, or with `url` for a webhook. */
 export interface HookCreateInput {
-  /** Where each delivery is POSTed. */
-  readonly url: string;
+  /** A webhook's URL: shorthand for `action: { type: 'webhook', url }`. Give this or `action`, not both. */
+  readonly url?: string;
+  /** What the hook does. Give this or `url`, not both. */
+  readonly action?: HookActionInput;
   /** The published Bureau event kinds the hook fires on. */
   readonly events: readonly string[];
-  /** The secret deliveries are signed with, 16 to 256 characters. Sealed on arrival; never returned. */
-  readonly signingSecret: string;
+  /** The secret webhook deliveries are signed with, 16 to 256 characters. Required for a webhook and refused otherwise. Sealed on arrival; never returned. */
+  readonly signingSecret?: string;
   /** A label, at most 100 characters. */
   readonly name?: string;
   /** Whether the hook fires. Defaults to `true`. */
@@ -85,11 +141,13 @@ export interface HookCreateInput {
 
 /** What `hooks.update` changes; a field left out stays as it is. */
 export interface HookUpdateInput {
-  /** The new URL. */
+  /** The new URL of a webhook hook; shorthand for an `action` that only sets `url`. */
   readonly url?: string;
+  /** The hook's action again, with new fields. Its `type` must be the hook's: the type is fixed at creation. */
+  readonly action?: HookActionInput;
   /** The new event kinds, replacing the list. */
   readonly events?: readonly string[];
-  /** A new signing secret, sealed on arrival; never returned. */
+  /** A new signing secret, sealed on arrival; never returned. A webhook hook only. */
   readonly signingSecret?: string;
   /** A new label, or `null` to remove it. */
   readonly name?: string | null;
@@ -144,6 +202,16 @@ export interface HooksDependencies {
   readonly keys: AnswerEncryptionKeys | undefined;
   /** Which URLs may be delivered to. */
   readonly urlPolicy?: HookUrlPolicy | undefined;
+  /** The Bureau's workflows, read when needed; `undefined` while it has none. */
+  readonly workflows?:
+    (() => Pick<BureauWorkflows, 'start' | 'assertStartable'> | undefined) | undefined;
+  /** The Bureau's notifications, read when needed. */
+  readonly notifications?: (() => Pick<BureauNotifications, 'create'> | undefined) | undefined;
+  /**
+   * Whether `owner` may start workflows, asked when a `start-workflow` hook is written and for each
+   * delivery. Defaults to the deployment's owner of record alone.
+   */
+  readonly mayStartWorkflows?: ((owner: string) => boolean) | undefined;
   /** How long one request may take. */
   readonly requestTimeoutMilliseconds?: number | undefined;
   /** The Bureau's identifier, sent in each delivery. */
@@ -181,8 +249,85 @@ function deliveryViewOf(record: HookDeliveryRecord): HookDelivery {
   return delivery;
 }
 
-function invalid(path: string, message: string): never {
-  throw new HookError('invalid', message, { issues: [{ path: [path], message }] });
+function invalid(path: string | readonly string[], message: string): never {
+  throw new HookError('invalid', message, {
+    issues: [{ path: typeof path === 'string' ? [path] : [...path], message }],
+  });
+}
+
+const WORKFLOW_ID_MAXIMUM_LENGTH = 256;
+
+/** Checks and copies the fields of `input` that its `type` names; every other field is dropped. */
+function checkedAction(input: unknown, urlPolicy: HookUrlPolicy): HookAction {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+    invalid('action', 'The action must be an object');
+  }
+  const action = input as Record<string, unknown>;
+  switch (action['type']) {
+    case 'webhook': {
+      const url = action['url'];
+      const defect =
+        typeof url === 'string' ? hookUrlDefect(url, urlPolicy) : 'The URL is required';
+      if (defect !== undefined || typeof url !== 'string') {
+        invalid(['action', 'url'], defect ?? 'The URL is required');
+      }
+      return { type: 'webhook', url };
+    }
+    case 'start-workflow': {
+      const workflowId = action['workflowId'];
+      if (
+        typeof workflowId !== 'string' ||
+        workflowId.length === 0 ||
+        workflowId.length > WORKFLOW_ID_MAXIMUM_LENGTH
+      ) {
+        invalid(
+          ['action', 'workflowId'],
+          `The workflow identifier must be 1 to ${WORKFLOW_ID_MAXIMUM_LENGTH} characters`,
+        );
+      }
+      const mapping = action['input'] ?? 'payload';
+      if (mapping !== 'payload' && mapping !== 'event') {
+        invalid(['action', 'input'], 'The input must be "payload" or "event"');
+      }
+      return { type: 'start-workflow', workflowId, input: mapping };
+    }
+    case 'notify': {
+      const title = action['title'];
+      if (title === undefined) return { type: 'notify' };
+      if (
+        typeof title !== 'string' ||
+        title.length === 0 ||
+        title.length > NOTIFICATION_FIELD_LIMITS.title
+      ) {
+        invalid(
+          ['action', 'title'],
+          `The title must be 1 to ${NOTIFICATION_FIELD_LIMITS.title} characters`,
+        );
+      }
+      return { type: 'notify', title };
+    }
+    default:
+      invalid(
+        ['action', 'type'],
+        'The action type must be "webhook", "start-workflow" or "notify"',
+      );
+  }
+}
+
+/** A notification hook that listed `notification.created` would write a notification for each one it wrote. */
+function assertNoNotificationLoop(action: HookAction, events: readonly string[]): void {
+  if (action.type === 'notify' && events.includes(NOTIFICATION_CREATED_EVENT_KIND)) {
+    invalid(
+      'events',
+      `A notify hook cannot fire on ${NOTIFICATION_CREATED_EVENT_KIND}: the notification it writes would fire it again`,
+    );
+  }
+}
+
+/** Whether a failure of a workflow start is one a retry cannot change. */
+function isPermanentStartFailure(error: unknown): boolean {
+  const code = (error as { readonly code?: unknown } | null)?.code;
+  return code === 'input-invalid' || code === 'NOT_FOUND' || code === 'BAD_REQUEST';
 }
 
 function checkedEvents(events: readonly string[]): string[] {
@@ -227,8 +372,101 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
   const store: HookStore = createHookStore(kv);
   const secrets = dependencies.secrets ?? createKvHookSecretStore(kv);
   const urlPolicy = dependencies.urlPolicy ?? {};
+  const mayStartWorkflows =
+    dependencies.mayStartWorkflows ?? ((owner: string) => owner === ownerOrLocal(undefined));
+
+  /** The action `input` asks for: `action`, or the webhook that `url` stands for. */
+  function actionOfCreate(input: HookCreateInput): HookAction {
+    if (input.url !== undefined && input.action !== undefined) {
+      invalid('action', 'Give `url` or `action`, not both');
+    }
+    if (input.action !== undefined) return checkedAction(input.action, urlPolicy);
+    if (input.url === undefined) invalid('action', 'A hook needs an action, or a url');
+    // The shorthand names its field `url`, as it always has.
+    const defect =
+      typeof input.url === 'string' ? hookUrlDefect(input.url, urlPolicy) : 'The URL is required';
+    if (defect !== undefined) invalid('url', defect);
+    return { type: 'webhook', url: input.url };
+  }
+
+  /**
+   * What must hold for `owner` to have a hook with `action`, checked as the hook is written. A
+   * `start-workflow` hook needs a Bureau with workflows, an owner who may start them, and a
+   * workflow that is ready and unpaused now.
+   */
+  async function assertActionAllowed(action: HookAction, owner: string): Promise<void> {
+    if (action.type !== 'start-workflow') return;
+    if (!mayStartWorkflows(owner)) {
+      throw new HookError('forbidden', 'This owner may not start workflows from a hook');
+    }
+    const workflows = dependencies.workflows?.();
+    if (workflows === undefined) {
+      invalid(
+        ['action', 'workflowId'],
+        'This Bureau has no workflow directory, so it has no workflows',
+      );
+    }
+    try {
+      workflows.assertStartable(action.workflowId);
+    } catch {
+      invalid(
+        ['action', 'workflowId'],
+        `Workflow "${action.workflowId}" does not exist, or is paused or invalid`,
+      );
+    }
+  }
+
+  const actionRunner: HookActionRunner = {
+    async run(work, context) {
+      // One key per delivery: the delivery is created once per event and hook, and its attempts
+      // (a retry, or the one after an interrupted attempt) are the repeats the key makes harmless.
+      const key = `hook:${context.hookId}:${context.deliveryId}`;
+      if (work.type === 'start-workflow') {
+        // Asked again as the event fires: the authority is the owner's now, not at creation.
+        if (!mayStartWorkflows(context.owner)) {
+          throw new HookActionError('The hook’s owner may not start workflows', true);
+        }
+        const workflows = dependencies.workflows?.();
+        if (workflows === undefined) {
+          throw new HookActionError('This Bureau has no workflow directory', true);
+        }
+        try {
+          const started = await workflows.start(work.workflowId, {
+            input: work.input,
+            owner: context.owner,
+            surface: 'api',
+            idempotencyKey: key,
+          });
+          return { runId: started.runId };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          throw new HookActionError(message, isPermanentStartFailure(error));
+        }
+      }
+      const notifications = dependencies.notifications?.();
+      if (notifications === undefined) {
+        throw new HookActionError('This Bureau has no notifications', true);
+      }
+      try {
+        // The owner is the hook's, from the delivery; nothing in the event can name another.
+        const written = await notifications.create({
+          owner: context.owner,
+          kind: 'hook',
+          title: work.title,
+          body: work.body,
+          dedupeKey: key,
+        });
+        return { notificationId: written.notification.id };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new HookActionError(message, isPermanentStartFailure(error));
+      }
+    },
+  };
+
   const deliveries = createHookDeliveries({
     engine,
+    actions: actionRunner,
     store,
     secrets,
     keys: dependencies.keys,
@@ -263,7 +501,13 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
     if (cachedHooks === undefined || now - cachedHooks.readAt > HOOK_CACHE_MILLISECONDS) {
       cachedHooks = { hooks: await store.listHooks(), readAt: now };
     }
-    return cachedHooks.hooks.filter((hook) => hook.enabled && hook.events.includes(kind));
+    return cachedHooks.hooks.filter(
+      (hook) =>
+        hook.enabled &&
+        hook.events.includes(kind) &&
+        // A record that lists it anyway (written by something that skipped the check) is not fired.
+        !(hook.action.type === 'notify' && kind === NOTIFICATION_CREATED_EVENT_KIND),
+    );
   }
 
   /**
@@ -321,34 +565,39 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
 
   const hooks: BureauHooks = {
     async create(input) {
-      const url = input.url;
-      const defect =
-        typeof url === 'string' ? hookUrlDefect(url, urlPolicy) : 'The URL is required';
-      if (defect !== undefined) invalid('url', defect);
+      // The caller owns `input`: every field is read and checked before the first await.
+      const action = actionOfCreate(input);
       const events = checkedEvents(input.events);
-      const secret = checkedSecret(input.signingSecret);
+      const secret = action.type === 'webhook' ? checkedSecret(input.signingSecret) : undefined;
+      if (action.type !== 'webhook' && input.signingSecret !== undefined) {
+        invalid('signingSecret', 'Only a webhook hook has a signing secret');
+      }
       const name = input.name === undefined ? undefined : checkedName(input.name);
       const owner = ownerFromPrincipal(input.principal, (message) => invalid('principal', message));
+      const enabled = input.enabled ?? true;
+      assertNoNotificationLoop(action, events);
+      await assertActionAllowed(action, owner);
       const now = engine.now();
       const record: HookRecord = {
         version: 1,
         id: dependencies.newId('hook'),
         owner,
         ...(name === undefined ? {} : { name }),
-        url,
+        action,
         events,
-        enabled: input.enabled ?? true,
+        enabled,
         createdAt: now,
         updatedAt: now,
         revision: 1,
       };
-      const sealed = await sealSecret(record.id, secret);
-      await secrets.set(record.id, sealed);
+      const sealed = secret === undefined ? undefined : await sealSecret(record.id, secret);
+      if (sealed !== undefined) await secrets.set(record.id, sealed);
       let created = false;
       try {
         created = await store.createHook(record);
       } finally {
-        if (!created) await secrets.delete(record.id).catch(() => undefined);
+        if (!created && sealed !== undefined)
+          await secrets.delete(record.id).catch(() => undefined);
       }
       if (!created) throw new Error(`Hook id "${record.id}" is already in use`);
       // The creator is the owner, so the owner is also the actor.
@@ -360,9 +609,12 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
       // and may change it while the store is read.
       const url = input.url;
       if (url !== undefined) {
+        if (input.action !== undefined) invalid('action', 'Give `url` or `action`, not both');
         const defect = hookUrlDefect(url, urlPolicy);
         if (defect !== undefined) invalid('url', defect);
       }
+      const replacement =
+        input.action === undefined ? undefined : checkedAction(input.action, urlPolicy);
       const events = input.events === undefined ? undefined : checkedEvents(input.events);
       const secret =
         input.signingSecret === undefined ? undefined : checkedSecret(input.signingSecret);
@@ -383,11 +635,27 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         }
         const nextName = name === undefined ? before.name : (name ?? undefined);
         const { name: _previousName, ...withoutName } = before;
+        if (url !== undefined && before.action.type !== 'webhook') {
+          invalid('url', 'Only a webhook hook has a URL');
+        }
+        if (replacement !== undefined && replacement.type !== before.action.type) {
+          invalid(['action', 'type'], 'A hook’s action type cannot change; create another hook');
+        }
+        if (secret !== undefined && before.action.type !== 'webhook') {
+          invalid('signingSecret', 'Only a webhook hook has a signing secret');
+        }
+        const action: HookAction =
+          replacement ?? (url === undefined ? before.action : { type: 'webhook', url });
+        const nextEvents = events ?? before.events;
+        assertNoNotificationLoop(action, nextEvents);
+        // Authority is asked again only when the action is rewritten, so a rename or a disable is
+        // never held up by a workflow that has since been paused.
+        if (replacement !== undefined) await assertActionAllowed(action, before.owner);
         const after: HookRecord = {
           ...withoutName,
           ...(nextName === undefined ? {} : { name: nextName }),
-          url: url ?? before.url,
-          events: events ?? before.events,
+          action,
+          events: nextEvents,
           enabled: enabled ?? before.enabled,
           updatedAt: engine.now(),
           revision: before.revision + 1,
@@ -412,11 +680,13 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         const stored = await store.getHook(hookId);
         if (stored === undefined) return false;
         if (!(await store.deleteHook(stored))) return false;
-        await secrets
-          .delete(hookId)
-          .catch((cause: unknown) =>
-            dependencies.diagnose('Failed to remove a hook’s sealed secret', cause),
-          );
+        if (stored.record.action.type === 'webhook') {
+          await secrets
+            .delete(hookId)
+            .catch((cause: unknown) =>
+              dependencies.diagnose('Failed to remove a hook’s sealed secret', cause),
+            );
+        }
         await store.deleteDeliveriesOf(hookId);
         recordChange('hook.deleted', stored.record, options?.principal);
         return true;
@@ -437,6 +707,12 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
     async test(hookId, options) {
       const stored = await store.getHook(hookId);
       if (stored === undefined) return undefined;
+      if (stored.record.action.type !== 'webhook') {
+        invalid(
+          'action',
+          'Only a webhook hook can be tested: a test would start a real run or write a real notification',
+        );
+      }
       const id = await deliveries.enqueue(
         stored.record,
         {

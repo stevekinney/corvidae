@@ -9,7 +9,53 @@ import type { EncryptedValue } from '@lostgradient/cryptography';
 
 import type { SettingLockReason } from '../settings/settings-schema.ts';
 
-/** A hook: when a published Bureau event of one of `events` happens, its `url` is sent a signed POST. */
+/** What a hook does when one of its events happens. */
+export type HookActionType = 'webhook' | 'start-workflow' | 'notify';
+
+/** The event, as the workflow a `start-workflow` hook starts receives it as its input. */
+export type HookWorkflowInput =
+  /** The event's payload alone: the object `bureau.events.catalog` describes for its kind. */
+  | 'payload'
+  /** `{ kind, bureauId, emittedAtMs, payload }`: the payload and what identifies the event. */
+  | 'event';
+
+/** Sends each event, signed, to `url`. The only action a hook had before COR-1940. */
+export interface WebhookHookAction {
+  /** Always `webhook`. */
+  readonly type: 'webhook';
+  /** Where each delivery is POSTed. See `hook-url-policy.ts` for what a URL may be. */
+  readonly url: string;
+}
+
+/**
+ * Starts the workflow `workflowId` as the hook's owner for each event, with the event as its input.
+ * The run is started with the idempotency key `hook:<hookId>:<deliveryId>`, so a delivery that is
+ * retried or resumed starts at most one run.
+ */
+export interface StartWorkflowHookAction {
+  /** Always `start-workflow`. */
+  readonly type: 'start-workflow';
+  /** The workflow to start. */
+  readonly workflowId: string;
+  /** What of the event is the workflow's input. */
+  readonly input: HookWorkflowInput;
+}
+
+/**
+ * Writes a notification for the hook's owner, and nobody else, for each event. It cannot list
+ * `notification.created`: the notification it writes would fire the hook again.
+ */
+export interface NotifyHookAction {
+  /** Always `notify`. */
+  readonly type: 'notify';
+  /** The notification's title; without one it names the event kind. At most 200 characters. */
+  readonly title?: string;
+}
+
+/** What a hook does for an event, tagged by `type`. */
+export type HookAction = WebhookHookAction | StartWorkflowHookAction | NotifyHookAction;
+
+/** A hook: when a published Bureau event of one of `events` happens, its `action` runs. */
 export interface Hook {
   /** The hook's identifier, minted by the Bureau. */
   readonly id: string;
@@ -17,8 +63,8 @@ export interface Hook {
   readonly owner: string;
   /** A label for the person reading a list; at most 100 characters. */
   readonly name?: string;
-  /** Where each delivery is POSTed. See `hook-url-policy.ts` for what a URL may be. */
-  readonly url: string;
+  /** What the hook does for each event. A record stored before actions existed reads as a webhook. */
+  readonly action: HookAction;
   /** The published Bureau event kinds the hook fires on; never empty. */
   readonly events: readonly string[];
   /** Whether the hook fires. A disabled hook keeps its secret and its delivery records. */
@@ -31,7 +77,11 @@ export interface Hook {
   readonly revision: number;
 }
 
-/** The record under which a hook is stored. */
+/**
+ * The record under which a hook is stored. A record written before actions existed has a top-level
+ * `url` and no `action`; the store reads it as `{ type: 'webhook', url }` and never needs it
+ * rewritten.
+ */
 export interface HookRecord extends Hook {
   /** The stored shape's version. */
   readonly version: 1;
@@ -48,7 +98,13 @@ export type HookAttemptOutcome =
   /** The Bureau stopped while the request was in flight, or before its outcome was written. The request may have been received. */
   | 'interrupted'
   /** The URL was refused by the policy at send time; no request was made. */
-  | 'refused';
+  | 'refused'
+  /** A `start-workflow` or `notify` action ran; `receipt` says what it made. */
+  | 'completed'
+  /** A `start-workflow` or `notify` action failed in a way a retry cannot change; `error` says why. */
+  | 'rejected'
+  /** A `start-workflow` or `notify` action failed in a way a retry may change; `error` says why. */
+  | 'error';
 
 /** One attempt to deliver, in the order made. */
 export interface HookDeliveryAttempt {
@@ -68,6 +124,16 @@ export interface HookDeliveryAttempt {
   readonly responseTruncated?: boolean;
   /** Why the attempt failed, with the signing secret removed. */
   readonly error?: string;
+  /** What a `completed` action made: the run it started, or the notification it wrote. */
+  readonly receipt?: HookActionReceipt;
+}
+
+/** What a `start-workflow` or `notify` action made. */
+export interface HookActionReceipt {
+  /** The run a `start-workflow` action started. */
+  readonly runId?: string;
+  /** The notification a `notify` action wrote, or found already written for this delivery. */
+  readonly notificationId?: string;
 }
 
 /** Where a delivery stands. */
@@ -81,7 +147,9 @@ export type HookDeliveryStatus =
   /** The hook was deleted or disabled before the delivery finished. */
   | 'aborted'
   /** The signing secret could not be read, so no request was made. */
-  | 'failed-secret';
+  | 'failed-secret'
+  /** A `start-workflow` or `notify` action failed in a way a retry cannot change, such as input the workflow refuses. */
+  | 'failed';
 
 /** The request a delivery sends, without its signature: the signature is made fresh for each attempt. */
 export interface HookDeliveryRequest {
@@ -93,7 +161,24 @@ export interface HookDeliveryRequest {
   readonly body: string;
 }
 
-/** A delivery of one event to one hook: the request, every attempt, and where it stands. */
+/**
+ * What a `start-workflow` or `notify` delivery will do, fixed when the delivery is created from the
+ * hook as it was then, as a webhook delivery's request is.
+ */
+export type HookDeliveryWork =
+  | {
+      readonly type: 'start-workflow';
+      readonly workflowId: string;
+      /** The input the workflow is started with, mapped from the event. */
+      readonly input: unknown;
+    }
+  | {
+      readonly type: 'notify';
+      readonly title: string;
+      readonly body: string;
+    };
+
+/** A delivery of one event to one hook: the action, every attempt, and where it stands. */
 export interface HookDelivery {
   /** The delivery's identifier, also sent as `X-Delivery-Id` and `Idempotency-Key`. */
   readonly id: string;
@@ -101,14 +186,18 @@ export interface HookDelivery {
   readonly hookId: string;
   /** The hook's owner; the only principal that reads the record without an operator scope. */
   readonly owner: string;
+  /** What the delivery does. A record stored before actions existed reads as `webhook`. */
+  readonly actionType: HookActionType;
   /** The event kind delivered, or `hook.test` for a test delivery. */
   readonly kind: string;
   /** Whether this is a `hooks.test` delivery. */
   readonly test: boolean;
   /** Where the delivery stands. */
   readonly status: HookDeliveryStatus;
-  /** The request. */
-  readonly request: HookDeliveryRequest;
+  /** The request of a `webhook` delivery; absent for the other actions. */
+  readonly request?: HookDeliveryRequest;
+  /** What a `start-workflow` or `notify` delivery does; absent for a webhook. */
+  readonly work?: HookDeliveryWork;
   /** Every attempt made, in order. */
   readonly attempts: readonly HookDeliveryAttempt[];
   /** How many attempts the delivery may make. */
@@ -128,6 +217,9 @@ export interface HookDeliveryRecord extends HookDelivery {
   /** Increases by one on every write; every write compares it. */
   readonly revision: number;
 }
+
+/** The event a `notify` hook may not list: the notification it writes is announced by this event, so the hook would loop. */
+export const NOTIFICATION_CREATED_EVENT_KIND = 'notification.created';
 
 /** The longest response body kept on an attempt. */
 export const HOOK_RESPONSE_EXCERPT_BYTES = 1024;
@@ -164,7 +256,9 @@ export type HookErrorCode =
   /** The Bureau has no `answerEncryption` key, so it cannot seal a secret. */
   | 'no-encryption'
   /** The hook's secret cannot be opened (the key is no longer held), so no delivery can be signed. */
-  | 'secret-unavailable';
+  | 'secret-unavailable'
+  /** The hook's owner may not do what its action does (start the workflow). */
+  | 'forbidden';
 
 /** A refused hooks call. */
 export class HookError extends Error {
@@ -192,5 +286,17 @@ export class HookError extends Error {
     this.issues = details.issues ?? [];
     this.currentRevision = details.currentRevision;
     this.lockReason = details.lockReason;
+  }
+}
+
+/** Thrown by a hook action that failed; `permanent` says whether a retry could change the answer. */
+export class HookActionError extends Error {
+  /** `true` when a retry cannot change the answer, so the delivery ends `failed` instead of retrying. */
+  readonly permanent: boolean;
+
+  constructor(message: string, permanent: boolean) {
+    super(message);
+    this.name = 'HookActionError';
+    this.permanent = permanent;
   }
 }

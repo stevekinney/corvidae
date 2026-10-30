@@ -87,7 +87,7 @@ describe('bureau.hooks.*', () => {
     expect(created.error).toBeUndefined();
     expect(created.result).toMatchObject({
       owner: 'api-key:alice',
-      url: NEW_HOOK.url,
+      action: { type: 'webhook', url: NEW_HOOK.url },
       events: ['run.settled'],
       enabled: true,
       name: null,
@@ -228,7 +228,7 @@ describe('bureau.hooks.*', () => {
     expect(
       await resultOf(opened, 'bureau.hooks.get', { hookId: hook.id }, 'alice-key'),
     ).toMatchObject({
-      url: NEW_HOOK.url,
+      action: { type: 'webhook', url: NEW_HOOK.url },
       events: ['run.settled'],
       revision: 1,
     });
@@ -251,7 +251,7 @@ describe('bureau.hooks.*', () => {
 
     // The scope is what is needed: a caller holding it may re-point the hook.
     expect(await resultOf(opened, 'bureau.hooks.update', attacker, 'operator-key')).toMatchObject({
-      url: attacker.url,
+      action: { type: 'webhook', url: attacker.url },
     });
   });
 
@@ -375,6 +375,108 @@ describe('bureau.hooks.*', () => {
     expect(refused.error?.data?.httpStatus).toBe(403);
     expect(held.size).toBe(0);
     expect(await resultOf(opened, 'bureau.hooks.list', {}, 'alice-key')).toEqual({ hooks: [] });
+  });
+
+  it('creates a notify hook for the caller, shows it as an action, and shows its delivery as work with a receipt', async () => {
+    const { opened } = await open();
+    const created = await call(
+      opened,
+      'bureau.hooks.create',
+      { events: ['run.registered'], action: { type: 'notify', title: 'A run began' } },
+      'alice-observer-key',
+    );
+    expect(created.error).toBeUndefined();
+    expect(created.result).toMatchObject({
+      owner: 'api-key:alice',
+      action: { type: 'notify', title: 'A run began' },
+    });
+    expect(Object.keys(created.result!)).not.toContain('url');
+    const id = (created.result as { id: string }).id;
+
+    await opened.bureau.tasks.start('default', 'hello', { principal: 'api-key:alice' });
+    let deliveries: Array<Record<string, unknown>> = [];
+    await waitForCondition(async () => {
+      const listed = await call(opened, 'bureau.hooks.deliveries', { hookId: id }, 'alice-key');
+      deliveries = (listed.result?.['deliveries'] ?? []) as Array<Record<string, unknown>>;
+      return deliveries.length === 1 && deliveries[0]!['status'] === 'delivered';
+    }, 'the notify delivery never completed');
+
+    expect(deliveries[0]).toMatchObject({
+      actionType: 'notify',
+      request: null,
+      work: { type: 'notify', title: 'A run began', workflowId: null },
+      attempts: [{ outcome: 'completed', receipt: { notificationId: expect.any(String) } }],
+    });
+    const notifications = await call(opened, 'bureau.notifications.list', {}, 'alice-key');
+    const listedNotifications = (notifications.result?.['notifications'] ?? []) as Array<{
+      kind: string;
+    }>;
+    expect(listedNotifications.map((n) => n.kind)).toContain('hook');
+  });
+
+  it('answers InvalidParams for an action that is malformed, mixed with a url, or loops, and for testing a notify hook', async () => {
+    const { opened } = await open();
+    const create = (params: object) =>
+      call(
+        opened,
+        'bureau.hooks.create',
+        { events: ['run.settled'], ...params },
+        'alice-observer-key',
+      );
+
+    const both = await create({ ...NEW_HOOK, action: { type: 'notify' } });
+    expect(both.error?.data).toMatchObject({ issues: [{ path: ['action'] }] });
+    const noSecret = await create({ url: NEW_HOOK.url });
+    expect(noSecret.error?.data).toMatchObject({ issues: [{ path: ['signingSecret'] }] });
+    const looping = await create({
+      events: ['notification.created'],
+      action: { type: 'notify' },
+    });
+    expect(looping.error?.data).toMatchObject({ issues: [{ path: ['events'] }] });
+    const unknownType = await create({ action: { type: 'teleport' } });
+    expect(unknownType.error?.code).toBe(-32602);
+
+    const hook = await create({ action: { type: 'notify' } });
+    expect(hook.error).toBeUndefined();
+    const id = (hook.result as { id: string }).id;
+    const tested = await call(opened, 'bureau.hooks.test', { hookId: id }, 'alice-key');
+    expect(tested.error?.data).toMatchObject({ issues: [{ path: ['action'] }] });
+    const changed = await call(
+      opened,
+      'bureau.hooks.update',
+      { hookId: id, events: ['notification.created'] },
+      'alice-observer-key',
+    );
+    expect(changed.error?.data).toMatchObject({ issues: [{ path: ['events'] }] });
+    const retyped = await call(
+      opened,
+      'bureau.hooks.update',
+      { hookId: id, action: { type: 'start-workflow', workflowId: 'x' } },
+      'alice-observer-key',
+    );
+    expect(retyped.error?.code).toBeDefined();
+  });
+
+  it('answers Forbidden to a start-workflow hook from a caller who cannot start workflows, and from an owner the Bureau will not run it as', async () => {
+    const { opened } = await open();
+    const action = { type: 'start-workflow', workflowId: 'digest' };
+    // Alice may observe the Bureau but may not start workflows.
+    const caller = await call(
+      opened,
+      'bureau.hooks.create',
+      { events: ['run.settled'], action },
+      'alice-observer-key',
+    );
+    expect(caller.error?.data).toMatchObject({ reason: 'workflow authority' });
+    // The operator may start them, but in v1 only the deployment’s owner of record owns such a hook.
+    const operator = await call(
+      opened,
+      'bureau.hooks.create',
+      { events: ['run.settled'], action },
+      'operator-key',
+    );
+    expect(operator.error?.data).toMatchObject({ reason: 'workflow authority' });
+    expect(await resultOf(opened, 'bureau.hooks.list', {}, 'operator-key')).toEqual({ hooks: [] });
   });
 
   it('answers UnsupportedCapability on a Bureau without hooks', async () => {
