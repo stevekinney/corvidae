@@ -38,7 +38,7 @@ import {
   AGENT_REFERENCES_TOTAL_SIZE_LIMIT,
   type AgentFileProblem,
 } from './agent-file';
-import type { AgentSource } from './sources/definition-source';
+import type { AgentSource, SiblingRead } from './sources/definition-source';
 
 /** What a saved version records of a document: which one, and the SHA-256 of its bytes. */
 export interface AgentReferenceDigest {
@@ -165,23 +165,26 @@ export async function loadReferenceDocuments(
   const documents: AgentReferenceDocument[] = [];
   let total = 0;
   for (const [index, path] of paths.entries()) {
-    let read;
+    let read: Exclude<SiblingRead, { kind: 'unchanged' }>;
     try {
       const cached = cache?.get(path);
-      read = await source.readSibling(path, {
+      const answer = await source.readSibling(path, {
         limit: AGENT_REFERENCE_SIZE_LIMIT,
         ...(cached === undefined ? {} : { unlessStamp: cached.stamp }),
       });
-      if (read.kind === 'unchanged') {
+      if (answer.kind === 'unchanged') {
         // A source answers `unchanged` only to a stamp it was given, which came with these bytes.
         read =
           cached === undefined
             ? { kind: 'missing' }
             : { kind: 'found', bytes: cached.bytes, stamp: cached.stamp };
-      } else if (read.kind === 'found' && read.stamp !== undefined) {
-        cache?.set(path, { stamp: read.stamp, bytes: read.bytes });
       } else {
-        cache?.delete(path);
+        read = answer;
+        if (answer.kind === 'found' && answer.stamp !== undefined) {
+          cache?.set(path, { stamp: answer.stamp, bytes: answer.bytes });
+        } else {
+          cache?.delete(path);
+        }
       }
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
