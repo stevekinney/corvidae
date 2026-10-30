@@ -27,6 +27,7 @@ import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 
 import type { AgentSkillDescriptor } from '@lostgradient/operative';
+import { RUN_COST_BUDGET_MAXIMUM_WARNINGS } from '@lostgradient/operative';
 import { CORE_SCHEMA, load as loadYaml, YAMLException } from 'js-yaml';
 import { z } from 'zod';
 
@@ -138,8 +139,8 @@ export const agentRetrySchema = z.strictObject({
 
 /** The most a file's `costBudget.perRunUsd` may allow one run to spend, in US dollars. */
 export const AGENT_COST_BUDGET_MAXIMUM_USD = 1_000_000;
-/** The most thresholds a file's `costBudget.warnAt` may list. */
-export const AGENT_COST_BUDGET_MAXIMUM_WARNINGS = 10;
+/** The most thresholds a file's `costBudget.warnAt` may list: Operative's own limit. */
+export const AGENT_COST_BUDGET_MAXIMUM_WARNINGS = RUN_COST_BUDGET_MAXIMUM_WARNINGS;
 
 /**
  * What one run of the agent may spend (COR-1914). `perRunUsd` is the limit in US dollars, measured
