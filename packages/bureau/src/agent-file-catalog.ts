@@ -81,6 +81,7 @@ import type { AnyRunnableAgent } from './agent-catalog';
 import {
   AGENT_COMPACTION_DEFAULT_THRESHOLD_PERCENT,
   AGENT_FILE_SIZE_LIMIT,
+  type AgentCostBudget,
   type AgentFileDefinition,
   type AgentFileDefinitionInput,
   type AgentFileProblem,
@@ -312,6 +313,23 @@ const fileAgentBindings = new WeakMap<object, FileAgentBinding>();
 /** The definition `agent` was built from, when it is a file agent. */
 export function readFileAgentBinding(agent: object): FileAgentBinding | undefined {
   return fileAgentBindings.get(agent);
+}
+
+const fileAgentCostBudgets = new WeakMap<
+  object,
+  { readonly budget: AgentCostBudget; readonly models: readonly string[] | undefined }
+>();
+
+/**
+ * The `costBudget` of the file agent `agent` was built from, and the `models` list that says which
+ * rows a session of it may be switched to (COR-1921). Unlike {@link readFileAgentBinding} it also
+ * answers for an `ephemeral` agent, whose budget is enforced all the same.
+ */
+export function readFileAgentCostBudget(
+  agent: object,
+):
+  { readonly budget: AgentCostBudget; readonly models: readonly string[] | undefined } | undefined {
+  return fileAgentCostBudgets.get(agent);
 }
 
 export interface AgentFileCatalogOptions {
@@ -824,6 +842,9 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
             },
           }),
     }) as AnyRunnableAgent;
+    if (definition.costBudget !== undefined) {
+      fileAgentCostBudgets.set(agent, { budget: definition.costBudget, models: definition.models });
+    }
     // An agent that is not tied to a file (`ephemeral`) has no binding, so a run of it records no
     // snapshot and no hash: nothing about it outlives the run's own records.
     if (bind) {

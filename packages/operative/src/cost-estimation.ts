@@ -233,6 +233,16 @@ export function estimateCacheHitRate(usage: TokenUsage): number | undefined {
   return denominator === 0 ? 0 : cacheReadTokens / denominator;
 }
 
+/**
+ * The `customPricing` key that prices a model as one provider serves it (COR-1921). Two providers
+ * can serve a model of the same name at different prices, or one of them at none, and a session
+ * switched to a model names its provider when the caller did. A host that prices from a catalog
+ * sets this key for each row; a step that names a provider reads it before the bare model name.
+ */
+export function providerModelPricingKey(provider: string, model: string): string {
+  return `${provider}/${model}`;
+}
+
 export function getModelPricing(
   model: string,
   options?: CostEstimationOptions,

@@ -16,6 +16,7 @@ import {
   type BackendDescriptor,
   type CostEstimationOptions,
   getModelPricing,
+  providerModelPricingKey,
   type ModelPricing,
   type RunCostBudget,
   type RunOptions,
@@ -78,12 +79,16 @@ export function costBudgetOptions(
 ): Pick<RunOptions, 'costBudget' | 'costEstimation'> {
   const customPricing: NonNullable<CostEstimationOptions['customPricing']> = {};
   for (const row of [descriptor, ...allowed]) {
-    // The default model first, so a second provider serving a model of the same name never
-    // changes what the default is counted at.
-    if (Object.hasOwn(customPricing, row.model) && customPricing[row.model] !== null) continue;
-    // A model with no USD price is entered as unpriced: left out, a model Operative's built-in
-    // table happens to know would be counted at that table's rate, which is not the catalog's.
-    customPricing[row.model] = usdPricingOfRow(row) ?? null;
+    // A model with no USD price is entered as unpriced (`null`): left out, a model Operative's
+    // built-in table happens to know would be counted at that table's rate, not the catalog's.
+    const pricing = usdPricingOfRow(row) ?? null;
+    // Each provider's row by its own key, which a switch that names its provider reads first.
+    const providerKey = providerModelPricingKey(row.provider, row.model);
+    if (!Object.hasOwn(customPricing, providerKey)) customPricing[providerKey] = pricing;
+    // The bare name, for a switch that names no provider: the first row serving it decides, as
+    // `createFileAgentGenerate` runs the first allowed row, and the default model comes first, so
+    // a second provider serving the default's name never changes what the default is counted at.
+    if (!Object.hasOwn(customPricing, row.model)) customPricing[row.model] = pricing;
   }
   const runBudget: RunCostBudget = {
     perRunUsd: budget.perRunUsd,
@@ -118,22 +123,24 @@ export function toolboxBudgetOf(budget: AgentToolBudget): {
 
 /**
  * Why a session of an agent with a `costBudget` may not be switched to `override`, or `undefined`
- * when it may (COR-1921). A model with no price in US dollars in the catalog cannot be counted
- * against the budget, and counting it at another model's rate would let the budget be spent
- * unseen, so the switch is refused. An agent with no budget is never refused, and a model that no
- * catalog row serves is for the caller's own catalog check to refuse.
+ * when it may (COR-1921). `allowed` are the rows the agent allows, in the order it runs them: a
+ * switch that names no provider runs the first of them that serves the model
+ * (`createFileAgentGenerate`), so that row is the one judged. A model with no price in US dollars
+ * in the catalog cannot be counted against the budget, and counting it at another model's rate
+ * would let the budget be spent unseen, so the switch is refused. An agent with no budget is never
+ * refused, and a model that none of the rows serves is for the caller's own allowed-model check.
  */
 export function unpricedSwitchReason(
   budget: AgentCostBudget | undefined,
-  descriptors: readonly BackendDescriptor[],
+  allowed: readonly BackendDescriptor[],
   override: { readonly model: string; readonly provider?: string | undefined },
 ): string | undefined {
   if (budget === undefined) return undefined;
-  const rows = descriptors.filter(
-    (row) =>
-      row.model === override.model &&
-      (override.provider === undefined || row.provider === override.provider),
+  const row = allowed.find(
+    (candidate) =>
+      candidate.model === override.model &&
+      (override.provider === undefined || candidate.provider === override.provider),
   );
-  if (rows.length === 0 || rows.some((row) => usdPricingOfRow(row) !== undefined)) return undefined;
-  return `The model "${override.model}" has no price in US dollars in the model catalog, so the agent's costBudget could not count its spend. Choose a model that has one.`;
+  if (row === undefined || usdPricingOfRow(row) !== undefined) return undefined;
+  return `The model "${override.model}" from "${row.provider}" has no price in US dollars in the model catalog, so the agent's costBudget could not count its spend. Choose a model that has one.`;
 }

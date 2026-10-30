@@ -153,9 +153,11 @@ import { type AgentDefinitions, type AgentNames, createAgentCatalog } from './ag
 import { AgentFileError, AgentSnapshotError, type AgentFileDefinitionInput } from './agent-file';
 import { createTryAgents, isTryAgentName, TRY_AGENT_NAME_START, tryToolProblem } from './agent-try';
 import {
+  allowedDescriptorsOfFileAgent,
   createAgentFileCatalog,
   type FileAgentBinding,
   readFileAgentBinding,
+  readFileAgentCostBudget,
 } from './agent-file-catalog';
 import { unpricedSwitchReason } from './file-agent-cost-budget';
 import { createFileAgentRuntime, type FileAgentRuntime } from './agent-file-runtime';
@@ -15106,18 +15108,20 @@ async function constructBureau<const D extends AgentDefinitions>(
 
   /**
    * COR-1921 — why a session of `agentName`'s agent may not be switched to `override` because the
-   * agent has a `costBudget` and the catalog has no price for the model, or `undefined` when it
-   * may. Only a file agent has a budget.
+   * agent has a `costBudget` and the model's row has no price in the catalog, or `undefined` when
+   * it may. The agent is a file agent, bound or `ephemeral` (tried): a code-defined agent has no
+   * budget. The row judged is the one the agent's generate runs for the switch.
    */
   function unpricedSwitchRefusalOf(
     agentName: string,
     override: { readonly model: string; readonly provider?: string | undefined },
   ): string | undefined {
     const agent = agentCatalog.find(agentName) ?? tryAgents.peek(agentName);
-    if (agent === undefined) return undefined;
+    const budgeted = agent === undefined ? undefined : readFileAgentCostBudget(agent);
+    if (budgeted === undefined) return undefined;
     return unpricedSwitchReason(
-      readFileAgentBinding(agent)?.definition.costBudget,
-      models.catalog().descriptors,
+      budgeted.budget,
+      allowedDescriptorsOfFileAgent(budgeted.models, models.catalog().descriptors),
       override,
     );
   }
@@ -15891,12 +15895,18 @@ async function constructBureau<const D extends AgentDefinitions>(
 
     // COR-1921 — a budgeted agent is not switched to a model the catalog cannot price: counting
     // its steps at another model's rate would spend the budget unseen. A key the log already
-    // decided is answered from the log and skips it. This refusal is a throw, so it is not logged:
-    // a retry of it is judged again, and is admitted if the catalog has since gained a price.
+    // decided (the durable log, or the in-memory ledger of a Bureau with none) is answered from
+    // there and skips it. This refusal is a throw, so it is not logged: a retry of it is judged
+    // again, and is admitted if the catalog has since gained a price.
+    const inMemoryKeyBound =
+      durableSteeringStore() === undefined &&
+      request.id !== undefined &&
+      getSteeringLedgerEntry(steeringCommandLedger, request.principal, request.id) !== undefined;
     if (
       resolvedRequestedValue.target === 'model' &&
       resolvedRequestedValue.override !== undefined &&
-      !keyAlreadyBound
+      !keyAlreadyBound &&
+      !inMemoryKeyBound
     ) {
       const reason = unpricedSwitchRefusalOf(session.agentName, {
         model: resolvedRequestedValue.override,

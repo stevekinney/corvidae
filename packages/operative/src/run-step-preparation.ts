@@ -123,7 +123,7 @@ export async function prepareStep(
 
   // COR-1921 — a run with a cost budget stops before a step on a model it cannot price.
   try {
-    checkSwitchedModelPriced(deps, steeringDesiredState?.model);
+    checkSwitchedModelPriced(deps, steeringDesiredState);
   } catch (error) {
     emitter?.dispatch(new RunErrorEvent(step, error, 'policy'));
     return { kind: 'error', error, errorKind: 'policy' };

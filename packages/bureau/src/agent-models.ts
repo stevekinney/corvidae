@@ -18,6 +18,7 @@
 import { type BackendDescriptor, readGenerationProfile } from '@lostgradient/operative';
 
 import type { AgentFileProblem } from './agent-file';
+import { usdPricingOfRow } from './file-agent-cost-budget';
 import {
   allowedDescriptorsOfFileAgent,
   readFileAgentBinding,
@@ -33,6 +34,12 @@ export interface AgentModelChoice {
    * is the provider-native model name.
    */
   readonly displayName: string;
+  /**
+   * Present, as `true`, when the agent has a `costBudget` and the catalog has no price in US
+   * dollars for this model (COR-1921): a steer to it is refused, because its spend could not be
+   * counted against the budget. Absent for every other choice.
+   */
+  readonly unpriced?: true;
 }
 
 /** The models an agent allows, and which of them it uses when nothing overrides it. */
@@ -51,8 +58,13 @@ export interface AgentModels {
   readonly default: AgentModelChoice | null;
 }
 
-function choiceOf(descriptor: BackendDescriptor): AgentModelChoice {
-  return { provider: descriptor.provider, model: descriptor.model, displayName: descriptor.model };
+function choiceOf(descriptor: BackendDescriptor, budgeted = false): AgentModelChoice {
+  return {
+    provider: descriptor.provider,
+    model: descriptor.model,
+    displayName: descriptor.model,
+    ...(budgeted && usdPricingOfRow(descriptor) === undefined ? { unpriced: true as const } : {}),
+  };
 }
 
 function isDescriptor(value: BackendDescriptor | AgentFileProblem): value is BackendDescriptor {
@@ -83,7 +95,9 @@ export function describeAgentModels(
       kind: 'selectable',
       selectable: true,
       models: distinct(
-        allowedDescriptorsOfFileAgent(binding.definition.models, descriptors).map(choiceOf),
+        allowedDescriptorsOfFileAgent(binding.definition.models, descriptors).map((row) =>
+          choiceOf(row, binding.definition.costBudget !== undefined),
+        ),
       ),
       default: isDescriptor(resolved) ? choiceOf(resolved) : null,
     };

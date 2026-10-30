@@ -7,6 +7,7 @@
 import {
   createModelCatalog,
   getModelPricing,
+  providerModelPricingKey,
   type BackendDescriptor,
 } from '@lostgradient/operative';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
@@ -287,15 +288,22 @@ describe('prices from the catalog', () => {
     });
   });
 
-  it('prices a model from a second row when the first has no price', () => {
+  it('prices a bare model name by the first row that serves it, and each provider’s row by its own key', () => {
     const other = createModelCatalog().descriptors.find((row) => row.model === 'claude-opus-5')!;
     const { costEstimation } = costBudgetOptions({ perRunUsd: 1 }, opus, [
       { ...other, provider: 'twin', pricing: undefined },
       other,
     ]);
-    expect(getModelPricing('claude-opus-5', costEstimation?.pricing)).toMatchObject({
-      promptCostPerMillionTokens: 5,
-    });
+    const pricing = costEstimation?.pricing;
+    // A switch that names no provider runs the first allowed row, which has no price.
+    expect(getModelPricing('claude-opus-5', pricing)).toBeUndefined();
+    // One that names its provider is judged by that provider's own row.
+    expect(
+      getModelPricing(providerModelPricingKey('twin', 'claude-opus-5'), pricing),
+    ).toBeUndefined();
+    expect(
+      getModelPricing(providerModelPricingKey('anthropic', 'claude-opus-5'), pricing),
+    ).toMatchObject({ promptCostPerMillionTokens: 5 });
   });
 
   it('counts the default model first, and a switched model at its own price', () => {
@@ -321,6 +329,9 @@ describe('unpricedSwitchReason', () => {
   const unpriced = rows.map((row) =>
     row.model === 'gpt-4.1' ? { ...row, pricing: undefined } : row,
   );
+  const opus5 = rows.find((row) => row.model === 'claude-opus-5')!;
+  // An unpriced row of the same model name, ahead of the priced one.
+  const twinned = [{ ...opus5, provider: 'twin', pricing: undefined }, ...rows];
 
   it('names the model for a budgeted agent switched to a model with no price', () => {
     expect(unpricedSwitchReason({ perRunUsd: 1 }, unpriced, { model: 'gpt-4.1' })).toContain(
@@ -340,6 +351,25 @@ describe('unpricedSwitchReason', () => {
     // Another provider's row of the same name is not the one asked for.
     expect(
       unpricedSwitchReason({ perRunUsd: 1 }, unpriced, { model: 'gpt-4.1', provider: 'other' }),
+    ).toBeUndefined();
+  });
+
+  it('judges the row the switch will run: with no provider the first that serves the model', () => {
+    // Priced `anthropic` behind unpriced `twin`: no provider runs `twin`, so it is refused.
+    expect(unpricedSwitchReason({ perRunUsd: 1 }, twinned, { model: 'claude-opus-5' })).toContain(
+      'twin',
+    );
+    expect(
+      unpricedSwitchReason({ perRunUsd: 1 }, twinned, {
+        model: 'claude-opus-5',
+        provider: 'twin',
+      }),
+    ).toContain('costBudget');
+    expect(
+      unpricedSwitchReason({ perRunUsd: 1 }, twinned, {
+        model: 'claude-opus-5',
+        provider: 'anthropic',
+      }),
     ).toBeUndefined();
   });
 });

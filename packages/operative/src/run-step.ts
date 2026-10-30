@@ -27,7 +27,7 @@ import { executeGeneration } from './run-step-generation';
 import { prepareStep } from './run-step-preparation';
 import { partsOf, settleResponse } from './run-step-response';
 import { commitAssistantRow } from './run-step-row';
-import { accumulateUsage, costModelOfStep } from './run-step-support';
+import { accumulateUsage, pricedModelNameOfStep } from './run-step-support';
 import { executeTools } from './run-step-tools';
 import { explicitAbortReason, guardrailReporter } from './run-step-utilities';
 import type { SelectionGate } from './selection-gate';
@@ -432,7 +432,7 @@ async function runStepBody(
     admission,
   } = preparation;
   costWindow.model = deps.costEstimation
-    ? costModelOfStep(deps.costEstimation, steeringDesiredState?.model)
+    ? pricedModelNameOfStep(deps.costEstimation, steeringDesiredState)
     : undefined;
 
   const admitter = createStepGeneratedMediaAdmitter({
@@ -496,7 +496,7 @@ async function runStepBody(
         step,
         response.usage,
         deps.costEstimation,
-        steeringDesiredState?.model,
+        steeringDesiredState,
       );
       // A cancellation that interrupted a media admission is the cancellation, not an error.
       if (error instanceof GeneratedMediaNotAdmittedError && signal?.aborted) {
@@ -552,7 +552,7 @@ async function runStepBody(
   runState.lastContent = content;
   runState.lastParts = parts;
   runState.finalRowIsReplacement = false;
-  accumulateUsage(runState, emitter, step, usage, deps.costEstimation, steeringDesiredState?.model);
+  accumulateUsage(runState, emitter, step, usage, deps.costEstimation, steeringDesiredState);
 
   // COR-713: the row carries the settled parts, not only the text. A step that is a thinking block
   // and a tool call has no text and still has a row to keep. The row takes the id a streaming client
