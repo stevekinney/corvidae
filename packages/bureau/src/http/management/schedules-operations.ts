@@ -416,7 +416,7 @@ export const schedulesCreateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Create a schedule',
   description:
-    'Creates a schedule that runs the catalog agent `agentName` with the text `input` on `spec`, a cron expression or a duration. The caller owns it, so no scope is needed; every fire is a task the owner can list, read, observe, and cancel. `sessionId` makes each fire continue one session (`overlap: "allow"` is then refused), and `overlap` defaults to `skip`. An agent that is not in the catalog is `NotFound`; a `spec` that is not a cadence, a `timeZone` that is not an IANA zone (or is given with an interval), or a combination Bureau refuses, is `InvalidParams`. Answers the schedule’s view, whose `revision` is `1`.',
+    'Creates a schedule that runs the catalog agent `agentName` with the text `input` on `spec`, a cron expression or a duration. The caller owns it, so no scope is needed; every fire is a task the owner can list, read, observe, and cancel. `sessionId` makes each fire continue one session (`overlap: "allow"` is then refused), and `overlap` defaults to `skip`. An agent that is not in the catalog is `NotFound`; a `spec` that is not a cadence, a `timeZone` that is not an IANA zone (or is given with an interval, where only `UTC` is accepted), or a combination Bureau refuses, is `InvalidParams`. Answers the schedule’s view, whose `revision` is `1`.',
   destructive: true,
   tags: ['Schedules'],
   inputSchema: createInput,
@@ -569,7 +569,7 @@ export const schedulesUpdateOperation = defineOperation<
   name: 'bureau.schedules.update',
   mcpExposable: false,
   summary: 'Change a schedule’s cadence, description, overlap policy, or time zone',
-  description: `Replaces a schedule’s cadence with \`spec\` (a cron expression or a duration; an interval counts from now), and changes its \`description\`, \`overlap\`, and \`timeZone\` when they are given (a zone left out is kept; an unknown one, or one given with an interval, is \`InvalidParams\` on \`timeZone\`). Its agent, input, owner, and session are not changed, and \`overlap: "allow"\` is refused for a schedule with a recurring session. An update always counts as a change. ${STALE_NOTE}`,
+  description: `Replaces a schedule’s cadence with \`spec\` (a cron expression or a duration; an interval counts from now), and changes its \`description\`, \`overlap\`, and \`timeZone\` when they are given (a zone left out is kept; an unknown one, or one other than \`UTC\` given with an interval, is \`InvalidParams\` on \`timeZone\`). Its agent, input, owner, and session are not changed, and \`overlap: "allow"\` is refused for a schedule with a recurring session. An update always counts as a change. ${STALE_NOTE}`,
   destructive: true,
   tags: ['Schedules'],
   inputSchema: updateInput,

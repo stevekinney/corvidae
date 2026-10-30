@@ -83,7 +83,7 @@ export type ScheduleCallbacks = {
 /**
  * The time zone a schedule is read in: the one the caller named, else the one it keeps
  * (`current`), else UTC. An interval schedule counts elapsed time, so it has no zone to name and is
- * always read as UTC.
+ * always read as UTC (naming `UTC` is accepted so a view round-trips).
  */
 function resolveScheduleTimeZone(
   spec: NormalizedScheduleSpec,
@@ -91,9 +91,11 @@ function resolveScheduleTimeZone(
   current: string | undefined,
 ): string {
   if (spec.kind === 'interval') {
-    if (named !== undefined) {
+    // `UTC` is the zone an interval schedule reports, so a caller that sends a view back unchanged
+    // is not refused; any other zone would imply a calendar the schedule does not have.
+    if (named !== undefined && named !== 'UTC') {
       throw new Error(
-        'options.timeZone applies only to a cron schedule; an interval schedule counts elapsed time',
+        'options.timeZone applies only to a cron schedule; an interval schedule counts elapsed time and accepts only UTC',
       );
     }
     return 'UTC';

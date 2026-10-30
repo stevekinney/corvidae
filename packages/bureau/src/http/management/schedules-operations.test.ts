@@ -266,6 +266,43 @@ describe('a schedule’s time zone (COR-1820)', () => {
     expect(read.result).toMatchObject({ revision: 1, timeZone: 'UTC' });
   });
 
+  it('accepts an interval schedule\u2019s own view sent back to update unchanged', async () => {
+    const opened = await serve();
+    const id = await createdBy(opened, 'alice-key');
+    const fetched = await rpc(
+      opened.handler,
+      'bureau.schedules.get',
+      { scheduleId: id },
+      'alice-key',
+    );
+    const view = fetched.result!;
+    expect(view['timeZone']).toBe('UTC');
+    expect(view['intervalMs']).not.toBeNull();
+
+    const updated = await rpc(
+      opened.handler,
+      'bureau.schedules.update',
+      {
+        scheduleId: id,
+        spec: '1h',
+        description: view['description'] ?? undefined,
+        overlap: view['overlap'],
+        timeZone: view['timeZone'],
+        expectedRevision: view['revision'],
+      },
+      'alice-key',
+    );
+    expect(updated.error).toBeUndefined();
+    expect(updated.result).toMatchObject({ id, revision: 2 });
+    const reread = await rpc(
+      opened.handler,
+      'bureau.schedules.get',
+      { scheduleId: id },
+      'alice-key',
+    );
+    expect(reread.result).toMatchObject({ timeZone: 'UTC', intervalMs: 3_600_000 });
+  });
+
   it('answers a zone given with an interval as InvalidParams on timeZone', async () => {
     const opened = await serve();
     const refusal = await rpc(

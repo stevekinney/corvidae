@@ -302,6 +302,15 @@ describe('schedule time zones', () => {
     expect(await zoneOf(engine, 'plain')).toBe('UTC');
   });
 
+  it('accepts UTC, in any spelling, on an interval schedule so its reported zone round-trips', async () => {
+    const opened = openEngine('2026-03-05T20:00:00.000Z');
+    engine = opened.engine;
+    await engine.schedule('report', null, { every: '1h' }, { id: 'utc', timeZone: 'utc' });
+    expect(await zoneOf(engine, 'utc')).toBe('UTC');
+    await engine.updateSchedule('utc', { every: '2h' }, { timeZone: 'UTC' });
+    expect(await zoneOf(engine, 'utc')).toBe('UTC');
+  });
+
   it('keeps the zone through an update that omits it, and changes it when given', async () => {
     const opened = openEngine('2026-03-05T20:00:00.000Z');
     engine = opened.engine;
