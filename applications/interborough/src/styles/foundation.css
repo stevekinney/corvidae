@@ -106,6 +106,42 @@
   width: 232px;
 }
 
+/* The header holds the button that folds the sidebar to its icon rail and opens it again. It sits
+ * at the inline end of the expanded sidebar, and centred over the icons on the rail. */
+.weft-shell-sidebar__header {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--cinder-space-2) var(--cinder-space-2) 0;
+}
+
+.weft-shell-sidebar--collapsed .weft-shell-sidebar__header {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+/* One ordered list with Settings pinned to the bottom (design row 01a): the navigation fills the
+ * sidebar's height, and the pinned item takes the space above it. */
+.weft-shell-sidebar .cinder-sidebar__nav {
+  display: flex;
+  flex-direction: column;
+}
+
+.weft-shell-sidebar .cinder-side-navigation {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.weft-shell-sidebar .cinder-side-navigation__list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.weft-shell-sidebar .weft-shell-nav-pinned {
+  margin-block-start: auto;
+}
+
 /* A file path is the longest unbroken thing on a page. Cinder's code location never wraps it, so
  * on a phone a long path pushed its page wider than the outlet and the outlet scrolled sideways.
  * It stays inside its parent and breaks where it has to. */
@@ -145,11 +181,10 @@
   font-size: var(--cinder-text-md);
 }
 
+/* A destination's link: its icon, its name, then the health dot or a count at the inline end. On
+ * the icon rail Cinder keeps the icon and hides the rest. */
 .weft-shell-nav-item {
-  display: flex;
-  align-items: center;
   gap: 11px;
-  width: 100%;
   min-width: 0;
 }
 
@@ -174,8 +209,8 @@
   border-radius: var(--cinder-radius-full);
 }
 
-/* Topbar: the view's title, then the search trigger, the bell and the theme toggle, which are
- * ghost buttons of one height. */
+/* Topbar: the breadcrumb trail, then the search trigger, the bell and the quick settings, which
+ * are ghost buttons of one height. */
 
 .weft-shell-topbar {
   height: 53px;
@@ -188,17 +223,35 @@
   background: var(--cinder-surface);
 }
 
-.weft-shell-topbar__domain {
+/* The breadcrumb trail is the page's heading in the bar (design row 06a). Cinder's breadcrumbs
+ * are an inline-size container, which has no width of its own, so the trail takes the bar's free
+ * space rather than its content's width. It gives way first when the bar is narrow, and never
+ * wraps. */
+.weft-shell-topbar__trail {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
   font-size: var(--cinder-text-sm);
-  font-weight: 600;
-  flex: none;
   white-space: nowrap;
+}
+
+.weft-shell-topbar__trail .cinder-breadcrumbs ol {
+  flex-wrap: nowrap;
+}
+
+.weft-shell-topbar__trail [aria-current='page'] {
+  font-weight: 600;
 }
 
 .weft-shell-topbar .weft-shell-search-trigger {
   margin-inline-start: auto;
-  min-width: 300px;
+  min-width: 0;
+  inline-size: 300px;
   flex: 0 1 auto;
+  /* One line always (design row 06l): the label ellipsizes, and the shortcut keeps its room. */
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  overflow: hidden;
   justify-content: flex-start;
   color: var(--cinder-text-muted);
   /* The resting fill and rule Cinder gives a ghost icon button, so the wide trigger and the icon
@@ -216,6 +269,7 @@
 }
 
 .weft-shell-search-trigger__label {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -250,10 +304,6 @@
     padding: 0 var(--cinder-space-2);
   }
 
-  .weft-shell-topbar__domain {
-    display: none;
-  }
-
   /* One size for every control in the bar, and a touch target. The search trigger is icon-only at
    * this width. */
   .weft-shell-topbar .cinder-button {
@@ -263,6 +313,8 @@
 
   .weft-shell-topbar .weft-shell-search-trigger {
     min-width: 2.5rem;
+    inline-size: auto;
+    margin-inline-start: 0;
     padding-inline: 0;
     justify-content: center;
   }
@@ -683,5 +735,26 @@
   max-width: 100%;
   overflow-wrap: anywhere;
   text-align: center;
+  color: var(--cinder-text-muted);
+}
+
+/* The quick settings popover: one row for each preference, its name before its control. */
+.weft-quick-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+  padding: var(--cinder-space-3);
+  min-inline-size: 16rem;
+}
+
+.weft-quick-settings__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cinder-space-3);
+}
+
+.weft-quick-settings__label {
+  font-size: var(--cinder-text-sm);
   color: var(--cinder-text-muted);
 }

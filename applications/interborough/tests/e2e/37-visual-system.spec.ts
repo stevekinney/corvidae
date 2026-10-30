@@ -6,7 +6,8 @@
  */
 import type { Page } from '@playwright/test';
 
-import { VIEW_NAMES, VIEWS } from '../../src/app/views.ts';
+import { routes } from '../../src/app/routes.ts';
+import { pageWidth, VIEW_NAMES, VIEWS } from '../../src/app/views.ts';
 import { approveThroughMount, newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -115,8 +116,10 @@ test.describe('the empty chat screen on a fresh host', () => {
   });
 });
 
-test.describe('each view declares how dense and how wide it is', () => {
-  test('the outlet carries the declaration of the view it shows', async ({ page }) => {
+test.describe('each view declares how dense it is, and each route what kind of page it is', () => {
+  test('the outlet carries the view’s density and the width of the route’s kind', async ({
+    page,
+  }) => {
     await page.setViewportSize(DESKTOP);
     const paths: Partial<Record<(typeof VIEW_NAMES)[number], string>> = {
       agents: '/agents',
@@ -129,8 +132,9 @@ test.describe('each view declares how dense and how wide it is', () => {
       await page.goto(path);
       const outlet = page.locator('main.weft-shell-outlet');
       const declared = VIEWS[view as keyof typeof VIEWS];
+      const route = routes.find((candidate) => candidate.pattern === path);
       await expect(outlet).toHaveAttribute('data-density', declared.density);
-      await expect(outlet).toHaveAttribute('data-width', declared.width);
+      await expect(outlet).toHaveAttribute('data-width', pageWidth(route?.kind ?? 'reading'));
     }
   });
 
@@ -138,12 +142,20 @@ test.describe('each view declares how dense and how wide it is', () => {
     page,
   }) => {
     await page.setViewportSize(DESKTOP);
-    await page.goto('/agents/new');
-    const form = page.getByRole('form', { name: /./ });
-    await expect(form).toBeVisible();
-    const column = await form.boundingBox();
-    expect(column?.width).toBeLessThanOrEqual(760);
-    expect(column?.width).toBeGreaterThanOrEqual(740);
+    // Settings is a form, which keeps the reading width: the outlet pads its content into the
+    // column, so the column is the outlet's width less its padding.
+    await page.goto('/settings');
+    await expect(page.locator('[data-view="settings"]')).toHaveAttribute('data-state', 'ready');
+    const column = await page.locator('main.weft-shell-outlet').evaluate((outlet) => {
+      const style = getComputedStyle(outlet);
+      return (
+        outlet.clientWidth -
+        Number.parseFloat(style.paddingLeft) -
+        Number.parseFloat(style.paddingRight)
+      );
+    });
+    expect(column).toBeLessThanOrEqual(760);
+    expect(column).toBeGreaterThanOrEqual(740);
     await page.goto('/runs');
     // The loading skeleton is already wider than 900px, so a width read before the frame has swapped
     // it for the page measures nothing about the page. Wait for the page, then read its width.

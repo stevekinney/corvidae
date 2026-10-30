@@ -44,6 +44,11 @@ export interface DefinitionEntry {
   readonly modifiedAt?: string;
   /** Set when the source could not hand over the definition's bytes. */
   readonly problem?: DefinitionEntryProblem;
+  /**
+   * The plugin whose read-only layer holds the definition (COR-1873); its `id` is then
+   * `plugin:name`. Absent for an owner's definition, whose `id` is a bare stem.
+   */
+  readonly plugin?: string;
 }
 
 /** What changed in one report from {@link DefinitionSource.watch}, by identifier. */
@@ -63,6 +68,12 @@ export interface DefinitionSourceHost {
 
 /** A place definitions are loaded from, watched in, and written back to. */
 export interface DefinitionSource {
+  /**
+   * The plugin whose read-only layer this is (COR-1873). Its definitions are listed as
+   * `plugin:name`, and `write` and `delete` reject with a {@link SourceReadOnlyError}. Absent for
+   * an owner's source.
+   */
+  readonly plugin?: string | undefined;
   /** Every definition the source holds right now. */
   load(): Promise<readonly DefinitionEntry[]>;
   /**
@@ -126,6 +137,26 @@ export class SourceConflictError extends Error {
   }
 }
 
+/**
+ * A write or delete of a definition a read-only layer holds (COR-1873): a plugin's definitions are
+ * never changed in place. Duplicate one into the owner's source to edit it.
+ */
+export class SourceReadOnlyError extends Error {
+  /** The `plugin:name` identifier the write or delete named. */
+  readonly id: string;
+  /** The plugin whose layer holds the definition. */
+  readonly plugin: string;
+
+  constructor(id: string, plugin: string) {
+    super(
+      `The definition "${id}" belongs to the plugin "${plugin}" and is read-only; duplicate it to edit a copy.`,
+    );
+    this.name = 'SourceReadOnlyError';
+    this.id = id;
+    this.plugin = plugin;
+  }
+}
+
 /** What {@link AgentSource.readSibling} found at a path. */
 export type SiblingRead =
   | {
@@ -169,7 +200,15 @@ export type AgentSource = DefinitionSource & {
    */
   readSibling(
     path: string,
-    options: { readonly limit: number; readonly unlessStamp?: string | undefined },
+    options: {
+      readonly limit: number;
+      readonly unlessStamp?: string | undefined;
+      /**
+       * The agent whose `references` name the document (COR-1873). A layered source reads it from
+       * the layer that holds that agent; a single source ignores it.
+       */
+      readonly definitionId?: string | undefined;
+    },
   ): Promise<SiblingRead>;
   /**
    * How often, in milliseconds, the source looks for changes on its own: its poll interval. The

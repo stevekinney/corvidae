@@ -5,6 +5,7 @@ export default ApprovalCard;
 export type {
   ApprovalCardCallbacks,
   ApprovalCardHeadingLevel,
+  ApprovalCardLayout,
   ApprovalCardProps,
   ApprovalCardSchemaProps,
   ApprovalOperation,

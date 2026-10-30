@@ -44,6 +44,13 @@ export interface DirectorySourceOptions {
   readonly diagnose?: ((message: string, cause: unknown) => void) | undefined;
   /** The file-system operations, behind one seam so a test can record or fail them. */
   readonly operations?: AgentFileOperations | undefined;
+  /**
+   * COR-1873 — the plugin that ships the directory. Its files are then a read-only layer: each is
+   * listed as `plugin:name`, still reloads when it changes, and is never written or deleted.
+   * Combine the layer with the owner's directory through `layeredAgentSource` or
+   * `layeredWorkflowSource`.
+   */
+  readonly plugin?: string | undefined;
 }
 
 export interface DirectorySourceShape {

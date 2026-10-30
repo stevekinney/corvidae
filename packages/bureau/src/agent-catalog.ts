@@ -256,6 +256,11 @@ export interface BureauAgentCatalog<D extends AgentDefinitions> {
   update: AgentFileWriter['update'];
   /** Delete an agent file. */
   delete: AgentFileWriter['delete'];
+  /**
+   * COR-1873 — copy a plugin's read-only agent (`plugin:name`) into the owner's source as
+   * `name.md`, with its tools unversioned. Fails with `AgentFileConflictError` when that file exists.
+   */
+  duplicate: AgentFileWriter['duplicate'];
 }
 
 /**
@@ -450,6 +455,7 @@ export function createAgentCatalog<D extends AgentDefinitions>(
     update: async (id, definition, writeOptions) =>
       requireFiles().update(id, definition, writeOptions),
     delete: async (id, writeOptions) => requireFiles().delete(id, writeOptions),
+    duplicate: async (id, writeOptions) => requireFiles().duplicate(id, writeOptions),
   };
 
   return Object.freeze(catalog);

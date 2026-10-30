@@ -53,8 +53,8 @@ describe('ChatInput — shortcut accessibility', () => {
   });
 
   test('uses Cinder Tooltip for contextual send guidance', () => {
-    expect(chatInputSource).toContain(
-      'import { Paperclip, SendHorizontal, Square, Tooltip, X, Button }',
+    expect(chatInputSource).toMatch(
+      /import \{[^}]*\bTooltip\b[^}]*\} from '@lostgradient\/cinder'/,
     );
     expect(chatInputSource).toContain("'Wait for attachments'");
     expect(chatInputSource).toContain("'Add a message or attachment'");

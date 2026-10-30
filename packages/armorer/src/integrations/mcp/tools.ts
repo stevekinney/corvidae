@@ -161,6 +161,17 @@ export type FromMCPToolsOptions = {
    * without it such a result is rejected rather than turned into a URL.
    */
   serverId?: string;
+  /**
+   * The `version` each converted tool is registered with. It receives the remote tool and the
+   * capability flags Armorer mapped from its annotations (`readOnly`, `mutates`, `dangerous`) and
+   * returns the version, or `undefined` to leave the tool unversioned (the default, and what
+   * Armorer refuses to issue an approval for). A host that saves tools it did not write derives it
+   * from what a person approves, so a changed tool gets a new version.
+   */
+  version?: (
+    tool: MCPToolSource,
+    capability: Pick<NonNullable<Tool['metadata']>, 'readOnly' | 'mutates' | 'dangerous'>,
+  ) => string | undefined;
 };
 
 export function toMcpTools(
@@ -184,9 +195,14 @@ export function fromMcpTools(
   return tools.map((mcpTool) => {
     const schema = resolveInboundMcpSchema(mcpTool.name, mcpTool.inputSchema);
     const metadata = metadataFromMcpTool(mcpTool);
+    const version = options.version?.(
+      mcpTool,
+      capabilityMetadataFromMcpAnnotations(mcpTool.annotations),
+    );
     const createOptions = {
       name: mcpTool.name,
       description: mcpTool.description ?? mcpTool.title ?? mcpTool.name,
+      ...(version === undefined ? {} : { version }),
       input: schema,
       ...(metadata === undefined ? {} : { metadata }),
       async execute(params: unknown, context?: ToolContext) {

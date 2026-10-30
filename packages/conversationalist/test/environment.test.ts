@@ -1,7 +1,9 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { describe, expect, it } from 'bun:test';
 
+import { estimateConversationTokens } from '../src/context';
 import {
+  appendMessages,
   createConversationHistory as createConversation,
   withEnvironment,
 } from '../src/conversation';
@@ -11,6 +13,7 @@ import {
   simpleTokenEstimator,
   toSessionInfo,
 } from '../src/environment';
+import type { Message } from '../src/types';
 
 const mockFn = (a: string, b: number, env?: { randomId?: () => string }) => ({
   a,
@@ -156,6 +159,61 @@ describe('toSessionInfo tags', () => {
   it('rejects malformed tag metadata rather than returning a falsely typed summary', () => {
     expect(() => toSessionInfo(createConversation({ metadata: { _tags: ['local', 7] } }))).toThrow(
       'Session tags must be an array of strings',
+    );
+  });
+});
+
+describe('simpleTokenEstimator tool results', () => {
+  const resultRow = (toolResult: Message['toolResult']): Message => ({
+    id: 'result-1',
+    role: 'tool-result',
+    content: '',
+    position: 0,
+    createdAt: '2024-01-01T00:00:00.000Z',
+    metadata: {},
+    hidden: false,
+    toolResult,
+  });
+
+  it('counts a string tool result payload', () => {
+    const payload = 'x'.repeat(4000);
+    expect(
+      simpleTokenEstimator(resultRow({ callId: 'call-1', outcome: 'success', content: payload })),
+    ).toBe(1000);
+  });
+
+  it('counts a structured tool result payload by its JSON', () => {
+    const content = { rows: ['y'.repeat(396)] };
+    const expected = Math.ceil(JSON.stringify(content).length / 4);
+    expect(simpleTokenEstimator(resultRow({ callId: 'call-1', outcome: 'success', content }))).toBe(
+      expected,
+    );
+  });
+
+  it('lets a chat of large tool results reach a compaction threshold', () => {
+    const threshold = 2000;
+    let chat = createConversation();
+    for (let index = 0; index < 4; index++) {
+      chat = appendMessages(
+        chat,
+        {
+          role: 'tool-call',
+          content: '',
+          toolCall: { id: `call-${index}`, name: 'read', arguments: '{}' },
+        },
+        {
+          role: 'tool-result',
+          content: '',
+          toolResult: {
+            callId: `call-${index}`,
+            outcome: 'success',
+            content: 'z'.repeat(4000),
+          },
+        },
+      );
+    }
+    expect(estimateConversationTokens(chat, simpleTokenEstimator)).toBeGreaterThanOrEqual(
+      threshold,
     );
   });
 });

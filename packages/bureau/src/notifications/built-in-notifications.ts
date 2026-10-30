@@ -191,6 +191,11 @@ export function startBuiltInNotifications(
     const task = await options.tasks.get(runId);
     const input = task === undefined ? undefined : notificationForSettledTask(task);
     if (input !== undefined) await options.store.create(input);
+    // COR-1946: a task first settled `owner-lost` (a failure notified) whose owner then really
+    // completed or canceled it no longer has a failure to report.
+    else if (task !== undefined && (task.status === 'completed' || task.status === 'canceled')) {
+      await options.store.dismissByDedupeKey(runNotificationDedupeKey(runId));
+    }
     // Cleared only once the notification exists (written now, or found under the run's dedupe
     // key), or the run calls for none; a write that threw above leaves the debt for the repair.
     await options.outbox?.clear(runId);

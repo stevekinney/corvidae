@@ -133,13 +133,18 @@ export interface ToolApprovalHooksOptions {
    */
   readonly tools?: readonly string[] | undefined;
   /**
-   * Whether a person allowed `toolName` for the rest of this chat (COR-1828). It is asked, at the
+   * Whether a person allowed this tool for the rest of this chat (COR-1828). It receives the name
+   * the model calls the tool by and its id (`namespace:name@version`), so a caller can key a grant
+   * on the exact definition a person approved (COR-1950): a changed schema is a new version, and
+   * the grant no longer applies. It is asked, at the
    * time of the call, only for a tool whose value is `on-changes` and only when a grant would
    * change the answer; `true` lets that call through without asking. It is never asked for
    * `always`, `blocked` or `never`, so a grant cannot change what those answer. A rejection counts
    * as `false`: when the grant cannot be read, the call asks.
    */
-  readonly remembered?: ((toolName: string) => boolean | Promise<boolean>) | undefined;
+  readonly remembered?:
+    | ((tool: { readonly name: string; readonly id: string }) => boolean | Promise<boolean>)
+    | undefined;
   /**
    * The chat's permission mode (COR-1936), read when each call is decided, so a steer applies to
    * the next call. Omitted, the call has no chat (a run outside a session) and the tool's own
@@ -207,9 +212,9 @@ export function createToolApprovalHooks(
   const governed = options.tools === undefined ? undefined : new Set(options.tools);
   const { remembered, permissionMode } = options;
   /** Whether the grant is held; a grant that cannot be read is not held. */
-  async function granted(toolName: string): Promise<boolean> {
+  async function granted(tool: { readonly name: string; readonly id: string }): Promise<boolean> {
     try {
-      return await (remembered as NonNullable<typeof remembered>)(toolName);
+      return await (remembered as NonNullable<typeof remembered>)(tool);
     } catch {
       return false;
     }
@@ -237,7 +242,7 @@ export function createToolApprovalHooks(
         status === 'ask' &&
         remembered !== undefined &&
         decideToolApproval({ mode, setting, tier, remembered: true }) === 'allow' &&
-        (await granted(context.toolName))
+        (await granted({ name: context.toolName, id: context.configuration.id }))
       ) {
         status = 'allow';
       }

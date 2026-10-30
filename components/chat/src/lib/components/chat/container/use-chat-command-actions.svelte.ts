@@ -457,6 +457,7 @@ export function useChatCommandActions(options: CommandActionsOptions) {
 
   return {
     handleSubmit,
+    hasPendingApproval,
     handleRetry: dispatchRetryMessage,
     handleEdit,
     resolveToolApproval,

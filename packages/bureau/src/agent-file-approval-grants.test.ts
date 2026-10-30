@@ -262,7 +262,8 @@ describe('approving with remember (COR-1828)', () => {
     await approveRemembering(bureau, first.id);
     const sessions = bureau.internals.sessionStore;
     const before = await sessions?.load(first.contextId);
-    expect(before?.metadata['approvalGrants']).toEqual(['issue-refund']);
+    // The id the approval is bound to, version included (COR-1950).
+    expect(before?.metadata['approvalGrants']).toEqual(['default:issue-refund@1.0.0']);
 
     await bureau.contexts.delete(first.contextId);
 
