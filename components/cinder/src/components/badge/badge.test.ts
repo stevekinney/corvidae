@@ -217,3 +217,31 @@ describe('Badge — omitted children (runtime safety net)', () => {
     expect(container.querySelector('.cinder-badge')).not.toBeNull();
   });
 });
+
+describe('Badge — hugs its text inside a grid or flex parent (COR-1821)', () => {
+  function baseRule(): string {
+    const match = /\.cinder-badge\s*\{(?<block>[^}]*)\}/.exec(badgeCss);
+    const block = match?.groups?.['block'];
+    if (block === undefined) throw new Error('Missing the .cinder-badge base rule');
+    return block;
+  }
+
+  test('a Badge in a grid cell stays text width', () => {
+    // A grid item is blockified and stretched across its cell unless it sizes itself. The base
+    // rule sizes the badge to its content so no grid or flex parent can widen it.
+    expect(baseRule()).toMatch(/inline-size:\s*fit-content;/);
+  });
+
+  test('the badge still lays out as an inline flex box that does not shrink below its text', () => {
+    expect(baseRule()).toMatch(/display:\s*inline-flex;/);
+    expect(baseRule()).toMatch(/white-space:\s*nowrap;/);
+  });
+
+  test('no size or variant rule widens the badge again', () => {
+    const sizing = [...badgeCss.matchAll(/(?:inline-size|width)\s*:\s*([^;]+);/g)].map((match) =>
+      match[1]?.trim(),
+    );
+    expect(sizing).toEqual(['fit-content']);
+    expect(badgeCss).not.toMatch(/(?:flex-grow|align-self|justify-self)\s*:/);
+  });
+});

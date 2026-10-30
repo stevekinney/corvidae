@@ -805,6 +805,33 @@ describe('createAuditTrail', () => {
       trail.dispose();
     });
 
+    it('a strict record() propagates a genuine storage failure, the default record() still resolves, and a retry records it (COR-1926)', async () => {
+      const backing = textValueStore(new MemoryStorage());
+      let failing = true;
+      const flakyKv: typeof backing = {
+        ...backing,
+        conditionalBatch: (conditions, operations) =>
+          failing
+            ? Promise.reject(new Error('storage unavailable'))
+            : backing.conditionalBatch(conditions, operations),
+      };
+      const { bureau } = createStubBureau();
+      const trail = createAuditTrail(bureau, flakyKv);
+      const entry = { runId: 'run-strict-failure', type: 'skill.source.trusted', detail: {} };
+
+      expect(await throwingRejectionOf(trail.record({ ...entry, strict: true }))).toThrow(
+        'storage unavailable',
+      );
+      // The default path keeps its never-rejects contract for every other caller.
+      expect(await trail.record(entry)).toBeUndefined();
+      expect(await trail.query({ runId: 'run-strict-failure' })).toHaveLength(0);
+
+      failing = false;
+      await trail.record({ ...entry, strict: true });
+      expect(await trail.query({ runId: 'run-strict-failure' })).toHaveLength(1);
+      await trail.dispose();
+    });
+
     it('tracks a dedupeKey-guarded write so dispose() awaits it and query() observes it, even though the caller never awaits record() (Codex P2 review finding, PR #601, "Track deduplicated audit writes before returning")', async () => {
       const backing = textValueStore(new MemoryStorage());
       let releaseGate!: () => void;
@@ -1219,6 +1246,26 @@ describe('createAuditTrail', () => {
 
       const records = await trail.query({ runId: 'run-dedupe-after-abort' });
       expect(records).toHaveLength(0);
+      await trail.dispose();
+    });
+
+    it('a strict record() REJECTS once the owner-issued signal aborts, where the default path resolves without writing (COR-1926)', async () => {
+      const kv = textValueStore(new MemoryStorage());
+      const { bureau } = createStubBureau();
+      const controller = new AbortController();
+      const trail = createAuditTrail(bureau, kv, undefined, { signal: controller.signal });
+
+      controller.abort();
+      expect(
+        await throwingRejectionOf(
+          trail.record({
+            runId: 'run-strict-after-abort',
+            type: 'skill.source.trusted',
+            detail: null,
+            strict: true,
+          }),
+        ),
+      ).toThrow(/shutdown signal is already aborted/);
       await trail.dispose();
     });
 

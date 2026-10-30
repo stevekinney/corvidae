@@ -343,8 +343,12 @@ async function keyringFor(
   return { current: keys.current, retired: retired === undefined ? [] : [retired] };
 }
 
-/** Seals `value` as the secret known by `secretRef`. */
-async function sealValue(
+/**
+ * Seals `value` as the secret known by `secretRef` (COR-1816's scheme: AES-GCM under
+ * `keys.current`, bound to the reference so a ciphertext copied under another reference does not
+ * open). {@link openSealedAnswer} opens it. A hook's signing secret (COR-1939) is sealed this way.
+ */
+export async function sealValue(
   secretRef: string,
   value: string,
   keys: AnswerEncryptionKeys,

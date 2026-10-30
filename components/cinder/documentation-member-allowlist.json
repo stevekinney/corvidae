@@ -159,7 +159,6 @@
     ". HoverCardProps.onOpenChange",
     ". HoverCardProps.trigger",
     ". HoverCardProps.triggerRef",
-    ". JsonLint.position",
     ". JsonSchemaEditorChangeEvent.jsonString",
     ". JsonSchemaEditorChangeEvent.schema",
     ". JsonSchemaEditorRevertEvent.restoredFrom",

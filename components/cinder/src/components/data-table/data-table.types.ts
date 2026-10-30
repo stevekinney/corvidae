@@ -42,6 +42,12 @@ export type DataTableColumn<Row extends DataTableRow = DataTableRow> = {
    * first column automatically acts as the row header.
    */
   rowHeader?: boolean;
+  /**
+   * When true, the column's body cells keep their text on one line and end it
+   * with an ellipsis, with the full text in the cell's `title`. One very long
+   * value then cannot widen the table.
+   */
+  truncate?: boolean;
   width?: number;
   minWidth?: number;
   maxWidth?: number;

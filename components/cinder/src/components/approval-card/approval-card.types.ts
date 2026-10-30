@@ -114,6 +114,13 @@ export type ApprovalResolution = {
   remember: boolean;
 };
 
+/**
+ * Layout of an approval. `card` is the full review surface; `row` is one compact
+ * row (question, View input, Deny, Approve) for an approval inside a transcript
+ * whose reply already explains the request.
+ */
+export type ApprovalCardLayout = 'card' | 'row';
+
 export type ApprovalCardCallbacks = {
   /** Called for approve, approve-with-edits, deny, and dismiss with the complete resolution payload. */
   onResolve?: (resolution: ApprovalResolution) => void;
@@ -144,6 +151,10 @@ export type ApprovalCardProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'chi
     editableArgs?: boolean;
     /** Heading level for the card title; section headings render one level deeper. Default `3`. */
     headingLevel?: ApprovalCardHeadingLevel;
+    /** Layout: the full `card`, or one compact `row` with View input, Deny, and Approve. Default `'card'`. */
+    layout?: ApprovalCardLayout;
+    /** Question the `row` layout asks, such as `Run issue-refund for $42.10?`. Default `Run <tool>?`. */
+    question?: string;
     /** Additional CSS classes applied to the root element. */
     class?: string;
   };
@@ -177,6 +188,10 @@ export type ApprovalCardSchemaProps = {
   editableArgs?: boolean;
   /** Heading level for the card title; section headings render one level deeper. Default `3`. @default 3 */
   headingLevel?: ApprovalCardHeadingLevel;
+  /** Layout: the full `card`, or one compact `row` with View input, Deny, and Approve. Default `'card'`. @default 'card' */
+  layout?: ApprovalCardLayout;
+  /** Question the `row` layout asks, such as `Run issue-refund for $42.10?`. Default `Run <tool>?`. */
+  question?: string;
   /** Called for approve, approve-with-edits, deny, and dismiss with the complete resolution payload. */
   onResolve?: (resolution: ApprovalResolution) => void;
   /** Additional CSS classes applied to the root element. */

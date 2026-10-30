@@ -39,6 +39,7 @@ import {
   type GoalEventKind,
   GoalLifecycleEvent,
   MemoryGovernanceEvent,
+  NotificationCreatedEvent,
   ScheduleMissedEvent,
   TaskCleanupAcknowledgedEvent,
   RunAbortSettledEvent,
@@ -201,6 +202,7 @@ export const BUREAU_EVENT_CLASSIFICATION = {
   'definitions.changed': 'published',
   'schedule.missed': 'published',
   'task.cleanup-acknowledged': 'published',
+  'notification.created': 'published',
   diagnostic: 'published',
   'memory.governance': 'published',
 } as const satisfies Record<DeclaredKeys<BureauEventMap>, 'published' | { denied: string }>;
@@ -410,6 +412,11 @@ const PROJECTIONS: readonly BureauEventProjection[] = [
     isInstance(TaskCleanupAcknowledgedEvent),
     (event) => ({ taskId: event.taskId, cleanup: event.cleanup }),
   ),
+  // The notification's identifier and kind only: not its owner, title, body or link.
+  projection(NotificationCreatedEvent.type, isInstance(NotificationCreatedEvent), (event) => ({
+    notificationId: event.notificationId,
+    kind: event.notificationKind,
+  })),
   // Level and scope only: a diagnostic's message and cause can carry error text and stacks.
   projection(DiagnosticEvent.type, isInstance(DiagnosticEvent), (event) => ({
     level: event.level,
@@ -480,6 +487,12 @@ export type BureauEventFeedOptions = {
    */
   liveBufferSize?: number;
   now?: () => number;
+  /**
+   * Called synchronously with each envelope after it is appended, so a consumer that must see every
+   * published event as it happens (COR-1939's hooks) needs no subscription that could fall behind.
+   * A listener that throws is ignored.
+   */
+  onPublish?: (envelope: BureauEventEnvelope) => void;
 };
 
 export function createBureauEventFeed(options: BureauEventFeedOptions): BureauEventFeed {
@@ -561,6 +574,11 @@ export function createBureauEventFeed(options: BureauEventFeedOptions): BureauEv
       };
       sequence += 1;
       backend.append(envelope);
+      try {
+        options.onPublish?.(envelope);
+      } catch {
+        // A listener must not break the feed it listens to.
+      }
       return envelope;
     },
     dispose() {

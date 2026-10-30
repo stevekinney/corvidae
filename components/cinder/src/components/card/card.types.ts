@@ -8,7 +8,11 @@ import type {
 export type CardVariant = 'card' | 'well';
 export type CardTone = 'default' | 'muted';
 export type CardSurfaceTone = 'default' | 'danger';
-export type CardElevation = 'none' | 'sm' | 'md' | 'lg';
+/**
+ * The one edge a card draws. `border` is a hairline outline with no shadow; `shadow` is a soft
+ * shadow with no visible border. A card never draws both, so there is no way to ask for both.
+ */
+export type CardEdge = 'border' | 'shadow';
 /** Controls body padding. `none` removes only body padding for flush/full-bleed content. */
 export type CardPadding = 'default' | 'none';
 /** Heading level for the generated card title, so the document outline stays correct. */
@@ -95,8 +99,16 @@ export type CardProps = SharedHtmlAttributes &
     class?: string;
     /** Visual container style. `card` is raised; `well` is flatter and inset. */
     variant?: CardVariant;
-    /** Elevation shadow applied to the card surface. */
-    elevation?: CardElevation;
+    /**
+     * The one edge the card draws: a `border` (default) or a `shadow`, never both. An interactive
+     * card strengthens whichever edge it has on hover.
+     */
+    edge?: CardEdge;
+    /**
+     * Draw a divider rule under the header. Off by default: the header is separated from the body
+     * by its surface alone, and a divider is opt-in.
+     */
+    headerDivider?: boolean;
     /** Container risk treatment. `danger` renders a danger-zone surface for high-risk settings or destructive actions. */
     tone?: CardSurfaceTone;
     /** Body surface treatment. `muted` renders a grey/inset body region. */

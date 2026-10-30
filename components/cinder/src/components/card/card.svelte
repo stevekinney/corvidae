@@ -16,7 +16,7 @@
     CardHeadingLevel,
     CardPadding,
     CardProps,
-    CardElevation,
+    CardEdge,
     CardSurfaceTone,
     CardTone,
     CardVariant,
@@ -47,7 +47,8 @@
     footerTone = 'default',
     edgeToEdgeOnMobile = false,
     padding = 'default',
-    elevation = 'sm',
+    edge = 'border',
+    headerDivider = false,
     href,
     onclick,
     ...rest
@@ -105,18 +106,18 @@
     data-cinder-variant={variant}
     data-cinder-tone={tone}
     data-cinder-padding={padding}
-    data-cinder-elevation={elevation}
+    data-cinder-edge={edge}
     data-cinder-interactive=""
     data-cinder-edge-to-edge-mobile={edgeToEdgeOnMobile ? '' : undefined}
     {...labelAttributes}
     onclick={handleClick}
   >
     {#if header}
-      <div class="cinder-card__header">
+      <div class="cinder-card__header" data-cinder-divider={headerDivider ? '' : undefined}>
         {@render header()}
       </div>
     {:else if title}
-      <div class="cinder-card__header">
+      <div class="cinder-card__header" data-cinder-divider={headerDivider ? '' : undefined}>
         <div class="cinder-card__title-row">
           {#if tone === 'danger'}
             <span class="cinder-card__risk-icon" aria-hidden="true">
@@ -149,14 +150,21 @@
     data-cinder-variant={variant}
     data-cinder-tone={tone}
     data-cinder-padding={padding}
-    data-cinder-elevation={elevation}
+    data-cinder-edge={edge}
     data-cinder-interactive={buttonDisabled ? undefined : ''}
     data-cinder-disabled={buttonDisabled ? '' : undefined}
     data-cinder-edge-to-edge-mobile={edgeToEdgeOnMobile ? '' : undefined}
   >
-    {#if header}<div id={customHeaderId} class="cinder-card__header">
+    {#if header}<div
+        id={customHeaderId}
+        class="cinder-card__header"
+        data-cinder-divider={headerDivider ? '' : undefined}
+      >
         {@render header()}
-      </div>{:else if title}<div class="cinder-card__header">
+      </div>{:else if title}<div
+        class="cinder-card__header"
+        data-cinder-divider={headerDivider ? '' : undefined}
+      >
         <div class="cinder-card__title-row">
           {#if tone === 'danger'}<span class="cinder-card__risk-icon" aria-hidden="true"
               ><CircleAlert size={18} strokeWidth={2.25} /></span
@@ -194,12 +202,18 @@
     data-cinder-variant={variant}
     data-cinder-tone={tone}
     data-cinder-padding={padding}
-    data-cinder-elevation={elevation}
+    data-cinder-edge={edge}
     data-cinder-edge-to-edge-mobile={edgeToEdgeOnMobile ? '' : undefined}
     {...labelAttributes}
   >
-    {#if header}<div class="cinder-card__header">{@render header()}</div>{:else if title}<div
+    {#if header}<div
         class="cinder-card__header"
+        data-cinder-divider={headerDivider ? '' : undefined}
+      >
+        {@render header()}
+      </div>{:else if title}<div
+        class="cinder-card__header"
+        data-cinder-divider={headerDivider ? '' : undefined}
       >
         <div class="cinder-card__title-row">
           {#if tone === 'danger'}<span class="cinder-card__risk-icon" aria-hidden="true"

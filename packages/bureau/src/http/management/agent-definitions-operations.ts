@@ -142,6 +142,8 @@ const agentListingSchema = z.object({
   hash: z.string().nullable(),
   definitionRevision: z.number().int().positive().nullable(),
   problem: problemSchema.nullable(),
+  /** The plugin whose read-only layer ships the agent (`plugin:name`), or `null` for a code agent or an owner's file (COR-1873). */
+  plugin: z.string().nullable(),
 });
 
 const definitionOutputSchema = z.object({
@@ -314,6 +316,7 @@ function listingView(host: BureauAgentDefinitionsOperationHost, listing: AgentLi
     hash: listing.definitionHash ?? null,
     definitionRevision: listing.definitionRevision ?? null,
     problem: listing.problem === undefined ? null : problemView(listing.problem),
+    plugin: listing.plugin ?? null,
   };
 }
 

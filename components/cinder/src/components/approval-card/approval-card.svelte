@@ -18,6 +18,7 @@
   export type {
     ApprovalCardCallbacks,
     ApprovalCardHeadingLevel,
+    ApprovalCardLayout,
     ApprovalCardProps,
     ApprovalCardSchemaProps,
     ApprovalOperation,
@@ -38,6 +39,7 @@
 
   import { classNames } from '../../utilities/class-names.ts';
   import Badge from '../badge/badge.svelte';
+  import Button from '../button/button.svelte';
   import Card from '../card/card.svelte';
   import CodeBlock from '../code-block/code-block.svelte';
   import Collapsible from '../collapsible/collapsible.svelte';
@@ -88,6 +90,8 @@
     state: approvalState,
     editableArgs = false,
     headingLevel = 3,
+    layout = 'card',
+    question,
     onResolve,
     id,
     class: customClassName,
@@ -95,6 +99,9 @@
   }: ApprovalCardProps = $props();
 
   const rootId = $derived(id ?? generatedId);
+  const rowInputId = $derived(`${rootId}-input`);
+  let rowInputOpen = $state(false);
+  const rowQuestion = $derived(question ?? `Run ${tool.name}?`);
   const titleId = $derived(`${rootId}-title`);
 
   // Coerce + clamp like Card: schema-driven callers can pass out-of-range or
@@ -151,6 +158,13 @@
     `${filesTouched.length} file${filesTouched.length === 1 ? '' : 's'}`,
   );
   const environmentNames = $derived(sanitizeEnvironmentNames(env));
+  // The row's View input discloses only what the operation carries.
+  const hasRowInput = $derived(
+    (operation.kind === 'command' && Boolean(operation.command)) ||
+      (operation.kind === 'patch' && Boolean(operation.diff)) ||
+      filesTouched.length > 0 ||
+      hasArgumentsPreview,
+  );
 
   $effect(() => {
     clearExpirationTimer();
@@ -195,178 +209,255 @@
   }
 </script>
 
-<article
-  {...rest}
-  id={rootId}
-  class={classNames('cinder-approval-card', customClassName)}
-  aria-labelledby={titleId}
-  data-cinder-state={effectiveState}
-  data-cinder-risk={tool.risk}
->
-  <Card padding="none" class="cinder-approval-card__surface">
-    {#snippet header()}
-      <div class="cinder-approval-card__header">
-        <div class="cinder-approval-card__title-group">
-          <svelte:element this={titleTag} id={titleId} class="cinder-approval-card__title">
-            Approval required for
-            <span class="cinder-approval-card__title-tool">{tool.name}</span>
-          </svelte:element>
-        </div>
-        <div class="cinder-approval-card__badges" role="group" aria-label="Approval status">
-          <StatusDot status={STATE_DOT_STATUS[effectiveState]} label={stateText} size="sm" />
-          <Tooltip text={riskLabel} describe={false}>
-            <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard focus exposes the risk tooltip without inventing a button action.) -->
-            <span
-              class="cinder-approval-card__risk-icon"
-              role="img"
-              tabindex="0"
-              aria-label={riskLabel}
-              data-cinder-risk={tool.risk}
-            >
-              <RiskIcon size={16} strokeWidth={2.25} aria-hidden="true" />
-            </span>
-          </Tooltip>
-          {#if expirationText}
-            <Badge variant="warning" size="sm">
-              {expirationText}
-            </Badge>
-          {/if}
-        </div>
+{#snippet operationPreview()}
+  {#if operation.kind === 'command' && operation.command}
+    <div class="cinder-approval-card__section">
+      <CodeBlock code={operation.command} language="shell" languageLabelVisible={false} />
+    </div>
+  {:else if operation.kind === 'patch' && operation.diff}
+    <div class="cinder-approval-card__section">
+      <CodeBlock code={operation.diff} language="diff" languageLabelVisible={false} />
+    </div>
+  {/if}
+{/snippet}
+
+{#snippet filesTouchedSection()}
+  {#if filesTouched.length > 0}
+    <div class="cinder-approval-card__section">
+      <div class="cinder-approval-card__section-heading">
+        <svelte:element this={sectionTag} class="cinder-approval-card__section-title">
+          Files touched
+        </svelte:element>
+        <Badge size="sm">{filesTouchedLabel}</Badge>
       </div>
-    {/snippet}
+      <ul class="cinder-approval-card__file-list">
+        {#each filesTouched as file (file)}
+          <li class="cinder-approval-card__file">
+            <span class="cinder-approval-card__file-path">{file}</span>
+            <CopyButton
+              value={file}
+              label={`Copy path ${file}`}
+              copiedLabel="Path copied"
+              class="cinder-approval-card__file-copy"
+              iconOnly
+            />
+          </li>
+        {/each}
+      </ul>
+    </div>
+  {/if}
+{/snippet}
 
-    <div class="cinder-approval-card__body">
-      {#if operation.kind === 'command' && operation.command}
-        <div class="cinder-approval-card__section">
-          <CodeBlock code={operation.command} language="shell" languageLabelVisible={false} />
-        </div>
-      {:else if operation.kind === 'patch' && operation.diff}
-        <div class="cinder-approval-card__section">
-          <CodeBlock code={operation.diff} language="diff" languageLabelVisible={false} />
-        </div>
+{#snippet argumentsPreviewSection()}
+  {#if hasArgumentsPreview}
+    <div class="cinder-approval-card__section">
+      <PayloadInspector
+        value={argumentsPreview.value}
+        truncated={argumentsPreview.truncated}
+        label={`${tool.name} arguments`}
+        view="json"
+      />
+    </div>
+  {/if}
+{/snippet}
+
+{#if layout === 'row'}
+  <article
+    {...rest}
+    id={rootId}
+    class={classNames('cinder-approval-card', 'cinder-approval-card--row', customClassName)}
+    aria-labelledby={titleId}
+    data-cinder-state={effectiveState}
+    data-cinder-risk={tool.risk}
+    data-cinder-layout="row"
+  >
+    <div class="cinder-approval-card__row">
+      <span
+        class="cinder-approval-card__risk-icon"
+        role="img"
+        aria-label={riskLabel}
+        data-cinder-risk={tool.risk}
+      >
+        <RiskIcon size={16} strokeWidth={2.25} aria-hidden="true" />
+      </span>
+      <svelte:element this={titleTag} id={titleId} class="cinder-approval-card__row-question">
+        {rowQuestion}
+      </svelte:element>
+      {#if !isActionable || !hasResolutionCallback}
+        <StatusDot status={STATE_DOT_STATUS[effectiveState]} label={stateText} size="sm" />
       {/if}
-
-      {#if filesTouched.length > 0}
-        <div class="cinder-approval-card__section">
-          <div class="cinder-approval-card__section-heading">
-            <svelte:element this={sectionTag} class="cinder-approval-card__section-title">
-              Files touched
+      {#if hasRowInput}
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-expanded={rowInputOpen}
+          aria-controls={rowInputId}
+          onclick={() => (rowInputOpen = !rowInputOpen)}
+        >
+          View input
+        </Button>
+      {/if}
+      {#if isActionable && hasResolutionCallback}
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onclick={() => resolveIfActionable({ decision: 'deny', remember: false })}
+        >
+          Deny
+        </Button>
+        <Button
+          type="button"
+          variant="primary"
+          size="sm"
+          onclick={() => resolveIfActionable({ decision: 'approve', remember: false })}
+        >
+          Approve
+        </Button>
+      {/if}
+    </div>
+    <div id={rowInputId} class="cinder-approval-card__row-input" hidden={!rowInputOpen}>
+      {@render operationPreview()}
+      {@render filesTouchedSection()}
+      {@render argumentsPreviewSection()}
+    </div>
+  </article>
+{:else}
+  <article
+    {...rest}
+    id={rootId}
+    class={classNames('cinder-approval-card', customClassName)}
+    aria-labelledby={titleId}
+    data-cinder-state={effectiveState}
+    data-cinder-risk={tool.risk}
+  >
+    <Card padding="none" class="cinder-approval-card__surface">
+      {#snippet header()}
+        <div class="cinder-approval-card__header">
+          <div class="cinder-approval-card__title-group">
+            <svelte:element this={titleTag} id={titleId} class="cinder-approval-card__title">
+              Approval required for
+              <span class="cinder-approval-card__title-tool">{tool.name}</span>
             </svelte:element>
-            <Badge size="sm">{filesTouchedLabel}</Badge>
           </div>
-          <ul class="cinder-approval-card__file-list">
-            {#each filesTouched as file (file)}
-              <li class="cinder-approval-card__file">
-                <span class="cinder-approval-card__file-path">{file}</span>
-                <CopyButton
-                  value={file}
-                  label={`Copy path ${file}`}
-                  copiedLabel="Path copied"
-                  class="cinder-approval-card__file-copy"
-                  iconOnly
-                />
-              </li>
-            {/each}
-          </ul>
-        </div>
-      {/if}
-
-      {#if hasArgumentsPreview}
-        <div class="cinder-approval-card__section">
-          <PayloadInspector
-            value={argumentsPreview.value}
-            truncated={argumentsPreview.truncated}
-            label={`${tool.name} arguments`}
-          />
-        </div>
-      {/if}
-
-      <Collapsible trigger="Details" class="cinder-approval-card__details">
-        <div class="cinder-approval-card__details-content">
-          {#if sandbox}
-            <div class="cinder-approval-card__details-group">
-              <p class="cinder-approval-card__details-label">Sandbox</p>
-              <dl class="cinder-approval-card__metadata cinder-approval-card__metadata--compact">
-                <div class="cinder-approval-card__metadata-item">
-                  <dt>Provider</dt>
-                  <dd>{sandbox.provider}</dd>
-                </div>
-                <div class="cinder-approval-card__metadata-item">
-                  <dt>Profile</dt>
-                  <dd>{sandbox.name}</dd>
-                </div>
-                <div class="cinder-approval-card__metadata-item">
-                  <dt>Working directory</dt>
-                  <dd>{sandbox.workingDir}</dd>
-                </div>
-              </dl>
-            </div>
-          {/if}
-
-          {#if environmentNames.length > 0}
-            <div class="cinder-approval-card__details-group">
-              <p class="cinder-approval-card__details-label">Environment</p>
-              <ul
-                class="cinder-approval-card__environment-list"
-                aria-label="Environment variable names only; values are never shown"
+          <div class="cinder-approval-card__badges" role="group" aria-label="Approval status">
+            <StatusDot status={STATE_DOT_STATUS[effectiveState]} label={stateText} size="sm" />
+            <Tooltip text={riskLabel} describe={false}>
+              <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard focus exposes the risk tooltip without inventing a button action.) -->
+              <span
+                class="cinder-approval-card__risk-icon"
+                role="img"
+                tabindex="0"
+                aria-label={riskLabel}
+                data-cinder-risk={tool.risk}
               >
-                {#each environmentNames as environmentName (environmentName)}
-                  <li>
-                    <Badge size="sm" monospace>{environmentName}</Badge>
-                  </li>
-                {/each}
-              </ul>
-            </div>
-          {/if}
+                <RiskIcon size={16} strokeWidth={2.25} aria-hidden="true" />
+              </span>
+            </Tooltip>
+            {#if expirationText}
+              <Badge variant="warning" size="sm">
+                {expirationText}
+              </Badge>
+            {/if}
+          </div>
+        </div>
+      {/snippet}
 
-          <dl class="cinder-approval-card__metadata">
-            <div class="cinder-approval-card__metadata-item">
-              <dt>Policy version</dt>
-              <dd>
-                {policyVersion}
-                <span class="cinder-approval-card__metadata-help">
-                  Approval policy that produced this request.
-                </span>
-              </dd>
-            </div>
-            <div class="cinder-approval-card__metadata-item">
-              <dt>Idempotency key</dt>
-              <dd>
-                {idempotencyKey}
-                <span class="cinder-approval-card__metadata-help">
-                  Keeps this decision durable if it is submitted more than once.
-                </span>
-              </dd>
-            </div>
-            {#if snapshotId}
+      <div class="cinder-approval-card__body">
+        {@render operationPreview()}
+
+        {@render filesTouchedSection()}
+
+        {@render argumentsPreviewSection()}
+
+        <Collapsible trigger="Details" class="cinder-approval-card__details">
+          <div class="cinder-approval-card__details-content">
+            {#if sandbox}
+              <div class="cinder-approval-card__details-group">
+                <p class="cinder-approval-card__details-label">Sandbox</p>
+                <dl class="cinder-approval-card__metadata cinder-approval-card__metadata--compact">
+                  <div class="cinder-approval-card__metadata-item">
+                    <dt>Provider</dt>
+                    <dd>{sandbox.provider}</dd>
+                  </div>
+                  <div class="cinder-approval-card__metadata-item">
+                    <dt>Profile</dt>
+                    <dd>{sandbox.name}</dd>
+                  </div>
+                  <div class="cinder-approval-card__metadata-item">
+                    <dt>Working directory</dt>
+                    <dd>{sandbox.workingDir}</dd>
+                  </div>
+                </dl>
+              </div>
+            {/if}
+
+            {#if environmentNames.length > 0}
+              <div class="cinder-approval-card__details-group">
+                <p class="cinder-approval-card__details-label">Environment</p>
+                <ul
+                  class="cinder-approval-card__environment-list"
+                  aria-label="Environment variable names only; values are never shown"
+                >
+                  {#each environmentNames as environmentName (environmentName)}
+                    <li>
+                      <Badge size="sm" monospace>{environmentName}</Badge>
+                    </li>
+                  {/each}
+                </ul>
+              </div>
+            {/if}
+
+            <dl class="cinder-approval-card__metadata">
               <div class="cinder-approval-card__metadata-item">
-                <dt>Snapshot</dt>
+                <dt>Policy version</dt>
                 <dd>
-                  {snapshotId}
+                  {policyVersion}
                   <span class="cinder-approval-card__metadata-help">
-                    Workspace snapshot this request was captured against.
+                    Approval policy that produced this request.
                   </span>
                 </dd>
               </div>
-            {/if}
-          </dl>
-        </div>
-      </Collapsible>
+              <div class="cinder-approval-card__metadata-item">
+                <dt>Idempotency key</dt>
+                <dd>
+                  {idempotencyKey}
+                  <span class="cinder-approval-card__metadata-help">
+                    Keeps this decision durable if it is submitted more than once.
+                  </span>
+                </dd>
+              </div>
+              {#if snapshotId}
+                <div class="cinder-approval-card__metadata-item">
+                  <dt>Snapshot</dt>
+                  <dd>
+                    {snapshotId}
+                    <span class="cinder-approval-card__metadata-help">
+                      Workspace snapshot this request was captured against.
+                    </span>
+                  </dd>
+                </div>
+              {/if}
+            </dl>
+          </div>
+        </Collapsible>
 
-      {#if isActionable && hasResolutionCallback}
-        <ApprovalCardActions
-          idBase={rootId}
-          requestKey={idempotencyKey}
-          {canEditArguments}
-          argumentsValue={editableArgumentsValue}
-          resolve={resolveIfActionable}
-        />
-      {/if}
-      {#if !isActionable}
-        <p class="cinder-approval-card__readonly-summary" data-cinder-state={effectiveState}>
-          {readonlySummary}
-        </p>
-      {/if}
-    </div>
-  </Card>
-</article>
+        {#if isActionable && hasResolutionCallback}
+          <ApprovalCardActions
+            idBase={rootId}
+            requestKey={idempotencyKey}
+            {canEditArguments}
+            argumentsValue={editableArgumentsValue}
+            resolve={resolveIfActionable}
+          />
+        {/if}
+        {#if !isActionable}
+          <p class="cinder-approval-card__readonly-summary" data-cinder-state={effectiveState}>
+            {readonlySummary}
+          </p>
+        {/if}
+      </div>
+    </Card>
+  </article>
+{/if}

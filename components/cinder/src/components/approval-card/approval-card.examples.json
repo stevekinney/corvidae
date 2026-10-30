@@ -20,6 +20,12 @@
       "title": "Patch approval",
       "description": "A high-risk patch approval that previews the proposed diff, touched files, and arguments.",
       "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  tool={{ name: 'apply_patch', risk: 'high' }}\n  sandbox={{\n    provider: 'codex',\n    name: 'workspace-write',\n    workingDir: '/workspace/project',\n  }}\n  operation={{\n    kind: 'patch',\n    filesTouched: [\n      'components/cinder/src/components/run-step-timeline/run-step-timeline.svelte',\n      'components/cinder/src/components/run-step-timeline/run-step-timeline.types.ts',\n    ],\n    argsPreview: {\n      strip: 0,\n      files: 2,\n    },\n    diff: `--- a/run-step-timeline.types.ts\n+++ b/run-step-timeline.types.ts\n+@@\n+ export type RunStepStatus =\n+   | 'running'\n++  | 'waiting_approval'\n+   | 'succeeded';`,\n  }}\n  env={['CINDER_RELEASE_TOKEN']}\n  snapshotId=\"snapshot-patch-01\"\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"approval-patch-01\"\n  state=\"pending\"\n  onResolve={() => undefined}\n/>\n"
+    },
+    {
+      "id": "row",
+      "title": "Row approval",
+      "description": "One compact row for an approval inside a chat transcript whose reply already explains the request.",
+      "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  layout=\"row\"\n  question=\"Run issue-refund for $42.10?\"\n  tool={{ name: 'issue-refund', risk: 'medium' }}\n  operation={{\n    kind: 'other',\n    argsPreview: { orderId: '4471', amount: 42.1 },\n  }}\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"approval-row-01\"\n  state=\"pending\"\n  onResolve={() => undefined}\n/>\n"
     }
   ]
 }

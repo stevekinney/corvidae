@@ -11,6 +11,7 @@
   "packages/conversationalist/src/adapters/anthropic/content.ts": "toToolResultBlock sends parts, for any outcome, as text (with citations), image, and document blocks.",
   "packages/conversationalist/src/adapters/gemini/content.ts": "toFunctionResponsePart sends parts as inline functionResponse.parts referenced by $ref, for any outcome.",
   "packages/conversationalist/src/adapters/shared.ts": "stringifyToolResult serves results without parts; each adapter routes a result with parts to its parts path first.",
+  "packages/conversationalist/src/environment.ts": "simpleTokenEstimator counts content only when the result has no parts, as operative's estimateMessage does; with parts, it counts them and content is the application value beside them.",
   "packages/conversationalist/src/conversation/serialization.ts": "normalizeToolResult copies parts beside content.",
   "packages/conversationalist/src/plugins/pii-redaction.ts": "Redacts parts' text and media fields beside content.",
   "packages/operative/src/conditions/predicates.ts": "The loop fingerprint reads parts in place of content when a result has them.",

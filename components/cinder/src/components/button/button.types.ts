@@ -26,6 +26,9 @@ export type ButtonVariant =
 /**
  * Size of the button. All sizes use compact visual heights; see button.a11y.md for touch-target guidance.
  *
+ * `lg` is for page-level primary actions only. An action inside a row, card, dialog, or toolbar
+ * uses `md` (or `sm` or `xs` where space is tight).
+ *
  * @default `"md"`
  */
 export type ButtonSize = 'xs' | 'sm' | 'md' | 'lg';
@@ -118,7 +121,7 @@ export type ButtonProps = SharedHtmlAttributes &
   PadUnion<ButtonDiscriminant, ButtonPaddedKeys> & {
     /** Visual style. */
     variant?: ButtonVariant;
-    /** Size of the button. */
+    /** Size of the button. `lg` is for page-level primary actions only; inline actions use `md`. */
     size?: ButtonSize;
     /** Expand to container width. */
     fullWidth?: boolean;
@@ -146,7 +149,7 @@ export interface ButtonSchemaProps {
    */
   variant?: ButtonVariant;
   /**
-   * Size of the button.
+   * Size of the button. `lg` is for page-level primary actions only; inline actions use `md`.
    * @default "md"
    */
   size?: ButtonSize;

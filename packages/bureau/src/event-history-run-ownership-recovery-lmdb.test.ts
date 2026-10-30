@@ -76,7 +76,8 @@ function expectedRecoveredPage(runId: string, toolCallId: string): unknown {
     parts: [{ type: 'text', text: 'A step 0' }],
     messageId: expect.any(String),
     planReason,
-    toolCalls: [{ id: toolCallId, name: 'next', arguments: {} }],
+    // COR-1872: the recorded call pins the id of the tool it ran.
+    toolCalls: [{ id: toolCallId, name: 'next', arguments: {}, toolId: 'default:next' }],
     results: [
       {
         callId: toolCallId,

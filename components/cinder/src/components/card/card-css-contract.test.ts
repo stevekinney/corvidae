@@ -2,6 +2,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { setupHappyDom } from '@lostgradient/testing';
+import { parse, type AtRule } from 'postcss';
 
 setupHappyDom();
 
@@ -56,21 +57,31 @@ describe('Card CSS contract', () => {
     expect(iconBlock).toContain('var(--cinder-status-danger-text)');
   });
 
-  test('resting card uses the sm elevation token and transitions border/shadow/background', async () => {
+  test('a resting card draws a border and no shadow, and transitions border/shadow/background', async () => {
     const css = await Bun.file(new URL('./card.css', import.meta.url)).text();
     const baseBlock = css.match(/\.cinder-card\s*\{[^}]*\}/)?.[0] ?? '';
-    expect(baseBlock).toContain('box-shadow: var(--cinder-shadow-sm)');
+    expect(baseBlock).toContain('border: 1px solid var(--cinder-border)');
+    expect(baseBlock).toContain('box-shadow: none');
     expect(baseBlock).toMatch(/transition:[^;]*border-color var\(--cinder-duration-fast\)/s);
     expect(baseBlock).toMatch(/transition:[^;]*box-shadow var\(--cinder-duration-fast\)/s);
     expect(baseBlock).toMatch(/transition:[^;]*background-color var\(--cinder-duration-fast\)/s);
   });
 
-  test('hover elevates an interactive card only under a hover-capable pointer', async () => {
+  test('hover strengthens only the edge the card has, under a hover-capable pointer', async () => {
     const css = await Bun.file(new URL('./card.css', import.meta.url)).text();
     const hoverSection = css.match(/@media \(hover: hover\)\s*\{[\s\S]*?\n {2}\}/)?.[0] ?? '';
-    expect(hoverSection).toContain('[data-cinder-interactive]:hover');
-    expect(hoverSection).toContain('border-color: var(--cinder-border-strong)');
-    expect(hoverSection).toContain('box-shadow: var(--cinder-shadow-md)');
+    const borderHover =
+      hoverSection.match(
+        /\.cinder-card\[data-cinder-edge='border'\]\[data-cinder-interactive\]:hover\s*\{[^}]*\}/,
+      )?.[0] ?? '';
+    const shadowHover =
+      hoverSection.match(
+        /\.cinder-card\[data-cinder-edge='shadow'\]\[data-cinder-interactive\]:hover\s*\{[^}]*\}/,
+      )?.[0] ?? '';
+    expect(borderHover).toContain('border-color: var(--cinder-border-strong)');
+    expect(borderHover).not.toContain('box-shadow');
+    expect(shadowHover).toContain('box-shadow: var(--cinder-shadow-md)');
+    expect(shadowHover).not.toContain('border-color');
   });
 
   test('focus-visible paints the ring on the card for both the anchor and stretched-action cases', async () => {
@@ -89,45 +100,61 @@ describe('Card CSS contract', () => {
     expect(actionOwnRing).toContain('outline: none');
   });
 
-  test('an explicit non-default elevation still wins on well and danger surfaces', async () => {
+  test('a card never draws a border and a shadow together', async () => {
     const css = await Bun.file(new URL('./card.css', import.meta.url)).text();
+    const root = parse(css);
 
-    // The default (sm) elevation stays flat on a STATIC well/danger card, matching the
-    // existing look. The :not([data-cinder-interactive]) is load-bearing, not cosmetic:
-    // these rules sit after the :hover / :focus-visible rules and carry the same
-    // specificity, so without it they win the cascade and flatten an interactive card's
-    // hover and focus feedback — reintroducing the discarded-elevation defect one
-    // variant over.
-    expect(css).toMatch(
-      /\.cinder-card\[data-cinder-variant='well'\]\[data-cinder-elevation='sm'\]:not\(\s*\[data-cinder-interactive\]\s*\)\s*\{[^}]*box-shadow:\s*none/s,
-    );
-    expect(css).toMatch(
-      /\.cinder-card\[data-cinder-tone='danger'\]\[data-cinder-elevation='sm'\]:not\(\s*\[data-cinder-interactive\]\s*\)\s*\{[^}]*box-shadow:\s*none/s,
-    );
+    function declarations(selector: string): Map<string, string> {
+      const found = new Map<string, string>();
+      root.walkRules((rule) => {
+        if (rule.parent?.type === 'atrule' && (rule.parent as AtRule).name === 'media') return;
+        if (!rule.selectors.includes(selector)) return;
+        rule.walkDecls((declaration) => {
+          found.set(declaration.prop, declaration.value);
+        });
+      });
+      return found;
+    }
 
-    // And neither flat rule may apply without that exclusion.
-    expect(css).not.toMatch(
-      /\.cinder-card\[data-cinder-variant='well'\]\[data-cinder-elevation='sm'\]\s*\{/,
-    );
-    expect(css).not.toMatch(
-      /\.cinder-card\[data-cinder-tone='danger'\]\[data-cinder-elevation='sm'\]\s*\{/,
-    );
+    const border = new Map([
+      ...declarations('.cinder-card'),
+      ...declarations(".cinder-card[data-cinder-edge='border']"),
+    ]);
+    const shadow = new Map([
+      ...declarations('.cinder-card'),
+      ...declarations(".cinder-card[data-cinder-edge='shadow']"),
+    ]);
 
-    // Neither the well nor the danger base rule unconditionally forces box-shadow: none
-    // anymore -- that would silently discard an explicit elevation='md'/'lg' prop.
-    const wellBlock =
-      css.match(/\.cinder-card\[data-cinder-variant='well'\]\s*\{[^}]*\}/)?.[0] ?? '';
-    const dangerBlock =
-      css.match(/\.cinder-card\[data-cinder-tone='danger'\]\s*\{[^}]*\}/)?.[0] ?? '';
-    expect(wellBlock).not.toContain('box-shadow');
-    expect(dangerBlock).not.toContain('box-shadow');
+    // The border edge: a visible border and no shadow.
+    expect(border.get('border')).toBe('1px solid var(--cinder-border)');
+    expect(border.get('box-shadow')).toBe('none');
+    // The shadow edge: a shadow and a transparent border (the 1px stays in the box).
+    expect(shadow.get('box-shadow')).toBe('var(--cinder-shadow-sm)');
+    expect(shadow.get('border-color')).toBe('transparent');
+  });
 
-    // No rule collapses elevation='md' or elevation='lg' to none for well/danger.
+  test('the shadow edge wins over the danger border colour', async () => {
+    const css = await Bun.file(new URL('./card.css', import.meta.url)).text();
+    const danger = css.indexOf(".cinder-card[data-cinder-tone='danger'] {");
+    const shadowEdge = css.indexOf(".cinder-card[data-cinder-edge='shadow'] {");
+    expect(danger).toBeGreaterThan(-1);
+    expect(shadowEdge).toBeGreaterThan(danger);
+  });
+
+  test('the elevation range and its flat well/danger exceptions are gone', async () => {
+    const css = await Bun.file(new URL('./card.css', import.meta.url)).text();
+    expect(css).not.toContain('data-cinder-elevation');
+  });
+
+  test('the header divider is opt-in', async () => {
+    const css = await Bun.file(new URL('./card.css', import.meta.url)).text();
+    const header = css.match(/\.cinder-card__header\s*\{[^}]*\}/)?.[0] ?? '';
+    const divider =
+      css.match(/\.cinder-card__header\[data-cinder-divider\]\s*\{[^}]*\}/)?.[0] ?? '';
+    expect(header).not.toContain('border');
+    expect(divider).toContain('border-bottom: 1px solid var(--cinder-border-muted)');
     expect(css).not.toMatch(
-      /\.cinder-card\[data-cinder-variant='well'\]\[data-cinder-elevation='(md|lg)'\]\s*\{[^}]*box-shadow:\s*none/s,
-    );
-    expect(css).not.toMatch(
-      /\.cinder-card\[data-cinder-tone='danger'\]\[data-cinder-elevation='(md|lg)'\]\s*\{[^}]*box-shadow:\s*none/s,
+      /\.cinder-card\[data-cinder-tone='danger'\] > \.cinder-card__header\s*\{[^}]*border-bottom/s,
     );
   });
 });

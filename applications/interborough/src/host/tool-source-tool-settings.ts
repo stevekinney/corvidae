@@ -4,7 +4,7 @@
  *
  * `acceptsSecrets` is the metadata key Armorer reads to decide whether a tool may receive the
  * plaintext of a secret answer (COR-1816): `metadata.acceptsSecrets === true`, and nothing else. A
- * tool the owner has not flagged is left exactly as the loader made it, so it never carries the key
+ * tool the owner has not flagged keeps the loader's metadata, so it never carries the key
  * and a `{ secretRef }` in its arguments fails with `secret-not-accepted`.
  *
  * @module tool-source-tool-settings
@@ -29,6 +29,49 @@ export function withAcceptsSecrets(tool: Tool): Tool {
   ]).tools();
   if (rebuilt === undefined) {
     throw new Error(`Tool "${tool.name}" could not be given acceptsSecrets.`);
+  }
+  return rebuilt;
+}
+
+/**
+ * A copy of `tool` that refuses to run once `refusal` returns a message, rebuilt the way
+ * {@link withAcceptsSecrets} rebuilds one (COR-1931). A saved source's tools are connected to their
+ * server with whatever the loader captured when it loaded (a key or token read once, a child
+ * process's environment, an open session), and removing the source cannot reach into each
+ * transport to take that back. The check sits where the host builds every saved source's tools, so
+ * no kind of source (MCP over HTTP or stdio, OpenAPI from a URL or inline) can send a request, or
+ * use a credential, after the host retired it. The configuration is copied whole, so the name,
+ * description, schema, tags, metadata (the tier and approval metadata) and identity, version
+ * included (COR-1950: an approval is bound to it), are the original's.
+ */
+export function refusingWhen(tool: Tool, refusal: () => string | undefined): Tool {
+  const refuseWhenRetired = (): void => {
+    const reason = refusal();
+    if (reason !== undefined) throw new Error(reason);
+  };
+  const execute = tool.configuration.execute;
+  // A toolbox runs `rawExecute` when a configuration carries one, and `execute` otherwise, so both are guarded.
+  const raw: unknown = Reflect.get(tool.configuration, 'rawExecute');
+  const [rebuilt] = createToolbox([
+    {
+      ...tool.configuration,
+      execute: async (params: unknown, context?: unknown) => {
+        refuseWhenRetired();
+        const run = await execute;
+        return run(params, context);
+      },
+      ...(typeof raw === 'function'
+        ? {
+            rawExecute: async (params: unknown, context: unknown) => {
+              refuseWhenRetired();
+              return Reflect.apply(raw, undefined, [params, context]);
+            },
+          }
+        : {}),
+    },
+  ]).tools();
+  if (rebuilt === undefined) {
+    throw new Error(`Tool "${tool.name}" could not be gated.`);
   }
   return rebuilt;
 }

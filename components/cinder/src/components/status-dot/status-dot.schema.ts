@@ -17,7 +17,7 @@ const schema = {
     label: {
       type: 'string',
       description:
-        'Optional human label. Rendered visibly when `labelVisible` is true; used as the accessible name either way.',
+        'Human label. Rendered visibly when `labelVisible` is true; used as the accessible name either way. Defaults to a word derived from `status` (for example "Online"), so a bare StatusDot is a dot and a word, never a dot alone.',
     },
     labelVisible: {
       type: 'boolean',
@@ -42,4 +42,5 @@ const schema = {
   additionalProperties: false,
 } satisfies ComponentSchema;
 
+/** JSON Schema describing the props of this component. */
 export default schema as ComponentSchema;

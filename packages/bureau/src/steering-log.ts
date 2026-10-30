@@ -5,7 +5,11 @@ import {
   tryDecodeStorageKeyComponent,
 } from '@lostgradient/storage';
 
-import type { Effort, SteeringRequestedValue } from '@lostgradient/operative';
+import {
+  type Effort,
+  PERMISSION_MODES,
+  type SteeringRequestedValue,
+} from '@lostgradient/operative';
 
 import type { ImplementedSteeringCommand, SteeringCommandAdmissionOutcome } from './steering';
 
@@ -152,7 +156,8 @@ function parseJson(raw: string, what: string): unknown {
   }
 }
 
-const CONFIGURATION_TARGETS = new Set(['route', 'model', 'provider', 'effort']);
+const CONFIGURATION_TARGETS = new Set(['route', 'model', 'provider', 'effort', 'permission-mode']);
+const PERMISSION_MODE_VALUES = new Set<string>(PERMISSION_MODES);
 const EFFORTS = new Set<string>([
   'low',
   'medium',
@@ -176,6 +181,13 @@ function isSteeringCommand(value: unknown): value is ImplementedSteeringCommand 
     target !== 'effort' ||
     requested['override'] === undefined ||
     (typeof requested['override'] === 'string' && EFFORTS.has(requested['override']));
+  // COR-1936: a permission-mode override must be a real mode; a corrupt one must not reach the
+  // approval decision.
+  const permissionModeIsValid =
+    target !== 'permission-mode' ||
+    requested['override'] === undefined ||
+    (typeof requested['override'] === 'string' &&
+      PERMISSION_MODE_VALUES.has(requested['override']));
   // COR-1559: only a `model` override may name a provider, and it names it as text. A record
   // written before the field existed has none.
   const providerIsValid =
@@ -192,6 +204,7 @@ function isSteeringCommand(value: unknown): value is ImplementedSteeringCommand 
       : (target === 'agent-identity' || CONFIGURATION_TARGETS.has(target)) &&
         hasOneValue &&
         effortIsValid &&
+        permissionModeIsValid &&
         providerIsValid;
   return (
     valueShapeIsValid &&

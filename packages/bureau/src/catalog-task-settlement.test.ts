@@ -29,6 +29,7 @@ function build(loaded: CatalogRunRecoveryLoad, childRunIds: readonly string[] = 
       pendingReviews: () => [],
       currentIncarnation: async () => undefined,
       abort: () => 'not-found',
+      cancelChild: async () => 'not-found',
       cancelDurable: async () => ({ status: 'already-terminal' }),
       sleep: async () => undefined,
     },
@@ -58,7 +59,7 @@ const found: CatalogRunRecoveryLoad = {
 };
 
 describe('settling a catalog task from the hook', () => {
-  it('writes no record for a recovered child run, which is not a task', async () => {
+  it('writes no record for a recovered child run claimed before child runs were tasks', async () => {
     const { registry, settler } = build(found, ['agent-run-1']);
 
     await settler(settlement);
@@ -68,7 +69,7 @@ describe('settling a catalog task from the hook', () => {
     expect(listed.tasks).toEqual([]);
   });
 
-  it('writes no record for a recovered goal attempt or a recovered workflow step, which are not tasks', async () => {
+  it('writes no record for a recovered goal attempt or workflow step claimed before they were tasks', async () => {
     const goal = build({
       status: 'found',
       record: { ...found.record, goalAttempt: { goalRunId: 'goal-1', attemptIndex: 0 } },
@@ -85,6 +86,52 @@ describe('settling a catalog task from the hook', () => {
     expect(await step.registry.record('agent-run-1')).toBeUndefined();
     const listed = await step.registry.enumerate({ limit: 10, offset: 0 });
     expect(listed.tasks).toEqual([]);
+  });
+
+  it.each([
+    ['a child run', { kind: 'agent', parentRunId: 'run-p', agentName: 'planner' }],
+    ['a goal attempt', { kind: 'goal', goalRunId: 'g1', attemptId: 'g1:a0' }],
+    ['a workflow step', { kind: 'parent', parentRunId: 'instance-1' }],
+    ['a run of a kind a newer release recorded', { kind: 'unheard-of', extra: 1 }],
+  ] as const)(
+    'writes the record of %s from the origin its claim stores, settles it, and writes it once',
+    async (_label, taskOrigin) => {
+      const claim: CatalogRunRecoveryLoad = {
+        status: 'found',
+        record: { ...found.record, taskOrigin },
+      };
+      // The topology holds the id, which used to exclude the run: the claim now decides.
+      const { registry, settler } = build(claim, ['agent-run-1']);
+
+      await settler(settlement);
+      await settler(settlement);
+
+      const record = await registry.record('agent-run-1');
+      expect(record).toMatchObject({
+        taskId: 'agent-run-1',
+        contextId: 'agent-run-1',
+        incarnation: '',
+        origin: taskOrigin,
+        settled: { status: 'completed', answer: { text: 'the answer' } },
+      });
+      expect(record?.history.map((message) => message.text)).toEqual(['which environment?']);
+      const view = await registry.get('agent-run-1');
+      expect(view?.origin).toEqual(taskOrigin.kind === 'unheard-of' ? null : taskOrigin);
+      const listed = await registry.enumerate({ limit: 10, offset: 0 });
+      expect(listed.tasks).toHaveLength(1);
+    },
+  );
+
+  it('does not write a record from a claim for a fresh dispatch, whose own start admits it', async () => {
+    const claim: CatalogRunRecoveryLoad = {
+      status: 'found',
+      record: { ...found.record, taskOrigin: { kind: 'parent', parentRunId: 'instance-1' } },
+    };
+    const { registry, settler } = build(claim);
+
+    await settler({ ...settlement, recovered: false });
+
+    expect(await registry.record('agent-run-1')).toBeUndefined();
   });
 
   it('puts a recovered run in the context its dispatch named, and in its own when it named none', async () => {

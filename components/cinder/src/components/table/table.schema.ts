@@ -6,7 +6,8 @@ const schema = {
   properties: {
     caption: {
       type: 'string',
-      description: 'Visual caption rendered as a `<caption>` element.',
+      description:
+        'Accessible caption rendered as a `<caption>` element. It names the table for\nassistive technology but is visually hidden: the heading above the table\nalready says what it is, and the table draws no title row of its own.',
     },
     stickyHeader: {
       type: 'boolean',
@@ -61,4 +62,5 @@ const schema = {
   },
 } satisfies ComponentSchema;
 
+/** JSON Schema describing the props of this component. */
 export default schema as ComponentSchema;

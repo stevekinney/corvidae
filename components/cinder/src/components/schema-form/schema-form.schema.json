@@ -6,6 +6,10 @@
       "type": "string",
       "description": "Name of the hidden serialized output field. Defaults to `value`."
     },
+    "jsonEditable": {
+      "type": "boolean",
+      "description": "Whether a large form offers its own Edit as JSON panel. Defaults to `true`; set `false` when\nthe host already provides a JSON entry point for the same payload, so the page does not show\ntwo. Find a field and the other large-form affordances are unaffected."
+    },
     "submitLabel": {
       "type": "string",
       "description": "Label for the built-in submit button. Defaults to `Submit`."

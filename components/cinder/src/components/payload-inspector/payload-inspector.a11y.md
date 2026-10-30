@@ -2,12 +2,13 @@
 
 ## Pattern
 
-Labeled read-only data panel. The root is a plain `<div>` — not a landmark — so a dashboard rendering many inspectors adds nothing to the screen-reader landmark list. The visible header label names the panel, the JSON tree is cinder's `JsonViewer` (a WAI-ARIA tree composite), and the copy action is a native `CopyButton`.
+Labeled read-only data panel. The root is a plain `<div>` — not a landmark — so a dashboard rendering many inspectors adds nothing to the screen-reader landmark list. The visible heading-row label names the panel, the Fields view is a description list, the JSON view is cinder's `JsonViewer` (a WAI-ARIA tree composite), and the copy action is a native `CopyButton`.
 
 ## Roles names states
 
 - The header label is visible text; the copy button's accessible name incorporates it (e.g. "Copy Arguments") so the action is unambiguous when several inspectors share a page.
 - The byte size `<span>` carries an `aria-label` (e.g. "13 B payload size") so screen readers have context without relying on visual proximity.
+- The Fields / JSON switch is a `SegmentedControl` radio group named "<label> view"; it renders only for an object or array payload. The Fields view is a `<dl>`: each property label is a `<dt>`, its value a `<dd>`, and a nested object or array is a `<dl>` inside the `<dd>`.
 - The JSON tree from `JsonViewer` carries `role="tree"` with `treeitem` nodes, `aria-expanded`, and level/position attributes.
 - Parse error notices carry `role="alert"` — announced immediately when parsing fails. The raw string renders below the alert so the reader can see what failed.
 - Empty-state placeholders carry `role="status"` — announced politely.
@@ -15,11 +16,12 @@ Labeled read-only data panel. The root is a plain `<div>` — not a landmark —
 
 ## Keyboard
 
-| Key                | Action                                                          |
-| ------------------ | --------------------------------------------------------------- |
-| Tab                | Move focus to the copy button, then into the JSON tree          |
-| Arrow keys (tree)  | Navigate and expand/collapse nodes per the `JsonViewer` pattern |
-| Enter/Space (tree) | Toggle the focused expandable node                              |
+| Key | Action |
+| --- | --- |
+| Tab | Move focus to the view switch, the copy button, then into the JSON tree (JSON view) |
+| Arrow keys (switch) | Move between Fields and JSON |
+| Arrow keys (tree) | Navigate and expand/collapse nodes per the `JsonViewer` pattern |
+| Enter/Space (tree) | Toggle the focused expandable node |
 
 ## Mouse / pointer
 

@@ -47,6 +47,8 @@ const SAMPLES: Readonly<Record<SettingKey, unknown>> = {
   'retention.receipts': { olderThan: 7_200_000 },
   'retention.memory': { olderThan: 604_800_000 },
   'retention.logs': { olderThan: 604_800_000 },
+  'retention.notifications': { olderThan: 2_592_000_000 },
+  'retention.hookDeliveries': { olderThan: 1_209_600_000 },
   'logs.maximumLinesPerRun': 250,
   'retention.checkpoints': { keepLast: 4 },
   'sessionInput.sessionBacklogLimit': 7,

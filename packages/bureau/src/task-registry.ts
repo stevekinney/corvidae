@@ -41,6 +41,7 @@ import {
   encodeStorageKeyComponent,
   MemoryStorage,
   textValueStore,
+  type TextValueStoreBatchOperation,
 } from '@lostgradient/storage';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 
@@ -62,6 +63,7 @@ import {
   type TaskListingSiblings,
 } from './task-list-snapshots';
 import { isTryAgentName } from './agent-try';
+import { notificationOutboxKey } from './notifications/notification-outbox';
 import {
   isStoredTaskOrigin,
   isTopLevelTaskOrigin,
@@ -213,7 +215,24 @@ export interface TaskRecord {
    * a task resumes with the settings at resume, which are then recorded here.
    */
   readonly tools?: TaskToolGrant | undefined;
+  /**
+   * The id of the Bureau process that admitted the task (COR-1946), stored as a plain string. A
+   * run with no durable workflow lives only in that process, so a later boot settles the task as
+   * lost when the process's lease (`bureau-process:v1:<id>`, see `process-lease.ts`) is absent or
+   * expired. Absent in a record written before it was kept: such a task is never settled by that
+   * rule, because nothing says whose it is.
+   */
+  readonly ownerProcess?: string | undefined;
 }
+
+/**
+ * COR-1946 — the finish reason of a task settled because the process that owned its run is gone.
+ * It is an inference (the owner's lease lapsed), not an observation: if the owner was only stalled
+ * and ends its run later, its real settlement replaces this one and announces itself as a first
+ * settlement. It is the only settlement a later one replaces as though it were the first; any other
+ * terminal state keeps the first-wins treatment {@link TaskRegistry.recordSettled} describes.
+ */
+export const TASK_OWNER_LOST_FINISH_REASON = 'owner-lost';
 
 /** COR-1710 — the tools a task was granted at start: `tools.*` of `bureau.settings` at that moment. */
 export interface TaskToolGrant {
@@ -242,9 +261,11 @@ export interface TaskAdmission {
   readonly kind?: TaskKind | undefined;
   /**
    * See {@link TaskRecord.origin}. Required so that a site that admits a task has to decide what
-   * it is; `undefined` records none, as a schedule fire does when its schedule is not known.
+   * it is; `undefined` records none, as a schedule fire does when its schedule is not known. A
+   * subordinate task is admitted with the origin its run's claim stores, which may be of a kind
+   * this release does not know ({@link StoredTaskOrigin}); it is kept as written.
    */
-  readonly origin: TaskOrigin | undefined;
+  readonly origin: StoredTaskOrigin | undefined;
   /** The originating user message's text, when the request had one. */
   readonly message: string | undefined;
   /** See {@link TaskRecord.tools}. */
@@ -317,6 +338,16 @@ export interface TaskRegistryHost {
   /** Cancels a durable run this process holds no live run for. */
   readonly cancelDurable: (taskId: string) => Promise<CancelDurableRunOutcome>;
   /**
+   * Cancels the child run a task of origin `agent` stands for, through the topology that owns it
+   * (`children.cancel`), which is the one cancel a child has (COR-1868). `requested` when the
+   * child is being stopped, `already-terminal` when it had ended, `not-found` when the topology
+   * holds no such child. A refusal of the cancel itself rejects.
+   */
+  readonly cancelChild: (child: {
+    readonly parentRunId: string;
+    readonly childRunId: string;
+  }) => Promise<'requested' | 'already-terminal' | 'not-found'>;
+  /**
    * Drops this process's own copy of a review another process closed (COR-1613): the durable
    * history says it was decided or expired, so what this process still lists for it is stale.
    */
@@ -332,8 +363,16 @@ export type TaskCancelReceipt = TaskCleanupState | 'rejected';
 /** What `cancel` found and did. */
 export interface TaskCancelOutcome {
   readonly receipt: TaskCancelReceipt;
-  readonly reason?: 'already-terminal';
+  /**
+   * Why a `rejected` receipt was given: the task had `already-terminal`, or it is `owned-by-goal`
+   * (a goal attempt, cancelled by cancelling the goal) or `owned-by-workflow` (a workflow step,
+   * cancelled with its instance), so no cancel of its own reaches the run (COR-1868).
+   */
+  readonly reason?: TaskCancelRejection;
 }
+
+/** Why a task's cancel was rejected. See {@link TaskCancelOutcome.reason}. */
+export type TaskCancelRejection = 'already-terminal' | 'owned-by-goal' | 'owned-by-workflow';
 
 /** A page of tasks, by offset: what {@link TaskRegistry.enumerate} answers. */
 export interface TaskPage {
@@ -494,10 +533,26 @@ export interface TaskRegistry {
    */
   reviewClosedElsewhere(taskId: string, reviewId: string, eventKind: string): Promise<void>;
   /**
-   * Records how a task ended. The latest settlement wins, with the answer kept. Resolves
-   * `false`, writing nothing, when the task has no record.
+   * Records how a task ended. The latest settlement wins, with the answer kept, and only the first
+   * is announced as a settlement, except that a settlement with
+   * {@link TASK_OWNER_LOST_FINISH_REASON} (COR-1946) is an inference, so the one that replaces it is
+   * announced as the first. Resolves `false`, writing nothing, when the task has no record.
    */
   recordSettled(taskId: string, settlement: TaskSettlement): Promise<boolean>;
+  /**
+   * COR-1946 — settles a task whose owning process is gone. Writes only when the task is still
+   * unsettled, is still owned by `ownerProcess`, and `lease.key` still holds exactly
+   * `lease.expected` (`null` for no record): a renewal of the lease, or any settlement, that lands
+   * first defeats it. One attempt. Resolves `'written'`; `'lost-race'` when the record or the lease
+   * changed between the reads and the write (worth judging again); or `'not-applicable'` when the
+   * task is gone, already settled, unreadable or owned by another process (nothing to judge).
+   */
+  settleAbandoned(
+    taskId: string,
+    ownerProcess: string,
+    lease: { readonly key: string; readonly expected: string | null },
+    settlement: TaskSettlement,
+  ): Promise<'written' | 'lost-race' | 'not-applicable'>;
   /**
    * A bound, not a barrier. Waits up to `maximumTurns` event-loop turns (default 50; by turn, not
    * by clock) for the cleanup acknowledgements the registry is following to arrive, then waits
@@ -616,6 +671,12 @@ export interface CreateTaskRegistryOptions {
   readonly identifiers: RuntimeIdentifiers;
   readonly host: TaskRegistryHost;
   readonly diagnose: (message: string, cause?: unknown) => void;
+  /**
+   * COR-1946 — this process's id, stamped on every record the registry admits as
+   * {@link TaskRecord.ownerProcess}. Omitted for a Bureau with no persistent store, which has no
+   * second process and so no owner to tell apart.
+   */
+  readonly processId?: string | undefined;
   /**
    * Told, after {@link TaskRegistry.recordSettled} has written the settlement and announced it
    * here, of each schedule fire it settled (COR-1594). The Bureau records the fire's end in the
@@ -818,6 +879,7 @@ function isTaskRecord(value: unknown): value is TaskRecord {
     typeof value['owner'] === 'string' &&
     (value['actor'] === undefined || typeof value['actor'] === 'string') &&
     (value['kind'] === undefined || value['kind'] === 'schedule-fire') &&
+    (value['ownerProcess'] === undefined || typeof value['ownerProcess'] === 'string') &&
     (value['origin'] === undefined || isStoredTaskOrigin(value['origin'])) &&
     isTimestamp(value['createdAt']) &&
     Array.isArray(value['history']) &&
@@ -890,6 +952,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     taskId: string,
     mutate: (record: TaskRecord) => TaskRecord | undefined,
     counted = true,
+    alsoWrite?: (next: TaskRecord) => readonly TextValueStoreBatchOperation[],
   ): Promise<boolean> {
     const key = recordKey(taskId);
     for (let attempt = 0; attempt < MAX_UPDATE_ATTEMPTS; attempt += 1) {
@@ -910,6 +973,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
               counted ? { ...next, revision: (current.revision ?? 0) + 1 } : next,
             ),
           },
+          ...(alsoWrite?.(next) ?? []),
         ],
       );
       if (committed) return true;
@@ -1343,31 +1407,103 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     taskId: string,
     settlement: Parameters<TaskRegistry['recordSettled']>[1],
   ): Promise<boolean> {
-    const captured: { settled?: TaskRecord; newlySettled: boolean } = { newlySettled: false };
+    const captured: { settled?: TaskRecord; newlySettled: boolean; replacedInference: boolean } = {
+      newlySettled: false,
+      replacedInference: false,
+    };
     const recorded = await track(
-      update(taskId, (record) => {
-        // A task has more than one writer of its settlement (the action that ended the run,
-        // and the catalog hook that carries the answer), so the answer is never lost to
-        // whichever lands last. Only a catalog task and a schedule fire record one: a session
-        // run's answer lives in its durable history, and a fire writes none there.
-        const answer =
-          record.incarnation === '' || record.kind === 'schedule-fire'
-            ? (settlement.answer ?? record.settled?.answer)
-            : undefined;
-        const { answer: _ignored, ...rest } = settlement;
-        captured.newlySettled = record.settled === undefined;
-        const next: TaskRecord = {
-          ...record,
-          settled: { ...rest, ...(answer === undefined ? {} : { answer }) },
-        };
-        captured.settled = next;
-        return next;
-      }),
+      update(
+        taskId,
+        (record) => {
+          const next = withSettlement(record, settlement);
+          // COR-1946 — `owner-lost` is an inference, so the owner's real settlement of the task
+          // replaces it and is announced as the settlement; any other earlier one is not.
+          captured.replacedInference =
+            record.settled?.finishReason === TASK_OWNER_LOST_FINISH_REASON;
+          captured.newlySettled = record.settled === undefined || captured.replacedInference;
+          captured.settled = next;
+          return next;
+        },
+        true,
+        () =>
+          captured.newlySettled && captured.settled !== undefined
+            ? settlementOutbox(taskId, settlement, captured.replacedInference)
+            : [],
+      ),
     );
     if (recorded && captured.settled !== undefined) {
       await announceRecordedSettlement(taskId, captured.settled, captured.newlySettled);
     }
     return recorded;
+  }
+
+  /**
+   * The record with `settlement` written. A task has more than one writer of its settlement (the
+   * action that ended the run, and the catalog hook that carries the answer), so the answer is
+   * never lost to whichever lands last. Only a catalog task and a schedule fire record one: a
+   * session run's answer lives in its durable history, and a fire writes none there.
+   */
+  function withSettlement(record: TaskRecord, settlement: TaskSettlement): TaskRecord {
+    const answer =
+      record.incarnation === '' || record.kind === 'schedule-fire'
+        ? (settlement.answer ?? record.settled?.answer)
+        : undefined;
+    const { answer: _ignored, ...rest } = settlement;
+    return { ...record, settled: { ...rest, ...(answer === undefined ? {} : { answer }) } };
+  }
+
+  /**
+   * COR-1945 — a run that ends `failed` owes a notification. The entry commits with the settlement
+   * or not at all, so a process that dies before the notification is written finds the debt at its
+   * next boot. COR-1946: so does a settlement that replaces `owner-lost` (`replacedInference`),
+   * whatever it says: a failure was notified for the inference, and the repair reads the task and
+   * dismisses that notification when the real result was not a failure. Only a store that outlives
+   * the process is written to.
+   */
+  function settlementOutbox(
+    taskId: string,
+    settlement: TaskSettlement,
+    replacedInference = false,
+  ): readonly TextValueStoreBatchOperation[] {
+    return (settlement.status === 'failed' || replacedInference) && options.kv !== undefined
+      ? [{ type: 'set', key: notificationOutboxKey(taskId), value: '1' }]
+      : [];
+  }
+
+  async function settleAbandoned(
+    taskId: string,
+    ownerProcess: string,
+    lease: { readonly key: string; readonly expected: string | null },
+    settlement: TaskSettlement,
+  ): Promise<'written' | 'lost-race' | 'not-applicable'> {
+    const key = recordKey(taskId);
+    const raw = await kv.get(key);
+    if (raw === null) return 'not-applicable';
+    const current = readable(key, raw);
+    if (current === undefined || current.settled !== undefined) return 'not-applicable';
+    if (current.ownerProcess !== ownerProcess) return 'not-applicable';
+    const next = withSettlement(current, settlement);
+    // One attempt, conditioned on the record as read and the lease as it was judged: a renewal
+    // or any other write since either read makes this a no-op, and the next sweep decides again.
+    const committed = await track(
+      kv.conditionalBatch(
+        [
+          { key, expectedValue: raw },
+          { key: lease.key, expectedValue: lease.expected },
+        ],
+        [
+          {
+            type: 'set',
+            key,
+            value: JSON.stringify({ ...next, revision: (current.revision ?? 0) + 1 }),
+          },
+          ...settlementOutbox(taskId, settlement),
+        ],
+      ),
+    );
+    if (!committed) return 'lost-race';
+    await announceRecordedSettlement(taskId, next, true);
+    return 'written';
   }
 
   async function announceSettled(taskId: string): Promise<void> {
@@ -1439,6 +1575,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         ...(admission.actor === undefined ? {} : { actor: admission.actor }),
         ...(admission.kind === undefined ? {} : { kind: admission.kind }),
         ...(admission.origin === undefined ? {} : { origin: admission.origin }),
+        ...(options.processId === undefined ? {} : { ownerProcess: options.processId }),
         createdAt,
         history,
         ...(admission.tools === undefined ? {} : { tools: admission.tools }),
@@ -1565,6 +1702,8 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       }
       await this.flush();
     },
+
+    settleAbandoned,
 
     async flush() {
       while (inFlight.size > 0) await Promise.allSettled(inFlight);
@@ -1818,8 +1957,38 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     async cancel(taskId, waitMilliseconds) {
       const record = await read(taskId);
       if (record === undefined) return undefined;
+      // A goal attempt and a workflow step belong to the goal and the instance that own them: the
+      // goal stops its attempt in an order of its own (tombstone, then cancel), and a cancelled
+      // step fails its instance. No engine cancel is reached from here, for either (COR-1868).
+      if (record.origin?.kind === 'goal') {
+        return { receipt: 'rejected', reason: 'owned-by-goal' };
+      }
+      if (record.origin?.kind === 'parent') {
+        return { receipt: 'rejected', reason: 'owned-by-workflow' };
+      }
       const reviews = host.pendingReviews().filter((review) => review.runId === taskId);
       const before = viewOf(record, reviews);
+      // A child run is stopped by the topology that owns it, the same stop `children.cancel` makes.
+      if (record.origin?.kind === 'agent' && record.settled === undefined) {
+        // An origin this release cannot read names no parent, so there is no child to stop.
+        const parentRunId = taskOriginParentOf(record.origin);
+        const stopped =
+          parentRunId === null
+            ? 'not-found'
+            : await host.cancelChild({ parentRunId, childRunId: taskId });
+        if (stopped !== 'requested') return { receipt: 'rejected', reason: 'already-terminal' };
+        const watched = watchers.get(taskId);
+        if (watched === undefined || waitMilliseconds <= 0) {
+          const view = (await this.get(taskId)) ?? before;
+          return { receipt: receiptFor(view, observed.get(taskId), watchers.has(taskId)) };
+        }
+        const settled = await Promise.race([
+          watched,
+          host.sleep(waitMilliseconds).then(() => undefined),
+        ]);
+        const view = (await this.get(taskId)) ?? before;
+        return { receipt: receiptFor(view, settled, true) };
+      }
       const live = host.liveTask(taskId);
       const isLive =
         live?.phase === 'submitted' || live?.phase === 'running' || live?.phase === 'aborting';

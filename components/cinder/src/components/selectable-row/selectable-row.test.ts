@@ -26,6 +26,32 @@ describe('SelectableRow', () => {
     );
   });
 
+  test('never reveals trailing actions only on hover or focus', async () => {
+    const css = await Bun.file(new URL('./selectable-row.css', import.meta.url)).text();
+    const rulesTargetingActions = [
+      ...css.matchAll(/([^{}]*cinder-selectable-row__trailing-actions[^{}]*)\{([^{}]*)\}/g),
+    ];
+
+    expect(rulesTargetingActions.length).toBeGreaterThan(0);
+    for (const [, selector, declarations] of rulesTargetingActions) {
+      expect(selector).not.toMatch(/:hover|:focus-within/);
+      expect(declarations).not.toMatch(/opacity:\s*0|visibility:\s*hidden|display:\s*none/);
+    }
+  });
+
+  test('renders its trailing actions without any hover, focus, or selection', () => {
+    const { container, getByRole } = render(SelectableRowFixture, {
+      props: { onPrimary: mock(), onRename: mock(), onOpenExternal: mock() },
+    });
+    const trailing = container.querySelector('.cinder-selectable-row__trailing-actions');
+
+    expect(trailing).not.toBeNull();
+    expect(trailing?.hasAttribute('hidden')).toBe(false);
+    expect(trailing?.hasAttribute('inert')).toBe(false);
+    expect(getByRole('button', { name: 'Rename' })).toBeTruthy();
+    expect(getByRole('link', { name: 'Open externally' })).toBeTruthy();
+  });
+
   test('renders a native primary button and sibling trailing actions without nested controls', () => {
     const onPrimary = mock();
     const onRename = mock();

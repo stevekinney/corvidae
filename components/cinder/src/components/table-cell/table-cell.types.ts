@@ -2,6 +2,23 @@ import type { Snippet } from 'svelte';
 import type { HTMLTdAttributes } from 'svelte/elements';
 
 export type TableCellProps = Omit<HTMLTdAttributes, 'class' | 'align' | 'scope'> & {
+  /**
+   * Keeps the cell's text on one line and ends it with an ellipsis. The full
+   * text is the `title`, so it shows on hover. The text may grow to a maximum
+   * inline size and no further, so one very long value (a storage key, a hash,
+   * a URL) cannot widen the table. Set it on every cell in the column.
+   * Unless you pass `title`, the title is read from the rendered text.
+   * @default false
+   */
+  truncate?: boolean;
+  /**
+   * Marks a cell that holds a form control (a select, an input, a button). The
+   * control fills the cell, so every control in the column shares the one width
+   * the column has, and the cell keeps a minimum width so the control stays
+   * usable. Set it on every cell in the column.
+   * @default false
+   */
+  controls?: boolean;
   /** Visual alignment for numeric columns. @default "left" */
   align?: 'left' | 'center' | 'right';
   /**

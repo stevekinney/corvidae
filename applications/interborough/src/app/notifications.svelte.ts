@@ -1,8 +1,8 @@
 /**
  * The notification bell's store. What it holds is about the person, not the engine: a tool waiting
  * for an approval, a question an agent asked, a run that failed, and an answer that arrived
- * (`./notification-items.ts` derives them from the Bureau's reviews and
- * tasks). The host's own problem is the one other thing it holds: an unreachable or stale engine
+ * (`./notification-items.ts` builds them from the Bureau's reviews, tasks and notifications, the
+ * last of which the Bureau keeps and marks read for every browser). The host's own problem is the one other thing it holds: an unreachable or stale engine
  * (`reportEngineStatus`). The engine's event feed (a run started, a signal arrived) is not here;
  * the Engine view's activity feed shows it.
  *
@@ -51,6 +51,12 @@ const ENGINE_PROBLEMS: Readonly<
   },
 };
 
+/** What the store tells the Bureau about the notifications it holds. */
+export interface NotificationRemote {
+  /** The Bureau's notifications with these identifiers were read here. */
+  readonly markRead: (notificationIds: readonly string[]) => void;
+}
+
 export interface NotificationStoreOptions {
   /** Where read ids are kept; the browser's local storage by default. */
   readonly storage?: ReadIdStorage;
@@ -58,6 +64,7 @@ export interface NotificationStoreOptions {
 
 export class NotificationStore {
   readonly #storage: ReadIdStorage | undefined;
+  #remote: NotificationRemote | undefined;
   #readIds: string[] = $state([]);
   #activity: NotificationEntry[] = $state([]);
   #engineProblem: NotificationEntry | undefined = $state();
@@ -70,7 +77,10 @@ export class NotificationStore {
   readonly #items: NotificationItem[] = $derived.by(() => {
     const read = new Set(this.#readIds);
     const entries = this.#engineProblem === undefined ? [] : [this.#engineProblem];
-    return [...entries, ...this.#activity].map((entry) => ({ ...entry, read: read.has(entry.id) }));
+    return [...entries, ...this.#activity].map((entry) => ({
+      ...entry,
+      read: read.has(entry.id) || entry.serverRead === true,
+    }));
   });
 
   /** Every item, the host's problem first, then what needs the person, then what only finished. */
@@ -88,7 +98,12 @@ export class NotificationStore {
     return this.items.filter((item) => item.tier === 'critical' && !item.read);
   }
 
-  /** Replaces the items derived from the Bureau's reviews and tasks. */
+  /** Connects the store to the Bureau, so reading an item it holds a notification for is told to it. */
+  setRemote(remote: NotificationRemote | undefined): void {
+    this.#remote = remote;
+  }
+
+  /** Replaces the items derived from the Bureau's reviews, tasks and notifications. */
   setActivity(entries: readonly NotificationEntry[]): void {
     this.#activity = [...entries];
   }
@@ -148,9 +163,22 @@ export class NotificationStore {
 
   #markRead(ids: readonly string[]): void {
     const unread = ids.filter((id) => !this.#readIds.includes(id));
+    this.#tellRemote(unread);
     if (unread.length === 0) return;
     this.#readIds = [...this.#readIds, ...unread].slice(-READ_ID_LIMIT);
     saveReadIds(this.#readIds, this.#storage);
+  }
+
+  /** Tells the Bureau which of these items are its notifications, and that they were read. */
+  #tellRemote(ids: readonly string[]): void {
+    if (this.#remote === undefined) return;
+    const wanted = new Set(ids);
+    const notificationIds = this.items.flatMap((item) =>
+      wanted.has(item.id) && !item.read && item.notificationId !== undefined
+        ? [item.notificationId]
+        : [],
+    );
+    if (notificationIds.length > 0) this.#remote.markRead(notificationIds);
   }
 
   #forget(id: string): void {

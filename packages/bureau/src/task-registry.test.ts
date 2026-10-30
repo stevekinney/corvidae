@@ -20,6 +20,7 @@ import {
   type TaskRegistryHost,
 } from './task-registry';
 import type { TaskOrigin } from './task-origin';
+import { notificationOutboxKey } from './notifications/notification-outbox';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { CancelDurableRunOutcome, PendingReview } from './types';
 
@@ -49,6 +50,11 @@ type HostState = {
   liveTasksOfContextsCalls: number;
   /** What the host's abort answers; by default, whether it holds the run. */
   abortOutcome?: 'requested' | 'already-terminal' | 'not-found';
+  /** Every child the host was asked to stop, and what that answers. */
+  childCancelled: { parentRunId: string; childRunId: string }[];
+  childOutcome: 'requested' | 'already-terminal' | 'not-found';
+  /** Every durable run the host was asked to cancel. */
+  durableCancelled: string[];
 };
 
 function build(
@@ -67,6 +73,9 @@ function build(
     aborted: [],
     durable: { status: 'requested' },
     liveTasksOfContextsCalls: 0,
+    childCancelled: [],
+    childOutcome: 'requested',
+    durableCancelled: [],
     ...state,
   };
   const diagnostics: string[] = [];
@@ -91,7 +100,14 @@ function build(
       if (held.abortOutcome !== undefined) return held.abortOutcome;
       return live === undefined ? 'not-found' : 'requested';
     },
-    cancelDurable: async () => held.durable,
+    cancelChild: async (child) => {
+      held.childCancelled.push(child);
+      return held.childOutcome;
+    },
+    cancelDurable: async (taskId) => {
+      held.durableCancelled.push(taskId);
+      return held.durable;
+    },
     sleep: (milliseconds) =>
       new Promise<void>((resolve) => {
         runtime.timers.setTimeout(resolve, milliseconds);
@@ -354,6 +370,58 @@ describe('views', () => {
     });
   });
 
+  describe('the notification outbox (COR-1945)', () => {
+    const settlement = (status: 'failed' | 'completed' | 'canceled') => ({
+      at: '2026-10-18T01:00:00.000Z',
+      status,
+      finishReason: status === 'failed' ? 'error' : 'stop-condition',
+      message: status === 'failed' ? 'boom' : null,
+    });
+
+    it('commits the entry of a run that failed in the same batch as its settlement, once', async () => {
+      const batches: { keys: string[] }[] = [];
+      const memory = textValueStore(new MemoryStorage());
+      const kv: ConditionalTextValueStore = {
+        ...memory,
+        conditionalBatch: async (conditions, operations) => {
+          batches.push({ keys: operations.map((operation) => operation.key) });
+          return memory.conditionalBatch(conditions, operations);
+        },
+      };
+      const { registry } = build(undefined, { kv });
+      await admit(registry, 'run-1');
+      batches.length = 0;
+
+      await registry.recordSettled('run-1', settlement('failed'));
+      await registry.recordSettled('run-1', settlement('failed'));
+
+      const outboxKey = notificationOutboxKey('run-1');
+      const settledBatches = batches.filter((batch) => batch.keys.includes(outboxKey));
+      expect(settledBatches).toHaveLength(1);
+      expect(settledBatches[0]?.keys).toContain('bureau-task:v1:run-1');
+      expect(await kv.list('bureau-notification:v1:o:')).toEqual([outboxKey]);
+    });
+
+    it.each(['completed', 'canceled'] as const)(
+      'writes no entry for a run that %s',
+      async (status) => {
+        const { registry, kv } = build();
+        await admit(registry, 'run-1');
+
+        await registry.recordSettled('run-1', settlement(status));
+
+        expect(await kv.list('bureau-notification:v1:o:')).toEqual([]);
+      },
+    );
+
+    it('writes no entry when the settlement did not commit', async () => {
+      const { registry, kv } = build();
+
+      expect(await registry.recordSettled('absent', settlement('failed'))).toBe(false);
+      expect(await kv.list('bureau-notification:v1:o:')).toEqual([]);
+    });
+  });
+
   it('maps finish reasons onto settled states', () => {
     expect(settledTaskState('completed', 'stop-condition')).toBe('completed');
     expect(settledTaskState('completed', 'elicitation-denied')).toBe('failed');
@@ -555,6 +623,96 @@ describe('cleanup states', () => {
     expect(aggregateCleanup(['cancel-requested', 'cleaned-up'])).toBe('cleanup-pending');
     expect(aggregateCleanup(['canceled', 'cleaned-up'])).toBe('cleanup-unresolved');
   });
+});
+
+describe('cancel of a subordinate task (COR-1868)', () => {
+  const CHILD = { kind: 'agent', parentRunId: 'run-parent', agentName: 'planner' } as const;
+  const ATTEMPT = { kind: 'goal', goalRunId: 'g1', attemptId: 'g1:a0' } as const;
+  const STEP = { kind: 'parent', parentRunId: 'instance-1' } as const;
+
+  it('stops a child through the topology that owns it, and never cancels the engine run itself', async () => {
+    const { registry, held } = build();
+    await admit(registry, 'child-1', { origin: CHILD, incarnation: '' });
+
+    const outcome = await registry.cancel('child-1', 0);
+
+    expect(outcome).toEqual({ receipt: 'cancel-requested' });
+    expect(held.childCancelled).toEqual([{ parentRunId: 'run-parent', childRunId: 'child-1' }]);
+    expect(held.aborted).toEqual([]);
+    expect(held.durableCancelled).toEqual([]);
+  });
+
+  it.each(['already-terminal', 'not-found'] as const)(
+    'rejects a child the topology answers %s for, as already terminal',
+    async (childOutcome) => {
+      const { registry, held } = build({ childOutcome });
+      await admit(registry, 'child-1', { origin: CHILD, incarnation: '' });
+
+      expect(await registry.cancel('child-1', 0)).toEqual({
+        receipt: 'rejected',
+        reason: 'already-terminal',
+      });
+      expect(held.durableCancelled).toEqual([]);
+    },
+  );
+
+  it('does not ask the topology about a child whose task already ended', async () => {
+    const { registry, held } = build();
+    await admit(registry, 'child-1', { origin: CHILD, incarnation: '' });
+    await registry.recordSettled('child-1', {
+      at: '2026-10-18T00:00:09.000Z',
+      status: 'completed',
+      finishReason: 'stop-condition',
+      message: null,
+    });
+
+    expect(await registry.cancel('child-1', 0)).toEqual({
+      receipt: 'rejected',
+      reason: 'already-terminal',
+    });
+    expect(held.childCancelled).toEqual([]);
+    expect(held.durableCancelled).toEqual([]);
+  });
+
+  it('stops nothing for a child whose origin this release cannot read', async () => {
+    const { registry, held } = build();
+    await admit(registry, 'child-1', {
+      origin: { kind: 'agent', parentRunId: 7 },
+      incarnation: '',
+    });
+
+    const outcome = await registry.cancel('child-1', 0);
+
+    expect(outcome).toEqual({ receipt: 'rejected', reason: 'already-terminal' });
+    expect(held.childCancelled).toEqual([]);
+    expect(held.durableCancelled).toEqual([]);
+  });
+
+  it.each([
+    ['a goal attempt', ATTEMPT, 'owned-by-goal'],
+    ['a workflow step', STEP, 'owned-by-workflow'],
+  ] as const)(
+    'refuses %s as %s, unsettled or settled, and reaches no run',
+    async (_label, origin, reason) => {
+      const { registry, held } = build();
+      await admit(registry, 'task-1', { origin, incarnation: '' });
+
+      const unsettled = await registry.cancel('task-1', 0);
+      await registry.recordSettled('task-1', {
+        at: '2026-10-18T00:00:09.000Z',
+        status: 'completed',
+        finishReason: 'stop-condition',
+        message: null,
+      });
+      const settled = await registry.cancel('task-1', 0);
+
+      expect(unsettled).toEqual({ receipt: 'rejected', reason });
+      expect(settled).toEqual({ receipt: 'rejected', reason });
+      expect(held.aborted).toEqual([]);
+      expect(held.durableCancelled).toEqual([]);
+      expect(held.childCancelled).toEqual([]);
+    },
+  );
 });
 
 describe('cancel', () => {

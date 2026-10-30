@@ -27,6 +27,7 @@ export { default as ApprovalCard } from './components/approval-card/index.ts';
 export type {
   ApprovalCardCallbacks,
   ApprovalCardHeadingLevel,
+  ApprovalCardLayout,
   ApprovalCardProps,
   ApprovalCardSchemaProps,
   ApprovalOperation,
@@ -88,7 +89,7 @@ export { default as Backdrop } from './components/backdrop/index.ts';
 export type { BackdropProps } from './components/backdrop/index.ts';
 
 export { default as Banner } from './components/banner/index.ts';
-export type { BannerProps, BannerVariant } from './components/banner/index.ts';
+export type { BannerPreset, BannerProps, BannerVariant } from './components/banner/index.ts';
 
 export { default as BarChart } from './components/bar-chart/index.ts';
 export type {
@@ -147,7 +148,7 @@ export type { CalendarProps } from './components/calendar/index.ts';
 
 export { default as Card } from './components/card/index.ts';
 export type {
-  CardElevation,
+  CardEdge,
   CardPadding,
   CardProps,
   CardSurfaceTone,
@@ -360,7 +361,12 @@ export { default as DropdownTrigger } from './components/dropdown-trigger/index.
 export type { DropdownTriggerProps } from './components/dropdown-trigger/index.ts';
 
 export { default as EmptyState } from './components/empty-state/index.ts';
-export type { EmptyStateAlign, EmptyStateProps } from './components/empty-state/index.ts';
+export type {
+  EmptyStateAlign,
+  EmptyStateKind,
+  EmptyStateProps,
+  EmptyStateSize,
+} from './components/empty-state/index.ts';
 
 export { default as ErrorState } from './components/error-state/index.ts';
 export type { ErrorStateProps, ErrorStateVariant } from './components/error-state/index.ts';
@@ -455,7 +461,7 @@ export { default as InlineLoading } from './components/inline-loading/index.ts';
 export type { InlineLoadingProps, InlineLoadingStatus } from './components/inline-loading/index.ts';
 
 export { default as JsonEditor } from './components/json-editor/index.ts';
-export type { JsonEditorProps } from './components/json-editor/index.ts';
+export type { JsonEditorProps, JsonEditorSchema } from './components/json-editor/index.ts';
 
 export { default as JsonSchemaEditor } from './components/json-schema-editor/index.ts';
 export type {
@@ -535,6 +541,15 @@ export type {
 
 export { default as LocaleProvider } from './components/locale-provider/index.ts';
 export type { LocaleProviderProps, TextDirection } from './components/locale-provider/index.ts';
+
+export { LIST_DETAIL_SHORTCUTS, default as ListDetail } from './components/list-detail/index.ts';
+export type {
+  ListDetailProps,
+  ListDetailRowContext,
+  ListDetailSelectionLocation,
+  ListDetailShortcut,
+  ListDetailStorage,
+} from './components/list-detail/index.ts';
 
 export { default as LoadMore } from './components/load-more/index.ts';
 export type { LoadMoreProps } from './components/load-more/index.ts';
@@ -630,7 +645,11 @@ export { default as PageHeader } from './components/page-header/index.ts';
 export type { PageHeaderHeadingLevel, PageHeaderProps } from './components/page-header/index.ts';
 
 export { default as PayloadInspector } from './components/payload-inspector/index.ts';
-export type { PayloadInspectorProps } from './components/payload-inspector/index.ts';
+export type {
+  PayloadInspectorField,
+  PayloadInspectorProps,
+  PayloadInspectorView,
+} from './components/payload-inspector/index.ts';
 
 export { default as PermissionMatrix } from './components/permission-matrix/index.ts';
 export type {
@@ -740,6 +759,9 @@ export type {
   SchemaFormSubmitHandler,
 } from './components/schema-form/index.ts';
 
+export { default as SchemaView } from './components/schema-view/index.ts';
+export type { SchemaViewProps } from './components/schema-view/index.ts';
+
 export { default as ScrollArea } from './components/scroll-area/index.ts';
 export type {
   ScrollAreaDirection,
@@ -819,7 +841,7 @@ export type {
 } from './utilities/sortable-controller.types.ts';
 
 export { default as Skeleton } from './components/skeleton/index.ts';
-export type { SkeletonProps } from './components/skeleton/index.ts';
+export type { SkeletonProps, SkeletonVariant } from './components/skeleton/index.ts';
 
 export { default as SkipLink } from './components/skip-link/index.ts';
 export type { SkipLinkProps, SkipLinkSchemaProps } from './components/skip-link/index.ts';
@@ -1011,6 +1033,9 @@ export type {
 export { default as Timeline } from './components/timeline/index.ts';
 export type { TimelineProps } from './components/timeline/index.ts';
 
+export { default as ThemeSwitch } from './components/theme-switch/index.ts';
+export type { ThemeSwitchProps, ThemeSwitchValue } from './components/theme-switch/index.ts';
+
 export { default as Toggle } from './components/toggle/index.ts';
 export type { ToggleProps } from './components/toggle/index.ts';
 
@@ -1177,9 +1202,14 @@ export type {
   DataGridSelectionMode,
   DataGridSelectionModel,
 } from './components/data-grid/index.ts';
-export type { DescriptionListDefinition } from './components/description-list/index.ts';
+export type {
+  DescriptionListDefinition,
+  DescriptionListFormattedValue,
+  DescriptionListIdentifier,
+  DescriptionListTags,
+  DescriptionListTimestamp,
+} from './components/description-list/index.ts';
 export type { InvocationRuleBuilderSchemaProps } from './components/invocation-rule-builder/index.ts';
-export type { JsonLint } from './components/json-editor/json-editor-enhancement.ts';
 export type { KbdSize } from './components/kbd/index.ts';
 export type {
   PayloadInspectorSchemaProps,

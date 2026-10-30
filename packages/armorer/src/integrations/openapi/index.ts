@@ -65,6 +65,28 @@ export type AllowOperationsPredicate = (operation: {
   path: string;
 }) => boolean;
 
+/**
+ * What a person approves of one generated tool: the request it sends and the arguments it takes,
+ * with every local `$ref` resolved. Handed to {@link CreateToolboxFromOpenAPIOptions.version}.
+ */
+export type OpenAPIOperationVersionInput = {
+  /** The tool's name, after any prefix. */
+  name: string;
+  /** The HTTP method the tool sends. */
+  method: OpenAPIHttpMethod;
+  /** The path template the tool sends to, as the document writes it. */
+  path: string;
+  /** The tool's non-cookie parameters. */
+  parameters: Array<{
+    in: OpenAPIParameterLocation;
+    name: string;
+    required: boolean;
+    schema: unknown;
+  }>;
+  /** The JSON request body, when the operation takes one. */
+  requestBody?: { mediaType: string; required: boolean; schema: unknown };
+};
+
 export type CreateToolboxFromOpenAPIOptions = {
   /** Base URL requests are resolved against. Defaults to `spec.servers[0].url`. */
   baseUrl?: string;
@@ -82,6 +104,13 @@ export type CreateToolboxFromOpenAPIOptions = {
   namePrefix?: string;
   /** Extra tags applied to every generated tool, in addition to `['openapi', <method>]`. */
   tags?: readonly string[];
+  /**
+   * The `version` each generated tool is registered with, derived from the operation. Left out,
+   * the tools are unversioned, and Armorer refuses to issue an approval for an unversioned tool.
+   * A host that saves a source derives it from what a person approves (the operation, its
+   * arguments, and where it is sent), so a changed operation gets a new version.
+   */
+  version?: (operation: OpenAPIOperationVersionInput) => string | undefined;
 };
 
 const HTTP_METHODS: readonly OpenAPIHttpMethod[] = [
@@ -149,6 +178,7 @@ export function createToolboxFromOpenAPI(
           fetchImplementation,
           namePrefix: options.namePrefix,
           extraTags: options.tags ?? [],
+          version: options.version,
         }),
       );
     }
@@ -181,6 +211,7 @@ type CreateOperationToolOptions = {
   fetchImplementation: typeof fetch;
   namePrefix: string | undefined;
   extraTags: readonly string[];
+  version: CreateToolboxFromOpenAPIOptions['version'];
 };
 
 type OpenAPIToolResult = {
@@ -205,6 +236,7 @@ function createOperationTool(options: CreateOperationToolOptions): Tool {
     fetchImplementation,
     namePrefix,
     extraTags,
+    version: versionOf,
   } = options;
 
   const parameters = mergeParameters(pathParameters, operation.parameters ?? [], spec);
@@ -251,9 +283,33 @@ function createOperationTool(options: CreateOperationToolOptions): Tool {
   const description =
     operation.description ?? operation.summary ?? `${method.toUpperCase()} ${path}`;
 
+  const version = versionOf?.({
+    name,
+    method,
+    path,
+    parameters: parameters
+      .filter((parameter) => parameter.in !== 'cookie')
+      .map((parameter) => ({
+        in: parameter.in,
+        name: parameter.name,
+        required: parameter.in === 'path' || parameter.required === true,
+        schema: dereference(parameter.schema, spec),
+      })),
+    ...(hasRequestBody && jsonMediaType !== undefined
+      ? {
+          requestBody: {
+            mediaType: jsonMediaType,
+            required: requestBodyRequired,
+            schema: dereference(jsonRequestBodySchema, spec),
+          },
+        }
+      : {}),
+  });
+
   const createOptions = {
     name,
     description,
+    ...(version === undefined ? {} : { version }),
     input: z.object(inputShape),
     tags: ['openapi', method, ...extraTags],
     metadata: metadataForMethod(method),

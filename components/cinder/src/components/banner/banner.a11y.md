@@ -28,6 +28,12 @@ The component computes the accessible name in three tiers:
 
 `role` is intentionally locked. The component's `BannerProps` `Omit`s `role` from the underlying `HTMLAttributes`, so callers cannot silently turn the banner into `role="alert"`. The component also strips `aria-live`, `aria-atomic`, and `aria-relevant` from rest-props at runtime — the type system permits them (they live on `HTMLAttributes`), but the banner is a landmark, not a live region, and allowing those attributes through would reintroduce the assertive-announcement behavior `role="region"` was chosen to avoid. `aria-busy` is **not** stripped: it is a status flag, not a live-region attribute, and is valid on `role="region"` to signal that banner content is updating.
 
+## Unreachable preset
+
+`preset="unreachable"` keeps `role="region"` and changes only the defaults: the variant is `warning` and the accessible name is "Connection problem" instead of "Warning", still overridable with `aria-label` or `aria-labelledby`. It does not become a live region, so a connection that drops while the page is open is not announced by the banner itself. If the drop must be announced, pair the banner with a `toast-region` or `use-announcer` message.
+
+The Retry button is a native `<button>` named "Retry" (or `retryLabel`), placed first in the actions region so it is the first stop after the message. The stale-data notice is plain text with a `<time>` element carrying the ISO `datetime`, so the age reads as "Showing data from 2 minutes ago".
+
 ## Why not `role="alert"`?
 
 1. **`role="alert"` implies `aria-live="assertive"`.** A persistent banner that renders on every page load would interrupt the screen-reader's page-orientation announcement (heading, landmarks) every time, which is jarring.

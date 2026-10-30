@@ -55,6 +55,12 @@ const credentials: Record<string, { subject: string; scopes: readonly Authorizat
     subject: 'deployments-writer',
     scopes: ['bureau.deployments:write'],
   },
+  // COR-1939: an owner who may create hooks (a hook observes the whole Bureau's events), and the two
+  // operator scopes.
+  'alice-observer-key': { subject: 'alice', scopes: ['bureau.events:observe-all'] },
+  'bob-observer-key': { subject: 'bob', scopes: ['bureau.events:observe-all'] },
+  'hooks-reader-key': { subject: 'hooks-reader', scopes: ['bureau.hooks:read'] },
+  'hooks-writer-key': { subject: 'hooks-writer', scopes: ['bureau.hooks:write'] },
   'settings-reader-key': { subject: 'settings-reader', scopes: ['bureau.settings:read'] },
   'settings-writer-key': {
     subject: 'settings-writer',

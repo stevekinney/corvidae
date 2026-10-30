@@ -33,6 +33,8 @@ export interface SkillSourceStanding {
   readonly kind: SkillSourceKind;
   /** The source's canonical location, as configured. */
   readonly location: string;
+  /** The plugin that ships the source's skills, for a `plugin` source (COR-1873). */
+  readonly plugin?: string | undefined;
   /** Whether the source is admitted. */
   readonly trust: SkillTrustState;
   /** Why the trust decision went the way it did. */
@@ -60,14 +62,20 @@ export type BureauSkillsOperationHost = BureauOwnershipHost & {
   };
 };
 
-const sourceKindSchema = z.enum(['project', 'user', 'built-in', 'remote', 'storage']);
+const sourceKindSchema = z.enum(['project', 'user', 'built-in', 'remote', 'storage', 'plugin']);
 const trustSchema = z.enum(['trusted', 'untrusted', 'revoked']);
 
 const skillSchema = z.object({
   name: z.string(),
   description: z.string(),
   /** The source the skill was read from. */
-  source: z.object({ id: z.string(), kind: sourceKindSchema, location: z.string() }),
+  source: z.object({
+    id: z.string(),
+    kind: sourceKindSchema,
+    location: z.string(),
+    /** The plugin that ships the skill, for a `plugin` source; otherwise `null`. */
+    plugin: z.string().nullable(),
+  }),
   /** The decision about the skill's source. */
   trust: trustSchema,
   trustReason: z.string(),
@@ -83,6 +91,8 @@ const sourceSchema = z.object({
   id: z.string(),
   kind: sourceKindSchema,
   location: z.string(),
+  /** The plugin that ships the source's skills, for a `plugin` source; otherwise `null`. */
+  plugin: z.string().nullable(),
   trust: trustSchema,
   trustReason: z.string(),
   /** How many skills the source contributed to the catalog, available or not. */
@@ -109,7 +119,7 @@ export const skillsListOperation = defineOperation<
   mcpExposable: false,
   summary: 'List the executable skills and their sources',
   description:
-    'Returns the executable Agent Skills the host discovered, ordered by name, each with its `name`, `description`, `source` (`id`, `kind`, `location`), `trust` (`trusted`, `untrusted` or `revoked`, with the `trustReason`), whether an agent may activate it (`available`, and `unavailableReason` when not) and the tools its `allowed-tools` asks to keep (`allowedTools`, a request and never a grant). A skill from an untrusted source is listed, and an activation of it is refused with `source-untrusted`. `sources` lists every configured source with its trust and how many skills it contributed, so a source that holds none is still visible; `trustLocked` is the reason the host refuses to change trust (`deployment` for a remote host), or `null`. These are not the descriptive skills an agent file declares (`skillDescriptors`). A host that discovers no skills answers an empty list. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is refused with `Forbidden`.',
+    'Returns the executable Agent Skills the host discovered, ordered by name, each with its `name`, `description`, `source` (`id`, `kind`, `location`, and `plugin`, the plugin that ships a `plugin` skill, or `null`), `trust` (`trusted`, `untrusted` or `revoked`, with the `trustReason`), whether an agent may activate it (`available`, and `unavailableReason` when not) and the tools its `allowed-tools` asks to keep (`allowedTools`, a request and never a grant). A skill from an untrusted source is listed, and an activation of it is refused with `source-untrusted`. `sources` lists every configured source with its trust and how many skills it contributed, so a source that holds none is still visible; `trustLocked` is the reason the host refuses to change trust (`deployment` for a remote host), or `null`. These are not the descriptive skills an agent file declares (`skillDescriptors`). A host that discovers no skills answers an empty list. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is refused with `Forbidden`.',
   destructive: false,
   tags: ['Agents'],
   inputSchema: listInput,
@@ -140,7 +150,12 @@ export const skillsListOperation = defineOperation<
       skills: standing.catalog.records.map((record) => ({
         name: record.name,
         description: record.description,
-        source: { id: record.sourceId, kind: record.sourceKind, location: record.sourceLocation },
+        source: {
+          id: record.sourceId,
+          kind: record.sourceKind,
+          location: record.sourceLocation,
+          plugin: record.sourcePlugin ?? null,
+        },
         trust: record.trust,
         trustReason: record.trustReason,
         available: record.available,
@@ -151,6 +166,7 @@ export const skillsListOperation = defineOperation<
         id: source.id,
         kind: source.kind,
         location: source.location,
+        plugin: source.plugin ?? null,
         trust: source.trust,
         trustReason: source.trustReason,
         skillCount: counts.get(source.id) ?? 0,

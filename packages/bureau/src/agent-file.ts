@@ -34,10 +34,22 @@ import { z } from 'zod';
 import { TOOL_APPROVAL_MODES, type ToolApprovalMode } from './tool-approval';
 
 import { agentExamplesSchema } from './agent-examples';
+import { NAMESPACED_IDENTIFIER_SOURCE } from './namespaced-identifier';
 import { emitMapping, rewriteFrontmatter } from './agent-file-frontmatter';
 
-/** What an agent's identifier must look like: it doubles as a path segment later. */
-export const AGENT_IDENTIFIER_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+/**
+ * What an owner's agent file stem must look like: it doubles as a path segment later. No colon, so
+ * an owner file cannot claim a plugin's namespace (COR-1871).
+ */
+export const AGENT_FILE_STEM_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+
+/**
+ * What an agent's identifier must look like: an owner's bare stem, or the `plugin:name` a plugin
+ * contributes. Percent-encode it where it becomes a URL path segment.
+ */
+export const AGENT_IDENTIFIER_PATTERN = new RegExp(
+  `^(?:${AGENT_FILE_STEM_PATTERN.source.slice(1, -1)}|${NAMESPACED_IDENTIFIER_SOURCE})$`,
+);
 
 /** The longest an agent's identifier may be, in characters: the same cap workflow identifiers have. */
 export const AGENT_IDENTIFIER_MAX_LENGTH = 64;
@@ -961,6 +973,26 @@ export function resolveAgentFileDefinition(
   };
 }
 
+/** The definition as a caller supplies it. `examples` are not part of the input: the file keeps them. */
+export function agentFileInputOf(definition: AgentFileDefinition): AgentFileDefinitionInput {
+  // A rest, so a key the definition gains is carried into the input and not dropped here.
+  const { examples: _examples, ...input } = definition;
+  // An update that omits `stepLimit`, `retry`, `compaction`, `references`, `guardrails`,
+  // `costBudget`, `toolBudget` or `toolApproval` keeps the file's value, and a version that has none must remove
+  // it: `null` says so.
+  return {
+    ...input,
+    stepLimit: definition.stepLimit ?? null,
+    retry: definition.retry ?? null,
+    compaction: definition.compaction ?? null,
+    references: definition.references ?? null,
+    guardrails: definition.guardrails ?? null,
+    costBudget: definition.costBudget ?? null,
+    toolBudget: definition.toolBudget ?? null,
+    toolApproval: definition.toolApproval ?? null,
+  };
+}
+
 /**
  * The bytes of `existing` rewritten to hold `definition`, or `undefined` when nothing changes.
  *
@@ -1024,14 +1056,20 @@ export function serializeUpdatedAgentFile(
   return textEncoder.encode(`${prefix}${fence}${frontmatter}${fence}${next.instructions}`);
 }
 
-/** The identifier a filename stem names, or the reason it cannot be one. */
-export function checkAgentIdentifier(stem: string): AgentFileProblem | undefined {
-  if (AGENT_IDENTIFIER_PATTERN.test(stem) && stem.length <= AGENT_IDENTIFIER_MAX_LENGTH) {
+/**
+ * The identifier a filename stem names, or the reason it cannot be one. An owner's file is named by
+ * its bare stem; a file of `plugin`'s read-only layer (COR-1873) is `plugin:stem`, whose stem
+ * follows the same rule.
+ */
+export function checkAgentIdentifier(id: string, plugin?: string): AgentFileProblem | undefined {
+  const stem =
+    plugin === undefined ? id : id.startsWith(`${plugin}:`) ? id.slice(plugin.length + 1) : '';
+  if (AGENT_FILE_STEM_PATTERN.test(stem) && id.length <= AGENT_IDENTIFIER_MAX_LENGTH) {
     return undefined;
   }
   return {
     code: 'invalid-identifier',
-    message: `"${stem.length > 80 ? `${stem.slice(0, 80)}…` : stem}" is not a valid agent identifier. Use at most ${AGENT_IDENTIFIER_MAX_LENGTH} lowercase letters, digits, and hyphens, starting and ending with a letter or digit.`,
+    message: `"${id.length > 80 ? `${id.slice(0, 80)}…` : id}" is not a valid agent identifier. Use at most ${AGENT_IDENTIFIER_MAX_LENGTH} lowercase letters, digits, and hyphens, starting and ending with a letter or digit${plugin === undefined ? '' : `, after "${plugin}:"`}.`,
   };
 }
 
@@ -1043,7 +1081,9 @@ export type AgentFileErrorCode =
   | 'agent-file-not-found'
   | 'agent-file-unreadable'
   | 'agent-version-not-found'
-  | 'agent-directory-not-configured';
+  | 'agent-directory-not-configured'
+  | 'agent-file-read-only'
+  | 'agent-file-has-references';
 
 /** A write or read of an agent file that was refused. `problem` carries the detail, when there is any. */
 export class AgentFileError extends Error {

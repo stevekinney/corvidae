@@ -6,6 +6,22 @@ export {
   SHARED_KEY_FAMILIES_OF_A_CHAT,
 } from './reserved-key-prefixes';
 export {
+  BUILT_IN_NOTIFICATION_KINDS,
+  NOTIFICATION_KIND_PATTERN,
+  NOTIFICATION_LIMIT_PER_OWNER,
+  NotificationPageTokenError,
+} from './notifications/notification-types';
+export type {
+  BuiltInNotificationKind,
+  BureauNotification,
+  BureauNotifications,
+  NotificationInput,
+  NotificationListQuery,
+  NotificationPage,
+  NotificationSelection,
+  NotificationSubject,
+} from './notifications/notification-types';
+export {
   type AnswerEncryptionKeys,
   createSecretAnswerResolver,
   SECRET_ANSWER_KEY_PREFIX,
@@ -46,6 +62,7 @@ export {
   AGENT_COST_BUDGET_MAXIMUM_USD,
   AGENT_COST_BUDGET_MAXIMUM_WARNINGS,
   AGENT_GUARDRAIL_PRESETS,
+  AGENT_FILE_STEM_PATTERN,
   AGENT_IDENTIFIER_PATTERN,
   AGENT_TOOL_BUDGET_MAXIMUM_CALLS,
   AGENT_TOOL_BUDGET_MAXIMUM_DURATION_SECONDS,
@@ -74,7 +91,11 @@ export type {
   DefinitionSourceHost,
   WorkflowSource,
 } from './sources/definition-source';
-export { hashDefinitionBytes, SourceConflictError } from './sources/definition-source';
+export {
+  hashDefinitionBytes,
+  SourceConflictError,
+  SourceReadOnlyError,
+} from './sources/definition-source';
 export type { AgentRevision } from './agent-snapshot-store';
 export type { AgentVersionRecord } from './agent-version-store';
 export type { AgentReferenceDigest, AgentReferenceDocument } from './agent-reference-documents';
@@ -99,6 +120,33 @@ export type {
   WorkflowFileProblemCode,
 } from './workflow-file';
 export {
+  fromWeftHandlerName,
+  handlerNameIssue,
+  IDENTIFIER_SEGMENT_SOURCE,
+  isNamespacedIdentifier,
+  NAMESPACED_IDENTIFIER_PATTERN,
+  RESERVED_NAMESPACES,
+  toWeftHandlerName,
+} from './namespaced-identifier';
+export {
+  createVersionedCatalog,
+  formatVersionedId,
+  parseVersionedId,
+  VERSIONED_CATALOG_KINDS,
+} from './versioned-catalog';
+export type {
+  VersionedCatalog,
+  VersionedCatalogEntry,
+  VersionedCatalogKind,
+  VersionedCatalogReference,
+  VersionedCatalogRegistration,
+  VersionedCatalogRegistrationResult,
+  VersionedCatalogRequest,
+  VersionedCatalogResolution,
+  VersionedCatalogSource,
+} from './versioned-catalog';
+export {
+  WORKFLOW_FILE_STEM_PATTERN,
   WORKFLOW_IDENTIFIER_PATTERN,
   WorkflowFileConflictError,
   WorkflowFileError,
@@ -288,6 +336,7 @@ export {
   classifyRecoveredRun,
   classifyRecoveredRunDetailed,
   createBureau,
+  PinnedToolUnavailableError,
   ReviewAnswerInvalidError,
   ReviewRoundChangedError,
   ScheduleLocatorUnavailableError,
@@ -336,6 +385,7 @@ export {
   GOAL_EVENT_KINDS,
   GoalLifecycleEvent,
   MemoryGovernanceEvent,
+  NotificationCreatedEvent,
   ScheduleMissedEvent,
   TaskCleanupAcknowledgedEvent,
   RecoveryAttemptedEvent,
@@ -553,6 +603,8 @@ export type {
   BureauOptions,
   BureauLogsOptions,
   BureauLogsRetentionOption,
+  BureauNotificationsRetentionOption,
+  BureauHookDeliveriesRetentionOption,
   BureauMemoryRetentionOption,
   BureauReceiptRetentionOption,
   BureauRetentionOptions,
@@ -565,6 +617,9 @@ export type {
   AuditQueryRecord,
   BureauReviews,
   BureauContexts,
+  ContextWindowCategory,
+  ContextWindowCategoryName,
+  ContextWindowReport,
   BureauAgents,
   BureauTasks,
   StartTaskOptions,
@@ -630,6 +685,52 @@ export type {
   WebhookTriggerType,
 } from './webhook-notifier';
 export { createWebhookNotifier } from './webhook-notifier';
+export type { WebhookDeliveryEngine } from './webhook-notifier';
+/*
+ * User-defined hooks (COR-1939): `Bureau.hooks`, the `X-Signature` a receiver verifies, and the
+ * port a host keeps the sealed signing secrets through.
+ */
+export type {
+  BureauHooks,
+  HookActionInput,
+  HookCreateInput,
+  HookUpdateInput,
+} from './hooks/create-hooks';
+export { HOOK_TEST_EVENT_KIND } from './hooks/create-hooks';
+export {
+  HOOK_SIGNATURE_HEADER,
+  HOOK_SIGNATURE_TOLERANCE_SECONDS,
+  signHookDelivery,
+  verifyHookSignature,
+} from './hooks/hook-signature';
+export type { HookSignatureFailure, HookSignatureVerification } from './hooks/hook-signature';
+export { createKvHookSecretStore } from './hooks/hook-store';
+export {
+  HookError,
+  HOOK_RESPONSE_EXCERPT_BYTES,
+  NOTIFICATION_CREATED_EVENT_KIND,
+} from './hooks/hook-types';
+export type {
+  Hook,
+  HookAction,
+  HookActionReceipt,
+  HookActionType,
+  HookAttemptOutcome,
+  HookDelivery,
+  HookDeliveryAttempt,
+  HookDeliveryRequest,
+  HookDeliveryStatus,
+  HookDeliveryWork,
+  HookErrorCode,
+  HookSecretStore,
+  HookWorkflowInput,
+  NotifyHookAction,
+  StartWorkflowHookAction,
+  WebhookHookAction,
+} from './hooks/hook-types';
+export { hookUrlDefect } from './hooks/hook-url-policy';
+export type { HookUrlPolicy } from './hooks/hook-url-policy';
+export type { BureauHooksOptions } from './types';
 /*
  * A bureau's lifecycle events, projected onto Weft's replay-plus-live feed
  * and exposed as `bureau.events` in the same catalog that carries Weft's own
@@ -646,6 +747,14 @@ export {
   type PublishedBureauEventKind,
   publishedBureauEventKinds,
 } from './bureau-event-feed';
+export {
+  BUREAU_EVENT_CATALOG,
+  bureauEventCatalog,
+  type BureauEventCatalogEntry,
+  type BureauEventField,
+  type BureauEventFieldType,
+  type BureauEventOrigin,
+} from './bureau-event-catalog';
 export {
   bureauEventEnvelopeSchema,
   type BureauEventRegistry,

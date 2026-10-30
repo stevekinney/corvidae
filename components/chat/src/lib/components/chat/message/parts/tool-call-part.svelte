@@ -29,6 +29,11 @@
   const timelineMessageId = $derived(
     messageId === undefined ? part.pair.call.id : `${messageId}-tool-call-${part.pair.call.id}`,
   );
+  const approvalStates = $derived(
+    part.approvalState === undefined
+      ? undefined
+      : new Map([[part.pair.call.id, part.approvalState]]),
+  );
   const describeToolCall = $derived(
     part.presentation === undefined ? undefined : () => part.presentation,
   );
@@ -46,4 +51,5 @@
   {expanded}
   {onToggle}
   {activityActive}
+  {approvalStates}
 />

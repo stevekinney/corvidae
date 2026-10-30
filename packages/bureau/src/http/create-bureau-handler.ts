@@ -58,6 +58,7 @@ import {
 import { type AgentDefinitions, mediaCapabilitiesOf } from '../agent-catalog.ts';
 import { agentExamplesSchema } from '../agent-examples.ts';
 import { readFileAgentBinding } from '../agent-file-catalog.ts';
+import { AGENT_IDENTIFIER_PATTERN } from '../agent-file.ts';
 import { isTryAgentName } from '../agent-try.ts';
 import {
   COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS,
@@ -88,6 +89,7 @@ import type {
   BureauContexts,
   BureauSchedules,
 } from '../types.ts';
+import type { BureauNotifications } from '../notifications/notification-types.ts';
 import { describeCodeWorkflow } from '../workflow-runtime.ts';
 import { bureauReviewsOperations } from './bureau-reviews-operations.ts';
 import { bureauRunEventsSubscriptionOperation } from './bureau-run-events-operation.ts';
@@ -111,6 +113,10 @@ import {
   type BureauContextsRenameOperationHost,
   contextsRenameOperation,
 } from './management/contexts-rename-operation.ts';
+import {
+  type BureauContextsWindowOperationHost,
+  contextsWindowOperation,
+} from './management/contexts-window-operation.ts';
 import {
   type BureauContextsSteerOperationHost,
   contextsSteerOperation,
@@ -143,6 +149,10 @@ import {
   bureauWorkerDeploymentsOperations,
 } from './management/deployments-operations.ts';
 import {
+  type BureauHooksOperationHost,
+  bureauHooksOperations,
+} from './management/hooks-operations.ts';
+import {
   type BureauWorkflowsOperationHost,
   bureauWorkflowsOperations,
 } from './management/workflows-operations.ts';
@@ -150,6 +160,10 @@ import {
   auditQueryOperation,
   type BureauAuditOperationHost,
 } from './management/audit-operations.ts';
+import {
+  type BureauNotificationsOperationHost,
+  bureauNotificationsOperations,
+} from './management/notifications-operations.ts';
 import {
   type BureauAssetsOperationHost,
   bureauAssetsOperations,
@@ -187,6 +201,7 @@ import {
   type BureauTasksInspectOperationHost,
   tasksInspectOperation,
 } from './management/tasks-inspect-operation.ts';
+import { eventsCatalogOperation } from './management/events-catalog-operation.ts';
 import {
   type BureauTasksOperationHost,
   tasksCancelOperation,
@@ -219,6 +234,7 @@ export type BureauHandlerSource = Pick<
   | 'settings'
   | 'workflows'
   | 'deployments'
+  | 'hooks'
   | 'goals'
   | 'memory'
   | 'assets'
@@ -243,12 +259,14 @@ export type BureauHandlerSource = Pick<
 } & {
   readonly reviews: Pick<BureauReviews, 'list' | 'get' | 'resolve' | 'pendingOf'>;
   readonly audit: Pick<BureauAudit, 'query'>;
+  readonly notifications: Pick<BureauNotifications, 'list' | 'markRead' | 'dismiss'>;
   readonly contexts: Pick<
     BureauContexts,
     | 'list'
     | 'get'
     | 'delete'
     | 'rename'
+    | 'window'
     | 'input'
     | 'inputsDeliveredBy'
     | 'steer'
@@ -324,14 +342,17 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauContextsSteerOperationHost &
   BureauContextsForkOperationHost &
   BureauContextsRenameOperationHost &
+  BureauContextsWindowOperationHost &
   BureauAgentModelsOperationHost &
   BureauAgentDefinitionsOperationHost &
   BureauWorkflowsOperationHost &
   BureauWorkerDeploymentsOperationHost &
+  BureauHooksOperationHost &
   BureauSchedulesOperationHost &
   BureauGoalsOperationHost &
   BureauMemoryOperationHost &
   BureauAuditOperationHost &
+  BureauNotificationsOperationHost &
   BureauAssetsOperationHost &
   BureauDecisionsOperationHost &
   BureauSettingsOperationHost &
@@ -467,8 +488,11 @@ export type BureauHandlerOptions = {
   readonly maxRequestBodyBytes?: number;
 };
 
-/** An A2A agent name is a URL path segment, so it needs no encoding. */
-export const A2A_AGENT_NAME_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+/**
+ * An A2A agent name is a URL path segment: a bare name needs no encoding, and a `plugin:name`
+ * (COR-1871) is percent-encoded where Bureau builds a URL from it and decoded where one is read.
+ */
+export const A2A_AGENT_NAME_PATTERN = AGENT_IDENTIFIER_PATTERN;
 
 /**
  * Every `agUi` option, as a record keyed by `AgUiOptions`: a key added to the type
@@ -720,20 +744,24 @@ export const BUREAU_HANDLER_OPERATIONS = [
   contextsSteerOperation,
   contextsForkOperation,
   contextsRenameOperation,
+  contextsWindowOperation,
   ...bureauAgentDefinitionsOperations,
   ...bureauWorkflowsOperations,
   defineBureauEventsSubscriptionOperation('bureau.events:observe-all'),
+  eventsCatalogOperation,
   bureauRunEventsSubscriptionOperation,
   ...bureauReviewsOperations,
   ...bureauSchedulesOperations,
   ...bureauGoalsOperations,
   ...bureauMemoryOperations,
   auditQueryOperation,
+  ...bureauNotificationsOperations,
   ...bureauAssetsOperations,
   ...bureauDecisionsOperations,
   ...bureauSettingsOperations,
   ...bureauSkillsOperations,
   ...bureauWorkerDeploymentsOperations,
+  ...bureauHooksOperations,
 ] as const;
 
 /**
@@ -1142,6 +1170,7 @@ export function buildBureauHandlerHost(
       delete: (id, deleteOptions) => bureau.contexts.delete(id, deleteOptions),
       rename: (id, title, renameOptions) => bureau.contexts.rename(id, title, renameOptions),
       steering: (id) => bureau.contexts.steering(id),
+      window: (id, windowOptions) => bureau.contexts.window(id, windowOptions),
       input: (id, request) => bureau.contexts.input(id, request),
       steer: (id, request) => bureau.contexts.steer(id, request),
       fork: (id, request) => bureau.contexts.fork(id, request),
@@ -1169,6 +1198,7 @@ export function buildBureauHandlerHost(
       return engine === undefined ? undefined : describeCodeWorkflow(engine, id);
     },
     deployments: bureau.deployments,
+    hooks: bureau.hooks,
     schedules: {
       create: bureau.schedules.create,
       get: bureau.schedules.get,
@@ -1195,6 +1225,7 @@ export function buildBureauHandlerHost(
       keepsTrail: () => bureau.internals.auditTrail !== undefined,
       query: bureau.audit.query,
     },
+    notifications: bureau.notifications,
     assets: bureau.assets,
     decisions: bureau.decisions,
     settings: bureau.settings,

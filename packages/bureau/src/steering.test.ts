@@ -49,7 +49,7 @@ function resumeCommand(
 const NOW = '2026-09-02T00:00:01.000Z';
 
 function configurationCommand(
-  target: 'route' | 'model' | 'provider' | 'effort',
+  target: 'route' | 'model' | 'provider' | 'effort' | 'permission-mode',
   override: string,
   overrides: Partial<ImplementedSteeringCommand> = {},
 ): ImplementedSteeringCommand {
@@ -1788,6 +1788,32 @@ describe('configuration-target supersession (AB-200)', () => {
       expect(replay.command.state).toBe('superseded');
     }
     expect(gate.getDesiredState().model).toBe('Y');
+  });
+
+  it('holds a permission mode apart from the other targets, idempotently at its value (COR-1936)', () => {
+    const gate = createSteeringGate('session-1');
+    const mode = gate.admit(
+      configurationCommand('permission-mode', 'read-only', { id: 'p' }),
+      context,
+    );
+    const model = gate.admit(configurationCommand('model', 'X', { id: 'm' }), context);
+    if (mode.outcome !== 'accepted' || model.outcome !== 'accepted') {
+      throw new Error('expected both accepted');
+    }
+
+    expect(gate.getDesiredState()).toMatchObject({ permissionMode: 'read-only', model: 'X' });
+    expect(gate.forRun('run-1').getDesiredState().permissionMode).toBe('read-only');
+    // The same mode again, under a new id, changes nothing and costs no version.
+    const version = gate.getConfigVersion();
+    const again = gate.admit(
+      configurationCommand('permission-mode', 'read-only', { id: 'p2' }),
+      context,
+    );
+    expect(again.outcome).toBe('accepted');
+    expect(gate.getConfigVersion()).toBe(version);
+    // A different mode replaces it, and the model is untouched.
+    gate.admit(configurationCommand('permission-mode', 'allow-all', { id: 'p3' }), context);
+    expect(gate.getDesiredState()).toMatchObject({ permissionMode: 'allow-all', model: 'X' });
   });
 
   it('keeps separate targets independent: steering model does not supersede pending effort', () => {

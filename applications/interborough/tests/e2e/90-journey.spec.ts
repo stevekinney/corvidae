@@ -37,6 +37,7 @@ import {
   JOURNEY_WORKFLOW_ID,
   RECALL_AGENT_NAME,
 } from './journey-agent.ts';
+import { jsonEditor, jsonEditorSource } from './json-editor-support.ts';
 import { removeWorkflow } from './workflow-support.ts';
 
 test.use({ baseURL: E2E_JOURNEY_URL, viewport: { width: 1280, height: 900 } });
@@ -339,8 +340,8 @@ test('follows the schedule’s link to the workflow editor, changes its cadence 
   await expect(page).toHaveURL(new RegExp(`/workflows/${JOURNEY_WORKFLOW_ID}/edit$`));
 
   const root = page.locator('[data-page="workflow-editor"]');
-  const editor = root.getByRole('textbox', { name: WORKFLOW_COPY.editor.textLabel });
-  const document = JSON.parse(await editor.inputValue()) as Record<string, unknown>;
+  const editor = await jsonEditor(root, WORKFLOW_COPY.editor.textLabel);
+  const document = JSON.parse(await jsonEditorSource(editor)) as Record<string, unknown>;
   expect(document['trigger']).toEqual({ kind: 'schedule', spec: JOURNEY_WORKFLOW_CADENCE });
   document['trigger'] = { kind: 'schedule', spec: '1h' };
   await editor.fill(JSON.stringify(document, null, 2));
@@ -438,12 +439,17 @@ test('starts a run it does not release, reaches it from the chat’s run sentenc
   await expectWaiting(request, 0);
 });
 
-test('opens the workers screen from the sidebar’s Engine group', async ({ page }) => {
+test('opens the workers screen from Health, which the sidebar opens', async ({ page }) => {
   await page.goto('/agents');
-  const engine = page.getByRole('navigation', { name: 'Views' }).getByRole('list', {
-    name: 'Engine',
-  });
-  await engine.getByRole('link', { name: /^Workers/ }).click();
+  await page
+    .getByRole('navigation', { name: 'Views' })
+    .getByRole('link', { name: /^Health/ })
+    .click();
+  await expect(page).toHaveURL(/\/engine$/);
+  await page
+    .getByRole('navigation', { name: 'Health sections' })
+    .getByRole('link', { name: 'Workers' })
+    .click();
 
   await expect(page).toHaveURL(/\/workers$/);
   await expect(page.locator('[data-view="workers"]')).toHaveAttribute('data-state', 'ready');

@@ -67,8 +67,8 @@
  *   provider's API key.
  * - `/host/providers`, `/host/providers/<name>`, `/host/providers/reload`, and `/host/catalog`:
  *   read and change the provider configuration (`provider-routes.ts`).
- * - `/host/tool-sources`, `/host/tool-sources/<id>`, `/host/tool-sources/<id>/authorize`, and
- *   `/host/oauth/callback/<id>`: the saved MCP and OpenAPI tool sources in `configuration.json`
+ * - `/host/tool-sources`, `/host/tool-sources/<id>`, `/host/tool-sources/<id>/affected-agents`,
+ *   `/host/tool-sources/<id>/authorize`, and `/host/oauth/callback/<id>`: the saved MCP and OpenAPI tool sources in `configuration.json`
  *   (`toolSources`), their encrypted credentials, and the OAuth sign-in (`tool-source-routes.ts`).
  *   The sources load before the Bureau is built, so an agent file lists their tools as
  *   `<id>__<tool>` after the host starts again. A remote host refuses a change with the reason
@@ -170,6 +170,7 @@ import {
 import { isShellNavigation } from './shell-request.ts';
 import { createSkillManager, type SkillManager } from './skill-manager.ts';
 import { skillRoutes } from './skill-routes.ts';
+import { agentToolUseOf } from './tool-source-agents.ts';
 import { createToolSourceManager, type ToolSourceManager } from './tool-source-manager.ts';
 import { toolSourceRoutes } from './tool-source-routes.ts';
 
@@ -201,6 +202,20 @@ const REMOTE_LOCKED_SETTINGS = {
  * the `retention.audit` window the Bureau starts with; a value stored on the Settings page replaces it.
  */
 export const AUDIT_RETENTION_MILLISECONDS = 90 * 24 * 60 * 60 * 1000;
+
+/**
+ * How long the host keeps a notification by default: 30 days, in milliseconds (COR-1941). It is the
+ * `retention.notifications` window the Bureau starts with; a value stored on the Settings page
+ * replaces it.
+ */
+export const NOTIFICATION_RETENTION_MILLISECONDS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * How long the host keeps a settled hook delivery record by default: 30 days, in milliseconds
+ * (COR-1943). It is the `retention.hookDeliveries` window the Bureau starts with; a value stored on
+ * the Settings page replaces it.
+ */
+export const HOOK_DELIVERY_RETENTION_MILLISECONDS = 30 * 24 * 60 * 60 * 1000;
 
 /**
  * How long the host keeps a finished run's workflow log lines after the run last wrote one: 7 days, in
@@ -362,7 +377,13 @@ export type Host = {
    */
   readonly toolSources: Pick<
     ToolSourceManager,
-    'connect' | 'configureTools' | 'remove' | 'snapshot' | 'authorize' | 'completeAuthorization'
+    | 'connect'
+    | 'configureTools'
+    | 'remove'
+    | 'affectedAgents'
+    | 'snapshot'
+    | 'authorize'
+    | 'completeAuthorization'
   >;
   /**
    * A point-in-time reading of the host's own state: the Bureau's diagnostics, the engine server's
@@ -569,6 +590,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       audit: async (entry) => {
         await held.bureau?.internals.auditTrail?.record(entry);
       },
+      // The Bureau is built after the sources, so the agent files are read through `held`.
+      agentToolUse: async () =>
+        held.bureau === undefined ? [] : agentToolUseOf(held.bureau.agents)(),
       origin: () => hostOrigin ?? `http://${LOOPBACK}:${startPort}`,
       warn: options.warn ?? ((message) => console.warn(message)),
     });
@@ -629,6 +653,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       retention: {
         audit: { olderThan: AUDIT_RETENTION_MILLISECONDS },
         logs: { olderThan: WORKFLOW_LOG_RETENTION_MILLISECONDS },
+        notifications: { olderThan: NOTIFICATION_RETENTION_MILLISECONDS },
+        hookDeliveries: { olderThan: HOOK_DELIVERY_RETENTION_MILLISECONDS },
       },
       // The `ctx.log` lines of a workflow are kept with its run (COR-1811), so the run page can show
       // them: the newest 500 per run, for seven days, both changeable on the Settings page.
@@ -659,8 +685,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const skills = await createSkillManager({
       bungalow,
       configurationQueue,
+      // Strict, so a failed write rejects and the trust route answers `partial` (COR-1926).
       audit: async (entry) => {
-        await bureau.internals.auditTrail?.record(entry);
+        await bureau.internals.auditTrail?.record({ ...entry, strict: true });
       },
     });
     held.skills = skills;
@@ -876,6 +903,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         connect: (request) => toolSources.connect(request),
         configureTools: (request) => toolSources.configureTools(request),
         remove: (request) => toolSources.remove(request),
+        affectedAgents: (id) => toolSources.affectedAgents(id),
         snapshot: () => toolSources.snapshot(),
         authorize: (id) => toolSources.authorize(id),
         completeAuthorization: (id, callbackUrl) =>

@@ -18,7 +18,7 @@ export type SectionHeadingProps = {
   level?: SectionHeadingLevel;
   /** Additional class names merged onto the root `<div>`. */
   class?: string;
-  /** Optional small uppercase "eyebrow" label. When present, the label is
+  /** Optional small sentence-case "eyebrow" label. When present, the label is
    *  rendered as a `<p>` inside an `<hgroup>` that also contains the heading.
    *
    *  The `<hgroup>` content model only permits `<p>` elements plus one

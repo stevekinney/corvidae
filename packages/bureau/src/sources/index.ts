@@ -17,7 +17,9 @@ export type {
   DefinitionSourceHost,
   WorkflowSource,
 } from './definition-source';
-export { hashDefinitionBytes, SourceConflictError } from './definition-source';
+export { hashDefinitionBytes, SourceConflictError, SourceReadOnlyError } from './definition-source';
+export { layeredAgentSource, layeredWorkflowSource } from './layered-source';
+export { pluginLayer } from './plugin-layer';
 export type { DirectorySourceOptions } from './directory-source';
 export type {
   ListedObject,

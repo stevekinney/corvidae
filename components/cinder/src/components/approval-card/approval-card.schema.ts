@@ -181,6 +181,17 @@ const schema = {
         'Heading level for the card title; section headings render one level deeper. Default `3`.',
       default: 3,
     },
+    layout: {
+      enum: ['card', 'row'],
+      description:
+        "Layout: the full `card`, or one compact `row` with View input, Deny, and Approve. Default `'card'`.",
+      default: 'card',
+    },
+    question: {
+      type: 'string',
+      description:
+        'Question the `row` layout asks, such as `Run issue-refund for $42.10?`. Default `Run <tool>?`.',
+    },
     class: {
       type: 'string',
       description: 'Additional CSS classes applied to the root element.',
@@ -200,4 +211,5 @@ const schema = {
   },
 } satisfies ComponentSchema;
 
+/** JSON Schema describing the props of this component. */
 export default schema as ComponentSchema;

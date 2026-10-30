@@ -14,7 +14,7 @@ import {
   stopWhen,
 } from '@lostgradient/operative';
 import { createToolbox } from 'armorer';
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 
 import { createBureau } from '../create-bureau.ts';
 import type { Bureau } from '../types.ts';
@@ -37,6 +37,8 @@ import { createBureauHandler } from './create-bureau-handler.ts';
 import { createMemoryAssetStorage } from '../assets/storage';
 import type { AgentDefinitions } from '../agent-catalog';
 import { MemoryStorage } from '@lostgradient/storage';
+import { waitUntil } from '@lostgradient/testing/wait-until';
+import { createCheckValidator, goalRequest } from '../testing/goal-fixtures.test-support';
 
 type Handler = ReturnType<typeof createBureauHandler>;
 
@@ -159,6 +161,30 @@ describe('child runs', () => {
       });
       const record = await bureau.children.get({ parentRunId, childRunId: childId });
       expect(record?.status).toBe('aborted');
+    });
+  });
+
+  it('are stopped through the topology that owns them, before their task is read (COR-1868)', async () => {
+    await withParentAndChild(async ({ bureau, handler, parentRunId, childId, script }) => {
+      // The child is a task now, but the cancel route keeps the path it had when it was not.
+      expect(await bureau.tasks.get(childId)).toMatchObject({ origin: { kind: 'agent' } });
+      const read = spyOn(bureau.tasks, 'get');
+      const cancelTask = spyOn(bureau.tasks, 'cancel');
+
+      const cancelled = await handler(cancelRequest(childId, as('alice-key')));
+      script.release('child-hold');
+
+      expect(cancelled.status).toBe(200);
+      expect(await cancelled.json()).toEqual({ runId: childId, status: 'aborting' });
+      expect(read).not.toHaveBeenCalled();
+      expect(cancelTask).not.toHaveBeenCalled();
+      await waitUntil(
+        async () => {
+          const child = await bureau.children.get({ parentRunId, childRunId: childId });
+          return child?.status === 'aborted';
+        },
+        { message: 'the child is aborted' },
+      );
     });
   });
 
@@ -308,5 +334,47 @@ describe('child runs', () => {
       expect(everything).not.toContain('child work');
       expect(everything).not.toContain('Child done.');
     });
+  });
+});
+
+describe('goal attempts', () => {
+  it('are not stopped by the cancel route, which answers as for a run it never cancelled (COR-1868)', async () => {
+    const bureau = await createBureau<AgentDefinitions>({
+      assets: { storage: createMemoryAssetStorage() },
+      id: 'goal-attempt-fixture',
+      agents: {
+        worker: createAgent({
+          name: 'worker',
+          generate: ({ signal }) =>
+            new Promise((_resolve, reject) => {
+              signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+            }),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+        default: createAgent({ generate: async () => ({ content: '', toolCalls: [] }) }),
+      },
+      validators: [createCheckValidator()],
+      storage: new MemoryStorage(),
+      durable: true,
+    });
+    const handler = createBureauHandler(bureau, {
+      authentication,
+      a2aAgents: ['worker'],
+      agUi: {},
+    });
+    try {
+      await bureau.goals.create(goalRequest({ goalRunId: 'g-ag-ui', principal: 'api-key:alice' }));
+      await waitUntil(async () => (await bureau.tasks.get('goal-g-ag-ui-a0')) !== undefined, {
+        message: 'the attempt task exists',
+      });
+
+      const cancelled = await handler(cancelRequest('goal-g-ag-ui-a0', as('alice-key')));
+
+      expect(cancelled.status).toBe(404);
+      const attempt = await bureau.tasks.get('goal-g-ag-ui-a0');
+      expect(attempt?.status).toBe('working');
+    } finally {
+      await bureau.dispose();
+    }
   });
 });

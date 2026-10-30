@@ -50,10 +50,30 @@
     font-size: var(--cinder-text-sm);
   }
 
+  .cinder-json-editor__input {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1);
+  }
+
+  /* CodeMirror themes itself (see json-editor-enhancement.ts) because its injected rules are
+     unlayered and would win over anything here; this host only reserves space until it mounts. */
+  .cinder-json-editor__editor:empty {
+    display: none;
+  }
+
+  /* The textarea is the whole editor until CodeMirror loads, and again if it cannot. It grows
+     with its content where `field-sizing` exists and otherwise keeps the native `rows` height;
+     in both cases it never opens as a large empty box. */
   .cinder-json-editor__textarea {
     display: block;
+    box-sizing: border-box;
     inline-size: 100%;
-    min-block-size: 10rem;
+    min-block-size: calc(3 * 1.5em + 2 * var(--cinder-space-2) + 2px);
+    max-block-size: calc(
+      var(--_cinder-json-editor-rows, 8) * 1.5em + 2 * var(--cinder-space-2) + 2px
+    );
     resize: vertical;
     border: 1px solid var(--cinder-control-border);
     border-radius: var(--cinder-control-radius);
@@ -62,72 +82,17 @@
     color: var(--cinder-text-default);
     font-family: var(--cinder-font-mono);
     font-size: var(--cinder-text-sm);
+    line-height: 1.5;
+    field-sizing: content;
   }
 
-  .cinder-json-editor__input {
-    position: relative;
-  }
-
-  .cinder-json-editor__highlight {
-    position: absolute;
-    inset: 0;
-    overflow: auto;
-    margin: 0;
-    border: 1px solid transparent;
-    border-radius: var(--cinder-radius-md);
-    padding: var(--cinder-space-2);
-    background: var(--cinder-surface-raised);
-    pointer-events: none;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    font-family: var(--cinder-font-mono);
-    font-size: var(--cinder-text-sm);
-    line-height: normal;
-    scrollbar-width: none;
-  }
-
-  .cinder-json-editor__input--nowrap .cinder-json-editor__highlight {
-    white-space: pre;
-    overflow-wrap: normal;
-    width: 100%;
-  }
-
-  .cinder-json-editor__highlight::-webkit-scrollbar {
+  .cinder-json-editor__textarea[hidden] {
     display: none;
   }
 
-  .cinder-json-editor__input--highlighted .cinder-json-editor__textarea {
-    position: relative;
-    background: transparent;
-    color: transparent;
-    caret-color: var(--cinder-text-default);
-  }
-
-  .cinder-json-editor .cinder-json-token-key {
-    color: var(--cinder-accent-text);
-  }
-
-  .cinder-json-editor .cinder-json-token-string {
-    color: var(--cinder-status-success-text);
-  }
-
-  .cinder-json-editor .cinder-json-token-number {
-    color: var(--cinder-status-warning-text);
-  }
-
-  .cinder-json-editor .cinder-json-token-boolean,
-  .cinder-json-editor .cinder-json-token-null {
-    color: var(--cinder-status-info-text);
-  }
-
-  .cinder-json-editor .cinder-json-token-punctuation {
-    color: var(--cinder-text-muted);
-  }
-
-  .cinder-json-editor .cinder-json-lint {
-    text-decoration: underline wavy var(--cinder-status-danger-solid);
-    text-decoration-thickness: 1px;
-    text-underline-offset: 2px;
+  .cinder-json-editor__toolbar {
+    display: flex;
+    justify-content: flex-end;
   }
 
   .cinder-json-editor__textarea:focus-visible {

@@ -12,6 +12,7 @@
 
 import {
   type AgentSession,
+  PERMISSION_MODES,
   SESSION_ORIGINS,
   type SessionListOptions,
   type SessionSummary,
@@ -56,8 +57,8 @@ export type BureauContextsOperationHost = BureauOwnershipHost & {
  * be deleted and created again for another owner, so authorization is bound to the exact
  * session the operation then reads or deletes.
  */
-function mayAccessLoadedContext(
-  host: BureauContextsOperationHost,
+export function mayAccessLoadedContext(
+  host: BureauOwnershipHost,
   principal: Principal,
   session: AgentSession,
   operatorScope: 'bureau.contexts:write' | 'bureau.contexts:read',
@@ -200,12 +201,13 @@ export const contextSummarySchema = z.object({
  * (COR-1559). `model` is the latest admitted `model` override in the context's desired state,
  * `null` before any, which means the agent's default; its `provider` is `null` for an override
  * that named none. `effort` is the latest admitted `effort` override (COR-1935), `null` before any,
- * which means the effort the agent's request carries. `configVersion` is the desired-state version a later command's
+ * which means the effort the agent's request carries. `permissionMode` is the chat's permission mode (COR-1936), `on-changes` before any was set. `configVersion` is the desired-state version a later command's
  * `expectedRevision` is compared against.
  */
 export const contextDetailSchema = contextSummarySchema.extend({
   model: z.object({ provider: z.string().nullable(), model: z.string() }).nullable(),
   effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).nullable(),
+  permissionMode: z.enum(PERMISSION_MODES),
   configVersion: z.number().int().nonnegative(),
 });
 
@@ -382,7 +384,7 @@ export const contextsGetOperation = defineOperation<
   mcpExposable: true,
   summary: 'Read one context',
   description:
-    'Returns the summary of one of the caller’s own contexts, with its `origin`, and what its steering has settled on; a caller holding `bureau.contexts:read` reads any owner’s. `model` is the latest admitted model override (`{ provider, model }`, with a `null` provider when the override named none), or `null` before any, which means the agent’s default; `effort` is the latest admitted effort override (`low`, `medium`, `high`, `xhigh` or `max`), or `null` before any; `configVersion` is the version `bureau.contexts.steer`’s `expectedRevision` is compared against. Another owner’s context answers as a missing one does. The response carries no transcript: its only message text is the title and the last-message preview.',
+    'Returns the summary of one of the caller’s own contexts, with its `origin`, and what its steering has settled on; a caller holding `bureau.contexts:read` reads any owner’s. `model` is the latest admitted model override (`{ provider, model }`, with a `null` provider when the override named none), or `null` before any, which means the agent’s default; `effort` is the latest admitted effort override (`low`, `medium`, `high`, `xhigh` or `max`), or `null` before any; `permissionMode` is the chat’s permission mode (`always`, `on-changes`, `allow-all` or `read-only`; it governs only a file agent’s own listed tools and toolboxes built with `createToolApprovalHooks({ permissionMode })`, not yet code agents’ tools or Bureau’s built-in run tools, COR-1947), `on-changes` before one was set; `configVersion` is the version `bureau.contexts.steer`’s `expectedRevision` is compared against. Another owner’s context answers as a missing one does. The response carries no transcript: its only message text is the title and the last-message preview.',
   destructive: false,
   tags: ['Contexts'],
   inputSchema: contextsGetInput,
@@ -414,6 +416,8 @@ export const contextsGetOperation = defineOperation<
       ...projectContext(summarizeSession(session), activity.get(contextId)),
       model: steering.model === null ? null : { ...steering.model },
       effort: steering.effort,
+      // `on-changes` is what a chat that was never steered runs with.
+      permissionMode: steering.permissionMode ?? 'on-changes',
       configVersion: steering.configVersion,
     };
   },

@@ -101,6 +101,7 @@ export { default as keyboardShortcutsSchema } from '../components/keyboard-short
 export { default as labelSchema } from '../components/label/label.schema.ts';
 export { default as lineChartSchema } from '../components/line-chart/line-chart.schema.ts';
 export { default as linkSchema } from '../components/link/link.schema.ts';
+export { default as listDetailSchema } from '../components/list-detail/list-detail.schema.ts';
 export { default as loadMoreSchema } from '../components/load-more/load-more.schema.ts';
 export { default as localeProviderSchema } from '../components/locale-provider/locale-provider.schema.ts';
 export { default as marqueeSchema } from '../components/marquee/marquee.schema.ts';
@@ -139,6 +140,7 @@ export { default as resizablePanelsSchema } from '../components/resizable-panels
 export { default as runStepTimelineSchema } from '../components/run-step-timeline/run-step-timeline.schema.ts';
 export { default as scheduleBuilderSchema } from '../components/schedule-builder/schedule-builder.schema.ts';
 export { default as schemaFormSchema } from '../components/schema-form/schema-form.schema.ts';
+export { default as schemaViewSchema } from '../components/schema-view/schema-view.schema.ts';
 export { default as scrollAreaSchema } from '../components/scroll-area/scroll-area.schema.ts';
 export { default as searchFieldSchema } from '../components/search-field/search-field.schema.ts';
 export { default as secretValueFieldSchema } from '../components/secret-value-field/secret-value-field.schema.ts';
@@ -190,6 +192,7 @@ export { default as terminalFrameSchema } from '../components/terminal-frame/ter
 export { default as terminalOutputSchema } from '../components/terminal-output/terminal-output.schema.ts';
 export { default as textSchema } from '../components/text/text.schema.ts';
 export { default as textareaSchema } from '../components/textarea/textarea.schema.ts';
+export { default as themeSwitchSchema } from '../components/theme-switch/theme-switch.schema.ts';
 export { default as timeFieldSchema } from '../components/time-field/time-field.schema.ts';
 export { default as timelineSchema } from '../components/timeline/timeline.schema.ts';
 export { default as toastRegionSchema } from '../components/toast-region/toast-region.schema.ts';

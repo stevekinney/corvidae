@@ -1,0 +1,186 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * THEME SWITCH (toggle family)
+ *
+ * A radiogroup of three icon buttons (Light, System, Dark) over one track. The track is
+ * quiet: a pale sky when Light is selected, a deep night when Dark is, and the neutral inset
+ * surface for System. A raised thumb sits behind the selected icon and slides between the
+ * three positions. Every colour is derived from a Cinder token, so a theme re-skins it.
+ * ======================================== */
+
+  .cinder-theme-switch {
+    /* Each position is a square; the thumb is one position wide and the track pads it evenly. */
+    --_cinder-theme-switch-segment: 1.75rem;
+    --_cinder-theme-switch-inset: 0.125rem;
+    --_cinder-theme-switch-position: 1;
+
+    /* The sky and night tracks keep their own lightness in both themes: a sky is pale and a
+     * night is dark whichever theme the page is in, so the icons on them use fixed contrast
+     * ramps too. System uses the page's own tokens. */
+    --_cinder-theme-switch-track: var(--cinder-surface-inset);
+    --_cinder-theme-switch-icon: var(--cinder-text-muted);
+    --_cinder-theme-switch-icon-hover: var(--cinder-text-default);
+
+    position: relative;
+    display: inline-grid;
+    grid-auto-flow: column;
+    grid-auto-columns: var(--_cinder-theme-switch-segment);
+    flex-shrink: 0;
+    box-sizing: border-box;
+    padding: var(--_cinder-theme-switch-inset);
+    vertical-align: middle;
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-full);
+    background-color: var(--_cinder-theme-switch-track);
+    transition: background-color var(--cinder-duration-fast, 150ms)
+      var(--cinder-ease-standard, ease);
+  }
+
+  .cinder-theme-switch[data-cinder-value='light'] {
+    --_cinder-theme-switch-position: 0;
+    --_cinder-theme-switch-track: oklch(from var(--cinder-status-info-solid) 93% 0.035 h);
+    --_cinder-theme-switch-icon: oklch(from var(--cinder-status-info-solid) 38% 0.09 h);
+    --_cinder-theme-switch-icon-hover: oklch(from var(--cinder-status-info-solid) 25% 0.09 h);
+  }
+
+  .cinder-theme-switch[data-cinder-value='system'] {
+    --_cinder-theme-switch-position: 1;
+  }
+
+  .cinder-theme-switch[data-cinder-value='dark'] {
+    --_cinder-theme-switch-position: 2;
+    --_cinder-theme-switch-track: oklch(from var(--cinder-status-info-solid) 27% 0.06 h);
+    --_cinder-theme-switch-icon: oklch(from var(--cinder-status-info-solid) 82% 0.05 h);
+    --_cinder-theme-switch-icon-hover: oklch(from var(--cinder-status-info-solid) 95% 0.03 h);
+  }
+
+  /* ----------------------------------------
+ * Thumb
+ * ---------------------------------------- */
+
+  .cinder-theme-switch__thumb {
+    position: absolute;
+    inset-block: var(--_cinder-theme-switch-inset);
+    /* A logical offset, so the thumb follows the reading direction and slides in a right-to-left
+     * page as well. */
+    inset-inline-start: calc(
+      var(--_cinder-theme-switch-inset) + var(--_cinder-theme-switch-position) *
+        var(--_cinder-theme-switch-segment)
+    );
+    inline-size: var(--_cinder-theme-switch-segment);
+    border-radius: var(--cinder-radius-full);
+    background-color: var(--cinder-surface-raised);
+    box-shadow: var(--cinder-shadow-sm);
+    pointer-events: none;
+    transition: inset-inline-start var(--cinder-duration-fast, 150ms)
+      var(--cinder-ease-standard, ease);
+  }
+
+  /* ----------------------------------------
+ * Positions
+ * ---------------------------------------- */
+
+  .cinder-theme-switch__option {
+    position: relative;
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    inline-size: var(--_cinder-theme-switch-segment);
+    block-size: var(--_cinder-theme-switch-segment);
+    padding: 0;
+    border: none;
+    border-radius: var(--cinder-radius-full);
+    background: transparent;
+    color: var(--_cinder-theme-switch-icon);
+    cursor: pointer;
+    transition: color var(--cinder-duration-fast, 150ms) var(--cinder-ease-standard, ease);
+  }
+
+  /* The selected icon sits on the raised thumb, which is a page surface in either theme. */
+  .cinder-theme-switch__option[aria-checked='true'] {
+    color: var(--cinder-text-default);
+  }
+
+  @media (hover: hover) {
+    .cinder-theme-switch__option[aria-checked='false']:hover:not(:disabled) {
+      color: var(--_cinder-theme-switch-icon-hover);
+    }
+  }
+
+  .cinder-theme-switch__option:focus-visible {
+    outline: var(--cinder-ring-width, 2px) solid transparent;
+    box-shadow:
+      0 0 0 var(--cinder-ring-offset, 2px) var(--cinder-ring-offset-color, var(--cinder-surface)),
+      0 0 0 calc(var(--cinder-ring-offset, 2px) + var(--cinder-ring-width, 2px))
+        var(--cinder-ring-color);
+  }
+
+  /* ----------------------------------------
+ * Disabled
+ * ---------------------------------------- */
+
+  .cinder-theme-switch[data-cinder-disabled] {
+    opacity: 0.6;
+    filter: grayscale(0.4);
+  }
+
+  .cinder-theme-switch__option:disabled {
+    cursor: not-allowed;
+  }
+
+  /* ----------------------------------------
+ * Forced colors: system colors replace the sky and night tints, and the thumb is the cue.
+ * ---------------------------------------- */
+
+  @media (forced-colors: active) {
+    .cinder-theme-switch {
+      border-color: ButtonText;
+      background-color: Canvas;
+    }
+
+    .cinder-theme-switch__thumb {
+      background-color: Highlight;
+      box-shadow: none;
+    }
+
+    .cinder-theme-switch__option,
+    .cinder-theme-switch__option[aria-checked='false']:hover:not(:disabled) {
+      color: ButtonText;
+    }
+
+    .cinder-theme-switch__option[aria-checked='true'] {
+      color: HighlightText;
+    }
+
+    .cinder-theme-switch__option:focus-visible {
+      outline: var(--cinder-ring-width, 2px) solid ButtonText;
+      outline-offset: 3px;
+    }
+  }
+
+  /* ----------------------------------------
+ * Coarse pointer: the 28px positions stay, and the hit area grows to 44px
+ * ---------------------------------------- */
+
+  @media (any-pointer: coarse) {
+    .cinder-theme-switch {
+      --_cinder-theme-switch-segment: 2.75rem;
+    }
+  }
+
+  /* ----------------------------------------
+ * Reduced motion
+ * ---------------------------------------- */
+
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-theme-switch,
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-theme-switch__thumb,
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-theme-switch__option {
+      transition: none;
+    }
+  }
+}

@@ -98,6 +98,20 @@ describe('stripExampleHarness — fixtures', () => {
     expect(stripped).not.toContain('mainId');
   });
 
+  it('rewrites the ariaLabelledby prop of a component named by a label id (button-group/input-with-button)', () => {
+    const source = `<script lang="ts">
+  let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
+  const uid = $props.id();
+  let labelId = $derived(\`\${mountIdPrefix ?? uid}-api-key-label\`);
+</script>
+
+<ButtonGroup ariaLabelledby={labelId}>x</ButtonGroup>
+`;
+    const stripped = stripExampleHarness(source, 'button-group/input-with-button');
+    expect(stripped).toContain('<ButtonGroup ariaLabelledby="api-key-label">');
+    expect(stripped).not.toContain('labelId');
+  });
+
   it('rewrites script object-literal id values (table-of-contents explicit-items shape)', () => {
     const source = `<script lang="ts">
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();

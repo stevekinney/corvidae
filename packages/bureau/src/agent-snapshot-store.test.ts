@@ -99,6 +99,19 @@ describe('revisions', () => {
     const prefixed = await store.revisions('help');
     expect(prefixed.map((revision) => revision.hash)).toEqual(['aa']);
   });
+
+  it('does not mix an owner agent with a plugin agent its name is the namespace of (COR-1873)', async () => {
+    const { store } = setup();
+    await store.recordRun({ id: 'linear', hash: 'aa', definition: definition('x') }, 'run-1');
+    await store.recordRun(
+      { id: 'linear:triager', hash: 'bb', definition: definition('y') },
+      'run-2',
+    );
+    const linearRevisions = await store.revisions('linear');
+    expect(linearRevisions.map((revision) => revision.hash)).toEqual(['aa']);
+    const triagerRevisions = await store.revisions('linear:triager');
+    expect(triagerRevisions.map((revision) => revision.hash)).toEqual(['bb']);
+  });
 });
 
 describe('retention', () => {

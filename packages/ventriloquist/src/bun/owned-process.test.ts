@@ -29,6 +29,8 @@ function harness(options: {
   table?: ProcessRecord[] | 'unreadable';
   /** The signal that empties the group and ends the leader; `never` leaves it standing. */
   endsOn?: 'SIGTERM' | 'SIGKILL' | 'never';
+  /** How many process-table reads throw before one succeeds. */
+  failedReads?: number;
   /** Holds the process-table read open until the test releases it. */
   tableGate?: Promise<void>;
   /** Whether the owned process hangs up its leader first, and whether that hang-up fails. */
@@ -73,7 +75,9 @@ function harness(options: {
     readProcessTable: async () => {
       tableReads += 1;
       await options.tableGate;
-      if (options.table === 'unreadable') throw new Error('no ps');
+      if (options.table === 'unreadable' || tableReads <= (options.failedReads ?? 0)) {
+        throw new Error('no ps');
+      }
       return options.table ?? [];
     },
   });
@@ -282,6 +286,21 @@ describe('OwnedProcess', () => {
     owned.adopt(child);
     expect(await owned.terminate()).toBe('unknown');
     expect(signals).toEqual(['SIGTERM']);
+  });
+
+  test('a process table that fails once and then reads is complete, not unknown', async () => {
+    const { owned, child, signals, tableReads } = harness({ failedReads: 1 });
+    owned.adopt(child);
+    expect(await owned.terminate()).toBe('complete');
+    expect(signals).toEqual(['SIGTERM']);
+    expect(tableReads()).toBe(2);
+  });
+
+  test('a process table that stays unreadable is read a bounded number of times', async () => {
+    const { owned, child, tableReads } = harness({ table: 'unreadable' });
+    owned.adopt(child);
+    expect(await owned.terminate()).toBe('unknown');
+    expect(tableReads()).toBe(3);
   });
 
   test('an escaped descendant outranks a group that did not empty', async () => {

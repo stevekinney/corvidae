@@ -1,0 +1,38 @@
+@layer cinder.components {
+  /* Shared heading and spacing for option lists split into named groups
+     (Combobox, MultiSelect). The markup is a presentational list item wrapping
+     a heading and a `role="group"` list that holds the options, so the options
+     keep their listbox semantics while the group names them. */
+  .cinder-_option-group {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .cinder-_option-group:not(:first-child) {
+    margin-block-start: var(--cinder-space-2);
+  }
+
+  .cinder-_option-group__heading {
+    display: flex;
+    align-items: baseline;
+    gap: var(--cinder-space-2);
+    padding: var(--cinder-space-1) var(--cinder-space-2);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-semibold);
+    line-height: var(--cinder-leading-snug);
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-_option-group__count {
+    font-weight: var(--cinder-font-normal);
+    font-variant-numeric: tabular-nums;
+    color: var(--cinder-text-subtle);
+  }
+
+  .cinder-_option-group__options {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+}

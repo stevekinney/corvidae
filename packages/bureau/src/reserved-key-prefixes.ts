@@ -106,14 +106,33 @@ export const BUREAU_RESERVED_KEY_FAMILIES: readonly ReservedKeyFamily[] = [
   kept('bureau-agent-version:v1:', 'an agent’s version record, not a chat’s'),
   purged('bureau-catalog-run:'),
   purgedButUnexercised(
-    'bureau-chat-spend:v1:',
+    'bureau-chat-spend:v2:',
     'written once a run reports a price, which the scripted models of the class test do not',
   ),
   purged('bureau-child:parent:'),
   purged('bureau-child:record:'),
   contentFree('bureau-delegation:grant:', 'a delegation’s ids and budget amounts'),
   contentFree('bureau-delegation:ledger:', 'a delegation’s ids and spent amounts'),
+  kept('bureau-hook:v1:', 'a hook’s definition, the owner’s and not a chat’s'),
+  kept(
+    'bureau-hook-delivery:v1:',
+    'a hook delivery’s record: the request of a webhook, which can carry an event payload such as a run’s answer, and the attempts; retained by age (COR-1943) and not purged by a chat delete (a known limit, named in external-control-plane.md)',
+  ),
+  contentFree('bureau-hook-delivery-index-built:v1', 'the marker that the pending index was built'),
+  contentFree(
+    'bureau-hook-delivery-pending:v1:',
+    'the index of pending deliveries: a delivery id and an empty value',
+  ),
+  kept('bureau-hook-secret:v1:', 'a hook’s sealed signing secret, not a chat’s'),
   kept('bureau-goal:record:', 'a goal’s record; a goal runs in its own session, never in a chat'),
+  kept(
+    'bureau-notification:v1:',
+    'an owner’s notifications: a title and a body that can quote the first line of a failed task’s error, kept for the owner until dismissed and `retention.notifications`, and not purged by a chat delete (a known limit, named in external-control-plane.md)',
+  ),
+  contentFree(
+    'bureau-process:v1:',
+    'a process’s lease: an expiry time under a process id (COR-1946)',
+  ),
   purgedButUnexercised(
     'bureau-peer-call:record:',
     'written by a peer call (the A2A peer tool), which the class test’s chats do not make',

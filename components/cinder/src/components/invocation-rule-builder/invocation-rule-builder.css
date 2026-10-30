@@ -91,7 +91,6 @@
     display: block;
     font-size: var(--cinder-text-xs);
     font-weight: var(--cinder-font-semibold);
-    text-transform: uppercase;
     color: var(--cinder-text-default);
     margin-block-end: var(--cinder-space-2);
   }

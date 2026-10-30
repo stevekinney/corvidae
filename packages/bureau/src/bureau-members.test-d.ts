@@ -161,7 +161,7 @@ export type SchedulesMembers = AssertNever<
   >
 >;
 
-// `contexts` has exactly the twelve operations.
+// `contexts` has exactly the thirteen operations.
 export type ContextsMembers = AssertNever<
   Exclude<
     keyof BureauContexts,
@@ -174,6 +174,7 @@ export type ContextsMembers = AssertNever<
     | 'inputsDeliveredBy'
     | 'steer'
     | 'steering'
+    | 'window'
     | 'fork'
     | 'events'
     | 'subscribeEvents'
@@ -299,7 +300,11 @@ type TopLevelMembers =
   | 'runtimeServices'
   | 'peerCalls'
   // COR-1813: the worker rollouts.
-  | 'deployments';
+  | 'deployments'
+  // COR-1939: the user-defined hooks.
+  | 'hooks'
+  // COR-1941: the owner's notifications.
+  | 'notifications';
 
 export type BureauTopLevelMembersAreExact = AssertTrue<Equals<keyof Bureau, TopLevelMembers>>;
 

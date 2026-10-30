@@ -21,37 +21,94 @@
     text-align: start;
   }
 
-  /* A start-aligned state explains what to do rather than marking an absence, so its title
-   * leads in the default text colour instead of the muted placeholder one. */
-  .cinder-empty-state[data-cinder-align='start'] .cinder-empty-state-title {
-    font-size: var(--cinder-text-md);
-    font-weight: var(--cinder-font-semibold);
-    color: var(--cinder-text-default);
-  }
-
-  .cinder-empty-state[data-cinder-align='start'] .cinder-empty-state-description {
-    color: var(--cinder-text-muted);
-  }
-
+  /* The icon sits in a tinted disc. The disc is neutral by default, accented for a first-use
+   * state that invites an action, and success-tinted once everything is done. */
   .cinder-empty-state-icon {
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
+    inline-size: var(--cinder-space-16);
+    block-size: var(--cinder-space-16);
+    margin-block-end: var(--cinder-space-2);
+    border-radius: var(--cinder-radius-full);
+    background: var(--cinder-surface-inset);
     color: var(--cinder-text-subtle);
   }
 
+  .cinder-empty-state-icon > svg {
+    inline-size: var(--cinder-space-8);
+    block-size: var(--cinder-space-8);
+  }
+
+  .cinder-empty-state[data-cinder-kind='first-use'] .cinder-empty-state-icon {
+    background: var(--cinder-accent-background);
+    color: var(--cinder-accent-text);
+  }
+
+  .cinder-empty-state[data-cinder-kind='done'] .cinder-empty-state-icon {
+    background: var(--cinder-status-success-background);
+    color: var(--cinder-status-success-text);
+  }
+
   .cinder-empty-state-title {
-    font-size: var(--cinder-text-base);
-    font-weight: var(--cinder-font-medium);
+    font-size: var(--cinder-text-xl);
+    font-weight: var(--cinder-font-semibold);
     line-height: var(--cinder-leading-snug);
+    color: var(--cinder-text-default);
+    margin: 0;
+  }
+
+  /* The description keeps a readable measure however wide the region is. */
+  .cinder-empty-state-description {
+    max-inline-size: 42ch;
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-normal);
     color: var(--cinder-text-muted);
     margin: 0;
   }
 
-  .cinder-empty-state-description {
-    font-size: var(--cinder-text-sm);
-    line-height: var(--cinder-leading-normal);
-    color: var(--cinder-text-subtle);
-    margin: 0;
+  .cinder-empty-state-action {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: var(--cinder-space-3);
+    margin-block-start: var(--cinder-space-4);
+  }
+
+  .cinder-empty-state[data-cinder-align='start'] .cinder-empty-state-action {
+    justify-content: flex-start;
+  }
+
+  /* Compact fits a tab or a panel: less padding, a smaller disc, and quieter type. */
+  .cinder-empty-state[data-cinder-size='compact'] {
+    padding-block: var(--cinder-space-6);
+    padding-inline: var(--cinder-space-4);
+  }
+
+  .cinder-empty-state[data-cinder-size='compact'] .cinder-empty-state-icon {
+    inline-size: var(--cinder-space-10);
+    block-size: var(--cinder-space-10);
+    margin-block-end: 0;
+  }
+
+  .cinder-empty-state[data-cinder-size='compact'] .cinder-empty-state-icon > svg {
+    inline-size: var(--cinder-space-5);
+    block-size: var(--cinder-space-5);
+  }
+
+  .cinder-empty-state[data-cinder-size='compact'] .cinder-empty-state-title {
+    font-size: var(--cinder-text-base);
+  }
+
+  .cinder-empty-state[data-cinder-size='compact'] .cinder-empty-state-action {
+    margin-block-start: var(--cinder-space-2);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-empty-state-icon {
+      border: 1px solid CanvasText;
+    }
   }
 }

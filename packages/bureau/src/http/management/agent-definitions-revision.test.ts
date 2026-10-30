@@ -129,6 +129,7 @@ describe('definitionRevision on the wire', () => {
       owner: 'anonymous:local',
       hash: 'a'.repeat(64),
       problem: null,
+      plugin: null,
     };
     const accepts = (definitionRevision: unknown) =>
       agentDefinitionsListOperation.outputSchema.safeParse({

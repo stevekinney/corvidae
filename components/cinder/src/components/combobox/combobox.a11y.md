@@ -43,6 +43,10 @@ Options can carry optional `description` and `avatar` fields to render richer ro
 
 **Selection from a rich option.** Selecting a rich option sets `value` to `option.value` and `textInputValue` to `option.label` — the description is not appended to the text input.
 
+## Grouped options
+
+Options with a `group` render inside a `role="group"` element whose `aria-labelledby` points at the group's heading text, so a screen reader announces the group as it enters it. The visible option count in the heading is decorative (`aria-hidden`) and is not part of the group's name. The headings are not options: they are not focusable, never become the active descendant, and `aria-activedescendant` still walks only `role="option"` elements. Ungrouped options sit directly in the listbox. The DOM order, the option ids (`{id}-option-{index}`) and keyboard navigation all follow the same display order (ungrouped first, then groups by first appearance), so Home, End and the arrow keys never skip or reorder across a group boundary. A group whose options are all filtered out is removed along with its heading.
+
 ## Empty result set (COR-499)
 
 When `filteredOptions` is empty, the open listbox renders zero `role="option"` elements — no fake disabled option. The single visible "No results" line renders as plain, roleless text inside the listbox surface; the one status description that names the empty state for assistive technology lives outside the listbox (`.cinder-combobox__empty-status`, `role="status"`) and is referenced from the text field's own `aria-describedby`, the same describedby-based association CommandMenu uses from its `role="listbox"` element (`command-menu.svelte`'s `emptyStateId`). Focus stays on the text field throughout; `aria-activedescendant` is absent; Arrow keys and Enter cannot select or emit a value change while empty. Clearing the filter removes the empty description and restores normal option rows, active-descendant navigation, and selection.

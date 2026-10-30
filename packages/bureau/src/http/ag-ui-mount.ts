@@ -519,11 +519,21 @@ export function createAgUiMount(
     if (held !== undefined && held.status !== 'running' && held.status !== 'aborting') {
       return json({ runId, status: held.status }, 200);
     }
+    // A child run is a task now (COR-1868), but it is still stopped through the topology that
+    // owns it, so it is looked up first: its path is the one it had before it was a task.
+    if ((await bureau.children.locate(runId).catch(() => undefined)) !== undefined) {
+      return cancelChild(runId);
+    }
     const task = await bureau.tasks.get(runId);
-    if (task === undefined) return cancelChild(runId);
+    if (task === undefined) return notFound('run', runId);
     if (held !== undefined || !SETTLED_TASK_STATES.has(task.status)) {
       const outcome = await bureau.tasks.cancel(runId);
       if (outcome.receipt !== 'rejected') return json({ runId, status: 'aborting' }, 200);
+      // An attempt of a goal and a step of a workflow are stopped through the goal and the
+      // instance that own them. This mount never cancelled them, and still does not.
+      if (outcome.reason === 'owned-by-goal' || outcome.reason === 'owned-by-workflow') {
+        return notFound('run', runId);
+      }
     }
     // The task had already ended.
     const ended = bureau.tasks.detail(runId);
@@ -534,10 +544,7 @@ export function createAgUiMount(
     return json({ runId, status: outcome ?? 'error' }, 200);
   }
 
-  /**
-   * The task registry holds no task for a child, so a child is cancelled through the topology
-   * that owns it, by the parent it names.
-   */
+  /** A child is cancelled through the topology that owns it, by the parent it names. */
   async function cancelChild(runId: string): Promise<Response> {
     const child = await bureau.children.locate(runId).catch(() => undefined);
     if (child === undefined) return notFound('run', runId);

@@ -611,6 +611,7 @@
       "tags": ["feedback", "notice"],
       "useWhen": [
         "Communicating a persistent page-level status the user can dismiss, such as a maintenance window or trial expiry.",
+        "Reporting that the server or connection is unreachable with the unreachable preset, a Retry action, and the age of the data still shown.",
         "Pinning a non-urgent message above page content that should remain readable until acknowledged."
       ],
       "avoidWhen": [
@@ -732,7 +733,8 @@
       "tags": ["action", "grouping"],
       "useWhen": [
         "Clustering related actions such as align-left/center/right that read as a single toolset.",
-        "Visually joining multiple buttons into a single segmented bar without implying selection."
+        "Visually joining multiple buttons into a single segmented bar without implying selection.",
+        "Pairing an Input with a trailing Button that shares its border, height and corners."
       ],
       "avoidWhen": [
         {
@@ -2095,7 +2097,8 @@
       "tags": ["feedback", "empty"],
       "useWhen": [
         "Communicating that a list, table, or workspace has no items yet and suggesting a next step.",
-        "Replacing a primary content region after a filter or search returns no results."
+        "Replacing a primary content region after a filter or search returns no results.",
+        "Confirming that all work is finished with the done kind, or that a filter hid every item with the filtered kind."
       ],
       "avoidWhen": [
         {
@@ -2818,13 +2821,17 @@
       "exportName": "JsonEditor",
       "category": "form",
       "status": "stable",
-      "purpose": "Controlled free-form JSON text editor with native textarea fallback, parse feedback, and accessible field wiring.",
+      "purpose": "Controlled free-form JSON editor on a lazily loaded CodeMirror view with folding, schema completion, inline errors, and Format, backed by a native textarea.",
       "tags": ["form", "json", "editor"],
       "useWhen": [
         "Editing arbitrary JSON source while preserving the exact string in parent-owned state.",
-        "A lightweight native editor is preferable to shipping a code-editor runtime."
+        "The value is genuinely free-form JSON and benefits from line numbers, folding, and completion."
       ],
       "avoidWhen": [
+        {
+          "reason": "The value has a known shape that a guided form can edit.",
+          "alternative": "schema-form"
+        },
         {
           "reason": "Editing a JSON Schema with guided form and diff views.",
           "alternative": "json-schema-editor"
@@ -2848,9 +2855,19 @@
           {
             "keys": "Tab",
             "action": "Moves focus out of the editor without trapping the keyboard."
+          },
+          {
+            "keys": "Shift+Alt+F",
+            "action": "Formats the document as indented JSON."
+          },
+          {
+            "keys": "Ctrl+Space",
+            "action": "Opens schema completions when a schema is provided."
           }
         ],
-        "notes": ["Uses a native textarea with a programmatic label and announced parse feedback."]
+        "notes": [
+          "The editable area is labelled by the visible label and described by the description and parse feedback; a native textarea with the same wiring serves until the editor loads and wherever it cannot."
+        ]
       }
     },
     {
@@ -3096,6 +3113,58 @@
         "schema": "src/components/link/link.schema.json",
         "variables": "src/components/link/link.variables.json",
         "examples": "src/components/link/link.examples.json"
+      }
+    },
+    {
+      "name": "ListDetail",
+      "id": "list-detail",
+      "import": "@lostgradient/cinder",
+      "exportName": "ListDetail",
+      "category": "layout",
+      "status": "beta",
+      "purpose": "Resizable list-and-detail layout with a list header, keyboard selection, the open item kept in the URL, a remembered divider width, and a one-pane-at-a-time layout on narrow containers.",
+      "tags": ["layout", "list", "detail", "selection", "master-detail"],
+      "useWhen": [
+        "Browsing a collection of records where choosing one shows it beside the list, such as chats, runs, or memories.",
+        "The open record must survive a reload and be shareable as a link."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Each record has its own page and the list is only a way to navigate there.",
+          "alternative": "stacked-list-item"
+        },
+        {
+          "reason": "You need the resizable layout alone, with no list.",
+          "alternative": "resizable-panels"
+        }
+      ],
+      "related": ["resizable-panels", "data-list", "selectable-row", "empty-state"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/list-detail/list-detail.schema.json",
+        "variables": "src/components/list-detail/list-detail.variables.json",
+        "examples": "src/components/list-detail/list-detail.examples.json"
+      },
+      "a11y": {
+        "pattern": "Region landmarks with a native button or link row action",
+        "keyboard": [
+          {
+            "keys": "J",
+            "action": "Moves the keyboard cursor to the next row."
+          },
+          {
+            "keys": "K",
+            "action": "Moves the keyboard cursor to the previous row."
+          },
+          {
+            "keys": "Enter",
+            "action": "Opens the row the cursor is on."
+          }
+        ],
+        "notes": [
+          "J and K are ignored while focus is in a text field, a menu, a listbox, a combobox or a dialog, so typing is never taken."
+        ]
       }
     },
     {
@@ -3679,11 +3748,12 @@
       "exportName": "PayloadInspector",
       "category": "data-display",
       "status": "stable",
-      "purpose": "Compact inspector for structured payloads: a labeled tree view with a copy action and size/truncation status.",
+      "purpose": "Inspector for structured payloads: labelled fields by default with a Fields / JSON switch, a copy action, and size and truncation status.",
       "tags": ["json", "inspector", "payload"],
       "useWhen": [
         "Inspecting workflow inputs, signal payloads, activity results, or API response bodies in a dashboard.",
-        "Displaying a structured payload with a visible label, byte size, and copy affordance."
+        "Displaying a structured payload with a visible label, byte size, and copy affordance.",
+        "Reading a payload as data first, with the raw JSON one switch away."
       ],
       "avoidWhen": [
         {
@@ -3693,7 +3763,7 @@
           "reason": "Needing search, filtering, or virtualization over large collections — compose a custom viewer."
         }
       ],
-      "related": ["json-viewer", "code-block", "copy-button"],
+      "related": ["json-viewer", "code-block", "copy-button", "schema-view"],
       "hasConstraints": false,
       "hasExamples": true,
       "artifacts": {
@@ -4253,6 +4323,38 @@
       }
     },
     {
+      "name": "SchemaView",
+      "id": "schema-view",
+      "import": "@lostgradient/cinder",
+      "exportName": "SchemaView",
+      "category": "data-display",
+      "status": "beta",
+      "purpose": "Read-only view of a JSON Schema: one line per field with a label, a red dot when required, a monospace type and a description, nested objects indented, and a disclosure for the raw document.",
+      "tags": ["schema", "json-schema", "read-only", "data-display"],
+      "useWhen": [
+        "Showing the shape of a workflow input or output, a tool input, or a signal or update payload without a raw JSON dump.",
+        "Telling the reader which fields are required and what type each one takes."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "The schema must be edited.",
+          "alternative": "json-schema-editor"
+        },
+        {
+          "reason": "You are showing a value rather than the shape it must have.",
+          "alternative": "payload-inspector"
+        }
+      ],
+      "related": ["json-schema-editor", "payload-inspector", "json-viewer", "description-list"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/schema-view/schema-view.schema.json",
+        "variables": "src/components/schema-view/schema-view.variables.json",
+        "examples": "src/components/schema-view/schema-view.examples.json"
+      }
+    },
+    {
       "name": "ScrollArea",
       "id": "scroll-area",
       "import": "@lostgradient/cinder",
@@ -4793,7 +4895,7 @@
       "exportName": "Skeleton",
       "category": "feedback",
       "status": "stable",
-      "purpose": "Decorative placeholder block that reserves layout space while real content loads.",
+      "purpose": "Decorative placeholder that reserves layout space while real content loads, as a single block or a group of lines or a card, with optional delayed appearance and a \"Still loading\" status.",
       "tags": ["feedback", "loading"],
       "useWhen": [
         "Reserving the rough shape of incoming content during an initial fetch to avoid layout shift.",
@@ -5781,6 +5883,36 @@
         "schema": "src/components/textarea/textarea.schema.json",
         "variables": "src/components/textarea/textarea.variables.json",
         "examples": "src/components/textarea/textarea.examples.json"
+      }
+    },
+    {
+      "name": "ThemeSwitch",
+      "id": "theme-switch",
+      "import": "@lostgradient/cinder",
+      "exportName": "ThemeSwitch",
+      "category": "form",
+      "status": "beta",
+      "purpose": "Three-position Light, System, Dark switch on a quiet sky and night track, for choosing a color theme.",
+      "tags": ["form", "switch", "theme", "appearance"],
+      "useWhen": [
+        "Letting a person choose between a light theme, a dark theme, and following their system setting.",
+        "Placing the theme choice in a header, a user menu, or a settings page as one compact control."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Flipping a single setting on or off — use toggle instead."
+        },
+        {
+          "reason": "Picking one option from a longer list of labeled choices — use segmented-control instead."
+        }
+      ],
+      "related": ["toggle", "segmented-control"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/theme-switch/theme-switch.schema.json",
+        "variables": "src/components/theme-switch/theme-switch.variables.json",
+        "examples": "src/components/theme-switch/theme-switch.examples.json"
       }
     },
     {

@@ -82,8 +82,13 @@ for (const width of WIDTHS) {
     const keys = Object.keys(published);
     await expect(page.locator('[data-setting]')).toHaveCount(keys.length);
     for (const key of keys) {
+      // A JSON setting is a JsonEditor, whose native textarea is hidden once its editor mounts, so
+      // the control to find is the visible one: the editor's `role="textbox"` content element.
       await expect(
-        settingRow(page, key).locator('button[role="switch"], input, select, textarea').first(),
+        settingRow(page, key)
+          .locator('button[role="switch"], input, select, textarea, [role="textbox"]')
+          .filter({ visible: true })
+          .first(),
       ).toBeVisible();
     }
     await expect(page.getByText(/unsupported/i)).toHaveCount(0);

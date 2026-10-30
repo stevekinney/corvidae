@@ -1,8 +1,9 @@
 /* INTERNAL — soft status-surface recipe shared by Alert, Banner, and Callout.
  *
  * These three components paint a "soft surface" for each status variant
- * (info / success / warning / danger): a tinted background, a soft border, a
- * status-tinted foreground, and (Callout only) a saturated inline-start stripe.
+ * (info / success / warning / danger): a tinted background, a soft border, and a
+ * status-tinted foreground. There is no accent stripe: a status surface is a tint
+ * and an icon inside one edge (COR-1821).
  * Before this partial the four `light-dark(oklch(from var(--cinder-{status}) …))`
  * declarations were duplicated — byte-for-byte between Callout and Banner, and
  * with a custom-hue indirection in Alert. This file is the single source of that
@@ -17,24 +18,22 @@
  * with the triples is separate, screenshot-gated visual work.
  *
  * COMPOSITION — decomposed by emitted responsibility so each component opts into
- * only what it needs (only Callout draws the directional stripe):
+ * only what it needs:
  *   - `.cinder-_status-surface`        → background-color + color (bg + fg)
  *   - `.cinder-_status-surface-border` → border-color (soft border)
- *   - `.cinder-_status-surface-stripe` → border-inline-start-color (saturated)
- * Alert and Banner both compose surface + border; Callout composes all three.
+ * Alert, Banner and Callout all compose surface + border.
  *
  * INPUTS — each composing element sets these per variant, on the SAME element as
  * the class (so they resolve with no inheritance distance):
  *   --_cinder-status-base            the status base color, e.g. var(--cinder-status-info-solid)
  *   --_cinder-status-fg-chroma-light foreground chroma in light mode  (info 0.12 → danger 0.18)
  *   --_cinder-status-fg-chroma-dark  foreground chroma in dark mode   (info 0.12 → danger 0.16)
- *   --_cinder-status-stripe-chroma   stripe chroma, both modes        (info 0.13 → danger 0.18)
  * The L values and the bg/border chroma are uniform across variants, so they are
- * baked into the recipe; only the foreground and stripe chroma escalate per
- * status severity, so those are inputs.
+ * baked into the recipe; only the foreground chroma escalates per status
+ * severity, so that is an input.
  *
  * Per-component layout stays component-local. The forced-colors reset for the
- * surface/border/stripe is owned by THIS partial (see the @media block below)
+ * surface/border is owned by THIS partial (see the @media block below)
  * so it is import-order-independent; components keep only their own
  * forced-colors chrome (focus rings, dismiss-button outlines, etc.).
  *
@@ -92,16 +91,6 @@
     );
   }
 
-  /* Saturated directional stripe (Callout). Declared as its own class so it can
-   * be composed AFTER the soft border, keeping the inline-start edge resolving to
-   * this high-chroma value rather than the soft border-color above. Also (0,2,0). */
-  .cinder-_status-surface-stripe.cinder-_status-surface-stripe {
-    border-inline-start-color: light-dark(
-      oklch(from var(--_cinder-status-base) 55% var(--_cinder-status-stripe-chroma) h),
-      oklch(from var(--_cinder-status-base) 70% var(--_cinder-status-stripe-chroma) h)
-    );
-  }
-
   /* Forced-colors / high-contrast.
    *
    * The recipe owns its own forced-colors reset so the behavior holds regardless
@@ -109,10 +98,8 @@
    * These overrides carry the same self-doubled (0,2,0) specificity as the normal
    * rules above and sit later in this file, so they win over the normal recipe in
    * forced-colors mode. The tinted surface collapses to the system Canvas/
-   * CanvasText pair, and the border + stripe pin to CanvasText — matching what
-   * Alert/Banner/Callout declared inline before the extraction. The stripe's 4px
-   * WIDTH (set by Callout's base rule) survives as the directional cue even though
-   * its color collapses to CanvasText. */
+   * CanvasText pair, and the border pins to CanvasText — matching what
+   * Alert/Banner/Callout declared inline before the extraction. */
   @media (forced-colors: active) {
     .cinder-_status-surface.cinder-_status-surface {
       background-color: Canvas;
@@ -121,10 +108,6 @@
 
     .cinder-_status-surface-border.cinder-_status-surface-border {
       border-color: CanvasText;
-    }
-
-    .cinder-_status-surface-stripe.cinder-_status-surface-stripe {
-      border-inline-start-color: CanvasText;
     }
   }
 }

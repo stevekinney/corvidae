@@ -99,6 +99,7 @@ import type { BureauModelPolicyOptions } from './model-policy';
 import type { BureauDecisions, DecisionsOptions } from './decisions/types';
 import type { BureauSettings, SettingsOptions } from './settings/types';
 import type { Models, ModelsOptions } from './models/create-models';
+import type { BureauNotifications } from './notifications/notification-types';
 import type { OnlineEvalSampler, OnlineEvalSamplerOptions } from './online-evals';
 import type { ForkSessionRequest, ForkSessionResult } from './session-fork';
 import type {
@@ -107,6 +108,9 @@ import type {
   SteeringCommandRequest,
 } from './steering';
 import type { WebhookNotifier, WebhookNotifierOptions } from './webhook-notifier';
+import type { BureauHooks } from './hooks/create-hooks';
+import type { HookSecretStore } from './hooks/hook-types';
+import type { HookUrlPolicy } from './hooks/hook-url-policy';
 
 // ── Provider Configuration ───────────────────────────────────────────
 
@@ -140,6 +144,13 @@ export interface SkillRuntimeConfiguration {
    * underneath it mid-conversation.
    */
   catalog?: SkillCatalogRevision;
+  /**
+   * The host's catalog as it is now, read each time a skill is used (COR-1926). `catalog` decides
+   * what a run is offered; this decides whether a skill it was offered may still be used, so a
+   * source the host stops trusting is refused at the next use by a run already in flight. It
+   * narrows and never widens. Omit it and a run uses the revision it started with.
+   */
+  currentCatalog?: () => SkillCatalogRevision;
   includeTools?: boolean;
   skillPolicy?: ToolPolicy;
 }
@@ -374,6 +385,40 @@ export interface BureauRetentionOptions {
    * integer; otherwise `createBureau` throws `BureauError(..., 'BAD_REQUEST')`.
    */
   logs?: BureauLogsRetentionOption | undefined;
+  /**
+   * COR-1941 — how long a notification is kept after it was written, swept by each maintenance
+   * pass whether or not it was read. Leave it out to keep notifications until the owner holds
+   * more than 1000, when the oldest go. `olderThan` must be a positive integer; otherwise
+   * `createBureau` throws `BureauError(..., 'BAD_REQUEST')`.
+   */
+  notifications?: BureauNotificationsRetentionOption | undefined;
+  /**
+   * COR-1943 — how long a settled hook delivery record (delivered, exhausted, aborted, or failed
+   * for want of a secret) is kept after it was last written, swept by each maintenance pass. A
+   * pending delivery is never removed, whatever its age. Leave it out to keep delivery records until
+   * their hook is deleted. Has effect only on a Bureau composed with {@link BureauOptions.hooks}.
+   * `olderThan` must be a positive integer; otherwise `createBureau` throws
+   * `BureauError(..., 'BAD_REQUEST')`.
+   */
+  hookDeliveries?: BureauHookDeliveriesRetentionOption | undefined;
+}
+
+/**
+ * COR-1943 — the window of {@link BureauRetentionOptions.hookDeliveries}. Only `{ olderThan }`
+ * exists: keeping delivery records forever is leaving the option out.
+ */
+export interface BureauHookDeliveriesRetentionOption {
+  /** Milliseconds after a delivery was last written; a positive integer. */
+  readonly olderThan: number;
+}
+
+/**
+ * COR-1941 — the window of {@link BureauRetentionOptions.notifications}. Only `{ olderThan }`
+ * exists: keeping notifications forever is leaving the option out.
+ */
+export interface BureauNotificationsRetentionOption {
+  /** Milliseconds after a notification was written; a positive integer. */
+  readonly olderThan: number;
 }
 
 /**
@@ -459,8 +504,15 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * `BureauError` (`BAD_REQUEST`). Requires {@link ModelsOptions.generate}: a model name that
    * nothing can turn into a `generate` would be silently ignored, so `createBureau` refuses the
    * combination with `BureauError` (`BAD_REQUEST`).
+   *
+   * COR-1873: pass several sources to layer them. The owner's sources come first; a plugin's
+   * read-only layer (`agentFileDirectory(path, { plugin })`) sits beneath them, lists its agents
+   * as `plugin:name`, reloads them when they change, and refuses every write with
+   * `agent-file-read-only`. `agents.duplicate` copies one into the owner's source. The list is
+   * read as `layeredAgentSource(list)`; an empty list or two layers of one plugin is refused with
+   * `BureauError` (`BAD_REQUEST`).
    */
-  agentSource?: AgentSource;
+  agentSource?: AgentSource | readonly AgentSource[];
   /**
    * COR-1913 — the secret that signs the tool approvals the file agents of
    * {@link BureauOptions.agentSource} raise. A file agent's tools ask a person before they run
@@ -481,8 +533,12 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * schedule its `trigger` names. Requires a durable engine, and `createBureau` refuses the
    * combination without one with `BureauError` (`BAD_REQUEST`). See
    * `documentation/workflow-files.md`.
+   *
+   * COR-1873: pass several sources to layer them, as for {@link BureauOptions.agentSource}: a
+   * plugin's read-only layer lists its workflows as `plugin:name` and refuses every write with
+   * `workflow-file-read-only`.
    */
-  workflowSource?: WorkflowSource;
+  workflowSource?: WorkflowSource | readonly WorkflowSource[];
   /**
    * COR-1813 — Weft's worker deployment catalog, the durable store of worker builds and routing
    * pointers. With it, {@link Bureau.deployments} reads a deployment's routing pointer and ramps,
@@ -568,6 +624,12 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * default `'automatic'` profile uses in-process intervals. Cloudflare
    * Durable Objects and other serverless hosts should use `'manual'`, then
    * call {@link Bureau.maintain} from each alarm or Cron wake-up.
+   *
+   * COR-1946: over persistent storage a Bureau holds a 30-second process lease that other
+   * processes read to tell a task whose process stopped from one still running. `'automatic'`
+   * renews it on a timer; `'manual'` renews it only inside {@link Bureau.maintain}, so a manual host
+   * should call `maintain()` at least every 30 seconds while it runs process-local tasks that
+   * another Bureau over the same storage may boot beside.
    */
   maintenance?: 'automatic' | 'manual';
   /**
@@ -753,6 +815,17 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * Omit or pass `{ targets: [] }` to disable — the default.
    */
   webhooks?: WebhookNotifierOptions;
+  /**
+   * COR-1939 — user-defined hooks: owner-scoped webhooks over the Bureau's published events, each
+   * delivery HMAC-signed (`X-Signature`), its request, response excerpt and attempts kept on a
+   * record, and retried and resumed after a restart. Exposed as {@link Bureau.hooks} and as the
+   * `bureau.hooks.*` operations. Needs durable storage (`NOT_CONFIGURED`, subject `persistence`,
+   * without it) and {@link BureauOptions.answerEncryption} to seal signing secrets (a write of one
+   * is refused without it). Deliveries use the HTTP client, retry schedule, clock and shutdown of
+   * {@link BureauOptions.webhooks} (`fetch`, `maxAttempts`, `backoffBaseMilliseconds`, `sleep`,
+   * `now`, `signal`), which may have no `targets`. Omit to compose none — the default.
+   */
+  hooks?: BureauHooksOptions;
   /**
    * Online evaluations (AB-53) — samples a fraction of completed live runs
    * through configured judges/matchers, records every sampled score to the
@@ -1041,7 +1114,7 @@ export interface ResolveReviewInput {
   reason?: string;
   /**
    * COR-1828 — `tool-approval` approve only: also allow this tool for the rest of the chat. The
-   * grant (`approvalGrants: [toolName]` on the session's metadata) is stored in the same commit as
+   * grant (`approvalGrants: [toolId]` on the session's metadata, COR-1950) is stored in the same commit as
    * the decision, and it ends with the chat: it is not carried into a fork, and a deleted session
    * takes it along. It only ever skips an `on-changes` ask. It never loosens a tool set to
    * `always` or `blocked`, an agent-wide always mode, or a read-only restriction, because those
@@ -1259,6 +1332,28 @@ export interface BureauRecoveryReport {
    * `scope: 'recovery'` `warn`.
    */
   readonly skippedRuns: readonly { readonly runId: string; readonly type: string }[];
+}
+
+/** {@link BureauOptions.hooks}. */
+export interface BureauHooksOptions {
+  /**
+   * Where the sealed signing secrets are kept. Bureau seals each secret (COR-1816's scheme, under
+   * {@link BureauOptions.answerEncryption}) before it reaches the port, so the port holds
+   * ciphertext only. A host whose secrets live elsewhere supplies its own; its `writeLock()` makes
+   * a secret write fail with `locked` and that reason (`deployment` for a remote home). Omitted,
+   * the ciphertext is kept in Bureau's key-value store.
+   */
+  secrets?: HookSecretStore;
+  /**
+   * Which URLs a hook may deliver to. By default loopback and private-network addresses are
+   * allowed (Interborough is local-first); link-local (including the cloud metadata endpoints
+   * `169.254.169.254` and `fd00:ec2::254`), unspecified and multicast never are. A hosted
+   * deployment, a remote Interborough home included, must set `allowPrivateNetworks: false` when it
+   * enables hooks.
+   */
+  urlPolicy?: HookUrlPolicy;
+  /** How long one delivery request may take before it counts as failed. Default `10000`. */
+  requestTimeoutMilliseconds?: number;
 }
 
 /** {@link BureauOptions.children}. */
@@ -1964,6 +2059,44 @@ export interface BureauSchedules {
   ): Subscription;
 }
 
+/** What fills a context's window: one of the five categories {@link ContextWindowReport} splits it into. */
+export type ContextWindowCategoryName = 'system' | 'tools' | 'messages' | 'memory' | 'attachments';
+
+/** One category of a {@link ContextWindowReport} and the tokens it holds. */
+export interface ContextWindowCategory {
+  /** What the tokens are: the `system` instructions, the `tools` offered, the conversation's `messages`, recalled `memory`, or media `attachments`. */
+  readonly name: ContextWindowCategoryName;
+  /** The estimated tokens (four characters to a token; an attachment by its byte size and kind). */
+  readonly tokens: number;
+}
+
+/**
+ * How full a context's window is (COR-1937, {@link BureauContexts.window}).
+ *
+ * `usedEstimated` is Bureau's own size estimate of the prompt the context's next step would send,
+ * and always equals the sum of `categories`, which lists all five categories once, in the order
+ * `system`, `tools`, `messages`, `memory`, `attachments`. `usedReported` is the provider's own
+ * count, never an estimate: the input tokens (fresh, cache-read and cache-written) of the context's
+ * latest step, `null` when there is none or the provider reported none. The latest step is looked
+ * for among the context's 50 newest tasks, so a context whose 50 newest tasks all ended before a
+ * step reads `null`. It describes the request that step sent, so once the run has ended it lags
+ * `usedEstimated` by that step's reply and tool results; mid-run, a chat that saves its rows only
+ * when its run ends (a scheduled fire saves after every step) can have the reverse, an estimate
+ * behind the steps already sent. `maxTokens` is
+ * the context window of the model that would answer, from the model catalog: the context's steered
+ * model, else its agent's default, and `null` when neither names a catalog row.
+ */
+export interface ContextWindowReport {
+  /** The model's context window in tokens, or `null` when the model is not known. */
+  readonly maxTokens: number | null;
+  /** The estimated tokens of the next prompt: the sum of `categories`. */
+  readonly usedEstimated: number;
+  /** The input tokens the provider reported for the latest step, or `null`. */
+  readonly usedReported: number | null;
+  /** The estimate split by what fills the window. */
+  readonly categories: readonly ContextWindowCategory[];
+}
+
 /**
  * The contexts (sessions) of a Bureau: reading and deleting them, signalling a parked run, admitting
  * input and steering, branching, and the history of their events. A context is the durable
@@ -2148,6 +2281,21 @@ export interface BureauContexts {
    * hold. It does not authorize the caller: that is the caller's to do, as for `contexts.get`.
    */
   steering(contextId: string): Promise<SessionSteeringState | undefined>;
+
+  /**
+   * How full the context's window is (COR-1937): the size of the prompt its next step would send,
+   * split by what fills it, against the window of the model that would answer. Read-only: it calls
+   * no model and writes no state, so it answers for an idle context, for a context with no run, and
+   * for a running one without waiting on the run (it reads the last committed history: a chat saves
+   * its rows when its run ends, a scheduled fire after every step, so a chat mid-run can show fewer
+   * rows than the steps it has already sent). `undefined` for a context this Bureau does not hold, or, with
+   * `options.incarnation`, one whose id now names another incarnation. It does not authorize the
+   * caller: that is the caller's to do, as for `contexts.get`. See {@link ContextWindowReport}.
+   */
+  window(
+    contextId: string,
+    options?: { readonly incarnation?: string | undefined },
+  ): Promise<ContextWindowReport | undefined>;
 
   /**
    * Branches a session at the end of a turn (COR-1560, COR-1910): a new session, owned by
@@ -2436,6 +2584,12 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    */
   readonly audit: BureauAudit;
   /**
+   * COR-1941 — the owner's notifications: what Bureau tells them needs their attention (a failed
+   * run, a review waiting, a budget exceeded) and whatever else the host writes through
+   * `notifications.create`. Persisted and owner-scoped. See {@link BureauNotifications}.
+   */
+  readonly notifications: BureauNotifications;
+  /**
    * The seam the handler and the test harness read: stores, event feeds, and the task registry.
    * It is not part of the surface an application builds on. See {@link BureauInternals}.
    */
@@ -2485,6 +2639,13 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * BureauOptions.workerDeployments}. See {@link BureauWorkerDeployments}.
    */
   readonly deployments: BureauWorkerDeployments | undefined;
+  /**
+   * COR-1939 — user-defined hooks over the Bureau's published events: `create`, `update`, `delete`,
+   * `get`, `list`, `test` and `deliveries`. `undefined` when the Bureau has no {@link
+   * BureauOptions.hooks}. A hook belongs to the principal that created it; the in-process calls
+   * leave authorization to the caller, as `Bureau.goals` does. See {@link BureauHooks}.
+   */
+  readonly hooks: BureauHooks | undefined;
 
   /**
    * COR-772 — Bureau's durable parent-child topology: dispatch a catalog

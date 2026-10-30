@@ -34,6 +34,7 @@ import {
   type GoalAttemptCostEstimation,
   isGoalAttemptCostEstimation,
 } from './goal-cost-estimation';
+import { goalAttemptId } from './goal-state';
 import { ownerOrLocal } from './owner-of-record';
 import {
   type RuntimeComposition,
@@ -43,6 +44,14 @@ import {
 import type { RunAttribution } from './serialization';
 import type { DecideToolWiring } from './decisions/decide-tool';
 import { humanInputEnabled, humanInputSchemasOf } from './human-input-option';
+import {
+  isTaskOrigin,
+  taskOriginParentOf,
+  taskOriginParentTag,
+  taskOriginTag,
+  type StoredTaskOrigin,
+  type TaskOrigin,
+} from './task-origin';
 import type { TaskToolGrant } from './task-registry';
 import type { BureauHumanInputOption, BureauRunOptions } from './types';
 
@@ -58,6 +67,35 @@ export interface CatalogRunEnded {
   /** The principal the run was dispatched for, as given; the run's claims were taken as its owner. */
   readonly principal: string | undefined;
   readonly settled: SettledCatalogHandle;
+}
+
+/**
+ * COR-1868 — a run that is a task of its own: a child run, a goal attempt, or a workflow `agent`
+ * step. The dispatcher hands one to Bureau once the run exists, and Bureau admits its task record
+ * and settles it from the run's own end.
+ */
+export interface SubordinateRun {
+  readonly runId: string;
+  /** The agent the run is of. */
+  readonly agentName: string;
+  readonly handle: AgentRun<unknown, boolean>;
+  /**
+   * Settles once the run's start has committed, with the origin its claim stores: `undefined` for
+   * a claim written before COR-1868, whose run stays a non-task. Rejects when the start never
+   * committed, so no task is ever recorded for a run that did not exist.
+   */
+  readonly started: Promise<StoredTaskOrigin | undefined>;
+  /**
+   * Present only for a run with no durable claim to read the task from (a child of a Bureau with
+   * no durable engine): what its task record is written from.
+   */
+  readonly local?:
+    | {
+        readonly taskOrigin: TaskOrigin;
+        readonly principal: string | undefined;
+        readonly input: AgentInput;
+      }
+    | undefined;
 }
 
 export interface CatalogDispatcherDependencies {
@@ -116,6 +154,12 @@ export interface CatalogDispatcherDependencies {
    */
   readonly toolGrant?: (() => TaskToolGrant) | undefined;
   /**
+   * COR-1868 — called once per child run, goal attempt and workflow step run this dispatcher
+   * starts, with the run's handle, so Bureau can admit its task record after the start committed
+   * and settle it from the run's own end. Must not throw.
+   */
+  readonly trackSubordinateRun?: ((run: SubordinateRun) => void) | undefined;
+  /**
    * COR-1524 — what a run of a file-based agent needs: its snapshot recorded before it starts,
    * and its reference settled when it ends. Absent when the Bureau has no agent directory.
    */
@@ -146,6 +190,17 @@ export function catalogRunGuardrailsContext(
   agent: object,
 ): Pick<AgentRunContext, 'inheritedGuardrails'> {
   return resolvesOwnGuardrails(agent) ? {} : { inheritedGuardrails: false };
+}
+
+/**
+ * COR-1868 — the Weft tags a subordinate task's workflow starts with: its origin's kind, and the run
+ * it belongs to, so a reader lists the runs of one parent by tag.
+ */
+function subordinateTags(origin: TaskOrigin): readonly string[] {
+  const parent = taskOriginParentOf(origin);
+  return parent === null
+    ? [taskOriginTag(origin)]
+    : [taskOriginTag(origin), taskOriginParentTag(parent)];
 }
 
 /**
@@ -287,6 +342,7 @@ export function createCatalogDispatcher({
   toolGrant,
   registerCatalogRun,
   onCatalogRunEnded,
+  trackSubordinateRun,
   fileAgents,
 }: CatalogDispatcherDependencies): {
   planChildRun: (
@@ -393,10 +449,16 @@ export function createCatalogDispatcher({
     /**
      * COR-1527 — an `agent` step of a workflow file. Like a goal attempt, its id is a function
      * of what started it, so a claim already holding this id is the same step's own claim from a
-     * start that died before the workflow existed; and like one, its run is not a task and is
-     * left to the engine's disposal at shutdown rather than aborted.
+     * start that died before the workflow existed; and like one, its run is left
+     * to the engine's disposal at shutdown rather than aborted.
      */
     workflowStep?: WorkflowStepOwner,
+    /**
+     * COR-1868 — the origin of the task this run is, for a child run, a goal attempt or a workflow
+     * step. Written into the run's claim, and mirrored on the workflow as its tags; the task
+     * itself is admitted by {@link CatalogDispatcherDependencies.trackSubordinateRun}.
+     */
+    taskOrigin?: TaskOrigin,
   ): AgentRun<unknown, boolean> {
     const durable = runtime.durable;
     if (!durable) {
@@ -408,6 +470,14 @@ export function createCatalogDispatcher({
     // handle's `id` and liveness `snapshot().id`, and the resolved run adopts
     // it, so the handle, the workflow, and its event history share one id.
     context.runId = runId;
+    // COR-1868 — a run that is a task of its own reports when its start has committed, with the
+    // origin its stored claim holds. That is the claim of the run that starts, which a continued
+    // claim keeps from the execution that wrote it, never the origin this execution built.
+    let storedTaskOrigin: StoredTaskOrigin | undefined = taskOrigin;
+    const subordinateStart =
+      taskOrigin === undefined ? undefined : Promise.withResolvers<StoredTaskOrigin | undefined>();
+    // Read by the track below; a start that throws before reaching it must not leave a rejection unhandled.
+    subordinateStart?.promise.catch(() => undefined);
     if (runIdOverride !== undefined) {
       const held = runAttribution.get(runId);
       // An attribution already under this id is another run's, unless it is this
@@ -694,6 +764,8 @@ export function createCatalogDispatcher({
         ...(runOptions?.sessionId === undefined ? {} : { contextId: runOptions.sessionId }),
         ...(goalAttempt === undefined ? {} : { goalAttempt }),
         ...(workflowStep === undefined ? {} : { workflowStep }),
+        // COR-1868: the task this run is, so a record lost in a crash is rebuilt from the claim.
+        ...(taskOrigin === undefined ? {} : { taskOrigin }),
         // COR-851: the estimator this run is configured with, written with the
         // claim, so pricing the attempt later never resolves the agent again.
         ...(goalCostEstimation === undefined ? {} : { costEstimation: goalCostEstimation }),
@@ -762,6 +834,9 @@ export function createCatalogDispatcher({
           // drift, and this start is no different. A file agent's claim is rebuilt from its
           // snapshot at the revision the claim recorded (COR-1584), below.
           const claimed = existing.record;
+          // COR-1868 — the task is whatever the winning claim says: a claim written before
+          // the field existed is not one, and this execution does not make it one.
+          storedTaskOrigin = claimed.taskOrigin;
           // COR-1524 — the claim's run began on a definition of a file agent that may since have
           // changed; this execution continues that run, so it is built from the claim's snapshot.
           let claimedAgent: AnyRunnableAgent & DefinitionResolvingAgentWithResolver = agent;
@@ -802,6 +877,10 @@ export function createCatalogDispatcher({
           checkpointStore: durable.checkpointStore,
           runId,
           sessionId: runOptions?.sessionId ?? runId,
+          // COR-1868 — the origin and the parent, so the runs of a parent are listed by tag.
+          ...(storedTaskOrigin !== undefined && isTaskOrigin(storedTaskOrigin)
+            ? { tags: subordinateTags(storedTaskOrigin) }
+            : {}),
           ...(humanInputEmitter === undefined
             ? {}
             : {
@@ -856,23 +935,29 @@ export function createCatalogDispatcher({
     const trackDispatchSettlement = async (): Promise<RunnableAgent<unknown, boolean>> => {
       try {
         const resolved = await resolveDurableAgent();
-        if (durableStart !== undefined) {
+        if (durableStart !== undefined || subordinateStart !== undefined) {
           // No active run means the agent fell back to a direct run, which no
           // restart could find; a goal attempt must never end up there.
           if (dispatchedActiveRun === undefined) {
-            durableStart.reject(
-              new GoalAttemptNotDurableCapableError(
-                `Agent "${name}" did not run durably, so it cannot run a goal attempt`,
-              ),
+            const notDurable = new GoalAttemptNotDurableCapableError(
+              `Agent "${name}" did not run durably, so it cannot run a goal attempt`,
             );
+            durableStart?.reject(notDurable);
+            // A child that ran in-process has no workflow, so no task is recorded for it.
+            subordinateStart?.reject(notDurable);
           } else {
             void (dispatchedActiveRun.durablyStarted ?? Promise.resolve()).then(
-              durableStart.resolve,
+              () => {
+                durableStart?.resolve();
+                subordinateStart?.resolve(storedTaskOrigin);
+                return undefined;
+              },
               (error: unknown) => {
                 // A start that never committed holds no workflow this share
                 // protects; the retry, if any, keeps its own.
                 releaseAttribution();
-                durableStart.reject(error);
+                durableStart?.reject(error);
+                subordinateStart?.reject(error);
               },
             );
           }
@@ -880,6 +965,7 @@ export function createCatalogDispatcher({
         return resolved;
       } catch (error) {
         durableStart?.reject(error);
+        subordinateStart?.reject(error);
         // AB-241: `resolveDurableAgent`'s `AgentContractError` fallback
         // (above) already deletes `runAttribution` for the abandoned
         // `runId` on ITS OWN success path (a `return`, not a throw). Any
@@ -994,6 +1080,16 @@ export function createCatalogDispatcher({
     // COR-1630 — a goal attempt's claims are released by the goal forwarder, after the goal's
     // session holds the attempt's rows; every other durable dispatch is released from here.
     if (goalAttempt === undefined) reportWhenSettled(guardedRun, runId, principal);
+    // COR-1868 — a child run, a goal attempt and a workflow step are tasks of their own: Bureau
+    // admits the record once the start committed and settles it from the run's own end.
+    if (subordinateStart !== undefined) {
+      trackSubordinateRun?.({
+        runId,
+        agentName: name,
+        handle: guardedRun,
+        started: subordinateStart.promise,
+      });
+    }
     // A goal attempt is deliberately left out of `catalogRuns`. Shutdown aborts
     // every tracked run, and an attempt aborted by shutdown would end `aborted`
     // for good: its goal would read that as the attempt failing. Untracked, the
@@ -1048,6 +1144,10 @@ export function createCatalogDispatcher({
         start.principal,
         agent,
         start.childRunId,
+        undefined,
+        undefined,
+        undefined,
+        start.taskOrigin,
       );
     }
     // COR-1302 — the handle takes the id Bureau's topology recorded for this
@@ -1079,6 +1179,14 @@ export function createCatalogDispatcher({
     );
     // COR-1630 — see `runAgent`.
     if (hasResolver) reportWhenSettled(direct, context.runId, start.principal);
+    // COR-1868 — nothing is durable in this mode, so the task is written from what the start knows.
+    trackSubordinateRun?.({
+      runId: start.childRunId,
+      agentName: start.agentName,
+      handle: direct,
+      started: Promise.resolve(start.taskOrigin),
+      local: { taskOrigin: start.taskOrigin, principal: start.principal, input: start.input },
+    });
     return direct;
   }
 
@@ -1130,6 +1238,12 @@ export function createCatalogDispatcher({
       start.runId,
       { goalRunId: start.goalRunId, attemptIndex: start.attemptIndex },
       { resolve: resolveStart, reject: rejectStart },
+      undefined,
+      {
+        kind: 'goal',
+        goalRunId: start.goalRunId,
+        attemptId: goalAttemptId(start.goalRunId, start.attemptIndex),
+      },
     );
     return { run, durablyStarted };
   }
@@ -1137,9 +1251,9 @@ export function createCatalogDispatcher({
   /**
    * COR-1527 — starts one `agent` step of a workflow file as a standalone durable catalog run under
    * the step's own deterministic id. Never falls back to an in-process run: a step with no
-   * workflow behind it is one no restart could find. The run is not a task, is not offered
-   * `requestHumanInput`, and is not aborted by shutdown, so an interrupted step resumes at the
-   * next boot.
+   * workflow behind it is one no restart could find. The run is a task of its workflow instance
+   * (COR-1868), is not offered `requestHumanInput`, and is not aborted by shutdown, so an
+   * interrupted step resumes at the next boot.
    */
   function startWorkflowStepRun(start: WorkflowStepStart): AgentRun<unknown, boolean> {
     if (getShutdownPromise()) {
@@ -1172,6 +1286,7 @@ export function createCatalogDispatcher({
       undefined,
       undefined,
       start.workflowStep,
+      { kind: 'parent', parentRunId: start.workflowStep.workflowId },
     );
   }
 

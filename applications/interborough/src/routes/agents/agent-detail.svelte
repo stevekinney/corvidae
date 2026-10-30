@@ -14,8 +14,9 @@
   import { ChatConversationList } from '@lostgradient/chat';
   import { createInfiniteQuery, createQuery } from '@tanstack/svelte-query';
 
+  import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
   import { AGENT_EDITOR_COPY, AGENTS_COPY, CHAT_COPY } from '../../app/copy.ts';
-  import { agentEditPath, agentMemoryPath } from '../../lib/agent-paths.ts';
+  import { agentEditPath, agentMemoryPath, agentPath } from '../../lib/agent-paths.ts';
   import { getAgentDefinition } from '../../lib/agent-definitions.ts';
   import { listAgents, listContexts } from '../../lib/bureau-client.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
@@ -35,6 +36,8 @@
     undefined,
   );
   const agent = $derived(agents.data?.find((entry) => entry.name === id));
+  // The top bar's trail names the agent as a person reads it, once the listing has answered.
+  usePageLabel(() => ({ path: agentPath(id), label: agent?.displayName }));
 
   const definition = createQuery(
     () => ({

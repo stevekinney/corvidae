@@ -9,7 +9,7 @@ import {
   createSkillClient,
   type SkillCatalogRevision,
 } from '@lostgradient/bureau/skills';
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -153,7 +153,7 @@ describe('skills in configuration.json', () => {
       }),
       expect.objectContaining({
         name: 'summarize',
-        source: { id: 'home', kind: 'user', location: userSkills },
+        source: { id: 'home', kind: 'user', location: userSkills, plugin: null },
         trust: 'untrusted',
         available: false,
         unavailableReason: 'source-untrusted',
@@ -293,6 +293,31 @@ describe('changing the trust of a source', () => {
         detail: { sourceId: 'workspace', trusted: true },
       }),
     ]);
+  });
+
+  test('refuses a revoked source at the next use by a run that started before the revocation (COR-1926)', async () => {
+    const { home } = await layout();
+    const host = await startAt(home);
+    await host.skills.setTrust({ source: 'workspace', trusted: true });
+    // A run: bound to the catalog it started with, and checking the host's catalog at each use.
+    const run = createSkillClient({
+      catalog: host.skills.standing().catalog,
+      currentCatalog: () => host.skills.standing().catalog,
+      loadArtifact: createFilesystemArtifactLoader(),
+    });
+    expect(await run.activate('deploy')).toMatchObject({ activated: true });
+
+    await host.skills.setTrust({ source: 'workspace', trusted: false });
+
+    expect(run.active()).toEqual([]);
+    run.deactivate('deploy');
+    expect(await run.activate('deploy')).toMatchObject({
+      activated: false,
+      refusal: 'source-untrusted',
+    });
+
+    await host.skills.setTrust({ source: 'workspace', trusted: true });
+    expect(await run.activate('deploy')).toMatchObject({ activated: true });
   });
 
   test('survives a restart, and stopping trust is audited too', async () => {
@@ -438,6 +463,45 @@ describe('the skill routes', () => {
     expect(await notJson.json()).toMatchObject({ error: 'invalid', field: 'body' });
     expect(notBoolean.status).toBe(400);
     expect(await notBoolean.json()).toMatchObject({ field: 'trusted' });
+  });
+
+  test('answers 500 partial when the audit write fails, and the same request again records it (COR-1926)', async () => {
+    const { home } = await layout();
+    const host = await startAt(home);
+    const trail = host.bureau.internals.auditTrail!;
+    const record = trail.record.bind(trail);
+    // A trail that is down honors `strict`: it rejects for a caller that asked to be told, and
+    // drops the record for any other, which is what the default path does with a storage failure.
+    let down = true;
+    spyOn(trail, 'record').mockImplementation(async (entry) => {
+      if (down) {
+        if (entry.strict === true) throw new Error('the trail is down');
+        return;
+      }
+      await record(entry);
+    });
+
+    const failed = await send(host, 'PUT', '/host/skills/sources/workspace/trust', {
+      trusted: true,
+    });
+    expect(failed.status).toBe(500);
+    expect(await failed.json()).toMatchObject({
+      error: 'partial',
+      source: 'workspace',
+      trusted: true,
+    });
+    expect(await savedSkills(home)).toMatchObject({ trusted: ['workspace'] });
+
+    down = false;
+    const retried = await send(host, 'PUT', '/host/skills/sources/workspace/trust', {
+      trusted: true,
+    });
+    expect(retried.status).toBe(200);
+    expect(await retried.json()).toMatchObject({ trusted: true, changed: false });
+    const records = await host.bureau.audit.query({
+      runId: auditTrailSkillSourceOwnerId('workspace'),
+    });
+    expect(records.records.map((entry) => entry.type)).toEqual(['skill.source.trusted']);
   });
 
   test('refresh answers the catalog revision', async () => {

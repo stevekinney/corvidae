@@ -1310,7 +1310,7 @@ export const REVIEWS_COPY = {
 /** The words of the ⌘K palette. */
 export const PALETTE_COPY = {
   label: 'Command palette',
-  placeholder: 'Search chats, agents, workflows…',
+  placeholder: 'Search everything',
   untitledChat: CHAT_COPY.untitled,
   emptyTitle: 'Search the console',
   emptyDescription: 'Type the name of a chat or an agent, or an id, to jump to it.',
@@ -1333,6 +1333,7 @@ export const NOTIFICATION_COPY = {
   askedQuestion: (agent: string): string => `${agent} asked a question`,
   answered: (agent: string): string => `${agent} answered`,
   failed: (subject: string): string => `${subject} failed`,
+  budgetExceeded: (subject: string): string => `${subject} exceeded its budget`,
   /** What an agent is called when the Bureau names none. */
   unnamedAgent: 'An agent',
   /** Read between a sentence and the chat it is about, by a screen reader only. */
@@ -1342,15 +1343,17 @@ export const NOTIFICATION_COPY = {
   noErrorText: 'No reason was given',
 } as const;
 
-/** The words of the navigation: its two groups of views, and what the engine status says. */
+/** The words of the navigation and the top bar, and what the engine status says. */
 export const NAVIGATION_COPY = {
-  /** The views for working with agents. */
-  workGroup: 'Work',
-  /** The views for operating the engine. */
-  engineGroup: 'Engine',
-  /** The group's first entry: how the engine is doing, before any one page of it. */
-  engineOverview: 'Overview',
-  engineLink: 'Engine',
+  /** The accessible name of the sidebar's list of destinations. */
+  destinations: 'Views',
+  /** The accessible name of the top bar's breadcrumb trail. */
+  breadcrumb: 'Breadcrumb',
+  /** What the Health page's links to the engine's other pages are called. */
+  healthSections: 'Health sections',
+  /** The button that folds the sidebar to its icon rail, and opens it again. */
+  collapseSidebar: 'Collapse sidebar',
+  expandSidebar: 'Expand sidebar',
   /** What the engine status dot says, by the state of the live feed. */
   engineStatus: {
     connecting: 'Engine connecting',
@@ -1360,6 +1363,28 @@ export const NAVIGATION_COPY = {
     stale: 'Engine status stale',
     closed: 'Engine unreachable',
   },
+} as const;
+
+/** The words of the keyboard shortcuts and their map, opened with `?`. */
+export const SHORTCUT_COPY = {
+  mapTitle: 'Keyboard shortcuts',
+  openMap: 'Show keyboard shortcuts',
+  generalGroup: 'General',
+  navigationGroup: 'Go to',
+  listGroup: 'Lists',
+  goTo: (label: string): string => `Go to ${label}`,
+} as const;
+
+/** The words of the quick settings popover in the top bar: personal preferences for this browser. */
+export const QUICK_SETTINGS_COPY = {
+  trigger: 'Quick settings',
+  theme: 'Theme',
+  density: 'Density',
+  comfortable: 'Comfortable',
+  compact: 'Compact',
+  sidebar: 'Sidebar',
+  collapsed: 'Collapse to icons',
+  allSettings: 'All settings',
 } as const;
 
 /**
@@ -1624,7 +1649,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     forbidden: { title: 'Goals are locked' },
   },
   engine: {
-    label: 'Engine',
+    label: 'Health',
     loading: { title: 'Loading the engine', description: 'Reading the engine’s overview.' },
     error: {
       title: 'The engine is unavailable',

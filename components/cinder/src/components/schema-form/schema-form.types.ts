@@ -28,6 +28,12 @@ export type SchemaFormProps = Omit<HTMLFormAttributes, 'class' | 'onsubmit'> & {
    * silently discard in-progress user edits.
    */
   value?: unknown;
+  /**
+   * Whether a large form offers its own Edit as JSON panel. Defaults to `true`; set `false` when
+   * the host already provides a JSON entry point for the same payload, so the page does not show
+   * two. Find a field and the other large-form affordances are unaffected.
+   */
+  jsonEditable?: boolean;
   /** Name of the hidden serialized output field. Defaults to `value`. */
   name?: string;
   /** Label for the built-in submit button. Defaults to `Submit`. */

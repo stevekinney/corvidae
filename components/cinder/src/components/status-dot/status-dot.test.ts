@@ -112,9 +112,33 @@ describe('StatusDot label rendering', () => {
     expect(container.querySelector('.cinder-status-dot__label')).toBeNull();
   });
 
-  test('omits the visible label when no label is provided', () => {
+  test('StatusDot with only status renders a word', () => {
     const { container } = render(StatusDot, { props: { status: 'online' } });
+    const label = container.querySelector('.cinder-status-dot__label');
+    expect(label?.textContent).toBe('Online');
+  });
+
+  test.each(ALL_STATUSES)('a bare status="%s" dot renders its own default word', (status) => {
+    const { container } = render(StatusDot, { props: { status } });
+    const word = container.querySelector('.cinder-status-dot__label')?.textContent;
+    expect(word).toBe(`${status.charAt(0).toUpperCase()}${status.slice(1)}`);
+  });
+
+  test('a StatusDot with no props at all renders the neutral word', () => {
+    const { container } = render(StatusDot, { props: {} });
+    expect(container.querySelector('.cinder-status-dot__label')?.textContent).toBe('Neutral');
+  });
+
+  test('an explicit label replaces the default word', () => {
+    const { container } = render(StatusDot, { props: { status: 'online', label: 'Healthy' } });
+    expect(container.querySelector('.cinder-status-dot__label')?.textContent).toBe('Healthy');
+  });
+
+  test('labelVisible=false hides the default word but keeps it as the accessible name', () => {
+    const { container } = render(StatusDot, { props: { status: 'warning', labelVisible: false } });
+    const root = container.querySelector('.cinder-status-dot');
     expect(container.querySelector('.cinder-status-dot__label')).toBeNull();
+    expect(root?.getAttribute('aria-label')).toBe('Warning');
   });
 
   test('omits the visible label when label is an empty string', () => {
@@ -134,10 +158,10 @@ describe('StatusDot accessible name (WCAG 1.4.1)', () => {
     expect(container.querySelector('.cinder-status-dot')?.getAttribute('role')).toBe('img');
   });
 
-  test('falls back to aria-label={status} when no label is provided', () => {
+  test('names the dot with its default word when no label is provided', () => {
     const { container } = render(StatusDot, { props: { status: 'danger' } });
     expect(container.querySelector('.cinder-status-dot')?.getAttribute('aria-label')).toBe(
-      'danger',
+      'Danger',
     );
   });
 
@@ -198,7 +222,7 @@ describe('StatusDot accessible name (WCAG 1.4.1)', () => {
     // An empty override would hide the element from AT — treat it as "no
     // override" and fall through to the automatic status fallback instead.
     expect(container.querySelector('.cinder-status-dot')?.getAttribute('aria-label')).toBe(
-      'danger',
+      'Danger',
     );
   });
 
@@ -207,7 +231,7 @@ describe('StatusDot accessible name (WCAG 1.4.1)', () => {
       props: { status: 'danger', 'aria-label': '   ' },
     });
     expect(container.querySelector('.cinder-status-dot')?.getAttribute('aria-label')).toBe(
-      'danger',
+      'Danger',
     );
   });
 
@@ -221,8 +245,9 @@ describe('StatusDot accessible name (WCAG 1.4.1)', () => {
     expect(root?.getAttribute('aria-label')).toBeNull();
     expect(root?.getAttribute('data-cinder-status')).toBe('pending');
     expect(root?.hasAttribute('data-cinder-state')).toBe(false);
-    expect(container.querySelector('.cinder-status-dot__label')).toBeNull();
-    expect(container.querySelector('.cinder-sr-only')?.textContent).toBe('pending');
+    // The default word is the visible label, and it is also the live region's name.
+    expect(container.querySelector('.cinder-status-dot__label')?.textContent).toBe('Pending');
+    expect(container.querySelector('.cinder-sr-only')).toBeNull();
   });
 });
 

@@ -117,6 +117,31 @@ describe('a replay of a step that raised an approval', () => {
     expectNoOpenAbandonedRequest(events, pending);
   });
 
+  it('dismisses the notification of the abandoned request and keeps the one the replay waits on (COR-1941)', async () => {
+    const { recovered, fireId } = await crashThenRecover((attempt) => `charge-${attempt}`);
+
+    const dismissedKeys = async () => {
+      const page = await recovered.notifications.list({
+        owner: OWNER.alice,
+        includeDismissed: true,
+      });
+      return page.notifications
+        .filter((notification) => notification.kind === 'review.waiting')
+        .map((notification) => [notification.subject?.reviewId, notification.dismissedAt !== null]);
+    };
+
+    // The first attempt's process wrote the notification before it died; the replay closes the
+    // request with `review.superseded` and the notification goes with it.
+    await pollUntil(async () => {
+      const found = await dismissedKeys();
+      return found.some(([id, dismissed]) => id === `approval:${fireId}:charge-1` && dismissed)
+        ? found
+        : undefined;
+    }, 'the notification of the abandoned request to be dismissed');
+
+    expect(await dismissedKeys()).toContainEqual([`approval:${fireId}:charge-2`, false]);
+  });
+
   it('announces the request once when the replay makes the call under the same id', async () => {
     const { recovered, fireId } = await crashThenRecover(() => 'charge-same');
 

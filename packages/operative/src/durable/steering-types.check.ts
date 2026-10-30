@@ -30,6 +30,7 @@ export const steeringTargetKinds: readonly SteeringTargetKind[] = [
   'model',
   'provider',
   'effort',
+  'permission-mode',
   'pause',
   'resume',
 ];
@@ -70,6 +71,10 @@ export const effortPolicyValue: SteeringRequestedValue = {
   policyRef: 'default-effort',
 };
 export const effortOverrideValue: SteeringRequestedValue = { target: 'effort', override: 'high' };
+export const permissionModeOverrideValue: SteeringRequestedValue = {
+  target: 'permission-mode',
+  override: 'read-only',
+};
 
 export const steeringCommand: SteeringCommand = {
   id: 'steering-command-id',

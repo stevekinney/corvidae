@@ -176,6 +176,18 @@ export const settingsSchema = z
       .describe(
         'How long a finished run keeps its workflow log lines after it last wrote one, in milliseconds; the next maintenance pass sweeps by it. A run that is still active keeps its lines. Has effect only on a Bureau that persists workflow logs.',
       ),
+    'retention.notifications': z
+      .object({ olderThan: z.number().int().positive() })
+      .strict()
+      .describe(
+        'How long a notification is kept after it was written, in milliseconds, whether or not it was read; the next maintenance pass sweeps by it. Unset, an owner keeps up to 1000 and the oldest go first.',
+      ),
+    'retention.hookDeliveries': z
+      .object({ olderThan: z.number().int().positive() })
+      .strict()
+      .describe(
+        'How long a settled hook delivery record (delivered, exhausted, aborted, or failed) is kept after it was last written, in milliseconds; the next maintenance pass sweeps by it. A pending delivery is never removed. Unset, delivery records are kept until their hook is deleted.',
+      ),
     'retention.checkpoints': z
       .union([
         z.literal('keep-all'),
@@ -297,6 +309,8 @@ export const SETTING_APPLY: Readonly<Record<SettingKey, SettingApply>> = {
   'retention.receipts': 'live',
   'retention.memory': 'live',
   'retention.logs': 'live',
+  'retention.notifications': 'live',
+  'retention.hookDeliveries': 'live',
   'retention.checkpoints': 'live',
   'logs.maximumLinesPerRun': 'live',
   // Live from the next session (owner decision, COR-1710 revision 2026-10-27): a running session

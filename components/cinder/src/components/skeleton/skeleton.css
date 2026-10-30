@@ -19,6 +19,52 @@
     animation: cinder-skeleton-shimmer 1.5s ease-in-out infinite;
   }
 
+  /* A group stacks several bars and, when asked, a "Still loading" status line. Only the bars
+   * are decorative: the status sits outside the aria-hidden wrapper so it can be announced. */
+  .cinder-skeleton-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-3);
+    inline-size: 100%;
+  }
+
+  .cinder-skeleton-lines {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-skeleton-group > .cinder-skeleton-lines > .cinder-skeleton[data-cinder-last] {
+    width: 60%;
+  }
+
+  .cinder-skeleton-group[data-cinder-variant='card'] > .cinder-skeleton-lines {
+    padding: var(--cinder-space-4);
+    gap: var(--cinder-space-3);
+    border: 1px solid var(--cinder-border-muted);
+    border-radius: var(--cinder-radius-md);
+    background: var(--cinder-surface-raised);
+  }
+
+  .cinder-skeleton-heading {
+    height: 1.25em;
+    width: 40%;
+    margin-block-end: var(--cinder-space-1);
+  }
+
+  .cinder-skeleton-status {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-normal);
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-skeleton-status:empty {
+    display: none;
+  }
+
   @keyframes cinder-skeleton-shimmer {
     0% {
       background-position: 200% 0;
