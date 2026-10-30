@@ -83,6 +83,7 @@ export const OPERATION_MAP = {
   'bureau.contexts.steer': { member: 'contexts.steer' },
   'bureau.contexts.fork': { member: 'contexts.fork' },
   'bureau.contexts.rename': { member: 'contexts.rename' },
+  'bureau.contexts.window': { member: 'contexts.window' },
 
   'bureau.reviews.list': { member: 'reviews.list' },
   'bureau.reviews.get': { member: 'reviews.get' },

@@ -7,6 +7,7 @@
   "packages/armorer/src/adapters/openai/index.ts": "formatOpenAIToolResults sends text parts in order through toolResultParts; a media part is refused.",
   "packages/armorer/src/integrations/mcp/content.ts": "toCallToolResult converts parts to MCP blocks, for errors too; parseMcpCallResult produces parts.",
   "packages/armorer/src/protocol/materialization.ts": "Materialization carries parts beside content (resolveContentAndParts).",
+  "packages/bureau/src/contexts/context-window.ts": "messageTokens counts content only when the result has no parts, as operative's estimateMessage does; with parts, the estimator reads them and content is the application value beside them.",
   "packages/conversationalist/src/adapters/ag-ui/tool-result.ts": "A result with parts travels with its structured result, parts included, in the embedded metadata.",
   "packages/conversationalist/src/adapters/anthropic/content.ts": "toToolResultBlock sends parts, for any outcome, as text (with citations), image, and document blocks.",
   "packages/conversationalist/src/adapters/gemini/content.ts": "toFunctionResponsePart sends parts as inline functionResponse.parts referenced by $ref, for any outcome.",

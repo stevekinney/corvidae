@@ -57,8 +57,8 @@ export type BureauContextsOperationHost = BureauOwnershipHost & {
  * be deleted and created again for another owner, so authorization is bound to the exact
  * session the operation then reads or deletes.
  */
-function mayAccessLoadedContext(
-  host: BureauContextsOperationHost,
+export function mayAccessLoadedContext(
+  host: BureauOwnershipHost,
   principal: Principal,
   session: AgentSession,
   operatorScope: 'bureau.contexts:write' | 'bureau.contexts:read',
