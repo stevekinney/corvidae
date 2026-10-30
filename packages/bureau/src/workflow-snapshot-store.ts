@@ -83,12 +83,23 @@ export class WorkflowSnapshotError extends Error {
   readonly code = 'snapshot-unresolvable';
   readonly workflowId: string;
   readonly workflowVersion: string;
+  /**
+   * `true` when the record is not damaged but holds a key this Bureau does not know, which a newer
+   * Bureau wrote (COR-1927). Such a record is that Bureau's to use, so this one leaves it alone.
+   */
+  readonly unrecognizedKeys: boolean;
 
-  constructor(workflowId: string, workflowVersion: string, message: string) {
+  constructor(
+    workflowId: string,
+    workflowVersion: string,
+    message: string,
+    options: { readonly unrecognizedKeys?: boolean } = {},
+  ) {
     super(message);
     this.name = 'WorkflowSnapshotError';
     this.workflowId = workflowId;
     this.workflowVersion = workflowVersion;
+    this.unrecognizedKeys = options.unrecognizedKeys === true;
   }
 }
 
@@ -145,7 +156,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 type Parsed =
   | { readonly kind: 'absent' }
-  | { readonly kind: 'invalid'; readonly reason: string }
+  | { readonly kind: 'invalid'; readonly reason: string; readonly unrecognizedKeys?: true }
   | { readonly kind: 'ok'; readonly snapshot: WorkflowSnapshot };
 
 function parseSnapshot(text: string | null, id: string, workflowVersion: string): Parsed {
@@ -168,7 +179,18 @@ function parseSnapshot(text: string | null, id: string, workflowVersion: string)
     return { kind: 'invalid', reason: 'it is not a workflow snapshot for this key' };
   }
   const document = workflowDocumentSchema.safeParse(value['document']);
-  if (!document.success) return { kind: 'invalid', reason: 'its document is not valid' };
+  if (!document.success) {
+    // Read from the validator's issue codes, not its text: a record a newer Bureau wrote carries a
+    // key this one does not know, which is not the same as a record that is damaged (COR-1927).
+    const unrecognized = document.error.issues.some((issue) => issue.code === 'unrecognized_keys');
+    return {
+      kind: 'invalid',
+      reason: unrecognized
+        ? 'its document has a key this Bureau does not know'
+        : 'its document is not valid',
+      ...(unrecognized ? { unrecognizedKeys: true as const } : {}),
+    };
+  }
   if (workflowVersionOf(document.data as WorkflowDocument) !== workflowVersion) {
     return { kind: 'invalid', reason: 'its document does not hash to its key' };
   }
@@ -268,6 +290,7 @@ export function createWorkflowSnapshotStore(
           id,
           workflowVersion,
           `The stored snapshot of workflow "${id}" at ${workflowVersion} cannot be used: ${parsed.reason}.`,
+          { unrecognizedKeys: parsed.unrecognizedKeys === true },
         );
       }
       return parsed.kind === 'ok' ? parsed.snapshot : undefined;

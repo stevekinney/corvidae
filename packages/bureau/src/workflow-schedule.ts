@@ -97,10 +97,16 @@ export interface ScheduleReconciliation {
  * identifier: create what is missing, update a changed `spec` or `overlap`, pause or resume to match
  * `paused`, and cancel a schedule whose file is gone, invalid, or has no `schedule` trigger, along
  * with any extra live schedule of a workflow. Idempotent: a second call changes nothing.
+ *
+ * `unreadable` names the workflows whose file this host cannot read because it holds a key it does
+ * not know, which a newer Bureau wrote (COR-1927). Their schedules are not this host's to judge, so
+ * none is created, updated, paused, resumed, or cancelled: the file is neither wanting a schedule
+ * nor refusing one as far as this host can tell.
  */
 export async function reconcileWorkflowSchedules(
   engine: Engine,
   desired: ReadonlyMap<string, DesiredWorkflowSchedule>,
+  unreadable: ReadonlySet<string> = new Set(),
 ): Promise<ScheduleReconciliation> {
   const created: string[] = [];
   const updated: string[] = [];
@@ -110,6 +116,7 @@ export async function reconcileWorkflowSchedules(
   const existing = await allWorkflowSchedules(engine);
 
   for (const [identifier, group] of existing) {
+    if (unreadable.has(identifier)) continue;
     const want = desired.get(identifier);
     const live = group
       .filter((summary) => summary.status !== 'cancelled')
@@ -137,6 +144,7 @@ export async function reconcileWorkflowSchedules(
   }
 
   for (const [identifier, want] of desired) {
+    if (unreadable.has(identifier)) continue;
     const group = existing.get(identifier) ?? [];
     if (group.some((summary) => summary.status !== 'cancelled')) continue;
     const generation =
