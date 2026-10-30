@@ -960,3 +960,131 @@ describe('an answer that could reach a secret wait it does not name (COR-1920)',
     }
   });
 });
+
+describe('adversarial shapes at every ingress write nothing of a secret (COR-1920)', () => {
+  it('A2A refuses every message that is not a bare decision while a secret wait is open', async () => {
+    const harness = await secretBureau({ twoWaits: true });
+    const a2a = a2aOver(harness.bureau);
+    try {
+      const task = await a2a.send(
+        Message.fromJSON({ messageId: 'm-start', role: 'ROLE_USER', parts: [{ text: 'go' }] }),
+      );
+      if (!('status' in task)) throw new Error('expected a task');
+      await waitForCondition(
+        () =>
+          harness.bureau.reviews.list().filter((pending) => pending.runId === task.id).length === 2,
+        'expected the task to hold the secret wait and the approval',
+      );
+      const shapes: Array<[string, Record<string, unknown>]> = [
+        ['m-deny-extra', { parts: [{ data: { decision: 'deny', token: SECRET } }] }],
+        ['m-approve-extra', { parts: [{ data: { decision: 'approve', token: SECRET } }] }],
+        ['m-two-parts', { parts: [{ data: { decision: 'deny' } }, { data: { token: SECRET } }] }],
+        ['m-text-beside', { parts: [{ data: { decision: 'deny' } }, { text: SECRET }] }],
+        [
+          'm-metadata',
+          {
+            parts: [{ data: { decision: 'deny' } }],
+            metadata: { signalName: 'login', note: SECRET },
+          },
+        ],
+        ['m-named-text', { parts: [{ text: SECRET }], metadata: { signalName: 'login' } }],
+      ];
+      for (const [messageId, shape] of shapes) {
+        const refused = await rejectionOf(
+          a2a.send(Message.fromJSON({ messageId, taskId: task.id, role: 'ROLE_USER', ...shape })),
+        );
+        expect(String(refused), messageId).toContain('answered only in the chat');
+      }
+      expectNoLeak('the A2A send ledger and task history', a2a.written());
+      harness.expectNoWrittenLeak('the A2A shapes');
+
+      // A bare decision still decides the secret wait.
+      await a2a.send(
+        Message.fromJSON({
+          messageId: 'm-bare-deny',
+          taskId: task.id,
+          role: 'ROLE_USER',
+          parts: [{ data: { decision: 'deny', reason: 'not now' } }],
+          metadata: { signalName: 'login' },
+        }),
+      );
+      await waitForCondition(
+        () => !harness.bureau.reviews.list().some((pending) => pending.kind === 'human-wait'),
+        'expected the bare denial to close the secret wait',
+      );
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it('an AG-UI resume refuses a field its interrupt does not define', async () => {
+    const harness = await secretBureau();
+    try {
+      await readAgUiStream(await harness.handler(startRequest(runAgentInput(), {}, AGENT)));
+      const review = harness.bureau.reviews.list()[0]!;
+      const resume = (payload: Record<string, unknown>) =>
+        harness.handler(
+          startRequest(
+            runAgentInput({
+              runId: 'client-run-2',
+              messages: [],
+              resume: [{ interruptId: review.id, status: 'resolved', payload }],
+            }),
+            {},
+            AGENT,
+          ),
+        );
+
+      const frames = [
+        await readAgUiStream(await resume({ decision: 'deny', token: SECRET })),
+        await readAgUiStream(await resume({ decision: 'approve', arguments: { token: SECRET } })),
+      ];
+
+      for (const received of frames) {
+        expect(received[0]!.event).toMatchObject({ code: 'INVALID_INPUT' });
+      }
+      expect(harness.bureau.reviews.list().map((pending) => pending.id)).toEqual([review.id]);
+      expectNoLeak('the AG-UI frames', JSON.stringify(frames));
+      harness.expectNoWrittenLeak('the AG-UI shapes');
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it('tasks.respond and the reviews.resolve operation refuse a field they do not define', async () => {
+    const harness = await secretBureau();
+    try {
+      const { runId, review } = await harness.park();
+
+      const respond = await rejectionOf(
+        harness.bureau.tasks.respond({
+          principal: PRINCIPAL,
+          taskId: runId,
+          messageId: 'm-extra',
+          decision: 'deny',
+          token: SECRET,
+        } as Parameters<Bureau['tasks']['respond']>[0]),
+      );
+      expect(String(respond)).toContain('token');
+
+      const response = await harness.handler(
+        new Request('http://localhost/jsonrpc', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'bureau.reviews.resolve',
+            params: { id: review.id, decision: 'deny', token: SECRET },
+          }),
+        }),
+      );
+      const reply = (await response.json()) as { error?: unknown; result?: unknown };
+      expect(reply.error).toBeDefined();
+      expect(harness.bureau.reviews.list().map((pending) => pending.id)).toEqual([review.id]);
+      harness.expectNoWrittenLeak('the tasks.respond and reviews.resolve shapes');
+    } finally {
+      await harness.dispose();
+    }
+  });
+});

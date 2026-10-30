@@ -97,6 +97,9 @@ export const tasksRespondInput = z
     signalName: z.string().min(1).optional().describe('Addresses the human wait with this signal.'),
     callId: z.string().min(1).optional().describe('Addresses the tool approval for this call.'),
   })
+  // COR-1920: a field the command does not define is refused, not dropped, so what is judged is
+  // what the command is.
+  .strict()
   .refine(
     (input) =>
       [input.answer, input.data, input.decision].filter((value) => value !== undefined).length ===

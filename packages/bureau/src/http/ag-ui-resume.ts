@@ -156,9 +156,14 @@ export type ResumeRequest = {
 
 const CANCELLED_REASON = 'cancelled by the client';
 
+/** The fields a resume payload may hold, as the interrupt's `responseSchema` advertises (`additionalProperties: false`). */
+const RESUME_PAYLOAD_KEYS = new Set(['decision', 'reason', 'arguments', 'answer']);
+
 function isPayload(value: unknown): value is AgUiResumePayload {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const payload = value as Record<string, unknown>;
+  // COR-1920: a field the schema does not define is refused, so the digest covers only what is judged.
+  if (Object.keys(payload).some((key) => !RESUME_PAYLOAD_KEYS.has(key))) return false;
   if (
     payload['decision'] !== 'approve' &&
     payload['decision'] !== 'deny' &&
@@ -427,6 +432,20 @@ export function createResume(context: ResumeContext) {
     // digest covers the entries as received, not as converted: a retry of a resume that
     // has completed reads its review without the schema (the audit record omits it), so it could
     // not convert, and the two attempts must still be the same command.
+    // COR-1920: a payload carries only what its interrupt's kind defines (a question's `answer`, an
+    // approval's `arguments`), so nothing is digested that no check judged.
+    for (const entry of entries) {
+      const review = reviews.get(entry.interruptId);
+      const payload = entry.payload as AgUiResumePayload | undefined;
+      if (entry.status !== 'resolved' || payload === undefined || review === undefined) continue;
+      const foreign = review.kind === 'human-wait' ? 'arguments' : 'answer';
+      if (Object.hasOwn(payload, foreign)) {
+        return context.refuse(
+          'INVALID_INPUT',
+          `The answer to interrupt "${entry.interruptId}" carries "${foreign}", which its kind does not take`,
+        );
+      }
+    }
     const fitted: ResumeEntry[] = [];
     for (const entry of entries) {
       const review = reviews.get(entry.interruptId);
