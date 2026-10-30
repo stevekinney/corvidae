@@ -170,7 +170,9 @@ export interface ContextOptions {
   accumulatedResults?: Map<number, unknown>;
   /**
    * Set when the body is relaunched from its checkpoint to continue a run that already executed
-   * up to its next uncached operation (a signal, a review, a timer, or a recovery). The body
+   * up to its next uncached operation (a signal, a review, a timer, or a recovery), which the
+   * checkpoint proves by being numbered past zero. Leave it out when no earlier execution took a
+   * turn (a run saved and recovered before its first turn). The body
    * replays its cached prefix and then reaches that operation, which is where the earlier
    * execution parked; every `ctx.log` call before the operation yields was emitted by that
    * earlier execution, so its record is delivered marked `replayed` (the log store skips those).

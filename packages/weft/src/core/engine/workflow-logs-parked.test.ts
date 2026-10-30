@@ -354,6 +354,62 @@ describe('a line logged before a park is stored once', () => {
   });
 });
 
+describe('a run that never took a turn before it was recovered', () => {
+  it('stores the lines it logs on its first turn, because no earlier execution logged them', async () => {
+    const storage = new MemoryStorage();
+    const build = (engine: Engine) =>
+      engine.register(
+        workflow({ name: 'first-turn-crash' })
+          .activities({ noop })
+          .execute(async function* (ctx) {
+            ctx.log?.info('first line, before any durable step');
+            yield* ctx.run('noop', 'x');
+            ctx.log?.info('after step 0');
+            yield* ctx.waitForSignal<string>('go');
+            ctx.log?.info('after wait');
+            return 'done';
+          }),
+      );
+    {
+      const logs = createWorkflowLogStore(storage);
+      const first = createEngine(storage, logs);
+      build(first);
+      await first.start('first-turn-crash', null, { id: 'run-first-turn' });
+      // A crash before the queued first turn ran: synchronous disposal discards the launch.
+      first[Symbol.dispose]();
+    }
+
+    const emitted: Array<[string, boolean | undefined]> = [];
+    const logs = createWorkflowLogStore(storage);
+    await using recovered = new Engine({
+      storage,
+      onLog: (record) => {
+        emitted.push([record.message, record.replayed]);
+        logs.sink(record);
+      },
+      workflowLogs: logs,
+    });
+    build(recovered);
+    await recovered.recoverAll();
+    await settleInlineLaunches();
+
+    // The first turn is the first time anything ran, so its first line is new work.
+    expect(emitted.slice(0, 1)).toEqual([['first line, before any durable step', undefined]]);
+    expect(messagesOf(await recovered.getLogs('run-first-turn'))).toEqual([
+      'first line, before any durable step',
+      'after step 0',
+    ]);
+
+    await recovered.signal('run-first-turn', 'go', 'x');
+    await settleInlineLaunches();
+    expect(messagesOf(await recovered.getLogs('run-first-turn'))).toEqual([
+      'first line, before any durable step',
+      'after step 0',
+      'after wait',
+    ]);
+  });
+});
+
 describe('the engine keeps the key family of a run it purges', () => {
   it('still removes the counter of a run when it is purged', async () => {
     const storage = new MemoryStorage();

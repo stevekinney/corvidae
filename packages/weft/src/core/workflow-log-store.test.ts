@@ -318,6 +318,89 @@ describe('createWorkflowLogStore', () => {
     expect(await store.prune({ olderThan: 7 * 24 * 60 * 60 * 1000 })).toEqual({ runs: 0 });
   });
 
+  it('leaves a run alone when another host writes to it between the pass reading its counter and removing its lines', async () => {
+    await using storage = new MemoryStorage();
+    let now = 0;
+    const store = createWorkflowLogStore(storage, { getNow: () => now });
+    const otherHost = createWorkflowLogStore(storage, { getNow: () => now });
+    await storage.put(KEYS.workflow('run-1'), encode({ id: 'run-1', status: 'completed' }));
+    store.sink(record({ message: 'old life' }));
+    await store.flush();
+    now = 8 * 24 * 60 * 60 * 1000;
+
+    // The finished id is started anew on another host, which logs its first line after this pass
+    // read the expired counter and before it removes anything.
+    const scan = storage.scan.bind(storage);
+    let injected = false;
+    storage.scan = (prefix, options) => {
+      if (!injected && prefix === KEYS.workflowLogPrefix('run-1')) {
+        injected = true;
+        return (async function* () {
+          otherHost.sink(record({ message: 'new life' }));
+          await otherHost.flush();
+          yield* scan(prefix, options);
+        })();
+      }
+      return scan(prefix, options);
+    };
+
+    expect(await store.prune({ olderThan: 7 * 24 * 60 * 60 * 1000 })).toEqual({ runs: 0 });
+    storage.scan = scan;
+    expect(messagesOf(await store.read('run-1'))).toEqual(['old life', 'new life']);
+  });
+
+  it('prunes a finished run on a backend that cannot make a batch conditional', async () => {
+    await using storage = new MemoryStorage();
+    let now = 0;
+    const capabilities = storage.capabilities.bind(storage);
+    storage.capabilities = () => ({ ...capabilities(), conditionalBatch: false });
+    const store = createWorkflowLogStore(storage, { getNow: () => now });
+    await storage.put(KEYS.workflow('run-1'), encode({ id: 'run-1', status: 'failed' }));
+    store.sink(record({ message: 'old life' }));
+    await store.flush();
+    now = 8 * 24 * 60 * 60 * 1000;
+
+    expect(await store.prune({ olderThan: 7 * 24 * 60 * 60 * 1000 })).toEqual({ runs: 1 });
+    const after = await store.read('run-1');
+    expect(after.lines).toEqual([]);
+    expect(after.dropped).toBe(1);
+  });
+
+  it('leaves a run with more than one batch of lines alone when it is written to after the pass read its counter', async () => {
+    await using storage = new MemoryStorage();
+    let now = 0;
+    const store = createWorkflowLogStore(storage, { getNow: () => now, maximumLinesPerRun: 4_500 });
+    const otherHost = createWorkflowLogStore(storage, {
+      getNow: () => now,
+      maximumLinesPerRun: 4_500,
+    });
+    await storage.put(KEYS.workflow('run-1'), encode({ id: 'run-1', status: 'completed' }));
+    for (let line = 0; line < 4_500; line++) store.sink(record({ message: `line ${line}` }));
+    await store.flush();
+    now = 8 * 24 * 60 * 60 * 1000;
+
+    const scan = storage.scan.bind(storage);
+    let injected = false;
+    storage.scan = (prefix, options) => {
+      if (!injected && prefix === KEYS.workflowLogPrefix('run-1')) {
+        injected = true;
+        return (async function* () {
+          otherHost.sink(record({ message: 'new life' }));
+          await otherHost.flush();
+          yield* scan(prefix, options);
+        })();
+      }
+      return scan(prefix, options);
+    };
+
+    expect(await store.prune({ olderThan: 7 * 24 * 60 * 60 * 1000 })).toEqual({ runs: 0 });
+    storage.scan = scan;
+    const after = await store.read('run-1');
+    // Nothing of the old life was removed before the guard stopped the pass.
+    expect(after.lines.length).toBeGreaterThanOrEqual(4_500);
+    expect(after.lines.at(-1)?.message).toBe('new life');
+  });
+
   it('keeps the lines of a run whose workflow record cannot be read', async () => {
     await using storage = new MemoryStorage();
     let now = 0;
@@ -497,11 +580,13 @@ describe('createWorkflowLogStore', () => {
     store.sink(record({ workflowId: 'gone' }));
     await store.flush();
     now = 1_000;
-    const remove = storage.delete.bind(storage);
+    const commit = storage.conditionalBatch.bind(storage);
     const failure = new Error('delete failed');
-    storage.delete = async (key) => {
-      if (key === KEYS.workflowLogCounter('stuck')) throw failure;
-      return remove(key);
+    storage.conditionalBatch = async (conditions, operations) => {
+      if (operations.some((operation) => operation.key === KEYS.workflowLogCounter('stuck'))) {
+        throw failure;
+      }
+      return commit(conditions, operations);
     };
 
     expect(await store.prune({ olderThan: 10 })).toEqual({ runs: 1 });

@@ -26,7 +26,7 @@
  */
 
 import {
-  storageDeletePrefix,
+  storageConditionalBatch,
   tryDecodeStorageKeyComponent,
   type BatchOperation,
   type Storage,
@@ -368,59 +368,89 @@ export function createWorkflowLogStore(
   };
 
   /**
-   * Remove every line of a finished run in batches, and move its counter past them in the last
-   * one, so a crash leaves either the lines and the old counter or neither.
+   * Commit one batch of a retention pass only if the run's counter still holds the bytes the pass
+   * read, where the backend can say so: a write that landed since (another host logging for a
+   * run whose finished id was started anew) changes the counter, and the pass leaves that run.
    */
-  const removeLines = async (workflowId: string, counter: Counter): Promise<void> => {
+  const commitUnlessWritten = async (
+    workflowId: string,
+    expectedCounter: Uint8Array,
+    operations: BatchOperation[],
+  ): Promise<boolean> => {
+    if (!storage.capabilities().conditionalBatch) {
+      await storage.batch(operations);
+      return true;
+    }
+    return storageConditionalBatch(
+      storage,
+      [{ key: KEYS.workflowLogCounter(workflowId), expectedValue: expectedCounter }],
+      operations,
+    );
+  };
+
+  /**
+   * Remove every line of a run in batches. A finished run's counter moves past the lines in the
+   * last batch, so a crash leaves either the lines and the old counter or neither; a run with no
+   * record loses its counter too. Answers false, having removed nothing more, once a batch finds
+   * the counter changed.
+   */
+  const removeLines = async (
+    workflowId: string,
+    counter: Counter,
+    expectedCounter: Uint8Array,
+    keepCounter: boolean,
+  ): Promise<boolean> => {
     const keys: string[] = [];
     for await (const [key] of storage.scan(KEYS.workflowLogPrefix(workflowId))) keys.push(key);
     const leading = Math.max(0, keys.length - EVICTION_CHUNK);
     for (let start = 0; start < leading; start += EVICTION_CHUNK) {
-      await storage.batch(
-        keys
-          .slice(start, Math.min(leading, start + EVICTION_CHUNK))
-          .map((key): BatchOperation => ({ type: 'delete', key })),
-      );
+      const chunk = keys
+        .slice(start, Math.min(leading, start + EVICTION_CHUNK))
+        .map((key): BatchOperation => ({ type: 'delete', key }));
+      if (!(await commitUnlessWritten(workflowId, expectedCounter, chunk))) return false;
     }
+    const counterKey = KEYS.workflowLogCounter(workflowId);
     counter.first = counter.next;
     counter.dropped += keys.length;
-    await storage.batch([
+    return commitUnlessWritten(workflowId, expectedCounter, [
       ...keys.slice(leading).map((key): BatchOperation => ({ type: 'delete', key })),
-      {
-        type: 'put',
-        key: KEYS.workflowLogCounter(workflowId),
-        value: ENCODER.encode(JSON.stringify(counter)),
-      },
+      keepCounter
+        ? { type: 'put', key: counterKey, value: ENCODER.encode(JSON.stringify(counter)) }
+        : { type: 'delete', key: counterKey },
     ]);
+  };
+
+  /** Remove one expired run's lines when the run is over; answers whether it did. */
+  const pruneRun = async (candidate: {
+    workflowId: string;
+    counter: Counter;
+    bytes: Uint8Array;
+  }): Promise<boolean> => {
+    const { workflowId, counter, bytes } = candidate;
+    const phase = await runPhase(workflowId);
+    if (phase === 'active') return false;
+    // Nothing left to remove: a pass that already emptied this run counts nothing.
+    if (phase === 'finished' && counter.first >= counter.next) return false;
+    return removeLines(workflowId, counter, bytes, phase === 'finished');
   };
 
   const prune: WorkflowLogStore['prune'] = (pruneOptions) =>
     enqueue(async () => {
       await drain();
       const cutoff = getNow() - pruneOptions.olderThan;
-      const expired: Array<{ workflowId: string; counter: Counter }> = [];
+      const expired: Array<{ workflowId: string; counter: Counter; bytes: Uint8Array }> = [];
       for await (const [key, bytes] of storage.scan(KEYS.workflowLogCounterPrefix())) {
         const counter = decodeCounter(bytes);
         const encoded = key.slice(KEYS.workflowLogCounterPrefix().length);
         const workflowId = tryDecodeStorageKeyComponent(encoded);
         if (counter !== undefined && workflowId !== null && counter.updatedAt < cutoff) {
-          expired.push({ workflowId, counter });
+          expired.push({ workflowId, counter, bytes });
         }
       }
       let runs = 0;
-      for (const { workflowId, counter } of expired) {
+      for (const candidate of expired) {
         try {
-          const phase = await runPhase(workflowId);
-          if (phase === 'active') continue;
-          if (phase === 'missing') {
-            await storageDeletePrefix(storage, KEYS.workflowLogPrefix(workflowId));
-            await storage.delete(KEYS.workflowLogCounter(workflowId));
-          } else {
-            // Nothing left to remove: a pass that already emptied this run counts nothing.
-            if (counter.first >= counter.next) continue;
-            await removeLines(workflowId, counter);
-          }
-          runs += 1;
+          if (await pruneRun(candidate)) runs += 1;
         } catch (error) {
           report(error);
         }

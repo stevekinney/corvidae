@@ -51,8 +51,11 @@ export interface WorkflowLogRecord {
   readonly step?: number;
   /**
    * True when the run was continued from a park (a signal, a review, a timer) or a recovery and
-   * this call sits in front of the operation it was parked on: the run's earlier execution
-   * already logged it, so this record repeats a line that was delivered before. The engine
+   * this call sits in front of the operation it was parked on, and the run's checkpoint shows its
+   * earlier execution reached that operation: the call was already logged, so this record repeats
+   * a line that was delivered before. A run recovered before it took its first turn never carries
+   * the mark, because nothing was logged before; without that evidence a line is delivered unmarked,
+   * and a duplicate is preferred to a lost line. The engine
    * delivers it all the same, because a host may rely on seeing the call again (the human-wait
    * park marker does); a host that keeps one entry per call, as the persisted log store does,
    * skips it. Absent on every other record.

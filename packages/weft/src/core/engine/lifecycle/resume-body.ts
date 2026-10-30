@@ -220,9 +220,9 @@ function relaunchInlineWorkflowAfterResume(
     resolveWorkflowType: callbacks.resolveWorkflowTypeTarget,
     executionStateOwnerId: latestState.executionStateOwnerId ?? workflowId,
     accumulatedResults,
-    // The run continues from a park or a crash: its earlier execution already logged everything
-    // in front of the operation it stopped at, so the replay up to it logs nothing again.
-    resumed: true,
+    // The earlier execution logged what sits in front of its park only if it took a turn: a
+    // checkpoint past zero is written when a turn yields. A run recovered before that logged nothing.
+    resumed: resumeCheckpoint.step > 0,
     locals: resumeCheckpoint.locals,
     searchAttributes: resumeCheckpoint.searchAttributes,
     ...createWorkflowScopedContextCallbacks(internals, workflowId),
