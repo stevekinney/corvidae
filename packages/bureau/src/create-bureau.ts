@@ -372,6 +372,7 @@ import {
   type StartTaskOrigin,
   type TaskOrigin,
   taskOriginOfStart,
+  taskOriginParentOf,
   taskOriginTag,
 } from './task-origin';
 import { createTaskResync, type TaskResync } from './task-resync';
@@ -402,6 +403,7 @@ import { parseWorkflowScheduleId } from './workflow-schedule';
 import {
   createWorkflowRuntime,
   payloadMaximumBytesOf,
+  type BureauWorkflows,
   type WorkflowRuntime,
 } from './workflow-runtime';
 import { createBureauWorkerDeployments } from './worker-deployments';
@@ -606,6 +608,7 @@ import {
 import { isSettlingRunAction, settledActionTimestamp } from './run-settlement';
 import { createAudit } from './audit/create-audit';
 import { createNotifications } from './notifications/create-notifications';
+import type { BureauNotifications } from './notifications/notification-types';
 import {
   buildContextWindow,
   type ContextWindowTool,
@@ -628,6 +631,7 @@ import {
   type WebhookNotifierOptions,
 } from './webhook-notifier';
 import { createHooks, type CreatedHooks } from './hooks/create-hooks';
+import { createHookOriginLookup } from './hooks/hook-origin';
 import { scheduleInputPreview } from './schedule-input-preview';
 import { ownEntry } from './own-entry';
 
@@ -2258,9 +2262,8 @@ function webhookNotifierOptionsOf(
 }
 
 /**
- * COR-1939: builds the hooks over the notifier's engine and resumes the deliveries a previous
- * process left pending. The resume is tracked, so the notifier's `flush()` waits for it and for the
- * deliveries it takes.
+ * COR-1939: builds the hooks over the notifier's engine. They are resumed by `resumeHooks` once the
+ * Bureau's workflows are loaded.
  */
 function composeHooks(input: {
   readonly options: BureauOptions<AgentDefinitions>['hooks'];
@@ -2271,6 +2274,11 @@ function composeHooks(input: {
   readonly runtimeServices: RuntimeServices;
   readonly auditTrail: AuditTrail | undefined;
   readonly diagnose: DiagnosticSink;
+  /** The Bureau's workflows and notifications, read when an action needs them (COR-1940). */
+  readonly workflows: () => BureauWorkflows | undefined;
+  readonly notifications: () => BureauNotifications | undefined;
+  /** Which hook started a run, directly or through the runs above it. */
+  readonly startedByHook: (runId: string) => Promise<string | undefined>;
 }): CreatedHooks | undefined {
   const { options, engine, kv, diagnose } = input;
   if (options === undefined || engine === undefined || kv === undefined) return undefined;
@@ -2281,6 +2289,9 @@ function composeHooks(input: {
     keys: input.keys,
     urlPolicy: options.urlPolicy,
     requestTimeoutMilliseconds: options.requestTimeoutMilliseconds,
+    workflows: input.workflows,
+    notifications: input.notifications,
+    startedByHook: input.startedByHook,
     bureauId: input.bureauId,
     newId: (kind) => input.runtimeServices.identifiers.next(kind),
     audit: async (entry) => {
@@ -2288,9 +2299,26 @@ function composeHooks(input: {
     },
     diagnose: (message, cause) =>
       diagnose({ level: 'error', scope: 'hooks', message: `[bureau] ${message}`, cause }),
+    notice: (message) => diagnose({ level: 'warn', scope: 'hooks', message }),
   });
+  return created;
+}
+
+/**
+ * COR-1939: resumes the deliveries a previous process left pending. The resume is tracked, so the
+ * notifier's `flush()` waits for it and for the deliveries it takes. It runs once the workflow files
+ * are loaded (COR-1940): a `start-workflow` delivery resumed before them would find no workflow and
+ * be refused as if it did not exist.
+ */
+function resumeHooks(input: {
+  readonly hooks: CreatedHooks | undefined;
+  readonly engine: WebhookDeliveryEngine | undefined;
+  readonly diagnose: DiagnosticSink;
+}): void {
+  const { hooks, engine, diagnose } = input;
+  if (hooks === undefined || engine === undefined) return;
   engine.track(
-    created.resume().then(
+    hooks.resume().then(
       () => undefined,
       (cause: unknown) =>
         diagnose({
@@ -2301,7 +2329,6 @@ function composeHooks(input: {
         }),
     ),
   );
-  return created;
 }
 
 async function constructBureau<const D extends AgentDefinitions>(
@@ -20983,6 +21010,21 @@ async function constructBureau<const D extends AgentDefinitions>(
     runtimeServices,
     auditTrail: auditTrailInstance,
     diagnose,
+    workflows: () => workflowRuntime?.workflows,
+    notifications: () => notificationsComposition.notifications,
+    // COR-1940: a run a hook started, or any run beneath it, raises events no `start-workflow`
+    // hook acts on. The instance carries the hook's tag; a step, child or attempt reaches it
+    // through the parent its task records.
+    startedByHook: createHookOriginLookup({
+      workflowTags: async (runId) => {
+        const workflow = await runtime.durable?.engine.get(runId);
+        return workflow?.tags;
+      },
+      parentOf: async (runId) => {
+        const record = await tasks.record(runId);
+        return taskOriginParentOf(record?.origin);
+      },
+    }),
   });
 
   // COR-718: an expiry is a deletion, so each expiring session's owner is recorded for
@@ -21337,6 +21379,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     );
     if (options.maintenance !== 'manual') runtime.durable?.engine.scheduler.start();
   }
+  resumeHooks({ hooks: hooksInstance, engine: webhookNotifierInstance?.engine, diagnose });
   if (hasDeferredGatewayAuthority) {
     durableRecoveryDeferred = true;
     settledRecoveryReport = undefined;
