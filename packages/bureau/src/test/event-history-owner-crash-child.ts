@@ -13,7 +13,7 @@
  *
  * Not a test file: it is spawned by `event-history-run-ownership-recovery-lmdb.test.ts`.
  */
-import { writeFileSync } from 'node:fs';
+import { publishChildFile } from './child-output-file';
 
 import { stopWhen, createAgent } from '@lostgradient/operative';
 import { LMDBStorage } from '@lostgradient/storage-lmdb';
@@ -64,7 +64,7 @@ const run = await bureau.tasks.start('default', 'Attribute me to alice across a 
   principal: 'alice',
 });
 await stepOne;
-writeFileSync(markerPath, JSON.stringify({ runId: run.id, contextId: run.contextId }));
+publishChildFile(markerPath, JSON.stringify({ runId: run.id, contextId: run.contextId }));
 // Stay alive until the parent's SIGKILL: an interval keeps the event loop busy whatever Bureau's
 // own timers do, and nothing after this line runs.
 setInterval(() => {}, 60_000);

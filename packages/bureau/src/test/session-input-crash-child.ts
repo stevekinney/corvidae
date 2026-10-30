@@ -18,7 +18,7 @@
  *
  * Not a test file: it is spawned by `session-input-crash-recovery.test.ts`.
  */
-import { writeFileSync } from 'node:fs';
+import { publishChildFile } from './child-output-file';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { stopWhen, createAgent } from '@lostgradient/operative';
@@ -63,7 +63,7 @@ const durableOwnership = {
 
 function killNow(sessionId: string, incarnation: string, runId: string): never {
   // Written synchronously so it is on disk before the kill.
-  writeFileSync(markerPath!, JSON.stringify({ sessionId, incarnation, runId }), 'utf8');
+  publishChildFile(markerPath!, JSON.stringify({ sessionId, incarnation, runId }));
   // No `bureau.dispose()`, deliberately: SIGKILL cannot be trapped, so no cleanup
   // or flush runs after this line.
   process.kill(process.pid, 'SIGKILL');

@@ -17,7 +17,7 @@
  *
  * Not a test file: it is spawned by `schedule-fire-crash-recovery.slow.test.ts`.
  */
-import { writeFileSync } from 'node:fs';
+import { publishChildFile } from './child-output-file';
 
 import { createToolbox } from 'armorer';
 
@@ -58,10 +58,9 @@ const bureau = await createBureau<AgentDefinitions>({
           process.exit(3);
         }
         // Written synchronously so it is on disk before the kill.
-        writeFileSync(
+        publishChildFile(
           markerPath,
           JSON.stringify({ scheduleId, occurrence, fireId: summary.currentWorkflowId }),
-          'utf8',
         );
         // No `bureau.dispose()`, deliberately. SIGKILL cannot be trapped.
         process.kill(process.pid, 'SIGKILL');

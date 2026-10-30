@@ -10,7 +10,7 @@
  *
  * Not a test file: it is spawned by `agent-file-crash.test.ts`.
  */
-import { writeFileSync } from 'node:fs';
+import { publishChildFile } from './child-output-file';
 
 import { createBureau } from '../create-bureau';
 import { lookupTool } from '../testing/agent-file-fixtures.test-support';
@@ -69,5 +69,5 @@ for (let attempt = 0; parked < RUNS_EXPECTED; attempt += 1) {
 }
 
 // Written synchronously so it is on disk before the kill. No `dispose()`, deliberately.
-writeFileSync(markerPath, JSON.stringify({ runs }), 'utf8');
+publishChildFile(markerPath, JSON.stringify({ runs }));
 process.kill(process.pid, 'SIGKILL');
