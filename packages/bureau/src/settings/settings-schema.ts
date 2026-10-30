@@ -12,7 +12,7 @@
  */
 
 import type { UserModelConfiguration } from '@lostgradient/operative';
-import { checkHumanInputSchemas } from '@lostgradient/operative';
+import { checkHumanInputSchemas, PROVIDER_NAME_PATTERN } from '@lostgradient/operative';
 import type { EnginePatch } from '@lostgradient/weft';
 import { z } from 'zod';
 
@@ -46,8 +46,11 @@ const humanInputSetting = z.union([
 
 const olderThanWindow = z.object({ olderThan: nonNegativeMilliseconds }).strict();
 const retentionWindow = z.union([z.literal('forever'), olderThanWindow]);
-/** Operative's `ProviderName`. */
-const providerName = z.enum(['anthropic', 'openai', 'gemini', 'voyage', 'ollama']);
+/**
+ * Operative's `ProviderName`: any name in the provider-name grammar. A stored name no loaded
+ * provider carries validates and resolves as unavailable.
+ */
+const providerName = z.string().regex(PROVIDER_NAME_PATTERN);
 /** Operative's `Effort`. */
 const effort = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
 const dataPolicy = z.enum(['no-retention', 'zero-day-retention', 'standard']);

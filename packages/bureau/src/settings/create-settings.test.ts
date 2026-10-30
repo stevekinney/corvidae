@@ -357,6 +357,19 @@ describe('a value its consumer refuses is never accepted or applied', () => {
     ).toMatchObject({ outcome: 'applied' });
   });
 
+  test('a model-policy provider name is any name in the provider-name grammar, loaded or not', async () => {
+    const { settings } = await compose({ storage: new MemoryStorage() });
+    const policy = (providers: string[]) => ({
+      modelPolicy: { policyRevision: 1, users: { alice: { allowedProviders: providers } } },
+    });
+    expect(
+      await settings.update(policy(['Not A Provider']), { expectedRevision: 0 }),
+    ).toMatchObject({ outcome: 'rejected', reason: 'invalid-value', keys: ['modelPolicy'] });
+    expect(await settings.update(policy(['example']), { expectedRevision: 0 })).toMatchObject({
+      outcome: 'applied',
+    });
+  });
+
   test('a stored record holding an incoherent claim pair loads without it, and keeps the rest', async () => {
     const storage = new MemoryStorage();
     await seed(storage, {

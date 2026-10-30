@@ -199,8 +199,11 @@ export const GEMINI_LIMITS: Readonly<Record<string, ModelLimitEntry>> = Object.f
   'gemini-2.0-flash': { contextWindowTokens: 1_048_576, maxOutputTokens: 8_192 },
 });
 
+/** The providers whose model tables this module ships; any other provider contributes its own rows. */
+type SeededProviderName = 'anthropic' | 'openai' | 'gemini' | 'voyage' | 'ollama';
+
 export const MODEL_LIMITS: Readonly<
-  Record<ProviderName, Readonly<Record<string, ModelLimitEntry>>>
+  Record<SeededProviderName, Readonly<Record<string, ModelLimitEntry>>>
 > = Object.freeze({
   anthropic: ANTHROPIC_LIMITS,
   openai: OPENAI_LIMITS,
@@ -263,7 +266,7 @@ const GEMINI_MODALITIES_TABLE: Readonly<Record<string, ModalityMatrix>> = Object
 });
 
 export const MODEL_MODALITIES: Readonly<
-  Record<ProviderName, Readonly<Record<string, ModalityMatrix>>>
+  Record<SeededProviderName, Readonly<Record<string, ModalityMatrix>>>
 > = Object.freeze({
   anthropic: ANTHROPIC_MODALITIES_TABLE,
   openai: OPENAI_MODALITIES_TABLE,
@@ -271,6 +274,17 @@ export const MODEL_MODALITIES: Readonly<
   voyage: Object.freeze({}),
   ollama: Object.freeze({}),
 });
+
+/** Reads one provider's table, then one model's row; a provider or model with no row reads `undefined`. */
+function lookup<Entry>(
+  tables: Readonly<Record<SeededProviderName, Readonly<Record<string, Entry>>>>,
+  provider: ProviderName,
+  model: string,
+): Entry | undefined {
+  if (!Object.hasOwn(tables, provider)) return undefined;
+  const table = tables[provider as SeededProviderName];
+  return Object.hasOwn(table, model) ? table[model] : undefined;
+}
 
 /**
  * Exported only for `model-catalog.test.ts`'s completeness assertions — not
@@ -280,9 +294,7 @@ export const MODEL_MODALITIES: Readonly<
  * a matching seed row fails loudly instead of emitting a fabricated `0`.
  */
 export function requireLimits(provider: ProviderName, model: string): ModelLimitEntry {
-  const entry = Object.hasOwn(MODEL_LIMITS[provider], model)
-    ? MODEL_LIMITS[provider][model]
-    : undefined;
+  const entry = lookup(MODEL_LIMITS, provider, model);
   if (!entry) {
     throw new Error(`model-catalog: no MODEL_LIMITS entry for ${provider}/${model}`);
   }
@@ -296,9 +308,7 @@ export function requireLimits(provider: ProviderName, model: string): ModelLimit
  * {@link requireLimits}.
  */
 export function requireModalities(provider: ProviderName, model: string): ModalityMatrix {
-  const entry = Object.hasOwn(MODEL_MODALITIES[provider], model)
-    ? MODEL_MODALITIES[provider][model]
-    : undefined;
+  const entry = lookup(MODEL_MODALITIES, provider, model);
   if (!entry) {
     throw new Error(`model-catalog: no MODEL_MODALITIES entry for ${provider}/${model}`);
   }
