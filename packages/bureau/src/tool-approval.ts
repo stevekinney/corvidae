@@ -137,23 +137,50 @@ export function decideToolApproval(input: ToolApprovalInput): ApprovalStatus {
  * What a chat's mode alone makes of a call, whatever else decides it: the part of the mode that
  * holds for every tool of a run, the ones with no `toolApproval` setting included. `read-only`
  * denies a tool that is not read-only, `always` asks, and the other two leave the call to the
- * toolbox, so a code agent's toolbox decides under `on-changes` as it always has. Pure, so a table
- * can pin it.
+ * toolbox, so a code agent's toolbox decides under `on-changes` as it always has. A tool that
+ * cannot wait for an approval is denied where `always` would ask: a call made after the approval
+ * could not do what it was asked. Pure, so a table can pin it.
  */
 export function decideChatPermission(
   mode: PermissionMode,
   tier: CapabilityTier | undefined,
+  standing?: ChatPermissionStanding,
 ): ApprovalStatus {
   if (mode === 'read-only' && tier !== 'read-only') return 'deny';
-  return mode === 'always' ? 'ask' : 'allow';
+  if (mode !== 'always') return 'allow';
+  return standing === 'cannot-wait-for-approval' ? 'deny' : 'ask';
 }
 
 /**
- * The metadata key of a tool that does nothing but put a question to a person, which no mode stands
- * in front of: it changes nothing, and it is how a run in `read-only` or `always` gets an answer. A
- * key and not a name, so that a host's own tool of the same name is decided as any other tool is.
+ * How a tool of Bureau's own stands to a chat's mode, where its tier does not say.
+ *
+ * - `outside-the-mode`: it does nothing but put a question to a person, so no mode stands in front
+ *   of it: it changes nothing, and it is how a run in `read-only` or `always` gets an answer.
+ * - `cannot-wait-for-approval`: it acts only inside the step that calls it, and an approved call
+ *   runs after that step has ended.
  */
-export const ONLY_ASKS_A_PERSON = 'onlyAsksAPerson';
+export type ChatPermissionStanding = 'outside-the-mode' | 'cannot-wait-for-approval';
+
+/**
+ * Keyed on a tool's `execute`, which only Bureau's own code holds. Not on its name, which a host's
+ * tool can share, and not on its metadata, which a remote tool's server writes.
+ */
+const standings = new WeakMap<object, ChatPermissionStanding>();
+
+/** Records the {@link ChatPermissionStanding} of the tool that runs `execute`, and returns it. */
+export function withChatPermissionStanding<Execute extends object>(
+  execute: Execute,
+  standing: ChatPermissionStanding,
+): Execute {
+  standings.set(execute, standing);
+  return execute;
+}
+
+/** The standing of a tool as a toolbox stores it, which keeps the `execute` it was created with. */
+function standingOf(tool: ToolConfiguration): ChatPermissionStanding | undefined {
+  const execute: unknown = Reflect.get(tool, 'rawExecute') ?? tool.execute;
+  return typeof execute === 'function' ? standings.get(execute) : undefined;
+}
 
 /** A chat's mode as one call reads it. */
 interface ChatPermission {
@@ -184,11 +211,21 @@ async function readChatPermission(read: ChatPermissionReader): Promise<ChatPermi
 }
 
 /** The decision of a chat's mode alone on a call ({@link decideChatPermission}). */
-function chatPermissionDecision(context: ToolPolicyContext): ToolPolicyDecision {
+function chatPermissionDecision(
+  context: ToolPolicyContext,
+  standing: ChatPermissionStanding | undefined,
+): ToolPolicyDecision {
   const chat = chatPermissionOf(context);
   if (chat === undefined) return { allow: true, status: 'allow' };
   const tier = resolveCapabilityTier(context.metadata, context.tags);
-  const status = decideChatPermission(chat.mode, tier);
+  const status = decideChatPermission(chat.mode, tier, standing);
+  if (status === 'deny' && chat.mode === 'always') {
+    return {
+      allow: false,
+      status: 'deny',
+      reason: `Tool "${context.toolName}" is denied because this chat is in always mode, and the tool acts only inside its own step, so an approval could not run it.`,
+    };
+  }
   return decisionOf(context, tier, TOOL_APPROVAL_DEFAULT_MODE, chat.mode, status, chat.unreadable);
 }
 
@@ -199,11 +236,12 @@ function chatPermissionDecision(context: ToolPolicyContext): ToolPolicyDecision 
  */
 function withChatPermissionDecision(
   policy: ToolConfiguration['policy'],
+  standing: ChatPermissionStanding | undefined,
 ): NonNullable<ToolConfiguration['policy']> {
   return {
     ...policy,
     async beforeExecute(context) {
-      const chat = chatPermissionDecision(context);
+      const chat = chatPermissionDecision(context, standing);
       if (chat.status === 'deny') return chat;
       const own = await policy?.beforeExecute?.(context);
       if (chat.status === 'allow') return own;
@@ -223,14 +261,14 @@ function withChatPermissionDecision(
  */
 export function withChatPermission(toolbox: AnyToolbox, read: ChatPermissionReader): AnyToolbox {
   return withToolboxLayer(toolbox, (inner) => {
-    const held = inner.toJSON().filter((tool) => tool.metadata?.[ONLY_ASKS_A_PERSON] !== true);
+    const held = inner.toJSON().filter((tool) => standingOf(tool) !== 'outside-the-mode');
     // Nothing to hold yet, and a toolbox that refuses every call keeps its refusal. A new object
     // all the same: a layer's result must not be the toolbox it wraps.
     if (held.length === 0) return { ...inner };
     return inner.extend(
       ...held.map((tool) => ({
         ...tool,
-        policy: withChatPermissionDecision(tool.policy),
+        policy: withChatPermissionDecision(tool.policy, standingOf(tool)),
         policyContext: async (context: ToolPolicyContext) => ({
           ...(await tool.policyContext?.(context)),
           [CHAT_PERMISSION_FIELD]: await readChatPermission(read),

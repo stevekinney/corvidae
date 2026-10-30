@@ -102,7 +102,7 @@ import { createDecideToolbox, type DecideToolWiring } from './decisions/decide-t
 import { humanInputEnabled, humanInputSchemasOf } from './human-input-option';
 import { isStoredTaskOrigin, type StoredTaskOrigin } from './task-origin';
 import type { TaskToolGrant } from './task-registry';
-import { ONLY_ASKS_A_PERSON, withChatPermission } from './tool-approval';
+import { withChatPermission, withChatPermissionStanding } from './tool-approval';
 import { withAddedTools, withToolboxLayer } from './toolbox-additions';
 import {
   type AnyWorkflowDefinition,
@@ -337,8 +337,6 @@ export function wireDurableOptInTools(
     const humanInputToolbox = createToolbox([
       createTool({
         ...rawHumanInputTool,
-        // COR-1947: it only asks a person, so no permission mode stands in front of it.
-        metadata: { [ONLY_ASKS_A_PERSON]: true },
         // armorer's `execute` contract is async; the raw tool factory's
         // `execute` is synchronous (it only mutates `context` and returns a
         // plain result), so wrap it rather than changing its public shape.
@@ -347,8 +345,13 @@ export function wireDurableOptInTools(
         // synchronously (Copilot review PRRT_kwDORvupsc6P7_8H) — awaiting
         // `Promise.resolve(...)` (a genuine thenable) keeps both
         // require-await and await-thenable satisfied.
-        execute: async (input: RequestHumanInputInput) =>
-          await Promise.resolve(rawHumanInputTool.execute(input)),
+        //
+        // COR-1947: it only asks a person, so no permission mode stands in front of it.
+        execute: withChatPermissionStanding(
+          async (input: RequestHumanInputInput) =>
+            await Promise.resolve(rawHumanInputTool.execute(input)),
+          'outside-the-mode',
+        ),
       }),
     ]);
     toolbox = withAddedTools(toolbox, humanInputToolbox);
@@ -383,17 +386,20 @@ export function wireDurableOptInTools(
     const wakeupToolbox = createToolbox([
       createTool({
         ...rawWakeupTool,
-        // COR-1947: it schedules work, so `read-only` denies it. A version, because Armorer can
-        // only raise an approval for a versioned tool, and `always` asks about it.
-        version: '1.0.0',
-        metadata: { mutates: true, summary: 'Wake this run in {in}' },
+        // COR-1947: it schedules work, so `read-only` denies it. It parks the step that called it,
+        // and an approved call runs after that step, so `always` denies it too: the call could
+        // only say it scheduled a wakeup that never comes. No version, for the same reason:
+        // Armorer can raise no approval for it.
+        metadata: { mutates: true },
         // Same async-wrap rationale as `requestHumanInput` above: the raw
         // tool's `execute` is synchronous and can throw synchronously
         // (`DurableCapabilityUnavailableError`); armorer's contract is
         // async, so wrapping converts a synchronous throw into a rejected
         // Promise instead of letting it escape synchronously.
-        execute: async (input: ScheduleWakeupInput) =>
-          await Promise.resolve(rawWakeupTool.execute(input)),
+        execute: withChatPermissionStanding(
+          async (input: ScheduleWakeupInput) => await Promise.resolve(rawWakeupTool.execute(input)),
+          'cannot-wait-for-approval',
+        ),
       }),
     ]);
     toolbox = withAddedTools(toolbox, wakeupToolbox);
