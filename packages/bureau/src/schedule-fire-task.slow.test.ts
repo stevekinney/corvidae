@@ -37,6 +37,8 @@ async function waitForReal<T>(read: () => Promise<T | undefined>, what: string):
 async function serve(generate: GenerateFunction): Promise<OpenedBureau> {
   const opened = await openBureau({
     agents: { writer: createAgent({ name: 'writer', generate }) },
+    // The scheduling key holds no scope, so it names only an agent that opts into A2A (COR-1904).
+    a2aAgents: ['writer'],
     generate,
     durableHistory: true,
   });
