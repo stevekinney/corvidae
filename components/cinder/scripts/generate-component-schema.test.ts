@@ -151,3 +151,32 @@ describe('run-step-timeline generated schema', () => {
     });
   });
 });
+
+describe('schedule-builder generated schema', () => {
+  const schema = generateSchemaForComponent({
+    typesFilePath: join(
+      import.meta.dir,
+      '..',
+      'src',
+      'components',
+      'schedule-builder',
+      'schedule-builder.types.ts',
+    ),
+    componentName: 'schedule-builder',
+    depthToSrc: 2,
+  }).schema;
+  const validate = new Ajv2020({ strict: false }).compile(schema);
+
+  test('accepts a cron value and an interval counted in whole positive units', () => {
+    expect(validate({ value: { cron: '0 9 * * 1-5', timeZone: 'America/Los_Angeles' } })).toBe(
+      true,
+    );
+    expect(validate({ value: { every: { unit: 'hours', count: 7 }, timeZone: 'UTC' } })).toBe(true);
+  });
+
+  test('rejects an interval count that is not a positive integer', () => {
+    for (const count of [0, -1, 1.5]) {
+      expect(validate({ value: { every: { unit: 'hours', count }, timeZone: 'UTC' } })).toBe(false);
+    }
+  });
+});

@@ -322,7 +322,6 @@
     ". CostEstimate.promptCost",
     ". CostEstimate.totalCost",
     ". CostEstimate.usage",
-    ". CostEstimationOptions.customPricing",
     ". CreateContextEpochSealerOptions.agentName",
     ". CreateContextEpochSealerOptions.responseFormatDigest",
     ". CreateDurableHeartbeatOptions.createHeartbeatRun",

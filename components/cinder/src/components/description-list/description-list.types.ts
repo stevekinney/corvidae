@@ -83,6 +83,14 @@ export type DescriptionListProps = Omit<HTMLAttributes<HTMLDListElement>, 'class
    *   surrounding context already labels the value. NOT a general compact mode.
    */
   variant?: DescriptionListVariant;
+  /**
+   * Puts every term above its value at any width. The `two-column` variant
+   * already stacks once its own container is narrower than 28rem; `stack`
+   * stacks it regardless, for a list whose page has already chosen its phone
+   * layout. Has no effect on `narrow`, whose terms stay visually hidden.
+   * @default false
+   */
+  stack?: boolean;
   /** Additional class merged onto the `.cinder-description-list` root element. */
   class?: string;
   /**

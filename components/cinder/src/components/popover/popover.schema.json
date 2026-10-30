@@ -59,6 +59,17 @@
       "enum": ["content", "match-anchor", "menu", "none"],
       "description": "Floating panel width strategy. Default `'content'`."
     },
+    "sheetBelow": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "const": false
+        }
+      ],
+      "description": "Viewport width below which the popover opens as a bottom sheet instead of\na panel anchored to its trigger. The choice is made when the popover\nopens. With `focusManagement: 'panel'` the content renders in a modal\n`Drawer` at its bottom placement, which owns focus, Escape, and dismissal;\nwith `'preserve'` (focus stays on the trigger, as in Combobox) the panel\nitself docks to the bottom edge and keeps every other behavior. A simple\nCSS length such as `'640px'`, or `false` to always anchor. Default\n`'640px'`."
+    },
     "portalScopeClass": {
       "type": "string",
       "description": "Extra class merged onto the portaled scope wrapper."

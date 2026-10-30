@@ -1030,6 +1030,16 @@ function createA2AMount(
     // Only the incarnation that was deleted: a context created again under the same id keeps its
     // tasks' history.
     void records.clearContext(event.sessionId, event.incarnation).catch(() => undefined);
+    // Nor do its push deliveries (COR-1934): they carry the task's status message and terminal
+    // reply, and one still queued would go out after the delete. The tasks' records outlive the
+    // delete, so their removal never reaches their configurations. Each is deleted through the
+    // sender, which fences, cancels and purges the destination's deliveries.
+    if (push !== undefined) {
+      void bureau.internals.taskRegistry
+        .taskIdsOfContext(event.sessionId, event.incarnation)
+        .then((taskIds) => Promise.all(taskIds.map((taskId) => push.projector.cleanup(taskId))))
+        .catch(() => undefined);
+    }
   });
   const ledger: A2ASendLedger = createPrunedCommandLedger<A2ASendClaim, A2ASendResult>(
     kv,

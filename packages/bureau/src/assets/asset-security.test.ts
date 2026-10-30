@@ -390,6 +390,35 @@ describe('provider-fetch declaration', () => {
     await opened.close();
   });
 
+  it('keeps no part of its URL in the tombstone once it is deleted (COR-1934)', async () => {
+    const fixture = createMemoryAssetStorageFixture();
+    const opened = await open({
+      storage: fixture.storage,
+      policy: { url: { allowProviderFetch: true } },
+    });
+    const admission = await opened.assets.admit(
+      { source: { kind: 'url', url, fetchedBy: 'provider' }, declaredMediaType: 'application/pdf' },
+      alice,
+    );
+    expect(await admission.work.result()).toMatchObject({ outcome: 'completed' });
+    const stored = async () => {
+      const record = await fixture.storage.get(`asset:v1:record:${admission.assetId}`);
+      return record ?? '';
+    };
+    // While the asset is available, the URL is how a provider fetches it.
+    expect(await stored()).toContain('X-Amz-Signature');
+
+    expect(await opened.assets.delete(admission.assetId, alice).result()).toMatchObject({
+      outcome: 'completed',
+    });
+
+    const tombstone = await stored();
+    expect(tombstone).toContain('"state":"deleted"');
+    expect(tombstone).not.toContain('X-Amz-Signature');
+    expect(tombstone).not.toContain(new URL(url).pathname);
+    await opened.close();
+  });
+
   it('is refused without a declared media type, or when a gate or limit would need its bytes', async () => {
     const declared = { declaredMediaType: 'application/pdf' };
     const cases: Array<[Omit<BureauAssetOptions, 'storage'>, { declaredMediaType?: string }]> = [

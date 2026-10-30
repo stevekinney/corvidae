@@ -17,9 +17,12 @@ import type {
 } from '@lostgradient/weft';
 
 import {
+  browserTimeZone,
+  cadenceTimeZone,
   cadenceToWireSpec,
   describeCadence,
   isSubMinuteInterval,
+  scheduleValueTimeZone,
   scheduleValueToWireSpec,
   type ScheduleCadence,
 } from './cadence.ts';
@@ -92,7 +95,9 @@ export interface ScheduleFormInit {
   readonly revisionPolicy?: ScheduleRevisionPolicy;
 }
 
-const DEFAULT_CADENCE: ScheduleValue = { mode: 'interval', every: 15, unit: 'minutes' };
+function defaultCadence(): ScheduleValue {
+  return { every: { unit: 'minutes', count: 15 }, timeZone: browserTimeZone() };
+}
 
 /**
  * `value ?? fallback`, extracted to a named helper rather than inlined nine
@@ -120,7 +125,7 @@ export class ScheduleFormState {
   workflowType = $state('');
   description = $state('');
   inputText = $state('{}');
-  cadence = $state<ScheduleValue>(DEFAULT_CADENCE);
+  cadence = $state<ScheduleValue>(defaultCadence());
   overlap = $state<ScheduleOverlapPolicy>('skip');
   jitterText = $state('');
   backfill = $state(false);
@@ -155,8 +160,10 @@ export class ScheduleFormState {
   readonly initialOverlap: ScheduleOverlapPolicy;
   readonly initialJitterText: string;
   readonly initialBackfill: boolean;
-  /** The cadence as loaded, in wire form, so `isDirty` sees a cadence-only edit. */
+  /** The cadence as loaded, in wire form with its zone, so `isDirty` sees a cadence-only or zone-only edit. */
   readonly initialCadenceSpec: string;
+  /** The zone the cadence was loaded in: a cron's own, or `undefined` for an interval or a new schedule. */
+  readonly initialTimeZone: string | undefined;
 
   constructor(init: ScheduleFormInit = {}) {
     this.id = withDefault(init.id, this.id);
@@ -175,7 +182,22 @@ export class ScheduleFormState {
     this.initialOverlap = this.overlap;
     this.initialJitterText = this.jitterText.trim();
     this.initialBackfill = this.backfill;
-    this.initialCadenceSpec = JSON.stringify(this.cadenceSpec);
+    this.initialTimeZone =
+      this.originalCadence === undefined ? undefined : cadenceTimeZone(this.originalCadence);
+    this.initialCadenceSpec = this.cadenceKey;
+  }
+
+  /** The cadence and its zone as one comparable string. */
+  private get cadenceKey(): string {
+    return JSON.stringify([this.cadenceSpec, this.cadenceTimeZone]);
+  }
+
+  /** The zone the cadence is read in: the stored one, until the operator changes the cadence, and then the builder's; `undefined` for an interval. */
+  get cadenceTimeZone(): string | undefined {
+    if (!this.cadenceChanged && this.originalCadence !== undefined) {
+      return cadenceTimeZone(this.originalCadence);
+    }
+    return scheduleValueTimeZone(this.cadence);
   }
 
   /** The cadence in wire form: what the schedule had, until the operator changes it, and then the builder's value. */
@@ -246,10 +268,12 @@ export class ScheduleFormState {
     const trimmedId = this.id.trim();
     const trimmedJitter = this.jitterText.trim();
     const trimmedDescription = this.description.trim();
+    const timeZone = this.cadenceTimeZone;
     return {
       workflowType: this.workflowType,
       input: this.parsedInput,
       spec: this.cadenceSpec,
+      ...(timeZone !== undefined ? { timeZone } : {}),
       overlap: this.overlap,
       backfill: this.backfill,
       revisionPolicy: this.revisionPolicy,
@@ -278,7 +302,7 @@ export class ScheduleFormState {
   /** Whether any editable field differs from what the draft was constructed with. Lets the edit drawer keep an operator's unsaved changes when a background refetch delivers newer server data (COR-15). */
   get isDirty(): boolean {
     return (
-      JSON.stringify(this.cadenceSpec) !== this.initialCadenceSpec ||
+      this.cadenceKey !== this.initialCadenceSpec ||
       this.description !== this.initialDescription ||
       this.overlap !== this.initialOverlap ||
       this.jitterText.trim() !== this.initialJitterText ||
@@ -301,11 +325,14 @@ export class ScheduleFormState {
     const revisionPolicy = this.toUpdateRevisionPolicy();
     const description = this.description.trim();
     const jitter = this.jitterText.trim();
+    // Weft keeps a schedule's zone when an update leaves it out, so it is sent only when it changed.
+    const timeZone = this.cadenceTimeZone;
     const options: ScheduleUpdateOptions = {
       ...(description !== this.initialDescription.trim() ? { description } : {}),
       ...(this.overlap !== this.initialOverlap ? { overlap: this.overlap } : {}),
       ...(this.backfill !== this.initialBackfill ? { backfill: this.backfill } : {}),
       ...(jitter !== this.initialJitterText && jitter.length > 0 ? { jitter } : {}),
+      ...(timeZone !== undefined && timeZone !== this.initialTimeZone ? { timeZone } : {}),
       ...(revisionPolicy !== undefined ? { revisionPolicy } : {}),
     };
     return Object.keys(options).length === 0 ? undefined : options;

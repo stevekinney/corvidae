@@ -541,6 +541,24 @@ describe('assertStartable', () => {
   });
 });
 
+describe('findStart (COR-1951)', () => {
+  it('answers the instance a keyed start created even after the workflow is paused, and undefined for an unused key', async () => {
+    const w = await world();
+    await w.put('lookup', parked('lookup', 'ask'));
+    const { runtime } = await w.boot();
+    const started = await runtime.workflows.start('lookup', {
+      owner: 'anonymous:local',
+      idempotencyKey: 'hook:h:d',
+    });
+    const hash = runtime.workflows.list().find((entry) => entry.id === 'lookup')?.hash ?? '';
+    await runtime.workflows.pause('lookup', { expectedHash: hash });
+    expect(() => runtime.workflows.assertStartable('lookup')).toThrow('does not exist');
+
+    expect(await runtime.workflows.findStart('hook:h:d')).toEqual(started);
+    expect(await runtime.workflows.findStart('hook:h:never')).toBeUndefined();
+  });
+});
+
 describe('an instance Bureau cannot register', () => {
   /** Two workflows, each with an instance parked on `go`, then the first engine goes away. */
   async function strandedWorld() {

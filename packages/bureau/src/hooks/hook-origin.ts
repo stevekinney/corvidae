@@ -18,9 +18,20 @@
  *   session events, `diagnostic`). A `start-workflow` hook may not list one: `hooks.create` and
  *   `hooks.update` refuse it, and dispatch skips an event of one that a stored record lists anyway.
  *
- * The chain is therefore one start deep. What the rule cannot see is a start that carries no tag: a
- * run that creates a schedule, whose later fires are runs no hook started, or a workflow that
- * starts another workflow some other way.
+ * The chain is therefore one start deep. What the rule cannot see is a start that carries no tag
+ * (a workflow that starts another workflow some other way), and it sees a schedule only because the
+ * schedule carries the origin (COR-1952):
+ *
+ * - A schedule that a hook-started run creates (a `workflows-create` or `workflows-update` with a
+ *   `schedule` trigger, or a `schedules.create` the run makes) records the hook that started that
+ *   run, in a Bureau record keyed by the schedule (`schedule-hook-origins.ts`).
+ * - A run the schedule fires is an instance whose trigger, or a task whose origin, names the
+ *   schedule. The walk reads the record for it, so the fire counts as a hook's run and so does
+ *   everything beneath it. A schedule with no record (one an owner made) is not a hook's.
+ * - The fires of a hook-started run's schedule therefore start no start-workflow hook, however short
+ *   the interval, and the chain stays one start deep through them too. `schedule.missed` is the
+ *   exception: it is an `external` kind that names no run, so a hook listing it still acts on a
+ *   missed occurrence of such a schedule (it needs downtime, and starts nothing more by itself).
  *
  * @module hook-origin
  */
@@ -60,6 +71,10 @@ export interface HookOriginSources {
   workflowTags(runId: string): Promise<readonly string[] | undefined>;
   /** The run `runId`'s task belongs to (a step's instance, a child's parent, an attempt's goal), or `null`. */
   parentOf(runId: string): Promise<string | null>;
+  /** The schedule whose fire `runId` is, or `undefined` for a run no schedule fired. */
+  scheduleOf(runId: string): Promise<string | undefined>;
+  /** The hook that started the run that created schedule `scheduleId`, or `undefined` when none did. */
+  hookOfSchedule(scheduleId: string): Promise<string | undefined>;
 }
 
 /**
@@ -76,6 +91,11 @@ export function createHookOriginLookup(
     for (let depth = 0; depth < MAXIMUM_DEPTH && current !== null; depth++) {
       const hookId = hookOfTags(await sources.workflowTags(current));
       if (hookId !== undefined) return hookId;
+      const scheduleId = await sources.scheduleOf(current);
+      if (scheduleId !== undefined) {
+        const scheduled = await sources.hookOfSchedule(scheduleId);
+        if (scheduled !== undefined) return scheduled;
+      }
       current = await sources.parentOf(current);
     }
     if (current !== null) throw new Error(`Run "${runId}" is nested deeper than ${MAXIMUM_DEPTH}`);

@@ -21,8 +21,9 @@ export type SidebarProps = Omit<
   label?: string;
   /**
    * Viewport width below which the sidebar switches from the inline aside to
-   * the mobile drawer. Accepts a simple CSS length such as `'47.99rem'` or
-   * `'1024px'`. Default `'47.99rem'`.
+   * the mobile drawer. Accepts a simple CSS length such as `'639.98px'` or
+   * `'1024px'`. Default `'639.98px'`, so tablets keep the inline column and
+   * its icon rail.
    */
   mobileBreakpoint?: string;
   /** Additional CSS class merged with `.cinder-sidebar`. */

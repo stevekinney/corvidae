@@ -70,6 +70,8 @@ export function isGoalAttemptCostEstimation(value: unknown): value is GoalAttemp
   const custom = pricing['customPricing'];
   return (
     custom === undefined ||
-    (isPlainRecord(custom) && Object.values(custom).every((entry) => isModelPricing(entry)))
+    (isPlainRecord(custom) &&
+      // `null` is a model the catalog has no price for (COR-1921), which a budgeted agent states.
+      Object.values(custom).every((entry) => entry === null || isModelPricing(entry)))
   );
 }

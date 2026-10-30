@@ -1,18 +1,17 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
 @import '../chip/chip.css';
+@import '../combobox/combobox.css';
 @import '../grid/grid.css';
 @import '../input/input.css';
 @import '../number-input/number-input.css';
-@import '../segmented-control/segmented-control.css';
 @import '../select/select.css';
 @import '../time-field/time-field.css';
 
 @layer cinder.components {
   /* ========================================
    * SCHEDULE-BUILDER
-   * Recurrence-definition control: presets, cron, and interval authoring
-   * modes behind a tablist, with an always-visible summary line, next-fires
-   * preview, and timezone display slot.
+   * Recurrence-definition control: Repeats, At and Time zone fields, with an
+   * always-visible read-back sentence and next-runs preview.
    * ======================================== */
 
   .cinder-schedule-builder {
@@ -22,20 +21,8 @@
   }
 
   /* ----------------------------------------
-   * Mode panel
+   * Fields
    * ---------------------------------------- */
-
-  .cinder-schedule-builder__panel {
-    display: flex;
-    flex-direction: column;
-    gap: var(--cinder-space-3);
-    padding-block-start: var(--cinder-space-1);
-    padding-inline: var(--cinder-space-1);
-  }
-
-  .cinder-schedule-builder__preset-kind {
-    margin-block-end: var(--cinder-space-1);
-  }
 
   .cinder-schedule-builder__field-row {
     display: flex;
@@ -97,12 +84,11 @@
   }
 
   /* ----------------------------------------
-   * Always-visible informational blocks: summary, preview, timezone
+   * Always-visible informational blocks: read-back and preview
    * ---------------------------------------- */
 
   .cinder-schedule-builder__summary,
-  .cinder-schedule-builder__preview,
-  .cinder-schedule-builder__timezone {
+  .cinder-schedule-builder__preview {
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-1);
@@ -140,13 +126,6 @@
     font-size: var(--cinder-text-sm);
     color: var(--cinder-text-default);
     font-variant-numeric: tabular-nums;
-  }
-
-  .cinder-schedule-builder__timezone-value {
-    margin: 0;
-    font-size: var(--cinder-text-sm);
-    color: var(--cinder-text-default);
-    font-family: var(--cinder-font-mono);
   }
 
   .cinder-schedule-builder__empty {

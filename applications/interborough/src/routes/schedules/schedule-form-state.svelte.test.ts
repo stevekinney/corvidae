@@ -67,7 +67,7 @@ describe('ScheduleFormState', () => {
     expect(form.workflowType).toBe('');
     expect(form.inputText).toBe('{}');
     expect(form.overlap).toBe('skip');
-    expect(form.cadence).toEqual({ mode: 'interval', every: 15, unit: 'minutes' });
+    expect(form.cadence).toEqual({ every: { unit: 'minutes', count: 15 }, timeZone: 'UTC' });
     expect(form.revisionPolicy).toBe('active-at-fire');
     expect(form.initialRevisionPolicy).toBe('active-at-fire');
     expect(form.isValid).toBe(false);
@@ -79,7 +79,7 @@ describe('ScheduleFormState', () => {
       id: 'nightly-rollup',
       workflowType: 'report-gen',
       inputText: '{"day":"today"}',
-      cadence: { mode: 'cron', expression: '0 2 * * *' },
+      cadence: { cron: '0 2 * * *', timeZone: 'UTC' },
       overlap: 'queue',
       jitterText: '30s',
       backfill: true,
@@ -90,7 +90,7 @@ describe('ScheduleFormState', () => {
     expect(form.id).toBe('nightly-rollup');
     expect(form.workflowType).toBe('report-gen');
     expect(form.inputText).toBe('{"day":"today"}');
-    expect(form.cadence).toEqual({ mode: 'cron', expression: '0 2 * * *' });
+    expect(form.cadence).toEqual({ cron: '0 2 * * *', timeZone: 'UTC' });
     expect(form.overlap).toBe('queue');
     expect(form.jitterText).toBe('30s');
     expect(form.backfill).toBe(true);
@@ -120,13 +120,14 @@ describe('ScheduleFormState', () => {
     test('omits id and jitter when both are blank', () => {
       const form = new ScheduleFormState({
         workflowType: 'report-gen',
-        cadence: { mode: 'cron', expression: '0 2 * * *' },
+        cadence: { cron: '0 2 * * *', timeZone: 'UTC' },
       });
 
       expect(form.toCreateArgs()).toEqual({
         workflowType: 'report-gen',
         input: {},
         spec: { cron: '0 2 * * *' },
+        timeZone: 'UTC',
         overlap: 'skip',
         backfill: false,
         revisionPolicy: 'active-at-fire',
@@ -138,7 +139,7 @@ describe('ScheduleFormState', () => {
         workflowType: 'report-gen',
         id: '  nightly-rollup  ',
         jitterText: '  30s  ',
-        cadence: { mode: 'interval', every: 5, unit: 'minutes' },
+        cadence: { every: { unit: 'minutes', count: 5 }, timeZone: 'UTC' },
         overlap: 'cancel-running',
         backfill: true,
       });
@@ -158,7 +159,7 @@ describe('ScheduleFormState', () => {
     test('includes a non-default revisionPolicy from init', () => {
       const form = new ScheduleFormState({
         workflowType: 'report-gen',
-        cadence: { mode: 'cron', expression: '0 2 * * *' },
+        cadence: { cron: '0 2 * * *', timeZone: 'UTC' },
         revisionPolicy: 'pinned',
       });
 
@@ -279,7 +280,7 @@ describe('ScheduleFormState', () => {
 });
 
 describe('a cadence the builder cannot show exactly', () => {
-  const builderValue = { mode: 'interval', every: 1, unit: 'minutes' } as const;
+  const builderValue = { every: { unit: 'minutes', count: 1 }, timeZone: 'UTC' } as const;
 
   test('is kept as stored until the operator changes it, and then follows the builder', () => {
     const form = new ScheduleFormState({
@@ -301,20 +302,20 @@ describe('a cadence the builder cannot show exactly', () => {
       cadence: builderValue,
       originalCadence: { intervalMs: 90_000 },
     });
-    form.setCadence({ mode: 'interval', every: 5, unit: 'minutes' });
+    form.setCadence({ every: { unit: 'minutes', count: 5 }, timeZone: 'UTC' });
     expect(form.cadenceChanged).toBe(true);
     expect(form.cadenceSpec).toEqual({ every: 300_000 });
   });
 
   test('is not special for a whole-minute interval or a cron expression, which the builder shows exactly', () => {
     const minutes = new ScheduleFormState({
-      cadence: { mode: 'interval', every: 5, unit: 'minutes' },
+      cadence: { every: { unit: 'minutes', count: 5 }, timeZone: 'UTC' },
       originalCadence: { intervalMs: 300_000 },
     });
     expect(minutes.exactCadenceText).toBeUndefined();
     expect(minutes.cadenceSpec).toEqual({ every: 300_000 });
     const cron = new ScheduleFormState({
-      cadence: { mode: 'cron', expression: '0 9 * * *' },
+      cadence: { cron: '0 9 * * *', timeZone: 'UTC' },
       originalCadence: { cronExpression: '0 9 * * *' },
     });
     expect(cron.exactCadenceText).toBeUndefined();
@@ -322,8 +323,58 @@ describe('a cadence the builder cannot show exactly', () => {
   });
 
   test('a new draft has no original cadence, so it sends what the builder holds', () => {
-    const form = new ScheduleFormState({ cadence: { mode: 'interval', every: 2, unit: 'hours' } });
+    const form = new ScheduleFormState({
+      cadence: { every: { unit: 'hours', count: 2 }, timeZone: 'UTC' },
+    });
     expect(form.exactCadenceText).toBeUndefined();
     expect(form.toCreateArgs().spec).toEqual({ every: 7_200_000 });
+  });
+});
+
+describe('the time zone a cron cadence is read in', () => {
+  test('a new cron schedule is created in the zone the builder chose', () => {
+    const form = new ScheduleFormState({
+      workflowType: 'report-gen',
+      cadence: { cron: '0 9 * * 1-5', timeZone: 'America/Los_Angeles' },
+    });
+    expect(form.toCreateArgs()).toMatchObject({
+      spec: { cron: '0 9 * * 1-5' },
+      timeZone: 'America/Los_Angeles',
+    });
+  });
+
+  test('a new interval schedule is created without a zone, which Weft refuses for one', () => {
+    const form = new ScheduleFormState({
+      workflowType: 'report-gen',
+      cadence: { every: { unit: 'hours', count: 7 }, timeZone: 'America/Los_Angeles' },
+    });
+    const args = form.toCreateArgs();
+    expect(args.spec).toEqual({ every: 25_200_000 });
+    expect(args).not.toHaveProperty('timeZone');
+  });
+
+  test('an edit sends the zone only when it changed, and a zone-only change is dirty', () => {
+    const form = new ScheduleFormState({
+      workflowType: 'report-gen',
+      cadence: { cron: '0 9 * * *', timeZone: 'Europe/London' },
+      originalCadence: { cronExpression: '0 9 * * *', timeZone: 'Europe/London' },
+    });
+    expect(form.toUpdateOptions()).toBeUndefined();
+    expect(form.isDirty).toBe(false);
+
+    form.setCadence({ cron: '0 9 * * *', timeZone: 'Asia/Tokyo' });
+
+    expect(form.isDirty).toBe(true);
+    expect(form.toUpdateOptions()).toEqual({ timeZone: 'Asia/Tokyo' });
+  });
+
+  test('an edit from an interval to a cron sends the zone, even UTC', () => {
+    const form = new ScheduleFormState({
+      workflowType: 'report-gen',
+      cadence: { every: { unit: 'hours', count: 1 }, timeZone: 'UTC' },
+      originalCadence: { intervalMs: 3_600_000, timeZone: 'UTC' },
+    });
+    form.setCadence({ cron: '0 9 * * *', timeZone: 'UTC' });
+    expect(form.toUpdateOptions()).toEqual({ timeZone: 'UTC' });
   });
 });

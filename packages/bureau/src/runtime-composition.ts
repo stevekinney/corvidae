@@ -2200,6 +2200,11 @@ export interface RuntimeComposition {
    */
   loadCatalogRunRecoveryRecord(runId: string): Promise<CatalogRunRecoveryLoad>;
   /**
+   * COR-1934 — deletes a run's recovery record, which holds the run's `input`. For a run whose
+   * content is being purged and that nothing will recover or claim again. Idempotent.
+   */
+  deleteCatalogRunRecoveryRecord(runId: string): Promise<void>;
+  /**
    * COR-851 — tombstones the claim of a goal attempt's run, so that no start can
    * begin from it and no run under it takes a step (see `goal-attempt-fence.ts`).
    * The claim the goal's own start wrote is changed by compare-and-swap from the
@@ -4165,6 +4170,11 @@ async function buildRuntimeComposition(
     }
   }
 
+  async function deleteCatalogRunRecoveryRecord(runId: string): Promise<void> {
+    await durableStorage?.delete(catalogRunRecoveryKey(runId));
+    catalogRunRecoveryCache.delete(runId);
+  }
+
   /** How many times a tombstone retries against a record that changed under it. */
   const FENCE_WRITE_TRIES = 5;
 
@@ -5332,6 +5342,7 @@ async function buildRuntimeComposition(
     persistCatalogRunRecoveryRecord,
     claimCatalogRunRecoveryRecord,
     loadCatalogRunRecoveryRecord,
+    deleteCatalogRunRecoveryRecord,
     fenceGoalAttemptRecoveryRecord,
     isCatalogRecoveredRun,
     classifyCatalogRecoveredRun,

@@ -3,24 +3,24 @@
    * @cinder
    * @category form
    * @status beta
-   * @purpose Recurrence-definition control that authors a cron or fixed-interval schedule via presets, raw cron fields, or an interval, alongside an always-visible summary, next-fires preview, and timezone slot.
+   * @purpose Recurrence-definition control that reads a schedule as Repeats, At and Time zone, emits a cron or a counted interval with its IANA zone, and reads the schedule back as a sentence with its next runs.
    * @tag schedule
    * @tag recurrence
    * @tag cron
    * @tag form
    * @useWhen Letting a user define when a job or notification recurs, supplying your own date/cron library to compute upcoming fire times.
-   * @useWhen You want a friendly presets UI (daily, weekly, monthly) that still round-trips to a portable cron or interval value.
+   * @useWhen You want plain repeat choices that still round-trip to a portable cron or interval value, with custom cron one choice away.
    * @avoidWhen You need overlap policy, jitter, or backfill controls — those belong to the consumer's surrounding form. | invocation-rule-builder
    * @avoidWhen You only need to pick a single point in time, not a recurrence — use date-picker instead. | date-picker
-   * @related date-picker, segmented-control, input, time-field
-   * @a11yPattern WAI-ARIA Tabs
-   * @a11yNote The available authoring modes render as a tablist; each cron field reports validity via aria-invalid and an associated hint/error.
+   * @related date-picker, combobox, input, time-field
+   * @a11yPattern Form group
+   * @a11yNote Repeats is a native select; At is hidden for interval repeats; the time zone is a searchable combobox; each custom cron field reports validity via aria-invalid and an associated hint or error.
    */
   export type {
-    ScheduleAuthoringMode,
     ScheduleBuilderProps,
     ScheduleFire,
     ScheduleIntervalUnit,
+    ScheduleRepeats,
     ScheduleValue,
   } from './schedule-builder.types.ts';
 </script>
@@ -28,25 +28,28 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { classNames } from '../../utilities/class-names.ts';
+  import type { ComboboxOption } from '../combobox/combobox.types.ts';
   import ScheduleBuilderFields from './schedule-builder-fields.svelte';
 
   import type {
-    ScheduleAuthoringMode,
     ScheduleBuilderProps,
     ScheduleFire,
     ScheduleIntervalUnit,
+    ScheduleRepeats,
     ScheduleValue,
   } from './schedule-builder.types.ts';
   import {
+    availableTimeZones,
+    browserTimeZone,
     cronFieldsValid,
+    cronForDraft,
     defaultScheduleValue,
-    describeValue,
+    describeSchedule,
+    draftFromValue,
     joinCron,
-    lowerDailyAt,
-    lowerMonthlyOnDay,
-    lowerWeeklyAt,
-    valueToCronFields,
-    valueToInterval,
+    splitCron,
+    valueFromDraft,
+    type ScheduleDraft,
   } from './schedule-builder.utilities.ts';
   import {
     cronExpressionForEditor,
@@ -55,22 +58,12 @@
     type CronEditorMode,
   } from './schedule-builder-cron-editor.ts';
 
-  type PresetKind = 'daily' | 'weekly' | 'monthly';
-
-  const AUTHORING_MODES = [
-    'presets',
-    'cron',
-    'interval',
-  ] as const satisfies readonly ScheduleAuthoringMode[];
-
   let {
     value,
     onValueChange,
-    allowedModes,
     computeNextFires,
     previewCount = 5,
-    timezoneLabel,
-    timezone,
+    timeZones,
     label = 'Schedule',
     class: className,
     'aria-label': ariaLabel,
@@ -95,135 +88,47 @@
   );
 
   function scheduleValuesEqual(a: ScheduleValue, b: ScheduleValue): boolean {
-    if (a.mode !== b.mode) return false;
-    if (a.mode === 'cron' && b.mode === 'cron') return a.expression === b.expression;
-    if (a.mode === 'interval' && b.mode === 'interval') {
-      return a.every === b.every && a.unit === b.unit;
+    if (a.timeZone !== b.timeZone) return false;
+    if ('cron' in a && 'cron' in b) return a.cron === b.cron;
+    if ('every' in a && 'every' in b) {
+      return a.every.count === b.every.count && a.every.unit === b.every.unit;
     }
     return false;
   }
 
-  function normalizeAllowedModes(
-    candidateModes: readonly ScheduleAuthoringMode[] | undefined,
-  ): ScheduleAuthoringMode[] {
-    if (candidateModes === undefined) return [...AUTHORING_MODES];
-    const normalized = AUTHORING_MODES.filter((mode) => candidateModes.includes(mode));
-    return normalized.length > 0 ? normalized : [...AUTHORING_MODES];
+  const initialValue = untrack(() => value) ?? defaultScheduleValue();
+
+  const initialDraft = draftFromValue(initialValue);
+  const initialCronFields = splitCron(initialDraft.cron);
+
+  let draft = $state<ScheduleDraft>(initialDraft);
+  let timeZone = $state(initialValue.timeZone);
+  let cronFields = $state<string[]>(initialCronFields);
+  let cronEditors = $state<CronEditor[]>(initialCronFields.map(editorFromCronField));
+
+  // Grouped by region, with the value's own zone always offered even when the list leaves it out.
+  const timeZoneOptions = $derived.by((): ComboboxOption[] => {
+    const zones = timeZones === undefined ? availableTimeZones() : [...timeZones];
+    if (!zones.includes(timeZone)) zones.unshift(timeZone);
+    return zones.map((zone) => {
+      const slash = zone.indexOf('/');
+      return {
+        value: zone,
+        label: zone.replaceAll('_', ' '),
+        group: slash === -1 ? 'Other' : zone.slice(0, slash),
+      };
+    });
+  });
+
+  function seedFrom(next: ScheduleValue): void {
+    draft = draftFromValue(next);
+    timeZone = next.timeZone;
+    cronFields = splitCron(draft.cron);
+    cronEditors = cronFields.map(editorFromCronField);
   }
 
-  const resolvedAllowedModes = $derived(normalizeAllowedModes(allowedModes));
-
-  function modeIsAllowed(mode: ScheduleAuthoringMode): boolean {
-    return resolvedAllowedModes.includes(mode);
-  }
-
-  // An omitted value opens on Presets; an explicit value opens on the mode that authors it, so an
-  // interval value opens Interval and a cron value opens Cron. A mode the consumer excluded falls
-  // back to the first allowed one.
-  function initialAuthoringMode(
-    candidateValue: ScheduleValue | undefined,
-    candidateAllowedModes: ScheduleAuthoringMode[],
-  ): ScheduleAuthoringMode {
-    const preferredMode =
-      candidateValue === undefined
-        ? 'presets'
-        : candidateValue.mode === 'cron'
-          ? 'cron'
-          : 'interval';
-    return candidateAllowedModes.includes(preferredMode)
-      ? preferredMode
-      : candidateAllowedModes[0]!;
-  }
-
-  /**
-   * The field state a value seeds. The RAW value decides the authoring mode, because an omitted
-   * value is not the same as the default value: it opens on Presets, where an explicit interval
-   * opens Interval. The resolved value (the default when omitted) seeds the cron and interval
-   * fields.
-   */
-  function seedFieldsFromValue(
-    rawValue: ScheduleValue | undefined,
-    candidateAllowedModes: ScheduleAuthoringMode[],
-  ) {
-    const seededValue = rawValue ?? defaultScheduleValue();
-    const interval = valueToInterval(seededValue);
-    return {
-      authoringMode: initialAuthoringMode(rawValue, candidateAllowedModes),
-      cronFields: valueToCronFields(seededValue),
-      intervalEvery: interval?.every ?? 15,
-      intervalUnit: interval?.unit ?? ('minutes' as ScheduleIntervalUnit),
-      presetKind: 'daily' as PresetKind,
-      presetDailyTime: '09:00',
-      presetWeeklyDays: [] as number[],
-      presetWeeklyTime: '09:00',
-      presetMonthlyDay: 1,
-      presetMonthlyTime: '09:00',
-    };
-  }
-
-  const initialSeed = seedFieldsFromValue(
-    untrack(() => value),
-    normalizeAllowedModes(untrack(() => allowedModes)),
-  );
-
-  let authoringMode = $state<ScheduleAuthoringMode>(initialSeed.authoringMode);
-  let presetKind = $state<PresetKind>(initialSeed.presetKind);
-
-  let cronFields = $state<string[]>(initialSeed.cronFields);
-  let cronEditors = $state<CronEditor[]>(initialSeed.cronFields.map(editorFromCronField));
-
-  let intervalEvery = $state(initialSeed.intervalEvery);
-  let intervalUnit = $state<ScheduleIntervalUnit>(initialSeed.intervalUnit);
-
-  let presetDailyTime = $state(initialSeed.presetDailyTime);
-  let presetWeeklyDays = $state<number[]>(initialSeed.presetWeeklyDays);
-  let presetWeeklyTime = $state(initialSeed.presetWeeklyTime);
-  let presetMonthlyDay = $state(initialSeed.presetMonthlyDay);
-  let presetMonthlyTime = $state(initialSeed.presetMonthlyTime);
-
-  function applySeedToFields(seed: ReturnType<typeof seedFieldsFromValue>): void {
-    authoringMode = seed.authoringMode;
-    cronFields = seed.cronFields;
-    cronEditors = seed.cronFields.map(editorFromCronField);
-    intervalEvery = seed.intervalEvery;
-    intervalUnit = seed.intervalUnit;
-    presetKind = seed.presetKind;
-    presetDailyTime = seed.presetDailyTime;
-    presetWeeklyDays = seed.presetWeeklyDays;
-    presetWeeklyTime = seed.presetWeeklyTime;
-    presetMonthlyDay = seed.presetMonthlyDay;
-    presetMonthlyTime = seed.presetMonthlyTime;
-  }
-
-  function applyPresetSeedToFields(seed: ReturnType<typeof seedFieldsFromValue>): void {
-    presetKind = seed.presetKind;
-    presetDailyTime = seed.presetDailyTime;
-    presetWeeklyDays = seed.presetWeeklyDays;
-    presetWeeklyTime = seed.presetWeeklyTime;
-    presetMonthlyDay = seed.presetMonthlyDay;
-    presetMonthlyTime = seed.presetMonthlyTime;
-  }
-
-  function valueForPresets(): ScheduleValue {
-    switch (presetKind) {
-      case 'daily':
-        return lowerDailyAt(presetDailyTime);
-      case 'weekly':
-        return lowerWeeklyAt(presetWeeklyDays, presetWeeklyTime);
-      case 'monthly':
-        return lowerMonthlyOnDay(presetMonthlyDay, presetMonthlyTime);
-    }
-  }
-
-  function valueForMode(mode: ScheduleAuthoringMode): ScheduleValue {
-    if (mode === 'cron') return { mode: 'cron', expression: joinCron(cronFields) };
-    if (mode === 'interval') return { mode: 'interval', every: intervalEvery, unit: intervalUnit };
-    return valueForPresets();
-  }
-
-  const currentValue = $derived(valueForMode(authoringMode));
-
-  const currentValueIsValid = $derived(authoringMode !== 'cron' || cronFieldsValid(cronFields));
+  const currentValue = $derived(valueFromDraft(draft, timeZone));
+  const currentValueIsValid = $derived(draft.repeats !== 'cron' || cronFieldsValid(cronFields));
 
   type PreviewResult =
     | { status: 'hidden' }
@@ -245,10 +150,9 @@
     }
   });
 
-  // What the component shows right now is the committed value until the first edit: the controlled
-  // value when there is one, otherwise the value its own fields already express (the Daily preset,
-  // `defaultScheduleValue()`, when Presets is allowed).
-  let lastKnownValue: ScheduleValue = untrack(() => value ?? currentValue);
+  // What the component shows is the committed value until the first edit: the controlled value
+  // when there is one, otherwise the default every day at 9:00 AM in the browser's zone.
+  let lastKnownValue: ScheduleValue = initialValue;
 
   function initialValueProp(): ScheduleValue | undefined {
     return value;
@@ -264,66 +168,104 @@
 
     // Undefined explicitly resets; defined equal values are controlled echoes.
     if (incoming !== undefined && scheduleValuesEqual(incoming, lastKnownValue)) return;
-    applySeedToFields(seedFieldsFromValue(incoming, resolvedAllowedModes));
-    lastKnownValue = incoming ?? untrack(() => currentValue);
-  });
-
-  $effect(() => {
-    if (resolvedAllowedModes.includes(authoringMode)) return;
-    applySeedToFields(seedFieldsFromValue(lastKnownValue, resolvedAllowedModes));
+    const next = incoming ?? defaultScheduleValue(browserTimeZone());
+    seedFrom(next);
+    lastKnownValue = next;
   });
 
   function emitChange(): void {
+    if (!currentValueIsValid) return;
     lastKnownValue = currentValue;
     onValueChange?.(currentValue);
   }
 
-  function handleAuthoringModeChange(nextMode: ScheduleAuthoringMode): void {
-    if (nextMode === authoringMode) return;
-    if (!modeIsAllowed(nextMode)) return;
-    authoringMode = nextMode;
-    if (nextMode === 'cron') {
-      cronFields = valueToCronFields(lastKnownValue);
+  const fixedDays: Partial<Record<ScheduleRepeats, number[]>> = {
+    daily: [0, 1, 2, 3, 4, 5, 6],
+    weekdays: [1, 2, 3, 4, 5],
+    weekends: [0, 6],
+  };
+
+  function handleRepeatsChange(event: Event): void {
+    const nextRepeats = (event.currentTarget as HTMLSelectElement).value as ScheduleRepeats;
+    if (nextRepeats === draft.repeats) return;
+    const previous = draft;
+    // Custom days starts from the days the previous choice ran on, and Custom cron from the
+    // expression it lowered to, so neither choice starts from nothing.
+    const days = fixedDays[previous.repeats] ?? previous.days;
+    const cron = previous.repeats === 'interval' ? previous.cron : cronForDraft(previous);
+    draft = { ...previous, repeats: nextRepeats, days: [...days], cron };
+    if (nextRepeats === 'cron') {
+      cronFields = splitCron(cron);
       cronEditors = cronFields.map(editorFromCronField);
-    } else if (nextMode === 'interval') {
-      const interval = valueToInterval(lastKnownValue);
-      if (interval) {
-        intervalEvery = interval.every;
-        intervalUnit = interval.unit;
-      }
-    } else if (nextMode === 'presets') {
-      applyPresetSeedToFields(seedFieldsFromValue(lastKnownValue, resolvedAllowedModes));
     }
+    emitChange();
   }
 
-  function handlePresetKindChange(nextKind: PresetKind): void {
-    if (nextKind === presetKind) return;
-    presetKind = nextKind;
+  function handleTimeChange(next: string | undefined): void {
+    if (!next) return;
+    draft = { ...draft, time: next };
+    emitChange();
+  }
+
+  function toggleDay(day: number): void {
+    const selected = draft.days.includes(day);
+    // Custom days always runs on at least one day.
+    if (selected && draft.days.length === 1) return;
+    draft = {
+      ...draft,
+      days: selected ? draft.days.filter((existing) => existing !== day) : [...draft.days, day],
+    };
+    emitChange();
+  }
+
+  function handleDayOfMonthChange(next: number | null): void {
+    draft = { ...draft, dayOfMonth: next && next >= 1 ? Math.min(31, Math.trunc(next)) : 1 };
+    emitChange();
+  }
+
+  function toPositiveInteger(next: number | null): number {
+    if (next === null || !Number.isFinite(next) || next < 1) return 1;
+    return Math.trunc(next);
+  }
+
+  function handleIntervalCountChange(next: number | null): void {
+    draft = { ...draft, intervalCount: toPositiveInteger(next) };
+    emitChange();
+  }
+
+  function handleIntervalUnitChange(event: Event): void {
+    const unit = (event.currentTarget as HTMLSelectElement).value as ScheduleIntervalUnit;
+    draft = { ...draft, intervalUnit: unit };
+    emitChange();
+  }
+
+  function handleTimeZoneChange(next: string): void {
+    if (next === '' || next === timeZone) return;
+    timeZone = next;
+    emitChange();
+  }
+
+  function commitCronFields(next: string[]): void {
+    cronFields = next;
+    draft = { ...draft, cron: joinCron(next) };
     emitChange();
   }
 
   function handleCronFieldChange(index: number, raw: string): void {
     const next = [...cronFields];
     next[index] = raw;
-    cronFields = next;
     const nextEditors = [...cronEditors];
     nextEditors[index] = { ...editorFromCronField(raw, index), mode: 'advanced' };
     cronEditors = nextEditors;
-    if (cronFieldsValid(next)) emitChange();
+    commitCronFields(next);
   }
 
   function handleCronEditorModeChange(index: number, event: Event): void {
     const mode = (event.currentTarget as HTMLSelectElement).value as CronEditorMode;
-    if (mode === 'advanced') {
-      const next = [...cronEditors];
-      next[index] = { ...next[index]!, mode };
-      cronEditors = next;
-      return;
-    }
     const next = [...cronEditors];
     next[index] = { ...next[index]!, mode };
     cronEditors = next;
-    handleCronEditorChange(index);
+    if (mode !== 'advanced') handleCronEditorChange(index);
   }
 
   function handleCronEditorChange(index: number): void {
@@ -331,8 +273,7 @@
     if (!editor || editor.mode === 'advanced') return;
     const next = [...cronFields];
     next[index] = cronExpressionForEditor(editor);
-    cronFields = next;
-    if (cronFieldsValid(next)) emitChange();
+    commitCronFields(next);
   }
 
   function updateCronEditor(index: number, patch: Partial<CronEditor>): void {
@@ -341,54 +282,6 @@
     cronEditors = next;
     handleCronEditorChange(index);
   }
-
-  function toPositiveInteger(next: number | null): number {
-    if (next === null || !Number.isFinite(next) || next < 1) return 1;
-    return Math.trunc(next);
-  }
-
-  function handleIntervalEveryChange(next: number | null): void {
-    intervalEvery = toPositiveInteger(next);
-    emitChange();
-  }
-
-  function handleIntervalUnitChange(event: Event): void {
-    intervalUnit = (event.currentTarget as HTMLSelectElement).value as ScheduleIntervalUnit;
-    emitChange();
-  }
-
-  function acceptPresetTime(next: string | undefined, commit: (time: string) => void): void {
-    if (!next) return;
-    commit(next);
-    emitChange();
-  }
-
-  function handlePresetDailyTimeChange(next: string | undefined): void {
-    acceptPresetTime(next, (time) => (presetDailyTime = time));
-  }
-
-  function toggleWeeklyDay(day: number): void {
-    presetWeeklyDays = presetWeeklyDays.includes(day)
-      ? presetWeeklyDays.filter((existing) => existing !== day)
-      : [...presetWeeklyDays, day];
-    emitChange();
-  }
-
-  function handlePresetWeeklyTimeChange(next: string | undefined): void {
-    acceptPresetTime(next, (time) => (presetWeeklyTime = time));
-  }
-
-  function handlePresetMonthlyDayChange(next: number | null): void {
-    presetMonthlyDay = next && next >= 1 ? Math.min(31, Math.trunc(next)) : 1;
-    emitChange();
-  }
-
-  function handlePresetMonthlyTimeChange(next: string | undefined): void {
-    acceptPresetTime(next, (time) => (presetMonthlyTime = time));
-  }
-
-  const modeTabId = (mode: ScheduleAuthoringMode) => `${baseId}-mode-${mode}-tab`;
-  const modePanelId = (mode: ScheduleAuthoringMode) => `${baseId}-mode-${mode}-panel`;
 </script>
 
 <div
@@ -397,41 +290,32 @@
   role="group"
   aria-label={resolvedAriaLabel}
   aria-labelledby={normalizedAriaLabelledby}
-  data-sb-mode={authoringMode}
+  data-sb-repeats={draft.repeats}
 >
   <ScheduleBuilderFields
     {baseId}
-    {authoringMode}
-    {modeIsAllowed}
-    {modeTabId}
-    {modePanelId}
-    onAuthoringModeChange={handleAuthoringModeChange}
-    {presetKind}
-    onPresetKindChange={handlePresetKindChange}
-    {presetDailyTime}
-    {presetWeeklyDays}
-    {presetWeeklyTime}
-    {presetMonthlyDay}
-    {presetMonthlyTime}
-    onPresetDailyTimeChange={handlePresetDailyTimeChange}
-    onToggleWeeklyDay={toggleWeeklyDay}
-    onPresetWeeklyTimeChange={handlePresetWeeklyTimeChange}
-    onPresetMonthlyDayChange={handlePresetMonthlyDayChange}
-    onPresetMonthlyTimeChange={handlePresetMonthlyTimeChange}
+    {draft}
+    {timeZone}
+    {timeZoneOptions}
+    onRepeatsChange={handleRepeatsChange}
+    onTimeChange={handleTimeChange}
+    onToggleDay={toggleDay}
+    onDayOfMonthChange={handleDayOfMonthChange}
+    onIntervalCountChange={handleIntervalCountChange}
+    onIntervalUnitChange={handleIntervalUnitChange}
+    onTimeZoneChange={handleTimeZoneChange}
     {cronFields}
     {cronEditors}
     onCronModeChange={handleCronEditorModeChange}
     onCronEditorChange={updateCronEditor}
     onCronRawChange={handleCronFieldChange}
-    {intervalEvery}
-    {intervalUnit}
-    onIntervalEveryChange={handleIntervalEveryChange}
-    onIntervalUnitChange={handleIntervalUnitChange}
   />
 
   <dl class="cinder-schedule-builder__summary">
-    <dt class="cinder-schedule-builder__section-label">Summary</dt>
-    <dd class="cinder-schedule-builder__summary-text">{describeValue(currentValue)}</dd>
+    <dt class="cinder-schedule-builder__section-label">Runs</dt>
+    <dd class="cinder-schedule-builder__summary-text" aria-live="polite">
+      {currentValueIsValid ? describeSchedule(currentValue) : 'Fix the cron expression above.'}
+    </dd>
   </dl>
 
   {#if previewResult.status !== 'hidden'}
@@ -459,17 +343,4 @@
       {/if}
     </div>
   {/if}
-
-  <dl class="cinder-schedule-builder__timezone">
-    <dt class="cinder-schedule-builder__section-label">Timezone</dt>
-    <dd class="cinder-schedule-builder__timezone-value">
-      {#if timezone}
-        {@render timezone()}
-      {:else if timezoneLabel}
-        {timezoneLabel}
-      {:else}
-        <span class="cinder-schedule-builder__empty">Not set</span>
-      {/if}
-    </dd>
-  </dl>
 </div>

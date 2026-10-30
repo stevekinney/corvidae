@@ -19,6 +19,7 @@ import {
 import { BudgetExceededError } from './errors';
 import { BudgetThresholdEvent } from './events';
 import type { EventDispatcher, RunState, StepDeps } from './run-step';
+import { type SteeredModel, switchedPricingKey } from './run-step-support';
 
 /** What one step needs to check the budget: the spend it began with, and whether it has been checked. */
 export interface StepCostWindow {
@@ -68,6 +69,28 @@ export function checkCostBudget(input: {
       `The run spent $${costAfter.toFixed(6)}, which reached its cost budget (perRunUsd: $${budget.perRunUsd}).`,
     );
   }
+}
+
+/**
+ * Throws a {@link BudgetExceededError} naming the model when a run with a cost budget is about to
+ * take a step on a model its pricing does not know (COR-1921). A session can be switched to
+ * another model between steps; the step must cost what that model charges, and counting it at
+ * another model's rate would let the run spend past its budget unseen. The run stops before the
+ * step asks the model anything. A run with no budget, or no `costEstimation`, is never stopped by
+ * this, and neither is a step on the model the run's pricing was built for.
+ */
+export function checkSwitchedModelPriced(deps: StepDeps, steered: SteeredModel | undefined): void {
+  const budget = deps.costBudget;
+  const { costEstimation } = deps;
+  if (budget === undefined || costEstimation === undefined || steered?.model === undefined) return;
+  if (switchedPricingKey(costEstimation, steered) !== undefined) return;
+  const served =
+    steered.modelProvider === undefined
+      ? `"${steered.model}"`
+      : `"${steered.model}" from "${steered.modelProvider}"`;
+  throw new BudgetExceededError(
+    `The run was switched to the model ${served}, which has no price, so its spend cannot be counted against the run's cost budget (perRunUsd: $${budget.perRunUsd}).`,
+  );
 }
 
 /**

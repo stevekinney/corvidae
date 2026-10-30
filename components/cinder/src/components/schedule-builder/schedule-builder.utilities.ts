@@ -1,18 +1,13 @@
-import type { ScheduleIntervalUnit, ScheduleValue } from './schedule-builder.types.ts';
+import type {
+  ScheduleIntervalUnit,
+  ScheduleRepeats,
+  ScheduleValue,
+} from './schedule-builder.types.ts';
 
-function assertNever(value: never): never {
-  throw new Error(`Unexpected exhaustive value: ${String(value)}`);
-}
+/** The interval units the "Every N" choice offers, in order. */
+export const INTERVAL_UNITS: readonly ScheduleIntervalUnit[] = ['minutes', 'hours'];
 
-/** The interval units offered in the interval mode selector, in order. */
-export const INTERVAL_UNITS: readonly ScheduleIntervalUnit[] = [
-  'minutes',
-  'hours',
-  'days',
-  'weeks',
-];
-
-/** Weekday chips for the weekly preset. `value` matches cron day-of-week (0 = Sunday). */
+/** Weekday chips for the Custom days choice. `value` matches cron day-of-week (0 = Sunday). */
 export const WEEKDAYS: readonly { value: number; short: string; long: string }[] = [
   { value: 1, short: 'Mon', long: 'Monday' },
   { value: 2, short: 'Tue', long: 'Tuesday' },
@@ -36,19 +31,6 @@ export const CRON_FIELDS: readonly {
   { name: 'Month', min: 1, max: 12, hint: '1–12' },
   { name: 'Day of week', min: 0, max: 6, hint: '0–6 (Sun–Sat)' },
 ];
-
-/**
- * The default value used when the consumer passes none: daily at 09:00, which is what the Presets
- * panel's Daily kind authors, so the summary, the Cron tab's seed and the upcoming runs all agree.
- */
-export function defaultScheduleValue(): ScheduleValue {
-  return { mode: 'cron', expression: '0 9 * * *' };
-}
-
-/** Singularize an interval unit for "every 1 X" phrasing. */
-function singularUnit(unit: ScheduleIntervalUnit): string {
-  return unit.slice(0, -1);
-}
 
 /**
  * Validate a single cron field value against its field range. Accepts a
@@ -143,153 +125,210 @@ export function parseTime(time: string): { hour: number; minute: number } {
 }
 
 // ---------------------------------------------------------------------------
-// Preset lowering — presets are sugar that lower to a cron value.
+// Repeats: what each choice lowers to, and which choice a value reopens as.
 // ---------------------------------------------------------------------------
 
-/** "daily at HH:MM" → a cron value. */
-export function lowerDailyAt(time: string): ScheduleValue {
-  const { hour, minute } = parseTime(time);
-  return { mode: 'cron', expression: `${minute} ${hour} * * *` };
-}
-
-/** "weekly on [days] at HH:MM" → a cron value. Empty days falls back to every day. */
-export function lowerWeeklyAt(days: number[], time: string): ScheduleValue {
-  const { hour, minute } = parseTime(time);
-  // Don't use `Array.prototype.toSorted()` — it is ES2023 and the package
-  // targets ES2022, so it crashes runtimes that follow the target. Sort a
-  // caller-owned copy in place instead of mutating the input.
-  const sortedDays = [...days];
-  sortedDays.sort((a, b) => a - b);
-  const dow = sortedDays.length > 0 ? sortedDays.join(',') : '*';
-  return { mode: 'cron', expression: `${minute} ${hour} * * ${dow}` };
-}
-
-/** "monthly on day N at HH:MM" → a cron value. */
-export function lowerMonthlyOnDay(day: number, time: string): ScheduleValue {
-  const { hour, minute } = parseTime(time);
-  const safeDay = Math.min(31, Math.max(1, Math.trunc(day)));
-  return { mode: 'cron', expression: `${minute} ${hour} ${safeDay} * *` };
-}
-
-// ---------------------------------------------------------------------------
-// Cross-mode conversion — preserve intent losslessly where representable.
-// ---------------------------------------------------------------------------
+/** The Repeats choices, in the order the field lists them, with their labels. */
+export const REPEATS_OPTIONS: readonly { value: ScheduleRepeats; label: string }[] = [
+  { value: 'daily', label: 'Every day' },
+  { value: 'weekdays', label: 'Weekdays' },
+  { value: 'weekends', label: 'Weekends' },
+  { value: 'custom-days', label: 'Custom days' },
+  { value: 'monthly', label: 'Monthly on a day' },
+  { value: 'interval', label: 'Every few minutes or hours' },
+  { value: 'cron', label: 'Custom cron' },
+];
 
 /**
- * Whether a step wildcard of `every` on a field that wraps every `cycleLength`
- * units (60 for minutes, 24 for hours) is a genuinely fixed-gap interval. A
- * step wildcard restarts counting from the field's own zero point each cycle
- * (e.g. the minute field restarts at :00 every hour), so it only behaves like
- * a true "every N units, forever" interval when `every` evenly divides the
- * cycle — otherwise the LAST gap before the restart is shorter than `every`.
- * For example, an every-45-minutes step wildcard fires at :00 and :45 — a
- * 45-then-15-minute gap, not a steady 45 minutes — because 45 does not
- * divide 60.
+ * Everything the fields hold, whichever Repeats choice is showing, so that switching choices keeps
+ * what the person already chose. `time` is `HH:MM` on a 24-hour clock; `days` are cron
+ * day-of-week numbers (0 = Sunday).
  */
-function isEvenDivisorStep(every: number, cycleLength: number): boolean {
-  // Must be strictly below the cycle length: a `*/N` where N equals (or exceeds)
-  // the cycle is out of the field's range (e.g. `*/60` for minutes, max 59) and
-  // is rejected by the cron validator, so it is not a representable step.
-  return Number.isInteger(every) && every > 0 && every < cycleLength && cycleLength % every === 0;
-}
+export type ScheduleDraft = {
+  repeats: ScheduleRepeats;
+  time: string;
+  days: number[];
+  dayOfMonth: number;
+  intervalCount: number;
+  intervalUnit: ScheduleIntervalUnit;
+  cron: string;
+};
 
-/**
- * Convert any value into cron fields, so switching into cron mode always has
- * something sensible to show. Only `minutes` and `hours` intervals whose
- * `every` evenly divides their field's cycle (60 for minutes, 24 for hours)
- * are losslessly representable as a cron step wildcard — see
- * `isEvenDivisorStep`. A non-dividing minute/hour interval (e.g. every 45
- * minutes or every 5 hours), and `days`/`weeks` intervals (a step wildcard on
- * the day-of-month field resets at the start of every month rather than
- * repeating every N days, and cron has no field for "every N weeks" at all),
- * would silently change the schedule's actual cadence the moment a user
- * merely LOOKED at the Cron tab if lowered to a step wildcard. Seed an honest
- * neutral default (daily at midnight) instead for all of those — see
- * `valueToInterval` below, which mirrors this by only recovering a step that
- * actually divides evenly.
- */
-export function valueToCronFields(value: ScheduleValue): string[] {
-  if (value.mode === 'cron') return splitCron(value.expression);
-  switch (value.unit) {
-    case 'minutes':
-      if (isEvenDivisorStep(value.every, 60)) return [`*/${value.every}`, '*', '*', '*', '*'];
-      // A whole-hour minute cadence (60, 120, …) is an hours interval in
-      // disguise: lower it through the hour field where representable rather
-      // than collapsing to a daily default that would turn hourly into daily.
-      if (value.every % 60 === 0) return hoursIntervalFields(value.every / 60);
-      return ['0', '0', '*', '*', '*'];
-    case 'hours':
-      return hoursIntervalFields(value.every);
-    case 'days':
-    case 'weeks':
-      return ['0', '0', '*', '*', '*'];
-    default:
-      return assertNever(value.unit);
+const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
+const WEEKDAY_NUMBERS = [1, 2, 3, 4, 5];
+const WEEKEND_NUMBERS = [0, 6];
+
+/** The time zone the browser runs in, or `UTC` when the runtime cannot say. */
+export function browserTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
   }
 }
 
-/**
- * Lower an "every N hours" cadence to cron fields. Hourly (`N === 1`) is the
- * plain `0 * * * *`; a larger N that evenly divides 24 becomes an hour step
- * wildcard. Anything that does not divide the day (every 5 hours, or `N >= 24`)
- * has no faithful fixed-gap cron form — a step wildcard would reset at midnight
- * and shift the cadence at the day boundary — so it seeds the neutral daily
- * default instead.
- */
-function hoursIntervalFields(everyHours: number): string[] {
-  if (everyHours === 1) return ['0', '*', '*', '*', '*'];
-  if (isEvenDivisorStep(everyHours, 24)) return ['0', `*/${everyHours}`, '*', '*', '*'];
-  return ['0', '0', '*', '*', '*'];
-}
-
-/**
- * Recover an interval `{ every, unit }` from a value when representable, so
- * switching into interval mode is lossless for simple step patterns. Only a
- * `minutes` or `hours` step that evenly divides its field's cycle (60 or 24
- * — see `isEvenDivisorStep`) is recovered: a non-dividing minute/hour step
- * (e.g. a 45-minute step wildcard) is not a true fixed-gap interval, and a
- * day-of-month step
- * wildcard is deliberately NOT read back as `{ unit: 'days' }` at all —
- * cron's day-of-month step resets every month, so it is not equivalent to
- * "every N days" and `valueToCronFields` never produces one for an interval
- * value. Returns `undefined` when the cron expression is not a pure,
- * evenly-dividing minute/hour interval.
- */
-export function valueToInterval(
-  value: ScheduleValue,
-): { every: number; unit: ScheduleIntervalUnit } | undefined {
-  if (value.mode === 'interval') return { every: value.every, unit: value.unit };
-  const [minute, hour, dom, month, dow] = splitCron(value.expression);
-  if (month !== '*' || dow !== '*') return undefined;
-  // Common plain-wildcard forms: `* * * * *` = every minute, `0 * * * *` = hourly.
-  if (dom === '*' && hour === '*' && minute === '*') return { every: 1, unit: 'minutes' };
-  if (dom === '*' && hour === '*' && minute === '0') return { every: 1, unit: 'hours' };
-  const minuteStep = cronFieldStep(minute);
-  if (minuteStep && isEvenDivisorStep(minuteStep, 60) && hour === '*' && dom === '*') {
-    return { every: minuteStep, unit: 'minutes' };
+/** Every IANA time zone the runtime knows, with `UTC` always among them. */
+export function availableTimeZones(): string[] {
+  let zones: string[] = [];
+  try {
+    zones = [...Intl.supportedValuesOf('timeZone')];
+  } catch {
+    zones = [];
   }
-  const hourStep = cronFieldStep(hour);
-  if (hourStep && isEvenDivisorStep(hourStep, 24) && minute === '0' && dom === '*') {
-    return { every: hourStep, unit: 'hours' };
-  }
-  return undefined;
+  return zones.includes('UTC') ? zones : ['UTC', ...zones];
 }
 
-/** Extract the numeric step from a bare wildcard-step cron token, or `undefined`. */
-function cronFieldStep(token: string): number | undefined {
-  const match = token.match(/^\*\/(\d+)$/);
-  return match ? Number(match[1]) : undefined;
+/** The value a builder with no `value` starts from: every day at 9:00 AM in `timeZone`. */
+export function defaultScheduleValue(timeZone: string = browserTimeZone()): ScheduleValue {
+  return { cron: '0 9 * * *', timeZone };
 }
-
-// ---------------------------------------------------------------------------
-// Plain-English summary — no date library required.
-// ---------------------------------------------------------------------------
-
-const DOW_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 function pad2(n: number): string {
   return n.toString().padStart(2, '0');
 }
+
+function sortedUnique(days: readonly number[]): number[] {
+  const unique = [...new Set(days)];
+  // `toSorted()` is ES2023 and the package targets ES2022, so sort a copy in place.
+  unique.sort((a, b) => a - b);
+  return unique;
+}
+
+function sameDays(days: readonly number[], expected: readonly number[]): boolean {
+  const sorted = sortedUnique(days);
+  return sorted.length === expected.length && sorted.every((day, index) => day === expected[index]);
+}
+
+/** Whether a cron token is a single integer within the inclusive `[min, max]` range. */
+function isFixedInRange(token: string, min: number, max: number): boolean {
+  if (!/^\d+$/.test(token)) return false;
+  const n = Number(token);
+  return n >= min && n <= max;
+}
+
+/**
+ * The days a day-of-week token names, or `undefined` for a token the Repeats choices cannot
+ * show: a step, a name, or a day outside 0–6.
+ */
+function daysOfWeekToken(token: string): number[] | undefined {
+  if (token === '*') return [...ALL_DAYS];
+  const days: number[] = [];
+  for (const part of token.split(',')) {
+    const range = part.match(/^(\d+)-(\d+)$/);
+    if (range) {
+      const start = Number(range[1]);
+      const end = Number(range[2]);
+      if (start > end || end > 6) return undefined;
+      for (let day = start; day <= end; day += 1) days.push(day);
+      continue;
+    }
+    if (!isFixedInRange(part, 0, 6)) return undefined;
+    days.push(Number(part));
+  }
+  return sortedUnique(days);
+}
+
+/** The draft an absent value opens as, before any value seeds it. */
+function baseDraft(): ScheduleDraft {
+  return {
+    repeats: 'daily',
+    time: '09:00',
+    days: [...WEEKDAY_NUMBERS],
+    dayOfMonth: 1,
+    intervalCount: 1,
+    intervalUnit: 'hours',
+    cron: '0 9 * * *',
+  };
+}
+
+/** The Repeats choice a set of days reads as. */
+function repeatsForDays(days: readonly number[]): ScheduleRepeats {
+  if (sameDays(days, ALL_DAYS)) return 'daily';
+  if (sameDays(days, WEEKDAY_NUMBERS)) return 'weekdays';
+  if (sameDays(days, WEEKEND_NUMBERS)) return 'weekends';
+  return 'custom-days';
+}
+
+/**
+ * The draft a cron expression opens as: the Repeats choice that would produce it, when one would,
+ * and Custom cron otherwise. A step such as `0 *\/6 * * *` stays Custom cron, because "Every 6
+ * hours" counts from the start and the step restarts at midnight.
+ */
+function draftFromCron(expression: string): ScheduleDraft {
+  const fields = splitCron(expression);
+  const [minute, hour, dayOfMonth, month, dayOfWeek] = fields;
+  const draft: ScheduleDraft = { ...baseDraft(), repeats: 'cron', cron: joinCron(fields) };
+  if (!cronFieldsValid(fields)) return draft;
+  if (!isFixedInRange(minute, 0, 59) || !isFixedInRange(hour, 0, 23) || month !== '*') {
+    return draft;
+  }
+  const time = `${pad2(Number(hour))}:${pad2(Number(minute))}`;
+  if (dayOfMonth === '*') {
+    const days = daysOfWeekToken(dayOfWeek);
+    if (days === undefined || days.length === 0) return draft;
+    return { ...draft, repeats: repeatsForDays(days), time, days };
+  }
+  if (dayOfWeek === '*' && isFixedInRange(dayOfMonth, 1, 31)) {
+    return { ...draft, repeats: 'monthly', time, dayOfMonth: Number(dayOfMonth) };
+  }
+  return draft;
+}
+
+/** The draft a value opens as, and so the Repeats choice it shows. */
+export function draftFromValue(value: ScheduleValue): ScheduleDraft {
+  if ('every' in value) {
+    return {
+      ...baseDraft(),
+      repeats: 'interval',
+      intervalCount: value.every.count,
+      intervalUnit: value.every.unit,
+    };
+  }
+  return draftFromCron(value.cron);
+}
+
+/** The cron expression a draft's time-of-day choice lowers to; Custom cron is the draft's own. */
+export function cronForDraft(draft: ScheduleDraft): string {
+  const { hour, minute } = parseTime(draft.time);
+  const at = `${minute} ${hour}`;
+  switch (draft.repeats) {
+    case 'daily':
+      return `${at} * * *`;
+    case 'weekdays':
+      return `${at} * * 1-5`;
+    case 'weekends':
+      return `${at} * * 0,6`;
+    case 'custom-days':
+      return `${at} * * ${sortedUnique(draft.days).join(',')}`;
+    case 'monthly':
+      return `${at} ${Math.min(31, Math.max(1, Math.trunc(draft.dayOfMonth)))} * *`;
+    case 'interval':
+    case 'cron':
+      return draft.cron;
+  }
+}
+
+/** The value a draft emits in `timeZone`: `every` for an interval, `cron` for every other choice. */
+export function valueFromDraft(draft: ScheduleDraft, timeZone: string): ScheduleValue {
+  if (draft.repeats === 'interval') {
+    return { every: { unit: draft.intervalUnit, count: draft.intervalCount }, timeZone };
+  }
+  return { cron: cronForDraft(draft), timeZone };
+}
+
+// ---------------------------------------------------------------------------
+// Read-back sentence — no date library required.
+// ---------------------------------------------------------------------------
+
+const PLURAL_DAY_NAMES = [
+  'Sundays',
+  'Mondays',
+  'Tuesdays',
+  'Wednesdays',
+  'Thursdays',
+  'Fridays',
+  'Saturdays',
+];
 
 /** A day of the month as an English ordinal: 1st, 2nd, 3rd, 4th, 11th to 13th, 21st, 22nd, 23rd. */
 function ordinal(day: number): string {
@@ -307,57 +346,66 @@ function ordinal(day: number): string {
   }
 }
 
-/** Whether a cron token is a single integer within the inclusive `[min, max]` range. */
-function isFixedInRange(token: string, min: number, max: number): boolean {
-  if (!/^\d+$/.test(token)) return false;
-  const n = Number(token);
-  return Number.isInteger(n) && n >= min && n <= max;
+/** A `HH:MM` time on a 12-hour clock, such as `9:00 AM` or `12:30 PM`. */
+export function formatClockTime(time: string): string {
+  const { hour, minute } = parseTime(time);
+  const period = hour < 12 ? 'AM' : 'PM';
+  const twelveHour = hour % 12 === 0 ? 12 : hour % 12;
+  return `${twelveHour}:${pad2(minute)} ${period}`;
 }
 
-/** A concise, human-readable description of a recurrence value. */
-export function describeValue(value: ScheduleValue): string {
-  if (value.mode === 'interval') {
-    return value.every === 1
-      ? `Every ${singularUnit(value.unit)}`
-      : `Every ${value.every} ${value.unit}`;
+/**
+ * A time zone's name as a person reads it, such as `Pacific Time`, falling back to the IANA name
+ * when the runtime has no better one. UTC reads as `UTC`.
+ */
+export function timeZoneDisplayName(timeZone: string): string {
+  if (timeZone === 'UTC' || timeZone === 'Etc/UTC') return 'UTC';
+  try {
+    const name = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'longGeneric' })
+      .formatToParts(new Date())
+      .find((part) => part.type === 'timeZoneName')?.value;
+    return name === undefined || name.startsWith('GMT') ? timeZone : name;
+  } catch {
+    return timeZone;
   }
+}
 
-  const [minute, hour, dom, month, dow] = splitCron(value.expression);
-  // A "fixed" field must be a single integer WITHIN its cron range: an
-  // out-of-range digit token like `99` is invalid (validateCronField rejects it
-  // and preview is disabled), so the always-visible summary must not present
-  // `Repeats every day at 99:00` or `Repeats every month on the 99th` as if it were a real cadence.
-  const timeIsFixed = isFixedInRange(minute, 0, 59) && isFixedInRange(hour, 0, 23);
-  const at = timeIsFixed ? ` at ${pad2(Number(hour))}:${pad2(Number(minute))}` : '';
+/** "Mondays", "Mondays and Fridays", "Mondays, Wednesdays and Fridays", listed Monday first. */
+function listDays(days: readonly number[]): string {
+  const names = WEEKDAYS.filter((day) => days.includes(day.value)).map(
+    (day) => PLURAL_DAY_NAMES[day.value] ?? '',
+  );
+  if (names.length <= 1) return names.join('');
+  return `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+}
 
-  // The weekly and monthly phrasings imply a single fire per day, so they only
-  // hold when BOTH minute and hour are fixed. A schedule like `* * * * 1` or
-  // `0 * * * 1` fires every minute / every hour on Mondays — calling that
-  // "Repeats every week on Monday" understates the cadence — so those fall through to the
-  // raw cron summary below. (The daily phrasing already requires a fixed time.)
+/** What a choice repeats on, before "at <time>". */
+function describeDays(draft: ScheduleDraft): string {
+  switch (draft.repeats) {
+    case 'weekdays':
+      return 'Weekdays';
+    case 'weekends':
+      return 'Weekends';
+    case 'custom-days':
+      return listDays(draft.days);
+    case 'monthly':
+      return `Monthly on the ${ordinal(draft.dayOfMonth)}`;
+    default:
+      return 'Every day';
+  }
+}
 
-  // Weekly: fixed day-of-week and a fixed time, wildcards elsewhere.
-  if (timeIsFixed && dom === '*' && month === '*' && dow !== '*' && /^[\d,]+$/.test(dow)) {
-    const dayNumbers = dow.split(',').map(Number);
-    // Day-of-week is declared 0–6 (Sun–Sat) by CRON_FIELDS, and
-    // validateCronField already rejects a user-typed 7 for that reason — this
-    // component does NOT treat 7 as a Sunday alias (some cron dialects do).
-    // An out-of-range day here can only come from a consumer-supplied value
-    // that bypassed field validation; fall through to the raw cron fallback
-    // below rather than silently wrap it into a misleading weekday via `% 7`.
-    const allDaysInRange = dayNumbers.every((day) => Number.isInteger(day) && day >= 0 && day <= 6);
-    if (allDaysInRange) {
-      const names = dayNumbers.map((day) => DOW_NAMES[day] ?? '').join(', ');
-      return `Repeats every week on ${names}${at}`;
-    }
+/**
+ * The schedule read back as a sentence, such as "Weekdays at 9:00 AM Pacific Time". An interval
+ * reads as "Every 7 hours"; a cron no choice produces reads as the expression and its zone.
+ */
+export function describeSchedule(value: ScheduleValue): string {
+  if ('every' in value) {
+    const { count, unit } = value.every;
+    return count === 1 ? `Every ${unit.slice(0, -1)}` : `Every ${count} ${unit}`;
   }
-  // Monthly: an in-range fixed day-of-month and a fixed time.
-  if (timeIsFixed && isFixedInRange(dom, 1, 31) && month === '*' && dow === '*') {
-    return `Repeats every month on the ${ordinal(Number(dom))}${at}`;
-  }
-  // Daily: wildcards on day fields, fixed time.
-  if (dom === '*' && month === '*' && dow === '*' && timeIsFixed) {
-    return `Repeats every day${at}`;
-  }
-  return `Cron: ${joinCron([minute, hour, dom, month, dow])}`;
+  const zone = timeZoneDisplayName(value.timeZone);
+  const draft = draftFromCron(value.cron);
+  if (draft.repeats === 'cron') return `Cron ${draft.cron} in ${zone}`;
+  return `${describeDays(draft)} at ${formatClockTime(draft.time)} ${zone}`;
 }

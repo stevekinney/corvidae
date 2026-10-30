@@ -99,7 +99,7 @@ describe('ScheduleFormFields — create mode', () => {
 
   test('an exact cadence below a minute is shown as text until Change cadence brings the builder back', async () => {
     const form = new ScheduleFormState({
-      cadence: { mode: 'interval', every: 1, unit: 'minutes' },
+      cadence: { every: { unit: 'minutes', count: 1 }, timeZone: 'UTC' },
       originalCadence: { intervalMs: 30_000 },
     });
 
@@ -110,10 +110,10 @@ describe('ScheduleFormFields — create mode', () => {
     expect(requireElement(getByRole('textbox', { name: 'Cadence' }), HTMLInputElement).value).toBe(
       'Every 30 seconds',
     );
-    expect(queryByRole('tab', { name: 'Interval' })).toBeNull();
+    expect(queryByRole('combobox', { name: 'Repeats' })).toBeNull();
     await fireEvent.click(getByRole('button', { name: SCHEDULE_COPY.form.changeCadenceAction }));
     expect(form.cadenceChanged).toBe(true);
-    expect(getByRole('tab', { name: 'Interval' })).not.toBeNull();
+    expect(getByRole('combobox', { name: 'Repeats' })).not.toBeNull();
     expect(queryByRole('button', { name: SCHEDULE_COPY.form.changeCadenceAction })).toBeNull();
   });
 

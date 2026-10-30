@@ -5,6 +5,7 @@
  */
 import {
   type BackendDescriptor,
+  BudgetExceededError,
   createModelCatalog,
   type GenerateContext,
   type GenerateFunction,
@@ -35,7 +36,7 @@ function step(steering?: { model?: string; modelProvider?: string; provider?: st
     : { steering: { paused: false, configVersion: 1, ...steering } }) as unknown as GenerateContext;
 }
 
-function harness(allowed: BackendDescriptor[], resolveFailsFor?: string) {
+function harness(allowed: BackendDescriptor[], resolveFailsFor?: string, costBudgeted = false) {
   const used: string[] = [];
   const resolved: string[] = [];
   const generateFor =
@@ -48,6 +49,7 @@ function harness(allowed: BackendDescriptor[], resolveFailsFor?: string) {
     defaultDescriptor: DEFAULT,
     defaultGenerate: withBackendDescriptors(generateFor(DEFAULT), [DEFAULT]),
     allowed: () => allowed,
+    costBudgeted,
     resolveGenerate: (descriptor) => {
       if (descriptor.model === resolveFailsFor) throw new Error('no credentials');
       resolved.push(descriptor.model);
@@ -123,6 +125,32 @@ describe('a file agent’s generate', () => {
     expect((failure as ModelOverrideUnusableError).provider).toBe('openai');
     expect((failure as ModelOverrideUnusableError).message).toContain('gpt-4.1');
     expect(used).toEqual([]);
+  });
+
+  it('ends a budgeted run before asking an unpriced row that a provider-less switch to the default name reaches', async () => {
+    // The probe: an unpriced twin ahead of the default serves the default's own model name, so the
+    // run's name-keyed pricing counts the step at the default's rate while the twin runs it.
+    const twin: BackendDescriptor = { ...DEFAULT, provider: 'twin', pricing: undefined };
+    const { generate, used } = harness([twin, DEFAULT], undefined, true);
+
+    const failure = await generate(step({ model: DEFAULT.model })).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    expect(failure).toBeInstanceOf(BudgetExceededError);
+    expect((failure as Error).message).toContain('"twin"');
+    expect((failure as Error).message).toContain(DEFAULT.model);
+    expect(used).toEqual([]);
+  });
+
+  it('runs the same unpriced row when the agent has no budget', async () => {
+    const twin: BackendDescriptor = { ...DEFAULT, provider: 'twin', pricing: undefined };
+    const { generate, used } = harness([twin, DEFAULT]);
+
+    await generate(step({ model: DEFAULT.model }));
+
+    expect(used).toEqual(['twin/claude-opus-5-5']);
   });
 
   it('fails with a typed error naming the model when the resolver now throws for it', async () => {

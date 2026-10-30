@@ -153,10 +153,13 @@ import { type AgentDefinitions, type AgentNames, createAgentCatalog } from './ag
 import { AgentFileError, AgentSnapshotError, type AgentFileDefinitionInput } from './agent-file';
 import { createTryAgents, isTryAgentName, TRY_AGENT_NAME_START, tryToolProblem } from './agent-try';
 import {
+  allowedDescriptorsOfFileAgent,
   createAgentFileCatalog,
   type FileAgentBinding,
   readFileAgentBinding,
+  readFileAgentCostBudget,
 } from './agent-file-catalog';
+import { unpricedSwitchReason } from './file-agent-cost-budget';
 import { createFileAgentRuntime, type FileAgentRuntime } from './agent-file-runtime';
 import { createAgentSnapshotStore } from './agent-snapshot-store';
 import { createAssetService } from './assets/asset-service';
@@ -168,12 +171,14 @@ import { createAssetGeneratedMediaAdmitter } from './assets/generated-media-admi
 import {
   claimRowAssets,
   isPermanentClaimFailure,
+  managedAssetIdsOf,
   releaseClaimsByHolderPrefix,
   releaseRowAssetClaims,
   runRowHolderId,
   sessionRowHolderId,
   sessionRowHolderPrefix,
 } from './assets/row-asset-claims';
+import { heldClaimsOf } from './assets/internal-access';
 import { humanInputSchemasOf, validateHumanInputOption } from './human-input-option';
 import {
   validateChildrenOption,
@@ -184,6 +189,8 @@ import {
 import type { AssetService } from './assets/types';
 import type { DefinitionScannerHealth } from './definition-scanner';
 import { createAssetClaimReconciler } from './asset-claim-reconciliation';
+import { purgeChatAssets, type ChatAsset } from './chat-asset-purge';
+import { purgeChatMemories, type RunMemoryPlacement } from './chat-memory-purge';
 import {
   AUDIT_AGENT_OWNER_PREFIX,
   AUDIT_HOOK_OWNER_PREFIX,
@@ -373,7 +380,6 @@ import {
   type StartTaskOrigin,
   type TaskOrigin,
   taskOriginOfStart,
-  taskOriginParentOf,
   taskOriginTag,
 } from './task-origin';
 import { createTaskResync, type TaskResync } from './task-resync';
@@ -506,6 +512,7 @@ import { copyAgentOwnedRunOptions, sessionExecuteOptions } from './session-agent
 import {
   admitSessionInput,
   isSessionInputSessionIdAddressable,
+  SessionInputMailboxPurgedError,
   type SessionInputAdmissionAttemptOutcome,
   createSessionInputMailbox,
   type PersistedSessionInput,
@@ -586,6 +593,7 @@ import type {
   TryAgentResult,
   OwnedResource,
   DiagnosticSink,
+  CreateScheduleOptions,
   DurableScheduleDefinition,
   DurableScheduleUpdate,
   ScheduleRevisionGuard,
@@ -609,6 +617,13 @@ import {
 } from './types';
 import { isSettlingRunAction, settledActionTimestamp } from './run-settlement';
 import { createAudit } from './audit/create-audit';
+import {
+  ChatRunsNotEndedError,
+  createChatContentPurge,
+  type DeletedChat,
+} from './chat-content-purge';
+import { purgeReviewRecords } from './chat-review-purge';
+import { purgeChatLedgerEntries } from './chat-ledger-purge';
 import { createNotifications } from './notifications/create-notifications';
 import type { BureauNotifications } from './notifications/notification-types';
 import {
@@ -633,7 +648,7 @@ import {
   type WebhookNotifierOptions,
 } from './webhook-notifier';
 import { createHooks, type CreatedHooks } from './hooks/create-hooks';
-import { createHookOriginLookup } from './hooks/hook-origin';
+import { createRunHookOrigins } from './hooks/run-hook-origins';
 import { scheduleInputPreview } from './schedule-input-preview';
 import { ownEntry } from './own-entry';
 
@@ -1237,6 +1252,19 @@ class ReviewAnswerInvalidError extends BureauError {
     );
     this.name = 'ReviewAnswerInvalidError';
     this.issues = issues;
+  }
+}
+
+/**
+ * A steering command was refused because it switches the model of an agent with a `costBudget` to
+ * one the catalog has no price for (COR-1921). It is a `BAD_REQUEST` `BureauError`, so the
+ * catalog's steer answers `InvalidParams` naming the `override` field and the budget; a fork
+ * that carries a model across catches it, and answers the carry as rejected.
+ */
+class UnpricedSwitchRefusedError extends BureauError {
+  constructor(message: string) {
+    super(message, 'BAD_REQUEST');
+    this.name = 'UnpricedSwitchRefusedError';
   }
 }
 
@@ -2832,6 +2860,18 @@ async function constructBureau<const D extends AgentDefinitions>(
   const tryAgents = createTryAgents();
   let agentCatalog: ReturnType<typeof createAgentCatalog<D>>;
   let workflowRuntime: WorkflowRuntime | undefined;
+  // COR-1952: a schedule a hook-started run creates records the hook, and the chain guard reads the
+  // record for each run the schedule fires. These closures read `tasks`, declared far below, only
+  // when a run is looked up, which is after construction.
+  const { scheduleHookOrigins, startedByHook, hookOriginOfRun } = createRunHookOrigins({
+    kv: runtime.kv,
+    workflowOf: async (runId) => runtime.durable?.engine.get(runId),
+    taskOriginOf: async (runId) => {
+      const record = await tasks.record(runId);
+      return record?.origin;
+    },
+    diagnose,
+  });
   const abandonConstruction = async (error: unknown): Promise<never> => {
     const failures: unknown[] = [];
     const attempt = async (stop: () => unknown): Promise<void> => {
@@ -3032,6 +3072,7 @@ async function constructBureau<const D extends AgentDefinitions>(
             runIdentity: async (runId) => ({
               agent: runAttribution.get(runId)?.agentName,
               owner: await ownerOf({ kind: 'run', id: runId }),
+              hookOrigin: await hookOriginOfRun(runId),
             }),
           });
     agentToolCatalog = { ...options.agentSource?.tools, ...settingsTools, ...workflowTools };
@@ -3130,6 +3171,7 @@ async function constructBureau<const D extends AgentDefinitions>(
             track: (promise, label) => runtimeServices.deferred.track(promise, label),
             // The trail is built later in construction; a write only happens after it exists.
             audit: async (entry) => auditTrailInstance?.record(entry),
+            hookOrigins: scheduleHookOrigins,
           });
     workflowFileTypes.current = workflowRuntime?.isRegisteredType;
   } catch (error) {
@@ -7944,11 +7986,10 @@ async function constructBureau<const D extends AgentDefinitions>(
    * in keeps these as history until retention ends them; a tried one is a throwaway, so it keeps
    * none. Best-effort for each step, like the rest of a deletion that has already committed: a
    * failure is diagnosed and the retention that ends every run's history ends this one's.
-   * What a deletion of any context leaves stays until retention removes it (a purge is COR-1934):
-   * the audit trail's entries, which hold what the agent answered; on a store that keeps durable
-   * event history, the fleet event records and their indexes, which hold the run's content too;
-   * delivery markers and counters; and the engine's tombstones (`wf-gen:` and
-   * `wf-owner-epoch:`), which keep a run id from being reused.
+   * The content a deletion of any context leaves (event history, dedupe and surface markers,
+   * audit text) is purged by `chatContentPurge` (COR-1934), which this tried path runs after; the
+   * engine's tombstones (`wf-gen:` and `wf-owner-epoch:`), which keep a run id from being reused,
+   * stay until retention.
    */
   async function discardTriedRuns(
     session: AgentSession,
@@ -7987,10 +8028,8 @@ async function constructBureau<const D extends AgentDefinitions>(
     for (const runId of runIds) {
       if (store.getRun(runId) !== undefined) await attempt('run', runId, () => deleteRun(runId));
       await attempt('task record', runId, () => tasks.remove(runId));
-      const durable = runtime.durable;
-      if (durable === undefined) continue;
-      await attempt('workflow', runId, () => durable.engine.purge({ idPrefix: runId }));
-      await attempt('checkpoints', runId, () => durable.checkpointStore.clear(runId));
+      if (runtime.durable === undefined) continue;
+      await attempt('workflow and checkpoints', runId, () => purgeDurableRun(runId));
     }
   }
 
@@ -10980,6 +11019,18 @@ async function constructBureau<const D extends AgentDefinitions>(
       currentRecoveryPerRunFailures?.push(...(await recoverGoalsAtBoot()));
     }
 
+    // COR-1934 — a deleted chat whose content purge a crash or a failure stopped.
+    try {
+      await chatContentPurge.sweep();
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'recovery',
+        message: `[bureau] Boot recovery could not finish the pending content purges of deleted chats: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
+
     // COR-1476 — recovered runs are reattached and visible as live now, so
     // input left open with no run at all (a process that died between a run's
     // end and its settlement) is cancelled, and the rest waits for its run.
@@ -12573,6 +12624,9 @@ async function constructBureau<const D extends AgentDefinitions>(
       : undefined;
 
     await auditTrailInstance.prune(effectiveCutoff, { protectRunId });
+    // COR-1934 — the tombstones of runs purged before the same cutoff: an entry or event older
+    // than it is pruned anyway.
+    await chatContentPurge.pruneTombstones(effectiveCutoff);
   }
 
   /**
@@ -13559,6 +13613,17 @@ async function constructBureau<const D extends AgentDefinitions>(
           cause: error,
         });
       }
+      // COR-1934 — the content purge of a deleted chat that failed or was cut short is finished.
+      try {
+        await chatContentPurge.sweep();
+      } catch (error: unknown) {
+        diagnose({
+          level: 'error',
+          scope: 'durable-maintenance',
+          message: `[bureau] Manual deleted-chat purge pass failed: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      }
       // COR-1664 — claims on assets whose run ended or whose session was deleted without a release.
       await reconcileAssetClaims();
       // COR-194 — a schedule transition whose record failed after its commit is retried here.
@@ -13889,6 +13954,17 @@ async function constructBureau<const D extends AgentDefinitions>(
             cause: error,
           });
         }
+        // COR-1934 — the content purge of a deleted chat that failed or was cut short.
+        try {
+          await chatContentPurge.sweep();
+        } catch (error: unknown) {
+          diagnose({
+            level: 'error',
+            scope: 'durable-maintenance',
+            message: `[bureau] Automatic deleted-chat purge pass failed: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        }
         // COR-1476 — the backstop for input left open with no live run.
         try {
           await sessionInputSettlement?.sweep();
@@ -14110,6 +14186,177 @@ async function constructBureau<const D extends AgentDefinitions>(
   // runs (either via the commit callback or the `finally` safety net for
   // the never-existed-session path / a thrown error before commit) so it
   // never double-clears an entry a later, unrelated call may already own.
+  /**
+   * COR-1934 — removes one run's durable workflow and its checkpoints. A workflow that is not
+   * terminal is skipped by the engine's purge.
+   */
+  async function purgeDurableRun(runId: string): Promise<void> {
+    const durable = runtime.durable;
+    if (durable === undefined) return;
+    // By exact id: a prefix purge would take `…-run-10` with `…-run-1`, and refuses a documented
+    // custom child id such as `order:42`.
+    const purged = await durable.engine.purgeById(runId);
+    // `false` is also what a lost compare-and-set, a run that began again, or a finalizer still
+    // owed answer. A workflow that is still stored is then the run's content left behind: the step
+    // fails, so the pending record stays and the next pass retries, and its checkpoints stay with
+    // it, since the id may by now be another run's.
+    if (!purged && (await durable.engine.get(runId)) !== null) {
+      throw new Error(`The durable workflow of run "${runId}" was not purged and is still stored`);
+    }
+    await durable.checkpointStore.clear(runId);
+  }
+
+  /** The statuses after which a durable workflow no longer changes. */
+  const isTerminalDurableStatus = (status: string): boolean =>
+    status === 'completed' ||
+    status === 'failed' ||
+    status === 'cancelled' ||
+    status === 'timed-out';
+  /**
+   * COR-1934 — the runs the given runs delegated to, directly or through other children, breadth
+   * first, so a child comes before its own children; none of the given runs is repeated.
+   */
+  async function descendantRunIdsOf(parents: readonly string[]): Promise<string[]> {
+    const found: string[] = [];
+    const seen = new Set(parents);
+    const queue = [...parents];
+    for (let index = 0; index < queue.length; index += 1) {
+      for (const child of await childTopologyStore.listByParent(queue[index]!)) {
+        if (seen.has(child.childRunId)) continue;
+        seen.add(child.childRunId);
+        found.push(child.childRunId);
+        queue.push(child.childRunId);
+      }
+    }
+    return found;
+  }
+
+  /**
+   * COR-1934 — the content a deleted chat leaves outside the session store: its event history, its
+   * dedupe and surface markers, its runs' workflows, and the answer text in its audit entries. See
+   * `chat-content-purge.ts` for what goes, the order, and how a failed purge is finished.
+   */
+  const chatContentPurge = createChatContentPurge({
+    kv: runtime.kv,
+    history: () => eventHistoryInstance,
+    producer: () => durableEventProducerInstance,
+    audit: () => auditTrailInstance,
+    runEnded: async (runId) => {
+      const durable = runtime.durable;
+      if (durable === undefined) return true;
+      const state = await durable.engine.get(runId);
+      return state === null || isTerminalDurableStatus(state.status);
+    },
+    purgeRun: purgeDurableRun,
+    purgeReviews: async (runIds) => {
+      if (runtime.kv === undefined) return;
+      await purgeReviewRecords({ kv: runtime.kv, audit: () => auditTrailInstance }, runIds);
+    },
+    // Read when it runs: the surface store is built after this purge.
+    descendantsOf: descendantRunIdsOf,
+    purgeRunRecords: async (runId) => {
+      const recovery = await runtime.loadCatalogRunRecoveryRecord(runId);
+      // A goal attempt's or a workflow step's record is its owner's claim, not a chat's words.
+      const claimed =
+        recovery.status === 'found' &&
+        (recovery.record.goalAttempt !== undefined || recovery.record.workflowStep !== undefined);
+      if (recovery.status !== 'missing' && recovery.status !== 'read-error' && !claimed) {
+        await runtime.deleteCatalogRunRecoveryRecord(runId);
+      }
+      await childTopologyStore.remove(runId);
+      await childTopologyStore.deletePeerCalls(runId);
+    },
+    purgeSurfaces: async (runId) => {
+      await surfaces?.removeTask(runId);
+    },
+    taskIdsOf: (sessionId, incarnation) => tasks.taskIdsOfContext(sessionId, incarnation),
+    purgeLedgers: async (runIds) => {
+      if (runtime.kv !== undefined) await purgeChatLedgerEntries(runtime.kv, runIds);
+    },
+    redactTaskRecords: async (runIds) => {
+      for (const runId of runIds) await tasks.redactSettlement(runId);
+    },
+    purgeNotifications: async (runIds) => {
+      await notificationsComposition.purgeRuns(runIds);
+    },
+    // Read when it runs: the hooks are built after the Bureau they listen to.
+    purgeHookDeliveries: async (chat, runIds) => {
+      await hooksInstance?.purgeChatDeliveries(chat, runIds);
+    },
+    purgeAssets: async (assets) => {
+      const service = assetServiceHolder.current;
+      if (service !== undefined) await purgeChatAssets(service, assets);
+    },
+    purgeMemories: async (sessionId, runIds, placements) => {
+      if (runtime.memory === undefined) return;
+      await purgeChatMemories(
+        {
+          memory: runtime.memory,
+          tenantId: bureauId,
+          // The task record outlives the chat, and names the agent and owner a run's memory was
+          // written under.
+          placementOf: async (runId) => {
+            const record = await tasks.record(runId);
+            return record === undefined || record.agentName === null
+              ? undefined
+              : { agentName: record.agentName, owner: record.owner };
+          },
+        },
+        { sessionId, runIds, placements },
+      );
+    },
+    purgeSessionInput: async (sessionId, incarnation) => {
+      if (runtime.durable === undefined) return;
+      const mailbox = tryGetSessionInputMailbox(sessionId, incarnation);
+      if (mailbox !== undefined) {
+        await mailbox.purge();
+        // The mailbox is gone: a handle kept for it would only hold its registry.
+        sessionInputMailboxes.delete(`${sessionId}\u0000${incarnation}`);
+        mailbox.dispose();
+      }
+      await sessionInputSettlement?.forget(sessionId, incarnation);
+    },
+    hasUndrainedEvents: async (sessionId, incarnation) => {
+      const pending = await runtime.sessionStore?.outbox.pending();
+      return (
+        pending?.some(
+          (entry) =>
+            entry.sessionId === sessionId &&
+            entry.incarnation === incarnation &&
+            entry.kind !== 'session.deleted',
+        ) ?? false
+      );
+    },
+    currentIncarnation: async (sessionId) => {
+      const session = await runtime.sessionStore?.load(sessionId);
+      return session?.incarnation;
+    },
+    now: () => runtimeServices.clock.now(),
+    diagnose,
+  });
+
+  /**
+   * COR-1934 — every run of a chat about to be deleted: the runs this process holds for it, the
+   * runs its ownership map names (pruned once a run's history expires), and its task records,
+   * the complete list. A list that cannot be read fails the delete before anything is removed,
+   * because a partial one would leave a run's content behind for good.
+   */
+  async function chatRunIdsOf(session: AgentSession): Promise<string[]> {
+    const runIds = new Set<string>();
+    for (const [, runState] of store.getState().runs) {
+      if (getRunSessionIdentifier(runState) === session.id) runIds.add(runState.id);
+    }
+    const owners = session.metadata['lastRunOwningPrincipals'];
+    if (isPlainAuthorityRecord(owners)) for (const runId of Object.keys(owners)) runIds.add(runId);
+    for (const taskId of await tasks.taskIdsOfContext(session.id, session.incarnation)) {
+      runIds.add(taskId);
+    }
+    // Children the chat's runs delegated to hold its words too (COR-1934); the purge reads the
+    // topology again on every pass, so one dispatched after this is found as well.
+    for (const child of await descendantRunIdsOf([...runIds])) runIds.add(child);
+    return [...runIds];
+  }
+
   const inFlightSessionDeletions = new Map<string, Promise<ContextDeletionReport>>();
   async function deleteSession(
     id: string,
@@ -14429,6 +14676,52 @@ async function constructBureau<const D extends AgentDefinitions>(
     if (checkFailure !== undefined) throw checkFailure.error;
   }
 
+  /**
+   * COR-1934 — the managed assets a session holds: the ones its rows reference, owned by the
+   * session's owner, and the ones it holds a claim on, owned by whoever owns the asset. Read before
+   * the delete, because the rows are gone by the time the purge runs and the delete releases the
+   * claims. An asset it never claimed is found by its row, and one whose row compaction removed by
+   * its claim.
+   */
+  async function chatAssetsOf(session: AgentSession): Promise<ChatAsset[]> {
+    const context = rowClaimContext(session);
+    if (context === undefined) return [];
+    const found = new Map<string, ChatAsset>();
+    for (const row of context.rows) {
+      for (const assetId of managedAssetIdsOf(row)) {
+        found.set(assetId, { assetId, ownerId: context.principalId });
+      }
+    }
+    const claims = await heldClaimsOf(
+      context.service,
+      sessionRowHolderPrefix(session.id, session.incarnation),
+    );
+    for (const claim of claims) {
+      // An asset the chat's owner only read (another principal's, shared with them) is that
+      // principal's to keep or delete: the chat released its claim, and that is all it did.
+      if (claim.ownerId !== context.principalId) continue;
+      found.set(claim.assetId, { assetId: claim.assetId, ownerId: claim.ownerId });
+    }
+    return [...found.values()];
+  }
+
+  /**
+   * COR-1934 — whose memory, and under which agent, the chat's runs wrote, named before the delete
+   * because the task records that otherwise say so can be gone by the time the purge runs (a
+   * `retention.tasks` shorter than memory's retention).
+   */
+  function chatMemoryPlacementsOf(
+    session: AgentSession,
+    runIds: readonly string[],
+  ): RunMemoryPlacement[] {
+    const placements = new Map<string, RunMemoryPlacement>();
+    for (const runId of runIds) {
+      const owner = resolveRunMemoryOwner(session.metadata, runId);
+      placements.set(`${owner}\u0000${session.agentName}`, { owner, agentName: session.agentName });
+    }
+    return [...placements.values()];
+  }
+
   async function releaseSessionGeneratedAssets(session: AgentSession): Promise<void> {
     const context = rowClaimContext(session);
     if (context === undefined) return;
@@ -14490,6 +14783,17 @@ async function constructBureau<const D extends AgentDefinitions>(
       return { deleted: false, tasks: [] };
     }
     if (session) {
+      // COR-1934 — before anything is removed: the purge that follows the commit is owed from here,
+      // and a delete that cannot record it is refused, so the chat is deleted again whole.
+      const runIds = await chatRunIdsOf(session);
+      const deletedChat: DeletedChat = {
+        sessionId: id,
+        incarnation: session.incarnation,
+        runIds,
+        assets: await chatAssetsOf(session),
+        memoryPlacements: chatMemoryPlacementsOf(session, runIds),
+      };
+      await chatContentPurge.record(deletedChat);
       await prepareSessionsForRemoval([session]);
       for (const runId of persistedApprovalRunIds(session.metadata)) {
         await revokePendingApprovalsForRun(runId, {
@@ -14598,9 +14902,12 @@ async function constructBureau<const D extends AgentDefinitions>(
             : await sessionStore.delete(id, { expectedIncarnation });
       } catch (error) {
         if (triedAgent !== undefined) tryAgents.hold(triedAgent);
+        // The delete did not commit: the purge is not owed.
+        await chatContentPurge.forget(deletedChat);
         throw error;
       }
       onStoreDeletionCommitted();
+      if (!removedLiveRecord) await chatContentPurge.forget(deletedChat);
       // COR-1915 — the deleted chat's spend records go with it. A record left behind is ignored
       // anyway, since a chat recreated under the id has another incarnation, so a failure here is
       // diagnosed and never keeps the deletion from finishing.
@@ -14718,6 +15025,21 @@ async function constructBureau<const D extends AgentDefinitions>(
       // with it: the other contexts' runs are history that retention ends.
       if (removedLiveRecord && sessionOriginOf(session.metadata) === 'try') {
         await discardTriedRuns(session, sessionRunIds);
+      }
+      // COR-1934 — the chat's content goes once its runs have ended, so their last events are in.
+      // The deletion has committed: a failure is diagnosed, the pending record stays, and the next
+      // maintenance pass or boot finishes the purge.
+      if (removedLiveRecord) {
+        try {
+          await chatContentPurge.run(deletedChat);
+        } catch (error) {
+          diagnose({
+            level: error instanceof ChatRunsNotEndedError ? 'warn' : 'error',
+            scope: 'durable-maintenance',
+            message: `[bureau] Chat "${id}" was deleted, but its content could not be purged yet; a later maintenance pass retries: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        }
       }
       return { deleted: removedLiveRecord, tasks: liveTasks };
     }
@@ -14966,6 +15288,11 @@ async function constructBureau<const D extends AgentDefinitions>(
           principalBacklogLimit: sessionInputPrincipalBacklogLimit(),
           sessionBacklogLimitForCrossSessionRead: sessionInputSessionBacklogLimit(),
           nowMs: runtimeServices.clock.now(),
+        }).catch((error: unknown): SessionInputAdmissionAttemptOutcome => {
+          // COR-1934: the chat was deleted and its mailbox purged while this admission was in
+          // flight; it is refused as any input to a chat that is gone.
+          if (error instanceof SessionInputMailboxPurgedError) return { outcome: 'not-found' };
+          throw error;
         });
       })();
     const admission = (
@@ -15087,6 +15414,26 @@ async function constructBureau<const D extends AgentDefinitions>(
     } finally {
       inFlightSteeringSubmissions.delete(submission);
     }
+  }
+
+  /**
+   * COR-1921 — why a session of `agentName`'s agent may not be switched to `override` because the
+   * agent has a `costBudget` and the model's row has no price in the catalog, or `undefined` when
+   * it may. The agent is a file agent, bound or `ephemeral` (tried): a code-defined agent has no
+   * budget. The row judged is the one the agent's generate runs for the switch.
+   */
+  function unpricedSwitchRefusalOf(
+    agentName: string,
+    override: { readonly model: string; readonly provider?: string | undefined },
+  ): string | undefined {
+    const agent = agentCatalog.find(agentName) ?? tryAgents.peek(agentName);
+    const budgeted = agent === undefined ? undefined : readFileAgentCostBudget(agent);
+    if (budgeted === undefined) return undefined;
+    return unpricedSwitchReason(
+      budgeted.budget,
+      allowedDescriptorsOfFileAgent(budgeted.models, models.catalog().descriptors),
+      override,
+    );
   }
 
   /**
@@ -15257,7 +15604,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     const carried =
       claim.override === null
         ? null
-        : await submitSteeringCommand(claim.contextId, {
+        : await carryModelOverride(claim.contextId, {
             id: `${request.commandId}:model`,
             principal: request.owner,
             // As the parent asked: a policy reference is submitted as a reference, and resolved
@@ -15300,6 +15647,26 @@ async function constructBureau<const D extends AgentDefinitions>(
     };
     const completed = await forkLedger.complete(outcome.entry, result);
     return answerOfFork(completed.result);
+  }
+
+  /**
+   * Admits the model a fork carries from its parent. An agent whose `costBudget` cannot count the
+   * model (COR-1921: its price left the catalog since) refuses it, and the fork answers the carry
+   * as rejected, as it does a model the agent no longer allows, rather than failing half made.
+   */
+  async function carryModelOverride(
+    contextId: string,
+    request: SteeringCommandRequest,
+  ): Promise<SteeringCommandAdmissionOutcome> {
+    try {
+      return await submitSteeringCommand(contextId, request);
+    } catch (error) {
+      if (!(error instanceof UnpricedSwitchRefusedError)) throw error;
+      return {
+        outcome: 'rejected',
+        failure: { failedAt: runtimeServices.clock.nowISO(), reason: 'policy-denied' },
+      };
+    }
   }
 
   /**
@@ -15834,6 +16201,29 @@ async function constructBureau<const D extends AgentDefinitions>(
           configurationRequest.policyRef === undefined ? undefined : resolvedRequestedValue,
         );
       }
+    }
+
+    // COR-1921 — a budgeted agent is not switched to a model the catalog cannot price: counting
+    // its steps at another model's rate would spend the budget unseen. A key the log already
+    // decided (the durable log, or the in-memory ledger of a Bureau with none) is answered from
+    // there and skips it. This refusal is a throw, so it is not logged: a retry of it is judged
+    // again, and is admitted if the catalog has since gained a price.
+    const inMemoryKeyBound =
+      durableSteeringStore() === undefined &&
+      request.id !== undefined &&
+      getSteeringLedgerEntry(steeringCommandLedger, request.principal, request.id) !== undefined;
+    if (
+      resolvedRequestedValue.target === 'model' &&
+      resolvedRequestedValue.override !== undefined &&
+      !keyAlreadyBound &&
+      !inMemoryKeyBound
+    ) {
+      const reason = unpricedSwitchRefusalOf(session.agentName, {
+        model: resolvedRequestedValue.override,
+        provider:
+          'provider' in resolvedRequestedValue ? resolvedRequestedValue.provider : undefined,
+      });
+      if (reason !== undefined) throw new UnpricedSwitchRefusedError(reason);
     }
 
     const now = runtimeServices.clock.nowISO();
@@ -18415,6 +18805,9 @@ async function constructBureau<const D extends AgentDefinitions>(
       if (!record.type.startsWith('review.')) continue;
       const detail = record.detail;
       if (detail === null || typeof detail !== 'object') continue;
+      // COR-1934: a deleted chat's entry keeps the review's identity and nothing it asked, so it
+      // cannot stand for the review.
+      if ((detail as Record<string, unknown>)['redacted'] === true) continue;
       const reviewDetail = (detail as Record<string, unknown>)['review'];
       if (reviewDetail === null || typeof reviewDetail !== 'object') continue;
       if ((reviewDetail as Record<string, unknown>)['id'] !== id) continue;
@@ -18557,6 +18950,7 @@ async function constructBureau<const D extends AgentDefinitions>(
 
   async function createSchedule(
     definition: DurableScheduleDefinition,
+    scheduleOptions?: CreateScheduleOptions,
   ): Promise<import('@lostgradient/weft').ScheduleSummary | undefined> {
     if (definition.sessionId !== undefined) {
       rejectReservedIdentifier('"sessionId"', definition.sessionId.trim());
@@ -18595,9 +18989,21 @@ async function constructBureau<const D extends AgentDefinitions>(
     // straight onto it, exactly once for the fresh registration this call makes —
     // no separate dispatch needed here.
     const scheduler = createAgentScheduler({ engine: runtime.durable.engine, emitter });
+    // COR-1952: a schedule a hook-started run creates records the hook before it exists, under an
+    // id minted here, so no fire can run before its origin is readable.
+    const hookOrigin =
+      scheduleOptions?.createdByRun === undefined || scheduleHookOrigins === undefined
+        ? undefined
+        : await hookOriginOfRun(scheduleOptions.createdByRun);
+    const originId =
+      hookOrigin === undefined ? undefined : runtimeServices.identifiers.next('schedule');
+    if (originId !== undefined && hookOrigin !== undefined) {
+      await scheduleHookOrigins!.recordSchedule(originId, hookOrigin);
+    }
     let handle;
     try {
       handle = await scheduler.schedule(definition.agentName, {
+        ...(originId === undefined ? {} : { id: originId }),
         spec: toScheduleSpec(definition.spec),
         input: definition.input,
         ...(definition.description !== undefined ? { description: definition.description } : {}),
@@ -18607,6 +19013,8 @@ async function constructBureau<const D extends AgentDefinitions>(
         principal: owner,
       });
     } catch (error) {
+      // Nothing was registered under the id, so its origin names no schedule.
+      if (originId !== undefined) await scheduleHookOrigins?.clearSchedule(originId);
       if (error instanceof InvalidScheduleError) {
         toBadRequest(error.message);
       }
@@ -21107,6 +21515,12 @@ async function constructBureau<const D extends AgentDefinitions>(
       },
     );
     taskResyncInstance = createTaskResync({
+      contextIsLive: async (contextId, incarnation) => {
+        const sessionStore = runtime.sessionStore;
+        if (sessionStore === undefined) return true;
+        const session = await sessionStore.load(contextId);
+        return session?.incarnation === incarnation;
+      },
       answerOf: (taskId) => {
         const content = bureau.tasks
           .detail(taskId)
@@ -21161,16 +21575,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     // COR-1940: a run a hook started, or any run beneath it, raises events no `start-workflow`
     // hook acts on. The instance carries the hook's tag; a step, child or attempt reaches it
     // through the parent its task records.
-    startedByHook: createHookOriginLookup({
-      workflowTags: async (runId) => {
-        const workflow = await runtime.durable?.engine.get(runId);
-        return workflow?.tags;
-      },
-      parentOf: async (runId) => {
-        const record = await tasks.record(runId);
-        return taskOriginParentOf(record?.origin);
-      },
-    }),
+    startedByHook,
   });
 
   // COR-718: an expiry is a deletion, so each expiring session's owner is recorded for

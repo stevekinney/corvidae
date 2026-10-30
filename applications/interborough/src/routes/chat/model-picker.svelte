@@ -28,6 +28,7 @@
   import {
     getAgentModels,
     steerContext,
+    steerRefusalReason,
     type AgentModelChoice,
     type SteerOutcome,
   } from '../../lib/bureau-client.ts';
@@ -103,7 +104,13 @@
     ...(known !== null && listed(known) === undefined
       ? [{ value: keyOf(known), label: known.model, disabled: true }]
       : []),
-    ...choices.map((choice) => ({ value: keyOf(choice), label: choice.displayName })),
+    // A model the agent's cost budget cannot count is shown, so the person sees why it is missing.
+    ...choices.map((choice) => ({
+      value: keyOf(choice),
+      label:
+        choice.unpriced === true ? `${choice.displayName} (${COPY.unpriced})` : choice.displayName,
+      ...(choice.unpriced === true ? { disabled: true } : {}),
+    })),
   ]);
 
   /** What a refusal says, in its own words. */
@@ -155,7 +162,16 @@
         await reload();
       }
       pending = undefined;
-    } catch {
+    } catch (error) {
+      const reason = steerRefusalReason(error);
+      if (reason !== undefined) {
+        // The Bureau refused the request itself: it is settled, with a reason of its own, and the
+        // chat keeps its model.
+        commands.confirmed();
+        notice = reason;
+        pending = undefined;
+        return;
+      }
       // Nobody knows whether the Bureau took it, so the command keeps its identifier for a retry,
       // and the session is read again to show the model it has now.
       notice = COPY.fault;

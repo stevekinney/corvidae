@@ -84,7 +84,11 @@
       (fallbackAnchorElement ? anchoredFallback.positionStyle : undefined),
   );
   const anchorStyle = $derived(
-    context.supportsPopover ? `position-anchor: --${context.menuId};` : fallbackPositionStyle,
+    context.sheet
+      ? undefined
+      : context.supportsPopover
+        ? `position-anchor: --${context.menuId};`
+        : fallbackPositionStyle,
   );
   const mergedStyle = $derived(
     [consumerStyle, anchorStyle]
@@ -283,9 +287,12 @@
     style={mergedStyle}
     role="menu"
     aria-orientation="vertical"
-    data-cinder-placement={context.supportsPopover
-      ? preferredPlacement
-      : anchoredFallback.resolvedPlacement}
+    data-cinder-placement={context.sheet
+      ? undefined
+      : context.supportsPopover
+        ? preferredPlacement
+        : anchoredFallback.resolvedPlacement}
+    data-cinder-sheet={context.sheet ? 'docked' : undefined}
     data-cinder-position-ready={!context.supportsPopover && fallbackPositionReady !== undefined
       ? fallbackPositionReady
       : undefined}

@@ -58,6 +58,7 @@ Use Popover for rich, interactive contextual content anchored to a trigger — h
 | `placement` | `"top"` \| `"bottom"` \| `"left"` \| `"right"` \| `"top-start"` \| `"top-end"` \| `"bottom-start"` \| `"bottom-end"` | no | — | Anchor placement. Default `'bottom-start'`. |
 | `portalScopeClass` | `string` | no | — | Extra class merged onto the portaled scope wrapper. |
 | `role` | `"dialog"` \| `"group"` \| `"listbox"` | no | — | ARIA role for the panel. Default `'dialog'`. |
+| `sheetBelow` | `string` \| `false` | no | — | Viewport width below which the popover opens as a bottom sheet instead of a panel anchored to its trigger. The choice is made when the popover opens. With `focusManagement: 'panel'` the content renders in a modal `Drawer` at its bottom placement, which owns focus, Escape, and dismissal; with `'preserve'` (focus stays on the trigger, as in Combobox) the panel itself docks to the bottom edge and keeps every other behavior. A simple CSS length such as `'640px'`, or `false` to always anchor. Default `'640px'`. |
 | `widthMode` | `"content"` \| `"match-anchor"` \| `"menu"` \| `"none"` | no | — | Floating panel width strategy. Default `'content'`. |
 | `wireTriggerAria` | `boolean` | no | — | Whether Popover owns trigger ARIA wiring. Default `true`. |
 | `children` | `(opaque)` | yes | — | Panel content. Required. Not expressible in JSON Schema; see the component types for the signature. |

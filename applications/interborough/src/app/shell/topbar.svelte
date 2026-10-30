@@ -6,7 +6,7 @@
    * the host, not controls, so they live on System's Scopes tab and not here.
    *
    * The leading menu button is CSS-hidden above Cinder Sidebar's own mobile breakpoint
-   * (`foundation.css`, `47.99rem`) and is the only way to open the navigation drawer on a small
+   * (`foundation.css`, `639.98px`) and is the only way to open the navigation drawer on a small
    * viewport: `Sidebar` renders no trigger of its own below that width.
    */
   import { Breadcrumbs, Button, Kbd } from '@lostgradient/cinder';

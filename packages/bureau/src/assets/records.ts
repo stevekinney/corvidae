@@ -46,12 +46,14 @@ import type {
 } from './types';
 
 const PREFIX = 'asset:v1:';
+/** The asset service's audit log, a family of its own for what a chat delete does to it (`reserved-key-prefixes.ts`). */
+const AUDIT_PREFIX = 'asset:v1:audit:';
 
 export const KEYS = {
   recordPrefix: `${PREFIX}record:`,
   blobPrefix: `${PREFIX}blob:`,
   uploadPrefix: `${PREFIX}upload:`,
-  auditPrefix: `${PREFIX}audit:`,
+  auditPrefix: AUDIT_PREFIX,
   record: (assetId: string) => `${PREFIX}record:${assetId}`,
   blob: (digest: string) => `${PREFIX}blob:${digest}`,
   ownerPrefix: (digest: string) => `${PREFIX}owner:${digest}:`,
@@ -63,7 +65,7 @@ export const KEYS = {
   chunkPrefix: (uploadId: string) => `${PREFIX}upload-chunk:${uploadId}:`,
   chunk: (uploadId: string, sequence: number) =>
     `${PREFIX}upload-chunk:${uploadId}:${String(sequence).padStart(8, '0')}`,
-  audit: (sequence: number) => `${PREFIX}audit:${String(sequence).padStart(12, '0')}`,
+  audit: (sequence: number) => `${AUDIT_PREFIX}${String(sequence).padStart(12, '0')}`,
 } as const;
 
 /** The persisted form of one asset. Never leaves this package except through a projection. */

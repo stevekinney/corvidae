@@ -528,15 +528,19 @@ function applyScheduleBuilderSchemaRules(schema: ComponentSchemaOutput): void {
     previewCount.minimum = 1;
   }
 
-  // The `interval` variant's `every` is documented as a positive integer.
+  // The interval variant's `every.count` is documented as a positive integer. A value shape this
+  // rule no longer finds would silently drop the constraint, so it fails the generation instead.
   const intervalVariant = schema.properties['value']?.anyOf?.find(
     (variant) => variant.properties?.['every'] !== undefined,
   );
-  const every = intervalVariant?.properties?.['every'];
-  if (every?.type === 'number') {
-    every.type = 'integer';
-    every.minimum = 1;
+  const count = intervalVariant?.properties?.['every']?.properties?.['count'];
+  if (count?.type !== 'number' && count?.type !== 'integer') {
+    throw new Error(
+      'schedule-builder: expected `value` to have an interval variant with a numeric `every.count`.',
+    );
   }
+  count.type = 'integer';
+  count.minimum = 1;
 }
 
 function applyApprovalCardSchemaRules(schema: ComponentSchemaOutput): void {

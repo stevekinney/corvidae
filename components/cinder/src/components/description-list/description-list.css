@@ -95,6 +95,19 @@
     }
   }
 
+  /* `stack` puts the term above its value at every width. Only two-column
+   * places them side by side, so only its rows need the override; the
+   * subgrid track list collapses with them. */
+  .cinder-description-list[data-cinder-variant='two-column'][data-cinder-stacked] {
+    grid-template-columns: 1fr;
+  }
+
+  .cinder-description-list[data-cinder-variant='two-column'][data-cinder-stacked]
+    .cinder-description-list__row {
+    grid-template-columns: 1fr;
+    gap: var(--cinder-space-1);
+  }
+
   /* Narrow variant: <dt> is sr-only (position: absolute, out-of-flow) so <dd>
  * fills the visible row. flex-direction: row here matches the intended reading
  * direction if a future variant needs the dt in-flow; for now the sr-only dt

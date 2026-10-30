@@ -1,22 +1,23 @@
 <script lang="ts">
   import Chip from '../chip/chip.svelte';
+  import Combobox from '../combobox/combobox.svelte';
+  import type { ComboboxOption } from '../combobox/combobox.types.ts';
   import NumberInput from '../number-input/number-input.svelte';
-  import Segment from '../segment/segment.svelte';
-  import SegmentedControl from '../segmented-control/segmented-control.svelte';
   import Select from '../select/select.svelte';
   import TimeField from '../time-field/time-field.svelte';
   import CronEditorFields from './schedule-builder-cron-editor.svelte';
   import type { CronEditor } from './schedule-builder-cron-editor.ts';
-  import type { ScheduleAuthoringMode, ScheduleIntervalUnit } from './schedule-builder.types.ts';
-  import { INTERVAL_UNITS, WEEKDAYS } from './schedule-builder.utilities.ts';
-
-  type PresetKind = 'daily' | 'weekly' | 'monthly';
+  import type { ScheduleIntervalUnit, ScheduleRepeats } from './schedule-builder.types.ts';
+  import {
+    INTERVAL_UNITS,
+    REPEATS_OPTIONS,
+    WEEKDAYS,
+    type ScheduleDraft,
+  } from './schedule-builder.utilities.ts';
 
   const intervalUnitLabels: Record<ScheduleIntervalUnit, string> = {
     minutes: 'Minutes',
     hours: 'Hours',
-    days: 'Days',
-    weeks: 'Weeks',
   };
   const intervalUnitOptions = INTERVAL_UNITS.map((unit) => ({
     value: unit,
@@ -25,184 +26,120 @@
 
   let {
     baseId,
-    authoringMode,
-    modeIsAllowed,
-    modeTabId,
-    modePanelId,
-    onAuthoringModeChange,
-    presetKind,
-    onPresetKindChange,
-    presetDailyTime,
-    presetWeeklyDays,
-    presetWeeklyTime,
-    presetMonthlyDay,
-    presetMonthlyTime,
-    onPresetDailyTimeChange,
-    onToggleWeeklyDay,
-    onPresetWeeklyTimeChange,
-    onPresetMonthlyDayChange,
-    onPresetMonthlyTimeChange,
+    draft,
+    timeZone,
+    timeZoneOptions,
+    onRepeatsChange,
+    onTimeChange,
+    onToggleDay,
+    onDayOfMonthChange,
+    onIntervalCountChange,
+    onIntervalUnitChange,
+    onTimeZoneChange,
     cronFields,
     cronEditors,
     onCronModeChange,
     onCronEditorChange,
     onCronRawChange,
-    intervalEvery,
-    intervalUnit,
-    onIntervalEveryChange,
-    onIntervalUnitChange,
   }: {
     baseId: string;
-    authoringMode: ScheduleAuthoringMode;
-    modeIsAllowed: (mode: ScheduleAuthoringMode) => boolean;
-    modeTabId: (mode: ScheduleAuthoringMode) => string;
-    modePanelId: (mode: ScheduleAuthoringMode) => string;
-    onAuthoringModeChange: (mode: ScheduleAuthoringMode) => void;
-    presetKind: PresetKind;
-    onPresetKindChange: (kind: PresetKind) => void;
-    presetDailyTime: string;
-    presetWeeklyDays: number[];
-    presetWeeklyTime: string;
-    presetMonthlyDay: number;
-    presetMonthlyTime: string;
-    onPresetDailyTimeChange: (value: string | undefined) => void;
-    onToggleWeeklyDay: (day: number) => void;
-    onPresetWeeklyTimeChange: (value: string | undefined) => void;
-    onPresetMonthlyDayChange: (value: number | null) => void;
-    onPresetMonthlyTimeChange: (value: string | undefined) => void;
+    draft: ScheduleDraft;
+    timeZone: string;
+    timeZoneOptions: readonly ComboboxOption[];
+    onRepeatsChange: (event: Event) => void;
+    onTimeChange: (value: string | undefined) => void;
+    onToggleDay: (day: number) => void;
+    onDayOfMonthChange: (value: number | null) => void;
+    onIntervalCountChange: (value: number | null) => void;
+    onIntervalUnitChange: (event: Event) => void;
+    onTimeZoneChange: (value: string) => void;
     cronFields: string[];
     cronEditors: CronEditor[];
     onCronModeChange: (index: number, event: Event) => void;
     onCronEditorChange: (index: number, patch: Partial<CronEditor>) => void;
     onCronRawChange: (index: number, value: string) => void;
-    intervalEvery: number;
-    intervalUnit: ScheduleIntervalUnit;
-    onIntervalEveryChange: (value: number | null) => void;
-    onIntervalUnitChange: (event: Event) => void;
   } = $props();
+
+  const repeats = $derived<ScheduleRepeats>(draft.repeats);
+
+  // Typing "los angeles" or "los_angeles" both find America/Los_Angeles.
+  function filterTimeZone(option: ComboboxOption, query: string): boolean {
+    const needle = query.trim().toLowerCase().replaceAll('_', ' ');
+    return option.label.toLowerCase().includes(needle);
+  }
 </script>
 
-<SegmentedControl
-  id={`${baseId}-mode`}
-  label="Schedule authoring mode"
-  variant="tablist"
-  value={authoringMode}
-  onValueChange={onAuthoringModeChange}
-  class="cinder-schedule-builder__mode-switch"
->
-  {#each ['presets', 'cron', 'interval'] as const as mode (mode)}
-    {#if modeIsAllowed(mode)}
-      <Segment
-        id={modeTabId(mode)}
-        value={mode}
-        controls={authoringMode === mode ? modePanelId(mode) : undefined}
-      >
-        {mode === 'presets' ? 'Presets' : mode === 'cron' ? 'Cron' : 'Interval'}
-      </Segment>
-    {/if}
-  {/each}
-</SegmentedControl>
+<div class="cinder-schedule-builder__field-row">
+  <Select
+    id={`${baseId}-repeats`}
+    label="Repeats"
+    options={REPEATS_OPTIONS}
+    value={repeats}
+    onchange={onRepeatsChange}
+  />
+  {#if repeats !== 'interval' && repeats !== 'cron'}
+    <TimeField id={`${baseId}-at`} label="At" bind:value={() => draft.time, onTimeChange} />
+  {/if}
+</div>
 
-{#if authoringMode === 'presets'}
-  <div
-    id={modePanelId('presets')}
-    role="tabpanel"
-    aria-labelledby={modeTabId('presets')}
-    class="cinder-schedule-builder__panel"
-    data-sb-panel="presets"
-  >
-    <SegmentedControl
-      id={`${baseId}-preset-kind`}
-      label="Preset kind"
-      value={presetKind}
-      onValueChange={onPresetKindChange}
-      class="cinder-schedule-builder__preset-kind"
-    >
-      <Segment id={`${baseId}-preset-kind-daily`} value="daily">Daily</Segment>
-      <Segment id={`${baseId}-preset-kind-weekly`} value="weekly">Weekly</Segment>
-      <Segment id={`${baseId}-preset-kind-monthly`} value="monthly">Monthly</Segment>
-    </SegmentedControl>
-
-    {#if presetKind === 'daily'}
-      <TimeField
-        id={`${baseId}-preset-daily-time`}
-        label="At"
-        bind:value={() => presetDailyTime, onPresetDailyTimeChange}
+{#if repeats === 'custom-days'}
+  <div class="cinder-schedule-builder__weekday-group" role="group" aria-label="Days of week">
+    {#each WEEKDAYS as day (day.value)}
+      <Chip
+        mode="toggle"
+        label={day.short}
+        aria-label={day.long}
+        pressed={draft.days.includes(day.value)}
+        onPressedChange={() => onToggleDay(day.value)}
       />
-    {:else if presetKind === 'weekly'}
-      <div class="cinder-schedule-builder__weekday-group" role="group" aria-label="Days of week">
-        {#each WEEKDAYS as day (day.value)}
-          <Chip
-            mode="toggle"
-            label={day.short}
-            aria-label={day.long}
-            pressed={presetWeeklyDays.includes(day.value)}
-            onPressedChange={() => onToggleWeeklyDay(day.value)}
-          />
-        {/each}
-      </div>
-      <TimeField
-        id={`${baseId}-preset-weekly-time`}
-        label="At"
-        bind:value={() => presetWeeklyTime, onPresetWeeklyTimeChange}
-      />
-    {:else}
-      <div class="cinder-schedule-builder__field-row">
-        <NumberInput
-          id={`${baseId}-preset-monthly-day`}
-          label="Day of month"
-          min={1}
-          max={31}
-          bind:value={() => presetMonthlyDay, onPresetMonthlyDayChange}
-        />
-        <TimeField
-          id={`${baseId}-preset-monthly-time`}
-          label="At"
-          bind:value={() => presetMonthlyTime, onPresetMonthlyTimeChange}
-        />
-      </div>
-    {/if}
+    {/each}
   </div>
-{:else if authoringMode === 'cron'}
-  <div
-    id={modePanelId('cron')}
-    role="tabpanel"
-    aria-labelledby={modeTabId('cron')}
-    class="cinder-schedule-builder__panel"
-    data-sb-panel="cron"
-  >
-    <CronEditorFields
-      {baseId}
-      {cronFields}
-      {cronEditors}
-      onModeChange={onCronModeChange}
-      onEditorChange={onCronEditorChange}
-      onRawChange={onCronRawChange}
+{:else if repeats === 'monthly'}
+  <NumberInput
+    id={`${baseId}-day-of-month`}
+    label="Day of month"
+    min={1}
+    max={31}
+    bind:value={() => draft.dayOfMonth, onDayOfMonthChange}
+  />
+{:else if repeats === 'interval'}
+  <div class="cinder-schedule-builder__field-row">
+    <NumberInput
+      id={`${baseId}-interval-count`}
+      label="Every"
+      min={1}
+      step={1}
+      bind:value={() => draft.intervalCount, onIntervalCountChange}
+    />
+    <Select
+      id={`${baseId}-interval-unit`}
+      label="Unit"
+      options={intervalUnitOptions}
+      value={draft.intervalUnit}
+      onchange={onIntervalUnitChange}
     />
   </div>
-{:else}
-  <div
-    id={modePanelId('interval')}
-    role="tabpanel"
-    aria-labelledby={modeTabId('interval')}
-    class="cinder-schedule-builder__panel"
-    data-sb-panel="interval"
-  >
-    <div class="cinder-schedule-builder__field-row">
-      <NumberInput
-        id={`${baseId}-interval-every`}
-        label="Every"
-        min={1}
-        step={1}
-        bind:value={() => intervalEvery, onIntervalEveryChange}
-      />
-      <Select
-        id={`${baseId}-interval-unit`}
-        label="Unit"
-        options={intervalUnitOptions}
-        value={intervalUnit}
-        onchange={onIntervalUnitChange}
-      />
-    </div>
-  </div>
+{:else if repeats === 'cron'}
+  <CronEditorFields
+    {baseId}
+    {cronFields}
+    {cronEditors}
+    onModeChange={onCronModeChange}
+    onEditorChange={onCronEditorChange}
+    onRawChange={onCronRawChange}
+  />
 {/if}
+
+<Combobox
+  id={`${baseId}-time-zone`}
+  label="Time zone"
+  options={timeZoneOptions}
+  value={timeZone}
+  onValueChange={onTimeZoneChange}
+  filter={filterTimeZone}
+  {...repeats === 'interval'
+    ? {
+        description: 'An interval counts from its start, so the zone does not change when it runs.',
+      }
+    : {}}
+/>

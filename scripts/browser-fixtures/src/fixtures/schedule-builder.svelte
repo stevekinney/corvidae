@@ -1,20 +1,16 @@
 <script lang="ts">
   import { ScheduleBuilder, type ScheduleFire, type ScheduleValue } from '@lostgradient/cinder';
 
-  let value = $state<ScheduleValue>({ mode: 'interval', every: 15, unit: 'minutes' });
+  let value = $state<ScheduleValue>({ cron: '0 9 * * 1-5', timeZone: 'America/Los_Angeles' });
 
-  // Cinder ships no date math — a real app would bring its own cron/interval
-  // library here. Labels are illustrative static strings, not computed dates.
+  // Cinder ships no date math — a real app would bring its own cron library here.
+  // Labels are illustrative static strings, not computed dates.
   function computeNextFires(current: ScheduleValue, count: number): ScheduleFire[] {
-    if (current.mode === 'interval') {
-      return Array.from({ length: count }, (_, index) => ({
-        id: `fire-${index}`,
-        label: `Fire ${index + 1} — in ${(index + 1) * current.every} ${current.unit}`,
-      }));
-    }
+    const cadence =
+      'every' in current ? `every ${current.every.count} ${current.every.unit}` : current.cron;
     return Array.from({ length: count }, (_, index) => ({
       id: `fire-${index}`,
-      label: `Fire ${index + 1} — matches "${current.expression}"`,
+      label: `Fire ${index + 1} — ${cadence}`,
     }));
   }
 
@@ -27,6 +23,5 @@
   {value}
   onValueChange={handleChange}
   {computeNextFires}
-  timezoneLabel="America/New_York"
   label="Data sync schedule"
 />

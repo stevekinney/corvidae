@@ -59,6 +59,17 @@
       "description": "Height step from the shared `--cinder-control-height-*` scale: `sm` 28px, `md` 32px,\n`lg` 40px, the same heights as a Button of that size.",
       "default": "md"
     },
+    "sheetBelow": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "const": false
+        }
+      ],
+      "description": "Viewport width below which the options panel docks to the bottom edge as\na sheet (Popover's `sheetBelow`, with focus kept in the input), instead of\nanchoring to the input. A simple CSS length such as `'640px'`, or `false`\nto always anchor. Default `'640px'`."
+    },
     "class": {
       "type": "string",
       "description": "Additional class names merged with `.cinder-combobox`."

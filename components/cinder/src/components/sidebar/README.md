@@ -31,7 +31,7 @@ See the [SideNavigation versus Sidebar decision](https://github.com/stevekinney/
 | `class` | `string` | no | — | Additional CSS class merged with `.cinder-sidebar`. |
 | `collapsed` | `boolean` | no | — | Whether the sidebar is collapsed. Bindable via `bind:collapsed`. Default `false`. Above `mobileBreakpoint`, `collapsed=true` switches the sidebar to icon-only mode. At or below `mobileBreakpoint`, the sidebar renders inside a `<Drawer>` and `collapsed=true` means the drawer is closed. |
 | `label` | `string` | no | — | Accessible name for the outer landmark and the mobile drawer. Defaults to `'Sidebar'` for convenience but must be unique per page. Navigation content owns its own accessible name; for example, use `SideNavigation.ariaLabel`. |
-| `mobileBreakpoint` | `string` | no | — | Viewport width below which the sidebar switches from the inline aside to the mobile drawer. Accepts a simple CSS length such as `'47.99rem'` or `'1024px'`. Default `'47.99rem'`. |
+| `mobileBreakpoint` | `string` | no | — | Viewport width below which the sidebar switches from the inline aside to the mobile drawer. Accepts a simple CSS length such as `'639.98px'` or `'1024px'`. Default `'639.98px'`, so tablets keep the inline column and its icon rail. |
 | `footer` | `(opaque)` | no | — | Optional footer region (e.g. user account, sign-out). Not expressible in JSON Schema; see the component types for the signature. |
 | `navigation` | `(opaque)` | no | — | Navigation content. Typically a `<SideNavigation>` subtree, which owns the navigation landmark and its accessible name. Optional so the sidebar can serve as app chrome without a navigation list. Not expressible in JSON Schema; see the component types for the signature. |
 

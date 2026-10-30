@@ -218,7 +218,8 @@ export type ApplicationCommandAdmission =
     }
   | {
       readonly status: 'rejected';
-      readonly reason: 'backlog-full';
+      /** `purged`: the mailbox was purged (`Mailbox.purge`) and takes no further commands. */
+      readonly reason: 'backlog-full' | 'purged';
       readonly capacity: MailboxCapacity;
     };
 
