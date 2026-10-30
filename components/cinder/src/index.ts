@@ -460,7 +460,7 @@ export { default as InlineLoading } from './components/inline-loading/index.ts';
 export type { InlineLoadingProps, InlineLoadingStatus } from './components/inline-loading/index.ts';
 
 export { default as JsonEditor } from './components/json-editor/index.ts';
-export type { JsonEditorProps } from './components/json-editor/index.ts';
+export type { JsonEditorProps, JsonEditorSchema } from './components/json-editor/index.ts';
 
 export { default as JsonSchemaEditor } from './components/json-schema-editor/index.ts';
 export type {
@@ -643,7 +643,11 @@ export { default as PageHeader } from './components/page-header/index.ts';
 export type { PageHeaderHeadingLevel, PageHeaderProps } from './components/page-header/index.ts';
 
 export { default as PayloadInspector } from './components/payload-inspector/index.ts';
-export type { PayloadInspectorProps } from './components/payload-inspector/index.ts';
+export type {
+  PayloadInspectorField,
+  PayloadInspectorProps,
+  PayloadInspectorView,
+} from './components/payload-inspector/index.ts';
 
 export { default as PermissionMatrix } from './components/permission-matrix/index.ts';
 export type {
@@ -752,6 +756,9 @@ export type {
   SchemaFormSchema,
   SchemaFormSubmitHandler,
 } from './components/schema-form/index.ts';
+
+export { default as SchemaView } from './components/schema-view/index.ts';
+export type { SchemaViewProps } from './components/schema-view/index.ts';
 
 export { default as ScrollArea } from './components/scroll-area/index.ts';
 export type {
@@ -1193,9 +1200,14 @@ export type {
   DataGridSelectionMode,
   DataGridSelectionModel,
 } from './components/data-grid/index.ts';
-export type { DescriptionListDefinition } from './components/description-list/index.ts';
+export type {
+  DescriptionListDefinition,
+  DescriptionListFormattedValue,
+  DescriptionListIdentifier,
+  DescriptionListTags,
+  DescriptionListTimestamp,
+} from './components/description-list/index.ts';
 export type { InvocationRuleBuilderSchemaProps } from './components/invocation-rule-builder/index.ts';
-export type { JsonLint } from './components/json-editor/json-editor-enhancement.ts';
 export type { KbdSize } from './components/kbd/index.ts';
 export type {
   PayloadInspectorSchemaProps,

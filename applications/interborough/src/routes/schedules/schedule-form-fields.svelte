@@ -174,7 +174,6 @@
         rows={3}
         value={form.inputText}
         onValueChange={(next) => (form.inputText = next)}
-        highlight
         validFeedbackVisible={false}
         error={form.errors.input ?? ''}
       />

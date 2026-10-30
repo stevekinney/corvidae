@@ -100,7 +100,7 @@
 
 <div class={classNames('cinder-code-block', className)}>
   {#if (language && languageLabelVisible) || copyable}
-    <header class="cinder-code-block__header">
+    <div class="cinder-code-block__meta">
       {#if language && languageLabelVisible}
         <span class="cinder-code-block__language">{language}</span>
       {/if}
@@ -113,7 +113,7 @@
           iconOnly={true}
         />
       {/if}
-    </header>
+    </div>
   {/if}
   <!-- One stable, focusable scroll viewport is shared by plain, highlighted,
        and fallback states. Keep tabindex unconditional so overflowing snippets

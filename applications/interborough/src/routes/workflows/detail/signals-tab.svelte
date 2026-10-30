@@ -117,7 +117,6 @@
       rows={4}
       value={payloadText}
       onValueChange={(next) => (payloadText = next)}
-      highlight
       validFeedbackVisible={false}
     />
     {#if payloadError}

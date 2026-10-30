@@ -140,6 +140,7 @@ export { default as resizablePanelsVariables } from '../components/resizable-pan
 export { default as runStepTimelineVariables } from '../components/run-step-timeline/run-step-timeline.variables.ts';
 export { default as scheduleBuilderVariables } from '../components/schedule-builder/schedule-builder.variables.ts';
 export { default as schemaFormVariables } from '../components/schema-form/schema-form.variables.ts';
+export { default as schemaViewVariables } from '../components/schema-view/schema-view.variables.ts';
 export { default as scrollAreaVariables } from '../components/scroll-area/scroll-area.variables.ts';
 export { default as searchFieldVariables } from '../components/search-field/search-field.variables.ts';
 export { default as secretValueFieldVariables } from '../components/secret-value-field/secret-value-field.variables.ts';

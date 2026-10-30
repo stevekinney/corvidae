@@ -1,0 +1,13 @@
+{
+  "$schema": "../../schemas/examples.schema.json",
+  "component": "schema-view",
+  "import": "@lostgradient/cinder",
+  "examples": [
+    {
+      "id": "nested-schema",
+      "title": "A nested schema",
+      "description": "One line per field with a red dot on the required ones, nested objects indented, and the raw document behind View JSON Schema.",
+      "code": "<script lang=\"ts\">\n  import { SchemaView } from '@lostgradient/cinder';\n\n  const refundInput = {\n    $schema: 'https://json-schema.org/draft/2020-12/schema',\n    type: 'object',\n    required: ['orderId', 'customer'],\n    properties: {\n      orderId: { type: 'string', description: 'The order to refund.' },\n      refundAmount: { type: 'number', description: 'Amount in cents. Defaults to the full order.' },\n      customer: {\n        type: 'object',\n        required: ['email'],\n        properties: {\n          email: { type: 'string', description: 'Where the receipt is sent.' },\n          loyaltyTier: { type: 'string' },\n        },\n      },\n    },\n  };\n</script>\n\n<SchemaView schema={refundInput} label=\"Refund input\" />\n"
+    }
+  ]
+}

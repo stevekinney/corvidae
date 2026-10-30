@@ -220,7 +220,6 @@
         rows={3}
         value={payloadText}
         onValueChange={(next) => (payloadText = next)}
-        highlight
         validFeedbackVisible={false}
       />
       <div class="weft-send-tab__row">

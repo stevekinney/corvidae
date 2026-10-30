@@ -20,6 +20,12 @@
       "title": "Description list variants",
       "description": "Striped and two-column layout variants.",
       "code": "<script lang=\"ts\">\n  import { DescriptionList } from '@lostgradient/cinder';\n  import type { DescriptionListItem } from '@lostgradient/cinder';\n\n  const items: DescriptionListItem[] = [\n    { term: 'Repository', definition: '@lostgradient/cinder' },\n    { term: 'Language', definition: 'TypeScript' },\n    { term: 'Framework', definition: 'Svelte 5' },\n    { term: 'Runtime', definition: 'Bun' },\n  ];\n</script>\n\n<div class=\"example-preview-column\">\n  <DescriptionList {items} variant=\"striped\" />\n  <DescriptionList {items} variant=\"two-column\" />\n</div>\n"
+    },
+    {
+      "id": "formatted-values",
+      "title": "Description list formatted values",
+      "description": "A shortened ID with a copy button, a timestamp with the exact time on hover, and read-only tags with an Add a tag action.",
+      "code": "<script lang=\"ts\">\n  import { DescriptionList } from '@lostgradient/cinder';\n  import type { DescriptionListItem } from '@lostgradient/cinder';\n\n  const items: DescriptionListItem[] = [\n    { term: 'Run ID', definition: { type: 'identifier', value: '3f2b9c1a-7d4e-4a86-9b0c-1e5d6f7a8b90' } },\n    { term: 'Started', definition: { type: 'timestamp', value: '2026-10-30T14:15:07Z' } },\n    {\n      term: 'Tags',\n      definition: { type: 'tags', tags: ['billing', 'nightly'], systemTagCount: 3, onAddTag: () => {} },\n    },\n  ];\n</script>\n\n<DescriptionList {items} variant=\"two-column\" />\n"
     }
   ]
 }

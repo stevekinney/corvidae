@@ -66,7 +66,11 @@ export type TableProps = Omit<HTMLTableAttributes, 'class'> & {
    * never write back `undefined` itself (sort always toggles to a column).
    */
   sort?: TableSort | undefined;
-  /** Visual caption rendered as a `<caption>` element. */
+  /**
+   * Accessible caption rendered as a `<caption>` element. It names the table for
+   * assistive technology but is visually hidden: the heading above the table
+   * already says what it is, and the table draws no title row of its own.
+   */
   caption?: string;
   /** When true, the header sticks to the top of the scrolling container. @default false */
   stickyHeader?: boolean;

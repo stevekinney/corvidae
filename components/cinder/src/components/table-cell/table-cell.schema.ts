@@ -4,6 +4,18 @@ const schema = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   type: 'object',
   properties: {
+    truncate: {
+      type: 'boolean',
+      description:
+        "Keeps the cell's text on one line and ends it with an ellipsis. The full\ntext is the `title`, so it shows on hover. The text may grow to a maximum\ninline size and no further, so one very long value (a storage key, a hash,\na URL) cannot widen the table. Set it on every cell in the column.\nUnless you pass `title`, the title is read from the rendered text.",
+      default: false,
+    },
+    controls: {
+      type: 'boolean',
+      description:
+        'Marks a cell that holds a form control (a select, an input, a button). The\ncontrol fills the cell, so every control in the column shares the one width\nthe column has, and the cell keeps a minimum width so the control stays\nusable. Set it on every cell in the column.',
+      default: false,
+    },
     align: {
       enum: ['left', 'center', 'right'],
       description: 'Visual alignment for numeric columns.',

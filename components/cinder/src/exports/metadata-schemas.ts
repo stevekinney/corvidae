@@ -140,6 +140,7 @@ export { default as resizablePanelsSchema } from '../components/resizable-panels
 export { default as runStepTimelineSchema } from '../components/run-step-timeline/run-step-timeline.schema.ts';
 export { default as scheduleBuilderSchema } from '../components/schedule-builder/schedule-builder.schema.ts';
 export { default as schemaFormSchema } from '../components/schema-form/schema-form.schema.ts';
+export { default as schemaViewSchema } from '../components/schema-view/schema-view.schema.ts';
 export { default as scrollAreaSchema } from '../components/scroll-area/scroll-area.schema.ts';
 export { default as searchFieldSchema } from '../components/search-field/search-field.schema.ts';
 export { default as secretValueFieldSchema } from '../components/secret-value-field/secret-value-field.schema.ts';

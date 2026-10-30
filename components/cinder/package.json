@@ -28,7 +28,15 @@
     "knowledge": "bun scripts/knowledge/index.ts"
   },
   "dependencies": {
+    "@codemirror/autocomplete": "catalog:",
+    "@codemirror/commands": "catalog:",
+    "@codemirror/lang-json": "catalog:",
+    "@codemirror/language": "catalog:",
+    "@codemirror/lint": "catalog:",
+    "@codemirror/state": "catalog:",
+    "@codemirror/view": "catalog:",
     "@floating-ui/dom": "catalog:",
+    "@lezer/highlight": "catalog:",
     "@lostgradient/markdown": "workspace:*",
     "@lucide/svelte": "catalog:",
     "@shikijs/engine-oniguruma": "catalog:",

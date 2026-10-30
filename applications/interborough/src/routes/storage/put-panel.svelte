@@ -44,7 +44,6 @@
     {value}
     onValueChange={(next) => (value = next)}
     rows={5}
-    highlight
     validFeedbackVisible={false}
     class="weft-storage-monospace-input"
   />

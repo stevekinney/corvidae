@@ -237,7 +237,6 @@
                 3,
                 (complexDrafts[name] ?? serializeJsonFieldValue(fieldValue)).split('\n').length,
               )}
-              highlight
               onValueChange={(nextValue) => handleComplexInput(name, nextValue)}
             />
           {:else}

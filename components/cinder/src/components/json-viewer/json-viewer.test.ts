@@ -10,6 +10,30 @@ const { default: JsonViewer } = await import('./json-viewer.svelte');
 
 afterEach(() => cleanup());
 
+describe('JsonViewer flat styling', () => {
+  test('renders no header bar, no copy chip and no border frame', async () => {
+    const { container } = render(JsonViewer, { value: { name: 'Alice' } });
+    expect(container.querySelector('header')).toBeNull();
+    expect(container.querySelector('.cinder-json-viewer__header')).toBeNull();
+    expect(container.querySelector('.cinder-copy-button')).toBeNull();
+
+    const css = await Bun.file(new URL('./json-viewer.css', import.meta.url)).text();
+    const rootRule = /\.cinder-json-viewer\s*\{([^}]*)\}/s.exec(css)?.[1] ?? '';
+    expect(rootRule).not.toMatch(/(?<![\w-])border(?:-(?!radius)[a-z-]+)?\s*:/);
+    expect(rootRule).toContain('background: var(--cinder-surface-inset)');
+  });
+
+  test('is two-tone: muted keys and no per-type syntax colours', async () => {
+    const css = await Bun.file(new URL('./json-viewer.css', import.meta.url)).text();
+    const keyRule = /\.cinder-json-viewer__key\s*\{([^}]*)\}/s.exec(css)?.[1] ?? '';
+    expect(keyRule).toContain('color: var(--cinder-text-muted)');
+    expect(css).not.toContain("data-cinder-type='string'");
+    expect(css).not.toContain("data-cinder-type='number'");
+    expect(css).not.toContain("data-cinder-type='boolean'");
+    expect(css).not.toContain('--cinder-status-');
+  });
+});
+
 describe('JsonViewer', () => {
   test('renders a primitive value', () => {
     const { container } = render(JsonViewer, { value: 'hello' });

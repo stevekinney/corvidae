@@ -27,6 +27,18 @@ describe('ReviewStep', () => {
     expect(getByRole('button', { name: 'Start workflow' })).not.toBeNull();
   });
 
+  test('shows the payload being started as exact JSON', async () => {
+    const { container } = render(ReviewStep, {
+      props: {
+        ...BASE_PROPS,
+        payload: { count: 1, label: '1' },
+        submitState: { status: 'idle' },
+      },
+    });
+
+    expect(container.textContent).toContain('"1"');
+  });
+
   test('states how a new start is bound to a worker build (COR-164)', async () => {
     const { getByText } = render(ReviewStep, {
       props: { ...BASE_PROPS, submitState: { status: 'idle' } },

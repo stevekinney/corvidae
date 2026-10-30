@@ -4,17 +4,21 @@ import { describe, expect, test } from 'bun:test';
 import { parse } from 'svelte/compiler';
 import ts from 'typescript';
 
-const EDITOR_DEPENDENCY_PATTERN = /(?:^|\/)(?:@codemirror|codemirror|monaco-editor)(?:\/|$)/;
+const EDITOR_DEPENDENCY_PATTERN = /(?:^|\/)(?:@codemirror|@lezer|codemirror|monaco-editor)(?:\/|$)/;
 
-function collectEstreeSpecifiers(node: unknown, specifiers: string[]): void {
+/** A module specifier and whether it is a static import edge or a dynamic `import()`. */
+type ModuleEdge = { specifier: string; dynamic: boolean };
+
+function collectEstreeEdges(node: unknown, edges: ModuleEdge[]): void {
   if (Array.isArray(node)) {
-    for (const child of node) collectEstreeSpecifiers(child, specifiers);
+    for (const child of node) collectEstreeEdges(child, edges);
     return;
   }
   if (node === null || typeof node !== 'object') return;
 
   const record = node as Record<string, unknown>;
   const type = record['type'];
+  const isTypeOnly = record['importKind'] === 'type' || record['exportKind'] === 'type';
   if (
     type === 'ImportDeclaration' ||
     type === 'ExportNamedDeclaration' ||
@@ -22,55 +26,67 @@ function collectEstreeSpecifiers(node: unknown, specifiers: string[]): void {
     type === 'ImportExpression'
   ) {
     const source = record['source'];
-    if (source !== null && typeof source === 'object') {
+    if (source !== null && typeof source === 'object' && !isTypeOnly) {
       const value = (source as Record<string, unknown>)['value'];
-      if (typeof value === 'string') specifiers.push(value);
+      if (typeof value === 'string') {
+        edges.push({ specifier: value, dynamic: type === 'ImportExpression' });
+      }
     }
   }
 
-  for (const child of Object.values(record)) collectEstreeSpecifiers(child, specifiers);
+  for (const child of Object.values(record)) collectEstreeEdges(child, edges);
 }
 
-function typescriptSpecifiers(filePath: string, source: string): string[] {
+function typescriptEdges(filePath: string, source: string): ModuleEdge[] {
   const sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true);
-  const specifiers: string[] = [];
+  const edges: ModuleEdge[] = [];
 
   function visit(node: ts.Node): void {
+    // A type-only import or export is erased at compile time, so it is not a runtime edge.
     if (
-      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
-      node.moduleSpecifier !== undefined &&
-      ts.isStringLiteral(node.moduleSpecifier)
+      ts.isImportDeclaration(node) &&
+      ts.isStringLiteral(node.moduleSpecifier) &&
+      !node.importClause?.isTypeOnly
     ) {
-      specifiers.push(node.moduleSpecifier.text);
+      edges.push({ specifier: node.moduleSpecifier.text, dynamic: false });
+    }
+    if (
+      ts.isExportDeclaration(node) &&
+      node.moduleSpecifier !== undefined &&
+      ts.isStringLiteral(node.moduleSpecifier) &&
+      !node.isTypeOnly
+    ) {
+      edges.push({ specifier: node.moduleSpecifier.text, dynamic: false });
     }
     if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
       const argument = node.arguments[0];
       if (argument !== undefined && ts.isStringLiteral(argument)) {
-        specifiers.push(argument.text);
+        edges.push({ specifier: argument.text, dynamic: true });
       }
     }
     ts.forEachChild(node, visit);
   }
 
   visit(sourceFile);
-  return specifiers;
+  return edges;
 }
 
-function moduleSpecifiers(filePath: string, source: string): string[] {
+function moduleEdges(filePath: string, source: string): ModuleEdge[] {
   if (filePath.endsWith('.svelte')) {
     const ast = parse(source, { filename: filePath, modern: true });
-    const specifiers: string[] = [];
+    const edges: ModuleEdge[] = [];
     for (const program of [ast.instance?.content, ast.module?.content]) {
-      collectEstreeSpecifiers(program, specifiers);
+      collectEstreeEdges(program, edges);
     }
-    return specifiers;
+    return edges;
   }
   if (filePath.endsWith('.css')) {
-    return [...source.matchAll(/@import\s+(?:url\(\s*)?["']([^"']+)["']/g)].map(
-      (match) => match[1] as string,
-    );
+    return [...source.matchAll(/@import\s+(?:url\(\s*)?["']([^"']+)["']/g)].map((match) => ({
+      specifier: match[1] as string,
+      dynamic: false,
+    }));
   }
-  return typescriptSpecifiers(filePath, source);
+  return typescriptEdges(filePath, source);
 }
 
 async function resolveLocalSpecifier(fromFile: string, specifier: string): Promise<string> {
@@ -84,13 +100,19 @@ async function resolveLocalSpecifier(fromFile: string, specifier: string): Promi
   throw new Error(`Could not resolve '${specifier}' from ${fromFile}`);
 }
 
-async function publicEntryImportClosure(entryPath: string): Promise<{
+/**
+ * Walk the files an entry reaches through static edges only. A dynamic `import()` starts a separate
+ * chunk, so it is recorded in `dynamicEdges` and not followed.
+ */
+async function staticImportClosure(entryPath: string): Promise<{
   files: string[];
-  forbiddenEdges: string[];
+  editorEdges: string[];
+  dynamicEdges: string[];
 }> {
   const pending = [entryPath];
   const files = new Set<string>();
-  const forbiddenEdges: string[] = [];
+  const editorEdges: string[] = [];
+  const dynamicEdges: string[] = [];
 
   while (pending.length > 0) {
     const filePath = pending.pop();
@@ -98,9 +120,13 @@ async function publicEntryImportClosure(entryPath: string): Promise<{
     files.add(filePath);
 
     const source = await Bun.file(filePath).text();
-    for (const specifier of moduleSpecifiers(filePath, source)) {
+    for (const { specifier, dynamic } of moduleEdges(filePath, source)) {
+      if (dynamic) {
+        dynamicEdges.push(`${filePath}: ${specifier}`);
+        continue;
+      }
       if (EDITOR_DEPENDENCY_PATTERN.test(specifier)) {
-        forbiddenEdges.push(`${filePath}: ${specifier}`);
+        editorEdges.push(`${filePath}: ${specifier}`);
       }
       if (specifier.startsWith('.')) {
         pending.push(await resolveLocalSpecifier(filePath, specifier));
@@ -108,41 +134,66 @@ async function publicEntryImportClosure(entryPath: string): Promise<{
     }
   }
 
-  return { files: [...files], forbiddenEdges };
+  return { files: [...files], editorEdges, dynamicEdges };
 }
 
 describe('JsonEditor — bundle boundary', () => {
-  test('public entry uses the native textarea without a code-editor import edge', async () => {
-    const entryPath = resolvePath(import.meta.dir, 'index.ts');
-    const componentPath = resolvePath(import.meta.dir, 'json-editor.svelte');
-    const closure = await publicEntryImportClosure(entryPath);
+  const entryPath = resolvePath(import.meta.dir, 'index.ts');
+  const componentPath = resolvePath(import.meta.dir, 'json-editor.svelte');
+  const runtimePath = resolvePath(import.meta.dir, 'json-editor-enhancement.ts');
+
+  test('the public entry reaches no code-editor module through a static import', async () => {
+    const closure = await staticImportClosure(entryPath);
 
     expect(closure.files).toContain(entryPath);
     expect(closure.files).toContain(componentPath);
-    expect(await Bun.file(componentPath).text()).toContain('<textarea');
-    expect(closure.forbiddenEdges).toEqual([]);
+    expect(closure.files).not.toContain(runtimePath);
+    expect(closure.editorEdges).toEqual([]);
   });
 
-  test('enhancement is reached only through a dynamic import', async () => {
-    const componentPath = resolvePath(import.meta.dir, 'json-editor.svelte');
+  test('the editor runtime is reached only through a dynamic import when a JsonEditor mounts', async () => {
+    const closure = await staticImportClosure(entryPath);
     const source = await Bun.file(componentPath).text();
-    expect(source).toMatch(/import\(\s*['"]\.\/json-editor-enhancement\.ts['"]\s*\)/);
-    expect(source).not.toMatch(/from\s*['"]\.\/json-editor-enhancement\.ts['"]/);
+
+    expect(closure.dynamicEdges).toEqual([`${componentPath}: ./json-editor-enhancement.ts`]);
+    // The import sits inside an effect, which runs on mount and never during server rendering.
+    expect(source).toMatch(
+      /\$effect\(\(\) => \{[\s\S]*?import\(\s*['"]\.\/json-editor-enhancement\.ts['"]\s*\)/,
+    );
   });
 
-  test('enhancement has no code-editor dependency edge', async () => {
-    const enhancementPath = resolvePath(import.meta.dir, 'json-editor-enhancement.ts');
-    const source = await Bun.file(enhancementPath).text();
+  test('the editor runtime is the chunk that holds the code-editor dependencies', async () => {
+    const closure = await staticImportClosure(runtimePath);
+    const packages = new Set(
+      closure.editorEdges.map((edge) => edge.split(': ')[1]?.split('/').slice(0, 2).join('/')),
+    );
+
+    expect(packages).toContain('@codemirror/view');
+    expect(packages).toContain('@codemirror/state');
+    expect(packages).toContain('@codemirror/lang-json');
+    // The chunk is plain TypeScript: it must not pull the component, or the entry, back into it.
+    expect(closure.files).not.toContain(componentPath);
+    expect(closure.files).not.toContain(entryPath);
+  });
+
+  test('the guard fails a static import of the editor runtime', async () => {
+    const edges = moduleEdges(
+      componentPath,
+      '<script lang="ts">import { createJsonEditor } from "./json-editor-enhancement.ts";</script>',
+    );
+    expect(edges).toEqual([{ specifier: './json-editor-enhancement.ts', dynamic: false }]);
     expect(
-      typescriptSpecifiers(enhancementPath, source).filter((specifier) =>
-        EDITOR_DEPENDENCY_PATTERN.test(specifier),
+      moduleEdges(
+        componentPath,
+        '<script lang="ts">import type { A } from "@codemirror/view";</script>',
       ),
     ).toEqual([]);
+    expect(
+      moduleEdges(componentPath, '<script lang="ts">void import("@codemirror/view");</script>'),
+    ).toEqual([{ specifier: '@codemirror/view', dynamic: true }]);
   });
 
-  test('synchronizes overlay scroll after lazy enhancement resolves', async () => {
-    const source = await Bun.file(resolvePath(import.meta.dir, 'json-editor.svelte')).text();
-    expect(source).toContain('highlightNode.scrollTop = textareaNode.scrollTop');
-    expect(source).toContain("import { tick, untrack } from 'svelte'");
+  test('keeps a native textarea as the form control and fallback', async () => {
+    expect(await Bun.file(componentPath).text()).toContain('<textarea');
   });
 });

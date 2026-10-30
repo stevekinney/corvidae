@@ -22,6 +22,7 @@ import {
   UPDATE_DESK_RUN_ID,
 } from '../../fixtures/engine-console-ids.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { jsonEditor } from './json-editor-support.ts';
 
 function attributes(page: Page): Locator {
   return page.getByRole('region', { name: 'Search attributes' });
@@ -147,7 +148,8 @@ test('operator reads a run’s update history, then sends an update that outlast
 
   const form = page.locator('.weft-send-tab__form');
   await form.getByLabel('Update name').fill('slow');
-  await form.getByLabel('Payload').fill('"x"');
+  const payload = await jsonEditor(form, 'Payload');
+  await payload.fill('"x"');
   await form.getByLabel('Timeout (s)').fill('1');
   await form.getByRole('button', { name: 'Send update' }).click();
 
