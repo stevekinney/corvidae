@@ -17,6 +17,17 @@
     "class": {
       "type": "string",
       "description": "Additional class names merged with the component's root class."
+    },
+    "sheetBelow": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "const": false
+        }
+      ],
+      "description": "Viewport width below which the menu docks to the bottom edge as a sheet,\nwith the bottom Drawer's geometry, instead of anchoring to its trigger.\nKeyboard, focus, and dismissal behave exactly as when anchored. A simple\nCSS length such as `'640px'`, or `false` to always anchor. Default\n`'640px'`."
     }
   },
   "additionalProperties": false,

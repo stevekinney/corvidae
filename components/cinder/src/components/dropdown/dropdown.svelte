@@ -19,6 +19,11 @@
   import { onDestroy } from 'svelte';
   import { createAnchoredOverlayExitState } from '../../_internal/anchored-overlay-exit.svelte.ts';
   import { pushEscapeHandler } from '../../_internal/overlay.ts';
+  import {
+    PHONE_VIEWPORT_BREAKPOINT,
+    readViewportBreakpoint,
+    useViewportBelow,
+  } from '../../_internal/viewport-below.svelte.ts';
   import { createClickOutside } from '../../utilities/attachments.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import { useReducedMotion } from '../../utilities/use-reduced-motion.svelte.ts';
@@ -36,11 +41,21 @@
     id = generatedId,
     open = $bindable(false),
     placement = 'bottom-start',
+    sheetBelow = PHONE_VIEWPORT_BREAKPOINT,
     class: customClassName,
     trigger,
     children,
     ...rest
   }: DropdownProps = $props();
+
+  const sheetBreakpoint = $derived(readViewportBreakpoint(sheetBelow, 'Dropdown', 'sheetBelow'));
+  const narrowViewport = useViewportBelow(() => sheetBreakpoint);
+  // Docking is presentation only, so it follows the viewport live: the menu's
+  // focus, keyboard, and dismissal owners stay the same in either form. The
+  // anchored placement attributes are dropped while docked so no placement
+  // rule competes with the sheet's insets.
+  const sheet = $derived(narrowViewport.current);
+  const renderedPlacement = $derived(sheet ? undefined : placement);
 
   let compoundMenuElement = $state<HTMLElement | null>(null);
   let compoundTriggerElement = $state<HTMLElement | null>(null);
@@ -110,6 +125,9 @@
     },
     get initialFocus() {
       return undefined;
+    },
+    get sheet() {
+      return sheet;
     },
     close: closeCompoundMenu,
     focusTrigger: focusCompoundTrigger,
@@ -293,7 +311,7 @@
 <div
   {id}
   class={classNames('cinder-dropdown', customClassName)}
-  data-cinder-placement={placement}
+  data-cinder-placement={renderedPlacement}
   {@attach dismissOnOutsideClick}
   {...rest}
 >
@@ -331,8 +349,9 @@
         class="cinder-dropdown__menu"
         popover="auto"
         role="menu"
-        data-cinder-placement={placement}
-        style={`position-anchor: --${menuId};`}
+        data-cinder-placement={renderedPlacement}
+        data-cinder-sheet={sheet ? 'docked' : undefined}
+        style={sheet ? undefined : `position-anchor: --${menuId};`}
         ontoggle={handlePopoverToggle}
         aria-hidden={!open ? 'true' : undefined}
         inert={!open ? true : undefined}
@@ -347,7 +366,8 @@
         id={menuId}
         class="cinder-dropdown__menu"
         role="menu"
-        data-cinder-placement={placement}
+        data-cinder-placement={renderedPlacement}
+        data-cinder-sheet={sheet ? 'docked' : undefined}
         data-cinder-closing={exitState.isClosing ? '' : undefined}
         aria-hidden={exitState.isClosing ? 'true' : undefined}
         inert={exitState.isClosing ? true : undefined}

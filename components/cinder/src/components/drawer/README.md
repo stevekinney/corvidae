@@ -75,6 +75,7 @@ Edge-anchored overlay panel for supplementary content without leaving the curren
 | `children` | `(opaque)` | yes | — | Drawer body content. Required. Not expressible in JSON Schema; see the component types for the signature. |
 | `footer` | `(opaque)` | no | — | Optional footer (e.g. action buttons). Not expressible in JSON Schema; see the component types for the signature. |
 | `header` | `(opaque)` | no | — | Custom header. Falls back to a default header that renders `title`. Not expressible in JSON Schema; see the component types for the signature. |
+| `onExitComplete` | `(opaque)` | no | — | Called once a close has fully finished: after the modal drawer's exit transition and unmount, or as soon as a non-modal drawer closes. A consumer that wraps Drawer in its own `{#if}` clears that gate here, so the exit transition plays before the instance is destroyed. Not expressible in JSON Schema; see the component types for the signature. |
 | `triggerRef` | `(opaque)` | no | — | Optional reference to the element that opened the drawer. When supplied, focus returns to this element on close. When omitted, focus restores to the element that held focus before the drawer opened. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->

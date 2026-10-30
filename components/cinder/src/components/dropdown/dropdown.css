@@ -543,4 +543,30 @@
   :root[data-cinder-reduced-motion='true'] .cinder-dropdown__menu[popover] {
     transition: none;
   }
+
+  /* ----------------------------------------
+ * Docked sheet — below Dropdown's `sheetBelow` viewport width the menu
+ * leaves its trigger and docks to the bottom edge with the bottom Drawer's
+ * geometry (the same values as `_floating-surface.css`'s docked rule, which
+ * the legacy `.cinder-dropdown__menu` does not carry). The component drops
+ * `data-cinder-placement` and the anchor style while docked, so only the
+ * placement-free `[popover]` and position-ready rules above compete with
+ * these, at equal specificity and earlier in the file.
+ * ---------------------------------------- */
+
+  .cinder-dropdown__menu[data-cinder-sheet='docked'],
+  .cinder-dropdown-menu[data-cinder-sheet='docked'] {
+    position: fixed;
+    inset: auto 0 0;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    max-height: 90dvh;
+    margin: 0;
+    overflow-y: auto;
+    padding-bottom: max(var(--cinder-space-1), env(safe-area-inset-bottom));
+    border-width: 1px 0 0;
+    border-radius: var(--cinder-radius-lg) var(--cinder-radius-lg) 0 0;
+    translate: none;
+  }
 }

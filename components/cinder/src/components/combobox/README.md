@@ -63,6 +63,7 @@ The default filter matches an option's label and description, not its group name
 | `name` | `string` | no | — | Native form field name. Renders a hidden input carrying the selected value. |
 | `placeholder` | `string` | no | — | Placeholder when no value is selected. |
 | `required` | `boolean` | no | — | Marks the field required: renders the required marker on the label and sets `aria-required` on the input. Inherited from a wrapping FormField when unset. |
+| `sheetBelow` | `string` \| `false` | no | — | Viewport width below which the options panel docks to the bottom edge as a sheet (Popover's `sheetBelow`, with focus kept in the input), instead of anchoring to the input. A simple CSS length such as `'640px'`, or `false` to always anchor. Default `'640px'`. |
 | `size` | `"sm"` \| `"md"` \| `"lg"` | no | `"md"` | Height step from the shared `--cinder-control-height-*` scale: `sm` 28px, `md` 32px, `lg` 40px, the same heights as a Button of that size. |
 | `textInputValue` | `string` | no | — | Free-text input value (the text the user has typed). Bindable. |
 | `filter` | `(opaque)` | no | — | Custom synchronous filter. Receives an option and the current input value; returns true to keep. Defaults to case-insensitive substring match on label. Not expressible in JSON Schema; see the component types for the signature. |

@@ -137,9 +137,13 @@ Tables don't reflow gracefully. Cinder ships two patterns and recommends picking
 
 **Column hiding via container queries.** When the column set is stable and a few columns are nice-to-have rather than essential, hide them with `@container`-driven CSS on the cells. Wrap the table in a container, declare `container-type: inline-size`, then add a class or `data-priority` attribute to each `<th>` / `<td>` and toggle `display: none` below a threshold. The table stays a table; the column count shrinks. This works without JavaScript and keeps the existing `aria-sort`, selection, and density semantics intact.
 
-**Card-stack collapse.** When the column set is dynamic or every column carries essential information, a CSS-only collapse to "label: value" pairs per row produces fragile output for sorting and selection — the `<th>` / `<td>` relationship is the thing screen readers rely on, and breaking it visually without also restructuring the markup leaves a confused traversal order. For card-stack layouts, render a _different component_ at narrow widths (a `StackedList`, for example) keyed off the same data, rather than transforming the table in place. Cinder's `Table` does not include a built-in card-stack mode for this reason.
+**Stacked rows below `stackBelow`.** Below the `stackBelow` viewport width (`640px` by default; `false` turns it off) Table stacks itself: every body row becomes a block and every cell shows its column's header text above its value. The markup does not change, so the `<th>` / `<td>` relationship screen readers rely on stays intact:
 
-If a CSS-only collapse is still required, restrict it to **read-only** tables (no sorting, no selection) and pair each cell with a `data-label` attribute rendered via `::before { content: attr(data-label) ": " }`. Document the limitation in the consuming app.
+- The header row leaves the layout through the visually-hidden technique, not `display: none`, so the column headers, their `aria-sort`, and the select-all checkbox stay in the accessibility tree.
+- `display: block` on table parts makes some engines (Safari among them) drop table semantics, so while stacked Table gives the table, its row groups, rows, and cells their table roles explicitly (`table`, `rowgroup`, `row`, `columnheader` / `rowheader`, `cell`), and removes them when it unstacks. A part that already carries a role keeps it.
+- Each cell's visible label is its column's header text, copied onto the cell as `data-cinder-stack-label` and painted by `::before`. A header cell with no text (the selection column) gives its cells no label. The labels follow rows, headers, and header text as they change.
+
+Sorting stays on the (visually hidden) header buttons, so a stacked table offers no visible sort control. A page that needs sorting on a phone should offer it beside the table, the way the redesign's filter chips do.
 
 ## Non-goals (v1)
 

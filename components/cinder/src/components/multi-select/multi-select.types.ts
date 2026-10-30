@@ -56,6 +56,14 @@ export type MultiSelectProps<T extends string = string> = {
   /** Open direction for the floating panel. */
   direction?: MultiSelectDirection;
   /**
+   * Viewport width below which the options panel docks to the bottom edge as
+   * a sheet, with the bottom Drawer's geometry, instead of anchoring to the
+   * trigger. Filtering, keyboard, and dismissal behave exactly as when
+   * anchored. A simple CSS length such as `'640px'`, or `false` to always
+   * anchor. Default `'640px'`.
+   */
+  sheetBelow?: string | false;
+  /**
    * Height step from the shared `--cinder-control-height-*` scale: `sm` 28px, `md` 32px,
    * `lg` 40px, the same heights as a Button of that size.
    * @default "md"

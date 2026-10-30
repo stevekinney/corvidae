@@ -16,7 +16,7 @@
   },
   {
     "filePath": "src/components/sidebar/sidebar.css",
-    "query": "@media (max-width: 47.99rem)",
+    "query": "@media (max-width: 639.98px)",
     "allowedCount": 1
   },
   {

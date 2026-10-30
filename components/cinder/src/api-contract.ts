@@ -241,6 +241,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
     html_attrs: 'HTMLAttributes',
     props: {
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
+      sheetBelow: { optional: true, type_kind: 'TSUnionType', default: L('640px') },
     },
     snippets: {},
   },

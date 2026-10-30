@@ -37,6 +37,7 @@ The leaves are also named exports of `@lostgradient/cinder`.
 | `id` | `string` | no | — | HTML id applied to the dropdown root element. Auto-generated when omitted. |
 | `open` | `boolean` | no | — | Controls the open state of the dropdown menu; bindable for controlled usage. |
 | `placement` | `"top-start"` \| `"top-end"` \| `"bottom-start"` \| `"bottom-end"` | no | — | Preferred menu placement relative to the trigger. Default `bottom-start`. The rendered menu may still flip to stay within the viewport. |
+| `sheetBelow` | `string` \| `false` | no | — | Viewport width below which the menu docks to the bottom edge as a sheet, with the bottom Drawer's geometry, instead of anchoring to its trigger. Keyboard, focus, and dismissal behave exactly as when anchored. A simple CSS length such as `'640px'`, or `false` to always anchor. Default `'640px'`. |
 | `children` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
 | `trigger` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
 
