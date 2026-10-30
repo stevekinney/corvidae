@@ -219,14 +219,13 @@ describe('ScheduleFormDrawer — edit', () => {
         },
       });
 
-      // Edit ONLY the cadence: the hour of the cron expression, 2 -> 5.
-      const hour = await waitFor(() => {
-        const field = container.querySelector('input[id$="cron-field-1-raw"]');
-        if (!(field instanceof HTMLInputElement)) throw new Error('hour field not rendered');
+      // Edit ONLY the cadence: `0 2 * * *` opens as Every day, and At moves from 2:00 to 5:00.
+      const at = await waitFor(() => {
+        const field = container.querySelector('input[type="time"]');
+        if (!(field instanceof HTMLInputElement)) throw new Error('At field not rendered');
         return field;
       });
-      await fireEvent.input(hour, { target: { value: '5' } });
-      await fireEvent.blur(hour);
+      await fireEvent.change(at, { target: { value: '05:00' } });
 
       // The schedule fires (or a run completes): `updatedAt` moves while the
       // cadence stays what the server has.

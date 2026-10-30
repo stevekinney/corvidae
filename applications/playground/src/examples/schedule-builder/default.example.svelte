@@ -1,22 +1,23 @@
 <script lang="ts" module>
-  export const title = 'Presets mode';
+  export const title = 'Default schedule';
   export const description =
-    'Presets is the default authoring mode, and offers Daily, Weekly and Monthly. Each lowers to a cron expression, so the summary line reads as a sentence and always reflects the resulting cron value, never a "preset".';
+    'With no value, the builder opens on every day at 9:00 AM in the time zone of the browser.';
 </script>
 
 <script lang="ts">
   import { ScheduleBuilder, type ScheduleFire, type ScheduleValue } from '@lostgradient/cinder';
 
-  // Leave `value` unset: an omitted value opens Presets, where a cron value would open Cron.
+  // Leave `value` unset: the builder opens on every day at 9:00 AM in the browser zone.
   let value = $state<ScheduleValue>();
 
-  // Static, illustrative fire labels — no date library involved.
+  // Cinder ships no date math — a real app would bring its own cron library here.
+  // Labels are illustrative static strings, not computed dates.
   function computeNextFires(current: ScheduleValue, count: number): ScheduleFire[] {
-    const suffix =
-      current.mode === 'interval' ? `every ${current.every} ${current.unit}` : current.expression;
+    const cadence =
+      'every' in current ? `every ${current.every.count} ${current.every.unit}` : current.cron;
     return Array.from({ length: count }, (_, index) => ({
       id: `fire-${index}`,
-      label: `Fire ${index + 1} — ${suffix}`,
+      label: `Fire ${index + 1} — ${cadence}`,
     }));
   }
 

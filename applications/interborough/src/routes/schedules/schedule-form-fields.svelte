@@ -201,7 +201,6 @@
         value={form.cadence}
         onValueChange={onCadenceChange}
         {computeNextFires}
-        timezoneLabel="UTC"
         label="Cadence"
       />
     {/if}

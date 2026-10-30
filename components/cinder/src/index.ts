@@ -741,10 +741,10 @@ export type {
 
 export { default as ScheduleBuilder } from './components/schedule-builder/index.ts';
 export type {
-  ScheduleAuthoringMode,
   ScheduleBuilderProps,
   ScheduleFire,
   ScheduleIntervalUnit,
+  ScheduleRepeats,
   ScheduleValue,
 } from './components/schedule-builder/index.ts';
 

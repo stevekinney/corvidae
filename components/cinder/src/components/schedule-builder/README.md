@@ -1,8 +1,10 @@
 # ScheduleBuilder
 
-A recurrence-definition control. Users author a schedule via friendly presets (daily, weekly on selected days, or monthly on a day), raw five-field cron, or a fixed interval — all three authoring modes lower to the same portable emitted value: `{ mode: 'cron', expression }` or `{ mode: 'interval', every, unit }`. `mode: 'preset'` never appears in the emitted value; presets are sugar.
+A recurrence-definition control that reads a schedule the way a person says it: **Repeats** (Every day, Weekdays, Weekends, Custom days, Monthly on a day, Every few minutes or hours, or Custom cron as the escape hatch), **At** (a time of day, hidden for an interval), and **Time zone** (a searchable list of IANA zones, defaulting to the browser's). The schedule is read back as a sentence, such as "Weekdays at 9:00 AM Pacific Time".
 
-`ScheduleBuilder` ships no date, cron-parsing, or scheduling library. The always-visible "next N fires" preview is entirely consumer-supplied via `computeNextFires`, and the preview section is not rendered at all when that prop is omitted. Scope is recurrence only — overlap policy, jitter, and backfill belong to the consumer's surrounding form.
+The emitted value is either `{ cron, timeZone }` or, for Every few minutes or hours, `{ every: { unit, count }, timeZone }`. An interval counts from the schedule's start, matching the duration form Weft's and the Bureau's `schedules.create` take, so an uneven interval such as every 7 hours is exact; a cron step would restart at midnight.
+
+`ScheduleBuilder` ships no date, cron-parsing, or scheduling library. The "next runs" preview is entirely consumer-supplied via `computeNextFires`, and the preview section is not rendered at all when that prop is omitted. Scope is recurrence only — overlap policy, jitter, and backfill belong to the consumer's surrounding form.
 
 ## Usage
 
@@ -11,20 +13,17 @@ A recurrence-definition control. Users author a schedule via friendly presets (d
   import { ScheduleBuilder } from '@lostgradient/cinder';
   import type { ScheduleFire, ScheduleValue } from '@lostgradient/cinder';
 
-  let value = $state<ScheduleValue>({ mode: 'interval', every: 15, unit: 'minutes' });
+  let value = $state<ScheduleValue>({ cron: '0 9 * * 1-5', timeZone: 'America/Los_Angeles' });
 
-  // Cinder ships no date math — bring your own cron/interval library here.
+  // Cinder ships no date math — bring your own cron library here.
   // Labels are illustrative; a real implementation would compute actual fire times.
   function computeNextFires(current: ScheduleValue, count: number): ScheduleFire[] {
-    if (current.mode === 'interval') {
-      return Array.from({ length: count }, (_, index) => ({
-        id: `fire-${index}`,
-        label: `In ${(index + 1) * current.every} ${current.unit}`,
-      }));
-    }
     return Array.from({ length: count }, (_, index) => ({
       id: `fire-${index}`,
-      label: `Next occurrence ${index + 1}`,
+      label:
+        'every' in current
+          ? `In ${(index + 1) * current.every.count} ${current.every.unit}`
+          : `Next occurrence ${index + 1}`,
     }));
   }
 </script>
@@ -33,22 +32,25 @@ A recurrence-definition control. Users author a schedule via friendly presets (d
   {value}
   onValueChange={(next) => (value = next)}
   {computeNextFires}
-  timezoneLabel="America/New_York"
   label="Job schedule"
 />
 ```
 
-## Authoring modes
+## Repeats
 
-Three modes live behind a tablist (`Presets`, `Cron`, `Interval`). An omitted `value` opens Presets on the `Daily` kind; an explicit value opens the mode that authors it, so an `interval` value opens Interval and a `cron` value opens Cron.
+| Choice                     | Fields                      | Emits                        |
+| -------------------------- | --------------------------- | ---------------------------- |
+| Every day                  | At                          | `M H * * *`                  |
+| Weekdays                   | At                          | `M H * * 1-5`                |
+| Weekends                   | At                          | `M H * * 0,6`                |
+| Custom days                | A day group, At             | `M H * * 1,3,5`              |
+| Monthly on a day           | Day of month, At            | `M H D * *`                  |
+| Every few minutes or hours | Every, Unit                 | `{ every: { unit, count } }` |
+| Custom cron                | Five structured cron fields | the expression               |
 
-- **Presets** — a preset-kind selector (`Daily` / `Weekly` / `Monthly`) reveals the matching fields, and all three lower to a `cron` value. The summary reads as a sentence, such as "Repeats every month on the 1st at 09:00".
-- **Cron** — five separate fields (minute, hour, day of month, month, day of week), each validated independently with an inline error and hint. The emitted value is the joined five-field expression.
-- **Interval** — a number and a unit (`minutes` / `hours` / `days` / `weeks`).
+A value reopens as the choice that produces it, so `0 9 * * 1,2,3,4,5` opens as Weekdays and `30 14 * * 2,4` as Custom days. A cron no choice produces, such as a step like `0 */6 * * *`, opens as Custom cron. Switching choices keeps what was chosen: Custom days starts from the days the previous choice ran on, and Custom cron from the expression it lowered to. An invalid custom cron is not emitted.
 
-Presets cannot author an interval, so switching to Presets, or opening a builder whose `allowedModes` excludes `'interval'` on an interval value, shows the `Daily` default instead. Switching modes never emits a change by itself — it re-seeds the destination mode's fields from the last value you actually committed, losslessly _where representable_. A minute or hour interval converts to an equivalent cron step only when the count evenly divides its field cycle (e.g. `*/15 * * * *`); day/week intervals and non-dividing minute/hour intervals (like every 45 minutes) are not faithfully representable as a cron step, so Cron mode seeds a neutral daily default rather than a misleading expression. A cron pattern converts back to an `interval` only when it is such a dividing step pattern.
-
-Regardless of mode, three things are always visible: a plain-English summary line, the next-fires preview (when `computeNextFires` is supplied), and a timezone display slot (`timezone` snippet, else `timezoneLabel` text, else a "Not set" placeholder).
+An omitted `value` opens on every day at 9:00 AM in the browser's time zone. The time zone list defaults to every zone the runtime knows; pass `timeZones` to offer fewer. The value's own zone is always offered.
 
 ## Props
 
@@ -56,15 +58,13 @@ Regardless of mode, three things are always visible: a plain-English summary lin
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `allowedModes` | (`"cron"` \| `"interval"` \| `"presets"`)[] | no | — | Authoring modes to expose. Defaults to `['presets', 'cron', 'interval']`. Use `['cron']` for cron-only consumers; the component then renders only cron fields and never emits an interval value. |
 | `class` | `string` | no | — | Additional CSS classes applied to the root element. |
 | `label` | `string` | no | — | Accessible label for the whole control. Defaults to "Schedule". |
 | `previewCount` | `integer` | no | — | How many upcoming fires to request from `computeNextFires`. Defaults to 5. |
-| `timezoneLabel` | `string` | no | — | Timezone label rendered in the always-visible timezone display slot. |
-| `value` | { expression: `string`; mode: `"cron"` } \| { every: `integer`; mode: `"interval"`; unit: `"minutes"` \| `"hours"` \| `"days"` \| `"weeks"` } | no | — | The current recurrence value (controlled). When omitted, the component starts from a sensible default (Presets, daily at 09:00: the cron value `0 9 * * *`). |
+| `timeZones` | `string`[] | no | — | The time zones the Time zone field offers. Defaults to every zone the runtime knows. |
+| `value` | { cron: `string`; timeZone: `string` } \| { every: { count: `number`; unit: `"minutes"` \| `"hours"` }; timeZone: `string` } | no | — | The current recurrence value (controlled). When omitted, the component starts from every day at 9:00 AM (`0 9 * * *`) in the browser's time zone. |
 | `computeNextFires` | `(opaque)` | no | — | Injected next-fires computation. The component passes the current value and the requested count and renders whatever fires the consumer returns. When omitted, the preview list is hidden (the component ships no date logic). Not expressible in JSON Schema; see the component types for the signature. |
-| `onValueChange` | `(opaque)` | no | — | Called whenever the user edits the recurrence. Receives the next lossless {@link ScheduleValue}. The consumer owns persistence and validation. Not expressible in JSON Schema; see the component types for the signature. |
-| `timezone` | `(opaque)` | no | — | Custom content for the timezone display slot. Takes precedence over `timezoneLabel` when both are supplied. Not expressible in JSON Schema; see the component types for the signature. |
+| `onValueChange` | `(opaque)` | no | — | Called whenever the user edits the recurrence. Receives the next {@link ScheduleValue}; an invalid custom cron is not emitted. The consumer owns persistence. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->
 

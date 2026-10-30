@@ -1,11 +1,14 @@
 import { describe, expect, test } from 'bun:test';
 
 import {
+  cadenceOf,
+  cadenceTimeZone,
   cadenceToScheduleValue,
   describeCadence,
   describeCronExpression,
   describeIntervalMs,
   intervalMsToScheduleValue,
+  scheduleValueTimeZone,
   scheduleValueToWireSpec,
 } from './cadence.ts';
 
@@ -91,78 +94,102 @@ describe('describeCadence', () => {
 });
 
 describe('scheduleValueToWireSpec', () => {
-  test('cron mode passes the expression through as `cron`', () => {
-    expect(scheduleValueToWireSpec({ mode: 'cron', expression: '0 2 * * *' })).toEqual({
-      cron: '0 2 * * *',
-    });
+  test('a cron value passes the expression through as `cron`', () => {
+    expect(scheduleValueToWireSpec({ cron: '0 2 * * *', timeZone: 'America/Los_Angeles' })).toEqual(
+      { cron: '0 2 * * *' },
+    );
   });
 
-  test('interval mode resolves to a millisecond number for every supported unit', () => {
-    expect(scheduleValueToWireSpec({ mode: 'interval', every: 15, unit: 'minutes' })).toEqual({
-      every: 900_000,
-    });
-    expect(scheduleValueToWireSpec({ mode: 'interval', every: 2, unit: 'hours' })).toEqual({
-      every: 7_200_000,
-    });
-    expect(scheduleValueToWireSpec({ mode: 'interval', every: 1, unit: 'days' })).toEqual({
-      every: 86_400_000,
-    });
-    expect(scheduleValueToWireSpec({ mode: 'interval', every: 1, unit: 'weeks' })).toEqual({
-      every: 604_800_000,
+  test('an interval resolves to milliseconds counted from the start', () => {
+    expect(
+      scheduleValueToWireSpec({ every: { unit: 'minutes', count: 15 }, timeZone: 'UTC' }),
+    ).toEqual({ every: 900_000 });
+    expect(
+      scheduleValueToWireSpec({ every: { unit: 'hours', count: 7 }, timeZone: 'UTC' }),
+    ).toEqual({
+      every: 25_200_000,
     });
   });
 });
 
+describe('scheduleValueTimeZone and cadenceTimeZone', () => {
+  test('a cron carries its zone and an interval carries none', () => {
+    expect(scheduleValueTimeZone({ cron: '0 9 * * *', timeZone: 'Europe/London' })).toBe(
+      'Europe/London',
+    );
+    expect(
+      scheduleValueTimeZone({ every: { unit: 'hours', count: 1 }, timeZone: 'Europe/London' }),
+    ).toBeUndefined();
+    expect(cadenceTimeZone({ cronExpression: '0 9 * * *', timeZone: 'Asia/Tokyo' })).toBe(
+      'Asia/Tokyo',
+    );
+    expect(cadenceTimeZone({ cronExpression: '0 9 * * *' })).toBe('UTC');
+    expect(cadenceTimeZone({ intervalMs: 60_000, timeZone: 'UTC' })).toBeUndefined();
+  });
+});
+
 describe('intervalMsToScheduleValue', () => {
-  test('reduces to the largest whole Cinder-supported unit', () => {
-    expect(intervalMsToScheduleValue(604_800_000)).toEqual({
-      mode: 'interval',
-      every: 1,
-      unit: 'weeks',
+  test('reduces to whole hours when they divide evenly, so days stay exact', () => {
+    expect(intervalMsToScheduleValue(604_800_000, 'UTC')).toEqual({
+      every: { unit: 'hours', count: 168 },
+      timeZone: 'UTC',
     });
-    expect(intervalMsToScheduleValue(86_400_000)).toEqual({
-      mode: 'interval',
-      every: 1,
-      unit: 'days',
+    expect(intervalMsToScheduleValue(86_400_000, 'UTC')).toEqual({
+      every: { unit: 'hours', count: 24 },
+      timeZone: 'UTC',
     });
-    expect(intervalMsToScheduleValue(7_200_000)).toEqual({
-      mode: 'interval',
-      every: 2,
-      unit: 'hours',
+    expect(intervalMsToScheduleValue(7_200_000, 'UTC')).toEqual({
+      every: { unit: 'hours', count: 2 },
+      timeZone: 'UTC',
     });
-    expect(intervalMsToScheduleValue(300_000)).toEqual({
-      mode: 'interval',
-      every: 5,
-      unit: 'minutes',
+    expect(intervalMsToScheduleValue(300_000, 'UTC')).toEqual({
+      every: { unit: 'minutes', count: 5 },
+      timeZone: 'UTC',
     });
   });
 
   test('falls back to a rounded minute count for a non-dividing value', () => {
-    expect(intervalMsToScheduleValue(90_000)).toEqual({
-      mode: 'interval',
-      every: 2,
-      unit: 'minutes',
+    expect(intervalMsToScheduleValue(90_000, 'UTC')).toEqual({
+      every: { unit: 'minutes', count: 2 },
+      timeZone: 'UTC',
     });
   });
 });
 
 describe('cadenceToScheduleValue', () => {
-  test('rehydrates a cron cadence', () => {
+  test('rehydrates a cron cadence in its stored zone', () => {
+    expect(
+      cadenceToScheduleValue({ cronExpression: '0 2 * * *', timeZone: 'America/Los_Angeles' }),
+    ).toEqual({ cron: '0 2 * * *', timeZone: 'America/Los_Angeles' });
+  });
+
+  test('reads a cadence stored without a zone as UTC', () => {
     expect(cadenceToScheduleValue({ cronExpression: '0 2 * * *' })).toEqual({
-      mode: 'cron',
-      expression: '0 2 * * *',
+      cron: '0 2 * * *',
+      timeZone: 'UTC',
     });
   });
 
   test('rehydrates an interval cadence', () => {
-    expect(cadenceToScheduleValue({ intervalMs: 300_000 })).toEqual({
-      mode: 'interval',
-      every: 5,
-      unit: 'minutes',
+    expect(cadenceToScheduleValue({ intervalMs: 300_000, timeZone: 'UTC' })).toEqual({
+      every: { unit: 'minutes', count: 5 },
+      timeZone: 'UTC',
     });
   });
 
   test('defaults to every-15-minutes when neither field is present', () => {
-    expect(cadenceToScheduleValue({})).toEqual({ mode: 'interval', every: 15, unit: 'minutes' });
+    expect(cadenceToScheduleValue({})).toEqual({
+      every: { unit: 'minutes', count: 15 },
+      timeZone: 'UTC',
+    });
+  });
+});
+
+describe('cadenceOf', () => {
+  test('copies the zone with the cadence', () => {
+    expect(cadenceOf({ cronExpression: '0 9 * * *', timeZone: 'Europe/Paris' })).toEqual({
+      cronExpression: '0 9 * * *',
+      timeZone: 'Europe/Paris',
+    });
   });
 });
