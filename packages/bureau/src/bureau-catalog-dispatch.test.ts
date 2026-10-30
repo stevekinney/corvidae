@@ -960,6 +960,23 @@ describe('createCatalogDispatcher — telling Bureau a run settled (COR-1630)', 
     expect(ended).toEqual([expect.objectContaining({ runId: 'child-1', principal: 'alice' })]);
   });
 
+  it('holds a process-local child’s toolbox to the mode of its chat, under the child’s own id (COR-1955)', async () => {
+    const governed: string[] = [];
+    const runtime = {
+      ...processLocal,
+      withChatPermission: (toolbox: unknown, runId: string) => {
+        governed.push(runId);
+        return toolbox;
+      },
+    } as unknown as RuntimeComposition;
+
+    await observed(runtime)
+      .dispatcher.startChildRun({ ...start, agentName: 'worker', principal: 'alice' })
+      .result();
+
+    expect(governed).toEqual(['child-1']);
+  });
+
   it('reports a durable workflow step', async () => {
     const { dispatcher, ended } = observed(await durableComposition());
 

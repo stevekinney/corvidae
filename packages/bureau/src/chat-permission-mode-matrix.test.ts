@@ -9,7 +9,12 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import {
+  createAgent,
+  createSubagentTool,
+  type GenerateFunction,
+  stopWhen,
+} from '@lostgradient/operative';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import {
   createProcessLocalGrantStateStore,
@@ -83,6 +88,23 @@ const grantedToolbox = createToolbox(OWN_TOOLS, {
   },
 });
 
+/**
+ * A child a code agent starts with `createSubagentTool`: the tool calls the child's `run()` itself,
+ * so Bureau never sees the child, its toolbox is the one the host built, and no mode reaches it.
+ */
+const rawChild = createAgent({
+  name: 'raw-child',
+  generate,
+  toolbox: createToolbox(OWN_TOOLS, { approvalSecret: SECRET }),
+});
+const delegateToRawChild = createSubagentTool({
+  name: 'delegate',
+  description: 'Hands the work to a child.',
+  agent: rawChild,
+  agentName: 'raw-child',
+  input: z.object({}),
+});
+
 const AGENTS = {
   // A code agent whose toolbox has no opinion of its own about approvals.
   coder: createAgent({
@@ -116,6 +138,13 @@ const AGENTS = {
     name: 'granted',
     generate,
     toolbox: grantedToolbox,
+    stopWhen: parksOnApproval,
+  }),
+  // A code agent whose child is a raw `createSubagentTool` one.
+  delegator: createAgent({
+    name: 'delegator',
+    generate,
+    toolbox: createToolbox([delegateToRawChild], { approvalSecret: SECRET }),
     stopWhen: parksOnApproval,
   }),
   // A code agent that does not stop on an approval.
@@ -510,25 +539,169 @@ describe('what the mode does not exempt (COR-1947)', () => {
     expect(executed).toEqual([]);
     expect(lastToolResult).toContain('denied');
   });
+});
 
-  it('leaves a run that belongs to no chat to its toolbox, in a chat in read-only', async () => {
-    const contextId = await openChat('coder', 'read-only');
-    steps.push(() => ({ name: 'requestHumanInput', arguments: ARGUMENTS.requestHumanInput }));
-    const parent = await bureau.tasks.start('coder', 'Hold.', {
+/** The children of the COR-1955 rows, which every row names so a run is found by its own id. */
+let childCount = 0;
+const nextChildId = () => `matrix-child-${(childCount += 1)}`;
+
+/**
+ * A chat in `on-changes` with one live run parked on a question, the root of a delegation chain. The
+ * run is parked, not finished, so it can own children.
+ */
+async function parkedParent(kind: 'coder' | 'helper' = 'coder') {
+  const contextId = await openChat(kind, 'on-changes');
+  steps.push(() => ({ name: 'requestHumanInput', arguments: ARGUMENTS.requestHumanInput }));
+  const parent = await bureau.tasks.start(kind, 'Hold.', { principal: OWNER.alice, contextId });
+  await waitUntil(() => reviewsOf(parent.id).length > 0, { message: 'the parent to park' });
+  return { parent, contextId };
+}
+
+/**
+ * A child dispatched under `parentRunId` whose model is held at its first step, then calls `tool`
+ * once the returned `release` is called. The child is running, with its call undecided, until then.
+ */
+async function gatedChild(
+  parentRunId: string,
+  tool: ToolName,
+  options: { readonly detach?: boolean; readonly agentName?: string } = {},
+) {
+  const childRunId = nextChildId();
+  const entered = Promise.withResolvers<void>();
+  const released = Promise.withResolvers<void>();
+  steps.push(async () => {
+    entered.resolve();
+    await released.promise;
+    return { name: tool, arguments: ARGUMENTS[tool] };
+  });
+  const dispatched = await bureau.children.dispatch({
+    parentRunId,
+    agentName: options.agentName ?? 'coder',
+    input: 'go',
+    childRunId,
+    ...(options.detach === true ? { parentCancellation: 'detach' as const } : {}),
+  });
+  expect(dispatched.outcome).toBe('started');
+  await entered.promise;
+  return { childRunId, release: () => released.resolve() };
+}
+
+/**
+ * Whether the child's one call ran. A child has no chat to put a question to, so a call its chat's
+ * mode would ask about is refused for want of anyone to approve it: in `always`, a child runs
+ * nothing. Both that and a `read-only` denial are `held`, and neither runs the tool.
+ */
+async function childOutcome(childRunId: string, tool: ToolName): Promise<'runs' | 'held'> {
+  await waitUntil(() => reviewsOf(childRunId).length > 0 || lastToolResult !== undefined, {
+    message: 'the child’s call to be decided',
+  });
+  return executed.includes(tool) ? 'runs' : 'held';
+}
+
+/** What a child of the code agent does in `mode` for a tool: `runs`, or is `held` and runs nothing. */
+const childExpectation = (mode: Mode, tool: 'read-order' | 'issue-refund') =>
+  TABLE.coder[mode][TOOLS.indexOf(tool)] === 'runs' ? 'runs' : 'held';
+
+describe('a child run already running when its chat is steered (COR-1955)', () => {
+  for (const mode of MODES) {
+    for (const tool of ['read-order', 'issue-refund'] as const) {
+      const expected = childExpectation(mode, tool);
+      it(`takes ${mode} at its next call: ${tool} ${expected}`, async () => {
+        const { parent, contextId } = await parkedParent();
+        const child = await gatedChild(parent.id, tool);
+
+        commands += 1;
+        await steer(contextId, `child-steer-${commands}`, mode);
+        child.release();
+
+        expect(await childOutcome(child.childRunId, tool)).toBe(expected);
+        expect(executed).toEqual(expected === 'runs' ? [tool] : []);
+        parent.abort();
+      });
+    }
+  }
+
+  it('holds a file agent child to the mode as well', async () => {
+    const { parent, contextId } = await parkedParent();
+    const child = await gatedChild(parent.id, 'issue-refund', { agentName: 'helper' });
+
+    commands += 1;
+    await steer(contextId, `child-file-${commands}`, 'read-only');
+    child.release();
+
+    expect(await childOutcome(child.childRunId, 'issue-refund')).toBe('held');
+    expect(executed).toEqual([]);
+    parent.abort();
+  });
+
+  it('holds a grandchild to the mode of the chat at the root', async () => {
+    const { parent, contextId } = await parkedParent();
+    // A child cannot park on a question, so the middle of the chain is held at its first step.
+    const middle = await gatedChild(parent.id, 'read-order');
+    const grandchild = await gatedChild(middle.childRunId, 'issue-refund');
+
+    commands += 1;
+    await steer(contextId, `grandchild-${commands}`, 'read-only');
+    grandchild.release();
+
+    expect(await childOutcome(grandchild.childRunId, 'issue-refund')).toBe('held');
+    expect(executed).toEqual([]);
+    middle.release();
+    parent.abort();
+  });
+
+  it('holds a detached child whose parent has ended', async () => {
+    const { parent, contextId } = await parkedParent();
+    const child = await gatedChild(parent.id, 'issue-refund', { detach: true });
+    parent.abort();
+    await parent.result().catch(() => undefined);
+
+    commands += 1;
+    await steer(contextId, `detached-${commands}`, 'read-only');
+    child.release();
+
+    expect(await childOutcome(child.childRunId, 'issue-refund')).toBe('held');
+    expect(executed).toEqual([]);
+  });
+
+  it('holds a child started after the chat was steered', async () => {
+    const { parent, contextId } = await parkedParent();
+    commands += 1;
+    await steer(contextId, `before-child-${commands}`, 'read-only');
+
+    const child = await gatedChild(parent.id, 'issue-refund');
+    child.release();
+
+    expect(await childOutcome(child.childRunId, 'issue-refund')).toBe('held');
+    expect(executed).toEqual([]);
+    parent.abort();
+  });
+});
+
+describe('a child Bureau does not start (COR-1955)', () => {
+  it('is not held by a mode: a raw createSubagentTool child runs its calls as its toolbox says', async () => {
+    const contextId = await openChat('delegator', 'on-changes');
+    const entered = Promise.withResolvers<void>();
+    const released = Promise.withResolvers<void>();
+    steps.push(
+      () => ({ name: 'delegate', arguments: {} }),
+      async () => {
+        entered.resolve();
+        await released.promise;
+        return { name: 'issue-refund', arguments: {} };
+      },
+    );
+    const task = await bureau.tasks.start('delegator', 'Go.', {
       principal: OWNER.alice,
       contextId,
     });
-    await waitUntil(() => reviewsOf(parent.id).length > 0, { message: 'the parent to park' });
-    steps.push(() => ({ name: 'issue-refund', arguments: {} }));
+    await entered.promise;
 
-    const child = await bureau.children.dispatch({
-      parentRunId: parent.id,
-      agentName: 'coder',
-      input: 'go',
-    });
-    expect(child.outcome).toBe('started');
+    commands += 1;
+    await steer(contextId, `raw-child-${commands}`, 'read-only');
+    released.resolve();
+    await task.result();
 
-    await waitUntil(() => executed.length > 0, { message: 'the child’s call' });
     expect(executed).toEqual(['issue-refund']);
   });
 });

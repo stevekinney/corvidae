@@ -1385,6 +1385,12 @@ export function createCatalogDispatcher({
 
     const merged: RunOptions = {
       ...resolvedOptions,
+      // COR-1955: a process-local child is held to its root chat's mode as a durable one is
+      // (`composeResolvedOptions`), under the id its topology recorded. A run with no id, which
+      // belongs to no chat, is left to its toolbox.
+      ...(context.runId === undefined || resolvedOptions.toolbox === undefined
+        ? {}
+        : { toolbox: runtime.withChatPermission(resolvedOptions.toolbox, context.runId) }),
       ...unsetMediaOptions(
         resolvedOptions,
         runtime.mediaOptionsFor(ownerOrLocal(principal), 'run'),

@@ -228,6 +228,7 @@ import {
   createChildTopology,
 } from './child-topology';
 import { childActionOf } from './child-announcement';
+import { permissionModeOfLineage } from './chat-permission-lineage';
 import { createChildTopologyStore } from './child-topology-store';
 import {
   type CommandLedger,
@@ -18413,11 +18414,27 @@ async function constructBureau<const D extends AgentDefinitions>(
   /**
    * COR-1936 — the permission mode of the chat `runId` belongs to, read when a tool call is
    * decided: the mode the session's steering holds, caught up from the durable log first (so a
-   * mode another process admitted is seen), so a steer is in force for the calls decided after it. `undefined` for a run no session holds, which has no chat to steer.
+   * mode another process admitted is seen), so a steer is in force for the calls decided after it.
+   * A child run takes the mode of the chat at the root of its delegation chain
+   * ({@link permissionModeOfLineage}). `undefined` for a run no session holds, which has no chat to
+   * steer.
    * A chat that was never steered is `on-changes`. A read that fails rejects, and the approval
    * hook treats that as `read-only`.
    */
   async function permissionModeOfRun(runId: string): Promise<PermissionMode | undefined> {
+    // COR-1955: a child, a grandchild and a detached child are held to the mode of the chat their
+    // delegation chain starts in, read at each call, so a steer reaches a child already running.
+    return await permissionModeOfLineage(runId, {
+      parentOf: async (childRunId) => {
+        const child = await childTopologyStore.get(childRunId);
+        return child?.parentRunId;
+      },
+      modeOf: permissionModeOfChatRun,
+    });
+  }
+
+  /** The mode of the chat `runId` itself belongs to; `undefined` for a run no chat holds. */
+  async function permissionModeOfChatRun(runId: string): Promise<PermissionMode | undefined> {
     if (runtime.sessionStore === undefined) return undefined;
     const sessionId = await sessionIdOfRun(runId);
     if (sessionId === undefined) return undefined;
