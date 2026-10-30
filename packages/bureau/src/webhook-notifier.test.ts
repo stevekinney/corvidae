@@ -121,6 +121,9 @@ function createStubAuditTrail(): { auditTrail: AuditTrail; records: unknown[] } 
     async prune() {
       return undefined;
     },
+    async redact() {
+      return 0;
+    },
     async dispose() {},
   };
   return { auditTrail, records };

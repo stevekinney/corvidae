@@ -1863,7 +1863,8 @@ describe('durable steering across two Bureau processes', () => {
       // Only the steering log's listing fails: the task records' listing is not what this tests.
       const listTasks = kv.list.bind(kv);
       const listing = spyOn(kv, 'list').mockImplementation((prefix: string) =>
-        prefix.startsWith('bureau-task')
+        // The task records and the child topology are read to find the chat's runs.
+        prefix.startsWith('bureau-task') || prefix.startsWith('bureau-child')
           ? listTasks(prefix)
           : Promise.reject(new Error('listing unavailable')),
       );

@@ -623,6 +623,14 @@ export interface TaskRegistry {
    */
   clearHistory(contextId: string, incarnation: string): Promise<number>;
   /**
+   * COR-1934 — drops the text of a task, for a chat whose content is purged: its settlement's
+   * failure message (which can quote what was said), a catalog task's recorded answer, and the
+   * history of a task that is a context of its own (a delegated child's input). The settlement's
+   * time, status and finish reason stay. Resolves whether the record changed; a record with
+   * nothing to drop, or none, is left as it is.
+   */
+  redactSettlement(taskId: string): Promise<boolean>;
+  /**
    * Reports where the cleanup of each given task stands, waiting up to
    * `waitMilliseconds` (none, at zero) for acknowledgements still outstanding. A
    * cleanup that has not been acknowledged by then is `cleanup-pending`.
@@ -1794,6 +1802,36 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         }
       }
       return removed;
+    },
+
+    async redactSettlement(taskId) {
+      let changed = false;
+      await update(taskId, (current) => {
+        const settled = current.settled;
+        // A task that has not settled is still being written to: its text is not dropped.
+        if (settled === undefined) return undefined;
+        // A chat's own tasks have their history emptied with the context (COR-1481); a delegated
+        // child's task is a context of its own, so it is emptied here.
+        if (
+          settled.message === null &&
+          settled.answer === undefined &&
+          current.history.length === 0
+        ) {
+          return undefined;
+        }
+        changed = true;
+        return {
+          ...current,
+          history: [],
+          settled: {
+            at: settled.at,
+            status: settled.status,
+            finishReason: settled.finishReason,
+            message: null,
+          },
+        };
+      });
+      return changed;
     },
 
     async clearHistory(contextId, incarnation) {

@@ -37,7 +37,7 @@ The backing `storage` must report `conditionalBatch` support, `snapshot` scan co
 - `admitted`: a new command was persisted; the result carries its receipt.
 - `duplicate`: an exact retry of the same `idempotencyKey` bound to the same `(caller, target, kind, payloadDigest)`; the original receipt is returned and no second command is created.
 - `conflict`: the `idempotencyKey` is already bound to a different `(caller, target, kind, payloadDigest)`; the original command is untouched.
-- `rejected`: the backlog is at `maxBacklog`; nothing was persisted.
+- `rejected`: the backlog is at `maxBacklog` (reason `backlog-full`), or the mailbox was purged and takes no further commands (reason `purged`); nothing was persisted.
 
 `idempotencyKey` is the caller's only retry handle. `commandId` is minted by the mailbox, not supplied by the caller.
 
@@ -81,6 +81,25 @@ declare const mailbox: Mailbox;
 
 const report = await mailbox.runMaintenance();
 console.log(report.reclaimed); // expired leases returned to the delivery index
+```
+
+## Purge
+
+`mailbox.purge()` permanently deletes every command record (payloads included), receipt and index of the mailbox, for a host that has retired the resource and must forget what was sent to it rather than wait for terminal retention. It does not cancel work: a command a consumer has claimed is deleted under it, so call it only once the resource has no consumer. The header stays, sealed with `purgedAt`: every later `admit()` is refused as `rejected` with reason `purged`, and an admission that raced the purge, having read the header the seal replaced, loses its compare-and-swap and is refused the same way, so nothing can recreate the mailbox behind the purge. It is safe to repeat: a second call finishes what a failed one stopped and answers `0` when nothing is left.
+
+```typescript
+import type { Mailbox } from '@lostgradient/weft';
+
+declare const mailbox: Mailbox;
+
+const deleted = await mailbox.purge();
+const refused = await mailbox.admit({
+  caller: 'alice',
+  target: 'chat-1',
+  kind: 'steer',
+  payload: { form: 'inline', value: {} },
+});
+console.log(deleted, refused.status); // <keys deleted> "rejected"
 ```
 
 ## The ordering contract
