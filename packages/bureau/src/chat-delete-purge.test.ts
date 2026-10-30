@@ -261,6 +261,38 @@ describe('contexts.delete purges the content of the chat (COR-1934)', () => {
     });
   });
 
+  it('keeps a workflow it cannot single out, because a neighbour created in the same millisecond matches the prefix too', async () => {
+    await withBureau(firstCallAnswers(), async (harness) => {
+      const { bureau } = harness;
+      const { targetRunId, neighbourRunId } = await chatsWithPrefixNeighbour(harness);
+      const engine = bureau.durableEngine()!;
+      // The engine cannot narrow by id: make the pinned filter match both runs, as two runs created
+      // in one millisecond do.
+      const list = engine.list.bind(engine);
+      const purge = engine.purge.bind(engine);
+      engine.list = (filter, options) => list({ ...filter, createdAt: undefined }, options);
+      engine.purge = (filter) =>
+        purge(filter === undefined ? filter : { ...filter, createdAt: undefined });
+
+      await bureau.contexts.delete('chat-1');
+      await bureau.maintain();
+      engine.list = list;
+      engine.purge = purge;
+
+      // Nothing of the neighbour went with it.
+      expect(await engine.get(neighbourRunId)).not.toBeNull();
+      expect(await bureau.contexts.get('chat-10')).toBeDefined();
+      expect(await bureau.tasks.detail(neighbourRunId)).toBeDefined();
+      // The ambiguous run keeps its workflow, and the Bureau says so rather than guessing.
+      expect(await engine.get(targetRunId)).not.toBeNull();
+      expect(
+        harness.diagnostics.filter(
+          (entry) => entry.level === 'warn' && entry.message.includes('was not purged'),
+        ),
+      ).not.toEqual([]);
+    });
+  });
+
   it('purges a chat with no run', async () => {
     await withBureau(firstCallAnswers(), async (harness) => {
       const { bureau, fixture, diagnostics } = harness;

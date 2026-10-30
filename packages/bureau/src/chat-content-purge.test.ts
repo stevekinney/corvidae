@@ -299,8 +299,8 @@ describe('createChatContentPurge (COR-1934)', () => {
     expect(calls.workflows).toEqual(['run-1', 'run-2']);
   });
 
-  it('refuses to record when the store cannot, and forgets a record on request', async () => {
-    const { kv, purge } = setup();
+  it('refuses to record when the store cannot, and forgets the record of a chat that still exists', async () => {
+    const { kv, purge } = setup({ incarnation: () => 'one' });
     const set = kv.set.bind(kv);
     kv.set = async () => {
       throw new Error('injected');
@@ -312,6 +312,21 @@ describe('createChatContentPurge (COR-1934)', () => {
     await purge.record(CHAT);
     await purge.forget(CHAT);
     expect(await kv.list(PENDING_PREFIX)).toEqual([]);
+  });
+
+  it('keeps the record when the chat is gone, because a delete that committed owes its purge', async () => {
+    // A delete that lost the race to another process, or one that failed after it committed.
+    const { kv, purge } = setup({ incarnation: () => undefined });
+    await purge.record(CHAT);
+
+    await purge.forget(CHAT);
+    expect(await kv.list(PENDING_PREFIX)).toHaveLength(1);
+
+    // The id is used again by another incarnation: still the old delete's record.
+    const recreated = setup({ incarnation: () => 'two' });
+    await recreated.purge.record(CHAT);
+    await recreated.purge.forget(CHAT);
+    expect(await recreated.kv.list(PENDING_PREFIX)).toHaveLength(1);
   });
 
   it('leaves an unreadable record in place and reports it', async () => {

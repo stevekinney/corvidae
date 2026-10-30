@@ -1887,7 +1887,8 @@ export function createDurableEventHistory(
   ): Promise<number> {
     const workflowId = encodeOwner(owner);
     const indexPrefix = KEYS.fleetEventByWorkflowPrefix(workflowId);
-    const doomed: string[] = [];
+    // One group per event: its index entry, the event and its dedupe marker.
+    const doomed: string[][] = [];
     let events = 0;
     for await (const [indexKey] of storage.scan(indexPrefix)) {
       const sequence = parseFleetEventSequence(indexKey, indexPrefix);
@@ -1896,7 +1897,7 @@ export function createDurableEventHistory(
       const stored = await storage.get(eventKey);
       // An index entry whose event is gone is a leftover; it goes, and nothing else follows from it.
       if (stored === null) {
-        doomed.push(indexKey);
+        doomed.push([indexKey]);
         continue;
       }
       let envelope: unknown;
@@ -1918,21 +1919,27 @@ export function createDurableEventHistory(
       ) {
         continue;
       }
-      doomed.push(indexKey, eventKey);
+      const group = [indexKey, eventKey];
       if (wrapper.dedupeKey !== undefined) {
-        doomed.push(`${DEDUPE_MARKER_PREFIX}${workflowId}:${kind}:${wrapper.dedupeKey}`);
+        group.push(`${DEDUPE_MARKER_PREFIX}${workflowId}:${kind}:${wrapper.dedupeKey}`);
       }
+      doomed.push(group);
       events += 1;
     }
-    // The event goes with its index entry and marker in one batch, so a failure leaves a whole event
-    // for the next call and never an index entry that points at nothing it can still delete by.
-    for (let start = 0; start < doomed.length; start += RECONCILE_BATCH_SIZE * 3) {
-      await storage.batch(
-        doomed
-          .slice(start, start + RECONCILE_BATCH_SIZE * 3)
-          .map((key) => ({ type: 'delete' as const, key })),
-      );
+    // An event goes with its index entry and marker in one batch: batches are cut between groups,
+    // never inside one, so a failure leaves whole events for the next call and never an index entry
+    // that points at nothing it can still delete by.
+    let batch: string[] = [];
+    const flush = async () => {
+      if (batch.length === 0) return;
+      await storage.batch(batch.map((key) => ({ type: 'delete' as const, key })));
+      batch = [];
+    };
+    for (const group of doomed) {
+      if (batch.length + group.length > RECONCILE_BATCH_SIZE * 3) await flush();
+      batch.push(...group);
     }
+    await flush();
     return events;
   }
 

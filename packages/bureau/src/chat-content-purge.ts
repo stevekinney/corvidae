@@ -146,8 +146,10 @@ export interface ChatContentPurge {
    */
   record(chat: DeletedChat): Promise<void>;
   /**
-   * Removes the pending record of a delete that did not commit. Never rejects: a record left
-   * behind is harmless (see the module comment).
+   * Removes the pending record of a delete that did not commit, when the chat still exists under
+   * the incarnation; a chat that is gone keeps its record, because a delete that committed
+   * (this one's, or another process's that won the race) owes its purge. Never rejects: a record
+   * left behind is harmless (see the module comment).
    */
   forget(chat: Pick<DeletedChat, 'sessionId' | 'incarnation'>): Promise<void>;
   /**
@@ -325,6 +327,10 @@ export function createChatContentPurge(
 
     async forget(chat) {
       try {
+        // Another process may have committed the delete this call lost, or this call's own may have
+        // committed before it failed: the record is that delete's to finish. Only a chat that still
+        // exists under the incarnation proves nobody's delete committed.
+        if ((await dependencies.currentIncarnation(chat.sessionId)) !== chat.incarnation) return;
         await kv?.delete(pendingKey(chat.sessionId, chat.incarnation));
       } catch (error: unknown) {
         diagnose({

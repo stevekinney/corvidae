@@ -2893,6 +2893,50 @@ describe('purgeOwner() (COR-1934)', () => {
     await history.dispose();
   });
 
+  it('never cuts a batch inside an event, so a failed batch leaves whole events for the retry', async () => {
+    const { storage, history } = await seeded();
+    const owner = { kind: 'run', id: 'run-1' } as const;
+    // One event without a dedupe marker (two keys), then events with one (three keys each): a
+    // flat slice into batches of 300 puts the last event's index entry apart from its event.
+    await history.record(owner, 'run.error', { answer: 'secret' });
+    for (let index = 0; index < 101; index += 1) {
+      await history.record(
+        owner,
+        'run.completed',
+        { answer: 'secret' },
+        { dedupeKey: `k${index}` },
+      );
+    }
+    const batches: string[][] = [];
+    const batch = storage.batch.bind(storage);
+    let failAfter = 1;
+    storage.batch = async (operations) => {
+      if (batches.length >= failAfter) throw new Error('injected: store down');
+      batches.push(operations.map((operation) => operation.key));
+      return batch(operations);
+    };
+
+    await history.purgeOwner(owner).then(
+      () => undefined,
+      () => undefined,
+    );
+
+    expect(batches).toHaveLength(1);
+    for (const keys of batches) {
+      for (const key of keys.filter((entry) => entry.startsWith('fleet-event-by-workflow:'))) {
+        const sequence = Number(key.slice(key.lastIndexOf(':') + 1));
+        expect(keys).toContain(KEYS.fleetEvent(sequence));
+      }
+    }
+    // The retry finds every event that is left, and removes it.
+    failAfter = Number.POSITIVE_INFINITY;
+    expect(await history.purgeOwner(owner)).toBeGreaterThan(0);
+    expect(await keys(storage, 'fleet-event-by-workflow:run%3Arun-1:')).toEqual([]);
+    expect(await keys(storage, 'fleet-event:')).toEqual([]);
+
+    await history.dispose();
+  });
+
   it('removes an index entry whose event is already gone', async () => {
     const { storage, history } = await seeded();
     const owner = { kind: 'run', id: 'run-1' } as const;

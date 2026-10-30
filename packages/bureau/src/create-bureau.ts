@@ -13681,10 +13681,24 @@ async function constructBureau<const D extends AgentDefinitions>(
     if (durable === undefined) return;
     const state = await durable.engine.get(runId);
     if (state !== null) {
-      await durable.engine.purge({
+      const filter = {
         idPrefix: runId,
         createdAt: { gte: state.createdAt, lte: state.createdAt },
-      });
+      };
+      // The engine purges by prefix, and no filter names one workflow: a run whose id begins with
+      // this one and was created in the same millisecond (`…-run-1` and `…-run-10` under a clock
+      // that does not advance) matches too. Purging it would erase another chat's workflow, so
+      // an ambiguous run keeps its workflow, which retention ends, and says so.
+      const matches = await durable.engine.list({ ...filter, limit: 2 });
+      if (matches.items.every((item) => item.id === runId)) {
+        await durable.engine.purge(filter);
+      } else {
+        diagnose({
+          level: 'warn',
+          scope: 'durable-maintenance',
+          message: `[bureau] The durable workflow of run "${runId}" was not purged: another workflow whose id begins with it was created in the same millisecond, and the engine purges by prefix. Retention removes it.`,
+        });
+      }
     }
     await durable.checkpointStore.clear(runId);
   }
