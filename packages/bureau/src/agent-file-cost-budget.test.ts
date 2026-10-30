@@ -306,6 +306,27 @@ describe('prices from the catalog', () => {
     ).toMatchObject({ promptCostPerMillionTokens: 5 });
   });
 
+  it('keeps a gateway row named like another provider’s model apart from that row', () => {
+    const other = createModelCatalog().descriptors.find((row) => row.model === 'claude-opus-5')!;
+    const gateway = {
+      ...other,
+      provider: 'gateway',
+      model: 'anthropic/claude-opus-5',
+      pricing: undefined,
+    };
+    const { costEstimation } = costBudgetOptions({ perRunUsd: 1 }, opus, [gateway, other]);
+    const pricing = costEstimation?.pricing;
+    expect(
+      getModelPricing(providerModelPricingKey('anthropic', 'claude-opus-5'), pricing),
+    ).toMatchObject({ promptCostPerMillionTokens: 5 });
+    expect(
+      getModelPricing(providerModelPricingKey('gateway', 'anthropic/claude-opus-5'), pricing),
+    ).toBeUndefined();
+    expect(providerModelPricingKey('anthropic', 'claude-opus-5')).not.toBe(
+      providerModelPricingKey('gateway', 'anthropic/claude-opus-5'),
+    );
+  });
+
   it('counts the default model first, and a switched model at its own price', () => {
     const other = createModelCatalog().descriptors.find((row) => row.model === 'claude-opus-5')!;
     const { costEstimation, costBudget } = costBudgetOptions(

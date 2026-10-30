@@ -17,11 +17,14 @@
 
 import {
   type BackendDescriptor,
+  BudgetExceededError,
   type GenerateContext,
   type GenerateFunction,
   readBackendDescriptors,
   withBackendDescriptors,
 } from '@lostgradient/operative';
+
+import { usdPricingOfRow } from './file-agent-cost-budget';
 
 /** Why a step's model override could not be used. */
 export type ModelOverrideUnusableReason = 'not-allowed' | 'cannot-be-set-up';
@@ -71,6 +74,12 @@ export interface FileAgentGenerateOptions {
   readonly allowed: () => readonly BackendDescriptor[];
   /** Turns a catalog row into the generate a run calls. May throw for a model it cannot set up. */
   readonly resolveGenerate: (descriptor: BackendDescriptor) => GenerateFunction;
+  /**
+   * The agent has a `costBudget` (COR-1921). A step whose chosen row has no price in US dollars
+   * then ends the run with `budget-exceeded` before the model is asked: the run's pricing is
+   * keyed by name, and a name can reach a row other than the one it was priced from.
+   */
+  readonly costBudgeted?: boolean;
 }
 
 function sameRow(left: BackendDescriptor, right: BackendDescriptor): boolean {
@@ -82,7 +91,7 @@ function sameRow(left: BackendDescriptor, right: BackendDescriptor): boolean {
  * It carries the default's attached descriptors, so the agent reads as the one it always was.
  */
 export function createFileAgentGenerate(options: FileAgentGenerateOptions): GenerateFunction {
-  const { defaultGenerate, defaultDescriptor, allowed, resolveGenerate } = options;
+  const { defaultGenerate, defaultDescriptor, allowed, resolveGenerate, costBudgeted } = options;
   // A model's generate is resolved once, the first step that needs it: resolving may build a
   // client, and the key is the pair, so two providers serving one model name stay apart.
   const resolved = new Map<string, GenerateFunction>();
@@ -99,6 +108,13 @@ export function createFileAgentGenerate(options: FileAgentGenerateOptions): Gene
       return Promise.reject(new ModelOverrideUnusableError(model, provider, 'not-allowed'));
     }
     if (sameRow(row, defaultDescriptor)) return defaultGenerate(context);
+    if (costBudgeted === true && usdPricingOfRow(row) === undefined) {
+      return Promise.reject(
+        new BudgetExceededError(
+          `The session runs on the model "${row.model}" from "${row.provider}", which has no price in US dollars in the model catalog, so its spend cannot be counted against the agent's costBudget.`,
+        ),
+      );
+    }
     const key = JSON.stringify([row.provider, row.model]);
     let chosen = resolved.get(key);
     if (chosen === undefined) {

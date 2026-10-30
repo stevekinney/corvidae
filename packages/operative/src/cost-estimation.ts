@@ -240,7 +240,9 @@ export function estimateCacheHitRate(usage: TokenUsage): number | undefined {
  * sets this key for each row; a step that names a provider reads it before the bare model name.
  */
 export function providerModelPricingKey(provider: string, model: string): string {
-  return `${provider}/${model}`;
+  // A pair, not a joined string: a gateway row named `anthropic/claude-opus-5` and the
+  // `claude-opus-5` row of the `anthropic` provider must not share a key.
+  return JSON.stringify([provider, model]);
 }
 
 export function getModelPricing(

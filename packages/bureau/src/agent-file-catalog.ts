@@ -763,6 +763,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         allowed: () =>
           allowedDescriptorsOfFileAgent(definition.models, options.models.catalog().descriptors),
         resolveGenerate: options.resolveGenerate,
+        costBudgeted: definition.costBudget !== undefined,
       }),
       allowedCandidates: allowedDescriptorsOfFileAgent(
         definition.models,
