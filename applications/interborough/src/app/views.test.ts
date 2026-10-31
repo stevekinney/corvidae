@@ -87,6 +87,9 @@ describe('page width by kind of page', () => {
     }
     expect(widthOf('/settings')).toBe('reading');
     expect(widthOf('/settings/data-and-retention')).toBe('reading');
-    expect(widthOf('/chats/:chat')).toBe('reading');
+    // The chat list sits beside the open chat, so every chat route is a list with its detail.
+    for (const pattern of ['/chats', '/chats/new', '/chats/:chat']) {
+      expect(widthOf(pattern), pattern).toBe('full');
+    }
   });
 });

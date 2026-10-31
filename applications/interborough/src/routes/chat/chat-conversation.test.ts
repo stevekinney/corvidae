@@ -131,7 +131,24 @@ describe('a new chat', () => {
     expect(names.some((name) => name.includes('Internal'))).toBe(true);
   });
 
-  test('shows the agent’s card with its prompts, and the other agents to choose from until one is chosen', async () => {
+  test('puts the agent pill in the composer and leaves the header with the title alone', async () => {
+    restore = served().restore;
+    landAt('/chats/new');
+
+    const { container, findByRole } = mount({
+      sessionId: 'thread-1',
+      title: null,
+      agentName: 'assistant',
+      isNew: true,
+    });
+
+    const pill = await findByRole('combobox', { name: 'Agent' });
+    expect(pill.closest('.ib-agent-pill')).not.toBeNull();
+    expect(container.querySelector('.weft-chat-header')?.querySelector('input, select')).toBeNull();
+    expect(container.querySelectorAll('[role="combobox"]')).toHaveLength(1);
+  });
+
+  test('greets with the agent and its prompts, and shows the other agents as one row until one is chosen', async () => {
     restore = bureau({
       'bureau.agents.list': () => ({
         agents: [
@@ -150,22 +167,24 @@ describe('a new chat', () => {
       isNew: true,
     });
 
-    const card = await findByTestId('agent-card');
-    expect(card.textContent).toContain(AGENT.description);
+    const welcome = await findByTestId('new-chat-welcome');
+    await waitFor(() => expect(welcome.textContent).toContain(AGENT.description));
+    // The greeting is a line, not a second title.
+    expect(welcome.querySelector('h1, h2, h3')).toBeNull();
     // Up to three prompts, as buttons, and an agent that suggests none shows none.
     const group = await findByRole('group', { name: 'Example prompts' });
     expect(
       [...group.querySelectorAll('button')].map((button) => button.textContent?.trim()),
     ).toEqual(['Say hello', 'Plan the week', 'Summarise it']);
-    // The other agents are cards to choose from.
-    const others = await findByRole('heading', { name: 'Or start with another agent' });
-    const grid = others.parentElement;
-    expect(grid?.textContent).toContain('Finds things.');
-    expect(grid?.textContent).toContain('Internal');
+    // The other agents are one row of buttons to choose from.
+    const others = await findByRole('group', { name: 'Or start with another agent' });
+    expect(
+      [...others.querySelectorAll('button')].map((button) => button.textContent?.trim()),
+    ).toEqual(['Researcher', 'Internal']);
     expect(queryByRole('group', { name: 'Example prompts' })).not.toBeNull();
   });
 
-  test('shows only the card of an agent the address names, with its prompts', async () => {
+  test('greets only the agent the address names, with its prompts', async () => {
     restore = bureau({
       'bureau.agents.list': () => ({
         agents: [AGENT, { ...RESEARCHER, examples: ['Find the latest filing'] }],
@@ -181,13 +200,13 @@ describe('a new chat', () => {
       isNew: true,
     });
 
-    const card = await findByTestId('agent-card');
-    expect(card.textContent).toContain('Researcher');
-    expect(card.textContent).toContain('Find the latest filing');
-    expect(queryByRole('heading', { name: 'Or start with another agent' })).toBeNull();
+    const welcome = await findByTestId('new-chat-welcome');
+    await waitFor(() => expect(welcome.textContent).toContain('Researcher'));
+    expect(welcome.textContent).toContain('Find the latest filing');
+    expect(queryByRole('group', { name: 'Or start with another agent' })).toBeNull();
   });
 
-  test('puts a prompt in the composer without sending it, and choosing an agent’s card selects that agent', async () => {
+  test('puts a prompt in the composer without sending it, and choosing another agent in the row selects that agent', async () => {
     const runs: string[] = [];
     restore = bureau(
       {
@@ -221,7 +240,7 @@ describe('a new chat', () => {
     expect(router.current.search.get('agent')).toBe('researcher');
   });
 
-  test('names an agent whose display name is its identifier once, in monospace, on its card and on its choice', async () => {
+  test('names an agent whose display name is its identifier once, in monospace, in the greeting', async () => {
     const echo = { ...AGENT, name: 'echo', displayName: 'echo', description: null };
     const runner = {
       ...AGENT,
@@ -231,22 +250,27 @@ describe('a new chat', () => {
     };
     restore = bureau({ 'bureau.agents.list': () => ({ agents: [echo, runner] }) }).restore;
     landAt('/chats/new');
-    const { findByTestId, findByRole } = mount({
+    const { findByTestId } = mount({
       sessionId: 'thread-1',
       title: null,
       agentName: 'echo',
       isNew: true,
     });
 
-    const card = await findByTestId('agent-card');
-    const others = await findByRole('heading', { name: 'Or start with another agent' });
-    const choice = others.parentElement?.querySelector('li');
+    const welcome = await findByTestId('new-chat-welcome');
 
-    expect(card.querySelector('h2')?.textContent?.trim()).toBe('echo');
-    expect(card.querySelectorAll('h2 code.ib-identifier')).toHaveLength(1);
-    expect(choice?.textContent?.trim()).toBe('tool-runner');
-    expect(choice?.querySelectorAll('code.ib-identifier')).toHaveLength(1);
-    expect(choice?.querySelector('.ib-agent-choice__description')).toBeNull();
+    await waitFor(() =>
+      expect(
+        welcome
+          .querySelector('.ib-new-chat__greeting')
+          ?.textContent?.replaceAll(/\s+/g, ' ')
+          .trim(),
+      ).toBe('Chat with echo'),
+    );
+    expect(welcome.querySelectorAll('.ib-new-chat__greeting code.ib-identifier')).toHaveLength(1);
+    expect(welcome.querySelector('[data-agent="tool-runner"]')?.textContent?.trim()).toBe(
+      'tool-runner',
+    );
   });
 
   test('replaces a draft in the composer with the prompt, however many times it is clicked', async () => {
@@ -402,6 +426,27 @@ describe('quoting an agent’s reply', () => {
 });
 
 describe('an existing session', () => {
+  test('says a session with no message has none with an empty state, not a status line', async () => {
+    restore = bureau({ 'bureau.contexts.get': () => CONTEXT }, (url) => {
+      if (url.endsWith('/messages')) return Response.json({ threadId: 'session-1', messages: [] });
+      if (url.includes('/threads/')) {
+        return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+      }
+      return undefined;
+    }).restore;
+    landAt('/chats/session-1');
+
+    const { container, findByRole } = mount({
+      sessionId: 'session-1',
+      title: 'Plan the week',
+      agentName: 'assistant',
+    });
+
+    await findByRole('heading', { level: 2, name: 'No messages yet' });
+    expect(container.querySelector('.cinder-empty-state')).not.toBeNull();
+    expect(container.querySelector('.chat-empty')).toBeNull();
+  });
+
   test('shows its title and its agent once, and no agent chooser', async () => {
     const served = bureau({ 'bureau.contexts.get': () => CONTEXT }, (url) => {
       if (url.endsWith('/messages')) return Response.json({ threadId: 'session-1', messages: [] });

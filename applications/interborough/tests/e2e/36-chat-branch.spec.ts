@@ -9,7 +9,13 @@ import type { Page } from '@playwright/test';
 
 import { CHAT_COPY } from '../../src/app/copy.ts';
 import { MODEL_SWITCHER_MODELS } from '../../src/host/seed.ts';
-import { expectWaiting, newThreadId, releaseBarrier, runToEnd } from './chat-support.ts';
+import {
+  conversation,
+  expectWaiting,
+  newThreadId,
+  releaseBarrier,
+  runToEnd,
+} from './chat-support.ts';
 import { E2E_BASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 
@@ -124,7 +130,7 @@ test('stays on the session and says why when the Bureau refuses the branch', asy
   await branchAction(page).click();
 
   await expect(
-    page.getByText(CHAT_COPY.branch.refused['branch-with-pending-approval']),
+    conversation(page).getByText(CHAT_COPY.branch.refused['branch-with-pending-approval']),
   ).toBeVisible();
   await expect(page).toHaveURL(new RegExp(`/chats/${parentId}$`));
   await checkA11y('a refused branch');

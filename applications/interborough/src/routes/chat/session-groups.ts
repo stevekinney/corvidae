@@ -153,6 +153,32 @@ export function groupSessions(rows: readonly SessionRow[], now: number): readonl
     .filter((group) => group.rows.length > 0);
 }
 
+/** A row of the chat list: a session's row, and the group it is listed in. */
+export type ChatListRow = SessionRow & {
+  /** The group the row falls in; `draft` is a new chat that no run has started yet. */
+  readonly group: SessionGroupKey | 'draft';
+};
+
+/**
+ * The chat list as one list for ListDetail, which has no headings: the groups of
+ * {@link groupSessions} flattened in order, so the chats that wait on the person come first,
+ * whatever their age, then Today, Yesterday and Earlier, each newest first. A `draft` (the new chat
+ * the person is writing, which the Bureau does not list yet) leads the list, and is left out once
+ * `rows` holds the chat itself, so a key is never listed twice.
+ */
+export function chatListRows(
+  rows: readonly SessionRow[],
+  now: number,
+  draft?: Pick<SessionRow, 'id' | 'title' | 'snippet' | 'agentName'>,
+): ChatListRow[] {
+  const listed = groupSessions(rows, now).flatMap((group) =>
+    group.rows.map((row): ChatListRow => ({ ...row, group: group.key })),
+  );
+  // Once any read of the chat has landed (the list, or the chat's own page), it is that row.
+  if (draft === undefined || rows.some((row) => row.id === draft.id)) return listed;
+  return [{ ...draft, updatedAt: null, needsYou: false, failed: false, group: 'draft' }, ...listed];
+}
+
 /**
  * Which of eight colours an agent's avatar takes. The same name always gives the same colour, so an
  * agent keeps its colour across lists and reloads; the sum of the name's code units spreads the

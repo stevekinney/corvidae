@@ -68,6 +68,8 @@ const EXPECTED_STATE: Readonly<Record<string, string>> = {};
 
 /** Text a route prints only once its seeded content has loaded. */
 const MARKERS: Readonly<Record<string, RegExp>> = {
+  // The list prints the seeded chats' titles, among them the memory thread's 300-character one.
+  '/chats': /Say hello/,
   '/chats/:chat': /Say hello/,
   '/agents': /An agent description that keeps going/,
   '/capabilities': /Reads only|Changes things|Dangerous|Not classified/,

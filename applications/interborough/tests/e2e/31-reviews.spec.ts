@@ -9,7 +9,7 @@
 import type { APIRequestContext, Page } from '@playwright/test';
 
 import { HUMAN_INPUT_PROMPT } from '../../src/host/seed.ts';
-import { newThreadId, runToEnd } from './chat-support.ts';
+import { conversation, newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BASE_URL } from './e2e-constants.ts';
 import { expect, holdBureauFeed, loggedFailedResponse, test } from './fixtures.ts';
 import { bureauCall, taskOfSession, threadMessages } from './task-support.ts';
@@ -107,7 +107,7 @@ test.describe('a tool approval', () => {
     await page.goto(`/chats/${threadId}`);
     await page.locator('.ib-decision').getByRole('button', { name: 'Approve' }).click();
     // The run goes on after the approval and reports what it did.
-    await expect(page.getByText('Order order-1001 was refunded.')).toBeVisible();
+    await expect(conversation(page).getByText('Order order-1001 was refunded.')).toBeVisible();
 
     await page.goto('/reviews');
     await expect(page.getByRole('heading', { level: 1, name: 'Reviews' })).toBeVisible();

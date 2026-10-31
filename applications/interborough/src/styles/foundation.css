@@ -713,6 +713,14 @@ body:has(.weft-shell[data-connection='unreachable'])
   font-size: var(--cinder-text-sm, 0.875rem);
 }
 
+.weft-view__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-2);
+  align-items: center;
+  justify-content: center;
+}
+
 .weft-view__action {
   color: var(--cinder-accent-text);
   font-weight: 600;

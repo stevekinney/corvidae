@@ -26,6 +26,7 @@ import {
 } from '../../src/app/copy.ts';
 import { describeCadence } from '../../src/routes/schedules/cadence.ts';
 import { bureau, readAgent, removeAgent } from './agent-support.ts';
+import { conversation } from './chat-support.ts';
 import { E2E_BARRIER_URL, E2E_JOURNEY_URL } from './e2e-constants.ts';
 import { IMAGE_ECHO_AGENT_NAME } from './echo-agent.ts';
 import { expect, test } from './fixtures.ts';
@@ -164,11 +165,11 @@ test('chats with the barrier agent, sends a follow-up while it works, and sees i
   await releaseBarrier(request);
 
   // The same run answers the follow-up after the reply it arrived during.
-  await expect(page.getByText(FOLLOW_UP_REPLY)).toBeVisible();
+  await expect(conversation(page).getByText(FOLLOW_UP_REPLY)).toBeVisible();
   const text = await transcriptText(page);
   expect(text.indexOf(BARRIER_REPLY)).toBeLessThan(text.indexOf('Also this'));
   expect(text.indexOf('Also this')).toBeLessThan(text.indexOf(FOLLOW_UP_REPLY));
-  await expect(page.getByText('Also this')).toHaveCount(1);
+  await expect(conversation(page).getByText('Also this')).toHaveCount(1);
   await expectWaiting(request, 0);
 });
 
@@ -191,17 +192,17 @@ test('starts a second session with the same agent from the agent’s page, and r
   expect(sessions.second).not.toBe(sessions.followUp);
   await expectWaiting(request, 1);
   await releaseBarrier(request);
-  await expect(page.getByText(BARRIER_REPLY)).toBeVisible();
+  await expect(conversation(page).getByText(BARRIER_REPLY)).toBeVisible();
 
   await page.goto('/chats');
   await page
-    .getByRole('navigation', { name: 'Chats' })
-    .getByRole('link', { name: /Start the journey/ })
+    .getByRole('region', { name: 'Chats' })
+    .getByRole('button', { name: /Start the journey/ })
     .click();
 
   await expect(page).toHaveURL(new RegExp(`/chats/${sessions.followUp}$`));
-  await expect(page.getByText(FOLLOW_UP_REPLY)).toBeVisible();
-  await expect(page.getByText('Also this')).toHaveCount(1);
+  await expect(conversation(page).getByText(FOLLOW_UP_REPLY)).toBeVisible();
+  await expect(conversation(page).getByText('Also this')).toHaveCount(1);
 });
 
 test('reloads while an agent waits on a question, and answers it from the reviews inbox', async ({
@@ -232,7 +233,7 @@ test('reloads while an agent waits on a question, and answers it from the review
   // The run went on with the answer: its session ends on the thanks, and the answer it was given
   // is the one typed, as the run's conversation holds it.
   await page.goto(`/chats/${threadId}`);
-  await expect(page.getByText(THANKS)).toBeVisible();
+  await expect(conversation(page).getByText(THANKS)).toBeVisible();
   await expect(question).toHaveCount(0);
   const thread = await request.get(
     `/bureau/ag-ui/threads/${encodeURIComponent(threadId)}/messages`,
@@ -277,8 +278,8 @@ test('defines an agent in the editor with the workflow tool, and chats with it u
 
   await send(page, `${JOURNEY_MARKER} Write me a digest that runs on a schedule.`);
 
-  await expect(page.getByText(JOURNEY_AUTHOR_REPLY)).toBeVisible();
-  await expect(page.getByText(JOURNEY_TOOL_NAME).first()).toBeVisible();
+  await expect(conversation(page).getByText(JOURNEY_AUTHOR_REPLY)).toBeVisible();
+  await expect(conversation(page).getByText(JOURNEY_TOOL_NAME).first()).toBeVisible();
   // The agent wrote the file, which the Bureau reports as an agent-authored workflow of its own.
   const written = await bureau(request, 'bureau.workflows.get', { id: JOURNEY_WORKFLOW_ID });
   expect(written.fault).toBeUndefined();
@@ -369,7 +370,7 @@ test('attaches an image to the echo agent and sees the image it returns', async 
 
   await send(page, 'Say it back');
 
-  await expect(page.getByText('Echoed 1 image.')).toBeVisible();
+  await expect(conversation(page).getByText('Echoed 1 image.')).toBeVisible();
   const returned = page.locator('ul.weft-chat-assets[data-role="assistant"] img');
   await expect(returned).toHaveAttribute('src', /\/bureau\/assets\/[^/]+\/content$/);
   await expect

@@ -1,5 +1,5 @@
 /**
- * The chat route's page over stubbed Bureau requests: a session whose title and agent could not be
+ * The chat route's page (the list with the open chat beside it) over stubbed Bureau requests: a session whose title and agent could not be
  * read is never left on the loading skeleton, however its second read fails.
  */
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
@@ -7,7 +7,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import { VIEW_COPY } from '../../app/copy.ts';
 import { chatSessionPath } from '../../lib/identifier-paths.ts';
-import ChatIndex from './index.svelte';
+import Chats from './chats.svelte';
 import { bureau, CONTEXT, landAt } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
 
@@ -18,7 +18,7 @@ afterEach(() => {
   restore = undefined;
 });
 
-const mount = () => render(QueryPage, { props: { page: ChatIndex } } as never);
+const mount = () => render(QueryPage, { props: { page: Chats } } as never);
 
 /** Bureau requests that answer `contexts.get` as `answer` says, counting how often it is asked. */
 function contextAnswering(answer: () => Response): { asked: () => number } {

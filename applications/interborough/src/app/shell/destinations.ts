@@ -54,6 +54,12 @@ export function destinationKeys(destination: Destination): readonly string[] {
   return ['g', destination.letter];
 }
 
+/** The key that starts a new chat. */
+export const NEW_CHAT_KEY = 'c';
+
+/** Where the new-chat shortcut goes. */
+export const NEW_CHAT_PATH = '/chats/new';
+
 /** What the shell's shortcuts do when they run. */
 export interface ShellShortcutActions {
   /** Opens a path. */
@@ -77,6 +83,14 @@ export function registerShellShortcuts(
       group: SHORTCUT_COPY.generalGroup,
       scope: 'global',
       handler: actions.openShortcutMap,
+    }),
+    // C starts a chat, wherever the person is; typing a "c" into a field never reaches it.
+    registry.register({
+      keys: [NEW_CHAT_KEY],
+      label: SHORTCUT_COPY.newChat,
+      group: SHORTCUT_COPY.chatGroup,
+      scope: 'global',
+      handler: () => actions.navigate(NEW_CHAT_PATH),
     }),
     ...DESTINATIONS.map((destination) =>
       registry.register({

@@ -48,25 +48,25 @@ export const routes: readonly RouteDefinition[] = [
   { pattern: '/', kind: 'reading', view: 'chat', load: placeholder, redirect: chatHomePath },
   {
     pattern: '/chats',
-    kind: 'reading',
+    kind: 'list-detail',
     crumb: VIEW_COPY.chat.label,
     view: 'chat',
-    load: () => import('../routes/chat/session-list.svelte'),
+    load: () => import('../routes/chat/chats.svelte'),
   },
   // `/chats/new` is registered before `/chats/:chat`: the first match wins.
   {
     pattern: '/chats/new',
-    kind: 'reading',
+    kind: 'list-detail',
     crumb: 'New chat',
     view: 'chat',
-    load: () => import('../routes/chat/index.svelte'),
+    load: () => import('../routes/chat/chats.svelte'),
   },
   {
     pattern: '/chats/:chat',
-    kind: 'reading',
+    kind: 'list-detail',
     crumb: { param: 'chat' },
     view: 'chat',
-    load: () => import('../routes/chat/index.svelte'),
+    load: () => import('../routes/chat/chats.svelte'),
   },
   {
     pattern: '/agents',

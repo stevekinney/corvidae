@@ -109,17 +109,18 @@
   color: var(--cinder-status-danger-text);
 }
 
-/* ── Chat list: flat rows under "Needs you", Today, Yesterday, Earlier ───────── */
+/* ── Chat list: the chats beside the open one, "Needs you" first ───────────────── */
 
-/* The outlet pads the page, so none of this adds padding of its own at the edges. */
+/* ListDetail fills the height it is given and scrolls each pane, so the frame gives it one. */
 .ib-chats {
-  display: flex;
-  flex-direction: column;
-  gap: var(--cinder-space-3);
-  min-width: 0;
+  block-size: max(28rem, calc(100dvh - 8rem));
+  min-inline-size: 0;
+  border: 1px solid var(--cinder-border-muted);
+  border-radius: var(--cinder-radius-md);
+  overflow: hidden;
 }
 
-.ib-chats__header {
+.ib-chats__title-row {
   display: flex;
   flex-wrap: wrap;
   gap: var(--cinder-space-2) var(--cinder-space-3);
@@ -127,112 +128,19 @@
   justify-content: space-between;
 }
 
-.ib-chats__groups {
-  display: flex;
-  flex-direction: column;
-  gap: var(--cinder-space-4);
-  min-width: 0;
-}
-
-.ib-chat-group {
-  display: flex;
-  flex-direction: column;
-  gap: var(--cinder-space-1);
-}
-
-.ib-chat-group__title {
+.ib-chats__title {
   margin: 0;
-  color: var(--cinder-text-muted);
-  font-size: var(--cinder-text-xs);
+  font-size: var(--cinder-text-lg);
   font-weight: 600;
-}
-
-.ib-chat-group__rows {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.ib-chat-row {
-  border-block-end: 1px solid var(--cinder-border-faint);
-}
-
-.ib-chat-row:last-child {
-  border-block-end: 0;
-}
-
-/* One line where it fits: avatar, title, latest message, chip, time. On a phone the latest
- * message drops under the title, and the chip and time keep the right edge. */
-.ib-chat-row__link {
-  display: grid;
-  grid-template-columns: auto minmax(0, 16rem) minmax(0, 1fr) auto auto;
-  gap: var(--cinder-space-1) var(--cinder-space-3);
-  align-items: center;
-  padding-block: var(--cinder-density-pad-block);
-  color: inherit;
-  text-decoration: none;
-}
-
-@media (hover: hover) {
-  .ib-chat-row__link:hover .ib-chat-row__title {
-    text-decoration: underline;
-  }
 }
 
 .ib-chat-row__title,
 .ib-chat-row__snippet {
+  display: block;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.ib-chat-row__title {
-  font-size: var(--cinder-text-base);
-  font-weight: 600;
-}
-
-.ib-chat-row__snippet {
-  color: var(--cinder-text-muted);
-  font-size: var(--cinder-text-sm);
-}
-
-.ib-chat-row__time {
-  grid-column: 5;
-  color: var(--cinder-text-muted);
-  font-size: var(--cinder-text-sm);
-  white-space: nowrap;
-}
-
-/* The chip and the time keep their own columns, so the times line up whether or not a row has a chip. */
-.ib-chat-row__chip {
-  grid-column: 4;
-}
-
-@media (max-width: 47.99rem) {
-  .ib-chat-row__link {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-  }
-
-  .ib-chat-row__snippet {
-    grid-column: 2;
-    grid-row: 2;
-  }
-
-  .ib-chat-row__time {
-    grid-column: 3;
-    grid-row: 1;
-  }
-
-  .ib-chat-row__chip {
-    grid-column: 3;
-    grid-row: 2;
-    justify-self: end;
-  }
-
-  .ib-chat-avatar {
-    grid-row: 1 / span 2;
-  }
 }
 
 /* An agent keeps its colour: eight of Cinder's categorical series, tinted so the initials keep
@@ -272,65 +180,53 @@
   --ib-avatar-tone: var(--cinder-chart-series-8);
 }
 
-/* ── New chat: the agent's card and the agents to choose from ────────────────── */
-
-/* The agent list sits in the header beside the title, named for assistive technology only. */
-.weft-chat-header__choice {
-  flex: 0 1 16rem;
-  margin-inline-start: auto;
-  min-width: 0;
-}
-
-@media (max-width: 47.99rem) {
-  .weft-chat-header__choice {
-    flex-basis: 100%;
-  }
-}
+/* ── New chat: a greeting, example prompts and the other agents, centred over the composer ── */
 
 .ib-new-chat {
   display: flex;
   flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: var(--cinder-space-4);
-  min-width: 0;
+  min-inline-size: 0;
+  min-block-size: 100%;
+  text-align: center;
 }
 
-.ib-agent-card__name,
-.ib-agent-choice__name {
+.ib-new-chat__greeting {
   margin: 0;
-  font-size: var(--cinder-text-md);
+  font-size: var(--cinder-text-xl);
   font-weight: 600;
   overflow-wrap: anywhere;
 }
 
-.ib-agent-card__id,
-.ib-agent-choice__id {
+.ib-new-chat__id {
   color: var(--cinder-text-muted);
   font-size: var(--cinder-text-sm);
   font-weight: 400;
 }
 
-.ib-agent-card__description,
-.ib-agent-choice__description {
+.ib-new-chat__description {
   margin: 0;
+  max-inline-size: 40rem;
   color: var(--cinder-text-secondary);
   font-size: var(--cinder-text-sm);
+  overflow-wrap: anywhere;
 }
 
-.ib-agent-card__description {
-  margin-block-end: var(--cinder-space-2);
-}
-
-.ib-agent-card__prompts {
+.ib-new-chat__examples,
+.ib-new-chat__agents {
   display: flex;
   flex-wrap: wrap;
   gap: var(--cinder-space-2);
   align-items: center;
-  margin-block-start: var(--cinder-space-3);
+  justify-content: center;
+  max-inline-size: 100%;
 }
 
 /* A prompt is a sentence, not a label: it wraps inside its button (Cinder's buttons never wrap) and
    a word too long for the line breaks, so a long prompt cannot widen the page. */
-.ib-agent-card__prompts .ib-agent-card__prompt {
+.ib-new-chat__examples .ib-new-chat__prompt {
   max-inline-size: 100%;
   white-space: normal;
   overflow-wrap: anywhere;
@@ -339,37 +235,18 @@
   padding-block: var(--cinder-space-1);
 }
 
-.ib-agent-card__try {
+.ib-new-chat__agents .ib-new-chat__agent {
+  max-inline-size: 100%;
+  overflow-wrap: anywhere;
+}
+
+.ib-new-chat__lead {
   color: var(--cinder-text-muted);
   font-size: var(--cinder-text-sm);
 }
 
-.ib-new-chat__heading {
-  margin: 0 0 var(--cinder-space-2);
-  color: var(--cinder-text-muted);
-  font-size: var(--cinder-text-xs);
-  font-weight: 600;
-}
-
-.ib-new-chat__grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
-  gap: var(--cinder-space-3);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.ib-agent-choice {
-  block-size: 100%;
-  text-align: start;
-}
-
-.ib-agent-choice__name,
-.ib-agent-choice__description {
-  display: block;
-}
-
-.ib-agent-choice__description {
-  margin-block-start: var(--cinder-space-1);
+/* The agent pill sits in the composer's footer beside Send, so it is as wide as its name. */
+.ib-agent-pill {
+  min-inline-size: 10rem;
+  max-inline-size: 16rem;
 }

@@ -23,15 +23,16 @@
    * (`branch-origin.svelte`).
    *
    * A new chat (`isNew`, at `/chats/new`) has no session yet. The client names the thread, the agent
-   * is chosen in the header, the transcript's place shows the agent's card and the prompts it suggests
-   * (`new-chat-welcome.svelte`; a prompt fills the composer and sends nothing), and the first message
+   * is chosen from the pill in the composer, the transcript's place shows a greeting, the prompts
+   * the agent suggests and the other agents (`new-chat-welcome.svelte`; a prompt fills the composer
+   * and sends nothing), and the first message
    * starts the run. When the run has started
    * the address becomes `/chats/:chat` by replacing the history entry, with this page kept
    * mounted (`router.navigate`'s `keep`), and the agent is fixed from then on.
    */
   import { onMount, untrack } from 'svelte';
 
-  import { Alert, Button, Combobox } from '@lostgradient/cinder';
+  import { Alert, Button, Combobox, EmptyState } from '@lostgradient/cinder';
   import { Chat } from '@lostgradient/chat';
   import { GitBranch } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
@@ -369,18 +370,8 @@
 <section class="weft-chat-route" aria-label={CHAT_COPY.regionLabel} data-session={sessionId}>
   <header class="weft-chat-header">
     <h1 class="weft-chat-header__title">{displayTitle}</h1>
-    {#if choosing}
-      <div class="weft-chat-header__choice">
-        <Combobox
-          id="weft-chat-agent"
-          aria-label={CHAT_COPY.agentLabel}
-          placeholder={CHAT_COPY.agentPlaceholder}
-          options={choices}
-          value={agent}
-          onValueChange={chooseAgent}
-        />
-      </div>
-    {:else}
+    <!-- While the chat is new, the agent is chosen from the pill in the composer, the one place to choose it. -->
+    {#if !choosing}
       <a
         class="weft-chat-header__agent"
         href={router.href(agentPath(agent))}
@@ -459,11 +450,29 @@
             onExample={fillComposer}
           />
         {:else}
-          <p class="chat-empty" role="status">{CHAT_COPY.noMessages}</p>
+          <EmptyState
+            kind="first-use"
+            size="compact"
+            headingLevel={2}
+            title={CHAT_COPY.emptyTranscript.title}
+            description={CHAT_COPY.emptyTranscript.description}
+          />
         {/if}
       {/snippet}
       {#snippet composerActions()}
-        {#if !choosing}
+        {#if choosing}
+          <div class="ib-agent-pill">
+            <Combobox
+              id="weft-chat-agent"
+              aria-label={CHAT_COPY.agentLabel}
+              placeholder={CHAT_COPY.agentPlaceholder}
+              size="sm"
+              options={choices}
+              value={agent}
+              onValueChange={chooseAgent}
+            />
+          </div>
+        {:else}
           <ModelPicker
             {sessionId}
             agentName={agent}

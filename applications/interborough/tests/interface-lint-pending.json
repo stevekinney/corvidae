@@ -202,13 +202,7 @@
       "rule": "app-header-class",
       "file": "src/styles/chat.css",
       "subject": ".weft-chat-header",
-      "issue": "COR-1848"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/styles/chat.css",
-      "subject": ".ib-chats__header",
-      "issue": "COR-1848"
+      "issue": "COR-1967"
     },
     {
       "rule": "app-header-class",

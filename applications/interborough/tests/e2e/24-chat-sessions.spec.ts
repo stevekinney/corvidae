@@ -8,7 +8,7 @@
 import type { APIRequestContext, Page } from '@playwright/test';
 
 import { TASK_COPY, VIEW_COPY } from '../../src/app/copy.ts';
-import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
+import { conversation, deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 
@@ -117,10 +117,10 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
     await expect(page).toHaveURL(sessionUrl);
     chatId = sessionOf(page);
     made.push(chatId);
-    await expect(page.getByText('Hello from the assistant.')).toBeVisible();
+    await expect(conversation(page).getByText('Hello from the assistant.')).toBeVisible();
 
     await page.goto('/chats');
-    const rows = page.getByRole('navigation', { name: 'Chats' }).getByRole('listitem');
+    const rows = page.getByRole('region', { name: 'Chats' }).getByRole('listitem');
     await expect(rows).toHaveCount(1);
     await expect(rows.first()).toContainText(chatTitle);
     await page.goto('/');
@@ -168,7 +168,7 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
     expect(order.indexOf(chatId)).toBeLessThan(order.indexOf(SEEDED_GOAL_SESSION));
 
     await page.goto('/chats');
-    const rows = page.getByRole('navigation', { name: 'Chats' }).getByRole('listitem');
+    const rows = page.getByRole('region', { name: 'Chats' }).getByRole('listitem');
     await expect(rows).toHaveCount(1);
     await expect(rows.first()).toContainText(chatTitle);
     await page.goto('/');
@@ -255,16 +255,10 @@ test.describe('the list of sessions, grouped', () => {
 
       await page.goto('/chats');
 
-      const list = page.getByRole('navigation', { name: 'Chats' });
-      // Needs you is the first group, and it holds the waiting chat and not the finished one.
-      await expect(list.locator('.ib-chat-group').first()).toHaveAttribute(
-        'data-group',
-        'needs-you',
-      );
-      await expect(list.locator('.ib-chat-group').first().getByRole('heading')).toHaveText(
-        'Needs you',
-      );
-      const waitingRow = list.locator(`[data-group="needs-you"] [data-session="${waiting}"]`);
+      const list = page.getByRole('region', { name: 'Chats' });
+      // Needs you comes first, and it holds the waiting chat and not the finished one.
+      await expect(list.locator('[data-chat]').first()).toHaveAttribute('data-group', 'needs-you');
+      const waitingRow = list.locator(`[data-group="needs-you"][data-chat="${waiting}"]`);
       await expect(waitingRow).toHaveCount(1);
       await expect(waitingRow).toContainText(waitingTitle);
       await expect(waitingRow).toContainText(AWAITING_QUESTION);
@@ -272,12 +266,12 @@ test.describe('the list of sessions, grouped', () => {
       await expect(waitingRow.getByRole('time')).toHaveText(/now|ago/);
       // The finished chat is under Today, shows what the agent said last and not the title again,
       // and has no chip.
-      const finishedRow = list.locator(`[data-group="today"] [data-session="${finished}"]`);
+      const finishedRow = list.locator(`[data-group="today"][data-chat="${finished}"]`);
       await expect(finishedRow).toHaveCount(1);
       await expect(finishedRow).toContainText(finishedTitle);
       await expect(finishedRow).toContainText('Hello from the assistant.');
       await expect(finishedRow.locator('.cinder-badge')).toHaveCount(0);
-      await expect(list.locator(`[data-session="${finished}"]`)).toHaveCount(1);
+      await expect(list.locator(`[data-chat="${finished}"]`)).toHaveCount(1);
       await expect(list.getByText('End of list')).toHaveCount(0);
       await expect(list.getByText('Agent:')).toHaveCount(0);
       // No view scrolls sideways.
@@ -306,16 +300,16 @@ test.describe('the list of sessions', () => {
 
     await page.goto('/chats');
 
-    const list = page.getByRole('navigation', { name: 'Chats' });
+    const list = page.getByRole('region', { name: 'Chats' });
     const rows = list.getByRole('listitem');
     // A chat waiting on someone is listed above the rest, so the newest is first in Today, and the
     // row names the agent.
-    const today = list.locator('[data-group="today"]').getByRole('listitem');
+    const today = list.locator('[data-group="today"]');
     await expect(today.first()).toContainText(`${label} chat 22`);
     await expect(today.first()).toContainText('assistant');
     // A page is twenty rows. The list loads the next page as the end comes into view, or when
     // Load more is pressed, so keep asking for it until the oldest of these chats is there.
-    const oldest = list.getByRole('link', { name: new RegExp(`${label} chat 01`) });
+    const oldest = list.getByRole('button', { name: new RegExp(`${label} chat 01`) });
     await expect(async () => {
       const more = list.getByRole('button', { name: 'Load more' });
       if (await more.isVisible()) await more.click();
@@ -330,8 +324,8 @@ test.describe('the list of sessions', () => {
     await page.goto('/chats');
 
     await page
-      .getByRole('navigation', { name: 'Chats' })
-      .getByRole('link', { name: /Open me from the list/ })
+      .getByRole('region', { name: 'Chats' })
+      .getByRole('button', { name: /Open me from the list/ })
       .click();
 
     await expect(page).toHaveURL(new RegExp(`/chats/${threadId}$`));
@@ -370,7 +364,9 @@ test.describe('a new chat', () => {
     await expect(page.locator('.ib-decision')).toBeVisible();
     expect(await page.evaluate(() => Reflect.get(window, '__stillHere'))).toBe(true);
     await expect(page.getByRole('combobox', { name: 'Agent' })).toHaveCount(0);
-    await expect(page.getByText('tool-runner', { exact: true })).toHaveCount(1);
+    await expect(
+      page.getByRole('region', { name: 'Conversation' }).getByText('tool-runner', { exact: true }),
+    ).toHaveCount(1);
   });
 
   test('replaces its history entry when it starts, so Back returns to where the person came from', async ({
@@ -420,7 +416,7 @@ test.describe('a new chat', () => {
     refuse = false;
     await page.getByRole('button', { name: 'Retry' }).click();
     await expect(page).toHaveURL(sessionUrl);
-    await expect(page.getByText('Hello from the assistant.')).toBeVisible();
+    await expect(conversation(page).getByText('Hello from the assistant.')).toBeVisible();
   });
 });
 
@@ -433,19 +429,19 @@ test.describe('returning to a session', () => {
     await send(page, `${label} first topic`);
     await expect(page).toHaveURL(sessionUrl);
     const first = sessionOf(page);
-    await expect(page.getByText('Hello from the assistant.')).toBeVisible();
+    await expect(conversation(page).getByText('Hello from the assistant.')).toBeVisible();
 
     await page.goto('/chats/new?agent=assistant');
     await send(page, `${label} second topic`);
     await expect(page).toHaveURL(sessionUrl);
     const second = sessionOf(page);
-    await expect(page.getByText('Hello from the assistant.')).toBeVisible();
+    await expect(conversation(page).getByText('Hello from the assistant.')).toBeVisible();
     expect(second).not.toBe(first);
 
     await page.goto('/chats');
     await page
-      .getByRole('navigation', { name: 'Chats' })
-      .getByRole('link', { name: new RegExp(`${label} first topic`) })
+      .getByRole('region', { name: 'Chats' })
+      .getByRole('button', { name: new RegExp(`${label} first topic`) })
       .click();
 
     expect(sessionOf(page)).toBe(first);
@@ -461,16 +457,16 @@ test.describe('returning to a session', () => {
     await page.goto('/chats/new');
     await send(page, first);
     await expect(page).toHaveURL(sessionUrl);
-    await expect(page.getByText('Hello from the assistant.')).toHaveCount(1);
+    await expect(conversation(page).getByText('Hello from the assistant.')).toHaveCount(1);
     await send(page, 'Question two');
-    await expect(page.getByText('Hello from the assistant.')).toHaveCount(2);
+    await expect(conversation(page).getByText('Hello from the assistant.')).toHaveCount(2);
     return { address: page.url(), first };
   }
 
   /** That the transcript on screen is the whole thread, in the order it happened. */
   async function expectWholeTranscript(page: Page, first: string): Promise<void> {
     await expect(page.getByRole('log').getByText(first)).toBeVisible();
-    await expect(page.getByText('Hello from the assistant.')).toHaveCount(2);
+    await expect(conversation(page).getByText('Hello from the assistant.')).toHaveCount(2);
     const content = (await page.locator('[data-session]').textContent()) ?? '';
     const positions = [first, 'Hello from the assistant.', 'Question two'].map((text) =>
       content.indexOf(text),
@@ -510,7 +506,10 @@ test.describe('returning to a session', () => {
     await page.getByRole('link', { name: 'Agents', exact: true }).click();
     await expect(page).toHaveURL(/\/agents$/);
     await page.getByRole('link', { name: 'Chat', exact: true }).first().click();
-    await page.getByRole('link', { name: new RegExp(first) }).click();
+    await page
+      .getByRole('region', { name: 'Chats' })
+      .getByRole('button', { name: new RegExp(first) })
+      .click();
     await expect(page).toHaveURL(address);
     await expectWholeTranscript(page, first);
   });
