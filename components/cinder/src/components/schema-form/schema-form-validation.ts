@@ -19,6 +19,11 @@ export type SchemaFormValidationResult =
 
 const validatorCache = new WeakMap<JsonSchemaObject, Promise<InterpreterCompiled>>();
 
+/**
+ * Checks `value` against a JSON Schema the way {@link SchemaForm} does before it submits, and
+ * returns every issue with its path. `format` is not asserted. A host that draws its own control
+ * for a schema uses this to hold that control's answer to the same rules.
+ */
 export async function validateSchemaValue(
   schema: JsonSchemaObject,
   value: unknown,

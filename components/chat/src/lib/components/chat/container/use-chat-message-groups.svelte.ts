@@ -69,6 +69,8 @@ function messageHasStructuredEntries(message: Message): boolean {
 export interface UseChatMessageGroupsOptions {
   /** Function that returns the current messages array */
   getMessages: () => Message[];
+  /** Tool calls whose question was answered here; they keep their own row so the answer stays readable. */
+  getAnsweredToolCallIds?: () => Iterable<string>;
   /** Live render options supplied by the transcript owner. */
   getRenderOptions?: () => {
     firstUnreadId?: string | null;
@@ -317,7 +319,10 @@ export function useChatMessageGroups(
     const renderOptions = getRenderOptions?.();
     return buildChatRenderRows(messagesWithDates, {
       ...renderOptions,
-      ungroupedToolCallIds: renderOptions?.ungroupedToolCallIds ?? actionRequiredToolCallIds,
+      ungroupedToolCallIds: new Set([
+        ...(renderOptions?.ungroupedToolCallIds ?? actionRequiredToolCallIds),
+        ...(options.getAnsweredToolCallIds?.() ?? []),
+      ]),
     });
   });
 

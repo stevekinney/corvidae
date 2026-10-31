@@ -130,6 +130,7 @@
   } from '../utilities/utilities.ts';
   import { Button, Pencil, Quote, RotateCcw, CopyButton } from '@lostgradient/cinder';
   import ChatMessagePartsRenderer from './chat-message-parts-renderer.svelte';
+  import { useQuestionStore } from '../question/question-store.svelte.ts';
   import { escapeClipboardHtmlAttribute } from '../../../utilities/clipboard.ts';
 
   let {
@@ -337,6 +338,8 @@
   // Find matching tool pair for tool-call messages. Resolved here (the container
   // hands down the pairs for this message) and threaded into deriveMessageParts
   // so the bridge stays pure; also gates the data-tool-pair wrapper styling.
+  const questionStore = useQuestionStore();
+
   const toolPair = $derived.by(() => {
     if (!isToolCall || !message.toolCall) return null;
     return toolCallPairs.find((pair) => pair.call.id === message.toolCall?.id) ?? null;
@@ -355,6 +358,7 @@
       expanded,
       approvalStates,
       approvalResolutionInFlightIds,
+      questionAnswers: questionStore?.answers,
       toolCallPresentation,
       // C4: reasoning and steps are UI-only overlays derived from metadata or
       // explicit per-message props; never written back to the transcript.

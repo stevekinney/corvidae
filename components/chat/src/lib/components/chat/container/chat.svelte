@@ -27,7 +27,7 @@
 </script>
 
 <script lang="ts">
-  import { flushSync, tick } from 'svelte';
+  import { flushSync, tick, untrack } from 'svelte';
   import { isStreamingMessage } from '../builders.ts';
   import type { Message, MessageInput, ToolCallPair } from '../conversation-model.ts';
   import type { ChatComposerStatus } from '../input/composer-status.ts';
@@ -50,6 +50,8 @@
   import { useChatSearch } from './use-chat-search.svelte.ts';
   import { useIntersection } from '../../../utilities/use-intersection.svelte.ts';
   import ChatJumpControls from './chat-jump-controls.svelte';
+  import { classifyQuestion } from '../question/question-kind.ts';
+  import { provideQuestionStore, QuestionStore } from '../question/question-store.svelte.ts';
   import ChatHistoryTrigger from './chat-history-trigger.svelte';
   import ChatStatusAnnouncer from './chat-status-announcer.svelte';
   import ChatSearchBar from './chat-search-bar.svelte';
@@ -141,6 +143,7 @@
     onArtifactOpen,
     onApprovalResolve,
     onInputSubmit,
+    answerInComposer = false,
     messageReasoning,
     messageSteps,
     messageSuggestions,
@@ -270,6 +273,16 @@
     quoteSelection.dismiss();
   });
 
+  // Answers to questions belong to the conversation they were given in, and an answer still in
+  // flight must not land in this one. A pre-effect runs before the new rows' own effects register
+  // their questions, which a post-effect would wipe.
+  let questionsConversationId = untrack(() => conversation.id);
+  $effect.pre(() => {
+    if (conversation.id === questionsConversationId) return;
+    questionsConversationId = conversation.id;
+    untrack(() => questions.reset());
+  });
+
   // ==========================================================================
   // Initialize Helpers
   // ==========================================================================
@@ -302,6 +315,19 @@
     quotes.clear();
     quoteSelection.dismiss();
   });
+
+  const questions = new QuestionStore(
+    () => answerInComposer,
+    () =>
+      uploadAttachment === undefined
+        ? undefined
+        : async (file, signal) => {
+            const reference = await uploadAttachment(file, { signal });
+            return reference.id;
+          },
+    () => maxFileSize,
+  );
+  provideQuestionStore(questions);
 
   const commandActions = useChatCommandActions({
     getAdapter: () => adapter,
@@ -410,6 +436,7 @@
     getStreamingContent: () => streamingState.content,
     getMessageReasoning: () => messageReasoning,
     getFirstUnreadId: () => unreadState.firstUnreadId,
+    getAnsweredToolCallIds: () => questions.answers.keys(),
     getUngroupAllToolCalls: () =>
       Boolean(
         row ||
@@ -647,6 +674,30 @@
     tick,
   });
 
+  // The free-text question the composer answers lives in a mounted row, so a virtualized list
+  // keeps that row rendered even when it scrolls out of range.
+  const openComposerQuestionMessageId = $derived.by(() => {
+    if (!answerInComposer) return undefined;
+    let openCallId: string | undefined;
+    for (const [callId, pairs] of toolCallPairsByCallId) {
+      const action = pairs.find((pair) => pair.result?.outcome === 'action_required')?.result
+        ?.action;
+      const schema: unknown = action?.type === 'input' ? action.schema : undefined;
+      if (
+        typeof schema === 'object' &&
+        schema !== null &&
+        !Array.isArray(schema) &&
+        classifyQuestion(schema as Record<string, unknown>) === 'text' &&
+        !questions.answers.has(callId)
+      ) {
+        openCallId = callId;
+      }
+    }
+    return openCallId === undefined
+      ? undefined
+      : messages.find((message) => message.toolCall?.id === openCallId)?.id;
+  });
+
   const virtualRows = $derived.by(() => {
     if (!isVirtualized) return [];
 
@@ -690,6 +741,18 @@
             ),
           });
         }
+      }
+    }
+
+    if (openComposerQuestionMessageId !== undefined) {
+      const questionIndex = findRenderRowIndexByMessageId(
+        renderRows,
+        openComposerQuestionMessageId,
+      );
+      if (questionIndex >= 0 && !renderedIndexes.has(questionIndex)) {
+        const virtualItem = chatVirtualizer.getVirtualItem(questionIndex);
+        const questionRow = renderRows[questionIndex];
+        if (virtualItem && questionRow) rows.push({ row: questionRow, virtualItem });
       }
     }
 
@@ -1087,6 +1150,20 @@
     if (quotes.remove(quoteId)) announcements.announce('Quote removed');
   }
 
+  async function answerQuestionFromComposer(
+    question: NonNullable<typeof questions.composerTarget>,
+    typed: string,
+  ): Promise<void> {
+    const origin = conversationId;
+    const accepted = await question.submit(typed);
+    // The text belongs to the conversation it was typed in; if the person has moved on, whatever
+    // the host answered, it is not theirs to put in this composer.
+    if (conversationId !== origin) return;
+    if (!accepted && inputRef?.getValue() === '') {
+      inputRef.insertAtRange({ start: 0, end: 0 }, typed);
+    }
+  }
+
   /**
    * Sends the typed message with the quoted excerpts on top. The quotes leave
    * the chip row at hand-off: the session controller settles `sendMessage` only
@@ -1095,6 +1172,14 @@
    * added since, without repeats and within the limit.
    */
   function handleComposerSubmit(message: MessageInput, attachments: ChatAttachment[]): void {
+    // An open free-text question takes the typed text as its answer, not as a new message.
+    const question = questions.composerTarget;
+    const typed = typeof message.content === 'string' ? message.content.trim() : '';
+    if (question !== undefined && typed !== '' && attachments.length === 0) {
+      // A refused answer must not lose what was typed, so it goes back into the composer.
+      void answerQuestionFromComposer(question, typed);
+      return;
+    }
     const carried = quotes.quotes;
     if (carried.length === 0) {
       handleSubmit(message, attachments);
@@ -1930,6 +2015,7 @@
           id={inputId}
           bind:this={inputRef}
           onsubmit={handleComposerSubmit}
+          {...questions.composerTarget === undefined ? {} : { placeholder: 'Answer' }}
           disabled={streaming && !followUpsEnabled}
           sending={streaming}
           allowFollowUp={followUpsEnabled}

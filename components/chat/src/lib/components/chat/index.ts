@@ -28,6 +28,11 @@ export type {
   TypingParticipant,
 } from './chat.types.ts';
 export type { ChatMarkdownNode, MarkdownNodeOverride } from './message/chat-message-parts.ts';
+export { default as ChatQuestion } from './question/chat-question.svelte';
+export type { ChatQuestionProps } from './question/chat-question.svelte';
+export { ChatQuestionAnswerError, recordAnswer } from './question/question-answer.ts';
+export type { ChatQuestionIssue, QuestionAnswerRecord } from './question/question-answer.ts';
+export type { QuestionKind } from './question/question-kind.ts';
 export { Chat, CURRENT_SCHEMA_VERSION };
 
 // Adapter seam — the optional event/transport boundary around <Chat>. Type-only.

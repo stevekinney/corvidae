@@ -206,20 +206,43 @@ The client's rows are authoritative. The terminal `run.completed` frame carries 
 
 The transport does not read `ACTIVITY_SNAPSHOT`, so an A2UI surface a Bureau streams as one (activity type `a2ui-surface`) never reaches the chat history. A host that wants the surface reads those events from the same stream itself and renders them with [`A2uiSurface`](#a2ui-surfaces-experimental); [Bureau's interactive-surface contract](../../packages/bureau/documentation/interactive-surface.md#reconnecting-and-reconstructing-a-surface) shows the fold. The transport also has no path for a surface action: it sends nothing back to the backend, and Bureau serves no AG-UI route that takes one.
 
-## Tool input forms
+## Questions
 
-A tool result with `outcome: 'action_required'` and an `input` action that carries a JSON Schema object renders as a form, not as a plain result. Chat derives a `tool-input` message part from it and shows the action's `message` above a Cinder [`SchemaForm`](../cinder/src/components/schema-form/README.md) built from the schema (COR-1309). The part is titled "Input requested by" the tool's name.
+A tool result with `outcome: 'action_required'` and an `input` action that carries a JSON Schema renders as a question, not as a plain result. Chat derives a `tool-input` message part from it, shows the action's `message` as the prompt, and draws the control the schema asks for in place (COR-1309, COR-1836). The part is titled "Input requested by" the tool's name. The schema is the answer's schema (draft 2020-12); the `x-` keywords are the ones Operative's `requestHumanInput` documents.
+
+| Kind | Schema | Control |
+| --- | --- | --- |
+| Pick one | `enum` (labels from `x-labels`) | A button per choice; a click answers |
+| Pick one or something else | `anyOf` of an `enum` and a plain string, with `x-allowOther` | The choices, then Something else… opens a field |
+| Pick several | `type: 'array'` with `items.enum`, `minItems`, `maxItems` | Checkboxes and Send |
+| Free text | `type: 'string'` | The composer when `answerInComposer` is on ("Answer below"), else a text field |
+| Yes or no | `type: 'boolean'` | Yes and No buttons |
+| Number | `type: 'number'` or `'integer'` | A number field |
+| Date or time | `format: 'date'`, `'time'` or `'date-time'` | Date and time fields, answered as RFC 3339 |
+| Rating | `type: 'integer'` with `x-kind: 'rating'` | A step per integer, labelled from `x-labels` |
+| A few fields | `type: 'object'`, or any schema that matches no other kind | Cinder's [`SchemaForm`](../cinder/src/components/schema-form/README.md) |
+| Secret | `x-secret: true` | A password field; the answer is never rendered or kept |
+| File | `x-asset: true` | A drop zone that uploads through `uploadAttachment` and answers the managed asset id |
 
 ```ts
-import type { ChatProps } from '@lostgradient/chat';
+import { ChatQuestionAnswerError, type ChatProps } from '@lostgradient/chat';
 
 const onInputSubmit: ChatProps['onInputSubmit'] = async (toolCallId, value) => {
-  // `value` already passed the form's validation against the action's schema.
-  await fetch(`/inputs/${toolCallId}`, { method: 'POST', body: JSON.stringify(value) });
+  const response = await fetch(`/inputs/${toolCallId}`, {
+    method: 'POST',
+    body: JSON.stringify(value),
+  });
+  if (response.status === 400) {
+    // The host's own validation: each issue shows on the field its path names (relative to the answer).
+    const issues = (await response.json()) as { path: (string | number)[]; message: string }[];
+    throw new ChatQuestionAnswerError(issues);
+  }
 };
 ```
 
-`onInputSubmit(toolCallId, value)` is called only with a value that validated against the schema, and it is called once per successful submit. The `toolCallId` is the tool result's `callId`. If the promise rejects, the form stays open with "The input could not be sent. Try again." and the user can resubmit; when it resolves, the form is replaced by "Input submitted." and cannot be submitted again. Without `onInputSubmit`, Chat shows the request's message and no form. An `input` action whose schema is not an object keeps the neutral tool-result presentation. The submitted state lives in the view only: it is never written back to the transcript, so a remounted row asks again until the host's conversation no longer holds the `action_required` result.
+`onInputSubmit(toolCallId, value)` is called once per submit, with an answer that meets the whole schema (Cinder's `validateSchemaFormValue`, the check `SchemaForm` makes), whichever control or the composer gave it; an answer that does not is shown its issues and never sent. The `toolCallId` is the tool result's `callId`. If the promise rejects with a `ChatQuestionAnswerError`, the question stays open and each issue shows on the field its `path` names (a single-value question shows them on its control; a path that names no field shows on the form itself, so a refusal is never lost). Paths are relative to the answer: Bureau's `reviews.resolve` roots them at `answer` (`['answer', 'name']`), so a host strips that first segment before it builds the error. Any other rejection reads "The answer could not be sent. Try again." and the person can resubmit. When it resolves, the question collapses to "You answered …" with Change while the result still asks for input, which reopens it (pre-filled, except a secret, which is never kept) and sends a new answer. Without `onInputSubmit`, Chat shows the request's message and no control. The answered state lives in the view only: it is never written back to the transcript, and it survives the run resuming, when the result stops being `action_required` and becomes the tool's own output, which is not shown. A question whose run has resumed offers no Change and nothing that reopens it, because the host has already delivered the answer. A refused answer typed in the composer is put back in it. A file question accepts only the schema's `contentMediaType` (a file whose type the browser could not name is accepted, and `x-` names the same type) and files up to `maxFileSize` (10 MiB by default), and refuses anything else before it uploads. Answers belong to the conversation they were given in: switching conversations forgets them, and an answer still in flight is dropped. `recordAnswer` is exported for a host that keeps its own answered rows: it builds the record with secrets masked and left out.
+
+`answerInComposer` is for the chat transcript: an open free-text question then reads "Answer below", the composer's placeholder reads "Answer", and sending from the composer calls `onInputSubmit` with the typed text instead of `onSubmit`. A host without a composer (a reviews inbox) leaves it off and gets a text field in the question. `ChatQuestion` is the same control without the transcript, for such a host: give it `schema`, `id` and `onSubmit`.
 
 [Bureau's human-input forms](../../packages/bureau/documentation/interactive-surface.md#human-input-forms-cor-1487-and-cor-1309) are the server side of the same request: the host maps `onInputSubmit` onto the form's `answer` or `submit` action.
 

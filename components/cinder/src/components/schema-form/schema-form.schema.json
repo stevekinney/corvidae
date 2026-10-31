@@ -23,6 +23,11 @@
   "metadata": {
     "unsupportedProps": [
       {
+        "name": "issues",
+        "reason": "unknown-shape",
+        "description": "Problems the host found with a value this form submitted, such as a server-side validation\nrefusal. Each one is shown on the field its `path` names, as a built-in validation message is,\nand cleared when that field is edited. Pass a new array to show a new set."
+      },
+      {
         "name": "onDraftChange",
         "reason": "function-or-snippet",
         "description": "Called after each edit with the complete current draft, before schema validation.\nThe draft can be schema-invalid and does not change the seed-only `value` contract.\nIn-progress numeric editors and temporarily unparseable JSON fields are reported as\ntheir current raw text until the value commits or parses successfully."

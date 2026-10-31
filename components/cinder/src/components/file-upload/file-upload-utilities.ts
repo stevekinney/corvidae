@@ -119,12 +119,22 @@ function matchesAcceptToken(file: File, token: string): boolean {
     return file.name.toLowerCase().endsWith(normalizedToken);
   }
 
-  const fileType = file.type.toLowerCase();
-  if (normalizedToken.endsWith('/*')) {
-    return fileType.startsWith(normalizedToken.slice(0, -1));
+  // A browser names a type from the extension and leaves it empty when it does not know one
+  // (`.yaml`, `.toml`), so an empty type is unknown and not a mismatch. `x-` marks the same
+  // type under an older name (`application/x-yaml`).
+  const fileType = withoutExperimentalPrefix(file.type.toLowerCase());
+  if (fileType === '') return true;
+  const wanted = withoutExperimentalPrefix(normalizedToken);
+  if (wanted.endsWith('/*')) {
+    return fileType.startsWith(wanted.slice(0, -1));
   }
 
-  return fileType === normalizedToken;
+  return fileType === wanted;
+}
+
+/** `application/x-yaml` as `application/yaml`. */
+function withoutExperimentalPrefix(mediaType: string): string {
+  return mediaType.replace(/^([^/]+)\/x-/, '$1/');
 }
 
 function formatList(items: string[]): string {

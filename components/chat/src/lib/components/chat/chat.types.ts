@@ -288,13 +288,24 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
     resolution: ApprovalResolution,
   ) => void | ChatToolApprovalResolution | Promise<void | ChatToolApprovalResolution>;
   /**
-   * Called when the user submits the form for an action-required tool result
-   * that requests input. Chat renders the action's JSON Schema with Cinder's
-   * `SchemaForm` and calls this only with a value that passed validation. A
-   * rejected promise keeps the form open so the user can try again. Without
-   * this callback, Chat shows the request's message but no form.
+   * Called when the user answers an action-required tool result that requests
+   * input. Chat draws the action's JSON Schema as the control that fits it
+   * (buttons for a choice, a field for a text, number, date, rating, secret or
+   * file, Cinder's `SchemaForm` for an object) and calls this only with an answer
+   * that passed validation. A rejected promise keeps the question open so the user
+   * can try again; reject with `ChatQuestionAnswerError` to show the host's
+   * reasons on the fields they name. Without this callback, Chat shows the
+   * request's message but no control.
    */
   onInputSubmit?: (toolCallId: string, value: unknown) => void | Promise<void>;
+  /**
+   * Whether the composer answers an open free-text question. A free-text question then reads
+   * "Answer below", the composer's placeholder reads "Answer", and sending from the composer
+   * calls {@link ChatProps.onInputSubmit} with the typed text instead of {@link ChatProps.onSubmit}.
+   * Without it (a reviews inbox, which has no composer) a text field is drawn in the question.
+   * Every other kind of question is answered in place either way. Default `false`.
+   */
+  answerInComposer?: boolean | undefined;
   /**
    * Override or supplement the reasoning text for a message. Called per-message;
    * return a non-empty string or `{ content, summary? }` to show one reasoning

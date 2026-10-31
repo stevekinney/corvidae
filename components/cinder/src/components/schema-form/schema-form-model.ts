@@ -308,6 +308,68 @@ function fieldLabel(schema: JsonSchemaObject, key: string): string {
   return humanizeIdentifier(key);
 }
 
+/**
+ * Whether a value of this schema must never be shown as text: a string marked `writeOnly` or
+ * `x-secret`, or an array whose items are. Summaries, headers and the JSON panel mask such a value.
+ */
+export function isConcealedSchema(schema: JsonSchemaObject): boolean {
+  if (schema['writeOnly'] === true || schema['x-secret'] === true) return true;
+  const items = schema['items'];
+  return isRecord(items) && (items['writeOnly'] === true || items['x-secret'] === true);
+}
+
+/** Whether any schema under `schema` is {@link isConcealedSchema}, however deeply it is nested. */
+export function schemaHoldsConcealedField(schema: unknown, depth = 0): boolean {
+  if (depth > 32) return true;
+  if (Array.isArray(schema))
+    return schema.some((entry) => schemaHoldsConcealedField(entry, depth + 1));
+  if (!isRecord(schema)) return false;
+  if (isConcealedSchema(schema)) return true;
+  return Object.keys(schema).some((key) =>
+    schemaHoldsConcealedField(Object.hasOwn(schema, key) ? schema[key] : undefined, depth + 1),
+  );
+}
+
+/** A string whose value is a moment: Bureau checks `date`, `time` and `date-time` as RFC 3339, so a blank is not one. */
+export function isTemporalStringSchema(schema: JsonSchemaObject): boolean {
+  const format = schema['format'];
+  return format === 'date' || format === 'time' || format === 'date-time';
+}
+
+/**
+ * Whether a message for `path` has a field to appear on: the form's root, a named property, an
+ * array row, or anything under a control that edits many values at once.
+ */
+/**
+ * What a blank moment field holds. A property or array row leaves it out, because a blank is not
+ * an RFC 3339 value; the form's own root cannot be left out, so it is `null` where the schema
+ * allows null and the empty string (which the validator then refuses) where it does not.
+ */
+export function blankMomentValue(field: SchemaFormField): unknown {
+  if (field.path.length > 0) return undefined;
+  const type = field.schema['type'];
+  return Array.isArray(type) && type.includes('null') ? null : '';
+}
+
+export function fieldAtPathExists(field: SchemaFormField, path: readonly string[]): boolean {
+  if (path.length === 0) return true;
+  const [head, ...rest] = path;
+  if (field.kind === 'object') {
+    const child = field.fields.find((candidate) => candidate.key === head);
+    return child !== undefined && fieldAtPathExists(child, rest);
+  }
+  if (field.kind === 'choice')
+    return field.fields.some((branch) => fieldAtPathExists(branch, path));
+  if (field.kind === 'array') {
+    return (
+      head !== undefined &&
+      /^\d+$/.test(head) &&
+      (field.item === undefined || fieldAtPathExists(field.item, rest))
+    );
+  }
+  return field.kind === 'enumArray' || field.kind === 'tags' || field.kind === 'record';
+}
+
 export function defaultValueForField(field: SchemaFormField): unknown {
   if ('default' in field.schema) return cloneJsonCompatible(field.schema['default']);
 
@@ -327,7 +389,8 @@ export function defaultValueForField(field: SchemaFormField): unknown {
   }
   if (field.kind === 'boolean') return false;
   if (field.kind === 'enum') return field.options.length > 0 ? field.options[0]!.value : '';
-  if (field.kind === 'string') return '';
+  if (field.kind === 'string')
+    return isTemporalStringSchema(field.schema) ? blankMomentValue(field) : '';
   if (field.kind === 'json') return null;
   return undefined;
 }

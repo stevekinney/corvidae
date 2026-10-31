@@ -89,7 +89,7 @@ describe('ToolInputPart', () => {
 
     expect(calls).toEqual([{ toolCallId: 'call-1', value: { room: 'Atlas', attendees: 4 } }]);
     expect(container.querySelector('form')).toBeNull();
-    expect(getByRole('status').textContent).toContain('Input submitted.');
+    expect(getByRole('status').textContent).toContain('You answered Room: Atlas, Attendees: 4');
 
     await flush();
     expect(calls).toHaveLength(1);

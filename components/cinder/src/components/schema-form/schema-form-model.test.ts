@@ -9,6 +9,7 @@ import {
   decodeEnumValue,
   defaultValueForField,
   encodeEnumValue,
+  fieldAtPathExists,
   getValueAtPath,
   initialValueForField,
   isJsonSchemaObject,
@@ -247,6 +248,40 @@ describe('schema-form model', () => {
     const [literalBranch, objectBranch] = choice.fields;
     expect(choiceBranchForValue(choice, 'whole')).toBe(literalBranch!);
     expect(choiceBranchForValue(choice, { amount: 4 })).toBe(objectBranch!);
+  });
+
+  test('finds a host-issue path only where the form has a field for it', () => {
+    const { field } = createSchemaFormModel({
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        labels: { type: 'array', items: { enum: ['a', 'b'] } },
+        notes: { type: 'array', items: { type: 'string' }, 'x-kind': 'tags' },
+        rows: {
+          type: 'array',
+          items: { type: 'object', properties: { amount: { type: 'integer' } } },
+        },
+        refund: {
+          oneOf: [
+            { const: 'whole' },
+            { type: 'object', properties: { amount: { type: 'integer' } } },
+          ],
+        },
+      },
+    });
+    expect(fieldAtPathExists(field, [])).toBe(true);
+    expect(fieldAtPathExists(field, ['name'])).toBe(true);
+    expect(fieldAtPathExists(field, ['missing'])).toBe(false);
+    // A leaf field has no children to name.
+    expect(fieldAtPathExists(field, ['name', 'deeper'])).toBe(false);
+    // Array items are named by index, and only by an index.
+    expect(fieldAtPathExists(field, ['rows', '3', 'amount'])).toBe(true);
+    expect(fieldAtPathExists(field, ['rows', '3', 'other'])).toBe(false);
+    expect(fieldAtPathExists(field, ['rows', 'first'])).toBe(false);
+    expect(fieldAtPathExists(field, ['labels', '1'])).toBe(true);
+    // A choice answers for any of its branches.
+    expect(fieldAtPathExists(field, ['refund', 'amount'])).toBe(true);
+    expect(fieldAtPathExists(field, ['refund', 'other'])).toBe(false);
   });
 
   test('refuses a choice that does not hold both branches', () => {
