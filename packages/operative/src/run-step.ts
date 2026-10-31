@@ -473,6 +473,7 @@ async function runStepBody(
       const validated = await hooks.run('validateResponse', response, {
         conversation,
         step,
+        resolvedSources,
         signal: stepSignal,
         abortStep,
         elicit,

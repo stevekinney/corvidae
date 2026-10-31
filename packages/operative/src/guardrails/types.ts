@@ -60,7 +60,8 @@ export interface ValidatorContext {
   conversationLength: number;
   toolCallCount: number;
   /**
-   * The conversation so far as one string, user, assistant and tool messages in order. It is read
+   * The conversation so far as one string, in order: what each message says, the text of a tool
+   * result (its `content` and `parts`), and the bodies of attachments the step resolved. It is read
    * only when called, and reflects the conversation as the step started, so a validator that
    * checks a reply against what was said (grounding) pays for it, and one that does not, does not.
    * Absent when a caller builds the context itself.

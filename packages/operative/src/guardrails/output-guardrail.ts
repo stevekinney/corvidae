@@ -22,16 +22,45 @@ function thinkingTextsOf(response: GenerateResponse): ThinkingText[] {
   );
 }
 
+/** The text of one value a tool returned: a string as it is, anything else as its JSON. */
+function jsonText(value: unknown): string {
+  return typeof value === 'string' ? value : (JSON.stringify(value) ?? '');
+}
+
+/**
+ * Every piece of text the model reads from `message`: its content, the media bodies the step
+ * resolved for it (`resolvedSources`, keyed `<message id>:<part index>`, as the input guardrail
+ * reads them), and, for a tool-result message, whose `content` is empty, the result's own
+ * `content` value and `parts`.
+ */
+function messageTexts(message: Message, resolvedSources: StepContext['resolvedSources']): string[] {
+  const resolvedFor = (partIndex: number) => resolvedSources?.get(`${message.id}:${partIndex}`);
+  const texts = inspectContent(message.content, resolvedFor).fields.map((field) => field.text);
+  const { toolResult } = message;
+  if (toolResult !== undefined) {
+    if (toolResult.content !== null && toolResult.content !== undefined) {
+      texts.push(jsonText(toolResult.content));
+    }
+    if (toolResult.parts !== undefined) {
+      texts.push(
+        ...inspectContent([...toolResult.parts], resolvedFor).fields.map((field) => field.text),
+      );
+    }
+  }
+  return texts;
+}
+
 /**
  * The conversation's text as a validator reads it, built once and only when asked for. The
  * messages are the ones the step started with, so a later append does not change what it reads.
  */
-function conversationTextReader(messages: ReadonlyArray<Message>): () => string {
+function conversationTextReader(
+  messages: ReadonlyArray<Message>,
+  resolvedSources: StepContext['resolvedSources'],
+): () => string {
   let text: string | undefined;
   return () =>
-    (text ??= messages
-      .flatMap((message) => inspectContent(message.content).fields.map((field) => field.text))
-      .join('\n'));
+    (text ??= messages.flatMap((message) => messageTexts(message, resolvedSources)).join('\n'));
 }
 
 type Failure = {
@@ -93,7 +122,7 @@ export function createOutputGuardrail(options: OutputGuardrailOptions): Validate
       step: context.step,
       conversationLength: messages.length,
       toolCallCount: response.toolCalls.length,
-      conversationText: conversationTextReader([...messages]),
+      conversationText: conversationTextReader([...messages], context.resolvedSources),
     };
 
     // Run every validator over the content and over each thinking part, in parallel.
