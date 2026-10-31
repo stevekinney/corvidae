@@ -296,6 +296,7 @@ import { createAbandonedTaskSweeper, openProcessLease } from './process-lease';
 import {
   createDecisions,
   decisionModelNames,
+  validateDecisionsModelChoice,
   validateDecisionsOptions,
 } from './decisions/create-decisions';
 import { createLateDecisions } from './decisions/late-decisions';
@@ -2491,6 +2492,8 @@ async function constructBureau<const D extends AgentDefinitions>(
   // running plugins contribute is folded into the options the rest of construction reads.
   const composedPlugins = await composePlugins(options);
   options = composedPlugins.options;
+  // COR-1879: `decisions.model` may name a decision router a plugin contributed.
+  validateDecisionsModelChoice(options.decisions, toBadRequest);
   const pluginRegistry = createPluginRegistry(composedPlugins.records);
   // COR-1721 — the one choke point every Bureau diagnostic passes through: it reaches the sink, and,
   // once the emitter below is bound, is dispatched as a `diagnostic` event (level and scope only).

@@ -82,15 +82,19 @@ export type PluginProblem =
       readonly second: PluginClashParty;
     }
   | {
-      /** `setup` threw or rejected; the plugin is `skipped` and the host starts. */
+      /**
+       * `setup` threw or rejected, or returned a contribution that cannot be registered (a name
+       * outside the plugin name grammar, a tool that cannot be rebuilt, an embedder without a
+       * positive integer dimension); the plugin is `skipped` and the host starts.
+       */
       readonly code: 'setup-failed';
-      /** The error's message. */
+      /** The error's message, with every secret value the plugin was handed removed. */
       readonly message: string;
     }
   | {
       /** `afterStart` threw or rejected; the plugin's contributions stay registered. */
       readonly code: 'after-start-failed';
-      /** The error's message. */
+      /** The error's message, with every secret value the plugin was handed removed. */
       readonly message: string;
     };
 
@@ -148,7 +152,11 @@ export interface PluginListing {
   readonly status: PluginStatus;
   /** What is wrong with it, empty when nothing is. */
   readonly problems: readonly PluginProblem[];
-  /** What it registered; empty unless it is `running`. */
+  /**
+   * What it registered; empty unless it is `running`. A contribution whose option the host did not
+   * give (`hooks` for a hook action kind, `onlineEvals` for an eval judge, a `memory` factory for an
+   * embedder or memory detector) is not registered, and is not listed.
+   */
   readonly contributions: readonly PluginContributionListing[];
 }
 

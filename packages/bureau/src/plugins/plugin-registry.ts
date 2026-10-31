@@ -32,10 +32,14 @@ export interface PluginRecord {
   readonly problems: readonly PluginProblem[];
   /** What it registered. */
   readonly contributions: readonly PluginContributionListing[];
-  /** What `setup` returned and the context it ran with; set for a running plugin. */
+  /**
+   * What `setup` returned, the context it ran with, and `redact`, which removes every secret value
+   * the plugin was handed from a message; set for a running plugin.
+   */
   readonly setup?: {
     readonly result: PluginSetupResult;
     readonly context: PluginSetupContext;
+    readonly redact: (message: string) => string;
   };
 }
 
@@ -99,7 +103,7 @@ export function createPluginRegistry(records: readonly PluginRecord[]): PluginRe
           laterProblems.set(record.entry.descriptor.name, [
             {
               code: 'after-start-failed',
-              message: error instanceof Error ? error.message : String(error),
+              message: setup.redact(error instanceof Error ? error.message : String(error)),
             },
           ]);
         }

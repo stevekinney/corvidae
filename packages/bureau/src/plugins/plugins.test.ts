@@ -305,18 +305,48 @@ describe('plugin composition', () => {
         return { tools: [toolNamed('lookup')] };
       },
     });
+    const leaky = definePlugin({
+      name: 'leaky',
+      version: '1.0.0',
+      description: 'Quotes its key when setup fails.',
+      secrets: ['leaky-api-key'],
+      setup: async ({ secrets }) => {
+        const key = await secrets.get('leaky-api-key');
+        read.push(key);
+        throw new Error(`rejected key ${String(key)} by the service`);
+      },
+    });
+    const late = definePlugin({
+      name: 'late',
+      version: '1.0.0',
+      description: 'Quotes its key when afterStart fails.',
+      secrets: ['late-api-key'],
+      setup: async ({ secrets }) => {
+        const key = await secrets.get('late-api-key');
+        read.push(key);
+        return { afterStart: () => Promise.reject(new Error(`lost ${String(key)} after start`)) };
+      },
+    });
     const bureau = await start({
-      plugins: [entry(keyed)],
+      plugins: [entry(keyed), entry(leaky), entry(late)],
       pluginConfiguration: { keyed: { configuration: { endpoint: 'https://example.test' } } },
       pluginSecrets: {
-        get: async (key) => (key.startsWith('keyed-') ? SECRET : undefined),
+        get: async (key) => (key.endsWith('-key') ? SECRET : undefined),
         watch: () => () => undefined,
       },
     });
 
-    expect(read).toEqual([SECRET]);
+    expect(read).toEqual([SECRET, SECRET, SECRET]);
     const serialized = JSON.stringify(bureau.plugins.list());
     expect(serialized).not.toContain(SECRET);
+    // A setup or afterStart that quotes a secret in its error is reported with the value removed.
+    const [, leakyListing, lateListing] = bureau.plugins.list();
+    expect(leakyListing?.problems).toEqual([
+      { code: 'setup-failed', message: 'rejected key [redacted] by the service' },
+    ]);
+    expect(lateListing?.problems).toEqual([
+      { code: 'after-start-failed', message: 'lost [redacted] after start' },
+    ]);
     expect(bureau.plugins.list()[0]?.descriptor).toEqual({
       name: 'keyed',
       version: '1.0.0',
@@ -328,6 +358,27 @@ describe('plugin composition', () => {
         { key: 'keyed-signing-key', generated: true },
       ],
     });
+  });
+
+  it('accepts a decisions.model that names a plugin’s decision router, and still refuses an unknown one', async () => {
+    const routing = definePlugin({
+      name: 'kit',
+      version: '1.0.0',
+      description: 'Contributes a decision router.',
+      setup: () => ({
+        decisionRouters: [{ name: 'router', kinds: new Set(), decide: async () => ({}) as never }],
+      }),
+    });
+    const bureau = await start({ plugins: [entry(routing)], decisions: { model: 'kit:router' } });
+    expect(bureau.plugins.list()[0]?.status).toBe('running');
+
+    const refused = await rejectionOf(
+      createBureau<AgentDefinitions>({
+        plugins: [entry(routing)],
+        decisions: { model: 'kit:nope' },
+      }),
+    );
+    expect(refused).toMatchObject({ code: 'BAD_REQUEST' });
   });
 
   it('builds memory from a factory with the detectors and embedders plugins contribute', async () => {

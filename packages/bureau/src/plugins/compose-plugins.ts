@@ -20,7 +20,7 @@ import type {
   PluginSetupContext,
   PluginSetupResult,
 } from '@lostgradient/interborough-plugin';
-import { createPluginStorage } from '@lostgradient/interborough-plugin';
+import { createPluginStorage, isPluginName } from '@lostgradient/interborough-plugin';
 import type { GovernedMemory } from '@lostgradient/memory';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { formatToolId, type Tool } from 'armorer';
@@ -42,6 +42,7 @@ import type {
   BureauPluginEntry,
   BureauPluginSettings,
   PluginClashParty,
+  PluginContributionKind,
   PluginContributionListing,
   PluginMemoryContributions,
   PluginProblem,
@@ -121,26 +122,47 @@ function secretKeysOf(entry: BureauPluginEntry): ReadonlySet<string> {
   );
 }
 
-/** The plugin's view of the secrets: only the keys it declared. */
+/** The text that stands in a problem message for a secret value the plugin was handed. */
+export const REDACTED_SECRET = '[redacted]';
+
+/**
+ * The plugin's view of the secrets, only the keys it declared, and `redact`, which removes from a
+ * message every value this view has handed out so far. A plugin that quotes a secret in an error
+ * would otherwise put it in `plugins.list()`.
+ */
 function pluginSecretsOf(
   entry: BureauPluginEntry,
   secrets: BureauOptions['pluginSecrets'],
-): PluginSecrets {
+): { readonly secrets: PluginSecrets; readonly redact: (message: string) => string } {
   const declared = secretKeysOf(entry);
+  const handedOut = new Set<string>();
   return {
-    get: async (key) => {
-      if (!declared.has(key)) {
-        throw new TypeError(
-          `Plugin "${entry.descriptor.name}" did not declare the secret "${key}".`,
-        );
+    secrets: {
+      get: async (key) => {
+        if (!declared.has(key)) {
+          throw new TypeError(
+            `Plugin "${entry.descriptor.name}" did not declare the secret "${key}".`,
+          );
+        }
+        const value = secrets === undefined ? undefined : await secrets.get(key);
+        if (typeof value === 'string' && value !== '') handedOut.add(value);
+        return value;
+      },
+    },
+    redact: (message) => {
+      let redacted = message;
+      // Longest first, so a secret that contains another is removed whole.
+      for (const value of [...handedOut].toSorted((a, b) => b.length - a.length)) {
+        redacted = redacted.replaceAll(value, REDACTED_SECRET);
       }
-      return secrets === undefined ? undefined : await secrets.get(key);
+      return redacted;
     },
   };
 }
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+/** The message of `error`, with every secret the plugin was handed removed. */
+export function messageOf(error: unknown, redact: (message: string) => string): string {
+  return redact(error instanceof Error ? error.message : String(error));
 }
 
 /** What the plugin claims and registers, before it is checked against what is held. */
@@ -150,6 +172,13 @@ interface PluginContributionPlan {
   readonly tools: ReadonlyMap<string, Tool>;
 }
 
+/**
+ * What `contributions` claims and registers. Throws when a contribution cannot be registered: a
+ * name outside the plugin name grammar (which also keeps `plugin__name` injective), a tool that
+ * cannot be rebuilt, or an embedder whose dimension is not a positive integer. The caller turns the
+ * throw into the plugin's `setup-failed`, so a malformed plugin is skipped rather than failing
+ * `createBureau`.
+ */
 function planOf(
   plugin: string,
   version: string,
@@ -159,14 +188,19 @@ function planOf(
   const listings: PluginContributionListing[] = [];
   const tools = new Map<string, Tool>();
   const contribute = (kind: PluginContributionListing['kind'], name: string, id?: string) => {
+    if (!isPluginName(name)) {
+      throw new TypeError(
+        `setup returned a ${kind} named ${JSON.stringify(name)}: a contribution name starts with a lowercase letter and uses only lowercase letters, digits and hyphens, ending in a letter or digit.`,
+      );
+    }
     const contributionId = id ?? formatToolId({ namespace: plugin, name });
     claims.push({ space: kind, name: formatToolId({ namespace: plugin, name }) });
     listings.push({ kind, id: contributionId });
   };
   for (const tool of contributions.tools ?? []) {
     const rebuilt = pluginTool(tool, plugin, version);
-    tools.set(formatToolId({ namespace: plugin, name: rebuilt.name }), rebuilt);
     contribute('tool', rebuilt.name, rebuilt.id);
+    tools.set(formatToolId({ namespace: plugin, name: rebuilt.name }), rebuilt);
   }
   for (const activity of contributions.activities ?? []) contribute('activity', activity.name);
   for (const kind of contributions.triggerKinds ?? []) contribute('trigger-kind', kind.name);
@@ -184,7 +218,16 @@ function planOf(
     contribute('decision-router', model.name);
   for (const kind of contributions.hookActionKinds ?? []) contribute('hook-action', kind.name);
   for (const provider of contributions.providers ?? []) contribute('provider', provider.name);
-  for (const embedder of contributions.embedders ?? []) contribute('embedder', embedder.name);
+  for (const embedder of contributions.embedders ?? []) {
+    // Memory's embedder registry refuses this inside the host's `memory` factory, where it would
+    // fail construction instead of skipping the plugin.
+    if (!Number.isSafeInteger(embedder.dimensions) || embedder.dimensions <= 0) {
+      throw new TypeError(
+        `setup returned the embedder "${embedder.name}" with dimension ${String(embedder.dimensions)}, which is not a positive integer.`,
+      );
+    }
+    contribute('embedder', embedder.name);
+  }
   for (const detector of contributions.memoryDetectors ?? []) {
     contribute('memory-detector', detector.name);
   }
@@ -241,7 +284,51 @@ function heldByHost(options: ComposableOptions): Claims {
   for (const name of Object.keys(options.agents ?? {})) {
     claims.hold({ space: 'code-agent', name }, HOST_PARTY);
   }
+  for (const judge of options.onlineEvals?.judges ?? []) {
+    claims.hold({ space: 'eval-judge', name: judge.name }, HOST_PARTY);
+  }
+  // Embedders and memory detectors reach memory only through the host's `memory` factory, which
+  // holds no names composition can see; a plugin's embedder id is always `plugin:name`, so it never
+  // meets memory's built-in `hashing`, and two plugins' ids are kept apart by the claims above.
+  // Providers and MCP apps have no Bureau entry point yet: the host wires them (COR-1880).
   return claims;
+}
+
+/**
+ * The kinds a host option can already hold a name of, and so that {@link heldByHost} reserves.
+ * `compose-plugins.test.ts` checks a host entry of each one refuses a plugin that claims it.
+ */
+export const HOST_HELD_KINDS: ReadonlySet<PluginContributionKind> = new Set([
+  'tool',
+  'activity',
+  'trigger-kind',
+  'validator',
+  'guardrail',
+  'run-hooks',
+  'decision-router',
+  'hook-action',
+  'event-formatter',
+  'code-agent',
+  'eval-judge',
+]);
+
+/**
+ * Whether a contribution of `kind` is registered with these options. A hook action kind needs
+ * `hooks`, an eval judge `onlineEvals`, and an embedder or memory detector a `memory` factory;
+ * without one the contribution goes nowhere, so the listing leaves it out.
+ */
+export function registersKind(kind: PluginContributionKind, options: ComposableOptions): boolean {
+  switch (kind) {
+    case 'hook-action':
+      return options.hooks !== undefined;
+    case 'eval-judge':
+      return options.onlineEvals !== undefined;
+    case 'embedder':
+    case 'memory-detector':
+      return typeof options.memory === 'function';
+    default:
+      return true;
+  }
 }
 
 /** The accumulated contributions of every running plugin. */
@@ -414,7 +501,7 @@ function optionsWith<O extends ComposableOptions>(options: O, contributed: Contr
   };
 }
 
-/** Runs `setup`, or answers why the plugin does not run. */
+/** Runs `setup` and plans what it returned, or answers why the plugin does not run. */
 async function setUp(
   entry: BureauPluginEntry,
   options: ComposableOptions,
@@ -425,6 +512,8 @@ async function setUp(
       readonly status: 'set-up';
       readonly result: PluginSetupResult;
       readonly context: PluginSetupContext;
+      readonly plan: PluginContributionPlan;
+      readonly redact: (message: string) => string;
     }
 > {
   const { descriptor } = entry;
@@ -432,24 +521,49 @@ async function setUp(
   if (!isEnabled(entry, settings)) return { status: 'disabled', problems: [] };
   const configuration = configurationProblems(entry, settings);
   if ('problems' in configuration) return { status: 'skipped', problems: configuration.problems };
-  const context: PluginSetupContext = {
-    configuration: configuration.value,
-    secrets: pluginSecretsOf(entry, options.pluginSecrets),
-    storage: createPluginStorage(storage, descriptor.name),
-  };
+  const { secrets, redact } = pluginSecretsOf(entry, options.pluginSecrets);
+  // Everything that reads the plugin runs inside the `try`: a malformed descriptor or contribution
+  // skips this plugin and never fails `createBureau`.
   try {
+    const context: PluginSetupContext = {
+      configuration: configuration.value,
+      secrets,
+      storage: createPluginStorage(storage, descriptor.name),
+    };
     const result = (await descriptor.setup?.(context as never)) ?? {};
-    return { status: 'set-up', result, context };
+    const plan = planOf(descriptor.name, descriptor.version, result);
+    return { status: 'set-up', result, context, plan, redact };
   } catch (error) {
-    return { status: 'skipped', problems: [{ code: 'setup-failed', message: messageOf(error) }] };
+    return {
+      status: 'skipped',
+      problems: [{ code: 'setup-failed', message: messageOf(error, redact) }],
+    };
   }
 }
 
 /** `given` with every caller-owned collection composition reads after an await copied now. */
 function snapshotOf<O extends ComposableOptions>(given: O): O {
-  const { agents, validators, eventFormatters, decisions, hooks, onlineEvals } = given;
+  const {
+    agents,
+    validators,
+    eventFormatters,
+    decisions,
+    hooks,
+    onlineEvals,
+    plugins,
+    pluginConfiguration,
+  } = given;
   return {
     ...given,
+    ...(plugins === undefined ? {} : { plugins: [...plugins] }),
+    // Each plugin's settings are read when its turn comes, after earlier plugins' setups awaited.
+    ...(pluginConfiguration === undefined
+      ? {}
+      : {
+          pluginConfiguration: Object.fromEntries(
+            Object.entries(pluginConfiguration).map(([name, settings]) => [name, { ...settings }]),
+          ),
+        }),
     ...(agents === undefined ? {} : { agents: { ...agents } }),
     ...(validators === undefined ? {} : { validators: [...validators] }),
     ...(eventFormatters === undefined ? {} : { eventFormatters: [...eventFormatters] }),
@@ -499,7 +613,7 @@ export async function composePlugins<O extends ComposableOptions>(
       record(outcome.status, outcome.problems);
       continue;
     }
-    const plan = planOf(entry.descriptor.name, entry.descriptor.version, outcome.result);
+    const { plan } = outcome;
     const clashes = claims.clashesOf(plan.claims, party);
     if (clashes.length > 0) {
       record('skipped', clashes);
@@ -508,8 +622,8 @@ export async function composePlugins<O extends ComposableOptions>(
     for (const claim of plan.claims) claims.hold(claim, party);
     contributed.add(entry.descriptor.name, entry.descriptor.version, outcome.result, plan.tools);
     record('running', [], {
-      contributions: plan.listings,
-      setup: { result: outcome.result, context: outcome.context },
+      contributions: plan.listings.filter(({ kind }) => registersKind(kind, options)),
+      setup: { result: outcome.result, context: outcome.context, redact: outcome.redact },
     });
   }
   return { options: optionsWith(options, contributed), tools: contributed.tools, records };
