@@ -4,7 +4,12 @@ import type { ImportedToolConfiguration } from '../../toolbox-type-inference';
 import { isAsyncIterable } from '../../type-guards';
 import type { ToolCallInput, ToolResultLike } from '../../types';
 import { importToolSchema } from '../imported-schema';
-import { toProviderToolName } from '../provider-tool-names';
+import {
+  assertDistinctNamespacedToolNames,
+  toNamespacedToolName,
+  toNamespacedToolNameOf,
+  toProviderToolName,
+} from '../provider-tool-names';
 import { normalizeToSerializedDefinitions, type ToolRegistryLike } from '../shared';
 import { geminiToolResultParts, toolResultParts } from '../tool-result-parts';
 import type {
@@ -45,7 +50,8 @@ export interface GeminiFormatToolResultsOptions {
   /**
    * The function name to echo for a call id. A name found here wins over the result's own
    * `toolName`, so tools exported with `naming: 'safe-id'` can answer under the encoded name
-   * Gemini was given (a result carries only the bare tool name).
+   * Gemini was given. Without one, a result answers under the default naming's name: its
+   * `toolName`, with a namespaced tool's `namespace:name` written `namespace__name`.
    */
   toolNameByCallId?: Record<string, string> | ((callId: string) => string | undefined);
   defaultToolName?: string;
@@ -55,7 +61,8 @@ export interface GeminiFormatToolResultsOptions {
 export interface GeminiAdapterOptions {
   /**
    * Strategy for naming tools in Gemini format.
-   * - 'default': Use the tool name (identity.name).
+   * - 'default': Use the tool name (identity.name), prefixed `<namespace>__` outside the default
+   *   namespace (`toNamespacedToolName`), which the toolbox resolves back to the tool.
    * - 'safe-id': Use the tool ID (`namespace:name@version`) encoded as a legal provider name,
    *   which keeps same-named tools from different namespaces apart. Pass
    *   `createProviderToolNameMapper(tools)` to `parseGeminiToolCalls` to map a call back to the id.
@@ -88,6 +95,7 @@ export function toGeminiTools(
   options?: GeminiAdapterOptions,
 ): GeminiTool[] {
   const definitions = normalizeToSerializedDefinitions(input);
+  if (options?.naming !== 'safe-id') assertDistinctNamespacedToolNames(definitions);
   const converted = definitions.map((definition) =>
     convertToGeminiFunctionDeclaration(definition, options),
   );
@@ -180,7 +188,10 @@ function convertToGeminiFunctionDeclaration(
   options?: GeminiAdapterOptions,
 ): GeminiFunctionDeclaration {
   return {
-    name: options?.naming === 'safe-id' ? toProviderToolName(tool.id) : tool.identity.name,
+    name:
+      options?.naming === 'safe-id'
+        ? toProviderToolName(tool.id)
+        : toNamespacedToolName(tool.identity),
     description: tool.display.description,
     parameters: transformToGeminiSchema(tool.input),
   };
@@ -293,7 +304,9 @@ function resolveGeminiToolName(
         ? mapping[result.callId]
         : undefined;
   if (mapped !== undefined) return mapped;
-  if ('toolName' in result) return result.toolName;
+  // The name Gemini called the tool by: a result reports a namespaced tool as `namespace:name`,
+  // and the default naming exported it as `namespace__name` (COR-1879).
+  if ('toolName' in result) return toNamespacedToolNameOf(result.toolName);
   return options.defaultToolName ?? 'unknown';
 }
 

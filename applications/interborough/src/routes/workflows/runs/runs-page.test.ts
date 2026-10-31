@@ -211,11 +211,11 @@ describe('the runs list', () => {
   });
 
   test('keeps Load more when what the pages hold is all narrowed out and the Bureau has more', async () => {
-    // 101 tasks none of which a goal started: the first page of 100 has no row for "A goal".
+    // 101 tasks, all started long ago: the first page of 100 has no row in the last hour.
     const tasks = Array.from({ length: 101 }, (_, index) =>
       taskFixture({ id: `run-${String(index)}`, status: 'completed' }),
     );
-    const { container, findByRole } = open('/runs?startedBy=goal', { world: { tasks } });
+    const { container, findByRole } = open('/runs?since=1h', { world: { tasks } });
 
     const more = await findByRole('button', { name: TASK_COPY.loadMore });
     expect(rowIds(container)).toEqual([]);

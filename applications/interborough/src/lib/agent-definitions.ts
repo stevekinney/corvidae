@@ -57,13 +57,15 @@ const definitionSchema = z.object({
   stepLimit: z.number().int().nullable().default(null),
   /** The reference documents, as paths beside the file; `null` when the file lists none. */
   references: z.array(z.string()).nullable().default(null),
-  /** The guardrail preset the file names; `null` when it names none. */
-  guardrails: z.enum(['default', 'tripwire', 'off']).nullable().default(null),
+  /** The plugin guardrails (`plugin:name`) the file lists besides the default preset; `null` when it lists none. */
+  guardrails: z.array(z.string()).nullable().default(null),
   /** What one run may spend; `null` when the file sets no limit. */
   costBudget: z
     .object({
       perRunUsd: z.number(),
       perChatUsd: z.number().optional(),
+      /** The fractions of the budget at which a run warns. The editor never edits them; a save sends them back. */
+      warnAt: z.array(z.number()).optional(),
     })
     .nullable()
     .default(null),
@@ -197,6 +199,21 @@ export type AgentDefinitionInput = {
   readonly skillDescriptors: readonly AgentSkill[];
   /** Whether the agent opts into A2A. Left out, an update keeps the file's value. */
   readonly a2a?: boolean;
+  /** The most steps a run may take. `null` removes the limit; left out, an update keeps the file's. */
+  readonly stepLimit?: number | null;
+  /** The plugin guardrails (`plugin:name`). `null` removes them; left out, an update keeps the file's. */
+  readonly guardrails?: readonly string[] | null;
+  /** What one run, and one chat, may spend. `null` removes the limit; left out, an update keeps the file's. */
+  readonly costBudget?: {
+    readonly perRunUsd: number;
+    readonly perChatUsd?: number;
+    readonly warnAt?: readonly number[];
+  } | null;
+  /** What one run's tools may use. `null` removes the limit; left out, an update keeps the file's. */
+  readonly toolBudget?: {
+    readonly maxCalls?: number;
+    readonly maxDurationSeconds?: number;
+  } | null;
   readonly instructions: string;
 };
 

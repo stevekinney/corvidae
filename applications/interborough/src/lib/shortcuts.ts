@@ -32,6 +32,12 @@ export interface ShortcutDescriptor {
   readonly group: string;
   /** Where the keys act. */
   readonly scope: ShortcutScope;
+  /**
+   * `'mod'` makes the keys a single key held with ⌘ (Control where there is no ⌘), such as ⌘Enter.
+   * It acts even in a field the person is typing into, which is the point of a save shortcut, and
+   * never starts or continues a sequence. Left out, the keys are pressed without a modifier.
+   */
+  readonly modifier?: 'mod';
 }
 
 /** One shortcut the registry lists and handles. */
@@ -153,6 +159,7 @@ export class ShortcutRegistry {
     if (descriptor.keys.length === 0) throw new Error(`Shortcut "${descriptor.label}" has no keys`);
     const clash = this.#registrations.find(
       (existing) =>
+        existing.descriptor.modifier === descriptor.modifier &&
         keysCollide(existing.descriptor.keys, descriptor.keys) &&
         scopesOverlap(existing.descriptor.scope, descriptor.scope),
     );
@@ -183,7 +190,11 @@ export class ShortcutRegistry {
         group = { label: descriptor.group, shortcuts: [] };
         groups.set(descriptor.group, group);
       }
-      group.shortcuts.push({ action: descriptor.label, keys: descriptor.keys.map(displayKey) });
+      const keys = descriptor.keys.map(displayKey);
+      group.shortcuts.push({
+        action: descriptor.label,
+        keys: descriptor.modifier === 'mod' ? ['⌘', ...keys] : keys,
+      });
     }
     return [...groups.values()];
   }
@@ -195,6 +206,19 @@ export class ShortcutRegistry {
    * the caller can keep the browser from acting on the key as well.
    */
   handleKey(event: ShortcutKey, context: ShortcutContext, nowMs: number): boolean {
+    if ((event.metaKey || event.ctrlKey) && !event.altKey) {
+      this.#pending = null;
+      const held = this.#registrations.find(
+        (registration) =>
+          registration.handler !== undefined &&
+          registration.descriptor.modifier === 'mod' &&
+          registration.descriptor.keys[0] === event.key &&
+          scopeActive(registration.descriptor.scope, context),
+      );
+      if (held?.handler === undefined) return false;
+      held.handler();
+      return true;
+    }
     if (event.editable || event.metaKey || event.ctrlKey || event.altKey) {
       this.#pending = null;
       return false;
@@ -214,6 +238,7 @@ export class ShortcutRegistry {
     const active = this.#registrations.filter(
       (registration) =>
         registration.handler !== undefined &&
+        registration.descriptor.modifier === undefined &&
         scopeActive(registration.descriptor.scope, context) &&
         startsWith(registration.descriptor.keys, sequence),
     );

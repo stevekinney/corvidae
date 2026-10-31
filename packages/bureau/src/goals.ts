@@ -154,7 +154,10 @@ export function createBureauGoals<TName extends string = string>(
       : { outcome: 'not-found' };
   }
 
-  async function create(request: BureauGoalRequest<TName>): Promise<BureauGoalCreateOutcome> {
+  async function create(
+    request: BureauGoalRequest<TName>,
+    source?: string,
+  ): Promise<BureauGoalCreateOutcome> {
     const rejected = (
       code: Extract<BureauGoalCreateOutcome, { outcome: 'rejected' }>['code'],
       reason: string,
@@ -217,6 +220,7 @@ export function createBureauGoals<TName extends string = string>(
           // `createGoalState` refuses it with `principalDefect`, before anything
           // is stored.
           principal: ownerOrLocal(request.principal),
+          ...(source === undefined ? {} : { source }),
           now: clock.nowISO(),
         }),
       };
@@ -671,5 +675,40 @@ export function createBureauGoals<TName extends string = string>(
     }
   }
 
-  return { create, get: authorized, list, active, cancel, recover, close };
+  const goals = {
+    create: (request: BureauGoalRequest<TName>) => create(request),
+    get: authorized,
+    list,
+    active,
+    cancel,
+    recover,
+    close,
+  };
+  // Kept off the public surface: only the host API a plugin is given creates under its name.
+  pluginGoalCreators.set(goals, (request, plugin) =>
+    create(request as BureauGoalRequest<TName>, plugin),
+  );
+  return goals;
+}
+
+/** COR-1879 — each goals surface's own `create`, taking the plugin a goal is created for. */
+const pluginGoalCreators = new WeakMap<
+  object,
+  (request: BureauGoalRequest, plugin: string) => Promise<BureauGoalCreateOutcome>
+>();
+
+/**
+ * COR-1879 — creates a goal through `goals` as plugin `plugin`, which the goal's record stores so
+ * every `goal.*` event it projects carries `source: plugin`. Only Bureau's per-plugin host API
+ * calls it; `bureau.goals.create` cannot name a source.
+ */
+export function createGoalForPlugin(
+  goals: object,
+  request: BureauGoalRequest,
+  plugin: string,
+): Promise<BureauGoalCreateOutcome> {
+  const created = pluginGoalCreators.get(goals);
+  if (created === undefined)
+    throw new TypeError('These goals were not built by createBureauGoals.');
+  return created(request, plugin);
 }

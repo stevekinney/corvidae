@@ -252,11 +252,18 @@
         result.action.type === 'approval' ? result.action.message : undefined,
         reason,
       );
+      // The name the approval reports the tool by (`plugin:tool` for a plugin's tool), not the
+      // provider's `plugin__tool` the model called it by (COR-1879); the call's name until the
+      // Bureau's pending reviews have been read.
+      const reviewed = pendingReviews.data?.find(
+        (review) => review.kind === 'tool-approval' && review.approval.callId === result.callId,
+      );
+      const toolName = reviewed?.kind === 'tool-approval' ? reviewed.approval.toolName : call?.name;
       return {
         toolCallId: result.callId,
-        toolName: call?.name,
+        toolName,
         question: approvalQuestion({
-          toolName: call?.name ?? 'a tool',
+          toolName: toolName ?? 'a tool',
           arguments: call?.arguments,
           summary,
         }),

@@ -131,6 +131,7 @@ import {
 } from '@lostgradient/weft';
 import {
   type AnyToolbox,
+  formatToolName,
   type SignedPendingToolApproval,
   type Tool,
   type ToolExecutionResult,
@@ -148,7 +149,12 @@ import {
   getOwn,
 } from 'conversationalist';
 
+import type { PluginHostApi } from '@lostgradient/interborough-plugin';
 import { shutdownThenRethrow } from './composition-failure';
+import { composePlugins } from './plugins/compose-plugins';
+import { createPluginRegistry } from './plugins/plugin-registry';
+import { markEventSource } from './event-source';
+import { createGoalForPlugin } from './goals';
 import { type AgentDefinitions, type AgentNames, createAgentCatalog } from './agent-catalog';
 import { AgentFileError, AgentSnapshotError, type AgentFileDefinitionInput } from './agent-file';
 import { createTryAgents, isTryAgentName, TRY_AGENT_NAME_START, tryToolProblem } from './agent-try';
@@ -293,6 +299,7 @@ import { createAbandonedTaskSweeper, openProcessLease } from './process-lease';
 import {
   createDecisions,
   decisionModelNames,
+  validateDecisionsModelChoice,
   validateDecisionsOptions,
 } from './decisions/create-decisions';
 import { createLateDecisions } from './decisions/late-decisions';
@@ -2484,6 +2491,13 @@ async function constructBureau<const D extends AgentDefinitions>(
       );
     }
   }
+  // COR-1879 — plugin setup runs once the caller's options are known to be usable, and what the
+  // running plugins contribute is folded into the options the rest of construction reads.
+  const composedPlugins = await composePlugins(options);
+  options = composedPlugins.options;
+  // COR-1879: `decisions.model` may name a decision router a plugin contributed.
+  validateDecisionsModelChoice(options.decisions, toBadRequest);
+  const pluginRegistry = createPluginRegistry(composedPlugins.records);
   // COR-1721 — the one choke point every Bureau diagnostic passes through: it reaches the sink, and,
   // once the emitter below is bound, is dispatched as a `diagnostic` event (level and scope only).
   const diagnostics = createDiagnosticDispatcher(resolveDiagnosticSink(options.onDiagnostic));
@@ -2578,6 +2592,9 @@ async function constructBureau<const D extends AgentDefinitions>(
   // COR-1721 — the forwarders onto the emitter from sources it does not own (assets, file catalogs,
   // the engine's missed fires), stopped at shutdown just before `bureau.disposed`.
   const stopForwarding: Array<() => void> = [];
+  // COR-1879 — a plugin missing a declared secret follows the host's `watch` from here, so the
+  // secret's save or removal changes its contributions with no restart; stopped at shutdown.
+  stopForwarding.push(composedPlugins.watchSecrets());
   // COR-1421 — `onEvent` listens from here, before any recovery pass can
   // dispatch, so it hears the boot-time events a listener added after
   // `createBureau()` returns would miss. It is registered AFTER the event
@@ -3098,7 +3115,13 @@ async function constructBureau<const D extends AgentDefinitions>(
               hookOrigin: await hookOriginOfRun(runId),
             }),
           });
-    agentToolCatalog = { ...options.agentSource?.tools, ...settingsTools, ...workflowTools };
+    agentToolCatalog = {
+      ...options.agentSource?.tools,
+      // COR-1879: the plugins' tools, by the `plugin:name` an agent file names them with.
+      ...composedPlugins.tools,
+      ...settingsTools,
+      ...workflowTools,
+    };
     // COR-1818: the tools Bureau added itself, which the tool catalog reports as its own.
     const bureauToolNames: ReadonlySet<string> = new Set([
       ...Object.keys(settingsTools),
@@ -3186,6 +3209,8 @@ async function constructBureau<const D extends AgentDefinitions>(
               nowISO: runtimeServices.clock.nowISO,
             }),
             runtime: runtimeServices,
+            onPinnedUnavailable: (activity, runId) =>
+              pluginRegistry.notePinnedUnavailable(activity, runId),
             diagnose: (message, cause) =>
               diagnose({
                 level: 'error',
@@ -7531,7 +7556,11 @@ async function constructBureau<const D extends AgentDefinitions>(
         try {
           // COR-1872: the call resumes at the tool version its run recorded, or not at all.
           const unavailable = pinnedToolUnavailable(toolbox, approval);
-          if (unavailable !== undefined) throw unavailable;
+          if (unavailable !== undefined) {
+            // COR-1879: the plugin whose tool the run pinned reports the run it waited on.
+            pluginRegistry.notePinnedUnavailable(unavailable.toolId, runId);
+            throw unavailable;
+          }
           await restoreApproval(approval as SignedPendingToolApproval);
         } catch (error) {
           if (
@@ -17941,7 +17970,18 @@ async function constructBureau<const D extends AgentDefinitions>(
             review,
             runToolboxesByRunId.get(review.runId),
           );
-          if (!policyToolbox.tools().some((tool) => tool.name === approval.toolName)) {
+          // COR-1879: by id when the approval is bound to one, so an approval for `b:search` is not
+          // let through by a skill that permits `a:search`, which shares the name `search`.
+          const boundToolId = approval.approvalBinding?.toolDefinitionRevision;
+          if (
+            !policyToolbox
+              .tools()
+              .some((tool) =>
+                boundToolId === undefined
+                  ? formatToolName(tool.identity) === approval.toolName
+                  : tool.id === boundToolId,
+              )
+          ) {
             throw new BureauError(
               `Cannot approve: tool "${approval.toolName}" is not permitted by the run's active skills.`,
               'CONFLICT',
@@ -19032,6 +19072,8 @@ async function constructBureau<const D extends AgentDefinitions>(
   async function createSchedule(
     definition: DurableScheduleDefinition,
     scheduleOptions?: CreateScheduleOptions,
+    // COR-1879 — the plugin whose host API creates the schedule; its `schedule.created` names it.
+    source?: string,
   ): Promise<import('@lostgradient/weft').ScheduleSummary | undefined> {
     if (definition.sessionId !== undefined) {
       rejectReservedIdentifier('"sessionId"', definition.sessionId.trim());
@@ -19069,7 +19111,14 @@ async function constructBureau<const D extends AgentDefinitions>(
     // `createAgentSchedule`'s `AgentScheduledEvent` (`schedule.created`, AB-298)
     // straight onto it, exactly once for the fresh registration this call makes —
     // no separate dispatch needed here.
-    const scheduler = createAgentScheduler({ engine: runtime.durable.engine, emitter });
+    const scheduler = createAgentScheduler({
+      engine: runtime.durable.engine,
+      // COR-1879: the internal variant a plugin's host API uses marks what it forwards.
+      emitter:
+        source === undefined
+          ? emitter
+          : { dispatch: (event) => emitter.dispatch(markEventSource(event, source)) },
+    });
     // COR-1952: a schedule a hook-started run creates records the hook before it exists, under an
     // id minted here, so no fire can run before its origin is readable.
     const hookOrigin =
@@ -21267,7 +21316,8 @@ async function constructBureau<const D extends AgentDefinitions>(
   // the emitter, and the transition outbox; `events` reads the `schedule` owner of the history the
   // Bureau already serves.
   const schedules = createSchedules({
-    create: createSchedule,
+    // Never the third, internal parameter: only a plugin's host API names a source.
+    create: (definition, scheduleOptions) => createSchedule(definition, scheduleOptions),
     get: getSchedule,
     list: listSchedules,
     pause: pauseSchedule,
@@ -21344,6 +21394,7 @@ async function constructBureau<const D extends AgentDefinitions>(
 
   const bureau: Bureau<D> = {
     id: bureauId,
+    plugins: pluginRegistry.plugins,
     reviews,
     schedules,
     contexts,
@@ -22067,4 +22118,68 @@ async function constructBureau<const D extends AgentDefinitions>(
   trackFireReviewSeeds(bureau, fireReviewSeeds);
   if (fireReviewFollower !== undefined) trackFireReviewFollower(bureau, fireReviewFollower);
   construction.built(bureau);
+  // COR-1879 — after the caller has the Bureau, so a plugin's `afterStart` costs a recovered run's
+  // first events nothing; `bureau.plugins.ready()` settles when every one has.
+  // COR-1879 — a file a running plugin ships that names a contribution nothing loaded holds, and
+  // what names each contribution, counted on every `plugins.list()`.
+  pluginRegistry.observe({
+    agents: () => bureau.agents.list(),
+    agentReferences: async () => {
+      const ready = bureau.agents.list().filter(({ state }) => state === 'ready');
+      const details = await Promise.all(ready.map(({ id }) => bureau.agents.detail(id)));
+      return details.flatMap((detail) =>
+        detail === undefined
+          ? []
+          : [
+              {
+                id: detail.id,
+                tools: detail.definition?.tools ?? detail.codeDefinition?.tools ?? [],
+                guardrails: detail.definition?.guardrails ?? [],
+                hooks: detail.definition?.hooks ?? [],
+              },
+            ],
+      );
+    },
+    scheduleAgents: async () => {
+      const agentNames: string[] = [];
+      const pageSize = 100;
+      for (let offset = 0; ; offset += pageSize) {
+        const page = await listSchedules({
+          status: ['active', 'paused'],
+          limit: pageSize,
+          offset,
+        });
+        if (page === undefined) break;
+        for (const schedule of page.items) {
+          const agentName = await getScheduleAgentName(schedule.id);
+          if (agentName !== undefined) agentNames.push(agentName);
+        }
+        if (page.items.length < pageSize || offset + pageSize >= page.total) break;
+      }
+      return agentNames;
+    },
+    waitingRuns: () =>
+      bureau.reviews.list().map((review) => ({
+        runId: review.runId,
+        agentName: review.agentName,
+        toolName: review.kind === 'tool-approval' ? review.approval.toolName : undefined,
+      })),
+  });
+  void pluginRegistry.start((plugin) => pluginHostApiOf(bureau as unknown as Bureau, plugin));
+
+  /**
+   * COR-1879 — the slice of `bureau` plugin `plugin` may call, and nothing else. What it causes is
+   * the plugin's: the schedule it creates announces `schedule.created` with `source: plugin`, and
+   * the goal it creates stores the plugin, so every `goal.*` event of the goal carries it.
+   */
+  function pluginHostApiOf(host: Bureau, plugin: string): PluginHostApi {
+    return {
+      agents: { list: () => host.agents.list() },
+      schedules: {
+        create: (definition) => createSchedule(definition, undefined, plugin),
+        list: (filter) => host.schedules.list(filter),
+      },
+      goals: { create: (request) => createGoalForPlugin(goalsComposition.goals, request, plugin) },
+    };
+  }
 }

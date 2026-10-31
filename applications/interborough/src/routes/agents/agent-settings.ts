@@ -37,7 +37,10 @@ export function settingsOf(detail: AgentDetail): AgentSettingsView {
   return {
     model: definition.model,
     models: definition.models ?? [],
-    guardrails: definition.guardrails,
+    guardrails:
+      definition.guardrails === null || definition.guardrails.length === 0
+        ? null
+        : definition.guardrails.join(', '),
     stepLimit: definition.stepLimit === null ? null : String(definition.stepLimit),
     spendPerRun: definition.costBudget === null ? null : copy.usd(definition.costBudget.perRunUsd),
     spendPerChat:

@@ -149,7 +149,39 @@ export const AGENT_EDITOR_COPY = {
     model: 'Model',
     instructions: 'Instructions',
     tools: 'Tools',
+    limits: 'Guardrails and limits',
   },
+  limits: {
+    description:
+      'What keeps a run in bounds. Leave a spend or tool field empty for no limit; the agent page shows what is set.',
+    guardrailsLabel: 'Guardrails',
+    guardrailsDescription:
+      'Plugin guardrails the agent runs besides the default ones, as plugin:name, one per line.',
+    stepLimitLabel: 'Steps per run',
+    stepLimitDescription: 'The most steps one run may take. Empty uses the default of 25.',
+    spendPerRunLabel: 'Spend per run (USD)',
+    spendPerRunDescription: 'A run that reaches this stops.',
+    spendPerChatLabel: 'Spend per chat (USD)',
+    spendPerChatDescription: 'All the runs of one chat together. Needs a limit per run.',
+    toolCallsLabel: 'Tool calls per run',
+    toolCallsDescription: 'The most tool calls one run may make.',
+    toolSecondsLabel: 'Tool time per run (seconds)',
+    toolSecondsDescription: 'How long a run may keep calling tools, counted from its start.',
+    errors: {
+      guardrails: 'Write each guardrail as plugin:name, one per line.',
+      stepLimit: (maximum: number): string => `Use a whole number from 1 to ${String(maximum)}.`,
+      spend: (maximum: number): string => `Use an amount above 0, up to ${String(maximum)}.`,
+      chatNeedsRun: 'Set a limit per run first: a chat limit sits on top of it.',
+      toolCalls: (maximum: number): string => `Use a whole number from 1 to ${String(maximum)}.`,
+      toolSeconds: (maximum: number): string =>
+        `Use a number of seconds above 0, up to ${String(maximum)}.`,
+    },
+  },
+  /** The line under the heading: when the agent was last saved, and the version that made. */
+  saved: 'Saved',
+  version: (revision: number): string => `Version ${String(revision)}`,
+  /** The keyboard shortcut's group in the `?` map. */
+  shortcutGroup: 'Agent editor',
   nameLabel: 'Name',
   nameDescription: 'What people see. It need not be unique.',
   identifierLabel: 'Identifier',
@@ -174,13 +206,14 @@ export const AGENT_EDITOR_COPY = {
    * saved without one, and nothing in the application can add a provider.
    */
   noProvider: {
-    title: 'Add a model provider to create agents',
-    description: 'Agents run on a model. This installation has none configured.',
+    title: 'No model provider yet',
+    description:
+      'Agents run on a model, and this installation has none connected. Connect a provider, then come back: this page shows the form as soon as the installation offers a model.',
     configurationStep:
       'Put this in the configuration file. If the file exists, add the provider to its providers.',
     secretStep: 'Save the provider’s API key in its own file, readable only by you (chmod 600).',
-    restartStep: 'Restart the host, then reload this page.',
-    reload: 'Reload this page',
+    restartStep: 'Restart the host, then check again.',
+    reload: 'Check again',
     snippetLabel: 'Provider configuration',
   },
   toolsDescription: 'The tools this agent may call.',
@@ -233,8 +266,9 @@ export const AGENT_EDITOR_COPY = {
     caption: 'Versions of this agent that have run',
     versionColumn: 'Version',
     lastRunColumn: 'Last run',
-    empty: 'No version of this agent has run yet.',
-    failed: 'The revision history could not be loaded.',
+    emptyTitle: 'No version has run yet',
+    empty: 'A version appears here once the agent runs on it.',
+    failedTitle: 'The revision history could not be loaded',
   },
 } as const;
 
@@ -662,6 +696,7 @@ export const SCHEDULE_COPY = {
 export const SETTINGS_SECTION_COPY = {
   navigation: 'Settings sections',
   general: 'General',
+  modelPolicy: 'Model policy',
   dataAndRetention: 'Data and retention',
   apiReference: 'API reference',
 } as const;
@@ -670,6 +705,60 @@ export const SETTINGS_SECTION_COPY = {
 export const HEALTH_DIAGNOSTICS_COPY = {
   title: 'Diagnostics',
   sections: 'Diagnostic sections',
+} as const;
+
+/** The words of Settings › Model policy: which models may be used, and the caller's own preferences. */
+export const MODEL_POLICY_COPY = {
+  intro:
+    'Choose which providers and models agents may use. Everything not ruled out here stays allowed.',
+  allowedModels: {
+    title: 'Allowed models',
+    description:
+      'Nothing listed here can be used by any agent or plan, whoever starts it. Leave a list empty to allow everything in it.',
+  },
+  yourPreferences: {
+    title: 'Your preferences',
+    description:
+      'What your own chats and plans should choose from, among what is allowed above. Anything left empty makes no choice for you.',
+  },
+  lockedNote: 'The host sets the model policy, and it cannot be changed here.',
+  /** Said under a list of providers when a name is not the form a provider takes. */
+  providerName: 'A provider is lowercase letters, numbers and hyphens, such as anthropic.',
+  /** Said while a list holds text that has not been added, which Save would leave out. */
+  pendingEntry: 'Press Enter to add the text you typed to its list, or clear it, before saving.',
+  notRequired: 'Not required',
+  noPreference: 'No preference',
+  fields: {
+    deniedProviders: 'Providers not allowed',
+    deniedModels: 'Models not allowed',
+    deniedRoutes: 'Routes not allowed',
+    deniedRegions: 'Regions not allowed',
+    requireDataPolicy: 'Data retention required',
+    allowedProviders: 'Only these providers',
+    preferredDeniedProviders: 'Never these providers',
+    allowedModels: 'Only these models',
+    preferredDeniedModels: 'Never these models',
+    dataPolicy: 'Data retention',
+    defaultEffort: 'Default effort',
+    costPreference: 'Cost',
+    latencyPreference: 'Speed',
+    effortFallbackMode: 'When the effort is not available',
+  },
+  options: {
+    dataPolicy: {
+      'no-retention': 'No retention',
+      'zero-day-retention': 'Zero-day retention',
+      standard: 'Standard',
+    },
+    effort: { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Maximum' },
+    cost: { 'lowest-cost': 'Lowest cost', balanced: 'Balanced', 'no-preference': 'No preference' },
+    latency: {
+      'lowest-latency': 'Fastest',
+      balanced: 'Balanced',
+      'no-preference': 'No preference',
+    },
+    effortFallback: { reject: 'Refuse the request', degrade: 'Use a lower effort' },
+  },
 } as const;
 
 /** The words the settings page (`/settings`) uses outside its view states. */
@@ -683,12 +772,25 @@ export const SETTINGS_COPY = {
   reloadAction: 'Reload settings',
   /** The words under a switch or a field whose key has no value, so the code default applies. */
   unset: 'Not set. The code default applies.',
-  milliseconds: 'milliseconds',
-  /** The label of the select that chooses between a setting's literals and its numbers. */
-  modeLabel: 'Kept for',
-  /** The label of the JSON editor under a switch, after the key's name. */
-  jsonLabel: 'options as JSON',
-  apply: { live: 'Applies live', restart: 'Needs a restart' },
+  /** What a setting with no value reads, and the option of a select that chooses none. */
+  notSet: 'Not set',
+  /** Reveals the fields of a setting that has no value. */
+  setAction: 'Set a value',
+  /** Puts a setting whose fields were revealed back to having no value, before it is saved. */
+  unsetAction: 'Not set',
+  /** The label of the JSON editor under a switch whose options are free-form JSON. */
+  optionsLabel: 'Options (JSON)',
+  /** Only a setting that needs a restart says how it applies; a live one says nothing. */
+  apply: { restart: 'Needs a restart' },
+  /** The heading of the settings shortcuts in the `?` map. */
+  shortcutGroup: 'Settings',
+  /** What the Bureau refused about a value, when it names nothing. */
+  invalidValue: 'This value is not one the setting takes.',
+  /** The page-level summary of the settings that wait for the host to start again. */
+  restartSummary: (keys: readonly string[]): string =>
+    keys.length === 1
+      ? `1 setting applies when the host starts again: ${keys.join(', ')}.`
+      : `${String(keys.length)} settings apply when the host starts again: ${keys.join(', ')}.`,
   pendingRestart: 'Restart pending',
   locked: 'Locked',
   /** Why a locked key cannot be changed, by the reason the Bureau reports. */
@@ -702,8 +804,6 @@ export const SETTINGS_COPY = {
   saved: {
     title: 'Settings saved',
     description: 'The changes apply live where a setting allows it.',
-    pendingRestart: (keys: readonly string[]): string =>
-      `These apply when the host starts again: ${keys.join(', ')}.`,
   },
   /** A save the Bureau refused because the settings changed since the page read them. */
   stale: {
@@ -1419,7 +1519,19 @@ export const TASK_COPY = {
   untitledChat: 'Untitled chat',
   goal: 'goal',
   schedule: 'schedule',
+  agent: 'agent',
+  workflow: 'workflow',
   startedDirectly: 'Started directly',
+  /** Under Started by, for a run recorded before the origin of a run was kept. */
+  originUnrecorded: 'Not recorded',
+  /** How a person started a run outside a chat, after "A person". */
+  personSurface: {
+    web: 'in the web app',
+    palette: 'from the command palette',
+    api: 'through the API',
+  },
+  /** After "A schedule", when a person fired it by hand instead of its cadence. */
+  firedByHand: 'fired by hand',
   sessionLabel: 'Session',
   anyStatus: 'Any status',
   filterAction: 'Filter',
@@ -1545,6 +1657,32 @@ export const TASK_COPY = {
       'Canceled, but cleanup could not be confirmed and may still be running. Nothing is promised about its effects outside this system.',
     'unknown-outcome': 'An effect outside this system may or may not have happened.',
     rejected: 'Not canceled. The task had already finished.',
+  },
+  /** The record of a workflow run the engine behind the console does not hold, read from the Bureau. */
+  runRecord: {
+    label: 'Run record',
+    workflow: 'Workflow',
+    status: 'Status',
+    started: 'Started',
+    changed: 'Last changed',
+    startedBy: 'Started by',
+    input: 'Input',
+    result: 'Result',
+    error: 'Error',
+    inputPayload: 'Input payload',
+    resultPayload: 'Result payload',
+    loading: 'Loading the run',
+    failed: {
+      title: 'The run could not be loaded',
+      description: 'The server did not answer. Check that the host is running, then try again.',
+    },
+  },
+  /** What a refused cancel says when the run belongs to something else, which is the one to stop. */
+  cancelOwned: {
+    'owned-by-goal':
+      'Not canceled. This run is an attempt of a goal, and cancelling the goal stops it.',
+    'owned-by-workflow':
+      'Not canceled. This run is a step of a workflow, and it is not canceled on its own.',
   },
 } as const;
 

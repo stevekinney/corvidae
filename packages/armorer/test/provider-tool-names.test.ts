@@ -1,3 +1,4 @@
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
@@ -6,7 +7,9 @@ import {
   createProviderToolNameMapper,
   createTool,
   createToolbox,
+  formatAnthropicToolResults,
   formatGeminiToolResults,
+  formatOpenAIToolResults,
   parseAnthropicToolCalls,
   parseGeminiToolCalls,
   parseOpenAIToolCalls,
@@ -206,5 +209,114 @@ describe('naming through the toolbox and the Gemini result formatter', () => {
       content: { ok: true },
     });
     expect(bare?.functionResponse.name).toBe('search');
+  });
+});
+
+describe('default naming of a namespaced tool', () => {
+  function searchIn(namespace: string | undefined, executed: string[]) {
+    return createTool({
+      name: 'search',
+      ...(namespace === undefined ? {} : { namespace }),
+      version: '2.0.0',
+      description: 'Search',
+      input: z.object({ query: z.string() }),
+      async execute({ query }) {
+        executed.push(`${namespace ?? 'default'}:${query}`);
+        return query;
+      },
+    });
+  }
+
+  it('exports namespace__name, a name every provider accepts, and keeps a default tool bare', async () => {
+    const toolbox = createToolbox([searchIn('a', []), searchIn('b', []), searchIn(undefined, [])]);
+    const anthropic = await toolbox.toAnthropicTools();
+    const gemini = await toolbox.toGeminiTools();
+    const openai = await toolbox.toOpenAITools();
+    const expected = ['a__search', 'b__search', 'search'];
+
+    expect(anthropic.map(({ name }) => name)).toEqual(expected);
+    expect(gemini[0]!.functionDeclarations.map(({ name }) => name)).toEqual(expected);
+    expect(openai.map(({ function: { name } }) => name)).toEqual(expected);
+    for (const name of expected) expect(name).toMatch(/^[a-zA-Z0-9_-]{1,64}$/);
+    // The id a durable record pins is unchanged by the provider name.
+    expect(toolbox.tools().map(({ id }) => id)).toEqual([
+      'a:search@2.0.0',
+      'b:search@2.0.0',
+      'default:search@2.0.0',
+    ]);
+  });
+
+  it('runs the tool a provider called by namespace__name, through each adapter’s parsed call', async () => {
+    const executed: string[] = [];
+    const toolbox = createToolbox([searchIn('a', executed), searchIn('b', executed)]);
+
+    const [anthropicCall] = parseAnthropicToolCalls([
+      { type: 'tool_use', id: 'call-1', name: 'b__search', input: { query: 'from-claude' } },
+    ]);
+    const [geminiCall] = parseGeminiToolCalls([
+      { functionCall: { id: 'g1', name: 'a__search', args: { query: 'from-gemini' } } },
+    ]);
+    expect(toolbox.resolveTool('b__search')).toMatchObject({
+      ok: true,
+      tool: { id: 'b:search@2.0.0' },
+    });
+    await toolbox.execute(anthropicCall!);
+    await toolbox.execute(geminiCall!);
+    expect(executed).toEqual(['b:from-claude', 'a:from-gemini']);
+  });
+
+  it('answers each adapter’s call under the name it exported (COR-1879)', async () => {
+    const toolbox = createToolbox([searchIn('a', []), searchIn('b', [])]);
+    const [gemini] = await toolbox.toGeminiTools();
+    const exported = gemini!.functionDeclarations[0]!.name;
+    expect(exported).toBe('a__search');
+
+    const [geminiCall] = parseGeminiToolCalls([
+      { functionCall: { id: 'g1', name: exported, args: { query: 'q' } } },
+    ]);
+    const [anthropicCall] = parseAnthropicToolCalls([
+      { type: 'tool_use', id: 'c1', name: exported, input: { query: 'q' } },
+    ]);
+    const [openaiCall] = parseOpenAIToolCalls([
+      { id: 'o1', type: 'function', function: { name: exported, arguments: '{"query":"q"}' } },
+    ]);
+    const geminiResult = await toolbox.execute(geminiCall!);
+    const anthropicResult = await toolbox.execute(anthropicCall!);
+    const openaiResult = await toolbox.execute(openaiCall!);
+
+    expect(geminiResult.toolName).toBe('a:search');
+    expect(formatGeminiToolResults([geminiResult])[0]!.functionResponse.name).toBe(exported);
+    // Anthropic and OpenAI answer by call id, never by name.
+    expect(formatAnthropicToolResults([anthropicResult])[0]).toMatchObject({ tool_use_id: 'c1' });
+    expect(JSON.stringify(formatAnthropicToolResults([anthropicResult]))).not.toContain('a:search');
+    expect(formatOpenAIToolResults([openaiResult])[0]).toMatchObject({ tool_call_id: 'o1' });
+    expect(JSON.stringify(formatOpenAIToolResults([openaiResult]))).not.toContain('a:search');
+  });
+
+  it('refuses to export two tools that would reach a provider under one name (COR-1879)', async () => {
+    const toolbox = createToolbox([
+      createTool({ name: 'a__search', description: 'Bare', execute: async () => 'bare' }),
+      searchIn('a', []),
+    ]);
+    const clash =
+      'Tools "default:a__search" and "a:search@2.0.0" both reach a provider as "a__search"';
+
+    expect(() => toolbox.toAnthropicTools()).toThrow(clash);
+    expect(() => toolbox.toGeminiTools()).toThrow(clash);
+    expect(() => toolbox.toOpenAITools()).toThrow(clash);
+    expect(() => toAnthropicTools(toolbox.tools())).toThrow(clash);
+    expect(toAnthropicTools(toolbox.tools(), { naming: 'safe-id' })).toHaveLength(2);
+    expect(await throwingRejectionOf(toOpenAIAgentTools(toolbox))).toThrow(clash);
+  });
+
+  it('prefers a registered bare name that contains __ over the namespaced reading', () => {
+    const toolbox = createToolbox([
+      createTool({ name: 'a__search', description: 'Bare', execute: async () => 'bare' }),
+      searchIn('a', []),
+    ]);
+    expect(toolbox.resolveTool('a__search')).toMatchObject({
+      ok: true,
+      tool: { id: 'default:a__search' },
+    });
   });
 });

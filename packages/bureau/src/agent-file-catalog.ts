@@ -84,6 +84,7 @@ import {
   type AgentCostBudget,
   type AgentFileDefinition,
   type AgentFileDefinitionInput,
+  type AgentFileIssue,
   type AgentFileProblem,
   AgentFileError,
   AgentSnapshotError,
@@ -660,6 +661,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
           issues: missing.map((name) => ({
             path: 'tools',
             message: `"${name}" is not a registered tool`,
+            reference: name,
           })),
         },
       };
@@ -817,14 +819,16 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         return {
           // Only the agent's own tools: the toolbox also holds the tools Bureau adds to a run.
           policy: createToolApprovalHooks(definition.toolApproval, {
-            tools: definition.tools,
+            // By the key the file declared each tool under, which `toolApproval` is keyed by too.
+            tools,
             // A tool a person allowed for the rest of this chat skips its `on-changes` ask.
             ...(rememberedTools === undefined || runId === undefined
               ? {}
               : {
                   // A grant is the tool's id, version included, when the approvals are signed (the
                   // approval binds to that id), so a tool whose definition changed asks again
-                  // (COR-1950). Unsigned approvals carry no id, so their grant is the name.
+                  // (COR-1950). Unsigned approvals carry no id, so their grant is the name the tool
+                  // is reported by, `plugin:tool` for a plugin's tool (COR-1879).
                   remembered: async (tool: { name: string; id: string }) => {
                     const granted = await rememberedTools(runId);
                     return granted.has(options.approvalSecret === undefined ? tool.name : tool.id);
@@ -897,7 +901,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     problem: AgentFileProblem,
     definition: AgentFileDefinition,
   ): AgentFileProblem {
-    const named = (issues: readonly { path: string; message: string }[]): AgentFileProblem => ({
+    const named = (issues: readonly AgentFileIssue[]): AgentFileProblem => ({
       ...problem,
       message: `The definition cannot be used: ${issues.map((issue) => `${issue.path}: ${issue.message}`).join('; ')}`,
       issues,
@@ -910,7 +914,13 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         definition.tools.flatMap((name, index) =>
           missingTools([name]).length === 0
             ? []
-            : [{ path: `tools.${index}`, message: `"${name}" is not a registered tool` }],
+            : [
+                {
+                  path: `tools.${index}`,
+                  message: `"${name}" is not a registered tool`,
+                  reference: name,
+                },
+              ],
         ),
       );
     }

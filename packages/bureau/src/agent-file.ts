@@ -105,6 +105,11 @@ export type AgentFileProblemCode =
 export interface AgentFileIssue {
   readonly path: string;
   readonly message: string;
+  /**
+   * The id the definition names that nothing loaded holds: a tool for `unknown-tool`, a guardrail
+   * or run hook set for `reference-unresolved` (COR-1879). Absent on every other issue.
+   */
+  readonly reference?: string;
 }
 
 /** A file that cannot be used, as plain data a listing can carry. */

@@ -1,3 +1,4 @@
+import { formatToolName } from './core/identity';
 import { isAbortSignalLike } from './create-tool/execution-options';
 import type { EffectiveToolExecutionContext } from './execution-context';
 import type { ExecutionHandle, ExecutionLifecycle } from './execution-lifecycle';
@@ -86,7 +87,7 @@ function createChildHandle(context: ChildExecutionContext): ExecutionHandle | un
   if (hasSingleChild || !initialEffectiveContext) return undefined;
   return executionLifecycle.begin({
     executionId: `${executionHandle.id}:child:${callIndex + 1}`,
-    toolName: tool.name,
+    toolName: formatToolName(tool.identity),
     callId: toolCall.id,
     ownerId: executionHandle.snapshot().ownerId,
     parentExecutionId: executionHandle.id,

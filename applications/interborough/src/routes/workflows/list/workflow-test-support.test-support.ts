@@ -147,6 +147,26 @@ export class ScriptedFetch {
     });
   }
 
+  /** Standing route: any JSON-RPC request for `method` gets a fault envelope with `data.httpStatus: 404` (NotFound). */
+  routeJsonRpcMethodNotFound(method: string, message: string): void {
+    this.#routes.push({
+      matches: (call) => {
+        if (typeof call.init?.body !== 'string') return false;
+        try {
+          return parsedJsonRpcMethod(call.init.body) === method;
+        } catch {
+          return false;
+        }
+      },
+      respond: () =>
+        Response.json({
+          jsonrpc: '2.0',
+          id: 1,
+          error: { code: -32020, message, data: { weftCode: 'NotFound', httpStatus: 404 } },
+        }),
+    });
+  }
+
   restore(): void {
     this.#restoreFetch();
   }

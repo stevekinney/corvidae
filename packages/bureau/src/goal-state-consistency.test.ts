@@ -950,3 +950,23 @@ describe('a terminal goal and its cancellation marker', () => {
     },
   );
 });
+
+describe('a goal record’s source (COR-1879)', () => {
+  it('reads back the plugin that created the goal, and refuses a source that is not a plugin name', () => {
+    const sourced = createGoalState({
+      goalRunId: GOAL,
+      identity: { name: 'goal', version: '1' },
+      objective: { agentName: 'builder', prompt: 'Make the tests pass.' },
+      validator: VALIDATOR,
+      conversationPolicy: { kind: 'continue' },
+      bounds: { maximumAttempts: 3, maximumTotalTokens: 1000 },
+      source: 'linear',
+      now: '2026-10-02T00:00:00.000Z',
+    });
+    const stored: unknown = JSON.parse(JSON.stringify(sourced));
+    expect(isGoalState(stored)).toBe(true);
+    expect((stored as GoalState).source).toBe('linear');
+    expect(isGoalState({ ...sourced, source: 'Not A Plugin' })).toBe(false);
+    expect(isGoalState(pendingGoal())).toBe(true);
+  });
+});

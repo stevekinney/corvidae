@@ -64,6 +64,12 @@
   @supports (field-sizing: content) {
     .cinder-textarea {
       field-sizing: content;
+      /*
+       * Sized to its content, a word no line can break at is as wide as the word, and a grid or flex
+       * parent counts that width as the least it can be. Containing the inline size makes the
+       * field's intrinsic width nothing, so its own width rules and the text wraps inside it.
+       */
+      contain: inline-size;
     }
   }
 

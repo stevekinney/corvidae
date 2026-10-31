@@ -86,6 +86,7 @@ describe('page width by kind of page', () => {
       expect(widthOf(pattern), pattern).toBe('full');
     }
     expect(widthOf('/settings')).toBe('reading');
+    expect(widthOf('/settings/model-policy')).toBe('reading');
     expect(widthOf('/settings/data-and-retention')).toBe('reading');
     // The chat list sits beside the open chat, so every chat route is a list with its detail.
     for (const pattern of ['/chats', '/chats/new', '/chats/:chat']) {

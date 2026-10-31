@@ -7,6 +7,7 @@ import { EventType } from '@ag-ui/core';
 import { describe, expect, it } from 'bun:test';
 
 import { errorOf, RECORDED, RunProjector } from './ag-ui-projection.ts';
+import { pluginToolCallName } from './ag-ui-vocabulary.ts';
 
 const RUN = 'run-1';
 
@@ -135,6 +136,32 @@ describe('tools', () => {
       EventType.TOOL_CALL_RESULT,
       EventType.STEP_FINISHED,
     ]);
+  });
+
+  it('names a plugin tool p:t whether a call or only a result announces it (COR-1879)', () => {
+    const toolCallName = pluginToolCallName(() => new Set(['p']));
+    const live = new RunProjector(RUN, { nativeRunId: RUN, now: () => 1, toolCallName });
+    live.handleRecorded(RECORDED.stepStarted, { step: 0 });
+    const announced = live.handleRecorded(RECORDED.toolsExecuting, {
+      step: 0,
+      toolCalls: [
+        { id: 'call-1', name: 'p__t', arguments: {} },
+        // A tool source's tool, with no plugin of that name running, keeps its own name.
+        { id: 'call-2', name: 'source__t', arguments: {} },
+      ],
+    });
+    const late = new RunProjector(RUN, { nativeRunId: RUN, now: () => 1, toolCallName });
+    late.handleRecorded(RECORDED.stepStarted, { step: 0 });
+    const completed = late.handleRecorded(RECORDED.stepCompleted, {
+      step: 0,
+      content: '',
+      toolCalls: [],
+      results: [{ ...result, toolName: 'p:t' }],
+    });
+
+    expect(announced.events[0]).toMatchObject({ toolCallName: 'p:t' });
+    expect(announced.events[3]).toMatchObject({ toolCallName: 'source__t' });
+    expect(completed.events[0]).toMatchObject({ toolCallName: 'p:t' });
   });
 });
 

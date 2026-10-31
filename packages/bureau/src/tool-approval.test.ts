@@ -228,6 +228,26 @@ describe('a remembered tool (COR-1828)', () => {
     expect(await outcomeOf(toolbox, 'other')).toBe('action_required');
   });
 
+  it('asks the grant by the namespaced name, so a grant for a:search does not authorize b:search (COR-1879)', async () => {
+    const searchIn = (namespace: string) =>
+      createTool({
+        name: 'search',
+        namespace,
+        description: `Search ${namespace}`,
+        input: z.object({}),
+        metadata: { mutates: true },
+        execute: async () => ({ ran: namespace }),
+      });
+    // An unsigned approval's grant is the approval's `toolName`.
+    const granted = new Set(['a:search']);
+    const toolbox = createToolbox([searchIn('a'), searchIn('b')], {
+      policy: createToolApprovalHooks({}, { remembered: (tool) => granted.has(tool.name) }),
+    });
+
+    expect(await outcomeOf(toolbox, 'a__search')).toBe('success');
+    expect(await outcomeOf(toolbox, 'b__search')).toBe('action_required');
+  });
+
   it('asks the grant for the id of the tool called, version included (COR-1950)', async () => {
     const versioned = (version: string) =>
       createTool({

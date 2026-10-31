@@ -25,6 +25,7 @@ import { router } from '../../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../../lib/scopes.svelte.ts';
 import { STATUS_WORDS } from '../../../lib/status.ts';
 import { landAt } from '../../chat/pages.test-support.ts';
+import { STARTED_BY_LABELS } from './started-by.ts';
 
 let stub: BureauWorldStub | undefined;
 afterEach(() => {
@@ -194,5 +195,90 @@ describe('opening from a row', () => {
     expect(other.textContent).toBe(TASK_COPY.untitledChat);
     expect(await fireEvent.click(other, { button: 0 })).toBe(false);
     expect(router.pathname).toContain('other-owner-fire');
+  });
+});
+
+describe('Started by', () => {
+  // One run for each kind of origin the Bureau records, each reading its own words in the column.
+  const ORIGIN_TASKS = [
+    taskFixture({
+      id: 'o-chat',
+      contextId: 'chat-1',
+      origin: { kind: 'chat', contextId: 'chat-1', agentName: 'echo', principal: 'me' },
+    }),
+    taskFixture({
+      id: 'o-person',
+      kind: 'catalog',
+      origin: { kind: 'person', principal: 'me', surface: 'palette' },
+    }),
+    taskFixture({
+      id: 'o-schedule',
+      kind: 'catalog',
+      origin: { kind: 'schedule', scheduleId: 'nightly', fireId: 'f1', manual: true },
+    }),
+    taskFixture({ id: 'o-api', kind: 'catalog', origin: { kind: 'api' } }),
+    taskFixture({
+      id: 'o-agent',
+      kind: 'catalog',
+      origin: { kind: 'agent', parentRunId: 'run-parent', agentName: 'planner' },
+    }),
+    taskFixture({
+      id: 'o-goal',
+      kind: 'catalog',
+      origin: { kind: 'goal', goalRunId: 'goal-9', attemptId: 'a' },
+    }),
+    taskFixture({
+      id: 'o-parent',
+      kind: 'catalog',
+      origin: { kind: 'parent', parentRunId: 'wf-instance' },
+    }),
+    taskFixture({ id: 'o-none', kind: 'catalog' }),
+  ];
+  const originOf = (view: ReturnType<typeof open>, id: string) =>
+    view.container.querySelector<HTMLElement>(`[data-run="${id}"] .ib-run-origin`);
+
+  test('says what started each run, linking the thing that did where it has a page', async () => {
+    const view = open('/runs', ORIGIN_TASKS);
+    await waitFor(() => expect(originOf(view, 'o-none')).not.toBeNull());
+    const text = (id: string) => originOf(view, id)?.textContent?.replace(/\s+/g, ' ').trim();
+    const href = (id: string) => originOf(view, id)?.querySelector('a')?.getAttribute('href');
+
+    expect(text('o-chat')).toBe('Plan the week');
+    expect(text('o-person')).toBe(`A person ${TASK_COPY.personSurface.palette}`);
+    expect(text('o-schedule')).toBe(
+      `nightly (${TASK_COPY.schedule}, ${TASK_COPY.firedByHand}) · ${TASK_COPY.untitledChat}`,
+    );
+    expect(href('o-schedule')).toBe('/schedules/nightly');
+    expect(text('o-api')).toBe('The API');
+    expect(text('o-agent')).toBe(`planner (${TASK_COPY.agent})`);
+    expect(href('o-agent')).toBe('/runs/run-parent');
+    expect(text('o-goal')).toBe(`goal-9 (${TASK_COPY.goal})`);
+    expect(href('o-goal')).toBe('/goals/goal-9');
+    expect(text('o-parent')).toBe(`wf-instance (${TASK_COPY.workflow})`);
+    expect(href('o-parent')).toBe('/runs/wf-instance');
+    expect(text('o-none')).toBe(TASK_COPY.originUnrecorded);
+  });
+
+  test('offers every kind in the filter, and each narrows the list to the runs it started', async () => {
+    const view = open('/runs', ORIGIN_TASKS);
+    const select = await view.findByLabelText(TASK_COPY.startedByLabel);
+    const values = [...select.querySelectorAll('option')].map((option) => option.value);
+    expect(values).toEqual(expect.arrayContaining(Object.keys(STARTED_BY_LABELS)));
+    cleanup();
+    stub?.restore();
+
+    const narrowed = open('/runs?startedBy=agent', ORIGIN_TASKS);
+    await waitFor(() => expect(rowIds(narrowed.container)).toEqual(['o-agent']));
+  });
+
+  test('asks the Bureau for the origin, so a match past the first page is found', async () => {
+    const view = open('/runs?startedBy=agent', ORIGIN_TASKS);
+    await waitFor(() => expect(rowIds(view.container)).toEqual(['o-agent']));
+    // The page's own listing is the one that asks for a hundred; other views list for themselves.
+    const calls = (stub?.callsTo('bureau.tasks.list') ?? []).filter(
+      (call) => call.params['limit'] === 100,
+    );
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.every((call) => call.params['origin'] === 'agent')).toBe(true);
   });
 });

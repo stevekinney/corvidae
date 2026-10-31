@@ -39,6 +39,22 @@ export type {
 export { createAgentCatalog } from './agent-catalog';
 export { createAgentContributions, NO_AGENT_CONTRIBUTIONS } from './agent-contributions';
 export type {
+  BureauMemoryFactory,
+  BureauPluginEntry,
+  BureauPlugins,
+  BureauPluginSecrets,
+  BureauPluginSettings,
+  PluginClashParty,
+  PluginContributionKind,
+  PluginContributionListing,
+  PluginDescriptorListing,
+  PluginListing,
+  PluginLoadSource,
+  PluginMemoryContributions,
+  PluginProblem,
+  PluginStatus,
+} from './plugins/plugin-types';
+export type {
   AgentContributions,
   AgentContributionSource,
   ContributedGuardrail,

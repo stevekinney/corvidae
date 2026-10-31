@@ -1,10 +1,6 @@
 {
   "entries": [
     {
-      "file": "src/routes/agent-editor/agent-editor-no-provider.svelte",
-      "issue": "COR-1852"
-    },
-    {
       "file": "src/routes/audit/index.svelte",
       "issue": "COR-1851"
     },
@@ -166,11 +162,11 @@
     },
     {
       "file": "src/routes/workflows/detail/workflow-detail.svelte",
-      "issue": "COR-1856"
+      "issue": "COR-1966"
     },
     {
       "file": "src/routes/workflows/runs/run-detail.svelte",
-      "issue": "COR-1856"
+      "issue": "COR-1966"
     }
   ]
 }

@@ -157,6 +157,11 @@ describe('a new agent', () => {
       tools: ['lookup-order'],
       skillDescriptors: [],
       a2a: false,
+      // A limit left empty is `null`, which removes it from a file that had one.
+      guardrails: null,
+      stepLimit: null,
+      costBudget: null,
+      toolBudget: null,
       instructions: 'Cite everything.',
     });
     form.a2a = true;
@@ -305,5 +310,86 @@ describe('an agent that exists', () => {
     const form = AgentEditorState.edit(readyAgent(), catalogFixture());
     form.name = 'Weird Name!';
     expect(form.identifierError).toBe('');
+  });
+});
+
+describe('the guardrails and limits', () => {
+  const withLimits = () => {
+    const detail = readyAgent();
+    if (detail.definition === null) throw new Error('expected a definition');
+    return AgentEditorState.edit(
+      {
+        ...detail,
+        definition: {
+          ...detail.definition,
+          guardrails: ['acme:tripwire', 'acme:pii'],
+          stepLimit: 12,
+          costBudget: { perRunUsd: 1.5, perChatUsd: 4, warnAt: [0.5, 0.9] },
+          toolBudget: { maxCalls: 30, maxDurationSeconds: 90 },
+        },
+      },
+      catalogFixture(),
+    );
+  };
+
+  test('fills the fields from the file and writes them back, warnAt included', () => {
+    const form = withLimits();
+    expect(form.guardrails).toBe('acme:tripwire\nacme:pii');
+    expect(form.stepLimit).toBe('12');
+    expect(form.spendPerRun).toBe('1.5');
+    expect(form.toolSeconds).toBe('90');
+    expect(form.limitErrors).toEqual({});
+    expect(form.toDefinition()).toMatchObject({
+      guardrails: ['acme:tripwire', 'acme:pii'],
+      stepLimit: 12,
+      costBudget: { perRunUsd: 1.5, perChatUsd: 4, warnAt: [0.5, 0.9] },
+      toolBudget: { maxCalls: 30, maxDurationSeconds: 90 },
+    });
+  });
+
+  test('clears a limit by emptying its field, and drops a budget with no limit left in it', () => {
+    const form = withLimits();
+    form.guardrails = '';
+    form.stepLimit = ' ';
+    form.spendPerChat = '';
+    form.spendPerRun = '';
+    form.toolCalls = '';
+    form.toolSeconds = '';
+    expect(form.toDefinition()).toMatchObject({
+      guardrails: null,
+      stepLimit: null,
+      costBudget: null,
+      toolBudget: null,
+    });
+    form.toolCalls = '5';
+    expect(form.toDefinition().toolBudget).toEqual({ maxCalls: 5 });
+  });
+
+  test('names each field that holds something the Bureau would refuse, and cannot save', () => {
+    const form = withLimits();
+    form.guardrails = 'tripwire';
+    form.stepLimit = '1001';
+    form.spendPerRun = '0';
+    form.spendPerChat = '-1';
+    form.toolCalls = '2.5';
+    form.toolSeconds = 'soon';
+    expect(Object.keys(form.limitErrors).toSorted()).toEqual([
+      'guardrails',
+      'spendPerChat',
+      'spendPerRun',
+      'stepLimit',
+      'toolCalls',
+      'toolSeconds',
+    ]);
+    expect(form.canSave).toBe(false);
+  });
+
+  test('refuses a chat limit when there is no run limit under it', () => {
+    const form = withLimits();
+    form.spendPerRun = '';
+    expect(form.limitErrors.spendPerChat).toBe(AGENT_EDITOR_COPY.limits.errors.chatNeedsRun);
+    form.spendPerChat = '';
+    expect(form.limitErrors).toEqual({});
+    expect(form.canSave).toBe(true);
   });
 });

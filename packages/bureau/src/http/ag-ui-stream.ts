@@ -62,6 +62,7 @@ import {
 import {
   type AgUiErrorCode,
   type EventStamp,
+  pluginToolCallName,
   isLiveAnnouncement,
   isReasoningEvent,
   stamp,
@@ -84,6 +85,9 @@ export type AgUiStreamBureau = Pick<Bureau, 'frames' | 'children' | 'surfaces'> 
   readonly contexts: Pick<BureauContexts, 'get' | 'inputsDeliveredBy' | 'subscribeEvents'>;
 } & {
   readonly internals: Pick<BureauInternals, 'whenTaskRecorded'>;
+} & {
+  /** The plugins whose tools a call names `plugin__tool` (COR-1879); none when absent. */
+  readonly plugins?: Pick<Bureau['plugins'], 'registered'> | undefined;
 };
 
 export type AgUiStreamEnvironment = {
@@ -389,6 +393,8 @@ export function openRunStream(
     nativeRunId: request.nativeRunId,
     sessionId: request.threadId,
     now: () => runtime.clock.now(),
+    // A plugin that needs setup has its tools registered too, so its calls carry `plugin:name`.
+    toolCallName: pluginToolCallName(() => new Set(bureau.plugins?.registered() ?? [])),
   };
   const liveFeed =
     request.child === undefined && runIsGoing(bureau, request.nativeRunId)

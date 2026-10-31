@@ -306,7 +306,9 @@ type TopLevelMembers =
   // COR-1876: an event as a person reads it.
   | 'formatEvent'
   // COR-1941: the owner's notifications.
-  | 'notifications';
+  | 'notifications'
+  // COR-1879: the plugins it loaded.
+  | 'plugins';
 
 export type BureauTopLevelMembersAreExact = AssertTrue<Equals<keyof Bureau, TopLevelMembers>>;
 

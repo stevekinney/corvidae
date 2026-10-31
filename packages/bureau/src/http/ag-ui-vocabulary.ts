@@ -10,6 +10,7 @@
  */
 
 import { type BaseEvent, type Event, EventType } from '@ag-ui/core';
+import { formatToolId, fromNamespacedToolName } from 'armorer';
 
 /**
  * The `RUN_ERROR` codes the mount itself mints. A native run's own error code
@@ -216,7 +217,27 @@ export type EventStamp = {
   readonly nativeRunId?: string | undefined;
   readonly sessionId?: string | undefined;
   readonly now: () => number;
+  /**
+   * The name a client is shown for a tool call the model named `name` (COR-1879): a plugin's tool
+   * as `plugin:tool`, the name its result and approval report it by, rather than the provider's
+   * `plugin__tool` ({@link pluginToolCallName}). Absent, the model's name.
+   */
+  readonly toolCallName?: ((name: string) => string) | undefined;
 };
+
+/**
+ * COR-1879 — the {@link EventStamp.toolCallName} of a Bureau whose running plugins are `running()`:
+ * a call the model named `plugin__tool` is shown as `plugin:tool` when `plugin` is running. Only
+ * then: a host tool keyed `plugin__tool` clashes with that plugin's tool, so while the plugin runs
+ * the name is its tool's; a tool source's `source__tool`, with no plugin of that name, keeps its
+ * own name.
+ */
+export function pluginToolCallName(running: () => ReadonlySet<string>): (name: string) => string {
+  return (name) => {
+    const parsed = fromNamespacedToolName(name);
+    return parsed !== undefined && running().has(parsed.namespace) ? formatToolId(parsed) : name;
+  };
+}
 
 /**
  * Dates `event` and attaches Bureau's metadata. The event is built as a member of

@@ -2,21 +2,9 @@
   "entries": [
     {
       "rule": "cinder-selector",
-      "file": "src/routes/agent-editor/agent-editor-form.svelte",
-      "subject": ".cinder-form-field__description",
-      "issue": "COR-1852"
-    },
-    {
-      "rule": "cinder-selector",
-      "file": "src/routes/agent-editor/agent-editor-page.svelte",
-      "subject": ".cinder-page-header__row",
-      "issue": "COR-1852"
-    },
-    {
-      "rule": "cinder-selector",
       "file": "src/routes/agent-editor/agent-editor-tool-row.svelte",
       "subject": ".cinder-form-field__label",
-      "issue": "COR-1852"
+      "issue": "COR-1963"
     },
     {
       "rule": "app-header-class",
@@ -59,12 +47,6 @@
       "file": "src/routes/schedules/schedule-form-drawer.svelte",
       "subject": ".weft-schedule-drawer__header",
       "issue": "COR-1859"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/routes/settings/index.svelte",
-      "subject": ".weft-settings__header",
-      "issue": "COR-1842"
     },
     {
       "rule": "app-header-class",
@@ -145,12 +127,6 @@
       "issue": "COR-1847"
     },
     {
-      "rule": "app-header-class",
-      "file": "src/routes/system/retention-panel.svelte",
-      "subject": ".weft-retention-panel__header",
-      "issue": "COR-1842"
-    },
-    {
       "rule": "cinder-selector",
       "file": "src/routes/workflows/detail/async-activity/async-activity-drawer.svelte",
       "subject": ".cinder-code-block",
@@ -166,13 +142,13 @@
       "rule": "app-header-class",
       "file": "src/routes/workflows/detail/workflow-detail.css",
       "subject": ".weft-workflow-detail__header",
-      "issue": "COR-1856"
+      "issue": "COR-1966"
     },
     {
       "rule": "app-header-class",
       "file": "src/routes/workflows/detail/workflow-detail.css",
       "subject": ".weft-overview-tab__panel-header",
-      "issue": "COR-1856"
+      "issue": "COR-1966"
     },
     {
       "rule": "app-header-class",
@@ -184,7 +160,7 @@
       "rule": "app-header-class",
       "file": "src/routes/workflows/detail/workflow-detail.css",
       "subject": ".weft-send-tab__history-header",
-      "issue": "COR-1856"
+      "issue": "COR-1966"
     },
     {
       "rule": "app-header-class",
@@ -274,19 +250,19 @@
       "rule": "app-header-class",
       "file": "src/styles/tasks.css",
       "subject": ".ib-run__header",
-      "issue": "COR-1856"
+      "issue": "COR-1966"
     },
     {
       "rule": "cinder-selector",
       "file": "src/styles/tasks.css",
       "subject": ".cinder-description-list__definition",
-      "issue": "COR-1856"
+      "issue": "COR-1966"
     },
     {
       "rule": "cinder-selector",
       "file": "src/styles/tasks.css",
       "subject": ".cinder-badge",
-      "issue": "COR-1856"
+      "issue": "COR-1966"
     },
     {
       "rule": "app-header-class",

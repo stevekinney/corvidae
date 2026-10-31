@@ -76,6 +76,13 @@ export interface HookActionKindRegistration {
   readonly plugin: string;
   /** The kind itself. */
   readonly kind: PluginHookActionKind;
+  /**
+   * COR-1879 — the version a delivery of this kind pins: the kind's own `version`, else its
+   * plugin's. A delivery created while one version is registered runs only on that version; one
+   * still pending after an upgrade fails, permanently, rather than run another. Absent for a kind
+   * registered without one, whose deliveries pin nothing.
+   */
+  readonly version?: string | undefined;
 }
 
 /** What a hook does for an event, tagged by `type`. */
@@ -219,6 +226,11 @@ export type HookDeliveryWork =
       readonly configuration?: unknown;
       /** The event, as the action receives it; its `source` is present only for a plugin's event. */
       readonly event: PluginEvent;
+      /**
+       * COR-1879 — the version of the kind registered when the delivery was created, which the
+       * delivery runs on and on no other. Absent when the kind was registered without one.
+       */
+      readonly version?: string;
     };
 
 /** A delivery of one event to one hook: the action, every attempt, and where it stands. */

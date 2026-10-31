@@ -32,6 +32,7 @@ export interface ResponsiveSeed {
 /** The address of each route in `routes.ts`, by pattern, with the seeded identifiers filled in. */
 export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<string, string>> {
   const agent = encodeURIComponent(seed.agent);
+  const instructionsAgent = encodeURIComponent(seed.instructionsAgent);
   const memoryAgent = encodeURIComponent(seed.memoryAgent);
   const workflowFile = encodeURIComponent(seed.workflowFile);
   const workflow = encodeURIComponent(seed.workflow);
@@ -43,7 +44,8 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
     '/agents': '/agents',
     '/agents/new': '/agents/new',
     '/capabilities': '/capabilities',
-    '/agents/:agent/edit': `/agents/${agent}/edit`,
+    // The agent whose instructions hold a word no line can break at, so the editor's textarea is measured with it.
+    '/agents/:agent/edit': `/agents/${instructionsAgent}/edit`,
     '/agents/:agent/memories': `/agents/${memoryAgent}/memories`,
     '/agents/:agent': `/agents/${agent}`,
     '/workflows': '/workflows',
@@ -67,6 +69,7 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
     '/health/storage': '/health/storage',
     '/health/audit': '/health/audit',
     '/settings': '/settings',
+    '/settings/model-policy': '/settings/model-policy',
     '/settings/data-and-retention': '/settings/data-and-retention',
     '/settings/api-reference': '/settings/api-reference',
   };

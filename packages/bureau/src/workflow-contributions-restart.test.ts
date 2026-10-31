@@ -17,6 +17,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { definePlugin } from '@lostgradient/interborough-plugin';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 
@@ -57,7 +58,11 @@ async function storeAndFiles() {
   const database = createSqliteStorageFixture({ path: join(root, 'bureau.sqlite') });
   cleanups.push(() => database.dispose());
   const directory = join(root, 'workflows');
-  const bureauOver = async (activityVersion: string | undefined, ticker = false) => {
+  const bureauOver = async (
+    activityVersion: string | undefined,
+    ticker = false,
+    viaPlugin = false,
+  ) => {
     const harness = await startWorkflowBureau({
       directory,
       overrides: {
@@ -67,10 +72,37 @@ async function storeAndFiles() {
         },
         durableOwnership: { ownership: 'none' },
         onDiagnostic: () => undefined,
-        contributionCatalog: contributionCatalog({
-          activityVersion,
-          ticker: ticker ? createTickerController() : undefined,
-        }),
+        ...(viaPlugin && activityVersion !== undefined
+          ? {
+              // The same `x:y`, contributed by plugin `x` through composition (COR-1879).
+              plugins: [
+                {
+                  descriptor: definePlugin({
+                    name: 'x',
+                    version: activityVersion,
+                    description: 'Contributes y.',
+                    setup: () => ({
+                      activities: [
+                        {
+                          name: 'y',
+                          version: activityVersion,
+                          execute: (argument: { input: unknown }) =>
+                            activityAnswer(activityVersion, argument.input),
+                        },
+                      ],
+                    }),
+                  }),
+                  source: 'package' as const,
+                  location: '@example/x',
+                },
+              ],
+            }
+          : {
+              contributionCatalog: contributionCatalog({
+                activityVersion,
+                ticker: ticker ? createTickerController() : undefined,
+              }),
+            }),
       },
     });
     cleanups.push(() => harness.dispose());
@@ -135,6 +167,19 @@ describe('a run waiting across a restart, on a revision that pins x:y@1', () => 
     expect(second.bureau.workflows?.list().find((entry) => entry.id === 'pipeline')?.state).toBe(
       'ready',
     );
+  });
+
+  it('is reported on plugin x as pinned-version-unavailable when x loads only version 2', async () => {
+    const { bureauOver } = await storeAndFiles();
+    await parkedAtVersionOne(bureauOver);
+
+    const second = await bureauOver('2', false, true);
+    const run = await second.bureau.workflows?.getRun('waiting');
+    expect(run?.unresumable?.reason).toBe('version-mismatch');
+    const [secondListing] = await second.bureau.plugins.list();
+    expect(secondListing?.problems).toEqual([
+      { code: 'pinned-version-unavailable', id: 'x:y', version: '1', waitingRuns: 1 },
+    ]);
   });
 
   it('is reported missing when no version is loaded', async () => {
