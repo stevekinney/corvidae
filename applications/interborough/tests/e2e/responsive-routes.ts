@@ -11,6 +11,8 @@ export interface ResponsiveSeed {
   readonly chat: string;
   /** An agent whose description is 200 characters long. */
   readonly agent: string;
+  /** An agent whose instructions hold a word no line can break at, shown as a document. */
+  readonly instructionsAgent: string;
   /** An agent that has a memory with a long unbroken word in it. */
   readonly memoryAgent: string;
   /** A workflow type the engine has registered. */
@@ -66,11 +68,14 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
  * Addresses of a route in a second state, by `<pattern> (<state>)`, each opened and measured like a
  * route of its own. The seeded workflow type is code-defined, so the file header's four buttons
  * (Start run, Pause, Edit, Delete) and a file's Code, Runs and History tabs are reached here,
- * with the tab named in the address (`?tab=`).
+ * as are an agent's Instructions and Settings tabs, with the tab named in the address (`?tab=`).
  */
 export function responsiveVariants(seed: ResponsiveSeed): Readonly<Record<string, string>> {
   const file = `/workflows/${encodeURIComponent(seed.workflowFile)}`;
+  const agent = `/agents/${encodeURIComponent(seed.instructionsAgent)}`;
   return {
+    '/agents/:agent (instructions tab)': `${agent}?tab=instructions`,
+    '/agents/:agent (settings tab)': `${agent}?tab=settings`,
     '/workflows/:workflow (file)': file,
     '/workflows/:workflow (file, code tab)': `${file}?tab=code`,
     '/workflows/:workflow (file, runs tab)': `${file}?tab=runs`,

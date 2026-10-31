@@ -47,10 +47,14 @@ const HEIGHT = 900;
 const SCROLL_REGION_VIEWPORTS = 2;
 
 const AGENT_ID = 'responsive-long-description';
+/** The agent whose Instructions tab holds the long word; the editor's textarea is not made for one. */
+const INSTRUCTIONS_AGENT_ID = 'responsive-long-instructions';
 const LONG_DESCRIPTION = 'An agent description that keeps going well past one line. '
   .repeat(4)
   .padEnd(200, 'x')
   .slice(0, 200);
+/** An instructions body with a word no line can break at, to be rendered as a document. */
+const LONG_INSTRUCTIONS = `Responsive instructions ${'i'.repeat(300)}`;
 const LONG_STORAGE_KEY = `responsive-${'k'.repeat(1989)}`;
 const LONG_MEMORY = `responsive-memory-${'m'.repeat(300)}`;
 const CHAT_THREAD = newThreadId('responsive');
@@ -66,6 +70,8 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/chats/:chat': /Say hello/,
   '/agents': /An agent description that keeps going/,
   '/agents/:agent': /An agent description that keeps going/,
+  '/agents/:agent (instructions tab)': /iiiiiiiiii/,
+  '/agents/:agent (settings tab)': /Version 1/,
   '/agents/:agent/memories': /mmmmmmmmmm/,
   '/workflows': /order-processing/,
   '/workflows/:workflow/runs': /order-processing/,
@@ -264,6 +270,12 @@ test.beforeAll(async ({ playwright }) => {
       name: AGENT_ID,
       description: LONG_DESCRIPTION,
     });
+    await removeAgent(request, INSTRUCTIONS_AGENT_ID);
+    await createAgentFile(request, INSTRUCTIONS_AGENT_ID, {
+      name: INSTRUCTIONS_AGENT_ID,
+      description: LONG_DESCRIPTION,
+      instructions: LONG_INSTRUCTIONS,
+    });
     await runToEnd(request, 'assistant', CHAT_THREAD, 'Say hello');
     await runToEnd(request, TEXT_ECHO_AGENT_NAME, MEMORY_THREAD, LONG_MEMORY);
     const stored = await request.put(`/v1/storage/${encodeURIComponent(LONG_STORAGE_KEY)}`, {
@@ -278,6 +290,7 @@ test.beforeAll(async ({ playwright }) => {
     const seed: ResponsiveSeed = {
       chat: CHAT_THREAD,
       agent: AGENT_ID,
+      instructionsAgent: INSTRUCTIONS_AGENT_ID,
       memoryAgent: TEXT_ECHO_AGENT_NAME,
       workflow: 'order-processing',
       workflowFile: WORKFLOW_FILE,
@@ -295,6 +308,7 @@ test.afterAll(async ({ playwright }) => {
   const request = await playwright.request.newContext({ baseURL: E2E_BASE_URL });
   try {
     await removeAgent(request, AGENT_ID);
+    await removeAgent(request, INSTRUCTIONS_AGENT_ID);
     await request.delete(`/v1/storage/${encodeURIComponent(LONG_STORAGE_KEY)}`);
     const listed = await request.post('/bureau/jsonrpc', {
       data: {

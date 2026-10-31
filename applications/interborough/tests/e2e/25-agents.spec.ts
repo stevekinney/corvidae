@@ -98,7 +98,7 @@ test.describe('one agent', () => {
     await expect(frame.getByRole('heading', { level: 1 })).toHaveText(TEXT_ECHO_AGENT_NAME);
     // The name is the heading and appears nowhere else in the header: no subtitle repeats it.
     await expect(
-      page.locator('.ib-agent__header').getByText(TEXT_ECHO_AGENT_NAME, { exact: true }),
+      page.getByTestId('agent-header').getByText(TEXT_ECHO_AGENT_NAME, { exact: true }),
     ).toHaveCount(1);
     await expect(frame).not.toContainText('Scripted');
     await expect(frame).not.toContainText('Model');

@@ -205,12 +205,6 @@
       "issue": "COR-1843"
     },
     {
-      "rule": "app-header-class",
-      "file": "src/styles/agents.css",
-      "subject": ".ib-agent__header",
-      "issue": "COR-1844"
-    },
-    {
       "rule": "cinder-selector",
       "file": "src/styles/agents.css",
       "subject": ".cinder-badge",
