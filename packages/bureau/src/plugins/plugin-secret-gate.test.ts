@@ -99,8 +99,14 @@ describe('a plugin missing a declared secret', () => {
     });
     bureaus.push(bureau);
 
-    const missing = bureau.plugins.list()[0];
+    const statusOf = async () => {
+      const [listing] = await bureau.plugins.list();
+      return listing?.status;
+    };
+    const [missing] = await bureau.plugins.list();
     expect(missing?.status).toBe('needs-setup');
+    // Its contributions are registered, so a tool call of it is named `kit:lookup` all the same.
+    expect(bureau.plugins.registered()).toEqual(['kit']);
     expect(missing?.problems).toEqual([
       { code: 'secret-missing', key: KEY, contributions: ['kit:lookup@1.0.0', 'kit:fmt'] },
     ]);
@@ -110,16 +116,17 @@ describe('a plugin missing a declared secret', () => {
 
     secrets.save(KEY, SECRET);
     await waitForCondition(
-      () => bureau.plugins.list()[0]?.status === 'running',
+      async () => (await statusOf()) === 'running',
       'the plugin did not run after its secret was saved',
     );
-    expect(bureau.plugins.list()[0]?.problems).toEqual([]);
+    const [running] = await bureau.plugins.list();
+    expect(running?.problems).toEqual([]);
     expect(bureau.formatEvent(event).title).toBe('Formatted');
-    expect(JSON.stringify(bureau.plugins.list())).not.toContain(SECRET);
+    expect(JSON.stringify(await bureau.plugins.list())).not.toContain(SECRET);
 
     secrets.remove(KEY);
     await waitForCondition(
-      () => bureau.plugins.list()[0]?.status === 'needs-setup',
+      async () => (await statusOf()) === 'needs-setup',
       'the plugin kept running after its secret was removed',
     );
     expect(bureau.formatEvent(event).title).toBe('kit.happened');
@@ -164,10 +171,10 @@ describe('a plugin missing a declared secret', () => {
     expect(generated).toBe(0);
 
     secrets.save(KEY, SECRET);
-    await waitForCondition(
-      async () => (await bureau.plugins.list())[0]?.status === 'running',
-      'the plugin did not run after its secret was saved',
-    );
+    await waitForCondition(async () => {
+      const [listing] = await bureau.plugins.list();
+      return listing?.status === 'running';
+    }, 'the plugin did not run after its secret was saved');
     const task = await bureau.tasks.start('kit:writer', 'Go.');
     await task.result();
     expect(generated).toBe(1);

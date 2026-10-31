@@ -55,7 +55,7 @@ import type {
   BureauPluginSettings,
   PluginClashParty,
   PluginContributionKind,
-  PluginContributionListing,
+  PluginContribution,
   PluginMemoryContributions,
   PluginProblem,
 } from './plugin-types';
@@ -186,7 +186,7 @@ export function messageOf(error: unknown, redact: (message: string) => string): 
 /** What the plugin claims and registers, before it is checked against what is held. */
 interface PluginContributionPlan {
   readonly claims: readonly Claim[];
-  readonly listings: readonly PluginContributionListing[];
+  readonly listings: readonly PluginContribution[];
   readonly tools: ReadonlyMap<string, Tool>;
 }
 
@@ -206,9 +206,9 @@ function planOf(
   gate: PluginSecretGate | undefined,
 ): PluginContributionPlan {
   const claims: Claim[] = [];
-  const listings: PluginContributionListing[] = [];
+  const listings: PluginContribution[] = [];
   const tools = new Map<string, Tool>();
-  const contribute = (kind: PluginContributionListing['kind'], name: string, id?: string) => {
+  const contribute = (kind: PluginContribution['kind'], name: string, id?: string) => {
     if (!isPluginName(name)) {
       throw new TypeError(
         `setup returned a ${kind} named ${JSON.stringify(name)}: a contribution name starts with a lowercase letter and uses only lowercase letters, digits and hyphens, ending in a letter or digit.`,

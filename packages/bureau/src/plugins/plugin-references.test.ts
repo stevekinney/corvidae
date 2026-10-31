@@ -67,7 +67,7 @@ describe('a plugin file naming an absent contribution', () => {
     const triager = harness.bureau.agents.list().find(({ id }) => id === 'p:triager');
     expect(triager?.state).toBe('invalid');
     expect(harness.bureau.agents.list().find(({ id }) => id === 'p:reader')?.state).toBe('ready');
-    const [listing] = harness.bureau.plugins.list();
+    const [listing] = await harness.bureau.plugins.list();
     expect(listing?.status).toBe('running');
     expect(listing?.problems).toEqual([
       { code: 'reference-unresolved', file: 'p:triager', id: 'p:absent' },

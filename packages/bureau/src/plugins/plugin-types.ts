@@ -155,12 +155,41 @@ export type PluginContributionKind =
   | 'event-formatter'
   | 'code-agent';
 
-/** One contribution a running plugin registered. */
-export interface PluginContributionListing {
+/** One contribution a running plugin registered, as composition records it. */
+export interface PluginContribution {
   /** Its kind. */
   readonly kind: PluginContributionKind;
   /** `plugin:name`, as a file names it; a tool's id carries its version, `plugin:name@version`. */
   readonly id: string;
+}
+
+/**
+ * What names one contribution now, counted afresh on every `plugins.list()`. A tool is matched
+ * without its version, since a file names `plugin:name`.
+ */
+export interface PluginContributionReferences {
+  /**
+   * The ready agents whose definition names it: a tool in a file's or a code agent's `tools`, a
+   * guardrail in a file's `guardrails`, a run hook set in a file's `hooks`. No other kind is named
+   * by an agent, so it counts none.
+   */
+  readonly agents: number;
+  /**
+   * The agent schedules, paused or active, whose agent is this contribution (a code agent) or one
+   * of the agents counted in `agents`. None without a durable engine.
+   */
+  readonly schedules: number;
+  /**
+   * The runs with a pending review (`bureau.reviews.list()`) that is an approval of this tool, or
+   * whose agent is this contribution (a code agent) or one of the agents counted in `agents`.
+   */
+  readonly waitingRuns: number;
+}
+
+/** One contribution a running plugin registered, with what names it now. */
+export interface PluginContributionListing extends PluginContribution {
+  /** What names it now. */
+  readonly references: PluginContributionReferences;
 }
 
 /** What `plugins.list()` reports of a descriptor: never its schema, its functions or a secret's value. */
@@ -201,8 +230,17 @@ export interface PluginListing {
 
 /** `bureau.plugins`: the plugins the Bureau was given, in load order. */
 export interface BureauPlugins {
-  /** Every plugin, in load order, as it stands now. */
-  list(): readonly PluginListing[];
+  /**
+   * Every plugin, in load order, as it stands now. Each contribution's `references` are counted
+   * on every call from the agents, schedules and pending reviews as they stand, never cached.
+   */
+  list(): Promise<readonly PluginListing[]>;
+  /**
+   * The names of the plugins whose contributions are registered (`running` or `needs-setup` in
+   * the listing), in load order. Fixed once the Bureau is built, and read without counting
+   * anything, for a caller that needs only the names.
+   */
+  registered(): readonly string[];
   /** Settles once every running plugin's `afterStart` has settled. Never rejects. */
   ready(): Promise<void>;
 }

@@ -2640,8 +2640,9 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
 
   /**
    * COR-1879 — the plugins {@link BureauOptions.plugins} named, in load order: `list()` reports
-   * each one's descriptor, status, problems and contributions, and `ready()` settles once every
-   * running plugin's `afterStart` has. Empty without plugins.
+   * each one's descriptor, status, problems and contributions, with what names each contribution
+   * counted afresh, `registered()` names the plugins whose contributions are registered, and
+   * `ready()` settles once every running plugin's `afterStart` has. Empty without plugins.
    */
   readonly plugins: BureauPlugins;
   /**

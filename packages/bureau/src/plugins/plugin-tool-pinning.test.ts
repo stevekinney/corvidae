@@ -94,8 +94,9 @@ describe('a plugin tool’s version on a durable record', () => {
     fixtures.push(database);
 
     const first = await start(directory, '2.0.0', database.storage);
-    expect(first.bureau.plugins.list()[0]?.contributions).toEqual([
-      { kind: 'tool', id: 'p:t@2.0.0' },
+    const [firstListing] = await first.bureau.plugins.list();
+    expect(firstListing?.contributions).toEqual([
+      { kind: 'tool', id: 'p:t@2.0.0', references: { agents: 0, schedules: 0, waitingRuns: 0 } },
     ]);
     await first.put('helper.md', agentFileText({ model: KNOWN_MODEL, tools: '[p:t]' }));
     await first.bureau.agents.refresh();
@@ -141,7 +142,8 @@ describe('a plugin tool’s version on a durable record', () => {
     expect(upgraded.bureau.reviews.list()).toEqual([]);
     expect(executed).toEqual(['2.0.0:x']);
     // The plugin reports the run that waited on the version it no longer loads.
-    expect(upgraded.bureau.plugins.list()[0]?.problems).toEqual([
+    const [upgradedListing] = await upgraded.bureau.plugins.list();
+    expect(upgradedListing?.problems).toEqual([
       { code: 'pinned-version-unavailable', id: 'p:t', version: '2.0.0', waitingRuns: 1 },
     ]);
   });

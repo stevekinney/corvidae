@@ -22120,8 +22120,51 @@ async function constructBureau<const D extends AgentDefinitions>(
   construction.built(bureau);
   // COR-1879 — after the caller has the Bureau, so a plugin's `afterStart` costs a recovered run's
   // first events nothing; `bureau.plugins.ready()` settles when every one has.
-  // COR-1879 — a file a running plugin ships that names a contribution nothing loaded holds.
-  pluginRegistry.observeAgents(() => bureau.agents.list());
+  // COR-1879 — a file a running plugin ships that names a contribution nothing loaded holds, and
+  // what names each contribution, counted on every `plugins.list()`.
+  pluginRegistry.observe({
+    agents: () => bureau.agents.list(),
+    agentReferences: async () => {
+      const ready = bureau.agents.list().filter(({ state }) => state === 'ready');
+      const details = await Promise.all(ready.map(({ id }) => bureau.agents.detail(id)));
+      return details.flatMap((detail) =>
+        detail === undefined
+          ? []
+          : [
+              {
+                id: detail.id,
+                tools: detail.definition?.tools ?? detail.codeDefinition?.tools ?? [],
+                guardrails: detail.definition?.guardrails ?? [],
+                hooks: detail.definition?.hooks ?? [],
+              },
+            ],
+      );
+    },
+    scheduleAgents: async () => {
+      const agentNames: string[] = [];
+      const pageSize = 100;
+      for (let offset = 0; ; offset += pageSize) {
+        const page = await listSchedules({
+          status: ['active', 'paused'],
+          limit: pageSize,
+          offset,
+        });
+        if (page === undefined) break;
+        for (const schedule of page.items) {
+          const agentName = await getScheduleAgentName(schedule.id);
+          if (agentName !== undefined) agentNames.push(agentName);
+        }
+        if (page.items.length < pageSize || offset + pageSize >= page.total) break;
+      }
+      return agentNames;
+    },
+    waitingRuns: () =>
+      bureau.reviews.list().map((review) => ({
+        runId: review.runId,
+        agentName: review.agentName,
+        toolName: review.kind === 'tool-approval' ? review.approval.toolName : undefined,
+      })),
+  });
   void pluginRegistry.start((plugin) => pluginHostApiOf(bureau as unknown as Bureau, plugin));
 
   /**

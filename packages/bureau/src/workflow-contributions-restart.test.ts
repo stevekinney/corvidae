@@ -176,7 +176,8 @@ describe('a run waiting across a restart, on a revision that pins x:y@1', () => 
     const second = await bureauOver('2', false, true);
     const run = await second.bureau.workflows?.getRun('waiting');
     expect(run?.unresumable?.reason).toBe('version-mismatch');
-    expect(second.bureau.plugins.list()[0]?.problems).toEqual([
+    const [secondListing] = await second.bureau.plugins.list();
+    expect(secondListing?.problems).toEqual([
       { code: 'pinned-version-unavailable', id: 'x:y', version: '1', waitingRuns: 1 },
     ]);
   });
