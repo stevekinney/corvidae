@@ -12,6 +12,8 @@ import {
   createMemoryGovernancePolicy,
   createMockEmbedder,
   type GovernedMemory,
+  createMemoryVectorStore,
+  createTestEmbedders,
 } from '@lostgradient/memory';
 import { MemoryStorage, textValueStore, type Storage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
@@ -80,7 +82,8 @@ function countingMemory() {
   const memory = createGovernedMemory({
     storage: createInMemoryMemoryRecordStorage(),
     ledger: createMemoryGovernanceLedger(new MemoryStorage()),
-    embedder: createMockEmbedder(64),
+    ...createTestEmbedders(createMockEmbedder(64), 64),
+    vectors: createMemoryVectorStore(new MemoryStorage()),
     policy: createMemoryGovernancePolicy({ revision: 'governance:agent-try' }),
     propagation: { caches: 'not-retained', 'managed-asset-bytes': 'not-retained' },
   });

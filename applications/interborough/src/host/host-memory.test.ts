@@ -6,7 +6,11 @@
 import {
   collectionNamespace,
   createHashingEmbedder,
+  createMemoryVectorStore,
   createWeftMemoryRecordStorage,
+  DEFAULT_MEMORY_VECTOR_KEY_PREFIX,
+  HASHING_EMBEDDER_DIMENSION,
+  HASHING_EMBEDDER_ID,
 } from '@lostgradient/memory';
 import { createAgent, stopWhen } from '@lostgradient/operative';
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
@@ -159,17 +163,74 @@ describe('the host’s governed memory', () => {
     await host.close();
     const storage = new BunSQLiteStorage(database.path);
     try {
-      const [record] = await createWeftMemoryRecordStorage(storage).list({
+      const scope = {
         tenantId: deploymentId,
         namespace: collectionNamespace('private', 'anonymous:local', 'alpha'),
-      });
+      };
+      const [record] = await createWeftMemoryRecordStorage(storage).list(scope);
       const [expected] = await createHashingEmbedder()([record?.content ?? '']);
-      expect(record?.vector).toHaveLength(256);
-      expect(Array.from(record?.vector ?? [])).toEqual(
+      // COR-1898: the vector lives in the vector store, under the hashing embedder's profile.
+      expect(record?.vector).toHaveLength(0);
+      const vectors = createMemoryVectorStore(storage);
+      const profile = {
+        embedderId: HASHING_EMBEDDER_ID,
+        dimension: HASHING_EMBEDDER_DIMENSION,
+        generation: 1,
+      };
+      expect(await vectors.listProfiles()).toEqual([profile]);
+      const stored = await vectors.getMany(profile, scope, [record?.id ?? '']);
+      expect(Array.from(stored.get(record?.id ?? '')?.vector ?? [])).toEqual(
         (expected ?? []).map((entry) => Math.fround(entry)),
       );
     } finally {
       storage[Symbol.dispose]();
+    }
+  });
+
+  test('copies the vector a memory saved before embedding profiles held inline, when it starts', async () => {
+    const { host, home } = await start();
+    await chat(host, 'alpha', 'thread-1');
+    const { deploymentId, database } = host;
+    if (database.kind !== 'sqlite') throw new Error('Expected the host to run on SQLite.');
+    await host.close();
+    hosts.splice(hosts.indexOf(host), 1);
+    const scope = {
+      tenantId: deploymentId,
+      namespace: collectionNamespace('private', 'anonymous:local', 'alpha'),
+    };
+    const profile = {
+      embedderId: HASHING_EMBEDDER_ID,
+      dimension: HASHING_EMBEDDER_DIMENSION,
+      generation: 1,
+    };
+    // Back to the shape an installation had before COR-1898: the vector on the record, none in
+    // the vector store, and no mark that inline vectors were copied.
+    const before = new BunSQLiteStorage(database.path);
+    let inline: Float32Array;
+    let id: string;
+    try {
+      const records = createWeftMemoryRecordStorage(before);
+      const [record] = await records.list(scope);
+      id = record!.id;
+      const [embedded] = await createHashingEmbedder()([record!.content]);
+      inline = new Float32Array(embedded!);
+      await records.put({ ...record!, vector: inline });
+      await createMemoryVectorStore(before).deleteMany([{ id, scope }]);
+      await before.delete(`${DEFAULT_MEMORY_VECTOR_KEY_PREFIX}inline-vectors-copied`);
+    } finally {
+      before[Symbol.dispose]();
+    }
+
+    const restarted = await start(home);
+    await restarted.host.close();
+    hosts.splice(hosts.indexOf(restarted.host), 1);
+
+    const after = new BunSQLiteStorage(database.path);
+    try {
+      const stored = await createMemoryVectorStore(after).getMany(profile, scope, [id]);
+      expect(Array.from(stored.get(id)?.vector ?? [])).toEqual(Array.from(inline));
+    } finally {
+      after[Symbol.dispose]();
     }
   });
 

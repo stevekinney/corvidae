@@ -17,6 +17,8 @@ import {
   type MemoryAuthority,
   type MemoryDeletionPropagator,
   type MemoryRetentionSweep,
+  createMemoryVectorStore,
+  createTestEmbedders,
 } from '@lostgradient/memory';
 import {
   createAgent,
@@ -96,7 +98,8 @@ function fixture(
   const memory = createGovernedMemory({
     storage: createInMemoryMemoryRecordStorage({ now: () => runtime.clock.now() }),
     ledger,
-    embedder: createMockEmbedder(64),
+    ...createTestEmbedders(createMockEmbedder(64), 64),
+    vectors: createMemoryVectorStore(new MemoryStorage()),
     policy: createMemoryGovernancePolicy({
       revision: 'governance:retention-sweep',
       ...(options.maxRecordsPerCollection === undefined

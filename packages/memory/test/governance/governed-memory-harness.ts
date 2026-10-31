@@ -27,7 +27,12 @@ import {
   createMemoryGovernancePolicy,
 } from '../../src/governance/policy';
 import type { MemoryRecordStorage } from '../../src/memory-record-storage';
-import { createInMemoryMemoryRecordStorage, createMockEmbedder } from '../../src/test/index';
+import { createMemoryVectorStore } from '../../src/memory-vector-store';
+import {
+  createInMemoryMemoryRecordStorage,
+  createMockEmbedder,
+  createTestEmbedders,
+} from '../../src/test/index';
 
 export const ORIGIN = '2026-01-01T00:00:00.000Z';
 export const HOUR = 60 * 60 * 1000;
@@ -82,11 +87,14 @@ export async function createGovernedFixture(
   const ledger = createMemoryGovernanceLedger(durable);
   const notifications: MemoryGovernanceNotification[] = [];
   const policy = createMemoryGovernancePolicy({ revision: 'governance:1', ...options.policy });
+  // Over the durable storage, so a restarted memory finds the vectors the first one wrote.
+  const vectors = createMemoryVectorStore(durable);
   const build = (overrides: Partial<CreateGovernedMemoryOptions> = {}) =>
     createGovernedMemory({
       storage,
       ledger,
-      embedder: createMockEmbedder(64),
+      ...createTestEmbedders(createMockEmbedder(64), 64),
+      vectors,
       policy,
       runtime,
       propagation: {

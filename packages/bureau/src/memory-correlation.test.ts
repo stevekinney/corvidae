@@ -10,6 +10,8 @@ import {
   createMemoryGovernancePolicy,
   createMockEmbedder,
   type MemoryGovernanceNotification,
+  createMemoryVectorStore,
+  createTestEmbedders,
 } from '@lostgradient/memory';
 import {
   createAgent,
@@ -46,7 +48,8 @@ async function answerOnce(createContextEpoch?: () => ContextEpochSealer) {
   const memory = createGovernedMemory({
     storage: createInMemoryMemoryRecordStorage(),
     ledger: createMemoryGovernanceLedger(new MemoryStorage()),
-    embedder: createMockEmbedder(16),
+    ...createTestEmbedders(createMockEmbedder(16), 16),
+    vectors: createMemoryVectorStore(new MemoryStorage()),
     policy: createMemoryGovernancePolicy({ revision: 'governance:1' }),
     onEvent: (notification) => {
       notifications.push(notification);

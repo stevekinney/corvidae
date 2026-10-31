@@ -14,6 +14,8 @@ import {
   createMemoryGovernanceLedger,
   createMemoryGovernancePolicy,
   createMockEmbedder,
+  createMemoryVectorStore,
+  createTestEmbedders,
 } from '@lostgradient/memory';
 import {
   createAgentSession,
@@ -700,7 +702,8 @@ function createGovernedMemoryFixture() {
   const memory = createGovernedMemory({
     storage: createInMemoryMemoryRecordStorage(),
     ledger: createMemoryGovernanceLedger(new MemoryStorage()),
-    embedder: createMockEmbedder(64),
+    ...createTestEmbedders(createMockEmbedder(64), 64),
+    vectors: createMemoryVectorStore(new MemoryStorage()),
     policy: createMemoryGovernancePolicy({ revision: 'governance:runtime-test' }),
     runtime: createManualRuntimeServices({ identifierSeed: 'runtime-composition-memory' }),
   });

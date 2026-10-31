@@ -20,7 +20,9 @@ import {
   createMemoryAuthority,
   createMemoryGovernanceLedger,
   createMemoryGovernancePolicy,
+  createMemoryVectorStore,
   createMockEmbedder,
+  createTestEmbedders,
   createWeftMemoryRecordStorage,
   MemoryAuthorityError,
   type MemoryDeletionReceipt,
@@ -48,7 +50,9 @@ describe('packages/memory/README.md — Governed Memory', () => {
     const memory = createGovernedMemory({
       storage: createWeftMemoryRecordStorage(storage),
       ledger: createMemoryGovernanceLedger(storage),
-      embedder: createMockEmbedder(64), // use a real embedder in production
+      // One embedder, registered with its dimension; use a real one in production.
+      ...createTestEmbedders(createMockEmbedder(64), 64),
+      vectors: createMemoryVectorStore(storage),
       policy: createMemoryGovernancePolicy({ revision: 'governance:1' }),
     });
     await memory.init();
@@ -146,7 +150,8 @@ describe('documentation/memory-governance.md — deletion and its receipt', () =
       storage: createWeftMemoryRecordStorage(storage, { runtime }),
       ledger: createMemoryGovernanceLedger(storage),
       // Evicts by content digest, so the built-in `caches` handler can complete.
-      embedder: withEmbeddingCache(createMockEmbedder(64)),
+      ...createTestEmbedders(withEmbeddingCache(createMockEmbedder(64)), 64),
+      vectors: createMemoryVectorStore(storage),
       policy: createMemoryGovernancePolicy({ revision: 'governance:1' }),
       runtime,
       propagation: {

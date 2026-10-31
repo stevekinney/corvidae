@@ -79,7 +79,9 @@ import {
   createMemoryAuthority,
   createMemoryGovernanceLedger,
   createMemoryGovernancePolicy,
+  createMemoryVectorStore,
   createMockEmbedder,
+  createTestEmbedders,
   createWeftMemoryRecordStorage,
   withEmbeddingCache,
 } from '@lostgradient/memory';
@@ -92,7 +94,8 @@ const memory = createGovernedMemory({
   storage: createWeftMemoryRecordStorage(storage, { runtime }),
   ledger: createMemoryGovernanceLedger(storage),
   // Evicts by content digest, so the built-in `caches` handler can complete.
-  embedder: withEmbeddingCache(createMockEmbedder(64)),
+  ...createTestEmbedders(withEmbeddingCache(createMockEmbedder(64)), 64),
+  vectors: createMemoryVectorStore(storage),
   policy: createMemoryGovernancePolicy({ revision: 'governance:1' }),
   runtime,
   propagation: {

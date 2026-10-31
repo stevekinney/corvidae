@@ -33,7 +33,12 @@ import {
   type MemoryEvidenceManifest,
   type MemoryRecallDifference,
 } from '../src/governance/recall-replay';
-import { createInMemoryMemoryRecordStorage, createMockEmbedder } from '../src/test/index';
+import { createMemoryVectorStore } from '../src/memory-vector-store';
+import {
+  createInMemoryMemoryRecordStorage,
+  createMockEmbedder,
+  createTestEmbedders,
+} from '../src/test/index';
 
 const recordingSchema = z.object({
   name: z.string().min(1),
@@ -90,7 +95,8 @@ export async function replayRecording(input: RecallRecording): Promise<RecallRep
   const memory = createGovernedMemory({
     storage: createInMemoryMemoryRecordStorage({ now: () => runtime.clock.now() }),
     ledger: createMemoryGovernanceLedger(new MemoryStorage()),
-    embedder: createMockEmbedder(64),
+    ...createTestEmbedders(createMockEmbedder(64), 64),
+    vectors: createMemoryVectorStore(new MemoryStorage()),
     policy: createMemoryGovernancePolicy({ revision: recording.policyRevision }),
     runtime,
   });

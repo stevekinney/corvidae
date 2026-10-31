@@ -350,6 +350,11 @@ describe('createMemoryGovernanceLedger', () => {
       { tenantId: 'tenant-a', namespace: 'private:owner-a:c' },
       { tenantId: 'tenant-a', namespace: 'shared:c' },
     ]);
+    expect(await ledger.listScopes()).toEqual([
+      { tenantId: 'tenant-a', namespace: 'private:owner-a:c' },
+      { tenantId: 'tenant-a', namespace: 'shared:c' },
+      { tenantId: 'tenant-b', namespace: 'shared:c' },
+    ]);
 
     await ledger.putEviction('tenant-a', 'run-1', 'r1');
     await ledger.putEviction('tenant-a', 'run-1', 'r2');

@@ -5,7 +5,7 @@ import { attenuateMemoryAuthority } from '../../src/governance/authority';
 import { createMemoryGovernancePolicy } from '../../src/governance/policy';
 import { collectionNamespace } from '../../src/governance/record-governance';
 import { sha256Hex } from '../../src/hash';
-import { createMockEmbedder } from '../../src/test/index';
+import { createMockEmbedder, createTestEmbedders } from '../../src/test/index';
 import type { TextSearchProvider } from '../../src/text-search-provider';
 import {
   DAY,
@@ -431,7 +431,11 @@ describe('propagation built-ins', () => {
       const { indexed, provider } = textIndex();
       const embedder = withEmbeddingCache(createMockEmbedder(64), options);
       const fixture = await createGovernedFixture('in-memory', {
-        governed: { textSearchProvider: provider, embedder, propagation: withoutCaches },
+        governed: {
+          textSearchProvider: provider,
+          ...createTestEmbedders(embedder, 64),
+          propagation: withoutCaches,
+        },
       });
       const id = await recordIdOf(
         fixture.memory.write(principalA, content, { collection: 'food', source: 'conversation' }),

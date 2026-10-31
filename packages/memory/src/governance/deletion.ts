@@ -198,6 +198,12 @@ function evictsContent(embedder: Embedder): embedder is ContentEvictingEmbedder 
   return 'evictContent' in embedder && typeof embedder.evictContent === 'function';
 }
 
+/** Every registered embedder that caches content, so a deletion evicts it from each. */
+function cachingEmbedders(context: GovernanceContext): ContentEvictingEmbedder[] {
+  const { registry } = context.embedding;
+  return registry.ids.map((id) => registry.resolve(id)).filter(evictsContent);
+}
+
 function emptyPlan(): MemoryDeletionPlan {
   return { projections: [], identityViews: [], managedAssetRecords: [], summaries: [] };
 }
@@ -772,8 +778,11 @@ export function createDeletionEngine(context: GovernanceContext): DeletionEngine
         detail: 'text index entries and record-resident vectors removed',
       };
     }
-    if (target === 'caches' && evictsContent(context.embedder)) {
-      const evicted = await context.embedder.evictContent(receipt.contentDigests);
+    const evicting = cachingEmbedders(context);
+    if (target === 'caches' && evicting.length > 0) {
+      let evicted = 0;
+      for (const embedder of evicting)
+        evicted += await embedder.evictContent(receipt.contentDigests);
       return { status: 'completed', detail: `${evicted} cached embedding(s) evicted` };
     }
     if (target === 'summaries') {

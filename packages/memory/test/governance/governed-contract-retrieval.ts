@@ -11,6 +11,7 @@ import {
   createMemoryRetrievalPlan,
   MEMORY_POLICY_FILTERS,
 } from '../../src/governance/retrieval-plan';
+import { createTestEmbedders } from '../../src/test/index';
 import {
   authority,
   createGovernedFixture,
@@ -52,6 +53,8 @@ function conceptVector(text: string): number[] {
 }
 
 const conceptEmbedder = (texts: string[]): number[][] => texts.map(conceptVector);
+/** One entry per concept, and one for every word outside them. */
+const CONCEPT_DIMENSION = CONCEPTS.length + 1;
 
 const quiet: InputDetector = {
   name: 'quiet',
@@ -84,7 +87,9 @@ export function registerRetrievalContract(backend: GovernedBackend): void {
       );
 
     beforeEach(async () => {
-      fixture = await createGovernedFixture(backend, { governed: { embedder: conceptEmbedder } });
+      fixture = await createGovernedFixture(backend, {
+        governed: createTestEmbedders(conceptEmbedder, CONCEPT_DIMENSION),
+      });
     });
 
     describe('deterministic retrieval fixtures', () => {
@@ -221,7 +226,7 @@ export function registerRetrievalContract(backend: GovernedBackend): void {
 
       it('withholds and quarantines adversarial content that slipped past admission', async () => {
         fixture = await createGovernedFixture(backend, {
-          governed: { embedder: conceptEmbedder },
+          governed: createTestEmbedders(conceptEmbedder, CONCEPT_DIMENSION),
           policy: { admission: { detectors: [quiet] } },
         });
         const slipped = await write(
@@ -372,9 +377,10 @@ export function registerRetrievalContract(backend: GovernedBackend): void {
 
       it('admits a negative fused score when the minimum score is disabled', async () => {
         fixture = await createGovernedFixture(backend, {
-          governed: {
-            embedder: (texts) => texts.map((text) => (text === 'opposite' ? [-1, 0] : [1, 0])),
-          },
+          governed: createTestEmbedders(
+            (texts) => texts.map((text) => (text === 'opposite' ? [-1, 0] : [1, 0])),
+            2,
+          ),
         });
         const record = await write('Something unrelated.');
         const bundle = await fixture.memory.recallForModel(principalA, 'opposite', {
@@ -390,12 +396,12 @@ export function registerRetrievalContract(backend: GovernedBackend): void {
         const jazz = await write('The user enjoys jazz.');
         // An exact phrase match, so the first pass selects it before the reformulation fails.
         const exact = await write('Notes on what about the jazz club.');
-        const broken = fixture.restart({
-          embedder: (texts) => {
+        const broken = fixture.restart(
+          createTestEmbedders((texts) => {
             if (texts.includes('jazz')) throw new Error('embedder offline');
             return texts.map(conceptVector);
-          },
-        });
+          }, CONCEPT_DIMENSION),
+        );
         const bundle = await broken.recallForModel(principalA, 'what about the jazz', {
           collection: 'notes',
           plan: { minimumScore: 1 },
@@ -432,11 +438,11 @@ export function registerRetrievalContract(backend: GovernedBackend): void {
 
       it('fails closed with no evidence when the embedder throws', async () => {
         await write('The user drives an electric automobile.');
-        const broken = fixture.restart({
-          embedder: () => {
+        const broken = fixture.restart(
+          createTestEmbedders(() => {
             throw new Error('embedder offline');
-          },
-        });
+          }, CONCEPT_DIMENSION),
+        );
         const bundle = await broken.recallForModel(principalA, 'vehicle', { collection: 'notes' });
         expect(bundle).toMatchObject({ evidence: [], rendered: '', stopReason: 'failed' });
       });
@@ -540,7 +546,7 @@ export function registerRetrievalContract(backend: GovernedBackend): void {
           },
         };
         fixture = await createGovernedFixture(backend, {
-          governed: { embedder: conceptEmbedder },
+          governed: createTestEmbedders(conceptEmbedder, CONCEPT_DIMENSION),
           policy: { recall: { detectors: [once] } },
         });
         const source = await write('Lockbox code is kept with the manager.');
@@ -568,7 +574,7 @@ export function registerRetrievalContract(backend: GovernedBackend): void {
           },
         };
         fixture = await createGovernedFixture(backend, {
-          governed: { embedder: conceptEmbedder },
+          governed: createTestEmbedders(conceptEmbedder, CONCEPT_DIMENSION),
           policy: { recall: { detectors: [aborting] } },
         });
         await write('The user drives an electric automobile.');
@@ -625,11 +631,11 @@ export function registerRetrievalContract(backend: GovernedBackend): void {
 
       it('records no below-minimum exclusions when the first scoring pass fails', async () => {
         await write('The user drives an electric automobile.');
-        const broken = fixture.restart({
-          embedder: () => {
+        const broken = fixture.restart(
+          createTestEmbedders(() => {
             throw new Error('embedder offline');
-          },
-        });
+          }, CONCEPT_DIMENSION),
+        );
         const bundle = await broken.recallForModel(principalA, 'vehicle', { collection: 'notes' });
         expect(bundle.stopReason).toBe('failed');
         expect(bundle.exclusions).toEqual([]);
@@ -668,11 +674,11 @@ export function registerRetrievalContract(backend: GovernedBackend): void {
 
       it('reports every selected stage on a bundle whose scoring failed', async () => {
         await write('The user drives an electric automobile.');
-        const broken = fixture.restart({
-          embedder: () => {
+        const broken = fixture.restart(
+          createTestEmbedders(() => {
             throw new Error('embedder offline');
-          },
-        });
+          }, CONCEPT_DIMENSION),
+        );
         const bundle = await broken.recallForModel(principalA, 'vehicle', { collection: 'notes' });
         expect(bundle.stopReason).toBe('failed');
         expect(bundle.stages.map((stage) => stage.stage)).toContain('reformulation');
@@ -692,7 +698,7 @@ export function registerRetrievalContract(backend: GovernedBackend): void {
           },
         };
         fixture = await createGovernedFixture(backend, {
-          governed: { embedder: conceptEmbedder },
+          governed: createTestEmbedders(conceptEmbedder, CONCEPT_DIMENSION),
           policy: { recall: { detectors: [switching] } },
         });
         memory = fixture.memory;
