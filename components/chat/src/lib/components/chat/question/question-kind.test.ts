@@ -130,6 +130,22 @@ describe('answers', () => {
     expect(summarizeAnswer({ type: 'number' }, 4)).toBe('4');
   });
 
+  test('a pick-or-other answer reads as the choice label, or as the words the person typed', () => {
+    const schema = {
+      anyOf: [{ enum: ['stg'] }, { type: 'string', maxLength: 50 }],
+      'x-labels': { stg: 'Staging' },
+      'x-allowOther': true,
+    };
+    expect(summarizeAnswer(schema, 'stg')).toBe('Staging');
+    expect(summarizeAnswer(schema, 'my own cluster')).toBe('my own cluster');
+  });
+
+  test('a value that is not a string, number or boolean reads as its JSON, or as nothing', () => {
+    expect(summarizeAnswer({ type: 'string' }, null)).toBe('null');
+    expect(summarizeAnswer({ type: 'string' }, ['a', 1])).toBe('["a",1]');
+    expect(summarizeAnswer({ type: 'string' }, undefined)).toBe('');
+  });
+
   test('moments are sent as RFC 3339', () => {
     expect(dateTimeFromLocal('2026-10-29T14:30')).toMatch(/^2026-10-29T\d{2}:30:00Z$/);
     expect(dateTimeFromLocal('')).toBeUndefined();
@@ -143,6 +159,9 @@ describe('answers', () => {
       issuesOfRejection({ issues: [{ path: ['a', 0], message: 'bad' }, { nope: true }] }),
     ).toEqual([{ path: ['a', 0], message: 'bad' }]);
     expect(issuesOfRejection({ issues: [] })).toBeUndefined();
+    expect(issuesOfRejection({ issues: [{ message: 'bad' }] })).toEqual([
+      { path: [], message: 'bad' },
+    ]);
   });
 });
 
