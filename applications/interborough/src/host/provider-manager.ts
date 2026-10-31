@@ -195,6 +195,12 @@ export type ProviderManager = {
   /** Read the configuration and the keys again and apply them. */
   reload(): Promise<ProviderChange>;
   /**
+   * Check that `configuration` could be stored as `plugin`'s choices (its allowlist matches the
+   * plugin's models, counting the rows the catalog edits add), and throw what the next start would
+   * throw. Writes nothing.
+   */
+  checkAllowlist(plugin: string, configuration: unknown): Promise<void>;
+  /**
    * Hand the manager the providers the loaded plugins contribute and load them: the rows for the
    * Bureau's first catalog. The host calls it from Bureau's `models.catalog` factory, once.
    */
@@ -371,8 +377,10 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
   /** Check a document against the keys the host would hold, then write it. Nothing is written when it fails. */
   function validated(document: Record<string, unknown>, keys: ReadonlySet<string>): string {
     const text = `${JSON.stringify(document, null, 2)}\n`;
-    const names = loaded.providers.map((provider) => provider.name);
-    const configuration = parseProviderConfiguration(text, location, names);
+    // The stored edits are read as `loadProviders` reads them: an edit for a provider no loaded
+    // plugin contributes waits, ignored, for its plugin. A new edit was checked against the names
+    // when it arrived.
+    const configuration = parseProviderConfiguration(text, location);
     selectCatalogRows({
       configuration,
       allowlists: readAllowlists(
@@ -521,9 +529,16 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
         loaded.providers.map((provider) => provider.name),
       );
       return serialized(async () => {
-        const { catalog: _replaced, ...rest } = await readDocument();
+        const { catalog: stored, ...rest } = await readDocument();
+        // An edit for a provider no loaded plugin contributes is not the caller's to replace: it
+        // waits in the file for its plugin, after the edits that replace the others.
+        const names = new Set(loaded.providers.map((provider) => provider.name));
+        const dormant = parseCatalogEdits(stored ?? [], location).filter(
+          (edit) => !names.has(edit.provider),
+        );
+        const next = [...parsed, ...dormant];
         const text = validated(
-          parsed.length === 0 ? rest : { ...rest, catalog: parsed },
+          next.length === 0 ? rest : { ...rest, catalog: next },
           new Set(loaded.apiKeys.keys()),
         );
         bungalow.writeConfiguration(text);
@@ -531,5 +546,21 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
       });
     },
     reload: () => serialized(apply),
+    async checkAllowlist(plugin, configuration) {
+      // Copied before the first `await`: the caller owns the request.
+      const given: unknown = structuredClone(configuration);
+      return serialized(async () => {
+        const document = await readDocument();
+        const plugins = isPlainObject(document['plugins']) ? document['plugins'] : {};
+        const existing = Object.hasOwn(plugins, plugin) ? plugins[plugin] : undefined;
+        const entry = isPlainObject(existing)
+          ? { ...existing, configuration: given }
+          : { configuration: given };
+        validated(
+          { ...document, plugins: { ...plugins, [plugin]: entry } },
+          new Set(loaded.apiKeys.keys()),
+        );
+      });
+    },
   };
 }

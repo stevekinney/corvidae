@@ -105,4 +105,35 @@ describe('the models.catalog factory', () => {
     expect(records[0]?.status).toBe('skipped');
     expect(JSON.stringify(records[0]?.problems)).toContain('catalog row for the provider');
   });
+
+  it('skips the later of two plugins that contribute a provider of one name', async () => {
+    const received: PluginModelContributions[] = [];
+    const { records } = await composePlugins({
+      plugins: [
+        pluginEntry('first', () => ({ providers: [definition('openai')] })),
+        pluginEntry('second', () => ({ providers: [definition('openai')] })),
+      ],
+      models: {
+        catalog: (contributions) => {
+          received.push(contributions);
+          return [];
+        },
+      },
+    });
+    expect(records.map(({ entry, status }) => [entry.descriptor.name, status])).toEqual([
+      ['first', 'running'],
+      ['second', 'skipped'],
+    ]);
+    expect(records[1]?.problems).toMatchObject([{ code: 'name-clash', name: 'openai' }]);
+    expect(received[0]?.providers.map(({ plugin }) => plugin)).toEqual(['first']);
+  });
+
+  it('skips a plugin that contributes two providers of one name', async () => {
+    const { records } = await composePlugins({
+      plugins: [
+        pluginEntry('twice', () => ({ providers: [definition('openai'), definition('openai')] })),
+      ],
+    });
+    expect(records[0]?.status).toBe('skipped');
+  });
 });

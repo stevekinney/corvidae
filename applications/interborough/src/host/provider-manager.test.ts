@@ -168,6 +168,39 @@ describe('a remote home', () => {
   });
 });
 
+describe('a stored catalog edit for a provider no loaded plugin contributes', () => {
+  const dormant = { provider: 'voyage', model: 'voyage-3', off: true };
+
+  test('waits, ignored, and does not stop another provider from connecting', async () => {
+    const home = fakeHome('local');
+    home.configuration = JSON.stringify({ catalog: [dormant] });
+    const { manager } = await managerFor(home);
+
+    await manager.connect({ provider: 'anthropic', apiKey: KEY });
+    await manager.editCatalog([{ provider: 'anthropic', model: 'sonnet', off: true }]);
+
+    expect(manager.current().apiKeys.get('anthropic')).toBe(KEY);
+    expect((await manager.snapshot()).catalog).toEqual([
+      { provider: 'anthropic', model: 'sonnet', off: true },
+    ]);
+    // A replacement of the edits leaves the dormant one in the file for its plugin.
+    expect(JSON.parse(home.configuration ?? '{}').catalog).toEqual([
+      { provider: 'anthropic', model: 'sonnet', off: true },
+      dormant,
+    ]);
+  });
+
+  test('is kept out of the snapshot, and a new edit may not name its provider', async () => {
+    const home = fakeHome('local');
+    home.configuration = JSON.stringify({ catalog: [dormant] });
+    const { manager } = await managerFor(home);
+
+    expect((await manager.snapshot()).catalog).toEqual([]);
+    const failure = await failureOf(manager.editCatalog([dormant]));
+    expect(String(failure)).toContain('catalog[0].provider');
+  });
+});
+
 describe('a write that fails', () => {
   test('keeps serving the previous configuration, and the error does not hold the key', async () => {
     const home = fakeHome('local', { failConfiguration: true });

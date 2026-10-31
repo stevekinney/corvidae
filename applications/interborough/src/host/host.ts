@@ -596,6 +596,12 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // A provider plugin's allowlist applies without a restart: the provider manager reloads the catalog.
       appliesConfigurationLive: (plugin) =>
         held.providers?.current().providers.some((provider) => provider.plugin === plugin) === true,
+      checkConfiguration: async (plugin, configuration) => {
+        await held.providers?.checkAllowlist(plugin, configuration);
+      },
+      applyConfiguration: async () => {
+        await held.providers?.reload();
+      },
       listing: async () => (held.bureau === undefined ? [] : held.bureau.plugins.list()),
       reservedSecretKeys: [APPROVAL_SECRET_KEY, A2A_API_KEY_SECRET_KEY],
       reservedSecretPrefixes: [ANSWER_ENCRYPTION_KEY, TOOL_SOURCE_SECRET_PREFIX],

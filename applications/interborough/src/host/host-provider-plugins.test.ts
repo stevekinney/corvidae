@@ -7,12 +7,14 @@ import { openBungalow } from '@lostgradient/bungalow';
 import { definePlugin } from '@lostgradient/interborough-plugin';
 import { createModelCatalog } from '@lostgradient/operative';
 import { afterEach, describe, expect, test } from 'bun:test';
+import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { startHost, type Host } from './host.ts';
 import { workspacePlugins } from './plugins.ts';
+import { ProviderConfigurationError } from './provider-configuration-error.ts';
 
 const directories: string[] = [];
 const hosts: Host[] = [];
@@ -257,5 +259,44 @@ describe('connecting a provider', () => {
     const snapshot = await host.plugins.snapshot();
     const standing = snapshot.plugins.find((plugin) => plugin.descriptor.name === 'openai');
     expect(standing?.restartRequired).toBe(true);
+  });
+});
+
+describe('changing a provider plugin’s configuration through the plugin routes', () => {
+  const openaiPairs = (host: Host) => pairsOf(host).filter((pair) => pair.startsWith('openai/'));
+
+  test('limits and restores the catalog at once, with no restart', async () => {
+    const home = await prepareHome({ secrets: { 'openai-api-key': KEY } });
+    const host = await startAt(home);
+    const all = openaiPairs(host);
+    expect(all.length).toBeGreaterThan(1);
+
+    const limited = await host.plugins.update('openai', { configuration: { models: ['gpt-4.1'] } });
+
+    expect(limited.restartRequired).toBe(false);
+    expect(openaiPairs(host)).toEqual(['openai/gpt-4.1']);
+
+    await host.plugins.update('openai', { configuration: null });
+
+    expect(openaiPairs(host)).toEqual(all);
+  });
+
+  test('refuses an allowlist entry that matches no model, writes nothing, and keeps the catalog', async () => {
+    const home = await prepareHome({ secrets: { 'openai-api-key': KEY } });
+    const host = await startAt(home);
+    const before = pairsOf(host);
+
+    const failure = await host.plugins
+      .update('openai', { configuration: { models: ['gpt-nonexistent'] } })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+
+    expect(failure).toBeInstanceOf(ProviderConfigurationError);
+    expect(String(failure)).toContain('plugins.openai.configuration.models[0]');
+    expect(String(failure)).not.toContain('gpt-nonexistent');
+    expect(existsSync(join(home, 'configuration.json'))).toBe(false);
+    expect(pairsOf(host)).toEqual(before);
   });
 });

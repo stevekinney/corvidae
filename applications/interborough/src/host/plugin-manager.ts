@@ -197,6 +197,16 @@ export type PluginManagerOptions = {
    * `restartRequired`.
    */
   readonly appliesConfigurationLive?: (plugin: string) => boolean;
+  /**
+   * For a plugin the host applies live: checks a configuration the host is about to store, and
+   * throws what the next start would throw, before a byte is written.
+   */
+  readonly checkConfiguration?: (plugin: string, configuration: unknown) => Promise<void>;
+  /**
+   * For a plugin the host applies live: called once a change to its choices is stored, outside the
+   * configuration queue, to apply them (the host reloads the model catalog).
+   */
+  readonly applyConfiguration?: (plugin: string) => Promise<void>;
   /** Bureau's listing, once the Bureau exists; it is empty before. */
   readonly listing: () => Promise<readonly PluginListing[]>;
   /** Secret keys the host keeps for itself: a plugin may not declare one, since it would read or overwrite it. */
@@ -436,7 +446,11 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
         const problem = configurationProblem(entry, configuration);
         if (problem !== undefined) throw new PluginInputError(problem.field, problem.message);
       }
-      return serialized(async () => {
+      const live = options.appliesConfigurationLive?.(name) === true;
+      if (live && configuration !== undefined) {
+        await options.checkConfiguration?.(name, configuration);
+      }
+      const change = await serialized(async () => {
         assertWritable();
         const text = await readText();
         // Parsed first as the host reads it, so a file that is already invalid is refused, not overwritten.
@@ -475,6 +489,11 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
         if (enabledIn(persisted, entry)) generate();
         return changeOf(entry);
       });
+      // Applied outside the queue, which the work shares. A change to `enabled` alone waits for a restart.
+      if (live && (configuration !== undefined || clearsConfiguration)) {
+        await options.applyConfiguration?.(name);
+      }
+      return change;
     },
 
     async saveSecret(name, key, value) {

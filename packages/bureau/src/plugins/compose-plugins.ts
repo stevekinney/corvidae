@@ -249,6 +249,8 @@ function planOf(
   for (const kind of contributions.hookActionKinds ?? []) contribute('hook-action', kind.name);
   for (const provider of contributions.providers ?? []) {
     contribute('provider', provider.name);
+    // The host resolves a generate by the bare provider name, so the name is held across plugins.
+    claims.push({ space: 'provider-name', name: provider.name });
     for (const row of provider.rows ?? []) {
       // A row names the provider that serves it; a stray one would never find its definition.
       if (row.provider !== provider.name) {
