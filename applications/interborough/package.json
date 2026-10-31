@@ -33,6 +33,7 @@
     "@lostgradient/operative-openai": "workspace:*",
     "@lostgradient/plugin-anthropic": "workspace:*",
     "@lostgradient/plugin-gemini": "workspace:*",
+    "@lostgradient/plugin-inspectors": "workspace:*",
     "@lostgradient/plugin-openai": "workspace:*",
     "@lostgradient/plugin-typesafe": "workspace:*",
     "@lostgradient/storage": "workspace:*",

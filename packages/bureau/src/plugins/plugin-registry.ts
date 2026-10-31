@@ -277,6 +277,16 @@ export function createPluginRegistry(records: readonly PluginRecord[]): PluginRe
         records
           .filter((record) => record.status === 'running')
           .map((record) => record.entry.descriptor.name),
+      mcpApps: () =>
+        records.flatMap((record) =>
+          record.status === 'running'
+            ? (record.setup?.result.mcpApps ?? []).map((app) => ({
+                plugin: record.entry.descriptor.name,
+                version: record.entry.descriptor.version,
+                app,
+              }))
+            : [],
+        ),
       ready: () => started.promise,
     },
     observe(given) {

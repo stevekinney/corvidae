@@ -4,13 +4,12 @@
  * `AppBridge`. Tool calls are answered from fixtures, so the spec proves the page, not the Bureau.
  */
 import { default as Axe } from '@axe-core/playwright';
+import { pendingReview } from '@lostgradient/plugin-inspectors';
 import type { McpUiResourceCsp } from '@modelcontextprotocol/ext-apps/app-bridge';
 import { expect, test, type Page } from '@playwright/test';
 
-import {
-  buildPendingReviewPage,
-  PENDING_REVIEW_UI_META,
-} from '../../src/host/pending-review-resource.ts';
+import { buildMcpAppPage } from '../../src/host/mcp-app-build.ts';
+import { MCP_APP_UI_META } from '../../src/host/mcp-app-mounts.ts';
 
 const HOST_ORIGIN = 'http://reference-host.test';
 const TITLE = 'Pending reviews';
@@ -26,7 +25,11 @@ test.beforeAll(async () => {
   });
   if (!bundle.success) throw new AggregateError(bundle.logs, 'The reference host did not build');
   hostScript = await bundle.outputs[0]!.text();
-  const built = await buildPendingReviewPage();
+  const built = await buildMcpAppPage({
+    entry: pendingReview.entry.href,
+    title: pendingReview.title,
+    styles: pendingReview.styles ?? '',
+  });
   pageHtml = built.html;
 });
 
@@ -91,7 +94,7 @@ async function open(page: Page, reviews: unknown[]) {
     },
     {
       html: pageHtml,
-      csp: PENDING_REVIEW_UI_META.csp,
+      csp: MCP_APP_UI_META.csp,
       reviews: reviews as { id: string }[],
       title: TITLE,
     },

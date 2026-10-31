@@ -9,7 +9,6 @@
     "src/host/engine-proxy.ts WebSocketRelayData.upstream",
     "src/host/engine-proxy.ts WebSocketRelayData.upstreamOpen",
     "src/host/host.ts ExtraAgents.agents",
-    "src/host/mcp-app-build.ts BuiltMcpApp.html",
     "src/host/providers.ts LoadedProviders.apiKeys",
     "src/host/providers.ts LoadedProviders.rows",
     "src/host/providers.ts ModelSelection.model",

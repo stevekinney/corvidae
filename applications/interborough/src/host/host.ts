@@ -820,7 +820,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // The handler is built once the listener has a port, because the Agent Card of an agent that
     // opts into A2A names the URL it is served at (COR-1819). Until then `/bureau/*` answers 503,
     // which only a client that guessed the port could see.
-    const mcpMounts = await mcpAppMounts();
+    const mcpMounts = await mcpAppMounts(bureau.plugins.mcpApps());
     let bureauHandler: BureauHandler | undefined;
     const bureauSockets: BureauHandler['websocket'] = {
       open: (socket) => bureauHandler?.websocket.open(socket),

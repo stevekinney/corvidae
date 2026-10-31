@@ -52,6 +52,7 @@
         "@lostgradient/operative-openai": "workspace:*",
         "@lostgradient/plugin-anthropic": "workspace:*",
         "@lostgradient/plugin-gemini": "workspace:*",
+        "@lostgradient/plugin-inspectors": "workspace:*",
         "@lostgradient/plugin-openai": "workspace:*",
         "@lostgradient/plugin-typesafe": "workspace:*",
         "@lostgradient/storage": "workspace:*",
@@ -817,6 +818,21 @@
         "typescript": "catalog:",
       },
     },
+    "plugins/inspectors": {
+      "name": "@lostgradient/plugin-inspectors",
+      "dependencies": {
+        "@lostgradient/interborough-plugin": "workspace:*",
+        "@modelcontextprotocol/ext-apps": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/bureau": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "plugins/ollama": {
       "name": "@lostgradient/plugin-ollama",
       "dependencies": {
@@ -1267,6 +1283,8 @@
     "@lostgradient/plugin-gemini": ["@lostgradient/plugin-gemini@workspace:plugins/gemini"],
 
     "@lostgradient/plugin-guardrails": ["@lostgradient/plugin-guardrails@workspace:plugins/guardrails"],
+
+    "@lostgradient/plugin-inspectors": ["@lostgradient/plugin-inspectors@workspace:plugins/inspectors"],
 
     "@lostgradient/plugin-ollama": ["@lostgradient/plugin-ollama@workspace:plugins/ollama"],
 

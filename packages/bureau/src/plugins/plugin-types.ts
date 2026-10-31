@@ -6,7 +6,7 @@
 
 import type { ContributedEmbedder, GovernedMemory } from '@lostgradient/memory';
 import type { BackendDescriptor, ProviderDefinition } from '@lostgradient/operative/provider-kit';
-import type { PluginDescriptor } from '@lostgradient/interborough-plugin';
+import type { PluginDescriptor, PluginMcpApp } from '@lostgradient/interborough-plugin';
 import type { InputDetector } from 'armorer';
 import type { z } from 'zod';
 
@@ -303,6 +303,19 @@ export interface BureauPlugins {
    * anything, for a caller that needs only the names.
    */
   registered(): readonly string[];
+  /**
+   * The MCP apps of the running plugins, in load order, each with the plugin that contributed it.
+   * Fixed once the Bureau is built: Bureau serves none of them, so a host builds and serves the
+   * pages from this list.
+   */
+  mcpApps(): readonly {
+    /** The contributing plugin's name. */
+    readonly plugin: string;
+    /** The contributing plugin's version. */
+    readonly version: string;
+    /** The app as the plugin declared it. */
+    readonly app: PluginMcpApp;
+  }[];
   /** Settles once every running plugin's `afterStart` has settled. Never rejects. */
   ready(): Promise<void>;
 }

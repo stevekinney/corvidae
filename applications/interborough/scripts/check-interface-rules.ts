@@ -8,7 +8,7 @@
  * The check reads two kinds of source.
  *
  * Copy: every `src/**\/*.svelte` and `src/**\/*.ts` that is not a test, a harness, or under
- * `src/host` or `src/mcp-apps`. A TypeScript module counts because the sentences a page shows live
+ * `src/host`. A TypeScript module counts because the sentences a page shows live
  * in them (`src/app/copy.ts`, a status table, a scope catalog). A string counts as visible when it
  * is template text, a mustache, a text attribute, an argument to `{@render}`, a `{@const}`, or, in a
  * script or module, a string that reads as prose (it has a space or starts with a capital letter).
@@ -108,8 +108,8 @@ const PACKAGE_ROOT = join(import.meta.dir, '..');
 export const ALLOWLIST_PATH = 'tests/interface-lint-allowlist.json';
 export const PENDING_PATH = 'tests/interface-lint-pending.json';
 
-/** Source the copy rules do not read: the host runs on a server, and the MCP apps are other pages. */
-const SKIPPED_DIRECTORIES = ['src/host/', 'src/mcp-apps/'];
+/** Source the copy rules do not read: the host runs on a server. */
+const SKIPPED_DIRECTORIES = ['src/host/'];
 const SKIPPED_FILE = /\.test[.-]|harness/;
 
 /** Attributes whose string is never words a person reads. */
