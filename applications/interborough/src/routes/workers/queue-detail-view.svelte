@@ -61,7 +61,7 @@
 
   <div class="weft-queue-detail__grid">
     <div class="weft-workers-panel">
-      <div class="weft-workers-panel__header">Strategy</div>
+      <div class="weft-workers-panel__title">Strategy</div>
       <DescriptionList items={strategyItems} />
     </div>
 
@@ -112,7 +112,7 @@
   </div>
 
   <div class="weft-workers-panel">
-    <div class="weft-workers-panel__header">Recovery diagnostics</div>
+    <div class="weft-workers-panel__title">Recovery diagnostics</div>
     {#if diagnosticItems.length === 0}
       <p class="weft-queue-detail__no-workers">No recovery diagnostics on this queue.</p>
     {:else}
@@ -137,7 +137,7 @@
   </div>
 
   <div class="weft-workers-panel">
-    <div class="weft-workers-panel__header">Workers on this queue</div>
+    <div class="weft-workers-panel__title">Workers on this queue</div>
     {#if workersOnQueue.length === 0}
       <p class="weft-queue-detail__no-workers">No connected workers are polling this queue.</p>
     {:else}

@@ -139,7 +139,7 @@
         {#each targets as target (target.name)}
           {@const state = runs[target.name]}
           <li class="weft-conformance__target" aria-label={`Conformance target ${target.name}`}>
-            <div class="weft-conformance__target-header">
+            <div class="weft-conformance__target-summary">
               <span class="weft-workers-mono">{target.name}</span>
               <span class="weft-conformance__timeout"
                 >{formatDuration(target.timeoutMs)} allowed per wait</span

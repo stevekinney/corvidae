@@ -223,6 +223,6 @@ describe('the palette shortcut', () => {
 describe('the paths of a record', () => {
   test('encode the identifier', () => {
     expect(schedulePath('a b/c')).toBe('/schedules/a%20b%2Fc');
-    expect(workerPath('a&b')).toBe('/health/workers?tab=list&worker=a%26b');
+    expect(workerPath('a&b')).toBe('/health/workers?worker=a%26b');
   });
 });

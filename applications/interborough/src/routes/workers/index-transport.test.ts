@@ -56,12 +56,12 @@ describe('Workers route — transports', () => {
     scripted = new ScriptedFetch();
     routeHappyPaths(scripted, { workers: [worker({ id: 'wkr_ws', transport: 'websocket' })] });
     const socketOnly = renderRoute();
-    expect(await socketOnly.findByText('Total workers')).not.toBeNull();
+    expect(await socketOnly.findByTestId('workers-summary')).not.toBeNull();
     expect(socketOnly.queryByText(/HTTP long-poll workers have no server push/)).toBeNull();
   });
 
   test('a selected worker the server no longer lists reads as closed, not as an error', async () => {
-    resetLocation('/health/workers?tab=list&worker=wkr_gone');
+    resetLocation('/health/workers?worker=wkr_gone');
     scripted = new ScriptedFetch();
     routeHappyPaths(scripted, { workers: [worker({ id: 'wkr_other' })] });
 
@@ -70,7 +70,6 @@ describe('Workers route — transports', () => {
     expect(await findByText('Worker closed')).not.toBeNull();
     expect(await findByText(/No worker with the ID wkr_gone is registered/)).not.toBeNull();
     await fireEvent.click(getByRole('button', { name: 'Back to all workers' }));
-    expect(router.search.get('tab')).toBe('list');
     expect(router.search.get('worker')).toBeNull();
   });
 

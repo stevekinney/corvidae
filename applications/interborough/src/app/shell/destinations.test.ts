@@ -9,7 +9,12 @@ import { describe, expect, test } from 'bun:test';
 import { matchRoute } from '../../lib/router.svelte.ts';
 import { ShortcutRegistry, type ShortcutKey } from '../../lib/shortcuts.ts';
 import { SHORTCUT_COPY } from '../copy.ts';
-import { DESTINATIONS, LIST_DETAIL_REGION, registerShellShortcuts } from './destinations.ts';
+import {
+  DESTINATIONS,
+  LIST_DETAIL_REGION,
+  registerShellShortcuts,
+  WORKERS_SHORTCUT,
+} from './destinations.ts';
 
 function key(value: string): ShortcutKey {
   return { key: value, metaKey: false, ctrlKey: false, altKey: false, editable: false };
@@ -61,6 +66,21 @@ describe('the shell’s shortcuts', () => {
       expect(opened).toEqual([destination.path]);
       expect(matchRoute(destination.path)?.pattern).toBe(destination.path);
     }
+  });
+
+  test('G O opens Workers, which lives under Health and is not in the sidebar', () => {
+    const { registry, opened } = registered();
+    const where = { routePattern: '/health', regions: [] };
+    registry.handleKey(key('g'), where, 0);
+    expect(registry.handleKey(key('o'), where, 1)).toBe(true);
+    expect(opened).toEqual([WORKERS_SHORTCUT.path]);
+    expect(matchRoute(WORKERS_SHORTCUT.path)?.pattern).toBe(WORKERS_SHORTCUT.path);
+    expect(DESTINATIONS.map((destination) => destination.letter)).not.toContain('o');
+    const listed = registry.groups().find((group) => group.label === SHORTCUT_COPY.navigationGroup);
+    expect(listed?.shortcuts).toContainEqual({
+      action: SHORTCUT_COPY.goTo('Workers'),
+      keys: ['G', 'O'],
+    });
   });
 
   test('C opens a new chat from anywhere, and is listed in the map', () => {

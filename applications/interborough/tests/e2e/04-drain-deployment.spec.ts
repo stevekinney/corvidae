@@ -1,7 +1,8 @@
 /**
  * Persona flow (e): drain-a-deployment (plan §11.4).
  *
- * workers → deployment group → drain with reason → status drains → resume.
+ * workers → a worker of the deployment → drain the deployment with a reason → status drains →
+ * resume.
  *
  * `tests/e2e/e2e-server.ts` registers one real `RemoteWorker` under
  * `E2E_DEPLOYMENT_NAME` (`e2e-constants.ts`) purely as fleet inventory —
@@ -11,21 +12,24 @@
  * since each boots a fresh server, but keeps this spec idempotent within
  * one run too).
  */
-import { E2E_DEPLOYMENT_NAME } from './e2e-constants.ts';
+import { E2E_DEPLOYMENT_NAME, E2E_FLEET_WORKER_ID } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 
 test('operator drains and resumes a worker deployment', async ({ page, checkA11y }) => {
-  await page.goto('/health/workers');
-  const deploymentRow = page.getByRole('listitem').filter({ hasText: E2E_DEPLOYMENT_NAME });
+  await page.goto(`/health/workers?worker=${E2E_FLEET_WORKER_ID}`);
+  const detail = page.getByTestId('worker-detail');
   // See `01-debug-failed-workflow.spec.ts`'s module doc for why the first
   // axe check on every spec is gated behind real content, not the boot
   // skeleton `page.goto()`'s `load` event resolves under.
-  await expect(deploymentRow).toBeVisible();
-  await checkA11y('workers — fleet overview');
+  await expect(detail).toBeVisible();
+  await expect(
+    detail.getByRole('heading', { name: `Deployment ${E2E_DEPLOYMENT_NAME}` }),
+  ).toBeVisible();
+  await checkA11y('workers — a worker and its deployment');
 
-  await expect(deploymentRow.getByText('Healthy')).toBeVisible();
+  await expect(detail.getByTestId('worker-health')).toHaveText('Healthy');
 
-  await deploymentRow.getByRole('button', { name: 'Drain' }).click();
+  await detail.getByRole('button', { name: 'Drain deployment' }).click();
   const dialog = page.getByRole('dialog', { name: 'Drain deployment' });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText(E2E_DEPLOYMENT_NAME)).toBeVisible();
@@ -37,14 +41,11 @@ test('operator drains and resumes a worker deployment', async ({ page, checkA11y
 
   // The E2E fleet worker never has in-flight work (`e2e-server.ts` never
   // dispatches it a task), so the engine has nothing to wait out and
-  // transitions straight to `drained` rather than a transient `draining`
-  // (`worker-presentation.ts`'s `deploymentHealthPresentation`: `draining`
-  // only outranks `drained` when the deployment is still mid-drain).
-  // Verified live against a real drain call before writing this assertion.
-  await expect(deploymentRow.getByText('Drained')).toBeVisible();
-  await checkA11y('workers — fleet overview (deployment drained)');
+  // transitions straight to `drained` rather than a transient `draining`.
+  await expect(detail.getByTestId('worker-health')).toHaveText('Drained');
+  await checkA11y('workers — worker (deployment drained)');
 
-  await deploymentRow.getByRole('button', { name: 'Resume' }).click();
-  await expect(deploymentRow.getByText('Healthy')).toBeVisible();
-  await checkA11y('workers — fleet overview (deployment resumed)');
+  await detail.getByRole('button', { name: 'Resume deployment' }).click();
+  await expect(detail.getByTestId('worker-health')).toHaveText('Healthy');
+  await checkA11y('workers — worker (deployment resumed)');
 });

@@ -67,7 +67,7 @@
 </script>
 
 <section class="weft-workers-panel" aria-labelledby="task-lease-clocks-heading">
-  <h3 id="task-lease-clocks-heading" class="weft-workers-panel__header">Lease clocks</h3>
+  <h3 id="task-lease-clocks-heading" class="weft-workers-panel__title">Lease clocks</h3>
   <ul class="weft-task-lease-clocks">
     {#each clocks as clock (clock.id)}
       <li class="weft-task-lease-clocks__clock" data-clock={clock.id} data-state={clock.state}>
@@ -117,7 +117,7 @@
   aria-labelledby="task-cancellation-heading"
   data-cancellation={cancellation.status}
 >
-  <div class="weft-workers-panel__header weft-task-cancellation__header">
+  <div class="weft-workers-panel__title weft-task-cancellation__header">
     <h3 id="task-cancellation-heading">Cancellation evidence</h3>
     <Badge variant={cancellation.variant}>{cancellation.statusLabel}</Badge>
   </div>

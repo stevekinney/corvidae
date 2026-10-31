@@ -49,8 +49,14 @@ export const DESTINATIONS: readonly Destination[] = [
   { view: 'settings', path: '/settings', letter: 'n', icon: SlidersHorizontal, pinned: true },
 ];
 
+/**
+ * Workers lives under Health, so the sidebar does not list it, but it opens from the keyboard: `g`
+ * then `o`. (`w` is Workflows, and `e` is Health.)
+ */
+export const WORKERS_SHORTCUT = { view: 'workers', path: '/health/workers', letter: 'o' } as const;
+
 /** The key sequence that opens a destination, such as `['g', 'c']`. */
-export function destinationKeys(destination: Destination): readonly string[] {
+export function destinationKeys(destination: { readonly letter: string }): readonly string[] {
   return ['g', destination.letter];
 }
 
@@ -101,6 +107,13 @@ export function registerShellShortcuts(
         handler: () => actions.navigate(destination.path),
       }),
     ),
+    registry.register({
+      keys: destinationKeys(WORKERS_SHORTCUT),
+      label: SHORTCUT_COPY.goTo(VIEW_COPY[WORKERS_SHORTCUT.view].label),
+      group: SHORTCUT_COPY.navigationGroup,
+      scope: 'global',
+      handler: () => actions.navigate(WORKERS_SHORTCUT.path),
+    }),
     // ListDetail handles its own keys while focus is in its list, on whichever page uses it.
     ...LIST_DETAIL_SHORTCUTS.map((shortcut) =>
       registry.describe({

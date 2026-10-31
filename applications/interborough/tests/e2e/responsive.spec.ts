@@ -107,6 +107,9 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   // This host's engine holds none of the Bureau's own types; the Bureau's host lists them (26-workflows).
   '/internal-workflows': /No internal workflows/,
   '/health/runs': /order-processing/,
+  // The summary line prints once the fleet, its queues and its diagnostics have all been read.
+  '/health/workers': /\d+ of \d+ connected/,
+  '/health/workers (worker open)': /Last heard from/,
   // The added row's long name, beside the Decisions part's heading, which loads last.
   '/settings/models': /mmmmmmmmmm/,
 };

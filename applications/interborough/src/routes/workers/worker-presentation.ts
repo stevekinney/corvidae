@@ -29,7 +29,7 @@
  * https://github.com/stevekinney/weft/issues/729, not something to
  * approximate client-side.
  */
-import type { WorkerDeploymentSummary, WorkerSummary } from './worker-catalog-types.ts';
+import type { WorkerSummary } from './worker-catalog-types.ts';
 
 export type WorkerHealthLabel = 'Healthy' | 'Draining' | 'Drained' | 'Stale';
 export type PresentationVariant = 'success' | 'warning' | 'danger' | 'neutral';
@@ -58,27 +58,6 @@ export function heartbeatSeverity(heartbeatAgeMs: number): HeartbeatSeverity {
   return 'fresh';
 }
 
-const HEARTBEAT_SEVERITY_VARIANT: Readonly<Record<HeartbeatSeverity, PresentationVariant>> = {
-  fresh: 'success',
-  elevated: 'warning',
-  stale: 'danger',
-};
-
-export function heartbeatSeverityVariant(severity: HeartbeatSeverity): PresentationVariant {
-  return HEARTBEAT_SEVERITY_VARIANT[severity];
-}
-
-const HEARTBEAT_SEVERITY_CSS_VARIABLE: Readonly<Record<HeartbeatSeverity, string>> = {
-  fresh: 'var(--cinder-status-success-text)',
-  elevated: 'var(--cinder-status-warning-text)',
-  stale: 'var(--cinder-status-danger-text)',
-};
-
-/** Cinder status-tone CSS variable for a heartbeat severity tier — used to color the heartbeat column's text directly (plan §9.4: "heartbeat staleness … relative color thresholds"), not via `Badge`/`StatusDot` (a full badge per heartbeat cell would be too heavy for a dense table). */
-export function heartbeatSeverityCssVariable(severity: HeartbeatSeverity): string {
-  return HEARTBEAT_SEVERITY_CSS_VARIABLE[severity];
-}
-
 /**
  * Priority-ordered worker health presentation: draining > drained > stale
  * heartbeat > healthy. Matches `design/Weft UI.dc.html`'s workers
@@ -96,48 +75,30 @@ export function workerHealthPresentation(worker: WorkerSummary): HealthPresentat
   return { label: 'Healthy', variant: 'success' };
 }
 
-/** Same priority order for a deployment rollup (no heartbeat to promote — `WorkerDeploymentSummary` reports no age field). */
-export function deploymentHealthPresentation(
-  deployment: WorkerDeploymentSummary,
-): HealthPresentation {
-  if (deployment.health === 'draining') return { label: 'Draining', variant: 'warning' };
-  if (deployment.health === 'drained') return { label: 'Drained', variant: 'neutral' };
-  return { label: 'Healthy', variant: 'success' };
+/** What the line under the Workers list's title counts. A figure left out is one that could not be read. */
+export interface WorkersSummaryInput {
+  readonly workers: readonly WorkerSummary[];
+  /** Tasks waiting in the queues; undefined while the queues have not been read, or could not be. */
+  readonly waiting?: number | undefined;
+  /** Tasks that failed for good (dead-lettered); undefined while the diagnostics have not been read. */
+  readonly failedForGood?: number | undefined;
 }
 
-export interface FleetTotals {
-  readonly totalWorkers: number;
-  readonly activeWorkers: number;
-  readonly drainingWorkers: number;
-  readonly inFlight: number;
-  readonly capacity: number;
-  readonly utilizationPercent: number;
-}
-
-/** Aggregate stat-card numbers for the Fleet overview (plan §9.4 T5.1). */
-export function summarizeFleet(workers: readonly WorkerSummary[]): FleetTotals {
-  let activeWorkers = 0;
-  let drainingWorkers = 0;
-  let inFlight = 0;
-  let capacity = 0;
-
-  for (const worker of workers) {
-    if (worker.health === 'active') activeWorkers += 1;
-    if (worker.health === 'draining') drainingWorkers += 1;
-    inFlight += worker.inFlight;
-    capacity += worker.concurrency;
+/**
+ * The one line under the Workers list's title, such as `3 of 4 connected · 7 running · 12 waiting ·
+ * 2 failed for good`. A worker is connected unless it has drained (a drained worker has left);
+ * running is the tasks the workers hold now.
+ */
+export function workersSummaryLine(input: WorkersSummaryInput): string {
+  const connected = input.workers.filter((worker) => worker.health !== 'drained').length;
+  const running = input.workers.reduce((total, worker) => total + worker.inFlight, 0);
+  const parts = [`${String(connected)} of ${String(input.workers.length)} connected`];
+  parts.push(`${String(running)} running`);
+  if (input.waiting !== undefined) parts.push(`${String(input.waiting)} waiting`);
+  if (input.failedForGood !== undefined) {
+    parts.push(`${String(input.failedForGood)} failed for good`);
   }
-
-  const utilizationPercent = capacity === 0 ? 0 : Math.round((inFlight / capacity) * 100);
-
-  return {
-    totalWorkers: workers.length,
-    activeWorkers,
-    drainingWorkers,
-    inFlight,
-    capacity,
-    utilizationPercent,
-  };
+  return parts.join(' · ');
 }
 
 /** Backlog color per the design mock's `queuedColor`: danger above 50 queued, warning above 0, neutral at 0. */
@@ -145,13 +106,6 @@ export function queueBacklogVariant(queued: number): PresentationVariant {
   if (queued > 50) return 'danger';
   if (queued > 0) return 'warning';
   return 'neutral';
-}
-
-/** `PresentationVariant` → Cinder `StatusDot`'s `status` vocabulary (`'online' | 'warning' | 'danger' | 'neutral'` — the four this module ever produces). */
-export function presentationStatusDotStatus(
-  variant: PresentationVariant,
-): 'online' | 'warning' | 'danger' | 'neutral' {
-  return variant === 'success' ? 'online' : variant;
 }
 
 export type WorkerTransport = WorkerSummary['transport'];
@@ -173,41 +127,4 @@ export function countByTransport(
   const counts: Record<WorkerTransport, number> = { websocket: 0, 'long-poll': 0 };
   for (const worker of workers) counts[worker.transport] += 1;
   return counts;
-}
-
-/** `WebSocket`, `HTTP long-poll`, or `WebSocket, HTTP long-poll` for a deployment that serves both. */
-export function formatTransports(transports: readonly WorkerTransport[]): string {
-  return transports.length === 0
-    ? 'No transport'
-    : transports.map((t) => TRANSPORT_LABEL[t]).join(', ');
-}
-
-/** Narrows generated-client nullable metadata fields to display strings. */
-export function asDisplayString(value: unknown, fallback = '—'): string {
-  return typeof value === 'string' && value.length > 0 ? value : fallback;
-}
-
-/** Deployment identity display, e.g. `#4821 · node 20`. */
-export function formatDeploymentIdentity(deployment: WorkerDeploymentSummary): string {
-  return [asDisplayString(deployment.buildId), asDisplayString(deployment.runtimeVersion)].join(
-    ' · ',
-  );
-}
-
-/**
- * Identity of one deployment group in a keyed list. The server groups workers by deployment name,
- * build id, and runtime version, so a deployment mid-rollout appears as one group per build; a key
- * on the name alone repeats and Svelte refuses to render the list.
- */
-export function deploymentGroupKey(deployment: WorkerDeploymentSummary): string {
-  return [
-    formatDeploymentName(deployment),
-    asDisplayString(deployment.buildId),
-    asDisplayString(deployment.runtimeVersion),
-  ].join('\u0000');
-}
-
-/** Grouping/display name for a deployment rollup — `deploymentName` is `unknown` per the generated-client gap above; workers with no deployment metadata roll up under this label. */
-export function formatDeploymentName(deployment: WorkerDeploymentSummary): string {
-  return asDisplayString(deployment.deploymentName, '(no deployment)');
 }
