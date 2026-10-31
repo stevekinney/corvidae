@@ -316,8 +316,8 @@ test('opens the workflow from /workflows, waits for the schedule’s fire to be 
   await expect(page).toHaveURL(/\/runs\/[^/]+$/);
   // A run the Bureau has no task for opens on its summary, and the engine's page is its Engine tab.
   await page.getByRole('tab', { name: 'Workflow' }).click();
-  // The run's page also links its schedule, `bureau-workflow-schedule:journey-digest:1`, so the
-  // type's link is the one named exactly.
+  // The run's page also links its schedule, `bureau-workflow-schedule:journey-digest:1`, and its
+  // breadcrumb names the workflow, so the type's link is the one named exactly inside the tab.
   await expect(
     page
       .getByRole('tabpanel', { name: 'Workflow' })

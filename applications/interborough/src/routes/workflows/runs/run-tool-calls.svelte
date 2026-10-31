@@ -23,6 +23,13 @@
 
   interface RunToolCallsProps {
     task: TaskView;
+    /**
+     * The thread the run's calls are in, when it is not the task's `contextId` (a goal's attempt).
+     * `null` says the run has no thread to read (a goal's attempt before the goals have named its
+     * session, or to a person who cannot read them): nothing is requested, and the task's waits
+     * are still shown.
+     */
+    threadId?: string | null | undefined;
     /** How many elements the run's stream has reported; the thread is read again when it grows. */
     events?: number;
   }
@@ -30,18 +37,20 @@
   /** How long a burst of stream elements waits before the thread is read once for all of them. */
   const EVENT_REREAD_MILLISECONDS = 300;
 
-  let { task, events = 0 }: RunToolCallsProps = $props();
+  let { task, threadId = undefined, events = 0 }: RunToolCallsProps = $props();
+  const threadToRead = $derived(threadId === undefined ? task.contextId : threadId);
 
   const thread = createQuery(
     () => ({
       queryKey: [
         'bureau-tasks',
         'thread',
-        task.contextId,
+        threadToRead,
         task.status,
         task.openWaits.map((wait) => wait.reviewId),
       ] as const,
-      queryFn: ({ signal }) => getThreadMessages(task.contextId, { signal }),
+      queryFn: ({ signal }) => getThreadMessages(threadToRead ?? '', { signal }),
+      enabled: threadToRead !== null && threadToRead !== '',
       // The calls on screen stay while the thread is read again under a new key.
       placeholderData: keepPreviousData,
       retry: false,
@@ -53,6 +62,9 @@
     const now = events;
     if (now === lastEvents) return;
     lastEvents = now;
+    // `refetch` ignores `enabled`: with no thread to read, a reread would ask for the messages of
+    // an empty thread id and show the failure in place of the waits.
+    if (threadToRead === null || threadToRead === '') return;
     // poll-reason: timer
     const timer = setTimeout(() => void untrack(() => thread.refetch()), EVENT_REREAD_MILLISECONDS);
     return () => clearTimeout(timer);

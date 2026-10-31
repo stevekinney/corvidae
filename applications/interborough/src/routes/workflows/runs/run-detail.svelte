@@ -137,11 +137,14 @@
 
   // A catalog task's `contextId` is its run handle, and no chat has it: the link and the title are
   // there only when the Bureau has the chat.
+  // A goal's attempt is also a task, and its `contextId` is the run handle too: the session it ran
+  // in is the attempt's own, found among the goals below.
+  const goalTask = $derived(task.data?.origin?.kind === 'goal');
   const chat = createQuery(
     () => ({
       queryKey: queryKeys.contexts.detail(task.data?.contextId ?? ''),
       queryFn: ({ signal }) => getContext(task.data?.contextId ?? '', { signal }),
-      enabled: task.data !== undefined,
+      enabled: task.data !== undefined && !goalTask,
       retry: false,
     }),
     undefined,
@@ -156,7 +159,7 @@
     () => ({
       queryKey: queryKeys.goals.runs(),
       queryFn: ({ signal }) => listAllGoals({ signal }),
-      enabled: notFound,
+      enabled: notFound || goalTask,
       retry: false,
     }),
     undefined,
@@ -219,8 +222,17 @@
     );
   }
 
+  const attemptThreadId = $derived(
+    attempt !== undefined && attempt.attempt.sessionId !== '' ? attempt.attempt.sessionId : null,
+  );
   const chatHref = $derived(
-    chat.isSuccess && task.data !== undefined ? chatSessionPath(task.data.contextId) : undefined,
+    goalTask
+      ? attemptSession.isSuccess
+        ? chatSessionPath(attemptSession.data.id)
+        : undefined
+      : chat.isSuccess && task.data !== undefined
+        ? chatSessionPath(task.data.contextId)
+        : undefined,
   );
 
   const answer = $derived(follower.artifact?.text);
@@ -292,7 +304,16 @@
           <RunCancel task={current} />
         </div>
         <p class="ib-run__origin">
-          {#if chat.isSuccess}
+          {#if goalTask && attempt !== undefined}
+            {TASK_COPY.startedFromGoal}
+            <a
+              href={router.href('/goals')}
+              onclick={(event) => {
+                event.preventDefault();
+                router.navigate('/goals');
+              }}>{attempt.goal.goalRunId}</a
+            >
+          {:else if chat.isSuccess}
             {isScheduleFire(current) ? TASK_COPY.startedFromSchedule : TASK_COPY.startedFromChat}
             <a
               href={router.href(chatSessionPath(current.contextId))}
@@ -411,7 +432,12 @@
             </section>
             <section aria-labelledby="ib-run-tools">
               <h2 id="ib-run-tools" class="ib-run__heading-2">{TASK_COPY.toolCallsHeading}</h2>
-              <RunToolCalls task={current} events={taskEvents} />
+              <!-- A goal's attempt reads the thread of its own session, once the goals have named it; its waits show either way. -->
+              <RunToolCalls
+                task={current}
+                threadId={goalTask ? attemptThreadId : undefined}
+                events={taskEvents}
+              />
             </section>
             {#if follower.state === 'unavailable'}
               <p class="ib-run__note" role="status">{TASK_COPY.followUnavailable}</p>

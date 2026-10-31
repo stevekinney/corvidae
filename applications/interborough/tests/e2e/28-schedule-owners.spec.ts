@@ -204,16 +204,16 @@ test.describe('the seeded agent run', () => {
       );
       await checkA11y('schedules — editing an agent run');
 
-      // From a cron cadence to an interval of two weeks, whose first fire is two weeks away.
-      await drawer.getByRole('tab', { name: 'Interval' }).click();
+      // From a cron cadence to an interval of two hours, whose first fire is two hours away.
+      await drawer.getByLabel('Repeats', { exact: true }).selectOption('interval');
       await drawer.getByRole('spinbutton', { name: 'Every' }).fill('2');
-      await drawer.getByLabel('Unit').selectOption('weeks');
+      await drawer.getByLabel('Unit').selectOption('hours');
       await drawer.getByRole('button', { name: 'Save changes' }).click();
       await expect(drawer).not.toBeVisible();
 
       await expect.poll(async () => nextFireAt(request, id), { timeout: 15_000 }).not.toBe(before);
-      await expect(nextFire).toContainText('every 2 weeks');
-      // A daily schedule fires within a day, and this one in two weeks, so the page says so.
+      await expect(nextFire).toContainText('every 2 hours');
+      // The sentence names the new cadence in place of the daily one, so the page says so.
       await expect(nextFire).not.toHaveText(shownBefore);
       await checkA11y('schedule detail — the edited cadence');
     } finally {

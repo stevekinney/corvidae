@@ -48,6 +48,8 @@ function serve() {
 }
 
 const WORKING = taskFixture({ id: 'run-1', contextId: 'session-1', status: 'working' });
+/** Longer than the burst window the component waits before it reads the thread again. */
+const EVENT_REREAD_WINDOW = 600;
 
 describe('a run’s tool calls', () => {
   test('are read from the thread, and read again when the run’s stream reports something', async () => {
@@ -66,6 +68,41 @@ describe('a run’s tool calls', () => {
     await quietFor(400);
     expect(reads.thread).toBe(2);
     expect(view.container.textContent).toContain('lookup-order');
+  });
+
+  test('with no thread to read, an element the stream reports reads nothing and keeps the waits', async () => {
+    const requested: string[] = [];
+    restore = bureau(
+      { 'bureau.reviews.get': () => humanWaitFixture({ id: 'review-2' }) },
+      (url) => {
+        if (!url.includes('/threads/')) return undefined;
+        requested.push(url);
+        return new Response('{}', { status: 404 });
+      },
+    ).restore;
+    landAt('/runs/goal-1-a0');
+    const task = taskFixture({
+      id: 'goal-1-a0',
+      contextId: 'goal-1-a0',
+      kind: 'catalog',
+      status: 'input-required',
+      openWaits: [
+        { kind: 'tool-approval', reviewId: 'review-1', callId: 'call-1' },
+        { kind: 'human-wait', reviewId: 'review-2', signalName: 'environment' },
+      ],
+    });
+
+    const view = render(Harness, { props: { task, threadId: null } } as never);
+    await waitFor(() => expect(view.container.querySelectorAll('.ib-run-wait')).toHaveLength(2));
+
+    await fireEvent.click(view.getByRole('button', { name: 'Report an event' }));
+
+    // A reread of a thread the run does not have would ask for `/threads//messages` and show the
+    // failure; load can only delay such a request, so a quiet window is the proof there is none.
+    await quietFor(EVENT_REREAD_WINDOW);
+    expect(requested).toEqual([]);
+    expect(view.container.querySelectorAll('.ib-run-wait')).toHaveLength(2);
+    expect(view.container.textContent).not.toContain(TASK_COPY.toolCallsLoadFailed.title);
   });
 
   test('are keyed by the reviews of the waits, so a different wait of the same number is a different read', async () => {
