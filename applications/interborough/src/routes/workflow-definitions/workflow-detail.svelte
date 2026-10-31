@@ -328,6 +328,7 @@
     {/if}
     {#if actions.pause && !file.paused}
       <Button
+        data-changes
         variant="secondary"
         size="sm"
         disabled={busy || file.hash === null}
@@ -336,6 +337,7 @@
     {/if}
     {#if actions.resume && file.paused}
       <Button
+        data-changes
         variant="secondary"
         size="sm"
         disabled={busy || file.hash === null}
@@ -351,8 +353,12 @@
       >
     {/if}
     {#if actions.delete}
-      <Button variant="danger" size="sm" disabled={busy} onclick={() => (confirmingDelete = true)}
-        >{copy.deleteAction}</Button
+      <Button
+        data-changes
+        variant="danger"
+        size="sm"
+        disabled={busy}
+        onclick={() => (confirmingDelete = true)}>{copy.deleteAction}</Button
       >
     {/if}
   {/if}
@@ -374,45 +380,6 @@
         <code class="ib-workflow-agent" data-testid="workflow-agent">{file.agent}</code>
       {/if}
     </div>
-    {#if file !== undefined && actions !== undefined}
-      <div class="ib-workflow__actions">
-        {#if actions.pause && !file.paused}
-          <Button
-            data-changes
-            variant="secondary"
-            size="sm"
-            disabled={busy || file.hash === null}
-            onclick={() => act(pause.mutate)}>{copy.pauseAction}</Button
-          >
-        {/if}
-        {#if actions.resume && file.paused}
-          <Button
-            data-changes
-            variant="secondary"
-            size="sm"
-            disabled={busy || file.hash === null}
-            onclick={() => act(resume.mutate)}>{copy.resumeAction}</Button
-          >
-        {/if}
-        {#if actions.edit}
-          <Button
-            href={router.href(editPath)}
-            variant="secondary"
-            size="sm"
-            onclick={(event) => go(event, editPath)}>{copy.editAction}</Button
-          >
-        {/if}
-        {#if actions.delete}
-          <Button
-            data-changes
-            variant="danger"
-            size="sm"
-            disabled={busy}
-            onclick={() => (confirmingDelete = true)}>{copy.deleteAction}</Button
-          >
-        {/if}
-      </div>
-    {/if}
     {#if description}
       <p class="ib-workflow__description" data-testid="workflow-description">{description}</p>
     {/if}
