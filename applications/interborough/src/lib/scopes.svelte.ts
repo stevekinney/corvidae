@@ -134,6 +134,13 @@ export class PrincipalStore {
     return required.every((scope) => current.scopes.includes(scope));
   }
 
+  /** Whether the principal holds at least one of `candidates`; `false` for none or no principal. */
+  hasAnyScope(...candidates: readonly AuthorizationScope[]): boolean {
+    const current = this.principal;
+    if (!current) return false;
+    return candidates.some((scope) => current.scopes.includes(scope));
+  }
+
   /** Auth-mode banner state derived from the current principal (plan §6). */
   get bannerMode(): BannerMode {
     const current = this.principal;
@@ -321,6 +328,11 @@ function isConsoleScope(scope: string): scope is AuthorizationScope {
 /** Tooltip text for a missing-scope disable-with-reason (plan §6, §10). */
 export function scopeReason(...required: readonly AuthorizationScope[]): string {
   return `Requires ${required.join(', ')}`;
+}
+
+/** Tooltip text for a capability that any one of `candidates` opens. */
+export function anyScopeReason(...candidates: readonly AuthorizationScope[]): string {
+  return `Requires ${candidates.join(' or ')}`;
 }
 
 /**

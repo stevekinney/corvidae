@@ -31,10 +31,14 @@ class SeenSource extends FleetEventSource {
   }
 }
 
-function frame(sequence: number, kind: string): FleetEventFrame {
+function frame(
+  sequence: number,
+  kind: string,
+  workflowId = `wf_${String(sequence)}`,
+): FleetEventFrame {
   return {
     kind,
-    workflowId: `wf_${String(sequence)}`,
+    workflowId,
     sequence,
     cursor: String(sequence),
     emittedAtMs: Date.now() - 1_000 * (100 - sequence),
@@ -74,12 +78,28 @@ describe('the recent-activity window', () => {
     source.close();
   });
 
-  test('collapses repeats in a row into one line with a count', () => {
+  test('keeps the same headline for two different workflows as two lines, each linking to its own', () => {
+    const source = new SeenSource([
+      frame(1, 'workflow:failed', 'wf_one'),
+      frame(2, 'workflow:failed', 'wf_two'),
+    ]);
+    const { container } = render(Harness, { props: { source } });
+
+    const links = Array.from(container.querySelectorAll('a.weft-activity-feed__row')).map((link) =>
+      link.getAttribute('href'),
+    );
+    expect(container.querySelectorAll('.weft-activity-feed__row')).toHaveLength(2);
+    expect(links).toHaveLength(2);
+    expect(new Set(links).size).toBe(2);
+    source.close();
+  });
+
+  test('collapses repeats of one workflow in a row into one line with a count', () => {
     const source = new SeenSource([
       frame(1, 'alert:fired'),
-      frame(2, 'workflow:completed'),
-      frame(3, 'workflow:completed'),
-      frame(4, 'workflow:completed'),
+      frame(2, 'workflow:completed', 'wf_same'),
+      frame(3, 'workflow:completed', 'wf_same'),
+      frame(4, 'workflow:completed', 'wf_same'),
     ]);
     const { container, getByText } = render(Harness, { props: { source } });
 

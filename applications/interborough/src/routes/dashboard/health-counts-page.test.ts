@@ -38,14 +38,8 @@ function scriptedEngine(aggregate: unknown): ScriptedFetch {
     summary: EMPTY_SUMMARY,
     limit: 50,
   });
-  fetch.routeUrl('/v1/schedules', {
-    items: [
-      { id: 's-1', status: 'active' },
-      { id: 's-2', status: 'active' },
-      { id: 's-3', status: 'paused' },
-    ],
-    total: 3,
-  });
+  // What the engine answers for `status=active`: the two active schedules of three, one row read.
+  fetch.routeUrl('/v1/schedules', { items: [{ id: 's-1', status: 'active' }], total: 2 });
   fetch.routeUrl('/reviews', { items: [] });
   return fetch;
 }
@@ -106,7 +100,31 @@ describe('the Health overview counts', () => {
     expect(valueOf(container, 'Schedules').textContent?.trim()).toBe('—');
   });
 
-  test('count the active schedules, not the paused ones', async () => {
+  test.each(['system:read', 'workflows:read'] as const)(
+    'reach the page, and dash what they cannot read, for a principal holding only %s',
+    async (held) => {
+      scripted = scriptedEngine({
+        total: 2,
+        groups: [{ key: 'running', count: 2 }],
+        truncated: false,
+      });
+      const { container } = render(DashboardIndexHarness, {
+        props: { client: realClient(), scopes: [held] },
+      });
+
+      // The page renders its counts instead of waiting on, or failing over, a read it may not make.
+      await waitFor(() => expect(valueOf(container, 'Schedules').textContent?.trim()).toBe('—'));
+      const readable = held === 'workflows:read' ? '2' : '—';
+      await waitFor(() =>
+        expect(valueOf(container, 'Working now').textContent?.trim()).toBe(readable),
+      );
+      await waitFor(() =>
+        expect(valueOf(container, 'Failed in 24h').textContent?.trim()).toBe(readable),
+      );
+    },
+  );
+
+  test('count the active schedules by asking the engine for them', async () => {
     scripted = scriptedEngine({
       total: 2,
       groups: [{ key: 'running', count: 2 }],
@@ -115,5 +133,6 @@ describe('the Health overview counts', () => {
     const { container } = render(DashboardIndexHarness, { props: { client: realClient() } });
 
     await waitFor(() => expect(valueOf(container, 'Schedules').textContent?.trim()).toBe('2'));
+    expect(scripted.calls.some((call) => call.url.includes('/schedules?status=active'))).toBe(true);
   });
 });

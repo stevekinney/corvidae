@@ -49,6 +49,20 @@ describe('ActivityFeedBatcher', () => {
     batcher.dispose();
   });
 
+  test('keeps repeats of a headline for different workflows as separate lines, each with its own link', async () => {
+    const batcher = new ActivityFeedBatcher({ batchWindowMs: FAST_WINDOW_MS });
+    batcher.ingest(row({ id: 'a', title: 'Workflow failed', href: '/runs/wf_1' }));
+    batcher.ingest(row({ id: 'b', title: 'Workflow failed', href: '/runs/wf_2' }));
+    batcher.ingest(row({ id: 'c', title: 'Workflow failed', href: '/runs/wf_2' }));
+
+    await waitFor(() => expect(batcher.items).toHaveLength(2));
+    expect(batcher.items.map((item) => [item.id, item.href, item.count])).toEqual([
+      ['c', '/runs/wf_2', 2],
+      ['a', '/runs/wf_1', 1],
+    ]);
+    batcher.dispose();
+  });
+
   test('keeps a repeat across a later flush, and never merges rows of different severity', async () => {
     const batcher = new ActivityFeedBatcher({ batchWindowMs: FAST_WINDOW_MS });
     batcher.ingest(row({ id: 'a', title: 'Workflow failed', tier: 'warning' }));

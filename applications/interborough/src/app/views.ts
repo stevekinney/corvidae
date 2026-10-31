@@ -74,7 +74,10 @@ export function pageWidth(kind: PageKind): ViewWidth {
 export type ViewDefinition = {
   /** How tightly the view lays out its rows and cards. */
   readonly density: ViewDensity;
-  /** The scopes the engine console gates the view on; none for a view Bureau serves. */
+  /**
+   * The scopes the engine console gates the view on, any one of which opens it; none for a view
+   * Bureau serves.
+   */
   readonly scopes: readonly AuthorizationScope[];
   /**
    * Whether the view can have nothing to show. A view that always has something, such as the
@@ -133,5 +136,7 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
   // In the sidebar after Schedules. Holds no console scope, as the audit trail holds none: a caller
   // sees the goals it owns. `/goals/new` is where the first goal is made, so it is never empty.
   goals: { density: 'comfortable', scopes: [], canBeEmpty: true },
-  health: { density: 'compact', scopes: ['workflows:read'], canBeEmpty: false },
+  // The operator's page: `system:read` alone reaches it, and so does `workflows:read` alone. Each
+  // count and band that needs a scope the caller lacks shows a dash instead of failing the page.
+  health: { density: 'compact', scopes: ['system:read', 'workflows:read'], canBeEmpty: false },
 };

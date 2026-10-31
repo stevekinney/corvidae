@@ -18,6 +18,7 @@
   import { getClient } from '../../lib/client.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
+  import { getPrincipalStore } from '../../lib/scopes.svelte.ts';
   import { NAVIGATION_COPY, VIEW_COPY } from '../../app/copy.ts';
   import HealthCounts from './health-counts.svelte';
   import { parseWorkflowAggregateResult } from './aggregate-output.ts';
@@ -26,6 +27,10 @@
   import { probeHealth } from './health-probe.ts';
 
   const client = getClient();
+  const principalStore = getPrincipalStore();
+  // Health opens for `system:read` or `workflows:read`. Without the second, the runs are not read at
+  // all, so Working now shows a dash and the page never waits on or fails over them.
+  const canReadRuns = $derived(principalStore.hasScope('workflows:read'));
 
   // The probe runs once, when the page opens. It is not asked again on a timer: the shell's fleet
   // feed reports whether the engine is answering, and the status pill beside it shows that, so a
@@ -41,11 +46,11 @@
       parseWorkflowAggregateResult(
         await client.operations['weft.workflows.aggregate']({ groupBy: 'status' }),
       ),
-    enabled: healthQuery.isSuccess,
+    enabled: healthQuery.isSuccess && canReadRuns,
   }));
 
   const isGateLoading = $derived(
-    healthQuery.isPending || (healthQuery.isSuccess && statusQuery.isPending),
+    healthQuery.isPending || (healthQuery.isSuccess && canReadRuns && statusQuery.isPending),
   );
   const isUnreachable = $derived(healthQuery.isError);
   const isEmpty = $derived(statusQuery.isSuccess && statusQuery.data.total === 0);

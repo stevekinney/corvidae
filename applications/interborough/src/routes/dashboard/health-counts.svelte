@@ -35,7 +35,6 @@
 
   const client: HttpClient = getClient();
   const principalStore = getPrincipalStore();
-  const SCHEDULE_LIMIT = 200;
 
   // The window is fixed when the page opens: the query and the link share one instant.
   const failedFilter = failedRecentlyFilter(Date.now());
@@ -50,7 +49,8 @@
 
   const waiting = usePendingReviewsCount(() => client);
 
-  const scheduleFilter = { limit: SCHEDULE_LIMIT };
+  // The engine counts the active schedules; one row is read because only the total is used.
+  const scheduleFilter = { status: 'active', limit: 1 } as const;
   const schedulesQuery = createQuery(() => ({
     queryKey: queryKeys.schedules.list(scheduleFilter),
     queryFn: () => client.listSchedules(scheduleFilter),
@@ -59,7 +59,7 @@
 
   /** A count's number, `undefined` while it loads, and `null` when it cannot be read. */
   const workingNow = $derived(
-    statusQuery.isError
+    !principalStore.hasScope('workflows:read') || statusQuery.isError
       ? null
       : statusQuery.data === undefined
         ? undefined
@@ -78,7 +78,7 @@
       ? null
       : schedulesQuery.data === undefined
         ? undefined
-        : schedulesQuery.data.items.filter((schedule) => schedule.status === 'active').length,
+        : schedulesQuery.data.total,
   );
 
   type Tone = 'neutral' | 'warning' | 'danger';
