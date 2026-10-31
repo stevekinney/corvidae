@@ -49,12 +49,30 @@ export const WORKFLOW_CANCELLATION_KEY_PREFIX = 'bureau-workflow-cancelled-run:v
  */
 export interface WorkflowRunCancellation {
   readonly schemaVersion: 1;
+  /**
+   * Present when the instance was cancelled because a contributed activity its revision pins is
+   * not loaded (COR-1874): the same verdict the versioned catalog gives a resolution.
+   */
+  readonly pin?: WorkflowRunPinProblem;
   readonly runId: string;
   /** The workflow's identifier. */
   readonly id: string;
   readonly workflowVersion: string;
   readonly reason: string;
   readonly cancelledAt: string;
+}
+
+/**
+ * Why a revision's pinned activity cannot be resolved: `missing` when no version of the activity is
+ * loaded, `version-mismatch` when only other versions are. Never answered by another version.
+ */
+export interface WorkflowRunPinProblem {
+  /** `missing` when no version of the activity is loaded, `version-mismatch` when only others are. */
+  readonly reason: 'missing' | 'version-mismatch';
+  /** The pinned activity, as `plugin:name@version`. */
+  readonly activity: string;
+  /** The versions of the activity that are loaded; empty for `missing`. */
+  readonly availableVersions: readonly string[];
 }
 
 /** A document as Bureau registered it with the engine. */
@@ -212,6 +230,21 @@ function parseSnapshot(text: string | null, id: string, workflowVersion: string)
   };
 }
 
+/** The pin problem `value` holds, or `undefined` when it is not exactly one. */
+function parsePinProblem(value: unknown): WorkflowRunPinProblem | undefined {
+  if (!isRecord(value)) return undefined;
+  const { reason, activity, availableVersions } = value;
+  if (
+    (reason !== 'missing' && reason !== 'version-mismatch') ||
+    typeof activity !== 'string' ||
+    !Array.isArray(availableVersions) ||
+    !availableVersions.every((version): version is string => typeof version === 'string')
+  ) {
+    return undefined;
+  }
+  return { reason, activity, availableVersions };
+}
+
 function parseCancellation(text: string | null): WorkflowRunCancellation | undefined {
   if (text === null) return undefined;
   try {
@@ -225,7 +258,17 @@ function parseCancellation(text: string | null): WorkflowRunCancellation | undef
       typeof value['reason'] === 'string' &&
       typeof value['cancelledAt'] === 'string'
     ) {
-      return value as unknown as WorkflowRunCancellation;
+      // `pin` is read field by field: a record whose pin is not one is a cancellation without it.
+      const pin = parsePinProblem(value['pin']);
+      return {
+        schemaVersion: 1,
+        runId: value['runId'],
+        id: value['id'],
+        workflowVersion: value['workflowVersion'],
+        reason: value['reason'],
+        ...(pin === undefined ? {} : { pin }),
+        cancelledAt: value['cancelledAt'],
+      };
     }
   } catch {
     // A record that is not JSON is not a cancellation.

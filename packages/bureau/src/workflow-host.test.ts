@@ -75,7 +75,9 @@ describe('the workflow host', () => {
         return { content: 'done', output: null, finishReason: 'stop-condition' };
       },
     });
-    const result = await host.activities['agent']!({
+    const agent = host.activities['agent'];
+    if (typeof agent !== 'function') throw new Error('the agent activity is a bare handler');
+    const result = await agent({
       input: { agent: 'writer', message: 'Write it' },
       trigger: 7,
       previous: null,

@@ -44,7 +44,7 @@ import {
 } from '@lostgradient/weft';
 
 import { AGENT_IDENTIFIER_PATTERN } from './agent-file';
-import { NAMESPACED_IDENTIFIER_SOURCE } from './namespaced-identifier';
+import { NAMESPACED_IDENTIFIER_SOURCE, weftNameOf } from './namespaced-identifier';
 import { toWeftDocument, validateBureauWorkflowDocument } from './workflow-document-handlers';
 import { inputSchemaIssues, workflowSchemaIssues } from './workflow-schema';
 
@@ -280,6 +280,27 @@ function hasUnrecognizedDocumentKeys(documentInput: unknown): boolean {
 }
 
 /**
+ * `document` with the version of every contributed activity its steps use written into
+ * `activityVersions` (COR-1874): the version `host` has loaded for the handler, if it has one. A
+ * file names an activity with no version and so floats with the plugin that contributes it; the
+ * document Bureau registers pins what was loaded, so the revision it makes is that version's.
+ */
+function pinActivityVersions(
+  document: WorkflowDocument,
+  host: DocumentWorkflowHost,
+): WorkflowDocument {
+  const loaded = host.activityVersions;
+  if (loaded === undefined) return document;
+  const pins: Record<string, string> = {};
+  for (const step of document.steps) {
+    if (step.kind !== 'activity') continue;
+    const weftName = weftNameOf(step.handler);
+    if (Object.hasOwn(loaded, weftName)) pins[step.handler] = loaded[weftName]!;
+  }
+  return Object.keys(pins).length === 0 ? document : { ...document, activityVersions: pins };
+}
+
+/**
  * Parse a workflow file's text as the workflow `id`, validating it against `host`. `plugin` names
  * the plugin whose read-only layer holds the file (COR-1873). Never throws: a file that cannot be
  * used comes back as a problem.
@@ -332,6 +353,13 @@ export function parseWorkflowFile(
   if (Object.hasOwn(value, 'paused') && typeof paused !== 'boolean') {
     issues.push({ path: 'paused', message: 'must be true or false' });
   }
+  if (Object.hasOwn(documentInput, 'activityVersions')) {
+    issues.push({
+      path: 'activityVersions',
+      message:
+        'a workflow file does not pin activity versions: it names an activity as plugin:name, and Bureau pins the version that is loaded when it registers the file',
+    });
+  }
   let document: WorkflowDocument | undefined;
   let unrecognizedKeys = false;
   try {
@@ -344,6 +372,7 @@ export function parseWorkflowFile(
       triggerHasUnrecognizedKeys(documentInput['trigger']);
   }
   if (document !== undefined) {
+    document = pinActivityVersions(document, host);
     if (document.name !== id) {
       issues.push({ path: 'name', message: `must equal the identifier "${id}"` });
     }

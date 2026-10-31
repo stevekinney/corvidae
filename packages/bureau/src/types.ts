@@ -1,6 +1,7 @@
 import type { BureauWorkflows } from './workflow-runtime';
 import type { AnswerEncryptionKeys } from './secret-answers';
 import type { BureauWorkerDeployments } from './worker-deployments';
+import type { VersionedCatalog } from './versioned-catalog';
 import type {
   EventIteratorOptions,
   EventObservableOptions,
@@ -540,6 +541,16 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * `workflow-file-read-only`.
    */
   workflowSource?: WorkflowSource | readonly WorkflowSource[];
+  /**
+   * COR-1874 — the versioned catalog (`createVersionedCatalog`) whose `activity` and
+   * `trigger-kind` entries workflow files may use besides the `agent` activity and the `schedule`
+   * and `signal` triggers. An entry is named `plugin:name` and holds a plugin's activity or
+   * trigger kind. A file names a contributed activity without a version and floats with it; the
+   * revision Bureau registers pins the version that is loaded, and a run resumes after a restart
+   * only on that version, otherwise it is cancelled and reported `missing` or `version-mismatch`.
+   * A name loaded at two versions is a startup error. Read once, at construction.
+   */
+  contributionCatalog?: VersionedCatalog;
   /**
    * COR-1813 — Weft's worker deployment catalog, the durable store of worker builds and routing
    * pointers. With it, {@link Bureau.deployments} reads a deployment's routing pointer and ramps,

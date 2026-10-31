@@ -10,10 +10,15 @@ import {
   activity,
   signal,
   workflow,
+  type ActivityContext,
   type WorkflowContext,
   type WorkflowDefinition,
 } from '../core/types.ts';
-import type { DocumentWorkflowHost, WorkflowDocument } from './document.ts';
+import type {
+  DocumentActivityArgument,
+  DocumentWorkflowHost,
+  WorkflowDocument,
+} from './document.ts';
 import { WorkflowDocumentSchemaError, workflowDocumentVersion } from './document.ts';
 
 /** The distinct values `pick` selects from the document's steps, in first-seen order. */
@@ -40,15 +45,24 @@ export async function buildDocumentWorkflowDefinition(
   document: WorkflowDocument,
   host: DocumentWorkflowHost,
 ): Promise<WorkflowDefinition> {
-  const activities = Object.fromEntries(
+  const activities = new Map(
     distinctStepValues(document, (step) =>
       step.kind === 'activity' ? step.handler : undefined,
     ).map((name) => {
-      const handler = host.activities[name]!;
+      const registered = host.activities[name]!;
+      const settings = typeof registered === 'function' ? {} : registered;
+      const execute = typeof registered === 'function' ? registered : registered.execute;
       return [
         name,
-        activity({ name, execute: (argument: Parameters<typeof handler>[0]) => handler(argument) }),
-      ];
+        // The settings are spread under the name and the execute wrapper, so a definition's
+        // retry, timeout, verifier and the rest are the activity's own, as in a code workflow.
+        activity({
+          ...settings,
+          name,
+          execute: (argument: DocumentActivityArgument, activityContext?: ActivityContext) =>
+            execute(argument, activityContext),
+        }),
+      ] as const;
     }),
   );
   const signalNames = distinctStepValues(document, (step) =>
@@ -71,7 +85,9 @@ export async function buildDocumentWorkflowDefinition(
     for (const [index, step] of document.steps.entries()) {
       switch (step.kind) {
         case 'activity':
-          previous = yield* context.run(step.handler, {
+          // The activity itself, not its name: `ctx.run` reads the retry policy and the
+          // per-attempt timeout from the activity it is given, and a name carries neither.
+          previous = yield* context.run(activities.get(step.handler)!, {
             input: step.input ?? null,
             trigger: firedBy,
             previous,
@@ -95,7 +111,7 @@ export async function buildDocumentWorkflowDefinition(
   const builder = workflow({
     name: document.name,
     version: await workflowDocumentVersion(document),
-  }).activities(activities);
+  }).activities(Object.fromEntries(activities));
   // A document that awaits no signal declares none, so its contract carries no `signals` entry.
   return signalNames.length === 0
     ? builder.execute(run)

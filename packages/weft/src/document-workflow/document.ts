@@ -13,6 +13,7 @@ import { z } from 'zod';
 
 import { isJSONValue, type JSONValue } from '../core/json.ts';
 import { parseDuration } from '../core/scheduler.ts';
+import type { ActivityContext, ActivityDefinition } from '../core/types/activity.ts';
 import { validateWorkflowOrActivityName } from '../core/types/name-grammar.ts';
 import { canonicalJsonStringify } from '../worker/manifest/canonical-json.ts';
 import { sha256Hex } from '../worker/manifest/content-digest.ts';
@@ -41,9 +42,39 @@ export type DocumentActivityArgument = Readonly<{
 
 /**
  * A host-registered activity handler a document names by key. A thrown error
- * fails the instance with that error; documents carry no per-step retry.
+ * fails the instance with that error. The optional `context` is the activity's
+ * {@link ActivityContext}, whose `signal` aborts when an attempt is abandoned (a
+ * `timeout` fired, or the instance was cancelled), so a handler that stops on it
+ * does not keep running beside its retry. A bare handler runs once, with no timeout;
+ * register a {@link DocumentActivityDefinition} to give it a retry policy or a
+ * per-attempt timeout.
  */
-export type DocumentActivityHandler = (argument: DocumentActivityArgument) => unknown;
+export type DocumentActivityHandler = (
+  argument: DocumentActivityArgument,
+  context?: ActivityContext,
+) => unknown;
+
+/**
+ * A host-registered activity that declares how Weft runs it, as a Weft
+ * `ActivityDefinition` does for a code workflow: `retry`, `timeout`,
+ * `scheduleToCloseTimeout`, `idempotencyKey`, `verify`, `compensate`,
+ * `resourceScope`, `queue`, `visibilityTimeout`, and the descriptive `description`,
+ * `tags`, `inputSchema` and `outputSchema`. Its `execute` and its callbacks receive
+ * a {@link DocumentActivityArgument}. The activity's name is the key it is
+ * registered under, so a definition carries none. Weft applies every setting the
+ * same way it does for a code workflow's activity, because the interpreter runs the
+ * step through the definition and not through its `execute` alone.
+ */
+export type DocumentActivityDefinition = Omit<
+  ActivityDefinition<DocumentActivityArgument>,
+  'name' | 'execute'
+> & {
+  /** Runs the step. */
+  execute: DocumentActivityHandler;
+};
+
+/** What a host registers under a handler key: a bare handler, or a definition with settings. */
+export type DocumentActivity = DocumentActivityHandler | DocumentActivityDefinition;
 
 /**
  * Validates one document's `trigger` object for its kind. Return `undefined`
@@ -75,7 +106,7 @@ export type DocumentSchemaChecker = (
 /** What a host registers so documents can name its activities and trigger kinds. */
 export interface DocumentWorkflowHost {
   /** Activity handlers keyed by the name a document's `activity` step uses. */
-  readonly activities: Readonly<Record<string, DocumentActivityHandler>>;
+  readonly activities: Readonly<Record<string, DocumentActivity>>;
   /** Trigger validators keyed by the `kind` a document's `trigger` uses. */
   readonly triggerKinds: Readonly<Record<string, DocumentTriggerValidator>>;
   /**
@@ -84,6 +115,14 @@ export interface DocumentWorkflowHost {
    * otherwise, because a schema nothing checks would promise a guarantee nobody keeps.
    */
   readonly checkSchema?: DocumentSchemaChecker | undefined;
+  /**
+   * The version each handler in {@link DocumentWorkflowHost.activities} is at, keyed by handler
+   * name. A handler absent here has no version. A document that pins a handler in its
+   * {@link WorkflowDocument.activityVersions} is refused unless the host has that handler at
+   * exactly the pinned version, so a run recovered from a pinned revision never executes another
+   * version of an activity.
+   */
+  readonly activityVersions?: Readonly<Record<string, string>> | undefined;
 }
 
 /** One step of a {@link WorkflowDocument}. */
@@ -113,6 +152,15 @@ export interface WorkflowDocument {
    * `inputSchema`.
    */
   readonly outputSchema?: Readonly<Record<string, JSONValue>>;
+  /**
+   * The version of each activity handler the steps use, keyed by handler name. Weft hashes it into
+   * the document's version, so the same steps pinned to another version of a handler are another
+   * revision, and {@link validateWorkflowDocument} refuses a pin the host cannot honor (see
+   * {@link DocumentWorkflowHost.activityVersions}). Optional like `inputSchema`: a document that
+   * pins nothing is the document it always was, with the version it always had. Every key names a
+   * handler one of the steps uses.
+   */
+  readonly activityVersions?: Readonly<Record<string, string>>;
 }
 
 const jsonValueSchema = z.custom<JSONValue>(isJSONValue, 'must be a JSON value');
@@ -170,6 +218,7 @@ export const workflowDocumentSchema = z.strictObject({
   steps: z.array(stepSchema).min(1),
   inputSchema: jsonObjectSchema.optional(),
   outputSchema: jsonObjectSchema.optional(),
+  activityVersions: z.record(z.string().min(1), z.string().min(1)).optional(),
 });
 
 /** One reason a document was rejected, located by a path such as `steps[2].handler`. */
@@ -272,6 +321,40 @@ function hostIssues(
       issues.push({ path, message: nameIssue });
     } else if (!Object.hasOwn(host.activities, step.handler)) {
       issues.push({ path, message: `activity handler "${step.handler}" is not registered` });
+    }
+  }
+  issues.push(...pinIssues(document, host));
+  return issues;
+}
+
+/** The issues with a document's `activityVersions`: a pin for a handler no step uses, or one the host cannot honor. */
+function pinIssues(
+  document: WorkflowDocument,
+  host: DocumentWorkflowHost,
+): WorkflowDocumentIssue[] {
+  if (document.activityVersions === undefined) return [];
+  const used = new Set(
+    document.steps.flatMap((step) => (step.kind === 'activity' ? [step.handler] : [])),
+  );
+  const issues: WorkflowDocumentIssue[] = [];
+  for (const [handler, version] of Object.entries(document.activityVersions)) {
+    const path = `activityVersions.${handler}`;
+    if (!used.has(handler)) {
+      issues.push({ path, message: `no step uses the activity handler "${handler}"` });
+      continue;
+    }
+    const loaded =
+      host.activityVersions !== undefined && Object.hasOwn(host.activityVersions, handler)
+        ? host.activityVersions[handler]
+        : undefined;
+    if (loaded !== version) {
+      issues.push({
+        path,
+        message:
+          loaded === undefined
+            ? `activity handler "${handler}" is pinned at version "${version}", but this host has no version of it`
+            : `activity handler "${handler}" is pinned at version "${version}", but this host has version "${loaded}"`,
+      });
     }
   }
   return issues;
