@@ -104,7 +104,10 @@
   function advancer(key: string): () => void {
     const next = neighbourKey(items, key);
     return () => {
-      if (selectedKey === key) selectedKey = next;
+      // The list is read again as the decision lands, so the review chosen to follow may be gone too.
+      if (selectedKey === key) {
+        selectedKey = items.some((item) => item.key === next) ? next : null;
+      }
     };
   }
 
@@ -283,13 +286,7 @@
               onAnswer={(answer) => onAnswer(review, answer, advancer(item.key))}
             />
           {:else}
-            <EngineReviewPane
-              review={item.review}
-              {submitting}
-              {submitGate}
-              outcome={outcome?.reviewId === item.review.id ? outcome : undefined}
-              {onSubmit}
-            />
+            <EngineReviewPane review={item.review} {submitting} {submitGate} {onSubmit} />
           {/if}
         </div>
       {/snippet}

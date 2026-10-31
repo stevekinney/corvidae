@@ -1904,7 +1904,6 @@ export const REVIEWS_COPY = {
   reasonLabel: 'Reason (required to reject)',
   reasonDescription: 'Sent with the decision. A rejection cannot be sent without one.',
   answerLabel: 'Your answer',
-  sendAnswer: 'Send answer',
   /** Said once under an answer field: what the agent does with the answer. */
   answerHint: 'The agent continues with your answer.',
   /** The optional note sent with a denial, which the agent reads. */

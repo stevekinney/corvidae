@@ -221,7 +221,7 @@ test('reloads while an agent waits on a question, and answers it from the review
   await page.reload();
   await expect(question).toBeVisible();
 
-  const review = await waitingReviewOf(request, threadId);
+  const review = await waitingReviewOf(request, threadId, E2E_JOURNEY_URL);
   await page.goto(`/reviews?review=${encodeURIComponent(`bureau:${review.id}`)}`);
   const row = page.locator(`[data-review-row="bureau:${review.id}"]`);
   const pane = page.locator('.ib-review-pane');

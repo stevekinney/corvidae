@@ -14,8 +14,9 @@ export async function bureauCall(
   request: APIRequestContext,
   method: string,
   params: Record<string, unknown>,
+  origin: string = E2E_BASE_URL,
 ): Promise<unknown> {
-  const response = await request.post(`${E2E_BASE_URL}/bureau/jsonrpc`, {
+  const response = await request.post(`${origin}/bureau/jsonrpc`, {
     data: { jsonrpc: '2.0', id: method, method, params },
   });
   expect(response.ok()).toBe(true);
@@ -44,11 +45,12 @@ export type WaitingReview = { id: string; runId: string; sessionId?: string; kin
 export async function waitingReviewOf(
   request: APIRequestContext,
   threadId: string,
+  origin: string = E2E_BASE_URL,
 ): Promise<WaitingReview> {
   let found: WaitingReview | undefined;
   await expect
     .poll(async () => {
-      const listed = (await bureauCall(request, 'bureau.reviews.list', {})) as {
+      const listed = (await bureauCall(request, 'bureau.reviews.list', {}, origin)) as {
         reviews: WaitingReview[];
       };
       found = listed.reviews.find((review) => review.sessionId === threadId);

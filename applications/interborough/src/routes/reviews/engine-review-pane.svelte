@@ -4,7 +4,7 @@
    * section when it has them) and the decision form, or, once it is decided, what was decided and
    * by whom. The decision form needs `reviews:write` and disables its own submit without it.
    */
-  import { Alert, Badge, DescriptionList, RelativeTime } from '@lostgradient/cinder';
+  import { Badge, DescriptionList, RelativeTime } from '@lostgradient/cinder';
 
   import { REVIEWS_COPY } from '../../app/copy.ts';
   import type { EngineReview } from '../../lib/bureau-reviews.ts';
@@ -17,7 +17,6 @@
     humanizeKey,
   } from './review-domain.ts';
   import { resolutionLabel } from './review-items.ts';
-  import type { ReviewOutcome } from './review-outcome.ts';
   import ReviewSource from './review-source.svelte';
 
   interface EngineReviewPaneProps {
@@ -26,12 +25,10 @@
     readonly submitting: boolean;
     /** `reviews:write` gate for the decision form; open when omitted. */
     readonly submitGate?: ScopeGate | undefined;
-    /** What became of the last decision, when it was not simply recorded. */
-    readonly outcome: ReviewOutcome | undefined;
     readonly onSubmit: (reviewId: string, submission: ReviewDecisionSubmission) => void;
   }
 
-  let { review, submitting, submitGate, outcome, onSubmit }: EngineReviewPaneProps = $props();
+  let { review, submitting, submitGate, onSubmit }: EngineReviewPaneProps = $props();
 
   const waiting = $derived(review.status === 'pending');
   const sections = $derived(extractReviewSections(review.artifact));
@@ -90,12 +87,5 @@
       {submitGate}
       onSubmit={(submission) => onSubmit(review.id, submission)}
     />
-  {/if}
-  {#if outcome !== undefined}
-    <Alert variant={outcome.tone}>
-      <p class="ib-decision__failure">
-        {outcome.title}{outcome.message === '' ? '' : `: ${outcome.message}`}
-      </p>
-    </Alert>
   {/if}
 </div>

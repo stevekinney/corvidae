@@ -134,14 +134,13 @@
     }
   }
 
-  async function decide(decision: 'approve' | 'deny', note: string): Promise<void> {
+  async function decide(decision: 'approve' | 'deny'): Promise<void> {
     working = true;
     failure = undefined;
     try {
       await resolveBureauReview({
         id: wait.reviewId,
-        decision: decision === 'deny' && note !== '' ? 'reject' : decision,
-        ...(note === '' ? {} : { reason: note }),
+        decision,
         // The round shown: an approval gated again since is refused, not decided.
         ...(review.data?.kind === 'tool-approval' ? { round: review.data.round } : {}),
       });
@@ -204,7 +203,7 @@
         summary: declaredSummary(approval.action.message, approval.reason),
       })}
       deciding={working}
-      onDecide={(decision, note) => void decide(decision, note)}
+      onDecide={(decision) => void decide(decision)}
     />
     {#if failure !== undefined}<p class="ib-run-wait__note">{failure}</p>{/if}
   {/if}
