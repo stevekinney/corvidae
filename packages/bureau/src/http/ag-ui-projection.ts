@@ -582,7 +582,7 @@ export class RunProjector {
         this.live({
           type: EventType.TOOL_CALL_START,
           toolCallId: call.id,
-          toolCallName: call.name,
+          toolCallName: this.context.toolCallName?.(call.name) ?? call.name,
           parentMessageId,
         }),
         this.live({ type: EventType.TOOL_CALL_ARGS, toolCallId: call.id, delta: args }),

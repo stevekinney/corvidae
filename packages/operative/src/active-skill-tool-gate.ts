@@ -8,7 +8,7 @@
  */
 
 import type { AnyToolbox, ToolExecutionResult } from 'armorer';
-import { createToolCall, resolveFuzzyToolName } from 'armorer';
+import { createToolCall, formatToolName, resolveFuzzyToolName } from 'armorer';
 import type { ToolCall, ToolCallInput } from 'armorer/protocol';
 
 /** The `ToolError.code` of a call the active skills' `allowed-tools` exclude. */
@@ -38,7 +38,7 @@ function refusalFor(call: ToolCallInput, toolName: string): ToolExecutionResult 
   };
 }
 
-/** The tools a call reaches: its name, and the ids of the one tool or every candidate. */
+/** The tools a call reaches: the name it is reported by, and the ids of the one tool or every candidate. */
 interface CallTarget {
   readonly name: string;
   readonly ids: readonly string[];
@@ -67,10 +67,14 @@ function callTarget(
  */
 function registeredTargetOf(target: AnyToolbox, reference: string): CallTarget | undefined {
   const resolution = target.resolveTool(reference);
-  if (resolution.ok) return { name: resolution.tool.name, ids: [resolution.tool.id] };
+  if (resolution.ok) {
+    return { name: formatToolName(resolution.tool.identity), ids: [resolution.tool.id] };
+  }
   const [candidate] = resolution.candidates;
   const tool = candidate === undefined ? undefined : target.getTool(candidate);
-  return tool === undefined ? undefined : { name: tool.name, ids: resolution.candidates };
+  return tool === undefined
+    ? undefined
+    : { name: formatToolName(tool.identity), ids: resolution.candidates };
 }
 
 /** Re-bases a function key's index onto the original batch, so a refusal never shifts a key. */

@@ -23,7 +23,13 @@ import type {
 import { createPluginStorage, isPluginName } from '@lostgradient/interborough-plugin';
 import type { GovernedMemory } from '@lostgradient/memory';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
-import { formatToolId, fromNamespacedToolName, type Tool } from 'armorer';
+import {
+  formatToolId,
+  fromNamespacedToolName,
+  PROVIDER_TOOL_NAME_LIMIT,
+  toNamespacedToolName,
+  type Tool,
+} from 'armorer';
 
 import type { AgentDefinitions } from '../agent-catalog';
 import type { AgentContributions } from '../agent-contributions';
@@ -175,7 +181,9 @@ interface PluginContributionPlan {
 /**
  * What `contributions` claims and registers. Throws when a contribution cannot be registered: a
  * name outside the plugin name grammar (which also keeps `plugin__name` injective), a tool that
- * cannot be rebuilt, or an embedder whose dimension is not a positive integer. The caller turns the
+ * cannot be rebuilt or whose provider name `plugin__name` is longer than the
+ * {@link PROVIDER_TOOL_NAME_LIMIT} OpenAI and Gemini accept, or an embedder whose dimension is not
+ * a positive integer. The caller turns the
  * throw into the plugin's `setup-failed`, so a malformed plugin is skipped rather than failing
  * `createBureau`.
  */
@@ -200,6 +208,12 @@ function planOf(
   for (const tool of contributions.tools ?? []) {
     const rebuilt = pluginTool(tool, plugin, version);
     contribute('tool', rebuilt.name, rebuilt.id);
+    const providerName = toNamespacedToolName(rebuilt.identity);
+    if (providerName.length > PROVIDER_TOOL_NAME_LIMIT) {
+      throw new TypeError(
+        `setup returned the tool "${formatToolId({ namespace: plugin, name: rebuilt.name })}", which a provider would call "${providerName}" (${providerName.length} characters); providers accept at most ${PROVIDER_TOOL_NAME_LIMIT}.`,
+      );
+    }
     tools.set(formatToolId({ namespace: plugin, name: rebuilt.name }), rebuilt);
   }
   for (const activity of contributions.activities ?? []) contribute('activity', activity.name);

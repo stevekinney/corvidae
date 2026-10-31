@@ -752,20 +752,31 @@ export type { AgentRun };
 // ---------------------------------------------------------------------------
 
 /**
- * COR-1879 — a tool's configuration under the key `options.tools` gives it. A bare key becomes the
- * tool's name, so the model calls the tool by its key, prefixed `<namespace>__` when the tool was
- * authored in a namespace of its own. A namespaced key (`plugin:tool`) becomes
- * the identity's namespace and name, keeping the tool's own version: the durable record pins
- * `plugin:tool@version`, the model calls it `plugin__tool` (Armorer's default provider naming),
- * and the toolbox resolves that name back to the tool, so two namespaces' `search` stay apart.
+ * COR-1879 — the identity `createAgent` gives a tool under the key `options.tools` gives it, version
+ * aside. A namespaced key (`plugin:tool`) becomes the namespace and name, so the durable record pins
+ * `plugin:tool@version` and the model calls the tool `plugin__tool` (Armorer's default provider
+ * naming), and the toolbox resolves that name back to it. A bare key becomes the name and keeps the
+ * namespace the tool was authored in, so a namespace-`a` tool under the key `lookup` is `a:lookup`.
+ * `formatToolName` of the result is the name every result and approval reports the tool by, which
+ * a host keying settings by the key reads back with this function.
  */
-function toolEntryUnderKey(key: string, tool: Tool): ToolConfiguration {
+export function toolIdentityUnderKey(
+  key: string,
+  tool: Pick<Tool, 'configuration'>,
+): { readonly namespace: string; readonly name: string } {
   const separator = key.indexOf(':');
   const namespace = key.slice(0, separator);
   const name = key.slice(separator + 1);
   if (separator < 1 || name === '' || name.includes(':') || name.includes('@')) {
-    return { ...tool.configuration, name: key };
+    return { namespace: tool.configuration.identity.namespace, name: key };
   }
+  return { namespace, name };
+}
+
+/** A tool's configuration under the key `options.tools` gives it ({@link toolIdentityUnderKey}). */
+function toolEntryUnderKey(key: string, tool: Tool): ToolConfiguration {
+  const { namespace, name } = toolIdentityUnderKey(key, tool);
+  if (name === key) return { ...tool.configuration, name: key };
   const { version } = tool.configuration.identity;
   return {
     ...tool.configuration,

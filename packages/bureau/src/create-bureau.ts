@@ -131,6 +131,7 @@ import {
 } from '@lostgradient/weft';
 import {
   type AnyToolbox,
+  formatToolName,
   type SignedPendingToolApproval,
   type Tool,
   type ToolExecutionResult,
@@ -17966,7 +17967,7 @@ async function constructBureau<const D extends AgentDefinitions>(
               .tools()
               .some((tool) =>
                 boundToolId === undefined
-                  ? tool.name === approval.toolName
+                  ? formatToolName(tool.identity) === approval.toolName
                   : tool.id === boundToolId,
               )
           ) {

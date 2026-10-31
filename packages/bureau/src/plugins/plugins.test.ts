@@ -305,6 +305,36 @@ describe('plugin composition', () => {
     });
   });
 
+  it('skips a plugin whose tool reaches a provider under a name longer than 64 characters', async () => {
+    const plugin = 'p'.repeat(30);
+    const tool = 't'.repeat(33);
+    const long = definePlugin({
+      name: plugin,
+      version: '1.0.0',
+      description: 'Contributes a tool whose provider name is too long.',
+      setup: () => ({ tools: [toolNamed(tool)] }),
+    });
+    const fits = definePlugin({
+      name: 'q'.repeat(30),
+      version: '1.0.0',
+      description: 'Contributes a tool whose provider name is exactly 64 characters.',
+      setup: () => ({ tools: [toolNamed('t'.repeat(32))] }),
+    });
+    const bureau = await start({ plugins: [entry(long), entry(fits)] });
+
+    const [longListing, fitsListing] = bureau.plugins.list();
+    expect(longListing).toMatchObject({
+      status: 'skipped',
+      problems: [
+        {
+          code: 'setup-failed',
+          message: `setup returned the tool "${plugin}:${tool}", which a provider would call "${plugin}__${tool}" (65 characters); providers accept at most 64.`,
+        },
+      ],
+    });
+    expect(fitsListing?.status).toBe('running');
+  });
+
   it('never puts a secret value in a plugins.list() response', async () => {
     const SECRET = 'sk-live-0123456789abcdef';
     const read: (string | undefined)[] = [];

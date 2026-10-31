@@ -1,6 +1,7 @@
 import type { AnthropicTool } from './adapters/anthropic/types';
 import type { GeminiTool } from './adapters/gemini/types';
 import type { OpenAITool } from './adapters/openai/types';
+import { formatToolName } from './core/identity';
 import type { InspectorDetailLevel, RegistryInspection } from './core/inspect';
 import { inspectRegistry } from './core/inspect';
 import type { AnyToolDefinition } from './core/tool-definition';
@@ -161,7 +162,7 @@ export function requireRuntimeToolContext(
 ): RuntimeToolContext {
   const secrets = createToolCallSecrets({
     configuration: tool.configuration,
-    toolName: tool.name,
+    toolName: formatToolName(tool.identity),
   });
   if (isRuntimeToolContext(value)) {
     // A context built before `resolveSecret` existed still gets the gate, not a TypeError.
@@ -176,7 +177,11 @@ export function requireRuntimeToolContext(
     dispatch: typeof dispatch === 'function' ? (event: Event) => dispatch(event) : () => true,
     progress: () => undefined,
     resolveSecret: (reference: string) => secrets.resolve(reference),
-    toolCall: { id: '', name: tool.name, arguments: normalizeToolCallArguments(parameters) },
+    toolCall: {
+      id: '',
+      name: formatToolName(tool.identity),
+      arguments: normalizeToolCallArguments(parameters),
+    },
     configuration: tool.configuration,
   };
 }

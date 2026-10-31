@@ -4,6 +4,7 @@ import type {
   Link as OpenTelemetryLink,
 } from '@opentelemetry/api';
 import type { ToolError, ToolErrorCategory } from './core/errors';
+import { formatToolName } from './core/identity';
 import type { LoopDetector } from './core/loop-detection';
 import type { Tool, ToolConfiguration } from './is-tool';
 import { providerCallIdField } from './provider-call-id';
@@ -70,14 +71,13 @@ export async function admitToolCall(context: ExecutionAdmissionContext): Promise
 function resolveTool(context: ExecutionAdmissionContext): AdmittedToolCall | undefined {
   const { toolCall, getTool, resolutionEnabled, toolsByName, emit } = context;
   const tool = getTool(toolCall.name);
-  // A call may name its tool by id or `namespace:name`; the tool only recognizes a call that
-  // carries its own bare name, so hand it that one.
+  // A call may name its tool by id, `namespace:name` or a provider's `namespace__name`; hand the
+  // tool a call that carries the name it is reported by (COR-1879), which it recognizes, so every
+  // event and result built from the call names the tool one way.
   if (tool || !resolutionEnabled) {
     if (!tool) return undefined;
-    return {
-      tool,
-      toolCall: tool.name === toolCall.name ? toolCall : { ...toolCall, name: tool.name },
-    };
+    const name = formatToolName(tool.identity);
+    return { tool, toolCall: name === toolCall.name ? toolCall : { ...toolCall, name } };
   }
   const result = resolveFuzzyToolName(toolCall.name, [...toolsByName.keys()]);
   if (!result.resolved) return undefined;
@@ -88,7 +88,7 @@ function resolveTool(context: ExecutionAdmissionContext): AdmittedToolCall | und
     resolvedName: result.resolved,
     tier: result.tier,
   });
-  return { tool: resolved, toolCall: { ...toolCall, name: result.resolved } };
+  return { tool: resolved, toolCall: { ...toolCall, name: formatToolName(resolved.identity) } };
 }
 
 function notFoundResult(context: ExecutionAdmissionContext): ToolExecutionResult {

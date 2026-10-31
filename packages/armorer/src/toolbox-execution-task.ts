@@ -1,4 +1,5 @@
 import { isToolError } from './core/errors';
+import { formatToolName } from './core/identity';
 import { policyAuthorizationOnlySymbol } from './internal/approval-resume';
 import type { ToolExecuteOptions } from './is-tool';
 import type { InternalToolExecuteOptionsWithMirror } from './toolbox-contracts';
@@ -280,7 +281,7 @@ function handleInvocationError(
     content: toolError.message,
     toolCallId: toolCall.id,
     ...providerCallIdField(toolCall),
-    toolName: tool.name,
+    toolName: formatToolName(tool.identity),
     result: undefined,
     error: toolError,
     errorMessage: toolError.message,

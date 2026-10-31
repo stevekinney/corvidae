@@ -1,6 +1,6 @@
 import type { Tool, ToolExecutionResult } from '../../../index';
 import { isTool } from '../../../is-tool';
-import { toProviderToolName } from '../../provider-tool-names';
+import { toNamespacedToolName, toProviderToolName } from '../../provider-tool-names';
 import { textOfToolResultParts, toolResultParts } from '../../tool-result-parts';
 
 type ToolboxLike = {
@@ -30,7 +30,7 @@ export type OpenAIAgentToolConfiguration = {
 export type OpenAIAgentToolOptions = {
   /**
    * How to name each tool for the SDK when `toolConfiguration` gives no name: `'default'` uses the
-   * tool name, `'safe-id'` the tool id encoded as a legal provider name, which keeps same-named
+   * tool name, as `namespace__name` outside the default namespace, `'safe-id'` the tool id encoded as a legal provider name, which keeps same-named
    * tools from different namespaces apart. A call always runs the tool it was converted from.
    */
   naming?: 'default' | 'safe-id';
@@ -220,7 +220,11 @@ export function createOpenAIToolGate(
 function agentToolName(tool: Tool, naming: 'default' | 'safe-id' | undefined): string {
   // The SDK rewrites `-` to `_` in a tool name, so write it that way to keep the gate's names equal
   // to the names the model sees; the digest suffix keeps `a-b` and `a_b` apart.
-  return naming === 'safe-id' ? toProviderToolName(tool.id).replaceAll('-', '_') : tool.name;
+  // The default naming is the other adapters' (COR-1879): `namespace__name` outside the default
+  // namespace, so two namespaces' `search` reach the SDK under different names.
+  return naming === 'safe-id'
+    ? toProviderToolName(tool.id).replaceAll('-', '_')
+    : toNamespacedToolName(tool.identity);
 }
 
 function normalizeToTools(input: ToolboxLike | Tool | readonly Tool[]): Tool[] {

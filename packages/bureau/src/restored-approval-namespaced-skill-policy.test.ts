@@ -44,7 +44,7 @@ function namespacedChargeToolbox(charges: string[]): Toolbox {
     approvalSecret: 'skill-policy-secret',
     policy: {
       beforeExecute: (context) =>
-        context.toolName === 'charge-card'
+        context.configuration.identity.name === 'charge-card'
           ? {
               allow: false,
               status: 'needs_approval',

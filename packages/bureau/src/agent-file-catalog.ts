@@ -817,14 +817,16 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         return {
           // Only the agent's own tools: the toolbox also holds the tools Bureau adds to a run.
           policy: createToolApprovalHooks(definition.toolApproval, {
-            tools: definition.tools,
+            // By the key the file declared each tool under, which `toolApproval` is keyed by too.
+            tools,
             // A tool a person allowed for the rest of this chat skips its `on-changes` ask.
             ...(rememberedTools === undefined || runId === undefined
               ? {}
               : {
                   // A grant is the tool's id, version included, when the approvals are signed (the
                   // approval binds to that id), so a tool whose definition changed asks again
-                  // (COR-1950). Unsigned approvals carry no id, so their grant is the name.
+                  // (COR-1950). Unsigned approvals carry no id, so their grant is the name the tool
+                  // is reported by, `plugin:tool` for a plugin's tool (COR-1879).
                   remembered: async (tool: { name: string; id: string }) => {
                     const granted = await rememberedTools(runId);
                     return granted.has(options.approvalSecret === undefined ? tool.name : tool.id);

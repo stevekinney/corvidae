@@ -291,9 +291,25 @@ describe('open-ai agents adapter', () => {
     expect(output).toEqual({ value: 7 });
   });
 
+  it('names a namespaced tool namespace__name by default, as the other adapters do (COR-1879)', async () => {
+    const searchIn = (namespace: string) =>
+      createTool({
+        name: 'search',
+        namespace,
+        description: `Search ${namespace}`,
+        input: z.object({}),
+        execute: async () => namespace,
+      });
+
+    const { tools } = await toOpenAIAgentTools([searchIn('a'), searchIn('b')]);
+
+    expect(tools.map((tool) => tool.name)).toEqual(['a__search', 'b__search']);
+  });
+
   it('stringifies fallback error content values when tool results fail', async () => {
     const makeFailingTool = (name: string, content: unknown): any => ({
       name,
+      identity: { namespace: 'default', name },
       description: `${name} description`,
       input: { type: 'object', properties: {} },
       tags: [],

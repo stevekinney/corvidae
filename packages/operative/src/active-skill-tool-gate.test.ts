@@ -555,7 +555,8 @@ describe('namespaced tools under an active skill (COR-1879)', () => {
       { errorMode: 'collect' },
     );
     expect(allowed?.outcome).toBe('success');
-    expectRefusal(refused!, 'search', 'call-b');
+    // Named the way every result reports a namespaced tool (COR-1879).
+    expectRefusal(refused!, 'b:search', 'call-b');
     expect(executed).toEqual(['a']);
   });
 
