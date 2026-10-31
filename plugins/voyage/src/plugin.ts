@@ -31,7 +31,9 @@ export default definePlugin({
         {
           name: 'embed',
           dimensions,
-          async embed(texts: string[]): Promise<EmbeddingVector[]> {
+          async embed(requested: string[]): Promise<EmbeddingVector[]> {
+            // Snapshot: the caller owns the array, and it is read after the first await.
+            const texts = [...requested];
             try {
               // Read per call, so a key saved after startup is used without a restart.
               const apiKey = await secrets.get(API_KEY_SECRET);

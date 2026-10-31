@@ -27,7 +27,9 @@ export default definePlugin({
         {
           name: 'embed',
           dimensions,
-          async embed(texts: string[]): Promise<EmbeddingVector[]> {
+          async embed(requested: string[]): Promise<EmbeddingVector[]> {
+            // Snapshot: the caller owns the array, and it is read after the first await.
+            const texts = [...requested];
             try {
               const response = await fetch(endpoint, {
                 method: 'POST',
