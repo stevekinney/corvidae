@@ -73,6 +73,7 @@ describe('page width by kind of page', () => {
 
   test('the operator tables stay wide and the settings form keeps the reading width', () => {
     for (const pattern of [
+      '/capabilities',
       '/runs',
       '/runs/:run',
       '/workflows/:workflow/runs/:run',

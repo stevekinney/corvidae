@@ -21,6 +21,7 @@ const DESTINATIONS = [
   'Chat',
   'Reviews',
   'Agents',
+  'Capabilities',
   'Workflows',
   'Runs',
   'Schedules',
@@ -306,9 +307,9 @@ test('the sidebar holds one ordered list, with Settings pinned to the bottom', a
     await expect(links.nth(index)).toHaveAccessibleName(new RegExp(`^${label}`));
   }
   // Settings sits below the rest, with the space between them.
-  const schedules = await links.nth(5).boundingBox();
-  const health = await links.nth(6).boundingBox();
-  const settings = await links.nth(7).boundingBox();
+  const schedules = await links.nth(6).boundingBox();
+  const health = await links.nth(7).boundingBox();
+  const settings = await links.nth(8).boundingBox();
   expect((settings?.y ?? 0) - (health?.y ?? 0)).toBeGreaterThan(
     ((health?.y ?? 0) - (schedules?.y ?? 0)) * 2,
   );

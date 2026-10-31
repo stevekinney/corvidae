@@ -65,6 +65,9 @@ const EXPECTED_STATE: Readonly<Record<string, string>> = {};
 const MARKERS: Readonly<Record<string, RegExp>> = {
   '/chats/:chat': /Say hello/,
   '/agents': /An agent description that keeps going/,
+  '/capabilities': /Reads only|Changes things|Dangerous|Not classified/,
+  '/capabilities (skills tab)': /e2e-summarize/,
+  '/capabilities (skill open)': /skillword-w+/,
   '/agents/:agent': /An agent description that keeps going/,
   '/agents/:agent/memories': /mmmmmmmmmm/,
   '/workflows': /order-processing/,

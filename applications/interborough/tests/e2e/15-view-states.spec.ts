@@ -24,6 +24,7 @@ const PATHS: Readonly<Record<ViewName, string>> = {
   chat: '/chats',
   agents: '/agents',
   'agent-editor': '/agents/new',
+  capabilities: '/capabilities',
   workflows: '/workflows',
   runs: '/runs',
   schedules: '/schedules',
@@ -90,6 +91,8 @@ const PROBES: Readonly<Record<ViewName, ProbeRoute>> = {
     keys: {},
   }),
   'agent-editor': jsonRpcProbe('bureau.agents.catalog'),
+  // Never empty (`VIEWS.capabilities.canBeEmpty`): each tab says its own nothing.
+  capabilities: bureauProbe('bureau.agents.catalog', { models: [], tools: [] }),
   // The list joins the engine's definitions with the Bureau's files, so it asks both, and it is
   // empty only when neither lists anything.
   workflows: {
