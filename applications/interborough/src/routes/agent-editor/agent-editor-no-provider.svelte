@@ -39,6 +39,7 @@
 </script>
 
 <EmptyState
+  kind="first-use"
   title={copy.title}
   headingLevel={2}
   align="start"

@@ -48,7 +48,7 @@ const HEIGHT = 900;
 const SCROLL_REGION_VIEWPORTS = 2;
 
 const AGENT_ID = 'responsive-long-description';
-/** The agent whose Instructions tab holds the long word; the editor's textarea is not made for one. */
+/** The agent whose instructions hold the long word, on its Instructions tab and in its editor. */
 const INSTRUCTIONS_AGENT_ID = 'responsive-long-instructions';
 const LONG_DESCRIPTION = 'An agent description that keeps going well past one line. '
   .repeat(4)
@@ -77,6 +77,8 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/agents/:agent': /An agent description that keeps going/,
   '/agents/:agent (instructions tab)': /iiiiiiiiii/,
   '/agents/:agent (settings tab)': /Version 1/,
+  // Only the form prints this heading; the long word is in the textarea, which the text does not include.
+  '/agents/:agent/edit': /Guardrails and limits/,
   '/agents/:agent/memories': /mmmmmmmmmm/,
   '/workflows': /order-processing/,
   '/workflows/:workflow/runs': /order-processing/,

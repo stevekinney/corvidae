@@ -24,6 +24,42 @@ import {
  */
 export const RESERVED_IDENTIFIER = 'new';
 
+/**
+ * The bounds the Bureau puts on a limit (`agent-file.ts`). The editor refuses a number outside them
+ * before a save, so the person reads the reason beside the field instead of in a refused write.
+ */
+export const LIMIT_BOUNDS = {
+  stepLimit: 1000,
+  spendUsd: 1_000_000,
+  toolCalls: 100_000,
+  toolSeconds: 86_400,
+} as const;
+
+/** The limit and guardrail fields, so an error can be asked for by field. */
+export type LimitField =
+  'guardrails' | 'stepLimit' | 'spendPerRun' | 'spendPerChat' | 'toolCalls' | 'toolSeconds';
+
+/** What a limit field holds: no limit (`null`), a number, or something that is not a valid number (`undefined`). */
+function parseLimit(text: string, whole: boolean, maximum: number): number | null | undefined {
+  const trimmed = text.trim();
+  if (trimmed === '') return null;
+  if (!/^\d+(?:\.\d+)?$/.test(trimmed)) return undefined;
+  const value = Number(trimmed);
+  if (!Number.isFinite(value) || value <= 0 || value > maximum) return undefined;
+  return whole && !Number.isInteger(value) ? undefined : value;
+}
+
+/** The guardrail ids a field holds, separated by commas, spaces or new lines. */
+export function parseGuardrails(text: string): string[] {
+  return text.split(/[\s,]+/).filter((entry) => entry !== '');
+}
+
+/** Whether an id is a plugin contribution, `plugin:name`. */
+function isContributionId(id: string): boolean {
+  const separator = id.indexOf(':');
+  return separator > 0 && separator < id.length - 1;
+}
+
 /** One model an agent may name, written `<provider>/<model>`. */
 export type ModelOption = { readonly value: string; readonly label: string };
 
@@ -96,6 +132,20 @@ export class AgentEditorState {
   hash = $state<string | null>(null);
   /** Whether the agent opts into A2A. Saved with the rest of the definition. */
   a2a = $state(false);
+  /** The plugin guardrails the agent runs besides the default preset, as typed: `plugin:name` entries. */
+  guardrails = $state('');
+  /** The most steps a run may take, as typed. Empty is no limit, and so are the four below. */
+  stepLimit = $state('');
+  /** What one run may spend, in US dollars, as typed. */
+  spendPerRun = $state('');
+  /** What one chat may spend, in US dollars, as typed. A chat limit needs a run limit. */
+  spendPerChat = $state('');
+  /** The most tool calls one run may make, as typed. */
+  toolCalls = $state('');
+  /** The longest one run's tools may be called, in seconds, as typed. */
+  toolSeconds = $state('');
+  /** The fractions at which a run warns about its spend: not edited here, carried through a save. */
+  readonly #warnAt: readonly number[] | undefined;
 
   /** What the person typed into the identifier field, or `null` while it follows the name. */
   #typedIdentifier = $state<string | null>(null);
@@ -117,6 +167,7 @@ export class AgentEditorState {
     this.#editedId = detail?.id;
     this.skillDescriptors = definition?.skillDescriptors ?? [];
     this.models = definition?.models ?? null;
+    this.#warnAt = definition?.costBudget?.warnAt;
     this.#writtenModel = definition?.model ?? '';
     this.#writtenModelOption = canonicalModel(this.#writtenModel, catalog);
     if (definition === null) {
@@ -130,6 +181,20 @@ export class AgentEditorState {
     this.instructions = definition.instructions;
     this.hash = detail?.hash ?? null;
     this.a2a = definition.a2a;
+    this.guardrails = (definition.guardrails ?? []).join('\n');
+    this.stepLimit = definition.stepLimit === null ? '' : String(definition.stepLimit);
+    this.spendPerRun =
+      definition.costBudget === null ? '' : String(definition.costBudget.perRunUsd);
+    this.spendPerChat =
+      definition.costBudget?.perChatUsd === undefined
+        ? ''
+        : String(definition.costBudget.perChatUsd);
+    this.toolCalls =
+      definition.toolBudget?.maxCalls === undefined ? '' : String(definition.toolBudget.maxCalls);
+    this.toolSeconds =
+      definition.toolBudget?.maxDurationSeconds === undefined
+        ? ''
+        : String(definition.toolBudget.maxDurationSeconds);
   }
 
   /** A form for a new agent, with the catalog's first model chosen. */
@@ -186,9 +251,34 @@ export class AgentEditorState {
     return this.modelChoices.length > 0;
   }
 
+  /** Why each limit field cannot be saved as typed, in words; a field with nothing wrong has no entry. */
+  get limitErrors(): Readonly<Partial<Record<LimitField, string>>> {
+    const copy = AGENT_EDITOR_COPY.limits.errors;
+    const errors: Partial<Record<LimitField, string>> = {};
+    if (!parseGuardrails(this.guardrails).every(isContributionId)) {
+      errors.guardrails = copy.guardrails;
+    }
+    if (parseLimit(this.stepLimit, true, LIMIT_BOUNDS.stepLimit) === undefined) {
+      errors.stepLimit = copy.stepLimit(LIMIT_BOUNDS.stepLimit);
+    }
+    const perRun = parseLimit(this.spendPerRun, false, LIMIT_BOUNDS.spendUsd);
+    if (perRun === undefined) errors.spendPerRun = copy.spend(LIMIT_BOUNDS.spendUsd);
+    const perChat = parseLimit(this.spendPerChat, false, LIMIT_BOUNDS.spendUsd);
+    if (perChat === undefined) errors.spendPerChat = copy.spend(LIMIT_BOUNDS.spendUsd);
+    else if (perChat !== null && perRun === null) errors.spendPerChat = copy.chatNeedsRun;
+    if (parseLimit(this.toolCalls, true, LIMIT_BOUNDS.toolCalls) === undefined) {
+      errors.toolCalls = copy.toolCalls(LIMIT_BOUNDS.toolCalls);
+    }
+    if (parseLimit(this.toolSeconds, false, LIMIT_BOUNDS.toolSeconds) === undefined) {
+      errors.toolSeconds = copy.toolSeconds(LIMIT_BOUNDS.toolSeconds);
+    }
+    return errors;
+  }
+
   /** Whether the form holds what a save needs. A save also waits for any request in flight. */
   get canSave(): boolean {
     if (!this.hasModels || this.model === '') return false;
+    if (Object.keys(this.limitErrors).length > 0) return false;
     return this.mode === 'edit' || (this.identifier !== '' && this.#identifierIsValid());
   }
 
@@ -206,6 +296,34 @@ export class AgentEditorState {
       : this.tools.filter((tool) => tool !== name);
   }
 
+  /** The limits as the Bureau takes them: a field left empty is `null`, which removes the limit. */
+  #limits(): Pick<AgentDefinitionInput, 'guardrails' | 'stepLimit' | 'costBudget' | 'toolBudget'> {
+    const guardrails = parseGuardrails(this.guardrails);
+    const perRun = parseLimit(this.spendPerRun, false, LIMIT_BOUNDS.spendUsd) ?? null;
+    const perChat = parseLimit(this.spendPerChat, false, LIMIT_BOUNDS.spendUsd) ?? null;
+    const calls = parseLimit(this.toolCalls, true, LIMIT_BOUNDS.toolCalls) ?? null;
+    const seconds = parseLimit(this.toolSeconds, false, LIMIT_BOUNDS.toolSeconds) ?? null;
+    return {
+      guardrails: guardrails.length === 0 ? null : guardrails,
+      stepLimit: parseLimit(this.stepLimit, true, LIMIT_BOUNDS.stepLimit) ?? null,
+      costBudget:
+        perRun === null
+          ? null
+          : {
+              perRunUsd: perRun,
+              ...(perChat === null ? {} : { perChatUsd: perChat }),
+              ...(this.#warnAt === undefined ? {} : { warnAt: this.#warnAt }),
+            },
+      toolBudget:
+        calls === null && seconds === null
+          ? null
+          : {
+              ...(calls === null ? {} : { maxCalls: calls }),
+              ...(seconds === null ? {} : { maxDurationSeconds: seconds }),
+            },
+    };
+  }
+
   /** The definition to write: the form's fields and the carried skill descriptors and models. */
   toDefinition(): AgentDefinitionInput {
     const name = this.name.trim();
@@ -218,6 +336,7 @@ export class AgentEditorState {
       tools: offered.filter((tool) => this.tools.includes(tool)),
       skillDescriptors: this.skillDescriptors,
       a2a: this.a2a,
+      ...this.#limits(),
       instructions: this.instructions,
     };
   }

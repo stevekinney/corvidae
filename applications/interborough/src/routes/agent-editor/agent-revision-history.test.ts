@@ -59,7 +59,7 @@ describe('the revision history', () => {
     stub = installBureauStub({ 'bureau.agents.definitions.revisions': () => ({ revisions: [] }) });
     const { findByTestId, queryByRole } = render(Harness, { props: { id: 'researcher' } });
     const empty = await findByTestId('agent-revisions-empty');
-    expect(empty.textContent).toBe(copy.empty);
+    expect(empty.textContent).toContain(copy.empty);
     expect(queryByRole('table')).toBeNull();
   });
 
@@ -79,6 +79,6 @@ describe('the revision history', () => {
     });
     const { findByRole } = render(Harness, { props: { id: 'researcher' } });
     const alert = await findByRole('alert');
-    expect(alert.textContent).toBe(copy.failed);
+    expect(alert.textContent).toContain(copy.failedTitle);
   });
 });

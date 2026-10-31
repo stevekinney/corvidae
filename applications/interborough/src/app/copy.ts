@@ -149,7 +149,39 @@ export const AGENT_EDITOR_COPY = {
     model: 'Model',
     instructions: 'Instructions',
     tools: 'Tools',
+    limits: 'Guardrails and limits',
   },
+  limits: {
+    description:
+      'What keeps a run in bounds. Leave a spend or tool field empty for no limit; the agent page shows what is set.',
+    guardrailsLabel: 'Guardrails',
+    guardrailsDescription:
+      'Plugin guardrails the agent runs besides the default ones, as plugin:name, one per line.',
+    stepLimitLabel: 'Steps per run',
+    stepLimitDescription: 'The most steps one run may take. Empty uses the default of 25.',
+    spendPerRunLabel: 'Spend per run (USD)',
+    spendPerRunDescription: 'A run that reaches this stops.',
+    spendPerChatLabel: 'Spend per chat (USD)',
+    spendPerChatDescription: 'All the runs of one chat together. Needs a limit per run.',
+    toolCallsLabel: 'Tool calls per run',
+    toolCallsDescription: 'The most tool calls one run may make.',
+    toolSecondsLabel: 'Tool time per run (seconds)',
+    toolSecondsDescription: 'How long a run may keep calling tools, counted from its start.',
+    errors: {
+      guardrails: 'Write each guardrail as plugin:name, one per line.',
+      stepLimit: (maximum: number): string => `Use a whole number from 1 to ${String(maximum)}.`,
+      spend: (maximum: number): string => `Use an amount above 0, up to ${String(maximum)}.`,
+      chatNeedsRun: 'Set a limit per run first: a chat limit sits on top of it.',
+      toolCalls: (maximum: number): string => `Use a whole number from 1 to ${String(maximum)}.`,
+      toolSeconds: (maximum: number): string =>
+        `Use a number of seconds above 0, up to ${String(maximum)}.`,
+    },
+  },
+  /** The line under the heading: when the agent was last saved, and the version that made. */
+  saved: 'Saved',
+  version: (revision: number): string => `Version ${String(revision)}`,
+  /** The keyboard shortcut's group in the `?` map. */
+  shortcutGroup: 'Agent editor',
   nameLabel: 'Name',
   nameDescription: 'What people see. It need not be unique.',
   identifierLabel: 'Identifier',
@@ -174,13 +206,14 @@ export const AGENT_EDITOR_COPY = {
    * saved without one, and nothing in the application can add a provider.
    */
   noProvider: {
-    title: 'Add a model provider to create agents',
-    description: 'Agents run on a model. This installation has none configured.',
+    title: 'No model provider yet',
+    description:
+      'Agents run on a model, and this installation has none connected. Connect a provider, then come back: this page shows the form as soon as the installation offers a model.',
     configurationStep:
       'Put this in the configuration file. If the file exists, add the provider to its providers.',
     secretStep: 'Save the provider’s API key in its own file, readable only by you (chmod 600).',
-    restartStep: 'Restart the host, then reload this page.',
-    reload: 'Reload this page',
+    restartStep: 'Restart the host, then check again.',
+    reload: 'Check again',
     snippetLabel: 'Provider configuration',
   },
   toolsDescription: 'The tools this agent may call.',
@@ -233,8 +266,9 @@ export const AGENT_EDITOR_COPY = {
     caption: 'Versions of this agent that have run',
     versionColumn: 'Version',
     lastRunColumn: 'Last run',
-    empty: 'No version of this agent has run yet.',
-    failed: 'The revision history could not be loaded.',
+    emptyTitle: 'No version has run yet',
+    empty: 'A version appears here once the agent runs on it.',
+    failedTitle: 'The revision history could not be loaded',
   },
 } as const;
 

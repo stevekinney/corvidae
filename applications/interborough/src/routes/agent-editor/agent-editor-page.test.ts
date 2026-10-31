@@ -4,6 +4,7 @@
  * Every write names the `hash` the form was filled from, a save carries the A2A switch with the
  * rest of the definition, and `skillDescriptors` comes back as it was read.
  */
+import { focusManager } from '@tanstack/svelte-query';
 import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
@@ -25,6 +26,7 @@ import {
   type BureauStub,
 } from '../../lib/bureau-stub.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
+import { shortcuts } from '../../lib/shortcuts.ts';
 import Harness from './agent-editor-test-harness.test-harness.svelte';
 
 let stub: BureauStub | undefined;
@@ -48,6 +50,8 @@ function bureau(
     readonly catalog?: AgentCatalog | (() => AgentCatalog);
     readonly hostPaths?: string | null;
     readonly hostMode?: 'local' | 'remote';
+    /** The saved versions, newest first. */
+    readonly versions?: readonly unknown[];
   } = {},
 ): BureauStub {
   const agent = options.agent ?? readyAgent();
@@ -59,6 +63,7 @@ function bureau(
           : (options.catalog ?? catalogFixture()),
       'bureau.agents.definitions.get': () => agent,
       'bureau.agents.definitions.revisions': () => ({ revisions: [] }),
+      'bureau.agents.versions.list': () => ({ versions: options.versions ?? [] }),
       'bureau.agents.definitions.create': (params) => ({
         id: String(params['id']),
         hash: 'created',
@@ -83,6 +88,13 @@ async function type(element: HTMLElement, value: string): Promise<void> {
 }
 
 describe('a new agent', () => {
+  test('says so when the installation offers no tools, in an empty state', async () => {
+    bureau({ catalog: catalogFixture({ tools: [] }) });
+    const { findByRole, container } = mountEditor();
+    await findByRole('heading', { level: 3, name: AGENT_EDITOR_COPY.noTools });
+    expect(container.querySelector('[data-cinder-kind="first-use"]')).not.toBeNull();
+  });
+
   test('offers exactly the models and tools the catalog lists', async () => {
     bureau({
       catalog: catalogFixture({
@@ -159,6 +171,29 @@ describe('a new agent', () => {
     const model = await findByRole('combobox', { name: 'Model' });
     expect(model).not.toBeNull();
     expect(queryByRole('button', { name: AGENT_EDITOR_COPY.noProvider.reload })).toBeNull();
+  });
+
+  test('reads the catalog again when the window is focused, while it offers no model', async () => {
+    let catalog = catalogFixture({ models: [] });
+    const calls = bureau({ catalog: () => catalog });
+    const { findByRole, queryByRole } = mountEditor();
+    await findByRole('heading', { level: 2, name: AGENT_EDITOR_COPY.noProvider.title });
+    const reads = () => calls.callsTo('bureau.agents.catalog').length;
+    const before = reads();
+
+    catalog = catalogFixture();
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+    expect(await findByRole('combobox', { name: 'Model' })).not.toBeNull();
+    expect(queryByRole('heading', { name: AGENT_EDITOR_COPY.noProvider.title })).toBeNull();
+    const afterForm = reads();
+    expect(afterForm).toBeGreaterThan(before);
+
+    // With a form on screen, a focus must not read the catalog and change the form's choices.
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+    await findByRole('combobox', { name: 'Model' });
+    expect(reads()).toBe(afterForm);
   });
 
   test('names no path when the host did not say where its files are', async () => {
@@ -243,6 +278,10 @@ describe('a new agent', () => {
             tools: ['lookup-order'],
             skillDescriptors: [],
             a2a: false,
+            guardrails: null,
+            stepLimit: null,
+            costBudget: null,
+            toolBudget: null,
             instructions: 'Be careful.',
           },
         },
@@ -377,6 +416,10 @@ describe('an agent that exists', () => {
           },
         ],
         a2a: true,
+        guardrails: null,
+        stepLimit: null,
+        costBudget: null,
+        toolBudget: null,
         instructions: 'Changed.',
       },
     });
@@ -732,5 +775,130 @@ describe.each(['local', 'remote'] as const)('the agent editor on a %s host', (mo
         provider.secretFile,
       );
     }
+  });
+});
+
+describe('the header Save', () => {
+  /** Reads ⌘Enter against the shortcut registry as the shell does (`shell.svelte`). */
+  function pressCommandEnter(routePattern: string): boolean {
+    return shortcuts.handleKey(
+      { key: 'Enter', metaKey: true, ctrlKey: false, altKey: false, editable: true },
+      { routePattern, regions: [] },
+      Date.now(),
+    );
+  }
+
+  test('is the only Save, sits in the header, and submits the form', async () => {
+    const calls = bureau();
+    const { findByRole, getByRole, getAllByRole } = mountEditor('researcher');
+    await type(await findByRole('textbox', { name: /^Instructions/ }), 'Changed.');
+    const save = getByRole('button', { name: AGENT_EDITOR_COPY.saveAction });
+    const form = getByRole('form', { name: AGENT_EDITOR_COPY.formLabel });
+
+    expect(getAllByRole('button', { name: AGENT_EDITOR_COPY.saveAction })).toHaveLength(1);
+    expect(form.contains(save)).toBe(false);
+    expect(save.getAttribute('form')).toBe(form.id);
+    expect(save.hasAttribute('data-changes')).toBe(true);
+    await fireEvent.click(save);
+    await waitFor(() => expect(calls.callsTo('bureau.agents.definitions.update')).toHaveLength(1));
+  });
+
+  test('says when the agent was last saved and links to its versions on the Settings tab', async () => {
+    bureau({
+      versions: [
+        {
+          revision: 4,
+          hash: 'hash-1',
+          savedAt: new Date(Date.now() - 120_000).toISOString(),
+          savedBy: null,
+          definition: readyAgent().definition,
+          changedKeys: [],
+        },
+      ],
+    });
+    const { findByTestId } = mountEditor('researcher');
+    const saved = await findByTestId('agent-saved');
+    expect(saved.textContent).toContain(AGENT_EDITOR_COPY.saved);
+    expect(saved.textContent).toContain('2 minutes ago');
+    const link = saved.querySelector('a');
+    expect(link?.textContent).toBe(AGENT_EDITOR_COPY.version(4));
+    expect(link?.getAttribute('href')).toContain('/agents/researcher?tab=settings');
+  });
+
+  test('opens the versions in the app, unless the click asks for a new tab', async () => {
+    bureau({
+      versions: [
+        {
+          revision: 2,
+          hash: 'hash-1',
+          savedAt: new Date().toISOString(),
+          savedBy: null,
+          definition: readyAgent().definition,
+          changedKeys: [],
+        },
+      ],
+    });
+    const { findByRole } = mountEditor('researcher');
+    const link = await findByRole('link', { name: AGENT_EDITOR_COPY.version(2) });
+
+    await fireEvent.click(link, { metaKey: true });
+    expect(router.pathname).not.toBe('/agents/researcher');
+    await fireEvent.click(link);
+    await waitFor(() => expect(router.pathname).toBe('/agents/researcher'));
+    expect(router.search.get('tab')).toBe('settings');
+  });
+
+  test('registers ⌘Enter, which saves from a field, and removes it when the page goes', async () => {
+    const calls = bureau();
+    const { findByRole, unmount } = mountEditor('researcher');
+    await findByRole('textbox', { name: /^Instructions/ });
+    expect(
+      shortcuts
+        .entries()
+        .some(
+          (entry) =>
+            typeof entry.scope === 'object' &&
+            'route' in entry.scope &&
+            entry.scope.route === '/agents/:agent/edit',
+        ),
+    ).toBe(true);
+
+    expect(pressCommandEnter('/agents/:agent/edit')).toBe(true);
+    await waitFor(() => expect(calls.callsTo('bureau.agents.definitions.update')).toHaveLength(1));
+
+    unmount();
+    expect(pressCommandEnter('/agents/:agent/edit')).toBe(false);
+  });
+
+  test('does not save with ⌘Enter while a limit is wrong', async () => {
+    const calls = bureau();
+    const { findByRole, getByRole, findByText } = mountEditor('researcher');
+    await type(await findByRole('textbox', { name: /^Steps per run/ }), '5000');
+    await findByText(AGENT_EDITOR_COPY.limits.errors.stepLimit(1000));
+
+    expect(pressCommandEnter('/agents/:agent/edit')).toBe(true);
+    expect(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction })).toBeDisabled();
+    expect(calls.callsTo('bureau.agents.definitions.update')).toEqual([]);
+  });
+
+  test('sends the limits it was given', async () => {
+    const calls = bureau();
+    const { findByRole, getByRole } = mountEditor('researcher');
+    await type(await findByRole('textbox', { name: /^Steps per run/ }), '12');
+    await type(getByRole('textbox', { name: /^Spend per run/ }), '1.5');
+    await type(getByRole('textbox', { name: /^Tool calls per run/ }), '30');
+    await type(getByRole('textbox', { name: /^Guardrails/ }), 'acme:tripwire');
+    await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction }));
+
+    await waitFor(() => expect(calls.callsTo('bureau.agents.definitions.update')).toHaveLength(1));
+    const [update] = calls.callsTo('bureau.agents.definitions.update');
+    expect(update?.params).toMatchObject({
+      definition: {
+        guardrails: ['acme:tripwire'],
+        stepLimit: 12,
+        costBudget: { perRunUsd: 1.5 },
+        toolBudget: { maxCalls: 30 },
+      },
+    });
   });
 });
