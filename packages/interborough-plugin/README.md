@@ -75,3 +75,42 @@ export default definePlugin({
   },
 });
 ```
+
+## Test a plugin
+
+`@lostgradient/interborough-plugin/testing` holds `pluginContract`, the conformance suite every plugin runs. It takes the host as an argument, so this package never imports Bureau; Bureau's `@lostgradient/bureau/testing` supplies `createPluginTestHost`, a Bureau that loads only your plugin with a value for every secret it declares and the files in your `content/agents/` directory.
+
+```ts
+import { definePlugin } from '@lostgradient/interborough-plugin';
+import {
+  type CreatePluginTestHost,
+  pluginContract,
+} from '@lostgradient/interborough-plugin/testing';
+
+// In a plugin's own test this is `import { createPluginTestHost } from '@lostgradient/bureau/testing'`.
+declare const createPluginTestHost: CreatePluginTestHost;
+
+const plugin = definePlugin({
+  name: 'example',
+  version: '1.0.0',
+  description: 'An example plugin.',
+});
+
+pluginContract(plugin, { createHost: createPluginTestHost });
+```
+
+The suite registers one test per check. The descriptor must be valid, the identities it holds must read without a host and never repeat, and the host must report the plugin `running` with no problems, which includes every file it ships resolving the contributions it names (`reference-unresolved`). `checkPluginContract` runs the same checks and returns the failures instead of registering tests.
+
+## Commit the plugin's identities
+
+A durable record pins a contribution's id and version, so a schema must not change under a version a plugin already shipped. Each `plugins/*` workspace commits a `plugin-identities.json` with its configuration and every contribution's id, version and schema digest. Write or refresh it from the repository root:
+
+```sh
+bun scripts/check-plugin-identities.ts --write plugins/example
+```
+
+`bun run lint:root` runs `scripts/check-plugin-identities.ts`, which fails when a workspace has no file, when a file no longer matches its plugin, and when a digest differs from the same file at the baseline ref while the version does not. The baseline is `CORVIDAE_PLUGIN_IDENTITY_BASE` when it is set and `origin/main` otherwise; a ref that does not resolve fails the guard and names the variable. A plugin whose file is absent at the baseline is new and passes. A plugin workspace's entry is its `package.json` `exports["."]`, and the plugin is that module's default export.
+
+## Write a folder plugin
+
+`bun scripts/create-plugin.ts <name> --to <directory>` writes `<directory>/<name>/` with `plugin.ts`, `content/agents/assistant.md` and `plugin.test.ts`. `bun scripts/check-plugin.ts <directory>/<name>` type-checks `plugin.ts` against this package's declarations and runs the contract. Test files are not type-checked by that script, because they import Bureau.
