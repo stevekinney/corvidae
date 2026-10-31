@@ -208,4 +208,28 @@ describe('a secret answer', () => {
     expect(container.textContent).toContain('ada');
     expect(container.innerHTML).not.toContain('tok-999');
   });
+
+  test('a client check that fails never quotes the secret in what it shows', async () => {
+    const calls: unknown[] = [];
+    const { container } = render(ToolInputPart, {
+      props: {
+        part: question({ ...SECRET, enum: ['only-this'] }),
+        onInputSubmit: (_id: string, value: unknown) => {
+          calls.push(value);
+        },
+      },
+    });
+    await flush();
+
+    await fireEvent.input(screen.getByLabelText('API token'), { target: { value: 'sk-live-123' } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await flush();
+    await flush();
+    await flush();
+
+    expect(calls).toEqual([]);
+    expect(container.textContent).toContain('not valid');
+    expect(container.textContent).not.toContain('sk-live-123');
+    expect(container.innerHTML).not.toContain('sk-live-123');
+  });
 });

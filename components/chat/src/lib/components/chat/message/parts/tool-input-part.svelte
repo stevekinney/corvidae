@@ -12,7 +12,7 @@
 <script lang="ts">
   import { validateSchemaFormValue } from '@lostgradient/cinder';
   import ChatQuestion from '../../question/chat-question.svelte';
-  import { issuesOfRejection, recordAnswer } from '../../question/question-answer.ts';
+  import { holdsSecret, issuesOfRejection, recordAnswer } from '../../question/question-answer.ts';
   import type { ChatQuestionIssue } from '../../question/question-answer.ts';
   import { classifyQuestion } from '../../question/question-kind.ts';
   import { QuestionStore, useQuestionStore } from '../../question/question-store.svelte.ts';
@@ -50,7 +50,10 @@
       // gave it, so the composer and the specialised controls are held to what SchemaForm is.
       const checked = await validateSchemaFormValue(part.schema, value);
       if (!checked.valid) {
-        issues = checked.issues;
+        // A validator's message can quote the value, which a secret must never be.
+        issues = holdsSecret(part.schema)
+          ? checked.issues.map((issue) => ({ ...issue, message: 'This answer is not valid.' }))
+          : checked.issues;
         return false;
       }
       await onInputSubmit(part.toolCallId, value);

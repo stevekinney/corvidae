@@ -1150,6 +1150,20 @@
     if (quotes.remove(quoteId)) announcements.announce('Quote removed');
   }
 
+  async function answerQuestionFromComposer(
+    question: NonNullable<typeof questions.composerTarget>,
+    typed: string,
+  ): Promise<void> {
+    const origin = conversationId;
+    const accepted = await question.submit(typed);
+    // The text belongs to the conversation it was typed in; if the person has moved on, whatever
+    // the host answered, it is not theirs to put in this composer.
+    if (conversationId !== origin) return;
+    if (!accepted && inputRef?.getValue() === '') {
+      inputRef.insertAtRange({ start: 0, end: 0 }, typed);
+    }
+  }
+
   /**
    * Sends the typed message with the quoted excerpts on top. The quotes leave
    * the chip row at hand-off: the session controller settles `sendMessage` only
@@ -1157,16 +1171,6 @@
    * meanwhile repeat them. If the send fails they come back ahead of any chips
    * added since, without repeats and within the limit.
    */
-  async function answerQuestionFromComposer(
-    question: NonNullable<typeof questions.composerTarget>,
-    typed: string,
-  ): Promise<void> {
-    const accepted = await question.submit(typed);
-    if (!accepted && inputRef?.getValue() === '') {
-      inputRef.insertAtRange({ start: 0, end: 0 }, typed);
-    }
-  }
-
   function handleComposerSubmit(message: MessageInput, attachments: ChatAttachment[]): void {
     // An open free-text question takes the typed text as its answer, not as a new message.
     const question = questions.composerTarget;

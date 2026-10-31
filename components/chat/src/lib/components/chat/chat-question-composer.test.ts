@@ -450,3 +450,41 @@ describe('long ratings and virtualized transcripts', () => {
     expect(messages).toEqual([]);
   });
 });
+
+describe('a composer answer in flight when the conversation changes', () => {
+  for (const outcome of ['accepted', 'refused', 'failed'] as const) {
+    test(`${outcome}: the typed text is not put in the next conversation's composer`, async () => {
+      let settleAnswer: () => void = () => undefined;
+      const answers: unknown[] = [];
+      const messages: unknown[] = [];
+      const view = render(Chat, {
+        id: 'q-switch-composer',
+        conversation: questionConversation('q-a', TEXT),
+        answerInComposer: true,
+        onInputSubmit: (_id: string, value: unknown) =>
+          new Promise<void>((resolve, reject) => {
+            answers.push(value);
+            settleAnswer = () => {
+              if (outcome === 'accepted') resolve();
+              else if (outcome === 'refused') {
+                reject(new ChatQuestionAnswerError([{ path: [], message: 'Too vague' }]));
+              } else reject(new Error('offline'));
+            };
+          }),
+        onSubmit: (event: unknown) => messages.push(event),
+      });
+      await tick();
+      await typeAndSend(view.container, 'words for A');
+      expect(answers).toEqual(['words for A']);
+
+      await view.rerender({ conversation: questionConversation('q-b', TEXT) });
+      await settle();
+      settleAnswer();
+      await settle();
+
+      expect(composerOf(view.container).value).toBe('');
+      expect(answers).toEqual(['words for A']);
+      expect(messages).toEqual([]);
+    });
+  }
+});
