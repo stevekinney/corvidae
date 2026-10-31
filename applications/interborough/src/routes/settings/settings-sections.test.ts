@@ -1,11 +1,12 @@
 /**
  * The sections of Settings (COR-1837): the section navigation lists General, Models, Model policy, Data and retention, and
  * API reference, marks the one that is open, and moves between them; Data and retention carries the
- * retention overview and API reference carries the engine's reference tabs.
+ * retention overview and API reference carries the server's reference groups.
  */
 import { fireEvent, render } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
+import type { Component } from 'svelte';
 
 import { createQueryClient } from '../../lib/query.ts';
 import { router } from '../../lib/router.svelte.ts';
@@ -32,7 +33,7 @@ afterEach(() => {
   scripted = undefined;
 });
 
-function renderInHarness(component: typeof DataAndRetention) {
+function renderInHarness(component: Component) {
   return render(SystemRouteTestHarness, {
     props: { client: realClient(), queryClient: createQueryClient(), component },
   });
@@ -95,7 +96,7 @@ describe('Settings › Data and retention', () => {
 });
 
 describe('Settings › API reference', () => {
-  test('names itself, carries the section navigation, and lists the reference tabs', async () => {
+  test('names itself, carries the section navigation, and lists the reference groups', async () => {
     openAt('/settings/api-reference');
     scripted = new ScriptedFetch();
     scripted.routeSseStream('/v1/events/sse', []);
@@ -106,17 +107,15 @@ describe('Settings › API reference', () => {
       activeRevisions: {},
       activities: {},
     });
-    const { findByRole, findAllByRole } = renderInHarness(ApiReference);
+    const { findByRole, queryAllByRole } = renderInHarness(ApiReference);
 
     const heading = await findByRole('heading', { level: 1 });
     expect(heading.textContent).toBe('API reference');
     expect(await findByRole('navigation', { name: 'Settings sections' })).not.toBeNull();
-    const tabs = await findAllByRole('tab');
-    expect(tabs.map((tab) => tab.textContent?.trim())).toEqual([
-      'Workflow types',
-      'Discovery',
-      'Operations',
-      'Scopes',
-    ]);
+    const groups = await findByRole('navigation', { name: 'API reference groups' });
+    expect(
+      Array.from(groups.querySelectorAll('a')).map((link) => link.textContent?.trim()),
+    ).toEqual(['Operations', 'Discovery documents', 'Your scopes', 'Workflow sources']);
+    expect(queryAllByRole('tab')).toEqual([]);
   });
 });

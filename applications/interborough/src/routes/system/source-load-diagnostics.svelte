@@ -23,10 +23,11 @@
    * The shared load can continue and install the revision after that state
    * transition; `cancelled` does not establish that the work stopped.
    */
-  import { Badge } from '@lostgradient/cinder';
+  import { Alert, Badge, EmptyState, InlineLoading, Skeleton } from '@lostgradient/cinder';
   import { CircleCheck, CircleDashed, CircleX, Loader, TriangleAlert } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
+  import { API_REFERENCE_COPY } from '../../app/copy.ts';
   import { useFleetEventsLive } from '../../app/live-polling.svelte.ts';
   import { getClient } from '../../lib/client.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -124,21 +125,27 @@
 
 <div class="weft-source-load" role="group" aria-label="Source load diagnostics">
   {#if !canRead}
-    <p class="weft-source-load__note">Requires system:read to view load diagnostics.</p>
+    <EmptyState
+      kind="first-use"
+      size="compact"
+      headingLevel={4}
+      title={API_REFERENCE_COPY.notAvailable('Load diagnostics')}
+      description={API_REFERENCE_COPY.requiresScope('system:read', 'view load diagnostics')}
+    />
   {:else if diagnosticsQuery.isPending}
-    <p class="weft-source-load__note" role="status" aria-busy="true">Loading diagnostics…</p>
+    <div role="status" aria-busy="true" aria-label={API_REFERENCE_COPY.loading.diagnostics}>
+      <Skeleton height="4rem" />
+    </div>
   {:else if diagnosticsQuery.isError}
     <QueryFaultBanner error={diagnosticsQuery.error} onRetry={() => diagnosticsQuery.refetch()} />
   {:else if summary === undefined}
-    <p class="weft-source-load__malformed" role="alert">
-      <TriangleAlert aria-hidden="true" size={14} />
-      <span>
-        The server returned load diagnostics this console doesn't recognize — showing nothing rather
-        than a guess.
-      </span>
-    </p>
+    <Alert variant="warning">
+      {#snippet icon()}<TriangleAlert aria-hidden="true" size={14} />{/snippet}
+      The server returned load diagnostics this console doesn't recognize — showing nothing rather than
+      a guess.
+    </Alert>
   {:else if summary.kind === 'not-dynamic'}
-    <p class="weft-source-load__note">{summary.message}</p>
+    <Alert variant="info">{summary.message}</Alert>
   {:else}
     <!--
       The load state IS the thing an operator is waiting on, and polling can
@@ -194,7 +201,7 @@
 
   <!-- Background refreshes stay quiet; the state badge is the live region. -->
   {#if canRead && isResolved && diagnosticsQuery.isFetching}
-    <span class="weft-source-load__refreshing">Refreshing diagnostics…</span>
+    <InlineLoading status="active" description="Refreshing diagnostics…" />
   {/if}
 </div>
 
@@ -212,11 +219,6 @@
     color: var(--cinder-text-subtle);
   }
 
-  .weft-source-load__refreshing {
-    font-size: var(--cinder-text-2xs);
-    color: var(--cinder-text-subtle);
-  }
-
   .weft-source-load__state {
     display: flex;
     align-items: center;
@@ -224,7 +226,6 @@
     flex-wrap: wrap;
   }
 
-  .weft-source-load__malformed,
   .weft-source-load__failure {
     display: flex;
     align-items: flex-start;

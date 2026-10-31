@@ -106,15 +106,20 @@ describe('OperationsTab', () => {
     expect(await findByText('Something went wrong')).not.toBeNull();
   });
 
-  test('a search with no matches shows the empty-results message', async () => {
+  test('a search with no matches is a filtered empty state whose action clears the search', async () => {
     scripted = new ScriptedFetch();
     routeDocuments(scripted);
-    const { findByPlaceholderText, findByText } = await renderOperationsTab();
+    const { findByPlaceholderText, findByText, findByRole, queryByText } =
+      await renderOperationsTab();
 
     const search = await findByPlaceholderText('Search operations…');
     await fireEvent.input(search, { target: { value: 'nothing-matches-this' } });
 
-    expect(await findByText('No operations match "nothing-matches-this".')).not.toBeNull();
+    expect(await findByText('No operation matches "nothing-matches-this".')).not.toBeNull();
+    expect(queryByText('weft.storage.get')).toBeNull();
+
+    await fireEvent.click(await findByRole('button', { name: 'Show all operations' }));
+    expect(await findByText('weft.storage.get')).not.toBeNull();
   });
 
   test('renders REST/JSON-RPC/MCP availability accurately for partially-covered operations', async () => {

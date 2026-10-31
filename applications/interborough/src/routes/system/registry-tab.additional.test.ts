@@ -107,13 +107,13 @@ describe('additional coverage', () => {
     expect(await findByText('timeout: 0ms')).not.toBeNull();
   });
 
-  test('shows the honest "no activities" note when the engine has none registered', async () => {
+  test('shows the "no activities" empty state when the engine has none registered', async () => {
     scripted = new ScriptedFetch();
     scripted.enqueueJsonRpcResult(
       await withContractHashes(registrySnapshot([manifestFixture('heartbeat')])),
     );
     const { findByText } = await renderRegistryTab();
-    expect(await findByText('No activities registered for this server.')).not.toBeNull();
+    expect(await findByText('No activities are registered')).not.toBeNull();
   });
 
   test('a declared root schema that is not `type: object` renders its root type, not "no schema declared"', async () => {

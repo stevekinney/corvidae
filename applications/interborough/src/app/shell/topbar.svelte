@@ -3,7 +3,7 @@
    * Topbar (design rows 06a, 06l, 03b): the page's breadcrumb trail, built from the route table
    * (`../breadcrumbs.svelte.ts`), the ⌘K search trigger on one line, the notification bell, and
    * the quick settings popover. Who the request acts as and which scopes it holds are facts about
-   * the host, not controls, so they live on System's Scopes tab and not here.
+   * the host, not controls, so they live on Settings › API reference › Your scopes and not here.
    *
    * The leading menu button is CSS-hidden above Cinder Sidebar's own mobile breakpoint
    * (`foundation.css`, `639.98px`) and is the only way to open the navigation drawer on a small

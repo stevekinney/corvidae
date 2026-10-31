@@ -96,7 +96,7 @@ describe('RegistryTab', () => {
     scripted = new ScriptedFetch();
     // No response queued — the request stays pending for this assertion.
     const { getByLabelText } = await renderRegistryTab();
-    expect(getByLabelText('Loading registry')).not.toBeNull();
+    expect(getByLabelText('Loading the registry')).not.toBeNull();
   });
 
   test('shows the fault banner on a failed fetch, with a working Retry', async () => {

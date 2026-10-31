@@ -49,7 +49,7 @@ test('operator preloads an idle dynamic source revision and watches it reach rea
   page,
   checkA11y,
 }) => {
-  await page.goto('/settings/api-reference?tab=registry');
+  await page.goto('/settings/api-reference?group=sources');
 
   const panel = page.getByRole('region', { name: PANEL_NAME, exact: true });
   await expect(panel).toBeVisible();
@@ -91,7 +91,7 @@ test('operator preloads an idle dynamic source revision and watches it reach rea
 });
 
 test('a refused preload reports the bounded failure category Weft recorded', async ({ page }) => {
-  await page.goto('/settings/api-reference?tab=registry');
+  await page.goto('/settings/api-reference?group=sources');
 
   const panel = page.getByRole('region', { name: PANEL_NAME, exact: true });
   await expect(panel).toBeVisible();
@@ -123,7 +123,7 @@ test('the Workflow sources panel is usable across supported widths and themes', 
       await page.addInitScript((selectedTheme) => {
         localStorage.setItem('weft-ui-theme', selectedTheme);
       }, theme);
-      await page.goto('/settings/api-reference?tab=registry');
+      await page.goto('/settings/api-reference?group=sources');
 
       const panel = page.getByRole('region', { name: PANEL_NAME, exact: true });
       await expect(panel).toBeVisible();

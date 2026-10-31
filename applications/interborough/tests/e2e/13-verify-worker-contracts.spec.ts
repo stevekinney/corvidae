@@ -70,7 +70,7 @@ test('operator reads a worker’s contract verification status', async ({ page, 
 });
 
 async function openRegistryVerification(page: Page): Promise<Locator> {
-  await page.goto('/settings/api-reference?tab=registry');
+  await page.goto('/settings/api-reference?group=sources');
   await page.getByRole('button', { name: /order-processing/ }).click();
   return page.getByRole('region', { name: 'Worker contract verification' });
 }

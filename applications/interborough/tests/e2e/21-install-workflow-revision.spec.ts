@@ -22,7 +22,7 @@ test('operator installs a revision manifest and reads the installed revision', a
 }) => {
   const manifest = await buildConsoleInstallableManifest();
 
-  await page.goto('/settings/api-reference?tab=registry');
+  await page.goto('/settings/api-reference?group=sources');
   await page.getByRole('button', { name: /order-processing/ }).click();
 
   const revisionsPanel = page.getByRole('region', { name: 'Installed revisions' });

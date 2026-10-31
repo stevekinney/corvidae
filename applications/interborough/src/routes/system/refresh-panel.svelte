@@ -19,9 +19,20 @@
    * actions ask for confirmation. Every outcome is rendered as text by
    * `refresh-outcome.ts` or `compatibility-verdict.ts`.
    */
-  import { Badge, Button, ConfirmDialog, DescriptionList, Skeleton } from '@lostgradient/cinder';
+  import {
+    Alert,
+    Badge,
+    Button,
+    ConfirmDialog,
+    DescriptionList,
+    EmptyState,
+    InlineLoading,
+    SectionHeading,
+    Skeleton,
+  } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
+  import { API_REFERENCE_COPY } from '../../app/copy.ts';
   import { getClient } from '../../lib/client.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { getPrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
@@ -202,32 +213,39 @@
 </script>
 
 <section class="weft-refresh-panel" aria-label="Conditional refresh">
-  <div class="weft-refresh-panel__header">
-    <h3 class="weft-refresh-panel__title">Conditional refresh</h3>
-    {#if refreshing}
-      <span class="weft-refresh-panel__refreshing" role="status">Refreshing…</span>
-    {/if}
-  </div>
+  <SectionHeading level={3} title="Conditional refresh">
+    {#snippet actions()}
+      {#if refreshing}
+        <InlineLoading status="active" description="Refreshing…" />
+      {/if}
+    {/snippet}
+  </SectionHeading>
 
   {#if !canRead}
-    <p class="weft-refresh-panel__note">Requires workflows:read to view refresh sources.</p>
+    <EmptyState
+      kind="first-use"
+      size="compact"
+      headingLevel={4}
+      title={API_REFERENCE_COPY.notAvailable('Refresh sources')}
+      description={API_REFERENCE_COPY.requiresScope('workflows:read', 'view refresh sources')}
+    />
   {:else if diagnosticsQuery.isPending}
-    <div role="status" aria-busy="true" aria-label="Loading refresh sources">
+    <div role="status" aria-busy="true" aria-label={API_REFERENCE_COPY.loading.refreshSources}>
       <Skeleton height="6rem" />
     </div>
   {:else if diagnosticsQuery.isError && diagnosticsQuery.data === undefined}
     <QueryFaultBanner error={diagnosticsQuery.error} onRetry={() => diagnosticsQuery.refetch()} />
   {:else if malformed || view === undefined}
-    <div class="weft-refresh-panel__malformed" role="alert">
+    <Alert variant="warning">
       The server returned refresh diagnostics this console doesn't recognize — showing nothing
       rather than a guess.
-    </div>
+    </Alert>
   {:else}
     {#if stale}
       <div class="weft-refresh-panel__stale">
-        <p class="weft-refresh-panel__note">
+        <Alert variant="warning">
           Showing the last answer. Re-reading the refresh sources failed.
-        </p>
+        </Alert>
         <QueryFaultBanner
           error={diagnosticsQuery.error}
           onRetry={() => diagnosticsQuery.refetch()}
@@ -236,10 +254,13 @@
     {/if}
 
     {#if view.sources.length === 0}
-      <p class="weft-refresh-panel__note">
-        No refresh source is registered for this workflow. The host opts a workflow in by
-        registering a source with engine.workflows.registerRefreshSource().
-      </p>
+      <EmptyState
+        kind="first-use"
+        size="compact"
+        headingLevel={4}
+        title="No refresh source is registered"
+        description="No refresh source is registered for this workflow. The host opts a workflow in by registering one."
+      />
     {:else}
       {@const mode = modeSummary(view.polling, now)}
       {#each view.sources as source (source.name)}
@@ -255,9 +276,9 @@
           </div>
 
           {#if source.reason !== undefined}
-            <p class="weft-refresh-panel__failure" role="status">
+            <Alert variant="danger">
               Last check failed: {refreshFailureLabel(source.reason)}
-            </p>
+            </Alert>
           {/if}
 
           <p class="weft-refresh-panel__note">{mode.description}</p>
@@ -359,23 +380,6 @@
     gap: 10px;
   }
 
-  .weft-refresh-panel__header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-
-  .weft-refresh-panel__title {
-    margin: 0;
-    font-size: var(--cinder-text-sm);
-    font-weight: 600;
-  }
-
-  .weft-refresh-panel__refreshing {
-    font-size: var(--cinder-text-2xs);
-    color: var(--cinder-text-subtle);
-  }
-
   .weft-refresh-panel__note {
     margin: 0;
     font-size: var(--cinder-text-sm);
@@ -386,15 +390,6 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-  }
-
-  .weft-refresh-panel__malformed {
-    padding: var(--cinder-density-pad-block) var(--cinder-space-3);
-    border-radius: var(--cinder-radius-md);
-    background: var(--cinder-status-warning-background);
-    border: 1px solid var(--cinder-status-warning-border);
-    color: var(--cinder-status-warning-text);
-    font-size: var(--cinder-text-sm);
   }
 
   .weft-refresh-panel__source {
@@ -427,12 +422,6 @@
     font-family: var(--cinder-font-mono);
     font-size: var(--cinder-text-sm);
     font-weight: 600;
-  }
-
-  .weft-refresh-panel__failure {
-    margin: 0;
-    font-size: var(--cinder-text-sm);
-    color: var(--cinder-status-danger-text);
   }
 
   .weft-refresh-panel__actions {

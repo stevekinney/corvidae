@@ -121,6 +121,14 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/health/audit': /schedule\.created/,
   // The added row's long name, beside the Decisions part's heading, which loads last.
   '/settings/models': /mmmmmmmmmm/,
+  // Each group of the API reference prints a value only its live read gives.
+  '/settings/api-reference': /weft\.alerts\.list/,
+  '/settings/api-reference (discovery)': /\/api\/v1\/alerts/,
+  '/settings/api-reference (openrpc)': /weft\.alerts\.list/,
+  '/settings/api-reference (asyncapi)': /Channel/,
+  '/settings/api-reference (mcp)': /Test MCP session/,
+  '/settings/api-reference (scopes)': /Unlocks:/,
+  '/settings/api-reference (sources)': /order-processing/,
 };
 
 /** What was measured: how far the document and the outlet scroll sideways, and what else does not fit. */
