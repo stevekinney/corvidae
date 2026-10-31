@@ -932,6 +932,86 @@ export const AGENTS_COPY = {
   history: 'History',
 } as const;
 
+/** The words of an agent's page: its tabs, the controls over its chats, its instructions and its settings. */
+export const AGENT_PAGE_COPY = {
+  tabsLabel: 'Sections of this agent',
+  tabs: { chats: 'Chats', instructions: 'Instructions', settings: 'Settings' },
+  chats: {
+    stateLabel: 'Show chats that are',
+    states: { all: 'All', 'needs-you': 'Needs you', running: 'Running' },
+    searchLabel: 'Search chats by title',
+    searchPlaceholder: 'Search chats',
+    startedByLabel: 'Started by',
+    startedBy: { any: 'Anyone', chat: 'You', schedule: 'A schedule', goal: 'A goal' },
+    sortLabel: 'Sort by',
+    sorts: { updated: 'Last activity', newest: 'Newest', oldest: 'Oldest' },
+    loadFailed: 'These chats could not be loaded.',
+    emptyTitle: 'No chats with this agent yet',
+    emptyDescription: 'A chat you start with it is listed here.',
+    filteredTitle: 'No chats match',
+    filteredDescription: 'None of this agent’s chats match these filters.',
+    clearFilters: 'Clear filters',
+  },
+  instructions: {
+    heading: 'Instructions',
+    builtIn: 'This agent is built in, so its instructions cannot be edited here.',
+    emptyTitle: 'No instructions',
+    emptyDescription: 'This agent has no instructions of its own.',
+    emptyAction: 'Add instructions',
+    referencesHeading: 'Reference documents',
+    referencesDescription: 'Documents the agent reads, as paths beside its file.',
+    noReferencesTitle: 'No reference documents',
+    noReferencesDescription: 'This agent reads no documents besides its instructions.',
+    loadFailed: 'The instructions could not be loaded.',
+  },
+  settings: {
+    heading: 'Settings',
+    modelLabel: 'Model',
+    modelsLabel: 'Models it can be switched to',
+    guardrailsLabel: 'Guardrails',
+    stepLimitLabel: 'Step limit',
+    spendLimitLabel: 'Spend limit per run',
+    chatSpendLimitLabel: 'Spend limit per chat',
+    toolCallLimitLabel: 'Tool calls per run',
+    toolTimeLimitLabel: 'Tool time per run',
+    none: 'No limit',
+    notSet: 'Not set',
+    seconds: (count: number): string => `${String(count)} ${count === 1 ? 'second' : 'seconds'}`,
+    usd: (amount: number): string => `$${amount.toFixed(2)}`,
+    builtIn: 'This agent is built in, so its settings cannot be changed here.',
+    loadFailed: 'The settings could not be loaded.',
+    deleteAction: 'Delete agent',
+    deleteFailed: 'The agent could not be deleted.',
+    deleteDialog: {
+      title: 'Delete this agent?',
+      description: (name: string): string =>
+        `${name} is removed along with its file. Chats already held with it stay.`,
+      confirm: 'Delete',
+    },
+    stale: 'This agent changed after the page loaded. Reload to see its current settings.',
+    forbidden: 'You may not change this agent.',
+  },
+  versions: {
+    heading: 'Versions',
+    description:
+      'Every save of this agent, newest first. Restoring writes an old version as a new one.',
+    revision: (revision: number): string => `Version ${String(revision)}`,
+    changed: 'Changed',
+    savedByHand: 'Edited in the file',
+    firstVersion: 'First version',
+    nothingChanged: 'Saved with no change to the settings',
+    restoreAction: 'Restore',
+    restoreLabel: (revision: number): string => `Restore version ${String(revision)}`,
+    current: 'Current',
+    restoreFailed: 'That version could not be restored.',
+    restoreStale:
+      'This agent changed after the page loaded. The versions below are up to date; restore again if you still want that version.',
+    loadFailed: 'The versions could not be loaded.',
+    emptyTitle: 'No saved versions',
+    emptyDescription: 'A version is kept each time this agent is saved.',
+  },
+} as const;
+
 /** The words the chat view uses outside its states. */
 export const CHAT_COPY = {
   /** What a session with no title is called, in the header and in lists. */
@@ -968,7 +1048,6 @@ export const CHAT_COPY = {
   messageCount: (count: number): string =>
     count === 1 ? '1 message' : `${String(count)} messages`,
   loadMore: 'Load more',
-  noSessions: 'No chats yet',
   loadingSessions: 'Loading chats',
   agentsTitle: 'Agents',
   tasksTitle: 'Tasks in this chat',
