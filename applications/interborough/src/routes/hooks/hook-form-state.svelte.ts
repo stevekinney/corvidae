@@ -48,11 +48,33 @@ export class HookFormState {
   /** Whether the hook's action is one a plugin contributed, which the editor keeps and does not edit. */
   pluginAction = $state(false);
 
+  /** What the form held when it was last loaded from a hook, to tell whether anything was typed since. */
+  private baseline = $state('');
+
   /** Whether the hook is not yet written, so a webhook needs its secret. */
   readonly isNew: boolean;
 
   constructor(isNew: boolean) {
     this.isNew = isNew;
+  }
+
+  /** Every field a person can type into, as one string. */
+  private fingerprint(): string {
+    return JSON.stringify([
+      this.name,
+      this.events,
+      this.actionType,
+      this.url,
+      this.signingSecret,
+      this.workflowId,
+      this.workflowInput,
+      this.title,
+    ]);
+  }
+
+  /** Whether anything, a typed signing secret included, differs from the hook the form was loaded from. */
+  get dirty(): boolean {
+    return this.fingerprint() !== this.baseline;
   }
 
   /** Fills the form from a hook as the Bureau holds it. The secret is not part of that. */
@@ -78,6 +100,7 @@ export class HookFormState {
         this.pluginAction = true;
         break;
     }
+    this.baseline = this.fingerprint();
   }
 
   /** The action as the hook's sentence reads it. */
@@ -147,6 +170,25 @@ export class HookFormState {
     }
   }
 
+  /** Whether the action the form holds differs from the one `hook` has. */
+  private actionChanged(hook: Hook): boolean {
+    const draft = this.action();
+    const current = hook.action;
+    if (draft.type !== current.type) return true;
+    switch (draft.type) {
+      case 'webhook':
+        return current.type !== 'webhook' || draft.url !== current.url;
+      case 'start-workflow':
+        return (
+          current.type !== 'start-workflow' ||
+          draft.workflowId !== current.workflowId ||
+          draft.input !== current.input
+        );
+      case 'notify':
+        return current.type !== 'notify' || (draft.title ?? null) !== current.title;
+    }
+  }
+
   /** What `bureau.hooks.create` takes. */
   toInput(): HookInput {
     return {
@@ -159,13 +201,17 @@ export class HookFormState {
 
   /**
    * What `bureau.hooks.update` changes. A hook whose action a plugin contributed keeps it: the
-   * editor changes its name and events only. The secret goes only when one was typed.
+   * editor changes its name and events only. The secret goes only when one was typed. The action goes
+   * only when it differs from the hook's, because the Bureau asks again whether a workflow is
+   * allowed whenever an action is sent, and a rename is never held up by a workflow since paused.
    */
   toChange(hook: Hook): HookChange {
     return {
       name: this.name.trim() === '' ? null : this.name.trim(),
       events: [...this.events],
-      ...(hook.action.type === 'plugin' ? {} : { action: this.action() }),
+      ...(hook.action.type === 'plugin' || !this.actionChanged(hook)
+        ? {}
+        : { action: this.action() }),
       ...(this.actionType === 'webhook' && this.signingSecret !== ''
         ? { signingSecret: this.signingSecret }
         : {}),

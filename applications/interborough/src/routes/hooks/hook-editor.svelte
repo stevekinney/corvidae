@@ -24,6 +24,7 @@
     Select,
   } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
+  import { untrack } from 'svelte';
 
   import { STALE_COPY } from '../../app/copy.ts';
   import { showFault, showToast } from '../../app/toast-host.svelte';
@@ -104,13 +105,49 @@
   );
   const hook = $derived(existing.data);
 
-  // Fill the form from the hook once, and again whenever the Bureau holds a newer revision of it.
+  // Fill the form from the hook once, and again whenever the Bureau holds a newer revision of it and
+  // the person has typed nothing, or the revision is the one this page's own save returned. A newer
+  // revision under a form with edits (a stale save, or a window-focus refetch) keeps the edits and
+  // sets `changed`, and the page offers a reload instead of discarding them, a typed secret included.
   let loadedRevision = -1;
+  /** The revision this page's last successful save wrote. */
+  let savedRevision: number | null = null;
+  /** The hook changed in the Bureau under a form with unsaved edits. */
+  let changed = $state(false);
   $effect(() => {
-    if (hook === undefined || hook.revision === loadedRevision) return;
-    loadedRevision = hook.revision;
-    form.load(hook);
+    const current = hook;
+    if (current === undefined) return;
+    untrack(() => {
+      if (current.revision === loadedRevision) return;
+      if (loadedRevision !== -1 && form.dirty && current.revision !== savedRevision) {
+        changed = true;
+        return;
+      }
+      loadedRevision = current.revision;
+      form.load(current);
+      changed = false;
+    });
   });
+
+  /** Reads the hook again and fills the form from it, which discards what was typed. */
+  async function reload(): Promise<void> {
+    try {
+      const fresh = await queryClient.fetchQuery({
+        queryKey: queryKeys.hooks.detail(hookId),
+        queryFn: ({ signal }: { signal: AbortSignal }) => getHook(hookId, { signal }),
+        staleTime: 0,
+        retry: false,
+      });
+      savedRevision = null;
+      loadedRevision = fresh.revision;
+      form.load(fresh);
+      changed = false;
+      stale = false;
+      failure = null;
+    } catch (error) {
+      failure = `${copy.loadFailed} ${faultTreatment(error).message}`;
+    }
+  }
 
   const isPlugin = $derived(hook?.action.type === 'plugin');
   const sentence = $derived(
@@ -161,12 +198,13 @@
     mutationFn: async (): Promise<Hook> =>
       isNew || hook === undefined
         ? createHook(form.toInput())
-        : updateHook(hook.id, hook.revision, form.toChange(hook)),
+        : updateHook(hook.id, loadedRevision, form.toChange(hook)),
     onMutate: () => {
       failure = null;
       stale = false;
     },
     onSuccess: async (saved) => {
+      savedRevision = saved.revision;
       await queryClient.invalidateQueries({ queryKey: ['hooks'] });
       form.signingSecret = '';
       if (isNew) router.navigate(hookPath(saved.id));
@@ -382,7 +420,15 @@
             {#if failure !== null}
               <Alert variant="danger" data-testid="hook-failure">{failure}</Alert>
             {/if}
-            {#if stale}
+            {#if changed}
+              <Alert variant="warning" data-testid="hook-changed">
+                <p class="ib-hook-editor__alert-title">{STALE_COPY.title(hookId)}</p>
+                <p class="ib-hook-editor__alert-body">{copy.changedDescription}</p>
+                <Button variant="secondary" size="sm" onclick={() => void reload()}
+                  >{copy.reload}</Button
+                >
+              </Alert>
+            {:else if stale}
               <Alert
                 variant="warning"
                 dismissible

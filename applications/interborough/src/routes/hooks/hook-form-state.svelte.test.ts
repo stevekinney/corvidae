@@ -98,11 +98,44 @@ describe('an existing hook', () => {
     expect(form.name).toBe('Kept');
     expect(form.signingSecret).toBe('');
     expect(form.isValid).toBe(true);
-    expect(form.toChange(loaded)).toEqual({
-      name: 'Kept',
-      events: ['review.requested'],
-      action: { type: 'webhook', url: 'https://example.com/a' },
+    // The action is the hook's own, so it is not sent again.
+    expect(form.toChange(loaded)).toEqual({ name: 'Kept', events: ['review.requested'] });
+  });
+
+  test('sends the action only when it changed, and a rename never carries a workflow', () => {
+    const form = new HookFormState(false);
+    const loaded = hook({ type: 'start-workflow', workflowId: 'resting', input: 'payload' });
+    form.load(loaded);
+    form.name = 'Renamed';
+    expect(form.toChange(loaded)).not.toHaveProperty('action');
+    form.workflowInput = 'event';
+    expect(form.toChange(loaded)).toMatchObject({
+      action: { type: 'start-workflow', workflowId: 'resting', input: 'event' },
     });
+
+    const webhook = hook({ type: 'webhook', url: 'https://example.com/a' });
+    form.load(webhook);
+    form.signingSecret = SECRET;
+    expect(form.toChange(webhook)).not.toHaveProperty('action');
+    form.url = 'https://example.com/b';
+    expect(form.toChange(webhook)).toMatchObject({
+      action: { type: 'webhook', url: 'https://example.com/b' },
+    });
+  });
+
+  test('is dirty once anything, a typed secret included, differs from the hook it was loaded from', () => {
+    const form = new HookFormState(false);
+    const loaded = hook({ type: 'webhook', url: 'https://example.com/a' });
+    form.load(loaded);
+    expect(form.dirty).toBe(false);
+    form.signingSecret = SECRET;
+    expect(form.dirty).toBe(true);
+    form.signingSecret = '';
+    expect(form.dirty).toBe(false);
+    form.events = [...form.events, 'goal.failed'];
+    expect(form.dirty).toBe(true);
+    form.load(loaded);
+    expect(form.dirty).toBe(false);
   });
 
   test('sends a new secret only when one was typed, and drops what was typed once it is loaded again', () => {

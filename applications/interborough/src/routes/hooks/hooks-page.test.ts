@@ -6,6 +6,7 @@
  * together.
  */
 import { HttpClient } from '@lostgradient/weft';
+import { focusManager } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
@@ -458,7 +459,6 @@ describe('the hook editor', () => {
       expectedRevision: 1,
       name: 'Kept',
       events: ['review.requested'],
-      action: { type: 'webhook', url: 'https://example.com/alpha' },
     });
     expect(Object.keys(sent)).not.toContain('signingSecret');
   });
@@ -524,6 +524,117 @@ describe('the hook editor', () => {
 
     await view.findByTestId('hook-stale');
     await waitFor(() => expect(stub?.callsTo('bureau.hooks.get').length).toBeGreaterThan(1));
+  });
+
+  test('keeps what was typed, a secret included, when the hook changed under a stale save, and reloads on request', async () => {
+    const { view, served } = open([hook('alpha', { name: 'Old' })], { path: '/hooks/alpha' });
+    const name = (await view.findByLabelText(
+      HOOKS_COPY.editor.check.nameLabel,
+    )) as HTMLInputElement;
+    await fireEvent.input(name, { target: { value: 'Mine' } });
+    await fireEvent.input(view.getByLabelText(HOOKS_COPY.editor.webhook.secretLabel), {
+      target: { value: SIGNING_SECRET },
+    });
+    served.hooks[0]!.revision = 2;
+    served.hooks[0]!.name = 'Theirs';
+
+    await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.save }));
+
+    await view.findByTestId('hook-changed');
+    expect(name.value).toBe('Mine');
+    expect(
+      (view.getByLabelText(HOOKS_COPY.editor.webhook.secretLabel) as HTMLInputElement).value,
+    ).toBe(SIGNING_SECRET);
+    expect(view.queryByTestId('hook-stale')).toBeNull();
+
+    // Saving again is still held to the revision the form was read at, so it cannot overwrite.
+    await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.save }));
+    await waitFor(() => expect(stub?.callsTo('bureau.hooks.update').length).toBe(2));
+    expect(stub?.callsTo('bureau.hooks.update')[1]?.params['expectedRevision']).toBe(1);
+    expect(served.hooks[0]!.name).toBe('Theirs');
+
+    await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.reload }));
+    await waitFor(() => expect(name.value).toBe('Theirs'));
+    expect(view.queryByTestId('hook-changed')).toBeNull();
+    expect(
+      (view.getByLabelText(HOOKS_COPY.editor.webhook.secretLabel) as HTMLInputElement).value,
+    ).toBe('');
+  });
+
+  test('keeps what was typed when a window-focus refetch finds a newer revision, and updates an unedited form', async () => {
+    const { view, served } = open([hook('alpha', { name: 'Old' })], { path: '/hooks/alpha' });
+    const name = (await view.findByLabelText(
+      HOOKS_COPY.editor.check.nameLabel,
+    )) as HTMLInputElement;
+    const refocus = async () => {
+      const reads = stub?.callsTo('bureau.hooks.get').length ?? 0;
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+      await waitFor(() => expect(stub?.callsTo('bureau.hooks.get').length).toBeGreaterThan(reads));
+    };
+
+    // Unedited: the form follows the newer revision.
+    served.hooks[0]!.revision = 2;
+    served.hooks[0]!.name = 'Second';
+    await refocus();
+    await waitFor(() => expect(name.value).toBe('Second'));
+    expect(view.queryByTestId('hook-changed')).toBeNull();
+
+    // Edited: the form keeps the edit and offers a reload.
+    await fireEvent.input(name, { target: { value: 'Mine' } });
+    served.hooks[0]!.revision = 3;
+    served.hooks[0]!.name = 'Third';
+    await refocus();
+    await view.findByTestId('hook-changed');
+    expect(name.value).toBe('Mine');
+  });
+
+  test('its own save does not raise the warning, and the form follows the saved revision', async () => {
+    const { view } = open([hook('alpha', { name: 'Old' })], { path: '/hooks/alpha' });
+    const name = (await view.findByLabelText(
+      HOOKS_COPY.editor.check.nameLabel,
+    )) as HTMLInputElement;
+    await fireEvent.input(name, { target: { value: 'Mine' } });
+    await fireEvent.input(view.getByLabelText(HOOKS_COPY.editor.webhook.secretLabel), {
+      target: { value: SIGNING_SECRET },
+    });
+
+    await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.save }));
+    await waitFor(() => expect(stub?.callsTo('bureau.hooks.update').length).toBe(1));
+    await waitFor(() => expect(stub?.callsTo('bureau.hooks.get').length).toBeGreaterThan(1));
+
+    expect(view.queryByTestId('hook-changed')).toBeNull();
+    expect(name.value).toBe('Mine');
+    await waitFor(() =>
+      expect(
+        (view.getByLabelText(HOOKS_COPY.editor.webhook.secretLabel) as HTMLInputElement).value,
+      ).toBe(''),
+    );
+    // A second save goes out at the revision the first one wrote.
+    await fireEvent.input(name, { target: { value: 'Again' } });
+    await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.save }));
+    await waitFor(() => expect(stub?.callsTo('bureau.hooks.update').length).toBe(2));
+    expect(stub?.callsTo('bureau.hooks.update')[1]?.params['expectedRevision']).toBe(2);
+    expect(view.queryByTestId('hook-changed')).toBeNull();
+  });
+
+  test('renaming a workflow hook sends no action, so a paused workflow does not hold it up', async () => {
+    const { view } = open(
+      [
+        hook('alpha', {
+          action: { type: 'start-workflow', workflowId: 'resting', input: 'payload' },
+        }),
+      ],
+      { path: '/hooks/alpha', workflows: [{ id: 'resting', state: 'ready', paused: true }] },
+    );
+    await fireEvent.input(await view.findByLabelText(HOOKS_COPY.editor.check.nameLabel), {
+      target: { value: 'Renamed' },
+    });
+    await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.save }));
+    await waitFor(() => expect(stub?.callsTo('bureau.hooks.update').length).toBe(1));
+    expect(Object.keys(stub?.callsTo('bureau.hooks.update')[0]?.params ?? {})).not.toContain(
+      'action',
+    );
   });
 
   test('deletes a hook after a confirmation and returns to the list', async () => {

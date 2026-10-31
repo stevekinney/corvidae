@@ -64,6 +64,9 @@ export const HOOKS_COPY = {
     saved: 'Saved.',
     saveFailed: 'The hook was not saved',
     staleTitle: 'This hook changed',
+    changedDescription:
+      'Someone else changed it since you opened it. Nothing was saved, and what you typed is still here. Reload to start from their version.',
+    reload: 'Reload',
     staleDescription: 'Someone else changed it since you opened it. It has been read again.',
     steps: {
       when: { number: '1', title: 'When' },
