@@ -76,6 +76,7 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
     '/settings': '/settings',
     '/settings/models': '/settings/models',
     '/settings/model-policy': '/settings/model-policy',
+    '/settings/plugins': '/settings/plugins',
     '/settings/data-and-retention': '/settings/data-and-retention',
     '/settings/api-reference': '/settings/api-reference',
   };
