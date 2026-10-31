@@ -6,7 +6,8 @@ import type {
   StoredMemoryVector,
 } from '../memory-vector-store';
 import type { GovernanceContext, ResolvedRecord } from './governance-context';
-import type { ActiveEmbedding } from './governed-embedding';
+import { type ActiveEmbedding, cachingEmbedders } from './governed-embedding';
+import { digestContent } from './record-governance';
 
 /**
  * The vectors one recall compares: the active embedding it read once, and each candidate's vector
@@ -58,22 +59,39 @@ export function similarity(
 }
 
 /**
+ * Evicts `content`'s embedding from every registered embedder that caches content. An embed that
+ * finds its record deleted calls it: the deletion's `caches` target may have run before the embed
+ * put the content back in a cache, and that target is not run again.
+ */
+export async function evictCachedContent(
+  context: GovernanceContext,
+  content: string,
+): Promise<void> {
+  const digests = [digestContent(content)];
+  for (const embedder of cachingEmbedders(context.embedding.registry)) {
+    await embedder.evictContent(digests);
+  }
+}
+
+/**
  * Stores a record's vector in `profile`, fenced against a deletion of the record running alongside.
  * Deletion removes the record, then its vectors from every profile. This writes the vector, then
  * reads the record: one still stored is deleted, if ever, after this write, and its deletion removes
  * the vector; one already gone may have been deleted before this write, so the vector is removed
- * here. Either way no vector outlives its record. The record's content never changes in place, so
- * only its existence is checked, not its `version`.
+ * here, and so is the embedding of `embedded`, the content just embedded for it, from any cache. The
+ * record's content never changes in place, so only its existence is checked, not its `version`.
  */
 export async function putRecordVector(
   context: GovernanceContext,
   profile: MemoryEmbeddingProfile,
   reference: MemoryVectorReference,
   entry: StoredMemoryVector,
+  embedded?: string,
 ): Promise<void> {
   await context.embedding.vectors.put(profile, reference, entry);
   if ((await context.storage.get(reference.id, reference.scope)) !== undefined) return;
   await context.embedding.forget([reference]);
+  if (embedded !== undefined) await evictCachedContent(context, embedded);
 }
 
 /** Copies the inline vectors of `scope`'s records that `profile` does not hold yet. */
