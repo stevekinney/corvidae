@@ -23,8 +23,13 @@
 
   interface RunToolCallsProps {
     task: TaskView;
-    /** The thread the run's calls are in, when it is not the task's `contextId` (a goal's attempt). */
-    threadId?: string;
+    /**
+     * The thread the run's calls are in, when it is not the task's `contextId` (a goal's attempt).
+     * `null` says the run has no thread to read (a goal's attempt before the goals have named its
+     * session, or to a person who cannot read them): nothing is requested, and the task's waits
+     * are still shown.
+     */
+    threadId?: string | null | undefined;
     /** How many elements the run's stream has reported; the thread is read again when it grows. */
     events?: number;
   }
@@ -33,7 +38,7 @@
   const EVENT_REREAD_MILLISECONDS = 300;
 
   let { task, threadId = undefined, events = 0 }: RunToolCallsProps = $props();
-  const threadToRead = $derived(threadId ?? task.contextId);
+  const threadToRead = $derived(threadId === undefined ? task.contextId : threadId);
 
   const thread = createQuery(
     () => ({
@@ -44,7 +49,8 @@
         task.status,
         task.openWaits.map((wait) => wait.reviewId),
       ] as const,
-      queryFn: ({ signal }) => getThreadMessages(threadToRead, { signal }),
+      queryFn: ({ signal }) => getThreadMessages(threadToRead ?? '', { signal }),
+      enabled: threadToRead !== null && threadToRead !== '',
       // The calls on screen stay while the thread is read again under a new key.
       placeholderData: keepPreviousData,
       retry: false,

@@ -222,6 +222,9 @@
     );
   }
 
+  const attemptThreadId = $derived(
+    attempt !== undefined && attempt.attempt.sessionId !== '' ? attempt.attempt.sessionId : null,
+  );
   const chatHref = $derived(
     goalTask
       ? attemptSession.isSuccess
@@ -429,16 +432,12 @@
             </section>
             <section aria-labelledby="ib-run-tools">
               <h2 id="ib-run-tools" class="ib-run__heading-2">{TASK_COPY.toolCallsHeading}</h2>
-              <!-- A goal's attempt reads the thread of its own session, once the goals have named it. -->
-              {#if !goalTask}
-                <RunToolCalls task={current} events={taskEvents} />
-              {:else if attempt !== undefined && attempt.attempt.sessionId !== ''}
-                <RunToolCalls
-                  task={current}
-                  threadId={attempt.attempt.sessionId}
-                  events={taskEvents}
-                />
-              {/if}
+              <!-- A goal's attempt reads the thread of its own session, once the goals have named it; its waits show either way. -->
+              <RunToolCalls
+                task={current}
+                threadId={goalTask ? attemptThreadId : undefined}
+                events={taskEvents}
+              />
             </section>
             {#if follower.state === 'unavailable'}
               <p class="ib-run__note" role="status">{TASK_COPY.followUnavailable}</p>
