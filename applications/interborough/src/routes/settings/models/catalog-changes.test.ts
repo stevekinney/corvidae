@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 
 import type { CatalogEdit, ProviderModel } from '../../../lib/host-providers.ts';
 import {
+  allowlistExcludes,
   editOf,
   namesExistingRow,
   previewRows,
@@ -191,6 +192,25 @@ describe('withAddedRow', () => {
         pricing: { inputPerMillionTokens: 3, outputPerMillionTokens: 15, currency: 'USD' },
       },
     ]);
+  });
+});
+
+describe('previewRows with an allowlist', () => {
+  const added = { provider: 'anthropic', model: 'claude-next', basedOn: 'sonnet' };
+
+  test('shows no row for an added model its provider’s allowlist leaves out', () => {
+    const providers = [{ name: 'anthropic', configured: true, hasKey: true, models: ['sonnet'] }];
+    expect(previewRows([SONNET], [added], providers).map((row) => row.model)).toEqual([
+      'claude-sonnet-5',
+    ]);
+    expect(allowlistExcludes(providers, 'anthropic', 'claude-next')).toBe(true);
+    expect(allowlistExcludes(providers, 'anthropic', 'sonnet')).toBe(false);
+  });
+
+  test('shows the row when the provider has no allowlist', () => {
+    const providers = [{ name: 'anthropic', configured: true, hasKey: true }];
+    expect(previewRows([SONNET], [added], providers)).toHaveLength(2);
+    expect(allowlistExcludes(providers, 'anthropic', 'claude-next')).toBe(false);
   });
 });
 

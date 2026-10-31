@@ -22,6 +22,7 @@
   } from '../../../lib/host-providers.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import {
+    allowlistExcludes,
     previewRows,
     withAddedRow,
     withModelOff,
@@ -52,7 +53,7 @@
   let dialog = $state<RowDialogTarget | null>(null);
 
   const edits = $derived(working ?? snapshot.catalog);
-  const rows = $derived(previewRows(snapshot.models, edits));
+  const rows = $derived(previewRows(snapshot.models, edits, snapshot.providers));
   const locked = $derived(snapshot.lockReason !== undefined);
   const connected = $derived(
     snapshot.providers.filter((provider) => provider.hasKey).map((provider) => provider.name),
@@ -227,6 +228,8 @@
   bind:target={dialog}
   {rows}
   providers={connected}
+  excluded={(provider: string, model: string) =>
+    allowlistExcludes(snapshot.providers, provider, model)}
   onEdit={(row: PreviewRow, fields: RowFields) => change(withRowFields(edits, row, fields))}
   onAdd={(added: AddedRow) => change(withAddedRow(edits, added))}
 />

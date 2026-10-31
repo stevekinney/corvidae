@@ -286,12 +286,19 @@ async function catalogEdits(request: APIRequestContext): Promise<CatalogEdit[]> 
   return ((await response.json()) as { catalog: CatalogEdit[] }).catalog;
 }
 
-/** Adds a row named `model` to the host's catalog, on the model the end-to-end home offers. */
+/**
+ * Adds a row named `model` to the host's catalog, on Gemini, which has no allowlist, so the host
+ * serves it (the end-to-end home restricts Anthropic to two models). Connecting is safe to repeat.
+ */
 async function addCatalogRow(request: APIRequestContext, model: string): Promise<void> {
+  const connected = await request.put('/host/providers/gemini', {
+    data: { apiKey: 'e2e-responsive-gemini-key' },
+  });
+  expect(connected.ok(), 'connecting gemini').toBe(true);
   const current = await catalogEdits(request);
   const edits = current.filter((edit) => edit.model !== model);
   const put = await request.put('/host/catalog', {
-    data: { edits: [...edits, { provider: 'anthropic', model, basedOn: 'sonnet' }] },
+    data: { edits: [...edits, { provider: 'gemini', model, basedOn: 'gemini-2.5-pro' }] },
   });
   expect(put.status(), 'adding the long model').toBe(200);
 }

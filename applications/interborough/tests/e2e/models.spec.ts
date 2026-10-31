@@ -208,7 +208,7 @@ test('turns a model off and edits a row, and both are still there after a reload
   expect(restored.models.find((entry) => entry.model === 'claude-haiku-4-5')?.off).toBe(false);
 });
 
-test('adds a model the built-in list lacks, then takes it out', async ({ page, request }) => {
+test('refuses a model the provider’s allowlist leaves out', async ({ page, request }) => {
   const before = await editsOf(request);
   try {
     await openModels(page);
@@ -216,14 +216,39 @@ test('adds a model the built-in list lacks, then takes it out', async ({ page, r
     const dialog = page.getByRole('dialog');
     await dialog.getByLabel(MODELS_COPY.rowDialog.model).fill('claude-e2e-next');
     await dialog.getByRole('button', { name: MODELS_COPY.rowDialog.add }).click();
+    await expect(dialog.getByText(MODELS_COPY.rowDialog.modelNotAllowed)).toBeVisible();
+    await expect(modelRow(page, 'anthropic/claude-e2e-next')).toHaveCount(0);
+  } finally {
+    await putEdits(request, before);
+  }
+});
+
+test('adds a model the built-in list lacks, then takes it out', async ({ page, request }) => {
+  const before = await editsOf(request);
+  // Gemini has no allowlist, so the host serves what is added; connecting is safe to repeat.
+  const connected = await request.put(`${E2E_BASE_URL}/host/providers/gemini`, {
+    data: { apiKey: KEY },
+  });
+  expect(connected.ok()).toBe(true);
+  try {
+    await openModels(page);
+    await page.getByRole('button', { name: MODELS_COPY.models.add }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel(MODELS_COPY.rowDialog.provider).selectOption('gemini');
+    await dialog.getByLabel(MODELS_COPY.rowDialog.model).fill('gemini-e2e-next');
+    await dialog.getByRole('button', { name: MODELS_COPY.rowDialog.add }).click();
     await expect(dialog).toBeHidden();
-    await expect(modelRow(page, 'anthropic/claude-e2e-next')).toContainText(
-      MODELS_COPY.models.added,
-    );
+    await expect(modelRow(page, 'gemini/gemini-e2e-next')).toContainText(MODELS_COPY.models.added);
     await saveModels(page).click();
     await expect(page.getByText(MODELS_COPY.models.saved)).toBeVisible();
     await page.reload();
-    await expect(modelRow(page, 'anthropic/claude-e2e-next')).toBeVisible();
+    await expect(modelRow(page, 'gemini/gemini-e2e-next')).toBeVisible();
+    const snapshot = await snapshotOf(request);
+    expect(
+      snapshot.models.some(
+        (entry) => entry.provider === 'gemini' && entry.model === 'gemini-e2e-next',
+      ),
+    ).toBe(true);
   } finally {
     await putEdits(request, before);
   }

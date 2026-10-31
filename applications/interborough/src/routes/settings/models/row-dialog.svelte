@@ -29,11 +29,13 @@
     rows: readonly PreviewRow[];
     /** The providers a row may be added to: the connected ones. */
     providers: readonly string[];
+    /** Whether the provider's allowlist leaves a model out, so the host would never serve it. */
+    excluded: (provider: string, model: string) => boolean;
     onEdit: (row: PreviewRow, fields: RowFields) => void;
     onAdd: (added: AddedRow) => void;
   }
 
-  let { target = $bindable(), rows, providers, onEdit, onAdd }: Props = $props();
+  let { target = $bindable(), rows, providers, excluded, onEdit, onAdd }: Props = $props();
 
   const copy = MODELS_COPY.rowDialog;
 
@@ -96,6 +98,7 @@
     if (adding) {
       if (model.trim() === '') found['model'] = copy.modelRequired;
       else if (namesExistingRow(rows, provider, model.trim())) found['model'] = copy.modelExists;
+      else if (excluded(provider, model.trim())) found['model'] = copy.modelNotAllowed;
       if (basedOn === '') found['basedOn'] = copy.basedOnRequired;
     }
     if (!wholeNumber(contextWindowTokens)) found['context'] = copy.wholeNumber;

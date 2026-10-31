@@ -5,7 +5,7 @@
  * or one of its aliases, so a row's edit is found by either; a row that has no edit gets one under its
  * model name. An edit that has nothing left to say is dropped.
  */
-import type { CatalogEdit, ProviderModel } from '../../../lib/host-providers.ts';
+import type { CatalogEdit, ProviderModel, ProviderStatus } from '../../../lib/host-providers.ts';
 
 /** The price and limits a person may set on a row. */
 export interface RowFields {
@@ -139,6 +139,16 @@ export function namesExistingRow(
   );
 }
 
+/** Whether `provider` has an allowlist that does not name `model`, so the host would not serve it. */
+export function allowlistExcludes(
+  providers: readonly ProviderStatus[],
+  provider: string,
+  model: string,
+): boolean {
+  const allowed = providers.find((entry) => entry.name === provider)?.models;
+  return allowed !== undefined && !allowed.includes(model);
+}
+
 /** A row of the table: a catalog row as it will be once the edits are saved. */
 export interface PreviewRow extends ProviderModel {
   /** Whether the row is one the built-in list lacks, added by an edit. */
@@ -153,6 +163,7 @@ export interface PreviewRow extends ProviderModel {
 export function previewRows(
   rows: readonly ProviderModel[],
   edits: readonly CatalogEdit[],
+  providers: readonly ProviderStatus[] = [],
 ): PreviewRow[] {
   const shown: PreviewRow[] = rows.map((row) => {
     const edit = editOf(edits, row);
@@ -176,6 +187,8 @@ export function previewRows(
   });
   for (const edit of edits) {
     if (edit.basedOn === undefined || rows.some((row) => namesRow(edit, row))) continue;
+    // The host drops an added model its provider's allowlist leaves out, so the table does too.
+    if (allowlistExcludes(providers, edit.provider, edit.model)) continue;
     const base = rows.find(
       (row) =>
         row.provider === edit.provider &&

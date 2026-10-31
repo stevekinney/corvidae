@@ -809,6 +809,7 @@ export const MODELS_COPY = {
     cancel: 'Cancel',
     modelRequired: 'Enter the model name.',
     modelExists: 'That provider already lists this model.',
+    modelNotAllowed: 'That provider’s model list in the configuration does not include this model.',
     basedOnRequired: 'Choose the model it is based on.',
     wholeNumber: 'Enter a whole number above zero.',
     price: 'Enter a price that is not negative.',
