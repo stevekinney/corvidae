@@ -273,6 +273,8 @@ describe('the Settings tab', () => {
       },
     };
   };
+  // Bureau lists every key on a first version, and `[]` on a later save that changed nothing.
+  const ALL_KEYS = ['name', 'model', 'instructions'];
   const version = (revision: number, hash: string, changedKeys: string[]) => ({
     revision,
     hash,
@@ -300,7 +302,7 @@ describe('the Settings tab', () => {
 
   test('restores an older version over the hash of the file as read, and lists the result', async () => {
     landAt('/agents/researcher?tab=settings');
-    let versions = [version(2, 'identity-2', ['instructions']), version(1, 'identity-1', [])];
+    let versions = [version(2, 'identity-2', ['instructions']), version(1, 'identity-1', ALL_KEYS)];
     const served = serve(
       {
         'bureau.agents.versions.list': () => ({ versions }),
@@ -331,7 +333,7 @@ describe('the Settings tab', () => {
     serve(
       {
         'bureau.agents.versions.list': () => ({
-          versions: [version(2, 'identity-2', []), version(1, 'identity-1', [])],
+          versions: [version(2, 'identity-2', []), version(1, 'identity-1', ALL_KEYS)],
         }),
         'bureau.agents.versions.restore': () => {
           throw new StubFault('Unprocessable', 422, 'The model is gone.');
@@ -344,6 +346,46 @@ describe('the Settings tab', () => {
     await fireEvent.click(await findByRole('button', { name: 'Restore version 1' }));
 
     await findByText(/./, { selector: '[role="alert"] p' });
+  });
+
+  test('names a first version and a later save that changed nothing apart', async () => {
+    landAt('/agents/researcher?tab=settings');
+    serve(
+      {
+        'bureau.agents.versions.list': () => ({
+          versions: [version(2, 'identity-2', []), version(1, 'identity-1', ALL_KEYS)],
+        }),
+      },
+      withSettings(),
+    );
+    const { findByText, queryByText } = mount();
+
+    await findByText('Saved with no change to the settings');
+    await findByText('First version');
+    expect(queryByText(/Changed/)).toBeNull();
+  });
+
+  test('says the agent changed and refetches the versions when a restore is stale', async () => {
+    landAt('/agents/researcher?tab=settings');
+    let listed = 0;
+    serve(
+      {
+        'bureau.agents.versions.list': () => {
+          listed += 1;
+          return { versions: [version(2, 'identity-2', []), version(1, 'identity-1', ALL_KEYS)] };
+        },
+        'bureau.agents.versions.restore': () => {
+          throw new StubFault('StaleRevision', 409, 'stale', { currentRevision: 'hash-9' });
+        },
+      },
+      withSettings(),
+    );
+    const { findByRole, findByText } = mount();
+
+    await fireEvent.click(await findByRole('button', { name: 'Restore version 1' }));
+
+    await findByText(/changed after the page loaded/);
+    await waitFor(() => expect(listed).toBeGreaterThan(1));
   });
 
   test('deletes the agent over the hash of the file as read and returns to the list', async () => {

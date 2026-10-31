@@ -60,9 +60,12 @@
     },
     onError: (error) => {
       const fault = agentFaultOf(error);
-      problem =
-        fault.kind === 'rejected' || fault.kind === 'other' ? fault.message : copy.restoreFailed;
+      if (fault.kind === 'stale') problem = copy.restoreStale;
+      else
+        problem =
+          fault.kind === 'rejected' || fault.kind === 'other' ? fault.message : copy.restoreFailed;
       if (fault.kind === 'stale') {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.agents.versions(id) });
         void queryClient.invalidateQueries({ queryKey: queryKeys.agents.definition(id) });
       }
     },
@@ -111,7 +114,9 @@
               {#if version.savedBy === null}· {copy.savedByHand}{/if}
             </span>
             <span class="ib-agent-version__changed">
-              {#if version.changedKeys.length === 0}
+              {#if version.revision === 1}
+                {copy.firstVersion}
+              {:else if version.changedKeys.length === 0}
                 {copy.nothingChanged}
               {:else}
                 {copy.changed}:
