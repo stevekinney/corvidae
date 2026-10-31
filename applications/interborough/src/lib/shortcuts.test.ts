@@ -25,7 +25,7 @@ function key(value: string, overrides: Partial<ShortcutKey> = {}): ShortcutKey {
   };
 }
 
-const NOWHERE: ShortcutContext = { routePattern: '/chat', regions: [] };
+const NOWHERE: ShortcutContext = { routePattern: '/chats', regions: [] };
 
 function entry(keys: string[], scope: Parameters<typeof scopesOverlap>[0], label = keys.join(' ')) {
   return { keys, label, group: 'Test', scope, handler: () => {} };

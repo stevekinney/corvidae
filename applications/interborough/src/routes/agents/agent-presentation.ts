@@ -5,7 +5,7 @@ import { formatRelativeTime } from '../../lib/format/index.ts';
 
 /** The path that opens a new chat with `agent`. */
 export function newChatPath(agent: string): string {
-  return `/chat/new?agent=${encodeURIComponent(agent)}`;
+  return `/chats/new?agent=${encodeURIComponent(agent)}`;
 }
 
 /** What the chats an agent has had say of its use: how many, and when the latest was last active. */

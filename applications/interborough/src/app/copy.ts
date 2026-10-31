@@ -37,7 +37,7 @@ export type ViewCopy = {
   readonly forbiddenByPattern?: Readonly<Record<string, ViewStateCopy>>;
 };
 
-/** The words the run detail page (`/runs/:id`) uses for its attributes, streams and updates. */
+/** The words the run detail page (`/runs/:run`) uses for its attributes, streams and updates. */
 export const RUN_DETAIL_COPY = {
   attributes: {
     heading: 'Search attributes',
@@ -97,10 +97,10 @@ export const ROUTE_LOAD_FAILURE_COPY = {
 export const NOT_FOUND_ROUTE_COPY = {
   title: 'This page does not exist',
   description: 'That address is not a page in Interborough.',
-  action: { label: 'Go to chats', href: '/chat' },
+  action: { label: 'Go to chats', href: '/chats' },
 } as const;
 
-/** The words the agent editor uses outside its view states (`/agents/new`, `/agents/:id/edit`). */
+/** The words the agent editor uses outside its view states (`/agents/new`, `/agents/:agent/edit`). */
 export const AGENT_EDITOR_COPY = {
   createHeading: 'New agent',
   editHeading: (name: string): string => `Edit ${name}`,
@@ -538,6 +538,20 @@ export const SCHEDULE_COPY = {
   },
 } as const;
 
+/** The sections of Settings, in the order its section navigation lists them. */
+export const SETTINGS_SECTION_COPY = {
+  navigation: 'Settings sections',
+  general: 'General',
+  dataAndRetention: 'Data and retention',
+  apiReference: 'API reference',
+} as const;
+
+/** The words of the diagnostics the Health page carries below the engine overview. */
+export const HEALTH_DIAGNOSTICS_COPY = {
+  title: 'Diagnostics',
+  sections: 'Diagnostic sections',
+} as const;
+
 /** The words the settings page (`/settings`) uses outside its view states. */
 export const SETTINGS_COPY = {
   intro:
@@ -671,7 +685,7 @@ export const GOALS_COPY = {
   },
 } as const;
 
-/** The words the audit trail (`/audit`) uses outside its view states. */
+/** The words the audit trail (`/health/audit`) uses outside its view states. */
 export const AUDIT_COPY = {
   /** The accessible name of the search form. */
   searchLabel: 'Search the audit trail',
@@ -880,7 +894,7 @@ export const CHAT_COPY = {
 export type MemoryDeletionState = 'completed' | 'pending' | 'exempt' | 'failed' | 'unknown';
 
 /**
- * The words the Memory page uses outside its view states (`/agents/:id/memory`): the list, the
+ * The words the Memory page uses outside its view states (`/agents/:agent/memories`): the list, the
  * search, one memory's lineage, and what forgetting and correcting answer. The page's loading,
  * empty, error, forbidden, and not-found states are the Agents view's (`VIEW_COPY.agents`).
  */
@@ -1408,7 +1422,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Start a chat',
       description:
         'Pick an agent and say what you need. Your chats are kept here, and anything an agent needs from you shows in Reviews.',
-      action: { label: 'New chat', href: '/chat/new' },
+      action: { label: 'New chat', href: '/chats/new' },
     },
     error: {
       title: 'Chat is unavailable',
@@ -1422,7 +1436,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     },
     // A new chat is for an agent, and it is the agent that is missing.
     notFoundByPattern: {
-      '/chat/new': {
+      '/chats/new': {
         title: 'This agent was not found',
         description: 'It may have been deleted. Choose an agent from the list to start a chat.',
       },
@@ -1448,29 +1462,29 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'This agent was not found',
       description: 'It may have been deleted. Open one from the list.',
     },
-    // An agent's memory page (`/agents/:id/memory`) asks the Bureau for what the agent remembers.
+    // An agent's memory page (`/agents/:agent/memories`) asks the Bureau for what the agent remembers.
     loadingByPattern: {
-      '/agents/:id/memory': {
+      '/agents/:agent/memories': {
         title: 'Loading memory',
         description: 'Asking the Bureau what this agent remembers of your chats.',
       },
     },
     emptyByPattern: {
-      '/agents/:id/memory': {
+      '/agents/:agent/memories': {
         title: 'This agent remembers nothing yet',
         description:
           'A memory is saved when the agent answers in a chat. Start a chat with it, then come back.',
       },
     },
     errorByPattern: {
-      '/agents/:id/memory': {
+      '/agents/:agent/memories': {
         title: 'Memory is unavailable',
         description:
           'The Bureau did not answer, or it keeps no memory. Check that the host is running, then try again.',
       },
     },
     forbiddenByPattern: {
-      '/agents/:id/memory': {
+      '/agents/:agent/memories': {
         title: 'Memory is locked',
         description:
           'Reading what an agent remembers needs the bureau.memory:read scope, even for your own chats. Ask whoever runs this installation to grant it.',
@@ -1518,14 +1532,14 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
         'It may have been deleted, or its file may be gone. Open a workflow from the list.',
     },
     notFoundByPattern: {
-      '/workflows/:type/edit': {
+      '/workflows/:workflow/edit': {
         title: 'This workflow was not found',
         description:
           'There is no workflow file with this name that you can edit. It may have been deleted, or it may be defined in code, which cannot be edited here.',
       },
     },
     emptyByPattern: {
-      '/workflows/:type/runs': {
+      '/workflows/:workflow/runs': {
         title: 'This workflow has no runs yet',
         description: 'Nothing has run it. Its runs are listed here once it starts.',
       },
@@ -1537,7 +1551,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     empty: {
       title: 'No runs yet',
       description: 'Nothing has run yet. Start a chat to see its runs here.',
-      action: { label: 'Start a chat', href: '/chat/new' },
+      action: { label: 'Start a chat', href: '/chats/new' },
     },
     error: {
       title: 'Runs are unavailable',
@@ -1595,18 +1609,6 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     },
     forbidden: { title: 'Storage is locked' },
   },
-  system: {
-    label: 'System',
-    loading: {
-      title: 'Loading the system',
-      description: 'Reading the engine’s health and registry.',
-    },
-    error: {
-      title: 'The system is unavailable',
-      description: 'The engine did not answer. Check that the host is running, then try again.',
-    },
-    forbidden: { title: 'The system is locked' },
-  },
   audit: {
     label: 'Audit',
     loading: {
@@ -1650,7 +1652,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     },
     forbidden: { title: 'Goals are locked' },
   },
-  engine: {
+  health: {
     label: 'Health',
     loading: { title: 'Loading the engine', description: 'Reading the engine’s overview.' },
     error: {

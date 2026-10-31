@@ -143,7 +143,7 @@ describe('CriticalAlertsBand', () => {
       WAIT_FOR_TWO_QUERIES,
     );
     const link = getByText('3 dead-lettered tasks').closest('a');
-    expect(link?.getAttribute('href')).toBe('/workers?diagnostic=deadLettered');
+    expect(link?.getAttribute('href')).toBe('/health/workers?diagnostic=deadLettered');
   });
 
   test('a chip whose items all belong to one workflow also links to that run', async () => {
@@ -173,7 +173,7 @@ describe('CriticalAlertsBand', () => {
       WAIT_FOR_TWO_QUERIES,
     );
     expect(getByText('1 dead-lettered task').closest('a')?.getAttribute('href')).toBe(
-      '/workers?diagnostic=deadLettered',
+      '/health/workers?diagnostic=deadLettered',
     );
     expect(getByRole('link', { name: 'Open workflow wf-owner' }).getAttribute('href')).toBe(
       '/runs/wf-owner',

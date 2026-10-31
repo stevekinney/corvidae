@@ -1,10 +1,10 @@
 <script lang="ts">
   /**
-   * `/chat`: the chats the caller started, one flat row each, under the headings "Needs you" (the
+   * `/chats`: the chats the caller started, one flat row each, under the headings "Needs you" (the
    * chats whose run waits on the person, whatever their age), Today, Yesterday and Earlier. A row is
    * the agent's avatar, the chat's title, its latest message (or, while it waits on the person, the
    * question it asks), when it last changed, and a chip only while it needs the person. Opening
-   * one is `/chat/:sessionId`. The view frame has already settled whether there is anything to list
+   * one is `/chats/:chat`. The view frame has already settled whether there is anything to list
    * (`app/view-probes.ts`), so an empty list never reaches this page, and New chat is here for the
    * list that is not empty. Pages load as the end comes into view, or with Load more. A chat the
    * pending reviews name is read on its own when its page is not loaded, so "Needs you" holds every
@@ -112,7 +112,7 @@
       return;
     }
     event.preventDefault();
-    router.navigate('/chat/new');
+    router.navigate('/chats/new');
   }
 
   function openChat(event: MouseEvent, id: string): void {
@@ -127,7 +127,7 @@
 <section class="ib-chats" aria-labelledby="ib-chats-title">
   <header class="ib-chats__header">
     <h1 id="ib-chats-title" class="weft-chat-header__title">{CHAT_COPY.sessionsTitle}</h1>
-    <Button href={router.href('/chat/new')} variant="primary" size="sm" onclick={openNewChat}>
+    <Button href={router.href('/chats/new')} variant="primary" size="sm" onclick={openNewChat}>
       {CHAT_COPY.newChat}
     </Button>
   </header>

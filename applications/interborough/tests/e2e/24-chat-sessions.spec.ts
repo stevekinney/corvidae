@@ -1,8 +1,8 @@
 /**
- * Starting, listing, and returning to chat sessions: `/` opens the newest chat, `/chat` lists them
+ * Starting, listing, and returning to chat sessions: `/` opens the newest chat, `/chats` lists them
  * with load-more paging, a session a goal or a schedule's fire started is in neither (its run on
- * `/runs` links to it), `/chat/new` starts one with the agent chosen above the composer and becomes
- * `/chat/:sessionId` without a reload, and a finished session opens on its whole transcript. The
+ * `/runs` links to it), `/chats/new` starts one with the agent chosen above the composer and becomes
+ * `/chats/:chat` without a reload, and a finished session opens on its whole transcript. The
  * page is the real application against the real host.
  */
 import type { APIRequestContext, Page } from '@playwright/test';
@@ -19,7 +19,7 @@ async function send(page: Page, text: string): Promise<void> {
   await composer(page).press('Enter');
 }
 
-const sessionUrl = /\/chat\/(?!new(?:$|\?))[^/?]+$/;
+const sessionUrl = /\/chats\/(?!new(?:$|\?))[^/?]+$/;
 
 /** The session identifier the address names. */
 function sessionOf(page: Page): string {
@@ -68,7 +68,7 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
   });
 
   for (const width of WIDTHS) {
-    test(`opens / on /chat with a welcome and a New chat link, not on the goal's session, at ${width} pixels`, async ({
+    test(`opens / on /chats with a welcome and a New chat link, not on the goal's session, at ${width} pixels`, async ({
       page,
       request,
       checkA11y,
@@ -82,7 +82,7 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
 
       await page.goto('/');
 
-      await expect(page).toHaveURL(/\/chat$/);
+      await expect(page).toHaveURL(/\/chats$/);
       const frame = page.locator('[data-view="chat"]');
       await expect(frame).toHaveAttribute('data-state', 'empty');
       await expect(frame.getByRole('heading', { level: 1 })).toHaveText(
@@ -104,12 +104,12 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
     });
   }
 
-  test('New chat reaches a working /chat/new, and the chat started there is listed and opened by /', async ({
+  test('New chat reaches a working /chats/new, and the chat started there is listed and opened by /', async ({
     page,
   }) => {
-    await page.goto('/chat');
+    await page.goto('/chats');
     await page.getByRole('link', { name: 'New chat' }).click();
-    await expect(page).toHaveURL(/\/chat\/new$/);
+    await expect(page).toHaveURL(/\/chats\/new$/);
 
     await send(page, chatTitle);
 
@@ -118,15 +118,15 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
     made.push(chatId);
     await expect(page.getByText('Hello from the assistant.')).toBeVisible();
 
-    await page.goto('/chat');
+    await page.goto('/chats');
     const rows = page.getByRole('navigation', { name: 'Chats' }).getByRole('listitem');
     await expect(rows).toHaveCount(1);
     await expect(rows.first()).toContainText(chatTitle);
     await page.goto('/');
-    await expect(page).toHaveURL(new RegExp(`/chat/${chatId}$`));
+    await expect(page).toHaveURL(new RegExp(`/chats/${chatId}$`));
   });
 
-  test('a schedule’s fire makes a session that neither / nor /chat shows, though it is newer than the chat', async ({
+  test('a schedule’s fire makes a session that neither / nor /chats shows, though it is newer than the chat', async ({
     page,
     request,
   }) => {
@@ -166,12 +166,12 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
     expect(order.indexOf(fireContextId)).toBeLessThan(order.indexOf(chatId));
     expect(order.indexOf(chatId)).toBeLessThan(order.indexOf(SEEDED_GOAL_SESSION));
 
-    await page.goto('/chat');
+    await page.goto('/chats');
     const rows = page.getByRole('navigation', { name: 'Chats' }).getByRole('listitem');
     await expect(rows).toHaveCount(1);
     await expect(rows.first()).toContainText(chatTitle);
     await page.goto('/');
-    await expect(page).toHaveURL(new RegExp(`/chat/${chatId}$`));
+    await expect(page).toHaveURL(new RegExp(`/chats/${chatId}$`));
   });
 
   for (const width of WIDTHS) {
@@ -186,8 +186,8 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
       const fireRow = page.locator(`li.ib-run-row[data-run="${fireRunId}"]`);
       await expect(goalRow).toHaveCount(1);
       await expect(fireRow).toHaveCount(1);
-      await expect(goalRow.locator(`a[href="/chat/${SEEDED_GOAL_SESSION}"]`)).toHaveCount(1);
-      await expect(fireRow.locator(`a[href="/chat/${fireContextId}"]`)).toHaveCount(1);
+      await expect(goalRow.locator(`a[href="/chats/${SEEDED_GOAL_SESSION}"]`)).toHaveCount(1);
+      await expect(fireRow.locator(`a[href="/chats/${fireContextId}"]`)).toHaveCount(1);
       await expect(fireRow).toContainText(TASK_COPY.schedule);
       await checkA11y(`runs — a goal's and a schedule's runs at ${width}px`);
     });
@@ -198,12 +198,12 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
   }) => {
     await page.goto(`/runs/${SEEDED_GOAL_RUN}`);
     await page.getByRole('link', { name: TASK_COPY.openSession }).click();
-    await expect(page).toHaveURL(new RegExp(`/chat/${SEEDED_GOAL_SESSION}$`));
+    await expect(page).toHaveURL(new RegExp(`/chats/${SEEDED_GOAL_SESSION}$`));
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Say hello.');
 
     await page.goto(`/runs/${fireRunId}`);
     await page.getByRole('link', { name: TASK_COPY.openSession }).click();
-    await expect(page).toHaveURL(new RegExp(`/chat/${fireContextId}$`));
+    await expect(page).toHaveURL(new RegExp(`/chats/${fireContextId}$`));
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(fireInput);
   });
 });
@@ -216,7 +216,7 @@ test.describe('the home screen', () => {
 
     await page.goto('/');
 
-    await expect(page).toHaveURL(new RegExp(`/chat/${newest}$`));
+    await expect(page).toHaveURL(new RegExp(`/chats/${newest}$`));
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('The newest chat');
   });
 
@@ -252,7 +252,7 @@ test.describe('the list of sessions, grouped', () => {
       await runToEnd(request, 'assistant', finished, finishedTitle);
       await page.setViewportSize({ width, height: 900 });
 
-      await page.goto('/chat');
+      await page.goto('/chats');
 
       const list = page.getByRole('navigation', { name: 'Chats' });
       // Needs you is the first group, and it holds the waiting chat and not the finished one.
@@ -303,7 +303,7 @@ test.describe('the list of sessions', () => {
       );
     }
 
-    await page.goto('/chat');
+    await page.goto('/chats');
 
     const list = page.getByRole('navigation', { name: 'Chats' });
     const rows = list.getByRole('listitem');
@@ -326,14 +326,14 @@ test.describe('the list of sessions', () => {
   test('opens the session a row names', async ({ page, request }) => {
     const threadId = newThreadId('row');
     await runToEnd(request, 'assistant', threadId, 'Open me from the list');
-    await page.goto('/chat');
+    await page.goto('/chats');
 
     await page
       .getByRole('navigation', { name: 'Chats' })
       .getByRole('link', { name: /Open me from the list/ })
       .click();
 
-    await expect(page).toHaveURL(new RegExp(`/chat/${threadId}$`));
+    await expect(page).toHaveURL(new RegExp(`/chats/${threadId}$`));
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Open me from the list');
   });
 });
@@ -342,21 +342,21 @@ test.describe('a new chat', () => {
   test('talks to the default agent, which a searchable list changes before the first message', async ({
     page,
   }) => {
-    await page.goto('/chat/new');
+    await page.goto('/chats/new');
     const agent = page.getByRole('combobox', { name: 'Agent' });
     await expect(agent).toHaveValue(/assistant/i);
 
     await agent.fill('tool');
     await page.getByRole('option', { name: /tool-runner/i }).click();
 
-    await expect(page).toHaveURL(/\/chat\/new\?agent=tool-runner$/);
+    await expect(page).toHaveURL(/\/chats\/new\?agent=tool-runner$/);
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
   });
 
-  test('starts from ?agent=, becomes /chat/:sessionId without a reload, and fixes the agent', async ({
+  test('starts from ?agent=, becomes /chats/:chat without a reload, and fixes the agent', async ({
     page,
   }) => {
-    await page.goto('/chat/new?agent=tool-runner');
+    await page.goto('/chats/new?agent=tool-runner');
     await expect(page.getByRole('combobox', { name: 'Agent' })).toHaveValue('tool-runner');
     // A reload would discard this.
     await page.evaluate(() => {
@@ -376,7 +376,7 @@ test.describe('a new chat', () => {
     page,
   }) => {
     await page.goto('/agents');
-    await page.goto('/chat/new');
+    await page.goto('/chats/new');
 
     await send(page, 'A chat for the back button');
     await expect(page).toHaveURL(sessionUrl);
@@ -386,16 +386,16 @@ test.describe('a new chat', () => {
   });
 
   test('is not found for an agent that does not exist', async ({ page }) => {
-    await page.goto('/chat/new?agent=no-such-agent');
+    await page.goto('/chats/new?agent=no-such-agent');
     const frame = page.locator('[data-view="chat"]');
     await expect(frame).toHaveAttribute('data-state', 'not-found');
     // It is the agent that is missing, so the page says so and not that a conversation is.
     await expect(frame.getByRole('heading', { level: 1 })).toHaveText(
-      VIEW_COPY.chat.notFoundByPattern?.['/chat/new']?.title ?? '',
+      VIEW_COPY.chat.notFoundByPattern?.['/chats/new']?.title ?? '',
     );
   });
 
-  test('stays on /chat/new with the row failed and a retry when the first run is refused', async ({
+  test('stays on /chats/new with the row failed and a retry when the first run is refused', async ({
     page,
   }) => {
     let refuse = true;
@@ -410,12 +410,12 @@ test.describe('a new chat', () => {
         body: `data: ${JSON.stringify({ type: 'RUN_ERROR', message: 'The thread is busy.', code: 'THREAD_BUSY' })}\n\n`,
       });
     });
-    await page.goto('/chat/new');
+    await page.goto('/chats/new');
 
     await send(page, 'A first message that is refused');
 
     await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
-    await expect(page).toHaveURL(/\/chat\/new$/);
+    await expect(page).toHaveURL(/\/chats\/new$/);
     refuse = false;
     await page.getByRole('button', { name: 'Retry' }).click();
     await expect(page).toHaveURL(sessionUrl);
@@ -428,20 +428,20 @@ test.describe('returning to a session', () => {
     page,
   }) => {
     const label = crypto.randomUUID().slice(0, 8);
-    await page.goto('/chat/new?agent=assistant');
+    await page.goto('/chats/new?agent=assistant');
     await send(page, `${label} first topic`);
     await expect(page).toHaveURL(sessionUrl);
     const first = sessionOf(page);
     await expect(page.getByText('Hello from the assistant.')).toBeVisible();
 
-    await page.goto('/chat/new?agent=assistant');
+    await page.goto('/chats/new?agent=assistant');
     await send(page, `${label} second topic`);
     await expect(page).toHaveURL(sessionUrl);
     const second = sessionOf(page);
     await expect(page.getByText('Hello from the assistant.')).toBeVisible();
     expect(second).not.toBe(first);
 
-    await page.goto('/chat');
+    await page.goto('/chats');
     await page
       .getByRole('navigation', { name: 'Chats' })
       .getByRole('link', { name: new RegExp(`${label} first topic`) })
@@ -457,7 +457,7 @@ test.describe('returning to a session', () => {
    */
   async function finishedSession(page: Page): Promise<{ address: string; first: string }> {
     const first = `Question one ${crypto.randomUUID().slice(0, 8)}`;
-    await page.goto('/chat/new');
+    await page.goto('/chats/new');
     await send(page, first);
     await expect(page).toHaveURL(sessionUrl);
     await expect(page.getByText('Hello from the assistant.')).toHaveCount(1);

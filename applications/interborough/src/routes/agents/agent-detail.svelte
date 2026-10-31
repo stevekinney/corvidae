@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * `/agents/:id`: one agent, with its name once, its description, what it is made of (its model
+   * `/agents/:agent`: one agent, with its name once, its description, what it is made of (its model
    * when the Bureau can tell, its tools and skills), a Memory action that carries how many memories it has, a New
    * chat action, and the chats the caller has had with it.
    *
@@ -29,7 +29,7 @@
   import { memoryActionText, newChatPath, shortVersion } from './agent-presentation.ts';
 
   const PAGE_SIZE = 20;
-  const id = untrack(() => router.current.params['id'] ?? '');
+  const id = untrack(() => router.current.params['agent'] ?? '');
 
   const agents = createQuery(
     () => ({ queryKey: queryKeys.agents.list(), queryFn: ({ signal }) => listAgents({ signal }) }),

@@ -1,5 +1,5 @@
 /**
- * `/audit` (COR-1493): the audit trail, searched by `bureau.audit.query`. Each filter the operation
+ * `/health/audit` (COR-1493): the audit trail, searched by `bureau.audit.query`. Each filter the operation
  * takes reaches it (`since`, a free-text `type`, and a resource sent as `runId`), the records come
  * oldest first as the Bureau returns them, and Load more follows `nextCursor`. Owner scoping is the
  * gate, so the view holds no scope of its own.
@@ -61,7 +61,7 @@ function open(
     'bureau.audit.query': (params) =>
       isProbe(params) ? { records: [record(1)], nextCursor: null } : respond(params),
   });
-  landAt('/audit');
+  landAt('/health/audit');
   return render(RouteOutletHarness, {
     props: { client: client(), scopes: options.scopes ?? AUTHORIZATION_SCOPES },
   } as never);
@@ -263,7 +263,7 @@ describe('the filters', () => {
               nextCursor: null,
             },
     });
-    landAt('/audit?type=schedule.created&resource=schedule%3As-9');
+    landAt('/health/audit?type=schedule.created&resource=schedule%3As-9');
 
     const { findByLabelText, findByText } = render(RouteOutletHarness, {
       props: { client: client(), scopes: AUTHORIZATION_SCOPES },
@@ -409,7 +409,7 @@ describe('who may see it', () => {
         throw new StubFault('Forbidden', 403, 'Not yours.');
       },
     });
-    landAt('/audit');
+    landAt('/health/audit');
     const { container, findByRole } = render(RouteOutletHarness, {
       props: { client: client(), scopes: AUTHORIZATION_SCOPES },
     } as never);
@@ -429,7 +429,7 @@ describe('who may see it', () => {
         return { records: [record(2, { resource: 'back-again' })], nextCursor: null };
       },
     });
-    landAt('/audit');
+    landAt('/health/audit');
     const { findByLabelText, getByRole, findByText } = render(RouteOutletHarness, {
       props: { client: client(), scopes: AUTHORIZATION_SCOPES },
     } as never);

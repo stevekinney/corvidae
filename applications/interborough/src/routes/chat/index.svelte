@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * One chat session at `/chat/:sessionId`, or a new chat at `/chat/new`. The view frame has
+   * One chat session at `/chats/:chat`, or a new chat at `/chats/new`. The view frame has
    * already asked the Bureau whether the session exists and may be seen, or whether the agent a new
    * chat names is one the Bureau lists (`app/view-probes.ts`), so this route reads a session again only for
    * what the header and the run need: its title and its agent. That second read can fail too, such
@@ -22,9 +22,9 @@
 
   // The outlet mounts a new route for each path, so the session is read once. A new chat has none:
   // the client names the thread, and the agent is `?agent=` or the default.
-  const isNew = untrack(() => router.current.route?.pattern === '/chat/new');
+  const isNew = untrack(() => router.current.route?.pattern === '/chats/new');
   const sessionId = untrack(() =>
-    isNew ? crypto.randomUUID() : (router.current.params['sessionId'] ?? ''),
+    isNew ? crypto.randomUUID() : (router.current.params['chat'] ?? ''),
   );
   const chosenAgent = untrack(() => router.current.search.has('agent'));
   const initialAgent = untrack(() => router.current.search.get('agent') ?? DEFAULT_AGENT);

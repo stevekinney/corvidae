@@ -5,7 +5,7 @@ test('operator inspects a server-accepted canonical worker manifest', async ({
   page,
   checkA11y,
 }) => {
-  await page.goto('/workers?tab=list');
+  await page.goto('/health/workers?tab=list');
 
   // A worker is connected, so the page is the full fleet view and not the in-process sentence.
   await expect(page.getByRole('tablist', { name: 'Workers views' })).toBeVisible();
@@ -49,7 +49,7 @@ test('canonical manifest remains usable across supported widths and themes', asy
       await page.addInitScript((selectedTheme) => {
         localStorage.setItem('weft-ui-theme', selectedTheme);
       }, theme);
-      await page.goto('/workers?tab=list&worker=e2e-fleet-worker-1');
+      await page.goto('/health/workers?tab=list&worker=e2e-fleet-worker-1');
 
       const manifest = page.getByRole('region', { name: 'Canonical manifest' });
       await expect(manifest).toBeVisible();

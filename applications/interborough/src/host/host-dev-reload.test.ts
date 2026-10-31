@@ -66,7 +66,7 @@ async function openStream(host: Host): Promise<ReadableStreamDefaultReader<Uint8
 describe('the development host', () => {
   test('injects the reload client into index.html at every client route', async () => {
     const host = await start(true);
-    for (const path of ['/', '/chat', '/runs/abc']) {
+    for (const path of ['/', '/chats', '/runs/abc']) {
       const response = await fetch(new URL(path, host.url));
       const html = await response.text();
       expect(html, path).toContain(DEV_RELOAD_CLIENT);

@@ -16,7 +16,7 @@ export const FLEET_EVENT_RULES: Readonly<Record<string, FleetEventRule>> = {
     icon: 'siren',
     title: () => 'Alert fired',
     body: (frame) => stringField(frame.payload, 'name') ?? 'An alert condition is firing',
-    href: () => '/system',
+    href: () => '/health?tab=alerts',
   },
   'task:dead-lettered': {
     tier: 'critical',
@@ -66,21 +66,21 @@ export const FLEET_EVENT_RULES: Readonly<Record<string, FleetEventRule>> = {
     icon: 'check-check',
     title: () => 'Alert resolved',
     body: (frame) => stringField(frame.payload, 'name') ?? 'A firing alert has resolved',
-    href: () => '/system',
+    href: () => '/health?tab=alerts',
   },
   'worker:connected': {
     tier: 'info',
     icon: 'plug',
     title: () => 'Worker connected',
     body: (frame) => stringField(frame.payload, 'id') ?? 'A worker joined the fleet',
-    href: () => '/workers',
+    href: () => '/health/workers',
   },
   'worker:disconnected': {
     tier: 'warning',
     icon: 'plug-zap',
     title: () => 'Worker disconnected',
     body: (frame) => stringField(frame.payload, 'id') ?? 'A worker left the fleet',
-    href: () => '/workers',
+    href: () => '/health/workers',
   },
   'workflow:started': {
     tier: 'info',
@@ -225,7 +225,7 @@ export const FLEET_EVENT_RULES: Readonly<Record<string, FleetEventRule>> = {
     icon: 'triangle-alert',
     title: () => 'Development warning',
     body: (frame) => stringField(frame.payload, 'message') ?? 'A development-mode diagnostic fired',
-    href: () => '/system',
+    href: () => '/health',
   },
   'cleanup:warning': {
     tier: 'warning',
@@ -233,7 +233,7 @@ export const FLEET_EVENT_RULES: Readonly<Record<string, FleetEventRule>> = {
     title: () => 'Cleanup warning',
     body: (frame) =>
       stringField(frame.payload, 'message') ?? 'A retention cleanup pass reported a warning',
-    href: () => '/system',
+    href: () => '/health',
   },
   'storage:size-reported': {
     tier: 'warning',
@@ -241,7 +241,7 @@ export const FLEET_EVENT_RULES: Readonly<Record<string, FleetEventRule>> = {
     title: () => 'Storage size warning',
     body: (frame) =>
       stringField(frame.payload, 'message') ?? 'Storage usage crossed a reporting threshold',
-    href: () => '/storage',
+    href: () => '/health/storage',
   },
   'human-review:completed': {
     tier: 'info',

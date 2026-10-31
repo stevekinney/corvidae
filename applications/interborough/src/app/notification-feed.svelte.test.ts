@@ -143,14 +143,14 @@ describe('connectNotificationFeed', () => {
 
   test('opening a chat reads what is about it', async () => {
     served();
-    landAt('/chat/session-refund');
+    landAt('/chats/session-refund');
     const first = mount();
     await waitFor(() => expect(first.store.items).toHaveLength(2));
     expect(first.store.items.find((item) => item.kind === 'approval')?.read).toBe(true);
     expect(first.store.unreadCount).toBe(0);
     cleanup();
 
-    landAt('/chat/session-echo');
+    landAt('/chats/session-echo');
     const second = mount();
 
     await waitFor(() => expect(second.store.items).toHaveLength(2));
@@ -160,7 +160,7 @@ describe('connectNotificationFeed', () => {
 
   test('an answer that lands while its chat is open is read on arrival, so it is not new on leaving', async () => {
     served();
-    landAt('/chat/session-echo');
+    landAt('/chats/session-echo');
     const { store } = mount();
 
     await waitFor(() => expect(store.items).toHaveLength(2));
@@ -193,7 +193,7 @@ describe('connectNotificationFeed', () => {
 
   test('a chat that is only about to start is not an open chat', async () => {
     served();
-    landAt('/chat/new');
+    landAt('/chats/new');
 
     const { store } = mount();
 
@@ -297,7 +297,7 @@ describe('connectNotificationFeed', () => {
       'bureau.contexts.list': () => FIRE_CONTEXTS,
       'bureau.notifications.list': () => ({ notifications: [failure()], nextPageToken: null }),
     });
-    landAt('/chat/session-fire');
+    landAt('/chats/session-fire');
 
     const { store } = mount();
 

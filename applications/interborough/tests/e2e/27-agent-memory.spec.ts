@@ -1,5 +1,5 @@
 /**
- * `/agents/:id/memory`: what an agent remembers of the caller's chats, a search over it, one
+ * `/agents/:agent/memories`: what an agent remembers of the caller's chats, a search over it, one
  * memory's lineage, and forgetting and correcting.
  *
  * Every case seeds its memory with a scripted chat turn. The host has one memory writer, the
@@ -16,7 +16,7 @@ import { TEXT_ECHO_AGENT_NAME, TEXT_ECHO_SOLO_AGENT_NAME } from './text-echo-age
 
 const WIDTHS = [375, 1280] as const;
 
-const MEMORY_PATH = `/agents/${TEXT_ECHO_AGENT_NAME}/memory`;
+const MEMORY_PATH = `/agents/${TEXT_ECHO_AGENT_NAME}/memories`;
 
 /** A label no other case stores: it is both what the agent is sent and what it remembers. */
 const uniqueLabel = (prefix: string) => `${prefix} ${crypto.randomUUID().slice(0, 8)}`;
@@ -93,7 +93,7 @@ test.describe('the memory page', () => {
     );
     await expect(field(MEMORY_COPY.detail.fields.session).getByRole('link')).toHaveAttribute(
       'href',
-      `/chat/${threadId}`,
+      `/chats/${threadId}`,
     );
     // The run that wrote it is named from the governance ledger.
     await expect(field(MEMORY_COPY.detail.fields.run)).not.toHaveText(
@@ -130,7 +130,7 @@ test.describe('the memory page', () => {
   }) => {
     const label = uniqueLabel('Only memory');
     await runToEnd(request, TEXT_ECHO_SOLO_AGENT_NAME, newThreadId('memory-solo'), label);
-    await page.goto(`/agents/${TEXT_ECHO_SOLO_AGENT_NAME}/memory`);
+    await page.goto(`/agents/${TEXT_ECHO_SOLO_AGENT_NAME}/memories`);
 
     await forgetFromRow(page, label);
 
@@ -141,7 +141,7 @@ test.describe('the memory page', () => {
     ).toBeVisible();
     await expect(frame(page)).toHaveAttribute('data-state', 'ready');
     // Opening the page again asks the Bureau again, and the agent is empty.
-    await page.goto(`/agents/${TEXT_ECHO_SOLO_AGENT_NAME}/memory`);
+    await page.goto(`/agents/${TEXT_ECHO_SOLO_AGENT_NAME}/memories`);
     await expect(frame(page)).toHaveAttribute('data-state', 'empty');
   });
 
@@ -181,16 +181,16 @@ test.describe('the memory page', () => {
   test('is empty for an agent that has remembered nothing', async ({ page }) => {
     // No spec chats with `internal`, so it has remembered nothing. Keep it that way: a spec that
     // does would stop this one from seeing the empty state.
-    await page.goto('/agents/internal/memory');
+    await page.goto('/agents/internal/memories');
 
     await expect(frame(page)).toHaveAttribute('data-state', 'empty');
     await expect(frame(page).getByRole('heading', { level: 1 })).toHaveText(
-      VIEW_COPY.agents.emptyByPattern?.['/agents/:id/memory']?.title ?? '',
+      VIEW_COPY.agents.emptyByPattern?.['/agents/:agent/memories']?.title ?? '',
     );
   });
 
   test('is not found for an agent the Bureau does not list', async ({ page }) => {
-    await page.goto('/agents/nobody/memory');
+    await page.goto('/agents/nobody/memories');
 
     await expect(frame(page)).toHaveAttribute('data-state', 'not-found');
     await expect(frame(page).getByRole('heading', { level: 1 })).toHaveText(

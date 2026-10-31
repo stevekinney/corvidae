@@ -295,7 +295,7 @@ describe('a view that finds something to show', () => {
 
   test('one run’s page has no probe and shows its content once its scope is held', async () => {
     const { requests } = stub('runs', 'content');
-    const { container, findByTestId } = mount('runs', { parameters: { id: 'run-1' } });
+    const { container, findByTestId } = mount('runs', { parameters: { run: 'run-1' } });
     expect(await findByTestId('content')).not.toBeNull();
     expect(frame(container).dataset['state']).toBe('ready');
     expect(requests).toEqual([]);
@@ -321,7 +321,7 @@ describe('a refused probe', () => {
 });
 
 describe('one chat session’s page', () => {
-  const parameters = { sessionId: 'session-1' };
+  const parameters = { chat: 'session-1' };
 
   /** Answers `bureau.contexts.get` the way the Bureau would, and records what was asked. */
   function stubContext(answer: () => Response): { requests: string[] } {
@@ -392,7 +392,7 @@ describe('one chat session’s page', () => {
     stubContext(() =>
       Response.json({ jsonrpc: '2.0', id: 'bureau.contexts.get', result: { id: 'session-2' } }),
     );
-    const second = mount('chat', { parameters: { sessionId: 'session-2' } });
+    const second = mount('chat', { parameters: { chat: 'session-2' } });
 
     expect(await second.findByTestId('content')).not.toBeNull();
   });
@@ -423,7 +423,7 @@ describe('the chat list, a new chat, and the agents', () => {
 
   test('is forbidden when the Bureau refuses the caller the list of sessions', async () => {
     stubBureau({ 'bureau.contexts.list': () => fault(403, 'Forbidden') });
-    const { container, findByRole } = mount('chat', { pattern: '/chat' });
+    const { container, findByRole } = mount('chat', { pattern: '/chats' });
 
     expect(
       await findByRole('heading', { level: 1, name: VIEW_COPY.chat.forbidden.title }),
@@ -433,13 +433,13 @@ describe('the chat list, a new chat, and the agents', () => {
 
   test('is empty, with a New chat action, when the caller has no session', async () => {
     stubBureau({ 'bureau.contexts.list': () => rpc('x', { contexts: [], nextOffset: null }) });
-    const { container, findByRole } = mount('chat', { pattern: '/chat' });
+    const { container, findByRole } = mount('chat', { pattern: '/chats' });
 
     expect(
       await findByRole('heading', { level: 1, name: VIEW_COPY.chat.empty?.title ?? '' }),
     ).not.toBeNull();
     expect(frame(container).dataset['state']).toBe('empty');
-    expect(container.querySelector('a[href="/chat/new"]')?.textContent).toBe('New chat');
+    expect(container.querySelector('a[href="/chats/new"]')?.textContent).toBe('New chat');
   });
 
   test('the welcome names the agents a chat can start with, by their identifiers in monospace, and adds no padding of its own', async () => {
@@ -448,7 +448,7 @@ describe('the chat list, a new chat, and the agents', () => {
       'bureau.agents.list': () =>
         agents({ name: 'assistant' }, { name: 'tool-runner' }, { name: 'internal' }),
     });
-    const { container, findByTestId } = mount('chat', { pattern: '/chat' });
+    const { container, findByTestId } = mount('chat', { pattern: '/chats' });
 
     const line = await findByTestId('welcome-agents');
 
@@ -465,7 +465,7 @@ describe('the chat list, a new chat, and the agents', () => {
       'bureau.contexts.list': () => rpc('x', { contexts: [], nextOffset: null }),
       'bureau.agents.list': () => agents(),
     });
-    const { container, findByRole, queryClient } = mount('chat', { pattern: '/chat' });
+    const { container, findByRole, queryClient } = mount('chat', { pattern: '/chats' });
 
     await findByRole('heading', { level: 1, name: VIEW_COPY.chat.empty?.title ?? '' });
     // The line is not there for want of an answer: the Bureau has answered, and said none.
@@ -483,7 +483,7 @@ describe('the chat list, a new chat, and the agents', () => {
 
   test('a new chat is ready for an agent the Bureau lists', async () => {
     stubBureau({ 'bureau.agents.list': () => agents({ name: 'assistant' }) });
-    const { container, findByTestId } = mount('chat', { pattern: '/chat/new' });
+    const { container, findByTestId } = mount('chat', { pattern: '/chats/new' });
 
     expect(await findByTestId('content')).not.toBeNull();
     expect(frame(container).dataset['state']).toBe('ready');
@@ -494,9 +494,9 @@ describe('the chat list, a new chat, and the agents', () => {
       stubBureau({
         'bureau.agents.list': () => agents(...(entries as Array<Partial<typeof AGENT>>)),
       });
-      const { container, findByRole, unmount } = mount('chat', { pattern: '/chat/new' });
+      const { container, findByRole, unmount } = mount('chat', { pattern: '/chats/new' });
       // It is the agent that is missing, so the words are about the agent and not the session.
-      const words = VIEW_COPY.chat.notFoundByPattern?.['/chat/new'];
+      const words = VIEW_COPY.chat.notFoundByPattern?.['/chats/new'];
 
       expect(await findByRole('heading', { level: 1, name: words?.title ?? '' })).not.toBeNull();
       expect(container.textContent).toContain(words?.description ?? '');
@@ -509,7 +509,7 @@ describe('the chat list, a new chat, and the agents', () => {
 
   test('an agent’s page is not found for an identifier the Bureau does not list', async () => {
     stubBureau({ 'bureau.agents.list': () => agents({ name: 'assistant' }) });
-    const missing = mount('agents', { parameters: { id: 'nobody' } });
+    const missing = mount('agents', { parameters: { agent: 'nobody' } });
     expect(
       await missing.findByRole('heading', {
         level: 1,
@@ -519,13 +519,13 @@ describe('the chat list, a new chat, and the agents', () => {
     expect(frame(missing.container).dataset['state']).toBe('not-found');
     missing.unmount();
 
-    const found = mount('agents', { parameters: { id: 'assistant' } });
+    const found = mount('agents', { parameters: { agent: 'assistant' } });
     expect(await found.findByTestId('content')).not.toBeNull();
   });
 });
 
 describe('an agent’s memory page, under the Agents view', () => {
-  const PATTERN = '/agents/:id/memory';
+  const PATTERN = '/agents/:agent/memories';
   const rpc = (method: string, result: unknown) =>
     Response.json({ jsonrpc: '2.0', id: method, result });
   const fault = (status: number, code: string) =>
@@ -555,7 +555,8 @@ describe('an agent’s memory page, under the Agents view', () => {
     });
   }
 
-  const mountMemory = () => mount('agents', { pattern: PATTERN, parameters: { id: 'assistant' } });
+  const mountMemory = () =>
+    mount('agents', { pattern: PATTERN, parameters: { agent: 'assistant' } });
 
   test('is loading, with the memory words, while the Bureau is asked', async () => {
     restore = installFetchImplementation(() => new Promise<Response>(() => {}));
@@ -629,9 +630,9 @@ describe('an agent’s memory page, under the Agents view', () => {
 describe('the Workflows area', () => {
   const ROUTES = [
     { pattern: '/workflows', parameters: {} },
-    { pattern: '/workflows/:type', parameters: { type: 'digest' } },
-    { pattern: '/workflows/:type/runs', parameters: { type: 'digest' } },
-    { pattern: '/workflows/:type/edit', parameters: { type: 'digest' } },
+    { pattern: '/workflows/:workflow', parameters: { workflow: 'digest' } },
+    { pattern: '/workflows/:workflow/runs', parameters: { workflow: 'digest' } },
+    { pattern: '/workflows/:workflow/edit', parameters: { workflow: 'digest' } },
   ] as const;
 
   function world(overrides: Partial<World> = {}): WorkflowStub {
@@ -652,7 +653,7 @@ describe('the Workflows area', () => {
     expect(view.canBeEmpty).toBe(true);
     // A view that can be empty has the words for it, and one for a type with no runs.
     expect(VIEW_COPY.workflows.empty).toBeDefined();
-    expect(VIEW_COPY.workflows.emptyByPattern?.['/workflows/:type/runs']).toBeDefined();
+    expect(VIEW_COPY.workflows.emptyByPattern?.['/workflows/:workflow/runs']).toBeDefined();
   });
 
   for (const { pattern, parameters } of ROUTES) {
@@ -702,7 +703,7 @@ describe('the Workflows area', () => {
         throw workflowFaults.unavailable();
       });
       const { container, findByRole, findByTestId } = mount('workflows', { parameters, pattern });
-      if (pattern === '/workflows/:type/edit') {
+      if (pattern === '/workflows/:workflow/edit') {
         // The editor reads only the Bureau's file, so the engine's failure is not its failure.
         expect(await findByTestId('content')).not.toBeNull();
         return;
@@ -721,7 +722,7 @@ describe('the Workflows area', () => {
         throw workflowFaults.invalidParams();
       });
       const { container, findByRole } = mount('workflows', {
-        parameters: { type: 'foo.bar' },
+        parameters: { workflow: 'foo.bar' },
         pattern,
       });
       const words =
@@ -748,11 +749,12 @@ describe('the Workflows area', () => {
   test('a type’s page is not found when the file is gone and the engine holds only its source', async () => {
     world({ definitions: [sourceDefinition('digest')], files: [] });
     const { container, findByRole } = mount('workflows', {
-      parameters: { type: 'digest' },
-      pattern: '/workflows/:type',
+      parameters: { workflow: 'digest' },
+      pattern: '/workflows/:workflow',
     });
     const words =
-      VIEW_COPY.workflows.notFoundByPattern?.['/workflows/:type'] ?? VIEW_COPY.workflows.notFound;
+      VIEW_COPY.workflows.notFoundByPattern?.['/workflows/:workflow'] ??
+      VIEW_COPY.workflows.notFound;
     await findByRole('heading', { level: 1, name: words?.title ?? '' });
     expect(frame(container).dataset['state']).toBe('not-found');
   });
@@ -760,8 +762,8 @@ describe('the Workflows area', () => {
   test('a code-defined type’s page is ready, and its editor is not found, because it has no file', async () => {
     world();
     const page = mount('workflows', {
-      parameters: { type: 'order-processing' },
-      pattern: '/workflows/:type',
+      parameters: { workflow: 'order-processing' },
+      pattern: '/workflows/:workflow',
     });
     expect(await page.findByTestId('content')).not.toBeNull();
     page.unmount();
@@ -769,11 +771,11 @@ describe('the Workflows area', () => {
 
     world();
     const editor = mount('workflows', {
-      parameters: { type: 'order-processing' },
-      pattern: '/workflows/:type/edit',
+      parameters: { workflow: 'order-processing' },
+      pattern: '/workflows/:workflow/edit',
     });
     const words =
-      VIEW_COPY.workflows.notFoundByPattern?.['/workflows/:type/edit'] ??
+      VIEW_COPY.workflows.notFoundByPattern?.['/workflows/:workflow/edit'] ??
       VIEW_COPY.workflows.notFound;
     await editor.findByRole('heading', { level: 1, name: words?.title ?? '' });
     expect(frame(editor.container).dataset['state']).toBe('not-found');
@@ -782,10 +784,10 @@ describe('the Workflows area', () => {
   test('the runs of a type with none are empty, in words about runs, and with some are ready', async () => {
     world({ runs: [] });
     const none = mount('workflows', {
-      parameters: { type: 'order-processing' },
-      pattern: '/workflows/:type/runs',
+      parameters: { workflow: 'order-processing' },
+      pattern: '/workflows/:workflow/runs',
     });
-    const words = VIEW_COPY.workflows.emptyByPattern?.['/workflows/:type/runs'];
+    const words = VIEW_COPY.workflows.emptyByPattern?.['/workflows/:workflow/runs'];
     await none.findByRole('heading', { level: 1, name: words?.title ?? '' });
     expect(frame(none.container).dataset['state']).toBe('empty');
     expect(none.container.textContent).toContain(words?.description ?? '');
@@ -799,8 +801,8 @@ describe('the Workflows area', () => {
       ],
     });
     const some = mount('workflows', {
-      parameters: { type: 'order-processing' },
-      pattern: '/workflows/:type/runs',
+      parameters: { workflow: 'order-processing' },
+      pattern: '/workflows/:workflow/runs',
     });
     expect(await some.findByTestId('content')).not.toBeNull();
     // The probe asks for this type's runs, and only the first.
@@ -818,8 +820,8 @@ describe('the Workflows area', () => {
     // The page's own timers are the fake clock's, so the recheck can be advanced.
     jest.useFakeTimers();
     const { container } = mount('workflows', {
-      parameters: { type: 'order-processing' },
-      pattern: '/workflows/:type/runs',
+      parameters: { workflow: 'order-processing' },
+      pattern: '/workflows/:workflow/runs',
     });
     await until(() => expect(frame(container).dataset['state']).toBe('empty'));
     const asked = stub.callsTo('GET /workflows').length;

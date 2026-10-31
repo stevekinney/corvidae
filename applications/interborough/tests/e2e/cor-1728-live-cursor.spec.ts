@@ -114,7 +114,7 @@ test('recovers a host-preserving drop from the real emitted cursor exactly once'
   try {
     await expectWaiting(request, 1);
     await makeInspectable(page);
-    await page.goto(`/chat/${threadId}`);
+    await page.goto(`/chats/${threadId}`);
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
     await expect.poll(() => attachRequests(page)).toBe(1);
     await expect.poll(() => lastCursor(page)).toMatch(/^agui-live-v1\./);
@@ -155,7 +155,7 @@ test('reconnects with an invalid cursor through the authoritative snapshot exact
   try {
     await expectWaiting(request, 1);
     await makeInspectable(page);
-    await page.goto(`/chat/${threadId}`);
+    await page.goto(`/chats/${threadId}`);
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
     await expect.poll(() => attachRequests(page)).toBe(1);
     await expect.poll(() => lastCursor(page)).toMatch(/^agui-live-v1\./);

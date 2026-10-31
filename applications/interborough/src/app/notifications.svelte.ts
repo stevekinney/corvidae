@@ -129,7 +129,7 @@ export class NotificationStore {
       kind: 'engine',
       identifiers: [],
       joiner: ': ',
-      href: '/engine',
+      href: '/health',
       emittedAtMs: nowMs,
       ...problem,
     };

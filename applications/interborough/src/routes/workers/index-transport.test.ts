@@ -22,7 +22,7 @@ function resetLocation(path: string): void {
   router.navigate(path, { replace: true });
 }
 
-beforeEach(() => resetLocation('/workers'));
+beforeEach(() => resetLocation('/health/workers'));
 afterEach(() => {
   scripted?.restore();
   scripted = undefined;
@@ -61,7 +61,7 @@ describe('Workers route — transports', () => {
   });
 
   test('a selected worker the server no longer lists reads as closed, not as an error', async () => {
-    resetLocation('/workers?tab=list&worker=wkr_gone');
+    resetLocation('/health/workers?tab=list&worker=wkr_gone');
     scripted = new ScriptedFetch();
     routeHappyPaths(scripted, { workers: [worker({ id: 'wkr_other' })] });
 

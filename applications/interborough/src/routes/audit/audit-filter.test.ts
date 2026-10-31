@@ -33,9 +33,9 @@ describe('the audit filter', () => {
   test('round-trips through the address, and an empty search is the bare path', () => {
     const draft = { since: '2026-10-19T08:30', type: 'run.completed', resource: 'schedule:s 1' };
     const path = pathOf(draft);
-    expect(path.startsWith('/audit?')).toBe(true);
+    expect(path.startsWith('/health/audit?')).toBe(true);
     expect(draftFromSearch(new URL(path, 'http://localhost').searchParams)).toEqual(draft);
-    expect(pathOf(EMPTY_AUDIT_DRAFT)).toBe('/audit');
+    expect(pathOf(EMPTY_AUDIT_DRAFT)).toBe('/health/audit');
   });
 });
 

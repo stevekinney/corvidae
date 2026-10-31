@@ -40,7 +40,7 @@ describe('end-to-end spec isolation', () => {
       .filter(
         ({ source }) =>
           callsOf(source, 'runToEnd').some((call) => call.includes('E2E_BUREAU_URL')) ||
-          (source.includes('baseURL: E2E_BUREAU_URL') && source.includes('/chat/new')),
+          (source.includes('baseURL: E2E_BUREAU_URL') && source.includes('/chats/new')),
       )
       .filter(({ source }) => !source.includes('deleteChats('))
       .map(({ name }) => name);

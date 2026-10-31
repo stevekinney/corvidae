@@ -54,7 +54,7 @@ function emptyTrail(): () => Promise<Response> {
 describe('the route outlet', () => {
   test('renders a view in its frame, empty once the Bureau answers', async () => {
     restore = installFetchImplementation(emptyTrail());
-    landAt('/audit');
+    landAt('/health/audit');
     const { container, findByRole } = mount();
     expect(
       await findByRole('heading', { level: 1, name: VIEW_COPY.audit.empty?.title ?? '' }),
@@ -66,7 +66,7 @@ describe('the route outlet', () => {
 
   test('carries its view’s density and its kind of page’s width, so a page chooses neither', async () => {
     restore = installFetchImplementation(emptyTrail());
-    landAt('/audit');
+    landAt('/health/audit');
     const { findByRole, container } = mount();
     await findByRole('heading', { level: 1, name: VIEW_COPY.audit.empty?.title ?? '' });
     const outlet = container.querySelector('main.weft-shell-outlet');
@@ -104,14 +104,14 @@ describe('the route outlet', () => {
     landAt('/nowhere');
     const { findByRole } = mount();
     const link = await findByRole('link', { name: NOT_FOUND_ROUTE_COPY.action.label });
-    expect(link.getAttribute('href')).toBe('/chat');
+    expect(link.getAttribute('href')).toBe('/chats');
     link.click();
-    await waitFor(() => expect(router.pathname).toBe('/chat'));
+    await waitFor(() => expect(router.pathname).toBe('/chats'));
   });
 
   test('is the page’s one main landmark, whatever the route renders', async () => {
     restore = installFetchImplementation(emptyTrail());
-    landAt('/audit');
+    landAt('/health/audit');
     const { findByRole, getAllByRole, container } = mount();
     await findByRole('heading', { level: 1, name: VIEW_COPY.audit.empty?.title ?? '' });
     expect(getAllByRole('main')).toHaveLength(1);
@@ -120,7 +120,7 @@ describe('the route outlet', () => {
 
   test('says so when a route’s code cannot be loaded, and drops the page it came from', async () => {
     restore = installFetchImplementation(emptyTrail());
-    landAt('/audit');
+    landAt('/health/audit');
     const { findByRole, container } = mount();
     await findByRole('heading', { level: 1, name: VIEW_COPY.audit.empty?.title ?? '' });
 
@@ -180,7 +180,7 @@ describe('a route whose chunk is gone after a rebuild', () => {
 
   async function openAgentsWithLoad(load: () => Promise<never>) {
     restore = installFetchImplementation(emptyTrail());
-    landAt('/audit');
+    landAt('/health/audit');
     const page = mount();
     await page.findByRole('heading', { level: 1, name: VIEW_COPY.audit.empty?.title ?? '' });
     const agents = routes.find((route) => route.pattern === '/agents');
@@ -227,7 +227,7 @@ describe('a route whose chunk is gone after a rebuild', () => {
   test('lifts the guard once a route loads, so a later rebuild reloads again', async () => {
     window.sessionStorage.setItem(CHUNK_RELOAD_KEY, '1');
     restore = installFetchImplementation(emptyTrail());
-    landAt('/audit');
+    landAt('/health/audit');
     const { findByRole } = mount();
     await findByRole('heading', { level: 1, name: VIEW_COPY.audit.empty?.title ?? '' });
     expect(window.sessionStorage.getItem(CHUNK_RELOAD_KEY)).toBeNull();
@@ -251,7 +251,7 @@ describe('a route that redirects', () => {
 
   /** The pages the redirect lands on are not what these tests are about, so they render a stub. */
   function stubLandingPages(): void {
-    for (const pattern of ['/chat', '/chat/:sessionId']) {
+    for (const pattern of ['/chats', '/chats/:chat']) {
       const route = routes.find((candidate) => candidate.pattern === pattern);
       if (route === undefined) throw new Error(`Expected a ${pattern} route.`);
       const spy = spyOn(route, 'load').mockResolvedValue({ default: Placeholder });
@@ -289,7 +289,7 @@ describe('a route that redirects', () => {
 
     mount();
 
-    await waitFor(() => expect(router.pathname).toBe('/chat/session-9'));
+    await waitFor(() => expect(router.pathname).toBe('/chats/session-9'));
     expect(window.history.length).toBe(length);
   });
 
@@ -300,7 +300,7 @@ describe('a route that redirects', () => {
 
     mount();
 
-    await waitFor(() => expect(router.pathname).toBe('/chat'));
+    await waitFor(() => expect(router.pathname).toBe('/chats'));
   });
 
   test('goes to the chat list, which says what is wrong, when the Bureau cannot say', async () => {
@@ -310,7 +310,7 @@ describe('a route that redirects', () => {
 
     mount();
 
-    await waitFor(() => expect(router.pathname).toBe('/chat'));
+    await waitFor(() => expect(router.pathname).toBe('/chats'));
   });
 });
 
@@ -354,14 +354,14 @@ describe('a page that asks to be kept', () => {
             };
       return Response.json({ jsonrpc: '2.0', id: 1, result });
     });
-    landAt('/chat/new');
+    landAt('/chats/new');
     const { container, findByRole } = mount();
     await findByRole('combobox', { name: 'Agent' });
     const page = container.querySelector('.weft-chat-route');
     expect(page).not.toBeNull();
 
-    router.navigate('/chat/new?agent=assistant', { replace: true });
-    router.navigate('/chat/session-1', { replace: true, keep: true });
+    router.navigate('/chats/new?agent=assistant', { replace: true });
+    router.navigate('/chats/session-1', { replace: true, keep: true });
     await quietFor(50);
 
     expect(container.querySelector('.weft-chat-route')).toBe(page);

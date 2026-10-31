@@ -21,7 +21,7 @@ const VIEWPORTS = [
 ] as const;
 
 async function openCrossBuildTask(page: Page): Promise<void> {
-  await page.goto(`/workers?tab=diagnostics&task=${E2E_CROSS_BUILD_TASK_OPERATION_ID}`);
+  await page.goto(`/health/workers?tab=diagnostics&task=${E2E_CROSS_BUILD_TASK_OPERATION_ID}`);
   await expect(page.getByRole('heading', { name: 'Authoritative task ledger' })).toBeVisible();
 }
 
@@ -57,7 +57,7 @@ test('filtering Diagnostics by build ID finds the task and deep-links to its wor
   page,
   checkA11y,
 }) => {
-  await page.goto('/workers?tab=diagnostics');
+  await page.goto('/health/workers?tab=diagnostics');
   await page.getByLabel('Build ID').fill(E2E_CURRENT_BUILD_ID);
   await page.getByRole('button', { name: 'Apply filters' }).click();
   await expect(page).toHaveURL(new RegExp(`buildId=${E2E_CURRENT_BUILD_ID}`));
@@ -81,7 +81,7 @@ test('filtering Diagnostics by build ID finds the task and deep-links to its wor
 test('a build that ran nothing says no task matches instead of reporting a healthy fleet', async ({
   page,
 }) => {
-  await page.goto('/workers?tab=diagnostics&buildId=no-such-build');
+  await page.goto('/health/workers?tab=diagnostics&buildId=no-such-build');
   await expect(page.getByText(/No task matches these provenance filters/)).toBeVisible();
   await expect(page.getByLabel('Build ID')).toHaveValue('no-such-build');
 });
@@ -109,7 +109,7 @@ for (const theme of ['light', 'dark'] as const) {
       ).toBe(true);
       await checkA11y(label);
 
-      await page.goto(`/workers?tab=diagnostics&buildId=${E2E_CURRENT_BUILD_ID}`);
+      await page.goto(`/health/workers?tab=diagnostics&buildId=${E2E_CURRENT_BUILD_ID}`);
       await expect(page.getByLabel('Build ID')).toBeVisible();
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),

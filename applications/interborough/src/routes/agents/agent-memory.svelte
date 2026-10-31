@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * `/agents/:id/memory`: what an agent remembers of the caller's chats, with a search, one
+   * `/agents/:agent/memories`: what an agent remembers of the caller's chats, with a search, one
    * memory's lineage, and the two things a person can do to a memory: forget it and correct it.
    *
    * The Agents view's frame (`app/view-frame.svelte`) asks the Bureau first and owns the words for
@@ -32,7 +32,7 @@
 
   /** The most memories a search ranks: the Bureau's own ceiling, so a match is rarely left out. */
   const SEARCH_LIMIT = 100;
-  const agentId = untrack(() => router.current.params['id'] ?? '');
+  const agentId = untrack(() => router.current.params['agent'] ?? '');
 
   /** What is typed, and what the last search applied. A blank applied search lists. */
   let typed = $state('');

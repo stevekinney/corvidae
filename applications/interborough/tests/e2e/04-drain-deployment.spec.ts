@@ -15,7 +15,7 @@ import { E2E_DEPLOYMENT_NAME } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 
 test('operator drains and resumes a worker deployment', async ({ page, checkA11y }) => {
-  await page.goto('/workers');
+  await page.goto('/health/workers');
   const deploymentRow = page.getByRole('listitem').filter({ hasText: E2E_DEPLOYMENT_NAME });
   // See `01-debug-failed-workflow.spec.ts`'s module doc for why the first
   // axe check on every spec is gated behind real content, not the boot

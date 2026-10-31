@@ -45,13 +45,13 @@ describe('buildDiagnosticChips workflow links', () => {
     } as never;
   }
 
-  test('a kind whose items all belong to one workflow links to that run, at /runs/:id', () => {
+  test('a kind whose items all belong to one workflow links to that run, at /runs/:run', () => {
     const chips = buildDiagnosticChips({ ...ZERO_SUMMARY, staleInflight: 2 }, [
       diagnosticItem('stale-inflight', 'wf-1'),
       diagnosticItem('stale-inflight', 'wf-1'),
     ]);
 
-    expect(chips[0]?.href).toBe('/workers?diagnostic=staleInflight');
+    expect(chips[0]?.href).toBe('/health/workers?diagnostic=staleInflight');
     expect(chips[0]?.workflow).toEqual({ id: 'wf-1', href: '/runs/wf-1' });
   });
 
@@ -143,9 +143,9 @@ describe('buildDiagnosticChips', () => {
     ]);
   });
 
-  test('each chip deep-links to /workers with a diagnostic query hint', () => {
+  test('each chip deep-links to /health/workers with a diagnostic query hint', () => {
     const chips = buildDiagnosticChips({ ...ZERO_SUMMARY, stuckQueued: 1 });
-    expect(chips[0]?.href).toBe('/workers?diagnostic=stuckQueued');
+    expect(chips[0]?.href).toBe('/health/workers?diagnostic=stuckQueued');
   });
 });
 

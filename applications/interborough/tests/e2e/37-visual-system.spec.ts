@@ -39,28 +39,28 @@ async function pageRootPaddings(page: Page): Promise<string[]> {
 }
 
 const PAGES = [
-  '/chat',
+  '/chats',
   '/agents',
   '/agents/new',
   '/workflows',
   '/runs',
   '/schedules',
   '/reviews',
-  '/workers',
-  '/storage',
-  '/system',
-  '/audit',
+  '/health/workers',
+  '/health/storage',
+  '/settings/api-reference',
+  '/health/audit',
   '/settings',
   '/goals',
-  '/engine',
+  '/health',
 ] as const;
 
 test.describe('the outlet pads a page and nothing else does', () => {
   for (const path of PAGES) {
     test(`${path} has no padding of its own at the top of the page`, async ({ page, request }) => {
-      // A host with no chat a person started opens /chat on its welcome, which the view frame
+      // A host with no chat a person started opens /chats on its welcome, which the view frame
       // draws (COR-1645). The page under test is the list, so there is a chat to list.
-      if (path === '/chat') {
+      if (path === '/chats') {
         await runToEnd(request, 'echo', newThreadId('visual-system-list'), 'Hello echo');
       }
       await page.setViewportSize(DESKTOP);
@@ -93,12 +93,12 @@ test.describe('the outlet pads a page and nothing else does', () => {
 });
 
 test.describe('the empty chat screen on a fresh host', () => {
-  // The second host holds nothing a person did, so /chat is empty (`24-chat-sessions.spec.ts`).
+  // The second host holds nothing a person did, so /chats is empty (`24-chat-sessions.spec.ts`).
   test.use({ baseURL: E2E_BUREAU_URL });
 
   test('adds no padding of its own inside the outlet, which pads the page', async ({ page }) => {
     await page.setViewportSize(DESKTOP);
-    await page.goto('/chat');
+    await page.goto('/chats');
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'empty');
 
     // Cinder's EmptyState pads itself 48px by 32px; the frame takes that off, so the outlet's
@@ -111,7 +111,7 @@ test.describe('the empty chat screen on a fresh host', () => {
     const roots = await pageRootPaddings(page);
     expect(roots.length).toBeGreaterThan(0);
     for (const root of roots) {
-      expect(root, `/chat (empty): ${root}`).toMatch(/ 0px 0px 0px 0px$/);
+      expect(root, `/chats (empty): ${root}`).toMatch(/ 0px 0px 0px 0px$/);
     }
   });
 });
@@ -125,8 +125,8 @@ test.describe('each view declares how dense it is, and each route what kind of p
       agents: '/agents',
       runs: '/runs',
       reviews: '/reviews',
-      audit: '/audit',
-      engine: '/engine',
+      audit: '/health/audit',
+      health: '/health',
     };
     for (const [view, path] of Object.entries(paths)) {
       await page.goto(path);
@@ -199,7 +199,7 @@ test.describe('a chat', () => {
     const stream = await runToEnd(request, 'tool-runner', threadId, 'Refund order-1001');
     await approveThroughMount(request, threadId, stream);
     await page.setViewportSize(DESKTOP);
-    await page.goto(`/chat/${threadId}`);
+    await page.goto(`/chats/${threadId}`);
     await expect(page.getByText('Order order-1001 was refunded.')).toBeVisible();
     // The tool calls open into their rows, the tallest the transcript gets.
     await page.getByRole('button', { name: 'Show' }).click();

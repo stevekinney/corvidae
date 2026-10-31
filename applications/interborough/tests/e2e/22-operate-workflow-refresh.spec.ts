@@ -22,7 +22,7 @@ import {
 import { expect, test } from './fixtures.ts';
 
 async function openRefreshPanel(page: Page, workflow: string) {
-  await page.goto('/system?tab=registry');
+  await page.goto('/settings/api-reference?tab=registry');
   await page.getByRole('button', { name: new RegExp(workflow) }).click();
   const panel = page.getByRole('region', { name: 'Conditional refresh' });
   await expect(panel).toBeVisible();

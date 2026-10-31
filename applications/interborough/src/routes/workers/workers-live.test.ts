@@ -27,7 +27,7 @@ const THIRTY_SECONDS = 30_000;
 const OPERATION = 'op_ledger_route';
 
 /** The route, on the task's page with a worker selected: every query the route owns is enabled. */
-const ROUTE_URL = `/workers?tab=diagnostics&task=${OPERATION}&worker=worker-1`;
+const ROUTE_URL = `/health/workers?tab=diagnostics&task=${OPERATION}&worker=worker-1`;
 
 let scripted: ScriptedFetch | undefined;
 

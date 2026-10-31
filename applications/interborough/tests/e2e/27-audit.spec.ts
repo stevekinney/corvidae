@@ -1,5 +1,5 @@
 /**
- * `/audit` (COR-1493, COR-1658): the Bureau's audit trail, searched by type and by the resource a
+ * `/health/audit` (COR-1493, COR-1658): the Bureau's audit trail, searched by type and by the resource a
  * record is about, with the records oldest first, at the two widths the application is built for,
  * and with axe on each. The seeded schedule's creation is in the trail, and so is anything these
  * specs do. Nothing here types a syntax: the type is chosen from the types the trail has shown (or
@@ -27,7 +27,7 @@ for (const width of WIDTHS) {
     checkA11y,
   }) => {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto('/audit');
+    await page.goto('/health/audit');
     await expect(page.locator('[data-view="audit"]')).toHaveAttribute('data-state', 'ready');
     await expect(page.getByRole('list', { name: AUDIT_COPY.caption })).toBeVisible();
     await expect(records(page).first()).toBeVisible();
@@ -68,14 +68,14 @@ for (const width of WIDTHS) {
 
     await form(page).getByRole('button', { name: AUDIT_COPY.clearAction }).click();
     await expect(records(page).first()).toBeVisible();
-    await expect(page).toHaveURL(/\/audit$/);
+    await expect(page).toHaveURL(/\/health\/audit$/);
   });
 }
 
 test('a search can be opened from its address, and the filters are in the form', async ({
   page,
 }) => {
-  await page.goto('/audit?type=schedule.created');
+  await page.goto('/health/audit?type=schedule.created');
 
   await expect(typeSelect(page)).toHaveValue('schedule.created');
   await expect(records(page).first()).toBeVisible();
@@ -83,7 +83,7 @@ test('a search can be opened from its address, and the filters are in the form',
 });
 
 test('a resource in the address fills the kind and the id of the picker', async ({ page }) => {
-  await page.goto('/audit?resource=schedule%3As-9');
+  await page.goto('/health/audit?resource=schedule%3As-9');
 
   await expect(resourceKind(page)).toHaveValue('schedule');
   await expect(page.getByLabel(AUDIT_COPY.resourceIdLabel, { exact: true })).toHaveValue('s-9');

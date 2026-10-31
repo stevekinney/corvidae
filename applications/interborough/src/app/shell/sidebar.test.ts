@@ -88,7 +88,7 @@ const DESTINATIONS = [
 describe('the sidebar', () => {
   test('holds the destinations in one ordered list, Settings pinned last', () => {
     stubEngine();
-    landAt('/chat');
+    landAt('/chats');
     const { getByRole } = mount();
 
     const navigation = getByRole('navigation', { name: 'Views' });
@@ -105,7 +105,7 @@ describe('the sidebar', () => {
 
   test('links each entry to its route', () => {
     stubEngine();
-    landAt('/chat');
+    landAt('/chats');
     const { getByRole } = mount();
     const paths = Object.fromEntries(
       DESTINATIONS.map((label) => [
@@ -114,20 +114,20 @@ describe('the sidebar', () => {
       ]),
     );
     expect(paths).toEqual({
-      Chat: '/chat',
+      Chat: '/chats',
       Reviews: '/reviews',
       Agents: '/agents',
       Workflows: '/workflows',
       Runs: '/runs',
       Schedules: '/schedules',
-      Health: '/engine',
+      Health: '/health',
       Settings: '/settings',
     });
   });
 
   test('marks Chat current on the home screen and on a session', () => {
     stubEngine();
-    for (const path of ['/', '/chat', '/chat/session-1']) {
+    for (const path of ['/', '/chats', '/chats/session-1']) {
       landAt(path);
       const { getByRole, unmount } = mount();
       expect(getByRole('link', { name: /^Chat/ }).getAttribute('aria-current'), path).toBe('page');
@@ -146,7 +146,7 @@ describe('the sidebar', () => {
 
   test('navigates without leaving the page', async () => {
     stubEngine();
-    landAt('/chat');
+    landAt('/chats');
     const { getByRole } = mount();
     await fireEvent.click(getByRole('link', { name: /^Runs/ }));
     expect(router.pathname).toBe('/runs');
@@ -154,7 +154,7 @@ describe('the sidebar', () => {
 
   test('shows the pending reviews on Reviews and the unhealthy workers on Health', async () => {
     stubEngine({ pendingReviews: 3, unhealthyWorkers: 2 });
-    landAt('/chat');
+    landAt('/chats');
     const { getByRole } = mount();
     await waitFor(() => expect(getByRole('link', { name: /^Reviews\s*3$/ })).not.toBeNull());
     await waitFor(() => expect(getByRole('link', { name: /^Health.*\s2$/ })).not.toBeNull());
@@ -162,24 +162,24 @@ describe('the sidebar', () => {
 
   test('counts the Bureau’s pending reviews and the engine’s as one number', async () => {
     stubEngine({ bureauReviews: 2, pendingReviews: 3 });
-    landAt('/chat');
+    landAt('/chats');
     const { getByRole } = mount();
     await waitFor(() => expect(getByRole('link', { name: /^Reviews\s*5$/ })).not.toBeNull());
   });
 
   test('counts the Bureau’s alone when the principal does not hold reviews:read', async () => {
     stubEngine({ bureauReviews: 2, pendingReviews: 3 });
-    landAt('/chat');
+    landAt('/chats');
     const { getByRole } = mount(AUTHORIZATION_SCOPES.filter((scope) => scope !== 'reviews:read'));
     await waitFor(() => expect(getByRole('link', { name: /^Reviews\s*2$/ })).not.toBeNull());
   });
 
   test('Health carries the engine status dot, and says the status in words', () => {
     stubEngine();
-    landAt('/chat');
+    landAt('/chats');
     const { getByRole } = mount();
     const link = getByRole('link', { name: /^Health\s*Engine healthy/ });
-    expect(link.getAttribute('href')).toBe('/engine');
+    expect(link.getAttribute('href')).toBe('/health');
     expect(link.querySelector('.cinder-status-dot')?.getAttribute('data-cinder-status')).toBe(
       'online',
     );
@@ -187,7 +187,7 @@ describe('the sidebar', () => {
 
   test('turns the health dot red, and names the problem, when the engine is unreachable', () => {
     stubEngine();
-    landAt('/chat');
+    landAt('/chats');
     const { getByRole } = mount(undefined, 'closed');
     const link = getByRole('link', { name: /^Health\s*Engine unreachable/ });
     expect(link.querySelector('.cinder-status-dot')?.getAttribute('data-cinder-status')).toBe(
@@ -197,7 +197,7 @@ describe('the sidebar', () => {
 
   test('names the keys that open a view in its title', () => {
     stubEngine();
-    landAt('/chat');
+    landAt('/chats');
     const { getByRole } = mount();
     const titles = Object.fromEntries(
       DESTINATIONS.map((label) => [
@@ -219,7 +219,7 @@ describe('the sidebar', () => {
 
   test('folds to its icon rail from its header, and opens again', async () => {
     stubEngine();
-    landAt('/chat');
+    landAt('/chats');
     const { getByRole } = mount();
     await fireEvent.click(getByRole('button', { name: 'Collapse sidebar' }));
     expect(document.querySelector('.weft-shell-sidebar--collapsed')).not.toBeNull();
@@ -233,7 +233,7 @@ describe('the sidebar', () => {
 describe('the sidebar on a narrow viewport', () => {
   test('closes its drawer, and records that it is collapsed, when the drawer is dismissed', async () => {
     stubEngine();
-    landAt('/chat');
+    landAt('/chats');
     const original = window.matchMedia;
     window.matchMedia = ((query: string) => ({
       matches: query.includes('max-width'),

@@ -94,7 +94,7 @@ describe('activity worker provenance', () => {
     expect(getByText('Worker provenance')).not.toBeNull();
     const link = getByText('Open the full task ledger');
     expect(link.getAttribute('href')).toBe(
-      `/workers?tab=diagnostics&task=${encodeURIComponent(activity.token)}`,
+      `/health/workers?tab=diagnostics&task=${encodeURIComponent(activity.token)}`,
     );
   });
 

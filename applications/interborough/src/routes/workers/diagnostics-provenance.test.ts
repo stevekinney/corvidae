@@ -33,7 +33,7 @@ function resetLocation(path: string): void {
   router.navigate(path, { replace: true });
 }
 
-beforeEach(() => resetLocation('/workers'));
+beforeEach(() => resetLocation('/health/workers'));
 afterEach(() => {
   scripted?.restore();
   scripted = undefined;
@@ -84,13 +84,13 @@ describe('provenance filter parsing', () => {
   });
 
   test('deep-links a worker with the list tab pattern', () => {
-    expect(workerDeepLink('wkr 1')).toBe('/workers?tab=list&worker=wkr+1');
+    expect(workerDeepLink('wkr 1')).toBe('/health/workers?tab=list&worker=wkr+1');
   });
 });
 
 describe('Workers route — Diagnostics provenance filters', () => {
   test('sends the URL filters to the server and links each result to its worker', async () => {
-    resetLocation('/workers?tab=diagnostics&buildId=build-2&deploymentName=payments');
+    resetLocation('/health/workers?tab=diagnostics&buildId=build-2&deploymentName=payments');
     scripted = new ScriptedFetch();
     routeHappyPaths(scripted, {
       diagnosticsItems: [
@@ -129,7 +129,7 @@ describe('Workers route — Diagnostics provenance filters', () => {
   });
 
   test('applying filters writes them to the URL; clearing removes them', async () => {
-    resetLocation('/workers?tab=diagnostics');
+    resetLocation('/health/workers?tab=diagnostics');
     scripted = new ScriptedFetch();
     routeHappyPaths(scripted);
 
@@ -146,7 +146,7 @@ describe('Workers route — Diagnostics provenance filters', () => {
   });
 
   test('a filter that matches nothing says so instead of claiming the fleet is healthy', async () => {
-    resetLocation('/workers?tab=diagnostics&workerId=nobody');
+    resetLocation('/health/workers?tab=diagnostics&workerId=nobody');
     scripted = new ScriptedFetch();
     routeHappyPaths(scripted);
 
@@ -155,7 +155,7 @@ describe('Workers route — Diagnostics provenance filters', () => {
   });
 
   test('a failed filtered read keeps the filter bar so the operator can adjust it', async () => {
-    resetLocation('/workers?tab=diagnostics&buildId=build-2');
+    resetLocation('/health/workers?tab=diagnostics&buildId=build-2');
     scripted = new ScriptedFetch();
     routeHappyPaths(scripted);
     scripted.routeJsonRpcMethodError(
@@ -173,7 +173,7 @@ describe('Workers route — Diagnostics provenance filters', () => {
   });
 
   test('a filtered read stays loading with the filter bar visible', async () => {
-    resetLocation('/workers?tab=diagnostics&buildId=build-2');
+    resetLocation('/health/workers?tab=diagnostics&buildId=build-2');
     scripted = new ScriptedFetch();
     routeHappyPaths(scripted);
     // Only the filtered read is deferred: the page's tabs wait for the unfiltered one.

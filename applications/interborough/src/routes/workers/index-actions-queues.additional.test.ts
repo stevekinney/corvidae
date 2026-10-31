@@ -43,8 +43,8 @@ function happyDomAPI(): DetachedWindowAPI {
   return window.happyDOM;
 }
 
-/** Same convention `system/index.test.ts` (Track E2) and `router.svelte.test.ts` (T1.3) establish: give the window a real origin before the reactive `router` singleton is touched. */
-function resetLocation(path = '/workers'): void {
+/** Same convention `system/api-reference-sections.test.ts` (Track E2) and `router.svelte.test.ts` (T1.3) establish: give the window a real origin before the reactive `router` singleton is touched. */
+function resetLocation(path = '/health/workers'): void {
   happyDomAPI().setURL('http://localhost/');
   router.navigate(path, { replace: true });
 }
@@ -104,7 +104,7 @@ describe('Workers route — Task queues tab, queue selection and dead-letter cle
       operationId: 'op_on_queue',
     });
 
-    resetLocation('/workers?tab=queues&queue=payments');
+    resetLocation('/health/workers?tab=queues&queue=payments');
     const { findAllByRole, findByText, queryByText } = await renderWorkersRoute();
 
     expect(await findByText('wkr_on_queue', { exact: false })).not.toBeNull();
@@ -134,7 +134,7 @@ describe('Workers route — Task queues tab, queue selection and dead-letter cle
       },
     );
 
-    resetLocation('/workers?tab=queues&queue=payments');
+    resetLocation('/health/workers?tab=queues&queue=payments');
     const { findByLabelText, findByRole } = await renderWorkersRoute();
 
     await fireEvent.click(await findByRole('button', { name: 'Clear' }));
@@ -242,7 +242,7 @@ describe('Workers route — loading skeletons', () => {
       'weft.tasks.diagnostics',
       (params) => params['workerId'] !== undefined,
     );
-    resetLocation('/workers?tab=diagnostics&workerId=worker-1');
+    resetLocation('/health/workers?tab=diagnostics&workerId=worker-1');
 
     const { findByLabelText } = render(WorkersRouteTestHarness, {
       props: {

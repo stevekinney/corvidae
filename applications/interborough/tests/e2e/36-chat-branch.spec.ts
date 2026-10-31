@@ -63,7 +63,7 @@ for (const viewport of VIEWPORTS) {
     await page.setViewportSize(viewport);
     const parentId = newThreadId('branch');
     await seedSession(request, parentId);
-    await page.goto(`/chat/${parentId}`);
+    await page.goto(`/chats/${parentId}`);
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
     await expect(page.locator(ASSISTANT_ROW)).toHaveCount(2);
     // Each turn ends in a reply that offers a branch.
@@ -74,9 +74,9 @@ for (const viewport of VIEWPORTS) {
     await page.locator(ASSISTANT_ROW).first().hover();
     await branchAction(page).first().click();
     await expect(page).toHaveURL(
-      (url) => url.pathname.startsWith('/chat/') && url.pathname !== `/chat/${parentId}`,
+      (url) => url.pathname.startsWith('/chats/') && url.pathname !== `/chats/${parentId}`,
     );
-    const branchId = new URL(page.url()).pathname.slice('/chat/'.length);
+    const branchId = new URL(page.url()).pathname.slice('/chats/'.length);
     expect(branchId).not.toBe('new');
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
     await expect(page.locator(USER_ROW)).toHaveCount(1);
@@ -89,7 +89,7 @@ for (const viewport of VIEWPORTS) {
     await expect(origin).toContainText(CHAT_COPY.branch.branchedFrom);
     await checkA11y(`a branch, at ${viewport.width} pixels`);
     await origin.getByRole('link').click();
-    await expect(page).toHaveURL(new RegExp(`/chat/${parentId}$`));
+    await expect(page).toHaveURL(new RegExp(`/chats/${parentId}$`));
     await expect(page.locator(USER_ROW)).toHaveCount(2);
     await expect(page.locator('.weft-chat-header__origin')).toHaveCount(0);
   });
@@ -117,7 +117,7 @@ test('stays on the session and says why when the Bureau refuses the branch', asy
       },
     });
   });
-  await page.goto(`/chat/${parentId}`);
+  await page.goto(`/chats/${parentId}`);
   await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
 
   await page.locator(ASSISTANT_ROW).first().hover();
@@ -126,7 +126,7 @@ test('stays on the session and says why when the Bureau refuses the branch', asy
   await expect(
     page.getByText(CHAT_COPY.branch.refused['branch-with-pending-approval']),
   ).toBeVisible();
-  await expect(page).toHaveURL(new RegExp(`/chat/${parentId}$`));
+  await expect(page).toHaveURL(new RegExp(`/chats/${parentId}$`));
   await checkA11y('a refused branch');
 });
 
@@ -140,7 +140,7 @@ test('offers a branch only on the last reply of a run, not on the earlier reply 
   await expectWaiting(request, 1);
   await releaseBarrier(request);
   await seeded;
-  await page.goto(`/chat/${threadId}`);
+  await page.goto(`/chats/${threadId}`);
   await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
   await page.getByRole('textbox').fill('Start the work');
   await page.getByRole('textbox').press('Enter');

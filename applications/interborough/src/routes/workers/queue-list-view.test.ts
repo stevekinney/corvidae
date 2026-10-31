@@ -108,7 +108,7 @@ describe('QueueListView — row link navigation', () => {
     });
 
     const link = getByText('payments');
-    expect(link.getAttribute('href')).toContain('/workers?tab=queues&queue=payments');
+    expect(link.getAttribute('href')).toContain('/health/workers?tab=queues&queue=payments');
 
     // A plain left click is handled client-side (router navigation) and must
     // not throw, exercising the onQueueLinkClick branch that calls

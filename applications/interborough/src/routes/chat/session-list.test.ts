@@ -32,7 +32,7 @@ describe('the list of sessions', () => {
       'bureau.reviews.list': () => ({ reviews: [] }),
     });
     restore = served.restore;
-    landAt('/chat');
+    landAt('/chats');
 
     const { findByRole } = mount();
 
@@ -46,7 +46,7 @@ describe('the list of sessions', () => {
     expect(rows[0]?.textContent).toContain(CONTEXT.lastMessagePreview);
     expect(rows[0]?.textContent).toContain(CONTEXT.agentName);
     expect(list.textContent).not.toContain('Agent:');
-    expect(rows[0]?.querySelector('a')?.getAttribute('href')).toBe('/chat/session-0');
+    expect(rows[0]?.querySelector('a')?.getAttribute('href')).toBe('/chats/session-0');
     expect(rows[0]?.querySelector('time')).not.toBeNull();
     expect(served.calls.find((call) => call.method === 'bureau.contexts.list')?.params).toEqual({
       // Only the chats a person started: a goal's or a schedule's session is reached from its run.
@@ -92,7 +92,7 @@ describe('the list of sessions', () => {
       }),
     });
     restore = served.restore;
-    landAt('/chat');
+    landAt('/chats');
 
     const { findByRole } = mount();
 
@@ -146,7 +146,7 @@ describe('the list of sessions', () => {
       },
     });
     restore = served.restore;
-    landAt('/chat');
+    landAt('/chats');
 
     const { findByRole } = mount();
 
@@ -193,7 +193,7 @@ describe('the list of sessions', () => {
       }),
     });
     restore = served.restore;
-    landAt('/chat');
+    landAt('/chats');
 
     const { findByRole } = mount();
 
@@ -220,7 +220,7 @@ describe('the list of sessions', () => {
       }),
     });
     restore = served.restore;
-    landAt('/chat');
+    landAt('/chats');
 
     const { findByRole } = mount();
 
@@ -235,7 +235,7 @@ describe('the list of sessions', () => {
       'bureau.reviews.list': () => ({ reviews: [] }),
     });
     restore = served.restore;
-    landAt('/chat');
+    landAt('/chats');
 
     const { findByRole } = mount();
 
@@ -251,7 +251,7 @@ describe('the list of sessions', () => {
       'bureau.reviews.list': () => ({ reviews: [] }),
     });
     restore = served.restore;
-    landAt('/chat');
+    landAt('/chats');
     const { findByRole } = mount();
 
     const more = await findByRole('button', { name: 'Load more' });
@@ -276,7 +276,7 @@ describe('the list of sessions', () => {
       'bureau.reviews.list': () => ({ reviews: [] }),
     });
     restore = served.restore;
-    landAt('/chat');
+    landAt('/chats');
     const { container, findByRole } = mount();
 
     const more = await findByRole('button', { name: 'Load more' });
@@ -293,13 +293,13 @@ describe('the list of sessions', () => {
       'bureau.reviews.list': () => ({ reviews: [] }),
     });
     restore = served.restore;
-    landAt('/chat');
+    landAt('/chats');
     const { findByRole } = mount();
 
     const row = await findByRole('link', { name: /Chat 0/ });
     row.click();
 
-    expect(router.pathname).toBe('/chat/session-0');
+    expect(router.pathname).toBe('/chats/session-0');
   });
 
   test('leaves a modified click on a row to the browser, and shows no time for a chat whose time is unreadable', async () => {
@@ -311,33 +311,33 @@ describe('the list of sessions', () => {
       'bureau.reviews.list': () => ({ reviews: [] }),
     });
     restore = served.restore;
-    landAt('/chat');
+    landAt('/chats');
     const { findByRole } = mount();
     const row = await findByRole('link', { name: /Chat 0/ });
 
     row.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true }));
 
-    expect(router.pathname).toBe('/chat');
+    expect(router.pathname).toBe('/chats');
     expect(row.querySelector('time')).toBeNull();
   });
 
-  test('has a New chat action that opens /chat/new, and leaves a modified click to the browser', async () => {
+  test('has a New chat action that opens /chats/new, and leaves a modified click to the browser', async () => {
     const served = bureau({
       'bureau.contexts.list': () => page(0, 1, false),
       'bureau.reviews.list': () => ({ reviews: [] }),
     });
     restore = served.restore;
-    landAt('/chat');
+    landAt('/chats');
     const { findByRole } = mount();
     const action = await findByRole('link', { name: 'New chat' });
 
     action.dispatchEvent(
       new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true }),
     );
-    expect(router.pathname).toBe('/chat');
+    expect(router.pathname).toBe('/chats');
     action.click();
 
-    expect(action.getAttribute('href')).toBe('/chat/new');
-    expect(router.pathname).toBe('/chat/new');
+    expect(action.getAttribute('href')).toBe('/chats/new');
+    expect(router.pathname).toBe('/chats/new');
   });
 });

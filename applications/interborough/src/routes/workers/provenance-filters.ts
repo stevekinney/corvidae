@@ -51,11 +51,11 @@ export function hasProvenanceFilters(filters: TaskProvenanceFilters): boolean {
 /** The Workers list deep link that selects one worker (`worker-list-view.svelte`'s pattern). */
 export function workerDeepLink(workerId: string): string {
   const params = new URLSearchParams({ tab: 'list', worker: workerId });
-  return `/workers?${params.toString()}`;
+  return `/health/workers?${params.toString()}`;
 }
 
 /** The Diagnostics deep link that opens one task's ledger. */
 export function taskLedgerDeepLink(operationId: string): string {
   const params = new URLSearchParams({ tab: 'diagnostics', task: operationId });
-  return `/workers?${params.toString()}`;
+  return `/health/workers?${params.toString()}`;
 }

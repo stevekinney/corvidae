@@ -22,11 +22,11 @@
    * session that continues from that reply. A branch's header says where it came from
    * (`branch-origin.svelte`).
    *
-   * A new chat (`isNew`, at `/chat/new`) has no session yet. The client names the thread, the agent
+   * A new chat (`isNew`, at `/chats/new`) has no session yet. The client names the thread, the agent
    * is chosen in the header, the transcript's place shows the agent's card and the prompts it suggests
    * (`new-chat-welcome.svelte`; a prompt fills the composer and sends nothing), and the first message
    * starts the run. When the run has started
-   * the address becomes `/chat/:sessionId` by replacing the history entry, with this page kept
+   * the address becomes `/chats/:chat` by replacing the history entry, with this page kept
    * mounted (`router.navigate`'s `keep`), and the agent is fixed from then on.
    */
   import { onMount, untrack } from 'svelte';
@@ -175,7 +175,7 @@
   function chooseAgent(value: string): void {
     agent = value;
     chosen = true;
-    router.navigate(`/chat/new?agent=${encodeURIComponent(value)}`, { replace: true });
+    router.navigate(`/chats/new?agent=${encodeURIComponent(value)}`, { replace: true });
   }
 
   /**

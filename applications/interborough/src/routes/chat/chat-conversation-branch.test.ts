@@ -54,7 +54,7 @@ function serve(
     },
   );
   restore = served.restore;
-  landAt('/chat/session-1');
+  landAt('/chats/session-1');
   return served;
 }
 
@@ -157,7 +157,7 @@ describe('Branch from here', () => {
       },
     );
     restore = served.restore;
-    landAt('/chat/session-1');
+    landAt('/chats/session-1');
     const { container, findByText } = mount();
     await findByText('Early reply');
     // The run is going: Chat offers Stop.
@@ -188,7 +188,7 @@ describe('Branch from here', () => {
     if (first === undefined) throw new Error('The first reply offers no branch.');
     await fireEvent.click(first);
 
-    await waitFor(() => expect(router.pathname).toBe('/chat/branch-1'));
+    await waitFor(() => expect(router.pathname).toBe('/chats/branch-1'));
     const [fork] = served.calls.filter((call) => call.method === 'bureau.contexts.fork');
     expect(fork?.params).toMatchObject({ contextId: 'session-1', throughMessageId: 'a1' });
     expect(typeof fork?.params['commandId']).toBe('string');
@@ -229,7 +229,7 @@ describe('Branch from here', () => {
       await fireEvent.click(first);
 
       expect(await findByText(copy)).not.toBeNull();
-      expect(router.pathname).toBe('/chat/session-1');
+      expect(router.pathname).toBe('/chats/session-1');
     });
   }
 });
@@ -326,7 +326,7 @@ describe('a branch’s header', () => {
     const { findByRole, container } = mount();
 
     const link = await findByRole('link', { name: 'The original chat' });
-    expect(link.getAttribute('href')).toBe('/chat/parent-1');
+    expect(link.getAttribute('href')).toBe('/chats/parent-1');
     expect(container.querySelector('.weft-chat-header')?.textContent).toContain(
       CHAT_COPY.branch.branchedFrom,
     );

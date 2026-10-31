@@ -42,7 +42,7 @@
   import type { WorkflowSummary } from '@lostgradient/weft';
 
   import { formatRelativeTime, truncateId } from '../../../lib/format/index.ts';
-  import { router, workflowDetailPath } from '../../../lib/router.svelte.ts';
+  import { router, workflowRunPath } from '../../../lib/router.svelte.ts';
   import type { RevisionActiveComparison } from '../../../lib/workflow-revision.ts';
   import RevisionComparisonBadge from '../revision-comparison-badge.svelte';
   import { workflowStatusBadge } from './workflow-status-badge.ts';
@@ -105,12 +105,12 @@
    * selection checkbox or the copy button, re-navigating away from a
    * selection/copy action the user did not ask to leave the page for.
    */
-  function onIdLinkClick(event: MouseEvent, workflowId: string): void {
+  function onIdLinkClick(event: MouseEvent, workflowType: string, workflowId: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
       return;
     }
     event.preventDefault();
-    router.navigate(workflowDetailPath(workflowId));
+    router.navigate(workflowRunPath(workflowType, workflowId));
   }
 </script>
 
@@ -161,8 +161,8 @@
             <Tooltip text={row.id} placement="top">
               <a
                 class="weft-workflows-table__id-link"
-                href={router.href(workflowDetailPath(row.id))}
-                onclick={(event) => onIdLinkClick(event, row.id)}
+                href={router.href(workflowRunPath(row.type, row.id))}
+                onclick={(event) => onIdLinkClick(event, row.type, row.id)}
               >
                 <code>{truncateId(row.id)}</code>
               </a>

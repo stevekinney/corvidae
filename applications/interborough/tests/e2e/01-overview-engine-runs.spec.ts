@@ -21,7 +21,7 @@ for (const viewport of VIEWPORTS) {
     checkA11y,
   }) => {
     await page.setViewportSize(viewport);
-    await page.goto('/engine');
+    await page.goto('/health');
 
     const failedCount = page.getByRole('link', { name: /^Failed\s+\d+$/ });
     await expect(failedCount).toBeVisible();
@@ -32,7 +32,7 @@ for (const viewport of VIEWPORTS) {
 
     await failedCount.click();
 
-    await expect(page).toHaveURL(/\/engine\/runs\?status=failed$/);
+    await expect(page).toHaveURL(/\/health\/runs\?status=failed$/);
     await expect(page.getByRole('heading', { level: 1, name: 'Engine runs' })).toBeVisible();
     // Across types: a count spans every workflow type the engine holds.
     await expect(page.getByRole('row', { name: /payment-failing/ }).first()).toBeVisible();

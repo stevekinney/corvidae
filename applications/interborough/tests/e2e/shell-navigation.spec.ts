@@ -11,13 +11,13 @@ const DESKTOP = { width: 1280, height: 800 } as const;
 
 /** Each `g` shortcut U1 registers: its letter, the address it opens, and the sidebar item's name. */
 const SHORTCUTS = [
-  { letter: 'c', path: '/chat', label: VIEW_COPY.chat.label },
+  { letter: 'c', path: '/chats', label: VIEW_COPY.chat.label },
   { letter: 'v', path: '/reviews', label: VIEW_COPY.reviews.label },
   { letter: 'a', path: '/agents', label: VIEW_COPY.agents.label },
   { letter: 'w', path: '/workflows', label: VIEW_COPY.workflows.label },
   { letter: 'r', path: '/runs', label: VIEW_COPY.runs.label },
   { letter: 's', path: '/schedules', label: VIEW_COPY.schedules.label },
-  { letter: 'e', path: '/engine', label: VIEW_COPY.engine.label },
+  { letter: 'e', path: '/health', label: VIEW_COPY.health.label },
   { letter: 'n', path: '/settings', label: VIEW_COPY.settings.label },
 ] as const;
 
@@ -90,7 +90,7 @@ test('compact density from quick settings applies to every view and survives a r
 });
 
 test('the breadcrumb trail follows the route, and its links open their pages', async ({ page }) => {
-  await page.goto('/agents/assistant/memory');
+  await page.goto('/agents/assistant/memories');
   const trail = page.getByRole('banner').getByRole('navigation', { name: 'Breadcrumb' });
   await expect(trail.getByRole('link', { name: 'Agents' })).toBeVisible();
   await expect(trail.getByText('Memory')).toHaveAttribute('aria-current', 'page');

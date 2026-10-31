@@ -37,7 +37,7 @@ describe('where / goes', () => {
   test('is the chat updated most recently, which the Bureau lists first', async () => {
     const calls = answering([context('newest session')]);
 
-    expect(await chatHomePath()).toBe('/chat/newest%20session');
+    expect(await chatHomePath()).toBe('/chats/newest%20session');
     expect(calls[0]).toMatchObject({ method: 'bureau.contexts.list', params: { limit: 1 } });
   });
 
@@ -52,6 +52,6 @@ describe('where / goes', () => {
   test('is the chat list when there is no session', async () => {
     answering([]);
 
-    expect(await chatHomePath()).toBe('/chat');
+    expect(await chatHomePath()).toBe('/chats');
   });
 });

@@ -26,7 +26,7 @@ function happyDomAPI(): DetachedWindowAPI {
 // `window.location` has no origin, and `history.pushState` is a silent
 // no-op from `about:blank` — give the window a real origin before any test
 // here drives `router.navigate`.
-function resetLocation(path = '/system?tab=alerts'): void {
+function resetLocation(path = '/health?tab=alerts'): void {
   happyDomAPI().setURL('http://localhost/');
   router.navigate(path, { replace: true });
 }
@@ -67,14 +67,14 @@ describe('AlertsTab — active alerts (weft.alerts.list)', () => {
     ).not.toBeNull();
 
     // The empty state must name a concrete next step (plan §10.4 pattern 7)
-    // that lands directly on the Diagnostics sub-view, not just `/workers`'
+    // that lands directly on the Diagnostics sub-view, not just `/health/workers`'
     // default (fleet) tab — `?tab=diagnostics` is what
     // `src/routes/workers/index.svelte` actually reads.
     const diagnosticsLink = await findByRole('link', { name: 'Open Diagnostics' });
-    expect(diagnosticsLink.getAttribute('href')).toBe('/workers?tab=diagnostics');
+    expect(diagnosticsLink.getAttribute('href')).toBe('/health/workers?tab=diagnostics');
 
     await fireEvent.click(diagnosticsLink);
-    expect(router.pathname).toBe('/workers');
+    expect(router.pathname).toBe('/health/workers');
     expect(router.search.get('tab')).toBe('diagnostics');
   });
 
@@ -156,11 +156,11 @@ describe('AlertsTab — session activity log', () => {
     expect(await findByText('Firing')).not.toBeNull();
 
     // No `workflowId` on this frame's payload — `detailsHref` falls back to
-    // `/system` (`alerts-tab.svelte`'s own `detailsHref`).
+    // `/health?tab=alerts` (`alerts-tab.svelte`'s own `detailsHref`).
     const detailsLink = await findByRole('link', { name: 'Details' });
-    expect(detailsLink.getAttribute('href')).toBe('/system');
+    expect(detailsLink.getAttribute('href')).toBe('/health?tab=alerts');
     await fireEvent.click(detailsLink);
-    expect(router.pathname).toBe('/system');
+    expect(router.pathname).toBe('/health');
   });
 
   test('a Details link for a workflow-scoped activity row navigates to that workflow', async () => {

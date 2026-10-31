@@ -144,7 +144,7 @@
   };
 
   function detailsHref(row: AlertRow): string {
-    return row.workflowId ? workflowDetailPath(row.workflowId) : '/system';
+    return row.workflowId ? workflowDetailPath(row.workflowId) : '/health?tab=alerts';
   }
 
   function formatTime(atMs: number): string {
@@ -177,10 +177,10 @@
       {/snippet}
       {#snippet action()}
         <a
-          href={router.href('/workers?tab=diagnostics')}
+          href={router.href('/health/workers?tab=diagnostics')}
           onclick={(event) => {
             event.preventDefault();
-            router.navigate('/workers?tab=diagnostics');
+            router.navigate('/health/workers?tab=diagnostics');
           }}
         >
           Open Diagnostics

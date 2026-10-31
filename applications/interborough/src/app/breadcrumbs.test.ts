@@ -17,17 +17,17 @@ const NONE = new Map<string, string>();
 describe('the breadcrumb trail', () => {
   test('a top-level page is its view’s name alone', () => {
     expect(breadcrumbTrail('/agents', NONE)).toEqual([{ label: VIEW_COPY.agents.label }]);
-    expect(breadcrumbTrail('/engine', NONE)).toEqual([{ label: 'Health' }]);
+    expect(breadcrumbTrail('/health', NONE)).toEqual([{ label: 'Health' }]);
   });
 
   test('a nested page links each ancestor and shows a parameter until the page names it', () => {
-    expect(breadcrumbTrail('/agents/assistant-1/memory', NONE)).toEqual([
+    expect(breadcrumbTrail('/agents/assistant-1/memories', NONE)).toEqual([
       { label: 'Agents', href: '/agents' },
       { label: 'assistant-1', href: '/agents/assistant-1' },
       { label: 'Memory' },
     ]);
     const labels = new Map([['/agents/assistant-1', 'assistant']]);
-    expect(breadcrumbTrail('/agents/assistant-1/memory', labels)).toEqual([
+    expect(breadcrumbTrail('/agents/assistant-1/memories', labels)).toEqual([
       { label: 'Agents', href: '/agents' },
       { label: 'assistant', href: '/agents/assistant-1' },
       { label: 'Memory' },
@@ -73,7 +73,7 @@ describe('the breadcrumb trail', () => {
   });
 
   test('a mounted page supplies its label, and the parameter returns when it unmounts', async () => {
-    const path = '/agents/assistant-2/memory';
+    const path = '/agents/assistant-2/memories';
     const view = render(Harness, { props: { path: '/agents/assistant-2', label: undefined } });
     await tick();
     expect(breadcrumbTrail(path)[1]?.label).toBe('assistant-2');

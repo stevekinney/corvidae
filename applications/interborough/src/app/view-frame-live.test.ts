@@ -167,8 +167,8 @@ describe('the empty runs of a workflow type, which follow the engine', () => {
     workflowStub.on('bureau.deployment.get', () => ({ id: 'bureau-1' }));
     feeds = createLiveFeeds();
     const view = mount('workflows', {
-      parameters: { type: 'order-processing' },
-      pattern: '/workflows/:type/runs',
+      parameters: { workflow: 'order-processing' },
+      pattern: '/workflows/:workflow/runs',
     });
     return { empty, ...view };
   }

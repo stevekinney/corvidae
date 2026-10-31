@@ -1,9 +1,9 @@
 /**
- * Runs at `/runs` and `/runs/:id` against the real host, in the words of a task: the list says which
+ * Runs at `/runs` and `/runs/:run` against the real host, in the words of a task: the list says which
  * agent ran and what started it, and a run's page shows its answer, answers a question it waits on
  * with one text field, follows the run's stream across a dropped connection and across a reload,
  * resuming from the last cursor each time, and cancels it after a confirmation, showing where its
- * cleanup stands. `/tasks` and `/tasks/:id` go to their runs. The sessions are
+ * cleanup stands. The sessions are
  * started through the AG-UI mount, the way a client other than the page would, and the runs that
  * must still be going when Playwright acts are held on the barrier (`barrier-agent.ts`).
  */
@@ -121,7 +121,7 @@ test.describe('the runs of a chat', () => {
     await expect(row).toHaveAttribute('data-status', 'Done');
     await expect(row.getByRole('link', { name: 'Say hello' })).toHaveAttribute(
       'href',
-      `/chat/${threadId}`,
+      `/chats/${threadId}`,
     );
     await checkA11y('the runs list');
     await row.getByRole('link', { name: 'assistant' }).click();
@@ -133,7 +133,7 @@ test.describe('the runs of a chat', () => {
     // Open chat is the first action, and the answer is the stream's: the task view has none.
     await expect(page.getByRole('link', { name: 'Open chat' })).toHaveAttribute(
       'href',
-      `/chat/${threadId}`,
+      `/chats/${threadId}`,
     );
     await expect(page.getByRole('heading', { level: 2, name: 'Answer' })).toBeVisible();
     await expect(page.getByText(ASSISTANT_REPLY)).toBeVisible();
@@ -144,7 +144,7 @@ test.describe('the runs of a chat', () => {
     await checkA11y('a completed run');
   });
 
-  test('narrow by what started them, and /tasks goes to the runs without being in the navigation', async ({
+  test('narrow by what started them, and the retired Tasks addresses are not routes', async ({
     page,
     request,
   }) => {
@@ -156,10 +156,13 @@ test.describe('the runs of a chat', () => {
     await expect(page.locator(`[data-run="${task.id}"]`)).toBeVisible();
     await expect(page.locator('[data-run^="goal-"]')).toHaveCount(0);
 
+    // Pre-release, an old address has no redirect: `/tasks` is no route, and the outlet says so.
     await page.goto('/tasks');
-    await expect(page).toHaveURL(/\/runs\?startedBy=chat$/);
+    await expect(page).toHaveURL(/\/tasks$/);
+    await expect(page.locator('[data-run]')).toHaveCount(0);
     await page.goto(`/tasks/${task.id}`);
-    await expect(page).toHaveURL(new RegExp(`/runs/${task.id}$`));
+    await expect(page).toHaveURL(new RegExp(`/tasks/${task.id}$`));
+    await expect(page.locator('[data-run]')).toHaveCount(0);
     await expect(
       page.getByRole('navigation', { name: 'Views' }).getByRole('link', { name: /Tasks/ }),
     ).toHaveCount(0);

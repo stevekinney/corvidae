@@ -1,7 +1,7 @@
 /**
  * The paths that name a thing by its identifier, for the identifiers a path cannot carry. A browser
  * resolves `.` and `..` out of a path before the client router can read them, and a chat session
- * named `new` is the static `/chat/new` route's. The path builders put such an identifier in the
+ * named `new` is the static `/chats/new` route's. The path builders put such an identifier in the
  * query, under a placeholder segment, and the router puts it back (`router.svelte.ts`'s `current`).
  *
  * This module imports nothing of the router, so a route's own loader can build a path.
@@ -28,10 +28,19 @@ const ESCAPED_IDENTIFIERS: Readonly<
     }
   >
 > = {
-  '/runs/:id': { parameter: 'id', queryKey: '__weft_workflow_id', escapes: isDotOnly },
-  '/schedules/:id': { parameter: 'id', queryKey: '__weft_schedule_id', escapes: isDotOnly },
-  '/chat/:sessionId': {
-    parameter: 'sessionId',
+  '/runs/:run': { parameter: 'run', queryKey: '__weft_workflow_id', escapes: isDotOnly },
+  '/workflows/:workflow/runs/:run': {
+    parameter: 'run',
+    queryKey: '__weft_workflow_id',
+    escapes: isDotOnly,
+  },
+  '/schedules/:schedule': {
+    parameter: 'schedule',
+    queryKey: '__weft_schedule_id',
+    escapes: isDotOnly,
+  },
+  '/chats/:chat': {
+    parameter: 'chat',
     queryKey: '__weft_session_id',
     escapes: (id) => isDotOnly(id) || id === 'new',
   },
@@ -61,7 +70,7 @@ export function chatSessionPath(
   sessionId: string,
   search: URLSearchParams = new URLSearchParams(),
 ): string {
-  return identifierPath('chat', '/chat/:sessionId', sessionId, search);
+  return identifierPath('chats', '/chats/:chat', sessionId, search);
 }
 
 /**

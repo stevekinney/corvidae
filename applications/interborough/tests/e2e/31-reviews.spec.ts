@@ -23,9 +23,9 @@ async function send(page: Page, text: string): Promise<void> {
   await composer(page).press('Enter');
 }
 
-/** The session a new chat became once its first run began: the address replaces `/chat/new`. */
+/** The session a new chat became once its first run began: the address replaces `/chats/new`. */
 async function sessionOf(page: Page): Promise<string> {
-  await expect(page).toHaveURL(/\/chat\/(?!new)[^/?]+$/);
+  await expect(page).toHaveURL(/\/chats\/(?!new)[^/?]+$/);
   return decodeURIComponent(new URL(page.url()).pathname.split('/').pop() ?? '');
 }
 
@@ -43,7 +43,7 @@ function recordStarts(page: Page): Array<{ messages: unknown[]; resume?: unknown
 /** The Bureau's row for a session's review: the one list item that links to that session's chat. */
 const rowOfSession = (page: Page, threadId: string) =>
   page.locator('.ib-review').filter({
-    has: page.locator(`a[href="/chat/${threadId}"]`),
+    has: page.locator(`a[href="/chats/${threadId}"]`),
   });
 
 /** Whether a tool result in a conversation carries `refundedCents`, which only a refund that ran does. */
@@ -104,7 +104,7 @@ test.describe('a tool approval', () => {
     await page.goto('/reviews');
     await expect(rowOfSession(page, threadId)).toBeVisible();
 
-    await page.goto(`/chat/${threadId}`);
+    await page.goto(`/chats/${threadId}`);
     await page.locator('.ib-decision').getByRole('button', { name: 'Approve' }).click();
     // The run goes on after the approval and reports what it did.
     await expect(page.getByText('Order order-1001 was refunded.')).toBeVisible();
@@ -131,7 +131,7 @@ test.describe('a tool approval', () => {
     await expect(row).toHaveCount(0);
 
     // A chat opened afterwards reads the conversation the decision wrote into.
-    await page.goto(`/chat/${threadId}`);
+    await page.goto(`/chats/${threadId}`);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Refund order-1001');
     await expect(page.locator('.ib-decision')).toHaveCount(0);
     // The refund shows as a tool call that succeeded, with its result under Details.
@@ -149,7 +149,7 @@ test.describe('a tool approval', () => {
   }) => {
     const threadId = newThreadId('reviews-open-chat');
     await runToEnd(request, 'tool-runner', threadId, 'Refund order-1001');
-    await page.goto(`/chat/${threadId}`);
+    await page.goto(`/chats/${threadId}`);
     await expect(page.locator('.ib-decision')).toContainText('Refund order order-1001 for $42.00?');
 
     const inbox = await context.newPage();
@@ -170,7 +170,7 @@ test.describe('a decision made in the inbox', () => {
   }) => {
     // The run is started from this page, not found waiting: its first read of the pending reviews
     // can be the shared, cached one that predates the review, and must not take the call as decided.
-    await page.goto('/chat/new?agent=tool-runner');
+    await page.goto('/chats/new?agent=tool-runner');
     await send(page, 'Refund order 1234');
     await expect(page.locator('.ib-decision')).toBeVisible();
     const threadId = await sessionOf(page);
@@ -189,7 +189,7 @@ test.describe('a decision made in the inbox', () => {
   }) => {
     const starts = recordStarts(page);
     const asked = page.getByRole('alert').filter({ hasText: HUMAN_INPUT_PROMPT });
-    await page.goto('/chat/new?agent=request-human-input');
+    await page.goto('/chats/new?agent=request-human-input');
     await send(page, 'Release it');
     await expect(asked).toBeVisible();
     const threadId = await sessionOf(page);
@@ -310,7 +310,7 @@ test.describe('a scheduled run’s human wait', () => {
       has: page.locator(
         question.sessionId === undefined
           ? `a[href="/runs/${question.runId}"]`
-          : `a[href="/chat/${question.sessionId}"]`,
+          : `a[href="/chats/${question.sessionId}"]`,
       ),
     });
     await expect(row).toContainText(HUMAN_INPUT_PROMPT);

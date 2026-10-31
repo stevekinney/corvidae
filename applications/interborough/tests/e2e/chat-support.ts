@@ -51,7 +51,7 @@ export async function runToEnd(
 /**
  * Deletes the chats a spec started, through the Bureau's management plane, so the host holds only
  * what it held before the spec. A spec on a host that a later spec reads as fresh (the second
- * host's `/chat` is empty until a case starts a chat, and the Bureau lists every chat, approval and
+ * host's `/chats` is empty until a case starts a chat, and the Bureau lists every chat, approval and
  * notification in it) deletes what it started in an `afterAll`, whether the run passed or not. A
  * chat that was never started is not an error, so a case that failed before it started one cleans
  * up like one that did not. Anything else the Bureau refuses fails the hook loudly.

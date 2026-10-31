@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * `/audit`: the Bureau's audit trail, searched by time, type, and resource. The trail comes back
+   * `/health/audit`: the Bureau's audit trail, searched by time, type, and resource. The trail comes back
    * oldest first, as the Bureau returns it, as metadata only, and Load more follows the cursor the
    * Bureau hands back. The address owns the filters (`audit-filter.ts`), so a search can be linked
    * to, and a filter that is set stays set while the next page loads.

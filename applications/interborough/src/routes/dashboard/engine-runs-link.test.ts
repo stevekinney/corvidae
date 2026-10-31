@@ -9,13 +9,13 @@ describe('engineRunsPathForStatus', () => {
   test('opens the engine run list on the status word the engine uses, for each status', () => {
     expect(STATUS_DISPLAY_ORDER.map((status) => [status, engineRunsPathForStatus(status)])).toEqual(
       [
-        ['running', '/engine/runs?status=running'],
-        ['pending', '/engine/runs?status=pending'],
-        ['suspended', '/engine/runs?status=suspended'],
-        ['completed', '/engine/runs?status=completed'],
-        ['cancelled', '/engine/runs?status=cancelled'],
-        ['failed', '/engine/runs?status=failed'],
-        ['timed-out', '/engine/runs?status=timed-out'],
+        ['running', '/health/runs?status=running'],
+        ['pending', '/health/runs?status=pending'],
+        ['suspended', '/health/runs?status=suspended'],
+        ['completed', '/health/runs?status=completed'],
+        ['cancelled', '/health/runs?status=cancelled'],
+        ['failed', '/health/runs?status=failed'],
+        ['timed-out', '/health/runs?status=timed-out'],
       ],
     );
   });

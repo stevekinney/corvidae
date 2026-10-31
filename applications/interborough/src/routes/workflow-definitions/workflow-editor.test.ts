@@ -1,5 +1,5 @@
 /**
- * `/workflows/:type/edit`: a file's JSON in Cinder's editor, saved through `bureau.workflows.update`
+ * `/workflows/:workflow/edit`: a file's JSON in Cinder's editor, saved through `bureau.workflows.update`
  * against the hash it was read at. The file's `name` is stripped before the update, because the
  * update schema rejects keys it does not know. Text that is not JSON, and a document the Bureau
  * refuses, show the error and save nothing. A file that changed on disk is the "changed outside

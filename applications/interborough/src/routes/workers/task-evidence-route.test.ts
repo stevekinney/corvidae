@@ -23,7 +23,7 @@ let scripted: ScriptedFetch | undefined;
 beforeEach(() => {
   if (!(window instanceof Window)) throw new Error('expected a happy-dom window');
   window.happyDOM.setURL('http://localhost/');
-  router.navigate('/workers?tab=diagnostics&task=op_ledger_route', { replace: true });
+  router.navigate('/health/workers?tab=diagnostics&task=op_ledger_route', { replace: true });
 });
 afterEach(() => {
   scripted?.restore();

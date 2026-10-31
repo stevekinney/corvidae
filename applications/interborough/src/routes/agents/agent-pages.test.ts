@@ -122,13 +122,13 @@ describe('the list of agents', () => {
     );
     expect(rows('internal')?.querySelector('[data-testid="agent-last-chat"]')).toBeNull();
     // Every agent offers a chat, whether or not it opts into A2A.
-    expect(rows('internal')?.querySelector('a[href="/chat/new?agent=internal"]')).not.toBeNull();
-    expect(rows('assistant')?.querySelector('a[href="/chat/new?agent=assistant"]')).not.toBeNull();
+    expect(rows('internal')?.querySelector('a[href="/chats/new?agent=internal"]')).not.toBeNull();
+    expect(rows('assistant')?.querySelector('a[href="/chats/new?agent=assistant"]')).not.toBeNull();
     // Edit for a file agent only, Memory for every agent.
     expect(rows('researcher')?.querySelector('a[href="/agents/researcher/edit"]')).not.toBeNull();
     expect(rows('assistant')?.querySelector('a[href="/agents/assistant/edit"]')).toBeNull();
     for (const name of ['assistant', 'researcher', 'internal']) {
-      expect(rows(name)?.querySelector(`a[href="/agents/${name}/memory"]`)).not.toBeNull();
+      expect(rows(name)?.querySelector(`a[href="/agents/${name}/memories"]`)).not.toBeNull();
     }
     // An agent whose listing names no tools has none claimed for it, not even "No tools".
     expect(text('internal')).not.toContain('tool');
@@ -190,7 +190,7 @@ describe('the list of agents', () => {
     const action = await findByRole('link', { name: 'New chat' });
     action.click();
     expect(router.current.search.get('agent')).toBe('assistant');
-    expect(router.pathname).toBe('/chat/new');
+    expect(router.pathname).toBe('/chats/new');
   });
 
   test('opens an agent file’s editor, its memory, and the new agent form', async () => {
@@ -206,7 +206,7 @@ describe('the list of agents', () => {
     landAt('/agents');
     const memoryLink = await findByRole('link', { name: 'Memory' });
     memoryLink.click();
-    expect(router.pathname).toBe('/agents/researcher/memory');
+    expect(router.pathname).toBe('/agents/researcher/memories');
 
     landAt('/agents');
     const newLink = await findByRole('link', { name: 'New agent' });
@@ -592,9 +592,9 @@ describe('one agent’s page', () => {
     const { findByRole } = mount(AgentDetail);
 
     const link = await findByRole('link', { name: 'Memory (1)' });
-    expect(link.getAttribute('href')).toBe('/agents/assistant/memory');
+    expect(link.getAttribute('href')).toBe('/agents/assistant/memories');
     link.click();
-    expect(router.pathname).toBe('/agents/assistant/memory');
+    expect(router.pathname).toBe('/agents/assistant/memories');
   });
 
   test('counts a memory once when a list that shifted gave it on two pages', async () => {
@@ -635,7 +635,7 @@ describe('one agent’s page', () => {
     const none = mount(AgentDetail);
     await none.findByRole('link', { name: 'New chat' });
     expect(none.getByRole('link', { name: 'Memory' }).getAttribute('href')).toBe(
-      '/agents/assistant/memory',
+      '/agents/assistant/memories',
     );
   });
 
@@ -656,7 +656,7 @@ describe('one agent’s page', () => {
       expect(client.getQueryState(queryKeys.memory.list('assistant'))?.status).toBe('error'),
     );
     expect(getByRole('link', { name: 'Memory' }).getAttribute('href')).toBe(
-      '/agents/assistant/memory',
+      '/agents/assistant/memories',
     );
   });
 
@@ -705,6 +705,6 @@ describe('one agent’s page', () => {
     const row = await findByRole('button', { name: /Plan the week/ });
     row.click();
 
-    await waitFor(() => expect(router.pathname).toBe('/chat/session-1'));
+    await waitFor(() => expect(router.pathname).toBe('/chats/session-1'));
   });
 });

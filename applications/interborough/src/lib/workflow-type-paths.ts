@@ -1,8 +1,9 @@
 /**
  * The addresses under `/workflows`: a workflow type's page, its runs, and its editor. This is the
- * one module that spells them, because `/workflows/` was once the runs' address and a run's link
- * is never one (`workflowDetailPath` in `router.svelte.ts` builds those); `routes.test.ts` fails if
- * any other file builds a path that begins `/workflows/`.
+ * one module that spells them, because `/workflows/` was once the runs' address. A run's link is
+ * built in `router.svelte.ts` (`workflowDetailPath` for a run known by its ID alone,
+ * `workflowRunPath` for one under its workflow); `routes.test.ts` fails if any other file builds a
+ * path that begins `/workflows/`.
  */
 
 /** A workflow type's page. */
@@ -26,8 +27,8 @@ export function workflowEditPath(type: string): string {
 }
 
 /**
- * The engine's own run list, across every workflow type. It lives under `/engine` because it reads
+ * The engine's own run list, across every workflow type. It lives under `/health` because it reads
  * the engine's list and takes the engine's status words in its `status` query parameter; `/runs` is
  * the Bureau's task list and has no engine rows.
  */
-export const ENGINE_RUNS_PATH = '/engine/runs';
+export const ENGINE_RUNS_PATH = '/health/runs';

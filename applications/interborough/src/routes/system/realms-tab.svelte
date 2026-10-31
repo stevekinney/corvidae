@@ -20,10 +20,10 @@
   import { queryKeys } from '../../lib/query.ts';
   import QueryFaultBanner from './query-fault-banner.svelte';
   import {
+    fetchRealmDiagnostics,
     realmDiagnosticsRows,
     realmStateBadgeVariant,
     totalRealmCount,
-    type RealmDiagnosticsSource,
   } from './realms-view.ts';
 
   const client = getClient();
@@ -36,8 +36,7 @@
     const polling = !fleetLive();
     return {
       queryKey: queryKeys.realms(),
-      queryFn: (): Promise<RealmDiagnosticsSource> =>
-        client.operations['weft.realms.diagnostics']({}) as Promise<RealmDiagnosticsSource>,
+      queryFn: () => fetchRealmDiagnostics(client),
       // poll-reason: fallback
       refetchInterval: polling ? 30_000 : false,
     };

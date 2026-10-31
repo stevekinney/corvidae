@@ -1,7 +1,7 @@
 /**
  * Component tests for the Schedules domain router (`index.svelte`) — URL
  * query state switches between list/detail/create/edit, per that file's own
- * doc (no `/schedules/:id` entry in the frozen `routes.ts`).
+ * doc (no `/schedules/:schedule` entry in the frozen `routes.ts`).
  */
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';

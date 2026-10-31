@@ -1,9 +1,9 @@
 <script lang="ts">
   /**
    * Health tab (plan §9.7 T7.5; design `Weft UI.dc.html`
-   * "System" § HEALTH & LEASE). Lease status, retention overview,
-   * recover-all (Tier-2 confirm), a codegen preview, and the CLI-only
-   * conformance panel.
+   * "System" § HEALTH & LEASE). Lease status, recover-all (Tier-2
+   * confirm), a codegen preview, and the CLI-only conformance panel. The retention overview moved
+   * to Settings › Data and retention (`retention-panel.svelte`).
    *
    * ## Recover-all is `ConfirmDialog`, not `AlertDialog` (plan §13/§10.6
    * tier sweep)
@@ -27,16 +27,9 @@
    * fencing epoch, and lease instants. A failed or malformed read renders as
    * a fault, never as a healthy badge.
    */
-  import {
-    Button,
-    ConfirmDialog,
-    CodeBlock,
-    CopyButton,
-    DescriptionList,
-  } from '@lostgradient/cinder';
+  import { Button, ConfirmDialog, CodeBlock, CopyButton } from '@lostgradient/cinder';
   import { Terminal } from '@lucide/svelte';
   import { createMutation, createQuery } from '@tanstack/svelte-query';
-  import type { RetentionOverview } from '@lostgradient/weft';
 
   import { codeHighlighter } from '../../lib/code-highlighter.ts';
   import { getClient } from '../../lib/client.ts';
@@ -47,11 +40,6 @@
   import QueryFaultBanner from './query-fault-banner.svelte';
 
   const client = getClient();
-
-  const retentionQuery = createQuery(() => ({
-    queryKey: ['system', 'retention'],
-    queryFn: (): Promise<RetentionOverview> => client.getRetentionOverview(),
-  }));
 
   const registryQuery = createQuery(() => ({
     queryKey: queryKeys.registry(),
@@ -75,34 +63,6 @@
   <LeaseStatusPanel />
 
   <div class="weft-health-tab__grid">
-    <section class="weft-health-tab__panel">
-      <div class="weft-health-tab__panel-header">
-        <span>Retention</span>
-      </div>
-      {#if retentionQuery.isPending}
-        <p class="weft-health-tab__loading">Loading…</p>
-      {:else if retentionQuery.isError}
-        <QueryFaultBanner error={retentionQuery.error} onRetry={() => retentionQuery.refetch()} />
-      {:else}
-        <DescriptionList
-          items={[
-            {
-              term: 'Default retention',
-              definition: retentionQuery.data.defaultRetention
-                ? JSON.stringify(retentionQuery.data.defaultRetention)
-                : 'none',
-            },
-            { term: 'Sweep interval', definition: `${retentionQuery.data.sweepIntervalMs}ms` },
-            { term: 'Sweep batch size', definition: String(retentionQuery.data.sweepBatchSize) },
-            {
-              term: 'Workflow types tracked',
-              definition: String(retentionQuery.data.workflowTypes.length),
-            },
-          ]}
-        />
-      {/if}
-    </section>
-
     <section class="weft-health-tab__panel">
       <div class="weft-health-tab__panel-header">
         <span>Recover all</span>

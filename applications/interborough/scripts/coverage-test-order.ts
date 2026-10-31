@@ -75,7 +75,7 @@ export const LINUX_BASELINE_COVERAGE_TEST_ORDER = [
   'src/routes/system/scope-domain-matrix.test.ts',
   'src/routes/system/mcp-panel.test.ts',
   'src/routes/system/operation-catalog.test.ts',
-  'src/routes/system/index.test.ts',
+  'src/routes/system/api-reference-sections.test.ts',
   'src/routes/system/registry-view.test.ts',
   'src/routes/system/codegen-preview.test.ts',
   'src/routes/system/discovery-client.test.ts',

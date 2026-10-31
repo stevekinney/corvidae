@@ -1,6 +1,6 @@
 /**
  * The top bar's breadcrumb trail (design row 06a), derived from the route table: each leading
- * part of the address that a route matches contributes that route's `crumb`, so `/agents/abc/memory`
+ * part of the address that a route matches contributes that route's `crumb`, so `/agents/abc/memories`
  * reads Agents › abc › Memory. A crumb that names a path parameter shows the parameter until the
  * page on screen supplies a better label, such as the agent's name, with {@link usePageLabel}.
  */
@@ -45,7 +45,7 @@ export function breadcrumbTrail(
 
 /**
  * Supplies the breadcrumb label for `path` while the calling component is mounted, such as an
- * agent's name for `/agents/:id`. The getter is read reactively, so a name that loads later
+ * agent's name for `/agents/:agent`. The getter is read reactively, so a name that loads later
  * replaces the parameter when it arrives; `undefined` leaves the parameter in place.
  */
 export function usePageLabel(read: () => { path: string; label: string | undefined }): void {

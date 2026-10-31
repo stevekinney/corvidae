@@ -149,7 +149,7 @@ describe('DiagnosticsView — grouped kinds', () => {
     expect(getByText('heartbeat missed for 90s')).not.toBeNull();
   });
 
-  test('links every item that carries a workflowId to its run, at /runs/:id', () => {
+  test('links every item that carries a workflowId to its run, at /runs/:run', () => {
     const { getByRole, queryByRole } = render(DiagnosticsView, {
       props: {
         items: [

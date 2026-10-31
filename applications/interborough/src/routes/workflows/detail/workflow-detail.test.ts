@@ -102,8 +102,8 @@ describe('WorkflowDetail — loaded workflow', () => {
   test('renders the header and Overview tab by default, and switches tabs', async () => {
     const id = 'wf-detail-loaded-1';
     // Registered before the base workflow route: `ScriptedFetch.routeUrl`
-    // matches by substring in registration order, and `/runs/:id/events`
-    // is itself a substring match for the base `/runs/:id` route too.
+    // matches by substring in registration order, and `/runs/:run/events`
+    // is itself a substring match for the base `/runs/:run` route too.
     fetchScript.routeUrl(`/workflows/${id}/events`, { events: [] });
     fetchScript.routeUrl(`/workflows/${id}`, baseWorkflow({ id }));
     resetLocation(`/runs/${id}`);

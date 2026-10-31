@@ -99,7 +99,7 @@ describe('WorkflowTable', () => {
     expect(getByText('nightly')).not.toBeNull();
   });
 
-  test('an id containing URL delimiters navigates to the exact workflow detail route', async () => {
+  test('an id containing URL delimiters navigates to the exact run route under its workflow', async () => {
     happyDomAPI().setURL('http://localhost/');
     router.navigate('/runs', { replace: true });
     const workflowId = 'wf/orders?region=west#retry';
@@ -108,9 +108,12 @@ describe('WorkflowTable', () => {
     });
 
     const link = getByRole('link');
-    expect(link.getAttribute('href')).toBe('/runs/wf%2Forders%3Fregion%3Dwest%23retry');
+    expect(link.getAttribute('href')).toBe(
+      '/workflows/order-processing/runs/wf%2Forders%3Fregion%3Dwest%23retry',
+    );
     await fireEvent.click(link);
-    expect(router.current.params['id']).toBe(workflowId);
+    expect(router.current.params['run']).toBe(workflowId);
+    expect(router.current.params['workflow']).toBe('order-processing');
   });
 
   test('a dot-only id is not normalized away by browser navigation', async () => {
@@ -121,9 +124,11 @@ describe('WorkflowTable', () => {
     });
 
     const link = getByRole('link');
-    expect(link.getAttribute('href')).toBe('/runs/_?__weft_workflow_id=..');
+    expect(link.getAttribute('href')).toBe(
+      '/workflows/order-processing/runs/_?__weft_workflow_id=..',
+    );
     await fireEvent.click(link);
-    expect(router.current.params['id']).toBe('..');
+    expect(router.current.params['run']).toBe('..');
   });
 
   test('no selection column when selectedIds is omitted', async () => {

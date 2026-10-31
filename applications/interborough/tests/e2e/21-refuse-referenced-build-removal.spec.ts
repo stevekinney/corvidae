@@ -23,7 +23,7 @@ test('a build with a run bound to it shows the count, and removal is refused fir
   page,
   checkA11y,
 }) => {
-  await page.goto('/workers?tab=deployments');
+  await page.goto('/health/workers?tab=deployments');
   await expect(buildRow(page)).toBeVisible();
 
   // The count is the held run, and a build that is not draining is first told to drain.

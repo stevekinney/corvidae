@@ -24,7 +24,7 @@
 </script>
 
 <QueryClientProvider client={queryClient}>
-  <ViewFrame view="agents" pattern={AGENT_MEMORY_PATTERN} parameters={{ id: agentId }}>
+  <ViewFrame view="agents" pattern={AGENT_MEMORY_PATTERN} parameters={{ agent: agentId }}>
     <AgentMemory />
   </ViewFrame>
 </QueryClientProvider>
