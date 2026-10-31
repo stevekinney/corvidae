@@ -4,13 +4,13 @@
    * ran, so they are listed by where they are, with what went wrong, apart from the plugins that
    * loaded.
    */
-  import { Alert, SectionHeading, StatusDot } from '@lostgradient/cinder';
+  import { SectionHeading } from '@lostgradient/cinder';
 
   import { PLUGINS_COPY } from '../../../app/copy.ts';
   import type { UnloadedPlugin } from '../../../lib/host-plugins.ts';
   import { keyedByOccurrence } from '../../../lib/list-keys.ts';
   import { sourceWord } from './plugin-presentation.ts';
-  import { problemView } from './plugin-problems.ts';
+  import PluginProblemCard from './plugin-problem-card.svelte';
 
   interface Props {
     folders: readonly UnloadedPlugin[];
@@ -29,14 +29,9 @@
         <div class="ib-unloaded__where">
           <code class="ib-unloaded__location">{folder.location}</code>
           <span class="ib-unloaded__source">{sourceWord(folder.source)}</span>
-          <StatusDot status="danger" label={PLUGINS_COPY.status.notLoaded} labelVisible size="sm" />
         </div>
         {#each folder.problems as problem, index (index)}
-          {@const view = problemView(problem)}
-          <Alert variant="warning" data-plugin-problem={problem.code}>
-            <p class="ib-unloaded__problem-title">{view.title}</p>
-            <p class="ib-unloaded__problem-body">{view.body}</p>
-          </Alert>
+          <PluginProblemCard {problem} />
         {/each}
       </li>
     {/each}
@@ -83,15 +78,5 @@
   .ib-unloaded__source {
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
-  }
-
-  .ib-unloaded__problem-title {
-    margin: 0;
-    font-weight: 600;
-  }
-
-  .ib-unloaded__problem-body {
-    margin: var(--cinder-space-1) 0 0;
-    overflow-wrap: anywhere;
   }
 </style>
