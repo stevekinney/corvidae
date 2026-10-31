@@ -152,8 +152,10 @@ describe('the built-in bureau plugin', () => {
       return JSON.parse(String(result)) as { name: string; skillDescriptors?: { id: string }[] }[];
     };
 
-    expect((await discover('footnoting')).map((match) => match.name)).toEqual(['researcher']);
-    expect((await discover('primary sources')).map((match) => match.name)).toEqual(['researcher']);
+    const byTag = await discover('footnoting');
+    const byDescription = await discover('primary sources');
+    expect(byTag.map((match) => match.name)).toEqual(['researcher']);
+    expect(byDescription.map((match) => match.name)).toEqual(['researcher']);
     const everything = await discover();
     expect(everything.map((match) => match.name)).toContain('researcher');
     expect(everything.map((match) => match.name)).toContain('finder');
