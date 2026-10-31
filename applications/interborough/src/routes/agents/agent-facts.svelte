@@ -56,7 +56,9 @@
   {#if facts.model.kind === 'model'}
     <div class="ib-agent-fact">
       <span class="ib-agent-fact__label">{AGENTS_COPY.modelLabel}</span>
-      <Badge variant="neutral" size="sm" monospace>{facts.model.name}</Badge>
+      <Badge class="ib-agent-fact__badge" variant="neutral" size="sm" monospace
+        >{facts.model.name}</Badge
+      >
     </div>
   {/if}
   {#if facts.tools !== null}
@@ -65,7 +67,11 @@
         <span class="ib-agent-fact__label">{AGENTS_COPY.toolsLabel}</span>
         <ul class="ib-agent-chips" aria-label={AGENTS_COPY.toolsLabel}>
           {#each keyedByOccurrence(facts.tools, (tool) => tool) as { key, item: tool } (key)}
-            <li><Badge variant="neutral" size="sm" monospace>{tool}</Badge></li>
+            <li>
+              <Badge class="ib-agent-fact__badge" variant="neutral" size="sm" monospace
+                >{tool}</Badge
+              >
+            </li>
           {/each}
         </ul>
       </div>
@@ -78,7 +84,9 @@
       <span class="ib-agent-fact__label">{AGENTS_COPY.skillsLabel}</span>
       <ul class="ib-agent-chips" aria-label={AGENTS_COPY.skillsLabel}>
         {#each keyedByOccurrence(facts.skills, (skill) => skill.id) as { key, item: skill } (key)}
-          <li><Badge variant="neutral" size="sm">{skill.name}</Badge></li>
+          <li>
+            <Badge class="ib-agent-fact__badge" variant="neutral" size="sm">{skill.name}</Badge>
+          </li>
         {/each}
       </ul>
     </div>

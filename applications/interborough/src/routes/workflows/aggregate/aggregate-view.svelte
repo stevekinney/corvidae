@@ -16,6 +16,7 @@
     BarChart,
     EmptyState,
     Input,
+    PageHeader,
     SegmentedControl,
     Segment,
     Skeleton,
@@ -116,8 +117,7 @@
 </script>
 
 <div class="weft-aggregate-view">
-  <div class="weft-aggregate-view__header">
-    <h1>Workflow aggregate</h1>
+  {#snippet backToList()}
     <a
       class="weft-aggregate-view__back"
       href={router.href('/runs')}
@@ -128,10 +128,12 @@
     >
       ← Back to list
     </a>
-  </div>
+  {/snippet}
+  <PageHeader title="Workflow aggregate" headingLevel={1} actions={backToList} />
 
   {#if gate.disabled}
     <EmptyState
+      kind="first-use"
       title="Access restricted"
       description={gate.title ?? "You don't have permission to view workflows."}
     />
@@ -189,6 +191,7 @@
       />
     {:else if groups.length === 0}
       <EmptyState
+        kind="first-use"
         title="No data to aggregate"
         description="No workflows match this grouping yet."
       />

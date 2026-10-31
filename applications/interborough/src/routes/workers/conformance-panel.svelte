@@ -105,6 +105,7 @@
     </div>
   {:else if error && targets === undefined && isForbidden(error)}
     <EmptyState
+      kind="first-use"
       title="Conformance is locked"
       description={`${scopeReason('system:read')} to list conformance targets.`}
     >
@@ -113,10 +114,14 @@
       {/snippet}
     </EmptyState>
   {:else if error && targets === undefined && error instanceof MalformedConformanceError}
-    <EmptyState title="Malformed server response" description={error.message} />
+    <EmptyState kind="first-use" title="Malformed server response" description={error.message} />
   {:else if error && targets === undefined}
     {@const treatment = faultTreatment(error)}
-    <EmptyState title={FAULT_TREATMENT_TITLE[treatment.kind]} description={treatment.message} />
+    <EmptyState
+      kind="first-use"
+      title={FAULT_TREATMENT_TITLE[treatment.kind]}
+      description={treatment.message}
+    />
   {:else if targets}
     {#if staleRefresh}
       <Alert variant="warning"
@@ -124,7 +129,11 @@
       >
     {/if}
     {#if targets.length === 0}
-      <EmptyState title="No conformance targets" description={NO_TARGETS_DESCRIPTION} />
+      <EmptyState
+        kind="first-use"
+        title="No conformance targets"
+        description={NO_TARGETS_DESCRIPTION}
+      />
     {:else}
       <ul class="weft-conformance__targets">
         {#each targets as target (target.name)}
@@ -169,19 +178,26 @@
             {:else if state?.kind === 'failed'}
               {#if isForbidden(state.error)}
                 <EmptyState
+                  kind="first-use"
                   title="Running conformance is locked"
                   description={`${scopeReason('system:admin')} to run a target.`}
                 />
               {:else if state.error instanceof MalformedConformanceError}
-                <EmptyState title="Malformed server response" description={state.error.message} />
+                <EmptyState
+                  kind="first-use"
+                  title="Malformed server response"
+                  description={state.error.message}
+                />
               {:else if faultTreatment(state.error).kind === 'not-found'}
                 <EmptyState
+                  kind="first-use"
                   title="Target no longer registered"
                   description={`The server no longer registers a target named ${target.name}.`}
                 />
               {:else}
                 {@const treatment = faultTreatment(state.error)}
                 <EmptyState
+                  kind="first-use"
                   title={FAULT_TREATMENT_TITLE[treatment.kind]}
                   description={treatment.message}
                 />

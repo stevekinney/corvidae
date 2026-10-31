@@ -11,7 +11,7 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
-import { WORKFLOW_COPY } from '../../app/copy.ts';
+import { RETRY_LABEL, WORKFLOW_COPY } from '../../app/copy.ts';
 import { STUB_REMOTE_WORKFLOW_DIRECTORY } from '../../lib/bureau-stub.test-support.ts';
 import { queryKeys } from '../../lib/query.ts';
 import { router } from '../../lib/router.svelte.ts';
@@ -128,16 +128,19 @@ describe('the list of workflows', () => {
     );
   });
 
-  test('keeps the engine’s own types under a collapsed disclosure that counts them', async () => {
+  test('links the engine’s own types to a page of their own that counts them, and lists them there with what each does', async () => {
     const { container, findByRole } = open();
     await waitFor(() => expect(rowCount(container)).toBe(4));
 
-    const trigger = await findByRole('button', { name: WORKFLOW_COPY.list.engineWorkflows(3) });
-    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    const link = await findByRole('link', { name: WORKFLOW_COPY.list.internalWorkflows(3) });
+    expect(link.getAttribute('href')).toBe('/internal-workflows');
     expect(container.querySelector('[data-workflow="agentRun"]')).toBeNull();
 
-    await fireEvent.click(trigger);
-    await waitFor(() => expect(trigger.getAttribute('aria-expanded')).toBe('true'));
+    link.click();
+    await findByRole('heading', { level: 1, name: WORKFLOW_COPY.internal.title });
+    await waitFor(() =>
+      expect(container.querySelectorAll('[data-workflow][data-engine]').length).toBe(3),
+    );
     const names = [...container.querySelectorAll('[data-workflow][data-engine]')].map((node) =>
       node.getAttribute('data-workflow'),
     );
@@ -145,15 +148,105 @@ describe('the list of workflows', () => {
     expect(container.querySelector('[data-workflow="agentRun"] a')?.getAttribute('href')).toBe(
       '/workflows/agentRun',
     );
+    // A code name reads as words, with the identifier beside it.
+    expect(container.querySelector('[data-workflow="agentRun"] a')?.textContent).toBe('Agent Run');
+    expect(container.querySelector('[data-workflow="durableHeartbeatTick"] a')?.textContent).toBe(
+      'Durable Heartbeat Tick',
+    );
+    expect(
+      container.querySelector('[data-workflow="agentRun"] [data-testid="workflow-identifier"]')
+        ?.textContent,
+    ).toBe('agentRun');
+    // Each row has a line on what it does: the engine's own, or the words for having none.
+    for (const description of container.querySelectorAll(
+      '[data-workflow][data-engine] [data-testid="workflow-description"]',
+    )) {
+      expect(description.textContent?.trim().length).toBeGreaterThan(0);
+    }
+    expect(container.querySelector('[data-testid="records-count"]')?.textContent).toBe(
+      WORKFLOW_COPY.internal.count(3),
+    );
   });
 
-  test('has no disclosure when the engine has none of its own types to show', async () => {
+  test('says there are no internal workflows on their page when the engine has none of its own', async () => {
     const { container, findByRole } = open({
       definitions: [codeDefinition('order-processing')],
     });
     await findByRole('heading', { level: 1, name: 'Workflows' });
     await waitFor(() => expect(rowCount(container)).toBeGreaterThan(0));
-    expect(container.textContent).not.toContain('Internal workflows');
+    const link = await findByRole('link', { name: WORKFLOW_COPY.list.internalWorkflows(0) });
+
+    link.click();
+    await findByRole('heading', { level: 2, name: WORKFLOW_COPY.internal.empty.title });
+    expect(container.querySelector('[data-cinder-kind="first-use"]')).not.toBeNull();
+  });
+
+  test('says the internal workflows could not be loaded, offers Try again, and links back to the workflows', async () => {
+    router.navigate('/internal-workflows', { replace: true });
+    stub = installWorkflowWorld(emptyWorld({ failBureauFiles: true }));
+    const { container, findByRole } = render(RouteOutletHarness, {
+      props: { client: stub.client, scopes: AUTHORIZATION_SCOPES },
+    } as never);
+
+    await findByRole('heading', { level: 2, name: WORKFLOW_COPY.internal.loadFailed.title });
+    expect(container.querySelector('[data-view="workflows"]')?.getAttribute('data-state')).toBe(
+      'ready',
+    );
+    const retry = await findByRole('button', { name: RETRY_LABEL });
+    await fireEvent.click(retry);
+    await findByRole('heading', { level: 2, name: WORKFLOW_COPY.internal.loadFailed.title });
+
+    const back = await findByRole('link', { name: WORKFLOW_COPY.internal.backToWorkflows });
+    back.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true }));
+    expect(router.pathname).toBe('/internal-workflows');
+    back.click();
+    expect(router.pathname).toBe('/workflows');
+  });
+
+  test('says an internal workflow has no description when the engine gives none', async () => {
+    const { container, findByRole } = open({
+      definitions: [{ ...codeDefinition('agentRun'), description: null }],
+      files: [],
+    });
+    await findByRole('heading', { level: 1, name: /Workflows|No workflows yet/ });
+    router.navigate('/internal-workflows');
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-workflow="agentRun"] [data-testid="workflow-description"]')
+          ?.textContent,
+      ).toBe(WORKFLOW_COPY.internal.noDescription),
+    );
+  });
+
+  test('narrows the rows by a search and by a status word, and says so when none match', async () => {
+    const { container, findByRole, findByLabelText } = open();
+    await waitFor(() => expect(rowCount(container)).toBe(4));
+    expect(container.querySelector('[data-testid="records-count"]')?.textContent).toBe(
+      WORKFLOW_COPY.list.count(4),
+    );
+
+    await fireEvent.change(await findByLabelText(WORKFLOW_COPY.list.statusLabel), {
+      target: { value: 'Failed' },
+    });
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    expect(
+      [...container.querySelectorAll('[data-workflow]')].map((node) =>
+        node.getAttribute('data-workflow'),
+      ),
+    ).toEqual(['broken', 'flaky']);
+
+    await fireEvent.input(await findByLabelText(WORKFLOW_COPY.list.searchLabel), {
+      target: { value: 'no such workflow' },
+    });
+    await findByRole('heading', { level: 2, name: WORKFLOW_COPY.list.noMatch.title });
+    expect(container.querySelector('[data-cinder-kind="filtered"]')).not.toBeNull();
+
+    const clear = container.querySelector<HTMLButtonElement>(
+      '[data-cinder-kind="filtered"] button',
+    );
+    if (clear === null) throw new Error('The empty state did not offer Clear filters.');
+    await fireEvent.click(clear);
+    await waitFor(() => expect(rowCount(container)).toBe(4));
   });
 
   test('badges a file as agent-authored and a code type as code, and shows the agent of a file that names one in monospace', async () => {
@@ -263,7 +356,7 @@ describe('the list of workflows', () => {
 
     const broken = row(container, 'broken');
     expect(broken.dataset['state']).toBe('invalid');
-    expect(broken.textContent).toContain(WORKFLOW_COPY.invalidBadge);
+    expect(broken.dataset['status']).toBe('Failed');
     expect(testId(broken, 'workflow-problem')?.textContent).toContain(
       'The document is not a workflow.',
     );
@@ -294,12 +387,12 @@ describe('the list of workflows', () => {
     expect(testId(row(container, 'digest'), 'workflow-failure')).toBeNull();
   });
 
-  test('badges a paused file as paused', async () => {
+  test('shows a paused file as Paused', async () => {
     const { container } = open({
       files: [readyFile('digest', { paused: true }), invalidFile('broken')],
     });
     await waitFor(() => expect(rowCount(container)).toBeGreaterThan(1));
-    expect(row(container, 'digest').textContent).toContain(WORKFLOW_COPY.pausedBadge);
+    expect(row(container, 'digest').dataset['status']).toBe('Paused');
   });
 
   test('shows the path relative to the state directory when the host does not say where', async () => {
@@ -344,12 +437,9 @@ describe('the list of workflows', () => {
 });
 
 describe('the links the list keeps for the browser', () => {
-  test('opens an engine type’s page from the disclosure, and leaves New workflow to the browser when modified', async () => {
+  test('opens the internal workflows and an engine type’s page, and leaves New workflow to the browser when modified', async () => {
     const { container, findByRole } = open();
     await waitFor(() => expect(rowCount(container)).toBe(4));
-    const trigger = await findByRole('button', { name: WORKFLOW_COPY.list.engineWorkflows(3) });
-    await fireEvent.click(trigger);
-    await waitFor(() => expect(trigger.getAttribute('aria-expanded')).toBe('true'));
 
     const action = await findByRole('link', { name: WORKFLOW_COPY.newAction });
     action.dispatchEvent(
@@ -357,13 +447,19 @@ describe('the links the list keeps for the browser', () => {
     );
     expect(router.pathname).toBe('/workflows');
 
+    const internal = await findByRole('link', { name: WORKFLOW_COPY.list.internalWorkflows(3) });
+    internal.click();
+    expect(router.pathname).toBe('/internal-workflows');
+    await waitFor(() =>
+      expect(container.querySelector('[data-workflow="agentRun"] a')).not.toBeNull(),
+    );
     container.querySelector<HTMLAnchorElement>('[data-workflow="agentRun"] a')?.click();
     expect(router.pathname).toBe('/workflows/agentRun');
   });
 });
 
 describe('a host with no workflow of its own', () => {
-  test('says there are none yet and where one is written, and keeps the engine’s types under the disclosure', async () => {
+  test('says there are none yet and where one is written, and keeps the engine’s types on their own page', async () => {
     const { container, findByRole } = open({
       definitions: [codeDefinition('agentRun')],
       files: [],
@@ -378,10 +474,11 @@ describe('a host with no workflow of its own', () => {
     );
     expect(guide?.querySelector('code')?.textContent).toBe(WORKFLOW_COPY.list.emptyTool);
 
-    // New workflow is still the page's own action, and the engine's type is still behind its disclosure.
+    // New workflow is still the page's own action, and the engine's type is still on its own page.
     expect(await findByRole('link', { name: WORKFLOW_COPY.newAction })).toBeTruthy();
-    const trigger = await findByRole('button', { name: WORKFLOW_COPY.list.engineWorkflows(1) });
-    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(
+      await findByRole('link', { name: WORKFLOW_COPY.list.internalWorkflows(1) }),
+    ).toBeTruthy();
     expect(container.querySelector('[data-workflow="agentRun"]')).toBeNull();
   });
 

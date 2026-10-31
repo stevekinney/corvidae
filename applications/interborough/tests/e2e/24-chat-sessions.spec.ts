@@ -183,8 +183,8 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
       await page.setViewportSize({ width, height: 900 });
       await page.goto('/runs');
 
-      const goalRow = page.locator(`li.ib-run-row[data-run="${SEEDED_GOAL_RUN}"]`);
-      const fireRow = page.locator(`li.ib-run-row[data-run="${fireRunId}"]`);
+      const goalRow = page.locator(`tr[data-run="${SEEDED_GOAL_RUN}"]`);
+      const fireRow = page.locator(`tr[data-run="${fireRunId}"]`);
       await expect(goalRow).toHaveCount(1);
       await expect(fireRow).toHaveCount(1);
       await expect(goalRow.locator(`a[href="/chats/${SEEDED_GOAL_SESSION}"]`)).toHaveCount(1);

@@ -67,7 +67,7 @@ describe('buildRunRows', () => {
     });
     expect(rows[1]).toMatchObject({
       status: 'completed',
-      origin: { kind: 'goal', name: 'seeded-goal', href: '/goals' },
+      origin: { kind: 'goal', name: 'seeded-goal', href: '/goals/seeded-goal' },
       durationMs: 1000,
     });
   });
@@ -98,7 +98,7 @@ describe('a goal’s attempt, which the Bureau also lists as a task', () => {
       origin: {
         kind: 'goal',
         name: 'seeded-goal',
-        href: '/goals',
+        href: '/goals/seeded-goal',
         session: { title: '', href: '/chats/goal-seeded-goal-s0' },
       },
     });
@@ -120,7 +120,7 @@ describe('the session a run ran in', () => {
     expect(row?.origin).toEqual({
       kind: 'goal',
       name: 'seeded-goal',
-      href: '/goals',
+      href: '/goals/seeded-goal',
       session: { title: 'Say hello.', href: '/chats/goal-seeded-goal-s0' },
     });
   });
@@ -132,7 +132,7 @@ describe('the session a run ran in', () => {
     expect(row?.origin).toEqual({
       kind: 'goal',
       name: 'seeded-goal',
-      href: '/goals',
+      href: '/goals/seeded-goal',
       session: { title: '', href: '/chats/goal-seeded-goal-s0' },
     });
   });

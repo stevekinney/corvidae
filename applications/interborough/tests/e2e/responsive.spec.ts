@@ -28,6 +28,7 @@ import type { Page } from '@playwright/test';
 
 import { WORKFLOW_COPY } from '../../src/app/copy.ts';
 import { routes } from '../../src/app/routes.ts';
+import { SEEDED_GOAL_RUN_IDENTIFIER } from '../../src/host/seed.ts';
 import { createAgentFile, removeAgent } from './agent-support.ts';
 import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BASE_URL } from './e2e-constants.ts';
@@ -89,6 +90,9 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/schedules': /inventory-sync/,
   '/schedules/:schedule': /Next fires/,
   '/goals': /seeded-goal/,
+  '/goals/:goal': /seeded-goal/,
+  // This host's engine holds none of the Bureau's own types; the Bureau's host lists them (26-workflows).
+  '/internal-workflows': /No internal workflows/,
   '/health/runs': /order-processing/,
 };
 
@@ -300,6 +304,7 @@ test.beforeAll(async ({ playwright }) => {
       workflowFile: WORKFLOW_FILE,
       run: runs.items?.[0]?.id ?? 'responsive-run',
       schedule: schedules.items?.[0]?.id ?? 'responsive-schedule',
+      goal: SEEDED_GOAL_RUN_IDENTIFIER,
     };
     addresses = responsiveAddresses(seed);
     variantAddresses = responsiveVariants(seed);

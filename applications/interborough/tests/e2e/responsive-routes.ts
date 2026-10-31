@@ -25,6 +25,8 @@ export interface ResponsiveSeed {
   readonly run: string;
   /** A schedule. It need not exist: the page says so in a short sentence. */
   readonly schedule: string;
+  /** A goal, with the attempts its page lists. */
+  readonly goal: string;
 }
 
 /** The address of each route in `routes.ts`, by pattern, with the seeded identifiers filled in. */
@@ -50,12 +52,15 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
     '/workflows/:workflow/runs': `/workflows/${workflow}/runs`,
     '/workflows/:workflow/runs/:run': `/workflows/${workflow}/runs/${run}`,
     '/workflows/:workflow/edit': `/workflows/${workflowFile}/edit`,
+    '/internal-workflows': '/internal-workflows',
     '/runs': '/runs',
     '/runs/:run': `/runs/${run}`,
     '/schedules': '/schedules',
     '/schedules/:schedule': `/schedules/${encodeURIComponent(seed.schedule)}`,
     '/reviews': '/reviews',
     '/goals': '/goals',
+    '/goals/new': '/goals/new',
+    '/goals/:goal': `/goals/${encodeURIComponent(seed.goal)}`,
     '/health': '/health',
     '/health/runs': '/health/runs',
     '/health/workers': '/health/workers',

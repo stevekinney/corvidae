@@ -18,6 +18,7 @@ const SEED = {
   workflowFile: 'digest',
   run: 'run-1',
   schedule: 'schedule-1',
+  goal: 'goal-1',
 } as const;
 
 const PATTERNS = routes.filter((route) => route.redirect === undefined).map((r) => r.pattern);

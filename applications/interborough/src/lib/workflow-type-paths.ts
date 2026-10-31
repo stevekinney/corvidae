@@ -21,6 +21,14 @@ export function workflowNewPath(): string {
   return '/workflows/new';
 }
 
+/**
+ * The page of the workflows the Bureau runs itself. It is a path of its own rather than a segment
+ * under `/workflows`, so a workflow a person names `internal` still has its page.
+ */
+export function internalWorkflowsPath(): string {
+  return '/internal-workflows';
+}
+
 /** The editor for one agent-authored workflow's file. */
 export function workflowEditPath(type: string): string {
   return `${workflowTypePath(type)}/edit`;

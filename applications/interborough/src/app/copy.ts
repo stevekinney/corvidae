@@ -268,10 +268,27 @@ export const WORKFLOW_COPY = {
   listLabel: 'Workflows',
   /** The list at `/workflows`. */
   list: {
-    /** The disclosure that holds the types the Bureau runs itself. */
-    engineWorkflows: (count: number): string => `Internal workflows (${String(count)})`,
-    engineDescription:
-      'Interborough runs these itself to carry out agent runs, goals, and its heartbeat. Nobody starts one by hand.',
+    /** The link from Workflows to the page of the types the Bureau runs itself. */
+    internalWorkflows: (count: number): string => `Internal workflows (${String(count)})`,
+    /** How many workflows the page lists, as a sentence. */
+    count: (count: number): string => `${String(count)} ${count === 1 ? 'workflow' : 'workflows'}`,
+    filtersLabel: 'Filter workflows',
+    searchLabel: 'Search workflows',
+    searchPlaceholder: 'Search workflows',
+    statusLabel: 'Status',
+    anyStatus: 'Any status',
+    clearAction: 'Clear filters',
+    noMatch: {
+      title: 'No workflow matches these filters',
+      description: 'Change the search or the status to see more workflows.',
+    },
+    columns: {
+      workflow: 'Workflow',
+      kind: 'Kind',
+      starts: 'Starts',
+      runs: 'Runs',
+      status: 'Status',
+    },
     emptyTitle: 'No workflows yet',
     emptyBeforeTool: 'Chat with an agent that has the',
     emptyTool: 'workflows-create',
@@ -282,6 +299,25 @@ export const WORKFLOW_COPY = {
     neverRun: 'No runs yet',
     lastRun: (relative: string): string => `last run ${relative}`,
     onSignal: 'On the signal',
+  },
+  /** The page of the workflows Interborough runs itself (`/internal-workflows`). */
+  internal: {
+    title: 'Internal workflows',
+    description:
+      'Interborough runs these itself to carry out agent runs, goals, and its heartbeat. Nobody starts one by hand.',
+    backToWorkflows: 'Workflows',
+    count: (count: number): string => `${String(count)} ${count === 1 ? 'workflow' : 'workflows'}`,
+    columns: { workflow: 'Workflow', description: 'What it does' },
+    caption: 'Internal workflows',
+    noDescription: 'No description.',
+    empty: {
+      title: 'No internal workflows',
+      description: 'This installation does not run any workflows of its own.',
+    },
+    loadFailed: {
+      title: 'The internal workflows could not be loaded',
+      description: 'The server did not answer. Check that the host is running, then try again.',
+    },
   },
   /** The page of one workflow. */
   page: {
@@ -713,6 +749,47 @@ export const SETTINGS_COPY = {
 export const GOALS_COPY = {
   newAction: 'New goal',
   loadMore: 'Load more',
+  /** The accessible name of the filter bar. */
+  filtersLabel: 'Filter goals',
+  anyStatus: 'Any status',
+  anyAgent: 'Any agent',
+  clearAction: 'Clear filters',
+  /** How many goals the page lists, as a sentence. */
+  count: (count: number): string => `${String(count)} ${count === 1 ? 'goal' : 'goals'}`,
+  /** A filter that matches none of the goals read. */
+  noMatch: {
+    title: 'No goal matches these filters',
+    description: 'Change the filters to see more goals.',
+  },
+  /** The goal's own page, which lists its attempts. */
+  detail: {
+    title: (id: string): string => `Goal ${id}`,
+    backToList: 'All goals',
+    agentFact: 'Agent',
+    statusFact: 'Status',
+    attemptsFact: 'Attempts',
+    createdFact: 'Created',
+    updatedFact: 'Updated',
+    endedFact: 'Ended',
+    reasonFact: 'Why it ended',
+    attemptsHeading: 'Attempts',
+    attemptsCaption: 'Attempts of this goal, in the order they ran',
+    noAttempts: {
+      title: 'No attempts yet',
+      description: 'The goal has not started an attempt. Its attempts are listed here as they run.',
+    },
+    attemptColumn: 'Attempt',
+    runColumn: 'Run',
+    statusColumn: 'Status',
+    startedColumn: 'Started',
+    tookColumn: 'Took',
+    finishColumn: 'Finish reason',
+    attemptLabel: (index: number): string => `Attempt ${String(index + 1)}`,
+    loadFailed: {
+      title: 'The goal could not be loaded',
+      description: 'The server did not answer. Check that the host is running, then try again.',
+    },
+  },
   /** The caption of the table. */
   caption: 'Goals, oldest first',
   goalColumn: 'Goal',
@@ -737,10 +814,15 @@ export const GOALS_COPY = {
   cancelPending: 'The cancellation is recorded and will finish. The goal ends as canceled.',
   form: {
     title: 'New goal',
+    description: 'Run an agent on a prompt until a validator passes, within the bounds you set.',
     agentLabel: 'Agent',
     agentPlaceholder: 'Choose an agent',
     agentDescription: 'The agent that runs each attempt.',
-    agentFreeTextDescription: 'The list of agents is unavailable. Enter the agent’s name.',
+    agentUnavailableDescription: 'The agents could not be listed. Reload the page to try again.',
+    noAgents: {
+      title: 'No agents to run a goal',
+      description: 'A goal runs an agent, and this installation lists none. Create an agent first.',
+    },
     promptLabel: 'Prompt',
     promptDescription:
       'What the agent is asked to do. The goal runs it until the validator passes.',
@@ -825,6 +907,24 @@ export const AGENTS_COPY = {
   toolCount: (count: number): string => (count === 1 ? '1 tool' : `${count} tools`),
   chatCount: (count: number): string => (count === 1 ? '1 chat' : `${count} chats`),
   noChats: 'No chats yet',
+  /** The marker on an agent with a chat that waits on the person. */
+  needsYou: 'Needs you',
+  /** How many agents the page lists, as a sentence. */
+  count: (count: number): string => `${String(count)} ${count === 1 ? 'agent' : 'agents'}`,
+  filtersLabel: 'Filter agents',
+  searchLabel: 'Search agents',
+  searchPlaceholder: 'Search agents',
+  clearAction: 'Clear filters',
+  noMatch: {
+    title: 'No agent matches this search',
+    description: 'Change the search to see more agents.',
+  },
+  empty: {
+    title: 'No agents yet',
+    description: 'An agent is a model with instructions and tools. Create one to chat with it.',
+  },
+  /** The accessible name of the list of agent files the Bureau cannot use. */
+  invalidListLabel: 'Agent files with a problem',
   lastChat: (when: string): string => `Last chat ${when}`,
   /** The Memory action with the agent's memory count; `more` is true when pages of it are unread. */
   memoryWithCount: (shown: number, more: boolean): string => `Memory (${shown}${more ? '+' : ''})`,
@@ -1314,6 +1414,18 @@ export const TASK_COPY = {
     description: 'Change the filters to see more runs.',
   },
   loadMore: 'Load more',
+  /** The runs table's column headings: one per filter, then how long a run took. */
+  listColumns: {
+    agent: 'Agent',
+    startedBy: 'Started by',
+    status: 'Status',
+    when: 'When',
+    took: 'Took',
+  },
+  /** How many runs the page lists, as a sentence. */
+  count: (count: number): string => `${String(count)} ${count === 1 ? 'run' : 'runs'}`,
+  /** The primary action of the runs page, which opens the form that starts one. */
+  startRun: 'Start run',
   columns: {
     status: 'Status',
     agent: 'Agent',
@@ -1947,13 +2059,17 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'No goals yet',
       description:
         'A goal runs an agent on a prompt until a validator passes. Create one to see it here.',
-      action: { label: 'Create a goal', href: '/goals?create=1' },
+      action: { label: 'Create a goal', href: '/goals/new' },
     },
     error: {
       title: 'Goals are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
     forbidden: { title: 'Goals are locked' },
+    notFound: {
+      title: 'This goal was not found',
+      description: 'It may belong to someone else. Open a goal from the list.',
+    },
   },
   health: {
     label: 'Health',

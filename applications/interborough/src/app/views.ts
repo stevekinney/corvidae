@@ -130,13 +130,8 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
   // The Bureau's runtime settings. They are deployment-wide, so no owner scopes them, and the view
   // holds no console scope: the Bureau answers the scopes it declares. It always has something to show.
   settings: { density: 'comfortable', scopes: [], canBeEmpty: false },
-  // Reached by address and by the empty states that link to it, and not from the sidebar. Holds no
-  // console scope, as the audit trail holds none: a caller sees the goals it owns.
-  goals: {
-    density: 'comfortable',
-    scopes: [],
-    canBeEmpty: true,
-    creating: (search) => search.get('create') === '1',
-  },
+  // In the sidebar after Schedules. Holds no console scope, as the audit trail holds none: a caller
+  // sees the goals it owns. `/goals/new` is where the first goal is made, so it is never empty.
+  goals: { density: 'comfortable', scopes: [], canBeEmpty: true },
   health: { density: 'compact', scopes: ['workflows:read'], canBeEmpty: false },
 };

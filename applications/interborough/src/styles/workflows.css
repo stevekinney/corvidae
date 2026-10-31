@@ -16,27 +16,6 @@
   gap: var(--cinder-space-4);
 }
 
-.weft-workflow-list__header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--cinder-space-4);
-  flex-wrap: wrap;
-}
-
-.weft-workflow-list__header h1 {
-  margin: 0;
-  font-size: var(--cinder-text-2xl);
-  font-weight: 600;
-  letter-spacing: var(--cinder-tracking-tight, -0.01em);
-}
-
-.weft-workflow-list__subtitle {
-  margin: 2px 0 0;
-  font-size: var(--cinder-text-sm);
-  color: var(--cinder-text-subtle);
-}
-
 .weft-workflow-list__header-actions {
   display: flex;
   gap: var(--cinder-space-2);
@@ -527,19 +506,6 @@
   gap: var(--cinder-space-4);
 }
 
-.weft-aggregate-view__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--cinder-space-2);
-}
-
-.weft-aggregate-view__header h1 {
-  margin: 0;
-  font-size: var(--cinder-text-xl);
-  font-weight: 600;
-}
-
 .weft-aggregate-view__back {
   font-size: var(--cinder-text-sm);
   color: var(--cinder-accent-text);
@@ -648,12 +614,6 @@
  * two-column-ish controls stack; touch targets stay ≥40px throughout (set
  * above per-control, not just here). ── */
 @media (max-width: 640px) {
-  .weft-workflow-list__header,
-  .weft-aggregate-view__header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
   .weft-workflow-list__header-actions {
     width: 100%;
   }

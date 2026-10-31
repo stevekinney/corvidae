@@ -24,35 +24,10 @@
   align-items: center;
 }
 
-/* A list of flat rows: a faint rule between them, no card around any. */
+/* Compact rows in one bordered list: the list draws the border, the rows only the rule between. */
 .ib-agents__list {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.ib-agent-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--cinder-space-2) var(--cinder-space-4);
-  align-items: center;
-  justify-content: space-between;
-  padding-block: var(--cinder-density-pad-block);
-  border-block-end: 1px solid var(--cinder-border-faint);
-}
-
-.ib-agent-row:last-child {
-  border-block-end: 0;
-}
-
-.ib-agent-row__body {
-  display: flex;
-  flex: 1 1 20rem;
-  flex-direction: column;
-  gap: var(--cinder-space-1);
-  min-width: 0;
+  border: 1px solid var(--cinder-border-muted);
+  border-radius: var(--cinder-radius-md);
 }
 
 .ib-agent-row__title {
@@ -71,14 +46,14 @@
 .ib-agent-title,
 .ib-agent-fact,
 .ib-agent-chips > li,
-.ib-agent-facts .cinder-badge,
+.ib-agent-fact__badge,
 .ib-agent__version code {
   min-inline-size: 0;
   max-inline-size: 100%;
   overflow-wrap: anywhere;
 }
 
-.ib-agent-facts .cinder-badge {
+.ib-agent-fact__badge {
   white-space: normal;
   text-align: start;
 }
