@@ -9,16 +9,21 @@ export function newChatPath(agent: string): string {
 }
 
 /** What the chats an agent has had say of its use: how many, and when the latest was last active. */
-export type AgentChatUsage = { readonly count: number; readonly lastChatAt: number | null };
+export type AgentChatUsage = {
+  readonly count: number;
+  readonly lastChatAt: number | null;
+  /** How many of the chats wait on the person: the Bureau's `awaiting-input` activity. */
+  readonly waiting: number;
+};
 
 /**
  * The chat count and last-chat time of each agent, from the sessions the Bureau lists. Both are the
  * Bureau's own figures grouped by the agent each session names: a count is the sessions, and the
  * last-chat time is the latest `updatedAt` among them (a session that is still being talked in
- * counts as used now). A session read twice counts once. An agent with no session has no entry.
+ * counts as used now). `waiting` counts the sessions that wait on the person. A session read twice counts once. An agent with no session has no entry.
  */
 export function chatUsageByAgent(
-  contexts: readonly Pick<ChatContext, 'id' | 'agentName' | 'updatedAt'>[],
+  contexts: readonly Pick<ChatContext, 'id' | 'agentName' | 'updatedAt' | 'activity'>[],
 ): ReadonlyMap<string, AgentChatUsage> {
   const usage = new Map<string, AgentChatUsage>();
   // The Bureau pages by offset, and a list that shifts while it is read gives the next page a
@@ -32,6 +37,7 @@ export function chatUsageByAgent(
     const latest = Number.isNaN(updated) ? null : updated;
     usage.set(context.agentName, {
       count: (known?.count ?? 0) + 1,
+      waiting: (known?.waiting ?? 0) + (context.activity === 'awaiting-input' ? 1 : 0),
       lastChatAt:
         latest === null
           ? (known?.lastChatAt ?? null)

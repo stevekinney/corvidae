@@ -56,12 +56,6 @@
     },
     {
       "rule": "app-header-class",
-      "file": "src/routes/goals/index.svelte",
-      "subject": ".weft-goals__header",
-      "issue": "COR-1843"
-    },
-    {
-      "rule": "app-header-class",
       "file": "src/routes/schedules/schedule-form-drawer.svelte",
       "subject": ".weft-schedule-drawer__header",
       "issue": "COR-1859"
@@ -194,18 +188,6 @@
     },
     {
       "rule": "app-header-class",
-      "file": "src/styles/agents.css",
-      "subject": ".ib-agent__header",
-      "issue": "COR-1844"
-    },
-    {
-      "rule": "cinder-selector",
-      "file": "src/styles/agents.css",
-      "subject": ".cinder-badge",
-      "issue": "COR-1843"
-    },
-    {
-      "rule": "app-header-class",
       "file": "src/styles/chat.css",
       "subject": ".weft-chat-header",
       "issue": "COR-1848"
@@ -301,12 +283,6 @@
       "issue": "COR-1856"
     },
     {
-      "rule": "cinder-selector",
-      "file": "src/styles/tasks.css",
-      "subject": ".cinder-select",
-      "issue": "COR-1856"
-    },
-    {
       "rule": "app-header-class",
       "file": "src/styles/workers.css",
       "subject": ".weft-workers-panel__header",
@@ -380,27 +356,9 @@
     },
     {
       "rule": "app-header-class",
-      "file": "src/styles/workflow-definitions.css",
-      "subject": ".ib-workflows__header",
-      "issue": "COR-1843"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/styles/workflows.css",
-      "subject": ".weft-workflow-list__header",
-      "issue": "COR-1843"
-    },
-    {
-      "rule": "app-header-class",
       "file": "src/styles/workflows.css",
       "subject": ".weft-start-wizard__header",
       "issue": "COR-1855"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/styles/workflows.css",
-      "subject": ".weft-aggregate-view__header",
-      "issue": "COR-1843"
     }
   ]
 }

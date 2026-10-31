@@ -166,7 +166,9 @@ export type ChatRunWiring = {
   attach(threadId: string, signal?: AbortSignal): Promise<ConversationHistory | undefined>;
   /**
    * The thread's conversation as the Bureau holds it, run or no run, or `undefined` when the
-   * Bureau has no such thread. It is how a finished session's transcript comes back.
+   * Bureau has no such thread. It is how a finished session's transcript comes back. The caller
+   * replaces the transcript with it, so the live cursor, which continues the transcript it replaces,
+   * is forgotten: the next attach opens on the thread's snapshot.
    */
   history(threadId: string, signal?: AbortSignal): Promise<ConversationHistory | undefined>;
   /** Drops an attach that was opened and never read. */
@@ -1140,6 +1142,9 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
       return restored;
     },
     async history(threadId, signal) {
+      // An attach that resumed from the old cursor would keep this history and replay the run from
+      // past rows it does not hold, such as a parked call's result without its call.
+      lastAttachCursor = undefined;
       let messages: readonly unknown[];
       try {
         messages = await getThreadMessages(threadId, {

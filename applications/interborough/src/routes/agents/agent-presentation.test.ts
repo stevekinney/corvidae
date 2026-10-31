@@ -24,25 +24,83 @@ describe('what an agent’s chats say of its use', () => {
 
   test('counts the sessions of each agent and dates the latest one', () => {
     const usage = chatUsageByAgent([
-      { id: 'session-1', agentName: 'echo', updatedAt: '2026-10-23T11:00:00.000Z' },
-      { id: 'session-2', agentName: 'tool-runner', updatedAt: '2026-10-20T11:00:00.000Z' },
-      { id: 'session-3', agentName: 'echo', updatedAt: '2026-10-23T11:57:00.000Z' },
-      { id: 'session-4', agentName: 'echo', updatedAt: '2026-10-22T11:00:00.000Z' },
+      {
+        id: 'session-1',
+        agentName: 'echo',
+        updatedAt: '2026-10-23T11:00:00.000Z',
+        activity: 'idle' as const,
+      },
+      {
+        id: 'session-2',
+        agentName: 'tool-runner',
+        updatedAt: '2026-10-20T11:00:00.000Z',
+        activity: 'idle' as const,
+      },
+      {
+        id: 'session-3',
+        agentName: 'echo',
+        updatedAt: '2026-10-23T11:57:00.000Z',
+        activity: 'idle' as const,
+      },
+      {
+        id: 'session-4',
+        agentName: 'echo',
+        updatedAt: '2026-10-22T11:00:00.000Z',
+        activity: 'idle' as const,
+      },
     ]);
 
     expect(usage.get('echo')).toEqual({
       count: 3,
       lastChatAt: Date.parse('2026-10-23T11:57:00.000Z'),
+      waiting: 0,
     });
     expect(usage.get('tool-runner')?.count).toBe(1);
     expect(usage.has('assistant')).toBe(false);
   });
 
+  test('counts the chats that wait on the person, so an agent with one shows Needs you', () => {
+    const usage = chatUsageByAgent([
+      { id: 'a', agentName: 'echo', updatedAt: '2026-10-23T11:00:00.000Z', activity: 'idle' },
+      {
+        id: 'b',
+        agentName: 'echo',
+        updatedAt: '2026-10-23T11:10:00.000Z',
+        activity: 'awaiting-input',
+      },
+      { id: 'c', agentName: 'echo', updatedAt: '2026-10-23T11:20:00.000Z', activity: 'running' },
+      {
+        id: 'd',
+        agentName: 'tool-runner',
+        updatedAt: '2026-10-23T11:20:00.000Z',
+        activity: 'idle',
+      },
+    ]);
+
+    expect(usage.get('echo')?.waiting).toBe(1);
+    expect(usage.get('tool-runner')?.waiting).toBe(0);
+  });
+
   test('counts a session the Bureau gave twice once, as a list that shifted between page reads does', () => {
     const usage = chatUsageByAgent([
-      { id: 'session-a', agentName: 'echo', updatedAt: '2026-10-23T11:00:00.000Z' },
-      { id: 'session-b', agentName: 'echo', updatedAt: '2026-10-23T11:30:00.000Z' },
-      { id: 'session-b', agentName: 'echo', updatedAt: '2026-10-23T11:30:00.000Z' },
+      {
+        id: 'session-a',
+        agentName: 'echo',
+        updatedAt: '2026-10-23T11:00:00.000Z',
+        activity: 'idle' as const,
+      },
+      {
+        id: 'session-b',
+        agentName: 'echo',
+        updatedAt: '2026-10-23T11:30:00.000Z',
+        activity: 'idle' as const,
+      },
+      {
+        id: 'session-b',
+        agentName: 'echo',
+        updatedAt: '2026-10-23T11:30:00.000Z',
+        activity: 'idle' as const,
+      },
     ]);
 
     expect(usage.get('echo')?.count).toBe(2);
@@ -50,24 +108,37 @@ describe('what an agent’s chats say of its use', () => {
 
   test('counts a session whose time cannot be read without dating it by it', () => {
     const usage = chatUsageByAgent([
-      { id: 'session-5', agentName: 'echo', updatedAt: 'not a time' },
-      { id: 'session-6', agentName: 'echo', updatedAt: '2026-10-23T11:57:00.000Z' },
-      { id: 'session-7', agentName: 'echo', updatedAt: 'also not a time' },
+      { id: 'session-5', agentName: 'echo', updatedAt: 'not a time', activity: 'idle' as const },
+      {
+        id: 'session-6',
+        agentName: 'echo',
+        updatedAt: '2026-10-23T11:57:00.000Z',
+        activity: 'idle' as const,
+      },
+      {
+        id: 'session-7',
+        agentName: 'echo',
+        updatedAt: 'also not a time',
+        activity: 'idle' as const,
+      },
     ]);
 
     expect(usage.get('echo')).toEqual({
       count: 3,
       lastChatAt: Date.parse('2026-10-23T11:57:00.000Z'),
+      waiting: 0,
     });
     expect(
       lastChatText(
-        chatUsageByAgent([{ id: 'session-8', agentName: 'echo', updatedAt: 'nope' }]).get('echo'),
+        chatUsageByAgent([
+          { id: 'session-8', agentName: 'echo', updatedAt: 'nope', activity: 'idle' as const },
+        ]).get('echo'),
       ),
     ).toBe(undefined);
   });
 
   test('words the count and the last chat, and says nothing of the last chat of an agent that has had none', () => {
-    const usage = { count: 1, lastChatAt: NOW - 3 * 60_000 };
+    const usage = { count: 1, lastChatAt: NOW - 3 * 60_000, waiting: 0 };
 
     expect(chatCountText(usage)).toBe('1 chat');
     expect(chatCountText({ ...usage, count: 12 })).toBe('12 chats');
@@ -86,6 +157,11 @@ describe('an agent’s facts', () => {
     tools: [...tools],
     skillDescriptors: [{ id: 'cite', name: 'Cite', description: '', tags: [] }],
     a2a: true,
+    stepLimit: null,
+    references: null,
+    guardrails: null,
+    costBudget: null,
+    toolBudget: null,
     instructions: '',
   });
 

@@ -103,6 +103,8 @@ describe('the route table', () => {
         '/schedules/:schedule',
         '/reviews',
         '/goals',
+        '/goals/new',
+        '/goals/:goal',
         '/health',
         '/health/runs',
         '/health/workers',

@@ -6,7 +6,13 @@
    * around the child components built for this track.
    */
   import { ChartBar, GitBranch, Plus } from '@lucide/svelte';
-  import { Button, ConnectionIndicator, EmptyState, Skeleton } from '@lostgradient/cinder';
+  import {
+    Button,
+    ConnectionIndicator,
+    EmptyState,
+    PageHeader,
+    Skeleton,
+  } from '@lostgradient/cinder';
   import { createQuery, keepPreviousData, useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
@@ -202,23 +208,21 @@
 </script>
 
 <div class="weft-workflow-list">
-  <div class="weft-workflow-list__header">
-    <div>
-      {#if scopedType === undefined}
-        <h1>Workflow runs</h1>
-      {:else}
-        <h1>
-          Runs of
-          <a
-            href={router.href(workflowTypePath(scopedType))}
-            onclick={(event) => onTypeLinkClick(event, scopedType)}>{scopedType}</a
-          >
-        </h1>
-      {/if}
-      <p class="weft-workflow-list__subtitle">
-        Snapshot at page load{total > 0 ? ` · ${total.toLocaleString()} matching` : ''}
-      </p>
-    </div>
+  {#snippet heading()}
+    {#if scopedType === undefined}
+      Workflow runs
+    {:else}
+      Runs of
+      <a
+        href={router.href(workflowTypePath(scopedType))}
+        onclick={(event) => onTypeLinkClick(event, scopedType)}>{scopedType}</a
+      >
+    {/if}
+  {/snippet}
+  {#snippet snapshot()}
+    Snapshot at page load{total > 0 ? ` · ${total.toLocaleString()} matching` : ''}
+  {/snippet}
+  {#snippet headerActions()}
     {#if scopedType === undefined}
       <div class="weft-workflow-list__header-actions">
         <Button
@@ -243,10 +247,11 @@
         </Button>
       </div>
     {/if}
-  </div>
+  {/snippet}
+  <PageHeader title={heading} headingLevel={1} description={snapshot} actions={headerActions} />
 
   {#if listGate.disabled}
-    <EmptyState title="Access restricted" description={deniedDescription}>
+    <EmptyState kind="first-use" title="Access restricted" description={deniedDescription}>
       {#snippet icon()}<GitBranch aria-hidden="true" size={22} />{/snippet}
     </EmptyState>
   {:else}
@@ -306,6 +311,7 @@
       <QueryFaultBanner error={listQuery.error} onRetry={() => void listQuery.refetch()} />
     {:else if rows.length === 0 && !hasActiveFilter}
       <EmptyState
+        kind="first-use"
         title="No workflows yet"
         description="Start one from a registered type, or kick one off from your SDK."
       >
@@ -324,13 +330,11 @@
       </EmptyState>
     {:else if rows.length === 0}
       <EmptyState
+        kind="filtered"
         title="No workflows match"
         description="No results for the current filter set. Try widening the status or date range."
-      >
-        {#snippet action()}
-          <Button variant="secondary" size="md" onclick={clearFilters}>Clear filters</Button>
-        {/snippet}
-      </EmptyState>
+        onClearFilters={clearFilters}
+      />
     {:else}
       <WorkflowTable
         {rows}

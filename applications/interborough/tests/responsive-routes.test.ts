@@ -12,11 +12,13 @@ import { pending, responsiveAddresses, responsiveVariants } from './e2e/responsi
 const SEED = {
   chat: 'chat-1',
   agent: 'agent-1',
+  instructionsAgent: 'agent-3',
   memoryAgent: 'agent-2',
   workflow: 'order-processing',
   workflowFile: 'digest',
   run: 'run-1',
   schedule: 'schedule-1',
+  goal: 'goal-1',
 } as const;
 
 const PATTERNS = routes.filter((route) => route.redirect === undefined).map((r) => r.pattern);

@@ -125,18 +125,22 @@ async function rank(
   candidates: readonly Candidate[],
 ): Promise<{ candidate: Candidate; score: number }[]> {
   if (candidates.length === 0) return [];
-  const vectors: RecallVectors = {
-    active: await context.embedding.active(),
-    byCandidate: new Map(),
-  };
-  await loadVectors(context, vectors, candidates);
-  const queryVector = await embedOne(vectors.active, query);
+  // While the active embedder is unavailable, the search ranks by text alone.
+  const { embedding } = await context.embedding.activeIfAvailable();
+  const vectors: RecallVectors | undefined =
+    embedding === undefined ? undefined : { active: embedding, byCandidate: new Map() };
+  let queryVector: Float32Array | undefined;
+  if (vectors !== undefined) {
+    await loadVectors(context, vectors, candidates);
+    queryVector = await embedOne(vectors.active, query);
+  }
   const texts = await textScores(context, query, candidates);
   return candidates
     .map((candidate, index) => ({
       candidate,
       score:
-        (VECTOR_WEIGHT * similarity(queryVector, vectors.byCandidate.get(candidateKey(candidate))) +
+        (VECTOR_WEIGHT *
+          similarity(queryVector, vectors?.byCandidate.get(candidateKey(candidate))) +
           TEXT_WEIGHT * texts[index]!) *
         candidate.read.governance.retrievalWeight,
     }))

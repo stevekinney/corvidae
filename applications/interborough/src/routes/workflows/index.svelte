@@ -33,6 +33,7 @@
   {#key runId}<RunDetail {runId} />{/key}
 {:else if (view === 'start' || view === 'aggregate') && !engineAllowed}
   <EmptyState
+    kind="first-use"
     title={VIEW_COPY.runs.forbidden.title}
     description={scopeReason('workflows:read')}
     headingLevel={1}

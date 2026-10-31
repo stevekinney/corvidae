@@ -53,6 +53,25 @@ const definitionSchema = z.object({
   tools: z.array(z.string()),
   skillDescriptors: z.array(skillSchema),
   a2a: z.boolean(),
+  /** The most steps one run may take; `null` when the file sets none. */
+  stepLimit: z.number().int().nullable().default(null),
+  /** The reference documents, as paths beside the file; `null` when the file lists none. */
+  references: z.array(z.string()).nullable().default(null),
+  /** The guardrail preset the file names; `null` when it names none. */
+  guardrails: z.enum(['default', 'tripwire', 'off']).nullable().default(null),
+  /** What one run may spend; `null` when the file sets no limit. */
+  costBudget: z
+    .object({
+      perRunUsd: z.number(),
+      perChatUsd: z.number().optional(),
+    })
+    .nullable()
+    .default(null),
+  /** What one run's tools may use; `null` when the file sets no limit. */
+  toolBudget: z
+    .object({ maxCalls: z.number().optional(), maxDurationSeconds: z.number().optional() })
+    .nullable()
+    .default(null),
   instructions: z.string(),
 });
 
@@ -106,6 +125,22 @@ const revisionsSchema = z.object({
 
 /** A version of the agent's definition that has run. */
 export type AgentRevision = z.infer<typeof revisionsSchema>['revisions'][number];
+
+const versionsSchema = z.object({
+  versions: z.array(
+    z.object({
+      revision: z.number().int(),
+      hash: z.string(),
+      savedAt: z.string(),
+      savedBy: z.string().nullable(),
+      definition: definitionSchema,
+      changedKeys: z.array(z.string()),
+    }),
+  ),
+});
+
+/** A saved version of an agent's definition, as `bureau.agents.versions.list` shows it. */
+export type AgentVersion = z.infer<typeof versionsSchema>['versions'][number];
 
 const catalogSchema = z.object({
   models: z.array(
@@ -265,6 +300,33 @@ export async function deleteAgent(
   return writeResultSchema.parse(
     await callBureau('bureau.agents.definitions.delete', { id, expectedHash }, options),
   );
+}
+
+/** The saved versions of the agent, newest first, whether or not each ran (`bureau.agents.versions.list`). */
+export async function listAgentVersions(
+  id: string,
+  options?: Options,
+): Promise<readonly AgentVersion[]> {
+  return versionsSchema.parse(await callBureau('bureau.agents.versions.list', { id }, options))
+    .versions;
+}
+
+/**
+ * Writes version `revision` back to the agent's file as a new version
+ * (`bureau.agents.versions.restore`). `expectedHash` is the hash of the file as
+ * `bureau.agents.definitions.get` returns it, never a version's own `hash`.
+ */
+export async function restoreAgentVersion(
+  id: string,
+  revision: number,
+  expectedHash: string,
+  options?: Options,
+): Promise<AgentWriteResult> {
+  return writeResultSchema
+    .extend({ revision: z.number().int().nullable() })
+    .parse(
+      await callBureau('bureau.agents.versions.restore', { id, revision, expectedHash }, options),
+    );
 }
 
 /** Why an identifier cannot be used for a new agent. */

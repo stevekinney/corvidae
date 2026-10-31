@@ -45,6 +45,9 @@ export const queryKeys = {
     detail: (contextId: string) => ['contexts', 'detail', contextId] as const,
     /** The caller's sessions, all of them or one agent's. */
     list: (agentName: string | null) => ['contexts', 'list', agentName] as const,
+    /** One agent's chats under the filters of its page, so pages read under one filter never merge with another's. */
+    filtered: (agentName: string, filters: Readonly<Record<string, string>>) =>
+      ['contexts', 'list', agentName, filters] as const,
     /** The chats a pending review names that the list's loaded pages do not hold, by id. */
     waiting: (contextIds: readonly string[]) => ['contexts', 'waiting', contextIds] as const,
     /** Every session the caller owns, read to count and date each agent's chats. */
@@ -70,6 +73,8 @@ export const queryKeys = {
     definition: (id: string) => ['agents', 'definition', id] as const,
     /** The versions of one agent that have run (`bureau.agents.definitions.revisions`). */
     revisions: (id: string) => ['agents', 'revisions', id] as const,
+    /** The saved versions of one agent (`bureau.agents.versions.list`). */
+    versions: (id: string) => ['agents', 'versions', id] as const,
     /** The models and tools an agent may name (`bureau.agents.catalog`). */
     catalog: () => ['agents', 'catalog'] as const,
     /** The models a session of one agent may be switched to (`bureau.agents.models`). */
@@ -103,6 +108,8 @@ export const queryKeys = {
   /** The caller's goals (`bureau.goals.list`). */
   goals: {
     list: () => ['goals', 'list'] as const,
+    /** One goal, read by its page. */
+    detail: (goalRunId: string) => ['goals', 'detail', goalRunId] as const,
     /** Every goal, a page at a time, read by the runs list and a run's page for a goal's attempts. */
     runs: () => ['goals', 'runs'] as const,
   },

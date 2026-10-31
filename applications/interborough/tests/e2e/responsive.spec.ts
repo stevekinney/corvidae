@@ -28,6 +28,7 @@ import type { Page } from '@playwright/test';
 
 import { WORKFLOW_COPY } from '../../src/app/copy.ts';
 import { routes } from '../../src/app/routes.ts';
+import { SEEDED_GOAL_RUN_IDENTIFIER } from '../../src/host/seed.ts';
 import { createAgentFile, removeAgent } from './agent-support.ts';
 import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BASE_URL } from './e2e-constants.ts';
@@ -47,10 +48,14 @@ const HEIGHT = 900;
 const SCROLL_REGION_VIEWPORTS = 2;
 
 const AGENT_ID = 'responsive-long-description';
+/** The agent whose Instructions tab holds the long word; the editor's textarea is not made for one. */
+const INSTRUCTIONS_AGENT_ID = 'responsive-long-instructions';
 const LONG_DESCRIPTION = 'An agent description that keeps going well past one line. '
   .repeat(4)
   .padEnd(200, 'x')
   .slice(0, 200);
+/** An instructions body with a word no line can break at, to be rendered as a document. */
+const LONG_INSTRUCTIONS = `Responsive instructions ${'i'.repeat(300)}`;
 const LONG_STORAGE_KEY = `responsive-${'k'.repeat(1989)}`;
 const LONG_MEMORY = `responsive-memory-${'m'.repeat(300)}`;
 const CHAT_THREAD = newThreadId('responsive');
@@ -70,6 +75,8 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   // Only the open skill's detail prints this heading; the long word is in its row at 1280 too.
   '/capabilities (skill open)': /Where it comes from/,
   '/agents/:agent': /An agent description that keeps going/,
+  '/agents/:agent (instructions tab)': /iiiiiiiiii/,
+  '/agents/:agent (settings tab)': /Version 1/,
   '/agents/:agent/memories': /mmmmmmmmmm/,
   '/workflows': /order-processing/,
   '/workflows/:workflow/runs': /order-processing/,
@@ -83,6 +90,9 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/schedules': /inventory-sync/,
   '/schedules/:schedule': /Next fires/,
   '/goals': /seeded-goal/,
+  '/goals/:goal': /seeded-goal/,
+  // This host's engine holds none of the Bureau's own types; the Bureau's host lists them (26-workflows).
+  '/internal-workflows': /No internal workflows/,
   '/health/runs': /order-processing/,
 };
 
@@ -268,6 +278,12 @@ test.beforeAll(async ({ playwright }) => {
       name: AGENT_ID,
       description: LONG_DESCRIPTION,
     });
+    await removeAgent(request, INSTRUCTIONS_AGENT_ID);
+    await createAgentFile(request, INSTRUCTIONS_AGENT_ID, {
+      name: INSTRUCTIONS_AGENT_ID,
+      description: LONG_DESCRIPTION,
+      instructions: LONG_INSTRUCTIONS,
+    });
     await runToEnd(request, 'assistant', CHAT_THREAD, 'Say hello');
     await runToEnd(request, TEXT_ECHO_AGENT_NAME, MEMORY_THREAD, LONG_MEMORY);
     const stored = await request.put(`/v1/storage/${encodeURIComponent(LONG_STORAGE_KEY)}`, {
@@ -282,11 +298,13 @@ test.beforeAll(async ({ playwright }) => {
     const seed: ResponsiveSeed = {
       chat: CHAT_THREAD,
       agent: AGENT_ID,
+      instructionsAgent: INSTRUCTIONS_AGENT_ID,
       memoryAgent: TEXT_ECHO_AGENT_NAME,
       workflow: 'order-processing',
       workflowFile: WORKFLOW_FILE,
       run: runs.items?.[0]?.id ?? 'responsive-run',
       schedule: schedules.items?.[0]?.id ?? 'responsive-schedule',
+      goal: SEEDED_GOAL_RUN_IDENTIFIER,
     };
     addresses = responsiveAddresses(seed);
     variantAddresses = responsiveVariants(seed);
@@ -299,6 +317,7 @@ test.afterAll(async ({ playwright }) => {
   const request = await playwright.request.newContext({ baseURL: E2E_BASE_URL });
   try {
     await removeAgent(request, AGENT_ID);
+    await removeAgent(request, INSTRUCTIONS_AGENT_ID);
     await request.delete(`/v1/storage/${encodeURIComponent(LONG_STORAGE_KEY)}`);
     const listed = await request.post('/bureau/jsonrpc', {
       data: {

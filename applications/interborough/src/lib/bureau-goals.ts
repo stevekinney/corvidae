@@ -95,6 +95,11 @@ export async function listGoals(
   return pageSchema.parse(await callBureau('bureau.goals.list', input, options));
 }
 
+/** One goal by its identifier (`bureau.goals.get`); a goal that is not the caller's is `NotFound`. */
+export async function getGoal(goalRunId: string, options?: Options): Promise<Goal> {
+  return goalSchema.parse(await callBureau('bureau.goals.get', { goalRunId }, options));
+}
+
 /** How many goals one request of {@link listAllGoals} asks for. */
 const GOALS_PAGE_SIZE = 100;
 

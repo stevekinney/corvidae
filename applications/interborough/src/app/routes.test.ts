@@ -27,6 +27,7 @@ import {
   workflowTypePath,
 } from '../lib/workflow-type-paths.ts';
 import { type RouteDefinition, routes } from './routes.ts';
+import { DESTINATIONS } from './shell/destinations.ts';
 import { VIEW_NAMES } from './views.ts';
 
 const sourceRoot = join(import.meta.dir, '..');
@@ -288,12 +289,18 @@ describe('the routes for schedules and goals', () => {
     expect(componentPathOf('/schedules/:schedule')).toBe(componentPathOf('/schedules'));
   });
 
-  test('keep /goals as a route in its own view, and out of the sidebar', async () => {
+  test('keep /goals, /goals/new and /goals/:goal in one view, in the sidebar after Schedules', () => {
     expect(matchRoute('/goals')).toEqual({ pattern: '/goals', params: {} });
-    expect(routes.find((candidate) => candidate.pattern === '/goals')?.view).toBe('goals');
-    const sidebar = await Bun.file(join(sourceRoot, 'app/shell/sidebar.svelte')).text();
-    expect(sidebar).not.toContain("'goals'");
-    expect(sidebar).not.toContain('/goals');
+    expect(matchRoute('/goals/new')).toEqual({ pattern: '/goals/new', params: {} });
+    expect(matchRoute('/goals/goal-1')).toEqual({
+      pattern: '/goals/:goal',
+      params: { goal: 'goal-1' },
+    });
+    for (const pattern of ['/goals', '/goals/new', '/goals/:goal']) {
+      expect(routes.find((candidate) => candidate.pattern === pattern)?.view).toBe('goals');
+    }
+    const order = DESTINATIONS.map((destination) => destination.view);
+    expect(order.indexOf('goals')).toBe(order.indexOf('schedules') + 1);
   });
 
   test('read /health/audit as the audit trail, not a placeholder', () => {

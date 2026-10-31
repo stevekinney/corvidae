@@ -9,8 +9,7 @@
   min-width: 0;
 }
 
-.ib-agents__header,
-.ib-agent__header {
+.ib-agents__header {
   display: flex;
   flex-wrap: wrap;
   gap: var(--cinder-space-2) var(--cinder-space-3);
@@ -18,15 +17,6 @@
   justify-content: space-between;
 }
 
-.ib-agent__heading {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--cinder-space-1) var(--cinder-space-3);
-  align-items: baseline;
-  min-width: 0;
-}
-
-.ib-agent__actions,
 .ib-agent-row__actions {
   display: flex;
   flex-wrap: wrap;
@@ -34,35 +24,10 @@
   align-items: center;
 }
 
-/* A list of flat rows: a faint rule between them, no card around any. */
+/* Compact rows in one bordered list: the list draws the border, the rows only the rule between. */
 .ib-agents__list {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.ib-agent-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--cinder-space-2) var(--cinder-space-4);
-  align-items: center;
-  justify-content: space-between;
-  padding-block: var(--cinder-density-pad-block);
-  border-block-end: 1px solid var(--cinder-border-faint);
-}
-
-.ib-agent-row:last-child {
-  border-block-end: 0;
-}
-
-.ib-agent-row__body {
-  display: flex;
-  flex: 1 1 20rem;
-  flex-direction: column;
-  gap: var(--cinder-space-1);
-  min-width: 0;
+  border: 1px solid var(--cinder-border-muted);
+  border-radius: var(--cinder-radius-md);
 }
 
 .ib-agent-row__title {
@@ -78,17 +43,17 @@
  * so itself, and the boxes around it are allowed to shrink. */
 .ib-agent-name,
 .ib-agent-id,
-.ib-agent__heading h1,
+.ib-agent-title,
 .ib-agent-fact,
 .ib-agent-chips > li,
-.ib-agent-facts .cinder-badge,
+.ib-agent-fact__badge,
 .ib-agent__version code {
   min-inline-size: 0;
   max-inline-size: 100%;
   overflow-wrap: anywhere;
 }
 
-.ib-agent-facts .cinder-badge {
+.ib-agent-fact__badge {
   white-space: normal;
   text-align: start;
 }
@@ -105,7 +70,7 @@
 
 /* An agent's name is its identifier when it has no other: kebab-case is monospace. */
 .ib-agent-name[data-identifier],
-.ib-agent__heading h1[data-identifier] {
+.ib-agent-title[data-identifier] {
   font-family: var(--cinder-font-mono);
 }
 
@@ -166,8 +131,191 @@
   font-family: var(--cinder-font-mono);
 }
 
-.ib-agent__subheading {
-  margin: 0 0 var(--cinder-space-2);
-  font-size: var(--cinder-text-md);
+/* ── One agent's tabs: Chats, Instructions and Settings ───────── */
+
+.ib-agent-chats,
+.ib-agent-instructions,
+.ib-agent-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+  min-width: 0;
+  padding-block-start: var(--cinder-space-3);
+}
+
+.ib-agent-chats__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-2) var(--cinder-space-3);
+  align-items: end;
+  min-width: 0;
+}
+
+.ib-agent-chats__search {
+  flex: 1 1 14rem;
+  min-inline-size: 0;
+  max-inline-size: 24rem;
+}
+
+.ib-agent-chat-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* One chat: a row that is a button, so the whole row opens it. */
+.ib-agent-chat {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-1) var(--cinder-space-3);
+  align-items: baseline;
+  justify-content: space-between;
+  inline-size: 100%;
+  min-inline-size: 0;
+  padding: var(--cinder-space-2);
+  border: 0;
+  border-block-end: 1px solid var(--cinder-border-faint);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.ib-agent-chat:hover {
+  background: var(--cinder-surface-hover);
+}
+
+.ib-agent-chat__title {
+  flex: 1 1 12rem;
+  min-inline-size: 0;
   font-weight: 600;
+}
+
+.ib-agent-chat__preview {
+  flex: 2 1 16rem;
+  min-inline-size: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-agent-chat__meta {
+  display: inline-flex;
+  gap: var(--cinder-space-2);
+  align-items: center;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-agent-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-2);
+  min-width: 0;
+}
+
+.ib-agent-note {
+  margin: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+/* The agent file's body, rendered: long words and code break or scroll inside the outlet. */
+.ib-agent-document {
+  max-inline-size: 48rem;
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.ib-agent-document pre {
+  max-inline-size: 100%;
+  overflow-x: auto;
+}
+
+.ib-agent-references {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ib-agent-references code,
+.ib-agent-settings__list dd,
+.ib-agent-version__body {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.ib-agent-settings__list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+.ib-agent-settings__row {
+  display: grid;
+  grid-template-columns: minmax(0, 14rem) minmax(0, 1fr);
+  gap: var(--cinder-space-1) var(--cinder-space-3);
+  padding-block: var(--cinder-space-2);
+  border-block-end: 1px solid var(--cinder-border-faint);
+}
+
+.ib-agent-settings__row dt {
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-agent-settings__row dd {
+  margin: 0;
+}
+
+.ib-agent-settings__actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.ib-agent-versions {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ib-agent-version {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-2) var(--cinder-space-3);
+  align-items: center;
+  justify-content: space-between;
+  padding-block: var(--cinder-space-2);
+  border-block-end: 1px solid var(--cinder-border-faint);
+}
+
+.ib-agent-version__body {
+  display: flex;
+  flex: 1 1 16rem;
+  flex-direction: column;
+  gap: var(--cinder-space-1);
+}
+
+.ib-agent-version__title {
+  font-weight: 600;
+}
+
+.ib-agent-version__meta,
+.ib-agent-version__changed {
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+@media (width <= 40rem) {
+  .ib-agent-settings__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

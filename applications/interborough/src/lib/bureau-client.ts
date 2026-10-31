@@ -324,6 +324,12 @@ export async function listContexts(
   input: {
     readonly agentName?: string;
     readonly origin?: ContextOrigin;
+    /** Only the chats whose title contains this text, ignoring case, before the page is cut. */
+    readonly titleContains?: string;
+    /** Only the chats in this activity state right now, before the page is cut. */
+    readonly activity?: 'running' | 'awaiting-input';
+    readonly sortBy?: 'updatedAt' | 'createdAt';
+    readonly sortOrder?: 'asc' | 'desc';
     readonly limit?: number;
     readonly offset?: number;
   } = {},

@@ -1,0 +1,80 @@
+/* ── The records pages: one toolbar, one table, one status column ────────────── */
+
+.ib-records {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-4);
+  min-width: 0;
+}
+
+/* Count, filters, primary action: one row that wraps instead of widening the page. */
+.ib-records-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cinder-space-3) var(--cinder-space-4);
+  min-width: 0;
+}
+
+.ib-records-toolbar__count {
+  margin: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+  white-space: nowrap;
+}
+
+.ib-records-toolbar__filters {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+
+.ib-records-toolbar__action {
+  margin-inline-start: auto;
+}
+
+.ib-records__more {
+  display: flex;
+  justify-content: center;
+}
+
+/* A long identifier or title wraps in its cell instead of widening the table past the screen. */
+.ib-records__wrap {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ib-records__muted {
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-records__subheading {
+  margin: 0;
+  font-size: var(--cinder-text-md);
+  font-weight: 600;
+}
+
+/* A page's facts: a label above its value, as many as fit in a row. */
+.ib-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(11rem, 100%), 1fr));
+  gap: var(--cinder-space-3) var(--cinder-space-5);
+  margin: 0;
+}
+
+.ib-facts__item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-1);
+  min-width: 0;
+}
+
+.ib-facts__item dt {
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-facts__item dd {
+  margin: 0;
+  min-width: 0;
+}

@@ -23,6 +23,7 @@ import {
 } from '../../../lib/bureau-world.test-support.ts';
 import { router } from '../../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../../lib/scopes.svelte.ts';
+import { STATUS_WORDS } from '../../../lib/status.ts';
 import { landAt } from '../../chat/pages.test-support.ts';
 
 let stub: BureauWorldStub | undefined;
@@ -105,6 +106,38 @@ describe('narrowing the runs', () => {
   });
 });
 
+describe('the records page', () => {
+  test('counts the runs, offers Start run in the toolbar, and says each status in the seven words', async () => {
+    const view = open('/runs');
+    await waitFor(() => expect(rowIds(view.container).length).toBe(3));
+    expect(view.getByTestId('records-count').textContent).toBe(TASK_COPY.count(3));
+    const start = view.getByRole('link', { name: TASK_COPY.startRun });
+    expect(start.getAttribute('href')).toBe('/runs?view=start');
+
+    const words = [...view.container.querySelectorAll('[data-run]')].map((row) =>
+      row.getAttribute('data-status'),
+    );
+    expect(words.length).toBeGreaterThan(0);
+    for (const word of words) expect(STATUS_WORDS as readonly (string | null)[]).toContain(word);
+    expect(view.container.querySelectorAll('[data-run] [data-cinder-status]').length).toBe(3);
+  });
+
+  test('a filter that matches nothing is the filtered empty state, and Clear filters takes the filter out', async () => {
+    const view = open('/runs?status=canceled');
+    await view.findByRole('heading', { level: 2, name: TASK_COPY.noMatch.title });
+    expect(view.container.querySelector('[data-cinder-kind="filtered"]')).not.toBeNull();
+
+    const clear = view.container.querySelector<HTMLButtonElement>(
+      '[data-cinder-kind="filtered"] button',
+    );
+    if (clear === null) throw new Error('The empty state did not offer Clear filters.');
+    expect(clear.textContent).toContain(TASK_COPY.clearAction);
+    await fireEvent.click(clear);
+    await waitFor(() => expect(router.search.get('status')).toBeNull());
+    await waitFor(() => expect(rowIds(view.container).length).toBe(3));
+  });
+});
+
 describe('opening from a row', () => {
   test('a run opens in place, and a modified click is left to the browser', async () => {
     const view = open('/runs');
@@ -129,7 +162,7 @@ describe('opening from a row', () => {
     const again = open('/runs');
     const goal = await again.findByRole('link', { name: `goal-1 (${TASK_COPY.goal})` });
     await fireEvent.click(goal, { button: 0 });
-    expect(router.pathname).toBe('/goals');
+    expect(router.pathname).toBe('/goals/goal-1');
   });
 
   test('a schedule’s fire opens its session in place, whether or not the caller lists that session', async () => {

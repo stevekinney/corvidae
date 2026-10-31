@@ -7,7 +7,8 @@ import type { BadgeVariant } from '@lostgradient/cinder';
 
 import { WORKFLOW_COPY } from '../../app/copy.ts';
 import { formatRelativeTime } from '../../lib/format/index.ts';
-import type { CatalogRow, DefinitionDetail } from '../../lib/workflow-catalog.ts';
+import { workflowStatusWord, type StatusWord } from '../../lib/status.ts';
+import type { CatalogRow, CodeActivity, DefinitionDetail } from '../../lib/workflow-catalog.ts';
 import type { WorkflowRunCounts } from '../../lib/workflow-files.ts';
 import { describeCadence } from '../schedules/cadence.ts';
 
@@ -20,18 +21,13 @@ export type RowBadge = {
 
 /**
  * The badges of a row: its kind (`Code`, or `Agent-authored` for every Bureau file), and, for a
- * file, whether it is invalid or paused, and for a source, whether it failed to load. The agent
- * that owns a file is an identifier, so a row sets it in monospace beside the badges instead.
+ * source, the category it failed to load with. Whether a file is invalid or paused is the row's
+ * status (`workflowRowStatus`), not a badge. The agent that owns a file is an identifier, so a row
+ * sets it in monospace beside the badges instead.
  */
 export function rowBadges(row: CatalogRow): RowBadge[] {
   if (row.kind === 'code') return [{ label: WORKFLOW_COPY.codeBadge, variant: 'neutral' }];
   const badges: RowBadge[] = [{ label: WORKFLOW_COPY.agentAuthoredBadge, variant: 'accent' }];
-  if (row.file?.state === 'invalid') {
-    badges.push({ label: WORKFLOW_COPY.invalidBadge, variant: 'danger' });
-  }
-  if (row.file?.paused === true) {
-    badges.push({ label: WORKFLOW_COPY.pausedBadge, variant: 'neutral' });
-  }
   if (row.failure !== null) {
     badges.push({
       label: WORKFLOW_COPY.sourceFailed(row.failure),
@@ -40,6 +36,29 @@ export function rowBadges(row: CatalogRow): RowBadge[] {
     });
   }
   return badges;
+}
+
+/**
+ * The status word of a row (`lib/status.ts`): Failed for a file the Bureau cannot use or a source
+ * that failed to load, Paused for a paused file, Running while an instance is going, Scheduled when
+ * something starts it, and `null` for a workflow with none of those.
+ */
+export function workflowRowStatus(
+  row: CatalogRow,
+  activity: CodeActivity | undefined,
+): StatusWord | null {
+  const runs = row.kind === 'code' ? activity?.runs : row.runs;
+  const started =
+    row.kind === 'code'
+      ? schedulesSummary(activity?.schedules ?? null) !== null
+      : triggerSummary(row.trigger) !== null;
+  return workflowStatusWord({
+    invalid: row.file?.state === 'invalid',
+    failed: row.failure !== null,
+    paused: row.file?.paused === true,
+    running: runs?.active ?? 0,
+    started,
+  });
 }
 
 /** Which of its three states a row is in: its file cannot be used, its source failed, or neither. */

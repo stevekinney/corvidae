@@ -1,4 +1,4 @@
-import { cleanup, render, waitFor } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
@@ -50,7 +50,7 @@ describe('the list of agents', () => {
     origin: 'chat' as 'chat' | 'goal' | 'schedule',
   });
 
-  test('shows each agent’s model, tools and use, badges none, and offers New chat for every agent', async () => {
+  test('shows each agent’s use and what waits on the person, drops the tool count, and offers New chat for every agent', async () => {
     const recently = new Date(Date.now() - 3 * 60_000).toISOString();
     const served = bureau({
       'bureau.agents.list': () => ({ agents: [ASSISTANT, FILE_AGENT, INTERNAL] }),
@@ -78,7 +78,7 @@ describe('the list of agents', () => {
       'bureau.contexts.list': (params) => ({
         contexts: [
           chat('session-1', 'assistant', '2026-10-19T09:00:00.000Z'),
-          chat('session-2', 'assistant', recently),
+          { ...chat('session-2', 'assistant', recently), activity: 'awaiting-input' as const },
           chat('session-3', 'researcher', '2026-10-18T09:00:00.000Z'),
           { ...chat('goal-session', 'assistant', recently), origin: 'goal' as const },
           { ...chat('fire-session', 'researcher', recently), origin: 'schedule' as const },
@@ -91,9 +91,9 @@ describe('the list of agents', () => {
     restore = served.restore;
     landAt('/agents');
 
-    const { container, findByText } = mount(AgentList);
+    const { container, findByRole } = mount(AgentList);
 
-    await findByText('anthropic/sonnet');
+    await findByRole('link', { name: 'Assistant' });
     const rows = (name: string) => container.querySelector(`[data-agent="${name}"]`);
     const text = (name: string) => rows(name)?.textContent ?? '';
     // Where an agent is defined is not worded, and no badge is.
@@ -102,8 +102,9 @@ describe('the list of agents', () => {
     // or a model, and the listing does not say, so no model line is claimed for it.
     expect(text('assistant')).not.toContain('Scripted');
     expect(rows('assistant')?.textContent).not.toContain('Model');
-    expect(text('assistant')).toContain('2 tools');
-    expect(text('researcher')).toContain('2 tools');
+    // The row is compact: no model, no tools, so no count of them either.
+    expect(text('researcher')).not.toContain('tools');
+    expect(text('researcher')).not.toContain('anthropic/sonnet');
     await waitFor(() =>
       expect(
         rows('assistant')?.querySelector('[data-testid="agent-chat-count"]')?.textContent,
@@ -113,6 +114,22 @@ describe('the list of agents', () => {
       'Last chat 3m ago',
     );
     expect(text('researcher')).toContain('1 chat');
+    // The chat count is a link to the agent's page, and an agent with a waiting chat says so.
+    const count = rows('assistant')?.querySelector<HTMLAnchorElement>(
+      '[data-testid="agent-chat-count"]',
+    );
+    expect(count?.getAttribute('href')).toBe('/agents/assistant');
+    count?.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true }),
+    );
+    expect(router.pathname).toBe('/agents');
+    count?.click();
+    expect(router.pathname).toBe('/agents/assistant');
+    expect(rows('assistant')?.querySelector('[data-testid="agent-needs-you"]')?.textContent).toBe(
+      'Needs you',
+    );
+    expect(rows('researcher')?.querySelector('[data-testid="agent-needs-you"]')).toBeNull();
+    expect(rows('internal')?.querySelector('[data-testid="agent-needs-you"]')).toBeNull();
     // Only the chats a person started are counted, asked of the Bureau so it filters before paging.
     const listed = served.calls.filter((call) => call.method === 'bureau.contexts.list');
     expect(listed.length).toBeGreaterThan(0);
@@ -130,8 +147,6 @@ describe('the list of agents', () => {
     for (const name of ['assistant', 'researcher', 'internal']) {
       expect(rows(name)?.querySelector(`a[href="/agents/${name}/memories"]`)).not.toBeNull();
     }
-    // An agent whose listing names no tools has none claimed for it, not even "No tools".
-    expect(text('internal')).not.toContain('tool');
   });
 
   test('says nothing of chat counts when the Bureau cannot list the chats, rather than that there are none', async () => {
@@ -144,11 +159,11 @@ describe('the list of agents', () => {
     landAt('/agents');
 
     const client = createQueryClient();
-    const { container, findByText } = render(QueryPage, {
+    const { container, findByRole } = render(QueryPage, {
       props: { page: AgentList, client },
     } as never);
 
-    await findByText('Assistant');
+    await findByRole('link', { name: 'Assistant' });
     // The read has failed before anything is asserted about what it left out.
     await waitFor(() =>
       expect(client.getQueryState(queryKeys.contexts.usage())?.status).toBe('error'),
@@ -164,14 +179,68 @@ describe('the list of agents', () => {
     }).restore;
     landAt('/agents');
 
-    const { container, findByText } = mount(AgentList);
+    const { container, findByRole } = mount(AgentList);
 
-    await findByText('Assistant');
+    await findByRole('link', { name: 'Assistant' });
     const assistant = container.querySelector('[data-agent="assistant"]');
     expect(assistant?.querySelector('.ib-agent-id')?.textContent).toBe('assistant');
     const internal = container.querySelector('[data-agent="internal"]');
     expect(internal?.querySelector('.ib-agent-id')).toBeNull();
     expect(internal?.querySelector('.ib-agent-name')?.hasAttribute('data-identifier')).toBe(true);
+  });
+
+  test('counts the agents, narrows them by a search, and offers Clear filters when none matches', async () => {
+    restore = bureau({
+      'bureau.agents.list': () => ({ agents: [AGENT, INTERNAL] }),
+      'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }),
+    }).restore;
+    landAt('/agents');
+    const { container, findByRole, findByLabelText } = mount(AgentList);
+
+    await findByRole('link', { name: 'Assistant' });
+    expect(container.querySelector('[data-testid="records-count"]')?.textContent).toBe('2 agents');
+
+    const search = await findByLabelText('Search agents');
+    await fireEvent.input(search, { target: { value: 'intern' } });
+    await waitFor(() =>
+      expect(container.querySelector('[data-agent="assistant"]') === null).toBe(true),
+    );
+    expect(container.querySelector('[data-agent="internal"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="records-count"]')?.textContent).toBe('1 agent');
+
+    // Clear all in the filter bar takes the search out again.
+    await fireEvent.click(await findByRole('button', { name: 'Clear all filters' }));
+    await waitFor(() => expect(container.querySelector('[data-agent="assistant"]')).not.toBeNull());
+    await fireEvent.input(search, { target: { value: 'intern' } });
+    await waitFor(() =>
+      expect(container.querySelector('[data-agent="assistant"]') === null).toBe(true),
+    );
+
+    await fireEvent.input(search, { target: { value: 'nothing like this' } });
+    await findByRole('heading', { level: 2, name: 'No agent matches this search' });
+    expect(container.querySelector('[data-cinder-kind="filtered"]')).not.toBeNull();
+    const clear = container.querySelector<HTMLButtonElement>(
+      '[data-cinder-kind="filtered"] button',
+    );
+    if (clear === null) throw new Error('The empty state did not offer Clear filters.');
+    await fireEvent.click(clear);
+    await waitFor(() => expect(container.querySelector('[data-agent="assistant"]')).not.toBeNull());
+  });
+
+  test('says there are no agents, with New agent to make the first, when the Bureau lists none', async () => {
+    restore = bureau({
+      'bureau.agents.list': () => ({ agents: [] }),
+      'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }),
+    }).restore;
+    landAt('/agents');
+    const { container, findByRole } = mount(AgentList);
+
+    await findByRole('heading', { level: 2, name: 'No agents yet' });
+    expect(container.querySelector('[data-cinder-kind="first-use"]')).not.toBeNull();
+    const action = container.querySelector<HTMLAnchorElement>(
+      '[data-cinder-kind="first-use"] a[href="/agents/new"]',
+    );
+    expect(action).not.toBeNull();
   });
 
   test('opens an agent’s page and a new chat with it, and leaves a modified click to the browser', async () => {
@@ -270,7 +339,7 @@ describe('the list of agents, and the agent editor', () => {
     );
     restore = served.restore;
     landAt('/agents');
-    const { container, findByText, getByRole } = mount(AgentList);
+    const { container, findByText, getByRole, getByLabelText } = mount(AgentList);
 
     await findByText(AGENT_EDITOR_COPY.invalidBadge);
     const row = container.querySelector('[data-agent="broken"]');
@@ -285,6 +354,17 @@ describe('the list of agents, and the agent editor', () => {
     expect(
       container.querySelector('[data-agent="researcher"]')?.getAttribute('data-state'),
     ).toBeNull();
+    // The search narrows the files with a problem as it narrows the agents.
+    const search = getByLabelText('Search agents');
+    await fireEvent.input(search, { target: { value: 'brok' } });
+    await waitFor(() =>
+      expect(container.querySelector('[data-agent="researcher"]') === null).toBe(true),
+    );
+    expect(container.querySelector('[data-agent="broken"]')).not.toBeNull();
+    await fireEvent.input(search, { target: { value: '' } });
+    await waitFor(() =>
+      expect(container.querySelector('[data-agent="researcher"]')).not.toBeNull(),
+    );
     getByRole('link', { name: 'broken' }).click();
     expect(router.pathname).toBe('/agents/broken/edit');
   });
@@ -429,22 +509,25 @@ describe('one agent’s page', () => {
     await findByText('anthropic/sonnet');
     expect(container.textContent).toContain('lookup-order');
     expect(container.textContent).toContain('Cite');
-    // The version of the file, by its short hash, with the history that lives in the editor.
+    // The version of the file, by its short hash, with the history that lives in its Settings tab.
     const version = container.querySelector('[data-testid="agent-file-version"]');
     expect(version?.textContent).toContain('File version');
     expect(version?.querySelector('code')?.textContent).toBe('hash-1');
-    expect(version?.querySelector('a')?.getAttribute('href')).toBe('/agents/researcher/edit');
+    expect(version?.querySelector('a')?.getAttribute('href')).toBe(
+      '/agents/researcher?tab=settings',
+    );
     // Opening the history is a navigation in the app, not a page load.
     const history = version?.querySelector('a');
     if (history === null || history === undefined) throw new Error('expected a history link');
     history.click();
-    expect(router.pathname).toBe('/agents/researcher/edit');
+    expect(router.pathname).toBe('/agents/researcher');
+    expect(router.search.get('tab')).toBe('settings');
     expect(container.textContent).not.toContain('Revision');
     expect(container.querySelector('h1')?.textContent?.trim()).toBe('Researcher');
     await findByText('Plan the week');
     expect(
       served.calls.find((call) => call.method === 'bureau.contexts.list')?.params,
-    ).toMatchObject({ agentName: 'researcher', origin: 'chat' });
+    ).toMatchObject({ agentName: 'researcher', sortBy: 'updatedAt', sortOrder: 'desc' });
   });
 
   test('shows two skills that share a name, which only their identifiers tell apart', async () => {

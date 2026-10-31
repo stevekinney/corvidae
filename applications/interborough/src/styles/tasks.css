@@ -1,44 +1,5 @@
 /* ── Runs: one list of what the agents have done, and one run's page ─────────── */
 
-.ib-runs {
-  display: flex;
-  flex-direction: column;
-  gap: var(--cinder-space-4);
-  min-width: 0;
-}
-
-.ib-runs__bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--cinder-space-3) var(--cinder-space-6);
-}
-
-.ib-runs__title {
-  margin: 0;
-  font-size: var(--cinder-text-xl);
-  font-weight: 600;
-}
-
-.ib-runs__filters {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(9rem, 100%), 1fr));
-  flex: 1 1 18rem;
-  min-width: 0;
-  gap: var(--cinder-space-3);
-  max-width: 48rem;
-}
-
-.ib-runs__summary {
-  color: var(--cinder-text-muted);
-}
-
-.ib-runs__more {
-  display: flex;
-  justify-content: center;
-}
-
 .ib-run {
   display: flex;
   flex-direction: column;
@@ -124,83 +85,11 @@
   font-size: var(--cinder-text-sm);
 }
 
-/* One dense line per run: agent, what it was asked, status, and when. It wraps to two lines on a
- * narrow screen, with the status beside the agent. */
-.ib-runs__list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.ib-run-row {
-  display: grid;
-  grid-template-columns: 12rem minmax(0, 1fr) 5.5rem 9rem;
-  align-items: center;
-  gap: var(--cinder-space-3);
-  min-height: 2.5rem;
-  padding-block: var(--cinder-space-1);
-  border-bottom: 1px solid var(--cinder-border-muted);
-}
-
 .ib-run-row__agent {
-  min-width: 0;
-  overflow: hidden;
   color: inherit;
   text-decoration: none;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .ib-run-row__agent:hover {
   text-decoration: underline;
-}
-
-.ib-run-row__what {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ib-run-row__when {
-  color: var(--cinder-text-muted);
-  font-size: var(--cinder-text-sm);
-  text-align: end;
-  white-space: nowrap;
-}
-
-@media (max-width: 47.99rem) {
-  .ib-run-row {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-      'agent status'
-      'what what'
-      'when when';
-    row-gap: var(--cinder-space-1);
-    padding-block: var(--cinder-space-2);
-  }
-
-  .ib-run-row__agent {
-    grid-area: agent;
-  }
-
-  .ib-run-row > .cinder-badge {
-    grid-area: status;
-  }
-
-  .ib-run-row__what {
-    grid-area: what;
-    white-space: normal;
-  }
-
-  .ib-run-row__when {
-    grid-area: when;
-    text-align: start;
-  }
-}
-
-/* The filters are quiet: no label above, and a faint border instead of the control's full one. */
-.ib-runs__filters .cinder-select {
-  border-color: var(--cinder-border-muted);
-  background-color: transparent;
 }

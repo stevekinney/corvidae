@@ -45,14 +45,6 @@
   min-width: 0;
 }
 
-.ib-workflows__header {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--cinder-space-2) var(--cinder-space-3);
-  align-items: center;
-  justify-content: space-between;
-}
-
 .ib-workflows__title {
   margin: 0;
   font-size: var(--cinder-text-xl);
