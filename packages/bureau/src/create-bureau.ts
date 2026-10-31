@@ -2492,7 +2492,11 @@ async function constructBureau<const D extends AgentDefinitions>(
   // COR-1890: the built-in `bureau` plugin contributes Bureau's own tools through the plugin API.
   // The tools read the Bureau when they are called, which is after construction has finished.
   const bureauTools = [
-    createAgentDiscoveryTool({ entries: () => agentCatalog.entries() }),
+    createAgentDiscoveryTool({
+      entries: () => agentCatalog.entries(),
+      list: () => agentCatalog.list(),
+      find: (name) => agentCatalog.find(name),
+    }),
     ...(options.workflowSource === undefined
       ? []
       : Object.values(

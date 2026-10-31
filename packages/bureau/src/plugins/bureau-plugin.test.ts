@@ -3,7 +3,7 @@
  * `bureau:discover-agents` and the five `bureau:workflows-*` tools. The plugin is required, holds the
  * name `bureau` before any other plugin, and the events its tools cause carry `source: 'bureau'`.
  */
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -18,6 +18,7 @@ import type { AgentDefinitions } from '../agent-catalog';
 import { createBureau } from '../create-bureau';
 import { eventSourceOf } from '../event-source';
 import { agentFileDirectory } from '../sources/agent-file-directory';
+import { workflowFileDirectory } from '../sources/workflow-file-directory';
 import {
   startWorkflowToolsBureau,
   type WorkflowToolsHarness,
@@ -120,6 +121,42 @@ describe('the built-in bureau plugin', () => {
     expect(outcome).toBe('success');
     expect(JSON.parse(String(result)).map((match: { name: string }) => match.name)).toEqual([
       'anchor',
+    ]);
+  });
+
+  it('finds file agents, by name, description, and skill, and leaves out an invalid file', async () => {
+    const harness = await start({ agents: [] });
+    await harness.putAgent('finder', ['bureau:discover-agents']);
+    await writeFile(
+      join(harness.agentsPath, 'researcher.md'),
+      agentFileText({
+        model: KNOWN_MODEL,
+        description: 'Finds primary sources',
+        skillDescriptors: '[{id: cite, name: Cite, description: Adds footnotes, tags: [footnoting]}]',
+      }),
+    );
+    await writeFile(join(harness.agentsPath, 'broken.md'), 'not an agent file, so it is invalid');
+    await harness.bureau.agents.refresh();
+    expect(harness.bureau.agents.list().find((file) => file.id === 'broken')?.state).toBe('invalid');
+
+    const discover = async (text?: string) => {
+      const { result, outcome } = await harness.callTool(
+        'bureau__discover-agents',
+        text === undefined ? {} : { text },
+        { agent: 'finder' },
+      );
+      expect(outcome).toBe('success');
+      return JSON.parse(String(result)) as { name: string; skillDescriptors?: { id: string }[] }[];
+    };
+
+    expect((await discover('footnoting')).map((match) => match.name)).toEqual(['researcher']);
+    expect((await discover('primary sources')).map((match) => match.name)).toEqual(['researcher']);
+    const everything = await discover();
+    expect(everything.map((match) => match.name)).toContain('researcher');
+    expect(everything.map((match) => match.name)).toContain('finder');
+    expect(everything.map((match) => match.name)).not.toContain('broken');
+    expect(everything.find((match) => match.name === 'researcher')?.skillDescriptors).toEqual([
+      expect.objectContaining({ id: 'cite' }),
     ]);
   });
 
@@ -233,6 +270,62 @@ describe('the source of an event a bureau tool causes', () => {
       { catalog: 'workflows', added: ['nightly'], source: 'bureau' },
       { catalog: 'workflows', added: ['by-api'], source: undefined },
     ]);
+  });
+});
+
+describe('an owner edit that lands while a bureau tool is writing the same workflow', () => {
+  it('is not marked as the tool’s: the source follows the bytes the tool wrote', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'bureau-attribution-'));
+    try {
+      const inner = workflowFileDirectory(directory);
+      // Holds each write after it is on disk and before the catalog reads it back.
+      let holdWrites = false;
+      let reachedGate: () => void = () => {};
+      const reached = new Promise<void>((resolve) => (reachedGate = resolve));
+      let release: () => void = () => {};
+      const released = new Promise<void>((resolve) => (release = resolve));
+      const gated: typeof inner = Object.assign(Object.create(inner) as typeof inner, {
+        async write(...input: Parameters<typeof inner.write>) {
+          const entry = await inner.write(...input);
+          if (holdWrites) {
+            reachedGate();
+            await released;
+          }
+          return entry;
+        },
+      });
+      const harness = await start({ overrides: { workflowSource: gated } });
+      await harness.bureau.workflows!.create('nightly', { trigger: TRIGGER, steps: STEPS });
+      const listed = await harness.bureau.workflows!.list();
+      const hash = listed.find((listing) => listing.id === 'nightly')?.hash;
+      expect(hash).toBeDefined();
+
+      const sources: Array<string | undefined> = [];
+      harness.bureau.addEventListener('definitions.changed', (event) => {
+        if ((event as unknown as { catalog: string }).catalog === 'workflows') {
+          sources.push(eventSourceOf(event));
+        }
+      });
+
+      holdWrites = true;
+      const call = harness.callTool('bureau__workflows-pause', { id: 'nightly', expectedHash: hash });
+      await reached;
+      // The tool's bytes are on disk; the owner edits the file before the tool's write settles.
+      const edited = JSON.stringify({
+        trigger: { kind: 'schedule', spec: '2h' },
+        steps: STEPS,
+      });
+      await writeFile(join(directory, 'nightly.json'), edited);
+      release();
+      const { outcome } = await call;
+      await harness.bureau.workflows!.refresh();
+
+      expect(outcome).toBe('success');
+      expect(sources.length).toBeGreaterThan(0);
+      expect(sources).not.toContain('bureau');
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 });
 

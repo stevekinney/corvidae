@@ -78,6 +78,13 @@ import { ProviderConfigurationError } from './provider-configuration-error.ts';
  */
 export const TOOL_SOURCE_IDENTIFIER = /^[a-z][a-z0-9-]{0,19}$/;
 
+/**
+ * The identifiers a tool source may not take. `bureau` is the namespace of the built-in plugin
+ * (COR-1890): a source with that id would offer `bureau__<tool>` host tools, which Bureau refuses
+ * at construction. A new source is refused it; one already stored is not loaded.
+ */
+export const RESERVED_TOOL_SOURCE_IDENTIFIERS: readonly string[] = ['bureau'];
+
 /** What separates a source's identifier from a tool's name in the name an agent file uses. */
 export const TOOL_NAME_SEPARATOR = '__';
 

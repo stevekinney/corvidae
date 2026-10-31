@@ -1174,30 +1174,57 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
   }
 
   /**
-   * The source of each write in flight, by workflow (`undefined` for a write no plugin's tool made).
-   * The rescan a write causes reports its change while the write is still in flight, so a change is
-   * attributed to a plugin only when every workflow in it is being written by that plugin alone.
+   * The writes in flight, by workflow: each one's source (`undefined` for a write no plugin's tool
+   * made) and the hashes of the bytes it has put on disk. The rescan a write causes reports its
+   * change while the write is still in flight, and an owner can edit the file meanwhile. A change
+   * is attributed to a plugin only when the bytes the rescan read are bytes that plugin's own write
+   * made, never because a write of the same workflow was merely running (COR-1890).
    */
-  const writesInFlight = new Map<string, (string | undefined)[]>();
+  const writesInFlight = new Map<
+    string,
+    { readonly source: string | undefined; readonly hashes: Set<string> }[]
+  >();
 
-  /** Records a write of workflow `id` by `source` until the returned function is called. */
-  function attributeWrite(id: string | undefined, source: string | undefined): () => void {
-    if (id === undefined) return () => {};
-    writesInFlight.set(id, [...(writesInFlight.get(id) ?? []), source]);
-    return () => {
-      const remaining = [...(writesInFlight.get(id) ?? [])];
-      remaining.splice(remaining.indexOf(source), 1);
-      if (remaining.length === 0) writesInFlight.delete(id);
-      else writesInFlight.set(id, remaining);
+  /**
+   * Records a write of workflow `id` by `source` until the returned function is called. `wrote` is
+   * told the hash of each file the write puts on disk.
+   */
+  function attributeWrite(
+    id: string | undefined,
+    source: string | undefined,
+  ): { readonly wrote: (hash: string) => void; readonly stop: () => void } {
+    if (id === undefined) return { wrote: () => {}, stop: () => {} };
+    const entry = { source, hashes: new Set<string>() };
+    writesInFlight.set(id, [...(writesInFlight.get(id) ?? []), entry]);
+    return {
+      wrote: (hash) => void entry.hashes.add(hash),
+      stop: () => {
+        const remaining = (writesInFlight.get(id) ?? []).filter((other) => other !== entry);
+        if (remaining.length === 0) writesInFlight.delete(id);
+        else writesInFlight.set(id, remaining);
+      },
     };
   }
 
-  /** The one plugin that is writing every workflow in `change`, or `undefined`. */
+  /**
+   * The one plugin whose own write made the bytes every workflow in `change` holds now, or
+   * `undefined`. A removal is nobody's: no plugin tool deletes a workflow.
+   */
   function sourceOfChange(change: DefinitionChange): string | undefined {
-    const ids = [...change.added, ...change.changed, ...change.removed];
-    const sources = new Set(ids.flatMap((id) => writesInFlight.get(id) ?? [undefined]));
+    const ids = [...change.added, ...change.changed];
+    if (ids.length === 0 || change.removed.length > 0) return undefined;
+    const current = new Map(catalog.list().map((listing) => [listing.id, listing.hash]));
+    const sources = new Set<string | undefined>();
+    for (const id of ids) {
+      const hash = current.get(id);
+      const writer =
+        hash === undefined
+          ? undefined
+          : writesInFlight.get(id)?.find((write) => write.hashes.has(hash));
+      sources.add(writer?.source);
+    }
     const [only] = sources;
-    return ids.length > 0 && sources.size === 1 ? only : undefined;
+    return sources.size === 1 ? only : undefined;
   }
 
   /** The tail of the writes to each workflow that carries a hook origin, so two never interleave. */
@@ -1270,16 +1297,22 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     type: WorkflowAuditType,
     context: WorkflowWriteContext | undefined,
     previousHash: string | undefined,
-    work: () => Promise<WorkflowFileWriteResult>,
+    work: (onWritten: (hash: string) => void) => Promise<WorkflowFileWriteResult>,
     id?: string,
     // The workflow a write names for attribution when it takes no serialization (pause, resume).
     attributedId: string | undefined = id,
   ): Promise<WorkflowFileWriteResult> {
-    const stopAttributing = attributeWrite(attributedId, context?.source);
+    const attribution = attributeWrite(attributedId, context?.source);
     try {
-      return await writeAttributed(type, context, previousHash, work, id);
+      return await writeAttributed(
+        type,
+        context,
+        previousHash,
+        () => work(attribution.wrote),
+        id,
+      );
     } finally {
-      stopAttributing();
+      attribution.stop();
     }
   }
 
@@ -1485,13 +1518,13 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     },
 
     create: (id, definition, context) =>
-      write('workflow.created', context, undefined, () => catalog.create(id, definition), id),
+      write('workflow.created', context, undefined, (onWritten) => catalog.create(id, definition, { onWritten }), id),
     update: (id, definition, update) =>
       write(
         'workflow.updated',
         update,
         update.expectedHash,
-        () => catalog.update(id, definition, update),
+        (onWritten) => catalog.update(id, definition, { ...update, onWritten }),
         id,
       ),
     pause: (id, guard) =>
@@ -1499,7 +1532,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         'workflow.paused',
         guard,
         guard.expectedHash,
-        () => catalog.setPaused(id, true, guard),
+        (onWritten) => catalog.setPaused(id, true, { ...guard, onWritten }),
         undefined,
         id,
       ),
@@ -1508,7 +1541,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         'workflow.resumed',
         guard,
         guard.expectedHash,
-        () => catalog.setPaused(id, false, guard),
+        (onWritten) => catalog.setPaused(id, false, { ...guard, onWritten }),
         undefined,
         id,
       ),

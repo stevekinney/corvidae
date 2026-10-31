@@ -12,6 +12,15 @@ import { z } from 'zod';
 
 import type { AgentDefinitions, BureauAgentCatalog } from './agent-catalog';
 
+/** What discovery reads of one agent: the same fields whether the agent is code-defined or a file. */
+type DiscoverableAgent = {
+  readonly name: string;
+  readonly agent: {
+    readonly description?: string | undefined;
+    readonly skillDescriptors?: readonly unknown[] | undefined;
+  };
+};
+
 /**
  * Creates a tool that lets an orchestrating agent discover the agents
  * registered on this bureau's catalog. A Bureau offers it to agents itself as
@@ -21,9 +30,14 @@ import type { AgentDefinitions, BureauAgentCatalog } from './agent-catalog';
  * `description`, and each of its `skillDescriptors`' name, description, and
  * tags. Each match is returned as `{ name, description, skillDescriptors }`;
  * the last two are omitted for an agent that declares none.
+ *
+ * It covers every agent the deployment has: the code-defined agents, then the ready file agents
+ * (a file agent's name is its identifier, `plugin:name` for one a plugin ships). A file that is
+ * `invalid` cannot run and is left out. Every agent is listed to every caller; per-agent access
+ * control is COR-1853.
  */
 export function createAgentDiscoveryTool<D extends AgentDefinitions>(
-  catalog: Pick<BureauAgentCatalog<D>, 'entries'>,
+  catalog: Pick<BureauAgentCatalog<D>, 'entries' | 'list' | 'find'>,
 ) {
   return createTool({
     name: 'discover-agents',
@@ -42,7 +56,15 @@ export function createAgentDiscoveryTool<D extends AgentDefinitions>(
     }),
     execute: ({ text }) => {
       const lowerText = text?.toLowerCase();
-      const matches = catalog.entries().filter(({ name, agent }) => {
+      const agents: DiscoverableAgent[] = catalog.entries();
+      const taken = new Set(agents.map(({ name }) => name));
+      // `list` carries no skill descriptors, so a file agent is read from the catalog by identifier.
+      for (const listing of catalog.list()) {
+        if (listing.source !== 'file' || listing.state !== 'ready' || taken.has(listing.id)) continue;
+        const agent = catalog.find(listing.id);
+        if (agent !== undefined) agents.push({ name: listing.id, agent });
+      }
+      const matches = agents.filter(({ name, agent }) => {
         if (!lowerText) {
           return true;
         }
