@@ -22,6 +22,7 @@ import {
   MemoryGovernanceEvent,
   ScheduleMissedEvent,
 } from './events';
+import { markEventSource } from './event-source';
 import type { DiagnosticSink } from './types';
 
 /** The Bureau's one diagnostic choke point; see {@link createDiagnosticDispatcher}. */
@@ -124,12 +125,17 @@ export function forwardDefinitionChanges(
         readonly changed: readonly string[];
         readonly removed: readonly string[];
         readonly rejected: readonly string[];
+        readonly source?: string | undefined;
       }) => void,
     ): () => void;
   },
   dispatch: (event: DefinitionsChangedEvent) => void,
 ): () => void {
-  return files.onChange((change) => dispatch(new DefinitionsChangedEvent(catalog, change)));
+  return files.onChange((change) => {
+    const event = new DefinitionsChangedEvent(catalog, change);
+    // COR-1890: a change a plugin's own tool caused names the plugin.
+    dispatch(change.source === undefined ? event : markEventSource(event, change.source));
+  });
 }
 
 /** Where {@link forwardMissedFires} listens: the engine itself, or a {@link bufferMissedFires} view. */

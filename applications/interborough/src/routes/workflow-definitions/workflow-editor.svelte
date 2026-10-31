@@ -12,15 +12,16 @@
    * above it, so it can be fixed here; one with no hash has nothing to write against, so it has no
    * editor. A save lands on the workflow's page.
    */
-  import { Alert, Button, CodeLocation, JsonEditor, Skeleton } from '@lostgradient/cinder';
+  import { Alert, Button, CodeLocation, Skeleton } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
-  import { untrack } from 'svelte';
+  import { onMount, untrack } from 'svelte';
 
   import { RETRY_LABEL, WORKFLOW_COPY } from '../../app/copy.ts';
   import { agentFaultOf, type AgentFault } from '../../lib/agent-definitions.ts';
   import { getHostPaths, workflowFilePath } from '../../lib/host-paths.ts';
   import { queryKeys, workflowViewInstance } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
+  import { shortcuts } from '../../lib/shortcuts.ts';
   import { workflowTypePath } from '../../lib/workflow-type-paths.ts';
   import {
     getWorkflowFile,
@@ -30,6 +31,7 @@
     type WorkflowFileDetail,
   } from '../../lib/workflow-files.ts';
   import FileProblem from './file-problem.svelte';
+  import WorkflowBuilder from './workflow-builder.svelte';
 
   const copy = WORKFLOW_COPY;
   const queryClient = useQueryClient();
@@ -148,8 +150,7 @@
     },
   }));
 
-  function submit(event: SubmitEvent): void {
-    event.preventDefault();
+  function submit(): void {
     if (hash === null || save.isPending) return;
     const parsed = updateDefinitionFromText(text);
     if (!parsed.ok) {
@@ -187,6 +188,20 @@
     failure = null;
     if (result.data !== undefined) fill(result.data);
   }
+
+  // ⌘Enter saves from anywhere on the page, a field included (`lib/shortcuts.ts`).
+  onMount(() =>
+    shortcuts.register({
+      keys: ['Enter'],
+      modifier: 'mod',
+      label: copy.editor.saveAction,
+      group: copy.builder.shortcutGroup,
+      scope: { route: '/workflows/:workflow/edit' },
+      handler: () => {
+        if (editable) submit();
+      },
+    }),
+  );
 
   function cancel(): void {
     router.navigate(workflowTypePath(type));
@@ -258,23 +273,26 @@
       </Alert>
     {/if}
     {#if editable}
-      <form class="weft-workflow-editor__form" onsubmit={submit}>
-        <JsonEditor
-          id="workflow-editor-text"
-          label={copy.editor.textLabel}
-          description={copy.editor.textDescription}
-          rows={18}
-          value={text}
+      <form class="weft-workflow-editor__form" onsubmit={(event) => event.preventDefault()}>
+        <WorkflowBuilder
+          {text}
+          mode="edit"
           error={validation}
-          validFeedbackVisible={false}
-          onValueChange={(next) => {
+          jsonId="workflow-editor-text"
+          jsonLabel={copy.editor.textLabel}
+          jsonDescription={copy.editor.textDescription}
+          onTextChange={(next) => {
             text = next;
             validation = '';
           }}
         />
         <div class="weft-workflow-editor__actions">
-          <Button type="submit" variant="primary" disabled={save.isPending}
-            >{copy.editor.saveAction}</Button
+          <Button
+            data-changes
+            type="button"
+            onclick={() => submit()}
+            variant="primary"
+            disabled={save.isPending}>{copy.editor.saveAction}</Button
           >
           <Button variant="secondary" disabled={save.isPending} onclick={cancel}
             >{copy.editor.cancelAction}</Button

@@ -1,23 +1,15 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { WorkerDeploymentSummary, WorkerSummary } from './worker-catalog-types.ts';
+import type { WorkerSummary } from './worker-catalog-types.ts';
 import {
-  asDisplayString,
   countByTransport,
-  deploymentHealthPresentation,
-  formatDeploymentIdentity,
-  formatDeploymentName,
-  formatTransports,
   HEARTBEAT_ELEVATED_AFTER_MS,
   HEARTBEAT_STALE_AFTER_MS,
   heartbeatSeverity,
-  heartbeatSeverityCssVariable,
-  heartbeatSeverityVariant,
-  presentationStatusDotStatus,
   queueBacklogVariant,
-  summarizeFleet,
   TRANSPORT_LABEL,
   workerHealthPresentation,
+  workersSummaryLine,
 } from './worker-presentation.ts';
 
 function worker(overrides: Partial<WorkerSummary> = {}): WorkerSummary {
@@ -39,23 +31,6 @@ function worker(overrides: Partial<WorkerSummary> = {}): WorkerSummary {
   };
 }
 
-function deployment(overrides: Partial<WorkerDeploymentSummary> = {}): WorkerDeploymentSummary {
-  return {
-    activeWorkers: 1,
-    buildId: '#4821',
-    deploymentName: 'api-prod',
-    drainedWorkers: 0,
-    drainingWorkers: 0,
-    health: 'active',
-    inFlight: 1,
-    oldestStartedAt: null,
-    runtimeVersion: 'node 20',
-    transports: ['websocket'],
-    workers: 1,
-    ...overrides,
-  };
-}
-
 describe('heartbeatSeverity', () => {
   test('fresh below the elevated threshold', () => {
     expect(heartbeatSeverity(HEARTBEAT_ELEVATED_AFTER_MS - 1)).toBe('fresh');
@@ -68,12 +43,6 @@ describe('heartbeatSeverity', () => {
 
   test('stale at/above the stale threshold', () => {
     expect(heartbeatSeverity(HEARTBEAT_STALE_AFTER_MS)).toBe('stale');
-  });
-
-  test('heartbeatSeverityVariant maps each tier to its status tone', () => {
-    expect(heartbeatSeverityVariant('fresh')).toBe('success');
-    expect(heartbeatSeverityVariant('elevated')).toBe('warning');
-    expect(heartbeatSeverityVariant('stale')).toBe('danger');
   });
 });
 
@@ -120,74 +89,36 @@ describe('workerHealthPresentation — priority order', () => {
   });
 });
 
-describe('deploymentHealthPresentation', () => {
-  test('draining, drained, and active map to their tones', () => {
-    expect(deploymentHealthPresentation(deployment({ health: 'draining' }))).toEqual({
-      label: 'Draining',
-      variant: 'warning',
-    });
-    expect(deploymentHealthPresentation(deployment({ health: 'drained' }))).toEqual({
-      label: 'Drained',
-      variant: 'neutral',
-    });
-    expect(deploymentHealthPresentation(deployment({ health: 'active' }))).toEqual({
-      label: 'Healthy',
-      variant: 'success',
-    });
-  });
-});
-
-describe('summarizeFleet', () => {
-  test('empty fleet', () => {
-    expect(summarizeFleet([])).toEqual({
-      totalWorkers: 0,
-      activeWorkers: 0,
-      drainingWorkers: 0,
-      inFlight: 0,
-      capacity: 0,
-      utilizationPercent: 0,
-    });
+describe('workersSummaryLine', () => {
+  test('an empty fleet reads zero of zero, with nothing running', () => {
+    expect(workersSummaryLine({ workers: [] })).toBe('0 of 0 connected · 0 running');
   });
 
-  test('tallies active/draining counts, sums inFlight/capacity, and rounds utilization', () => {
+  test('counts every listed worker as connected, the tasks they hold, and the queue and dead-letter figures', () => {
     const workers = [
-      worker({ health: 'active', inFlight: 3, concurrency: 10 }),
-      worker({ health: 'active', inFlight: 8, concurrency: 10 }),
-      worker({ health: 'draining', inFlight: 1, concurrency: 4 }),
+      worker({ health: 'active', inFlight: 3 }),
+      worker({ health: 'draining', inFlight: 4 }),
+      worker({ health: 'active', inFlight: 0 }),
+      worker({ health: 'drained', inFlight: 0 }),
     ];
-    expect(summarizeFleet(workers)).toEqual({
-      totalWorkers: 3,
-      activeWorkers: 2,
-      drainingWorkers: 1,
-      inFlight: 12,
-      capacity: 24,
-      utilizationPercent: 50,
-    });
+    expect(workersSummaryLine({ workers, waiting: 12, failedForGood: 2 })).toBe(
+      '4 of 4 connected · 7 running · 12 waiting · 2 failed for good',
+    );
   });
 
-  test('drained workers count toward the total but not active/draining', () => {
-    const workers = [worker({ health: 'drained', inFlight: 0, concurrency: 4 })];
-    const totals = summarizeFleet(workers);
-    expect(totals.totalWorkers).toBe(1);
-    expect(totals.activeWorkers).toBe(0);
-    expect(totals.drainingWorkers).toBe(0);
+  test('counts a drained worker as connected, since it stays registered until it disconnects', () => {
+    const workers = [worker({ health: 'drained', inFlight: 0 })];
+    expect(workersSummaryLine({ workers })).toBe('1 of 1 connected · 0 running');
   });
-});
 
-describe('presentationStatusDotStatus', () => {
-  test('maps success to online and passes the rest through unchanged', () => {
-    expect(presentationStatusDotStatus('success')).toBe('online');
-    expect(presentationStatusDotStatus('warning')).toBe('warning');
-    expect(presentationStatusDotStatus('danger')).toBe('danger');
-    expect(presentationStatusDotStatus('neutral')).toBe('neutral');
-  });
-});
-
-describe('heartbeatSeverityCssVariable', () => {
-  test('returns a distinct Cinder status-tone variable per severity', () => {
-    expect(heartbeatSeverityCssVariable('fresh')).toBe('var(--cinder-status-success-text)');
-    expect(heartbeatSeverityCssVariable('elevated')).toBe('var(--cinder-status-warning-text)');
-    expect(heartbeatSeverityCssVariable('stale')).toBe('var(--cinder-status-danger-text)');
+  test('leaves out a figure that could not be read instead of reporting zero', () => {
+    const workers = [worker({ inFlight: 2 })];
+    expect(workersSummaryLine({ workers, failedForGood: 1 })).toBe(
+      '1 of 1 connected · 2 running · 1 failed for good',
+    );
+    expect(workersSummaryLine({ workers, waiting: 0 })).toBe(
+      '1 of 1 connected · 2 running · 0 waiting',
+    );
   });
 });
 
@@ -197,40 +128,6 @@ describe('queueBacklogVariant', () => {
     expect(queueBacklogVariant(1)).toBe('warning');
     expect(queueBacklogVariant(50)).toBe('warning');
     expect(queueBacklogVariant(51)).toBe('danger');
-  });
-});
-
-describe('asDisplayString', () => {
-  test('passes through non-empty strings', () => {
-    expect(asDisplayString('node 20')).toBe('node 20');
-  });
-
-  test('falls back for null, non-string, and empty string', () => {
-    expect(asDisplayString(null)).toBe('—');
-    expect(asDisplayString(undefined)).toBe('—');
-    expect(asDisplayString(42)).toBe('—');
-    expect(asDisplayString('')).toBe('—');
-  });
-
-  test('accepts a custom fallback', () => {
-    expect(asDisplayString(null, '(none)')).toBe('(none)');
-  });
-});
-
-describe('formatDeploymentIdentity / formatDeploymentName', () => {
-  test('joins build/runtime with the metadata separator', () => {
-    expect(formatDeploymentIdentity(deployment())).toBe('#4821 · node 20');
-  });
-
-  test('missing fields fall back to an em dash', () => {
-    expect(formatDeploymentIdentity(deployment({ buildId: null, runtimeVersion: null }))).toBe(
-      '— · —',
-    );
-  });
-
-  test('deployment name falls back to a labeled placeholder, not an em dash', () => {
-    expect(formatDeploymentName(deployment())).toBe('api-prod');
-    expect(formatDeploymentName(deployment({ deploymentName: null }))).toBe('(no deployment)');
   });
 });
 
@@ -244,9 +141,6 @@ describe('transport presentation (COR-160)', () => {
       ]),
     ).toEqual({ websocket: 1, 'long-poll': 2 });
     expect(countByTransport([])).toEqual({ websocket: 0, 'long-poll': 0 });
-    expect(formatTransports(['websocket', 'long-poll'])).toBe('WebSocket, HTTP long-poll');
-    expect(formatTransports(['long-poll'])).toBe('HTTP long-poll');
-    expect(formatTransports([])).toBe('No transport');
     expect(TRANSPORT_LABEL['long-poll']).toBe('HTTP long-poll');
   });
 });

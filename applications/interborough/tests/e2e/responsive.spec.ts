@@ -103,7 +103,9 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/workflows/:workflow (file, runs tab)': /Recent runs/,
   '/workflows/:workflow (file, history tab)': /Revisions that have run/,
   '/workflows/:workflow/runs/:run': /Input and output/,
-  '/workflows/:workflow/edit': /Workflow file/,
+  // The builder's summary prints the file's trigger and steps; the JSON tab's editor text does not count.
+  '/workflows/new': /In plain words/,
+  '/workflows/:workflow/edit': /In plain words/,
   '/runs/:run': /Input and output/,
   // The list prints the question each waiting review asks, and the open review its source line,
   // which links to the chat whose title is the long word.
@@ -117,6 +119,11 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   // This host's engine holds none of the Bureau's own types; the Bureau's host lists them (26-workflows).
   '/internal-workflows': /No internal workflows/,
   '/health/runs': /order-processing/,
+  // The summary line prints once the fleet, its queues and its diagnostics have all been read.
+  '/health/workers': /\d+ of \d+ connected/,
+  '/health/workers (worker open)': /Last heard from/,
+  // Only an open queue prints its strategy, with the seeded retry storm among its recovery diagnostics.
+  '/health/workers (queue open)': /Strategy/,
   // The audit log lists the seeded schedule's creation.
   '/health/audit': /schedule\.created/,
   // The added row's long name, beside the Decisions part's heading, which loads last.

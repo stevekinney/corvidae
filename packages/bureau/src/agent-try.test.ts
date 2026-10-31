@@ -220,8 +220,8 @@ describe('what a tried run cannot do (COR-1911)', () => {
     ['memory_forget', 'writes memory'],
     ['scheduleSelf', 'schedules work'],
     ['scheduleWakeup', 'schedules work'],
-    ['workflows-create', 'workflows'],
-    ['workflows-pause', 'workflows'],
+    ['bureau:workflows-create', 'workflows'],
+    ['bureau:workflows-pause', 'workflows'],
     ['settings-update', 'settings'],
     ['transfer_to_billing', 'hands the conversation'],
   ])('refuses the tool %s, naming its place in the definition', async (tool, reason) => {

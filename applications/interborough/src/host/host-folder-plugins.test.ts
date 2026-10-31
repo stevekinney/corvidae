@@ -121,7 +121,10 @@ describe('a folder plugin in Bungalow’s plugins/ directory', () => {
       status: 'running',
       problems: [],
     });
-    expect(lines).toEqual([`Plugin alpha@1.0.0 (folder: ${folder}): running`]);
+    expect(lines).toEqual([
+      'Plugin bureau@1.0.0 (built-in: @lostgradient/bureau): running',
+      `Plugin alpha@1.0.0 (folder: ${folder}): running`,
+    ]);
   });
 
   test('that cannot load is reported and logged, the host starts, and the others run', async () => {
@@ -257,7 +260,10 @@ describe('a development plugin folder', () => {
       status: 'running',
       problems: [{ code: 'development-source', path: folder }],
     });
-    expect(lines).toEqual([`Plugin wip@1.0.0 (folder: ${folder}): running; development-source`]);
+    expect(lines).toEqual([
+      'Plugin bureau@1.0.0 (built-in: @lostgradient/bureau): running',
+      `Plugin wip@1.0.0 (folder: ${folder}): running; development-source`,
+    ]);
   });
 
   test('that cannot load is reported with load-failed and development-source, and the host starts', async () => {

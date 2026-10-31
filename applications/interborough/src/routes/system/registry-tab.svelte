@@ -30,6 +30,7 @@
   import { getClient } from '../../lib/client.ts';
   import { formatDuration } from '../../lib/format/index.ts';
   import { queryKeys } from '../../lib/query.ts';
+  import { getPrincipalStore } from '../../lib/scopes.svelte.ts';
   import ManifestDiagnosticsView from '../workers/manifest-diagnostics-view.svelte';
   import { MalformedRegistrySnapshotError } from '../workers/registry-snapshot-guard.ts';
   import {
@@ -48,6 +49,12 @@
   } from './registry-view.ts';
 
   const client = getClient();
+  const principal = getPrincipalStore();
+
+  // The registry snapshot is `weft.system.registry`, which needs `system:read`. The page around this
+  // tab does not gate on it (see `probeFor`), so a caller without the scope reads a locked state
+  // here while the rest of the page still shows.
+  const canRead = $derived(principal.hasScope('system:read'));
 
   // Each query asks again when the fleet feed reports what it reads (`worker:connected`,
   // `worker:disconnected`, `worker:registration-rejected`, `workflow:definition-registered`), and on
@@ -63,6 +70,7 @@
     return {
       queryKey: queryKeys.registrySnapshot(),
       queryFn: (): Promise<RegistrySnapshotSource> => loadRegistrySnapshot(client),
+      enabled: canRead,
       // poll-reason: fallback
       refetchInterval: polling ? 30_000 : false,
     };
@@ -176,7 +184,14 @@
   {@render registryFault(query.error)}
 {/if}
 
-{#if query.isPending}
+{#if !canRead}
+  <EmptyState
+    kind="first-use"
+    headingLevel={2}
+    title={API_REFERENCE_COPY.notAvailable('The workflow registry')}
+    description={API_REFERENCE_COPY.requiresScope('system:read', 'list the registered workflows')}
+  />
+{:else if query.isPending}
   <div
     class="weft-registry-skeleton"
     role="status"

@@ -10,6 +10,7 @@ import { createQueryClient } from '../../lib/query.ts';
 import RegistryTab from './registry-tab.svelte';
 import SystemRouteTestHarness from './system-route-test-harness.test-harness.svelte';
 import {
+  jsonRpcRequests,
   realClient,
   ScriptedFetch,
   withContractHashes,
@@ -92,6 +93,33 @@ async function renderRegistryTab(
 }
 
 describe('RegistryTab', () => {
+  test('says it needs system:read, and asks the engine nothing, without that scope', async () => {
+    scripted = new ScriptedFetch();
+    scripted.routeJsonRpcMethod('weft.workers.list', {
+      items: [],
+      deployments: [],
+      routingPolicy: 'least-loaded',
+    });
+    scripted.routeJsonRpcMethod('weft.workers.rejections', { items: [], limit: 25 });
+    scripted.routeJsonRpcMethod('weft.catalog.sources.list', { sources: [] });
+    const { findByRole, container, queryByLabelText } = render(SystemRouteTestHarness, {
+      props: {
+        client: realClient(),
+        queryClient: createQueryClient(),
+        component: RegistryTab,
+        principalScopes: ['workflows:read'],
+      },
+    });
+    expect(
+      await findByRole('heading', { name: 'The workflow registry is not available to you' }),
+    ).not.toBeNull();
+    expect(container.textContent).toContain(
+      'Requires system:read to list the registered workflows.',
+    );
+    expect(queryByLabelText('Loading the registry')).toBeNull();
+    expect(jsonRpcRequests(scripted.calls, 'weft.system.registry')).toEqual([]);
+  });
+
   test('shows a loading state while the query is pending', async () => {
     scripted = new ScriptedFetch();
     // No response queued — the request stays pending for this assertion.

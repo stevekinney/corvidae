@@ -17,6 +17,7 @@ import { agentFileDirectory } from '../sources/agent-file-directory';
 import { agentFileText, KNOWN_MODEL } from '../testing/agent-file-fixtures.test-support';
 import { type FileBureauHarness, startFileBureau } from '../testing/agent-file-bureau.test-support';
 import type { PluginContributionReferences } from './plugin-types';
+import { listedPlugins } from '../testing/plugin-listing.test-support';
 
 const roots: string[] = [];
 const harnesses: FileBureauHarness[] = [];
@@ -84,7 +85,7 @@ describe('the references plugins.list() counts for each contribution', () => {
     harnesses.push(harness);
     const { bureau } = harness;
     const counts = async () => {
-      const [listing] = await bureau.plugins.list();
+      const [listing] = await listedPlugins(bureau);
       return Object.fromEntries(
         (listing?.contributions ?? []).map(({ id, references }) => [id, references]),
       );

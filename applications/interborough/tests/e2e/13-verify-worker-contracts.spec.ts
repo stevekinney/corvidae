@@ -22,7 +22,7 @@ import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
 
 test('operator reads a worker’s contract verification status', async ({ page, checkA11y }) => {
-  await page.goto('/health/workers?tab=list&worker=e2e-fleet-worker-1');
+  await page.goto('/health/workers?worker=e2e-fleet-worker-1');
   // The page is the full fleet view: a worker is connected, and the address names it.
   await expect(page.getByRole('tablist', { name: 'Workers views' })).toBeVisible();
 
@@ -202,7 +202,7 @@ for (const failure of FAILURES) {
       'method' in failure ? failure.method : 'weft.workers.diagnostics',
       'error' in failure ? { error: failure.error } : { result: failure.result },
     );
-    await page.goto('/health/workers?tab=list&worker=e2e-fleet-worker-1');
+    await page.goto('/health/workers?worker=e2e-fleet-worker-1');
 
     const verification = page.getByRole('region', { name: 'Contract verification' });
     await expect(verification.getByText(failure.title, { exact: true })).toBeVisible(
@@ -219,7 +219,7 @@ const SURFACES = [
     name: 'worker detail',
     verdict: 'Drift · manifest differs from registry',
     open: async (page: Page): Promise<Locator> => {
-      await page.goto('/health/workers?tab=list&worker=e2e-fleet-worker-1');
+      await page.goto('/health/workers?worker=e2e-fleet-worker-1');
       return page.getByRole('region', { name: 'Contract verification' });
     },
   },

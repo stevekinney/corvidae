@@ -209,4 +209,39 @@ describe('DiagnosticsView — grouped kinds', () => {
     expect(queryByText('evidence-3')).toBeNull();
     expect(queryByText('evidence-4')).toBeNull();
   });
+
+  test('a filtered list with nothing in it offers to clear the filters', async () => {
+    let cleared = 0;
+    const { getByText, getByRole } = render(DiagnosticsView, {
+      props: {
+        items: [],
+        summary: EMPTY_SUMMARY,
+        now: NOW,
+        filtered: true,
+        onClearFilters: () => (cleared += 1),
+      },
+    });
+
+    expect(
+      getByText('No task matches these provenance filters. Clear them to see every diagnostic.'),
+    ).not.toBeNull();
+    await fireEvent.click(getByRole('button', { name: 'Clear filters' }));
+    expect(cleared).toBe(1);
+  });
+
+  test('a filtered list the route cannot clear shows no Clear filters button', () => {
+    const { queryByRole } = render(DiagnosticsView, {
+      props: { items: [], summary: EMPTY_SUMMARY, now: NOW, filtered: true },
+    });
+
+    expect(queryByRole('button', { name: 'Clear filters' })).toBeNull();
+  });
+
+  test('one worker’s list says it is that worker with nothing to report', () => {
+    const { getByText } = render(DiagnosticsView, {
+      props: { items: [], summary: EMPTY_SUMMARY, now: NOW, filtered: true, workerScoped: true },
+    });
+
+    expect(getByText('No diagnostics for this worker')).not.toBeNull();
+  });
 });

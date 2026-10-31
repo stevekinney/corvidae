@@ -3,7 +3,7 @@
  *
  * Regression coverage for a real bug found during the final release-gate
  * dev-harness pass: every one of the route's four inline fault fallbacks
- * (Fleet overview, Workers list, Task queues, Diagnostics) hardcoded the
+ * (Workers list, Task queues, Diagnostics) hardcoded the
  * `EmptyState` title to the literal string `"Something went wrong"` —
  * `FAULT_TREATMENT_TITLE.internal`'s exact text — regardless of the actual
  * classified fault kind. A 401 (`unauthorized`) therefore showed the wrong
@@ -33,8 +33,7 @@ import { realClient, ScriptedFetch } from './workers-route-test-support.test-sup
 
 let scripted: ScriptedFetch | undefined;
 
-const IN_PROCESS_SENTENCE =
-  'This server runs its work in-process. Remote workers are not configured.';
+const IN_PROCESS_SENTENCE = 'This server runs its work in-process';
 
 function happyDomAPI(): DetachedWindowAPI {
   if (!(window instanceof Window)) {
@@ -105,7 +104,7 @@ describe('Workers route — fault title mapping', () => {
     }
   });
 
-  test('a 401 on the Fleet overview tab shows "Not authorized", not the internal-fault title', async () => {
+  test('a 401 on the Workers tab shows "Not authorized", not the internal-fault title', async () => {
     scripted = new ScriptedFetch();
     scripted.routeJsonRpcMethodError(
       'weft.workers.list',

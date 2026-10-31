@@ -56,25 +56,25 @@ describe('a write an agent’s tool made', () => {
     harnesses.push(harness);
     const hashOf = () => harness.bureau.workflows!.list()[0]!.hash!;
 
-    const created = await harness.callTool('workflows-create', {
+    const created = await harness.callTool('bureau__workflows-create', {
       name: 'Digest',
       trigger: TRIGGER,
       steps: STEPS,
     });
     const first = hashOf();
-    const updated = await harness.callTool('workflows-update', {
+    const updated = await harness.callTool('bureau__workflows-update', {
       id: 'digest',
       expectedHash: first,
       trigger: { kind: 'schedule', spec: '2h' },
       steps: STEPS,
     });
     const second = hashOf();
-    const paused = await harness.callTool('workflows-pause', {
+    const paused = await harness.callTool('bureau__workflows-pause', {
       id: 'digest',
       expectedHash: second,
     });
     const third = hashOf();
-    const resumed = await harness.callTool('workflows-resume', {
+    const resumed = await harness.callTool('bureau__workflows-resume', {
       id: 'digest',
       expectedHash: third,
     });
@@ -105,25 +105,33 @@ describe('a write an agent’s tool made', () => {
   it('writes no entry for a write that changed nothing, was refused, or was not the owner’s', async () => {
     const harness = await startWorkflowToolsBureau();
     harnesses.push(harness);
-    await harness.callTool('workflows-create', { name: 'Digest', trigger: TRIGGER, steps: STEPS });
+    await harness.callTool('bureau__workflows-create', {
+      name: 'Digest',
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
     const hash = harness.bureau.workflows!.list()[0]!.hash!;
-    await harness.callTool('workflows-pause', { id: 'digest', expectedHash: hash });
+    await harness.callTool('bureau__workflows-pause', { id: 'digest', expectedHash: hash });
     const paused = harness.bureau.workflows!.list()[0]!.hash!;
     const before = await trail(harness.bureau, 'digest');
     expect(before.map((entry) => entry.type)).toEqual(['workflow.created', 'workflow.paused']);
 
     // Pausing a paused workflow, a stale hash, a name that cannot be an identifier, a document
     // that would not load, and another principal's run: none of them changed a file.
-    await harness.callTool('workflows-pause', { id: 'digest', expectedHash: paused });
-    await harness.callTool('workflows-resume', { id: 'digest', expectedHash: hash });
-    await harness.callTool('workflows-create', { name: '!!!', trigger: TRIGGER, steps: STEPS });
-    await harness.callTool('workflows-create', {
+    await harness.callTool('bureau__workflows-pause', { id: 'digest', expectedHash: paused });
+    await harness.callTool('bureau__workflows-resume', { id: 'digest', expectedHash: hash });
+    await harness.callTool('bureau__workflows-create', {
+      name: '!!!',
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
+    await harness.callTool('bureau__workflows-create', {
       name: 'Bad',
       trigger: { kind: 'x' },
       steps: STEPS,
     });
     await harness.callTool(
-      'workflows-resume',
+      'bureau__workflows-resume',
       { id: 'digest', expectedHash: paused },
       { principal: 'api-key:alice' },
     );

@@ -83,7 +83,6 @@ export const DARWIN_BASELINE_COVERAGE_TEST_ORDER = [
   'src/routes/system/mcp-panel.test.ts',
   'src/routes/workers/diagnostics-guidance.test.ts',
   'src/routes/workers/index.test.ts',
-  'src/routes/workers/fleet-view.test.ts',
   'src/routes/workers/clear-dead-letter-dialog.test.ts',
   'src/routes/workers/drain-dialog.test.ts',
   'src/routes/workers/worker-presentation.test.ts',
@@ -167,5 +166,4 @@ export const DARWIN_BASELINE_COVERAGE_TEST_ORDER = [
   // sorts immediately after worker-detail-view.test.ts — included here so
   // pinning the 10 files above doesn't push it to the very end of the
   // whole suite instead of leaving it where it already ran.
-  'src/routes/workers/worker-list-view.test.ts',
 ] as const;

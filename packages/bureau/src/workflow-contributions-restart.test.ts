@@ -32,6 +32,7 @@ import {
   createTickerController,
 } from './testing/workflow-contributions.test-support';
 import { workflowFileText } from './testing/workflow-file-fixtures.test-support';
+import { listedPlugins } from './testing/plugin-listing.test-support';
 
 /** The engine a Bureau composes, as `durableEngine()` hands it out. */
 type DurableEngine = NonNullable<ReturnType<WorkflowBureauHarness['bureau']['durableEngine']>>;
@@ -176,7 +177,7 @@ describe('a run waiting across a restart, on a revision that pins x:y@1', () => 
     const second = await bureauOver('2', false, true);
     const run = await second.bureau.workflows?.getRun('waiting');
     expect(run?.unresumable?.reason).toBe('version-mismatch');
-    const [secondListing] = await second.bureau.plugins.list();
+    const [secondListing] = await listedPlugins(second.bureau);
     expect(secondListing?.problems).toEqual([
       { code: 'pinned-version-unavailable', id: 'x:y', version: '1', waitingRuns: 1 },
     ]);

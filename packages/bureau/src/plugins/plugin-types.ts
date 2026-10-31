@@ -10,15 +10,21 @@ import type { PluginDescriptor } from '@lostgradient/interborough-plugin';
 import type { InputDetector } from 'armorer';
 import type { z } from 'zod';
 
-/** Where a plugin was loaded from: a workspace package the host lists, or Bungalow's `plugins/` folder. */
-export type PluginLoadSource = 'package' | 'folder';
+/**
+ * Where a plugin was loaded from: a workspace package the host lists, Bungalow's `plugins/` folder,
+ * or `built-in`, which Bureau supplies itself (COR-1890: the `bureau` plugin) and a host never gives it.
+ */
+export type PluginLoadSource = 'package' | 'folder' | 'built-in';
 
 /** One plugin the host offers `createBureau`. */
 export interface BureauPluginEntry {
   /** The plugin's descriptor, as `definePlugin` returned it. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- each plugin declares its own configuration schema.
   readonly descriptor: PluginDescriptor<z.ZodType<any>>;
-  /** Where it was loaded from. Package plugins load first, in the order given, then folder plugins by folder name. */
+  /**
+   * Where it was loaded from. Built-in plugins load first, then package plugins in the order given,
+   * then folder plugins by folder name. A host's `plugins` never holds a `built-in` entry.
+   */
   readonly source: PluginLoadSource;
   /** The package name, or the plugin's folder; a folder plugin's last path segment orders it. */
   readonly location: string;
@@ -78,8 +84,8 @@ export type PluginStatus = 'running' | 'needs-setup' | 'disabled' | 'skipped';
 
 /** One side of a name clash: who holds, or wanted, the name. `built-in` is anything that is not a plugin. */
 export interface PluginClashParty {
-  /** `package` or `folder` for a plugin, `built-in` for a name the host's own options hold. */
-  readonly source: PluginLoadSource | 'built-in';
+  /** `package`, `folder` or `built-in` for a plugin, `built-in` also for a name the host's own options hold. */
+  readonly source: PluginLoadSource;
   /** The plugin's package or folder, or `host` for a name the host's own options hold. */
   readonly location: string;
 }

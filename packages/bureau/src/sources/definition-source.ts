@@ -177,10 +177,11 @@ export type SiblingRead =
  * The source of agent definitions. Beyond the definitions themselves it reads the documents an
  * agent file's `references` name, which sit beside the definitions: see
  * {@link AgentSource.readSibling}. `tools` is the deployment's tool catalog: the tools an agent
- * definition may name, by the name it uses. Defaults to none. With a workflow source Bureau adds
- * `workflows-create`, `workflows-update`, `workflows-pause`, `workflows-resume`, and
- * `workflows-list`; a tool of the host's with one of those names is refused with `BureauError`
- * (`BAD_REQUEST`).
+ * definition may name, by the name it uses. Defaults to none. The built-in `bureau` plugin adds
+ * `bureau:discover-agents` and, with a workflow source, `bureau:workflows-create`,
+ * `bureau:workflows-update`, `bureau:workflows-pause`, `bureau:workflows-resume`, and
+ * `bureau:workflows-list`; a tool of the host's in the `bureau` namespace is refused with
+ * `BureauError` (`BAD_REQUEST`).
  */
 export type AgentSource = DefinitionSource & {
   readonly kind: 'agent';

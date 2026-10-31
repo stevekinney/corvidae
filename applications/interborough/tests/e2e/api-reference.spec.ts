@@ -95,3 +95,44 @@ test('a discovery document that fails is an error in its group, and the side lis
       .getByRole('link', { name: 'Workflow sources' }),
   ).toBeVisible();
 });
+
+test('a registry the caller cannot read leaves the other groups showing', async ({ page }) => {
+  await page.route('**/jsonrpc', async (route) => {
+    const request = route.request().postDataJSON() as { id?: unknown; method?: unknown } | null;
+    if (request?.method !== 'weft.system.registry') {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: request.id ?? null,
+        error: {
+          code: -32003,
+          message: 'Forbidden',
+          data: { httpStatus: 403, weftCode: 'Forbidden' },
+        },
+      }),
+    });
+  });
+
+  await page.goto('/settings/api-reference?group=sources');
+  // The registry part reads its own fault, in its own group.
+  const sources = page.locator('[data-group-panel="sources"]');
+  await expect(sources.getByText('Not authorized')).toBeVisible();
+
+  // The page was not replaced: the side list and the other groups still read.
+  const list = page.getByRole('navigation', { name: 'API reference groups' });
+  await expect(list.getByRole('link')).toHaveText([...GROUPS]);
+  await list.getByRole('link', { name: 'Your scopes' }).click();
+  const scopes = page.locator('[data-group-panel="scopes"]');
+  await expect(scopes.getByTestId('principal-subject')).toHaveText('anonymous:local');
+  await list.getByRole('link', { name: 'Operations' }).click();
+  await expect(
+    page
+      .locator('[data-group-panel="operations"]')
+      .getByRole('table', { name: 'Operation catalog' }),
+  ).toBeVisible();
+});

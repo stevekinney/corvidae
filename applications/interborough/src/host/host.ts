@@ -92,6 +92,7 @@ import { join, resolve as resolvePath, sep } from 'node:path';
 import { openBungalow, type Bungalow, type BungalowEnvironment } from '@lostgradient/bungalow';
 import {
   ANONYMOUS_LOCAL_OWNER,
+  BUREAU_PLUGIN_ENTRY,
   createBureau,
   createBureauHandler,
   createDurableAssetStorage,
@@ -102,7 +103,6 @@ import {
   type SettingsOptions,
 } from '@lostgradient/bureau';
 import { type GenerateFunction } from '@lostgradient/operative';
-import { typesafeJev } from '@lostgradient/operative-typesafe';
 import { type Storage } from '@lostgradient/storage';
 import {
   serve,
@@ -159,10 +159,10 @@ import { mcpAppMounts } from './mcp-app-mounts.ts';
 import { createHostMemory } from './memory.ts';
 import { createPluginManager, pluginStartupLines, type PluginManager } from './plugin-manager.ts';
 import { pluginRoutes } from './plugin-routes.ts';
-import { workspacePlugins } from './plugins.ts';
+import { defaultDecisionOptions, workspacePlugins } from './plugins.ts';
 import { createProviderManager, type ProviderManager } from './provider-manager.ts';
 import { providerRoutes } from './provider-routes.ts';
-import { contributedProviders, TYPESAFE_SECRET_KEY, type ModelSelection } from './providers.ts';
+import { contributedProviders, type ModelSelection } from './providers.ts';
 import { allowedHosts, createRequestGuard } from './request-guard.ts';
 import { HOST_RESTART_ROUTE } from './restart.ts';
 import {
@@ -608,7 +608,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       dependencies: HOST_DEPENDENCIES,
       developmentPaths: developmentPlugins,
     });
-    const plugins = [...packagePlugins, ...folderPlugins.entries];
+    // The built-in `bureau` plugin (COR-1890) is listed first so the Plugins page shows it and the
+    // manager refuses to turn it off. Bureau supplies the plugin itself, so it is not given to it again.
+    const plugins = [BUREAU_PLUGIN_ENTRY, ...packagePlugins, ...folderPlugins.entries];
     // The plugins read their choices from the same file, before the Bureau composes them. A secret
     // the provider routes store reaches a plugin that waits on it through the same watchers.
     const pluginManager = await createPluginManager({
@@ -679,11 +681,6 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     await toolSources.start();
     const agentContent = bungalow.content(AGENT_DIRECTORY_NAME);
     const workflowContent = bungalow.content(WORKFLOW_DIRECTORY_NAME);
-    // The TypeSafe key, when the secrets hold one, registers a decision model, `typesafe`, for the
-    // kinds Jev serves, and makes it the default of the `decisions.model` setting. The other choice
-    // is Bureau's own `catalog`, the language-model fallback. The key is read here and handed to the
-    // model, which keeps it in memory.
-    const typesafeKey = bungalow.readSecret(TYPESAFE_SECRET_KEY)?.trim();
     // Hosts that share a database must agree on who owns a run, so a remote host holds ownership
     // to Bureau's lease default and the Settings page cannot store `none`: two hosts would then
     // both run every task. The other restart-applied settings that overlap depends on are held too
@@ -706,14 +703,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // A session run of a seeded agent is offered `requestHumanInput`, which `request-human-input`
       // calls to park for an operator's answer.
       validators: createSeededValidators(),
-      ...(typesafeKey === undefined || typesafeKey === ''
-        ? {}
-        : {
-            decisions: {
-              models: { typesafe: typesafeJev({ apiKey: typesafeKey }) },
-              model: 'typesafe',
-            },
-          }),
+      // The default of the `decisions.model` setting is the plugin's Jev model, while that plugin
+      // is loaded and enabled; the other choice is Bureau's own `catalog`, the language-model fallback.
+      ...defaultDecisionOptions(pluginManager.loadable(), pluginManager.settings()),
       // A file's `model` is a row of this catalog, so it runs with the key in the secrets.
       // The catalog is built once the plugins have been set up, from the providers they contribute.
       models: {
@@ -725,7 +717,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       storage,
       // The plugins this host loads, the owner's choices for them, and the secrets they declare
       // (COR-1880). Memory is built once their setup has run, with what they contribute to it.
-      plugins: [...pluginManager.loadable()],
+      plugins: pluginManager.loadable().filter((entry) => entry.source !== 'built-in'),
       pluginConfiguration: pluginManager.settings(),
       pluginSecrets: pluginManager.secrets,
       answerEncryption: answerKeys,

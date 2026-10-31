@@ -149,6 +149,26 @@ describe('TaskDeadLetterPanel', () => {
     expect(await empty.findByText(/completed with no value/)).not.toBeNull();
   });
 
+  test('a failed read is a fault with Retry, and Retry reads the retained result again', async () => {
+    scripted = new ScriptedFetch();
+    scripted.routeJsonRpcMethodError(
+      'weft.tasks.deadletters.get',
+      401,
+      'authentication required',
+      'Unauthorized',
+    );
+    const view = renderPanel();
+    await fireEvent.click(view.getByRole('button', { name: 'Inspect retained result' }));
+    expect(await view.findByText('Not authorized')).not.toBeNull();
+
+    scripted.routeJsonRpcMethod('weft.tasks.deadletters.get', {
+      ...RETAINED,
+      payload: { kind: 'absent' },
+    });
+    await fireEvent.click(await view.findByRole('button', { name: 'Retry' }));
+    expect(await view.findByText(/completed with no value/)).not.toBeNull();
+  });
+
   test('loading, denied, not-retained, malformed, and server-fault states are each explicit', async () => {
     scripted = new ScriptedFetch();
     const pending = scripted.deferJsonRpcMethod('weft.tasks.deadletters.get');

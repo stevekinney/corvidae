@@ -8,13 +8,15 @@
    * refuses, show the error and save nothing; so does a name that is taken. A save lands on the
    * new workflow's page.
    */
-  import { Alert, Button, JsonEditor } from '@lostgradient/cinder';
+  import { Alert, Button } from '@lostgradient/cinder';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
+  import { onMount } from 'svelte';
 
   import { WORKFLOW_COPY } from '../../app/copy.ts';
   import { agentFaultOf } from '../../lib/agent-definitions.ts';
   import { DEFAULT_AGENT } from '../../lib/default-agent.ts';
   import { router } from '../../lib/router.svelte.ts';
+  import { shortcuts } from '../../lib/shortcuts.ts';
   import {
     createDefinitionFromText,
     createWorkflowFile,
@@ -22,6 +24,7 @@
     isIdentifierTaken,
   } from '../../lib/workflow-files.ts';
   import { workflowTypePath } from '../../lib/workflow-type-paths.ts';
+  import WorkflowBuilder from './workflow-builder.svelte';
 
   const copy = WORKFLOW_COPY;
   const creator = copy.creator;
@@ -100,8 +103,7 @@
     },
   }));
 
-  function submit(event: SubmitEvent): void {
-    event.preventDefault();
+  function submit(): void {
     if (save.isPending) return;
     const parsed = createDefinitionFromText(text);
     if (!parsed.ok) {
@@ -111,6 +113,18 @@
     validation = '';
     save.mutate({ id: parsed.id, definition: parsed.definition });
   }
+
+  // ⌘Enter saves from anywhere on the page, a field included (`lib/shortcuts.ts`).
+  onMount(() =>
+    shortcuts.register({
+      keys: ['Enter'],
+      modifier: 'mod',
+      label: creator.saveAction,
+      group: copy.builder.shortcutGroup,
+      scope: { route: '/workflows/new' },
+      handler: () => submit(),
+    }),
+  );
 
   function cancel(): void {
     router.navigate('/workflows');
@@ -127,23 +141,27 @@
     </Alert>
   {/if}
 
-  <form class="ib-workflow__section" onsubmit={submit}>
-    <JsonEditor
-      id="workflow-creator-text"
-      label={creator.textLabel}
-      description={creator.textDescription}
-      rows={18}
-      value={text}
+  <form class="ib-workflow__section" onsubmit={(event) => event.preventDefault()}>
+    <WorkflowBuilder
+      {text}
+      mode="create"
       error={validation}
-      validFeedbackVisible={false}
-      onValueChange={(next) => {
+      jsonId="workflow-creator-text"
+      jsonLabel={creator.textLabel}
+      jsonDescription={creator.textDescription}
+      onTextChange={(next) => {
         text = next;
         validation = '';
       }}
     />
     <div class="ib-workflow__actions">
-      <Button type="submit" variant="primary" size="sm" disabled={save.isPending}
-        >{creator.saveAction}</Button
+      <Button
+        data-changes
+        type="button"
+        onclick={() => submit()}
+        variant="primary"
+        size="sm"
+        disabled={save.isPending}>{creator.saveAction}</Button
       >
       <Button variant="secondary" size="sm" disabled={save.isPending} onclick={cancel}
         >{creator.cancelAction}</Button

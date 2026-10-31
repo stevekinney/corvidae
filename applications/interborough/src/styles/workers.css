@@ -9,6 +9,8 @@
 .weft-workers-mono {
   font-family: var(--cinder-font-mono);
   font-size: var(--cinder-text-xs);
+  /* Digests and identifiers are long unbroken strings; wrap them rather than widen the cell. */
+  overflow-wrap: anywhere;
 }
 
 .weft-workers-id {
@@ -39,63 +41,12 @@
   overflow: hidden;
 }
 
-.weft-workers-panel__header {
+.weft-workers-panel__title {
+  margin: 0;
   padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   border-bottom: 1px solid var(--cinder-border-muted);
   font-size: var(--cinder-text-sm);
   font-weight: 600;
-}
-
-.weft-workers-callout {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-  border-radius: var(--cinder-radius-lg);
-  border: 1px solid;
-  font-size: var(--cinder-text-sm);
-}
-
-.weft-workers-callout--warning {
-  background: var(--cinder-status-warning-background);
-  border-color: var(--cinder-status-warning-border);
-  color: var(--cinder-status-warning-text);
-}
-
-.weft-workers-callout--danger {
-  background: var(--cinder-status-danger-background);
-  border-color: var(--cinder-status-danger-border);
-  color: var(--cinder-status-danger-text);
-}
-
-.weft-workers-stat-card {
-  background: var(--cinder-surface-raised);
-  border: 1px solid var(--cinder-border);
-  border-radius: var(--cinder-radius-lg);
-  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-  min-width: 0;
-}
-
-.weft-workers-stat-card__label {
-  display: block;
-  font-size: var(--cinder-text-2xs);
-  color: var(--cinder-text-subtle);
-  margin-bottom: 4px;
-}
-
-.weft-workers-stat-card__value {
-  font-size: var(--cinder-text-2xl);
-  font-weight: 600;
-  font-family: var(--cinder-font-mono);
-}
-
-.weft-workers-stat-card__value--warning {
-  color: var(--cinder-status-warning-text);
-}
-
-.weft-workers-stat-card__value-secondary {
-  color: var(--cinder-text-disabled);
-  font-size: var(--cinder-text-base);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -109,22 +60,9 @@
   min-width: 0;
 }
 
-.weft-workers-route__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.weft-workers-route__title {
-  margin: 0;
-  font-size: var(--cinder-text-xl);
-  font-weight: 600;
-}
-
 .weft-workers-route__live {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
 }
@@ -140,97 +78,30 @@
 }
 
 /* ---------------------------------------------------------------------- */
-/* Fleet overview (T5.1)                                                  */
+/* Worker list / detail (T5.2, design rows 20c and 19a)                   */
 /* ---------------------------------------------------------------------- */
 
-.weft-fleet-view {
-  max-width: 72rem;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+/* The list and the open worker, edge to edge like Chat. */
+.weft-workers-frame {
+  block-size: max(28rem, calc(100dvh - 18rem));
+  min-inline-size: 0;
+  border: 1px solid var(--cinder-border-muted);
+  border-radius: var(--cinder-radius-md);
+  overflow: hidden;
 }
 
-.weft-fleet-view__stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 12px;
-}
-
-.weft-fleet-view__section-header {
-  font-size: var(--cinder-text-sm);
-  font-weight: 600;
-}
-
-.weft-deployment-list {
-  list-style: none;
+.weft-workers-frame__summary {
   margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.weft-deployment-row {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex-wrap: wrap;
-  background: var(--cinder-surface-raised);
-  border: 1px solid var(--cinder-border);
-  border-radius: var(--cinder-radius-lg);
-  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-}
-
-.weft-deployment-row__identity {
-  min-width: 140px;
-  display: flex;
-  flex-direction: column;
-}
-
-.weft-deployment-row__name {
-  font-size: var(--cinder-text-sm);
-  font-weight: 600;
-}
-
-.weft-deployment-row__meta {
-  font-size: var(--cinder-text-xs);
-  color: var(--cinder-text-subtle);
-  font-family: var(--cinder-font-mono);
-}
-
-.weft-deployment-row__count {
-  margin-inline-start: auto;
-  font-size: var(--cinder-text-sm);
-  font-family: var(--cinder-font-mono);
   color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+  overflow-wrap: anywhere;
 }
 
-.weft-deployment-row__actions {
+.weft-worker-detail__section {
   display: flex;
-  gap: 6px;
-}
-
-/* ---------------------------------------------------------------------- */
-/* Worker list / detail (T5.2)                                            */
-/* ---------------------------------------------------------------------- */
-
-.weft-worker-meter {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.weft-worker-meter__value {
-  flex: none;
-}
-
-.weft-worker-meter .weft-worker-meter__meter {
-  flex: 1;
-  min-width: 40px;
-}
-
-.weft-heartbeat {
-  font-weight: 500;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+  min-width: 0;
 }
 
 .weft-worker-detail {
@@ -238,17 +109,6 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-}
-
-.weft-worker-detail__header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.weft-worker-detail__actions {
-  margin-inline-start: auto;
 }
 
 .weft-worker-detail__grid {
@@ -292,6 +152,11 @@
 .weft-worker-manifest-panel__identity,
 .weft-worker-manifest-panel__note {
   padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
+}
+
+/* Artifact and manifest digests are long unbroken strings. */
+.weft-worker-manifest-panel__identity {
+  overflow-wrap: anywhere;
 }
 
 .weft-worker-manifest-panel__note {
@@ -412,8 +277,9 @@
   gap: 16px;
 }
 
-.weft-queue-detail__header {
+.weft-queue-detail__title-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
 }
@@ -430,33 +296,29 @@
   align-items: start;
 }
 
-.weft-queue-detail__no-workers {
-  padding: var(--cinder-density-pad-card);
-  margin: 0;
-  font-size: var(--cinder-text-sm);
-  color: var(--cinder-text-subtle);
-}
-
-.weft-dead-letter-panel {
-  flex-direction: column;
-  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-}
-
-.weft-dead-letter-panel__header {
+.weft-dead-letter-panel__title {
   display: flex;
   align-items: center;
   gap: 9px;
-  width: 100%;
 }
 
 .weft-dead-letter-panel__description {
-  margin: 8px 0 11px;
+  margin: 0;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   font-size: var(--cinder-text-xs);
+  color: var(--cinder-text-subtle);
 }
 
-.weft-dead-letter-panel__empty {
-  margin: 0;
-  font-size: var(--cinder-text-sm);
+/* The identifier and timestamp columns hold long unbroken strings; wrap them rather than widen the page. */
+.weft-dead-letter-panel__wrap {
+  overflow-wrap: anywhere;
+}
+
+.weft-dead-letter-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .weft-dead-letter-panel__list {
@@ -473,12 +335,6 @@
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-}
-
-.weft-dead-letter-panel__activity {
-  flex: 1;
-  min-width: 80px;
-  font-size: var(--cinder-text-xs);
 }
 
 .weft-queue-workers-list {
@@ -519,7 +375,7 @@
   gap: 12px;
 }
 
-.weft-diagnostic-card__header {
+.weft-diagnostic-card__summary {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -573,14 +429,14 @@
   gap: 16px;
 }
 
-.weft-task-ledger-detail__header {
+.weft-task-ledger-detail__title-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
 
-.weft-task-ledger-detail__header h2,
+.weft-task-ledger-detail__title-row h2,
 .weft-task-ledger-detail__grid h3 {
   margin: 0;
 }
@@ -596,16 +452,14 @@
    Timestamps and digests are long unbroken strings, so these blocks wrap
    anywhere rather than widen the page at 375px. */
 
-.weft-worker-session__header,
-.weft-task-cancellation__header {
+.weft-task-cancellation__title-row {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
 }
 
-.weft-worker-session__header h2,
-.weft-task-cancellation__header h3 {
+.weft-task-cancellation__title-row h3 {
   margin: 0;
   font-size: inherit;
   font-weight: inherit;
@@ -726,43 +580,9 @@
 /* ---------------------------------------------------------------------- */
 
 @media (max-width: 47.99rem) {
-  .weft-workers-route__header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .weft-fleet-view__stats {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .weft-deployment-row {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .weft-deployment-row__count {
-    margin-inline-start: 0;
-  }
-
-  .weft-deployment-row__actions {
-    width: 100%;
-  }
-
-  .weft-worker-detail__header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .weft-worker-detail__actions {
-    margin-inline-start: 0;
-    width: 100%;
-  }
 }
 
 @media (max-width: 23.4rem) {
-  .weft-fleet-view__stats {
-    grid-template-columns: 1fr;
-  }
 }
 
 .weft-diagnostics-filters {
@@ -854,7 +674,7 @@
   overflow-wrap: anywhere;
 }
 
-.weft-conformance__target-header,
+.weft-conformance__target-summary,
 .weft-conformance__verdict {
   display: flex;
   flex-wrap: wrap;
@@ -898,19 +718,12 @@
   gap: var(--cinder-space-4);
 }
 
-.weft-deployment__header {
+.weft-deployment__bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--cinder-space-2);
-}
-
-.weft-deployment__name {
-  margin: 0;
-  font-size: var(--cinder-text-base);
-  font-weight: 600;
-  overflow-wrap: anywhere;
 }
 
 .weft-deployment__body {
@@ -955,11 +768,6 @@
   flex-direction: column;
   gap: var(--cinder-space-3);
   max-width: 48rem;
-}
-
-.weft-workers-in-process__sentence {
-  margin: 0;
-  font-size: var(--cinder-text-md);
 }
 
 .weft-workers-in-process__how {

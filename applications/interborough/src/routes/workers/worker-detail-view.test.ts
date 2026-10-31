@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { fireEvent, render, within } from '@testing-library/svelte';
+import { createRawSnippet } from 'svelte';
 
 import { HttpClientError } from '@lostgradient/weft';
 
@@ -46,7 +47,7 @@ describe('WorkerDetailView — health badge and drain banner', () => {
     });
 
     expect(getByText('Healthy')).not.toBeNull();
-    expect(queryByText(/Draining —/)).toBeNull();
+    expect(queryByText(/Draining:/)).toBeNull();
   });
 
   test('a draining worker shows the Draining badge and the warning callout with in-flight count', () => {
@@ -61,7 +62,7 @@ describe('WorkerDetailView — health badge and drain banner', () => {
 
     expect(getByText('Draining')).not.toBeNull();
     expect(
-      getByText(/Draining — finishing 3 in-flight tasks, accepting no new work\./),
+      getByText(/Draining: finishing 3 in-flight tasks, accepting no new work\./),
     ).not.toBeNull();
   });
 
@@ -76,7 +77,7 @@ describe('WorkerDetailView — health badge and drain banner', () => {
     });
 
     expect(
-      getByText(/Draining — finishing 1 in-flight task, accepting no new work\./),
+      getByText(/Draining: finishing 1 in-flight task, accepting no new work\./),
     ).not.toBeNull();
   });
 
@@ -197,7 +198,7 @@ describe('WorkerDetailView — connection and activities panels', () => {
 
     expect(getByText('payments')).not.toBeNull();
     expect(getByText('#123')).not.toBeNull();
-    expect(getByText('2 / 8')).not.toBeNull();
+    expect(getByText('2 of 8')).not.toBeNull();
   });
 
   test('missing build identity falls back to the em dash placeholder', () => {
@@ -283,7 +284,7 @@ function renderSession(props: {
 }
 
 function sessionRegion(container: HTMLElement) {
-  const region = container.querySelector<HTMLElement>('[aria-labelledby="worker-session-heading"]');
+  const region = container.querySelector<HTMLElement>('section[aria-label="Session"]');
   if (!region) throw new Error('missing session region');
   return within(region);
 }
@@ -452,5 +453,94 @@ describe('WorkerDetailView — transport-aware session lifecycle (COR-160)', () 
     expect(
       sessionRegion(closing.container).getAllByText('Closing · draining').length,
     ).toBeGreaterThan(0);
+  });
+});
+
+describe('WorkerDetailView — deployment and diagnostics sections', () => {
+  const deploymentSnippet = createRawSnippet((deploymentName: () => string) => ({
+    render: () => `<p data-testid="deployment-body">builds of ${deploymentName()}</p>`,
+  }));
+  const diagnosticsSnippet = createRawSnippet(() => ({
+    render: () => '<p data-testid="diagnostics-body">nothing to report</p>',
+  }));
+
+  test('a worker with a deployment shows the deployment under its name, and drains or resumes it by name', async () => {
+    const drained: string[] = [];
+    const resumed: string[] = [];
+    const view = render(WorkerDetailView, {
+      props: {
+        worker: worker({ deploymentName: 'billing' }),
+        adminGate: OPEN_GATE,
+        onDrain: () => {},
+        onResume: () => {},
+        onDrainDeployment: (name: string) => drained.push(name),
+        onResumeDeployment: (name: string) => resumed.push(name),
+        deployment: deploymentSnippet,
+        diagnostics: diagnosticsSnippet,
+      },
+    });
+
+    const section = view.getByRole('region', { name: 'Deployment' });
+    expect(within(section).getByText('Deployment billing')).not.toBeNull();
+    expect(within(section).getByTestId('deployment-body').textContent).toBe('builds of billing');
+    await fireEvent.click(within(section).getByRole('button', { name: 'Drain deployment' }));
+    await fireEvent.click(within(section).getByRole('button', { name: 'Resume deployment' }));
+    expect(drained).toEqual(['billing']);
+    expect(resumed).toEqual(['billing']);
+
+    const diagnostics = view.getByRole('region', { name: 'Worker diagnostics' });
+    expect(within(diagnostics).getByTestId('diagnostics-body')).not.toBeNull();
+  });
+
+  test('without system:admin the deployment can be read but not drained, and the reason is offered', () => {
+    const view = render(WorkerDetailView, {
+      props: {
+        worker: worker({ deploymentName: 'billing' }),
+        adminGate: DISABLED_GATE,
+        onDrain: () => {},
+        onResume: () => {},
+        deployment: deploymentSnippet,
+      },
+    });
+
+    const section = view.getByRole('region', { name: 'Deployment' });
+    const drain = within(section).getByRole('button', { name: 'Drain deployment' });
+    expect(drain.hasAttribute('disabled')).toBe(true);
+    expect(within(section).queryByRole('button', { name: 'Resume deployment' })).toBeNull();
+  });
+
+  test('a worker that reported no deployment has no deployment section, and no diagnostics until the route supplies them', () => {
+    const view = render(WorkerDetailView, {
+      props: {
+        worker: worker(),
+        adminGate: OPEN_GATE,
+        onDrain: () => {},
+        onResume: () => {},
+        deployment: deploymentSnippet,
+      },
+    });
+
+    expect(view.queryByRole('region', { name: 'Deployment' })).toBeNull();
+    expect(view.queryByRole('region', { name: 'Worker diagnostics' })).toBeNull();
+  });
+
+  test('a drained worker offers Resume, and a drained or draining worker never offers Drain', async () => {
+    let resumed = false;
+    const view = render(WorkerDetailView, {
+      props: {
+        worker: worker({ health: 'drained' }),
+        adminGate: OPEN_GATE,
+        onDrain: () => {
+          throw new Error('must not be called');
+        },
+        onResume: () => {
+          resumed = true;
+        },
+      },
+    });
+
+    expect(view.queryByRole('button', { name: 'Drain' })).toBeNull();
+    await fireEvent.click(view.getByRole('button', { name: 'Resume' }));
+    expect(resumed).toBe(true);
   });
 });

@@ -2,13 +2,62 @@ import { fireEvent, render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
 import ClearDeadLetterDialog from './clear-dead-letter-dialog.svelte';
+import type { DeadLetterTarget } from './dead-letter-guard.ts';
+
+const TARGET: DeadLetterTarget = {
+  operationId: 'op-123',
+  queue: 'payments',
+  activityName: 'ChargeCard',
+  deadLetteredAt: 1_700_000_000_000,
+};
 
 describe('ClearDeadLetterDialog', () => {
+  test('names what it clears: the task, its activity, its queue and when it failed for good', () => {
+    const { getByText } = render(ClearDeadLetterDialog, {
+      props: {
+        open: true,
+        target: TARGET,
+        submitting: false,
+        onConfirm: () => {},
+        onCancel: () => {},
+      },
+    });
+
+    expect(
+      getByText(
+        'Clears the retained dead-letter record for ChargeCard on queue payments (task op-123). It failed for good at 2023-11-14T22:13:20.000Z. Clearing does not retry the task, and it cannot be undone.',
+      ),
+    ).not.toBeNull();
+  });
+
+  test('says so when the diagnostics named neither the activity nor the moment', () => {
+    const { getByText } = render(ClearDeadLetterDialog, {
+      props: {
+        open: true,
+        target: {
+          operationId: 'op-9',
+          queue: 'payments',
+          activityName: undefined,
+          deadLetteredAt: undefined,
+        },
+        submitting: false,
+        onConfirm: () => {},
+        onCancel: () => {},
+      },
+    });
+
+    expect(
+      getByText(
+        'Clears the retained dead-letter record for a task on queue payments (task op-9). Clearing does not retry the task, and it cannot be undone.',
+      ),
+    ).not.toBeNull();
+  });
+
   test('the confirm button is disabled until the operationId is typed exactly', async () => {
     const { getByRole, getByLabelText } = render(ClearDeadLetterDialog, {
       props: {
         open: true,
-        operationId: 'op-123',
+        target: TARGET,
         submitting: false,
         onConfirm: () => {},
         onCancel: () => {},
@@ -29,7 +78,7 @@ describe('ClearDeadLetterDialog', () => {
     const { getByRole, getByLabelText } = render(ClearDeadLetterDialog, {
       props: {
         open: true,
-        operationId: 'op-123',
+        target: TARGET,
         submitting: false,
         onConfirm: () => (confirmed += 1),
         onCancel: () => {},
@@ -49,7 +98,7 @@ describe('ClearDeadLetterDialog', () => {
     const { getByRole } = render(ClearDeadLetterDialog, {
       props: {
         open: true,
-        operationId: 'op-123',
+        target: TARGET,
         submitting: false,
         onConfirm: () => {},
         onCancel: () => (cancelled += 1),

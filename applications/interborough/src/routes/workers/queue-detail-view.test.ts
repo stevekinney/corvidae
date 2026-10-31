@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { fireEvent, render } from '@testing-library/svelte';
+import { fireEvent, render, within } from '@testing-library/svelte';
 
 import type { ScopeGate } from '../../lib/scopes.svelte.ts';
 import QueueDetailView from './queue-detail-view.svelte';
@@ -82,8 +82,8 @@ describe('QueueDetailView — strategy panel', () => {
 });
 
 describe('QueueDetailView — dead letter panel', () => {
-  test('no dead-lettered items shows the empty message, no diagnostics badge in the header', () => {
-    const { getByText, queryByText } = render(QueueDetailView, {
+  test('no dead-lettered items shows the done empty state, no table, and no diagnostics badge in the header', () => {
+    const { getByText, queryByText, queryByRole } = render(QueueDetailView, {
       props: {
         queue: queue(),
         routingPolicy: 'least-loaded',
@@ -94,12 +94,14 @@ describe('QueueDetailView — dead letter panel', () => {
       },
     });
 
-    expect(getByText('No dead-lettered tasks on this queue.')).not.toBeNull();
+    expect(getByText('No dead letters')).not.toBeNull();
+    expect(getByText('Nothing on this queue has failed for good.')).not.toBeNull();
+    expect(queryByRole('table', { name: 'Dead letters' })).toBeNull();
     expect(queryByText('0 diagnostics')).toBeNull();
   });
 
   test('dead-lettered items render a row per item with the header count badge', async () => {
-    const { getByText, getAllByRole, getAllByText } = render(QueueDetailView, {
+    const { getByText, getByRole, getAllByRole, getAllByText } = render(QueueDetailView, {
       props: {
         queue: queue(),
         routingPolicy: 'least-loaded',
@@ -115,6 +117,14 @@ describe('QueueDetailView — dead letter panel', () => {
 
     expect(getByText('2 diagnostics')).not.toBeNull();
     expect(getByText('2 tasks')).not.toBeNull();
+    // One table row per dead letter, under a header row naming the columns.
+    const table = getByRole('table', { name: 'Dead letters' });
+    expect(within(table).getAllByRole('row')).toHaveLength(3);
+    expect(
+      within(table)
+        .getAllByRole('columnheader')
+        .map((header) => header.textContent?.trim()),
+    ).toEqual(['Task', 'Activity', 'Failed for good', 'Actions']);
     expect(getByText('ChargeCard')).not.toBeNull();
     expect(getByText('SendEmail')).not.toBeNull();
     expect(getAllByText('Clear').length).toBe(2);
@@ -199,7 +209,7 @@ describe('QueueDetailView — dead letter panel', () => {
 });
 
 describe('QueueDetailView — workers on this queue', () => {
-  test('no connected workers shows the explanatory message', () => {
+  test('no connected workers shows the first-use empty state', () => {
     const { getByText } = render(QueueDetailView, {
       props: {
         queue: queue(),
@@ -211,7 +221,7 @@ describe('QueueDetailView — workers on this queue', () => {
       },
     });
 
-    expect(getByText('No connected workers are polling this queue.')).not.toBeNull();
+    expect(getByText('No workers on this queue')).not.toBeNull();
   });
 
   test('connected workers render a row each with health badge and in-flight ratio', () => {

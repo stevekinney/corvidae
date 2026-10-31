@@ -12,15 +12,11 @@
 
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { getClient } from '../../lib/client.ts';
-  import { FAULT_TREATMENT_TITLE, faultTreatment } from '../../lib/faults.ts';
   import { truncateId } from '../../lib/format/index.ts';
   import { isForbidden, scopeReason } from '../../lib/scopes.svelte.ts';
   import { exactTimestamp } from './task-attempt-evidence.ts';
-  import {
-    MalformedTaskDeliveriesError,
-    presentDelivery,
-    type TaskDelivery,
-  } from './task-delivery-evidence.ts';
+  import PanelFault from './panel-fault.svelte';
+  import { presentDelivery, type TaskDelivery } from './task-delivery-evidence.ts';
   import { taskDeliveriesQuery } from './workers-data.ts';
 
   interface TaskDeliveryHistoryProps {
@@ -71,7 +67,7 @@
 </script>
 
 <section class="weft-workers-panel weft-task-deliveries" aria-labelledby="task-deliveries-heading">
-  <h3 id="task-deliveries-heading" class="weft-workers-panel__header">Result delivery history</h3>
+  <h3 id="task-deliveries-heading" class="weft-workers-panel__title">Result delivery history</h3>
   <div class="weft-task-deliveries__body">
     {#if deliveriesQuery.isPending}
       <div role="status" aria-busy="true" aria-label="Loading result delivery history">
@@ -79,6 +75,9 @@
       </div>
     {:else if error && isForbidden(error)}
       <EmptyState
+        kind="first-use"
+        size="compact"
+        headingLevel={4}
         title="Result delivery history is locked"
         description={`${scopeReason('system:read')} to read how the server answered each result.`}
       >
@@ -86,11 +85,8 @@
           <Lock size={24} aria-hidden="true" />
         {/snippet}
       </EmptyState>
-    {:else if error instanceof MalformedTaskDeliveriesError}
-      <EmptyState title="Malformed server response" description={error.message} />
     {:else if error}
-      {@const treatment = faultTreatment(error)}
-      <EmptyState title={FAULT_TREATMENT_TITLE[treatment.kind]} description={treatment.message} />
+      <PanelFault {error} onRetry={() => void deliveriesQuery.refetch()} />
     {:else if history}
       {#if history.droppedCount > 0}
         <p class="weft-task-deliveries__note" role="status">
@@ -101,6 +97,9 @@
       {/if}
       {#if history.deliveries.length === 0}
         <EmptyState
+          kind="first-use"
+          size="compact"
+          headingLevel={4}
           title="No results submitted"
           description="No worker has submitted a result for this task, so the server has nothing to report."
         />

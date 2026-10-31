@@ -148,7 +148,7 @@
 {/snippet}
 
 <article class="weft-task-ledger-detail" aria-labelledby="task-ledger-title">
-  <header class="weft-task-ledger-detail__header">
+  <header class="weft-task-ledger-detail__title-row">
     <div>
       <h2 id="task-ledger-title">Authoritative task ledger</h2>
       <span class="weft-workers-id" title={task.operationId}>{truncateId(task.operationId)}</span>
@@ -174,19 +174,19 @@
 
   <div class="weft-task-ledger-detail__grid">
     <section class="weft-workers-panel">
-      <h3 class="weft-workers-panel__header">Identity</h3>
+      <h3 class="weft-workers-panel__title">Identity</h3>
       <DescriptionList items={identityItems} />
     </section>
     <section class="weft-workers-panel">
-      <h3 class="weft-workers-panel__header">Dispatch envelope</h3>
+      <h3 class="weft-workers-panel__title">Dispatch envelope</h3>
       <DescriptionList items={dispatchItems} />
     </section>
     <section class="weft-workers-panel">
-      <h3 class="weft-workers-panel__header">Recovery readiness</h3>
+      <h3 class="weft-workers-panel__title">Recovery readiness</h3>
       <DescriptionList items={recoveryItems} />
     </section>
     <section class="weft-workers-panel">
-      <h3 class="weft-workers-panel__header">Completion</h3>
+      <h3 class="weft-workers-panel__title">Completion</h3>
       <DescriptionList items={outcomeItems} />
     </section>
   </div>

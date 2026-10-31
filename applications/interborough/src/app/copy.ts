@@ -395,7 +395,7 @@ export const WORKFLOW_COPY = {
     },
     emptyTitle: 'No workflows yet',
     emptyBeforeTool: 'Chat with an agent that has the',
-    emptyTool: 'workflows-create',
+    emptyTool: 'bureau:workflows-create',
     emptyBeforeDirectory: 'tool, or add a JSON file to',
     schedules: (count: number): string => `${String(count)} schedules`,
     runs: (count: number): string => `${String(count)} ${count === 1 ? 'run' : 'runs'} in 24 hours`,
@@ -510,6 +510,56 @@ export const WORKFLOW_COPY = {
     templateDescription: 'Says what this workflow is for in a sentence.',
     templateSpec: '1h',
     templateMessage: 'Say hello.',
+  },
+  /** The step builder of `/workflows/new` and `/workflows/:workflow/edit`. */
+  builder: {
+    shortcutGroup: 'Workflow builder',
+    tabsLabel: 'How to edit the workflow',
+    builderTab: 'Builder',
+    jsonTab: 'JSON',
+    detailsHeading: 'Details',
+    nameLabel: 'Name',
+    nameDescription: 'The workflow’s identifier. It cannot be changed after the first save.',
+    descriptionLabel: 'Description',
+    descriptionDescription: 'What this workflow is for, in a sentence.',
+    triggerHeading: 'Trigger',
+    triggerKindLabel: 'Starts',
+    triggerKinds: { schedule: 'On a schedule', signal: 'When a signal arrives' },
+    scheduleLabel: 'Schedule',
+    scheduleDescription: 'A duration such as 1h, or a cron expression.',
+    signalNameLabel: 'Signal name',
+    otherTrigger: 'This trigger is edited in the JSON tab.',
+    stepsHeading: 'Steps',
+    stepsDescription:
+      'They run in order. An agent step gets the result of the step before it, except after a wait, which passes nothing on.',
+    afterWaitSummary: '(with no result from before the wait)',
+    stepsUnreadable:
+      'This file’s steps are not a list the builder can read. Fix them in the JSON tab.',
+    notAnObject: 'This is not an object',
+    otherStepNote: 'The builder cannot edit this step. Change it in the JSON tab.',
+    durationDescription: 'A bare number is milliseconds. Or write 30s, 5m, 1h.',
+    stepKinds: { agent: 'Agent', wait: 'Wait', signal: 'Signal', other: 'Other' },
+    agentLabel: (position: number): string => `Agent for step ${String(position)}`,
+    messageLabel: (position: number): string => `Message for step ${String(position)}`,
+    durationLabel: (position: number): string => `How long step ${String(position)} waits`,
+    signalLabel: (position: number): string => `Signal step ${String(position)} waits for`,
+    moveEarlier: (position: number): string => `Move step ${String(position)} earlier`,
+    moveLater: (position: number): string => `Move step ${String(position)} later`,
+    remove: (position: number): string => `Remove step ${String(position)}`,
+    addAgent: 'Add an agent step',
+    addWait: 'Add a wait',
+    addSignal: 'Add a signal wait',
+    noSteps: {
+      title: 'No steps yet',
+      description: 'A workflow runs its steps in order. Add the first one.',
+    },
+    summaryLabel: 'In plain words',
+    summaryEmpty: 'Nothing is set yet.',
+    unreadable: {
+      title: 'The builder needs valid JSON',
+      description: 'The JSON tab holds text that is not a workflow file yet. Fix it there.',
+      action: 'Open the JSON tab',
+    },
   },
   revisions: {
     heading: 'Revisions that have run',
@@ -768,6 +818,7 @@ export const SETTINGS_SECTION_COPY = {
   general: 'General',
   models: 'Models',
   modelPolicy: 'Model policy',
+  plugins: 'Plugins',
   dataAndRetention: 'Data and retention',
   apiReference: 'API reference',
 } as const;
@@ -943,6 +994,224 @@ export const MODELS_COPY = {
     wholeNumber: 'Enter a whole number above zero.',
     price: 'Enter a price that is not negative.',
     outputTooLarge: 'The largest answer cannot be bigger than the context window.',
+  },
+} as const;
+
+/**
+ * The words of Settings › Plugins: what Interborough loaded at startup, what each plugin adds and
+ * what names it, the choices an owner makes (enabled, configuration, secrets), and the restart that
+ * applies them (`routes/settings/plugins`).
+ */
+export const PLUGINS_COPY = {
+  title: 'Plugins',
+  intro:
+    'What Interborough loaded at startup and what each plugin adds. Plugin code loads when Interborough starts, so most changes wait for a restart.',
+  loading: 'Loading plugins',
+  loadFailed: {
+    title: 'Plugins are unavailable',
+    description: 'The host did not answer. Check that it is running, then try again.',
+  },
+  locked:
+    'This host keeps its plugin choices and secrets in its deployment, so they cannot be changed here.',
+  listLabel: 'Plugins',
+  detailLabel: 'Plugin details',
+  count: (total: number): string => `${String(total)} ${total === 1 ? 'plugin' : 'plugins'}`,
+  empty: {
+    title: 'No plugins loaded',
+    description:
+      'Interborough loads plugins from the packages its host lists and from the plugins folder in its home, when it starts.',
+  },
+  emptyDetail: {
+    title: 'Pick a plugin',
+    description: 'Its status, what it adds and its choices show here.',
+  },
+  alwaysOn: 'Always on',
+  enabled: 'Enabled',
+  status: {
+    running: 'Running',
+    needsSetup: 'Needs setup',
+    disabled: 'Disabled',
+    notLoaded: 'Not loaded',
+    enabledAfterRestart: 'Enabled after restart',
+    disabledAfterRestart: 'Disabled after restart',
+    changesAfterRestart: 'Changes after restart',
+  },
+  source: { package: 'Package', folder: 'Folder', builtIn: 'Built in' },
+  sourceKind: {
+    package: 'Workspace package',
+    folder: 'Folder plugin, loaded at startup',
+    builtIn: 'Part of Interborough',
+  },
+  sections: {
+    source: 'Source',
+    kind: 'Kind',
+    adds: 'What it adds',
+    nothingAdded: 'Nothing while it is not running.',
+    configuration: 'Configuration',
+    secrets: 'Secrets',
+    inUse: 'In use',
+  },
+  contributionKinds: {
+    tool: 'Tools',
+    activity: 'Activities',
+    'trigger-kind': 'Triggers',
+    validator: 'Validators',
+    guardrail: 'Guardrails',
+    'run-hooks': 'Run hooks',
+    'decision-router': 'Decision routing',
+    'hook-action': 'Hook actions',
+    provider: 'Model provider',
+    embedder: 'Embeddings',
+    'memory-detector': 'Memory detectors',
+    'eval-judge': 'Evaluation judges',
+    'mcp-app': 'MCP apps',
+    'event-formatter': 'Event formatters',
+    'code-agent': 'Code agents',
+  } as Readonly<Record<string, string>>,
+  configuration: {
+    label: (name: string): string => `Configuration of ${name}`,
+    description:
+      'The plugin’s own choices, as JSON. The host checks them when it starts, and a plugin that refuses them is not loaded.',
+    invalid: 'This is not valid JSON, so it cannot be applied.',
+    notAnObject: 'The configuration is an object, such as {}.',
+    rejected: (plugin: string, field: string, message: string): string =>
+      `The host rejected ${field === '' ? 'the change' : field} for ${plugin}.${message === '' ? '' : ` ${message}`}`,
+  },
+  secrets: {
+    set: 'Set',
+    missing: 'Missing',
+    add: 'Add',
+    replace: 'Replace',
+    addLabel: (key: string): string => `Add ${key}`,
+    replaceLabel: (key: string): string => `Replace ${key}`,
+    dialog: {
+      title: (key: string): string => `Save ${key}`,
+      description: (plugin: string): string =>
+        `The value is stored on this machine, where only you can read it, and ${plugin} uses it at once. No restart is needed.`,
+      valueLabel: 'Value',
+      valueDescription: 'It is sent once and is never shown again.',
+      valueRequired: 'Enter a value to save.',
+      cancel: 'Cancel',
+      save: 'Save',
+      saved: (key: string): string => `${key} saved`,
+      locked: 'This host keeps its secrets in its deployment, so one cannot be saved here.',
+      failed: 'The secret could not be saved.',
+    },
+  },
+  inUse: {
+    disabled: 'Nothing while it is disabled.',
+    notRunning: 'Nothing while it is not loaded.',
+    nothing: 'Nothing names what it adds yet.',
+    some: (parts: readonly string[]): string => `${parts.join(', ')} name what it adds.`,
+  },
+  counts: {
+    agents: (count: number): string => `${String(count)} ${count === 1 ? 'agent' : 'agents'}`,
+    schedules: (count: number): string =>
+      `${String(count)} ${count === 1 ? 'schedule' : 'schedules'}`,
+    waitingRuns: (count: number): string =>
+      `${String(count)} waiting ${count === 1 ? 'run' : 'runs'}`,
+  },
+  banner: {
+    changes: (count: number): string =>
+      count === 1
+        ? '1 change waits for a restart.'
+        : `${String(count)} changes wait for a restart.`,
+    explanation: 'Plugin code loads when Interborough starts. Runs pick up where they stopped.',
+    discard: 'Discard',
+    restartNow: 'Restart now',
+    invalid: 'Fix the configuration that is not valid before restarting.',
+    failed: 'The changes could not be saved, so Interborough was not restarted.',
+    rejected: (plugin: string): string =>
+      `${plugin} was not saved, so Interborough was not restarted. Open it to see what the host rejected.`,
+    saved: 'Saved. The host applied these changes at once, so no restart was needed.',
+    refused: 'This host cannot restart itself. Restart it where it runs.',
+    unreachable: 'Interborough did not answer, so it was not asked to restart. Try again.',
+  },
+  disable: {
+    title: (name: string): string => `Disable ${name}?`,
+    intro: 'Interborough restarts to unload it. These depend on it now:',
+    nothing: 'Nothing depends on it now.',
+    agents: (count: number, ids: string): string =>
+      count === 1 ? `uses ${ids} and shows as unavailable.` : `use ${ids} and show as unavailable.`,
+    schedules: (count: number, ids: string): string =>
+      `${count === 1 ? 'starts' : 'start'} runs through ${ids}. ${count === 1 ? 'It stays' : 'They stay'} listed and ${count === 1 ? 'does' : 'do'} nothing until it is back.`,
+    waitingRuns: (count: number, ids: string): string =>
+      count === 1
+        ? `waits on ${ids}. It shows as unavailable instead of resuming.`
+        : `wait on ${ids}. They show as unavailable instead of resuming.`,
+    alsoWrites: 'Restarting also saves these changes, which are waiting:',
+    alsoSwitchedOn: 'switched on',
+    alsoSwitchedOff: 'switched off',
+    alsoConfiguration: 'configuration edited',
+    reassurance: 'Nothing is deleted. Enable it again and restart, and it works as before.',
+    cancel: 'Cancel',
+    confirm: 'Disable and restart',
+  },
+  restart: {
+    title: 'Restarting Interborough',
+    steps: {
+      saving: 'Saving your changes',
+      requesting: 'Asking Interborough to restart',
+      stopping: 'Waiting for it to stop',
+      starting: 'Waiting for it to start again',
+    },
+    back: {
+      title: 'Interborough is back up',
+      summary: (running: number, needSetup: number, disabled: number): string => {
+        const parts = [`${String(running)} ${running === 1 ? 'plugin' : 'plugins'} running`];
+        if (needSetup > 0)
+          parts.push(`${String(needSetup)} ${needSetup === 1 ? 'needs' : 'need'} setup`);
+        if (disabled > 0) parts.push(`${String(disabled)} disabled`);
+        return `${parts.join(', ')}.`;
+      },
+      close: 'Close',
+    },
+    unconfirmed: {
+      title: 'Interborough has not restarted',
+      description:
+        'The host is still answering with the old plugins loaded. It may not be supervised, so restart it where it runs.',
+      close: 'Close',
+    },
+  },
+  problems: {
+    title: 'Needs attention',
+    unknown: (code: string): string => `Reported as ${code}.`,
+    secretMissing: {
+      title: 'A secret isn’t saved yet',
+      body: (key: string): string =>
+        `${key} isn’t saved, so what this plugin adds is unavailable. Save it and it works at once; no restart.`,
+      action: 'Add the key',
+    },
+    configurationInvalid: {
+      title: 'A setting is invalid',
+      body: (field: string, message: string): string =>
+        field === '' ? message : `${field}: ${message}`,
+    },
+    referenceUnresolved: {
+      title: 'A file names something nobody adds',
+      body: (file: string, id: string): string =>
+        `${file} names ${id}, which no loaded plugin adds. It is unavailable until the name matches.`,
+    },
+    pinnedVersionUnavailable: {
+      title: 'A waiting run needs a version that isn’t loaded',
+      body: (id: string, version: string, runs: number): string =>
+        `${String(runs)} waiting ${runs === 1 ? 'run' : 'runs'} recorded ${id} at version ${version}, which isn’t loaded, so ${runs === 1 ? 'it shows' : 'they show'} as unavailable.`,
+    },
+    nameClash: {
+      title: 'Two plugins share a name',
+      body: (name: string, first: string, second: string): string =>
+        `${name} is claimed by ${first} and by ${second}. The first to load keeps it; rename the other.`,
+    },
+    failed: { title: 'It did not load' },
+    developmentSource: {
+      title: 'Loaded from your working copy',
+      body: (path: string): string =>
+        `Started from ${path}. Interborough restarts when its code changes.`,
+    },
+  },
+  unloaded: {
+    heading: 'Folders that did not load',
+    description: 'These folders hold no plugin Interborough could use.',
   },
 } as const;
 
@@ -1617,7 +1886,7 @@ export const MEMORY_COPY = {
   searchLabel: 'Search this agent’s memory',
   searchPlaceholder: 'Search memory…',
   searchAction: 'Search',
-  clearSearch: 'Show all operations',
+  clearSearch: 'Clear search',
   loadMore: 'Load more',
   loading: 'Loading memories',
   /** Shown when forgetting leaves the agent with nothing, while the receipt is still on the screen. */
@@ -2454,7 +2723,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     empty: {
       title: 'No workflows yet',
       description:
-        'Chat with an agent that has the workflows-create tool, or add a JSON file to the workflows directory.',
+        'Chat with an agent that has the bureau:workflows-create tool, or add a JSON file to the workflows directory.',
       action: { label: 'New workflow', href: '/workflows/new' },
     },
     error: {

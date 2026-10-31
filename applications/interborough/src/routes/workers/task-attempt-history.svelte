@@ -124,9 +124,12 @@
 </script>
 
 <section class="weft-workers-panel weft-task-attempts" aria-labelledby="task-attempts-heading">
-  <h3 id="task-attempts-heading" class="weft-workers-panel__header">Attempt history</h3>
+  <h3 id="task-attempts-heading" class="weft-workers-panel__title">Attempt history</h3>
   {#if history.length === 0}
     <EmptyState
+      kind="first-use"
+      size="compact"
+      headingLevel={4}
       title="No attempts claimed"
       description="No worker has claimed this task yet, so there is no attempt history."
     />

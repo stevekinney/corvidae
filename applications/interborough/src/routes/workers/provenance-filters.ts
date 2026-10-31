@@ -48,9 +48,9 @@ export function hasProvenanceFilters(filters: TaskProvenanceFilters): boolean {
   return PROVENANCE_FILTER_FIELDS.some((field) => Boolean(filters[field]));
 }
 
-/** The Workers list deep link that selects one worker (`worker-list-view.svelte`'s pattern). */
+/** The Workers list deep link that opens one worker beside the list (the Workers tab is the default). */
 export function workerDeepLink(workerId: string): string {
-  const params = new URLSearchParams({ tab: 'list', worker: workerId });
+  const params = new URLSearchParams({ worker: workerId });
   return `/health/workers?${params.toString()}`;
 }
 

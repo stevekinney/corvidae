@@ -143,7 +143,7 @@ export async function startWorkflowToolsBureau(
   });
   const putAgent = async (
     id: string,
-    tools: readonly string[] = WORKFLOW_TOOL_NAMES,
+    tools: readonly string[] = WORKFLOW_TOOL_NAMES.map((name) => `bureau:${name}`),
     agentOptions: { readonly approval?: 'never' | 'default' } = {},
   ): Promise<void> => {
     await writeFile(

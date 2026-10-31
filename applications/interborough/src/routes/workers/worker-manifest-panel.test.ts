@@ -117,7 +117,6 @@ describe('WorkerManifestPanel', () => {
         capabilities: {},
       },
     });
-    expect(malformed.getByText('Malformed server response')).not.toBeNull();
     expect(
       malformed.getByText('The server returned malformed worker diagnostics at response.worker.'),
     ).not.toBeNull();
