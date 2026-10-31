@@ -63,6 +63,26 @@ describe('the shell’s shortcuts', () => {
     }
   });
 
+  test('C opens a new chat from anywhere, and is listed in the map', () => {
+    const { registry, opened } = registered();
+    const where = { routePattern: '/agents', regions: [] };
+    expect(registry.handleKey(key('c'), where, 0)).toBe(true);
+    expect(opened).toEqual(['/chats/new']);
+    // The same key after G is still Go to Chat, not a new chat.
+    registry.handleKey(key('g'), where, 10);
+    expect(registry.handleKey(key('c'), where, 20)).toBe(true);
+    expect(opened).toEqual(['/chats/new', '/chats']);
+    const listed = registry.groups().find((group) => group.label === SHORTCUT_COPY.chatGroup);
+    expect(listed?.shortcuts).toEqual([{ action: SHORTCUT_COPY.newChat, keys: ['C'] }]);
+  });
+
+  test('a C typed into a field starts nothing', () => {
+    const { registry, opened } = registered();
+    const typing = { ...key('c'), editable: true };
+    expect(registry.handleKey(typing, { routePattern: '/chats/new', regions: [] }, 0)).toBe(false);
+    expect(opened).toEqual([]);
+  });
+
   test('? opens the shortcut map', () => {
     const { registry, maps } = registered();
     expect(registry.handleKey(key('?'), { routePattern: null, regions: [] }, 0)).toBe(true);

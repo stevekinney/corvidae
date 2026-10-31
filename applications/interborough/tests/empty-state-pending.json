@@ -5,10 +5,6 @@
       "issue": "COR-1851"
     },
     {
-      "file": "src/routes/chat/index.svelte",
-      "issue": "COR-1848"
-    },
-    {
       "file": "src/routes/dashboard/index.svelte",
       "issue": "COR-1850"
     },

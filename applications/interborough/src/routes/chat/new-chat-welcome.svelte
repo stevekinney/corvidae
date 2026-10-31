@@ -1,16 +1,18 @@
 <script lang="ts">
   /**
-   * What a new chat shows where the transcript will be: the card of the agent the chat is with
-   * (`agent-card.svelte`), and, until the person has chosen an agent themselves, the other agents
-   * as cards to choose from, so a fresh host says what each agent does. With no agent selected
-   * (one the Bureau does not list), every agent is a card. Choosing a card selects the agent, as
-   * the Agent list above the composer does.
+   * What a new chat shows where the transcript will be, centred over the composer: a greeting that
+   * names the agent the chat is with, the prompts that agent suggests (a prompt fills the composer
+   * and sends nothing), and, until the person has chosen an agent themselves, the other agents as
+   * one row to choose from, so a fresh host says what it can do. With no agent selected (one the
+   * Bureau does not list), the row is every agent. The agent is also chosen from the pill inside
+   * the composer; choosing here selects the same agent.
    */
-  import { Card } from '@lostgradient/cinder';
+  import { Button } from '@lostgradient/cinder';
 
   import { CHAT_COPY } from '../../app/copy.ts';
   import type { AgentSummary } from '../../lib/bureau-client.ts';
-  import AgentCard from './agent-card.svelte';
+  import { keyedByOccurrence } from '../../lib/list-keys.ts';
+  import { examplePrompts } from './new-chat.ts';
 
   interface NewChatWelcomeProps {
     /** The agents a chat can start with. */
@@ -27,40 +29,66 @@
 
   const current = $derived(agents.find((agent) => agent.name === selected));
   const others = $derived(chosen ? [] : agents.filter((agent) => agent.name !== selected));
+  const prompts = $derived(
+    keyedByOccurrence(current === undefined ? [] : examplePrompts(current), (prompt) => prompt),
+  );
 </script>
 
-<div class="ib-new-chat" data-testid="new-chat-welcome">
+<div class="ib-new-chat" data-testid="new-chat-welcome" data-agent={current?.name}>
   {#if current}
-    <AgentCard agent={current} {onExample} />
+    <p class="ib-new-chat__greeting">
+      {CHAT_COPY.newChatWelcome.greeting}
+      {#if current.displayName === current.name}
+        <code class="ib-identifier">{current.name}</code>
+      {:else}
+        {current.displayName}
+        <code class="ib-identifier ib-new-chat__id">{current.name}</code>
+      {/if}
+    </p>
+    {#if current.description}
+      <p class="ib-new-chat__description">{current.description}</p>
+    {/if}
+  {:else}
+    <p class="ib-new-chat__greeting">{CHAT_COPY.newChatWelcome.chooseAgent}</p>
+  {/if}
+  {#if prompts.length > 0}
+    <div
+      class="ib-new-chat__examples"
+      role="group"
+      aria-label={CHAT_COPY.newChatWelcome.promptsLabel}
+      data-testid="agent-prompts"
+    >
+      {#each prompts as { key, item: prompt } (key)}
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          class="ib-new-chat__prompt"
+          onclick={() => onExample(prompt)}>{prompt}</Button
+        >
+      {/each}
+    </div>
   {/if}
   {#if others.length > 0}
-    <section class="ib-new-chat__others" aria-labelledby="ib-new-chat-others">
-      <h2 id="ib-new-chat-others" class="ib-new-chat__heading">
-        {current ? CHAT_COPY.newChatWelcome.otherAgents : CHAT_COPY.newChatWelcome.chooseAgent}
-      </h2>
-      <ul class="ib-new-chat__grid">
-        {#each others as agent (agent.name)}
-          <li>
-            <Card
-              class="ib-agent-choice"
-              data-agent={agent.name}
-              onclick={() => onChoose(agent.name)}
-            >
-              <span class="ib-agent-choice__name">
-                {#if agent.displayName === agent.name}
-                  <code class="ib-identifier">{agent.name}</code>
-                {:else}
-                  {agent.displayName}
-                  <code class="ib-identifier ib-agent-choice__id">{agent.name}</code>
-                {/if}
-              </span>
-              {#if agent.description}
-                <span class="ib-agent-choice__description">{agent.description}</span>
-              {/if}
-            </Card>
-          </li>
-        {/each}
-      </ul>
-    </section>
+    <div
+      class="ib-new-chat__agents"
+      role="group"
+      aria-label={CHAT_COPY.newChatWelcome.otherAgents}
+      data-testid="other-agents"
+    >
+      <span class="ib-new-chat__lead" aria-hidden="true"
+        >{CHAT_COPY.newChatWelcome.otherAgents}</span
+      >
+      {#each others as agent (agent.name)}
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          class="ib-new-chat__agent"
+          data-agent={agent.name}
+          onclick={() => onChoose(agent.name)}>{agent.displayName}</Button
+        >
+      {/each}
+    </div>
   {/if}
 </div>

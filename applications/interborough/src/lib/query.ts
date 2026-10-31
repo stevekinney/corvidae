@@ -43,6 +43,8 @@ export const queryKeys = {
   contexts: {
     /** One chat session, as `bureau.contexts.get` shows it. */
     detail: (contextId: string) => ['contexts', 'detail', contextId] as const,
+    /** One chat as a row of the chat list, read apart from the chat's own page. */
+    row: (contextId: string) => ['contexts', 'row', contextId] as const,
     /** The caller's sessions, all of them or one agent's. */
     list: (agentName: string | null) => ['contexts', 'list', agentName] as const,
     /** One agent's chats under the filters of its page, so pages read under one filter never merge with another's. */

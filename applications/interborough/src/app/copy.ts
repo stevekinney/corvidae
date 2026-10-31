@@ -1233,6 +1233,8 @@ export const CHAT_COPY = {
   /** What a session with no title is called, in the header and in lists. */
   untitled: 'New chat',
   newChat: 'New chat',
+  /** The empty chat page's second action, to the agents a chat can start with. */
+  browseAgents: 'Browse agents',
   agentLabel: 'Agent',
   agentPlaceholder: 'Search agents',
   sessionsTitle: 'Chats',
@@ -1243,8 +1245,6 @@ export const CHAT_COPY = {
     yesterday: 'Yesterday',
     earlier: 'Earlier',
   },
-  /** What a session with no message in it says in place of its transcript. */
-  noMessages: 'No messages yet',
   /** What the chat says when its live connection to the run could not be restored. */
   disconnected: {
     title: 'Disconnected',
@@ -1253,12 +1253,27 @@ export const CHAT_COPY = {
   },
   /** What a new chat shows where its transcript will be. */
   newChatWelcome: {
-    try: 'Try',
+    /** Said before the name of the agent the chat is with. */
+    greeting: 'Chat with',
     /** Said before the agents' identifiers under the welcome of a fresh Interborough. */
     agentsLine: 'Agents:',
     promptsLabel: 'Example prompts',
     otherAgents: 'Or start with another agent',
     chooseAgent: 'Choose an agent to start with',
+  },
+  /** The chat list beside the open chat. */
+  list: {
+    /** The accessible name of the pane that holds the open chat. */
+    detailLabel: 'Open chat',
+    emptyTitle: 'No chats yet',
+    emptyDescription: 'A chat you start is listed here.',
+    pickTitle: 'Pick a chat',
+    pickDescription: 'Choose a chat from the list, or start a new one.',
+  },
+  /** What a chat with no message says in place of its transcript. */
+  emptyTranscript: {
+    title: 'No messages yet',
+    description: 'Say what you need to start the conversation.',
   },
   /** What a chat with no message to show says it holds. */
   messageCount: (count: number): string =>
@@ -1921,6 +1936,8 @@ export const SHORTCUT_COPY = {
   openMap: 'Show keyboard shortcuts',
   generalGroup: 'General',
   navigationGroup: 'Go to',
+  chatGroup: 'Chat',
+  newChat: 'New chat',
   listGroup: 'Lists',
   goTo: (label: string): string => `Go to ${label}`,
 } as const;

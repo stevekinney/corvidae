@@ -8,7 +8,7 @@ import type { Page } from '@playwright/test';
 
 import { routes } from '../../src/app/routes.ts';
 import { pageWidth, VIEW_NAMES, VIEWS } from '../../src/app/views.ts';
-import { approveThroughMount, newThreadId, runToEnd } from './chat-support.ts';
+import { approveThroughMount, conversation, newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 
@@ -202,7 +202,7 @@ test.describe('a chat', () => {
     await approveThroughMount(request, threadId, stream);
     await page.setViewportSize(DESKTOP);
     await page.goto(`/chats/${threadId}`);
-    await expect(page.getByText('Order order-1001 was refunded.')).toBeVisible();
+    await expect(conversation(page).getByText('Order order-1001 was refunded.')).toBeVisible();
     // The tool calls open into their rows, the tallest the transcript gets.
     await page.getByRole('button', { name: 'Show' }).click();
     await expect(page.locator('[data-tool-call-row]').first()).toBeVisible();

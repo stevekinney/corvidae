@@ -7,6 +7,7 @@
  */
 import type { Page } from '@playwright/test';
 
+import { conversation } from './chat-support.ts';
 import { ECHO_NOTHING_REPLY, IMAGE_ECHO_AGENT_NAME } from './echo-agent.ts';
 import { expect, test } from './fixtures.ts';
 
@@ -48,7 +49,7 @@ for (const viewport of VIEWPORTS) {
     await page.getByRole('textbox').press('Enter');
 
     const echoed = 'ul.weft-chat-assets[data-role="assistant"] img';
-    await expect(page.getByText('Echoed 1 image.')).toBeVisible();
+    await expect(conversation(page).getByText('Echoed 1 image.')).toBeVisible();
     await expect(page.locator(echoed)).toHaveAttribute('src', CONTENT_ROUTE);
     await expect.poll(() => decoded(page, echoed)).toBeGreaterThan(0);
     // The composer is empty again, and the person's own image is on their row.
@@ -61,7 +62,7 @@ for (const viewport of VIEWPORTS) {
     // Reloaded, the thread shows the same two images from the Bureau's snapshot.
     const returned = await page.locator(echoed).getAttribute('src');
     await page.reload();
-    await expect(page.getByText('Echoed 1 image.')).toBeVisible();
+    await expect(conversation(page).getByText('Echoed 1 image.')).toBeVisible();
     await expect(page.locator(echoed)).toHaveAttribute('src', returned ?? '');
     await expect.poll(() => decoded(page, echoed)).toBeGreaterThan(0);
     await expect.poll(() => decoded(page, own)).toBeGreaterThan(0);
@@ -93,7 +94,7 @@ test('takes a text file the picker offers, and shows it as a download on the per
   await page.getByRole('textbox').press('Enter');
 
   // The run is accepted, not refused over the file's type: the echo reads it and has no image to send.
-  await expect(page.getByText(ECHO_NOTHING_REPLY)).toBeVisible();
+  await expect(conversation(page).getByText(ECHO_NOTHING_REPLY)).toBeVisible();
   await expect(page.getByRole('alert').filter({ hasText: 'The agent did not answer' })).toHaveCount(
     0,
   );

@@ -9,6 +9,7 @@ import type { Page } from '@playwright/test';
 import { VIEW_COPY } from '../../src/app/copy.ts';
 import {
   approveThroughMount,
+  conversation,
   expectWaiting,
   newThreadId,
   releaseBarrier,
@@ -72,9 +73,11 @@ test.describe('a session', () => {
 
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('First hello');
-    await expect(page.getByText('assistant', { exact: true })).toHaveCount(1);
+    await expect(
+      page.getByRole('region', { name: 'Conversation' }).getByText('assistant', { exact: true }),
+    ).toHaveCount(1);
     await send(page, 'Hello again');
-    await expect(page.getByText('Hello from the assistant.')).toBeVisible();
+    await expect(conversation(page).getByText('Hello from the assistant.')).toBeVisible();
   });
 });
 
@@ -107,18 +110,18 @@ test.describe('a tool approval', () => {
     const text = (await transcript(page).innerText()) ?? '';
     expect(text).not.toMatch(/requires approval|mutating tier|run-\d/);
     // The turn's two calls are folded to one line, and the call that needs a decision is not in it.
-    await expect(page.getByText('Used 2 tools · 1 needs you')).toBeVisible();
-    await expect(page.getByText('issue-refund').first()).toBeVisible();
+    await expect(conversation(page).getByText('Used 2 tools · 1 needs you')).toBeVisible();
+    await expect(conversation(page).getByText('issue-refund').first()).toBeVisible();
     // The seeded turn already refunded the order once, so one reply is the one the session opened with.
-    await expect(page.getByText(REFUNDED)).toHaveCount(1);
+    await expect(conversation(page).getByText(REFUNDED)).toHaveCount(1);
     // Chat's own card for the approval is not in the transcript: there is one place to decide.
     await expect(page.locator('[data-cinder-tool-approval]')).toHaveCount(0);
     await checkA11y('a session waiting on an approval');
     await alert.getByRole('button', { name: 'Approve' }).click();
 
     // A second reply is the run going on after the approval; a denial would say it was not issued.
-    await expect(page.getByText(REFUNDED)).toHaveCount(2);
-    await expect(page.getByText(NOT_ISSUED)).toHaveCount(0);
+    await expect(conversation(page).getByText(REFUNDED)).toHaveCount(2);
+    await expect(conversation(page).getByText(NOT_ISSUED)).toHaveCount(0);
     await expect(alert).toHaveCount(0);
   });
 
@@ -133,8 +136,8 @@ test.describe('a tool approval', () => {
     const alert = page.locator('.ib-decision');
     await expect(alert).toBeVisible();
     await alert.getByRole('button', { name: 'Deny' }).click();
-    await expect(page.getByText(NOT_ISSUED)).toHaveCount(1);
-    await expect(page.getByText(REFUNDED)).toHaveCount(0);
+    await expect(conversation(page).getByText(NOT_ISSUED)).toHaveCount(1);
+    await expect(conversation(page).getByText(REFUNDED)).toHaveCount(0);
     await expect(alert).toHaveCount(0);
   });
 
@@ -159,7 +162,7 @@ test.describe('a tool approval', () => {
     await send(page, 'And one more thing');
     await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
     await alert.getByRole('button', { name: 'Approve' }).click();
-    await expect(page.getByText(REFUNDED)).toHaveCount(2);
+    await expect(conversation(page).getByText(REFUNDED)).toHaveCount(2);
 
     const opener = starts[0]?.messages.at(-1);
     const continuation = starts.find((body) => body.resume !== undefined);
@@ -180,7 +183,7 @@ test.describe('a tool call', () => {
 
     await page.goto(`/chats/${threadId}`);
 
-    await expect(page.getByText('Used 2 tools')).toBeVisible();
+    await expect(conversation(page).getByText('Used 2 tools')).toBeVisible();
     await page.getByRole('button', { name: 'Show' }).click();
     const lookup = page.locator('[data-tool-call-row]').filter({ hasText: 'lookup-order' });
     await expect(lookup).toContainText('orderId order-1001, status delivered, totalCents 4200');
@@ -206,10 +209,10 @@ test.describe('a follow-up sent while the run is going', () => {
     await sendFollowUp(page, 'Also this');
     await releaseBarrier(request);
 
-    await expect(page.getByText(FOLLOW_UP_REPLY)).toBeVisible();
+    await expect(conversation(page).getByText(FOLLOW_UP_REPLY)).toBeVisible();
     expect(await indexIn(page, FIRST_REPLY)).toBeLessThan(await indexIn(page, 'Also this'));
     expect(await indexIn(page, 'Also this')).toBeLessThan(await indexIn(page, FOLLOW_UP_REPLY));
-    await expect(page.getByText('Also this')).toHaveCount(1);
+    await expect(conversation(page).getByText('Also this')).toHaveCount(1);
   });
 
   test('is sent again as an ordinary turn when the run ends before it could be delivered', async ({
@@ -228,8 +231,8 @@ test.describe('a follow-up sent while the run is going', () => {
     await expectWaiting(request, 1);
     await releaseBarrier(request);
     // The seeding turn's reply is restored with the transcript, and each run since adds its own.
-    await expect(page.getByText(FIRST_REPLY)).toHaveCount(3);
-    await expect(page.getByText('Also this')).toHaveCount(1);
+    await expect(conversation(page).getByText(FIRST_REPLY)).toHaveCount(3);
+    await expect(conversation(page).getByText('Also this')).toHaveCount(1);
     const content = (await transcript(page).textContent()) ?? '';
     expect(await indexIn(page, 'Also this')).toBeLessThan(content.lastIndexOf(FIRST_REPLY));
   });
@@ -250,8 +253,8 @@ test.describe('a follow-up sent while the run is going', () => {
     await page.getByRole('button', { name: 'Retry' }).click();
     await expectWaiting(request, 1);
     await releaseBarrier(request);
-    await expect(page.getByText(FIRST_REPLY)).toHaveCount(2);
-    await expect(page.getByText('Also this')).toHaveCount(1);
+    await expect(conversation(page).getByText(FIRST_REPLY)).toHaveCount(2);
+    await expect(conversation(page).getByText('Also this')).toHaveCount(1);
   });
 });
 
@@ -273,14 +276,14 @@ test.describe('leaving a chat while its run is going', () => {
     await page.goBack();
     await expect(page).toHaveURL(new RegExp(`/chats/${threadId}$`));
     // The page joined the run it left: its transcript is the thread as the Bureau holds it.
-    await expect(page.getByText('Start the work')).toBeVisible();
+    await expect(conversation(page).getByText('Start the work')).toBeVisible();
     await expectWaiting(request, 1);
 
     await releaseBarrier(request);
 
-    await expect(page.getByText(FOLLOW_UP_REPLY)).toBeVisible();
-    await expect(page.getByText(FIRST_REPLY)).toHaveCount(2);
-    await expect(page.getByText('Also this')).toHaveCount(1);
+    await expect(conversation(page).getByText(FOLLOW_UP_REPLY)).toBeVisible();
+    await expect(conversation(page).getByText(FIRST_REPLY)).toHaveCount(2);
+    await expect(conversation(page).getByText('Also this')).toHaveCount(1);
   });
 });
 
@@ -300,11 +303,11 @@ test.describe('a run that asks the person a question', () => {
 
     await send(page, 'staging');
 
-    await expect(page.getByText(THANKS)).toBeVisible();
+    await expect(conversation(page).getByText(THANKS)).toBeVisible();
     await expect(question).toHaveCount(0);
-    await expect(page.getByText('The agent did not answer')).toHaveCount(0);
+    await expect(conversation(page).getByText('The agent did not answer')).toHaveCount(0);
     // The answer is one row, the one the run holds, and not the typed one beside it.
-    await expect(page.getByText('staging')).toHaveCount(1);
+    await expect(conversation(page).getByText('staging')).toHaveCount(1);
     // The session is not stuck: it takes another message, and the agent asks again.
     await send(page, 'One more release');
     await expect(question).toBeVisible();
@@ -327,7 +330,7 @@ test.describe('a run that asks the person a question', () => {
     await expect(page.getByRole('alert').filter({ hasText: QUESTION })).toBeVisible();
     await send(page, 'staging');
 
-    await expect(page.getByText(THANKS)).toBeVisible();
+    await expect(conversation(page).getByText(THANKS)).toBeVisible();
     expect(starts).toHaveLength(1);
     expect(starts[0]?.messages).toEqual([]);
     expect(JSON.stringify(starts[0]?.resume)).toContain('"answer":"staging"');
@@ -346,11 +349,11 @@ test('a reload while the run is going restores the transcript and continues live
   await page.reload();
 
   // The run was not the page's: its transcript comes from the stream's snapshot.
-  await expect(page.getByText('Start the work')).toBeVisible();
+  await expect(conversation(page).getByText('Start the work')).toBeVisible();
   // The seeding turn's reply is in the restored transcript, and this run's is not there yet.
-  await expect(page.getByText(FIRST_REPLY)).toHaveCount(1);
+  await expect(conversation(page).getByText(FIRST_REPLY)).toHaveCount(1);
   await releaseBarrier(request);
-  await expect(page.getByText(FIRST_REPLY)).toHaveCount(2);
+  await expect(conversation(page).getByText(FIRST_REPLY)).toHaveCount(2);
 });
 
 /** The one request the view frame's probe makes for a session, answered the way the server would. */
@@ -435,25 +438,26 @@ for (const width of [375, 1280] as const) {
       await page.setViewportSize({ width, height: 900 });
     });
 
-    test('shows the agent, what it does, its tools and its example prompt, and a prompt fills the composer without sending it', async ({
+    test('greets the agent, says what it does and offers its example prompt, and a prompt fills the composer without sending it', async ({
       page,
       checkA11y,
     }) => {
       await page.goto('/chats/new?agent=tool-runner');
 
-      const card = page.getByTestId('agent-card');
-      await expect(card).toBeVisible();
-      await expect(card.getByRole('heading', { level: 2 })).toHaveText('tool-runner');
-      await expect(card.getByRole('heading', { level: 2 }).locator('code')).toHaveCount(1);
-      await expect(card).toContainText('Looks an order up, then asks for approval to refund it.');
-      await expect(card).toContainText('2 tools');
-      // `?agent=` is the person's own choice, so the other agents are not offered as cards.
-      await expect(page.getByRole('heading', { name: 'Or start with another agent' })).toHaveCount(
-        0,
+      const welcome = page.getByTestId('new-chat-welcome');
+      await expect(welcome).toBeVisible();
+      await expect(welcome.locator('.ib-new-chat__greeting')).toContainText('tool-runner');
+      await expect(welcome.locator('.ib-new-chat__greeting code')).toHaveCount(1);
+      await expect(welcome).toContainText(
+        'Looks an order up, then asks for approval to refund it.',
       );
-      await checkA11y(`a new chat with the tool-runner's card at ${width}px`);
+      // The greeting is a line, not a second title: the chat's own title is the page's one heading.
+      await expect(welcome.getByRole('heading')).toHaveCount(0);
+      // `?agent=` is the person's own choice, so the other agents are not offered.
+      await expect(page.getByRole('group', { name: 'Or start with another agent' })).toHaveCount(0);
+      await checkA11y(`a new chat greeting the tool-runner at ${width}px`);
 
-      await card.getByRole('button', { name: 'Refund order 1234' }).click();
+      await welcome.getByRole('button', { name: 'Refund order 1234' }).click();
 
       await expect(composer(page)).toHaveValue('Refund order 1234');
       await expect(composer(page)).toBeFocused();
@@ -481,7 +485,7 @@ for (const width of [375, 1280] as const) {
       });
       await page.goto('/chats/new?agent=tool-runner');
 
-      const button = page.getByTestId('agent-card').getByRole('button', { name: prompt });
+      const button = page.getByTestId('new-chat-welcome').getByRole('button', { name: prompt });
       await expect(button).toBeVisible();
       const outlet = page.locator('main.weft-shell-outlet');
       const outletBox = await outlet.boundingBox();
@@ -504,21 +508,22 @@ for (const width of [375, 1280] as const) {
       ).toBe(true);
     });
 
-    test('offers the other agents as cards until one is chosen, and choosing one selects it', async ({
+    test('offers the other agents as one row until one is chosen, and choosing one selects it', async ({
       page,
       checkA11y,
     }) => {
       await page.goto('/chats/new');
-      await expect(page.getByTestId('agent-card')).toContainText('assistant');
-      const others = page.getByRole('heading', { name: 'Or start with another agent' });
+      const welcome = page.getByTestId('new-chat-welcome');
+      await expect(welcome).toContainText('assistant');
+      const others = page.getByRole('group', { name: 'Or start with another agent' });
       await expect(others).toBeVisible();
       await checkA11y(`a new chat with the agents to choose from at ${width}px`);
 
-      await page.getByRole('button', { name: /request-human-input/ }).click();
+      await others.getByRole('button', { name: /request-human-input/ }).click();
 
       await expect(page).toHaveURL(/\/chats\/new\?agent=request-human-input$/);
-      await expect(page.getByTestId('agent-card')).toContainText('request-human-input');
-      await expect(page.getByTestId('agent-card').getByRole('button')).toHaveText(
+      await expect(welcome).toContainText('request-human-input');
+      await expect(page.getByTestId('agent-prompts').getByRole('button')).toHaveText(
         'Ship the release',
       );
       await expect(others).toHaveCount(0);

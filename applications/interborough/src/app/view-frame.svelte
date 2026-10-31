@@ -28,7 +28,7 @@
    */
   import { untrack, type Snippet } from 'svelte';
 
-  import { EmptyState, ErrorState, RelativeTime, Skeleton } from '@lostgradient/cinder';
+  import { Button, EmptyState, ErrorState, RelativeTime, Skeleton } from '@lostgradient/cinder';
   import { Inbox } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
@@ -43,7 +43,7 @@
   import { router } from '../lib/router.svelte.ts';
   import { getPrincipalStore, scopeReason } from '../lib/scopes.svelte.ts';
   import { getConnection } from './connection.svelte.ts';
-  import { CONNECTION_COPY, RETRY_LABEL, STALE_DATA_LABEL, VIEW_COPY } from './copy.ts';
+  import { CHAT_COPY, CONNECTION_COPY, RETRY_LABEL, STALE_DATA_LABEL, VIEW_COPY } from './copy.ts';
   import { useBureauEventsLive, useFleetEventsLive } from './live-polling.svelte.ts';
   import WelcomeAgents from './welcome-agents.svelte';
   import { probeFor, ViewProbeFault, type ViewProbeResult } from './view-probes.ts';
@@ -269,11 +269,26 @@
       {#snippet action()}
         {#if emptyCopy.action}
           {@const emptyAction = emptyCopy.action}
-          <a
-            class="weft-view__action"
-            href={router.href(emptyAction.href)}
-            onclick={(event) => navigateTo(event, emptyAction.href)}>{emptyAction.label}</a
-          >
+          {#if initial.view === 'chat'}
+            <div class="weft-view__actions">
+              <Button
+                variant="primary"
+                href={router.href(emptyAction.href)}
+                onclick={(event) => navigateTo(event, emptyAction.href)}>{emptyAction.label}</Button
+              >
+              <Button
+                variant="secondary"
+                href={router.href('/agents')}
+                onclick={(event) => navigateTo(event, '/agents')}>{CHAT_COPY.browseAgents}</Button
+              >
+            </div>
+          {:else}
+            <a
+              class="weft-view__action"
+              href={router.href(emptyAction.href)}
+              onclick={(event) => navigateTo(event, emptyAction.href)}>{emptyAction.label}</a
+            >
+          {/if}
         {/if}
         {#if initial.view === 'chat'}
           <WelcomeAgents />

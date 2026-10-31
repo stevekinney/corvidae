@@ -5,6 +5,7 @@ import type { BureauReview } from '../../lib/bureau-reviews.ts';
 import {
   agentAvatarName,
   agentTone,
+  chatListRows,
   dayGroupOf,
   groupSessions,
   pendingQuestions,
@@ -231,6 +232,74 @@ describe('the groups of the list', () => {
     const [group] = groupSessions([row('first', at), row('second', at), row('third', at)], now);
 
     expect(group?.rows.map((entry) => entry.id)).toEqual(['first', 'second', 'third']);
+  });
+});
+
+describe('the chat list as one list', () => {
+  const row = (id: string, updatedAt: number | null, needsYou = false): SessionRow => ({
+    id,
+    title: id,
+    snippet: '',
+    agentName: 'assistant',
+    updatedAt,
+    needsYou,
+    failed: false,
+  });
+  const now = new Date(2026, 9, 21, 12).getTime();
+
+  test('lists the chats that need you first, whatever their age, then the rest newest first, each with its group', () => {
+    const rows = chatListRows(
+      [
+        row('older', new Date(2026, 9, 1).getTime()),
+        row('today', new Date(2026, 9, 21, 9).getTime()),
+        row('waiting-old', new Date(2026, 8, 1).getTime(), true),
+        row('unreadable', null),
+      ],
+      now,
+    );
+
+    expect(rows.map((entry) => [entry.id, entry.group])).toEqual([
+      ['waiting-old', 'needs-you'],
+      ['today', 'today'],
+      ['older', 'earlier'],
+      ['unreadable', 'earlier'],
+    ]);
+  });
+
+  test('puts a new chat that no run has started above everything, with no time and no chip', () => {
+    const rows = chatListRows([row('waiting', 1, true)], now, {
+      id: 'draft',
+      title: 'New chat',
+      snippet: 'assistant',
+      agentName: 'assistant',
+    });
+
+    expect(rows.map((entry) => entry.id)).toEqual(['draft', 'waiting']);
+    expect(rows[0]).toMatchObject({ group: 'draft', updatedAt: null, needsYou: false });
+  });
+});
+
+describe('a new chat the Bureau already lists', () => {
+  test('is listed once, as the Bureau’s row', () => {
+    const listed: SessionRow = {
+      id: 'draft',
+      title: 'Hello',
+      snippet: 'Hi.',
+      agentName: 'assistant',
+      updatedAt: 1,
+      needsYou: false,
+      failed: false,
+    };
+
+    const rows = chatListRows([listed], 2, {
+      id: 'draft',
+      title: 'New chat',
+      snippet: 'assistant',
+      agentName: 'assistant',
+    });
+
+    expect(rows.map((entry) => [entry.id, entry.title])).toEqual([['draft', 'Hello']]);
+    expect(rows[0]?.group).not.toBe('draft');
   });
 });
 

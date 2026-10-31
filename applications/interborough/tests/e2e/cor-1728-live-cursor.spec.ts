@@ -1,6 +1,12 @@
 import type { Page } from '@playwright/test';
 
-import { expectWaiting, newThreadId, releaseBarrier, startRun } from './chat-support.ts';
+import {
+  conversation,
+  expectWaiting,
+  newThreadId,
+  releaseBarrier,
+  startRun,
+} from './chat-support.ts';
 import { expect, test } from './fixtures.ts';
 
 async function makeInspectable(page: Page): Promise<void> {
@@ -12,15 +18,35 @@ async function makeInspectable(page: Page): Promise<void> {
     let forceSnapshot = false;
     const requestedCursors: Array<string | null> = [];
     const snapshots: number[] = [];
+    // The Bureau requests in flight, and when one last started or ended, so the case can wait for
+    // the page to finish reading before it cuts the network.
+    const quietMilliseconds = 500;
+    let bureauInFlight = 0;
+    let lastBureauActivity = Date.now();
     const fetchWithProbe = async (
       input: RequestInfo | URL,
       init?: RequestInit,
     ): Promise<Response> => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       const headers = new Headers(init?.headers);
-      if (forceSnapshot && headers.has('Last-Event-ID'))
+      // Only the chat's own stream is given the invalid cursor: the Bureau's event feed, which the
+      // shell keeps open, would answer it with a 400.
+      if (forceSnapshot && headers.has('Last-Event-ID') && url.includes('/bureau/ag-ui/threads/'))
         headers.set('Last-Event-ID', 'agui-live-v1.invalid');
-      const response = await originalFetch(input, { ...init, headers });
+      const bureau = url.endsWith('/bureau/jsonrpc');
+      if (bureau) {
+        bureauInFlight += 1;
+        lastBureauActivity = Date.now();
+      }
+      let response: Response;
+      try {
+        response = await originalFetch(input, { ...init, headers });
+      } finally {
+        if (bureau) {
+          bureauInFlight -= 1;
+          lastBureauActivity = Date.now();
+        }
+      }
       if (
         !url.includes('/bureau/ag-ui/threads/') ||
         !url.endsWith('/run') ||
@@ -84,6 +110,9 @@ async function makeInspectable(page: Page): Promise<void> {
     };
     window.fetch = Object.assign(fetchWithProbe, { preconnect: window.fetch.preconnect });
     Object.defineProperties(window, {
+      __bureauQuiet: {
+        get: () => bureauInFlight === 0 && Date.now() - lastBureauActivity > quietMilliseconds,
+      },
       __severChatStreams: { value: () => [...severs].forEach((sever) => sever()) },
       __chatAttachRequests: { get: () => attachRequests },
       __lastLiveCursor: { get: () => lastCursor },
@@ -92,6 +121,20 @@ async function makeInspectable(page: Page): Promise<void> {
       __forceSnapshot: { set: (value: boolean) => (forceSnapshot = value) },
     });
   });
+}
+
+/**
+ * Waits until the page has finished reading from the Bureau. The chat page lists the chats beside
+ * the open one and reads each of them in turn, so a case that cuts the network right after the
+ * chat is ready would cut those reads off in the middle, and the failed requests are not what it
+ * is about.
+ */
+async function untilBureauQuiet(page: Page): Promise<void> {
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as unknown as { __bureauQuiet: boolean }).__bureauQuiet),
+    )
+    .toBe(true);
 }
 
 async function attachRequests(page: Page): Promise<number> {
@@ -119,6 +162,7 @@ test('recovers a host-preserving drop from the real emitted cursor exactly once'
     await expect.poll(() => attachRequests(page)).toBe(1);
     await expect.poll(() => lastCursor(page)).toMatch(/^agui-live-v1\./);
     const consumed = await lastCursor(page);
+    await untilBureauQuiet(page);
     await context.setOffline(true);
     await page.evaluate(() =>
       (window as unknown as { __severChatStreams: () => void }).__severChatStreams(),
@@ -138,7 +182,7 @@ test('recovers a host-preserving drop from the real emitted cursor exactly once'
     ).toEqual([1]);
     await expectWaiting(request, 1);
     await releaseBarrier(request);
-    await expect(page.getByText('The barrier opened.')).toHaveCount(1);
+    await expect(conversation(page).getByText('The barrier opened.')).toHaveCount(1);
   } finally {
     await releaseBarrier(request);
     run.abort();
@@ -162,6 +206,7 @@ test('reconnects with an invalid cursor through the authoritative snapshot exact
     await page.evaluate(
       () => ((window as unknown as { __forceSnapshot: boolean }).__forceSnapshot = true),
     );
+    await untilBureauQuiet(page);
     await context.setOffline(true);
     await page.evaluate(() =>
       (window as unknown as { __severChatStreams: () => void }).__severChatStreams(),
@@ -183,7 +228,7 @@ test('reconnects with an invalid cursor through the authoritative snapshot exact
       .toEqual([1, 2]);
     await expectWaiting(request, 1);
     await releaseBarrier(request);
-    await expect(page.getByText('The barrier opened.')).toHaveCount(1);
+    await expect(conversation(page).getByText('The barrier opened.')).toHaveCount(1);
   } finally {
     await releaseBarrier(request);
     run.abort();

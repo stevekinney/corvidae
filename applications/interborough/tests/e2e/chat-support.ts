@@ -3,12 +3,21 @@
  * the page would start one), the barrier the specs hold a run on (`barrier-agent.ts`), so no case
  * waits on a clock, and the cleanup that gives a host back its seed (`deleteChats`).
  */
-import type { APIRequestContext } from '@playwright/test';
+import type { APIRequestContext, Locator, Page } from '@playwright/test';
 
 import { E2E_BARRIER_URL, E2E_BASE_URL } from './e2e-constants.ts';
 import { expect } from './fixtures.ts';
 
 const AG_UI = `${E2E_BASE_URL}/bureau/ag-ui`;
+
+/**
+ * The open chat's conversation. A chat page also lists the chats beside it, and a row there prints
+ * a chat's title and its latest message, so text a spec looks for in the transcript is searched for
+ * here and not on the whole page, where it would match the list's copy as well.
+ */
+export function conversation(page: Page): Locator {
+  return page.getByRole('region', { name: 'Conversation' });
+}
 
 /** A thread identifier no other case uses. */
 export function newThreadId(label: string): string {

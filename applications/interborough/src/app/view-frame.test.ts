@@ -439,7 +439,11 @@ describe('the chat list, a new chat, and the agents', () => {
       await findByRole('heading', { level: 1, name: VIEW_COPY.chat.empty?.title ?? '' }),
     ).not.toBeNull();
     expect(frame(container).dataset['state']).toBe('empty');
-    expect(container.querySelector('a[href="/chats/new"]')?.textContent).toBe('New chat');
+    expect(container.querySelector('a[href="/chats/new"]')?.textContent?.trim()).toBe('New chat');
+    // The second action goes to the agents a chat can start with, and both are buttons.
+    const browse = container.querySelector('a[href="/agents"]');
+    expect(browse?.textContent?.trim()).toBe('Browse agents');
+    expect(container.querySelectorAll('.weft-view__empty a.cinder-button')).toHaveLength(2);
   });
 
   test('the welcome names the agents a chat can start with, by their identifiers in monospace, and adds no padding of its own', async () => {

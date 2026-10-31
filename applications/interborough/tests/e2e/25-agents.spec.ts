@@ -331,7 +331,7 @@ for (const width of WIDTHS) {
     test('the list of chats passes axe', async ({ page, request, checkA11y }) => {
       await runToEnd(request, 'assistant', newThreadId('listaxe'), 'A chat for the list');
       await page.goto('/chats');
-      await expect(page.getByRole('navigation', { name: 'Chats' })).toBeVisible();
+      await expect(page.getByRole('region', { name: 'Chats' })).toBeVisible();
       await checkA11y(`the list of chats at ${width}px`);
     });
   });
