@@ -151,7 +151,13 @@ import {
 
 import type { PluginHostApi } from '@lostgradient/interborough-plugin';
 import { shutdownThenRethrow } from './composition-failure';
+import {
+  BUREAU_PLUGIN_NAME,
+  validateBuiltInPluginOptions,
+  withBuiltInPlugin,
+} from './plugins/bureau-plugin';
 import { composePlugins } from './plugins/compose-plugins';
+import { createAgentDiscoveryTool } from './create-agent-discovery-tool';
 import { createPluginRegistry } from './plugins/plugin-registry';
 import { markEventSource } from './event-source';
 import { createGoalForPlugin } from './goals';
@@ -427,7 +433,7 @@ import {
 import { createBureauWorkerDeployments } from './worker-deployments';
 import type { AgentSource, WorkflowSource } from './sources/definition-source';
 import { resolveDefinitionSource } from './sources/validate-definition-source';
-import { collidingWorkflowToolName, createWorkflowTools } from './workflow-tools';
+import { createWorkflowTools } from './workflow-tools';
 import { createSettingsTools } from './settings/settings-tools';
 import { createWorkflowSnapshotStore } from './workflow-snapshot-store';
 import {
@@ -2481,19 +2487,32 @@ async function constructBureau<const D extends AgentDefinitions>(
       '"options.agentApprovalSecret" must not be empty: it signs the tool approvals file agents raise, so leave it out to raise unsigned ones',
     );
   }
-  if (options.workflowSource !== undefined) {
-    // COR-1529: Bureau adds the workflow tools to the tool catalog itself, so a host tool that
-    // already has one of their names would be silently shadowed or shadow them.
-    const colliding = collidingWorkflowToolName(options.agentSource?.tools);
-    if (colliding !== undefined) {
-      toBadRequest(
-        `"options.agentSource.tools" names a tool "${colliding}", which Bureau provides itself when "options.workflowSource" is set`,
-      );
-    }
-  }
+  // COR-1890: the `bureau` namespace and the `built-in` source are the built-in plugin's.
+  validateBuiltInPluginOptions(options, toBadRequest);
+  // COR-1890: the built-in `bureau` plugin contributes Bureau's own tools through the plugin API.
+  // The tools read the Bureau when they are called, which is after construction has finished.
+  const bureauTools = [
+    createAgentDiscoveryTool({ entries: () => agentCatalog.entries() }),
+    ...(options.workflowSource === undefined
+      ? []
+      : Object.values(
+          // COR-1529: the workflow tools read the workflow runtime and the run's identity when called.
+          createWorkflowTools({
+            workflows: () => workflowRuntime?.workflows,
+            runIdentity: async (runId) => ({
+              agent: runAttribution.get(runId)?.agentName,
+              owner: await ownerOf({ kind: 'run', id: runId }),
+              hookOrigin: await hookOriginOfRun(runId),
+            }),
+          }),
+        )),
+  ];
   // COR-1879 — plugin setup runs once the caller's options are known to be usable, and what the
   // running plugins contribute is folded into the options the rest of construction reads.
-  const composedPlugins = await composePlugins(options);
+  const composedPlugins = await composePlugins({
+    ...options,
+    plugins: withBuiltInPlugin(options.plugins, bureauTools),
+  });
   options = composedPlugins.options;
   // COR-1879: `decisions.model` may name a decision router a plugin contributed.
   validateDecisionsModelChoice(options.decisions, toBadRequest);
@@ -3104,28 +3123,19 @@ async function constructBureau<const D extends AgentDefinitions>(
       settings: () => settingsOf().settings,
       ownerOf: (runId) => ownerOf({ kind: 'run', id: runId }),
     });
-    const workflowTools =
-      options.workflowSource === undefined
-        ? {}
-        : createWorkflowTools({
-            workflows: () => workflowRuntime?.workflows,
-            runIdentity: async (runId) => ({
-              agent: runAttribution.get(runId)?.agentName,
-              owner: await ownerOf({ kind: 'run', id: runId }),
-              hookOrigin: await hookOriginOfRun(runId),
-            }),
-          });
     agentToolCatalog = {
       ...options.agentSource?.tools,
       // COR-1879: the plugins' tools, by the `plugin:name` an agent file names them with.
       ...composedPlugins.tools,
       ...settingsTools,
-      ...workflowTools,
     };
-    // COR-1818: the tools Bureau added itself, which the tool catalog reports as its own.
+    // COR-1818: the tools Bureau added itself, which the tool catalog reports as its own: the
+    // settings tools, and the built-in `bureau` plugin's (COR-1890).
     const bureauToolNames: ReadonlySet<string> = new Set([
       ...Object.keys(settingsTools),
-      ...Object.keys(workflowTools),
+      ...Object.keys(composedPlugins.tools).filter((name) =>
+        name.startsWith(`${BUREAU_PLUGIN_NAME}:`),
+      ),
     ]);
     // COR-1815: built before the catalog, which asks it which revisions a retained run references.
     const agentSnapshots = createAgentSnapshotStore({

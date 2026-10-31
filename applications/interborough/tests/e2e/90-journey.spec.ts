@@ -263,7 +263,7 @@ test('defines an agent in the editor with the workflow tool, and chats with it u
   await page.getByRole('button', { name: AGENT_EDITOR_COPY.createAction }).click();
   await expect(page).toHaveURL(new RegExp(`/agents/${AUTHOR_ID}$`));
 
-  // `workflows-create` changes the deployment, so a new agent asks before each call, and no one in
+  // `bureau:workflows-create` changes the deployment, so a new agent asks before each call, and no one in
   // this journey answers the inbox for it. The file sets the tool to `never`, as a person who
   // trusts the agent with it would, through the management plane the editor saves with.
   const created = await readAgent(request, AUTHOR_ID);
@@ -281,7 +281,11 @@ test('defines an agent in the editor with the workflow tool, and chats with it u
   await send(page, `${JOURNEY_MARKER} Write me a digest that runs on a schedule.`);
 
   await expect(conversation(page).getByText(JOURNEY_AUTHOR_REPLY)).toBeVisible();
-  await expect(conversation(page).getByText(JOURNEY_TOOL_NAME).first()).toBeVisible();
+  await expect(
+    conversation(page)
+      .getByText(/workflows-create/)
+      .first(),
+  ).toBeVisible();
   // The agent wrote the file, which the Bureau reports as an agent-authored workflow of its own.
   const written = await bureau(request, 'bureau.workflows.get', { id: JOURNEY_WORKFLOW_ID });
   expect(written.fault).toBeUndefined();

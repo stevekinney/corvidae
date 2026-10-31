@@ -23,7 +23,7 @@ import * as assetServiceModule from './assets/asset-service';
 import { createBureau } from './create-bureau';
 import * as runtimeCompositionModule from './runtime-composition';
 import type { RuntimeComposition } from './runtime-composition';
-import * as workflowToolsModule from './workflow-tools';
+import * as settingsToolsModule from './settings/settings-tools';
 import {
   createConstructionWindowFixtures,
   constructionWindowGenerate,
@@ -557,7 +557,7 @@ describe('a Bureau whose construction fails leaves a reclaimed run resumable (CO
     let parked: ReturnType<RuntimeComposition['resolveRunServices']> | undefined;
 
     // A run is parked in a reader as soon as the composition exists, which is before any step that
-    // can throw: `createWorkflowTools` runs ahead of the agent file scan.
+    // can throw: `createSettingsTools` runs ahead of the agent file scan.
     const createComposition = runtimeCompositionModule.createRuntimeComposition;
     const compositionSpy = spyOn(
       runtimeCompositionModule,
@@ -578,8 +578,8 @@ describe('a Bureau whose construction fails leaves a reclaimed run resumable (CO
       return composition;
     });
     fixtures.restoreOnDispose(() => compositionSpy.mockRestore());
-    const toolsSpy = spyOn(workflowToolsModule, 'createWorkflowTools').mockImplementation(() => {
-      throw new Error('workflow tools exploded');
+    const toolsSpy = spyOn(settingsToolsModule, 'createSettingsTools').mockImplementation(() => {
+      throw new Error('settings tools exploded');
     });
     fixtures.restoreOnDispose(() => toolsSpy.mockRestore());
 
@@ -598,12 +598,12 @@ describe('a Bureau whose construction fails leaves a reclaimed run resumable (CO
     );
 
     expect(outcome).toBeInstanceOf(Error);
-    expect((outcome as Error).message).toBe('workflow tools exploded');
+    expect((outcome as Error).message).toBe('settings tools exploded');
     if (parked === undefined) throw new Error('Expected a parked reader.');
     const resolution = await parked;
     expect(resolution.status).toBe('unavailable');
     expect(resolution.status === 'unavailable' ? resolution.reason : '').toContain(
-      'workflow tools exploded',
+      'settings tools exploded',
     );
   });
 });

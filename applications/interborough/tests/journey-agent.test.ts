@@ -6,7 +6,7 @@ import {
   createRecallAgents,
   JOURNEY_AUTHOR_REPLY,
   JOURNEY_MARKER,
-  JOURNEY_TOOL_NAME,
+  JOURNEY_TOOL_CALL_NAME,
   JOURNEY_WORKFLOW_CADENCE,
   JOURNEY_WORKFLOW_ID,
   RECALL_AGENT_NAME,
@@ -58,7 +58,7 @@ describe('the journey provider resolver', () => {
 
     expect(response.toolCalls).toHaveLength(1);
     const [call] = response.toolCalls ?? [];
-    expect(call?.name).toBe(JOURNEY_TOOL_NAME);
+    expect(call?.name).toBe(JOURNEY_TOOL_CALL_NAME);
     expect(call?.arguments).toMatchObject({
       id: JOURNEY_WORKFLOW_ID,
       trigger: { kind: 'schedule', spec: JOURNEY_WORKFLOW_CADENCE },
@@ -68,7 +68,7 @@ describe('the journey provider resolver', () => {
   test('answers with a fixed text once the conversation holds a call, so the agent cannot loop', async () => {
     const response = await generateWith(
       { role: 'user', content: `${JOURNEY_MARKER} Write one.` },
-      { role: 'assistant', content: '', toolCall: { id: 'call-1', name: JOURNEY_TOOL_NAME } },
+      { role: 'assistant', content: '', toolCall: { id: 'call-1', name: JOURNEY_TOOL_CALL_NAME } },
       { role: 'tool', content: '', toolResult: { callId: 'call-1' } },
     );
 

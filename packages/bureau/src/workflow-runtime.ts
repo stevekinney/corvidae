@@ -264,6 +264,12 @@ export interface WorkflowWriteContext {
    * without it leaves the origin as it is.
    */
   readonly hookOrigin?: string | undefined;
+  /**
+   * The plugin whose own tool made the write (COR-1890: `bureau`, for the workflow tools), set by
+   * those tools and by nothing else. A `definitions.changed` event a write causes names it as its
+   * `source` only when every workflow the change touches was written by that plugin's tools.
+   */
+  readonly source?: string | undefined;
 }
 
 /** What `workflows.signal` did: the instances it started and the ones it delivered to. */
@@ -363,7 +369,10 @@ export interface BureauWorkflows {
   readonly getCode: (id: string) => WorkflowCodeDetail | undefined;
   /** Rescan the directory; resolves once the engine and the schedules match it. */
   readonly refresh: () => Promise<void>;
-  /** Called after every rescan that added, changed, or removed a workflow. Returns its unsubscribe. */
+  /**
+   * Called after every rescan that added, changed, or removed a workflow. A change that only a
+   * plugin's own tools wrote carries that plugin as `source` (COR-1890). Returns its unsubscribe.
+   */
   readonly onChange: (listener: (change: DefinitionChange) => void) => () => void;
   /**
    * Throws `BureauError` `NOT_FOUND` unless `id` is a ready, unpaused workflow: the check a path
@@ -1164,6 +1173,33 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     }
   }
 
+  /**
+   * The source of each write in flight, by workflow (`undefined` for a write no plugin's tool made).
+   * The rescan a write causes reports its change while the write is still in flight, so a change is
+   * attributed to a plugin only when every workflow in it is being written by that plugin alone.
+   */
+  const writesInFlight = new Map<string, (string | undefined)[]>();
+
+  /** Records a write of workflow `id` by `source` until the returned function is called. */
+  function attributeWrite(id: string | undefined, source: string | undefined): () => void {
+    if (id === undefined) return () => {};
+    writesInFlight.set(id, [...(writesInFlight.get(id) ?? []), source]);
+    return () => {
+      const remaining = [...(writesInFlight.get(id) ?? [])];
+      remaining.splice(remaining.indexOf(source), 1);
+      if (remaining.length === 0) writesInFlight.delete(id);
+      else writesInFlight.set(id, remaining);
+    };
+  }
+
+  /** The one plugin that is writing every workflow in `change`, or `undefined`. */
+  function sourceOfChange(change: DefinitionChange): string | undefined {
+    const ids = [...change.added, ...change.changed, ...change.removed];
+    const sources = new Set(ids.flatMap((id) => writesInFlight.get(id) ?? [undefined]));
+    const [only] = sources;
+    return ids.length > 0 && sources.size === 1 ? only : undefined;
+  }
+
   /** The tail of the writes to each workflow that carries a hook origin, so two never interleave. */
   const writeTails = new Map<string, Promise<unknown>>();
 
@@ -1231,6 +1267,23 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
    * were records nothing; `create` and `delete` have none and always record.
    */
   async function write(
+    type: WorkflowAuditType,
+    context: WorkflowWriteContext | undefined,
+    previousHash: string | undefined,
+    work: () => Promise<WorkflowFileWriteResult>,
+    id?: string,
+    // The workflow a write names for attribution when it takes no serialization (pause, resume).
+    attributedId: string | undefined = id,
+  ): Promise<WorkflowFileWriteResult> {
+    const stopAttributing = attributeWrite(attributedId, context?.source);
+    try {
+      return await writeAttributed(type, context, previousHash, work, id);
+    } finally {
+      stopAttributing();
+    }
+  }
+
+  async function writeAttributed(
     type: WorkflowAuditType,
     context: WorkflowWriteContext | undefined,
     previousHash: string | undefined,
@@ -1442,13 +1495,25 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         id,
       ),
     pause: (id, guard) =>
-      write('workflow.paused', guard, guard.expectedHash, () => catalog.setPaused(id, true, guard)),
+      write(
+        'workflow.paused',
+        guard,
+        guard.expectedHash,
+        () => catalog.setPaused(id, true, guard),
+        undefined,
+        id,
+      ),
     resume: (id, guard) =>
-      write('workflow.resumed', guard, guard.expectedHash, () =>
-        catalog.setPaused(id, false, guard),
+      write(
+        'workflow.resumed',
+        guard,
+        guard.expectedHash,
+        () => catalog.setPaused(id, false, guard),
+        undefined,
+        id,
       ),
     delete: (id, guard) =>
-      write('workflow.deleted', guard, undefined, () => catalog.delete(id, guard)),
+      write('workflow.deleted', guard, undefined, () => catalog.delete(id, guard), undefined, id),
 
     async revisions(id) {
       await Promise.allSettled(pendingStamps);
@@ -1671,7 +1736,11 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       return registeredTypes.has(id) ? undefined : describeCodeWorkflow(engine, id);
     },
 
-    onChange: (listener) => catalog.onChange(listener),
+    onChange: (listener) =>
+      catalog.onChange((change) => {
+        const source = sourceOfChange(change);
+        listener(source === undefined ? change : { ...change, source });
+      }),
 
     assertStartable(id) {
       const file = catalog.find(id);

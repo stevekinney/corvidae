@@ -41,10 +41,10 @@ const REFUSED_TOOLS: Readonly<Record<string, string>> = Object.freeze({
   memory_forget: 'writes memory',
   scheduleSelf: 'schedules work',
   scheduleWakeup: 'schedules work',
-  'workflows-create': 'creates workflows, which run on schedules',
-  'workflows-update': 'changes workflows, which run on schedules',
-  'workflows-pause': 'changes workflows, which run on schedules',
-  'workflows-resume': 'changes workflows, which run on schedules',
+  'bureau:workflows-create': 'creates workflows, which run on schedules',
+  'bureau:workflows-update': 'changes workflows, which run on schedules',
+  'bureau:workflows-pause': 'changes workflows, which run on schedules',
+  'bureau:workflows-resume': 'changes workflows, which run on schedules',
   'settings-update': 'changes the deployment’s settings',
 });
 

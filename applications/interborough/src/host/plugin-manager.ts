@@ -167,7 +167,11 @@ export type PluginSecretChange = {
 export type PluginManager = {
   /** The persisted choices as they were when the manager was created: what `createBureau` composes with. */
   settings(): Readonly<Record<string, BureauPluginSettings>>;
-  /** The plugins `createBureau` gets: every one the host did not skip for a secret it cannot honor. */
+  /**
+   * Every plugin the host did not skip for a secret it cannot honor, the built-in `bureau` plugin
+   * (COR-1890) included. The built-in one is listed here for its standing and is not given to
+   * `createBureau`, which supplies it itself.
+   */
   loadable(): readonly BureauPluginEntry[];
   /** The reader Bureau gets for the secrets plugins declare. Reads on demand and tells watchers of every save. */
   readonly secrets: BureauPluginSecrets;

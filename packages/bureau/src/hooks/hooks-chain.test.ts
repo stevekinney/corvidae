@@ -214,7 +214,7 @@ describe('a start-workflow hook and a kind it cannot place', () => {
     'session.saved',
     'session.created',
     'diagnostic',
-    // A run's `workflows-create` tool writes the files it reports.
+    // A run's `bureau:workflows-create` tool writes the files it reports.
     'definitions.changed',
     'schedule.attempted',
     'schedule.skipped',

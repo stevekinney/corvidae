@@ -509,10 +509,11 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    *
    * Bureau keeps parsing, validation, snapshots, revisions, and the write-through
    * operations; the source only holds bytes. The source's `tools` is the deployment's tool
-   * catalog: the tools an agent file may name in `tools`. With {@link BureauOptions.workflowSource}
-   * Bureau adds `workflows-create`, `workflows-update`, `workflows-pause`, `workflows-resume`,
-   * and `workflows-list` (COR-1529); a tool of the host's with one of those names is refused with
-   * `BureauError` (`BAD_REQUEST`). Requires {@link ModelsOptions.generate}: a model name that
+   * catalog: the tools an agent file may name in `tools`. The built-in `bureau` plugin (COR-1890)
+   * adds `bureau:discover-agents` and, with {@link BureauOptions.workflowSource},
+   * `bureau:workflows-create`, `bureau:workflows-update`, `bureau:workflows-pause`,
+   * `bureau:workflows-resume`, and `bureau:workflows-list` (COR-1529); a tool of the host's in the
+   * `bureau` namespace (`bureau:x` or `bureau__x`) is refused with `BureauError` (`BAD_REQUEST`). Requires {@link ModelsOptions.generate}: a model name that
    * nothing can turn into a `generate` would be silently ignored, so `createBureau` refuses the
    * combination with `BureauError` (`BAD_REQUEST`).
    *

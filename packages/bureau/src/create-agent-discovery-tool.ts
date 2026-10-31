@@ -14,19 +14,24 @@ import type { AgentDefinitions, BureauAgentCatalog } from './agent-catalog';
 
 /**
  * Creates a tool that lets an orchestrating agent discover the agents
- * registered on this bureau's catalog. `text`, when supplied,
+ * registered on this bureau's catalog. A Bureau offers it to agents itself as
+ * `bureau:discover-agents`, through its built-in plugin (COR-1890); this function
+ * builds the same tool over any catalog, for a supervisor. `text`, when supplied,
  * case-insensitively substring-matches against an agent's name, its
  * `description`, and each of its `skillDescriptors`' name, description, and
  * tags. Each match is returned as `{ name, description, skillDescriptors }`;
  * the last two are omitted for an agent that declares none.
  */
 export function createAgentDiscoveryTool<D extends AgentDefinitions>(
-  catalog: BureauAgentCatalog<D>,
+  catalog: Pick<BureauAgentCatalog<D>, 'entries'>,
 ) {
   return createTool({
     name: 'discover-agents',
+    version: '1.0.0',
     description:
       'Discover available agents on this bureau by searching their names, descriptions, and skills.',
+    // Read-only, so an agent file that lists it runs it without asking (COR-1890).
+    metadata: { readOnly: true, shortDescription: 'Find the agents on this Bureau.' },
     input: z.object({
       text: z
         .string()
