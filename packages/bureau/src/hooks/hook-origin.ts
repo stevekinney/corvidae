@@ -22,7 +22,7 @@
  * (a workflow that starts another workflow some other way), and it sees a schedule only because the
  * schedule carries the origin (COR-1952):
  *
- * - A schedule that a hook-started run creates (a `workflows-create` or `workflows-update` with a
+ * - A schedule that a hook-started run creates (a `bureau:workflows-create` or `bureau:workflows-update` with a
  *   `schedule` trigger, or a `schedules.create` the run makes) records the hook that started that
  *   run, in a Bureau record keyed by the schedule (`schedule-hook-origins.ts`).
  * - A run the schedule fires is an instance whose trigger, or a task whose origin, names the

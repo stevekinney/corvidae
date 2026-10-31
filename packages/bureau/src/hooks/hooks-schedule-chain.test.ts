@@ -45,7 +45,7 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).toReversed()) await cleanup();
 });
 
-/** What the model of the probe's `chain` workflow is told; it answers with a `workflows-create`. */
+/** What the model of the probe's `chain` workflow is told; it answers with a `bureau:workflows-create`. */
 const MAKE_A_SCHEDULE = 'Make a schedule';
 const ON_GO = { kind: 'signal', name: 'go' };
 const SOURCE = {
@@ -71,7 +71,7 @@ type Probe = Awaited<ReturnType<typeof openProbe>>;
 
 /**
  * A Bureau with a `start-workflow` hook on `run.settled`, and the probe's agent: each time the
- * `chain` workflow's step runs, it calls `workflows-create` for a new schedule workflow.
+ * `chain` workflow's step runs, it calls `bureau:workflows-create` for a new schedule workflow.
  */
 async function openProbe(beforeGenerate?: (message: string) => Promise<void>) {
   const receiver = createReceiver();
@@ -90,7 +90,7 @@ async function openProbe(beforeGenerate?: (message: string) => Promise<void>) {
   cleanups.push(() => harness.dispose());
   const workflows = harness.bureau.workflows!;
   let created = 0;
-  harness.plan('workflows-create', (message) =>
+  harness.plan('bureau__workflows-create', (message) =>
     message.startsWith(MAKE_A_SCHEDULE)
       ? {
           name: `probe-${String((created += 1))}`,
@@ -235,7 +235,7 @@ describe('the schedule a hook-started run changes', () => {
     const probe = await openProbe();
     await probe.workflows.create('owner-probe', SCHEDULED);
     const hash = probe.workflows.list().find((listing) => listing.id === 'owner-probe')!.hash!;
-    probe.harness.plan('workflows-update', (message) =>
+    probe.harness.plan('bureau__workflows-update', (message) =>
       message.startsWith(MAKE_A_SCHEDULE)
         ? {
             id: 'owner-probe',

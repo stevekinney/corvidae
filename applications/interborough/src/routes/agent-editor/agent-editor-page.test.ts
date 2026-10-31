@@ -217,7 +217,7 @@ describe('a new agent', () => {
             shortDescription: null,
           },
           {
-            name: 'workflows-create',
+            name: 'bureau:workflows-create',
             description: prompt,
             shortDescription: 'Create a workflow Bureau runs on a schedule or a signal.',
           },
@@ -226,7 +226,7 @@ describe('a new agent', () => {
       }),
     });
     const { findByRole, getAllByTestId, getByText, queryAllByTestId } = mountEditor();
-    await findByRole('checkbox', { name: /workflows-create/ });
+    await findByRole('checkbox', { name: /bureau:workflows-create/ });
 
     const lines = getAllByTestId('agent-tool-line').map((line) => line.textContent ?? '');
     expect(lines[0]).toBe('Look an order up by its identifier.');

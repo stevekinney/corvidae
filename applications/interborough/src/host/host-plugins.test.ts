@@ -123,6 +123,12 @@ async function scratch(): Promise<string> {
   return directory;
 }
 
+/** The plugins a Bureau was given, without the built-in `bureau` plugin it lists first (COR-1890). */
+async function ownPlugins(bureau: Pick<Host['bureau'], 'plugins'>) {
+  const listed = await bureau.plugins.list();
+  return listed.filter((listing) => listing.source !== 'built-in');
+}
+
 async function startAt(home: string, plugins = fixturePlugins()): Promise<Host> {
   const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0, plugins });
   hosts.push(host);
@@ -216,6 +222,7 @@ describe('GET /host/plugins', () => {
     const body = (await response.json()) as { plugins: Standing[] };
 
     expect(body.plugins.map((plugin) => plugin.descriptor.name)).toEqual([
+      'bureau',
       'limited',
       'quiet',
       'always',
@@ -223,6 +230,13 @@ describe('GET /host/plugins', () => {
       'minted',
       'later',
     ]);
+    // COR-1890: Bureau's own tools are the built-in plugin's, which runs before any other.
+    expect(body.plugins[0]).toMatchObject({
+      source: 'built-in',
+      status: 'running',
+      enabled: true,
+      descriptor: { required: true },
+    });
     const keyed = body.plugins.find((plugin) => plugin.descriptor.name === 'keyed');
     expect(keyed).toMatchObject({
       status: 'needs-setup',
@@ -336,6 +350,8 @@ describe('PUT /host/plugins/:name', () => {
   test.each([
     ['a plugin that takes none', 'always', { configuration: { anything: 1 } }, 'configuration'],
     ['a required plugin turned off', 'always', { enabled: false }, 'enabled'],
+    // COR-1890: Bureau's own tools are the built-in plugin's, so the owner cannot switch it off.
+    ['the built-in bureau plugin turned off', 'bureau', { enabled: false }, 'enabled'],
     ['a flag that is not a boolean', 'quiet', { enabled: 'yes' }, 'enabled'],
   ])('refuses %s, and writes nothing', async (_name, plugin, body, field) => {
     const home = await scratch();
@@ -596,7 +612,7 @@ describe('a remote home', () => {
       pluginSecrets: manager.secrets,
     });
     try {
-      const [plugin] = await bureau.plugins.list();
+      const [plugin] = await ownPlugins(bureau);
 
       expect(home.writes).toEqual([]);
       expect(plugin).toMatchObject({
@@ -616,7 +632,7 @@ describe('a remote home', () => {
       pluginSecrets: manager.secrets,
     });
     try {
-      const [plugin] = await bureau.plugins.list();
+      const [plugin] = await ownPlugins(bureau);
       expect(plugin?.status).toBe('running');
     } finally {
       await bureau.dispose();
@@ -682,7 +698,7 @@ describe('a secret write that stores the file and then fails', () => {
   }
 
   const pluginStatus = async (bureau: Awaited<ReturnType<typeof standingOf>>['bureau']) => {
-    const listed = await bureau.plugins.list();
+    const listed = await ownPlugins(bureau);
     return listed[0]?.status;
   };
 

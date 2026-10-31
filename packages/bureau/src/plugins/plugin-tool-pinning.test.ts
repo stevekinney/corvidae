@@ -20,6 +20,7 @@ import { createSqliteStorageFixture } from '../test/storage-fixtures';
 import { agentFileText, KNOWN_MODEL } from '../testing/agent-file-fixtures.test-support';
 import { type FileBureauHarness, startFileBureau } from '../testing/agent-file-bureau.test-support';
 import type { BureauDiagnostic } from '../types';
+import { listedPlugins } from '../testing/plugin-listing.test-support';
 
 const SECRET = 'plugin-tool-secret';
 const executed: string[] = [];
@@ -94,7 +95,7 @@ describe('a plugin tool’s version on a durable record', () => {
     fixtures.push(database);
 
     const first = await start(directory, '2.0.0', database.storage);
-    const [firstListing] = await first.bureau.plugins.list();
+    const [firstListing] = await listedPlugins(first.bureau);
     expect(firstListing?.contributions).toEqual([
       { kind: 'tool', id: 'p:t@2.0.0', references: { agents: 0, schedules: 0, waitingRuns: 0 } },
     ]);
@@ -142,7 +143,7 @@ describe('a plugin tool’s version on a durable record', () => {
     expect(upgraded.bureau.reviews.list()).toEqual([]);
     expect(executed).toEqual(['2.0.0:x']);
     // The plugin reports the run that waited on the version it no longer loads.
-    const [upgradedListing] = await upgraded.bureau.plugins.list();
+    const [upgradedListing] = await listedPlugins(upgraded.bureau);
     expect(upgradedListing?.problems).toEqual([
       { code: 'pinned-version-unavailable', id: 'p:t', version: '2.0.0', waitingRuns: 1 },
     ]);

@@ -83,6 +83,16 @@ export interface WorkflowFileWriteResult {
   readonly hash: string;
 }
 
+/** What a write may ask to be told about. */
+export interface WorkflowWriteObserver {
+  /**
+   * Called with the hash of the bytes this write put on disk, after they are written and before the
+   * rescan that follows reports them. That rescan is the first thing to read the file back, so this
+   * is the only way to know which bytes a write made before a change arrives for them (COR-1890).
+   */
+  readonly onWritten?: ((hash: string) => void) | undefined;
+}
+
 export interface WorkflowFileCatalogOptions {
   /** Where the workflow files come from and are written back to. */
   readonly source: WorkflowSource;
@@ -108,17 +118,18 @@ export interface WorkflowFileCatalog {
   readonly create: (
     id: string,
     definition: WorkflowFileDefinition,
+    options?: WorkflowWriteObserver,
   ) => Promise<WorkflowFileWriteResult>;
   readonly update: (
     id: string,
     definition: WorkflowFileDefinition,
-    options: { readonly expectedHash: string },
+    options: { readonly expectedHash: string } & WorkflowWriteObserver,
   ) => Promise<WorkflowFileWriteResult>;
   /** Set `paused` in the file. A file that already has that value is left untouched. */
   readonly setPaused: (
     id: string,
     paused: boolean,
-    options: { readonly expectedHash: string },
+    options: { readonly expectedHash: string } & WorkflowWriteObserver,
   ) => Promise<WorkflowFileWriteResult>;
   readonly delete: (
     id: string,
@@ -320,8 +331,10 @@ export function createWorkflowFileCatalog(
     id: string,
     bytes: Uint8Array,
     expectedHash: string | null,
+    observer?: WorkflowWriteObserver,
   ): Promise<WorkflowFileWriteResult> {
     const written = await throughSource(() => source.write(id, bytes, { expectedHash }));
+    observer?.onWritten?.(written.hash);
     await watched.reload();
     return { id, hash: written.hash };
   }
@@ -370,25 +383,25 @@ export function createWorkflowFileCatalog(
       return { hash: entry.hash, text };
     },
 
-    create(id, definition) {
+    create(id, definition, observer) {
       return exclusive(async () => {
         checkIdentifier(id);
-        return write(id, bytesFor(id, definition), null);
+        return write(id, bytesFor(id, definition), null, observer);
       });
     },
 
-    update(id, definition, { expectedHash }) {
+    update(id, definition, { expectedHash, onWritten }) {
       return exclusive(async () => {
         checkIdentifier(id);
         const bytes = bytesFor(id, definition);
         const current = await readExisting(id, expectedHash);
         // An update that changes nothing writes nothing.
         if (hashWorkflowFileBytes(bytes) === current.hash) return { id, hash: current.hash };
-        return write(id, bytes, expectedHash);
+        return write(id, bytes, expectedHash, { onWritten });
       });
     },
 
-    setPaused(id, paused, { expectedHash }) {
+    setPaused(id, paused, { expectedHash, onWritten }) {
       return exclusive(async () => {
         checkIdentifier(id);
         const current = await readExisting(id, expectedHash);
@@ -413,7 +426,7 @@ export function createWorkflowFileCatalog(
           trigger: document.trigger,
           steps: document.steps,
         });
-        return write(id, bytes, expectedHash);
+        return write(id, bytes, expectedHash, { onWritten });
       });
     },
 

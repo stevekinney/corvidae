@@ -147,7 +147,7 @@ describe('the operations, against the real Bureau', () => {
       source: 'host',
       users: ['tool-runner'],
     });
-    expect(byName.get('workflows-create')).toMatchObject({ source: 'bureau' });
+    expect(byName.get('bureau:workflows-create')).toMatchObject({ source: 'bureau' });
     expect(byName.get('settings-update')).toMatchObject({ source: 'bureau' });
   });
 

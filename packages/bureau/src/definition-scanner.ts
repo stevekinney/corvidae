@@ -23,6 +23,12 @@ export interface DefinitionChange {
   readonly removed: readonly string[];
   /** Of `added` and `changed`, the identifiers whose definition is invalid now and cannot run. */
   readonly rejected: readonly string[];
+  /**
+   * The plugin that caused the change, when every identifier in it was written by that plugin's
+   * own tool and by nothing else (COR-1890: `bureau`, for a workflow its tools wrote). Absent for a
+   * change anyone else caused, or a mix.
+   */
+  readonly source?: string | undefined;
 }
 
 /** What every entry a catalog holds carries, so a rescan can tell whether a definition changed. */

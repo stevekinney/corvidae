@@ -92,6 +92,7 @@ import { join, resolve as resolvePath, sep } from 'node:path';
 import { openBungalow, type Bungalow, type BungalowEnvironment } from '@lostgradient/bungalow';
 import {
   ANONYMOUS_LOCAL_OWNER,
+  BUREAU_PLUGIN_ENTRY,
   createBureau,
   createBureauHandler,
   createDurableAssetStorage,
@@ -607,7 +608,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       dependencies: HOST_DEPENDENCIES,
       developmentPaths: developmentPlugins,
     });
-    const plugins = [...packagePlugins, ...folderPlugins.entries];
+    // The built-in `bureau` plugin (COR-1890) is listed first so the Plugins page shows it and the
+    // manager refuses to turn it off. Bureau supplies the plugin itself, so it is not given to it again.
+    const plugins = [BUREAU_PLUGIN_ENTRY, ...packagePlugins, ...folderPlugins.entries];
     // The plugins read their choices from the same file, before the Bureau composes them. A secret
     // the provider routes store reaches a plugin that waits on it through the same watchers.
     const pluginManager = await createPluginManager({
@@ -714,7 +717,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       storage,
       // The plugins this host loads, the owner's choices for them, and the secrets they declare
       // (COR-1880). Memory is built once their setup has run, with what they contribute to it.
-      plugins: [...pluginManager.loadable()],
+      plugins: pluginManager.loadable().filter((entry) => entry.source !== 'built-in'),
       pluginConfiguration: pluginManager.settings(),
       pluginSecrets: pluginManager.secrets,
       answerEncryption: answerKeys,

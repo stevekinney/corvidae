@@ -395,7 +395,7 @@ export const WORKFLOW_COPY = {
     },
     emptyTitle: 'No workflows yet',
     emptyBeforeTool: 'Chat with an agent that has the',
-    emptyTool: 'workflows-create',
+    emptyTool: 'bureau:workflows-create',
     emptyBeforeDirectory: 'tool, or add a JSON file to',
     schedules: (count: number): string => `${String(count)} schedules`,
     runs: (count: number): string => `${String(count)} ${count === 1 ? 'run' : 'runs'} in 24 hours`,
@@ -2395,7 +2395,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     empty: {
       title: 'No workflows yet',
       description:
-        'Chat with an agent that has the workflows-create tool, or add a JSON file to the workflows directory.',
+        'Chat with an agent that has the bureau:workflows-create tool, or add a JSON file to the workflows directory.',
       action: { label: 'New workflow', href: '/workflows/new' },
     },
     error: {

@@ -14,6 +14,7 @@ import { createBureau } from '../create-bureau';
 import { agentFileDirectory } from '../sources/agent-file-directory';
 import type { Bureau, BureauOptions } from '../types';
 import type { BureauPluginEntry } from './plugin-types';
+import { listedPlugins } from '../testing/plugin-listing.test-support';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 
@@ -72,7 +73,7 @@ describe('plugin composition', () => {
       pluginConfiguration: { strict: { configuration: { limit: 'ten' } } },
     });
 
-    const [strictListing, fineListing] = await bureau.plugins.list();
+    const [strictListing, fineListing] = await listedPlugins(bureau);
     expect(strictListing?.status).toBe('skipped');
     expect(strictListing?.problems).toEqual([
       { code: 'configuration-invalid', field: 'limit', message: expect.any(String) },
@@ -103,9 +104,9 @@ describe('plugin composition', () => {
       pluginConfiguration: { off: { enabled: false }, core: { enabled: false } },
     });
 
-    const listings = await bureau.plugins.list();
+    const listings = await listedPlugins(bureau);
     expect(listings.map(({ status }) => status)).toEqual(['disabled', 'disabled', 'running']);
-    expect(bureau.plugins.registered()).toEqual(['core']);
+    expect(bureau.plugins.registered()).toEqual(['bureau', 'core']);
     expect(setups).toEqual(['core']);
   });
 
@@ -130,7 +131,7 @@ describe('plugin composition', () => {
     });
 
     expect(setups).toEqual(['/plugins/a-twin']);
-    const listings = await bureau.plugins.list();
+    const listings = await listedPlugins(bureau);
     expect(listings.map(({ location, status }) => [location, status])).toEqual([
       ['/plugins/a-twin', 'running'],
       ['/plugins/b-twin', 'skipped'],
@@ -173,7 +174,7 @@ describe('plugin composition', () => {
     });
 
     // Package plugins first, then folder plugins by folder name.
-    const [first, fourth, second, third] = await bureau.plugins.list();
+    const [first, fourth, second, third] = await listedPlugins(bureau);
     expect(first?.status).toBe('running');
     expect(first?.contributions).toEqual([
       {
@@ -221,7 +222,7 @@ describe('plugin composition', () => {
       plugins: [entry(twice), entry(formatting('earlier')), entry(formatting('later'))],
     });
 
-    const [twiceListing, earlier, later] = await bureau.plugins.list();
+    const [twiceListing, earlier, later] = await listedPlugins(bureau);
     expect(twiceListing?.problems).toEqual([
       {
         code: 'name-clash',
@@ -286,7 +287,7 @@ describe('plugin composition', () => {
     const bureau = await start({ plugins: [entry(starting), entry(failing)] });
 
     expect(calls).toEqual([[]]);
-    const [, failingListing] = await bureau.plugins.list();
+    const [, failingListing] = await listedPlugins(bureau);
     expect(failingListing?.status).toBe('running');
     expect(failingListing?.problems).toEqual([
       { code: 'after-start-failed', message: 'could not reach the service' },
@@ -304,7 +305,7 @@ describe('plugin composition', () => {
     });
     const bureau = await start({ plugins: [entry(broken)] });
 
-    const [brokenListing] = await bureau.plugins.list();
+    const [brokenListing] = await listedPlugins(bureau);
     expect(brokenListing).toMatchObject({
       status: 'skipped',
       problems: [{ code: 'setup-failed', message: 'no connection' }],
@@ -328,7 +329,7 @@ describe('plugin composition', () => {
     });
     const bureau = await start({ plugins: [entry(long), entry(fits)] });
 
-    const [longListing, fitsListing] = await bureau.plugins.list();
+    const [longListing, fitsListing] = await listedPlugins(bureau);
     expect(longListing).toMatchObject({
       status: 'skipped',
       problems: [
@@ -391,14 +392,14 @@ describe('plugin composition', () => {
     const serialized = JSON.stringify(await bureau.plugins.list());
     expect(serialized).not.toContain(SECRET);
     // A setup or afterStart that quotes a secret in its error is reported with the value removed.
-    const [, leakyListing, lateListing] = await bureau.plugins.list();
+    const [, leakyListing, lateListing] = await listedPlugins(bureau);
     expect(leakyListing?.problems).toEqual([
       { code: 'setup-failed', message: 'rejected key [redacted] by the service' },
     ]);
     expect(lateListing?.problems).toEqual([
       { code: 'after-start-failed', message: 'lost [redacted] after start' },
     ]);
-    const [keyedListing] = await bureau.plugins.list();
+    const [keyedListing] = await listedPlugins(bureau);
     expect(keyedListing?.descriptor).toEqual({
       name: 'keyed',
       version: '1.0.0',
@@ -422,7 +423,7 @@ describe('plugin composition', () => {
       }),
     });
     const bureau = await start({ plugins: [entry(routing)], decisions: { model: 'kit:router' } });
-    const [routingListing] = await bureau.plugins.list();
+    const [routingListing] = await listedPlugins(bureau);
     expect(routingListing?.status).toBe('running');
 
     const refused = await rejectionOf(
@@ -483,7 +484,7 @@ describe('a plugin loaded from a source tree under development', () => {
       ],
     });
 
-    const listed = await bureau.plugins.list();
+    const listed = await listedPlugins(bureau);
 
     expect(
       listed.map(({ descriptor, status, problems }) => [descriptor.name, status, problems]),

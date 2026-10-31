@@ -59,8 +59,9 @@ function secretsStore() {
 }
 
 async function statusOf(bureau: Bureau<AgentDefinitions>): Promise<string | undefined> {
-  const [listing] = await bureau.plugins.list();
-  return listing?.status;
+  // Every Bureau also lists its built-in `bureau` plugin first (COR-1890).
+  const listings = await bureau.plugins.list();
+  return listings.find((listing) => listing.source !== 'built-in')?.status;
 }
 
 async function waitUntilStatus(bureau: Bureau<AgentDefinitions>, status: string): Promise<void> {
@@ -104,7 +105,9 @@ describe('the typesafe plugin', () => {
   test('starts needs-setup without the key, and decisions refuse without reaching TypeSafe', async () => {
     const bureau = await startBureau(secretsStore());
 
-    const [listing] = await bureau.plugins.list();
+    // Every Bureau also lists its built-in `bureau` plugin first (COR-1890).
+    const listings = await bureau.plugins.list();
+    const listing = listings.find((entry) => entry.source !== 'built-in');
     expect(listing?.status).toBe('needs-setup');
     expect(listing?.problems).toEqual([
       { code: 'secret-missing', key: 'typesafe-api-key', contributions: ['typesafe:jev'] },

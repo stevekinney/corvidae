@@ -425,7 +425,7 @@ export const BUREAU_EVENT_CATALOG: Readonly<
   'definitions.changed': entry(
     'definitions.changed',
     'unattributed',
-    'A rescan of the agent or workflow files changed what the catalog holds. `rejected` names the added or changed definitions that are invalid now.',
+    'A rescan of the agent or workflow files changed what the catalog holds. `rejected` names the added or changed definitions that are invalid now. A change that only the built-in `bureau` workflow tools wrote carries `source: "bureau"`.',
     [
       ['catalog', 'string'],
       ['added', 'string[]'],

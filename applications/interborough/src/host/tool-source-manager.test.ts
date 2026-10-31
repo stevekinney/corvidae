@@ -284,6 +284,25 @@ describe('a request the host cannot use', () => {
     expect(home.state.configuration).toBeUndefined();
   });
 
+  test('refuses the identifier bureau, which the built-in plugin owns, and writes nothing', async () => {
+    const home = memoryHome();
+    const { manager } = await managerOver(home);
+
+    const failure = await failureOf(
+      manager.connect({
+        id: 'bureau',
+        source: petsSource('bureau'),
+        credentials: { key: 'k' },
+        principal: owner,
+      }),
+    );
+
+    expect(failure).toBeInstanceOf(ToolSourceInputError);
+    expect((failure as ToolSourceInputError).field).toBe('id');
+    expect(home.state.secrets.size).toBe(0);
+    expect(home.state.configuration).toBeUndefined();
+  });
+
   test('keeps the stored credential when a source is connected again without one', async () => {
     const home = memoryHome();
     const { manager } = await managerOver(home);
@@ -306,6 +325,26 @@ describe('a request the host cannot use', () => {
 });
 
 describe('boot', () => {
+  test('skips a stored source named bureau with its own standing, so the host still starts, and lets it be removed', async () => {
+    const home = memoryHome();
+    // A file written before the name was reserved, or edited by hand.
+    const { authentication: _credentials, ...open } = petsSource('bureau');
+    home.state.configuration = JSON.stringify({ toolSources: [{ source: open }] });
+    const { manager, audited } = await managerOver(home);
+
+    await manager.start();
+
+    expect(Object.keys(manager.tools())).toEqual([]);
+    const [standing] = await sourcesOf(manager);
+    expect(standing).toMatchObject({ id: 'bureau', state: 'failed' });
+    expect((standing as { message?: string }).message).toContain('bureau');
+
+    const removal = await manager.remove({ id: 'bureau', principal: owner });
+    expect(removal.changed).toBe(true);
+    expect(home.state.configuration).not.toContain('bureau');
+    expect(audited.length).toBeGreaterThan(0);
+  });
+
   test('reports a source that never answers as its own standing, with nothing in the catalog', async () => {
     const silent = Bun.serve({
       hostname: '127.0.0.1',
