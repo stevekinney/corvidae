@@ -199,12 +199,6 @@
       "issue": "COR-1843"
     },
     {
-      "rule": "cinder-selector",
-      "file": "src/styles/agents.css",
-      "subject": ".cinder-badge",
-      "issue": "COR-1843"
-    },
-    {
       "rule": "app-header-class",
       "file": "src/styles/chat.css",
       "subject": ".weft-chat-header",
