@@ -319,3 +319,75 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* The Access tab: a form of sections, one list row per tool, and the budgets in a grid. */
+.ib-agent-access,
+.ib-agent-access__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-6);
+  min-inline-size: 0;
+}
+
+.ib-access-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ib-access-tool,
+.ib-access-skill {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-1) var(--cinder-space-3);
+  align-items: center;
+  padding-block: var(--cinder-space-2);
+  border-block-end: 1px solid var(--cinder-border-faint);
+  min-inline-size: 0;
+}
+
+.ib-access-tool__name {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-1) var(--cinder-space-3);
+  align-items: center;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  font-family: var(--cinder-font-mono);
+  overflow-wrap: anywhere;
+}
+
+.ib-access-tool__line,
+.ib-access-skill__reason {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+  overflow-wrap: anywhere;
+}
+
+.ib-access-tool__approval {
+  flex-basis: 100%;
+  min-inline-size: 0;
+  max-inline-size: 20rem;
+}
+
+.ib-access-skill__name {
+  min-inline-size: 0;
+  font-family: var(--cinder-font-mono);
+  overflow-wrap: anywhere;
+}
+
+.ib-access-budgets {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: var(--cinder-space-3);
+  min-inline-size: 0;
+}
+
+.ib-agent-access__actions {
+  display: flex;
+  justify-content: flex-start;
+}
