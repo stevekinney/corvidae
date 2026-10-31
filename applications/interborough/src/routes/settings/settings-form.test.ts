@@ -142,6 +142,96 @@ describe('the form', () => {
     });
   });
 
+  test('gives back the stored object when a switch is turned off and on without an edit', () => {
+    const stored = { inputSchemas: { environment: { type: 'string' } } };
+    const form = loaded([], { ...SETTING_VALUES, 'tools.humanInput': stored });
+    form.setSwitch('tools.humanInput', false);
+    expect(form.isDirty('tools.humanInput')).toBe(true);
+    form.setSwitch('tools.humanInput', true);
+    // Not `{}`, which would save over the stored schemas, and so no change at all.
+    expect(form.draft('tools.humanInput')).toEqual(stored);
+    expect(form.isDirty('tools.humanInput')).toBe(false);
+    expect(form.text('tools.humanInput')).toBe(JSON.stringify(stored, null, 2));
+  });
+
+  test('gives back the stored object of a switch that opens a form, after starting over too', () => {
+    const switchForm = new Map<string, Control>([['x.options', { kind: 'switch-form' }]]);
+    const form = new SettingsForm(switchForm, () => false);
+    form.load(snapshot({ values: { 'x.options': { count: 3 } } }));
+    form.setSwitch('x.options', false);
+    form.discard();
+    form.setSwitch('x.options', false);
+    form.setSwitch('x.options', true);
+    expect(form.draft('x.options')).toEqual({ count: 3 });
+    expect(form.dirtyKeys).toEqual([]);
+  });
+
+  test('takes an object with nothing set, or a field left empty, for no edit at all', () => {
+    const unset = loaded([], {
+      ...SETTING_VALUES,
+      'engine.history': undefined,
+      'engine.payloadSize': { maxBytes: null },
+    });
+    // A form drawn for an unset object hands back `{}` when a field is focused and left.
+    unset.set('engine.history', {});
+    expect(unset.isDirty('engine.history')).toBe(false);
+    // `null` is a limit removed, which a form leaves out of its value.
+    unset.set('engine.payloadSize', {});
+    expect(unset.isDirty('engine.payloadSize')).toBe(false);
+    expect(unset.canSave).toBe(false);
+    expect(unset.patch()).toEqual({});
+    // A value that was really set is still an edit.
+    unset.set('engine.history', { maxEvents: 5 });
+    expect(unset.isDirty('engine.history')).toBe(true);
+    unset.set('engine.payloadSize', { maxBytes: 100 });
+    expect(unset.isDirty('engine.payloadSize')).toBe(true);
+  });
+
+  test('puts an object revealed by "Set a value" back to unset', () => {
+    const form = loaded([], { ...SETTING_VALUES, 'engine.history': undefined });
+    form.set('engine.history', {});
+    form.set('engine.history', undefined);
+    expect(form.dirtyKeys).toEqual([]);
+  });
+
+  test('waits for a number being typed in a form to commit, and says nothing about its text', async () => {
+    const seen: unknown[] = [];
+    const form = new SettingsForm(
+      controls,
+      () => false,
+      (_key, value) => {
+        seen.push(value);
+        return Promise.resolve(undefined);
+      },
+      (_key, value) => typeof (value as { maxEvents?: unknown }).maxEvents !== 'string',
+    );
+    form.load(snapshot());
+    form.set('engine.history', { maxEvents: '1' });
+    await form.settled();
+    expect(form.isDirty('engine.history')).toBe(true);
+    expect(form.error('engine.history')).toBeUndefined();
+    expect(form.canSave).toBe(false);
+    expect(seen).toEqual([]);
+    form.set('engine.history', { maxEvents: 12 });
+    await form.settled();
+    expect(seen).toEqual([{ maxEvents: 12 }]);
+    expect(form.canSave).toBe(true);
+  });
+
+  test('holds a save back while a list holds text that was typed and not added', () => {
+    const form = loaded();
+    form.set('tools.wakeup', false);
+    expect(form.canSave).toBe(true);
+    form.setPendingEntry('list', true);
+    expect(form.hasPendingEntry).toBe(true);
+    expect(form.canSave).toBe(false);
+    form.setPendingEntry('list', false);
+    expect(form.canSave).toBe(true);
+    form.setPendingEntry('list', true);
+    form.discard();
+    expect(form.hasPendingEntry).toBe(false);
+  });
+
   test('holds a form key’s value to its schema after each edit, and sends nothing until the check ends', async () => {
     const seen: unknown[] = [];
     const form = loaded([], undefined, async (key, value) => {

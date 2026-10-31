@@ -690,6 +690,8 @@ export const MODEL_POLICY_COPY = {
   lockedNote: 'The host sets the model policy, and it cannot be changed here.',
   /** Said under a list of providers when a name is not the form a provider takes. */
   providerName: 'A provider is lowercase letters, numbers and hyphens, such as anthropic.',
+  /** Said while a list holds text that has not been added, which Save would leave out. */
+  pendingEntry: 'Press Enter to add the text you typed to its list, or clear it, before saving.',
   notRequired: 'Not required',
   noPreference: 'No preference',
   fields: {
@@ -740,6 +742,10 @@ export const SETTINGS_COPY = {
   notSet: 'Not set',
   /** Reveals the fields of a setting that has no value. */
   setAction: 'Set a value',
+  /** Puts a setting whose fields were revealed back to having no value, before it is saved. */
+  unsetAction: 'Not set',
+  /** The label of the JSON editor under a switch whose options are free-form JSON. */
+  optionsLabel: 'Options (JSON)',
   /** Only a setting that needs a restart says how it applies; a live one says nothing. */
   apply: { restart: 'Needs a restart' },
   /** The heading of the settings shortcuts in the `?` map. */

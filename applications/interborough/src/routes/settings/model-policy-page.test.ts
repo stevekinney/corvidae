@@ -108,6 +108,44 @@ describe('Settings › Model policy', () => {
     );
   });
 
+  test('will not save while a list holds text that was typed and not added', async () => {
+    const { container, findByRole, getAllByLabelText } = open(servedSettings({ revision: 4 }));
+    const group = await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    const save = within(group).getByRole('button', {
+      name: SETTINGS_COPY.saveAction,
+    }) as HTMLButtonElement;
+    // Another edit is waiting, so the typed text is all that stands between the page and a save.
+    await fireEvent.change(field(getAllByLabelText, MODEL_POLICY_COPY.fields.requireDataPolicy), {
+      target: { value: 'no-retention' },
+    });
+    await waitFor(() => expect(save.disabled).toBe(false));
+
+    const providers = field(getAllByLabelText, MODEL_POLICY_COPY.fields.deniedProviders);
+    await fireEvent.input(providers, { target: { value: 'openai' } });
+    await waitFor(() => expect(save.disabled).toBe(true));
+    expect(container.textContent).toContain(MODEL_POLICY_COPY.pendingEntry);
+    await fireEvent.click(save);
+    expect(updates()).toHaveLength(0);
+    expect(container.textContent).not.toContain(SETTINGS_COPY.saved.title);
+
+    // Clearing the text lets the save through without it.
+    await fireEvent.input(providers, { target: { value: '' } });
+    await waitFor(() => expect(save.disabled).toBe(false));
+    expect(container.textContent).not.toContain(MODEL_POLICY_COPY.pendingEntry);
+
+    // Adding it puts it in the policy that is saved.
+    await addTag(providers, 'openai');
+    await waitFor(() => expect(save.disabled).toBe(false));
+    await fireEvent.click(save);
+    await waitFor(() => expect(updates()).toHaveLength(1));
+    expect(updates()[0]?.params['patch']).toEqual({
+      modelPolicy: {
+        deployment: { deniedProviders: ['openai'], requireDataPolicy: 'no-retention' },
+        policyRevision: 1,
+      },
+    });
+  });
+
   test('writes the caller’s own preferences under their entry, and keeps the rest of the policy', async () => {
     const served = servedSettings({
       values: {

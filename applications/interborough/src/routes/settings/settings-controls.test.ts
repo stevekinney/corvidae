@@ -33,6 +33,7 @@ describe('the controls', () => {
         'choice',
         'form',
         'switch-form',
+        'switch-json',
         'json',
       ]).toContain(control.kind);
     }
@@ -46,7 +47,7 @@ describe('the controls', () => {
       ]),
     );
     expect(kinds).toEqual({
-      'tools.humanInput': 'switch-form',
+      'tools.humanInput': 'switch-json',
       'tools.wakeup': 'toggle',
       'tools.decide': 'toggle',
       modelPolicy: 'form',
@@ -101,13 +102,38 @@ describe('the controls', () => {
     }
   });
 
-  test('give false-or-an-object a switch, and a form while it is on', () => {
+  test('give false-or-an-object a switch, and the object’s own control while it is on', () => {
+    // The only such setting holds answer schemas, a record no form has a field for: JSON.
     const control = controlFor(
       'tools.humanInput',
       published.properties['tools.humanInput'] as never,
     );
-    expect(control).toEqual({ kind: 'switch-form' });
-    expect(holdsForm(control)).toBe(true);
+    expect(control).toEqual({ kind: 'switch-json' });
+    expect(holdsJson(control)).toBe(true);
+    expect(holdsForm(control)).toBe(false);
+    // An object with fields of its own is a form while the switch is on.
+    const withFields = controlFor('x', {
+      anyOf: [{ const: false }, { type: 'object', properties: { count: { type: 'integer' } } }],
+    });
+    expect(withFields).toEqual({ kind: 'switch-form' });
+    expect(holdsForm(withFields)).toBe(true);
+  });
+
+  test('give an open object, one that declares no field, the JSON editor and not an empty form', () => {
+    expect(controlFor('x', { type: 'object' })).toEqual({ kind: 'json' });
+    expect(
+      controlFor('x', {
+        type: 'object',
+        properties: { answers: { type: 'object' } },
+      }),
+    ).toEqual({ kind: 'json' });
+    // A record of strings is a field of a form (rows of keys and values).
+    expect(
+      controlFor('x', {
+        type: 'object',
+        properties: { labels: { type: 'object', additionalProperties: { type: 'string' } } },
+      }),
+    ).toEqual({ kind: 'form' });
   });
 
   test('give a key that names a model a choice of models, never a typed provider and model', () => {

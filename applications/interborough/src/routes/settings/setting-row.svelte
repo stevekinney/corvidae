@@ -46,13 +46,27 @@
   const locked = $derived(keyState.locked);
   const hasValue = $derived(draft !== undefined);
   const formSchema = $derived(holdsForm(control) ? formSchemaOf(name, node) : undefined);
-  const switchedOn = $derived(draft !== false && draft !== undefined);
+  const switchedOn = $derived(
+    control.kind === 'switch-json' ? draft !== false : draft !== false && draft !== undefined,
+  );
   /** An unset object stays "Not set" until the person asks to set it, so its empty fields carry no error. */
   let revealed = $state(false);
   const formShown = $derived(
     (control.kind === 'form' && (hasValue || revealed)) ||
       (control.kind === 'switch-form' && switchedOn),
   );
+
+  // Starting over puts an unset setting back to unset, so its fields are hidden again.
+  $effect(() => {
+    void form.generation;
+    revealed = false;
+  });
+
+  /** Puts a setting that had no value, and whose fields were revealed, back to having none. */
+  function unreveal(): void {
+    revealed = false;
+    form.set(name, undefined);
+  }
 
   // The catalog is read only for a key that names one of its rows.
   const catalog = createQuery(
@@ -136,7 +150,7 @@
         error={error ?? ''}
         onValueChange={(next) => form.set(name, next ?? undefined)}
       />
-    {:else if control.kind === 'switch-form'}
+    {:else if control.kind === 'switch-form' || control.kind === 'switch-json'}
       <Toggle
         {id}
         label={name}
@@ -163,6 +177,19 @@
         {#if segment.kind === 'code'}<code>{segment.text}</code>{:else}{segment.text}{/if}
       {/each}
     </p>
+    {#if control.kind === 'switch-json' && switchedOn}
+      <!-- The options are free-form JSON (answer schemas), which a form has no field for. -->
+      <JsonEditor
+        id={`${id}-options`}
+        label={SETTINGS_COPY.optionsLabel}
+        rows={8}
+        validFeedbackVisible={false}
+        disabled={locked}
+        value={form.text(name)}
+        error={error ?? ''}
+        onValueChange={(next) => form.setText(name, next)}
+      />
+    {/if}
     {#if formSchema !== undefined && formShown}
       <!-- A `SchemaForm` takes its value once, so it is made again whenever the draft starts over. -->
       {#key form.generation}
@@ -183,6 +210,12 @@
         <span class="weft-setting__unset">{SETTINGS_COPY.notSet}</span>
         <Button variant="secondary" size="sm" onclick={() => (revealed = true)}>
           {SETTINGS_COPY.setAction}
+        </Button>
+      </div>
+    {:else if control.kind === 'form' && revealed && form.baseline(name) === undefined && !locked}
+      <div class="weft-setting__unset-row">
+        <Button variant="secondary" size="sm" onclick={unreveal}>
+          {SETTINGS_COPY.unsetAction}
         </Button>
       </div>
     {:else if !hasValue && !locked && control.kind !== 'choice'}

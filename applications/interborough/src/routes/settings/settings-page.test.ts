@@ -211,18 +211,19 @@ describe('a save', () => {
     expect(row(container, 'durable')?.textContent).toContain(SETTINGS_COPY.pendingRestart);
   });
 
-  test('turns the human-input switch off to false and back on to the form of its options', async () => {
+  test('turns the human-input switch off to false and back on to the editor of its options', async () => {
     const { container, findByRole } = open(servedSettings());
     const form = await findByRole('group', { name: SETTINGS_COPY.formLabel });
     const toggle = () =>
       row(container, 'tools.humanInput')?.querySelector('button[role="switch"]') as HTMLElement;
     expect(toggle().getAttribute('aria-checked')).toBe('true');
-    // The options are a form, not JSON text.
-    expect(row(container, 'tools.humanInput')?.querySelector('form')).not.toBeNull();
-    expect(row(container, 'tools.humanInput')?.querySelector('textarea')).toBeNull();
+    // The options hold answer schemas, which are free-form JSON: one editor, no empty form and no
+    // `false` or `Object` choice.
+    expect(row(container, 'tools.humanInput')?.querySelector('form')).toBeNull();
+    expect(row(container, 'tools.humanInput')?.querySelector('textarea')).not.toBeNull();
 
     await fireEvent.click(toggle());
-    expect(row(container, 'tools.humanInput')?.querySelector('form')).toBeNull();
+    expect(row(container, 'tools.humanInput')?.querySelector('textarea')).toBeNull();
     await fireEvent.click(within(form).getByRole('button', { name: SETTINGS_COPY.saveAction }));
     await waitFor(() => expect(updates()).toHaveLength(1));
     expect(updates()[0]?.params['patch']).toEqual({ 'tools.humanInput': false });
@@ -233,7 +234,7 @@ describe('a save', () => {
 
     await fireEvent.click(toggle());
     await waitFor(() =>
-      expect(row(container, 'tools.humanInput')?.querySelector('form')).not.toBeNull(),
+      expect(row(container, 'tools.humanInput')?.querySelector('textarea')).not.toBeNull(),
     );
     const save = within(form).getByRole('button', {
       name: SETTINGS_COPY.saveAction,
@@ -249,8 +250,12 @@ describe('a save', () => {
     const form = await findByRole('group', { name: SETTINGS_COPY.formLabel });
     const receipts = row(container, 'retention.receipts');
     expect(receipts?.querySelector('textarea')).toBeNull();
-    // Only a value with no fields of its own is free-form: no setting the Bureau publishes now.
-    expect(container.querySelector('[data-setting] textarea')).toBeNull();
+    // Only a value with no fields of its own is free-form: the answer schemas of `tools.humanInput`.
+    expect(
+      [...container.querySelectorAll('[data-setting] textarea')].map(
+        (area) => area.closest<HTMLElement>('[data-setting]')?.dataset['setting'],
+      ),
+    ).toEqual(['tools.humanInput']);
     // The form's own submit button is not drawn; the page has one Save.
     const field = receipts?.querySelector('input') as HTMLInputElement;
     await fireEvent.input(field, { target: { value: '5' } });

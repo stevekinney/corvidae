@@ -36,7 +36,7 @@
     type Control,
     type SettingsSectionId,
   } from './settings-controls.ts';
-  import { formSchemaOf } from './settings-form-schema.ts';
+  import { formSchemaOf, numbersCommitted } from './settings-form-schema.ts';
   import { SettingsForm } from './settings-form.svelte.ts';
 
   interface Props {
@@ -70,7 +70,13 @@
     return result.valid ? undefined : (result.issues[0]?.message ?? SETTINGS_COPY.invalidValue);
   }
 
-  const form = new SettingsForm(controls, (key) => stateOf(key).locked, validate);
+  /** Whether a `SchemaForm` key's value holds only numbers that were committed, not text still being typed. */
+  function committed(key: string, value: unknown): boolean {
+    const node = schema[key];
+    return node === undefined || numbersCommitted(formSchemaOf(key, node), value);
+  }
+
+  const form = new SettingsForm(controls, (key) => stateOf(key).locked, validate, committed);
   untrack(() => form.load(snapshot));
 
   /** A save the Bureau applied: which keys now wait for a restart. */
@@ -93,6 +99,13 @@
     });
   });
 
+  /**
+   * Whether a save has started and not finished. It is set before the first `await`, because
+   * `submit.isPending` only turns true a tick after `mutate`, and one key press can ask twice: a
+   * number field in a `SchemaForm` submits its form on ⌘Enter, and the shortcut runs as well.
+   */
+  let sending = false;
+
   const submit = createMutation(() => ({
     mutationFn: (input: { patch: Record<string, unknown>; expectedRevision: number }) =>
       updateSettings(input.patch, input.expectedRevision),
@@ -100,6 +113,9 @@
       saved = null;
       refusal = null;
       stale = false;
+    },
+    onSettled: () => {
+      sending = false;
     },
     onSuccess: async (receipt: SettingsUpdateReceipt) => {
       saved = receipt;
@@ -124,9 +140,14 @@
 
   /** Sends the dirty keys, if there are any and nothing is wrong with them. */
   async function save(): Promise<void> {
+    if (sending) return;
+    sending = true;
     // An edit made a moment ago may still be checked against its schema.
     await form.settled();
-    if (!form.canSave || submit.isPending) return;
+    if (!form.canSave || submit.isPending) {
+      sending = false;
+      return;
+    }
     submit.mutate({ patch: form.patch(), expectedRevision: form.revision });
   }
 

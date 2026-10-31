@@ -7,6 +7,7 @@
    * carries is raised by the edit, never typed (`model-policy-edit.ts`).
    */
   import { FormField, Select, TagInput } from '@lostgradient/cinder';
+  import { tick } from 'svelte';
 
   import { MODEL_POLICY_COPY as copy } from '../../app/copy.ts';
   import type { SettingKeyState } from '../../lib/bureau-settings.ts';
@@ -162,6 +163,23 @@
 
   const idOf = (target: PolicyTarget, field: string): string =>
     `weft-model-policy-${target}-${field}`;
+
+  let root = $state<HTMLElement | null>(null);
+
+  /**
+   * Tells the form which lists hold text that was typed but not added. A `TagInput` outside a
+   * `<form>` adds its text only on Enter or a comma, so leaving it there and saving would save the
+   * policy without it; the form holds Save back and the page says why.
+   */
+  async function syncPending(): Promise<void> {
+    // The list empties its own text after it adds it, which the DOM shows a tick later.
+    await tick();
+    if (root === null) return;
+    for (const list of root.querySelectorAll<HTMLElement>('[data-tag-list]')) {
+      const input = list.querySelector<HTMLInputElement>('input:not([type="hidden"])');
+      form.setPendingEntry(list.dataset['tagList'] ?? '', (input?.value.trim() ?? '') !== '');
+    }
+  }
 </script>
 
 {#snippet lists(fields: readonly ListField[])}
@@ -172,12 +190,19 @@
       disabled={keyState.locked}
       {...item.provider ? { description: copy.providerName } : {}}
     >
-      <TagInput
-        value={listOf(item.target, item.field)}
-        disabled={keyState.locked}
-        validate={item.provider ? (tag) => PROVIDER.test(tag) || copy.providerName : () => true}
-        onValueChange={(tags) => edit(item.target, item.field, tags)}
-      />
+      <div data-tag-list={idOf(item.target, item.field)}>
+        <TagInput
+          value={listOf(item.target, item.field)}
+          disabled={keyState.locked}
+          validate={item.provider ? (tag) => PROVIDER.test(tag) || copy.providerName : () => true}
+          oninput={() => void syncPending()}
+          onblur={() => void syncPending()}
+          onValueChange={(tags) => {
+            edit(item.target, item.field, tags);
+            void syncPending();
+          }}
+        />
+      </div>
     </FormField>
   {/each}
 {/snippet}
@@ -199,6 +224,7 @@
 {/snippet}
 
 <div
+  bind:this={root}
   class="weft-model-policy"
   data-setting={MODEL_POLICY_KEY}
   data-locked={keyState.locked ? 'true' : 'false'}
@@ -226,6 +252,9 @@
       {@render choices(preferenceChoices)}
     </section>
   {/key}
+  {#if form.hasPendingEntry}
+    <p class="weft-model-policy__note" role="alert">{copy.pendingEntry}</p>
+  {/if}
   {#if form.error(MODEL_POLICY_KEY) !== undefined}
     <p class="weft-model-policy__note" role="alert">{form.error(MODEL_POLICY_KEY)}</p>
   {/if}

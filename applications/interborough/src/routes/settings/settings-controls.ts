@@ -8,10 +8,11 @@
  * a string a text field, a number a number field. A key that names a model-catalog row
  * (`decisions.fallbackModel`, `context.summarizerModel`) or a decision model (`decisions.model`) is
  * a select of those rows, never a typed `provider/model`. Every object, and every union with one
- * (`retention.audit`, `engine.history`), is a Cinder `SchemaForm` over the node. A union of `false`
- * and an object (`tools.humanInput`) is a switch, and a form for the object while it is on. Only a
- * node nothing else reads (an array or a bare `null`) falls to the JSON editor, which can edit any
- * value.
+ * (`retention.audit`, `engine.history`), is a Cinder `SchemaForm` over the node, except an object
+ * that declares no field a form can edit (a record of answer schemas), which is free-form JSON. A
+ * union of `false` and an object (`tools.humanInput`) is a switch, and the object's own control
+ * while it is on. Only a node nothing else reads (an array or a bare `null`) falls to the JSON
+ * editor, which can edit any value.
  */
 import type { SchemaNode } from '../../lib/bureau-settings.ts';
 
@@ -33,6 +34,7 @@ export type Control =
     }
   | { readonly kind: 'form' }
   | { readonly kind: 'switch-form' }
+  | { readonly kind: 'switch-json' }
   | { readonly kind: 'json' };
 
 /** The keys that name a row of the model catalog, as `<provider>/<model>`. */
@@ -56,11 +58,41 @@ function isFalseLiteral(node: SchemaNode): boolean {
   return node.const === false;
 }
 
+/**
+ * Whether a node is an object nothing declares fields for (a record of answer schemas): a
+ * `SchemaForm` draws it as a group with no field in it, so the value cannot be set there.
+ */
+function isOpenObject(node: SchemaNode): boolean {
+  if (!isObjectNode(node)) return false;
+  if (node.properties !== undefined && Object.keys(node.properties).length > 0) return false;
+  // A record of strings is a form field of its own (rows of keys and values).
+  const additional = node.additionalProperties;
+  return !(
+    typeof additional === 'object' &&
+    additional !== null &&
+    'type' in additional &&
+    additional.type === 'string'
+  );
+}
+
+/** Whether an object has nothing a `SchemaForm` can edit: it declares no field, or only open objects. */
+function isFreeForm(node: SchemaNode): boolean {
+  if (isOpenObject(node)) return true;
+  const fields = Object.values(node.properties ?? {});
+  return fields.length > 0 && fields.every(isOpenObject);
+}
+
 function unionControl(branches: readonly SchemaNode[]): Control {
   const objects = branches.filter(isObjectNode);
   if (branches.length === 2 && objects.length === 1) {
-    // `false` or an object (`tools.humanInput`) is a switch and a form.
-    if (branches.some(isFalseLiteral)) return { kind: 'switch-form' };
+    // `false` or an object (`tools.humanInput`) is a switch, and the object's own control while it
+    // is on: a form, or JSON for an object that holds only free-form values (its answer schemas).
+    if (branches.some(isFalseLiteral)) {
+      const [object] = objects;
+      return object !== undefined && isFreeForm(object)
+        ? { kind: 'switch-json' }
+        : { kind: 'switch-form' };
+    }
     // A literal or an object (`retention.audit`) is the form's own choice.
     if (branches.some((branch) => typeof branch.const === 'string')) return { kind: 'form' };
   }
@@ -88,12 +120,12 @@ export function controlFor(key: string, node: SchemaNode): Control {
       maximum: node.maximum,
     };
   }
-  return isObjectNode(node) ? { kind: 'form' } : { kind: 'json' };
+  return isObjectNode(node) && !isFreeForm(node) ? { kind: 'form' } : { kind: 'json' };
 }
 
 /** Whether a setting's value is held as JSON text, so its draft can hold text that is not yet JSON. */
 export function holdsJson(control: Control): boolean {
-  return control.kind === 'json';
+  return control.kind === 'json' || control.kind === 'switch-json';
 }
 
 /** Whether a setting's value is edited through a `SchemaForm`, which checks it against the node. */

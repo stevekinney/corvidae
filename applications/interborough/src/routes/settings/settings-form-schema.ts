@@ -26,9 +26,23 @@ function withoutNull(branches: unknown): unknown {
   return undefined;
 }
 
+/** The object a union of `false` and one object holds, or `undefined` for any other union. */
+function withoutFalse(branches: unknown): unknown {
+  if (!Array.isArray(branches) || branches.length !== 2) return undefined;
+  const isFalse = (branch: unknown): boolean => isRecord(branch) && branch['const'] === false;
+  const [first, second] = branches;
+  if (isFalse(first) !== isFalse(second)) return isFalse(first) ? second : first;
+  return undefined;
+}
+
 function convert(node: unknown, name: string): unknown {
   if (Array.isArray(node)) return node.map((item) => convert(item, name));
   if (!isRecord(node)) return node;
+  const object = withoutFalse(node['anyOf']);
+  if (object !== undefined) {
+    const { anyOf: _union, ...rest } = node;
+    return convert({ ...(isRecord(object) ? object : {}), ...rest }, name);
+  }
   const optional = withoutNull(node['anyOf']);
   if (optional !== undefined) {
     const { anyOf: _union, ...rest } = node;
@@ -59,4 +73,24 @@ export function formSchemaOf(key: string, node: unknown): Json {
   const converted = convert(node, key);
   const { description: _description, ...rest } = isRecord(converted) ? converted : {};
   return { ...rest, title: key };
+}
+
+/**
+ * Whether every number field of `value` holds a committed number. A `SchemaForm` reports a field
+ * that is still being typed in as its text (`onDraftChange`), so a string where `schema` calls for
+ * a number is an edit that has not finished: it is neither checked nor sent.
+ */
+export function numbersCommitted(schema: unknown, value: unknown): boolean {
+  if (!isRecord(schema)) return true;
+  const type = schema['type'];
+  if ((type === 'number' || type === 'integer') && typeof value === 'string') return false;
+  if (Array.isArray(value)) {
+    return value.every((item) => numbersCommitted(schema['items'], item));
+  }
+  if (!isRecord(value)) return true;
+  const properties = schema['properties'];
+  if (!isRecord(properties)) return true;
+  return Object.entries(value).every(([name, property]) =>
+    Object.hasOwn(properties, name) ? numbersCommitted(properties[name], property) : true,
+  );
 }

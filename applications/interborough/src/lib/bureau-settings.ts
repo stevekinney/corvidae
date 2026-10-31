@@ -71,6 +71,8 @@ export type SchemaNode = {
   readonly anyOf?: readonly SchemaNode[] | undefined;
   readonly properties?: Readonly<Record<string, SchemaNode>> | undefined;
   readonly required?: readonly string[] | undefined;
+  /** What an object's other properties hold; a record of strings is `{ type: 'string' }`. */
+  readonly additionalProperties?: unknown;
   readonly description?: string | undefined;
   readonly pattern?: string | undefined;
   readonly minimum?: number | undefined;

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { PUBLISHED_SCHEMA } from './settings-fixtures.test-support.ts';
-import { formSchemaOf } from './settings-form-schema.ts';
+import { formSchemaOf, numbersCommitted } from './settings-form-schema.ts';
 
 describe('the schema a form is given', () => {
   test('reads a union as the choice SchemaForm draws, and names the form by its key', () => {
@@ -54,5 +54,29 @@ describe('the schema a form is given', () => {
 
   test('passes a node that is not an object through as an empty schema', () => {
     expect(formSchemaOf('x', null)).toEqual({ title: 'x' });
+  });
+
+  test('draws false-or-an-object as the object alone, because the row’s switch is the choice', () => {
+    const schema = formSchemaOf('x.options', {
+      anyOf: [{ const: false }, { type: 'object', properties: { count: { type: 'integer' } } }],
+      description: 'Options.',
+    });
+    expect(schema['oneOf']).toBeUndefined();
+    expect(schema['anyOf']).toBeUndefined();
+    expect(schema['type']).toBe('object');
+    expect(schema['properties']).toEqual({ count: { type: 'integer' } });
+  });
+
+  test('says a number still being typed is not committed, at any depth', () => {
+    const schema = formSchemaOf('engine.history', PUBLISHED_SCHEMA.properties['engine.history']);
+    expect(numbersCommitted(schema, { maxEvents: 12 })).toBe(true);
+    expect(numbersCommitted(schema, { maxEvents: '12' })).toBe(false);
+    expect(numbersCommitted(schema, {})).toBe(true);
+    const nested = {
+      type: 'object',
+      properties: { list: { type: 'array', items: { type: 'integer' } } },
+    };
+    expect(numbersCommitted(nested, { list: [1, '2'] })).toBe(false);
+    expect(numbersCommitted(nested, { list: [1, 2], other: 'text' })).toBe(true);
   });
 });
