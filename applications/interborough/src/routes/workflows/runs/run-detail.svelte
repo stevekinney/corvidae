@@ -49,6 +49,7 @@
     type StatusWord,
   } from '../../../lib/status.ts';
   import { getWorkflowFileRun } from '../../../lib/workflow-files.ts';
+  import '../detail/workflow-detail.css';
   import { isTerminalStatus } from '../detail/workflow-status.ts';
   import RestartDialog from '../detail/restart-dialog.svelte';
   import RunActivity from './run-activity.svelte';

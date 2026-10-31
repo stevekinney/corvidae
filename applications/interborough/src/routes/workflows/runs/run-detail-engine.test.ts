@@ -7,6 +7,7 @@
  */
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window, type DetachedWindowAPI } from 'happy-dom';
+import { readFileSync } from 'node:fs';
 
 import { QueryClient } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
@@ -631,5 +632,12 @@ describe('the revision against the active one (WFT-117)', () => {
     await waitFor(() => {
       expect(view.container.textContent).toContain('active revision unknown');
     });
+  });
+});
+
+describe('the page that draws the engine sections', () => {
+  test('imports the stylesheet those sections are styled by, which no other module imports', () => {
+    const source = readFileSync(new URL('./run-detail.svelte', import.meta.url), 'utf8');
+    expect(source).toContain("import '../detail/workflow-detail.css';");
   });
 });
