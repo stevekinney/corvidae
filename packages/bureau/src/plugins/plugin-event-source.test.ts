@@ -96,7 +96,8 @@ describe('the source of an event a plugin causes', () => {
     expect(kinds).toContain('goal.started');
     expect(kinds).toContain('goal.attempt.started');
     expect(new Set(sources)).toEqual(new Set(['p']));
-    expect((await bureau.goals.get('from-plugin'))?.source).toBe('p');
+    const stored = await bureau.goals.get('from-plugin');
+    expect(stored?.source).toBe('p');
 
     sources.length = 0;
     kinds.length = 0;

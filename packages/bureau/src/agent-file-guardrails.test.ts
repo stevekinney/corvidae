@@ -259,9 +259,21 @@ describe('unresolvedContributions', () => {
         contributions,
       ),
     ).toEqual([
-      { path: 'guardrails.1', message: '"y:gone" is not a contributed guardrail' },
-      { path: 'hooks.1', message: '"x:check" is not a contributed run hook set' },
-      { path: 'hooks.2', message: '"x:audit@1" is not a contributed run hook set' },
+      {
+        path: 'guardrails.1',
+        message: '"y:gone" is not a contributed guardrail',
+        reference: 'y:gone',
+      },
+      {
+        path: 'hooks.1',
+        message: '"x:check" is not a contributed run hook set',
+        reference: 'x:check',
+      },
+      {
+        path: 'hooks.2',
+        message: '"x:audit@1" is not a contributed run hook set',
+        reference: 'x:audit@1',
+      },
     ]);
   });
 });
@@ -454,7 +466,11 @@ describe('an id nothing contributes', () => {
     expect(listing?.state).toBe('invalid');
     expect(listing?.problem?.code).toBe('reference-unresolved');
     expect(listing?.problem?.issues).toEqual([
-      { path: 'guardrails.1', message: '"y:gone" is not a contributed guardrail' },
+      {
+        path: 'guardrails.1',
+        message: '"y:gone" is not a contributed guardrail',
+        reference: 'y:gone',
+      },
     ]);
   });
 

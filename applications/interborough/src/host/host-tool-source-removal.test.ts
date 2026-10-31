@@ -232,7 +232,11 @@ describe('removing a saved tool source', () => {
     expect(reader.problem?.code).toBe('unknown-tool');
     expect(reader.problem?.message).toContain('files__lookup');
     expect(reader.problem?.issues).toEqual([
-      { path: 'tools', message: '"files__lookup" is not a registered tool' },
+      {
+        path: 'tools',
+        message: '"files__lookup" is not a registered tool',
+        reference: 'files__lookup',
+      },
     ]);
     expect(standingOf(second, 'bystander').state).toBe('ready');
     expect(standingOf(second, 'plain').state).toBe('ready');
