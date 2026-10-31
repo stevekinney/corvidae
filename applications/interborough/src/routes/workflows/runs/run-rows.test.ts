@@ -73,6 +73,38 @@ describe('buildRunRows', () => {
   });
 });
 
+describe('a goal’s attempt, which the Bureau also lists as a task', () => {
+  test('takes the task’s account of the run and keeps the goal and the session it names', () => {
+    const [row] = buildRunRows({
+      tasks: [
+        taskFixture({
+          id: 'goal-seeded-goal-a0',
+          contextId: 'goal-seeded-goal-a0',
+          kind: 'catalog',
+          status: 'failed',
+          statusMessage: 'The task’s own message',
+          createdAt: '2026-10-23T00:00:00.000Z',
+          updatedAt: '2026-10-23T00:00:03.000Z',
+        }),
+      ],
+      goals: [goal],
+      chats: [],
+    });
+
+    expect(row).toMatchObject({
+      status: 'failed',
+      summary: 'The task’s own message',
+      durationMs: 3000,
+      origin: {
+        kind: 'goal',
+        name: 'seeded-goal',
+        href: '/goals',
+        session: { title: '', href: '/chats/goal-seeded-goal-s0' },
+      },
+    });
+  });
+});
+
 describe('the session a run ran in', () => {
   const fire = { ...chat, id: 'fire-1', title: 'Check in', origin: 'schedule' } as const;
   const goalSession = {

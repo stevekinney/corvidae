@@ -98,6 +98,7 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
         'request-human-input',
         'echo',
         'model-switcher',
+        'internal',
       ]);
       await expect(agents.locator('code.ib-identifier').first()).toHaveCSS('font-family', /mono/i);
       await checkA11y(`chat — the welcome at ${width}px`);

@@ -132,6 +132,64 @@ describe('a follow-up', () => {
     await turn;
   });
 
+  test('sent during a run stays between the replies the Bureau saw it between, after the Bureau’s snapshot', async () => {
+    restore = installFetchImplementation(async () =>
+      Response.json({
+        jsonrpc: '2.0',
+        id: 1,
+        result: { outcome: 'admitted', receipt: { id: 'row', state: 'accepted' } },
+      }),
+    );
+    let finish: ((followUpId: string) => void) | undefined;
+    const encodeTo = (controller: ReadableStreamDefaultController<Uint8Array>, event: unknown) =>
+      controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`));
+    const open$ = new ReadableStream<Uint8Array>({
+      start(controller) {
+        encodeTo(controller, started);
+        for (const event of [
+          { type: 'TEXT_MESSAGE_START', messageId: 'reply-0', role: 'assistant' },
+          { type: 'TEXT_MESSAGE_CONTENT', messageId: 'reply-0', delta: 'First.' },
+          { type: 'TEXT_MESSAGE_END', messageId: 'reply-0' },
+          { type: 'TEXT_MESSAGE_START', messageId: 'reply-1', role: 'assistant' },
+          { type: 'TEXT_MESSAGE_CONTENT', messageId: 'reply-1', delta: 'Second.' },
+          { type: 'TEXT_MESSAGE_END', messageId: 'reply-1' },
+        ])
+          encodeTo(controller, event);
+        finish = (followUpId) => {
+          // What the Bureau holds: the follow-up arrived during the first reply and was answered by
+          // the second, and the snapshot comes before the run's end.
+          encodeTo(controller, {
+            type: 'MESSAGES_SNAPSHOT',
+            messages: [
+              { id: 'start', role: 'user', content: 'Start' },
+              { id: 'reply-0', role: 'assistant', content: 'First.' },
+              { id: followUpId, role: 'user', content: 'More' },
+              { id: 'reply-1', role: 'assistant', content: 'Second.' },
+            ],
+          });
+          encodeTo(controller, finished);
+          controller.close();
+        };
+      },
+    });
+    const session = open(
+      async () => new Response(open$, { headers: { 'content-type': 'text/event-stream' } }),
+    );
+    const turn = session.controller.adapter.sendMessage({ role: 'user', content: 'Start' }, []);
+    await until(() => session.streaming);
+    await session.controller.adapter.sendRunInput?.(THREAD, { role: 'user', content: 'More' }, []);
+    const followUpId = session.conversation.ids.find(
+      (id) => session.conversation.messages[id]?.content === 'More',
+    );
+
+    finish?.(followUpId!);
+    await turn;
+
+    expect(
+      session.conversation.ids.map((id) => session.conversation.messages[id]?.content),
+    ).toEqual(['Start', 'First.', 'More', 'Second.']);
+  });
+
   test('sends the text of a message made of parts', async () => {
     const calls: Array<{ params: { input: { payload: string } } }> = [];
     restore = installFetchImplementation(async (_input, init) => {

@@ -346,6 +346,38 @@ describe('a goal’s attempt', () => {
     expect(view.queryByRole('link', { name: TASK_COPY.openSession })).toBeNull();
   });
 
+  test('a goal’s attempt the Bureau also lists as a task opens the attempt’s session, never the run handle as a chat', async () => {
+    const view = open('/runs/goal-1-a0', {
+      tasks: [
+        taskFixture({
+          id: 'goal-1-a0',
+          contextId: 'goal-1-a0',
+          kind: 'catalog',
+          agentName: 'planner',
+          origin: { kind: 'goal', goalRunId: 'goal-1', attemptId: 'goal-1:a0' },
+        }),
+      ],
+      goals: [attempt('passed')],
+      scopes: BUREAU_ONLY,
+    });
+    stub?.on('bureau.contexts.get', (params) => ({
+      ...contextDetailFixture(String(params['contextId'])),
+      origin: 'goal',
+    }));
+
+    const link = (await view.findByRole('link', {
+      name: TASK_COPY.openSession,
+    })) as HTMLAnchorElement;
+    await waitFor(() =>
+      expect(origin(view.container)?.textContent).toContain(TASK_COPY.startedFromGoal),
+    );
+    expect(stub?.callsTo('bureau.contexts.get').map((call) => call.params)).toEqual([
+      { contextId: 'goal-session-goal-1-a0' },
+    ]);
+    expect(await fireEvent.click(link, { button: 0 })).toBe(false);
+    expect(router.pathname).toContain('goal-session-goal-1-a0');
+  });
+
   test('names the goal, which opens in place', async () => {
     const view = open('/runs/goal-1-a0', { goals: [attempt('passed')], scopes: BUREAU_ONLY });
 

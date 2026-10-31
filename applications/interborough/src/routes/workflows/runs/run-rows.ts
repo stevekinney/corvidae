@@ -180,8 +180,15 @@ export function buildRunRows(input: {
   const chats = new Map(input.chats.map((chat) => [chat.id, chat] as const));
   const rows = new Map<string, RunRow>();
   for (const goal of input.goals) for (const row of goalRows(goal, chats)) rows.set(row.id, row);
-  // A task is the Bureau's own account of a run, so it wins over a goal's view of the same run.
-  for (const task of input.tasks) rows.set(task.id, taskRow(task, chats));
+  // A task is the Bureau's own account of a run, so it wins over a goal's view of the same run:
+  // its status and times. A goal's attempt is also a task, whose session no caller-listed chat
+  // names (Chat lists no goal session), so the goal keeps saying what started it and which session
+  // it ran in.
+  for (const task of input.tasks) {
+    const row = taskRow(task, chats);
+    const goalOrigin = rows.get(task.id)?.origin;
+    rows.set(task.id, goalOrigin?.kind === 'goal' ? { ...row, origin: goalOrigin } : row);
+  }
   return [...rows.values()].toSorted((left, right) => right.updatedAt - left.updatedAt);
 }
 

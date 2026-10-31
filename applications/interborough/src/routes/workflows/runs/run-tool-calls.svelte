@@ -23,6 +23,8 @@
 
   interface RunToolCallsProps {
     task: TaskView;
+    /** The thread the run's calls are in, when it is not the task's `contextId` (a goal's attempt). */
+    threadId?: string;
     /** How many elements the run's stream has reported; the thread is read again when it grows. */
     events?: number;
   }
@@ -30,18 +32,19 @@
   /** How long a burst of stream elements waits before the thread is read once for all of them. */
   const EVENT_REREAD_MILLISECONDS = 300;
 
-  let { task, events = 0 }: RunToolCallsProps = $props();
+  let { task, threadId = undefined, events = 0 }: RunToolCallsProps = $props();
+  const threadToRead = $derived(threadId ?? task.contextId);
 
   const thread = createQuery(
     () => ({
       queryKey: [
         'bureau-tasks',
         'thread',
-        task.contextId,
+        threadToRead,
         task.status,
         task.openWaits.map((wait) => wait.reviewId),
       ] as const,
-      queryFn: ({ signal }) => getThreadMessages(task.contextId, { signal }),
+      queryFn: ({ signal }) => getThreadMessages(threadToRead, { signal }),
       // The calls on screen stay while the thread is read again under a new key.
       placeholderData: keepPreviousData,
       retry: false,
