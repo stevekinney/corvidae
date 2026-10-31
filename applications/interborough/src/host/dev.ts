@@ -8,6 +8,10 @@
  * ({@link buildBrowserApplication}): inside the watched process the bundler cannot resolve
  * `@msgpack/msgpack`.
  *
+ * `--plugin <path>` (repeatable) loads that folder's `plugin.ts` as a plugin marked
+ * `development-source` (COR-1881). Plugin code loads once, so under `bun --watch` an edit to it
+ * restarts the host and the new code is what runs.
+ *
  * The host runs with `development: true`, so every open page reloads itself after a successful
  * rebuild (`dev-reload.ts`).
  *
@@ -21,12 +25,19 @@ import { unwatchFile, watchFile, type Stats } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import { buildBrowserApplication, stopBrowserBuilds } from './browser-build.ts';
+import { developmentPluginPaths } from './development-plugin-flag.ts';
 import { processEnvironment, resolveBuildDirectory } from './environment-configuration.ts';
 import { startHost } from './host.ts';
 import { createRebuildScheduler } from './rebuild-scheduler.ts';
 import { RESTART_EXIT_CODE } from './restart.ts';
 import { installShutdownSignals } from './shutdown-signals.ts';
 import { createSourceWatcher } from './source-watcher.ts';
+
+const pluginPaths = developmentPluginPaths(process.argv.slice(2));
+if (pluginPaths === undefined) {
+  console.error('Usage: bun src/host/dev.ts [--plugin <path>]…');
+  process.exit(2);
+}
 
 const packageRoot = join(import.meta.dir, '..', '..');
 
@@ -51,6 +62,7 @@ const host = await startHost({
   environment,
   buildDirectory,
   development: true,
+  developmentPlugins: pluginPaths,
   onRestartRequested: () => shutDown(RESTART_EXIT_CODE),
 });
 console.info(`Interborough is listening on ${host.url}`);

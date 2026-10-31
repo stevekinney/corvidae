@@ -13,6 +13,9 @@
  * - **Generated secrets.** A declaration with `generated: true` is created on first enable, in
  *   local mode only. A remote home keeps secrets in the deployment's environment, which the host
  *   cannot write, so the plugin stays `needs-setup` until the deployment sets the variable.
+ * - **A plugin the host cannot honor is skipped.** One that declares a secret the host keeps for
+ *   itself, or one Bungalow cannot store, is not given to Bureau; it is listed `skipped` with
+ *   `secret-refused`, and the host starts. {@link PluginManager.loadable} is what Bureau gets.
  * - **Local only.** A remote home refuses every write with the lock reason `deployment`.
  * - **No secret leaves.** A secret is written and never read back out: no answer, error, or
  *   listing carries a value, only whether one is set and where it lives.
@@ -28,6 +31,8 @@ import type {
   BureauPluginSecrets,
   BureauPluginSettings,
   PluginListing,
+  PluginLoadSource,
+  PluginProblem,
   SettingLockReason,
 } from '@lostgradient/bureau';
 
@@ -110,10 +115,27 @@ export type PluginStanding = PluginListing & {
   readonly restartRequired: boolean;
 };
 
+/** A plugin folder whose code could not be loaded, so it has no descriptor and no name. */
+export type PluginUnloaded = {
+  /** Where it was loaded from. */
+  readonly source: PluginLoadSource;
+  /** The folder. */
+  readonly location: string;
+  /** Always `skipped`. */
+  readonly status: 'skipped';
+  /** Why: `load-failed`, and `development-source` for a folder named with `--plugin`. */
+  readonly problems: readonly PluginProblem[];
+};
+
 /** The plugins as the host holds them. */
 export type PluginSnapshot = {
-  /** Every plugin, in load order. */
+  /**
+   * Every plugin Bureau loaded, in load order, then those the host skipped before Bureau
+   * (`secret-refused`).
+   */
   readonly plugins: readonly PluginStanding[];
+  /** The folders that could not be loaded at all. */
+  readonly unloaded: readonly PluginUnloaded[];
   /** Present when writes are refused, with the reason. */
   readonly lockReason?: SettingLockReason;
 };
@@ -144,6 +166,8 @@ export type PluginSecretChange = {
 export type PluginManager = {
   /** The persisted choices as they were when the manager was created: what `createBureau` composes with. */
   settings(): Readonly<Record<string, BureauPluginSettings>>;
+  /** The plugins `createBureau` gets: every one the host did not skip for a secret it cannot honor. */
+  loadable(): readonly BureauPluginEntry[];
   /** The reader Bureau gets for the secrets plugins declare. Reads on demand and tells watchers of every save. */
   readonly secrets: BureauPluginSecrets;
   /** Why writes are refused, or `undefined` when they are allowed. */
@@ -183,11 +207,13 @@ export type PluginManagerOptions = {
   >;
   /** The plugins the host loads. Copied: a later change to the array does not reach the manager. */
   readonly plugins: readonly BureauPluginEntry[];
+  /** Folders that could not be loaded. Reported in the snapshot, nothing more. Copied. */
+  readonly unloaded?: readonly PluginUnloaded[];
   /** The queue every writer of `configuration.json` shares. Defaults to a new one. */
   readonly configurationQueue?: ConfigurationQueue;
   /** Bureau's listing, once the Bureau exists; it is empty before. */
   readonly listing: () => Promise<readonly PluginListing[]>;
-  /** Secret keys the host keeps for itself: a plugin may not declare one, since it would read or overwrite it. */
+  /** Secret keys the host keeps for itself: a plugin that declares one is skipped, since it would read or overwrite it. */
   readonly reservedSecretKeys: readonly string[];
   /** Prefixes of secret keys the host keeps for itself, such as the tool sources' credentials. */
   readonly reservedSecretPrefixes: readonly string[];
@@ -233,6 +259,33 @@ function configurationProblem(
   };
 }
 
+/** The detail a problem adds to its code in the startup log: the message of the ones that carry one. */
+function problemText(problem: PluginProblem): string {
+  return 'message' in problem ? `${problem.code} (${problem.message})` : problem.code;
+}
+
+/**
+ * The startup log: one line per plugin with its status and the codes of its problems, the plugins
+ * Bureau loaded first, then those the host skipped, then the folders that did not load. A line
+ * names a problem's message only for the codes that carry one, and never holds a secret's value.
+ */
+export function pluginStartupLines(snapshot: PluginSnapshot): string[] {
+  const describe = (label: string, status: string, problems: readonly PluginProblem[]): string =>
+    `Plugin ${label}: ${status}${problems.length === 0 ? '' : `; ${problems.map(problemText).join(', ')}`}`;
+  return [
+    ...snapshot.plugins.map((plugin) =>
+      describe(
+        `${plugin.descriptor.name}@${plugin.descriptor.version} (${plugin.source}: ${plugin.location})`,
+        plugin.status,
+        plugin.problems,
+      ),
+    ),
+    ...snapshot.unloaded.map((plugin) =>
+      describe(`(${plugin.source}: ${plugin.location})`, plugin.status, plugin.problems),
+    ),
+  ];
+}
+
 /** Create the manager. Reads the persisted choices once, now. */
 export async function createPluginManager(options: PluginManagerOptions): Promise<PluginManager> {
   const { bungalow } = options;
@@ -247,20 +300,31 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
   const entryNamed = (name: string): BureauPluginEntry | undefined =>
     entries.find((entry) => entry.descriptor.name === name);
 
-  // A declaration the host cannot honor is a mistake in the plugin's code, so it stops the host
-  // before anything opens instead of surfacing later as a request that cannot be answered.
+  // A declaration the host cannot honor is a mistake in the plugin's code. It skips that plugin,
+  // as a plugin whose setup throws is skipped, and never stops the host (COR-1881).
+  const refusals = new Map<BureauPluginEntry, PluginProblem>();
   for (const entry of entries) {
     for (const declaration of entry.descriptor.secrets ?? []) {
       const key = declaredKey(declaration);
+      let message: string | undefined;
       if (reserved(key)) {
-        throw new Error(
-          `Plugin "${entry.descriptor.name}" declares the secret "${key}", which the host keeps for itself.`,
-        );
+        message = `Plugin "${entry.descriptor.name}" declares the secret "${key}", which the host keeps for itself.`;
+      } else {
+        try {
+          // Bungalow refuses a key it cannot store, naming it.
+          bungalow.secretLocation(key);
+        } catch (error) {
+          message = error instanceof Error ? error.message : String(error);
+        }
       }
-      // Bungalow refuses a key it cannot store, naming it.
-      bungalow.secretLocation(key);
+      if (message !== undefined) {
+        refusals.set(entry, { code: 'secret-refused', key, message });
+        break;
+      }
     }
   }
+  const loadable = entries.filter((entry) => !refusals.has(entry));
+  const unloaded = [...(options.unloaded ?? [])];
 
   async function readText(): Promise<string | undefined> {
     try {
@@ -341,7 +405,7 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
    */
   function generate(): void {
     if (bungalow.mode === 'remote') return;
-    for (const entry of entries) {
+    for (const entry of loadable) {
       if (!enabledIn(persisted, entry)) continue;
       for (const declaration of entry.descriptor.secrets ?? []) {
         if (!isGenerated(declaration)) continue;
@@ -359,8 +423,36 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
     restartRequired: restartRequired(entry),
   });
 
+  // A skipped plugin has no listing from Bureau, which never received it, so the host states its
+  // standing. Its secrets are not reported: a refused key may be one the host keeps for itself.
+  const refusedStanding = (entry: BureauPluginEntry, problem: PluginProblem): PluginStanding => ({
+    descriptor: {
+      name: entry.descriptor.name,
+      version: entry.descriptor.version,
+      description: entry.descriptor.description,
+      required: entry.descriptor.required === true,
+      enabledByDefault: entry.descriptor.enabledByDefault ?? true,
+      secrets: [],
+    },
+    source: entry.source,
+    location: entry.location,
+    status: 'skipped',
+    problems: [
+      problem,
+      ...(entry.developmentPath === undefined
+        ? []
+        : [{ code: 'development-source', path: entry.developmentPath } as const]),
+    ],
+    contributions: [],
+    enabled: enabledIn(persisted, entry),
+    configuration: configurationIn(persisted, entry.descriptor.name),
+    secrets: [],
+    restartRequired: restartRequired(entry),
+  });
+
   return {
     settings: () => loaded,
+    loadable: () => loadable,
     secrets,
     lockReason,
     writeSecret,
@@ -372,28 +464,32 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
     async snapshot() {
       const listing = await options.listing();
       const reason = lockReason();
-      return {
-        plugins: listing.flatMap((plugin): PluginStanding[] => {
-          const entry = entryNamed(plugin.descriptor.name);
-          if (entry === undefined) return [];
-          return [
-            {
-              ...plugin,
-              enabled: enabledIn(persisted, entry),
-              configuration: configurationIn(persisted, entry.descriptor.name),
-              secrets: (entry.descriptor.secrets ?? []).map((declaration) => {
-                const key = declaredKey(declaration);
-                return {
-                  key,
-                  generated: isGenerated(declaration),
-                  set: isSet(bungalow.readSecret(key)),
-                  location: bungalow.secretLocation(key),
-                };
-              }),
-              restartRequired: restartRequired(entry),
-            },
-          ];
+      const standingOf = (plugin: PluginListing, entry: BureauPluginEntry): PluginStanding => ({
+        ...plugin,
+        enabled: enabledIn(persisted, entry),
+        configuration: configurationIn(persisted, entry.descriptor.name),
+        secrets: (entry.descriptor.secrets ?? []).map((declaration) => {
+          const key = declaredKey(declaration);
+          return {
+            key,
+            generated: isGenerated(declaration),
+            set: isSet(bungalow.readSecret(key)),
+            location: bungalow.secretLocation(key),
+          };
         }),
+        restartRequired: restartRequired(entry),
+      });
+      return {
+        plugins: [
+          ...listing.flatMap((plugin): PluginStanding[] => {
+            const entry = loadable.find(
+              (candidate) => candidate.descriptor.name === plugin.descriptor.name,
+            );
+            return entry === undefined ? [] : [standingOf(plugin, entry)];
+          }),
+          ...[...refusals].map(([entry, problem]) => refusedStanding(entry, problem)),
+        ],
+        unloaded,
         ...(reason === undefined ? {} : { lockReason: reason }),
       };
     },
@@ -465,6 +561,13 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
       assertWritable();
       const entry = entryNamed(name);
       if (entry === undefined) throw new PluginNotFoundError(name);
+      // A skipped plugin's declarations are not honored, and one of them may be the host's own key.
+      if (refusals.has(entry)) {
+        throw new PluginInputError(
+          'plugin',
+          `the plugin "${name}" is skipped and takes no secrets.`,
+        );
+      }
       const declares = (entry.descriptor.secrets ?? []).some(
         (declaration) => declaredKey(declaration) === key,
       );
