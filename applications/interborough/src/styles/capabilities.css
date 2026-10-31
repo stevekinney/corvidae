@@ -1,0 +1,102 @@
+/* ── Capabilities: the tools and skills agents can use ───────── */
+
+/* The outlet pads the page, so none of this adds padding of its own at the edges. */
+.ib-capabilities {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+  min-width: 0;
+}
+
+.ib-capabilities__panel {
+  min-width: 0;
+  padding-block-start: var(--cinder-space-3);
+}
+
+/* ListDetail fills the height it is given and scrolls each pane, so the frame gives it one. */
+.ib-capabilities__frame {
+  block-size: max(28rem, calc(100dvh - 18rem));
+  min-inline-size: 0;
+  border: 1px solid var(--cinder-border-muted);
+  border-radius: var(--cinder-radius-md);
+  overflow: hidden;
+}
+
+.ib-capabilities__count {
+  margin: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-capabilities__alert-title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.ib-capability {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-4);
+  min-width: 0;
+  padding: var(--cinder-space-4);
+}
+
+.ib-capability__name {
+  margin: 0;
+  font-size: var(--cinder-text-lg);
+}
+
+/* Names, paths and tool identifiers are unbroken strings of any length: they wrap, never scroll. */
+.ib-capability__identifier,
+.ib-capability__location,
+.ib-capability__prose {
+  overflow-wrap: anywhere;
+}
+
+.ib-capability__identifier {
+  font-family: var(--cinder-font-mono);
+}
+
+.ib-capability__prose {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.ib-capability__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-2);
+  min-width: 0;
+}
+
+.ib-capability__facts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--cinder-space-3);
+  margin: 0;
+}
+
+.ib-capability__facts dt {
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-capability__facts dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--cinder-space-1) var(--cinder-space-2);
+  min-width: 0;
+  margin: 0;
+}
+
+.ib-capability__chips,
+.ib-capability__users {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-1) var(--cinder-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}

@@ -4,7 +4,7 @@ import { HASHING_EMBEDDER_ID } from '../embedder-registry';
 import { createDeletionEngine } from './deletion';
 import { settlePendingDerivations } from './derivation';
 import {
-  advanceSwitch,
+  advanceEmbedding,
   cancelSwitch,
   DEFAULT_SWITCH_STEP_LIMIT,
   switchEmbedder,
@@ -110,7 +110,7 @@ export function createGovernedMemory(options: CreateGovernedMemoryOptions): Gove
       switchTo: (id) => switchEmbedder(governance, id),
       cancel: () => cancelSwitch(governance),
       async advance(advanceOptions) {
-        advancing ??= advanceSwitch(
+        advancing ??= advanceEmbedding(
           governance,
           advanceOptions?.limit ?? DEFAULT_SWITCH_STEP_LIMIT,
         ).finally(() => {

@@ -1601,6 +1601,131 @@ export const QUICK_SETTINGS_COPY = {
 } as const;
 
 /**
+ * The words of the Capabilities page (`/capabilities`): the tools and skills agents can use, with
+ * what each does, how it is approved by default, where it came from, and which agents use it.
+ */
+export const CAPABILITIES_COPY = {
+  title: 'Capabilities',
+  description: 'The tools and skills your agents can use, and who is allowed to use them.',
+  tabsLabel: 'Capability kinds',
+  tabs: { tools: 'Tools', skills: 'Skills' },
+  filterLabel: { tools: 'Filter tools', skills: 'Filter skills' },
+  filterPlaceholder: 'Filter by name',
+  listLabel: { tools: 'Tools', skills: 'Skills' },
+  count: (shown: number, total: number): string =>
+    shown === total ? String(total) : `${String(shown)} of ${String(total)}`,
+  detailLabel: { tools: 'Tool details', skills: 'Skill details' },
+  emptyDetailTitle: 'Choose a capability',
+  emptyDetailDescription: 'Pick one from the list to see what it does and who uses it.',
+  tool: {
+    loading: 'Loading tools',
+    empty: {
+      title: 'No tools yet',
+      description: 'Agents have no tools to call until the host provides some.',
+    },
+    filtered: {
+      title: 'No tools match',
+      description: 'No tool name contains what you typed.',
+      clear: 'Clear filter',
+    },
+    whatItDoes: 'What it does',
+    safety: 'What it may do',
+    approval: 'By default',
+    source: 'Where it comes from',
+    inputs: 'Inputs',
+    inputsLabel: (name: string): string => `Inputs of ${name}`,
+    noInputs: 'This tool takes no inputs.',
+    noSchema: 'This tool does not describe its inputs.',
+    users: 'Used by',
+    noUsers: {
+      title: 'No agent uses this tool',
+      description: 'Add it to an agent in the agent editor to put it to work.',
+      action: { label: 'Open agents', href: '/agents' },
+    },
+    tier: {
+      'read-only': 'Reads only',
+      mutating: 'Changes things',
+      dangerous: 'Dangerous',
+      unclassified: 'Not classified',
+    },
+    tierDescription: {
+      'read-only': 'It looks at things and changes nothing.',
+      mutating: 'It changes things.',
+      dangerous: 'It can do damage that is hard to undo.',
+      unclassified: 'It does not say what it does, so it is treated as one that changes things.',
+    },
+    approvals: {
+      allow: 'Runs without asking',
+      ask: 'Asks you first',
+    },
+    sources: {
+      host: 'Provided by this host',
+      bureau: 'Built into Interborough',
+    },
+    loadFailed: {
+      title: 'The tools could not be read',
+      description: 'The server did not answer. Check that the host is running, then try again.',
+    },
+  },
+  skill: {
+    loading: 'Loading skills',
+    empty: {
+      title: 'No skills yet',
+      description:
+        'Skills are folders with a SKILL.md file. Add a skills directory to the host configuration to see them here.',
+    },
+    emptySources: {
+      title: 'No skills found',
+      description:
+        'The host looked in the skills directories it is configured with and found no folder with a SKILL.md file.',
+    },
+    unavailableBadge: 'Unavailable',
+    filtered: {
+      title: 'No skills match',
+      description: 'No skill name contains what you typed.',
+      clear: 'Clear filter',
+    },
+    whatItDoes: 'What it does',
+    trust: 'Trust',
+    source: 'Where it comes from',
+    allowedTools: 'Asks to keep these tools',
+    users: 'Used by',
+    noUsers: {
+      title: 'No agent uses this skill',
+      description: 'An agent defined in code can name a skill to use it.',
+      action: { label: 'Open agents', href: '/agents' },
+    },
+    notAvailable: 'An agent cannot use this skill yet.',
+    untrustedBadge: 'Not trusted',
+    trustLabel: {
+      trusted: 'Trusted',
+      untrusted: 'Not trusted',
+      revoked: 'Trust revoked',
+    },
+    unavailable: {
+      'source-untrusted': 'Its source is not trusted, so agents are refused it.',
+      'source-revoked': 'Trust in its source was revoked, so agents are refused it.',
+      shadowed: 'Another skill with the same name takes its place.',
+      invalid: 'Its SKILL.md file is not valid.',
+      unreadable: 'The host could not read its files.',
+    },
+    sourceKinds: {
+      project: 'Project',
+      user: 'User',
+      'built-in': 'Built in',
+      remote: 'Remote',
+      storage: 'Storage',
+      plugin: 'Plugin',
+    },
+    loadFailed: {
+      title: 'The skills could not be read',
+      description: 'The server did not answer. Check that the host is running, then try again.',
+    },
+    usersFailed: 'Which agents use each skill could not be read.',
+  },
+} as const;
+
+/**
  * The words every view's states use. A view's state title and description live here and
  * nowhere else, so a change to the voice of the product is one edit and a test can name every
  * string a state can show.
@@ -1831,6 +1956,18 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
     forbidden: { title: 'Settings are locked' },
+  },
+  capabilities: {
+    label: 'Capabilities',
+    loading: {
+      title: 'Loading capabilities',
+      description: 'Reading the tools and skills agents can use.',
+    },
+    error: {
+      title: 'Capabilities are unavailable',
+      description: 'The server did not answer. Check that the host is running, then try again.',
+    },
+    forbidden: { title: 'Capabilities are locked' },
   },
   goals: {
     label: 'Goals',

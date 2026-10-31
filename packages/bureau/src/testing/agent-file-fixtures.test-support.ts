@@ -16,6 +16,7 @@ import type { ConditionalTextValueStore } from '@lostgradient/storage';
 import { createTool } from 'armorer';
 import { z } from 'zod';
 
+import { createAgentContributions } from '../agent-contributions.ts';
 import {
   type AgentCatalogChange,
   type AgentFileCatalog,
@@ -50,6 +51,33 @@ export const summarizedTool = createTool({
   metadata: { shortDescription: 'Summarize an order.' },
   execute: async () => 'summary',
 });
+
+/** Two guardrails, `x:check` and `y:other`, and a run hook set, `x:audit`, for the tests that list them. */
+export const TEST_CONTRIBUTIONS = createAgentContributions([
+  {
+    plugin: 'x',
+    guardrails: {
+      inputDetectors: [
+        {
+          name: 'check',
+          detect: async () => ({ triggered: false, category: 'policy', confidence: 0 }),
+        },
+      ],
+    },
+    runHooks: [{ name: 'audit' }],
+  },
+  {
+    plugin: 'y',
+    guardrails: {
+      inputDetectors: [
+        {
+          name: 'other',
+          detect: async () => ({ triggered: false, category: 'policy', confidence: 0 }),
+        },
+      ],
+    },
+  },
+]);
 
 export function agentFileText(
   frontmatter: Record<string, string>,
@@ -108,6 +136,8 @@ export interface AgentFileFixtureOptions {
   readonly resolveGenerate?: (descriptor: BackendDescriptor) => GenerateFunction;
   /** Replaces how a directory is watched, to observe the watchers the catalog opens. */
   readonly openWatcher?: NonNullable<Parameters<typeof agentFileDirectory>[1]>['watchFactory'];
+  /** The guardrails and run hooks a file may list; none by default. */
+  readonly contributions?: AgentFileCatalogOptions['contributions'];
 }
 
 export async function createAgentFileFixture(
@@ -159,6 +189,7 @@ export async function createAgentFileFixture(
     resolveGenerate: options.resolveGenerate ?? resolveGenerate,
     runtime,
     diagnose,
+    ...(options.contributions === undefined ? {} : { contributions: options.contributions }),
     ...(options.revisionStore === undefined ? {} : { revisionStore: options.revisionStore }),
     ...(options.retainedRevisions === undefined
       ? {}

@@ -14,6 +14,7 @@ const SHORTCUTS = [
   { letter: 'c', path: '/chats', label: VIEW_COPY.chat.label },
   { letter: 'v', path: '/reviews', label: VIEW_COPY.reviews.label },
   { letter: 'a', path: '/agents', label: VIEW_COPY.agents.label },
+  { letter: 'p', path: '/capabilities', label: VIEW_COPY.capabilities.label },
   { letter: 'w', path: '/workflows', label: VIEW_COPY.workflows.label },
   { letter: 'r', path: '/runs', label: VIEW_COPY.runs.label },
   { letter: 's', path: '/schedules', label: VIEW_COPY.schedules.label },

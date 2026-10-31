@@ -229,6 +229,10 @@ export function probeFor(
         return { empty: false };
       };
     }
+    case 'capabilities':
+      // The catalog is what the page cannot do without: asking for it settles whether the caller
+      // may read it. The skills are read by the page, which says so itself when they are missing.
+      return probeAgentCatalog;
     case 'agent-editor': {
       const agent = parameters['agent'];
       return agent === undefined ? probeAgentCatalog : () => probeEditableAgent(agent);

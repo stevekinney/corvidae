@@ -66,6 +66,10 @@ const EXPECTED_STATE: Readonly<Record<string, string>> = {};
 const MARKERS: Readonly<Record<string, RegExp>> = {
   '/chats/:chat': /Say hello/,
   '/agents': /An agent description that keeps going/,
+  '/capabilities': /Reads only|Changes things|Dangerous|Not classified/,
+  '/capabilities (skills tab)': /e2e-summarize/,
+  // Only the open skill's detail prints this heading; the long word is in its row at 1280 too.
+  '/capabilities (skill open)': /Where it comes from/,
   '/agents/:agent': /An agent description that keeps going/,
   '/agents/:agent/memories': /mmmmmmmmmm/,
   '/workflows': /order-processing/,

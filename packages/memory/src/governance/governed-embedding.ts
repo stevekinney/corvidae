@@ -55,8 +55,20 @@ export interface GovernedEmbedding {
   readonly vectors: MemoryVectorStore;
   /** The profile a store with no active profile starts with: the initial embedder's, generation 1. */
   readonly initialProfile: MemoryEmbeddingProfile;
-  /** The active profile, read now, and its embedder. */
-  active(): Promise<ActiveEmbedding>;
+  /**
+   * The active profile, read now, with its embedder, or with `embedding` left out while that
+   * embedder is unavailable (see {@link GovernedEmbedding.canEmbed}). Recall then scores by text
+   * alone, and an admission queues the record for the embedder.
+   */
+  activeIfAvailable(): Promise<{
+    readonly profile: MemoryEmbeddingProfile;
+    readonly embedding?: ActiveEmbedding;
+  }>;
+  /**
+   * Whether `profile`'s embedder can embed now: it is registered, with the profile's dimension, and
+   * needs no setup. A profile that fails this is never embedded into; its embeds wait in a queue.
+   */
+  canEmbed(profile: MemoryEmbeddingProfile): boolean;
   /**
    * `profile` with the embedder registered under its id. Throws {@link EmbedderRegistryError} when
    * nothing is registered under it, or it is registered with another dimension than the profile's.
@@ -130,22 +142,33 @@ export function createGovernedEmbedding(input: CreateGovernedEmbeddingInput): Go
     };
   }
 
-  async function active(): Promise<ActiveEmbedding> {
-    return bind(await vectors.activeProfile(initialProfile));
+  function canEmbed(profile: MemoryEmbeddingProfile): boolean {
+    const registered = registry.describe(profile.embedderId);
+    return (
+      registered !== undefined &&
+      registered.dimension === profile.dimension &&
+      registered.availability === 'available'
+    );
   }
 
   return {
     registry,
     vectors,
     initialProfile,
-    active,
+    async activeIfAvailable() {
+      const profile = await vectors.activeProfile(initialProfile);
+      return canEmbed(profile) ? { profile, embedding: bind(profile) } : { profile };
+    },
+    canEmbed,
     bind,
     async status() {
       // A store with no active profile yet reports the one its first write will store.
-      const { embedderId, dimension } = (await vectors.getActiveProfile()) ?? initialProfile;
+      const profile = (await vectors.getActiveProfile()) ?? initialProfile;
+      const { embedderId, dimension } = profile;
       const job = await vectors.getJob();
       return {
         active: { embedder: embedderId, dimension },
+        ...(canEmbed(profile) ? {} : { problem: 'embedder-unavailable' as const }),
         ...(job === undefined
           ? {}
           : {

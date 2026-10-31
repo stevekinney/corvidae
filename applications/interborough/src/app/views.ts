@@ -10,6 +10,7 @@ export const VIEW_NAMES = [
   'chat',
   'agents',
   'agent-editor',
+  'capabilities',
   'workflows',
   'runs',
   'schedules',
@@ -93,6 +94,8 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
   agents: { density: 'comfortable', scopes: [], canBeEmpty: true },
   // `/agents/new` and `/agents/:agent/edit`. Never empty: it is where an agent is made.
   'agent-editor': { density: 'comfortable', scopes: [], canBeEmpty: false },
+  // The tools and skills agents can use. Never empty as a view: each tab says its own nothing.
+  capabilities: { density: 'comfortable', scopes: [], canBeEmpty: false },
   // The catalog of definitions, and under it one type's page, its runs, and its editor. It can be
   // empty when neither the engine nor the Bureau lists a workflow, and a type's runs can be empty.
   workflows: {

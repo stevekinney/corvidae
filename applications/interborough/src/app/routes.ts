@@ -105,6 +105,14 @@ export const routes: readonly RouteDefinition[] = [
     view: 'agents',
     load: () => import('../routes/agents/agent-detail.svelte'),
   },
+  // The tools and skills agents can use: Tools and Skills tabs, each a list with the open item beside it.
+  {
+    pattern: '/capabilities',
+    kind: 'list-detail',
+    crumb: VIEW_COPY.capabilities.label,
+    view: 'capabilities',
+    load: () => import('../routes/capabilities/index.svelte'),
+  },
   // `/workflows` is the catalog of workflow definitions, and under it one type's page, its runs, and
   // its editor. One component dispatches on the pattern. A run reached from its workflow is under
   // it, and `/runs/:run` is the same page for a run known by its ID alone.

@@ -42,6 +42,7 @@ const PAGES = [
   '/chats',
   '/agents',
   '/agents/new',
+  '/capabilities',
   '/workflows',
   '/runs',
   '/schedules',
@@ -123,6 +124,7 @@ test.describe('each view declares how dense it is, and each route what kind of p
     await page.setViewportSize(DESKTOP);
     const paths: Partial<Record<(typeof VIEW_NAMES)[number], string>> = {
       agents: '/agents',
+      capabilities: '/capabilities',
       runs: '/runs',
       reviews: '/reviews',
       audit: '/health/audit',
