@@ -2832,9 +2832,9 @@ Every detector/validator returns a `DetectionResult`/`ValidationResult` carrying
 | `createInputLengthDetector` | Input detector | Incoming content | Blocks overlong inputs before they reach the model. |
 | `createTopicBoundaryDetector` | Input detector | Incoming content | Restricts the conversation to an allow/block topic list. Matching is literal, case-insensitive substring matching, not semantic—see the note below the table. |
 | `createOutputPIIValidator` | Output validator | Model output | Detects and redacts email addresses, phone numbers, and API-key-shaped secrets in generated text. |
-| `createGroundingValidator` | Output validator | Model output vs. supplied context | Flags claims the output makes that aren't traceable to the provided context. |
-| `createCodeSafetyValidator` | Output validator | Model output | Flags destructive shell patterns (`rm -rf`), code execution (`eval`/`exec`/`Function`/`subprocess`), dangerous SQL (`DROP TABLE`, unfiltered `DELETE FROM`), and pipe-to-shell (`curl \| bash`) in generated code. Extend with `blockedPatterns`. |
 | `createSessionTaintTracker` | Session state | Cumulative session history | Sticky escalation: once a high-confidence hit taints a session, escalated detectors/validators activate for its remainder. |
+
+The grounding validator (`guardrails:grounding`) and the code-safety validator (`guardrails:code-safety`) are not part of this package. They ship as `@lostgradient/plugin-guardrails`, and an agent file adds them with `guardrails: [guardrails:grounding, guardrails:code-safety]`; an agent that lists nothing still runs the default preset below (the prompt-injection detector and `createOutputPIIValidator`, in tripwire mode). A validator reads the conversation through `ValidatorContext.conversationText()`, which is how the grounding validator checks a reply against what was said.
 
 > [!WARNING] `createTopicBoundaryDetector`'s `allowedTopics`/`blockedKeywords` matching is **literal, case-insensitive substring matching**—`input.toLowerCase().includes(keyword.toLowerCase())`—not semantic matching. There is no NLP, embeddings, or synonym lookup involved. With `allowedTopics: ['cooking']`, the clearly on-topic input `"What is a good recipe for banana bread?"` is flagged and blocked, because the literal substring `"cooking"` never appears. List every literal word or phrase you expect callers to use—including common synonyms and paraphrases—not just one representative term.
 
@@ -2924,9 +2924,9 @@ const activeRun = createActiveRun({
 });
 ```
 
-**Exported functions:** `createGuardrails`, `createInputGuardrail`, `createOutputGuardrail`, `createSessionTaintTracker`, `createCodeSafetyValidator`, `createGroundingValidator`, `createOutputPIIValidator`, `createInputLengthDetector`, `createPromptInjectionDetector`, `createTopicBoundaryDetector`, `withMinimumTripwireConfidence`, `DEFAULT_PROMPT_INJECTION_TRIPWIRE_THRESHOLD`.
+**Exported functions:** `createGuardrails`, `createInputGuardrail`, `createOutputGuardrail`, `createSessionTaintTracker`, `createOutputPIIValidator`, `createInputLengthDetector`, `createPromptInjectionDetector`, `createTopicBoundaryDetector`, `withMinimumTripwireConfidence`, `DEFAULT_PROMPT_INJECTION_TRIPWIRE_THRESHOLD`.
 
-**Exported types:** `DetectionResult`, `DetectorContext`, `GuardrailHooks`, `GuardrailProvenance`, `GuardrailsOptions`, `GuardrailTriggeredEvent`, `InputDetector`, `InputGuardrailOptions`, `OutputGuardrailOptions`, `OutputGuardrailTriggeredEvent`, `OutputValidator`, `SessionTaintedEvent`, `SessionTaintOptions`, `SessionTaintTracker`, `ValidationResult`, `ValidatorContext`, `CodeSafetyValidatorOptions`, `GroundingValidatorOptions`, `InputLengthDetectorOptions`, `PromptInjectionDetectorOptions`, `TopicBoundaryDetectorOptions`.
+**Exported types:** `DetectionResult`, `DetectorContext`, `GuardrailHooks`, `GuardrailProvenance`, `GuardrailsOptions`, `GuardrailTriggeredEvent`, `InputDetector`, `InputGuardrailOptions`, `OutputGuardrailOptions`, `OutputGuardrailTriggeredEvent`, `OutputValidator`, `SessionTaintedEvent`, `SessionTaintOptions`, `SessionTaintTracker`, `ValidationResult`, `ValidatorContext`, `InputLengthDetectorOptions`, `PromptInjectionDetectorOptions`, `TopicBoundaryDetectorOptions`.
 
 ### Liveness Watchdog
 

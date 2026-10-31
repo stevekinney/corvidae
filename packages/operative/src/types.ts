@@ -435,8 +435,9 @@ export interface StepContext {
   reportGuardrail?: ((firing: GuardrailFiring) => void) | undefined;
   /**
    * The media sources resolved so far (see {@link GenerateContext.resolvedSources}):
-   * at a `prepareStep` hook, the step boundary's derivation, which the input
-   * guardrail reads to inspect each resolved body; at `onMaximumSteps`, the
+   * at a `prepareStep` or `validateResponse` hook, the step boundary's derivation, which the
+   * input guardrail reads to inspect each resolved body and the output guardrail reads to build
+   * `ValidatorContext.conversationText`; at `onMaximumSteps`, the
    * derivation for the conversation the handler receives. The call to
    * `generate` derives its own from the conversation it is given.
    */
