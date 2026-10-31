@@ -42,6 +42,10 @@ const agent = await readFile(agentPath, 'utf8');
 await writeFile(agentPath, agent.replace('[example:greet]', '[example:greet, example:absent]'));
 const unresolved = await run('check-plugin.ts', folder);
 
+await writeFile(agentPath, agent.replace('anthropic/claude-opus-5-5', 'anthropic/no-such-model'));
+const unknownModel = await run('check-plugin.ts', folder);
+await writeFile(agentPath, agent);
+
 const missing = await run('check-plugin.ts', join(root, 'nothing-here'));
 
 describe('create-plugin then check-plugin', () => {
@@ -60,6 +64,12 @@ describe('create-plugin then check-plugin', () => {
     expect(unresolved.exitCode).toBe(1);
     expect(unresolved.output).toContain('reference-unresolved');
     expect(unresolved.output).toContain('example:absent');
+  });
+
+  test('an agent file naming a model nothing holds fails the check', () => {
+    expect(unknownModel.exitCode).toBe(1);
+    expect(unknownModel.output).toContain('example:assistant');
+    expect(unknownModel.output).toContain('unknown-model');
   });
 
   test('a folder with no plugin.ts fails the check', () => {

@@ -14,13 +14,22 @@ const plugin = definePlugin({
 });
 
 /** A host double that reports `listing` and records that it was disposed. */
-function hostReporting(listing: PluginTestHostListing | undefined) {
+function hostReporting(
+  listing: PluginTestHostListing | undefined,
+  agents: readonly {
+    id: string;
+    state: 'ready' | 'invalid';
+    plugin?: string;
+    problem?: { code: string; message: string };
+  }[] = [],
+) {
   const state = { disposed: 0 };
   const createHost: CreatePluginTestHost = async () => ({
     plugins: {
       list: async () => (listing === undefined ? [] : [listing]),
       ready: async () => {},
     },
+    agents: { list: () => agents },
     dispose: async () => {
       state.disposed += 1;
     },
@@ -55,6 +64,40 @@ describe('checkPluginContract', () => {
     expect(failures[0]?.message).toContain('example:absent');
   });
 
+  test('fails a plugin whose shipped agent is invalid, but not one another plugin ships', async () => {
+    const invalid = {
+      id: 'example:triager',
+      state: 'invalid',
+      plugin: 'example',
+      problem: { code: 'invalid-frontmatter', message: 'model must be a string' },
+    } as const;
+    const { createHost } = hostReporting(running, [
+      invalid,
+      { ...invalid, id: 'other:triager', plugin: 'other' },
+      { id: 'example:ready', state: 'ready', plugin: 'example' },
+    ]);
+    const failures = await checkPluginContract(plugin, { createHost });
+    expect(failures).toEqual([
+      {
+        check: 'ships only valid agent files',
+        message:
+          'The agent "example:triager" is invalid: invalid-frontmatter (model must be a string).',
+      },
+    ]);
+  });
+
+  test('leaves an unresolved reference to the check that names it', async () => {
+    const { createHost } = hostReporting(running, [
+      {
+        id: 'example:triager',
+        state: 'invalid',
+        plugin: 'example',
+        problem: { code: 'reference-unresolved', message: 'absent' },
+      },
+    ]);
+    expect(await checkPluginContract(plugin, { createHost })).toEqual([]);
+  });
+
   test('fails a plugin the host does not run', async () => {
     const { createHost } = hostReporting({ ...running, status: 'skipped' });
     const failures = await checkPluginContract(plugin, { createHost });
@@ -75,6 +118,10 @@ describe('checkPluginContract', () => {
       throw new Error('no storage');
     };
     const failures = await checkPluginContract(plugin, { createHost });
-    expect(failures.map(({ message }) => message)).toEqual(['no storage', 'no storage']);
+    expect(failures.map(({ message }) => message)).toEqual([
+      'no storage',
+      'no storage',
+      'no storage',
+    ]);
   });
 });

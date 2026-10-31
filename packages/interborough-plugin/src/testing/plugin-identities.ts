@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import { MemoryStorage } from '@lostgradient/storage';
+import { type DefinitionSchema, definitionSchemaToJsonSchema } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import type { PluginContributions } from '../contributions.ts';
@@ -62,10 +63,71 @@ function isZodSchema(value: unknown): value is z.core.$ZodType {
   return typeof value === 'object' && value !== null && '_zod' in value;
 }
 
-/** The JSON Schema `schema` describes, or the value itself when it is already plain data. */
-function describeSchema(schema: unknown): unknown {
+/** What a `default` that differs from one run to the next digests as, in place of the value. */
+const volatileDefault = { '~volatile': 'default' };
+
+/**
+ * `first` and `second` are the same schema described twice. A `default` whose value differs between
+ * the two (a function default such as `() => crypto.randomUUID()`, which Zod records as the value it
+ * returned) is replaced by a fixed marker, because the value is not part of the schema's shape and
+ * a run-to-run difference must never reach the digest. Anything else that differs means the schema
+ * does not describe itself the same way twice, which no digest could settle, so it throws.
+ */
+function stabilize(first: unknown, second: unknown, path: string): unknown {
+  if (Array.isArray(first) && Array.isArray(second) && first.length === second.length) {
+    return first.map((item, index) => stabilize(item, second[index], `${path}[${index}]`));
+  }
+  if (
+    first !== null &&
+    second !== null &&
+    typeof first === 'object' &&
+    typeof second === 'object' &&
+    !Array.isArray(first) &&
+    !Array.isArray(second)
+  ) {
+    const left = first as Record<string, unknown>;
+    const right = second as Record<string, unknown>;
+    const keys = Object.keys(left).toSorted(compareText);
+    if (canonicalJson(keys) === canonicalJson(Object.keys(right).toSorted(compareText))) {
+      const stable: Record<string, unknown> = {};
+      for (const key of keys) {
+        const member = Object.getOwnPropertyDescriptor(left, key)?.value;
+        const counterpart = Object.getOwnPropertyDescriptor(right, key)?.value;
+        stable[key] =
+          key === 'default' && canonicalJson(member) !== canonicalJson(counterpart)
+            ? volatileDefault
+            : stabilize(member, counterpart, `${path}.${key}`);
+      }
+      return stable;
+    }
+  } else if (canonicalJson(first) === canonicalJson(second)) {
+    return first;
+  }
+  throw new TypeError(
+    `A schema described itself differently on two runs at ${path || '(root)'}: ${canonicalJson(first)} then ${canonicalJson(second)}. Only a function default may vary between runs, so a plugin's schemas must be deterministic.`,
+  );
+}
+
+function isStandardSchema(value: unknown): value is DefinitionSchema {
+  return typeof value === 'object' && value !== null && '~standard' in value;
+}
+
+/**
+ * The JSON Schema `schema` describes, or the value itself when it is already plain data. A Zod
+ * schema is described twice so that a function default, whose recorded value changes on every run,
+ * can be told apart from a constant one. Any other Standard Schema is converted the way Weft
+ * converts an activity's schema (its vendor adapter or its `~standard.jsonSchema` converter),
+ * because the object itself holds functions that serialize to nothing, so a change to what it
+ * accepts would otherwise leave the digest as it was.
+ */
+function describeSchema(schema: unknown, direction: 'input' | 'output' = 'input'): unknown {
   if (isZodSchema(schema)) {
-    return z.toJSONSchema(schema, { io: 'input', unrepresentable: 'any' });
+    const describe = () => z.toJSONSchema(schema, { io: 'input', unrepresentable: 'any' });
+    return stabilize(describe(), describe(), '');
+  }
+  if (isStandardSchema(schema)) {
+    const describe = () => definitionSchemaToJsonSchema(schema, direction);
+    return stabilize(describe(), describe(), '');
   }
   return schema;
 }
@@ -188,7 +250,7 @@ export async function pluginIdentities(
       (activity) =>
         named(activity, 'activity', {
           input: describeSchema(activity.inputSchema),
-          output: describeSchema(activity.outputSchema),
+          output: describeSchema(activity.outputSchema, 'output'),
         }),
       descriptor,
     ),

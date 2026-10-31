@@ -12,6 +12,7 @@ export {
   type PluginContractFailure,
   type PluginContractOptions,
   type PluginTestHost,
+  type PluginTestHostAgent,
   type PluginTestHostListing,
 } from './plugin-contract.ts';
 export {

@@ -22,14 +22,15 @@ afterAll(async () => {
 });
 
 /** A plugin `p` with one tool, shipping one agent file that names the tools it lists. */
-async function pluginShipping(tools: string, extra: Record<string, unknown> = {}) {
+async function pluginShipping(
+  tools: string,
+  extra: Record<string, unknown> = {},
+  model: string = KNOWN_MODEL,
+) {
   const content = await mkdtemp(join(tmpdir(), 'bureau-plugin-content-'));
   roots.push(content);
   await mkdir(join(content, 'agents'));
-  await writeFile(
-    join(content, 'agents', 'triager.md'),
-    agentFileText({ model: KNOWN_MODEL, tools }),
-  );
+  await writeFile(join(content, 'agents', 'triager.md'), agentFileText({ model, tools }));
   return definePlugin({
     name: 'p',
     version: '1.0.0',
@@ -77,6 +78,21 @@ describe('checkPluginContract over a Bureau', () => {
     expect(await checkPluginContract(needsSecret, { createHost: createPluginTestHost })).toEqual(
       [],
     );
+  });
+
+  test('enables the plugin under test even when it is off by default', async () => {
+    const optIn = await pluginShipping('[p:lookup]', { enabledByDefault: false });
+    expect(await checkPluginContract(optIn, { createHost: createPluginTestHost })).toEqual([]);
+  });
+
+  test('fails a plugin whose shipped agent names a model nothing holds', async () => {
+    const unknownModel = await pluginShipping('[p:lookup]', {}, 'anthropic/no-such-model');
+    const failures = await checkPluginContract(unknownModel, {
+      createHost: createPluginTestHost,
+    });
+    expect(failures.map(({ check }) => check)).toEqual(['ships only valid agent files']);
+    expect(failures[0]?.message).toContain('p:triager');
+    expect(failures[0]?.message).toContain('unknown-model');
   });
 
   test('refuses a descriptor that is not valid before the host starts', async () => {

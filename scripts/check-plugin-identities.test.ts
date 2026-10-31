@@ -86,7 +86,12 @@ async function run(command: string[], environment: Record<string, string> = {}) 
 const git = (...args: string[]) =>
   run(['git', '-c', 'user.name=Test', '-c', 'user.email=test@example.test', '-C', root, ...args]);
 
-async function writePlugin(name: string, version: string, field: string) {
+async function writePlugin(
+  name: string,
+  version: string,
+  field: string,
+  defaultExpression = "'x'",
+) {
   const directory = join(root, 'plugins', name);
   await mkdir(directory, { recursive: true });
   await writeFile(
@@ -100,7 +105,7 @@ export default {
   name: ${JSON.stringify(name)},
   version: ${JSON.stringify(version)},
   description: 'A fixture plugin.',
-  configuration: z.object({ ${field}: z.string().default('x') }),
+  configuration: z.object({ ${field}: z.string().default(${defaultExpression}) }),
 };
 `,
   );
@@ -131,6 +136,14 @@ await write('example');
 await writePlugin('fresh', '0.1.0', 'only');
 await write('fresh');
 const bumpedAndNew = await check({ [baselineVariable]: baseline });
+
+await writePlugin('volatile', '1.0.0', 'identifier', '() => crypto.randomUUID()');
+await write('volatile');
+const volatileFirst = await check({ [baselineVariable]: baseline });
+const volatileSecond = await check({ [baselineVariable]: baseline });
+await writePlugin('volatile', '1.0.0', 'identifier', "'constant'");
+const volatileConstant = await check({ [baselineVariable]: baseline });
+await rm(join(root, 'plugins/volatile'), { recursive: true });
 
 await writePlugin('bare', '1.0.0', 'only');
 const missingFile = await check({ [baselineVariable]: baseline });
@@ -169,6 +182,15 @@ describe('the guard over a fixture repository', () => {
 
   test('passes after a version bump, and passes a plugin absent at the baseline', () => {
     expect(bumpedAndNew).toEqual({ exitCode: 0, output: '' });
+  });
+
+  test('passes a plugin with a function default on every run, and fails a constant default that changed', () => {
+    expect(volatileFirst).toEqual({ exitCode: 0, output: '' });
+    expect(volatileSecond).toEqual({ exitCode: 0, output: '' });
+    expect(volatileConstant.exitCode).toBe(1);
+    expect(volatileConstant.output).toContain(
+      'plugins/volatile/plugin-identities.json is out of date',
+    );
   });
 
   test('fails a plugin workspace that has no file', () => {

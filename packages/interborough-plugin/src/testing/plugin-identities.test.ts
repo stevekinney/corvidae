@@ -42,6 +42,75 @@ describe('schemaDigest', () => {
   test('is null for no schema', () => {
     expect(schemaDigest(undefined)).toBeNull();
   });
+
+  test('is the same on every run for a function default, whatever it returns', () => {
+    let counter = 0;
+    const schema = z.object({ id: z.string().default(() => String(++counter)) });
+    const first = schemaDigest(schema);
+    expect(schemaDigest(schema)).toBe(first);
+    expect(schemaDigest(z.object({ id: z.string().default(() => crypto.randomUUID()) }))).toBe(
+      first,
+    );
+    expect(first).not.toBe(schemaDigest(z.object({ id: z.string() })));
+  });
+
+  test('changes with a constant default', () => {
+    expect(schemaDigest(z.object({ id: z.string().default('a') }))).not.toBe(
+      schemaDigest(z.object({ id: z.string().default('b') })),
+    );
+  });
+
+  test('refuses a schema whose output other than a default varies between runs', () => {
+    let counter = 0;
+    const field = z.string();
+    z.globalRegistry.add(field, {
+      get description() {
+        return `run ${++counter}`;
+      },
+    });
+    const schema = z.object({ id: field });
+    expect(() => schemaDigest(schema)).toThrow(/differently on two runs at \.properties\.id/);
+  });
+});
+
+/** A Standard Schema that is not Zod or Valibot, converting to the JSON Schema `shape` names. */
+function customSchema(shape: Record<string, unknown>) {
+  return {
+    '~standard': {
+      version: 1,
+      vendor: 'custom',
+      validate: (value: unknown) => ({ value }),
+      jsonSchema: { input: () => shape, output: () => shape },
+    },
+  };
+}
+
+describe('schemaDigest over a Standard JSON Schema', () => {
+  test('digests what the converter returns, not the implementation object', () => {
+    const text = schemaDigest(customSchema({ type: 'string' }));
+    expect(text).toStartWith('sha256:');
+    expect(schemaDigest(customSchema({ type: 'string' }))).toBe(text);
+    expect(schemaDigest(customSchema({ type: 'number' }))).not.toBe(text);
+  });
+
+  test('changes an activity digest when its converter changes', async () => {
+    const identitiesOf = (shape: Record<string, unknown>) =>
+      pluginIdentities(
+        definePlugin({
+          ...base,
+          setup: () => ({
+            activities: [
+              { name: 'fetch', execute: async () => 1, inputSchema: customSchema(shape) } as never,
+            ],
+          }),
+        }),
+      );
+    const before = await identitiesOf({ type: 'string' });
+    const after = await identitiesOf({ type: 'number' });
+    expect(after.entries.find(({ kind }) => kind === 'activity')?.schema).not.toBe(
+      before.entries.find(({ kind }) => kind === 'activity')?.schema,
+    );
+  });
 });
 
 describe('pluginIdentities', () => {

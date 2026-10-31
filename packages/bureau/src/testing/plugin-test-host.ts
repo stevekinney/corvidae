@@ -33,6 +33,8 @@ export interface PluginTestHost {
   readonly bureau: Bureau<AgentDefinitions>;
   /** `bureau.plugins`: the one plugin and what is wrong with it. */
   readonly plugins: BureauPlugins;
+  /** `bureau.agents`: every agent the Bureau lists, including the files the plugin ships. */
+  readonly agents: Bureau<AgentDefinitions>['agents'];
   /** Stops the Bureau and removes the directory it kept the owner's files in. */
   dispose(): Promise<void>;
 }
@@ -49,7 +51,8 @@ function shippedAgentDirectory(content: URL | undefined): string | undefined {
  * has a value, so a conforming plugin is `running` rather than `needs-setup`. The agent files in
  * the `agents/` directory of the plugin's `content` are layered beneath an empty owner directory
  * as the plugin's read-only layer, so a file naming a contribution the plugin does not hold is
- * reported on `plugins.list()` as `reference-unresolved`. Models are scripted: nothing calls a
+ * reported on `plugins.list()` as `reference-unresolved`. The plugin is enabled whatever its
+ * `enabledByDefault`, and every other way a shipped file can be invalid is on `agents.list()`. Models are scripted: nothing calls a
  * provider. The `workflows/` and `skills/` directories of `content` are not loaded.
  *
  * Call `dispose` when the test ends.
@@ -78,13 +81,18 @@ export async function createPluginTestHost(
         get: async (key) => `test-secret:${key}`,
         watch: () => () => {},
       },
-      ...(options.configuration === undefined
-        ? {}
-        : { pluginConfiguration: { [plugin.name]: { configuration: options.configuration } } }),
+      // Enabled outright: a plugin that is off by default is still the plugin under test.
+      pluginConfiguration: {
+        [plugin.name]: {
+          enabled: true,
+          ...(options.configuration === undefined ? {} : { configuration: options.configuration }),
+        },
+      },
     });
     return {
       bureau,
       plugins: bureau.plugins,
+      agents: bureau.agents,
       async dispose() {
         try {
           await bureau.dispose();

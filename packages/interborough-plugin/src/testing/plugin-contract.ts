@@ -23,6 +23,18 @@ export interface PluginTestHostListing {
   readonly problems: readonly { readonly code: string }[];
 }
 
+/** One agent in the host's agent listing, as far as the contract reads it; Bureau's `AgentListing` satisfies it. */
+export interface PluginTestHostAgent {
+  /** The agent's identifier; a file a plugin ships is `plugin:name`. */
+  readonly id: string;
+  /** Whether the agent can run. */
+  readonly state: 'ready' | 'invalid';
+  /** The plugin that ships the agent, for a file of a plugin's read-only layer. */
+  readonly plugin?: string | undefined;
+  /** Why an `invalid` agent cannot run. */
+  readonly problem?: { readonly code: string; readonly message: string } | undefined;
+}
+
 /** A host with one plugin loaded, as far as the contract reads it; Bureau's `Bureau` satisfies it. */
 export interface PluginTestHost {
   /** The plugins the host was given. */
@@ -31,6 +43,11 @@ export interface PluginTestHost {
     list(): Promise<readonly PluginTestHostListing[]>;
     /** Settles once every running plugin's `afterStart` has settled. */
     ready(): Promise<void>;
+  };
+  /** The agents the host lists, including every file the plugin ships. */
+  readonly agents: {
+    /** Every agent, code-defined and file-based, ready or invalid. */
+    list(): readonly PluginTestHostAgent[];
   };
   /** Stops the host and removes whatever it created. */
   dispose(): Promise<void>;
@@ -52,6 +69,12 @@ export interface PluginContractOptions {
   readonly createHost: CreatePluginTestHost;
 }
 
+/** What the contract reads once the host is up: the plugin's listing and the agents the host lists. */
+interface StartedHost {
+  readonly found: PluginTestHostListing;
+  readonly agents: readonly PluginTestHostAgent[];
+}
+
 interface ContractCheck {
   readonly name: string;
   /** The problem the check found, or `undefined` when the plugin passes it. */
@@ -68,15 +91,17 @@ function contractRun(
   options: PluginContractOptions,
 ): { checks: readonly ContractCheck[]; dispose(): Promise<void> } {
   let host: Promise<PluginTestHost> | undefined;
-  let listing: Promise<PluginTestHostListing | string> | undefined;
-  const started = (): Promise<PluginTestHostListing | string> => {
+  let listing: Promise<StartedHost | string> | undefined;
+  const started = (): Promise<StartedHost | string> => {
     listing ??= (async () => {
       host = options.createHost(plugin);
       const running = await host;
       await running.plugins.ready();
       const listed = await running.plugins.list();
       const found = listed.find((candidate) => candidate.descriptor.name === plugin.name);
-      return found ?? `The host does not list a plugin named "${plugin.name}".`;
+      return found === undefined
+        ? `The host does not list a plugin named "${plugin.name}".`
+        : { found, agents: running.agents.list() };
     })();
     return listing;
   };
@@ -112,19 +137,43 @@ function contractRun(
     {
       name: 'loads into a host and runs',
       run: async () => {
-        const found = await started();
-        if (typeof found === 'string') return found;
-        return found.status === 'running'
-          ? undefined
-          : `The plugin is "${found.status}", not "running".`;
+        const result = await started();
+        if (typeof result === 'string') return result;
+        const { status } = result.found;
+        return status === 'running' ? undefined : `The plugin is "${status}", not "running".`;
       },
     },
     {
       name: 'reports no problems',
       run: async () => {
-        const found = await started();
-        if (typeof found === 'string') return found;
-        return found.problems.length === 0 ? undefined : found.problems.map(problemText).join('; ');
+        const result = await started();
+        if (typeof result === 'string') return result;
+        const { problems } = result.found;
+        return problems.length === 0 ? undefined : problems.map(problemText).join('; ');
+      },
+    },
+    {
+      name: 'ships only valid agent files',
+      run: async () => {
+        const result = await started();
+        if (typeof result === 'string') return undefined;
+        // An unknown tool or an unresolved reference is already reported, by name, as a plugin
+        // problem; every other way a file can be invalid is reported here.
+        const invalid = result.agents.filter(
+          ({ plugin: shippedBy, state, problem }) =>
+            shippedBy === plugin.name &&
+            state === 'invalid' &&
+            problem?.code !== 'unknown-tool' &&
+            problem?.code !== 'reference-unresolved',
+        );
+        return invalid.length === 0
+          ? undefined
+          : invalid
+              .map(
+                ({ id, problem }) =>
+                  `The agent "${id}" is invalid: ${problem?.code ?? 'unknown'} (${problem?.message ?? 'no reason given'}).`,
+              )
+              .join(' ');
       },
     },
   ];
