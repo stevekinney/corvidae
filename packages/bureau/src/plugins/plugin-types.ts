@@ -64,6 +64,45 @@ export interface PluginClashParty {
 /** Something wrong with a plugin, by `code`. */
 export type PluginProblem =
   | {
+      /**
+       * A secret the plugin declared is not set. The plugin is `needs-setup`: its contributions are
+       * registered but refuse to run until the secret is saved, which needs no restart.
+       */
+      readonly code: 'secret-missing';
+      /** The declared secret key. */
+      readonly key: string;
+      /**
+       * The contributions that wait for it, by their listed ids: every one the plugin registered,
+       * because a secret declaration does not say which contribution uses it.
+       */
+      readonly contributions: readonly string[];
+    }
+  | {
+      /**
+       * A file the plugin ships names a contribution that is not loaded. The file is `invalid`;
+       * the plugin keeps `running`.
+       */
+      readonly code: 'reference-unresolved';
+      /** The file, by the identifier the catalog lists it under (`plugin:name`). */
+      readonly file: string;
+      /** The id the file names that nothing loaded holds. */
+      readonly id: string;
+    }
+  | {
+      /**
+       * Work recorded against a version of one of the plugin's contributions that is not loaded
+       * was found when this Bureau started. It is never resumed on another version: a pending tool
+       * approval is dropped, and a workflow instance is cancelled with `unresumable`.
+       */
+      readonly code: 'pinned-version-unavailable';
+      /** The contribution, `plugin:name`, without a version. */
+      readonly id: string;
+      /** The version the work recorded. */
+      readonly version: string;
+      /** How many runs waited on that version. */
+      readonly waitingRuns: number;
+    }
+  | {
       /** The configuration does not parse; the plugin is `skipped` and the host starts. */
       readonly code: 'configuration-invalid';
       /** The dotted path of the field the schema refused; empty for the configuration as a whole. */
@@ -116,12 +155,41 @@ export type PluginContributionKind =
   | 'event-formatter'
   | 'code-agent';
 
-/** One contribution a running plugin registered. */
-export interface PluginContributionListing {
+/** One contribution a running plugin registered, as composition records it. */
+export interface PluginContribution {
   /** Its kind. */
   readonly kind: PluginContributionKind;
   /** `plugin:name`, as a file names it; a tool's id carries its version, `plugin:name@version`. */
   readonly id: string;
+}
+
+/**
+ * What names one contribution now, counted afresh on every `plugins.list()`. A tool is matched
+ * without its version, since a file names `plugin:name`.
+ */
+export interface PluginContributionReferences {
+  /**
+   * The ready agents whose definition names it: a tool in a file's or a code agent's `tools`, a
+   * guardrail in a file's `guardrails`, a run hook set in a file's `hooks`. No other kind is named
+   * by an agent, so it counts none.
+   */
+  readonly agents: number;
+  /**
+   * The agent schedules, paused or active, whose agent is this contribution (a code agent) or one
+   * of the agents counted in `agents`. None without a durable engine.
+   */
+  readonly schedules: number;
+  /**
+   * The runs with a pending review (`bureau.reviews.list()`) that is an approval of this tool, or
+   * whose agent is this contribution (a code agent) or one of the agents counted in `agents`.
+   */
+  readonly waitingRuns: number;
+}
+
+/** One contribution a running plugin registered, with what names it now. */
+export interface PluginContributionListing extends PluginContribution {
+  /** What names it now. */
+  readonly references: PluginContributionReferences;
 }
 
 /** What `plugins.list()` reports of a descriptor: never its schema, its functions or a secret's value. */
@@ -153,7 +221,7 @@ export interface PluginListing {
   /** What is wrong with it, empty when nothing is. */
   readonly problems: readonly PluginProblem[];
   /**
-   * What it registered; empty unless it is `running`. A contribution whose option the host did not
+   * What it registered; empty unless it is `running` or `needs-setup`. A contribution whose option the host did not
    * give (`hooks` for a hook action kind, `onlineEvals` for an eval judge, a `memory` factory for an
    * embedder or memory detector) is not registered, and is not listed.
    */
@@ -162,8 +230,17 @@ export interface PluginListing {
 
 /** `bureau.plugins`: the plugins the Bureau was given, in load order. */
 export interface BureauPlugins {
-  /** Every plugin, in load order, as it stands now. */
-  list(): readonly PluginListing[];
+  /**
+   * Every plugin, in load order, as it stands now. Each contribution's `references` are counted
+   * on every call from the agents, schedules and pending reviews as they stand, never cached.
+   */
+  list(): Promise<readonly PluginListing[]>;
+  /**
+   * The names of the plugins whose contributions are registered (`running` or `needs-setup` in
+   * the listing), in load order. Fixed once the Bureau is built, and read without counting
+   * anything, for a caller that needs only the names.
+   */
+  registered(): readonly string[];
   /** Settles once every running plugin's `afterStart` has settled. Never rejects. */
   ready(): Promise<void>;
 }

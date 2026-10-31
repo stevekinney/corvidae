@@ -29,8 +29,9 @@ export interface PluginEvent {
   /** The event's payload. */
   readonly payload: unknown;
   /**
-   * The plugin whose contribution emitted the event. Absent on an event from Bureau core. It is
-   * the event's own field, apart from the payload: a payload key named `source` is the kind's own.
+   * The plugin that caused the event through its host API, such as the `schedule.created` of a
+   * schedule it created. Absent on an event from Bureau core. It is the event's own field, apart
+   * from the payload: a payload key named `source` is the kind's own.
    */
   readonly source?: string;
 }

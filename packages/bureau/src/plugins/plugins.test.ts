@@ -72,7 +72,7 @@ describe('plugin composition', () => {
       pluginConfiguration: { strict: { configuration: { limit: 'ten' } } },
     });
 
-    const [strictListing, fineListing] = bureau.plugins.list();
+    const [strictListing, fineListing] = await bureau.plugins.list();
     expect(strictListing?.status).toBe('skipped');
     expect(strictListing?.problems).toEqual([
       { code: 'configuration-invalid', field: 'limit', message: expect.any(String) },
@@ -103,11 +103,9 @@ describe('plugin composition', () => {
       pluginConfiguration: { off: { enabled: false }, core: { enabled: false } },
     });
 
-    expect(bureau.plugins.list().map(({ status }) => status)).toEqual([
-      'disabled',
-      'disabled',
-      'running',
-    ]);
+    const listings = await bureau.plugins.list();
+    expect(listings.map(({ status }) => status)).toEqual(['disabled', 'disabled', 'running']);
+    expect(bureau.plugins.registered()).toEqual(['core']);
     expect(setups).toEqual(['core']);
   });
 
@@ -132,11 +130,12 @@ describe('plugin composition', () => {
     });
 
     expect(setups).toEqual(['/plugins/a-twin']);
-    expect(bureau.plugins.list().map(({ location, status }) => [location, status])).toEqual([
+    const listings = await bureau.plugins.list();
+    expect(listings.map(({ location, status }) => [location, status])).toEqual([
       ['/plugins/a-twin', 'running'],
       ['/plugins/b-twin', 'skipped'],
     ]);
-    expect(bureau.plugins.list()[1]?.problems).toEqual([
+    expect(listings[1]?.problems).toEqual([
       {
         code: 'name-clash',
         name: 'twin',
@@ -174,9 +173,15 @@ describe('plugin composition', () => {
     });
 
     // Package plugins first, then folder plugins by folder name.
-    const [first, fourth, second, third] = bureau.plugins.list();
+    const [first, fourth, second, third] = await bureau.plugins.list();
     expect(first?.status).toBe('running');
-    expect(first?.contributions).toEqual([{ kind: 'tool', id: 'first:search@1.0.0' }]);
+    expect(first?.contributions).toEqual([
+      {
+        kind: 'tool',
+        id: 'first:search@1.0.0',
+        references: { agents: 0, schedules: 0, waitingRuns: 0 },
+      },
+    ]);
     // Two plugins' `search` tools never clash: they are `first:search` and `fourth:search`.
     expect(fourth?.status).toBe('running');
     expect(third?.problems).toEqual([
@@ -216,7 +221,7 @@ describe('plugin composition', () => {
       plugins: [entry(twice), entry(formatting('earlier')), entry(formatting('later'))],
     });
 
-    const [twiceListing, earlier, later] = bureau.plugins.list();
+    const [twiceListing, earlier, later] = await bureau.plugins.list();
     expect(twiceListing?.problems).toEqual([
       {
         code: 'name-clash',
@@ -281,7 +286,7 @@ describe('plugin composition', () => {
     const bureau = await start({ plugins: [entry(starting), entry(failing)] });
 
     expect(calls).toEqual([[]]);
-    const [, failingListing] = bureau.plugins.list();
+    const [, failingListing] = await bureau.plugins.list();
     expect(failingListing?.status).toBe('running');
     expect(failingListing?.problems).toEqual([
       { code: 'after-start-failed', message: 'could not reach the service' },
@@ -299,7 +304,8 @@ describe('plugin composition', () => {
     });
     const bureau = await start({ plugins: [entry(broken)] });
 
-    expect(bureau.plugins.list()[0]).toMatchObject({
+    const [brokenListing] = await bureau.plugins.list();
+    expect(brokenListing).toMatchObject({
       status: 'skipped',
       problems: [{ code: 'setup-failed', message: 'no connection' }],
     });
@@ -322,7 +328,7 @@ describe('plugin composition', () => {
     });
     const bureau = await start({ plugins: [entry(long), entry(fits)] });
 
-    const [longListing, fitsListing] = bureau.plugins.list();
+    const [longListing, fitsListing] = await bureau.plugins.list();
     expect(longListing).toMatchObject({
       status: 'skipped',
       problems: [
@@ -382,17 +388,18 @@ describe('plugin composition', () => {
     });
 
     expect(read).toEqual([SECRET, SECRET, SECRET]);
-    const serialized = JSON.stringify(bureau.plugins.list());
+    const serialized = JSON.stringify(await bureau.plugins.list());
     expect(serialized).not.toContain(SECRET);
     // A setup or afterStart that quotes a secret in its error is reported with the value removed.
-    const [, leakyListing, lateListing] = bureau.plugins.list();
+    const [, leakyListing, lateListing] = await bureau.plugins.list();
     expect(leakyListing?.problems).toEqual([
       { code: 'setup-failed', message: 'rejected key [redacted] by the service' },
     ]);
     expect(lateListing?.problems).toEqual([
       { code: 'after-start-failed', message: 'lost [redacted] after start' },
     ]);
-    expect(bureau.plugins.list()[0]?.descriptor).toEqual({
+    const [keyedListing] = await bureau.plugins.list();
+    expect(keyedListing?.descriptor).toEqual({
       name: 'keyed',
       version: '1.0.0',
       description: 'Reads its key.',
@@ -415,7 +422,8 @@ describe('plugin composition', () => {
       }),
     });
     const bureau = await start({ plugins: [entry(routing)], decisions: { model: 'kit:router' } });
-    expect(bureau.plugins.list()[0]?.status).toBe('running');
+    const [routingListing] = await bureau.plugins.list();
+    expect(routingListing?.status).toBe('running');
 
     const refused = await rejectionOf(
       createBureau<AgentDefinitions>({

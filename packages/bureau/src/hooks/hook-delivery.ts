@@ -102,6 +102,11 @@ export interface HookDeliveryDependencies {
   }) => Promise<void>;
   /** Reports a failure to write a record; never carries a secret. */
   readonly diagnose: (message: string, cause?: unknown) => void;
+  /**
+   * COR-1879 — the version of a plugin's hook action kind registered now, which a new delivery of
+   * it pins; `undefined` when the kind is not registered or carries no version.
+   */
+  readonly actionKindVersion?: ((plugin: string, kind: string) => string | undefined) | undefined;
 }
 
 /** One event to deliver. */
@@ -212,14 +217,17 @@ function workOf(
   action: Exclude<HookRecord['action'], { readonly type: 'webhook' }>,
   hook: HookRecord,
   event: HookEventToDeliver,
+  actionKindVersion: HookDeliveryDependencies['actionKindVersion'],
 ): HookDeliveryWork {
   if (action.type === 'plugin') {
+    const version = actionKindVersion?.(action.plugin, action.kind);
     return {
       type: 'plugin',
       plugin: action.plugin,
       kind: action.kind,
       ...(action.configuration === undefined ? {} : { configuration: action.configuration }),
       event: pluginEventOf(event),
+      ...(version === undefined ? {} : { version }),
     };
   }
   if (action.type === 'start-workflow') {
@@ -602,7 +610,7 @@ export function createHookDeliveries(dependencies: HookDeliveryDependencies): Ho
             }
           : {
               ...base,
-              work: withSkip(workOf(action, hook, event), skip),
+              work: withSkip(workOf(action, hook, event, dependencies.actionKindVersion), skip),
               maxAttempts: engine.maxAttempts,
             };
       await store.createDelivery(record);

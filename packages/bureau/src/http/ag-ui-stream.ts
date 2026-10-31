@@ -87,7 +87,7 @@ export type AgUiStreamBureau = Pick<Bureau, 'frames' | 'children' | 'surfaces'> 
   readonly internals: Pick<BureauInternals, 'whenTaskRecorded'>;
 } & {
   /** The plugins whose tools a call names `plugin__tool` (COR-1879); none when absent. */
-  readonly plugins?: Pick<Bureau['plugins'], 'list'> | undefined;
+  readonly plugins?: Pick<Bureau['plugins'], 'registered'> | undefined;
 };
 
 export type AgUiStreamEnvironment = {
@@ -393,14 +393,8 @@ export function openRunStream(
     nativeRunId: request.nativeRunId,
     sessionId: request.threadId,
     now: () => runtime.clock.now(),
-    toolCallName: pluginToolCallName(
-      () =>
-        new Set(
-          (bureau.plugins?.list() ?? [])
-            .filter((plugin) => plugin.status === 'running')
-            .map((plugin) => plugin.descriptor.name),
-        ),
-    ),
+    // A plugin that needs setup has its tools registered too, so its calls carry `plugin:name`.
+    toolCallName: pluginToolCallName(() => new Set(bureau.plugins?.registered() ?? [])),
   };
   const liveFeed =
     request.child === undefined && runIsGoing(bureau, request.nativeRunId)

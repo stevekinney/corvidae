@@ -226,9 +226,12 @@ describe('composePlugins', () => {
     expect([...(options.agentContributions?.guardrails.keys() ?? [])]).toEqual(['kit:scan']);
     expect([...(options.agentContributions?.runHooks.keys() ?? [])]).toEqual(['kit:audit']);
     expect(Object.keys(options.decisions?.models ?? {})).toEqual(['kit:router']);
-    expect(options.hooks?.actionKinds?.map(({ plugin, kind }) => `${plugin}/${kind.name}`)).toEqual(
-      ['kit/page'],
-    );
+    // A delivery of the kind pins the plugin's version, since the kind declares none.
+    expect(
+      options.hooks?.actionKinds?.map(
+        ({ plugin, kind, version }) => `${plugin}/${kind.name}@${String(version)}`,
+      ),
+    ).toEqual(['kit/page@1.2.0']);
     expect(options.onlineEvals?.judges.map(({ name }) => name)).toEqual(['kit:judge']);
     expect(Object.keys(options.agents ?? {})).toEqual(['kit:writer']);
   });
