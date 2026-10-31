@@ -1829,6 +1829,8 @@ export const MEMORY_COPY = {
   loadMore: 'Load more',
   loading: 'Loading memories',
   listFailed: 'The memories could not be loaded.',
+  /** Under an open memory the list or search does not hold, which the list leads with. */
+  pinnedNote: 'Open now, not in this list',
   noContent: 'This memory has no text.',
   relevance: 'Relevance',
   /** How many memories the agent has; `more` is true when the list has pages left to load. */
@@ -2048,6 +2050,12 @@ export const MEMORY_COPY = {
       label: 'Corrected memory',
       submit: 'Save correction',
       cancel: 'Cancel',
+    },
+    /** The page-level report of a correction that was refused: its title leads, then the words the person wrote. */
+    notSaved: {
+      title: 'The correction was not saved',
+      draftLabel: 'What you wrote',
+      editAgain: 'Edit it again',
     },
     saved: {
       title: 'Memory corrected',

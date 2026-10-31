@@ -23,11 +23,13 @@
     query: string;
     /** The search's relevance for this memory, or `null` when the list is not a search. */
     score: number | null;
+    /** True for the open memory the list or search does not hold, which leads the list. */
+    pinned?: boolean;
     selected: boolean;
     onOpen: () => void;
   };
 
-  let { agentId, id, memory, query, score, selected, onOpen }: Props = $props();
+  let { agentId, id, memory, query, score, pinned = false, selected, onOpen }: Props = $props();
 
   const read = createQuery(
     () => ({
@@ -60,6 +62,9 @@
   {#snippet meta()}
     {#if shown !== undefined}
       <span class="ib-memory__facts">
+        {#if pinned}
+          <span data-pinned>{MEMORY_COPY.pinnedNote}</span>
+        {/if}
         {#if score !== null}
           <span>{MEMORY_COPY.relevance}: {score.toFixed(2)}</span>
         {/if}

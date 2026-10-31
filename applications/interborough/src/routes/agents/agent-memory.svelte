@@ -35,6 +35,7 @@
     MEMORY_PAGE_SIZE,
     searchMemories,
     type Memory,
+    type MemoryFault,
   } from '../../lib/memory-client.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
@@ -42,7 +43,12 @@
   import MemoryChanges, { type ForgetOutcome } from './memory-changes.svelte';
   import MemoryDetail from './memory-detail.svelte';
   import MemoryGovernance from './memory-governance.svelte';
-  import { matchesKind, matchesQuery, type KindFilter } from './memory-presentation.ts';
+  import {
+    matchesKind,
+    matchesQuery,
+    refusalWords,
+    type KindFilter,
+  } from './memory-presentation.ts';
   import MemoryRow from './memory-row.svelte';
 
   /** The most memories a search ranks: the server's own ceiling, so a match is rarely left out. */
@@ -56,6 +62,12 @@
   let kindFilter = $state<KindFilter>('all');
   let selectedId = $state<string | null>(null);
   let notice = $state<'corrected' | undefined>(undefined);
+  /** A correction that was refused, with the text that was sent, until it is dismissed or retried. */
+  let refused = $state<
+    { readonly id: string; readonly fault: MemoryFault; readonly content: string } | undefined
+  >(undefined);
+  /** The text of a refused correction the person chose to edit again, for the memory it is for. */
+  let resume = $state<{ readonly id: string; readonly content: string } | undefined>(undefined);
   let outcome = $state<ForgetOutcome | undefined>(undefined);
   /** What is known of each memory's legal hold, which stays known when a receipt goes. */
   const holds = new SvelteMap<string, 'held' | 'free'>();
@@ -93,6 +105,8 @@
     readonly id: string;
     readonly memory: Memory | undefined;
     readonly score: number | null;
+    /** The open memory the list does not hold: it leads the list without being one of its results. */
+    readonly pinned: boolean;
   };
   type MoreRowData = { readonly kind: 'more'; readonly id: string };
   type ListRow = MemoryRowData | MoreRowData;
@@ -108,13 +122,19 @@
         listing.data?.pages,
         (page) => page.memories,
         (memory) => memory.id,
-      ).map((memory) => ({ kind: 'memory', id: memory.id, memory, score: null }));
+      ).map((memory) => ({ kind: 'memory', id: memory.id, memory, score: null, pinned: false }));
     }
     // The server ranks every memory and has no floor, so its order is kept and its score is not a
     // verdict: a memory is a match when it holds a word of the query, as the marks show.
     return (search.data ?? [])
       .filter((hit) => matchesQuery(hit.memory.content, applied))
-      .map((hit) => ({ kind: 'memory', id: hit.memory.id, memory: hit.memory, score: hit.score }));
+      .map((hit) => ({
+        kind: 'memory',
+        id: hit.memory.id,
+        memory: hit.memory,
+        score: hit.score,
+        pinned: false,
+      }));
   });
   const shown = $derived(
     kindFilter === 'all'
@@ -128,7 +148,7 @@
   const pinned = $derived.by<MemoryRowData[]>(() => {
     if (selectedId === null || shown.some((row) => row.id === selectedId)) return [];
     const known = base.find((row) => row.id === selectedId);
-    return [{ kind: 'memory', id: selectedId, memory: known?.memory, score: null }];
+    return [{ kind: 'memory', id: selectedId, memory: known?.memory, score: null, pinned: true }];
   });
   const items = $derived<ListRow[]>([
     ...pinned,
@@ -178,11 +198,28 @@
   /** A correction landed: say so, and follow the person to it unless they moved on meanwhile. */
   function corrected(replaced: string, correction: Memory): void {
     notice = 'corrected';
+    if (refused?.id === replaced) refused = undefined;
+    resume = undefined;
     if (selectedId === replaced) selectedId = correction.id;
+  }
+
+  /** A correction was refused: say so here, because the panel that asked is gone once the person moves on. */
+  function correctionFailed(id: string, fault: MemoryFault, content: string): void {
+    notice = undefined;
+    refused = { id, fault, content };
+  }
+
+  /** Opens the memory a refused correction was for, with the refused text back in its form. */
+  function editAgain(failure: { readonly id: string; readonly content: string }): void {
+    notice = undefined;
+    resume = { id: failure.id, content: failure.content };
+    selectedId = failure.id;
+    refused = undefined;
   }
 
   function open(id: string): void {
     notice = undefined;
+    resume = undefined;
     selectedId = id;
   }
 </script>
@@ -192,6 +229,36 @@
     <Alert variant="success" dismissible onDismiss={() => (notice = undefined)}>
       <p class="ib-memory__alert-title">{MEMORY_COPY.correct.saved.title}</p>
       <p class="ib-memory__alert-body">{MEMORY_COPY.correct.saved.description}</p>
+    </Alert>
+  {/if}
+
+  {#if refused !== undefined}
+    {@const failure = refused}
+    {@const words = refusalWords(refused.fault)}
+    <Alert variant="danger" dismissible onDismiss={() => (refused = undefined)}>
+      <p class="ib-memory__alert-title" data-correction-refusal={refused.fault.kind}>
+        {MEMORY_COPY.correct.notSaved.title}
+      </p>
+      <p class="ib-memory__alert-body">{words.title}</p>
+      {#if words.description !== ''}
+        <p class="ib-memory__alert-body">{words.description}</p>
+      {/if}
+      <p class="ib-memory__alert-body">{MEMORY_COPY.correct.notSaved.draftLabel}</p>
+      <blockquote class="ib-memory__draft" data-correction-draft>{refused.content}</blockquote>
+      {#if selectedId !== refused.id}
+        <Button variant="secondary" size="sm" onclick={() => editAgain(failure)}
+          >{MEMORY_COPY.correct.notSaved.editAgain}</Button
+        >
+      {/if}
+    </Alert>
+  {/if}
+
+  {#if active.isError}
+    <Alert variant="danger">
+      <p class="ib-memory__alert-title">{MEMORY_COPY.listFailed}</p>
+      <Button variant="secondary" size="sm" onclick={() => void active.refetch()}
+        >{RETRY_LABEL}</Button
+      >
     </Alert>
   {/if}
 
@@ -210,6 +277,46 @@
     bind:pending={governancePending}
     onQuarantined={gone}
   />
+
+  <!-- A kind that hides the search hits is not "no match": the hits are there. -->
+  {#snippet emptiness()}
+    {#if active.isPending}
+      <div role="status" aria-busy="true" aria-label={MEMORY_COPY.loading}>
+        <Skeleton height="1.5rem" width="50%" />
+        <Skeleton height="6rem" />
+      </div>
+    {:else if active.isError}
+      <!-- The fault is reported above the list, so this is not read as an empty agent. -->
+    {:else if kindFilter !== 'all' && (applied === '' || base.length > 0)}
+      <EmptyState
+        kind="filtered"
+        size="compact"
+        headingLevel={2}
+        title={MEMORY_COPY.noKind.title}
+        description={MEMORY_COPY.noKind.description}
+        clearFiltersLabel={MEMORY_COPY.clearMatch}
+        onClearFilters={clearAll}
+      />
+    {:else if applied !== ''}
+      <EmptyState
+        kind="filtered"
+        size="compact"
+        headingLevel={2}
+        title={MEMORY_COPY.noMatch.title(applied)}
+        description={MEMORY_COPY.noMatch.description}
+        clearFiltersLabel={MEMORY_COPY.clearMatch}
+        onClearFilters={clearAll}
+      />
+    {:else}
+      <EmptyState
+        kind="done"
+        size="compact"
+        headingLevel={2}
+        title={MEMORY_COPY.nothingLeft.title}
+        description={MEMORY_COPY.nothingLeft.description}
+      />
+    {/if}
+  {/snippet}
 
   <div class="ib-memory__frame" data-shortcut-region="list-detail">
     <ListDetail
@@ -255,6 +362,9 @@
           value={kindFilter}
           onchange={(event) => (kindFilter = filterNamed(event.currentTarget.value))}
         />
+        {#if pinned.length > 0 && shown.length === 0}
+          <div data-testid="memory-pinned-status">{@render emptiness()}</div>
+        {/if}
         {#if loaded > 0}
           <p class="ib-memory__count" data-testid="memory-count">
             {MEMORY_COPY.count(loaded, listing.hasNextPage)}
@@ -292,53 +402,14 @@
             memory={row.memory}
             query={applied}
             score={row.score}
+            pinned={row.pinned}
             selected={context.selected}
             onOpen={context.open}
           />
         {/if}
       {/snippet}
       {#snippet listEmpty()}
-        {#if active.isPending}
-          <div role="status" aria-busy="true" aria-label={MEMORY_COPY.loading}>
-            <Skeleton height="1.5rem" width="50%" />
-            <Skeleton height="6rem" />
-          </div>
-        {:else if active.isError}
-          <Alert variant="danger">
-            <p class="ib-memory__alert-title">{MEMORY_COPY.listFailed}</p>
-            <Button variant="secondary" size="sm" onclick={() => void active.refetch()}
-              >{RETRY_LABEL}</Button
-            >
-          </Alert>
-        {:else if applied !== ''}
-          <EmptyState
-            kind="filtered"
-            size="compact"
-            headingLevel={2}
-            title={MEMORY_COPY.noMatch.title(applied)}
-            description={MEMORY_COPY.noMatch.description}
-            clearFiltersLabel={MEMORY_COPY.clearMatch}
-            onClearFilters={clearAll}
-          />
-        {:else if kindFilter !== 'all'}
-          <EmptyState
-            kind="filtered"
-            size="compact"
-            headingLevel={2}
-            title={MEMORY_COPY.noKind.title}
-            description={MEMORY_COPY.noKind.description}
-            clearFiltersLabel={MEMORY_COPY.clearMatch}
-            onClearFilters={clearAll}
-          />
-        {:else}
-          <EmptyState
-            kind="done"
-            size="compact"
-            headingLevel={2}
-            title={MEMORY_COPY.nothingLeft.title}
-            description={MEMORY_COPY.nothingLeft.description}
-          />
-        {/if}
+        {@render emptiness()}
       {/snippet}
       {#snippet detail(row)}
         {#key row.id}
@@ -351,6 +422,8 @@
             onOpen={open}
             onForget={(memory) => changes?.askToForget(memory)}
             onCorrected={corrected}
+            onCorrectionFailed={correctionFailed}
+            resume={resume?.id === row.id ? resume.content : undefined}
             onShare={(memory) => governance?.askToShare(memory)}
             onHold={(id, change) => governance?.changeHold(id, change)}
             onQuarantine={(memory) => governance?.askToQuarantine(memory)}
@@ -411,5 +484,12 @@
 
   .ib-memory__alert-body {
     margin: var(--cinder-space-1) 0 0;
+  }
+
+  .ib-memory__draft {
+    margin: var(--cinder-space-1) 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    user-select: text;
   }
 </style>

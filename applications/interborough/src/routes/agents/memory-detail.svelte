@@ -16,6 +16,8 @@
    * for another. Forgetting and the governance actions belong to the page, which asks the same way
    * wherever it is asked from.
    */
+  import { untrack } from 'svelte';
+
   import {
     Alert,
     Badge,
@@ -45,7 +47,6 @@
     kindOf,
     lineageGroups,
     plainKindOf,
-    refusalWords,
     type LineageField,
   } from './memory-presentation.ts';
 
@@ -63,6 +64,13 @@
     onForget: (memory: Memory) => void;
     /** Called once a correction landed: the memory it replaced, and the correction. */
     onCorrected: (replaced: string, correction: Memory) => void;
+    /**
+     * Called when a correction was refused: the memory it was for, the fault, and the text that was
+     * sent. The page reports it, because this panel is gone if the person moves to another memory.
+     */
+    onCorrectionFailed: (replaced: string, fault: MemoryFault, content: string) => void;
+    /** The text of a refused correction to edit again, which opens this memory in its form. */
+    resume?: string | undefined;
     onShare: (memory: Memory) => void;
     onHold: (id: string, change: 'place' | 'release') => void;
     onQuarantine: (memory: Memory) => void;
@@ -77,6 +85,8 @@
     onOpen,
     onForget,
     onCorrected,
+    onCorrectionFailed,
+    resume,
     onShare,
     onHold,
     onQuarantine,
@@ -93,25 +103,22 @@
     undefined,
   );
 
-  let editing = $state(false);
-  let draft = $state('');
-  let fault = $state<MemoryFault | undefined>(undefined);
+  // A refused correction the person chose to edit again starts this panel in its form.
+  let editing = $state(untrack(() => resume !== undefined));
+  let draft = $state(untrack(() => resume ?? ''));
 
   // The memory a correction is for travels with it, because the panel may be gone by the time it
   // lands (the page mounts one per memory) and its `id` prop then answers for the memory now open.
   const correct = createMutation(() => ({
     mutationFn: (change: { readonly id: string; readonly content: string }) =>
       correctMemory(agentId, change.id, change.content),
-    onMutate: () => {
-      fault = undefined;
-    },
     onSuccess: (result, change) => {
       editing = false;
       void queryClient.invalidateQueries({ queryKey: queryKeys.memory.all(agentId) });
       onCorrected(change.id, result.memory);
     },
-    onError: (error) => {
-      fault = memoryFaultOf(error);
+    onError: (error, change) => {
+      onCorrectionFailed(change.id, memoryFaultOf(error), change.content);
     },
   }));
 
@@ -119,7 +126,6 @@
 
   function startCorrecting(memory: Memory): void {
     draft = memory.content;
-    fault = undefined;
     editing = true;
   }
 
@@ -230,17 +236,6 @@
     {#if editing}
       <form class="ib-memory-detail__edit" onsubmit={submitCorrection}>
         <p class="ib-memory-detail__alert-body">{MEMORY_COPY.correct.edit.description}</p>
-        {#if fault !== undefined}
-          {@const words = refusalWords(fault)}
-          <Alert variant="danger">
-            <p class="ib-memory-detail__alert-title" data-correction-refusal={fault.kind}>
-              {words.title}
-            </p>
-            {#if words.description !== ''}
-              <p class="ib-memory-detail__alert-body">{words.description}</p>
-            {/if}
-          </Alert>
-        {/if}
         <Textarea
           id="ib-memory-correction"
           label={MEMORY_COPY.correct.edit.label}

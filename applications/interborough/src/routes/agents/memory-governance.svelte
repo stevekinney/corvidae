@@ -58,8 +58,13 @@
   let quarantineOpen = $state(false);
   let reason = $state('');
 
-  function done(title: string, description: string): void {
-    notice = { kind: 'done', title, description: `${description} ${words.recorded}` };
+  /** Says what a change came to; the ledger line is only true of a change that was made. */
+  function done(title: string, description: string, changed: boolean): void {
+    notice = {
+      kind: 'done',
+      title,
+      description: changed ? `${description} ${words.recorded}` : description,
+    };
   }
 
   function failed(error: unknown): void {
@@ -83,7 +88,7 @@
           : result.changed
             ? outcome.revoked
             : outcome.notShared;
-      done(text.title, text.description(result.granteeOwnerId));
+      done(text.title, text.description(result.granteeOwnerId), result.changed);
     },
     onError: failed,
   }));
@@ -102,7 +107,7 @@
           : result.changed
             ? outcome.released
             : outcome.notHeld;
-      done(text.title, text.description);
+      done(text.title, text.description, result.changed);
       // A release lets a deletion that was waiting on the hold go ahead: read the lists again.
       void queryClient.invalidateQueries({ queryKey: queryKeys.memory.all(agentId) });
     },
@@ -122,6 +127,7 @@
         typeof outcome.description === 'function'
           ? outcome.description(result.affected)
           : outcome.description,
+        result.changed,
       );
       void queryClient.invalidateQueries(memoryListingsFilter(agentId));
       onQuarantined(result.id);
@@ -136,6 +142,7 @@
       done(
         words.export.outcome.title,
         words.export.outcome.description(result.memories.length, result.exportId),
+        true,
       );
     },
     onError: failed,
@@ -205,13 +212,17 @@
     <p class="ib-memory-governance__title" data-governance-outcome>{notice.title}</p>
     <p class="ib-memory-governance__body">{notice.description}</p>
   </Alert>
-{:else if notice?.kind === 'failed'}
-  {@const refused = refusal(notice.fault)}
-  <Alert variant="danger" dismissible onDismiss={() => (notice = undefined)}>
-    <p class="ib-memory-governance__title">{words.failed}</p>
-    <p class="ib-memory-governance__body">{refused.description || refused.title}</p>
-  </Alert>
+{:else if notice?.kind === 'failed' && !shareOpen && !quarantineOpen}
+  {@render refused(notice.fault)}
 {/if}
+
+{#snippet refused(fault: MemoryFault)}
+  {@const refusedWords = refusal(fault)}
+  <Alert variant="danger" dismissible onDismiss={() => (notice = undefined)}>
+    <p class="ib-memory-governance__title" data-governance-refusal={fault.kind}>{words.failed}</p>
+    <p class="ib-memory-governance__body">{refusedWords.description || refusedWords.title}</p>
+  </Alert>
+{/snippet}
 
 <Modal bind:open={shareOpen} title={words.share.dialog.title}>
   <form
@@ -224,6 +235,9 @@
     <p class="ib-memory-governance__body">
       {words.share.dialog.description(excerpt(sharing?.content ?? ''))}
     </p>
+    {#if notice?.kind === 'failed'}
+      {@render refused(notice.fault)}
+    {/if}
     <Input id="ib-memory-grantee" label={words.share.dialog.label} bind:value={grantee} />
     <div class="ib-memory-governance__actions">
       <Button variant="secondary" onclick={() => (shareOpen = false)}
@@ -247,6 +261,9 @@
     <p class="ib-memory-governance__body">
       {words.quarantine.dialog.description(excerpt(quarantining?.content ?? ''))}
     </p>
+    {#if notice?.kind === 'failed'}
+      {@render refused(notice.fault)}
+    {/if}
     <Textarea
       id="ib-memory-quarantine-reason"
       label={words.quarantine.dialog.reasonLabel}

@@ -886,7 +886,7 @@ describe('correcting a memory', () => {
   });
 
   test('words the server’s refusal of a memory that was already corrected', async () => {
-    const { detail } = await correctWith(() => {
+    const { view, detail } = await correctWith(() => {
       throw new StubFault('Conflict', 409, 'Superseded.', { reason: 'memory-superseded' });
     });
 
@@ -894,21 +894,23 @@ describe('correcting a memory', () => {
 
     await waitFor(() =>
       expect(
-        detail.querySelector('[data-correction-refusal]')?.getAttribute('data-correction-refusal'),
+        view.container
+          .querySelector('[data-correction-refusal]')
+          ?.getAttribute('data-correction-refusal'),
       ).toBe('superseded'),
     );
-    expect(detail.textContent).toContain(MEMORY_COPY.correct.refusal.superseded.title);
+    expect(view.container.textContent).toContain(MEMORY_COPY.correct.refusal.superseded.title);
   });
 
   test('words the refusal of a correction it does not admit, and keeps what was typed', async () => {
-    const { detail } = await correctWith(() => {
+    const { view, detail } = await correctWith(() => {
       throw new StubFault('Unprocessable', 422, 'No.', { reason: 'memory-successor-not-admitted' });
     });
 
     await save(detail);
 
     await waitFor(() =>
-      expect(detail.textContent).toContain(
+      expect(view.container.textContent).toContain(
         MEMORY_COPY.correct.refusal['successor-not-admitted'].title,
       ),
     );
@@ -926,11 +928,11 @@ describe('correcting a memory', () => {
         MEMORY_COPY.correct.refusal.other.title,
       ],
     ] as const) {
-      const { detail } = await correctWith(() => {
+      const { view, detail } = await correctWith(() => {
         throw fault;
       });
       await save(detail);
-      await waitFor(() => expect(detail.textContent).toContain(expected));
+      await waitFor(() => expect(view.container.textContent).toContain(expected));
       cleanup();
       stub?.restore();
     }
@@ -1359,6 +1361,338 @@ describe('exporting the memories', () => {
     await fireEvent.click(view.getByRole('button', { name: MEMORY_COPY.govern.export.action }));
 
     await view.findByText(MEMORY_COPY.govern.failed);
+  });
+});
+
+describe('a fault the list or search met', () => {
+  const broke = () => new StubFault('EngineFailure', 500, 'The server broke.');
+
+  test('says a failed Load more, and keeps the memories already read', async () => {
+    bureau({
+      'bureau.memory.list': (params) => {
+        if (params['offset'] === 0) return { memories: [AISLE], nextOffset: 1 };
+        throw broke();
+      },
+    });
+    const view = open();
+    await view.findByText(AISLE.content);
+
+    await fireEvent.click(view.getByRole('button', { name: MEMORY_COPY.loadMore }));
+
+    await view.findByText(MEMORY_COPY.listFailed);
+    expect(view.queryByText(AISLE.content)).not.toBeNull();
+    expect(view.queryByRole('button', { name: RETRY_LABEL })).not.toBeNull();
+  });
+
+  test('says a refetch that failed after a change, while the memories read before stay listed', async () => {
+    let reads = 0;
+    bureau({
+      'bureau.memory.list': () => {
+        reads += 1;
+        if (reads > 1) throw broke();
+        return { memories: [AISLE, WINDOW], nextOffset: null };
+      },
+      'bureau.memory.hold': (params) => ({ id: params['id'], changed: true, legalHold: 'held' }),
+      'bureau.memory.hold.release': (params) => ({
+        id: params['id'],
+        changed: true,
+        legalHold: 'released',
+      }),
+    });
+    const view = open();
+    const detail = await openDetails(view, AISLE.content);
+    await fireEvent.click(
+      within(detail).getByRole('button', { name: MEMORY_COPY.govern.hold.place }),
+    );
+    await view.findByText(MEMORY_COPY.govern.hold.outcome.placed.title);
+    expect(view.queryByText(MEMORY_COPY.listFailed)).toBeNull();
+
+    await fireEvent.click(
+      within(detail).getByRole('button', { name: MEMORY_COPY.govern.hold.release }),
+    );
+
+    await view.findByText(MEMORY_COPY.listFailed);
+    expect(view.queryByText(WINDOW.content)).not.toBeNull();
+  });
+
+  test('says a failed search while a memory is open, and does not read the open memory as a result', async () => {
+    bureau({
+      'bureau.memory.search': () => {
+        throw broke();
+      },
+    });
+    const view = open();
+    await openDetails(view, AISLE.content);
+
+    await fireEvent.input(view.getByLabelText(MEMORY_COPY.searchLabel), {
+      target: { value: 'seats' },
+    });
+
+    await view.findByText(MEMORY_COPY.listFailed);
+    // The open memory still leads the list, and says it is not one of its results.
+    expect(rowOf(view, AISLE.id).textContent).toContain(MEMORY_COPY.pinnedNote);
+    expect(view.queryByText(MEMORY_COPY.noMatch.title('seats'))).toBeNull();
+  });
+
+  test('says a search is loading while a memory is open, rather than listing the open memory alone', async () => {
+    bureau({ 'bureau.memory.search': () => new Promise(() => {}) });
+    const view = open();
+    await openDetails(view, AISLE.content);
+
+    await fireEvent.input(view.getByLabelText(MEMORY_COPY.searchLabel), {
+      target: { value: 'seats' },
+    });
+
+    const list = view.getByRole('region', { name: MEMORY_COPY.listLabel });
+    await waitFor(() =>
+      expect(within(list).queryByRole('status', { name: MEMORY_COPY.loading })).not.toBeNull(),
+    );
+    expect(rowOf(view, AISLE.id).textContent).toContain(MEMORY_COPY.pinnedNote);
+  });
+
+  test('says no memory matches while a memory is open, and does not count the open memory as a match', async () => {
+    bureau({ 'bureau.memory.search': () => ({ hits: [{ memory: WINDOW, score: 0.2 }] }) });
+    const view = open();
+    await openDetails(view, AISLE.content);
+
+    await fireEvent.input(view.getByLabelText(MEMORY_COPY.searchLabel), {
+      target: { value: 'zebra' },
+    });
+
+    await view.findByText(MEMORY_COPY.noMatch.title('zebra'), { selector: 'h2' });
+    expect(rowOf(view, AISLE.id).textContent).toContain(MEMORY_COPY.pinnedNote);
+    expect(rowOf(view, AISLE.id).textContent).not.toContain(MEMORY_COPY.relevance);
+    expect(view.queryByTestId('memory-match-count')).toBeNull();
+  });
+
+  test('says no loaded memory is of the kind chosen, not that nothing matches, when the kind hides the search hits', async () => {
+    bureau({
+      'bureau.memory.search': () => ({
+        hits: [
+          { memory: AISLE, score: 0.5 },
+          { memory: WINDOW, score: 0.4 },
+        ],
+      }),
+    });
+    const view = open();
+    await view.findByText(AISLE.content);
+
+    await fireEvent.input(view.getByLabelText(MEMORY_COPY.searchLabel), {
+      target: { value: 'seats' },
+    });
+    await view.findByTestId('memory-match-count');
+    await fireEvent.change(view.getByLabelText(MEMORY_COPY.filter.label), {
+      target: { value: 'howTo' },
+    });
+
+    await view.findByText(MEMORY_COPY.noKind.title, { selector: 'h2' });
+    expect(view.queryByText(MEMORY_COPY.noMatch.title('seats'))).toBeNull();
+    expect(textOf(view.getByTestId('memory-match-count'))).toContain('2');
+  });
+});
+
+describe('a correction that was refused', () => {
+  const CORRECTION = 'The user prefers the exit row.';
+
+  test('is reported on the page with the text that was sent when the person moved on, and can be edited again', async () => {
+    let refuse: (error: unknown) => void = () => {};
+    const served = bureau({
+      'bureau.memory.correct': () =>
+        new Promise((_resolve, reject) => {
+          refuse = reject;
+        }),
+    });
+    const view = open();
+    const detail = await openDetails(view, AISLE.content);
+    await fireEvent.click(
+      within(detail).getByRole('button', { name: MEMORY_COPY.correct.iconLabel }),
+    );
+    await fireEvent.input(within(detail).getByLabelText(MEMORY_COPY.correct.edit.label), {
+      target: { value: CORRECTION },
+    });
+    await fireEvent.click(
+      within(detail).getByRole('button', { name: MEMORY_COPY.correct.edit.submit }),
+    );
+    await waitFor(() => expect(served.callsTo('bureau.memory.correct')).toHaveLength(1));
+    // The person moves on to another memory while the correction is being saved.
+    await fireEvent.click(rowOf(view, WINDOW.id));
+    await waitFor(() => expect(router.search.get('memory')).toBe(WINDOW.id));
+    await waitFor(() =>
+      expect(
+        view.container.querySelector(`[data-memory-detail="${AISLE.id}"]`)?.outerHTML ?? null,
+      ).toBeNull(),
+    );
+
+    refuse(new StubFault('Unprocessable', 422, 'No.', { reason: 'memory-successor-not-admitted' }));
+
+    await view.findByText(MEMORY_COPY.correct.notSaved.title);
+    expect(view.container.textContent).toContain(
+      MEMORY_COPY.correct.refusal['successor-not-admitted'].title,
+    );
+    expect(textOf(view.container.querySelector('[data-correction-draft]'))).toBe(CORRECTION);
+    expect(router.search.get('memory')).toBe(WINDOW.id);
+
+    await fireEvent.click(
+      view.getByRole('button', { name: MEMORY_COPY.correct.notSaved.editAgain }),
+    );
+
+    expect(router.search.get('memory')).toBe(AISLE.id);
+    await waitFor(() =>
+      expect(
+        (view.getByLabelText(MEMORY_COPY.correct.edit.label) as HTMLTextAreaElement).value,
+      ).toBe(CORRECTION),
+    );
+    expect(view.queryByText(MEMORY_COPY.correct.notSaved.title)).toBeNull();
+  });
+
+  test('is reported once on the page when the person stayed, and can be dismissed', async () => {
+    bureau({
+      'bureau.memory.correct': () => {
+        throw new StubFault('Conflict', 409, 'Superseded.', { reason: 'memory-superseded' });
+      },
+    });
+    const view = open();
+    const detail = await openDetails(view, AISLE.content);
+    await fireEvent.click(
+      within(detail).getByRole('button', { name: MEMORY_COPY.correct.iconLabel }),
+    );
+    await fireEvent.input(within(detail).getByLabelText(MEMORY_COPY.correct.edit.label), {
+      target: { value: CORRECTION },
+    });
+
+    await fireEvent.click(
+      within(detail).getByRole('button', { name: MEMORY_COPY.correct.edit.submit }),
+    );
+
+    await view.findByText(MEMORY_COPY.correct.notSaved.title);
+    // The panel keeps what was typed, so there is nothing to edit again.
+    expect(view.queryByRole('button', { name: MEMORY_COPY.correct.notSaved.editAgain })).toBeNull();
+    expect(
+      (within(detail).getByLabelText(MEMORY_COPY.correct.edit.label) as HTMLTextAreaElement).value,
+    ).toBe(CORRECTION);
+    await fireEvent.click(view.getByRole('button', { name: /dismiss/i }));
+    expect(view.queryByText(MEMORY_COPY.correct.notSaved.title)).toBeNull();
+  });
+});
+
+describe('what a governance note claims', () => {
+  test('says the ledger records a change that was made, and not one that changed nothing', async () => {
+    bureau({
+      'bureau.memory.hold': (params) => ({ id: params['id'], changed: true, legalHold: 'held' }),
+      'bureau.memory.hold.release': (params) => ({
+        id: params['id'],
+        changed: false,
+        legalHold: 'released',
+      }),
+    });
+    const view = open();
+    const detail = await openDetails(view, AISLE.content);
+
+    await fireEvent.click(
+      within(detail).getByRole('button', { name: MEMORY_COPY.govern.hold.place }),
+    );
+    await view.findByText(MEMORY_COPY.govern.hold.outcome.placed.title);
+    expect(view.container.textContent).toContain(MEMORY_COPY.govern.recorded);
+
+    await fireEvent.click(
+      within(detail).getByRole('button', { name: MEMORY_COPY.govern.hold.release }),
+    );
+    await view.findByText(MEMORY_COPY.govern.hold.outcome.notHeld.title);
+    expect(view.container.textContent).not.toContain(MEMORY_COPY.govern.recorded);
+  });
+
+  test('does not claim a ledger record for a share or a quarantine that changed nothing', async () => {
+    bureau({
+      'bureau.memory.share.revoke': (params) => ({
+        id: params['id'],
+        changed: false,
+        granteeOwnerId: params['granteeOwnerId'],
+        grantedBy: 'me',
+      }),
+      'bureau.memory.quarantine': (params) => ({ id: params['id'], changed: false, affected: 0 }),
+    });
+    const view = open();
+    const detail = await openDetails(view, AISLE.content);
+    await fireEvent.click(
+      within(detail).getByRole('button', { name: MEMORY_COPY.govern.share.action }),
+    );
+    const share = await view.findByRole('dialog', { name: MEMORY_COPY.govern.share.dialog.title });
+    await fireEvent.input(within(share).getByLabelText(MEMORY_COPY.govern.share.dialog.label), {
+      target: { value: 'nobody' },
+    });
+    await fireEvent.click(
+      within(share).getByRole('button', { name: MEMORY_COPY.govern.share.dialog.revoke }),
+    );
+    await view.findByText(MEMORY_COPY.govern.share.outcome.notShared.title);
+    expect(view.container.textContent).not.toContain(MEMORY_COPY.govern.recorded);
+
+    await fireEvent.click(
+      within(detail).getByRole('button', { name: MEMORY_COPY.govern.quarantine.action }),
+    );
+    const quarantine = await view.findByRole('dialog', {
+      name: MEMORY_COPY.govern.quarantine.dialog.title,
+    });
+    await fireEvent.input(
+      within(quarantine).getByLabelText(MEMORY_COPY.govern.quarantine.dialog.reasonLabel),
+      { target: { value: 'Again.' } },
+    );
+    await fireEvent.click(
+      within(quarantine).getByRole('button', {
+        name: MEMORY_COPY.govern.quarantine.dialog.confirm,
+      }),
+    );
+    await view.findByText(MEMORY_COPY.govern.quarantine.outcome.already.title);
+    expect(view.container.textContent).not.toContain(MEMORY_COPY.govern.recorded);
+  });
+
+  test('shows a refused share and a refused quarantine inside the open dialog, not behind it', async () => {
+    bureau({
+      'bureau.memory.share': () => {
+        throw new StubFault('Unprocessable', 422, 'No.', { reason: 'memory-invalid-grantee' });
+      },
+      'bureau.memory.quarantine': () => {
+        throw new StubFault('Forbidden', 403, 'No scope.');
+      },
+    });
+    const view = open();
+    const detail = await openDetails(view, AISLE.content);
+
+    await fireEvent.click(
+      within(detail).getByRole('button', { name: MEMORY_COPY.govern.share.action }),
+    );
+    const share = await view.findByRole('dialog', { name: MEMORY_COPY.govern.share.dialog.title });
+    await fireEvent.input(within(share).getByLabelText(MEMORY_COPY.govern.share.dialog.label), {
+      target: { value: 'me' },
+    });
+    await fireEvent.click(
+      within(share).getByRole('button', { name: MEMORY_COPY.govern.share.dialog.submit }),
+    );
+    await within(share).findByText(MEMORY_COPY.govern.failed);
+    expect(within(share).getByText(MEMORY_COPY.govern.refusal['invalid-grantee'].description));
+    expect(view.getAllByText(MEMORY_COPY.govern.failed)).toHaveLength(1);
+    await fireEvent.click(
+      within(share).getByRole('button', { name: MEMORY_COPY.govern.share.dialog.cancel }),
+    );
+
+    await fireEvent.click(
+      within(detail).getByRole('button', { name: MEMORY_COPY.govern.quarantine.action }),
+    );
+    const quarantine = await view.findByRole('dialog', {
+      name: MEMORY_COPY.govern.quarantine.dialog.title,
+    });
+    // Asking again leaves the last refusal behind.
+    expect(within(quarantine).queryByText(MEMORY_COPY.govern.failed)).toBeNull();
+    await fireEvent.input(
+      within(quarantine).getByLabelText(MEMORY_COPY.govern.quarantine.dialog.reasonLabel),
+      { target: { value: 'Wrong.' } },
+    );
+    await fireEvent.click(
+      within(quarantine).getByRole('button', {
+        name: MEMORY_COPY.govern.quarantine.dialog.confirm,
+      }),
+    );
+    await within(quarantine).findByText(MEMORY_COPY.govern.failed);
+    expect(view.getAllByText(MEMORY_COPY.govern.failed)).toHaveLength(1);
   });
 });
 
