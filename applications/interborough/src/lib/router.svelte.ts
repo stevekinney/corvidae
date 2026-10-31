@@ -156,14 +156,19 @@ class DashboardRouter {
   // The key the outlet mounts the route under, while a navigation asked the page to keep it
   // (`navigate`'s `keep`). `undefined` means the key is the pathname.
   #keptKey = $state<string | undefined>(undefined);
+  // Bumped when a navigation lands on the address a kept page was keyed on, so that address is a
+  // new page and not the kept one: a kept key is a past address, and a pathname can be reached again.
+  #generation = $state(0);
 
   /** Subscribes to `popstate` on first use, so evaluating this module never touches `window`. */
   #listen(): void {
     if (this.#listening) return;
     this.#listening = true;
     window.addEventListener('popstate', () => {
+      const leftKey = this.#keptKey;
       this.#keptKey = undefined;
       this.#syncFromLocation();
+      if (leftKey !== undefined && this.viewKey === leftKey) this.#generation += 1;
     });
   }
 
@@ -196,9 +201,12 @@ class DashboardRouter {
     // Two identifiers a path stands in for with one placeholder are two pages, not one.
     const found = findRouteDefinition(this.pathname, routes);
     const params = found === null ? undefined : withEscapedIdentifier(found, this.search);
-    return found !== null && params !== found.params
-      ? `${this.pathname}#${JSON.stringify(params)}`
-      : this.pathname;
+    const key =
+      found !== null && params !== found.params
+        ? `${this.pathname}#${JSON.stringify(params)}`
+        : this.pathname;
+    // A raw NUL cannot be in a pathname (it arrives as %00), so this key is no address's.
+    return this.#generation === 0 ? key : `${key}\u0000${this.#generation}`;
   }
 
   /** The route matching the current `pathname`, or `null` for an unowned path. */
@@ -230,6 +238,7 @@ class DashboardRouter {
   navigate(path: string, options?: { readonly replace?: boolean; readonly keep?: boolean }): void {
     this.#listen();
     // A kept page carries on under the key it already had; any other navigation ends that.
+    const leftKey = this.#keptKey;
     this.#keptKey = options?.keep === true ? this.viewKey : undefined;
     if (options?.replace) {
       window.history.replaceState(null, '', path);
@@ -237,6 +246,11 @@ class DashboardRouter {
       window.history.pushState(null, '', path);
     }
     this.#syncFromLocation();
+    // Arriving at the address the kept page was keyed on is a new page, even though the key it
+    // computes is the one that is mounted (a new chat's address, after that chat started).
+    if (leftKey !== undefined && this.#keptKey === undefined && this.viewKey === leftKey) {
+      this.#generation += 1;
+    }
   }
 
   /** Goes back one entry in browser history (mirrors the browser's back button). */

@@ -30,6 +30,9 @@
 
   // The outlet mounts a new route for each path, so the pane is mounted once per chat. A new chat
   // has no session: the client names the thread, and the agent is `?agent=` or the default.
+  // Whether this pane began as a new chat is read once too: the address becomes the chat's own when
+  // its run starts, and the conversation, with its live run, stays mounted through that.
+  const startsNew = untrack(() => isNew);
   const chosenAgent = untrack(() => router.current.search.has('agent'));
   const initialAgent = untrack(() => router.current.search.get('agent') ?? DEFAULT_AGENT);
 
@@ -37,14 +40,14 @@
     () => ({
       queryKey: queryKeys.contexts.detail(sessionId),
       queryFn: ({ signal }) => getContext(sessionId, { signal }),
-      enabled: !isNew,
+      enabled: !startsNew,
       retry: false,
     }),
     undefined,
   );
 </script>
 
-{#if isNew}
+{#if startsNew}
   <ChatConversation
     {sessionId}
     title={null}

@@ -347,4 +347,20 @@ describe('the key the outlet mounts a route under', () => {
 
     expect(window.history.length).toBe(length);
   });
+
+  test('returning to the address a kept page was keyed on is a new page', () => {
+    router.navigate('/chats/new');
+    router.navigate('/chats/session-1', { replace: true, keep: true });
+    const kept = router.viewKey;
+
+    router.navigate('/chats/new');
+
+    expect(router.pathname).toBe('/chats/new');
+    expect(router.viewKey).not.toBe(kept);
+    const fresh = router.viewKey;
+    router.navigate('/chats/session-2', { replace: true, keep: true });
+    expect(router.viewKey).toBe(fresh);
+    router.navigate('/chats/new');
+    expect(router.viewKey).not.toBe(fresh);
+  });
 });

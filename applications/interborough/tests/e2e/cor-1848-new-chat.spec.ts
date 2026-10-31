@@ -11,6 +11,7 @@ import { newThreadId, runToEnd } from './chat-support.ts';
 import { expect, test } from './fixtures.ts';
 
 const composer = (page: Page) => page.getByRole('textbox');
+const transcript = (page: Page) => page.getByRole('region', { name: 'Chat conversation' });
 
 test.describe('a new chat', () => {
   test('is built around the composer: the agent pill is in the composer, and the header holds no agent list', async ({
@@ -53,6 +54,63 @@ test.describe('a new chat', () => {
     // The Bureau lists the chat now, and the list marks it as the open one.
     await expect(list.locator('[data-group="draft"]')).toHaveCount(0);
     await expect(list.locator('[aria-current="true"]')).toContainText('Hello from the new chat');
+  });
+
+  test('gives a fresh chat to the C shortcut and to New chat straight after one started', async ({
+    page,
+  }) => {
+    await page.goto('/chats/new');
+    await composer(page).fill('The first chat');
+    await composer(page).press('Enter');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('The first chat');
+    const firstAddress = page.url();
+
+    // C from outside a field, then New chat.
+    await page.getByRole('heading', { level: 1 }).click();
+    await page.keyboard.press('c');
+    await expect(page).toHaveURL(/\/chats\/new$/);
+    await expect(page.getByTestId('new-chat-welcome')).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1 })).not.toHaveText('The first chat');
+    await composer(page).fill('The second chat');
+    await composer(page).press('Enter');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('The second chat');
+    expect(page.url()).not.toBe(firstAddress);
+    await expect(transcript(page)).not.toContainText('The first chat');
+
+    await page
+      .getByRole('region', { name: 'Chats' })
+      .getByRole('link', { name: 'New chat' })
+      .first()
+      .click();
+    await expect(page).toHaveURL(/\/chats\/new$/);
+    await expect(page.getByTestId('new-chat-welcome')).toBeVisible();
+    await composer(page).fill('The third chat');
+    await composer(page).press('Enter');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('The third chat');
+    await expect(transcript(page)).not.toContainText('The second chat');
+  });
+
+  test('keeps the transcript and the agent when the window crosses the list line', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto('/chats/new?agent=assistant');
+    await composer(page).fill('A chat to resize');
+    await composer(page).press('Enter');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('A chat to resize');
+    const address = page.url();
+
+    await page.setViewportSize({ width: 600, height: 800 });
+    await expect(page.getByRole('region', { name: 'Chats' })).toHaveCount(0);
+    await expect(transcript(page)).toContainText('A chat to resize');
+    await expect(page.locator('.weft-chat-header__agent')).toHaveText('assistant');
+
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect(page.getByRole('region', { name: 'Chats' })).toBeVisible();
+    await expect(transcript(page)).toContainText('A chat to resize');
+    await expect(page.locator('.weft-chat-header__agent')).toHaveText('assistant');
+    expect(page.url()).toBe(address);
+    await expect(page.getByTestId('new-chat-welcome')).toHaveCount(0);
   });
 });
 
@@ -116,7 +174,7 @@ test.describe('the C shortcut', () => {
     await page.keyboard.press('c');
     await expect(page).toHaveURL(/\/chats\/new$/);
 
-    await composer(page).fill('c');
+    await composer(page).pressSequentially('c');
     await expect(composer(page)).toHaveValue('c');
     await expect(page).toHaveURL(/\/chats\/new$/);
   });

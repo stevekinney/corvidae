@@ -55,11 +55,15 @@
 
   const PAGE_SIZE = 20;
 
-  // The outlet mounts a new route for each path, so these are read once. A new chat has no session
-  // until its first run: the client names the thread now, and its row stands for it until the
-  // Bureau lists it.
-  const isNew = untrack(() => router.current.route?.pattern === '/chats/new');
-  const draftId = untrack(() => (isNew ? crypto.randomUUID() : null));
+  // The outlet mounts a new route for each page, so the draft is named once. A new chat has no
+  // session until its first run: the client names the thread now, and its row stands for it until
+  // the Bureau lists it. Whether the address is the new chat's is read live: once the run has
+  // started it is the chat's own, so a pane mounted from then on (the list narrowing to the pane
+  // alone) reads the session instead of starting over.
+  const draftId = untrack(() =>
+    router.current.route?.pattern === '/chats/new' ? crypto.randomUUID() : null,
+  );
+  const isNew = $derived(router.current.route?.pattern === '/chats/new');
   /** The chat that is open: the address's, or the new chat's, which keeps its name once it starts. */
   const openId = $derived(router.current.params['chat'] ?? draftId);
   const draftAgent = $derived(router.current.search.get('agent') ?? DEFAULT_AGENT);

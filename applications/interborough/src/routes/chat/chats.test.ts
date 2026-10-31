@@ -381,6 +381,58 @@ describe('the list of sessions', () => {
     expect(rows[0]).toBe(draft as HTMLElement);
   });
 
+  test('reads the session, not a new chat, for a pane that mounts after the new chat has started', async () => {
+    // The list narrows to the pane alone, which mounts the pane again. ListDetail measures its own
+    // width, and happy-dom has no layout, so the component is given one it can be resized across.
+    let width = 1200;
+    const measure = HTMLElement.prototype.getBoundingClientRect;
+    const observer = globalThis.ResizeObserver;
+    const observers: Array<() => void> = [];
+    HTMLElement.prototype.getBoundingClientRect = () =>
+      ({ width, height: 800, x: 0, y: 0, top: 0, left: 0, right: width, bottom: 800 }) as DOMRect;
+    globalThis.ResizeObserver = class {
+      constructor(callback: () => void) {
+        observers.push(callback);
+      }
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+    } as unknown as typeof ResizeObserver;
+    try {
+      const served = bureau({
+        'bureau.contexts.list': () => page(0, 2, false),
+        'bureau.reviews.list': () => ({ reviews: [] }),
+        'bureau.agents.list': () => ({ agents: [AGENT] }),
+        'bureau.contexts.get': (params) => ({
+          ...CONTEXT,
+          id: String(params['contextId']),
+          title: 'A chat that started',
+        }),
+      });
+      restore = served.restore;
+      landAt('/chats/new?agent=assistant');
+
+      const { findByRole, findAllByRole } = mount();
+
+      await findAllByRole('button', { name: /Chat \d|New chat/ });
+      const draftId = document.querySelector('[data-group="draft"]')?.getAttribute('data-chat');
+      expect(draftId).toBeTruthy();
+      // The run has started: the address is the chat's own and the page is kept.
+      router.navigate(`/chats/${draftId}`, { replace: true, keep: true });
+      expect(served.calls.some((call) => call.method === 'bureau.contexts.get')).toBe(false);
+
+      width = 500;
+      for (const callback of observers) callback();
+
+      const title = await findByRole('heading', { level: 1, name: 'A chat that started' });
+      expect(title.textContent).toContain('A chat that started');
+      expect(served.calls.some((call) => call.params['contextId'] === draftId)).toBe(true);
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = measure;
+      globalThis.ResizeObserver = observer;
+    }
+  });
+
   test('says there are no chats yet when the Bureau lists none', async () => {
     const served = bureau({
       'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }),
