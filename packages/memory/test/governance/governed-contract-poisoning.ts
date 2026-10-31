@@ -19,6 +19,19 @@ const quiet: InputDetector = {
   detect: async () => ({ triggered: false, confidence: 0, category: 'none' }),
 };
 
+/** A contributed detector (COR-1875) that flags content containing `marker`, and records each scan. */
+function markerDetector(marker: string, scanned: string[]): InputDetector {
+  return {
+    name: 'contributed-marker',
+    detect: async (input) => {
+      scanned.push(input);
+      return input.includes(marker)
+        ? { triggered: true, confidence: 1, category: 'contributed-marker' }
+        : { triggered: false, confidence: 0, category: 'contributed-marker' };
+    },
+  };
+}
+
 export function registerPoisoningContract(backend: GovernedBackend): void {
   describe(`governed memory poisoning defense (${backend})`, () => {
     let fixture: GovernedFixture;
@@ -75,6 +88,61 @@ export function registerPoisoningContract(backend: GovernedBackend): void {
       expect(receipt.recordId).toBeUndefined();
       const inspector = authority({ capabilities: ['memory:list', 'memory:inspect'] });
       expect(await fixture.memory.list(inspector, { collection: 'chat' })).toEqual([]);
+    });
+
+    it('quarantines a write a contributed detector flags, and scans nothing the poisoning detector already flagged (COR-1875)', async () => {
+      const scanned: string[] = [];
+      fixture = await createGovernedFixture(backend, {
+        policy: { admission: { contributedDetectors: [markerDetector('SECRET-MARKER', scanned)] } },
+      });
+      const flagged = await fixture.memory.write(principalA, 'A fact with SECRET-MARKER in it.', {
+        collection: 'chat',
+        source: 'conversation',
+      });
+      expect(flagged.status).toBe('quarantined');
+      const inspector = authority({ capabilities: ['memory:get', 'memory:inspect'] });
+      const privileged = await fixture.memory.listEvents(inspector, {
+        type: 'memory.write.quarantined',
+      });
+      expect(privileged[0]?.diagnostic).toMatchObject({ detector: 'contributed-marker' });
+
+      const clean = await fixture.memory.write(principalA, 'A plain fact.', {
+        collection: 'chat',
+        source: 'conversation',
+      });
+      expect(clean.status).toBe('admitted');
+
+      // The poisoning detector runs first and stops the scan, so the contributed one never saw it.
+      scanned.length = 0;
+      const poisoned = await fixture.memory.write(principalA, INJECTION, {
+        collection: 'chat',
+        source: 'conversation',
+      });
+      expect(poisoned.status).toBe('quarantined');
+      expect(scanned).toEqual([]);
+    });
+
+    it('withholds a recalled record a contributed detector flags (COR-1875)', async () => {
+      const scanned: string[] = [];
+      fixture = await createGovernedFixture(backend, {
+        policy: {
+          recall: { contributedDetectors: [markerDetector('SECRET-MARKER', scanned)] },
+        },
+      });
+      const receipt = await fixture.memory.write(
+        principalA,
+        'Invoices carry a SECRET-MARKER tag.',
+        {
+          collection: 'chat',
+          source: 'conversation',
+        },
+      );
+      expect(receipt.status).toBe('admitted');
+      const bundle = await fixture.memory.recallForModel(principalA, 'invoices tag', {
+        collection: 'chat',
+      });
+      expect(bundle.evidence).toEqual([]);
+      expect(scanned).toContain('Invoices carry a SECRET-MARKER tag.');
     });
 
     it('fails closed when an admission detector throws', async () => {

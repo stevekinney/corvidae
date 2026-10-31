@@ -21,7 +21,7 @@ import {
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { withAddedTools, withToolboxLayer } from './toolbox-additions';
+import { ToolClashError, withAddedTools, withToolboxLayer } from './toolbox-additions';
 
 const REQUEST_CONTEXT: ToolRequestContext = {
   authority: {
@@ -32,6 +32,15 @@ const REQUEST_CONTEXT: ToolRequestContext = {
     authorizationRevision: 'bureau:1',
   },
 };
+
+function thrownBy(action: () => unknown): unknown {
+  try {
+    action();
+  } catch (error) {
+    return error;
+  }
+  return undefined;
+}
 
 function additionsToolbox(): AnyToolbox {
   return createToolbox([
@@ -145,7 +154,15 @@ describe('withAddedTools keeps the base toolbox in force', () => {
   it('keeps its layers through a second addition, so that one is narrowed too', () => {
     const base = gate(createToolbox([]), () => ({ allowList: [] }));
     const once = withAddedTools(base, additionsToolbox());
-    expect(withAddedTools(once, additionsToolbox()).tools()).toEqual([]);
+    const second = createToolbox([
+      createTool({
+        name: 'second',
+        description: 'a second tool Bureau adds',
+        input: z.object({}),
+        execute: async () => 'second',
+      }),
+    ]);
+    expect(withAddedTools(once, second).tools()).toEqual([]);
   });
 
   it('leaves the base’s own request-context binding in charge of its tools', async () => {
@@ -187,7 +204,28 @@ describe('withAddedTools keeps the base toolbox in force', () => {
     expect(toolbox.getMissingTools(['added', 'nope'])).toEqual(['nope']);
   });
 
-  it('keeps the base’s tool when an addition shares its name', async () => {
+  it('throws ToolClashError naming both ids when an addition shares a tool’s name (COR-1875)', () => {
+    const base = createToolbox([
+      createTool({
+        name: 'added',
+        description: 'the host’s own',
+        namespace: 'host',
+        input: z.object({}),
+        execute: async () => 'host',
+      }),
+    ]);
+    const clash = thrownBy(() => withAddedTools(base, additionsToolbox()));
+    expect(clash).toBeInstanceOf(ToolClashError);
+    const error = clash as ToolClashError;
+    expect(error.addedId).toBe('default:added');
+    expect(error.existingIds).toEqual(['host:added']);
+    expect(error.message).toContain('default:added');
+    expect(error.message).toContain('host:added');
+    // Nothing was added: the base is as it was.
+    expect(base.tools().map((tool) => tool.id)).toEqual(['host:added']);
+  });
+
+  it('throws before adding any tool when only some of the additions clash (COR-1875)', () => {
     const base = createToolbox([
       createTool({
         name: 'added',
@@ -196,10 +234,23 @@ describe('withAddedTools keeps the base toolbox in force', () => {
         execute: async () => 'host',
       }),
     ]);
-    const toolbox = withAddedTools(base, additionsToolbox());
-    expect(toolbox.tools().map((tool) => tool.name)).toEqual(['added']);
-    const result = await toolbox.execute({ id: 'x', name: 'added', arguments: {} });
-    expect(result.result).toBe('host');
+    const additions = createToolbox([
+      createTool({
+        name: 'fresh',
+        description: 'fresh',
+        input: z.object({}),
+        execute: async () => 'fresh',
+      }),
+      ...additionsToolbox().tools(),
+    ]);
+    expect(() => withAddedTools(base, additions)).toThrow(ToolClashError);
+    expect(base.tools().map((tool) => tool.name)).toEqual(['added']);
+  });
+
+  it('throws through a layer too, so a gated base refuses a clash (COR-1875)', () => {
+    const base = gate(createToolbox([]), () => ({ allowList: [] }));
+    const once = withAddedTools(base, additionsToolbox());
+    expect(() => withAddedTools(once, additionsToolbox())).toThrow(ToolClashError);
   });
 });
 
@@ -349,32 +400,6 @@ describe('a batch keeps its execution mode and its order across base and added t
       { durableOperationKey: (_call, index) => `key-${index}` },
     );
     expect(keys.toSorted()).toEqual(['added=key-0', 'added=key-2', 'host=key-1']);
-  });
-});
-
-describe('a shadowed addition is advertised nowhere', () => {
-  it('lists the host’s tool alone in tools(), toJSON(), and the provider conversions', async () => {
-    const host = createToolbox([
-      createTool({
-        name: 'added',
-        description: 'the host’s own',
-        input: z.object({ note: z.string() }),
-        execute: async () => 'host',
-      }),
-    ]);
-    const toolbox = withAddedTools(host, additionsToolbox());
-    const openAI = await toolbox.toOpenAITools();
-    const anthropic = await toolbox.toAnthropicTools();
-
-    // One entry each, and none of them the shadowed Bureau tool (its description is distinct).
-    expect(toolbox.tools()).toHaveLength(1);
-    expect(openAI).toHaveLength(1);
-    expect(anthropic).toHaveLength(1);
-    expect(toolbox.toJSON()).toHaveLength(1);
-    for (const advertised of [toolbox.tools(), openAI, anthropic, toolbox.toJSON()]) {
-      expect(JSON.stringify(advertised)).not.toContain('a tool Bureau adds');
-    }
-    expect(JSON.stringify(openAI)).toContain('note');
   });
 });
 

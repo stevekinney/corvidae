@@ -2752,7 +2752,7 @@ async function constructBureau<const D extends AgentDefinitions>(
           });
         }
         // No asset service: a host that reads MCP resources still resolves a linked one.
-        return options.mcpResources === undefined
+        return options.mcpResources === undefined || options.mcpResources.length === 0
           ? undefined
           : createMcpResourceContentSourceResolver(options.mcpResources, owner);
       },

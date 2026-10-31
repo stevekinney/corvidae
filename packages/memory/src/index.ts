@@ -245,6 +245,12 @@ export {
   requestPrincipal,
 } from './governance/authority';
 // The deterministic embedder that needs no model, and the dimension it produces.
+export {
+  EmbedderRegistryError,
+  HASHING_EMBEDDER_ID,
+  createEmbedderRegistry,
+} from './embedder-registry';
+export type { ContributedEmbedder, EmbedderRegistry } from './embedder-registry';
 export { HASHING_EMBEDDER_DIMENSION, createHashingEmbedder } from './hashing-embedder';
 // Capability, operation, principal-kind, and projection vocabularies are public constants.
 export {

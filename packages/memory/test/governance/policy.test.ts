@@ -92,6 +92,50 @@ describe('createMemoryGovernancePolicy overrides', () => {
   });
 });
 
+describe('contributed detectors (COR-1875)', () => {
+  const contributed: InputDetector = {
+    name: 'contributed',
+    detect: async () => ({ triggered: false, confidence: 0, category: 'none' }),
+  };
+
+  it('runs a contributed detector after the poisoning detector on admission and on recall', () => {
+    const policy = createMemoryGovernancePolicy({
+      revision: 'governance:contributed',
+      admission: { contributedDetectors: [contributed] },
+      recall: { contributedDetectors: [contributed] },
+    });
+    expect(policy.admission.detectors.map((detector) => detector.name)).toEqual([
+      'memory-poisoning',
+      'contributed',
+    ]);
+    expect(policy.recall.detectors.map((detector) => detector.name)).toEqual([
+      'memory-poisoning',
+      'contributed',
+    ]);
+  });
+
+  it('runs a contributed detector after the detectors a host chose in place of the default', () => {
+    const policy = createMemoryGovernancePolicy({
+      revision: 'governance:contributed',
+      admission: { detectors: [quietDetector], contributedDetectors: [contributed] },
+    });
+    expect(policy.admission.detectors.map((detector) => detector.name)).toEqual([
+      'quiet',
+      'contributed',
+    ]);
+  });
+
+  it('adds nothing when no detector is contributed', () => {
+    const policy = createMemoryGovernancePolicy({
+      revision: 'governance:contributed',
+      admission: { contributedDetectors: [] },
+    });
+    expect(policy.admission.detectors.map((detector) => detector.name)).toEqual([
+      'memory-poisoning',
+    ]);
+  });
+});
+
 describe('resolveTenantPolicy', () => {
   const policy = createMemoryGovernancePolicy({
     revision: 'governance:3',

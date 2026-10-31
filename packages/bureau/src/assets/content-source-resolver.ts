@@ -37,6 +37,20 @@ export type McpResourceReader = (
 ) => Promise<McpResourceContents | undefined>;
 
 /**
+ * One MCP resource reader and the resources it serves (COR-1875). A host with several readers,
+ * such as one per connected MCP server or one per plugin, registers each with the test that claims
+ * its resources: the resolver sends a resource to the first registration, in the order given,
+ * whose `serves` accepts it. `serves` must be pure and cheap; it runs for every `mcp-resource`
+ * part, before `read`, and it does not replace the reader's own authorization of the principal.
+ */
+export interface McpResourceRegistration {
+  /** True when `read` serves this resource; typically a check of `serverId` or a URI prefix. */
+  readonly serves: (resource: { readonly serverId: string; readonly uri: string }) => boolean;
+  /** The read for the resources `serves` claims. */
+  readonly read: McpResourceReader;
+}
+
+/**
  * The resolver Bureau hands a run (COR-716): it projects a `managed-asset` part
  * to the form a provider accepts, reading through {@link AssetService.resolve}
  * as the run's own principal, so a run reaches only the assets that principal
@@ -50,8 +64,9 @@ export type McpResourceReader = (
  *   three-state answer): every gate clean is `clean`, any flagged is `flagged`,
  *   and an asset no gate inspected is `unknown`.
  *
- * - An `mcp-resource` part is read through `options.mcpResources` (see
- *   {@link McpResourceReader}) and projected to its bytes, with an `unknown`
+ * - An `mcp-resource` part is read through the {@link McpResourceRegistration} in
+ *   `options.mcpResources` that serves it (see {@link McpResourceReader}); a resource no
+ *   registration serves is `unavailable` with `mcp-resource-not-served`. It is projected to its bytes, with an `unknown`
  *   safety state: no gate inspected them.
  *
  * Every refusal is the typed `unavailable` result, never a throw, so the step
@@ -63,7 +78,7 @@ export type McpResourceReader = (
 export function createAssetContentSourceResolver(
   assets: AssetService,
   principalId: string,
-  options: { readonly mcpResources?: McpResourceReader | undefined } = {},
+  options: { readonly mcpResources?: readonly McpResourceRegistration[] | undefined } = {},
 ): ContentSourceResolver {
   return async (part, position) => {
     const { source } = part;
@@ -114,7 +129,7 @@ export function createAssetContentSourceResolver(
  * `mcp-resource` part through `mcpResources` and answers `unavailable` for every other kind.
  */
 export function createMcpResourceContentSourceResolver(
-  mcpResources: McpResourceReader,
+  mcpResources: readonly McpResourceRegistration[],
   principalId: string,
 ): ContentSourceResolver {
   return async (part, position) => {
@@ -127,18 +142,22 @@ export function createMcpResourceContentSourceResolver(
 }
 
 async function resolveMcpResource(
-  mcpResources: McpResourceReader | undefined,
+  mcpResources: readonly McpResourceRegistration[] | undefined,
   source: { readonly serverId: string; readonly uri: string },
   principalId: string,
   signal: AbortSignal | undefined,
 ): Promise<Awaited<ReturnType<ContentSourceResolver>>> {
-  if (mcpResources === undefined) {
+  if (mcpResources === undefined || mcpResources.length === 0) {
     return { outcome: 'unavailable', reason: 'source-kind-not-supported' };
   }
-  const contents = await untilAborted(
-    mcpResources({ serverId: source.serverId, uri: source.uri }, { principalId, signal }),
-    signal,
-  );
+  const resource = { serverId: source.serverId, uri: source.uri };
+  const registration = mcpResources.find((candidate) => candidate.serves(resource));
+  // Several readers each serve their own resources; one nobody claims is refused by name, never
+  // handed to a reader that did not ask for it.
+  if (registration === undefined) {
+    return { outcome: 'unavailable', reason: 'mcp-resource-not-served' };
+  }
+  const contents = await untilAborted(registration.read(resource, { principalId, signal }), signal);
   if (contents === undefined) return { outcome: 'unavailable', reason: 'mcp-resource-not-found' };
   // The reader is the host's code; a malformed base64 payload is refused here rather than costed.
   if (contents.encoding === 'base64' && !BASE64.test(contents.data)) {

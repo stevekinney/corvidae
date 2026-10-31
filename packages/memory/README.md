@@ -2445,8 +2445,8 @@ Governed operations can run at the same time, and a process can stop between any
 | Field | Default |
 | --- | --- |
 | `revision` | Required. Recorded on every record, receipt, and event. |
-| `admission` | `detectors: [createMemoryPoisoningDetector()]`, `onDetection: 'quarantine'`, `maxContentLength: 32_768`, `maxRecordsPerCollection: 10_000`, and `sourceTrust` overrides merged onto the defaults. |
-| `recall` | `detectors: [createMemoryPoisoningDetector()]`, and `minimumTrust` overrides merged onto `procedural` and `identity` at `verified` and every other class at `untrusted`. |
+| `admission` | `detectors: [createMemoryPoisoningDetector()]`, `onDetection: 'quarantine'`, `maxContentLength: 32_768`, `maxRecordsPerCollection: 10_000`, and `sourceTrust` overrides merged onto the defaults. `contributedDetectors` (a plugin's `InputDetector`s) run after `detectors` on every write. |
+| `recall` | `detectors: [createMemoryPoisoningDetector()]`, and `minimumTrust` overrides merged onto `procedural` and `identity` at `verified` and every other class at `untrusted`. `contributedDetectors` run after `detectors` on every recalled record. |
 | `retention` | Per-class rule overrides merged onto the table above. |
 | `auditReceiptMilliseconds` | One year. |
 | `deletionBoundMilliseconds` | 24 hours. |
@@ -2494,6 +2494,8 @@ import { createHashingEmbedder, HASHING_EMBEDDER_DIMENSION } from '@lostgradient
 ```
 
 **`createHashingEmbedder()`:** Returns a deterministic `Embedder` that makes no network call and needs no model, so it runs where no model provider is configured. It hashes a text's words and word pairs into `HASHING_EMBEDDER_DIMENSION` (256) dimensions and normalizes the result to unit length, so two texts that share vocabulary have a positive cosine similarity. It is lexical, not semantic: it knows nothing of synonyms, and a deployment that wants meaning supplies a provider-backed embedder instead. An empty text embeds as the zero vector. `createMockEmbedder` is the test helper and stays one.
+
+**`createEmbedderRegistry(contributed?)`:** Registers embedders that plugins contribute, each as `{ id, embedder }`, beside the hashing embedder under `HASHING_EMBEDDER_ID` (`'hashing'`). `registry.resolve(selected?)` returns the embedder named by `selected`, and the hashing embedder when nothing is selected, however many are contributed. An unregistered id, a blank or repeated id, and a contribution under `'hashing'` throw `EmbedderRegistryError`. The registry only resolves an id to an embedder: it does not switch the embedder of a memory that already holds vectors, or re-embed them.
 
 ### Test utilities
 

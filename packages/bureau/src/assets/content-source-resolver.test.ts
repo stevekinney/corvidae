@@ -18,6 +18,7 @@ import {
   createAssetContentSourceResolver,
   createMcpResourceContentSourceResolver,
   type McpResourceReader,
+  type McpResourceRegistration,
 } from './content-source-resolver';
 
 const closers: Array<() => Promise<void>> = [];
@@ -228,6 +229,9 @@ describe('createAssetContentSourceResolver', () => {
 });
 
 describe('an mcp-resource part (COR-1634)', () => {
+  const everything = (read: McpResourceReader): readonly McpResourceRegistration[] => [
+    { serves: () => true, read },
+  ];
   const link: MediaContent = {
     type: 'image',
     mimeType: 'image/png',
@@ -242,10 +246,9 @@ describe('an mcp-resource part (COR-1634)', () => {
       calls.push({ ...resource, principalId: context.principalId });
       return { data: base64Of(bytes), encoding: 'base64', mimeType: 'image/png' };
     };
-    const result = await createAssetContentSourceResolver(assets, 'alice', { mcpResources })(
-      link,
-      position,
-    );
+    const result = await createAssetContentSourceResolver(assets, 'alice', {
+      mcpResources: everything(mcpResources),
+    })(link, position);
     expect(result).toEqual({
       outcome: 'resolved',
       source: { kind: 'inline', data: base64Of(bytes), encoding: 'base64' },
@@ -259,7 +262,11 @@ describe('an mcp-resource part (COR-1634)', () => {
   it('projects text contents as inline UTF-8 with its byte length', async () => {
     const { assets } = await open();
     const result = await createAssetContentSourceResolver(assets, 'alice', {
-      mcpResources: async () => ({ data: 'héllo', encoding: 'utf8', mimeType: 'text/plain' }),
+      mcpResources: everything(async () => ({
+        data: 'héllo',
+        encoding: 'utf8',
+        mimeType: 'text/plain',
+      })),
     })({ type: 'document', source: link.source }, position);
     expect(result).toMatchObject({
       outcome: 'resolved',
@@ -271,7 +278,7 @@ describe('an mcp-resource part (COR-1634)', () => {
   it('answers unavailable when the server no longer has the resource', async () => {
     const { assets } = await open();
     const result = await createAssetContentSourceResolver(assets, 'alice', {
-      mcpResources: async () => undefined,
+      mcpResources: everything(async () => undefined),
     })(link, position);
     expect(result).toEqual({ outcome: 'unavailable', reason: 'mcp-resource-not-found' });
   });
@@ -280,7 +287,7 @@ describe('an mcp-resource part (COR-1634)', () => {
     const { assets } = await open();
     for (const data of ['not base64!', 'abc', 'QUJD=']) {
       const result = await createAssetContentSourceResolver(assets, 'alice', {
-        mcpResources: async () => ({ data, encoding: 'base64' }),
+        mcpResources: everything(async () => ({ data, encoding: 'base64' })),
       })(link, position);
       expect(result).toEqual({ outcome: 'unavailable', reason: 'mcp-resource-invalid-contents' });
     }
@@ -301,7 +308,9 @@ describe('an mcp-resource part (COR-1634)', () => {
       reads += 1;
       return new Promise(() => {});
     };
-    const resolve = createAssetContentSourceResolver(assets, 'alice', { mcpResources });
+    const resolve = createAssetContentSourceResolver(assets, 'alice', {
+      mcpResources: everything(mcpResources),
+    });
     const ended = new AbortController();
     ended.abort(new Error('ended'));
     const early = await resolve(link, { ...position, signal: ended.signal }).then(
@@ -322,12 +331,68 @@ describe('an mcp-resource part (COR-1634)', () => {
 
   it('serves a Bureau that has a reader but no asset service, and refuses other kinds', async () => {
     const resolve = createMcpResourceContentSourceResolver(
-      async () => ({ data: 'x', encoding: 'utf8' }),
+      everything(async () => ({ data: 'x', encoding: 'utf8' })),
       'alice',
     );
     expect(await resolve(link, position)).toMatchObject({ outcome: 'resolved' });
     expect(
       await resolve({ type: 'image', source: { kind: 'managed-asset', assetId: 'a' } }, position),
     ).toEqual({ outcome: 'unavailable', reason: 'source-kind-not-supported' });
+  });
+
+  it('sends each resource to the reader that serves it, as the run principal (COR-1875)', async () => {
+    const calls: string[] = [];
+    const reader =
+      (name: string): McpResourceReader =>
+      async (resource, context) => {
+        calls.push(`${name} ${resource.serverId} ${resource.uri} ${context.principalId}`);
+        return { data: name, encoding: 'utf8' };
+      };
+    const resolve = createMcpResourceContentSourceResolver(
+      [
+        { serves: (resource) => resource.serverId === 'files', read: reader('files-reader') },
+        { serves: (resource) => resource.uri.startsWith('db://'), read: reader('db-reader') },
+      ],
+      'alice',
+    );
+    const fromDatabase = await resolve(
+      { type: 'document', source: { kind: 'mcp-resource', serverId: 'sql', uri: 'db://orders/1' } },
+      position,
+    );
+    const fromFiles = await resolve(link, position);
+    expect(fromDatabase).toMatchObject({ source: { data: 'db-reader' } });
+    expect(fromFiles).toMatchObject({ source: { data: 'files-reader' } });
+    expect(calls).toEqual([
+      'db-reader sql db://orders/1 alice',
+      'files-reader files file:///chart.png alice',
+    ]);
+  });
+
+  it('refuses a resource no reader serves, by name, without calling any reader (COR-1875)', async () => {
+    let reads = 0;
+    const read: McpResourceReader = async () => {
+      reads += 1;
+      return { data: 'x', encoding: 'utf8' };
+    };
+    const resolve = createMcpResourceContentSourceResolver(
+      [{ serves: (resource) => resource.serverId === 'elsewhere', read }],
+      'alice',
+    );
+    expect(await resolve(link, position)).toEqual({
+      outcome: 'unavailable',
+      reason: 'mcp-resource-not-served',
+    });
+    expect(reads).toBe(0);
+  });
+
+  it('gives the first registration that serves a resource the read (COR-1875)', async () => {
+    const resolve = createMcpResourceContentSourceResolver(
+      [
+        { serves: () => true, read: async () => ({ data: 'first', encoding: 'utf8' }) },
+        { serves: () => true, read: async () => ({ data: 'second', encoding: 'utf8' }) },
+      ],
+      'alice',
+    );
+    expect(await resolve(link, position)).toMatchObject({ source: { data: 'first' } });
   });
 });
