@@ -501,15 +501,15 @@ describe('the decisions', () => {
     const { container, findByRole } = open({ served });
     const form = await findByRole('group', { name: SETTINGS_COPY.formLabel });
     const select = row(container, 'decisions.model')!.querySelector('select')!;
-    expect([...select.options].map((option) => option.value)).toContain('typesafe');
+    expect([...select.options].map((option) => option.value)).toContain('typesafe:jev');
 
-    await fireEvent.change(select, { target: { value: 'typesafe' } });
+    await fireEvent.change(select, { target: { value: 'typesafe:jev' } });
     await fireEvent.click(within(form).getByRole('button', { name: SETTINGS_COPY.saveAction }));
 
     await waitFor(() => expect(stub?.callsTo('bureau.settings.update')).toHaveLength(1));
     expect(stub?.callsTo('bureau.settings.update')[0]?.params['patch']).toEqual({
-      'decisions.model': 'typesafe',
+      'decisions.model': 'typesafe:jev',
     });
-    expect(served.values['decisions.model']).toBe('typesafe');
+    expect(served.values['decisions.model']).toBe('typesafe:jev');
   });
 });

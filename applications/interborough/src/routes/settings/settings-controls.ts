@@ -207,10 +207,11 @@ export function isDuration(name: string): boolean {
 
 /**
  * The decision models a host registers by name, which `decisions.model` takes: `catalog`, the
- * language-model fallback alone, and `typesafe`, the model a TypeSafe key registers (`host.ts`).
+ * language-model fallback alone, and `typesafe:jev`, the model the typesafe plugin contributes
+ * (`plugins/typesafe`).
  * The Bureau lists no names, and refuses one the host did not register, which the page says.
  */
 export const HOST_DECISION_MODELS = [
   { value: 'catalog', label: 'The language model alone' },
-  { value: 'typesafe', label: 'TypeSafe' },
+  { value: 'typesafe:jev', label: 'TypeSafe' },
 ] as const;
