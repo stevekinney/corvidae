@@ -526,6 +526,16 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    */
   agentSource?: AgentSource | readonly AgentSource[];
   /**
+   * COR-1897 — the agent source of a running plugin's shipped content. For each running plugin
+   * whose descriptor declares `content`, Bureau calls it with the plugin's name and that URL, and
+   * layers what it returns beneath {@link BureauOptions.agentSource} (a source with `plugin` set to
+   * the name, such as `agentFileDirectory(path, { plugin })`). It returns `undefined` for content it
+   * cannot read. A disabled, skipped, or failed plugin is not asked, so its agents are not listed.
+   * The Node directory sources stay out of the main entry, so the host that reads files supplies
+   * this; without it, or without `agentSource`, a plugin's content is not read.
+   */
+  pluginAgentSource?: (plugin: string, content: URL) => AgentSource | undefined;
+  /**
    * COR-1913 — the secret that signs the tool approvals the file agents of
    * {@link BureauOptions.agentSource} raise. A file agent's tools ask a person before they run
    * according to the file's `toolApproval` (`on-changes` for a tool it does not name), and an

@@ -78,6 +78,12 @@ export interface ComposedPlugins<O extends ComposableOptions> {
   /** Every plugin, in load order, with what composition found. */
   readonly records: readonly PluginRecord[];
   /**
+   * The content of the running plugins that ship some (COR-1897), in load order. A plugin that is
+   * disabled, skipped or failed ships none. The `content` URL is the plugin's own; reading it is
+   * the host's, through {@link BureauOptions.pluginAgentSource}.
+   */
+  readonly shippedContent: readonly { readonly plugin: string; readonly content: URL }[];
+  /**
    * Starts following the host's `watch` for every running plugin's declared secrets, so a saved or
    * removed secret changes what its contributions do with no restart. Returns the function that
    * stops following. Called once construction can stop it again at shutdown.
@@ -524,6 +530,18 @@ function memoryOf(
   return typeof memory === 'function' ? memory(contributions) : memory;
 }
 
+/** The `content` of each running plugin that declares one, in load order. */
+function shippedContentOf(
+  records: readonly PluginRecord[],
+): { readonly plugin: string; readonly content: URL }[] {
+  return records.flatMap(({ entry, status }) => {
+    const content = entry.descriptor.content;
+    return status === 'running' && content !== undefined
+      ? [{ plugin: entry.descriptor.name, content }]
+      : [];
+  });
+}
+
 /** Folds what the running plugins contributed into the options construction reads. */
 function optionsWith<O extends ComposableOptions>(options: O, contributed: Contributed): O {
   const contributionCatalog = catalogWith(options.contributionCatalog, contributed.activities);
@@ -767,6 +785,7 @@ export async function composePlugins<O extends ComposableOptions>(
     options: await withModelCatalog(optionsWith(options, contributed), contributed.providers),
     tools: contributed.tools,
     records,
+    shippedContent: shippedContentOf(records),
     watchSecrets: () => {
       const stops = gates.map((gate) => gate.watch());
       return () => {

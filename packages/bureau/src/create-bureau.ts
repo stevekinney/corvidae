@@ -1464,6 +1464,36 @@ function withLayeredSources<const D extends AgentDefinitions>(
   };
 }
 
+/**
+ * COR-1897 — `options` with the agents the running plugins ship layered beneath the owner's agent
+ * sources. The layers are known only once plugins are composed, so the sources the caller gave are
+ * layered again with them. Nothing changes without an `agentSource` or a `pluginAgentSource`.
+ */
+function withPluginAgentLayers<const D extends AgentDefinitions>(
+  options: LayeredBureauOptions<D>,
+  given: BureauOptions<D>['agentSource'],
+  shipped: readonly { readonly plugin: string; readonly content: URL }[],
+): LayeredBureauOptions<D> {
+  const pluginAgentSource = options.pluginAgentSource;
+  if (pluginAgentSource === undefined || shipped.length === 0 || given === undefined) {
+    return options;
+  }
+  const owners = Array.isArray(given) ? given : [given];
+  const layers = shipped.flatMap(({ plugin, content }) => {
+    const layer = pluginAgentSource(plugin, content);
+    return layer === undefined ? [] : [layer];
+  });
+  return {
+    ...options,
+    agentSource: resolveDefinitionSource(
+      'agentSource',
+      'agent',
+      [...owners, ...layers],
+      toBadRequest,
+    ),
+  };
+}
+
 function toBadRequest(message: string): never {
   throw new BureauError(message, 'BAD_REQUEST');
 }
@@ -2518,6 +2548,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     plugins: withBuiltInPlugin(options.plugins, bureauTools),
   });
   options = composedPlugins.options;
+  options = withPluginAgentLayers(options, given.agentSource, composedPlugins.shippedContent);
   // COR-1879: `decisions.model` may name a decision router a plugin contributed.
   validateDecisionsModelChoice(options.decisions, toBadRequest);
   const pluginRegistry = createPluginRegistry(composedPlugins.records);

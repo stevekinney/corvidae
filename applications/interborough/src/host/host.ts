@@ -149,6 +149,7 @@ import {
 import {
   createAgentSource,
   createHostStorage,
+  createPluginAgentSource,
   createWorkflowSource,
   disposeHostStorage,
   hostPathsReport,
@@ -744,6 +745,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         ...createAgentFileTools(),
         ...toolSources.tools(),
       }),
+      // The agent files a running plugin ships (COR-1897): its `content/agents`, read-only, beneath the owner's.
+      pluginAgentSource: createPluginAgentSource,
       // The approvals a file agent's tools raise are signed with the host's approval secret, so a
       // restart still resolves a pending one.
       agentApprovalSecret: approval,
