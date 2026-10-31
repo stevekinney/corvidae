@@ -167,17 +167,25 @@ describe('createAgent: namespaced tool keys (COR-1879)', () => {
     expect(executed).toEqual(['b:q']);
   });
 
-  it('keys a bare-keyed tool by its key, as before', async () => {
+  it('names a bare-keyed tool by its key and keeps its own namespace', async () => {
     let names: string[] = [];
+    let provider: string[] = [];
     const agent = createAgent({
-      tools: { lookup: searchIn('a', []) },
+      tools: {
+        lookup: searchIn('a', []),
+        plain: createTool({ name: 'x', description: 'x', execute: async () => 'x' }),
+      },
       generate: async (context) => {
         names = context.toolbox.tools().map(({ name }) => name);
+        const exported = await context.toolbox.toAnthropicTools();
+        provider = exported.map(({ name }) => name);
         return { content: 'done', toolCalls: [] };
       },
     });
     await agent.run('Look.').result();
-    expect(names).toEqual(['lookup']);
+    expect(names).toEqual(['lookup', 'plain']);
+    // A tool authored in namespace `a` stays there, so a provider sees it as `a__lookup`.
+    expect(provider).toEqual(['a__lookup', 'plain']);
   });
 });
 

@@ -753,7 +753,8 @@ export type { AgentRun };
 
 /**
  * COR-1879 — a tool's configuration under the key `options.tools` gives it. A bare key becomes the
- * tool's name, so the model calls the tool by its key. A namespaced key (`plugin:tool`) becomes
+ * tool's name, so the model calls the tool by its key, prefixed `<namespace>__` when the tool was
+ * authored in a namespace of its own. A namespaced key (`plugin:tool`) becomes
  * the identity's namespace and name, keeping the tool's own version: the durable record pins
  * `plugin:tool@version`, the model calls it `plugin__tool` (Armorer's default provider naming),
  * and the toolbox resolves that name back to the tool, so two namespaces' `search` stay apart.
