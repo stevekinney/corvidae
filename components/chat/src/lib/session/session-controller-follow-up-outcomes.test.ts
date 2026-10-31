@@ -385,7 +385,7 @@ describe('the end-of-run merge across consecutive runs', () => {
     expect(after.at(-1)).toBe('third answer');
   });
 
-  test('mergeRunHistory relocates only follow-ups added after the run started', () => {
+  test("mergeRunHistory puts an earlier run's follow-up where the terminal names it, keeping its object", () => {
     let next = 0;
     const environment = { randomId: () => `row-${(next += 1)}` };
     let current = createConversationHistory({ id: 'merge' });
@@ -410,9 +410,11 @@ describe('the end-of-run merge across consecutive runs', () => {
 
     const merged = mergeRunHistory(current, terminal, new Set(['row-1']), runStartIds);
 
-    expect(merged.ids).toContain('row-2');
-    expect(merged.ids.indexOf('row-2')).toBe(1);
-    expect(merged.ids).toContain('row-3');
+    // The terminal's order is the thread's, for every row it names: the earlier follow-up follows
+    // the new one here because the terminal says so, and both keep the client's object.
+    expect(merged.ids).toEqual(['row-1', 'row-3', 'row-2']);
+    expect(merged.messages['row-2']).toBe(current.messages['row-2']);
+    expect(merged.messages['row-3']).toBe(current.messages['row-3']);
   });
 });
 

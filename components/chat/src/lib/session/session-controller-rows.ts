@@ -37,25 +37,35 @@ export function remapMessageId(
  * This is NOT the same operation as adopting a full session snapshot, and
  * the difference is the whole point. A full snapshot replaces membership: the
  * host asked for the conversation and got all of it. A run terminal is
- * narrower — it is authoritative about the rows THIS RUN produced and says
- * nothing about anything else. So the merge replaces only what the run
- * appended and leaves every other row exactly where it was, including turns
- * that arrived from elsewhere while the run was streaming.
+ * narrower — it is authoritative about the rows it names and says nothing
+ * about anything else. So the merge drops only what the run appended and
+ * leaves every row the terminal omits where it was, including turns that
+ * arrived from elsewhere while the run was streaming.
  *
- * The canonical rows go back in at the position the first provisional row
- * occupied, not at the end, so a turn that was in the middle of the
- * transcript stays in the middle.
+ * The rule: every row the terminal names takes the terminal's position; a row
+ * the terminal does not name keeps its place among them, following the nearest
+ * row before it on screen that the terminal names, and sitting before the
+ * terminal's rows there if it was on screen before the run's own rows, after
+ * them otherwise; a provisional row the terminal does not name is dropped.
  *
- * The one row that is both provisional and already-accepted history is the
- * user turn that opened the run. When the terminal names it under the same
- * identifier, it is kept rather than deleted and reinserted: approval
- * resolution associates a tool call with the turn that owns it by identifier,
- * and swapping that identifier mid-run would orphan a pending approval.
+ * The terminal's order is the thread's order, so it decides the position of
+ * every row it names, whichever side appended the row and whenever it arrived:
+ * the run's own replies, a follow-up the user sent mid-run, a row an opening
+ * snapshot installed on a page that joined the run or resumed it, and a turn a
+ * second tab or a schedule added that the page never read. A rule that moved
+ * only some of these rows had to reinsert them at one point, which misplaced
+ * whichever row that point was not for (COR-1555, COR-1958).
  *
- * One exception to "rows the run did not append stay where they are": a row
- * added after the run started, which the terminal names under its own
- * identifier, moves to the position the terminal gives it. For a follow-up the
- * client's object wins.
+ * Which object a row keeps is a separate question from where it sits. A row
+ * that was already on screen when the run started and that the terminal names
+ * under the same identifier keeps the CLIENT's object: a prior turn may carry
+ * local decoration — a delivery-failure marker, an unsaved-turn annotation —
+ * that the server has no idea about and would silently strip if its copy won.
+ * That includes the user turn that opened the run: approval resolution
+ * associates a tool call with the turn that owns it by identifier, and
+ * swapping that identifier mid-run would orphan a pending approval. A follow-up
+ * keeps the client's object too, so its marker and delivery status survive.
+ * Every other row the terminal names takes the terminal's object.
  */
 export function mergeRunHistory(
   current: ConversationHistory,
@@ -63,59 +73,53 @@ export function mergeRunHistory(
   provisionalIds: ReadonlySet<string>,
   runStartIds: ReadonlySet<string>,
 ): ConversationHistory {
+  const named = (id: string): boolean => getOwn(terminal.messages, id) !== undefined;
+  const retained = new Set([...runStartIds].filter(named));
+  const dropped = (id: string): boolean => provisionalIds.has(id) && !retained.has(id);
+  // Where the run's own rows were on screen: the terminal's rows take their
+  // place among the rows it does not name. With none on screen (a page that
+  // joined the run has only the thread's rows), every unnamed row sat before
+  // them.
+  const ownRowsAt = current.ids.findIndex(dropped);
+  // The rows the terminal does not name, by the named row each follows on
+  // screen (`undefined` for a row before any), split by which side of the run's
+  // own rows it sat on.
+  const before = new Map<string | undefined, string[]>();
+  const after = new Map<string | undefined, string[]>();
+  let anchor: string | undefined;
+  current.ids.forEach((id, index) => {
+    if (dropped(id)) return;
+    if (named(id)) {
+      anchor = id;
+      return;
+    }
+    const side = ownRowsAt === -1 || index < ownRowsAt ? before : after;
+    side.set(anchor, [...(side.get(anchor) ?? []), id]);
+  });
+  const onScreen = new Set(current.ids.filter((id) => !dropped(id)));
+  const ids = [...(before.get(undefined) ?? [])];
+  anchor = undefined;
+  for (const id of terminal.ids) {
+    if (onScreen.has(id)) {
+      ids.push(...(after.get(anchor) ?? []));
+      anchor = id;
+      ids.push(id, ...(before.get(id) ?? []));
+    } else {
+      ids.push(id);
+    }
+  }
+  ids.push(...(after.get(anchor) ?? []));
   const messages = { ...current.messages };
-  // Every row that was already on screen when the run started AND that the
-  // terminal names under the same identifier. Those keep the CLIENT's message
-  // object, not the server's: a prior turn may carry local decoration — a
-  // delivery-failure marker, an unsaved-turn annotation — that the server has
-  // no idea about and would silently strip if its copy won.
-  const retained = new Set(
-    [...runStartIds].filter((id) => getOwn(terminal.messages, id) !== undefined),
-  );
-  // The one exception to "rows the run did not append stay where they are": a
-  // row that arrived after the run started and that the terminal names under its
-  // own identifier moves to the position the terminal gives it, so the
-  // transcript keeps a single row in the order the server saw. That is a
-  // follow-up the user sent mid-run, and also a row an opening snapshot
-  // installed on a page that joined the run: that row is not provisional, so
-  // leaving it where it is would put the terminal's rows after it and a
-  // follow-up before them. A row the terminal omits stays where it is. The
-  // client's object wins for a follow-up, so its marker and delivery status
-  // survive.
-  const relocated = new Set(
-    current.ids.filter(
-      (id) =>
-        getOwn(terminal.messages, id) !== undefined &&
-        // Only a row added after this run started: an earlier run's rows were
-        // already on screen, so they stay where they are.
-        !runStartIds.has(id),
-    ),
-  );
-  const isRemoved = (id: string): boolean =>
-    (provisionalIds.has(id) && !retained.has(id)) || relocated.has(id);
-  const firstProvisional = current.ids.findIndex(
-    (id) => provisionalIds.has(id) && !retained.has(id),
-  );
-  const insertionIndex =
-    firstProvisional === -1
-      ? current.ids.length
-      : current.ids.slice(0, firstProvisional).filter((id) => !isRemoved(id)).length;
-  const ids = current.ids.filter((id) => !isRemoved(id));
   for (const id of provisionalIds) {
     if (!retained.has(id)) delete messages[id];
   }
-  const canonicalIds = terminal.ids.filter((id) => !retained.has(id));
-  for (const id of canonicalIds) {
+  for (const id of terminal.ids) {
+    if (retained.has(id)) continue;
     const message = isFollowUpMessage(getOwn(current.messages, id))
       ? getOwn(current.messages, id)
       : getOwn(terminal.messages, id);
     if (message !== undefined) messages[id] = message;
   }
-  ids.splice(
-    Math.min(insertionIndex, ids.length),
-    0,
-    ...canonicalIds.filter((id) => !ids.includes(id)),
-  );
   return { ...current, ids, messages };
 }
 

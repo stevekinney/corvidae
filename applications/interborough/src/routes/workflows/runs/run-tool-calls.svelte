@@ -62,6 +62,9 @@
     const now = events;
     if (now === lastEvents) return;
     lastEvents = now;
+    // `refetch` ignores `enabled`: with no thread to read, a reread would ask for the messages of
+    // an empty thread id and show the failure in place of the waits.
+    if (threadToRead === null || threadToRead === '') return;
     // poll-reason: timer
     const timer = setTimeout(() => void untrack(() => thread.refetch()), EVENT_REREAD_MILLISECONDS);
     return () => clearTimeout(timer);
