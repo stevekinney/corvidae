@@ -137,3 +137,13 @@ describe('worktreeCommonDirectory', () => {
     expect(worktreeCommonDirectory('gitdir: /r/.git/modules/child', '/r/child')).toBeNull();
   });
 });
+
+// COR-1883: the plugin identity guard compares with `origin/main`, which a clone of a bundle does
+// not have, so the documented clone command names a baseline that exists there.
+describe('the bundle-clone validation command', () => {
+  test('sets the plugin identity baseline to HEAD', async () => {
+    const guidance = await Bun.file(join(root, 'AGENTS.md')).text();
+    const command = guidance.match(/docker run --rm --init [^\n]*bun run validate'/u)?.[0];
+    expect(command).toContain('export CORVIDAE_PLUGIN_IDENTITY_BASE=HEAD &&');
+  });
+});

@@ -4,7 +4,8 @@
   "description": "The authoring package for Interborough plugins: definePlugin, the plugin descriptor, the host API a plugin's afterStart receives, and the contribution contract types Bureau consumes.",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./testing": "./src/testing/index.ts"
   },
   "scripts": {
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json && bun ../../scripts/check-inherited-key-reads.ts && bun ../../scripts/check-documentation-coverage.ts",
