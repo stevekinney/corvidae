@@ -15,6 +15,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { DEVELOPMENT_PLUGIN_FLAG } from './development-plugin-flag.ts';
 import { HOST_RESTART_ROUTE } from './restart.ts';
 import { HUMAN_INPUT_SIGNAL } from './seed.ts';
 
@@ -71,7 +72,12 @@ const alive = (pid: number): boolean => {
 /** Start `bun src/host/supervisor.ts <mode>` on a fresh home, a fresh port, and the given build. */
 async function supervise(
   mode: 'serve' | 'dev',
-  options: { readonly buildDirectory: string; readonly entry?: string },
+  options: {
+    readonly buildDirectory: string;
+    readonly entry?: string;
+    /** Plugin folders for `dev`, passed as `--plugin <path>`. */
+    readonly plugins?: readonly string[];
+  },
 ): Promise<Supervised> {
   const home = await scratch();
   const port = await freePort();
@@ -81,6 +87,7 @@ async function supervise(
       supervisorEntry,
       mode,
       ...(options.entry === undefined ? [] : ['--entry', options.entry]),
+      ...(options.plugins ?? []).flatMap((path) => [DEVELOPMENT_PLUGIN_FLAG, path]),
     ],
     {
       cwd: packageDirectory,
@@ -371,7 +378,101 @@ const devReload = await (async () => {
   });
 })();
 
+// A plugin folder named with `--plugin` (COR-1881, probe B): `bun --watch` watches the plugin's
+// `plugin.ts` because the host imports it, so one edit restarts the host in place and the new
+// version is what runs. The entry is a wrapper that reports once the real `dev.ts` has finished
+// evaluating, which is when Bun arms its file watch; the edit is made once after it, because a
+// second edit during a reload abandons that reload (COR-1944).
+const devPlugin = await (async () => {
+  const directory = await scratch();
+  const folder = join(directory, 'wip');
+  const file = join(folder, 'plugin.ts');
+  const source = (version: string): string =>
+    `export default { name: 'wip', version: '${version}', description: 'Is being written.' };\n`;
+  await mkdir(folder, { recursive: true });
+  await writeFile(file, source('1.0.0'));
+  const entry = join(directory, 'entry.ts');
+  await writeFile(
+    entry,
+    `import ${JSON.stringify(join(import.meta.dir, 'dev.ts'))};\nconsole.info('Entry evaluated');\n`,
+  );
+  const supervised = await supervise('dev', {
+    buildDirectory: join(directory, 'build'),
+    entry,
+    plugins: [folder],
+  });
+  /** The plugin as `GET /host/plugins` lists it now, or `undefined` while the host is between processes. */
+  const listed = async () => {
+    try {
+      const response = await fetch(new URL('/host/plugins', supervised.url));
+      const body = (await response.json()) as {
+        plugins: {
+          descriptor: { name: string; version: string };
+          status: string;
+          problems: { code: string; path?: string }[];
+        }[];
+      };
+      return body.plugins.find((plugin) => plugin.descriptor.name === 'wip');
+    } catch {
+      return undefined;
+    }
+  };
+  return withSupervised(supervised, async () => {
+    await waitForHost(supervised);
+    const pid = supervised.pids().at(0);
+    const before = await listed();
+    await waitUntil(() => supervised.stdout().includes('Entry evaluated'), {
+      message: 'the first generation to finish evaluating',
+      yieldTurn: () => Bun.sleep(50),
+    });
+    await writeFile(file, source('2.0.0'));
+    await waitUntil(
+      async () => {
+        const current = await listed();
+        return current?.descriptor.version === '2.0.0';
+      },
+      {
+        message: `the edited plugin to be listed at 2.0.0\n${supervised.stdout()}\n${supervised.stderr()}`,
+        yieldTurn: () => Bun.sleep(50),
+      },
+    );
+    const after = await listed();
+    return {
+      folder,
+      pid,
+      pidsAfter: supervised.pids(),
+      before,
+      after,
+      startupLines: supervised
+        .stdout()
+        .split('\n')
+        .filter((line) => line.startsWith('Plugin wip@')),
+    };
+  });
+})();
+
 describe('under `dev`', () => {
+  test('an edit to a --plugin folder’s plugin.ts restarts the host in place, and the new code is what runs', () => {
+    expect(devPlugin.before).toMatchObject({
+      descriptor: { version: '1.0.0' },
+      status: 'running',
+      problems: [{ code: 'development-source', path: devPlugin.folder }],
+    });
+    expect(devPlugin.after).toMatchObject({
+      descriptor: { version: '2.0.0' },
+      status: 'running',
+      problems: [{ code: 'development-source', path: devPlugin.folder }],
+    });
+    // `bun --watch` reloaded the host itself: the supervisor started no second process.
+    expect(devPlugin.pid).toBeDefined();
+    expect(devPlugin.pidsAfter).toEqual([devPlugin.pid!]);
+    // One startup line per plugin per start, each with its status and problem codes.
+    expect(devPlugin.startupLines).toEqual([
+      `Plugin wip@1.0.0 (folder: ${devPlugin.folder}): running; development-source`,
+      `Plugin wip@2.0.0 (folder: ${devPlugin.folder}): running; development-source`,
+    ]);
+  });
+
   test('a restart request yields a new host process, here the real development entry', () => {
     expect(devRestart.restarted.status).toBe(202);
     expect(devRestart.restarted.after).not.toBe(devRestart.restarted.before);
