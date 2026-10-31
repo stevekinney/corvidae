@@ -86,7 +86,6 @@ async function startShipper(
   const host = await startHost({
     environment: { INTERBOROUGH_HOME: home },
     port: 0,
-    seed: false,
     plugins: [
       {
         descriptor: definePlugin({

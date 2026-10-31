@@ -112,7 +112,6 @@ test('a plugin contributing a malformed startup input is skipped or carries a pr
   const host = await startHost({
     environment: { INTERBOROUGH_HOME: home },
     port: 0,
-    seed: false,
     log: () => {},
   });
   hosts.push(host);
