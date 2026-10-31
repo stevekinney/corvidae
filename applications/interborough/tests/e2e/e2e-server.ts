@@ -109,7 +109,7 @@ const host = await startHost({
   environment: { INTERBOROUGH_HOME: home },
   resolveProviderGenerate: provider.resolver,
   // One setting the deployment holds to its code option, so the settings page's locked state is
-  // exercised against the real Bureau (`38-settings.spec.ts`). It is a `restart` key nothing else reads.
+  // exercised against the real Bureau (`settings.spec.ts`). It is a `restart` key nothing else reads.
   settings: { locked: { [E2E_LOCKED_SETTING]: 'deployment' } },
   port: E2E_PORT,
   buildDirectory,

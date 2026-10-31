@@ -131,7 +131,7 @@ export const E2E_HELD_WORKFLOW_TYPE = 'e2e-held-order';
 export const E2E_HELD_RUN_ID = 'e2e-versioned-held-run';
 
 /**
- * The one runtime setting the main host locks (`e2e-server.ts`), so `38-settings.spec.ts` can show
+ * The one runtime setting the main host locks (`e2e-server.ts`), so `settings.spec.ts` can show
  * a locked key against the real Bureau. It is a `restart` key that nothing else in the suite reads.
  */
 export const E2E_LOCKED_SETTING = 'workflowVersion' as const;
