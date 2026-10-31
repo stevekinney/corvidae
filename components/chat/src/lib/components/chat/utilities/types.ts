@@ -149,6 +149,11 @@ export type ToolInputMessagePart = {
   message: string | undefined;
   /** The JSON Schema object the form renders and validates against. */
   schema: Record<string, unknown>;
+  /**
+   * Whether the run has moved on: the result no longer asks for input, so only the "You
+   * answered" row remains. A resolved question cannot be changed or answered again.
+   */
+  resolved?: boolean;
 };
 
 /**

@@ -128,6 +128,8 @@ describe('free text answered through the composer', () => {
     expect(container.textContent).toContain('Too vague');
     expect(container.textContent).not.toContain('You answered');
     expect(composerOf(container).placeholder).toBe('Answer');
+    // What was typed comes back, so a refusal does not cost the person their words.
+    expect(composerOf(container).value).toBe('maybe');
   });
 
   test('without answerInComposer a text field is drawn in the question and the composer sends messages', async () => {
@@ -215,5 +217,94 @@ describe('answered questions', () => {
     // The tool's own output ("parked true, signalName …") is not what the person reads.
     expect(view.container.textContent).not.toContain('parked');
     expect(view.container.textContent).not.toContain('signalName');
+  });
+});
+
+describe('a question whose run has resumed', () => {
+  function resumed(conversation: ConversationHistory): ConversationHistory {
+    return replaceToolResult(conversation, 'ask', {
+      callId: 'ask',
+      outcome: 'success',
+      content: { parked: true, signalName: 'why' },
+    });
+  }
+
+  test('offers no Change, so the composer keeps sending messages', async () => {
+    const answers: unknown[] = [];
+    const messages: unknown[] = [];
+    const conversation = questionConversation('q-resumed-text', TEXT);
+    const view = render(Chat, {
+      id: 'q-resumed-text',
+      conversation,
+      answerInComposer: true,
+      onInputSubmit: (_id: string, value: unknown) => {
+        answers.push(value);
+      },
+      onSubmit: (event: unknown) => messages.push(event),
+    });
+    await tick();
+    await typeAndSend(view.container, 'first answer');
+    await view.rerender({ conversation: resumed(conversation) });
+    await tick();
+
+    expect(view.container.textContent).toContain('You answered');
+    expect(screen.queryByRole('button', { name: 'Change' })).toBeNull();
+    expect(composerOf(view.container).placeholder).not.toBe('Answer');
+
+    await typeAndSend(view.container, 'a brand new message');
+
+    expect(answers).toEqual(['first answer']);
+    expect(messages).toHaveLength(1);
+  });
+
+  test('offers no Change for any other kind either', async () => {
+    const conversation = questionConversation('q-resumed-choice', {
+      type: 'string',
+      enum: ['staging', 'production'],
+    });
+    const view = render(Chat, {
+      id: 'q-resumed-choice',
+      conversation,
+      onInputSubmit: () => undefined,
+    });
+    await tick();
+    await fireEvent.click(screen.getByRole('button', { name: 'staging' }));
+    await tick();
+    await tick();
+    expect(screen.queryByRole('button', { name: 'Change' })).not.toBeNull();
+
+    await view.rerender({ conversation: resumed(conversation) });
+    await tick();
+
+    expect(view.container.textContent).toContain('You answered');
+    expect(screen.queryByRole('button', { name: 'Change' })).toBeNull();
+  });
+
+  test('a Change that was open when the run resumed closes', async () => {
+    const answers: unknown[] = [];
+    const conversation = questionConversation('q-resumed-open', TEXT);
+    const view = render(Chat, {
+      id: 'q-resumed-open',
+      conversation,
+      onInputSubmit: (_id: string, value: unknown) => {
+        answers.push(value);
+      },
+    });
+    await tick();
+    await fireEvent.input(view.container.querySelector('[data-cinder-tool-input] textarea')!, {
+      target: { value: 'first' },
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await tick();
+    await tick();
+    await fireEvent.click(screen.getByRole('button', { name: 'Change' }));
+    await tick();
+    expect(view.container.querySelector('[data-cinder-tool-input] textarea')).not.toBeNull();
+
+    await view.rerender({ conversation: resumed(conversation) });
+    await tick();
+
+    expect(view.container.querySelector('[data-cinder-tool-input] textarea')).toBeNull();
+    expect(view.container.textContent).toContain('You answered');
   });
 });

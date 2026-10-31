@@ -12,6 +12,9 @@ import { SvelteMap } from 'svelte/reactivity';
 
 import type { QuestionAnswerRecord } from './question-answer.ts';
 
+/** The largest file a file question takes when the host sets no limit: the composer's own default. */
+export const DEFAULT_MAXIMUM_FILE_SIZE = 10 * 1024 * 1024;
+
 /** A free-text question the composer answers. */
 export interface ComposerQuestionTarget {
   /** The tool call the question parked. */
@@ -28,16 +31,20 @@ export class QuestionStore {
   readonly #composerTargets = new SvelteMap<string, ComposerQuestionTarget>();
   readonly #answerInComposer: () => boolean;
   readonly #uploadFile: () => ((file: File, signal: AbortSignal) => Promise<string>) | undefined;
+  readonly #maxFileSize: () => number | undefined;
 
   /**
    * @param answerInComposer - Whether the host answers free text through the composer.
    * @param uploadFile - Stores a file for a file question and answers its asset id, when the host can.
+   * @param maxFileSize - Largest file a file question takes, in bytes; the composer's limit.
    */
   constructor(
     answerInComposer: () => boolean,
     uploadFile: () => ((file: File, signal: AbortSignal) => Promise<string>) | undefined = () =>
       undefined,
+    maxFileSize: () => number | undefined = () => undefined,
   ) {
+    this.#maxFileSize = maxFileSize;
     this.#answerInComposer = answerInComposer;
     this.#uploadFile = uploadFile;
   }
@@ -50,6 +57,11 @@ export class QuestionStore {
   /** The host's file store for a file question, if it has one. */
   get uploadFile(): ((file: File, signal: AbortSignal) => Promise<string>) | undefined {
     return this.#uploadFile();
+  }
+
+  /** Largest file a file question takes, in bytes. */
+  get maxFileSize(): number {
+    return this.#maxFileSize() ?? DEFAULT_MAXIMUM_FILE_SIZE;
   }
 
   /** The free-text question the composer answers now: the most recent one that is still open. */

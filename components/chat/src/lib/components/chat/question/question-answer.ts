@@ -205,3 +205,32 @@ export function timeFromLocal(local: string, today: Date = new Date()): string |
   );
   return `${pad(moment.getUTCHours())}:${pad(moment.getUTCMinutes())}:${pad(moment.getUTCSeconds())}Z`;
 }
+
+/** A `YYYY-MM-DD` and an `HH:MM` in the local zone, for the two fields that edit a date-time. */
+export interface LocalMoment {
+  /** The local date, `YYYY-MM-DD`. */
+  readonly date: string;
+  /** The local time, `HH:MM`. */
+  readonly time: string;
+}
+
+function localParts(moment: Date): LocalMoment {
+  return {
+    date: `${moment.getFullYear()}-${pad(moment.getMonth() + 1)}-${pad(moment.getDate())}`,
+    time: `${pad(moment.getHours())}:${pad(moment.getMinutes())}`,
+  };
+}
+
+/** An RFC 3339 `date-time` as the local date and time that edit it; `undefined` when it is not a moment. */
+export function localMomentFromDateTime(value: string): LocalMoment | undefined {
+  const moment = new Date(value);
+  return Number.isNaN(moment.getTime()) ? undefined : localParts(moment);
+}
+
+/** An RFC 3339 `full-time` as the local `HH:MM` that edits it, on today's date; `undefined` when it is not a time. */
+export function localTimeFromTime(value: string, today: Date = new Date()): string | undefined {
+  const moment = new Date(
+    `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}T${value}`,
+  );
+  return Number.isNaN(moment.getTime()) ? undefined : localParts(moment).time;
+}

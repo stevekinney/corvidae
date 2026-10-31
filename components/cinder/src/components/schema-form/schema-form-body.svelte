@@ -6,7 +6,7 @@
   This component is NOT part of the public API. Import SchemaForm instead.
 -->
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
 
   import { classNames } from '../../utilities/class-names.ts';
   import { ownEntry } from '../../_internal/own-entry.ts';
@@ -23,8 +23,11 @@
     choiceBranchForValue,
     countLeafFields,
     createSchemaFormModel,
+    fieldAtPathExists,
     getValueAtPath,
     initialValueForField,
+    isTemporalStringSchema,
+    schemaHoldsConcealedField,
     isRecord,
     pathId,
     pathKey,
@@ -124,9 +127,22 @@
   // Host-reported problems (a server-side refusal) show on their fields like built-in ones.
   $effect(() => {
     if (hostIssues === undefined || hostIssues.length === 0) return;
-    formState.applyIssues(
-      hostIssues.map((issue) => ({ path: issue.path.map(String), message: issue.message })),
-    );
+    const named = hostIssues.map((issue) => ({
+      path: issue.path.map(String),
+      message: issue.message,
+    }));
+    // A path that names no field would show nowhere, so its message goes on the form itself.
+    const unplaced = named.filter((issue) => !fieldAtPathExists(model.field, issue.path));
+    const shown = [
+      ...named.filter((issue) => !unplaced.includes(issue)),
+      ...(unplaced.length === 0
+        ? []
+        : [{ path: [], message: unplaced.map((issue) => issue.message).join(' ') }]),
+    ];
+    untrack(() => {
+      revealIssues(shown);
+      formState.applyIssues(shown);
+    });
   });
 
   // The hidden serialized-output input is a plain DOM ref, not a Svelte
@@ -143,6 +159,8 @@
   let jsonText = $state('');
   let jsonError = $state<string | undefined>();
 
+  // The panel prints the whole value as text, which a form with a secret field cannot do safely.
+  const jsonPanelAllowed = $derived(jsonEditable && !schemaHoldsConcealedField(schema));
   const largeForm = $derived(countLeafFields(model.field) > LARGE_FORM_FIELD_THRESHOLD);
   const filterQuery = $derived(filterText.trim().toLowerCase());
 
@@ -569,7 +587,14 @@
           required={field.required}
           disabled={submitting}
           onblur={() => formState.validateTouchedField(field)}
-          bind:value={() => stringValue(field), (next) => formState.updateValue(field.path, next)}
+          bind:value={
+            () => stringValue(field),
+            (next) =>
+              formState.updateValue(
+                field.path,
+                next === '' && isTemporalStringSchema(field.schema) ? undefined : next,
+              )
+          }
         />
       {:else if field.kind === 'tags'}
         <SchemaFormTags
@@ -683,7 +708,7 @@
         bind:value={filterText}
         onkeydown={blockEnterSubmit}
       />
-      {#if jsonEditable}
+      {#if jsonPanelAllowed}
         <button
           type="button"
           class="cinder-schema-form__secondary-button"
@@ -695,7 +720,7 @@
         </button>
       {/if}
     </div>
-    {#if jsonEditable && jsonPanelOpen}
+    {#if jsonPanelAllowed && jsonPanelOpen}
       <SchemaFormJsonPanel
         id="{formId}-json"
         text={jsonText}

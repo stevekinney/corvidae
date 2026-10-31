@@ -262,4 +262,107 @@ describe('ChatQuestion states', () => {
       'true',
     );
   });
+
+  test('an issue whose path names no field shows on the form, nested ones on their field', async () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        room: { type: 'string', title: 'Room' },
+        address: {
+          type: 'object',
+          title: 'Address',
+          properties: { city: { type: 'string', title: 'City' } },
+        },
+      },
+    };
+    const nested = await ask(schema, {
+      issues: [{ path: ['address', 'city'], message: 'No such city' }],
+    });
+    expect(screen.getByLabelText(/City/).getAttribute('aria-invalid')).toBe('true');
+    expect(nested.container.textContent).toContain('No such city');
+    cleanup();
+
+    const rooted = await ask(schema, {
+      issues: [{ path: ['answer', 'room'], message: 'Rooted at the answer' }],
+    });
+    expect(rooted.container.querySelectorAll('[aria-invalid="true"]')).toHaveLength(0);
+    expect(rooted.container.textContent).toContain('Rooted at the answer');
+  });
+});
+
+describe('ChatQuestion file gates', () => {
+  const FILE = { type: 'string', contentMediaType: 'image/png', 'x-asset': true };
+
+  async function drop(container: HTMLElement, file: File): Promise<void> {
+    const input = requiredInstance(container.querySelector('input[type="file"]'), HTMLInputElement);
+    Object.defineProperty(input, 'files', { value: [file], configurable: true });
+    await fireEvent.change(input);
+    await flush();
+    await flush();
+  }
+
+  test('the drop zone takes only the schema media type and the host size limit', async () => {
+    const { container } = await ask(FILE, {
+      uploadFile: () => Promise.resolve('a'),
+      maxFileSize: 1024,
+    });
+    const input = requiredInstance(container.querySelector('input[type="file"]'), HTMLInputElement);
+    expect(input.getAttribute('accept')).toBe('image/png');
+  });
+
+  test('a file of another type is refused before anything is uploaded', async () => {
+    const uploaded: string[] = [];
+    const { container, submitted } = await ask(FILE, {
+      uploadFile: (file: File) => {
+        uploaded.push(file.name);
+        return Promise.resolve('asset-1');
+      },
+    });
+    await drop(container, new File(['x'], 'notes.txt', { type: 'text/plain' }));
+    expect(uploaded).toEqual([]);
+    expect(submitted).toEqual([]);
+    expect(container.textContent).toContain('notes.txt');
+  });
+
+  test('a file over the size limit is refused before anything is uploaded', async () => {
+    const uploaded: string[] = [];
+    const { container, submitted } = await ask(FILE, {
+      maxFileSize: 4,
+      uploadFile: (file: File) => {
+        uploaded.push(file.name);
+        return Promise.resolve('asset-1');
+      },
+    });
+    await drop(container, new File(['too large'], 'big.png', { type: 'image/png' }));
+    expect(uploaded).toEqual([]);
+    expect(submitted).toEqual([]);
+    expect(container.textContent).toContain('big.png');
+  });
+});
+
+describe('ChatQuestion Change on a moment', () => {
+  async function sendBack(schema: Schema, value: string): Promise<unknown[]> {
+    const { submitted } = await ask(schema, {
+      initialValue: value,
+      answer: undefined,
+    });
+    await flush();
+    await send();
+    return submitted;
+  }
+
+  test('a time sent as RFC 3339 reopens in the time field and can be sent again', async () => {
+    const submitted = await sendBack({ type: 'string', format: 'time', title: 'At' }, '14:30:00Z');
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]).toMatch(/^\d{2}:30:00Z$/);
+  });
+
+  test('a date-time sent as RFC 3339 reopens in both fields and can be sent again', async () => {
+    const submitted = await sendBack(
+      { type: 'string', format: 'date-time', title: 'When' },
+      '2026-10-29T14:30:00Z',
+    );
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]).toMatch(/^2026-10-29T\d{2}:30:00Z$/);
+  });
 });

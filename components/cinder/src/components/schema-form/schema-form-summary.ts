@@ -2,12 +2,16 @@ import {
   choiceBranchForValue,
   defaultValueForField,
   getValueAtPath,
+  isConcealedSchema,
   isRecord,
   type SchemaFormField,
 } from './schema-form-model.ts';
 
 const MAXIMUM_SHOWN_VALUES = 4;
 const MAXIMUM_SHOWN_NAMES = 2;
+
+/** What a secret value reads as in a summary. */
+const CONCEALED_TEXT = '••••';
 
 /** The fields a person fills in under a group, with nested groups flattened away. */
 export function leafFieldsOf(field: SchemaFormField): SchemaFormField[] {
@@ -46,6 +50,8 @@ function changedValueText(leaf: SchemaFormField, formValue: unknown): string | u
   const current = getValueAtPath(formValue, leaf.path);
   if (current === undefined || current === null) return undefined;
   if (JSON.stringify(current) === JSON.stringify(defaultValueForField(leaf))) return undefined;
+  // A secret is counted as set, but its value never becomes text.
+  if (isConcealedSchema(leaf.schema)) return current === '' ? undefined : CONCEALED_TEXT;
 
   if (typeof current === 'boolean') return current ? leaf.label : undefined;
   if (typeof current === 'string') return current === '' ? undefined : current;

@@ -30,14 +30,16 @@
   let failed = $state(false);
   let issues = $state<readonly ChatQuestionIssue[]>([]);
 
-  const answered = $derived(answer !== undefined && !changing);
+  // Once the run has moved on there is nothing left to change or answer.
+  const resolved = $derived(part.resolved === true);
+  const answered = $derived(answer !== undefined && (!changing || resolved));
   const kind = $derived(classifyQuestion(part.schema));
   const answerInComposer = $derived(sharedStore?.answerInComposer ?? false);
 
   // Sends an answer. Resolves true when the host accepted it. A refusal that names fields keeps
   // the question open with the issues on those fields; any other rejection reads as "try again".
   async function submitAnswer(value: unknown): Promise<boolean> {
-    if (onInputSubmit === undefined || busy) return false;
+    if (onInputSubmit === undefined || busy || resolved) return false;
     busy = true;
     failed = false;
     issues = [];
@@ -68,7 +70,7 @@
   // An open free-text question is the one the composer answers, when the host says so.
   $effect(() => {
     if (sharedStore === undefined || !answerInComposer || kind !== 'text') return;
-    if (answered || onInputSubmit === undefined) return;
+    if (resolved || answered || onInputSubmit === undefined) return;
     return sharedStore.registerComposerTarget({
       toolCallId: part.toolCallId,
       submit: (text) => submitAnswer(text),
@@ -92,8 +94,9 @@
       {issues}
       {failed}
       uploadFile={store.uploadFile}
+      maxFileSize={store.maxFileSize}
       onSubmit={(value) => void submitAnswer(value)}
-      onChange={onInputSubmit === undefined ? undefined : () => (changing = true)}
+      onChange={onInputSubmit === undefined || resolved ? undefined : () => (changing = true)}
     />
   {/if}
 </section>

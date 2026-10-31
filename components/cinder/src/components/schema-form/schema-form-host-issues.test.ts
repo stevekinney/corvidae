@@ -78,4 +78,164 @@ describe('SchemaForm host-reported issues', () => {
 
     expect((screen.getByLabelText(/Token/) as HTMLInputElement).type).toBe('password');
   });
+
+  test('an issue at a nested path shows on that field, and one that names no field shows on the form', async () => {
+    const nested = {
+      type: 'object',
+      properties: {
+        room: { type: 'string', title: 'Room' },
+        address: {
+          type: 'object',
+          title: 'Address',
+          properties: { city: { type: 'string', title: 'City' } },
+        },
+        rows: {
+          type: 'array',
+          title: 'Rows',
+          items: {
+            type: 'object',
+            properties: { name: { type: 'string', title: 'Name' } },
+          },
+        },
+      },
+    };
+    const city = render(SchemaForm, {
+      props: { schema: nested, issues: [{ path: ['address', 'city'], message: 'No such city' }] },
+    });
+    await flush();
+    expect(screen.getByLabelText(/City/).getAttribute('aria-invalid')).toBe('true');
+    expect(city.container.textContent).toContain('No such city');
+    cleanup();
+
+    const unplaced = render(SchemaForm, {
+      props: {
+        schema: nested,
+        issues: [
+          { path: ['answer', 'room'], message: 'Rooted at the answer' },
+          { path: ['nope'], message: 'Not a field' },
+        ],
+      },
+    });
+    await flush();
+    expect(unplaced.container.querySelectorAll('[aria-invalid="true"]')).toHaveLength(0);
+    expect(unplaced.container.textContent).toContain('Rooted at the answer');
+    expect(unplaced.container.textContent).toContain('Not a field');
+  });
+
+  test('an issue inside a closed group opens it', async () => {
+    const properties: Record<string, unknown> = {};
+    for (let index = 0; index < 8; index += 1) {
+      properties[`f${index}`] = { type: 'string', title: `Field ${index}` };
+    }
+    properties['account'] = {
+      type: 'object',
+      title: 'Account',
+      properties: { owner: { type: 'string', title: 'Owner' } },
+    };
+    render(SchemaForm, {
+      props: {
+        schema: { type: 'object', properties },
+        issues: [{ path: ['account', 'owner'], message: 'Owner is taken' }],
+      },
+    });
+    await flush();
+    expect(screen.getByLabelText(/Owner/).getAttribute('aria-invalid')).toBe('true');
+  });
+});
+
+describe('SchemaForm with a secret field', () => {
+  afterEach(() => cleanup());
+
+  const largeSecretSchema = {
+    type: 'object',
+    properties: {
+      ...Object.fromEntries(
+        Array.from({ length: 8 }, (_, index) => [
+          `f${index}`,
+          { type: 'string', title: `Field ${index}` },
+        ]),
+      ),
+      account: {
+        type: 'object',
+        title: 'Account',
+        properties: {
+          token: { type: 'string', title: 'Token', writeOnly: true, 'x-secret': true },
+          owner: { type: 'string', title: 'Owner' },
+        },
+      },
+    },
+  };
+
+  test('a closed group counts a secret as set without ever printing it', async () => {
+    const { container } = render(SchemaForm, { props: { schema: largeSecretSchema } });
+    await flush();
+
+    const group = screen.getByRole('button', { name: /Account/ });
+    await fireEvent.click(group);
+    await flush();
+    await fireEvent.input(screen.getByLabelText(/Token/), { target: { value: 'sk-live-123' } });
+    await fireEvent.input(screen.getByLabelText(/Owner/), { target: { value: 'ada' } });
+    await flush();
+    await fireEvent.click(screen.getByRole('button', { name: /Account/ }));
+    await flush();
+
+    expect(container.textContent).toContain('ada');
+    expect(container.textContent).toContain('••••');
+    expect(container.textContent).not.toContain('sk-live-123');
+    expect(container.innerHTML).not.toContain('sk-live-123');
+  });
+
+  test('a large form with a secret field offers no Edit as JSON panel', async () => {
+    render(SchemaForm, { props: { schema: largeSecretSchema } });
+    await flush();
+
+    expect(screen.queryByRole('button', { name: 'Edit as JSON' })).toBeNull();
+  });
+
+  test('a large form without one still offers it', async () => {
+    const plain = structuredClone(largeSecretSchema);
+    delete (plain.properties.account.properties.token as Record<string, unknown>)['writeOnly'];
+    delete (plain.properties.account.properties.token as Record<string, unknown>)['x-secret'];
+    render(SchemaForm, { props: { schema: plain } });
+    await flush();
+
+    expect(screen.getByRole('button', { name: 'Edit as JSON' })).toBeTruthy();
+  });
+});
+
+describe('SchemaForm optional moments', () => {
+  afterEach(() => cleanup());
+
+  test('an untouched optional date, time or date-time is left out of the answer, and a cleared one too', async () => {
+    const submitted: unknown[] = [];
+    const { container } = render(SchemaForm, {
+      props: {
+        schema: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', title: 'Name' },
+            due: { type: 'string', format: 'date', title: 'Due' },
+            at: { type: 'string', format: 'time', title: 'At' },
+            when: { type: 'string', format: 'date-time', title: 'When' },
+          },
+          required: ['name'],
+        },
+        onSubmit: (value: unknown) => {
+          submitted.push(value);
+        },
+      },
+    });
+    await flush();
+
+    await fireEvent.input(screen.getByLabelText(/Name/), { target: { value: 'ada' } });
+    await fireEvent.input(screen.getByLabelText(/Due/), { target: { value: '2026-02-27' } });
+    await fireEvent.input(screen.getByLabelText(/Due/), { target: { value: '' } });
+    const form = container.querySelector('form')!;
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await flush();
+    await flush();
+    await flush();
+
+    expect(submitted).toEqual([{ name: 'ada' }]);
+  });
 });

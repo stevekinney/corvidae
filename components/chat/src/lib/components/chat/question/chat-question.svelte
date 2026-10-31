@@ -21,6 +21,8 @@
     issues?: readonly ChatQuestionIssue[] | undefined;
     /** Whether the last answer could not be sent for a reason the person cannot fix by editing. */
     failed?: boolean | undefined;
+    /** Largest file a file question takes, in bytes. */
+    maxFileSize?: number | undefined;
     /** Stores a file and answers its managed asset id, for a file question. */
     uploadFile?: ((file: File, signal: AbortSignal) => Promise<string>) | undefined;
     /** Called with a value that is ready to send. */
@@ -43,9 +45,16 @@
   } from '@lostgradient/cinder';
   import type { FileUploadEntry } from '@lostgradient/cinder';
 
-  import { dateTimeFromLocal, timeFromLocal } from './question-answer.ts';
   import {
+    dateTimeFromLocal,
+    localMomentFromDateTime,
+    localTimeFromTime,
+    timeFromLocal,
+  } from './question-answer.ts';
+  import {
+    acceptedMediaType,
     choicesOf,
+    mediaTypeMatches,
     classifyQuestion,
     ratingStepsOf,
     schemaKeyword,
@@ -62,6 +71,7 @@
     issues = [],
     failed = false,
     uploadFile,
+    maxFileSize,
     onSubmit,
     onChange,
   }: ChatQuestionProps = $props();
@@ -84,10 +94,17 @@
   let uploadError = $state<string | undefined>();
   let uploadController: AbortController | undefined;
 
-  // Start from what the person gave last time (Change), once per answer being reopened.
+  // Start from what the person gave last time (Change), once per answer being reopened. A moment
+  // is sent as RFC 3339 and edited as local fields, so it is converted back for them.
   $effect.pre(() => {
     if (initialValue === undefined) return;
-    if (typeof initialValue === 'string') text = initialValue;
+    if (typeof initialValue === 'string' && kind === 'time') {
+      text = localTimeFromTime(initialValue) ?? '';
+    } else if (typeof initialValue === 'string' && kind === 'date-time') {
+      const moment = localMomentFromDateTime(initialValue);
+      text = moment?.date ?? '';
+      timeText = moment?.time ?? '';
+    } else if (typeof initialValue === 'string') text = initialValue;
     else if (typeof initialValue === 'number') {
       numberDraft = initialValue;
       rating = initialValue;
@@ -149,9 +166,19 @@
     );
   }
 
+  const mediaType = $derived(acceptedMediaType(schema));
+  const fileSizeLimit = $derived(maxFileSize ?? 10 * 1024 * 1024);
+
   async function acceptFile(accepted: File[]): Promise<void> {
     const file = accepted[0];
     if (file === undefined || uploadFile === undefined) return;
+    // The drop zone filters too; this refuses a file that got past it before anything is sent.
+    if (!mediaTypeMatches(mediaType, file.type) || file.size > fileSizeLimit) {
+      uploadError = !mediaTypeMatches(mediaType, file.type)
+        ? `${file.name} is not ${mediaType ?? 'an accepted type'}.`
+        : `${file.name} is larger than the ${Math.round(fileSizeLimit / (1024 * 1024))} MB limit.`;
+      return;
+    }
     uploadController?.abort();
     const controller = new AbortController();
     uploadController = controller;
@@ -395,7 +422,10 @@
           id={`${id}-file-input`}
           {files}
           disabled={busy}
+          {...mediaType === undefined ? {} : { accept: mediaType }}
+          maxSize={fileSizeLimit}
           onFilesAccepted={(accepted) => void acceptFile(accepted)}
+          onReject={(rejected) => (uploadError = rejected[0]?.message)}
         />
         {#if uploadError !== undefined}
           <p class="chat-question-error" role="alert">{uploadError}</p>

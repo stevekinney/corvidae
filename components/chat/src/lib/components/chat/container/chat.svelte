@@ -314,6 +314,7 @@
             const reference = await uploadAttachment(file, { signal });
             return reference.id;
           },
+    () => maxFileSize,
   );
   provideQuestionStore(questions);
 
@@ -1109,12 +1110,23 @@
    * meanwhile repeat them. If the send fails they come back ahead of any chips
    * added since, without repeats and within the limit.
    */
+  async function answerQuestionFromComposer(
+    question: NonNullable<typeof questions.composerTarget>,
+    typed: string,
+  ): Promise<void> {
+    const accepted = await question.submit(typed);
+    if (!accepted && inputRef?.getValue() === '') {
+      inputRef.insertAtRange({ start: 0, end: 0 }, typed);
+    }
+  }
+
   function handleComposerSubmit(message: MessageInput, attachments: ChatAttachment[]): void {
     // An open free-text question takes the typed text as its answer, not as a new message.
     const question = questions.composerTarget;
     const typed = typeof message.content === 'string' ? message.content.trim() : '';
     if (question !== undefined && typed !== '' && attachments.length === 0) {
-      void question.submit(typed);
+      // A refused answer must not lose what was typed, so it goes back into the composer.
+      void answerQuestionFromComposer(question, typed);
       return;
     }
     const carried = quotes.quotes;

@@ -133,3 +133,19 @@ export function schemaNumber(schema: SchemaNode, name: string): number | undefin
   const value = schemaKeyword(schema, name);
   return typeof value === 'number' ? value : undefined;
 }
+
+/** The `contentMediaType` a file question asks for (`image/png`, `image/*`), without parameters, or `undefined` for any file. */
+export function acceptedMediaType(schema: SchemaNode): string | undefined {
+  const type = schemaKeyword(schema, 'contentMediaType');
+  if (typeof type !== 'string') return undefined;
+  const bare = (type.split(';')[0] ?? '').trim().toLowerCase();
+  return bare === '' || bare === '*/*' ? undefined : bare;
+}
+
+/** Whether a file of media type `fileType` satisfies the `accepted` type: an exact match, or a `type/*` family. */
+export function mediaTypeMatches(accepted: string | undefined, fileType: string): boolean {
+  if (accepted === undefined) return true;
+  const actual = (fileType.split(';')[0] ?? '').trim().toLowerCase();
+  if (accepted.endsWith('/*')) return actual.startsWith(accepted.slice(0, -1));
+  return actual === accepted;
+}

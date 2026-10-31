@@ -412,6 +412,7 @@ function deriveToolInputPart(
       toolName: answered.toolName,
       message: answered.message,
       schema: { ...answered.schema },
+      resolved: true,
     };
   }
   const schema: unknown = result.action.schema;
