@@ -153,7 +153,9 @@ describe('WorkflowRevisionsPanel install', () => {
 
     const { findByText, findByRole } = await renderPanel();
 
-    expect(await findByText('No revisions installed for this workflow yet.')).not.toBeNull();
+    expect(
+      await findByText('Installing a revision of this workflow lists it here.'),
+    ).not.toBeNull();
     expect(await findByRole('button', { name: 'Install revision' })).not.toBeNull();
   });
 

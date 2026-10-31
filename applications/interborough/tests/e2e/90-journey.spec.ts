@@ -305,6 +305,7 @@ test('opens the workflow from /workflows, waits for the schedule’s fire to be 
 
   // The schedule fires every few seconds. This page may open before the first fire, says there are
   // no runs, and asks again until there is one, so the wait is for its first row.
+  await detail.getByRole('tab', { name: WORKFLOW_COPY.page.tabs.runs }).click();
   await detail.getByRole('link', { name: WORKFLOW_COPY.runsAction, exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/workflows/${JOURNEY_WORKFLOW_ID}/runs$`));
   const runs = page.locator('tbody tr');
@@ -317,10 +318,11 @@ test('opens the workflow from /workflows, waits for the schedule’s fire to be 
   await page.getByRole('tab', { name: 'Workflow' }).click();
   // The run's page also links its schedule, `bureau-workflow-schedule:journey-digest:1`, so the
   // type's link is the one named exactly.
-  await expect(page.getByRole('link', { name: JOURNEY_WORKFLOW_ID, exact: true })).toHaveAttribute(
-    'href',
-    `/workflows/${JOURNEY_WORKFLOW_ID}`,
-  );
+  await expect(
+    page
+      .getByRole('tabpanel', { name: 'Workflow' })
+      .getByRole('link', { name: JOURNEY_WORKFLOW_ID, exact: true }),
+  ).toHaveAttribute('href', `/workflows/${JOURNEY_WORKFLOW_ID}`);
 });
 
 test('follows the schedule’s link to the workflow editor, changes its cadence to one hour, and sees it on /schedules', async ({
