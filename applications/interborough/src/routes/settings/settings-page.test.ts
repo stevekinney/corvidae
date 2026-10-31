@@ -22,6 +22,7 @@ import {
   type BureauStub,
 } from '../../lib/bureau-stub.test-support.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
+import { shortcuts } from '../../lib/shortcuts.ts';
 import { landAt } from '../chat/pages.test-support.ts';
 import {
   installSettingsBureau,
@@ -60,17 +61,20 @@ const row = (container: HTMLElement, key: string) =>
   container.querySelector<HTMLElement>(`[data-setting="${key}"]`);
 
 /** The controls a person works in a row: a switch, a field, a select, or an editor. */
-const CONTROLS = 'button[role="switch"], input, select, textarea';
+const CONTROLS = 'button[role="switch"], input, select, textarea, button';
 
 const updates = () => stub?.callsTo('bureau.settings.update') ?? [];
 
 describe('the page', () => {
   test('draws one control for every key of the schema, and none of them unsupported', async () => {
     const { container, findByRole } = open(servedSettings());
-    await findByRole('form', { name: SETTINGS_COPY.formLabel });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
 
     const rows = [...container.querySelectorAll<HTMLElement>('[data-setting]')];
-    expect(rows.map((entry) => entry.dataset['setting'])).toEqual([...SETTING_KEYS]);
+    // The model policy has a section of its own.
+    expect(rows.map((entry) => entry.dataset['setting'])).toEqual(
+      SETTING_KEYS.filter((key) => key !== 'modelPolicy'),
+    );
     for (const entry of rows) {
       expect(entry.querySelector(CONTROLS), entry.dataset['setting']).not.toBeNull();
     }
@@ -79,14 +83,13 @@ describe('the page', () => {
 
   test('groups the keys by their first segment, with the keys that fix the deployment under Durability', async () => {
     const { container, findByRole } = open(servedSettings());
-    await findByRole('form', { name: SETTINGS_COPY.formLabel });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
 
     const headings = [...container.querySelectorAll('h2')].map((heading) =>
       heading.textContent?.trim(),
     );
     expect(headings).toEqual([
       'Tools',
-      'Model policy',
       'Decisions',
       'Context',
       'Retention',
@@ -113,9 +116,10 @@ describe('the page', () => {
     const { container, findByRole } = open(
       servedSettings({ locked: new Set(['workflowVersion']) }),
     );
-    await findByRole('form', { name: SETTINGS_COPY.formLabel });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
 
-    expect(row(container, 'tools.wakeup')?.textContent).toContain(SETTINGS_COPY.apply.live);
+    // Only a setting that needs a restart says how it applies.
+    expect(row(container, 'tools.wakeup')?.textContent).not.toContain('Applies live');
     expect(row(container, 'durable')?.textContent).toContain(SETTINGS_COPY.apply.restart);
     const locked = row(container, 'workflowVersion');
     expect(locked?.dataset['locked']).toBe('true');
@@ -131,7 +135,7 @@ describe('the page', () => {
         lockReasons: { maintenance: 'shared-storage' },
       }),
     );
-    await findByRole('form', { name: SETTINGS_COPY.formLabel });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
 
     expect(row(container, 'workflowVersion')?.textContent).toContain(
       SETTINGS_COPY.lockedNote.deployment,
@@ -161,7 +165,7 @@ describe('the page', () => {
 describe('a save', () => {
   test('sends only the keys that changed, in one update, against the revision the page read', async () => {
     const { container, findByRole } = open(servedSettings({ revision: 7 }));
-    const form = await findByRole('form', { name: SETTINGS_COPY.formLabel });
+    const form = await findByRole('group', { name: SETTINGS_COPY.formLabel });
     const save = within(form).getByRole('button', { name: SETTINGS_COPY.saveAction });
     expect((save as HTMLButtonElement).disabled).toBe(true);
 
@@ -187,25 +191,38 @@ describe('a save', () => {
     expect((save as HTMLButtonElement).disabled).toBe(true);
   });
 
-  test('names a restart key it set, which waits for a restart', async () => {
-    const { container, findByRole } = open(servedSettings());
-    const form = await findByRole('form', { name: SETTINGS_COPY.formLabel });
+  test('sums up the keys that wait for a restart, before the save and after it', async () => {
+    const { container, findByRole, findByTestId } = open(servedSettings());
+    const form = await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    expect(container.querySelector('[data-testid="settings-restart-summary"]')).toBeNull();
     await fireEvent.click(
       row(container, 'durable')?.querySelector('button[role="switch"]') as HTMLElement,
     );
+    const summary = await findByTestId('settings-restart-summary');
+    expect(summary.textContent).toContain(SETTINGS_COPY.restartSummary(['durable']));
     await fireEvent.click(within(form).getByRole('button', { name: SETTINGS_COPY.saveAction }));
 
-    await within(container).findByText(SETTINGS_COPY.saved.pendingRestart(['durable']));
+    await waitFor(() => expect(updates()).toHaveLength(1));
+    await waitFor(() => expect(row(container, 'durable')?.dataset['dirty']).toBe('false'));
+    // The Bureau now holds a value that waits, so the summary stays and the row says so.
+    expect(
+      container.querySelector('[data-testid="settings-restart-summary"]')?.textContent,
+    ).toContain(SETTINGS_COPY.restartSummary(['durable']));
+    expect(row(container, 'durable')?.textContent).toContain(SETTINGS_COPY.pendingRestart);
   });
 
-  test('turns the human-input switch off to false and back on to the object its editor holds', async () => {
+  test('turns the human-input switch off to false and back on to the form of its options', async () => {
     const { container, findByRole } = open(servedSettings());
-    const form = await findByRole('form', { name: SETTINGS_COPY.formLabel });
+    const form = await findByRole('group', { name: SETTINGS_COPY.formLabel });
     const toggle = () =>
       row(container, 'tools.humanInput')?.querySelector('button[role="switch"]') as HTMLElement;
     expect(toggle().getAttribute('aria-checked')).toBe('true');
+    // The options are a form, not JSON text.
+    expect(row(container, 'tools.humanInput')?.querySelector('form')).not.toBeNull();
+    expect(row(container, 'tools.humanInput')?.querySelector('textarea')).toBeNull();
 
     await fireEvent.click(toggle());
+    expect(row(container, 'tools.humanInput')?.querySelector('form')).toBeNull();
     await fireEvent.click(within(form).getByRole('button', { name: SETTINGS_COPY.saveAction }));
     await waitFor(() => expect(updates()).toHaveLength(1));
     expect(updates()[0]?.params['patch']).toEqual({ 'tools.humanInput': false });
@@ -213,11 +230,10 @@ describe('a save', () => {
     await waitFor(() => expect(row(container, 'tools.humanInput')?.dataset['dirty']).toBe('false'));
     await waitFor(() => expect(toggle().closest('fieldset')?.disabled).toBe(false));
     expect(toggle().getAttribute('aria-checked')).toBe('false');
-    expect(row(container, 'tools.humanInput')?.querySelector('textarea')).toBeNull();
 
     await fireEvent.click(toggle());
     await waitFor(() =>
-      expect(row(container, 'tools.humanInput')?.querySelector('textarea')).not.toBeNull(),
+      expect(row(container, 'tools.humanInput')?.querySelector('form')).not.toBeNull(),
     );
     const save = within(form).getByRole('button', {
       name: SETTINGS_COPY.saveAction,
@@ -228,29 +244,167 @@ describe('a save', () => {
     expect(updates()[1]?.params['patch']).toEqual({ 'tools.humanInput': {} });
   });
 
-  test('holds a JSON editor’s text that is not JSON, and sends nothing until it is', async () => {
+  test('edits an object through its form, with no JSON, and sends the value it checked', async () => {
     const { container, findByRole } = open(servedSettings());
-    const form = await findByRole('form', { name: SETTINGS_COPY.formLabel });
-    const editor = row(container, 'modelPolicy')?.querySelector('textarea') as HTMLTextAreaElement;
+    const form = await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    const receipts = row(container, 'retention.receipts');
+    expect(receipts?.querySelector('textarea')).toBeNull();
+    // Only a value with no fields of its own is free-form: no setting the Bureau publishes now.
+    expect(container.querySelector('[data-setting] textarea')).toBeNull();
+    // The form's own submit button is not drawn; the page has one Save.
+    const field = receipts?.querySelector('input') as HTMLInputElement;
+    await fireEvent.input(field, { target: { value: '5' } });
+    await fireEvent.blur(field);
 
-    await fireEvent.input(editor, { target: { value: '{"policyRevision": ' } });
     const save = within(form).getByRole('button', {
       name: SETTINGS_COPY.saveAction,
     }) as HTMLButtonElement;
-    expect(save.disabled).toBe(true);
-    expect(row(container, 'modelPolicy')?.dataset['dirty']).toBe('true');
-
-    await fireEvent.input(editor, { target: { value: '{"policyRevision": 1}' } });
-    expect(save.disabled).toBe(false);
+    await waitFor(() => expect(save.disabled).toBe(false));
     await fireEvent.click(save);
     await waitFor(() => expect(updates()).toHaveLength(1));
-    expect(updates()[0]?.params['patch']).toEqual({ modelPolicy: { policyRevision: 1 } });
+    // The form shows a week as hours, and keeps the value in milliseconds.
+    expect(updates()[0]?.params['patch']).toEqual({
+      'retention.receipts': { olderThan: 5 * 3_600_000 },
+    });
+  });
+
+  test('sends only the fields a form holds, with no sibling it left empty', async () => {
+    const { container, findByRole } = open(servedSettings());
+    const form = await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    // `engine.history` has two optional numbers and the fixture holds one of them.
+    const history = row(container, 'engine.history');
+    const fields = [...(history?.querySelectorAll('input') ?? [])];
+    expect(fields.length).toBeGreaterThan(1);
+    const first = fields[0] as HTMLInputElement;
+    await fireEvent.input(first, { target: { value: '5000' } });
+    await fireEvent.blur(first);
+
+    const save = within(form).getByRole('button', {
+      name: SETTINGS_COPY.saveAction,
+    }) as HTMLButtonElement;
+    await waitFor(() => expect(save.disabled).toBe(false));
+    await fireEvent.click(save);
+    await waitFor(() => expect(updates()).toHaveLength(1));
+    expect(updates()[0]?.params['patch']).toEqual({ 'engine.history': { maxEvents: 5000 } });
+  });
+
+  test('will not send a form’s value that its schema refuses', async () => {
+    const { container, findByRole } = open(servedSettings());
+    const form = await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    const field = row(container, 'retention.receipts')?.querySelector('input') as HTMLInputElement;
+    await fireEvent.input(field, { target: { value: '-5' } });
+    await fireEvent.blur(field);
+
+    const save = within(form).getByRole('button', {
+      name: SETTINGS_COPY.saveAction,
+    }) as HTMLButtonElement;
+    await waitFor(() =>
+      expect(row(container, 'retention.receipts')?.querySelector('[role="alert"]')).not.toBeNull(),
+    );
+    expect(save.disabled).toBe(true);
+    expect(updates()).toHaveLength(0);
+  });
+
+  test('draws an unset value as Not set, with no error, and reveals its form on request', async () => {
+    const { container, findByRole } = open(servedSettings());
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    // `retention.logs` and `context.summarizerModel` have no value in the fixture.
+    const logs = row(container, 'retention.logs');
+    expect(logs?.textContent).toContain(SETTINGS_COPY.notSet);
+    expect(logs?.querySelector('input')).toBeNull();
+    expect(logs?.querySelector('[role="alert"]')).toBeNull();
+    expect(logs?.textContent).not.toContain('Enter valid JSON');
+    expect(row(container, 'context.summarizerModel')?.textContent).toContain(SETTINGS_COPY.notSet);
+
+    await fireEvent.click(
+      within(logs as HTMLElement).getByRole('button', { name: SETTINGS_COPY.setAction }),
+    );
+    expect(logs?.querySelector('input')).not.toBeNull();
+    // Looking at the fields is not a change.
+    expect(logs?.dataset['dirty']).toBe('false');
+  });
+
+  test('draws a description as inline Markdown, a code span as code', async () => {
+    const { container, findByRole } = open(servedSettings());
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    const wakeup = row(container, 'tools.wakeup');
+    expect(wakeup?.querySelector('code')?.textContent).toBe('scheduleWakeup');
+    expect(wakeup?.textContent).not.toContain('`');
+  });
+
+  test('offers the catalog’s rows for the models a setting names, never a typed name', async () => {
+    const { container, findByRole } = open(servedSettings(), undefined, {
+      'bureau.agents.catalog': () => ({
+        models: [
+          { provider: 'anthropic', model: 'claude-haiku-5-5', aliases: [] },
+          { provider: 'openai', model: 'gpt-5', aliases: [] },
+        ],
+        tools: [],
+      }),
+    });
+    const form = await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    const select = row(container, 'decisions.fallbackModel')?.querySelector(
+      'select',
+    ) as HTMLSelectElement;
+    await waitFor(() =>
+      expect([...select.options].map((option) => option.value)).toEqual([
+        'anthropic/claude-haiku-5-5',
+        'openai/gpt-5',
+      ]),
+    );
+    expect(row(container, 'decisions.fallbackModel')?.querySelector('input')).toBeNull();
+
+    await fireEvent.change(select, { target: { value: 'openai/gpt-5' } });
+    await fireEvent.click(within(form).getByRole('button', { name: SETTINGS_COPY.saveAction }));
+    await waitFor(() => expect(updates()).toHaveLength(1));
+    expect(updates()[0]?.params['patch']).toEqual({ 'decisions.fallbackModel': 'openai/gpt-5' });
+  });
+
+  test('keeps the model a setting holds in its choices when the catalog does not list it', async () => {
+    const { container, findByRole } = open(servedSettings());
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    const select = row(container, 'decisions.fallbackModel')?.querySelector(
+      'select',
+    ) as HTMLSelectElement;
+    expect([...select.options].map((option) => option.value)).toContain(
+      'anthropic/claude-haiku-5-5',
+    );
+  });
+
+  test('saves on ⌘Enter, the same save the button makes', async () => {
+    const { container, findByRole } = open(servedSettings({ revision: 9 }));
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    await fireEvent.click(
+      row(container, 'tools.wakeup')?.querySelector('button[role="switch"]') as HTMLElement,
+    );
+    expect(
+      shortcuts.handleKey(
+        { key: 'Enter', metaKey: true, ctrlKey: false, altKey: false, editable: true },
+        { routePattern: '/settings', regions: [] },
+        0,
+      ),
+    ).toBe(true);
+    await waitFor(() => expect(updates()).toHaveLength(1));
+    expect(updates()[0]?.params).toEqual({
+      patch: { 'tools.wakeup': false },
+      expectedRevision: 9,
+    });
+  });
+
+  test('marks the save as a change, so an offline page can hold it', async () => {
+    const { findByRole } = open(servedSettings());
+    const form = await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    expect(
+      within(form)
+        .getByRole('button', { name: SETTINGS_COPY.saveAction })
+        .hasAttribute('data-changes'),
+    ).toBe(true);
   });
 
   test('sends nothing for a key the deployment locked, and says which key the Bureau refused', async () => {
     const served = servedSettings({ locked: new Set(['tools.wakeup']) });
     const { container, findByRole } = open(served);
-    await findByRole('form', { name: SETTINGS_COPY.formLabel });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
     const wakeup = row(container, 'tools.wakeup')?.querySelector(
       'button[role="switch"]',
     ) as HTMLButtonElement;
@@ -261,7 +415,7 @@ describe('a save', () => {
 
   test('says a refusal the Bureau gave for a value, and changes nothing on the page', async () => {
     const { container, findByRole } = open(servedSettings());
-    const form = await findByRole('form', { name: SETTINGS_COPY.formLabel });
+    const form = await findByRole('group', { name: SETTINGS_COPY.formLabel });
     stub?.on('bureau.settings.update', () => {
       throw new StubFault('InvalidParams', 400, 'invalid params', {
         issues: [{ path: ['patch', 'tools.wakeup'], message: 'Expected a boolean.' }],
@@ -281,7 +435,7 @@ describe('a save', () => {
 describe('a refused save', () => {
   test('says when the caller may read the settings but not change them', async () => {
     const { container, findByRole } = open(servedSettings());
-    const form = await findByRole('form', { name: SETTINGS_COPY.formLabel });
+    const form = await findByRole('group', { name: SETTINGS_COPY.formLabel });
     stub?.on('bureau.settings.update', () => {
       throw new StubFault('Forbidden', 403, 'Requires bureau.settings:write.');
     });
@@ -296,7 +450,7 @@ describe('a refused save', () => {
   test('says which key the deployment locked when the Bureau refuses it', async () => {
     const served = servedSettings();
     const { container, findByRole } = open(served);
-    const form = await findByRole('form', { name: SETTINGS_COPY.formLabel });
+    const form = await findByRole('group', { name: SETTINGS_COPY.formLabel });
     // The deployment locks the key after the page read the settings.
     served.locked = new Set(['tools.wakeup']);
     await fireEvent.click(
@@ -313,7 +467,7 @@ describe('a StaleRevision', () => {
   test('is answered with a prompt to reload, and nothing was saved', async () => {
     const served = servedSettings({ revision: 3 });
     const { container, findByRole, findByTestId } = open(served);
-    const form = await findByRole('form', { name: SETTINGS_COPY.formLabel });
+    const form = await findByRole('group', { name: SETTINGS_COPY.formLabel });
 
     await fireEvent.click(
       row(container, 'tools.wakeup')?.querySelector('button[role="switch"]') as HTMLElement,
@@ -345,7 +499,7 @@ describe('a StaleRevision', () => {
   test('is told, without a save, when the settings change under an edit', async () => {
     const served = servedSettings({ revision: 3 });
     const { container, findByRole, findByTestId } = open(served);
-    await findByRole('form', { name: SETTINGS_COPY.formLabel });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
     await fireEvent.click(
       row(container, 'tools.wakeup')?.querySelector('button[role="switch"]') as HTMLElement,
     );
@@ -365,7 +519,7 @@ describe('a StaleRevision', () => {
 describe('a page that follows the Bureau', () => {
   test('keeps its edits when a read fails, and says the settings may be out of date', async () => {
     const { container, findByRole, findByTestId } = open(servedSettings());
-    await findByRole('form', { name: SETTINGS_COPY.formLabel });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
     await fireEvent.click(
       row(container, 'tools.wakeup')?.querySelector('button[role="switch"]') as HTMLElement,
     );
@@ -384,7 +538,7 @@ describe('a page that follows the Bureau', () => {
   test('takes in a change made elsewhere when the edits are discarded', async () => {
     const served = servedSettings({ revision: 3 });
     const { container, findByRole, findByTestId } = open(served);
-    const form = await findByRole('form', { name: SETTINGS_COPY.formLabel });
+    const form = await findByRole('group', { name: SETTINGS_COPY.formLabel });
     await fireEvent.click(
       row(container, 'tools.wakeup')?.querySelector('button[role="switch"]') as HTMLElement,
     );
@@ -420,7 +574,7 @@ describe('a page that follows the settings stream', () => {
     const served = servedSettings({ revision: 3 });
     const stream = settingsStream();
     const { container, findByRole, findByTestId } = open(served, stream);
-    await findByRole('form', { name: SETTINGS_COPY.formLabel });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
     await waitFor(() => expect(stream.opened).toEqual([undefined]));
     await fireEvent.click(
       row(container, 'tools.wakeup')?.querySelector('button[role="switch"]') as HTMLElement,
@@ -437,7 +591,7 @@ describe('a page that follows the settings stream', () => {
   test('resumes from the last revision it was given when the Bureau ends the stream', async () => {
     const stream = settingsStream();
     const { findByRole } = open(servedSettings({ revision: 3 }), stream);
-    await findByRole('form', { name: SETTINGS_COPY.formLabel });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
     await waitFor(() => expect(stream.opened).toHaveLength(1));
     stream.push(4, ['tools.decide']);
     stream.end();
@@ -477,7 +631,7 @@ describe('a page that follows the settings stream', () => {
     await waitUntil(() => stream.drained());
     releaseFirstRead();
 
-    await findByRole('form', { name: SETTINGS_COPY.formLabel });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
     await waitFor(() =>
       expect(
         row(container, 'tools.decide')
@@ -491,7 +645,7 @@ describe('a page that follows the settings stream', () => {
   test('keeps working, reading on focus, when the Bureau refuses the stream', async () => {
     const served = servedSettings({ revision: 3 });
     const { findByRole } = open(served);
-    await findByRole('form', { name: SETTINGS_COPY.formLabel });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
     const before = reads();
     served.revision = 4;
     focusManager.setFocused(false);
@@ -505,7 +659,7 @@ describe.each(['local', 'remote'] as const)(
   (mode) => {
     test('names each place in the words of its mode, and shows the host’s locations verbatim', async () => {
       const { container, findByRole } = open(servedSettings(), undefined, {}, mode);
-      await findByRole('form', { name: SETTINGS_COPY.formLabel });
+      await findByRole('group', { name: SETTINGS_COPY.formLabel });
 
       const words = mode === 'remote' ? SETTINGS_COPY.remote.hostPaths : SETTINGS_COPY.hostPaths;
       const otherWords =

@@ -7,9 +7,9 @@
    * says so and offers to reload, because saving over a change would overwrite it. A save the
    * Bureau refuses as stale says the same.
    */
-  import { Alert, Button } from '@lostgradient/cinder';
+  import { Alert, Button, validateSchemaFormValue } from '@lostgradient/cinder';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
-  import { untrack } from 'svelte';
+  import { onMount, untrack } from 'svelte';
 
   import { SETTINGS_COPY } from '../../app/copy.ts';
   import {
@@ -23,22 +23,36 @@
     type SettingsUpdateReceipt,
   } from '../../lib/bureau-settings.ts';
   import { queryKeys } from '../../lib/query.ts';
+  import { shortcuts } from '../../lib/shortcuts.ts';
+  import ModelPolicyEditor from './model-policy-editor.svelte';
   import SettingRow from './setting-row.svelte';
-  import { controlFor, groupLabel, groupOf, groupsOf, type Control } from './settings-controls.ts';
+  import {
+    controlFor,
+    groupLabel,
+    groupOf,
+    groupsOf,
+    inSection,
+    MODEL_POLICY_KEY,
+    type Control,
+    type SettingsSectionId,
+  } from './settings-controls.ts';
+  import { formSchemaOf } from './settings-form-schema.ts';
   import { SettingsForm } from './settings-form.svelte.ts';
 
   interface Props {
     schema: SettingsSchema;
     snapshot: SettingsSnapshot;
+    /** Which settings the section edits; the form holds all of them, so a save sends only what changed. */
+    section: SettingsSectionId;
   }
 
-  let { schema, snapshot }: Props = $props();
+  let { schema, snapshot, section }: Props = $props();
 
   const queryClient = useQueryClient();
 
-  const keys = $derived(Object.keys(schema));
+  const keys = $derived(Object.keys(schema).filter((key) => inSection(key, section)));
   const controls = new Map<string, Control>(
-    untrack(() => Object.entries(schema).map(([key, node]) => [key, controlFor(node)])),
+    untrack(() => Object.entries(schema).map(([key, node]) => [key, controlFor(key, node)])),
   );
 
   /** What a key without a state from the Bureau is: a live key nothing holds. */
@@ -48,7 +62,15 @@
     return snapshot.keys[key] ?? UNKNOWN_STATE;
   }
 
-  const form = new SettingsForm(controls, (key) => stateOf(key).locked);
+  /** Checks a `SchemaForm` key's value against the schema the form was given. */
+  async function validate(key: string, value: unknown): Promise<string | undefined> {
+    const node = schema[key];
+    if (node === undefined) return undefined;
+    const result = await validateSchemaFormValue(formSchemaOf(key, node), value);
+    return result.valid ? undefined : (result.issues[0]?.message ?? SETTINGS_COPY.invalidValue);
+  }
+
+  const form = new SettingsForm(controls, (key) => stateOf(key).locked, validate);
   untrack(() => form.load(snapshot));
 
   /** A save the Bureau applied: which keys now wait for a restart. */
@@ -100,11 +122,34 @@
     },
   }));
 
-  async function save(event: SubmitEvent): Promise<void> {
-    event.preventDefault();
+  /** Sends the dirty keys, if there are any and nothing is wrong with them. */
+  async function save(): Promise<void> {
+    // An edit made a moment ago may still be checked against its schema.
+    await form.settled();
     if (!form.canSave || submit.isPending) return;
     submit.mutate({ patch: form.patch(), expectedRevision: form.revision });
   }
+
+  // ⌘Enter saves from anywhere on the page, a field included (`lib/shortcuts.ts`).
+  onMount(() =>
+    shortcuts.register({
+      keys: ['Enter'],
+      modifier: 'mod',
+      label: SETTINGS_COPY.saveAction,
+      group: SETTINGS_COPY.shortcutGroup,
+      scope: { route: section === 'general' ? '/settings' : '/settings/model-policy' },
+      handler: () => void save(),
+    }),
+  );
+
+  /** The keys that wait for a restart: the ones the Bureau holds a stored value for, and the ones about to be saved. */
+  const restartKeys = $derived(
+    Object.keys(schema).filter(
+      (key) =>
+        inSection(key, section) &&
+        (stateOf(key).pendingRestart || (stateOf(key).apply === 'restart' && form.isDirty(key))),
+    ),
+  );
 
   /** Reads the settings again and starts the form over from them, whatever was edited. */
   async function reload(): Promise<void> {
@@ -147,9 +192,7 @@
   <Alert variant="success" dismissible onDismiss={() => (saved = null)}>
     <p class="weft-settings-editor__alert-title">{SETTINGS_COPY.saved.title}</p>
     <p class="weft-settings-editor__alert-body">
-      {saved.pendingRestart.length === 0
-        ? SETTINGS_COPY.saved.description
-        : SETTINGS_COPY.saved.pendingRestart(saved.pendingRestart)}
+      {SETTINGS_COPY.saved.description}
     </p>
   </Alert>
 {/if}
@@ -162,31 +205,53 @@
   </Alert>
 {/if}
 
-<form
-  class="weft-settings-editor"
-  aria-label={SETTINGS_COPY.formLabel}
-  onsubmit={(event) => void save(event)}
->
+{#if restartKeys.length > 0}
+  <Alert variant="info" data-testid="settings-restart-summary">
+    <p class="weft-settings-editor__alert-body">
+      {SETTINGS_COPY.restartSummary(restartKeys)}
+    </p>
+  </Alert>
+{/if}
+
+<div class="weft-settings-editor" role="group" aria-label={SETTINGS_COPY.formLabel}>
   <!-- The controls stop while a save is in flight, so an edit is not lost to the settings it reads back. -->
   <fieldset class="weft-settings-editor__fields" disabled={submit.isPending}>
-    {#each groups as group (group)}
-      <section class="weft-settings-editor__group" aria-labelledby={`weft-settings-group-${group}`}>
-        <h2 id={`weft-settings-group-${group}`} class="weft-settings-editor__group-title">
-          {groupLabel(group)}
-        </h2>
-        {#each keys.filter((key) => groupOf(key) === group) as key (key)}
-          {@const control = controls.get(key)}
-          {#if control !== undefined && schema[key] !== undefined}
-            <SettingRow name={key} node={schema[key]} {control} {form} state={stateOf(key)} />
-          {/if}
-        {/each}
-      </section>
-    {/each}
+    {#if section === 'model-policy'}
+      <ModelPolicyEditor {form} keyState={stateOf(MODEL_POLICY_KEY)} />
+    {:else}
+      {#each groups as group (group)}
+        <section
+          class="weft-settings-editor__group"
+          aria-labelledby={`weft-settings-group-${group}`}
+        >
+          <h2 id={`weft-settings-group-${group}`} class="weft-settings-editor__group-title">
+            {groupLabel(group)}
+          </h2>
+          {#each keys.filter((key) => groupOf(key) === group) as key (key)}
+            {@const control = controls.get(key)}
+            {#if control !== undefined && schema[key] !== undefined}
+              <SettingRow
+                name={key}
+                node={schema[key]}
+                {control}
+                {form}
+                keyState={stateOf(key)}
+                requestSave={save}
+              />
+            {/if}
+          {/each}
+        </section>
+      {/each}
+    {/if}
   </fieldset>
 
   <div class="weft-settings-editor__actions">
-    <Button type="submit" variant="primary" disabled={!form.canSave || submit.isPending}
-      >{SETTINGS_COPY.saveAction}</Button
+    <Button
+      type="button"
+      variant="primary"
+      data-changes
+      disabled={!form.canSave || submit.isPending}
+      onclick={() => void save()}>{SETTINGS_COPY.saveAction}</Button
     >
     <Button
       type="button"
@@ -195,7 +260,7 @@
       onclick={discard}>{SETTINGS_COPY.discardAction}</Button
     >
   </div>
-</form>
+</div>
 
 <style>
   .weft-settings-editor {

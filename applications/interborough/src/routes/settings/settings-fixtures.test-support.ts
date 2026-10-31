@@ -63,6 +63,8 @@ export type SettingsServed = {
   locked: Set<string>;
   /** Why a locked key is locked, by key. A locked key with no entry is held for `deployment`. */
   lockReasons: Record<string, 'deployment' | 'shared-storage'>;
+  /** The restart keys a stored value waits on, which an update that sets one adds to. */
+  pendingRestart: Set<string>;
 };
 
 export function servedSettings(overrides: Partial<SettingsServed> = {}): SettingsServed {
@@ -72,6 +74,7 @@ export function servedSettings(overrides: Partial<SettingsServed> = {}): Setting
     persisted: true,
     locked: new Set(),
     lockReasons: {},
+    pendingRestart: new Set(),
     ...overrides,
   };
 }
@@ -86,7 +89,7 @@ function keyStates(served: SettingsServed): Record<string, SettingKeyState> {
         ...(served.locked.has(key)
           ? { lockReason: served.lockReasons[key] ?? ('deployment' as const) }
           : {}),
-        pendingRestart: false,
+        pendingRestart: served.pendingRestart.has(key),
       },
     ]),
   );
@@ -136,6 +139,7 @@ export function installSettingsBureau(
         const pendingRestart = Object.keys(patch).filter(
           (key) => SETTING_APPLY[key as never] === 'restart',
         );
+        for (const key of pendingRestart) served.pendingRestart.add(key);
         return { revision: served.revision, pendingRestart };
       },
       ...extra,

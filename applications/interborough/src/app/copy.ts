@@ -626,6 +626,7 @@ export const SCHEDULE_COPY = {
 export const SETTINGS_SECTION_COPY = {
   navigation: 'Settings sections',
   general: 'General',
+  modelPolicy: 'Model policy',
   dataAndRetention: 'Data and retention',
   apiReference: 'API reference',
 } as const;
@@ -634,6 +635,58 @@ export const SETTINGS_SECTION_COPY = {
 export const HEALTH_DIAGNOSTICS_COPY = {
   title: 'Diagnostics',
   sections: 'Diagnostic sections',
+} as const;
+
+/** The words of Settings › Model policy: which models may be used, and the caller's own preferences. */
+export const MODEL_POLICY_COPY = {
+  intro:
+    'Choose which providers and models agents may use. Everything not ruled out here stays allowed.',
+  allowedModels: {
+    title: 'Allowed models',
+    description:
+      'Nothing listed here can be used by any agent or plan, whoever starts it. Leave a list empty to allow everything in it.',
+  },
+  yourPreferences: {
+    title: 'Your preferences',
+    description:
+      'What your own chats and plans should choose from, among what is allowed above. Anything left empty makes no choice for you.',
+  },
+  lockedNote: 'The host sets the model policy, and it cannot be changed here.',
+  /** Said under a list of providers when a name is not the form a provider takes. */
+  providerName: 'A provider is lowercase letters, numbers and hyphens, such as anthropic.',
+  notRequired: 'Not required',
+  noPreference: 'No preference',
+  fields: {
+    deniedProviders: 'Providers not allowed',
+    deniedModels: 'Models not allowed',
+    deniedRoutes: 'Routes not allowed',
+    deniedRegions: 'Regions not allowed',
+    requireDataPolicy: 'Data retention required',
+    allowedProviders: 'Only these providers',
+    preferredDeniedProviders: 'Never these providers',
+    allowedModels: 'Only these models',
+    preferredDeniedModels: 'Never these models',
+    dataPolicy: 'Data retention',
+    defaultEffort: 'Default effort',
+    costPreference: 'Cost',
+    latencyPreference: 'Speed',
+    effortFallbackMode: 'When the effort is not available',
+  },
+  options: {
+    dataPolicy: {
+      'no-retention': 'No retention',
+      'zero-day-retention': 'Zero-day retention',
+      standard: 'Standard',
+    },
+    effort: { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Maximum' },
+    cost: { 'lowest-cost': 'Lowest cost', balanced: 'Balanced', 'no-preference': 'No preference' },
+    latency: {
+      'lowest-latency': 'Fastest',
+      balanced: 'Balanced',
+      'no-preference': 'No preference',
+    },
+    effortFallback: { reject: 'Refuse the request', degrade: 'Use a lower effort' },
+  },
 } as const;
 
 /** The words the settings page (`/settings`) uses outside its view states. */
@@ -647,12 +700,21 @@ export const SETTINGS_COPY = {
   reloadAction: 'Reload settings',
   /** The words under a switch or a field whose key has no value, so the code default applies. */
   unset: 'Not set. The code default applies.',
-  milliseconds: 'milliseconds',
-  /** The label of the select that chooses between a setting's literals and its numbers. */
-  modeLabel: 'Kept for',
-  /** The label of the JSON editor under a switch, after the key's name. */
-  jsonLabel: 'options as JSON',
-  apply: { live: 'Applies live', restart: 'Needs a restart' },
+  /** What a setting with no value reads, and the option of a select that chooses none. */
+  notSet: 'Not set',
+  /** Reveals the fields of a setting that has no value. */
+  setAction: 'Set a value',
+  /** Only a setting that needs a restart says how it applies; a live one says nothing. */
+  apply: { restart: 'Needs a restart' },
+  /** The heading of the settings shortcuts in the `?` map. */
+  shortcutGroup: 'Settings',
+  /** What the Bureau refused about a value, when it names nothing. */
+  invalidValue: 'This value is not one the setting takes.',
+  /** The page-level summary of the settings that wait for the host to start again. */
+  restartSummary: (keys: readonly string[]): string =>
+    keys.length === 1
+      ? `1 setting applies when the host starts again: ${keys.join(', ')}.`
+      : `${String(keys.length)} settings apply when the host starts again: ${keys.join(', ')}.`,
   pendingRestart: 'Restart pending',
   locked: 'Locked',
   /** Why a locked key cannot be changed, by the reason the Bureau reports. */
@@ -666,8 +728,6 @@ export const SETTINGS_COPY = {
   saved: {
     title: 'Settings saved',
     description: 'The changes apply live where a setting allows it.',
-    pendingRestart: (keys: readonly string[]): string =>
-      `These apply when the host starts again: ${keys.join(', ')}.`,
   },
   /** A save the Bureau refused because the settings changed since the page read them. */
   stale: {

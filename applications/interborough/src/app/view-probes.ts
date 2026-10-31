@@ -210,8 +210,15 @@ export function probeFor(
     case 'audit':
       return probeAudit;
     case 'settings':
-      // The sections that moved out of the System page read the engine, not the Bureau's settings.
-      if (pattern !== undefined && pattern !== '/settings') return probeEngineRegistry;
+      // The sections that moved out of the System page read the engine, not the Bureau's settings;
+      // General and Model policy read the settings.
+      if (
+        pattern !== undefined &&
+        pattern !== '/settings' &&
+        pattern !== '/settings/model-policy'
+      ) {
+        return probeEngineRegistry;
+      }
       // The settings always have something to show: every key is listed, with a value or without.
       // Asking for them settles whether the caller may read them and whether the Bureau answers.
       return async () => {

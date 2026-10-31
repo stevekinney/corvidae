@@ -1,6 +1,6 @@
 /**
  * `/settings` (COR-1711) against the real host: the page draws a control for every setting the
- * Bureau publishes, shows the key the host locked read-only, and changes what the Bureau does.
+ * Bureau publishes but the model policy, which has a section of its own, shows the key the host locked read-only, and changes what the Bureau does.
  * `tools.humanInput` is the setting whose effect a person can see: with it off, a chat with
  * `request-human-input` asks nothing and leaves nothing to review; with it back on, the same chat
  * parks on its question and the question is waiting in Reviews.
@@ -79,14 +79,13 @@ for (const width of WIDTHS) {
         schema: { properties: Record<string, unknown> };
       }
     ).schema.properties;
-    const keys = Object.keys(published);
+    const keys = Object.keys(published).filter((key) => key !== 'modelPolicy');
     await expect(page.locator('[data-setting]')).toHaveCount(keys.length);
     for (const key of keys) {
-      // A JSON setting is a JsonEditor, whose native textarea is hidden once its editor mounts, so
-      // the control to find is the visible one: the editor's `role="textbox"` content element.
+      // A value that has none is Not set, with a button to set it; every other has a control.
       await expect(
         settingRow(page, key)
-          .locator('button[role="switch"], input, select, textarea, [role="textbox"]')
+          .locator('button, input, select, textarea, [role="textbox"]')
           .filter({ visible: true })
           .first(),
       ).toBeVisible();
@@ -185,5 +184,120 @@ test('a change made through the API shows on an open page without a reload or a 
         expectedRevision: latest.revision,
       });
     }
+  }
+});
+
+test('saves on ⌘Enter from a field, and puts nothing else in the update', async ({
+  page,
+  request,
+}) => {
+  const original = await valueOf(request, 'tools.wakeup');
+  expect(original, 'wakeup is on to begin with').toBe(true);
+  try {
+    await page.goto('/settings');
+    await expect(settingRow(page, 'tools.wakeup')).toBeVisible();
+    const wakeup = settingRow(page, 'tools.wakeup').getByRole('switch', { name: 'tools.wakeup' });
+    await wakeup.click();
+    await expect(settingRow(page, 'tools.wakeup')).toHaveAttribute('data-dirty', 'true');
+    // The shortcut acts with focus in a field, which is where a person is when they want to save.
+    await page.getByRole('spinbutton', { name: 'decisions.maximumPerTask' }).focus();
+    await page.keyboard.press('ControlOrMeta+Enter');
+    await expect(page.getByText(SETTINGS_COPY.saved.title)).toBeVisible();
+    await expect(settingRow(page, 'tools.wakeup')).toHaveAttribute('data-dirty', 'false');
+    expect(await valueOf(request, 'tools.wakeup')).toBe(false);
+  } finally {
+    const current = await snapshotOf(request);
+    if (current.values['tools.wakeup'] !== original) {
+      await bureauCall(request, 'bureau.settings.update', {
+        patch: { 'tools.wakeup': original },
+        expectedRevision: current.revision,
+      });
+    }
+  }
+});
+
+test('lists ⌘Enter among the shortcuts', async ({ page }) => {
+  await page.goto('/settings');
+  await expect(page.locator('[data-view="settings"]')).toHaveAttribute('data-state', 'ready');
+  await expect(settingRow(page, 'tools.wakeup')).toBeVisible();
+  await page.keyboard.press('?');
+  const map = page.getByRole('dialog');
+  await expect(map).toContainText(SETTINGS_COPY.saveAction);
+  await expect(map).toContainText('⌘');
+});
+
+test('edits an object without JSON, and a model name from the catalog', async ({
+  page,
+  request,
+}) => {
+  const original = await valueOf(request, 'retention.receipts');
+  try {
+    await page.goto('/settings');
+    const receipts = settingRow(page, 'retention.receipts');
+    await expect(receipts.locator('textarea')).toHaveCount(0);
+    // The fallback model is a choice of the catalog's rows, never a typed `provider/model`.
+    const fallback = settingRow(page, 'decisions.fallbackModel');
+    await expect(fallback.getByRole('combobox')).toBeVisible();
+    await expect(fallback.getByRole('textbox')).toHaveCount(0);
+    // A value the host has not set reads Not set, with a button that shows its fields.
+    const set = receipts.getByRole('button', { name: SETTINGS_COPY.setAction });
+    if ((await set.count()) > 0) await set.click();
+    await expect(receipts.getByRole('spinbutton').first()).toBeVisible();
+  } finally {
+    const current = await snapshotOf(request);
+    if (JSON.stringify(current.values['retention.receipts']) !== JSON.stringify(original)) {
+      await bureauCall(request, 'bureau.settings.update', {
+        patch: { 'retention.receipts': original },
+        expectedRevision: current.revision,
+      });
+    }
+  }
+});
+
+test('changes the model policy in plain words, and raises its revision when saved', async ({
+  page,
+  request,
+}) => {
+  const original = await valueOf(request, 'modelPolicy');
+  try {
+    await page.goto('/settings/model-policy');
+    await expect(page.getByRole('heading', { name: 'Allowed models', level: 2 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Your preferences', level: 2 })).toBeVisible();
+    await expect(page.locator('textarea')).toHaveCount(0);
+
+    await page.getByLabel('Default effort').selectOption('high');
+    // A list of providers is a field of its own, and no provider is in use under this name.
+    const never = page.getByRole('textbox', { name: 'Never these providers' });
+    await never.fill('unused-provider');
+    await never.press('Enter');
+    await expect(page.locator('[data-setting="modelPolicy"]')).toHaveAttribute(
+      'data-dirty',
+      'true',
+    );
+    await saveButton(page).click();
+    await expect(page.getByText(SETTINGS_COPY.saved.title)).toBeVisible();
+
+    const policy = (await valueOf(request, 'modelPolicy')) as {
+      policyRevision: number;
+      users?: Record<string, { defaultEffort?: string; deniedProviders?: string[] }>;
+    };
+    expect(policy.users?.['anonymous:local']?.defaultEffort).toBe('high');
+    expect(policy.users?.['anonymous:local']?.deniedProviders).toEqual(['unused-provider']);
+    expect(policy.policyRevision).toBe(
+      ((original as { policyRevision?: number })?.policyRevision ?? 0) + 1,
+    );
+  } finally {
+    const current = await snapshotOf(request);
+    await bureauCall(request, 'bureau.settings.update', {
+      patch: {
+        modelPolicy: {
+          ...(original as object),
+          policyRevision:
+            ((current.values['modelPolicy'] as { policyRevision?: number })?.policyRevision ?? 0) +
+            1,
+        },
+      },
+      expectedRevision: current.revision,
+    });
   }
 });
