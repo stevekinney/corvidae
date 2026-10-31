@@ -190,9 +190,13 @@ export function trustPolicyOf(configuration: SkillsConfiguration): SkillTrustPol
   const admitted = admitSources(configuration.trusted);
   return {
     decide: (source) =>
-      admitted.decide(source) ?? {
-        state: 'untrusted',
-        reason: `Source '${source.id}' is not listed in skills.trusted.`,
-      },
+      // A plugin's skills ship with trusted code the host loads (COR-1977), so Bureau's default for
+      // the kind applies and `skills.trusted` has no say; nothing configured can name one.
+      source.kind === 'plugin'
+        ? undefined
+        : (admitted.decide(source) ?? {
+            state: 'untrusted',
+            reason: `Source '${source.id}' is not listed in skills.trusted.`,
+          }),
   };
 }

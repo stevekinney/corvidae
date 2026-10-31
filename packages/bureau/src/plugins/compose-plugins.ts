@@ -80,7 +80,8 @@ export interface ComposedPlugins<O extends ComposableOptions> {
   /**
    * The content of the running plugins that ship some (COR-1897), in load order. A plugin that is
    * disabled, skipped or failed ships none. The `content` URL is the plugin's own; reading it is
-   * the host's, through {@link BureauOptions.pluginAgentSource}.
+   * the host's, through {@link BureauOptions.pluginAgentSource} and
+   * {@link BureauOptions.pluginWorkflowSource}.
    */
   readonly shippedContent: readonly { readonly plugin: string; readonly content: URL }[];
   /**

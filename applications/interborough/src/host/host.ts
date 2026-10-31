@@ -150,6 +150,8 @@ import {
   createAgentSource,
   createHostStorage,
   createPluginAgentSource,
+  createPluginSkillSource,
+  createPluginWorkflowSource,
   createWorkflowSource,
   disposeHostStorage,
   hostPathsReport,
@@ -753,6 +755,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // Workflow files: JSON files in Bungalow's `workflows/` directory are agent-authored
       // workflows (COR-1527), registered with the Bureau's engine and run on their schedules.
       workflowSource: createWorkflowSource(bungalow, workflowContent),
+      // The workflow files a running plugin ships (COR-1977): its `content/workflows`, read-only, beneath the owner's.
+      pluginWorkflowSource: createPluginWorkflowSource,
       ...(settings === undefined ? {} : { settings }),
     });
     held.bureau = bureau;
@@ -765,6 +769,25 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const skills = await createSkillManager({
       bungalow,
       configurationQueue,
+      // The skills a running plugin ships (COR-1977): its `content/skills`, read each time the catalog is discovered.
+      pluginSources: async () => {
+        const listed = await bureau.plugins.list();
+        const loadable = pluginManager.loadable();
+        // Two plugins may share a name, one running and one skipped with `name-clash`, so a running
+        // listing is matched to its entry by where it came from, as the plugin snapshot does.
+        return listed.flatMap((listing) => {
+          const entry = loadable.find(
+            (candidate) =>
+              candidate.source === listing.source && candidate.location === listing.location,
+          );
+          const shipped = entry?.descriptor.content;
+          const source =
+            listing.status === 'running' && shipped !== undefined
+              ? createPluginSkillSource(listing.descriptor.name, shipped)
+              : undefined;
+          return source === undefined ? [] : [source];
+        });
+      },
       // Strict, so a failed write rejects and the trust route answers `partial` (COR-1926).
       audit: async (entry) => {
         await bureau.internals.auditTrail?.record({ ...entry, strict: true });

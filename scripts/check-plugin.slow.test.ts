@@ -49,8 +49,10 @@ await writeFile(agentPath, agent);
 const missing = await run('check-plugin.ts', join(root, 'nothing-here'));
 
 describe('create-plugin then check-plugin', () => {
-  test('the scaffold is written and passes the check', () => {
+  test('the scaffold is written, with its workflow and skill, and passes the check', async () => {
     expect(created.exitCode).toBe(0);
+    expect(await Bun.file(join(folder, 'content/workflows/digest.json')).exists()).toBe(true);
+    expect(await Bun.file(join(folder, 'content/skills/greeting/SKILL.md')).exists()).toBe(true);
     expect(passing).toEqual({ exitCode: 0, output: '' });
   });
 

@@ -6,6 +6,8 @@ import { join } from 'node:path';
 import {
   createHostStorage,
   createPluginAgentSource,
+  createPluginSkillSource,
+  createPluginWorkflowSource,
   describeContent,
   disposeHostStorage,
   hostPathsReport,
@@ -127,6 +129,41 @@ describe('the agent layer of a plugin’s shipped content', () => {
   test('is nothing for content that is not a file: URL', () => {
     expect(
       createPluginAgentSource('shipper', new URL('https://example.com/content/')),
+    ).toBeUndefined();
+  });
+});
+
+describe('the workflow layer of a plugin’s shipped content', () => {
+  test('is the read-only layer of the content’s workflows folder for a file: URL', () => {
+    const layer = createPluginWorkflowSource(
+      'shipper',
+      new URL('file:///plugins/shipper/content/'),
+    );
+    expect(layer).toMatchObject({ kind: 'workflow', plugin: 'shipper' });
+  });
+
+  test('is nothing for content that is not a file: URL', () => {
+    expect(
+      createPluginWorkflowSource('shipper', new URL('https://example.com/content/')),
+    ).toBeUndefined();
+  });
+});
+
+describe('the skill source of a plugin’s shipped content', () => {
+  test('is a plugin source over the content’s skills folder, which no configured id can equal', () => {
+    expect(
+      createPluginSkillSource('shipper', new URL('file:///plugins/shipper/content/')),
+    ).toMatchObject({
+      id: 'plugin:shipper',
+      kind: 'plugin',
+      location: '/plugins/shipper/content/skills',
+      plugin: 'shipper',
+    });
+  });
+
+  test('is nothing for content that is not a file: URL', () => {
+    expect(
+      createPluginSkillSource('shipper', new URL('https://example.com/content/')),
     ).toBeUndefined();
   });
 });

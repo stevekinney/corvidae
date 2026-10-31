@@ -1,5 +1,7 @@
 import type { Bungalow, ContentLocation, DatabaseLocation } from '@lostgradient/bungalow';
 import type { SettingLockReason } from '@lostgradient/bureau';
+import type { SkillSource } from '@lostgradient/bureau/skills';
+import { DEFAULT_SOURCE_PRECEDENCE } from '@lostgradient/bureau/skills';
 import type { AgentSource, WorkflowSource } from '@lostgradient/bureau/sources';
 import {
   agentFileDirectory,
@@ -159,6 +161,34 @@ export function createAgentSource(
 export function createPluginAgentSource(plugin: string, content: URL): AgentSource | undefined {
   if (content.protocol !== 'file:') return undefined;
   return agentFileDirectory(join(fileURLToPath(content), 'agents'), { plugin });
+}
+
+/**
+ * The read-only workflow layer of the plugin `plugin` (COR-1977): the `workflows` folder of its
+ * `content` URL, listed as `plugin:name`. A `content` that is not a `file:` URL has no layer.
+ */
+export function createPluginWorkflowSource(
+  plugin: string,
+  content: URL,
+): WorkflowSource | undefined {
+  if (content.protocol !== 'file:') return undefined;
+  return workflowFileDirectory(join(fileURLToPath(content), 'workflows'), { plugin });
+}
+
+/**
+ * The skill source of the plugin `plugin` (COR-1977): the `skills` folder of its `content` URL, at
+ * the plugin precedence. Its identifier, `plugin:<name>`, cannot be a configured source's: those
+ * hold no colon. A `content` that is not a `file:` URL has no source.
+ */
+export function createPluginSkillSource(plugin: string, content: URL): SkillSource | undefined {
+  if (content.protocol !== 'file:') return undefined;
+  return {
+    id: `plugin:${plugin}`,
+    kind: 'plugin',
+    location: join(fileURLToPath(content), 'skills'),
+    precedence: DEFAULT_SOURCE_PRECEDENCE.plugin,
+    plugin,
+  };
 }
 
 /** The source of workflow definitions at `content`: a directory, or a bucket prefix polled for changes. */

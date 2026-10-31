@@ -113,4 +113,4 @@ bun scripts/check-plugin-identities.ts --write plugins/example
 
 ## Write a folder plugin
 
-`bun scripts/create-plugin.ts <name> --to <directory>` writes `<directory>/<name>/` with `plugin.ts`, `content/agents/assistant.md` and `plugin.test.ts`. `bun scripts/check-plugin.ts <directory>/<name>` type-checks `plugin.ts` against this package's declarations and runs the contract. Test files are not type-checked by that script, because they import Bureau.
+`bun scripts/create-plugin.ts <name> --to <directory>` writes `<directory>/<name>/` with `plugin.ts`, `content/agents/assistant.md`, `content/workflows/digest.json`, `content/skills/greeting/SKILL.md` and `plugin.test.ts`. A running plugin's `content/agents`, `content/workflows` and `content/skills` are read at runtime and are read-only: agents and workflows are listed as `<plugin>:<name>`, and the skills come from a trusted plugin source. `bun scripts/check-plugin.ts <directory>/<name>` type-checks `plugin.ts` against this package's declarations and runs the contract. Test files are not type-checked by that script, because they import Bureau.
