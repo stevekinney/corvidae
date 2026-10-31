@@ -1,111 +1,124 @@
-/* ---------------------------------------------------------------------- */
-/* Route shell (index.svelte)                                             */
-/* ---------------------------------------------------------------------- */
+/* The reviews inbox (`routes/reviews/`), and the parts of it other pages share: the query fault
+ * banner, the artifact views and the decision form of a workflow review, what an approval would
+ * run, and the dashboard's reviews card. */
 
-.weft-reviews-route {
+/* ── The inbox: a list with the open review beside it ────────────────────────── */
+
+.ib-reviews {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  min-height: 0;
-  gap: 14px;
+  gap: var(--cinder-space-4);
+  min-inline-size: 0;
 }
 
-.weft-reviews-route__header {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  flex-wrap: wrap;
-}
-
-.weft-reviews-route__title {
-  margin: 0;
-  font-size: var(--cinder-text-xl);
-  font-weight: 600;
-}
-
-/* ---------------------------------------------------------------------- */
-/* Inbox (reviews-inbox.svelte)                                           */
-/* ---------------------------------------------------------------------- */
-
-.weft-reviews-inbox {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  gap: 12px;
-}
-
-.weft-reviews-inbox__toolbar {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  flex-wrap: wrap;
-}
-
-.weft-reviews-inbox__live {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.weft-reviews-inbox__skeleton {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.weft-reviews-inbox .weft-reviews-inbox__panels {
-  flex: 1;
-  min-height: 0;
-  border: 1px solid var(--cinder-border);
-  border-radius: var(--cinder-radius-lg);
+/* ListDetail fills the height it is given and scrolls each pane, so the frame gives it one. */
+.ib-reviews__frame {
+  block-size: max(28rem, calc(100dvh - 16rem));
+  min-inline-size: 0;
+  border: 1px solid var(--cinder-border-muted);
+  border-radius: var(--cinder-radius-md);
   overflow: hidden;
 }
 
-.weft-reviews-inbox__list-pane {
-  height: 100%;
-  min-height: 0;
-  overflow-y: auto;
-  background: var(--cinder-surface);
+.ib-review-row__title,
+.ib-review-row__kind {
+  display: block;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.weft-reviews-inbox__list-pane .weft-reviews-inbox__empty-state {
-  padding: var(--cinder-space-6);
+.ib-reviews__detail {
+  min-inline-size: 0;
+  padding: var(--cinder-space-4);
 }
 
-.weft-reviews-inbox__count {
-  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-  border-bottom: 1px solid var(--cinder-border-muted);
-  font-size: var(--cinder-text-xs);
-  font-weight: 600;
-  color: var(--cinder-text-subtle);
+/* ── The open review ──────────────────────────────────────────────────────────── */
+
+.ib-review-pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+  min-inline-size: 0;
 }
 
-.weft-reviews-inbox__list {
-  list-style: none;
+.ib-review-pane__question {
   margin: 0;
-  padding: 0;
+  font-size: var(--cinder-text-lg);
+  font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
-.weft-reviews-inbox__detail-pane {
-  height: 100%;
-  min-height: 0;
-  overflow-y: auto;
+/* One line under the question: who asked, where, and since when, each part a link. */
+.ib-review-source {
+  margin: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+  overflow-wrap: anywhere;
 }
 
-.weft-reviews-inbox__detail-pane .weft-reviews-inbox__empty-state {
-  padding: var(--cinder-space-6);
+.ib-review-pane__note {
+  margin: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+  overflow-wrap: anywhere;
 }
 
-/* Query fault banner (shared by the inbox list pane and the archive table —
- * `query-fault-banner.svelte`). Mirrors the Workflows track's
- * `.weft-query-fault` rules (`src/styles/workflows.css`) so every
- * `createQuery` error renders the same six-treatment banner instead of a
- * misleading "no data" empty state. */
+.ib-review-pane__input,
+.ib-review-pane__decision,
+.ib-review-pane__answer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-2);
+  min-inline-size: 0;
+}
+
+.ib-review-pane__input .ib-tool__details {
+  padding-inline-start: 0;
+}
+
+.ib-review-pane__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-2);
+}
+
+/* What became of a review that is no longer waiting, on a neutral surface. */
+.ib-review-resolution {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-1);
+  padding: var(--cinder-space-2) var(--cinder-space-3);
+  border-radius: var(--cinder-radius-md);
+  background: var(--cinder-surface-inset);
+}
+
+.ib-review-resolution__line,
+.ib-review-resolution__reason {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cinder-space-2);
+  margin: 0;
+  font-size: var(--cinder-text-sm);
+  overflow-wrap: anywhere;
+}
+
+.ib-review-resolution__label {
+  color: var(--cinder-text-muted);
+}
+
+/* A decision that took effect, said once on the page, beside the tabs. */
+.ib-review-notice__title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.ib-review-notice__message {
+  margin: 0;
+}
+
 .weft-query-fault {
   display: flex;
   align-items: center;
@@ -149,144 +162,6 @@
   color: var(--cinder-text-default);
 }
 
-/* Two-panel layouts stack vertically below 900px (PROJECT-BRIEF binding
- * responsive rule). `ResizablePanels`'s own `orientation` prop is bound to
- * a `MediaQuery` at the same breakpoint in the component, so this media
- * query only needs to relax the fixed pixel list-pane sizing that would
- * otherwise fight a stacked layout. */
-@media (max-width: 899px) {
-  .weft-reviews-inbox .weft-reviews-inbox__panels {
-    height: auto;
-  }
-
-  .weft-reviews-inbox__list-pane {
-    max-height: 40vh;
-  }
-}
-
-/* ---------------------------------------------------------------------- */
-/* Review rows (pending-review-row.svelte / completed-review-row.svelte)  */
-/* ---------------------------------------------------------------------- */
-
-.weft-review-row {
-  display: block;
-  width: 100%;
-  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-  border: 0;
-  border-bottom: 1px solid var(--cinder-border-muted);
-  border-inline-start: var(--cinder-space-1) solid transparent;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: start;
-  cursor: pointer;
-  min-height: 44px;
-}
-
-@media (hover: hover) {
-  .weft-review-row:hover {
-    background: var(--cinder-surface-hover);
-  }
-}
-
-.weft-review-row:focus-visible {
-  outline: var(--cinder-ring-width) solid transparent;
-  box-shadow: var(--_cinder-focus-ring-shadow);
-  outline-offset: -2px;
-}
-
-@media (forced-colors: active) {
-  .weft-review-row:focus-visible {
-    outline: var(--cinder-ring-width) solid Highlight;
-    box-shadow: none;
-  }
-}
-
-.weft-review-row--selected {
-  border-inline-start-color: var(--cinder-accent-solid);
-  background: color-mix(in oklch, var(--cinder-accent-solid), transparent 92%);
-}
-
-.weft-review-row__top {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-
-.weft-review-row__type {
-  font-size: var(--cinder-text-xs);
-  color: var(--cinder-text-muted);
-}
-
-.weft-review-row__id {
-  font-family: var(--cinder-font-mono);
-  font-size: var(--cinder-text-xs);
-  color: var(--cinder-text-subtle);
-  margin-bottom: 5px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.weft-review-row__bottom {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.weft-review-row__created,
-.weft-review-row__completed {
-  font-size: var(--cinder-text-xs);
-  color: var(--cinder-text-disabled);
-}
-
-.weft-review-row__countdown {
-  font-size: var(--cinder-text-xs);
-  font-weight: 600;
-  color: var(--cinder-text-subtle);
-  white-space: nowrap;
-}
-
-.weft-review-row__countdown--urgent,
-.weft-review-row__countdown--expired {
-  color: var(--cinder-status-danger-text);
-}
-
-/* ---------------------------------------------------------------------- */
-/* Decision surface (review-detail-panel.svelte / review-decision-form.svelte) */
-/* ---------------------------------------------------------------------- */
-
-.weft-review-detail {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  max-width: 46rem;
-}
-
-.weft-review-detail__header {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.weft-review-detail__title {
-  margin: 0;
-  font-size: var(--cinder-text-lg);
-  font-weight: 600;
-}
-
-.weft-review-detail__meta {
-  margin: 0;
-  font-size: var(--cinder-text-sm);
-  color: var(--cinder-text-subtle);
-}
-
-.weft-review-detail__id {
-  font-family: var(--cinder-font-mono);
-}
-
 .weft-review-artifact-sections {
   display: flex;
   flex-direction: column;
@@ -303,31 +178,6 @@
   margin: 0;
   font-size: var(--cinder-text-sm);
   font-weight: 600;
-}
-
-.weft-review-recorded-feedback {
-  padding: var(--cinder-density-pad-card);
-  border: 1px solid var(--cinder-border);
-  border-radius: var(--cinder-radius-lg);
-  background: var(--cinder-surface-inset);
-}
-
-.weft-review-recorded-feedback__label {
-  display: block;
-  font-size: var(--cinder-text-xs);
-  color: var(--cinder-text-subtle);
-  margin-bottom: 6px;
-}
-
-.weft-review-recorded-feedback__body {
-  margin: 0 0 10px;
-  font-size: var(--cinder-text-sm);
-}
-
-.weft-review-recorded-sections {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
 }
 
 .weft-review-sections {
@@ -363,10 +213,6 @@
   width: 100%;
 }
 
-/* ---------------------------------------------------------------------- */
-/* Artifact rendering (artifact-view.svelte)                              */
-/* ---------------------------------------------------------------------- */
-
 .weft-artifact-text {
   margin: 0;
   font-size: var(--cinder-text-sm);
@@ -400,58 +246,6 @@
   background: var(--cinder-surface-canvas);
 }
 
-/* ---------------------------------------------------------------------- */
-/* Archive (reviews-archive.svelte)                                       */
-/* ---------------------------------------------------------------------- */
-
-.weft-reviews-archive-scroll {
-  overflow-x: auto;
-  border: 1px solid var(--cinder-border);
-  border-radius: var(--cinder-radius-lg);
-}
-
-.weft-reviews-archive {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--cinder-text-sm);
-}
-
-.weft-reviews-archive th {
-  padding: var(--cinder-space-2) var(--cinder-density-pad-inline);
-  background: var(--cinder-surface-inset);
-  border-bottom: 1px solid var(--cinder-border-muted);
-  text-align: start;
-  font-size: var(--cinder-text-2xs);
-  font-weight: 600;
-  color: var(--cinder-text-subtle);
-}
-
-.weft-reviews-archive td {
-  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-  border-bottom: 1px solid var(--cinder-border-muted);
-  white-space: nowrap;
-}
-
-.weft-reviews-archive tr:last-child td {
-  border-bottom: 0;
-}
-
-.weft-reviews-archive__id {
-  font-family: var(--cinder-font-mono);
-  font-size: var(--cinder-text-xs);
-  color: var(--cinder-text-muted);
-}
-
-.weft-reviews-archive__skeleton {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-/* ---------------------------------------------------------------------- */
-/* Dashboard card (cards/dashboard-card.svelte)                           */
-/* ---------------------------------------------------------------------- */
-
 .weft-reviews-card-link {
   display: block;
   color: inherit;
@@ -479,120 +273,6 @@
   color: var(--cinder-status-danger-text);
 }
 
-/* Responsive: no page-level horizontal scroll (PROJECT-BRIEF binding
- * rule); interactive targets ≥40px on touch below tablet width. */
-@media (max-width: 47.99rem) {
-  .weft-review-row {
-    min-height: 48px;
-  }
-
-  .weft-reviews-inbox__toolbar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .weft-reviews-inbox__live {
-    justify-content: space-between;
-  }
-}
-
-/* ---------------------------------------------------------------------- */
-/* Bureau reviews (bureau-review-row/-detail/-form.svelte)                 */
-/* ---------------------------------------------------------------------- */
-
-.weft-bureau-review-row {
-  display: flex;
-  flex-direction: column;
-  border-bottom: 1px solid var(--cinder-border-muted);
-}
-
-.weft-bureau-review-row .weft-review-row {
-  border-bottom: 0;
-}
-
-.weft-bureau-review-row__agent {
-  color: var(--cinder-text-muted);
-  font-size: var(--cinder-text-sm);
-}
-
-.weft-bureau-review-row__link {
-  padding: 0 var(--cinder-density-pad-inline) var(--cinder-density-pad-block)
-    calc(var(--cinder-density-pad-inline) + var(--cinder-space-1));
-  color: inherit;
-  font-size: var(--cinder-text-sm);
-}
-
-.weft-bureau-review-facts {
-  display: grid;
-  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
-  gap: var(--cinder-space-1) var(--cinder-space-4);
-  margin: 0;
-  font-size: var(--cinder-text-sm);
-}
-
-.weft-bureau-review-facts dt {
-  color: var(--cinder-text-muted);
-}
-
-.weft-bureau-review-facts dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.weft-bureau-review-arguments {
-  display: flex;
-  flex-direction: column;
-  gap: var(--cinder-space-1);
-}
-
-.weft-bureau-review-arguments__label {
-  color: var(--cinder-text-muted);
-  font-size: var(--cinder-text-sm);
-}
-
-.weft-bureau-review-arguments__body {
-  margin: 0;
-  padding: var(--cinder-space-3);
-  border: 1px solid var(--cinder-border-muted);
-  border-radius: var(--cinder-radius-md);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.weft-bureau-review-prompt {
-  margin: 0;
-  font-weight: 600;
-}
-
-.weft-bureau-review-form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--cinder-space-3);
-}
-
-.weft-bureau-review-form__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--cinder-space-2);
-}
-
-.weft-bureau-review-outcome__title,
-.weft-bureau-review-outcome__message {
-  margin: 0;
-}
-
-@media (max-width: 480px) {
-  .weft-bureau-review-facts {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0;
-  }
-
-  .weft-bureau-review-facts dd {
-    margin-block-end: var(--cinder-space-2);
-  }
-}
-
-/* What an approval would run (bureau-review-operation.svelte) */
 .weft-bureau-review-operation {
   display: flex;
   flex-direction: column;
@@ -617,74 +297,4 @@
   margin: 0;
   padding-inline-start: var(--cinder-space-5);
   overflow-wrap: anywhere;
-}
-
-/* ── Reviews as a to-do list: one item per question, its decision inline ─────── */
-
-.ib-reviews {
-  display: flex;
-  flex-direction: column;
-  gap: var(--cinder-space-4);
-  min-width: 0;
-}
-
-.ib-reviews__count {
-  display: inline-flex;
-  margin-inline-start: var(--cinder-space-2);
-}
-
-.ib-reviews__list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--cinder-space-4);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.ib-review {
-  display: flex;
-  flex-direction: column;
-  gap: var(--cinder-space-1);
-  min-width: 0;
-  padding: var(--cinder-space-2) var(--cinder-space-3);
-  border-radius: var(--cinder-radius-md);
-  background: var(--cinder-status-warning-background);
-}
-
-/* The item is the tinted band, so the decision inside it adds none of its own. */
-.ib-review .ib-decision {
-  padding: 0;
-  background: transparent;
-}
-
-.ib-review__origin {
-  margin: 0;
-  color: var(--cinder-text-muted);
-  font-size: var(--cinder-text-sm);
-}
-
-.ib-reviews__engine {
-  display: flex;
-  flex-direction: column;
-  gap: var(--cinder-space-3);
-}
-
-.ib-reviews__heading {
-  margin: 0;
-  font-size: var(--cinder-text-md);
-  font-weight: 600;
-}
-
-.ib-review__details {
-  margin: 0;
-}
-
-/* The heading's count sits beside it, not across the page. */
-.weft-reviews-route__header {
-  justify-content: flex-start;
-}
-
-.ib-review__details .ib-tool__details {
-  padding-inline-start: 0;
 }

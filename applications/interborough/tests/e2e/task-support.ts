@@ -37,6 +37,27 @@ export async function taskOfSession(
   return task;
 }
 
+/** A review a run is waiting on, as `bureau.reviews.list` shows it. */
+export type WaitingReview = { id: string; runId: string; sessionId?: string; kind: string };
+
+/** The review a session's run is waiting on, once the Bureau lists it. */
+export async function waitingReviewOf(
+  request: APIRequestContext,
+  threadId: string,
+): Promise<WaitingReview> {
+  let found: WaitingReview | undefined;
+  await expect
+    .poll(async () => {
+      const listed = (await bureauCall(request, 'bureau.reviews.list', {})) as {
+        reviews: WaitingReview[];
+      };
+      found = listed.reviews.find((review) => review.sessionId === threadId);
+      return found?.id;
+    })
+    .toBeTruthy();
+  return found!;
+}
+
 /** The tasks of a session, newest first. */
 export async function tasksOfSession(
   request: APIRequestContext,

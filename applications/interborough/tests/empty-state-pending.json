@@ -13,10 +13,6 @@
       "issue": "COR-1850"
     },
     {
-      "file": "src/routes/reviews/reviews-inbox.svelte",
-      "issue": "COR-1849"
-    },
-    {
       "file": "src/routes/schedules/cards/dashboard-card.svelte",
       "issue": "COR-1850"
     },

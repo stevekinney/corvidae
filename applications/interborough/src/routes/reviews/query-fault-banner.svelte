@@ -7,9 +7,8 @@
    * read `query.error` directly and render the same six-treatment banner
    * inline themselves. Mirrors the Workflows list track's identical
    * component (`src/routes/workflows/list/query-fault-banner.svelte`) —
-   * shared by `reviews-inbox.svelte`'s list pane and `reviews-archive.svelte`
-   * so a non-403 query failure (401, 500, network) never renders as a false
-   * "all caught up" / "no decisions yet" empty state.
+   * shared by the reviews page's two lists, so a non-403 query failure (401, 500, network)
+   * never renders as a false "all caught up" / "nothing decided yet" empty state.
    */
   import { Badge, Button } from '@lostgradient/cinder';
   import {
