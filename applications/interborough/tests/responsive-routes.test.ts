@@ -12,7 +12,9 @@ import { pending, responsiveAddresses } from './e2e/responsive-routes.ts';
 const SEED = {
   chat: 'chat-1',
   agent: 'agent-1',
+  memoryAgent: 'agent-2',
   workflow: 'order-processing',
+  workflowFile: 'digest',
   run: 'run-1',
   schedule: 'schedule-1',
 } as const;
@@ -34,6 +36,7 @@ describe('the responsive specification’s routes', () => {
     for (const entry of pending) {
       expect(PATTERNS, entry.pattern).toContain(entry.pattern);
       expect(entry.issue, entry.pattern).toMatch(/^COR-\d+$/);
+      for (const width of entry.failsAt ?? []) expect([375, 768, 1280]).toContain(width);
     }
     expect(new Set(pending.map((entry) => entry.pattern)).size).toBe(pending.length);
   });

@@ -11,8 +11,12 @@ export interface ResponsiveSeed {
   readonly chat: string;
   /** An agent whose description is 200 characters long. */
   readonly agent: string;
+  /** An agent that has a memory with a long unbroken word in it. */
+  readonly memoryAgent: string;
   /** A workflow type the engine has registered. */
   readonly workflow: string;
+  /** An agent-authored workflow, which has a file and so an editor. */
+  readonly workflowFile: string;
   /** A run of that workflow type. */
   readonly run: string;
   /** A schedule. It need not exist: the page says so in a short sentence. */
@@ -22,6 +26,8 @@ export interface ResponsiveSeed {
 /** The address of each route in `routes.ts`, by pattern, with the seeded identifiers filled in. */
 export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<string, string>> {
   const agent = encodeURIComponent(seed.agent);
+  const memoryAgent = encodeURIComponent(seed.memoryAgent);
+  const workflowFile = encodeURIComponent(seed.workflowFile);
   const workflow = encodeURIComponent(seed.workflow);
   const run = encodeURIComponent(seed.run);
   return {
@@ -31,14 +37,14 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
     '/agents': '/agents',
     '/agents/new': '/agents/new',
     '/agents/:agent/edit': `/agents/${agent}/edit`,
-    '/agents/:agent/memories': `/agents/${agent}/memories`,
+    '/agents/:agent/memories': `/agents/${memoryAgent}/memories`,
     '/agents/:agent': `/agents/${agent}`,
     '/workflows': '/workflows',
     '/workflows/new': '/workflows/new',
     '/workflows/:workflow': `/workflows/${workflow}`,
     '/workflows/:workflow/runs': `/workflows/${workflow}/runs`,
     '/workflows/:workflow/runs/:run': `/workflows/${workflow}/runs/${run}`,
-    '/workflows/:workflow/edit': `/workflows/${workflow}/edit`,
+    '/workflows/:workflow/edit': `/workflows/${workflowFile}/edit`,
     '/runs': '/runs',
     '/runs/:run': `/runs/${run}`,
     '/schedules': '/schedules',
@@ -61,6 +67,8 @@ export interface PendingRoute {
   readonly pattern: string;
   /** The Linear issue whose page replaces this one; it removes the entry when the page fits. */
   readonly issue: string;
+  /** Widths at which it must overflow, so the entry goes stale when one of them is fixed. Any width, when omitted. */
+  readonly failsAt?: readonly number[];
 }
 
 /**
@@ -69,4 +77,11 @@ export interface PendingRoute {
  * still listed (remove it), and a route that overflows but is not listed (fix it, or list it with
  * its owner). Do not add an entry to ship a regression.
  */
-export const pending: readonly PendingRoute[] = [];
+export const pending: readonly PendingRoute[] = [
+  // The 2,000-character key is cut off with no way to reach it at 375 (`.cinder-table` clips), and
+  // scrolls 16,000px inside a 488 or 684px region at 768 and 1280. The storage explorer is rebuilt there.
+  { pattern: '/health/storage', issue: 'COR-1851', failsAt: [375, 768, 1280] },
+  // The Discovery tab's outlet scrolls 8px at 375 and its raw-toggle ends at 383px, and the
+  // Operations and Discovery tables are cut off. The API reference is rebuilt there.
+  { pattern: '/settings/api-reference', issue: 'COR-1847', failsAt: [375] },
+];
