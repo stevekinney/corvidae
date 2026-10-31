@@ -1,14 +1,15 @@
 <script lang="ts">
   /**
-   * Workers route root (plan §9.4, §13 T5.1–T5.4): Fleet overview / Workers /
-   * Task queues / Diagnostics tabs, URL-owned (`?tab=`, `?worker=`,
-   * `?queue=`) per plan §4 "URL owns filter/pagination/tab state". Owns the
-   * three list queries, every mutation, and the drain/clear-dead-letter
-   * dialogs; view components stay presentational.
+   * Workers route root (plan §9.4, §13 T5.1–T5.4): the Workers list with the open worker beside it
+   * (design rows 20c and 19a), then Task queues / Deployments / Diagnostics / Conformance tabs,
+   * URL-owned (`?tab=`, `?worker=`, `?queue=`) per plan §4 "URL owns filter/pagination/tab
+   * state". Workers is the default tab. Owns the list queries, every mutation, and the
+   * drain/clear-dead-letter dialogs; view components stay presentational. A drain is confirmed
+   * against the worker (or deployment) as it was when the dialog opened, and refused if it changed.
    *
    * ## Live connect/disconnect (plan §9.4 T5.1)
    *
-   * `EmptyState`+`Lock` gates the whole surface on `system:read`. The shell
+   * An `Alert` gates the whole surface on `system:read`. The shell
    * applies the shell's ONE shared `FleetEventSource`
    * (`src/app/engine-status.svelte.ts`) to the cache for every page, so a
    * worker connecting, leaving or being refused, a deployment changing, or a
@@ -31,14 +32,12 @@
    * `weft.workers.list` snapshot; nothing here ever synthesizes a
    * client-side "disconnected" row).
    */
-  import { Button, EmptyState, Skeleton, Tab, TabList, TabPanel, Tabs } from '@lostgradient/cinder';
-  import Lock from '@lucide/svelte/icons/lock';
+  import { Alert, PageHeader, Skeleton, Tab, TabList, TabPanel, Tabs } from '@lostgradient/cinder';
 
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { useFleetEventsLive } from '../../app/live-polling.svelte.ts';
   import { getClient } from '../../lib/client.ts';
-  import { FAULT_TREATMENT_TITLE, faultTreatment } from '../../lib/faults.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import {
@@ -47,21 +46,21 @@
     scopeGate,
     scopeReason,
   } from '../../lib/scopes.svelte.ts';
+  import QueryFaultBanner from '../system/query-fault-banner.svelte';
   import type { DrainTarget } from './drain-dialog.svelte';
   import DrainDialog from './drain-dialog.svelte';
+  import { drainFingerprint, type DrainFingerprint } from './drain-guard.ts';
   import ClearDeadLetterDialog from './clear-dead-letter-dialog.svelte';
   import ConformancePanel from './conformance-panel.svelte';
   import DeploymentsPanel from './deployments-panel.svelte';
   import DiagnosticsFilterBar from './diagnostics-filter-bar.svelte';
-  import FleetView from './fleet-view.svelte';
   import InProcessNotice from './in-process-notice.svelte';
   import { runsInProcessOnly } from './in-process-engine.ts';
   import TaskDeadLetterPanel from './task-dead-letter-panel.svelte';
   import TaskDeliveryHistory from './task-delivery-history.svelte';
   import QueueListView from './queue-list-view.svelte';
-  import WorkerDetailView from './worker-detail-view.svelte';
-  import WorkerListView from './worker-list-view.svelte';
-  import { countByTransport } from './worker-presentation.ts';
+  import { countByTransport, workersSummaryLine } from './worker-presentation.ts';
+  import WorkersListDetail from './workers-list-detail.svelte';
   import WorkersLiveStatus from './workers-live-status.svelte';
   import {
     hasProvenanceFilters,
@@ -177,18 +176,16 @@
     }
   });
 
-  type TabId = 'fleet' | 'list' | 'queues' | 'deployments' | 'diagnostics' | 'conformance';
+  type TabId = 'workers' | 'queues' | 'deployments' | 'diagnostics' | 'conformance';
   const TAB_IDS: readonly TabId[] = [
-    'fleet',
-    'list',
+    'workers',
     'queues',
     'deployments',
     'diagnostics',
     'conformance',
   ];
   const TAB_LABELS: Readonly<Record<TabId, string>> = {
-    fleet: 'Fleet overview',
-    list: 'Workers',
+    workers: 'Workers',
     queues: 'Task queues',
     deployments: 'Deployments',
     diagnostics: 'Diagnostics',
@@ -200,9 +197,8 @@
   }
 
   const activeTab = $derived<TabId>(
-    isTabId(router.search.get('tab')) ? (router.search.get('tab') as TabId) : 'fleet',
+    isTabId(router.search.get('tab')) ? (router.search.get('tab') as TabId) : 'workers',
   );
-  const selectedWorkerId = $derived(router.search.get('worker'));
   const selectedQueueName = $derived(router.search.get('queue'));
 
   function selectTab(next: string): void {
@@ -241,14 +237,24 @@
 
   let drainDialogOpen = $state(false);
   let drainTarget = $state<DrainTarget | null>(null);
+  // What the fleet listed for the target when the dialog opened; the drain is refused if it moved.
+  let drainObserved = $state<DrainFingerprint | null>(null);
+  let drainRefusal = $state<string | null>(null);
 
   function openDrainDialog(target: DrainTarget): void {
+    drainRefusal = null;
+    drainObserved = drainFingerprint(workersQuery.data?.items ?? [], target);
     drainTarget = target;
     drainDialogOpen = true;
   }
 
   function handleDrainConfirm(reason: string | undefined): void {
     if (!drainTarget) return;
+    if (drainFingerprint(workersQuery.data?.items ?? [], drainTarget) !== drainObserved) {
+      drainDialogOpen = false;
+      drainRefusal = `${drainTarget.kind === 'deployment' ? 'That deployment' : 'That worker'} changed while the dialog was open, so nothing was drained. Check how it is now, then drain it again if you still mean to.`;
+      return;
+    }
     if (drainTarget.kind === 'worker') {
       drainWorker.mutate({
         workerId: drainTarget.id,
@@ -292,17 +298,6 @@
   const longPollWorkerCount = $derived(
     countByTransport(workersQuery.data?.items ?? [])['long-poll'],
   );
-  const selectedWorker = $derived(
-    selectedWorkerId
-      ? ((workersQuery.data?.items ?? []).find((worker) => worker.id === selectedWorkerId) ?? null)
-      : null,
-  );
-  const selectedWorkerManifest = $derived(
-    selectedWorkerId && manifestQuery.data
-      ? (manifestQuery.data.find((entry) => entry.instance.workerId === selectedWorkerId) ?? null)
-      : undefined,
-  );
-
   const selectedQueue = $derived(
     selectedQueueName
       ? ((queuesQuery.data?.items ?? []).find((queue) => queue.queue === selectedQueueName) ?? null)
@@ -352,19 +347,19 @@
 </script>
 
 <div class="weft-workers-route">
-  <div class="weft-workers-route__header">
-    <h1 class="weft-workers-route__title">Workers</h1>
-    {#if !inProcessOnly}
-      <WorkersLiveStatus {locked} longPollWorkers={longPollWorkerCount} />
-    {/if}
-  </div>
+  <PageHeader headingLevel={1} title="Workers" />
+  {#if !inProcessOnly}
+    <WorkersLiveStatus {locked} longPollWorkers={longPollWorkerCount} />
+  {/if}
+
+  {#if drainRefusal !== null}
+    <Alert variant="warning" dismissible onDismiss={() => (drainRefusal = null)}
+      >{drainRefusal}</Alert
+    >
+  {/if}
 
   {#if locked}
-    <EmptyState title="Workers are locked" description={scopeReason('system:read')}>
-      {#snippet icon()}
-        <Lock size={28} aria-hidden="true" />
-      {/snippet}
-    </EmptyState>
+    <Alert variant="warning">{scopeReason('system:read')} to read the workers.</Alert>
   {:else if fleetSettling}
     <div
       class="weft-workers-route__skeleton"
@@ -385,75 +380,43 @@
         {/each}
       </TabList>
 
-      <TabPanel value="fleet">
+      <TabPanel value="workers">
         {#if fleetError}
-          <EmptyState
-            title={FAULT_TREATMENT_TITLE[faultTreatment(fleetError).kind]}
-            description={faultTreatment(fleetError).message}
-          />
+          <QueryFaultBanner error={fleetError} onRetry={() => void workersQuery.refetch()} />
         {:else}
-          <FleetView
+          <WorkersListDetail
             workers={workersQuery.data?.items ?? []}
-            deployments={workersQuery.data?.deployments ?? []}
+            summary={workersSummaryLine({
+              workers: workersQuery.data?.items ?? [],
+              waiting: queuesQuery.data?.items.reduce((total, queue) => total + queue.backlog, 0),
+              failedForGood: diagnosticsQuery.data?.summary.deadLettered,
+            })}
             {adminGate}
+            onDrain={(worker) => openDrainDialog({ kind: 'worker', id: worker.id })}
+            onResume={resumeWorkerById}
             onDrainDeployment={(name) => openDrainDialog({ kind: 'deployment', name })}
             onResumeDeployment={resumeDeploymentByName}
-            manifestDiagnostics={manifestQuery.data ?? []}
+            onInspectTask={selectTask}
+            manifestDiagnostics={manifestQuery.data}
             registrationRejections={rejectionsQuery.data ?? []}
             manifestLoading={manifestQuery.isPending || rejectionsQuery.isPending}
             manifestRefreshing={(manifestQuery.isFetching && manifestQuery.data !== undefined) ||
               (rejectionsQuery.isFetching && rejectionsQuery.data !== undefined)}
             manifestError={manifestQuery.error ?? rejectionsQuery.error ?? null}
-          />
-        {/if}
-      </TabPanel>
-
-      <TabPanel value="list">
-        {#if fleetError}
-          <EmptyState
-            title={FAULT_TREATMENT_TITLE[faultTreatment(fleetError).kind]}
-            description={faultTreatment(fleetError).message}
-          />
-        {:else if selectedWorker}
-          <WorkerDetailView
-            worker={selectedWorker}
-            {adminGate}
-            onDrain={() => openDrainDialog({ kind: 'worker', id: selectedWorker.id })}
-            onResume={() => resumeWorkerById(selectedWorker.id)}
-            manifestDiagnostics={selectedWorkerManifest}
-            manifestLoading={manifestQuery.isPending}
-            manifestRefreshing={manifestQuery.isFetching && manifestQuery.data !== undefined}
-            manifestError={manifestQuery.error ?? null}
+            workerManifestLoading={manifestQuery.isPending}
+            workerManifestRefreshing={manifestQuery.isFetching && manifestQuery.data !== undefined}
+            workerManifestError={manifestQuery.error ?? null}
             registry={registryQuery.data}
             registryLoading={registryQuery.isPending}
             registryRefreshing={registryQuery.isFetching && registryQuery.data !== undefined}
             registryError={registryQuery.error ?? null}
           />
-        {:else if selectedWorkerId}
-          <EmptyState
-            title="Worker closed"
-            description={`No worker with the ID ${selectedWorkerId} is registered with the server. It has closed, or it never connected here.`}
-          >
-            {#snippet action()}
-              <Button
-                variant="secondary"
-                size="sm"
-                label="Back to all workers"
-                onclick={() => selectTab('list')}
-              />
-            {/snippet}
-          </EmptyState>
-        {:else}
-          <WorkerListView workers={workersQuery.data?.items ?? []} />
         {/if}
       </TabPanel>
 
       <TabPanel value="queues">
         {#if queuesError}
-          <EmptyState
-            title={FAULT_TREATMENT_TITLE[faultTreatment(queuesError).kind]}
-            description={faultTreatment(queuesError).message}
-          />
+          <QueryFaultBanner error={queuesError} onRetry={() => void queuesQuery.refetch()} />
         {:else if selectedQueue}
           {#await loadQueueDetailView()}
             <div role="status" aria-busy="true" aria-label="Loading task queue detail">
@@ -498,9 +461,9 @@
             <Skeleton height="8rem" />
           </div>
         {:else if diagnosticsErrorValue}
-          <EmptyState
-            title={FAULT_TREATMENT_TITLE[faultTreatment(diagnosticsErrorValue).kind]}
-            description={faultTreatment(diagnosticsErrorValue).message}
+          <QueryFaultBanner
+            error={diagnosticsErrorValue}
+            onRetry={() => void diagnosticsTabQuery.refetch()}
           />
         {:else if selectedTaskId}
           {#await loadTaskLedgerDetailView()}
@@ -543,6 +506,7 @@
               }}
               now={Date.now()}
               onInspectTask={selectTask}
+              onClearFilters={() => applyProvenanceFilters({})}
             />
           {/await}
         {/if}

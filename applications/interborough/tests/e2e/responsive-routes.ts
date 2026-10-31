@@ -5,6 +5,7 @@
  * lane, so a new route cannot be added without an address, and an entry cannot lose its owner.
  */
 
+import { E2E_FLEET_WORKER_ID } from './e2e-constants.ts';
 import { E2E_SKILLS, skillAddressKey } from './skills-support.ts';
 
 /** The identifiers the specification seeds, and so the addresses it can name. */
@@ -86,7 +87,8 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
  * (Start run, Pause, Edit, Delete) and a file's Code, Runs and History tabs are reached here,
  * as are an agent's Instructions and Settings tabs, with the tab named in the address (`?tab=`).
  * The Capabilities page's Skills tab, and one seeded long-named skill open, are reached the same way,
- * as are a waiting review open and the Reviews page's Done tab.
+ * as is the Workers page with the seeded worker open, and as are a waiting review open and the
+ * Reviews page's Done tab.
  */
 export function responsiveVariants(seed: ResponsiveSeed): Readonly<Record<string, string>> {
   const file = `/workflows/${encodeURIComponent(seed.workflowFile)}`;
@@ -100,6 +102,9 @@ export function responsiveVariants(seed: ResponsiveSeed): Readonly<Record<string
     '/workflows/:workflow (file, history tab)': `${file}?tab=history`,
     // The Skills tab, and a long-named skill open (one pane at a time below 900px, so at 375 and
     // 768 the detail replaces the list).
+    // The Workers list with the seeded worker open: its detail is the widest part of the page, and
+    // below 900px it replaces the list.
+    '/health/workers (worker open)': `/health/workers?worker=${encodeURIComponent(E2E_FLEET_WORKER_ID)}`,
     '/capabilities (skills tab)': '/capabilities?tab=skills',
     '/capabilities (skill open)': `/capabilities?tab=skills&skill=${encodeURIComponent(skillAddressKey(E2E_SKILLS.long))}`,
     // A waiting review open (one pane at a time below 900px, so at 375 and 768 the detail replaces
@@ -125,9 +130,6 @@ export interface PendingRoute {
  * its owner). Do not add an entry to ship a regression.
  */
 export const pending: readonly PendingRoute[] = [
-  // The 2,000-character key is cut off with no way to reach it at 375 (`.cinder-table` clips), and
-  // scrolls 16,000px inside a 488 or 684px region at 768 and 1280. The storage explorer is rebuilt there.
-  { pattern: '/health/storage', issue: 'COR-1851', failsAt: [375, 768, 1280] },
   // The Discovery tab's outlet scrolls 8px at 375 and its raw-toggle ends at 383px, and the
   // Operations and Discovery tables are cut off. The API reference is rebuilt there.
   { pattern: '/settings/api-reference', issue: 'COR-1847', failsAt: [375] },

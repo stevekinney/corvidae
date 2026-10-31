@@ -124,7 +124,7 @@
 </script>
 
 <section class="weft-workers-panel weft-task-attempts" aria-labelledby="task-attempts-heading">
-  <h3 id="task-attempts-heading" class="weft-workers-panel__header">Attempt history</h3>
+  <h3 id="task-attempts-heading" class="weft-workers-panel__title">Attempt history</h3>
   {#if history.length === 0}
     <EmptyState
       title="No attempts claimed"

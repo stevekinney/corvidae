@@ -1,11 +1,11 @@
 /**
- * Prefix discovery over an ordered store: one read per group of keys, reserved keys left out, and a
- * bound on the number of reads.
+ * Prefix discovery over an ordered store: one read per group of keys, a reserved prefix as one group
+ * of its own, and a bound on the number of reads.
  */
 import { rejectionOf } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { discoverPrefixes } from './prefix-discovery.ts';
+import { discoverPrefixes, keyGroup } from './prefix-discovery.ts';
 import type { StorageConnection } from './storage-client.ts';
 import { stubStorageFetch, type StubbedFetchCall } from './storage-fetch-stub.test-support.ts';
 
@@ -36,7 +36,7 @@ function storeOf(keys: readonly string[]) {
 }
 
 describe('discoverPrefixes', () => {
-  test('names each group of non-reserved keys once, and leaves the reserved ones out', async () => {
+  test('names each group of keys once, a reserved prefix as one group', async () => {
     stub = stubStorageFetch(
       storeOf([
         'agent-session:a',
@@ -54,6 +54,7 @@ describe('discoverPrefixes', () => {
       'agent-session:',
       'bureau-goal:',
       'memory:',
+      'wf:',
       'zeta:',
     ]);
   });
@@ -73,7 +74,7 @@ describe('discoverPrefixes', () => {
     // `audit:bulk:` is reserved and `audit:` is not, so the reserved keys come first and must not hide it.
     stub = stubStorageFetch(storeOf(['audit:bulk:1', 'audit:bulk:2', 'audit:record-1']));
 
-    expect(await discoverPrefixes(connection)).toEqual(['audit:']);
+    expect(await discoverPrefixes(connection)).toEqual(['audit:bulk:', 'audit:']);
   });
 
   test('steps over a key with no prefix, which is no group of its own', async () => {
@@ -118,5 +119,13 @@ describe('discoverPrefixes', () => {
     expect(outcome).toBeInstanceOf(Error);
     expect(stub.calls.length).toBe(1);
     expect(stub.calls[0]?.signal).toBe(controller.signal);
+  });
+});
+
+describe('keyGroup', () => {
+  test('is the reserved prefix, else everything through the first colon, else none', () => {
+    expect(keyGroup('wf:one')).toBe('wf:');
+    expect(keyGroup('agent-session:a:b')).toBe('agent-session:');
+    expect(keyGroup('lonely-key')).toBeUndefined();
   });
 });

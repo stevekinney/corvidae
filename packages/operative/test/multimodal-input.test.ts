@@ -520,6 +520,28 @@ describe('media admission: a part is delivered or refused before generation', ()
     expect(userContents(seen.histories[0])).toEqual([[{ type: 'text', text: 'read' }, managed]]);
   });
 
+  it('hands the validateResponse hooks the step’s resolved sources', async () => {
+    const hooks = new HookRegistry<OperativeHookMap>();
+    let validated: ReadonlyMap<string, unknown> | undefined;
+    hooks.on('validateResponse', async (_response, context) => {
+      validated = context.resolvedSources;
+    });
+    const { seen, result } = run([{ type: 'text', text: 'read' }, managed], {
+      hooks,
+      contentSourceResolver: async () => ({
+        outcome: 'resolved',
+        source: { kind: 'inline', data: BYTES, encoding: 'base64' },
+        byteLength: 7,
+        safety: 'clean',
+      }),
+    });
+
+    await result;
+
+    const messageId = seen.contexts[0]!.conversation.current.ids[0]!;
+    expect(validated?.get(`${messageId}:1`)).toMatchObject({ outcome: 'resolved' });
+  });
+
   it('refuses a part the resolver reports unavailable instead of dropping it', async () => {
     const { seen, result } = run([managed], {
       contentSourceResolver: async () => ({ outcome: 'unavailable', reason: 'quarantined' }),

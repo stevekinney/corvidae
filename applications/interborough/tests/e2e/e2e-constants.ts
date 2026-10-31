@@ -44,6 +44,9 @@ export const E2E_BUREAU_URL = `http://127.0.0.1:${E2E_BUREAU_PORT}`;
 export const E2E_JOURNEY_PORT = E2E_PORT + 3;
 export const E2E_JOURNEY_URL = `http://127.0.0.1:${E2E_JOURNEY_PORT}`;
 
+/** The `workerId` of the E2E `RemoteWorker`, the worker the Workers pages open in the specifications. */
+export const E2E_FLEET_WORKER_ID = 'e2e-fleet-worker-1';
+
 /** `deploymentName` the E2E `RemoteWorker` registers under (flow (e), drain-a-deployment). */
 export const E2E_DEPLOYMENT_NAME = 'checkout-worker-fleet';
 

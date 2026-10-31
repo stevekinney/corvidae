@@ -4,7 +4,7 @@
    * exactly as `src/cli/help-text.ts` documents them, with file names the
    * dashboard can derive substituted in.
    */
-  import { CodeBlock, CopyButton } from '@lostgradient/cinder';
+  import { CopyButton } from '@lostgradient/cinder';
 
   import {
     verificationCommands,
@@ -22,7 +22,7 @@
 </script>
 
 <section class="weft-workers-panel weft-verification-commands" aria-labelledby={headingId}>
-  <h3 id={headingId} class="weft-workers-panel__header">Verify from the command line</h3>
+  <h3 id={headingId} class="weft-workers-panel__title">Verify from the command line</h3>
   <p class="weft-verification-commands__note">
     Save the registry snapshot as <code>{commands.registryFile}</code> and the worker manifest as
     <code>{commands.manifestFile}</code>, then run either command. <code>weft worker verify</code>
@@ -37,7 +37,7 @@
       copiedLabel="weft codegen command copied"
     />
   </div>
-  <CodeBlock code={commands.codegen} language="sh" highlight={false} />
+  <pre class="weft-verification-commands__command"><code>{commands.codegen}</code></pre>
 
   <div class="weft-verification-commands__row">
     <span class="weft-verification-commands__label">Verify the worker manifest</span>
@@ -47,7 +47,7 @@
       copiedLabel="weft worker verify command copied"
     />
   </div>
-  <CodeBlock code={commands.workerVerify} language="sh" highlight={false} />
+  <pre class="weft-verification-commands__command"><code>{commands.workerVerify}</code></pre>
 </section>
 
 <style>
@@ -71,6 +71,19 @@
     align-items: center;
     justify-content: space-between;
     gap: 8px;
+  }
+
+  /* A command wraps instead of scrolling: a long file name would otherwise be a swipe or two past the pane. */
+  .weft-verification-commands__command {
+    margin: 0;
+    padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
+    background: var(--cinder-surface-inset);
+    border: 1px solid var(--cinder-border-muted);
+    border-radius: var(--cinder-radius-md);
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 
   .weft-verification-commands__label {

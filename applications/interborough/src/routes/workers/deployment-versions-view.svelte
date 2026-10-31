@@ -8,7 +8,15 @@
    * each action, and every action is gated on `system:admin` with the reason
    * shown when it is not held.
    */
-  import { Badge, Button, DescriptionList, EmptyState, Table, Tooltip } from '@lostgradient/cinder';
+  import {
+    Badge,
+    Button,
+    DescriptionList,
+    EmptyState,
+    SectionHeading,
+    Table,
+    Tooltip,
+  } from '@lostgradient/cinder';
 
   import { formatRelativeTime, truncateId } from '../../lib/format/index.ts';
   import type { ScopeGate } from '../../lib/scopes.svelte.ts';
@@ -57,6 +65,8 @@
 
 {#if overviews.length === 0}
   <EmptyState
+    kind="first-use"
+    headingLevel={3}
     title="No deployment versions"
     description="No worker has registered a deployment build with this server yet. Builds appear here once a worker with a deploymentName and buildId connects."
   />
@@ -66,33 +76,36 @@
       {@const routing = overview.routing}
       {@const visible = overview.versions.filter((version) => version.state !== 'removed')}
       {@const removed = overview.versions.length - visible.length}
-      <section
-        class="weft-workers-panel weft-deployment"
-        aria-labelledby={`deployment-heading-${index}`}
-      >
-        <div class="weft-workers-panel__header weft-deployment__header">
-          <h2 id={`deployment-heading-${index}`} class="weft-deployment__name">
-            {overview.deploymentName}
-          </h2>
-          {#if adminGate.disabled}
-            <Tooltip text={adminGate.title ?? ''}>
-              <Button variant="secondary" size="sm" disabled label="Set routing" />
-            </Tooltip>
-          {:else}
-            <Button
-              variant="secondary"
-              size="sm"
-              label="Set routing"
-              onclick={() => onSetRouting(overview.deploymentName)}
-            />
-          {/if}
+      <section class="weft-workers-panel weft-deployment" aria-label={overview.deploymentName}>
+        <div class="weft-deployment__bar">
+          <SectionHeading level={3} title={overview.deploymentName}>
+            {#snippet actions()}
+              {#if adminGate.disabled}
+                <Tooltip text={adminGate.title ?? ''}>
+                  <Button variant="secondary" size="sm" disabled label="Set routing" />
+                </Tooltip>
+              {:else}
+                <Button
+                  data-changes
+                  variant="secondary"
+                  size="sm"
+                  label="Set routing"
+                  onclick={() => onSetRouting(overview.deploymentName)}
+                />
+              {/if}
+            {/snippet}
+          </SectionHeading>
         </div>
 
         <div class="weft-deployment__body">
           {#if routing === null}
-            <p class="weft-deployment__note">
-              No routing pointer yet. Until one is set, no build is chosen for unpinned traffic.
-            </p>
+            <EmptyState
+              kind="first-use"
+              size="compact"
+              headingLevel={4}
+              title="No routing pointer yet"
+              description="Until one is set, no build is chosen for unpinned traffic."
+            />
           {:else}
             <DescriptionList
               items={[
@@ -185,6 +198,7 @@
                         {#if role !== 'current' && version.state === 'ready'}
                           {@const direction = moveDirection(routing, overview.versions, version)}
                           <Button
+                            data-changes
                             variant="ghost"
                             size="sm"
                             label={direction === 'rollback' ? 'Roll back to' : 'Promote'}
@@ -193,6 +207,7 @@
                           />
                         {/if}
                         <Button
+                          data-changes
                           variant="ghost"
                           size="sm"
                           label="Drain"

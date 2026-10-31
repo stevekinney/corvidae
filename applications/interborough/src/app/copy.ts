@@ -1219,6 +1219,8 @@ export const GOALS_COPY = {
 
 /** The words the audit trail (`/health/audit`) uses outside its view states. */
 export const AUDIT_COPY = {
+  /** The line under the page's title. */
+  description: 'Who changed what, and when.',
   /** The accessible name of the search form. */
   searchLabel: 'Search the audit trail',
   sinceLabel: 'Since',
@@ -1239,19 +1241,61 @@ export const AUDIT_COPY = {
   searchAction: 'Search',
   clearAction: 'Clear',
   loadMore: 'Load more',
-  /** The caption of the table, which also says how it is ordered. */
+  /** The name of the list of records, which also says how it is ordered. */
   caption: 'Audit records, oldest first',
-  timeColumn: 'Time',
-  typeColumn: 'Type',
-  resourceColumn: 'Resource',
-  actorColumn: 'Actor',
-  detailColumn: 'Details',
+  /** The name of the open record's pane. */
+  detailLabel: 'Record',
+  whoLabel: 'Who',
+  /** The Who select's first option: no narrowing by actor. */
+  anyone: 'Anyone',
   noActor: 'None',
-  /** The small heading above a record's raw JSON, under the disclosure each row opens. */
+  /** The small heading above a record's raw JSON. */
   rawRecord: 'Raw record',
+  emptyDetailTitle: 'Choose a record',
+  emptyDetailDescription: 'Pick one from the list to see what changed, who did it, and when.',
+  /** How many records are loaded, as a sentence. */
+  count: (count: number, more: boolean): string =>
+    `${String(count)} ${count === 1 ? 'record' : 'records'}${more ? ' so far' : ''}`,
+  /** The facts of one record. */
+  fact: {
+    what: 'What',
+    when: 'When',
+    who: 'Who',
+    about: 'About',
+    details: 'Details',
+    before: 'Before',
+    after: 'After',
+    beforeAfter: 'Before and after',
+  },
+  /** The link to the thing a record is about. */
+  openResource: (resource: string): string => `Open ${resource}`,
+  exportAction: 'Export JSON Lines',
+  exporting: 'Exporting…',
+  exported: (count: number): string =>
+    `Exported ${String(count)} ${count === 1 ? 'record' : 'records'}`,
+  nothingToExport: 'There is nothing to export for these filters.',
+  exportFailed: {
+    title: 'The export failed',
+    description:
+      'The server did not answer. Check that the host is running, then try the export again.',
+  },
+  loadingLabel: 'Loading the audit log',
   noMatches: {
     title: 'No records match',
     description: 'Nothing in the trail matches this search. Change or clear a filter to see more.',
+    clear: 'Clear filters',
+  },
+  /** An address that names a record the page could not show: the bounded read of the trail did not reach it. */
+  recordNotFound: {
+    more: 'That record was not found in the recent trail. Load more to keep looking.',
+    end: 'That record is not in the trail.',
+  },
+  /** A list with more pages to read, where none of the records read so far matches the search. */
+  noLoadedMatches: {
+    title: 'No loaded record matches',
+    description:
+      'None of the records read so far matches this search, and the trail has more. Load more to keep looking, or change or clear a filter.',
+    clear: 'Clear filters',
   },
   failed: {
     title: 'The search failed',
@@ -2486,7 +2530,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     forbidden: { title: 'Storage is locked' },
   },
   audit: {
-    label: 'Audit',
+    label: 'Audit log',
     loading: {
       title: 'Loading the audit trail',
       description: 'Reading the record of what changed.',
@@ -2554,3 +2598,105 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     forbidden: { title: 'The health overview is locked' },
   },
 };
+
+/** Said where a write is confirmed when the storage cannot check that the value is unchanged. */
+const UNCHECKED_WRITE_NOTE =
+  ' This storage cannot check that the value is unchanged first, so it overwrites whatever the key holds now.';
+
+/** The words the storage explorer (`/health/storage`) uses outside its view states. */
+export const STORAGE_COPY = {
+  title: 'Storage',
+  description: 'The keys this installation stores, and the value of each.',
+  /** The accessible name of the group and search controls. */
+  filtersLabel: 'Find a key',
+  groupLabel: 'Group',
+  allGroups: 'All groups',
+  searchLabel: 'Search keys',
+  searchPlaceholder: 'Search keys',
+  /** The accessible name of the table of keys. */
+  tableLabel: 'Keys',
+  columns: { key: 'Key', group: 'Group', size: 'Size' },
+  /** A key that is in no group, because its name has no prefix. */
+  noGroup: 'None',
+  /** How many keys are loaded, as a sentence. */
+  count: (count: number, more: boolean): string =>
+    `${String(count)} ${count === 1 ? 'key' : 'keys'}${more ? ' so far' : ''}`,
+  loadMore: 'Load more',
+  loadingLabel: 'Loading keys',
+  empty: {
+    title: 'No keys stored yet',
+    description: 'Keys appear here once the application stores something.',
+  },
+  noMatches: {
+    title: 'No keys match',
+    description: 'Nothing here contains this text. Choose another group or clear the search.',
+    clear: 'Clear filters',
+  },
+  /** A search that has read keys and found none yet, with more to read. */
+  keepSearching: {
+    title: 'No match among the keys read so far',
+    description: (scanned: number): string =>
+      `${String(scanned)} ${scanned === 1 ? 'key was' : 'keys were'} read and none contains this text. Load more to keep looking.`,
+  },
+  failed: {
+    title: 'The keys could not be read',
+    description: 'The server did not answer. Check that the host is running, then try again.',
+  },
+  /** The marker on a key the application manages. */
+  managedBadge: 'Managed',
+  detail: {
+    label: 'Selected key',
+    emptyTitle: 'Choose a key',
+    emptyDescription: 'Pick a key from the table to see its value.',
+    group: 'Group',
+    size: 'Size',
+    key: 'Key',
+    copyKey: 'Copy key',
+    copyValue: 'Copy value',
+    edit: 'Edit',
+    delete: 'Delete',
+    save: 'Save',
+    cancel: 'Cancel',
+    jsonSwitch: 'JSON',
+    valueLabel: 'Value',
+    editLabel: 'Edit the value',
+    /** Why a key has no Edit or Delete. */
+    managedNote: (prefix: string): string =>
+      `The application manages keys that start with ${prefix}, so this one cannot be edited or deleted here.`,
+    /** Why no key has Edit or Delete while the managed prefixes are not known. */
+    unknownManaged:
+      'The application could not say which keys it manages, so no key can be edited or deleted here.',
+    binaryNote: 'This value is not text, so it cannot be edited here.',
+    notJson: 'The value was JSON and this is not, so it cannot be saved.',
+    saveFailed: 'The value was not saved.',
+    capabilityUnknown:
+      'The storage has not said whether it can check that a value is unchanged, so nothing was written. Try again in a moment.',
+    changedUnderYou:
+      'The value changed after it was opened, so nothing was written. Open the key again to see what it holds now.',
+    deleteFailed: 'The key was not deleted.',
+    saved: (key: string): string => `Saved ${key}`,
+    deleted: (key: string): string => `Deleted ${key}`,
+  },
+  confirmSave: {
+    title: 'Save this value?',
+    description: (key: string, unchecked = false): string =>
+      `This replaces the value of ${key}.${unchecked ? UNCHECKED_WRITE_NOTE : ''}`,
+    confirm: 'Save',
+  },
+  confirmDelete: {
+    title: 'Delete this key?',
+    description: (key: string, unchecked = false): string =>
+      `This removes ${key} from storage. It cannot be undone.${unchecked ? UNCHECKED_WRITE_NOTE : ''}`,
+    confirm: 'Delete',
+  },
+  backend: {
+    sqlite: 'SQLite',
+    postgres: 'Postgres and S3',
+    unknown: 'Storage',
+    /** The storage line under the title: the backend, then where it is. */
+    line: (backend: string, where: string | undefined): string =>
+      where === undefined ? backend : `${backend} · ${where}`,
+    popoverLabel: 'What the storage can do',
+    popoverHint: 'Storage details',
+  },
+} as const;

@@ -209,6 +209,8 @@ export const queryKeys = {
   principal: () => ['principal'] as const,
   /** Where the host keeps what a person may edit by hand (`/host/paths`). */
   hostPaths: () => ['host', 'paths'] as const,
+  /** The key prefixes the Bureau writes, which the storage explorer locks (`/host/storage`). */
+  hostStorage: () => ['host', 'storage'] as const,
   /** The model providers, the models they offer, and the catalog edits (`/host/providers`). */
   hostProviders: () => ['host', 'providers'] as const,
   /** The probe behind a view's loading, empty, error, and forbidden states (`app/view-frame.svelte`). */

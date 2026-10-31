@@ -170,6 +170,31 @@ describe('pluginIdentities', () => {
     ]);
   });
 
+  test('lists each guardrail an agent file can name, by kind and id', async () => {
+    const plugin = definePlugin({
+      ...base,
+      setup: () => ({
+        guardrails: {
+          inputDetectors: [{ name: 'no-secrets', detect: async () => ({ safe: true }) } as never],
+          outputValidators: [
+            {
+              name: 'no-forbidden',
+              validate: async () => ({ valid: true, confidence: 0, category: 'x' }),
+            },
+          ],
+        },
+      }),
+    });
+    const { entries } = await pluginIdentities(plugin);
+    expect(entries.map(({ kind, id, version, schema }) => ({ kind, id, version, schema }))).toEqual(
+      [
+        { kind: 'configuration', id: 'example', version: '1.2.0', schema: expect.any(String) },
+        { kind: 'input-guardrail', id: 'example:no-secrets', version: '1.2.0', schema: null },
+        { kind: 'output-guardrail', id: 'example:no-forbidden', version: '1.2.0', schema: null },
+      ],
+    );
+  });
+
   test('names the plugin when its configuration refuses an empty object', async () => {
     const plugin = definePlugin({ ...base, configuration: z.object({ key: z.string() }) });
     const error = await pluginIdentities(plugin).then(

@@ -71,7 +71,7 @@
 </script>
 
 <section class="weft-workers-panel weft-task-deliveries" aria-labelledby="task-deliveries-heading">
-  <h3 id="task-deliveries-heading" class="weft-workers-panel__header">Result delivery history</h3>
+  <h3 id="task-deliveries-heading" class="weft-workers-panel__title">Result delivery history</h3>
   <div class="weft-task-deliveries__body">
     {#if deliveriesQuery.isPending}
       <div role="status" aria-busy="true" aria-label="Loading result delivery history">

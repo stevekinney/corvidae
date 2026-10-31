@@ -26,7 +26,7 @@
  */
 import type { APIRequestContext, Page } from '@playwright/test';
 
-import { WORKFLOW_COPY } from '../../src/app/copy.ts';
+import { STORAGE_COPY, WORKFLOW_COPY } from '../../src/app/copy.ts';
 import { routes } from '../../src/app/routes.ts';
 import { SEEDED_GOAL_RUN_IDENTIFIER } from '../../src/host/seed.ts';
 import { createAgentFile, removeAgent } from './agent-support.ts';
@@ -119,6 +119,11 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   // This host's engine holds none of the Bureau's own types; the Bureau's host lists them (26-workflows).
   '/internal-workflows': /No internal workflows/,
   '/health/runs': /order-processing/,
+  // The summary line prints once the fleet, its queues and its diagnostics have all been read.
+  '/health/workers': /\d+ of \d+ connected/,
+  '/health/workers (worker open)': /Last heard from/,
+  // The audit log lists the seeded schedule's creation.
+  '/health/audit': /schedule\.created/,
   // The added row's long name, beside the Decisions part's heading, which loads last.
   '/settings/models': /mmmmmmmmmm/,
 };
@@ -233,8 +238,8 @@ async function settle(page: Page, pattern: string, width: number): Promise<void>
 }
 
 /**
- * What a page needs done before it prints a seeded value: the storage page lists keys only once it
- * has scanned, so it scans from the long key's start and waits for the key.
+ * What a page needs done before it prints a seeded value: the storage page lists keys a page at a
+ * time, so it searches for the long key's start and opens the key.
  */
 const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
   // The file's header carries its four actions; measure the page only once all four are there.
@@ -251,13 +256,23 @@ const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
       ).toBeVisible();
     }
   },
+  // The table lists keys in order, a page at a time, and a search reads a bounded number of keys
+  // before it offers Load more, so search for the long key's start, load on until it is listed, and
+  // open it: the table cuts it short with an ellipsis, and the pane beside it holds the whole key.
   '/health/storage': async (page) => {
-    await page.getByRole('tab', { name: 'Start / end' }).click();
-    await page.getByLabel('Start (inclusive)').fill('responsive-');
-    await page.getByRole('button', { name: 'Scan', exact: true }).click();
-    await expect(
-      page.locator('.weft-storage-key-cell', { hasText: LONG_STORAGE_KEY }),
-    ).toBeVisible();
+    const search = page.getByLabel(STORAGE_COPY.searchLabel);
+    await search.fill('responsive-');
+    await search.press('Enter');
+    const key = page.locator('.ib-storage__key', { hasText: LONG_STORAGE_KEY });
+    const more = page.getByRole('button', { name: STORAGE_COPY.loadMore });
+    for (let pages = 0; pages < 20; pages += 1) {
+      await expect(key.or(more).first()).toBeVisible();
+      if ((await key.count()) > 0) break;
+      await more.click();
+    }
+    await expect(key).toBeVisible();
+    await key.click();
+    await expect(page.getByTestId('storage-key-name')).toContainText(LONG_STORAGE_KEY);
   },
 };
 

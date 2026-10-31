@@ -84,7 +84,7 @@ describe('provenance filter parsing', () => {
   });
 
   test('deep-links a worker with the list tab pattern', () => {
-    expect(workerDeepLink('wkr 1')).toBe('/health/workers?tab=list&worker=wkr+1');
+    expect(workerDeepLink('wkr 1')).toBe('/health/workers?worker=wkr+1');
   });
 });
 
@@ -116,7 +116,6 @@ describe('Workers route — Diagnostics provenance filters', () => {
     const links = await findAllByRole('link', { name: /^Worker / });
     expect(links).toHaveLength(4);
     expect(links[0]?.getAttribute('href')).toContain('worker=wkr_build_2');
-    expect(links[0]?.getAttribute('href')).toContain('tab=list');
     expect((await findByLabelText('Build ID')) as HTMLInputElement).toHaveProperty(
       'value',
       'build-2',

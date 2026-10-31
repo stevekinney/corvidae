@@ -1,12 +1,11 @@
 <script lang="ts">
-  import { Badge, EmptyState, Table } from '@lostgradient/cinder';
+  import { Badge, EmptyState, Skeleton, Table } from '@lostgradient/cinder';
 
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { formatRelativeTime, truncateId } from '../../lib/format/index.ts';
-  import { FAULT_TREATMENT_TITLE, faultTreatment } from '../../lib/faults.ts';
+  import PanelFault from './panel-fault.svelte';
   import {
     compareDeploymentManifests,
-    MalformedWorkerDiagnosticsError,
     REGISTRATION_REJECTION_LABELS,
     type WorkerManifestDiagnostics,
     type WorkerRegistrationRejection,
@@ -41,17 +40,15 @@
 
   {#if loading}
     <div role="status" aria-busy="true" aria-label="Loading manifest diagnostics">
-      Loading accepted manifests and admission evidence…
+      <Skeleton height="4rem" />
     </div>
   {:else if error}
-    {#if error instanceof MalformedWorkerDiagnosticsError}
-      <EmptyState title="Malformed server response" description={error.message} />
-    {:else}
-      {@const treatment = faultTreatment(error)}
-      <EmptyState title={FAULT_TREATMENT_TITLE[treatment.kind]} description={treatment.message} />
-    {/if}
+    <PanelFault {error} />
   {:else if diagnostics.length === 0 && rejections.length === 0}
     <EmptyState
+      kind="first-use"
+      size="compact"
+      headingLevel={3}
       title="No manifest diagnostics"
       description="No accepted worker manifests or recent admission rejections are available."
     />
@@ -63,9 +60,13 @@
 
     <h3>Same-build comparison</h3>
     {#if comparisons.length === 0}
-      <p class="weft-manifest-diagnostics__note">
-        No two connected workers claim the same deployment and build identifier.
-      </p>
+      <EmptyState
+        kind="done"
+        size="compact"
+        headingLevel={4}
+        title="Nothing to compare"
+        description="No two connected workers claim the same deployment and build identifier."
+      />
     {:else}
       <ul class="weft-manifest-comparison-list">
         {#each comparisons as comparison (`${comparison.deploymentName}:${comparison.buildId}`)}
@@ -90,7 +91,13 @@
 
     <h3>Recent admission rejections</h3>
     {#if rejections.length === 0}
-      <p class="weft-manifest-diagnostics__note">No recent registration attempt was rejected.</p>
+      <EmptyState
+        kind="done"
+        size="compact"
+        headingLevel={4}
+        title="No rejections"
+        description="No recent registration attempt was rejected."
+      />
     {:else}
       <Table caption="Recent worker admission rejections" scrollable>
         <Table.Header>

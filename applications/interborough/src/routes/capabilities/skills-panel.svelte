@@ -21,10 +21,11 @@
   import { queryKeys } from '../../lib/query.ts';
   import { listSkillUsers } from '../../lib/skill-users.ts';
   import { isUntrusted, matchesFilter, skillKey, trustLabel } from './capability-presentation.ts';
-  import { routerSelectionLocation } from './selection-location.ts';
+  import { routerSelectionLocationFor } from '../../lib/router-selection-location.ts';
   import SkillDetail from './skill-detail.svelte';
 
   const copy = CAPABILITIES_COPY;
+  const selectionLocation = routerSelectionLocationFor('/capabilities');
 
   const skills = createQuery(
     () => ({
@@ -81,7 +82,7 @@
         emptyTitle={copy.emptyDetailTitle}
         emptyDescription={copy.emptyDetailDescription}
         selectionParameter="skill"
-        selectionLocation={routerSelectionLocation}
+        {selectionLocation}
         storageKey="interborough-capabilities-skills"
       >
         {#snippet header()}
