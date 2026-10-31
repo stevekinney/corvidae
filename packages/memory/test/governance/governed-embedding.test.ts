@@ -2,19 +2,24 @@
  * COR-1898 part 1: governed memory keeps each record's vector in the vector store, under the
  * active embedding profile, and admission, recall, and deletion go through that profile.
  */
+import { MemoryStorage } from '@lostgradient/storage';
 import type { Embedder } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 
 import { createEmbedderRegistry, EmbedderRegistryError } from '../../src/embedder-registry';
+import { createGovernedEmbedding } from '../../src/governance/governed-embedding';
+import type { CreateGovernedMemoryOptions } from '../../src/governance/governed-memory-types';
 import { collectionNamespace } from '../../src/governance/record-governance';
 import { HASHING_EMBEDDER_DIMENSION } from '../../src/hashing-embedder';
 import {
   createMemoryVectorStore,
+  DEFAULT_MEMORY_VECTOR_KEY_PREFIX,
   type MemoryEmbeddingProfile,
   MemoryVectorDimensionError,
   type MemoryVectorReference,
+  type MemoryVectorStore,
 } from '../../src/memory-vector-store';
 import { createTestEmbedders, TEST_EMBEDDER_ID } from '../../src/test/index';
 import {
@@ -57,6 +62,38 @@ async function writeNote(fixture: GovernedFixture, content: string): Promise<str
   return recordIdOf(
     fixture.memory.write(principalA, content, { collection: 'notes', source: 'conversation' }),
   );
+}
+
+/** Every vector key the durable storage holds, in any profile. */
+async function storedVectorKeys(fixture: GovernedFixture): Promise<string[]> {
+  const keys: string[] = [];
+  for await (const [key] of fixture.durable.scan(`${DEFAULT_MEMORY_VECTOR_KEY_PREFIX}v:`)) {
+    keys.push(key);
+  }
+  return keys;
+}
+
+/**
+ * The fixture's vector store, whose first `put` runs `race` before it writes, so the race finishes
+ * after the record is stored and before its vector is.
+ */
+function puttingAfter(
+  fixture: GovernedFixture,
+  race: (reference: MemoryVectorReference) => Promise<unknown>,
+): Pick<CreateGovernedMemoryOptions, 'vectors'> {
+  const vectors = createMemoryVectorStore(fixture.durable);
+  let raced = false;
+  const racing: MemoryVectorStore = {
+    ...vectors,
+    put: async (profile, reference, entry) => {
+      if (!raced) {
+        raced = true;
+        await race(reference);
+      }
+      return vectors.put(profile, reference, entry);
+    },
+  };
+  return { vectors: racing };
 }
 
 for (const backend of ['in-memory', 'weft'] as const satisfies readonly GovernedBackend[]) {
@@ -193,6 +230,123 @@ for (const backend of ['in-memory', 'weft'] as const satisfies readonly Governed
       });
     });
 
+    it('leaves no vector behind for a record deleted while its vector was being written', async () => {
+      const fixture = await fixtureWith();
+      const writing = fixture.restart(
+        puttingAfter(fixture, async (reference) => {
+          const deleted = await fixture.memory.delete(principalA, {
+            id: reference.id,
+            collection: 'notes',
+          });
+          expect(deleted.status).toBe('applied');
+        }),
+      );
+
+      const receipt = await writing.write(principalA, 'alpha note', {
+        collection: 'notes',
+        source: 'conversation',
+      });
+      expect(receipt.status).toBe('admitted');
+      expect(await storedVectorKeys(fixture)).toEqual([]);
+    });
+
+    it('leaves no vector behind for a promoted copy whose source was deleted while it was written', async () => {
+      const fixture = await fixtureWith();
+      const source = await writeNote(fixture, 'alpha note');
+      const promoting = fixture.restart(
+        puttingAfter(fixture, async () => {
+          const deleted = await fixture.memory.delete(principalA, {
+            id: source,
+            collection: 'notes',
+          });
+          expect(deleted.status).toBe('applied');
+        }),
+      );
+
+      const promoted = await promoting.promote(principalA, { id: source, collection: 'notes' });
+      expect(promoted.status).not.toBe('applied');
+      expect(await fixture.storage.list(referenceTo(source).scope)).toEqual([]);
+      expect(await fixture.ledger.listPendingDerivations({})).toEqual([]);
+      expect(await storedVectorKeys(fixture)).toEqual([]);
+    });
+
+    it('compares a provenance-expanded source from another collection with the other candidates', async () => {
+      const fixture = await fixtureWith();
+      const source = await recordIdOf(
+        fixture.memory.write(principalA, 'alpha source', {
+          collection: 'archive',
+          source: 'conversation',
+        }),
+      );
+      await recordIdOf(
+        fixture.memory.write(principalA, 'beta summary', {
+          collection: 'notes',
+          source: 'conversation',
+          derivedFrom: { kind: 'summary', sources: [{ id: source, collection: 'archive' }] },
+        }),
+      );
+      const claim = await writeNote(fixture, 'alpha claim');
+
+      const bundle = await fixture.memory.recallForModel(principalA, 'beta', {
+        collection: 'notes',
+        plan: {
+          minimumScore: 0.5,
+          stages: ['semantic', 'rank-fusion', 'provenance-expansion', 'counterevidence'],
+        },
+      });
+      expect(bundle.evidence.map((item) => item.id)).toContain(source);
+      expect(bundle.contradictions).toContainEqual({
+        recordId: claim,
+        contradicts: source,
+        kind: 'conflicting-candidate',
+      });
+    });
+
+    it('copies a vector a record held inline before profiles into the initial profile, once', async () => {
+      const fixture = await fixtureWith();
+      const alpha = await writeNote(fixture, 'alpha note');
+      const beta = await writeNote(fixture, 'beta note');
+      const vectors = createMemoryVectorStore(fixture.durable);
+      // The shape a store had before COR-1898: vectors on the records, none in any profile, and no
+      // mark that they were ever copied. The beta note's profile vector stays, as one embedded since.
+      await vectors.deleteMany([referenceTo(alpha)]);
+      await vectors.put(PROFILE, referenceTo(beta), {
+        version: 1,
+        vector: new Float32Array(axis(7)),
+      });
+      for (const [id, inline] of [
+        [alpha, axis(0)],
+        [beta, axis(1)],
+      ] as const) {
+        const record = await fixture.storage.get(id, referenceTo(id).scope);
+        await fixture.storage.put({ ...record!, vector: new Float32Array(inline) });
+      }
+      await fixture.durable.delete(`${DEFAULT_MEMORY_VECTOR_KEY_PREFIX}inline-vectors-copied`);
+
+      const restarted = fixture.restart();
+      await restarted.init();
+
+      const stored = await vectors.getMany(PROFILE, referenceTo(alpha).scope, [alpha, beta]);
+      expect(Array.from(stored.get(alpha)!.vector)).toEqual(axis(0));
+      expect(stored.get(alpha)!.version).toBe(1);
+      expect(Array.from(stored.get(beta)!.vector)).toEqual(axis(7));
+      const bundle = await restarted.recallForModel(principalA, 'alpha', { collection: 'notes' });
+      const semantic = bundle.candidates.find((candidate) => candidate.recordId === alpha);
+      expect(semantic?.scores?.semantic).toBeCloseTo(1);
+
+      let puts = 0;
+      const counting: MemoryVectorStore = {
+        ...vectors,
+        put: async (...input) => {
+          puts += 1;
+          return vectors.put(...input);
+        },
+      };
+      await vectors.deleteMany([referenceTo(alpha)]);
+      await fixture.restart({ vectors: counting }).init();
+      expect(puts).toBe(0);
+    });
+
     it('reports each registered id’s availability', async () => {
       const fixture = await createGovernedFixture(backend, {
         governed: {
@@ -216,3 +370,19 @@ for (const backend of ['in-memory', 'weft'] as const satisfies readonly Governed
     });
   });
 }
+
+describe('governed embedding status', () => {
+  it('reports the initial profile of a store with none, without storing it', async () => {
+    const vectors = createMemoryVectorStore(new MemoryStorage());
+    const embedding = createGovernedEmbedding({
+      registry: createTestEmbedders(keyword, DIMENSION).embedders,
+      vectors,
+      initialEmbedder: TEST_EMBEDDER_ID,
+    });
+    expect(await embedding.status()).toEqual({
+      active: { embedder: TEST_EMBEDDER_ID, dimension: DIMENSION },
+    });
+    expect(await vectors.getActiveProfile()).toBeUndefined();
+    expect(await vectors.listProfiles()).toEqual([]);
+  });
+});

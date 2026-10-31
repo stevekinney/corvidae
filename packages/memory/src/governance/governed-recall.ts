@@ -17,7 +17,7 @@ import type {
 } from './governed-memory-types';
 import { capabilityAllowed, evictionContext, scopesFor } from './governed-reads';
 import type { MemoryGovernancePolicy } from './policy';
-import type { RecallVectors } from './profile-vectors';
+import { loadVectors, type RecallVectors } from './profile-vectors';
 import {
   type FilteredCandidates,
   type FilterInput,
@@ -342,9 +342,14 @@ async function expandProvenance(run: RecallRun): Promise<void> {
 }
 
 /** Records what disagrees with each selected record: its superseded predecessors, and near-duplicates that differ. */
-function findCounterevidence(run: RecallRun): void {
+async function findCounterevidence(run: RecallRun): Promise<void> {
   if (!run.plan.stages.includes('counterevidence')) return;
   const filtered = run.filtered!;
+  // Provenance expansion can select a source no scoring pass read a vector for: one from another
+  // collection, or one past the candidate budget. Its vector is read here, so it is compared too.
+  if (run.vectors !== undefined) {
+    await loadVectors(run.context, run.vectors, [...run.selected.values()]);
+  }
   for (const selected of run.selected.values()) {
     for (const predecessor of filtered.superseded) {
       if (predecessor.read.governance.supersededBy !== selected.record.id) continue;
@@ -431,7 +436,7 @@ async function executePlan(run: RecallRun, query: string): Promise<void> {
     'unavailable',
     'governed memory stores no raw-evidence chunks to expand a record into',
   );
-  findCounterevidence(run);
+  await findCounterevidence(run);
 }
 
 function selectionOf(run: RecallRun, excluded: ReadonlySet<string>, id: string) {

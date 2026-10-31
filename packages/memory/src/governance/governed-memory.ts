@@ -28,6 +28,7 @@ import {
   revokeRecord,
 } from './governed-transitions';
 import { admitWrite } from './governed-writes';
+import { copyInlineVectors } from './profile-vectors';
 
 /**
  * Hands `notification` to each listener registered when delivery starts, in order. A listener that
@@ -114,6 +115,8 @@ export function createGovernedMemory(options: CreateGovernedMemoryOptions): Gove
     async init() {
       await options.storage.init();
       await options.textSearchProvider?.init();
+      // Records stored before COR-1898 held their vector inline; recall reads only the profile's.
+      await copyInlineVectors(governance);
     },
     async close() {
       await options.storage.close();

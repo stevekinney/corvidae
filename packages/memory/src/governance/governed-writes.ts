@@ -26,6 +26,7 @@ import type {
 } from './governed-memory-types';
 import type { MemoryProtectedDiagnostic } from './ledger-types';
 import { lowestTrust, type MemorySourceKind, type MemoryTrust } from './policy';
+import { putRecordVector } from './profile-vectors';
 import {
   digestContent,
   MEMORY_GOVERNANCE_METADATA_KEY,
@@ -184,10 +185,12 @@ export async function storeGovernedRecord(
   } else {
     await context.storage.put(record);
   }
-  // After the record, so a vector never names a record that was not stored. A process that dies
-  // between the two leaves a record with no vector in the active profile, which recall scores
-  // lexically, as it does any record the active profile has not embedded.
-  await context.embedding.vectors.put(
+  // After the record, so a vector never names a record that was not stored, and fenced against a
+  // deletion that removed the record first (a promotion's copy, found through its lineage). A
+  // process that dies between the two leaves a record with no vector in the active profile, which
+  // recall scores lexically, as it does any record the active profile has not embedded.
+  await putRecordVector(
+    context,
     active.profile,
     { id: record.id, scope: input.scope },
     { version: record.version, vector },

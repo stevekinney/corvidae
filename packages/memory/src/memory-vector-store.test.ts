@@ -11,6 +11,7 @@ import {
   DEFAULT_MEMORY_VECTOR_KEY_PREFIX,
   type MemoryEmbeddingProfile,
   MemoryVectorDimensionError,
+  MemoryVectorProfileMissingError,
 } from './memory-vector-store';
 
 const HASHING: MemoryEmbeddingProfile = { embedderId: 'hashing', dimension: 4, generation: 1 };
@@ -44,6 +45,8 @@ describe('createMemoryVectorStore (COR-1898)', () => {
   it('holds one dimension per profile, and keeps profiles of one embedder apart by generation', async () => {
     const store = createMemoryVectorStore(new MemoryStorage());
     const next: MemoryEmbeddingProfile = { ...HASHING, generation: 2 };
+    await store.activeProfile(HASHING);
+    expect(await store.createProfile(next)).toBe(true);
     await store.put(
       HASHING,
       { id: 'a', scope },
@@ -94,6 +97,37 @@ describe('createMemoryVectorStore (COR-1898)', () => {
       const left = await store.getMany(profile, scope, ['a', 'b']);
       expect([...left.keys()]).toEqual(['b']);
     }
+  });
+
+  it('refuses a vector for a profile it does not hold, so deletion can always find what it stores', async () => {
+    const storage = new MemoryStorage();
+    const store = createMemoryVectorStore(storage);
+    const unregistered: MemoryEmbeddingProfile = { ...HASHING, generation: 7 };
+    const refused = await rejectionOf(
+      store.put(unregistered, { id: 'a', scope }, { version: 1, vector: new Float32Array(4) }),
+    );
+    expect(refused).toBeInstanceOf(MemoryVectorProfileMissingError);
+    expect(await store.getMany(unregistered, scope, ['a'])).toEqual(new Map());
+    expect(await store.listProfiles()).toEqual([]);
+    const keys: string[] = [];
+    for await (const [key] of storage.scan(DEFAULT_MEMORY_VECTOR_KEY_PREFIX)) keys.push(key);
+    expect(keys).toEqual([]);
+  });
+
+  it('reads the active profile without storing one', async () => {
+    const storage = new MemoryStorage();
+    const store = createMemoryVectorStore(storage);
+    expect(await store.getActiveProfile()).toBeUndefined();
+    expect(await store.listProfiles()).toEqual([]);
+    await store.activeProfile(HASHING);
+    expect(await store.getActiveProfile()).toEqual(HASHING);
+  });
+
+  it('remembers that inline vectors were copied', async () => {
+    const storage = new MemoryStorage();
+    expect(await createMemoryVectorStore(storage).inlineVectorsCopied()).toBe(false);
+    await createMemoryVectorStore(storage).markInlineVectorsCopied();
+    expect(await createMemoryVectorStore(storage).inlineVectorsCopied()).toBe(true);
   });
 
   it('refuses a profile it could not store', async () => {

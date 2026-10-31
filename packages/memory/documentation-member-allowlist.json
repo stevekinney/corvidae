@@ -294,7 +294,6 @@
     ". MemoryGovernanceLedger.listLineage",
     ". MemoryGovernanceLedger.listPendingDerivations",
     ". MemoryGovernanceLedger.listReceipts",
-    ". MemoryGovernanceLedger.listScopes",
     ". MemoryGovernanceLedger.putEviction",
     ". MemoryGovernanceLedger.putLineage",
     ". MemoryGovernanceLedger.putPendingDerivation",

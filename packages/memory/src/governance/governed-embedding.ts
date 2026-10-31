@@ -28,9 +28,11 @@ export interface GovernedEmbedding {
   readonly registry: EmbedderRegistry;
   /** Where the vectors live. */
   readonly vectors: MemoryVectorStore;
+  /** The profile a store with no active profile starts with: the initial embedder's, generation 1. */
+  readonly initialProfile: MemoryEmbeddingProfile;
   /** The active profile, read now, and its embedder. */
   active(): Promise<ActiveEmbedding>;
-  /** What `memory.embedding.status()` reports. */
+  /** What `memory.embedding.status()` reports. A read: it stores no active profile. */
   status(): Promise<MemoryEmbeddingStatus>;
   /** Whether `id` names an embedder memory could embed with now. */
   availability(id: string): MemoryEmbedderAvailability;
@@ -100,9 +102,11 @@ export function createGovernedEmbedding(input: CreateGovernedEmbeddingInput): Go
   return {
     registry,
     vectors,
+    initialProfile,
     active,
     async status() {
-      const { embedderId, dimension } = await vectors.activeProfile(initialProfile);
+      // A store with no active profile yet reports the one its first write will store.
+      const { embedderId, dimension } = (await vectors.getActiveProfile()) ?? initialProfile;
       return { active: { embedder: embedderId, dimension } };
     },
     availability(id) {

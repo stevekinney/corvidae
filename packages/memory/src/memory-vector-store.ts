@@ -73,6 +73,26 @@ export class MemoryVectorDimensionError extends Error {
 }
 
 /**
+ * A vector written to a profile the store does not hold: one never created, or removed since.
+ * Nothing was written, so no vector can sit in a profile that deletion does not visit.
+ */
+export class MemoryVectorProfileMissingError extends Error {
+  /** Stable code for callers that branch on the refusal. */
+  readonly code = 'embedding-profile-missing';
+
+  constructor(
+    /** The profile the vector was meant for. */
+    readonly profile: MemoryEmbeddingProfile,
+  ) {
+    super(
+      `The embedding profile "${profile.embedderId}" (${profile.dimension} dimensions, generation ` +
+        `${profile.generation}) is not stored; create it before writing its vectors.`,
+    );
+    this.name = 'MemoryVectorProfileMissingError';
+  }
+}
+
+/**
  * Where memory's vectors live (COR-1898), apart from the records they embed, so
  * stored memory can hold more than one embedding while it moves to another.
  * Vectors are kept per {@link MemoryEmbeddingProfile}, keyed by profile, scope,
@@ -85,6 +105,8 @@ export interface MemoryVectorStore {
    * profile is returned either way.
    */
   activeProfile(initial: MemoryEmbeddingProfile): Promise<MemoryEmbeddingProfile>;
+  /** The stored active profile, or `undefined` when none is stored yet. Writes nothing. */
+  getActiveProfile(): Promise<MemoryEmbeddingProfile | undefined>;
   /** Every profile the store holds, the active one included. */
   listProfiles(): Promise<MemoryEmbeddingProfile[]>;
   /**
@@ -96,7 +118,10 @@ export interface MemoryVectorStore {
   /**
    * Stores `vector` as the record's embedding in `profile`, replacing any
    * earlier one. Throws {@link MemoryVectorDimensionError} for a vector that
-   * does not fit the profile, writing nothing.
+   * does not fit the profile, and {@link MemoryVectorProfileMissingError} when
+   * the store does not hold `profile`, writing nothing either way. The write is
+   * conditioned on the profile's marker in one compare-and-swap, so a vector
+   * never lands in a profile {@link MemoryVectorStore.deleteMany} cannot find.
    */
   put(
     profile: MemoryEmbeddingProfile,
@@ -111,6 +136,13 @@ export interface MemoryVectorStore {
   ): Promise<Map<string, StoredMemoryVector>>;
   /** Deletes the referenced records' vectors from every profile the store holds. */
   deleteMany(references: readonly MemoryVectorReference[]): Promise<void>;
+  /** Whether {@link MemoryVectorStore.markInlineVectorsCopied} has run on this store. */
+  inlineVectorsCopied(): Promise<boolean>;
+  /**
+   * Records that the vectors records held inline before COR-1898 have been copied into the store,
+   * so memory never scans its records for them again.
+   */
+  markInlineVectorsCopied(): Promise<void>;
 }
 
 /** Options for {@link createMemoryVectorStore}. */
@@ -177,6 +209,8 @@ function scopeComponent(scope: MemoryRecordScope): string {
  * records and the governance ledger use. Keys, under `keyPrefix`:
  *
  * - `active`: the active profile;
+ * - `inline-vectors-copied`: present once the vectors records held inline
+ *   before COR-1898 were copied into the profile they were made in;
  * - `p:<embedderId>:<dimension>:<generation>`: one marker per profile;
  * - `v:<embedderId>:<dimension>:<generation>:t:<tenantId>:n:<namespace>:r:<id>`:
  *   one record's vector, `{ schemaVersion: 1, version, vector }`.
@@ -193,6 +227,7 @@ export function createMemoryVectorStore(
   const prefix = options.keyPrefix ?? DEFAULT_MEMORY_VECTOR_KEY_PREFIX;
   validateMemoryKeyPrefix(prefix);
   const activeKey = `${prefix}active`;
+  const inlineCopiedKey = `${prefix}inline-vectors-copied`;
   const profileKey = (profile: MemoryEmbeddingProfile): string =>
     `${prefix}p:${profileComponent(profile)}`;
   const recordComponent = (reference: MemoryVectorReference): string =>
@@ -224,6 +259,11 @@ export function createMemoryVectorStore(
       }
     },
 
+    async getActiveProfile() {
+      const stored = await storage.get(activeKey);
+      return stored === null ? undefined : decodeProfile(stored);
+    },
+
     listProfiles,
 
     async createProfile(profile) {
@@ -242,10 +282,22 @@ export function createMemoryVectorStore(
       if (vector.length !== profile.dimension || !vector.every(Number.isFinite)) {
         throw new MemoryVectorDimensionError(profile, vector.length);
       }
-      await storage.put(
-        vectorKey(profile, reference),
-        encodeJson({ schemaVersion: 1, version: entry.version, vector: Array.from(vector) }),
+      const stored = await storageConditionalBatch(
+        storage,
+        [{ key: profileKey(profile), expectedValue: encodeProfile(profile) }],
+        [
+          {
+            type: 'put',
+            key: vectorKey(profile, reference),
+            value: encodeJson({
+              schemaVersion: 1,
+              version: entry.version,
+              vector: Array.from(vector),
+            }),
+          },
+        ],
       );
+      if (!stored) throw new MemoryVectorProfileMissingError(profile);
     },
 
     async getMany(profile, scope, ids) {
@@ -277,6 +329,14 @@ export function createMemoryVectorStore(
       for (let start = 0; start < operations.length; start += MAX_BATCH_OPERATIONS) {
         await storageBatch(storage, operations.slice(start, start + MAX_BATCH_OPERATIONS));
       }
+    },
+
+    async inlineVectorsCopied() {
+      return (await storage.get(inlineCopiedKey)) !== null;
+    },
+
+    async markInlineVectorsCopied() {
+      await storage.put(inlineCopiedKey, encodeJson({ schemaVersion: 1 }));
     },
   };
 }

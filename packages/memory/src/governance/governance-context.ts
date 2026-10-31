@@ -215,6 +215,10 @@ export function createGovernanceContext(input: CreateGovernanceContextInput): Go
     // Snapshotted before the first await, so the vectors deleted are those of the records that were.
     const vectors = references.map(({ id, scope: target }) => ({ id, scope: { ...target } }));
     const removed = await deleteRecords(references);
+    // A failure here throws after the records are gone, leaving their vectors. That is the repair
+    // path, not a leak: the synchronous deletion lane reports the target `failed` and retries it,
+    // and the retry deletes no record but runs `forget` again. Recall never reads the vectors in
+    // between, because it reads only the vectors of records it found.
     await input.embedding.forget(vectors);
     return removed;
   }

@@ -264,6 +264,7 @@ export { HASHING_EMBEDDER_DIMENSION, createHashingEmbedder } from './hashing-emb
 export {
   DEFAULT_MEMORY_VECTOR_KEY_PREFIX,
   MemoryVectorDimensionError,
+  MemoryVectorProfileMissingError,
   createMemoryVectorStore,
 } from './memory-vector-store';
 export type {
