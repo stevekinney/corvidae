@@ -429,22 +429,25 @@ describe('one agent’s page', () => {
     await findByText('anthropic/sonnet');
     expect(container.textContent).toContain('lookup-order');
     expect(container.textContent).toContain('Cite');
-    // The version of the file, by its short hash, with the history that lives in the editor.
+    // The version of the file, by its short hash, with the history that lives in its Settings tab.
     const version = container.querySelector('[data-testid="agent-file-version"]');
     expect(version?.textContent).toContain('File version');
     expect(version?.querySelector('code')?.textContent).toBe('hash-1');
-    expect(version?.querySelector('a')?.getAttribute('href')).toBe('/agents/researcher/edit');
+    expect(version?.querySelector('a')?.getAttribute('href')).toBe(
+      '/agents/researcher?tab=settings',
+    );
     // Opening the history is a navigation in the app, not a page load.
     const history = version?.querySelector('a');
     if (history === null || history === undefined) throw new Error('expected a history link');
     history.click();
-    expect(router.pathname).toBe('/agents/researcher/edit');
+    expect(router.pathname).toBe('/agents/researcher');
+    expect(router.search.get('tab')).toBe('settings');
     expect(container.textContent).not.toContain('Revision');
     expect(container.querySelector('h1')?.textContent?.trim()).toBe('Researcher');
     await findByText('Plan the week');
     expect(
       served.calls.find((call) => call.method === 'bureau.contexts.list')?.params,
-    ).toMatchObject({ agentName: 'researcher', origin: 'chat' });
+    ).toMatchObject({ agentName: 'researcher', sortBy: 'updatedAt', sortOrder: 'desc' });
   });
 
   test('shows two skills that share a name, which only their identifiers tell apart', async () => {

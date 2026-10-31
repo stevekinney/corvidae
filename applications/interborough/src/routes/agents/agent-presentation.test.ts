@@ -86,6 +86,11 @@ describe('an agent’s facts', () => {
     tools: [...tools],
     skillDescriptors: [{ id: 'cite', name: 'Cite', description: '', tags: [] }],
     a2a: true,
+    stepLimit: null,
+    references: null,
+    guardrails: null,
+    costBudget: null,
+    toolBudget: null,
     instructions: '',
   });
 
