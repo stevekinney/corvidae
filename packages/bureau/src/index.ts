@@ -51,7 +51,9 @@ export type {
   PluginListing,
   PluginLoadSource,
   PluginMemoryContributions,
+  PluginModelContributions,
   PluginProblem,
+  PluginProviderContribution,
   PluginStatus,
 } from './plugins/plugin-types';
 export type {
@@ -480,7 +482,7 @@ export type {
   PlanSelectionRequest,
 } from './model-policy';
 export { createModelPolicyPlanner } from './model-policy';
-export type { Models, ModelsOptions } from './models/create-models';
+export type { CatalogFactory, Models, ModelsOptions } from './models/create-models';
 export type {
   BureauDecideOptions,
   BureauDecisions,

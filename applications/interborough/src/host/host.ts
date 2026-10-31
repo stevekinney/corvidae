@@ -20,8 +20,9 @@
  * embedder that needs no model provider, so every agent, the seeded ones included, remembers across
  * its owner's chats.
  *
- * The model catalog holds the models of the providers in Bungalow's `configuration.json` that have
- * an API key in its secrets (`providers.ts`), with the catalog edits beside them
+ * The model catalog holds the models of the providers the loaded plugins contribute (the anthropic,
+ * openai and gemini plugins) that have an API key in Bungalow's secrets (`providers.ts`), limited
+ * by each plugin's `configuration.models` in `configuration.json`, with the catalog edits beside them
  * (`catalog-edits.ts`). The seeded agents still answer from a script. A local host writes the
  * configuration and a provider's key, and reloads the catalog, without a restart
  * (`provider-manager.ts`, `provider-routes.ts`); a remote host refuses, reporting the reason
@@ -155,15 +156,10 @@ import { mcpAppMounts } from './mcp-app-mounts.ts';
 import { createHostMemory } from './memory.ts';
 import { createPluginManager, type PluginManager } from './plugin-manager.ts';
 import { pluginRoutes } from './plugin-routes.ts';
-import { providerSecrets, workspacePlugins } from './plugins.ts';
+import { workspacePlugins } from './plugins.ts';
 import { createProviderManager, type ProviderManager } from './provider-manager.ts';
 import { providerRoutes } from './provider-routes.ts';
-import {
-  PROVIDER_NAMES,
-  PROVIDER_SECRET_KEYS,
-  TYPESAFE_SECRET_KEY,
-  type ModelSelection,
-} from './providers.ts';
+import { contributedProviders, TYPESAFE_SECRET_KEY, type ModelSelection } from './providers.ts';
 import { allowedHosts, createRequestGuard } from './request-guard.ts';
 import { HOST_RESTART_ROUTE } from './restart.ts';
 import {
@@ -597,13 +593,16 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       bungalow,
       plugins,
       configurationQueue,
+      // A provider plugin's allowlist applies without a restart: the provider manager reloads the catalog.
+      appliesConfigurationLive: (plugin) =>
+        held.providers?.current().providers.some((provider) => provider.plugin === plugin) === true,
       listing: async () => (held.bureau === undefined ? [] : held.bureau.plugins.list()),
       reservedSecretKeys: [APPROVAL_SECRET_KEY, A2A_API_KEY_SECRET_KEY],
       reservedSecretPrefixes: [ANSWER_ENCRYPTION_KEY, TOOL_SOURCE_SECRET_PREFIX],
     });
     held.plugins = pluginManager;
     await pluginManager.ensureGeneratedSecrets();
-    const providers = await createProviderManager({
+    const providers = createProviderManager({
       bungalow: {
         mode: bungalow.mode,
         configurationLocation: bungalow.configurationLocation,
@@ -613,6 +612,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         writeSecret: (key, value) => pluginManager.writeSecret(key, value),
       },
       configurationQueue,
+      afterConfigurationWrite: () => pluginManager.reload(),
       warn: options.warn ?? ((message) => console.warn(message)),
       resolveProviderGenerate: options.resolveProviderGenerate ?? resolveProviderGenerate,
     });
@@ -678,15 +678,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
             },
           }),
       // A file's `model` is a row of this catalog, so it runs with the key in the secrets.
+      // The catalog is built once the plugins have been set up, from the providers they contribute.
       models: {
-        catalog: providers.current().rows,
-        generate: (row) => {
-          const provider = PROVIDER_NAMES.find((name) => name === row.provider);
-          if (provider === undefined) {
-            throw new Error(`The ${row.provider} provider is not one this host offers.`);
-          }
-          return generateFor({ provider, model: row.model });
-        },
+        catalog: (contributions) => providers.adopt(contributedProviders(contributions, plugins)),
+        generate: (row) => generateFor({ provider: row.provider, model: row.model }),
       },
       storage,
       // The plugins this host loads, the owner's choices for them, and the secrets they declare
@@ -850,10 +845,11 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
               hostPathsReport(
                 bungalow,
                 { agents: agentContent, workflows: workflowContent },
-                providerSecrets(
-                  await bureau.plugins.list(),
-                  PROVIDER_NAMES.map((name) => ({ name, secretKey: PROVIDER_SECRET_KEYS[name] })),
-                ),
+                providers
+                  .current()
+                  .providers.flatMap(({ name, secretKey }) =>
+                    secretKey === undefined ? [] : [{ name, secretKey }],
+                  ),
               ),
             ),
         },

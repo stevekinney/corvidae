@@ -7,6 +7,7 @@ import {
 } from '@lostgradient/operative';
 
 import type { AgentDefinitions } from '../agent-catalog';
+import type { PluginModelContributions } from '../plugins/plugin-types';
 import {
   createModelPolicyPlanner,
   type BureauModelPolicyOptions,
@@ -20,11 +21,13 @@ import type { SettingsValues } from '../settings/settings-schema';
  */
 export interface ModelsOptions {
   /**
-   * The rows the deployment offers. Defaults to `@lostgradient/operative`'s static seed. Rows a
-   * host supplies here are stamped `source: 'operator-override'`, the same stamp
-   * {@link Models.replace} gives, so a row's `source` says whether the host chose it.
+   * The rows the deployment offers, or a factory that builds them once plugin setup has run, from
+   * the providers the plugins contributed (COR-1884). Defaults to `@lostgradient/operative`'s
+   * static seed. Rows a host supplies here are stamped `source: 'operator-override'`, the same
+   * stamp {@link Models.replace} gives, so a row's `source` says whether the host chose it. A
+   * factory is called once, with nothing contributed when no plugin runs.
    */
-  readonly catalog?: readonly BackendDescriptor[];
+  readonly catalog?: readonly BackendDescriptor[] | CatalogFactory;
   /**
    * How a catalog row becomes the `generate` an agent file runs with. The host supplies it
    * because the host holds the credentials; Bureau passes the row (provider and model) a file's
@@ -33,6 +36,11 @@ export interface ModelsOptions {
    */
   readonly generate?: (row: BackendDescriptor) => GenerateFunction;
 }
+
+/** Builds the catalog rows from what the running plugins contributed. */
+export type CatalogFactory = (
+  contributions: PluginModelContributions,
+) => readonly BackendDescriptor[] | Promise<readonly BackendDescriptor[]>;
 
 /**
  * Bureau's model namespace, exposed as `Bureau.models`: the catalog the deployment offers, the
@@ -165,7 +173,9 @@ export function validateModelsOptions(
     badRequest('"options.models" must be an object');
   }
   const { catalog, generate } = options as { catalog?: unknown; generate?: unknown };
-  if (catalog !== undefined) validateRows(catalog, '"options.models.catalog"', badRequest);
+  if (catalog !== undefined && typeof catalog !== 'function') {
+    validateRows(catalog, '"options.models.catalog"', badRequest);
+  }
   if (generate !== undefined && typeof generate !== 'function') {
     badRequest('"options.models.generate" must be a function');
   }
@@ -176,7 +186,12 @@ export function createModels<D extends AgentDefinitions>(
   dependencies: ModelsDependencies<D>,
 ): Models {
   const { options, now } = dependencies;
-  const supplied = options?.catalog;
+  // Composition resolves a factory before this runs, so one that is still here is a Bureau bug.
+  const given = options?.catalog;
+  if (typeof given === 'function') {
+    throw new Error('The models.catalog factory was not resolved by plugin composition.');
+  }
+  const supplied = given;
   let catalog: ModelCatalog = Object.freeze({
     revision: 1,
     descriptors:

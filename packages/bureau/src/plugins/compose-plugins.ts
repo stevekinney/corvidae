@@ -9,7 +9,7 @@
  * contributions is registered. A plugin that passes registers every contribution through the
  * option it belongs to (`contributionCatalog`, `agentContributions`, `validators`, `hooks`,
  * `eventFormatters`, `decisions`, `onlineEvals`, the agent catalog, the agent tool catalog and the
- * `memory` factory), so the rest of construction never needs to know a plugin was involved.
+ * `memory` factory), and the providers they contribute reach the `models.catalog` factory, so the rest of construction never needs to know a plugin was involved.
  *
  * @module compose-plugins
  */
@@ -23,6 +23,7 @@ import type {
 } from '@lostgradient/interborough-plugin';
 import { createPluginStorage, isPluginName } from '@lostgradient/interborough-plugin';
 import type { GovernedMemory } from '@lostgradient/memory';
+import { createModelCatalog } from '@lostgradient/operative';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import {
   formatToolId,
@@ -57,7 +58,9 @@ import type {
   PluginContributionKind,
   PluginContribution,
   PluginMemoryContributions,
+  PluginModelContributions,
   PluginProblem,
+  PluginProviderContribution,
 } from './plugin-types';
 
 /** The options composition reads: `BureauOptions` once its definition sources are layered into one. */
@@ -244,7 +247,17 @@ function planOf(
   for (const model of contributions.decisionRouters ?? [])
     contribute('decision-router', model.name);
   for (const kind of contributions.hookActionKinds ?? []) contribute('hook-action', kind.name);
-  for (const provider of contributions.providers ?? []) contribute('provider', provider.name);
+  for (const provider of contributions.providers ?? []) {
+    contribute('provider', provider.name);
+    for (const row of provider.rows ?? []) {
+      // A row names the provider that serves it; a stray one would never find its definition.
+      if (row.provider !== provider.name) {
+        throw new TypeError(
+          `setup returned the provider "${provider.name}" with a catalog row for the provider "${row.provider}": a row's provider is the name of the definition that carries it.`,
+        );
+      }
+    }
+  }
   for (const embedder of contributions.embedders ?? []) {
     // Memory's embedder registry refuses this inside the host's `memory` factory, where it would
     // fail construction instead of skipping the plugin.
@@ -328,7 +341,7 @@ function heldByHost(options: ComposableOptions): Claims {
   // Embedders and memory detectors reach memory only through the host's `memory` factory, which
   // holds no names composition can see; a plugin's embedder id is always `plugin:name`, so it never
   // meets memory's built-in `hashing`, and two plugins' ids are kept apart by the claims above.
-  // Providers and MCP apps have no Bureau entry point yet: the host wires them (COR-1880).
+  // Providers reach the host's `models.catalog` factory, not a held name; MCP apps have no Bureau entry point yet: the host wires them (COR-1880).
   return claims;
 }
 
@@ -388,6 +401,7 @@ class Contributed {
     detectors: PluginMemoryContributions['detectors'][number][];
     embedders: PluginMemoryContributions['embedders'][number][];
   } = { detectors: [], embedders: [] };
+  readonly providers: PluginProviderContribution[] = [];
 
   add(
     plugin: string,
@@ -422,6 +436,15 @@ class Contributed {
       this.judges.push({ ...judge, name: id(judge.name), evaluate: (run) => judge.evaluate(run) });
     }
     for (const { name, agent } of result.codeAgents ?? []) this.agents[id(name)] = agent;
+    for (const provider of result.providers ?? []) {
+      this.providers.push({
+        plugin,
+        definition: provider,
+        rows:
+          provider.rows ??
+          createModelCatalog().descriptors.filter((row) => row.provider === provider.name),
+      });
+    }
     this.memory.detectors.push(...(result.memoryDetectors ?? []));
     for (const embedder of result.embedders ?? []) {
       this.memory.embedders.push({
@@ -545,6 +568,21 @@ function optionsWith<O extends ComposableOptions>(options: O, contributed: Contr
         }),
     ...(memory === undefined ? {} : { memory }),
   };
+}
+
+/**
+ * `options` with a `models.catalog` factory replaced by the rows it built from the contributed
+ * providers. Rows given as a list, and no `models` option, come back as they were.
+ */
+async function withModelCatalog<O extends ComposableOptions>(
+  options: O,
+  providers: readonly PluginProviderContribution[],
+): Promise<O> {
+  const models = options.models;
+  const factory = models?.catalog;
+  if (models === undefined || typeof factory !== 'function') return options;
+  const contributions: PluginModelContributions = { providers: [...providers] };
+  return { ...options, models: { ...models, catalog: await factory(contributions) } };
 }
 
 /** Runs `setup` and plans what it returned, or answers why the plugin does not run. */
@@ -704,7 +742,7 @@ export async function composePlugins<O extends ComposableOptions>(
   }
   const gates = records.flatMap(({ gate }) => (gate === undefined ? [] : [gate]));
   return {
-    options: optionsWith(options, contributed),
+    options: await withModelCatalog(optionsWith(options, contributed), contributed.providers),
     tools: contributed.tools,
     records,
     watchSecrets: () => {

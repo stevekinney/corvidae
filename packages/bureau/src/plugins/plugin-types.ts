@@ -5,6 +5,7 @@
  */
 
 import type { ContributedEmbedder, GovernedMemory } from '@lostgradient/memory';
+import type { BackendDescriptor, ProviderDefinition } from '@lostgradient/operative/provider-kit';
 import type { PluginDescriptor } from '@lostgradient/interborough-plugin';
 import type { InputDetector } from 'armorer';
 import type { z } from 'zod';
@@ -37,6 +38,22 @@ export interface BureauPluginSecrets {
   get(key: string): Promise<string | undefined>;
   /** Calls `listener` whenever `key` is saved or removed; returns the function that stops it. */
   watch(key: string, listener: () => void): () => void;
+}
+
+/** One model provider a running plugin contributed, with the catalog rows of its models. */
+export interface PluginProviderContribution {
+  /** The plugin that contributed it. */
+  readonly plugin: string;
+  /** The provider definition the host resolves a generate through. */
+  readonly definition: ProviderDefinition;
+  /** The catalog rows of its models; each row's `provider` is `definition.name`. */
+  readonly rows: readonly BackendDescriptor[];
+}
+
+/** What plugins contribute to the model catalog, for a `models.catalog` factory to build rows from. */
+export interface PluginModelContributions {
+  /** Every provider contributed by a `running` or `needs-setup` plugin, in load order. */
+  readonly providers: readonly PluginProviderContribution[];
 }
 
 /** What plugins contribute to governed memory, for a `memory` factory to build with. */

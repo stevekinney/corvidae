@@ -127,7 +127,7 @@ async function failureOf(work: Promise<unknown>): Promise<unknown> {
 }
 
 describe('connecting a provider', () => {
-  test('stores a 0600 key, lists the provider, offers its models at once, and survives a restart', async () => {
+  test('stores a 0600 key, writes the plugin’s allowlist and no top-level providers key, offers its models at once, and survives a restart', async () => {
     const directory = await home();
     const host = await startAt(directory);
     expect(pairsOf(host)).toEqual([]);
@@ -146,7 +146,7 @@ describe('connecting a provider', () => {
     expect(statSync(secret).mode & 0o777).toBe(0o600);
     expect(await readFile(secret, 'utf8')).toBe(KEY_A);
     expect(JSON.parse(await readFile(join(directory, 'configuration.json'), 'utf8'))).toEqual({
-      providers: { anthropic: { models: ['sonnet'] } },
+      plugins: { anthropic: { configuration: { models: ['sonnet'] } } },
     });
     expect(statSync(join(directory, 'configuration.json')).mode & 0o777).toBe(0o600);
     expect(host.generateFor({ provider: 'anthropic', model: 'sonnet' })).toBeFunction();
@@ -160,7 +160,10 @@ describe('connecting a provider', () => {
     const directory = await home();
     await writeFile(
       join(directory, 'configuration.json'),
-      JSON.stringify({ note: 'mine', providers: { anthropic: { models: ['sonnet'] } } }),
+      JSON.stringify({
+        note: 'mine',
+        plugins: { anthropic: { enabled: true, configuration: { models: ['sonnet'] } } },
+      }),
     );
     await storeKey(directory, 'anthropic-api-key', KEY_A);
     const host = await startAt(directory);
@@ -171,8 +174,9 @@ describe('connecting a provider', () => {
     const written = JSON.parse(await readFile(join(directory, 'configuration.json'), 'utf8'));
     expect(written).toEqual({
       note: 'mine',
-      providers: { anthropic: { models: ['sonnet'] }, openai: {} },
+      plugins: { anthropic: { enabled: true, configuration: { models: ['sonnet'] } } },
     });
+    expect(Object.hasOwn(written, 'providers')).toBe(false);
     expect(await readFile(join(directory, 'secrets', 'anthropic-api-key'), 'utf8')).toBe(KEY_B);
     expect(pairsOf(host)).toContain('anthropic/claude-sonnet-5');
     expect(pairsOf(host).some((pair) => pair.startsWith('openai/'))).toBe(true);
@@ -191,7 +195,7 @@ describe('connecting a provider', () => {
     await pending;
 
     expect(JSON.parse(await readFile(join(directory, 'configuration.json'), 'utf8'))).toEqual({
-      providers: { anthropic: { models: ['sonnet'] } },
+      plugins: { anthropic: { configuration: { models: ['sonnet'] } } },
     });
   });
 
@@ -204,7 +208,7 @@ describe('connecting a provider', () => {
       host.providers.connect({ provider: 'anthropic', apiKey: KEY_A, models: ['no-such-model'] }),
     );
     expect(unknownModel).toBeInstanceOf(ProviderConfigurationError);
-    expect(String(unknownModel)).toContain('providers.anthropic.models[0]');
+    expect(String(unknownModel)).toContain('plugins.anthropic.configuration.models[0]');
 
     const unknownProvider = await failureOf(
       host.providers.connect({ provider: 'voyage', apiKey: KEY_A }),
@@ -234,14 +238,14 @@ describe('connecting a provider', () => {
   test('refuses to write over a configuration that is already invalid, and says which field', async () => {
     const directory = await home();
     const host = await startAt(directory);
-    await writeFile(join(directory, 'configuration.json'), '{"providers":{"voyage":{}}}');
+    await writeFile(join(directory, 'configuration.json'), '{"catalog":[{"color":"red"}]}');
 
     const failure = await failureOf(host.providers.connect({ provider: 'openai', apiKey: KEY_A }));
 
     expect(failure).toBeInstanceOf(ProviderConfigurationError);
-    expect(String(failure)).toContain('providers.voyage');
+    expect(String(failure)).toContain('catalog[0].color');
     expect(await readFile(join(directory, 'configuration.json'), 'utf8')).toBe(
-      '{"providers":{"voyage":{}}}',
+      '{"catalog":[{"color":"red"}]}',
     );
     expect(existsSync(join(directory, 'secrets', 'openai-api-key'))).toBe(false);
   });
@@ -269,7 +273,7 @@ describe('a key that changes under running work', () => {
     const directory = await home();
     await writeFile(
       join(directory, 'configuration.json'),
-      JSON.stringify({ providers: { anthropic: { models: ['sonnet'] } } }),
+      JSON.stringify({ plugins: { anthropic: { configuration: { models: ['sonnet'] } } } }),
     );
     await storeKey(directory, 'anthropic-api-key', KEY_A);
     const { requests, resolver } = recordingResolver();
@@ -288,7 +292,7 @@ describe('a key that changes under running work', () => {
     const directory = await home();
     await writeFile(
       join(directory, 'configuration.json'),
-      JSON.stringify({ providers: { anthropic: { models: ['sonnet'] } } }),
+      JSON.stringify({ plugins: { anthropic: { configuration: { models: ['sonnet'] } } } }),
     );
     await storeKey(directory, 'anthropic-api-key', KEY_A);
     await mkdir(join(directory, 'agents'), { recursive: true });
@@ -309,7 +313,7 @@ describe('a key that changes under running work', () => {
     const directory = await home();
     await writeFile(
       join(directory, 'configuration.json'),
-      JSON.stringify({ providers: { anthropic: { models: ['sonnet'] } } }),
+      JSON.stringify({ plugins: { anthropic: { configuration: { models: ['sonnet'] } } } }),
     );
     await storeKey(directory, 'anthropic-api-key', KEY_A);
     await mkdir(join(directory, 'agents'), { recursive: true });
@@ -373,7 +377,7 @@ describe('catalog edits', () => {
     const directory = await home();
     await writeFile(
       join(directory, 'configuration.json'),
-      JSON.stringify({ providers: { anthropic: {} } }),
+      JSON.stringify({ plugins: { anthropic: {} } }),
     );
     await storeKey(directory, 'anthropic-api-key', KEY_A);
     return { directory, host: await startAt(directory) };
@@ -545,7 +549,7 @@ describe('catalog edits', () => {
 
     expect(rowOf(host, 'claude-haiku-4-5')?.availability).toBe(original?.availability);
     expect(JSON.parse(await readFile(join(directory, 'configuration.json'), 'utf8'))).toEqual({
-      providers: { anthropic: {} },
+      plugins: { anthropic: {} },
     });
   });
 
@@ -624,7 +628,7 @@ describe('reloading', () => {
 
     await writeFile(
       join(directory, 'configuration.json'),
-      JSON.stringify({ providers: { anthropic: { models: ['sonnet'] } } }),
+      JSON.stringify({ plugins: { anthropic: { configuration: { models: ['sonnet'] } } } }),
     );
     await writeFile(join(directory, 'secrets', 'anthropic-api-key'), KEY_A, { mode: 0o600 });
     const change = await host.providers.reload();
@@ -637,7 +641,7 @@ describe('reloading', () => {
     const directory = await home();
     await writeFile(
       join(directory, 'configuration.json'),
-      JSON.stringify({ providers: { anthropic: { models: ['sonnet'] } } }),
+      JSON.stringify({ plugins: { anthropic: { configuration: { models: ['sonnet'] } } } }),
     );
     await storeKey(directory, 'anthropic-api-key', KEY_A);
     const host = await startAt(directory);
@@ -715,7 +719,7 @@ describe('the provider routes', () => {
       'provider',
       'apiKey',
       'body',
-      'providers.openai.models[0]',
+      'plugins.openai.configuration.models[0]',
     ]);
     expect(bodies.join('\n').includes(KEY_A)).toBe(false);
   });

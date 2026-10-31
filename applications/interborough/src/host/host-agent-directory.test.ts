@@ -29,7 +29,7 @@ async function prepareHome(files: Readonly<Record<string, string>> = {}): Promis
   directories.push(home);
   await writeFile(
     join(home, 'configuration.json'),
-    JSON.stringify({ providers: { anthropic: { models: ['sonnet'] } } }),
+    JSON.stringify({ plugins: { anthropic: { configuration: { models: ['sonnet'] } } } }),
   );
   const bungalow = await openBungalow({
     name: 'interborough',

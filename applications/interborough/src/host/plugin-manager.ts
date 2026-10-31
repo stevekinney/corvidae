@@ -156,6 +156,12 @@ export type PluginManager = {
    * error still reaches the caller.
    */
   writeSecret(key: string, value: string): void;
+  /**
+   * Read the persisted choices from the file again, for a writer of `plugins.<name>` other than
+   * this manager (the provider manager writes a provider plugin's allowlist), so a report shows
+   * what is stored.
+   */
+  reload(): Promise<void>;
   /** Create the secrets declared `generated` that an enabled plugin lacks. Local mode only; a remote home does nothing. */
   ensureGeneratedSecrets(): Promise<void>;
   /** Every plugin with the owner's choices and its secrets' standing. */
@@ -185,6 +191,12 @@ export type PluginManagerOptions = {
   readonly plugins: readonly BureauPluginEntry[];
   /** The queue every writer of `configuration.json` shares. Defaults to a new one. */
   readonly configurationQueue?: ConfigurationQueue;
+  /**
+   * Whether the host applies this plugin's configuration while it runs, so a change to it needs no
+   * restart (a provider plugin's allowlist). Defaults to none. Only `enabled` then counts for
+   * `restartRequired`.
+   */
+  readonly appliesConfigurationLive?: (plugin: string) => boolean;
   /** Bureau's listing, once the Bureau exists; it is empty before. */
   readonly listing: () => Promise<readonly PluginListing[]>;
   /** Secret keys the host keeps for itself: a plugin may not declare one, since it would read or overwrite it. */
@@ -302,8 +314,9 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
   ): unknown => settingsOf(settings, name).configuration ?? {};
   const restartRequired = (entry: BureauPluginEntry): boolean =>
     enabledIn(persisted, entry) !== enabledIn(loaded, entry) ||
-    JSON.stringify(configurationIn(persisted, entry.descriptor.name)) !==
-      JSON.stringify(configurationIn(loaded, entry.descriptor.name));
+    (options.appliesConfigurationLive?.(entry.descriptor.name) !== true &&
+      JSON.stringify(configurationIn(persisted, entry.descriptor.name)) !==
+        JSON.stringify(configurationIn(loaded, entry.descriptor.name)));
 
   // Watchers by key. A listener that throws must not stop the others, so each call is isolated.
   const watchers = new Map<string, Set<() => void>>();
@@ -364,6 +377,9 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
     secrets,
     lockReason,
     writeSecret,
+    async reload() {
+      persisted = readPluginSettings(await readText(), location);
+    },
     ensureGeneratedSecrets: () => serialized(async () => generate()),
     close() {
       closed = true;

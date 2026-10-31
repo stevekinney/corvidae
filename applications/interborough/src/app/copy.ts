@@ -206,7 +206,7 @@ export const AGENT_EDITOR_COPY = {
     fileLabel: 'Stored in',
     noProvider: {
       configurationStep:
-        'Put this in configuration.json in the bucket. If it exists, add the provider to its providers.',
+        'Put this in configuration.json in the bucket. If it exists, add the provider’s plugin to its plugins.',
       secretStep:
         'Set the provider’s API key in the environment variable shown, then restart the host.',
     },
@@ -280,7 +280,7 @@ export const AGENT_EDITOR_COPY = {
     description:
       'Agents run on a model, and this installation has none connected. Connect a provider, then come back: this page shows the form as soon as the installation offers a model.',
     configurationStep:
-      'Put this in the configuration file. If the file exists, add the provider to its providers.',
+      'Put this in the configuration file. If the file exists, add the provider’s plugin to its plugins.',
     secretStep: 'Save the provider’s API key in its own file, readable only by you (chmod 600).',
     restartStep: 'Restart the host, then check again.',
     reload: 'Check again',

@@ -1,57 +1,40 @@
 /**
- * The model providers the host offers: which are configured, which have a key, and the catalog
- * rows that follow.
+ * The model providers the host offers: which plugins contribute them, which have a key, and the
+ * catalog rows that follow (COR-1884).
  *
- * The providers live in Bungalow's `configuration.json`, and the API keys in its secrets:
+ * A provider is contributed by a plugin (`plugins/anthropic`, `plugins/openai`, `plugins/gemini`),
+ * together with the catalog rows of its models, and its API key is the first secret the plugin
+ * declares. A plugin's choices live in Bungalow's `configuration.json`, and a provider's allowlist
+ * is the `models` of its plugin's configuration:
  *
  * ```json
- * { "providers": { "anthropic": {}, "openai": { "models": ["gpt-4.1"] } } }
+ * { "plugins": { "openai": { "configuration": { "models": ["gpt-4.1"] } } } }
  * ```
  *
- * A `catalog` list beside `providers` edits the rows (`catalog-edits.ts`): turn a model off,
- * change its price or limits, or add a row.
+ * A `catalog` list beside `plugins` edits the rows (`catalog-edits.ts`): turn a model off, change
+ * its price or limits, or add a row. A `providers` key is not read.
  *
- * A provider key is exactly one of the {@link InterboroughProviderName}s the host registers in
- * {@link PROVIDER_DEFINITIONS}: `anthropic`, `openai`, or `gemini`. A provider's `models` is an optional allowlist, matched on a row's `model` or one
- * of its aliases. A provider whose secret is missing is left out with a warning; an environment
- * variable is never read. The rows are Operative's `createModelCatalog().descriptors`, so the
- * catalog never holds a model the provider code cannot call.
+ * An allowlist is matched on a row's `model` or one of its aliases. A provider whose secret is
+ * missing is not offered; an environment variable is never read. A plugin that is disabled or
+ * skipped contributes no provider, so its allowlist and the catalog edits for its rows wait,
+ * ignored, for it to load again.
  *
  * @module providers
  */
 
-import type { resolveProviderGenerate } from '@lostgradient/bureau';
-import {
-  createModelCatalog,
-  type BackendDescriptor,
-  type GenerateFunction,
-} from '@lostgradient/operative';
-import { anthropicProvider } from '@lostgradient/operative-anthropic';
-import { geminiProvider } from '@lostgradient/operative-gemini';
-import { openaiProvider } from '@lostgradient/operative-openai';
+import type {
+  BureauPluginEntry,
+  PluginModelContributions,
+  resolveProviderGenerate,
+} from '@lostgradient/bureau';
+import type {
+  BackendDescriptor,
+  GenerateFunction,
+  ProviderDefinition,
+} from '@lostgradient/operative/provider-kit';
 
 import { applyCatalogEdits, parseCatalogEdits, type CatalogEdit } from './catalog-edits.ts';
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
-
-/** The provider definitions the host registers with Bureau's `resolveProviderGenerate`. */
-export const PROVIDER_DEFINITIONS = [anthropicProvider, openaiProvider, geminiProvider] as const;
-
-/** The name of a provider the host registers. Adding a definition above makes a missing secret key a type error. */
-export type InterboroughProviderName = (typeof PROVIDER_DEFINITIONS)[number]['name'];
-
-/** The providers a configuration may name, in the order their rows are installed. */
-export const PROVIDER_NAMES = [
-  'anthropic',
-  'openai',
-  'gemini',
-] as const satisfies readonly InterboroughProviderName[];
-
-/** The Bungalow secret that holds each provider's API key. */
-export const PROVIDER_SECRET_KEYS: Readonly<Record<InterboroughProviderName, string>> = {
-  anthropic: 'anthropic-api-key',
-  openai: 'openai-api-key',
-  gemini: 'gemini-api-key',
-};
 
 /**
  * The Bungalow secret that holds the TypeSafe API key (the `TYPESAFE_API_KEY` of the project
@@ -62,25 +45,46 @@ export const PROVIDER_SECRET_KEYS: Readonly<Record<InterboroughProviderName, str
  */
 export const TYPESAFE_SECRET_KEY = 'typesafe-api-key';
 
-/** One provider's entry in the provider configuration file. */
-export type ProviderEntry = {
-  /** An allowlist of models, matched on a row's `model` or an alias. Absent means every model. */
-  readonly models?: readonly string[];
+/** A model provider a loaded plugin contributes, with what the host needs to call it. */
+export type ContributedProvider = {
+  /** The plugin that contributed it, whose `configuration.models` is the provider's allowlist. */
+  readonly plugin: string;
+  /** The provider's name, which a catalog row's `provider` and an agent file's `model` prefix use. */
+  readonly name: string;
+  /** The definition Bureau's `resolveProviderGenerate` builds a generate from. */
+  readonly definition: ProviderDefinition;
+  /** The catalog rows of its models, before the allowlist and the catalog edits. */
+  readonly rows: readonly BackendDescriptor[];
+  /** The Bungalow secret that holds its API key: the first the plugin declares. */
+  readonly secretKey: string | undefined;
 };
 
-/** The shape of the provider configuration file: an entry per provider the host may call. */
+/** The providers the running plugins contributed, each with the secret its plugin declared first. */
+export function contributedProviders(
+  contributions: PluginModelContributions,
+  entries: readonly BureauPluginEntry[],
+): readonly ContributedProvider[] {
+  return contributions.providers.map(({ plugin, definition, rows }) => {
+    const first = entries.find((entry) => entry.descriptor.name === plugin)?.descriptor
+      .secrets?.[0];
+    return {
+      plugin,
+      name: definition.name,
+      definition,
+      rows,
+      secretKey: first === undefined ? undefined : typeof first === 'string' ? first : first.key,
+    };
+  });
+}
+
+/** The shape of the part of `configuration.json` this module reads: the edits to the catalog's rows. */
 export type ProviderConfigurationFile = {
-  readonly providers: Readonly<Partial<Record<InterboroughProviderName, ProviderEntry>>>;
   /** The edits to the catalog's rows. Absent means none. */
   readonly catalog?: readonly CatalogEdit[];
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function isProviderName(value: string): value is InterboroughProviderName {
-  return (PROVIDER_NAMES as readonly string[]).includes(value);
 }
 
 function parseModels(models: unknown, path: string, field: string): readonly string[] {
@@ -107,12 +111,16 @@ function parseModels(models: unknown, path: string, field: string): readonly str
 }
 
 /**
- * Parse the contents of `configuration.json`. Keys outside `providers` are ignored, because the
- * file is Bungalow's and other parts of the application may add their own. Everything inside
- * `providers` is checked, so a misspelled provider or field fails startup instead of quietly
- * offering nothing.
+ * Parse the contents of `configuration.json`. Keys outside `catalog` are ignored, because the file
+ * is Bungalow's and other parts of the application may add their own, a `providers` key among
+ * them. Everything inside `catalog` is checked, so a misspelled field fails startup instead of
+ * quietly changing nothing. When `providerNames` is given, an edit may name only those providers.
  */
-export function parseProviderConfiguration(text: string, path: string): ProviderConfigurationFile {
+export function parseProviderConfiguration(
+  text: string,
+  path: string,
+  providerNames?: readonly string[],
+): ProviderConfigurationFile {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -122,58 +130,49 @@ export function parseProviderConfiguration(text: string, path: string): Provider
   if (!isPlainObject(parsed)) {
     throw new ProviderConfigurationError(path, 'the file', 'expected a JSON object.');
   }
-  const catalog =
-    parsed['catalog'] === undefined
-      ? undefined
-      : parseCatalogEdits(parsed['catalog'], path, PROVIDER_NAMES);
-  const declared = parsed['providers'];
-  if (declared === undefined)
-    return catalog === undefined ? { providers: {} } : { providers: {}, catalog };
-  if (!isPlainObject(declared)) {
-    throw new ProviderConfigurationError(path, 'providers', 'expected an object.');
-  }
-  const providers: Partial<Record<InterboroughProviderName, ProviderEntry>> = {};
-  for (const [name, entry] of Object.entries(declared)) {
-    const field = `providers.${name}`;
-    if (!isProviderName(name)) {
-      throw new ProviderConfigurationError(
-        path,
-        field,
-        `not a provider. Expected ${PROVIDER_NAMES.join(', ')}.`,
-      );
-    }
-    if (!isPlainObject(entry)) {
-      throw new ProviderConfigurationError(path, field, 'expected an object.');
-    }
-    for (const key of Object.keys(entry)) {
-      if (key !== 'models') {
-        throw new ProviderConfigurationError(path, `${field}.${key}`, 'not a known field.');
-      }
-    }
-    const models = entry['models'];
-    providers[name] =
-      models === undefined ? {} : { models: parseModels(models, path, `${field}.models`) };
-  }
-  return catalog === undefined ? { providers } : { providers, catalog };
+  return parsed['catalog'] === undefined
+    ? {}
+    : { catalog: parseCatalogEdits(parsed['catalog'], path, providerNames) };
 }
 
 /**
- * Read the configuration through `read`, which Bungalow supplies as `readConfiguration()`. A
- * configuration that is not there (`undefined`) means no providers; a read that fails is refused,
- * naming `location`.
+ * The allowlists of the plugins named in `plugins`, from the parsed configuration document: each
+ * plugin's `plugins.<name>.configuration.models`, checked. A plugin with none offers every model.
+ * Only the plugins named are read, so a malformed entry for a plugin the host does not load is the
+ * plugin manager's to report, not a reason to stop the host.
  */
-export async function readProviderConfiguration(input: {
-  readonly location: string;
-  readonly read: () => Promise<string | undefined>;
-}): Promise<ProviderConfigurationFile> {
-  let text: string | undefined;
-  try {
-    text = await input.read();
-  } catch {
-    throw new ProviderConfigurationError(input.location, 'the file', 'it could not be read.');
+export function readAllowlists(
+  document: Record<string, unknown>,
+  path: string,
+  plugins: readonly string[],
+): ReadonlyMap<string, readonly string[]> {
+  const allowlists = new Map<string, readonly string[]>();
+  const declared = document['plugins'];
+  if (!isPlainObject(declared)) return allowlists;
+  for (const plugin of plugins) {
+    if (!Object.hasOwn(declared, plugin)) continue;
+    const entry = declared[plugin];
+    if (!isPlainObject(entry) || !isPlainObject(entry['configuration'])) continue;
+    const models = entry['configuration']['models'];
+    if (models === undefined) continue;
+    allowlists.set(plugin, parseModels(models, path, `plugins.${plugin}.configuration.models`));
   }
-  if (text === undefined) return { providers: {} };
-  return parseProviderConfiguration(text, input.location);
+  return allowlists;
+}
+
+/** The configuration document as an object, or why it cannot be read. */
+export function parseDocument(text: string | undefined, path: string): Record<string, unknown> {
+  if (text === undefined) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new ProviderConfigurationError(path, 'the file', 'it is not valid JSON.');
+  }
+  if (!isPlainObject(parsed)) {
+    throw new ProviderConfigurationError(path, 'the file', 'expected a JSON object.');
+  }
+  return parsed;
 }
 
 function matchesEntry(row: BackendDescriptor, entry: string): boolean {
@@ -181,67 +180,75 @@ function matchesEntry(row: BackendDescriptor, entry: string): boolean {
 }
 
 /**
- * The catalog rows for a configuration. A row is kept when its provider is configured and has a
- * key (`available`), it is not retired, and the provider's allowlist, when it has one, names it.
- * An allowlist entry that names no non-retired row fails, whether or not the provider has a key,
- * so a stale entry does not wait for the key to appear. The `catalog` edits apply last, and a
- * stale one fails the same way. `descriptors` defaults to Operative's
- * static catalog.
+ * The catalog rows for the contributed providers. A row is kept when its provider has a key
+ * (`available`), it is not retired, and its plugin's allowlist, when it has one, names it. An
+ * allowlist entry that names no non-retired row of the plugin fails, whether or not the provider
+ * has a key, so a stale entry does not wait for the key to appear. The `catalog` edits apply last,
+ * and a stale one fails the same way; an edit that names a provider no loaded plugin contributes
+ * waits, ignored, for its plugin.
  */
 export function selectCatalogRows(input: {
   readonly configuration: ProviderConfigurationFile;
+  /** The allowlist of each plugin that has one, by plugin name. */
+  readonly allowlists: ReadonlyMap<string, readonly string[]>;
   readonly path: string;
-  readonly available: ReadonlySet<InterboroughProviderName>;
-  readonly descriptors?: readonly BackendDescriptor[];
+  /** The providers that have a key, by name. */
+  readonly available: ReadonlySet<string>;
+  readonly providers: readonly ContributedProvider[];
 }): BackendDescriptor[] {
-  const descriptors = input.descriptors ?? createModelCatalog().descriptors;
+  const live = (provider: ContributedProvider): readonly BackendDescriptor[] =>
+    provider.rows.filter((row) => row.lifecycle !== 'retired');
+  const edits = (input.configuration.catalog ?? []).filter((edit) =>
+    input.providers.some((provider) => provider.name === edit.provider),
+  );
   const selected: BackendDescriptor[] = [];
-  for (const provider of PROVIDER_NAMES) {
-    const entry = input.configuration.providers[provider];
-    if (entry === undefined) continue;
-    const candidates = descriptors.filter(
-      (row) => row.provider === provider && row.lifecycle !== 'retired',
-    );
+  for (const plugin of new Set(input.providers.map((provider) => provider.plugin))) {
+    const entry = input.allowlists.get(plugin);
+    const owned = input.providers.filter((provider) => provider.plugin === plugin);
     const named = new Set<BackendDescriptor>();
-    // The allowlist may name a row the `catalog` list adds, which has no built-in match.
-    const addedModels = new Set(
-      (input.configuration.catalog ?? [])
-        .filter(
-          (edit) =>
-            edit.provider === provider && !candidates.some((row) => matchesEntry(row, edit.model)),
-        )
-        .map((edit) => edit.model),
-    );
-    entry.models?.forEach((model, index) => {
-      const matches = candidates.filter((row) => matchesEntry(row, model));
-      if (matches.length === 0 && !addedModels.has(model)) {
+    entry?.forEach((model, index) => {
+      // The allowlist may name a row the `catalog` list adds, which has no built-in match.
+      const addedByEdit = edits.some(
+        (edit) =>
+          edit.model === model &&
+          owned.some((provider) => provider.name === edit.provider) &&
+          !owned.some((provider) => live(provider).some((row) => matchesEntry(row, edit.model))),
+      );
+      const matches = owned.flatMap((provider) =>
+        live(provider).filter((row) => matchesEntry(row, model)),
+      );
+      if (matches.length === 0 && !addedByEdit) {
         throw new ProviderConfigurationError(
           input.path,
-          `providers.${provider}.models[${index}]`,
-          `the entry matches no current ${provider} model. Its value is not repeated here, because it may be a secret.`,
+          `plugins.${plugin}.configuration.models[${index}]`,
+          `the entry matches no current ${owned.map((provider) => provider.name).join(' or ')} model. Its value is not repeated here, because it may be a secret.`,
         );
       }
       for (const row of matches) named.add(row);
     });
-    if (!input.available.has(provider)) continue;
-    selected.push(
-      ...(entry.models === undefined ? candidates : candidates.filter((row) => named.has(row))),
-    );
+    for (const provider of owned) {
+      if (!input.available.has(provider.name)) continue;
+      selected.push(
+        ...(entry === undefined ? live(provider) : live(provider).filter((row) => named.has(row))),
+      );
+    }
   }
-  const edits = input.configuration.catalog ?? [];
   if (edits.length === 0) return selected;
+  const providerOf = (name: string): ContributedProvider | undefined =>
+    input.providers.find((provider) => provider.name === name);
   return applyCatalogEdits({
     edits,
     path: input.path,
     selected,
     available: input.available,
-    candidates: (provider) =>
-      descriptors.filter((row) => row.provider === provider && row.lifecycle !== 'retired'),
+    candidates: (name) => {
+      const provider = providerOf(name);
+      return provider === undefined ? [] : live(provider);
+    },
     matches: matchesEntry,
-    keepsAdded: (provider, model) => {
-      const models = isProviderName(provider)
-        ? input.configuration.providers[provider]?.models
-        : undefined;
+    keepsAdded: (name, model) => {
+      const provider = providerOf(name);
+      const models = provider === undefined ? undefined : input.allowlists.get(provider.plugin);
       return models === undefined || models.includes(model);
     },
   });
@@ -249,14 +256,19 @@ export function selectCatalogRows(input: {
 
 /** What the host offers: the rows to install and the key each offered provider is called with. */
 export type LoadedProviders = {
+  /** Every provider the loaded plugins contribute, whether or not it has a key. */
+  readonly providers: readonly ContributedProvider[];
+  /** The allowlist of each plugin that has one, by plugin name. */
+  readonly allowlists: ReadonlyMap<string, readonly string[]>;
   readonly rows: readonly BackendDescriptor[];
-  readonly apiKeys: ReadonlyMap<InterboroughProviderName, string>;
+  readonly apiKeys: ReadonlyMap<string, string>;
 };
 
 /**
- * Read the configuration and each configured provider's secret. A provider with no secret is
- * omitted, with one warning that names it and the secret it expects, never a value. The warnings
- * come after validation, so a start that fails reports the failure and nothing else.
+ * Read the configuration and each contributed provider's secret. A provider with no secret is
+ * omitted; when its plugin has an allowlist, one warning names the provider and the secret it
+ * expects, never a value. The warnings come after validation, so a start that fails reports the
+ * failure and nothing else.
  */
 export async function loadProviders(input: {
   /** Where the configuration lives, named in every message about it. */
@@ -265,37 +277,56 @@ export async function loadProviders(input: {
   readonly readConfiguration: () => Promise<string | undefined>;
   readonly readSecret: (key: string) => string | undefined;
   readonly warn: (message: string) => void;
-  readonly descriptors?: readonly BackendDescriptor[];
+  /** The providers the loaded plugins contribute. */
+  readonly providers: readonly ContributedProvider[];
 }): Promise<LoadedProviders> {
-  const configuration = await readProviderConfiguration({
-    location: input.configurationLocation,
-    read: input.readConfiguration,
-  });
-  const apiKeys = new Map<InterboroughProviderName, string>();
-  const missing: InterboroughProviderName[] = [];
-  for (const provider of PROVIDER_NAMES) {
-    if (configuration.providers[provider] === undefined) continue;
-    const key = input.readSecret(PROVIDER_SECRET_KEYS[provider])?.trim();
+  let text: string | undefined;
+  try {
+    text = await input.readConfiguration();
+  } catch {
+    throw new ProviderConfigurationError(
+      input.configurationLocation,
+      'the file',
+      'it could not be read.',
+    );
+  }
+  const document = parseDocument(text, input.configurationLocation);
+  const configuration = parseProviderConfiguration(
+    JSON.stringify(document),
+    input.configurationLocation,
+  );
+  const allowlists = readAllowlists(
+    document,
+    input.configurationLocation,
+    input.providers.map((provider) => provider.plugin),
+  );
+  const apiKeys = new Map<string, string>();
+  const missing: ContributedProvider[] = [];
+  for (const provider of input.providers) {
+    const key =
+      provider.secretKey === undefined ? undefined : input.readSecret(provider.secretKey)?.trim();
     if (key === undefined || key === '') missing.push(provider);
-    else apiKeys.set(provider, key);
+    else apiKeys.set(provider.name, key);
   }
   const rows = selectCatalogRows({
     configuration,
+    allowlists,
     path: input.configurationLocation,
     available: new Set(apiKeys.keys()),
-    ...(input.descriptors === undefined ? {} : { descriptors: input.descriptors }),
+    providers: input.providers,
   });
   for (const provider of missing) {
+    if (!allowlists.has(provider.plugin) || provider.secretKey === undefined) continue;
     input.warn(
-      `The ${provider} provider is configured in ${input.configurationLocation} but the secret "${PROVIDER_SECRET_KEYS[provider]}" is not set, so it is not offered.`,
+      `The ${provider.name} provider has an allowlist in ${input.configurationLocation} but the secret "${provider.secretKey}" is not set, so it is not offered.`,
     );
   }
-  return { rows, apiKeys };
+  return { providers: input.providers, allowlists, rows, apiKeys };
 }
 
 /** A catalog model, named by its provider and either its model or an alias. */
 export type ModelSelection = {
-  readonly provider: InterboroughProviderName;
+  readonly provider: string;
   readonly model: string;
 };
 
@@ -308,7 +339,8 @@ export function createCatalogGenerate(
   selection: ModelSelection,
   dependencies: {
     readonly rows: readonly BackendDescriptor[];
-    readonly apiKeys: ReadonlyMap<InterboroughProviderName, string>;
+    readonly apiKeys: ReadonlyMap<string, string>;
+    readonly providers: readonly ContributedProvider[];
     readonly resolveProviderGenerate: typeof resolveProviderGenerate;
   },
 ): GenerateFunction {
@@ -328,7 +360,7 @@ export function createCatalogGenerate(
     );
   }
   return dependencies.resolveProviderGenerate(
-    PROVIDER_DEFINITIONS,
+    dependencies.providers.map((provider) => provider.definition),
     { provider: selection.provider, model: row.model, apiKey },
     undefined,
     undefined,
