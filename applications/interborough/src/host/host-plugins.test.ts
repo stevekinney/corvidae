@@ -641,6 +641,115 @@ describe('a remote home', () => {
   });
 });
 
+describe('a secret write that stores the file and then fails', () => {
+  /**
+   * A local home whose `writeSecret` keeps the value and then throws, as Bungalow's does when the
+   * rename lands and the directory sync after it fails: the secret is on disk, the call is an error.
+   */
+  function flakyHome() {
+    const stored = new Map<string, string>();
+    return {
+      stored,
+      bungalow: {
+        mode: 'local' as const,
+        configurationLocation: '/home/configuration.json',
+        readConfiguration: async () => undefined,
+        writeConfiguration: () => {},
+        readSecret: (key: string) => stored.get(key),
+        writeSecret: (key: string, value: string) => {
+          stored.set(key, value);
+          throw new Error('The directory could not be synced.');
+        },
+        secretLocation: (key: string) => `/home/secrets/${key}`,
+      },
+    };
+  }
+
+  async function standingOf(plugin: BureauPluginEntry, home: ReturnType<typeof flakyHome>) {
+    const manager = await createPluginManager({
+      bungalow: home.bungalow,
+      plugins: [plugin],
+      listing: async () => [],
+      reservedSecretKeys: [],
+      reservedSecretPrefixes: [],
+    });
+    const bureau = await createBureau({
+      plugins: [plugin],
+      pluginConfiguration: manager.settings(),
+      pluginSecrets: manager.secrets,
+    });
+    return { manager, bureau };
+  }
+
+  const pluginStatus = async (bureau: Awaited<ReturnType<typeof standingOf>>['bureau']) => {
+    const listed = await bureau.plugins.list();
+    return listed[0]?.status;
+  };
+
+  test('a saved secret still moves a needs-setup plugin to running, and the save still fails', async () => {
+    const home = flakyHome();
+    const keyed = fixturePlugins().find((entry) => entry.descriptor.name === 'keyed');
+    if (keyed === undefined) throw new Error('The keyed fixture is missing.');
+    const { manager, bureau } = await standingOf(keyed, home);
+    try {
+      expect(await pluginStatus(bureau)).toBe('needs-setup');
+
+      const failure = await manager.saveSecret('keyed', KEYED_SECRET, SECRET_VALUE).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+
+      expect(failure).toBeInstanceOf(Error);
+      expect((failure as Error).message).toBe('The directory could not be synced.');
+      await waitUntil(async () => (await pluginStatus(bureau)) === 'running', {
+        message: 'the keyed plugin to leave needs-setup',
+      });
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  test('a generated secret still moves a needs-setup plugin to running, and generation still fails', async () => {
+    const home = flakyHome();
+    const minted = fixturePlugins().find((entry) => entry.descriptor.name === 'minted');
+    if (minted === undefined) throw new Error('The minted fixture is missing.');
+    const { manager, bureau } = await standingOf(minted, home);
+    try {
+      expect(await pluginStatus(bureau)).toBe('needs-setup');
+
+      const failure = await manager.ensureGeneratedSecrets().then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+
+      expect(failure).toBeInstanceOf(Error);
+      expect((failure as Error).message).toBe('The directory could not be synced.');
+      await waitUntil(async () => (await pluginStatus(bureau)) === 'running', {
+        message: 'the minted plugin to leave needs-setup',
+      });
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  test('the provider-route writer the host hands out notifies the same way', async () => {
+    const home = flakyHome();
+    const keyed = fixturePlugins().find((entry) => entry.descriptor.name === 'keyed');
+    if (keyed === undefined) throw new Error('The keyed fixture is missing.');
+    const { manager, bureau } = await standingOf(keyed, home);
+    try {
+      expect(() => manager.writeSecret(KEYED_SECRET, SECRET_VALUE)).toThrow(
+        'The directory could not be synced.',
+      );
+      await waitUntil(async () => (await pluginStatus(bureau)) === 'running', {
+        message: 'the keyed plugin to leave needs-setup',
+      });
+    } finally {
+      await bureau.dispose();
+    }
+  });
+});
+
 describe('a plugin that declares a secret the host keeps for itself', () => {
   test('stops the host before anything opens', async () => {
     const home = await scratch();

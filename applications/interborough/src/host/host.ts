@@ -610,10 +610,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         readConfiguration: () => bungalow.readConfiguration(),
         writeConfiguration: (text) => bungalow.writeConfiguration(text),
         readSecret: (key) => bungalow.readSecret(key),
-        writeSecret: (key, value) => {
-          bungalow.writeSecret(key, value);
-          pluginManager.secretChanged(key);
-        },
+        writeSecret: (key, value) => pluginManager.writeSecret(key, value),
       },
       configurationQueue,
       warn: options.warn ?? ((message) => console.warn(message)),

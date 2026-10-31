@@ -149,10 +149,13 @@ export type PluginManager = {
   /** Why writes are refused, or `undefined` when they are allowed. */
   lockReason(): SettingLockReason | undefined;
   /**
-   * Tell the watchers of `key` that its value changed. A writer of Bungalow's secrets other than
-   * this manager calls it after a write, so a plugin that waits on the key is not left waiting.
+   * Store the secret `key` and tell its watchers, so a plugin that waits on the key is not left
+   * waiting. A writer of Bungalow's secrets other than this manager calls it instead of
+   * `Bungalow.writeSecret`. The watchers hear even when the write throws, because Bungalow renames
+   * the file into place before it syncs the directory, so a failure may follow a stored value; the
+   * error still reaches the caller.
    */
-  secretChanged(key: string): void;
+  writeSecret(key: string, value: string): void;
   /** Create the secrets declared `generated` that an enabled plugin lacks. Local mode only; a remote home does nothing. */
   ensureGeneratedSecrets(): Promise<void>;
   /** Every plugin with the owner's choices and its secrets' standing. */
@@ -313,6 +316,13 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
       }
     }
   };
+  const writeSecret = (key: string, value: string): void => {
+    try {
+      bungalow.writeSecret(key, value);
+    } finally {
+      secretChanged(key);
+    }
+  };
   const secrets: BureauPluginSecrets = {
     get: async (key) => bungalow.readSecret(key),
     watch(key, listener) {
@@ -337,8 +347,7 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
         if (!isGenerated(declaration)) continue;
         const key = declaredKey(declaration);
         if (isSet(bungalow.readSecret(key))) continue;
-        bungalow.writeSecret(key, `${randomUUID()}${randomUUID()}`);
-        secretChanged(key);
+        writeSecret(key, `${randomUUID()}${randomUUID()}`);
       }
     }
   }
@@ -354,7 +363,7 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
     settings: () => loaded,
     secrets,
     lockReason,
-    secretChanged,
+    writeSecret,
     ensureGeneratedSecrets: () => serialized(async () => generate()),
     close() {
       closed = true;
@@ -474,8 +483,7 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
       }
       return serialized(async () => {
         assertWritable();
-        bungalow.writeSecret(key, trimmed);
-        secretChanged(key);
+        writeSecret(key, trimmed);
         return { plugin: name, key, set: true };
       });
     },
