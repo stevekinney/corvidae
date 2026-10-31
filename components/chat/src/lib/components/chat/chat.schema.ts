@@ -43,6 +43,11 @@ const schema = {
       description:
         'Whether the composer answers an open free-text question. A free-text question then reads "Answer below", the composer\'s placeholder reads "Answer", and sending from the composer calls `onInputSubmit` with the typed text instead of `onSubmit`. Without it (a reviews inbox, which has no composer) a text field is drawn in the question. Every other kind of question is answered in place either way. Default `false`.',
     },
+    disabled: {
+      type: 'boolean',
+      description:
+        'Disables the composer: typed text stays in place and readable, Send and Enter do nothing, and Stop and the rest of the chat stay usable. A host sets it while the server is unreachable or the chat is disconnected. The composer is also disabled while a reply streams and the adapter has no `sendRunInput`. Default `false`.',
+    },
     density: {
       enum: ['comfortable', 'compact'],
       description:

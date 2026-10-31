@@ -307,6 +307,10 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
    */
   answerInComposer?: boolean | undefined;
   /**
+   * Disables the composer: typed text stays in place and readable, Send and Enter do nothing, and Stop and the rest of the chat stay usable. A host sets it while the server is unreachable or the chat is disconnected. The composer is also disabled while a reply streams and the adapter has no `sendRunInput`. Default `false`.
+   */
+  disabled?: boolean | undefined;
+  /**
    * Override or supplement the reasoning text for a message. Called per-message;
    * return a non-empty string or `{ content, summary? }` to show one reasoning
    * body, `undefined` to fall back to `message.metadata['cinder:reasoning']`,

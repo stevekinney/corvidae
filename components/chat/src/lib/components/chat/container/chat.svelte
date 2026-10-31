@@ -144,6 +144,7 @@
     onApprovalResolve,
     onInputSubmit,
     answerInComposer = false,
+    disabled = false,
     messageReasoning,
     messageSteps,
     messageSuggestions,
@@ -2016,7 +2017,7 @@
           bind:this={inputRef}
           onsubmit={handleComposerSubmit}
           {...questions.composerTarget === undefined ? {} : { placeholder: 'Answer' }}
-          disabled={streaming && !followUpsEnabled}
+          disabled={disabled || (streaming && !followUpsEnabled)}
           sending={streaming}
           allowFollowUp={followUpsEnabled}
           actions={composerActions}

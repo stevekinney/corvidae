@@ -37,6 +37,7 @@
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { CHAT_COPY } from '../../app/copy.ts';
+  import { getConnection } from '../../app/connection.svelte.ts';
   import { useBureauEventsLive } from '../../app/live-polling.svelte.ts';
   import {
     forkContext,
@@ -97,6 +98,8 @@
   // Whether the person has picked the agent: the address named it, or they chose one since.
   let chosen = $state(untrack(() => agentChosen));
   let chat = $state<ReturnType<typeof Chat> | undefined>();
+
+  const connection = getConnection();
 
   const session = new ChatSessionState({
     sessionId: untrack(() => sessionId),
@@ -438,6 +441,7 @@
       conversation={shown}
       adapter={session.chatAdapter}
       streaming={session.streaming}
+      disabled={connection.unreachable || session.disconnected}
       streamingStatus={session.stopping ? CHAT_COPY.stopping : ''}
       capabilities={{ attachments: attachable, editing: false, quote: true }}
       uploadAttachment={upload}

@@ -266,14 +266,14 @@ test.describe('the server stops answering while a page with data is open', () =>
     await refocus(page);
     await expect(banner(page)).toBeVisible(NOTICE);
 
-    await composer.fill('Sent while the host is down');
-    await composer.press('Enter');
-    await expect(page.getByText(CONNECTION_COPY.page.description).first()).toBeVisible();
+    // The composer stops while the host is down, and nothing leaves.
+    await expect(composer).toBeDisabled(NOTICE);
     expect(starts).toEqual([]);
 
     await startHost(page);
 
     await expect(banner(page)).toHaveCount(0, NOTICE);
+    await expect(composer).toBeEnabled(NOTICE);
     await composer.fill('Sent after the host is back');
     await composer.press('Enter');
     await expect(page.getByText('Sent after the host is back').first()).toBeVisible();
@@ -349,6 +349,10 @@ test.describe('a chat that cannot reach its thread', () => {
     }).toPass({ timeout: 60_000 });
     expect(attempts).toBe(8);
     await expect(page.getByText(CHAT_COPY.disconnected.title, { exact: true })).toBeVisible();
+
+    // The composer is disabled while disconnected, and no run POST left it.
+    await expect(page.getByRole('textbox')).toBeDisabled();
+    expect(attempts).toBe(8);
 
     // A Reconnect while the host is still down fails, stays disconnected, and tries once.
     await reconnect.click();
