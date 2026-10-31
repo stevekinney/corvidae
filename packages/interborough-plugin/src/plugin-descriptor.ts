@@ -2,6 +2,7 @@ import type { Storage } from '@lostgradient/storage';
 import type { z } from 'zod';
 
 import type { PluginSetupResult } from './contributions.ts';
+import type { PluginHostApi } from './host-api.ts';
 
 /** A secret a plugin declares: the full Bungalow secret key, or the key with how it is created. */
 export type PluginSecretDeclaration =
@@ -27,6 +28,13 @@ export interface PluginSetupContext<TConfiguration = unknown> {
   readonly secrets: PluginSecrets;
   /** Storage confined to the key prefix `plugin:<name>:`. */
   readonly storage: Storage;
+  /**
+   * The host API, the same one `afterStart` receives, for a contribution to call while it runs.
+   * What it causes is the plugin's: a schedule it creates announces `schedule.created`, and a goal
+   * it creates announces every `goal.*` event, with `source` naming the plugin. A call made before
+   * the host has started, from `setup` itself, rejects.
+   */
+  readonly host: PluginHostApi;
 }
 
 /** The schema a plugin without a `configuration` declares: an object with no members. */

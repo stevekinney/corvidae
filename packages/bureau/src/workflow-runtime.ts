@@ -497,6 +497,11 @@ export interface WorkflowRuntimeOptions {
   readonly snapshotStore: WorkflowSnapshotStore;
   readonly runtime: RuntimeServices;
   readonly diagnose: (message: string, cause: unknown) => void;
+  /**
+   * COR-1879 — told of each instance cancelled at startup because the activity version its
+   * revision pins (`plugin:name@version`) is not loaded, so the owning plugin can report it.
+   */
+  readonly onPinnedUnavailable?: ((activity: string, runId: string) => void) | undefined;
   readonly createError: (message: string, code: 'NOT_FOUND' | 'BAD_REQUEST') => Error;
   /**
    * The engine's cap on one payload's encoded size, or `null` for none. A signal's payload and the
@@ -957,6 +962,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
             cancelledAt: options.runtime.clock.nowISO(),
           });
           await engine.cancel(runId);
+          if (entry.pin !== undefined) options.onPinnedUnavailable?.(entry.pin.activity, runId);
           options.diagnose(
             `Cancelled instance "${runId}" of workflow "${entry.id}": ${entry.reason}.`,
             undefined,

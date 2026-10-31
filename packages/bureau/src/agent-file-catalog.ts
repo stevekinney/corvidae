@@ -84,6 +84,7 @@ import {
   type AgentCostBudget,
   type AgentFileDefinition,
   type AgentFileDefinitionInput,
+  type AgentFileIssue,
   type AgentFileProblem,
   AgentFileError,
   AgentSnapshotError,
@@ -660,6 +661,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
           issues: missing.map((name) => ({
             path: 'tools',
             message: `"${name}" is not a registered tool`,
+            reference: name,
           })),
         },
       };
@@ -899,7 +901,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     problem: AgentFileProblem,
     definition: AgentFileDefinition,
   ): AgentFileProblem {
-    const named = (issues: readonly { path: string; message: string }[]): AgentFileProblem => ({
+    const named = (issues: readonly AgentFileIssue[]): AgentFileProblem => ({
       ...problem,
       message: `The definition cannot be used: ${issues.map((issue) => `${issue.path}: ${issue.message}`).join('; ')}`,
       issues,
@@ -912,7 +914,13 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         definition.tools.flatMap((name, index) =>
           missingTools([name]).length === 0
             ? []
-            : [{ path: `tools.${index}`, message: `"${name}" is not a registered tool` }],
+            : [
+                {
+                  path: `tools.${index}`,
+                  message: `"${name}" is not a registered tool`,
+                  reference: name,
+                },
+              ],
         ),
       );
     }

@@ -635,6 +635,17 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
             true,
           );
         }
+        // A delivery runs on the version it was created against, and never on another (COR-1879).
+        if (work.version !== undefined && registration.version !== work.version) {
+          throw new HookActionError(
+            `The delivery pins the hook action kind "${work.plugin}/${work.kind}" at version ${work.version}, and ${
+              registration.version === undefined
+                ? 'the kind registered now has no version'
+                : `version ${registration.version} is registered`
+            } (version-mismatch)`,
+            true,
+          );
+        }
         const checked = parsedConfiguration(registration, work.configuration);
         if (!checked.ok) {
           throw new HookActionError(
@@ -683,6 +694,7 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
     requestTimeoutMilliseconds:
       dependencies.requestTimeoutMilliseconds ?? DEFAULT_HOOK_REQUEST_TIMEOUT_MILLISECONDS,
     newId: () => dependencies.newId('hook-delivery'),
+    actionKindVersion: (plugin, kind) => actionKinds.get(actionKindKey(plugin, kind))?.version,
     audit: (entry) =>
       dependencies.audit({
         runId: `hook:${entry.hookId}`,

@@ -2,9 +2,21 @@ import { MemoryStorage } from '@lostgradient/storage';
 import { describe, expect, test } from 'bun:test';
 import { z } from 'zod';
 
-import { createPluginStorage, definePlugin, pluginStoragePrefix } from './index.ts';
+import {
+  createPluginStorage,
+  definePlugin,
+  type PluginHostApi,
+  pluginStoragePrefix,
+} from './index.ts';
 
 const valid = { name: 'example', version: '1.0.0', description: 'An example plugin.' };
+
+/** A host API no test here calls. */
+const unstartedHost: PluginHostApi = {
+  agents: { list: () => [] },
+  schedules: { create: async () => undefined, list: async () => undefined },
+  goals: { create: async () => ({ outcome: 'rejected' }) },
+};
 
 describe('definePlugin', () => {
   test('returns the descriptor it was given', () => {
@@ -30,6 +42,7 @@ describe('definePlugin', () => {
       configuration: { teamKey: 'COR' },
       secrets: { get: async () => undefined },
       storage: new MemoryStorage(),
+      host: unstartedHost,
     });
     expect(result?.evalJudges?.[0]?.name).toBe('COR');
   });
@@ -47,6 +60,7 @@ describe('definePlugin', () => {
       configuration: {},
       secrets: { get: async () => undefined },
       storage: new MemoryStorage(),
+      host: unstartedHost,
     });
     expect(result?.activities?.[0]?.version).toBe('2.1.0');
   });

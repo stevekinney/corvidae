@@ -47,6 +47,7 @@ import {
 } from '@lostgradient/operative';
 
 import { principalDefect } from './owner-of-record';
+import { isPluginName } from '@lostgradient/interborough-plugin';
 
 // ---------------------------------------------------------------------------
 // Caps, keys, and identifiers
@@ -270,6 +271,12 @@ export interface GoalState {
   readonly bounds: GoalBudget;
   /** The principal that owns this goal. */
   readonly principal?: string | undefined;
+  /**
+   * COR-1879 — the plugin whose host API created the goal. Every `goal.*` event projected from
+   * the record carries it as its `source`, including the events of transitions after a restart.
+   * Absent for a goal created by Bureau core or an API caller.
+   */
+  readonly source?: string | undefined;
   readonly status: GoalRunStatus;
   /** Present exactly when `status` is terminal, and always mapped to that status. */
   readonly terminalReason?: GoalRunTerminalReason | undefined;
@@ -921,6 +928,7 @@ const TOP_LEVEL_KEYS = [
   'retryPolicy',
   'bounds',
   'principal',
+  'source',
   'status',
   'terminalReason',
   'failureDetail',
@@ -1394,6 +1402,8 @@ function isShape(value: PlainRecord): boolean {
     (value['retryPolicy'] === undefined || isRetryPolicy(value['retryPolicy'])) &&
     isBounds(value['bounds']) &&
     isOptionalString(value['principal']) &&
+    (value['source'] === undefined ||
+      (typeof value['source'] === 'string' && isPluginName(value['source']))) &&
     isGoalRunStatus(value['status']) &&
     (value['terminalReason'] === undefined || isGoalRunTerminalReason(value['terminalReason'])) &&
     isOptionalString(value['failureDetail']) &&
@@ -1449,6 +1459,8 @@ export interface CreateGoalStateInput {
   readonly retryPolicy?: GoalRetryPolicy | undefined;
   readonly bounds: GoalBudget;
   readonly principal?: string | undefined;
+  /** COR-1879 — the plugin whose host API creates the goal; see {@link GoalState.source}. */
+  readonly source?: string | undefined;
   /** ISO-8601, from Bureau's runtime clock. */
   readonly now: string;
 }
@@ -1611,6 +1623,7 @@ export function createGoalState(input: CreateGoalStateInput): GoalState {
       retryPolicy: input.retryPolicy,
       bounds: input.bounds,
       principal: input.principal,
+      ...(input.source === undefined ? {} : { source: input.source }),
       status: 'pending',
       currentTransition: {
         seq: 0,

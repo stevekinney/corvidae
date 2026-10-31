@@ -8,18 +8,48 @@
  * @module plugin-tools
  */
 
-import { createToolbox, type AnyTool, type Tool } from 'armorer';
+import { createToolbox, formatToolId, type AnyTool, type Tool } from 'armorer';
+
+import type { PluginSecretGate } from './plugin-secret-gate';
+
+type Execute = (params: unknown, context?: unknown) => Promise<unknown>;
+
+/** `execute` (a function or a promise of one) refusing through `gate` before it is called. */
+function gatedExecute(gate: PluginSecretGate, id: string, execute: unknown): Execute {
+  return async (params, context) => {
+    gate.assertAvailable(id);
+    const run = (await execute) as Execute;
+    return run(params, context);
+  };
+}
 
 /**
  * `tool` with the identity `plugin:<name>@<version>`, where the version is the tool's own when it
  * declares one and `pluginVersion` otherwise. Everything else the tool carries (its schema,
- * execute, policy, risk, metadata) is kept: the tool is rebuilt from its own configuration.
+ * execute, policy, risk, metadata) is kept: the tool is rebuilt from its own configuration. With
+ * a `gate`, its `execute` (and `rawExecute`, which Armorer prefers when present) refuses while a
+ * secret the plugin declared is not set.
  */
-export function pluginTool(tool: AnyTool, plugin: string, pluginVersion: string): Tool {
+export function pluginTool(
+  tool: AnyTool,
+  plugin: string,
+  pluginVersion: string,
+  gate?: PluginSecretGate,
+): Tool {
   const { id: _id, identity, ...configuration } = tool.configuration;
+  const contribution = formatToolId({ namespace: plugin, name: identity.name });
+  const rawExecute: unknown = Reflect.get(configuration, 'rawExecute');
   const [rebuilt] = createToolbox([
     {
       ...configuration,
+      ...(gate === undefined
+        ? {}
+        : {
+            execute: gatedExecute(gate, contribution, configuration.execute),
+            ...(typeof rawExecute === 'function'
+              ? { rawExecute: gatedExecute(gate, contribution, rawExecute) }
+              : {}),
+          }),
       identity: {
         namespace: plugin,
         name: identity.name,

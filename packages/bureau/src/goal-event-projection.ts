@@ -45,6 +45,7 @@ import { sha256HexSync } from '@lostgradient/cryptography';
 import type { JSONValue, ProjectedValidatorOutcome } from '@lostgradient/operative';
 
 import type { DurableEventHistory } from './durable-event-history';
+import { markEventSource } from './event-source';
 import { GOAL_EVENT_KINDS, type GoalEventKind, GoalLifecycleEvent } from './events';
 import type { GoalAuditEvent, GoalState } from './goal-state';
 import { goalRestartId, goalTransitionId } from './goal-state';
@@ -340,20 +341,21 @@ export function createGoalEventRecorder(
         }
       }
       if (isGoalEventKind(draft.kind)) {
-        dispatchGuarded(new GoalLifecycleEvent(draft.kind, draft.payload));
+        dispatchGuarded(new GoalLifecycleEvent(draft.kind, draft.payload), observation.record);
       }
     }
     if (observation.kind === 'transitioned') {
       const evaluating = attemptEvaluatingEvent(observation.record);
-      if (evaluating !== undefined) dispatchGuarded(evaluating);
+      if (evaluating !== undefined) dispatchGuarded(evaluating, observation.record);
     }
   };
 
   // A throwing listener must not cost the drafts after this one their history write.
-  function dispatchGuarded(event: GoalLifecycleEvent): void {
+  function dispatchGuarded(event: GoalLifecycleEvent, record: GoalState): void {
     if (dispatch === undefined) return;
     try {
-      dispatch(event);
+      // COR-1879: a goal a plugin created announces every event as that plugin's.
+      dispatch(record.source === undefined ? event : markEventSource(event, record.source));
     } catch (error) {
       diagnose({
         level: 'error',

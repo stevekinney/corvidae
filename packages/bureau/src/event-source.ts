@@ -1,9 +1,10 @@
 /**
  * Which plugin an event came from (COR-1876). The source is an envelope field, not part of any
- * payload: a Bureau event from core code carries none, and an event a plugin's contribution emits
- * (a contributed tool, activity or hook action) carries `source: '<plugin>'`.
+ * payload: a Bureau event from core code carries none, and an event a plugin caused through its own
+ * host API (COR-1879: a schedule it creates, every event of a goal it creates) carries
+ * `source: '<plugin>'`.
  *
- * The source is attached where the contribution emits, by {@link markEventSource}, and read by the
+ * The source is attached where the event is emitted for the plugin, by {@link markEventSource}, and read by the
  * event feed when it publishes. It is never read off a property of the event, because event
  * classes have fields of their own and one of them could be named `source`.
  *
@@ -15,8 +16,8 @@ import { isPluginName } from '@lostgradient/interborough-plugin';
 const eventSources = new WeakMap<object, string>();
 
 /**
- * Marks `event` as emitted by the plugin `plugin` and returns it. Call it where the contribution
- * emits, before the event is dispatched; core code never calls it. Throws a `TypeError` when
+ * Marks `event` as emitted by the plugin `plugin` and returns it. Call it where an event is emitted
+ * for the plugin, before it is dispatched; an event of Bureau's own is never marked. Throws a `TypeError` when
  * `plugin` is not a well-formed plugin name or the event already names another plugin.
  */
 export function markEventSource<TEvent extends object>(event: TEvent, plugin: string): TEvent {

@@ -122,12 +122,17 @@ export function unresolvedContributions(
       issues.push({
         path: `guardrails.${index}`,
         message: `"${id}" is not a contributed guardrail`,
+        reference: id,
       });
     }
   });
   (definition.hooks ?? []).forEach((id, index) => {
     if (!contributions.runHooks.has(id)) {
-      issues.push({ path: `hooks.${index}`, message: `"${id}" is not a contributed run hook set` });
+      issues.push({
+        path: `hooks.${index}`,
+        message: `"${id}" is not a contributed run hook set`,
+        reference: id,
+      });
     }
   });
   return issues;
