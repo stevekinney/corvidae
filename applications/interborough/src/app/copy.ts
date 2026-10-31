@@ -76,6 +76,22 @@ export const RUN_DETAIL_COPY = {
   },
 } as const;
 
+/**
+ * What the application says when the server does not answer: the banner above the page, the title
+ * a turned-off control shows, and the page that replaces a view with nothing to show.
+ */
+export const CONNECTION_COPY = {
+  /** The banner's sentence; the age of the data on screen follows it. */
+  banner: 'The server is not answering. Changes are turned off until it is back.',
+  /** The title of a control that changes something while the server is unreachable. */
+  changesOff: 'Turned off while the server is unreachable',
+  /** The page of a view that has nothing to show because its first request got no answer. */
+  page: {
+    title: 'Server unreachable',
+    description: 'The server did not answer. Check that Interborough is running, then try again.',
+  },
+} as const;
+
 /** The label on the control that asks a view to try again. */
 export const RETRY_LABEL = 'Try again';
 
@@ -764,6 +780,12 @@ export const CHAT_COPY = {
   },
   /** What a session with no message in it says in place of its transcript. */
   noMessages: 'No messages yet',
+  /** What the chat says when its live connection to the run could not be restored. */
+  disconnected: {
+    title: 'Disconnected',
+    description: 'The connection to this chat dropped and could not be restored.',
+    reconnect: 'Reconnect',
+  },
   /** What a new chat shows where its transcript will be. */
   newChatWelcome: {
     try: 'Try',

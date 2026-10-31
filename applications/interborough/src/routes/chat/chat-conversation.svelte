@@ -409,10 +409,17 @@
     <Alert variant="danger" dismissible onDismiss={() => session.dismissFailure()}>
       <p class="weft-chat-approval__title">{CHAT_COPY.failureTitle}</p>
       <p class="weft-chat-approval__message">{session.failure}</p>
+    </Alert>
+  {/if}
+
+  {#if session.disconnected}
+    <Alert variant="warning">
+      <p class="weft-chat-approval__title">{CHAT_COPY.disconnected.title}</p>
+      <p class="weft-chat-approval__message">{CHAT_COPY.disconnected.description}</p>
       <Button
         size="sm"
         variant="secondary"
-        label="Reconnect"
+        label={CHAT_COPY.disconnected.reconnect}
         onclick={() => void session.reconnect()}
       />
     </Alert>

@@ -19,6 +19,7 @@
     Lock,
     SearchX,
     ServerCrash,
+    WifiOff,
   } from '@lucide/svelte';
 
   import {
@@ -43,6 +44,7 @@
     unauthorized: Lock,
     'not-supported': CircleSlash,
     internal: ServerCrash,
+    unreachable: WifiOff,
   } as const satisfies Record<FaultTreatmentKind, unknown>;
 
   const FAULT_TONE = {
@@ -52,6 +54,7 @@
     unauthorized: 'danger',
     'not-supported': 'neutral',
     internal: 'danger',
+    unreachable: 'warning',
   } as const satisfies Record<FaultTreatmentKind, 'neutral' | 'warning' | 'danger'>;
 
   const Icon = $derived(FAULT_ICON[treatment.kind]);

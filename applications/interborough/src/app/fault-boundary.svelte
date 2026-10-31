@@ -34,6 +34,7 @@
     Lock,
     SearchX,
     ServerCrash,
+    WifiOff,
   } from '@lucide/svelte';
 
   import { HttpClientError } from '@lostgradient/weft';
@@ -83,6 +84,7 @@
     unauthorized: Lock,
     'not-supported': CircleSlash,
     internal: ServerCrash,
+    unreachable: WifiOff,
   };
 
   /** Visual tone per treatment kind — drives both the banner's background/border and the `Badge` variant. `not-found`/`not-supported` are neutral (a missing/unsupported resource, not a failure); the rest are warning/danger per the design reference. */
@@ -93,6 +95,7 @@
     unauthorized: 'danger',
     'not-supported': 'neutral',
     internal: 'danger',
+    unreachable: 'warning',
   };
 </script>
 

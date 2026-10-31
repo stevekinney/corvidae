@@ -269,7 +269,8 @@ const MAX_QUERY_RETRIES = 3;
  * which is transient and worth retrying. Of the six wire treatments, only
  * `internal` is: the other five describe the CURRENT state of the resource
  * or request (missing, conflicting, invalid, unauthorized, unsupported) and
- * retrying with the same input reproduces the identical fault. `Timeout`
+ * retrying with the same input reproduces the identical fault. A request that got no answer
+ * (`unreachable`) retries too: the host may be back before the last attempt. `Timeout`
  * (`FaultCode`) is bucketed under `internal` in `faults.ts` specifically so
  * it retries here — see that module's comment.
  */
@@ -277,7 +278,7 @@ function shouldRetryQuery(failureCount: number, error: unknown): boolean {
   if (failureCount >= MAX_QUERY_RETRIES) return false;
 
   const treatment = classifyFault(error);
-  return treatment === null || treatment.kind === 'internal';
+  return treatment === null || treatment.kind === 'internal' || treatment.kind === 'unreachable';
 }
 
 /**

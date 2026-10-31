@@ -12,6 +12,14 @@
    * the view lists nothing, and ready otherwise. A 403 also tells the principal store the scope is
    * gone, as every other 403 in the application does.
    *
+   * A view that has shown its data keeps showing it when the next request fails. It stays ready
+   * and carries `data-stale`, which one rule in `foundation.css` dims, beside `data-stale-since`,
+   * the time of the data on screen. The server not answering (`../app/connection.svelte.ts`) makes
+   * every ready view stale, and the shell's banner says so; a server that answers with a fault
+   * makes only this view stale, and the frame says what failed above the data, with no banner.
+   * With nothing to keep, a request that got no answer replaces the view with the unreachable
+   * page, and any other failure with the error.
+   *
    * Only the frame writes the words for the non-ready states, and it reads them from `copy.ts`.
    * A view with no probe, such as one run's detail page, is ready unless its scopes are missing:
    * the page handles its own missing run.
@@ -19,11 +27,11 @@
   import { untrack, type Snippet } from 'svelte';
 
   import { EmptyState, ErrorState, Skeleton } from '@lostgradient/cinder';
-  import { Inbox, Lock, SearchX } from '@lucide/svelte';
+  import { Inbox } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { getClient } from '../lib/client.ts';
-  import { classifyFault } from '../lib/faults.ts';
+  import { classifyFault, isNetworkFailure } from '../lib/faults.ts';
   import {
     AGENT_MEMORY_PATTERN,
     agentMemoryViewInstance,
@@ -32,7 +40,8 @@
   } from '../lib/query.ts';
   import { router } from '../lib/router.svelte.ts';
   import { getPrincipalStore, scopeReason } from '../lib/scopes.svelte.ts';
-  import { RETRY_LABEL, VIEW_COPY } from './copy.ts';
+  import { getConnection } from './connection.svelte.ts';
+  import { CONNECTION_COPY, RETRY_LABEL, VIEW_COPY } from './copy.ts';
   import { useBureauEventsLive, useFleetEventsLive } from './live-polling.svelte.ts';
   import WelcomeAgents from './welcome-agents.svelte';
   import { probeFor, ViewProbeFault, type ViewProbeResult } from './view-probes.ts';
@@ -74,6 +83,8 @@
 
   // The location can be the view's way of creating its first item (`views.ts`, `creating`).
   const creating = $derived(definition.creating?.(router.current.search) ?? false);
+
+  const connection = getConnection();
 
   const bureauLive = useBureauEventsLive();
   const fleetLive = useFleetEventsLive();
@@ -138,19 +149,38 @@
     return classifyFault(error)?.kind === 'not-found';
   }
 
-  const state = $derived.by<'loading' | 'empty' | 'error' | 'forbidden' | 'not-found' | 'ready'>(
-    () => {
-      if (scopeDenied) return 'forbidden';
-      if (probe === undefined || creating) return 'ready';
-      if (probeQuery.isError) {
-        if (isForbiddenFault(probeQuery.error)) return 'forbidden';
-        return notFoundCopy !== undefined && isNotFoundFault(probeQuery.error)
-          ? 'not-found'
-          : 'error';
-      }
-      if (probeQuery.isPending) return 'loading';
-      return probeQuery.data.empty && emptyCopy !== undefined ? 'empty' : 'ready';
-    },
+  const state = $derived.by<
+    'loading' | 'empty' | 'error' | 'unreachable' | 'forbidden' | 'not-found' | 'ready'
+  >(() => {
+    if (scopeDenied) return 'forbidden';
+    if (probe === undefined || creating) return 'ready';
+    if (probeQuery.isError) {
+      if (isForbiddenFault(probeQuery.error)) return 'forbidden';
+      if (notFoundCopy !== undefined && isNotFoundFault(probeQuery.error)) return 'not-found';
+      // What was shown last time stays shown: the view is stale, not failed.
+      if (probeQuery.data !== undefined) return answerState(probeQuery.data);
+      return isNetworkFailure(probeQuery.error) || connection.unreachable ? 'unreachable' : 'error';
+    }
+    if (probeQuery.isPending) return connection.unreachable ? 'unreachable' : 'loading';
+    return answerState(probeQuery.data);
+  });
+
+  function answerState(answer: ViewProbeResult): 'empty' | 'ready' {
+    return answer.empty && emptyCopy !== undefined ? 'empty' : 'ready';
+  }
+
+  /**
+   * Whether what is on screen is older than it should be: the server is not answering, or this
+   * view's own request failed after it had shown its data.
+   */
+  const refreshFailed = $derived(
+    state !== 'unreachable' && probeQuery.isRefetchError && probeQuery.data !== undefined,
+  );
+  const stale = $derived(
+    (state === 'ready' || state === 'empty') && (connection.unreachable || refreshFailed),
+  );
+  const staleSince = $derived(
+    probeQuery.dataUpdatedAt > 0 ? probeQuery.dataUpdatedAt : connection.lastHealthyAt,
   );
 
   $effect(() => {
@@ -189,8 +219,25 @@
   }
 </script>
 
-<div class="weft-view" data-view={initial.view} data-state={state}>
+<div
+  class="weft-view"
+  data-view={initial.view}
+  data-state={state}
+  data-stale={stale ? 'true' : undefined}
+  data-stale-since={stale ? new Date(staleSince).toISOString() : undefined}
+>
   {#if state === 'ready'}
+    {#if refreshFailed && !connection.unreachable}
+      <ErrorState
+        class="weft-view__refresh-error"
+        variant="flat"
+        title={errorCopy.title}
+        description={errorCopy.description}
+        headingLevel={2}
+        retryLabel={RETRY_LABEL}
+        onRetry={() => void probeQuery.refetch()}
+      />
+    {/if}
     {@render children()}
   {:else if state === 'loading'}
     <div class="weft-view__loading" role="status" aria-busy="true">
@@ -205,6 +252,7 @@
       title={emptyCopy.title}
       description={emptyCopy.description}
       headingLevel={1}
+      kind="first-use"
     >
       {#snippet icon()}<Inbox size={28} aria-hidden="true" />{/snippet}
       {#snippet action()}
@@ -222,14 +270,12 @@
       {/snippet}
     </EmptyState>
   {:else if state === 'not-found' && notFoundCopy}
-    <EmptyState
-      class="weft-view__empty"
+    <ErrorState
+      variant="flat"
       title={notFoundCopy.title}
       description={notFoundCopy.description}
       headingLevel={1}
-    >
-      {#snippet icon()}<SearchX size={28} aria-hidden="true" />{/snippet}
-    </EmptyState>
+    />
   {:else if state === 'error'}
     <ErrorState
       variant="flat"
@@ -239,14 +285,21 @@
       retryLabel={RETRY_LABEL}
       onRetry={() => void probeQuery.refetch()}
     />
+  {:else if state === 'unreachable'}
+    <ErrorState
+      variant="flat"
+      title={CONNECTION_COPY.page.title}
+      description={CONNECTION_COPY.page.description}
+      headingLevel={1}
+      retryLabel={RETRY_LABEL}
+      onRetry={() => void probeQuery.refetch()}
+    />
   {:else}
-    <EmptyState
-      class="weft-view__empty"
+    <ErrorState
+      variant="flat"
       title={forbiddenTitle}
       description={forbiddenDescription}
       headingLevel={1}
-    >
-      {#snippet icon()}<Lock size={28} aria-hidden="true" />{/snippet}
-    </EmptyState>
+    />
   {/if}
 </div>

@@ -70,6 +70,9 @@ function withoutParkedApprovals(history: ConversationHistory): ConversationHisto
   );
 }
 
+/** How many failed attempts in a row end the retries and leave the session disconnected. */
+export const MAX_RECONNECT_ATTEMPTS = 8;
+
 export class ChatSessionState {
   conversation = $state.raw<ConversationHistory>(createConversationHistory({ id: '' }));
   streaming = $state(false);
@@ -83,6 +86,13 @@ export class ChatSessionState {
   humanRequests = $state.raw<readonly HumanRequest[]>([]);
   /** Whether the session opened on a run that was going, and is still reading it. */
   attaching = $state(false);
+  /**
+   * Whether the session has stopped trying to reach the thread: it failed `MAX_RECONNECT_ATTEMPTS`
+   * times in a row, or the Bureau refused it in a way a retry cannot change. The page says so and
+   * offers `reconnect()`. It clears when the thread is read again, or a frame of the run arrives,
+   * and a `reconnect()` that fails leaves it set without starting the retries over.
+   */
+  disconnected = $state(false);
 
   readonly controller: ChatSessionController;
   /**
@@ -126,6 +136,7 @@ export class ChatSessionState {
       },
       onFrame: () => {
         this.#retryFailures = 0;
+        this.disconnected = false;
       },
       onTerminal: () => {
         this.#attachedRun = false;
@@ -378,11 +389,15 @@ export class ChatSessionState {
         // Nothing is going, so the transcript is what the Bureau holds of the thread.
         const history = await this.#wiring.history(this.sessionId, signal);
         if (generation !== this.#retryGeneration || signal.aborted) return false;
-        if (history !== undefined) this.restore(history);
+        if (history !== undefined) {
+          this.restore(history);
+          this.disconnected = false;
+        }
         this.#attachedRun = false;
         return false;
       }
       this.restore(restored);
+      this.disconnected = false;
       this.#attachedRun = true;
       this.#activeTurn = this.#sendHiddenTurn().catch(() => undefined);
       return true;
@@ -416,9 +431,18 @@ export class ChatSessionState {
 
   #scheduleReconnect(error: unknown): void {
     if (this.#abort.signal.aborted) return;
-    if (error instanceof AgUiHttpError && [403, 404, 410].includes(error.status)) return;
+    // A session that has given up is retried by the person, once per press: a `reconnect()` that
+    // fails must not start the ladder again behind a page that still says it is disconnected.
+    if (this.disconnected) return;
+    if (error instanceof AgUiHttpError && [403, 404, 410].includes(error.status)) {
+      this.disconnected = true;
+      return;
+    }
     this.#retryFailures += 1;
-    if (this.#retryFailures >= 8) return;
+    if (this.#retryFailures >= MAX_RECONNECT_ATTEMPTS) {
+      this.disconnected = true;
+      return;
+    }
     if (this.#retryTimer !== undefined) clearTimeout(this.#retryTimer);
     const generation = ++this.#retryGeneration;
     const delay = Math.min(500 * 2 ** (this.#retryFailures - 1), 10_000);
