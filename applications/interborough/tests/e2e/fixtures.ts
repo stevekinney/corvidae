@@ -176,6 +176,19 @@ export function loggedFailedResponse(status: number, urlPattern: RegExp): RegExp
   );
 }
 
+/**
+ * Leaves the Bureau's event feed unanswered for the rest of the test. Once the page has loaded, the
+ * feed's catch-up (`feed.resync`) asks every Bureau-driven list again, and every view probe still on
+ * its first read (`app/bureau-event-queries.ts`). A test that counts the failures it causes would
+ * count one more or not, by the order the network happens to answer in. A test about something other
+ * than the feed holds it, and counts exactly.
+ */
+export async function holdBureauFeed(page: Page): Promise<void> {
+  await page.route('**/bureau/v1/subscriptions/bureau.events**', () => {
+    // Never answered: the feed stays connecting, so no catch-up arrives.
+  });
+}
+
 /** A declaration the test made through `pageErrors.expect(...)`. */
 type DeclaredAllowance = { readonly allowance: PageErrorAllowance };
 

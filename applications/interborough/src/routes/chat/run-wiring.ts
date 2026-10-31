@@ -293,6 +293,15 @@ function isCallEventFor(event: unknown, held: ReadonlySet<string>): boolean {
   return typeof callId === 'string' && held.has(callId);
 }
 
+/** The identifiers of the tool calls a thread's snapshot holds. */
+function snapshotCalls(snapshot: MessagesSnapshotEvent): ReadonlySet<string> {
+  return new Set(
+    snapshot.messages.flatMap((message) =>
+      message.role === 'assistant' ? (message.toolCalls ?? []).map((call) => call.id) : [],
+    ),
+  );
+}
+
 /** The identifiers of the tool calls a conversation holds. */
 function heldCalls(conversation: ConversationHistory): ReadonlySet<string> {
   return new Set(
@@ -744,9 +753,12 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         // A Stop before this event is acted on here, now that the run it began has a name: the
         // run is cancelled below, and nothing of the turn is shown.
         if (signal.aborted) return;
-        // Read at the first event, not when the turn started: an attach restores the thread right
-        // after it starts, and the calls this stream streams itself arrive after, never before.
+        // Read at the first event, not when the turn started, and the calls this stream streams
+        // itself arrive after, never before. A snapshot replaces the conversation, so the calls
+        // it holds are the ones held from then on: an attach's turn starts before the thread is
+        // back on screen, without the approvals it is parked on (`chat-session.svelte.ts`).
         held ??= heldCalls(options.conversation());
+        if (isMessagesSnapshot(event)) held = snapshotCalls(event);
         if (isRecord(event) && event['type'] === 'RUN_STARTED') {
           const identity =
             nativeRunId ?? (typeof event['runId'] === 'string' ? event['runId'] : undefined);

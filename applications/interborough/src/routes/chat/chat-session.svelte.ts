@@ -58,6 +58,18 @@ function inputPayload(message: MessageInput): string {
   return message.content.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('\n');
 }
 
+/**
+ * The transcript without the approvals a run is parked on. The controller refuses a turn while an
+ * approval is pending, and a hidden turn is not a new one: it reads the run that parked them, whose
+ * stream shows the call again and whose interrupts park each approval again (`run-wiring.ts`).
+ */
+function withoutParkedApprovals(history: ConversationHistory): ConversationHistory {
+  return getUnresolvedToolApprovals(history).reduce(
+    (current, { message }) => removeMessage(current, message.id),
+    history,
+  );
+}
+
 export class ChatSessionState {
   conversation = $state.raw<ConversationHistory>(createConversationHistory({ id: '' }));
   streaming = $state(false);
@@ -231,9 +243,7 @@ export class ChatSessionState {
    */
   async #repeatOwedResume(): Promise<void> {
     if (!this.#wiring.owesResume() || this.#wiring.owedResumeIncomplete()) return;
-    await this.controller.adapter
-      .sendMessage({ role: 'user', content: '', hidden: true }, [])
-      .catch(() => undefined);
+    await this.#sendHiddenTurn().catch(() => undefined);
     // A refusal is answered by reading the thread again, which decides what is still owed.
     await this.#attachment;
     if (this.#wiring.owesResume()) throw new Error(CHAT_COPY.answersNotApplied);
@@ -374,9 +384,7 @@ export class ChatSessionState {
       }
       this.restore(restored);
       this.#attachedRun = true;
-      this.#activeTurn = this.controller.adapter
-        .sendMessage({ role: 'user', content: '', hidden: true }, [])
-        .catch(() => undefined);
+      this.#activeTurn = this.#sendHiddenTurn().catch(() => undefined);
       return true;
     } catch (error) {
       // The page opened on a session it could not read: it says so, and it is not an unhandled
@@ -389,6 +397,16 @@ export class ChatSessionState {
     } finally {
       if (this.#readerAbort === readerAbort) this.attaching = false;
     }
+  }
+
+  /**
+   * Starts a turn under a row the person never sees, which reads the run (an attach) or sends what
+   * a refused resume still owes. The approvals the run is parked on leave the transcript first, so
+   * the controller does not refuse the turn as a new one while they are pending (COR-1957).
+   */
+  #sendHiddenTurn(): Promise<void> {
+    this.conversation = withoutParkedApprovals(this.conversation);
+    return this.controller.adapter.sendMessage({ role: 'user', content: '', hidden: true }, []);
   }
 
   /** Replaces the transcript with the authoritative snapshot from the Bureau. */
