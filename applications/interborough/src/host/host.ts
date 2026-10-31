@@ -821,6 +821,12 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // opts into A2A names the URL it is served at (COR-1819). Until then `/bureau/*` answers 503,
     // which only a client that guessed the port could see.
     const mcpMounts = await mcpAppMounts(bureau.plugins.mcpApps());
+    // A plugin's app that does not build is left out and listed as a problem on the plugin; it
+    // never stops the host from starting.
+    for (const failure of mcpMounts.failures) {
+      bureau.plugins.reportMcpAppFailure(failure.plugin, failure.app, failure.message);
+      log(`Plugin ${failure.plugin}: its MCP app ${failure.app} did not build: ${failure.message}`);
+    }
     let bureauHandler: BureauHandler | undefined;
     const bureauSockets: BureauHandler['websocket'] = {
       open: (socket) => bureauHandler?.websocket.open(socket),

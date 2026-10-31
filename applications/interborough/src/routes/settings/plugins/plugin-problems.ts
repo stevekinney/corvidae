@@ -81,6 +81,7 @@ export function problemView(problem: PluginProblem): ProblemView {
     case 'secret-refused':
     case 'load-failed':
     case 'after-start-failed':
+    case 'mcp-app-failed':
       return { title: words.failed.title, body: text(problem, 'message') };
     default:
       return { title: words.title, body: words.unknown(problem.code) };

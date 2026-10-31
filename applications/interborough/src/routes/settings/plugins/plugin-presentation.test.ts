@@ -153,7 +153,13 @@ describe('problemView', () => {
     expect(problemView({ code: 'development-source', path: '/code/linear' }).body).toContain(
       '/code/linear',
     );
-    for (const code of ['setup-failed', 'secret-refused', 'load-failed', 'after-start-failed']) {
+    for (const code of [
+      'setup-failed',
+      'secret-refused',
+      'load-failed',
+      'after-start-failed',
+      'mcp-app-failed',
+    ]) {
       expect(problemView({ code, message: 'it broke' })).toEqual({
         title: PLUGINS_COPY.problems.failed.title,
         body: 'it broke',

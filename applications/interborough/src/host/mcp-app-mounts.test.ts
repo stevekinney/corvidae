@@ -1,5 +1,4 @@
 import type { PluginMcpApp } from '@lostgradient/interborough-plugin';
-import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -89,14 +88,6 @@ describe('the MCP apps the host serves', () => {
     });
   });
 
-  it('refuses two apps that name the same tool', async () => {
-    const apps = contributed(
-      await app('one'),
-      await app('two', { allowedTools: ['bureau.test.one'], opensFromTool: 'bureau.test.one' }),
-    );
-    expect(String(await rejectionOf(mcpAppMounts(apps)))).toMatch(/test:one and test:two/);
-  });
-
   it('keeps a title from opening a tag and a style from ending its element', async () => {
     const { resources } = await mcpAppMounts(
       contributed(
@@ -108,11 +99,27 @@ describe('the MCP apps the host serves', () => {
   });
 
   it('serves nothing when no plugin contributes an app', async () => {
-    expect(await mcpAppMounts([])).toEqual({ resources: [], toolMeta: {} });
+    expect(await mcpAppMounts([])).toEqual({
+      resources: [],
+      toolMeta: {},
+      failures: [],
+    });
   });
 
-  it('fails when an entry does not build', async () => {
+  it('reports an entry that does not build, and still serves the apps that do', async () => {
     const missing = await app('one', { entry: pathToFileURL(resolve('does-not-exist.ts')) });
-    expect(await rejectionOf(mcpAppMounts(contributed(missing)))).toBeInstanceOf(Error);
+    const { resources, toolMeta, failures } = await mcpAppMounts(
+      contributed(missing, await app('two')),
+    );
+    expect(resources.map(({ uri }) => uri)).toEqual(['ui://test/two/v1']);
+    expect(Object.keys(toolMeta)).toEqual(['bureau.test.two']);
+    expect(failures).toEqual([
+      { plugin: 'test', app: 'one', message: expect.stringContaining('does-not-exist') },
+    ]);
+  });
+
+  it('reports nothing when every app builds', async () => {
+    const { failures } = await mcpAppMounts(contributed(await app('one')));
+    expect(failures).toEqual([]);
   });
 });

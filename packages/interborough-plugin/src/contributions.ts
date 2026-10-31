@@ -169,7 +169,9 @@ export interface PluginMcpApp {
   readonly allowedTools: string[];
   /**
    * The one Bureau MCP tool a client runs to open the page: the host links this tool to the page.
-   * It is one of `allowedTools`.
+   * It is one of `allowedTools`, and unique across plugins: a tool links to one page, so a plugin
+   * whose app opens from a tool another app already opens is skipped with `name-clash`. An app
+   * whose entry does not build leaves the plugin running with an `mcp-app-failed` problem.
    */
   readonly opensFromTool: string;
 }

@@ -26,28 +26,59 @@ export const MCP_APP_UI_META = {
 /** The apps `bureau.plugins.mcpApps()` lists. */
 export type ContributedMcpApps = ReturnType<BureauPlugins['mcpApps']>;
 
+/** What failed, with each message a failed bundle logged: Bun's own message is only "Bundle failed". */
+function failureMessage(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const logged = error instanceof AggregateError ? error.errors : [];
+  const details = logged.map((entry: unknown) =>
+    entry instanceof Error || (typeof entry === 'object' && entry !== null && 'message' in entry)
+      ? String(entry.message)
+      : String(entry),
+  );
+  return [error.message, ...details].join(': ');
+}
+
+/** An app whose page could not be built: the plugin, the app's name, and why. */
+export type McpAppFailure = {
+  /** The contributing plugin's name. */
+  readonly plugin: string;
+  /** The app's name within the plugin. */
+  readonly app: string;
+  /** The build failure's message. */
+  readonly message: string;
+};
+
 /**
  * Build every contributed app once and merge their resources and tool metadata. An app is linked
- * from its `opensFromTool`; two apps that name the same tool are refused, because the
- * adapter links a tool to one page.
+ * from its `opensFromTool`, which Bureau composition keeps to one app (a second plugin's app is
+ * skipped with `name-clash`). An app whose page does not build is left out and reported in
+ * `failures`, never thrown: a plugin's contribution must not stop the host from starting.
  */
 export async function mcpAppMounts(contributed: ContributedMcpApps) {
   const built = await Promise.all(
-    contributed.map(async ({ plugin, app }) => ({
-      plugin,
-      app,
-      page: await buildMcpAppPage({
-        entry: app.entry.href,
-        title: app.title,
-        styles: app.styles ?? '',
-      }),
-    })),
+    contributed.map(async ({ plugin, app }) => {
+      try {
+        const page = await buildMcpAppPage({
+          entry: app.entry.href,
+          title: app.title,
+          styles: app.styles ?? '',
+        });
+        return { plugin, app, page };
+      } catch (error) {
+        const message = failureMessage(error);
+        return { plugin, app, failure: { plugin, app: app.name, message } satisfies McpAppFailure };
+      }
+    }),
   );
   const toolMeta: Record<string, Readonly<Record<string, unknown>>> = {};
-  const toolOwner = new Map<string, string>();
   const resources: (OperationMcpResource & { readonly text: string })[] = [];
-  for (const { plugin, app, page } of built) {
-    const id = `${plugin}:${app.name}`;
+  const failures: McpAppFailure[] = [];
+  for (const entry of built) {
+    if ('failure' in entry) {
+      failures.push(entry.failure);
+      continue;
+    }
+    const { app, page } = entry;
     resources.push({
       uri: app.uri,
       name: app.name,
@@ -57,16 +88,9 @@ export async function mcpAppMounts(contributed: ContributedMcpApps) {
       text: page.html,
       _meta: { ui: MCP_APP_UI_META, contentDigest: page.contentDigest },
     });
-    const owner = toolOwner.get(app.opensFromTool);
-    if (owner !== undefined) {
-      throw new Error(
-        `The tool "${app.opensFromTool}" opens both ${owner} and ${id}; a tool opens one page.`,
-      );
-    }
-    toolOwner.set(app.opensFromTool, id);
     toolMeta[app.opensFromTool] = {
       ui: { resourceUri: app.uri, visibility: ['model', 'app'] },
     };
   }
-  return { resources, toolMeta };
+  return { resources, toolMeta, failures };
 }

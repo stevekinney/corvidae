@@ -193,6 +193,19 @@ export type PluginProblem =
       readonly message: string;
     }
   | {
+      /**
+       * The host could not build the page of an MCP app the plugin contributed, such as an entry
+       * that does not exist or does not compile. The plugin stays `running` with its other
+       * contributions; the app is not listed or served, and the host starts. Reported by the host
+       * through {@link BureauPlugins.reportMcpAppFailure} once it has tried to build the app.
+       */
+      readonly code: 'mcp-app-failed';
+      /** The app's name. */
+      readonly app: string;
+      /** The build failure's message, with every secret value the plugin was handed removed. */
+      readonly message: string;
+    }
+  | {
       /** `afterStart` threw or rejected; the plugin's contributions stay registered. */
       readonly code: 'after-start-failed';
       /** The error's message, with every secret value the plugin was handed removed. */
@@ -316,6 +329,13 @@ export interface BureauPlugins {
     /** The app as the plugin declared it. */
     readonly app: PluginMcpApp;
   }[];
+  /**
+   * Records that the host could not build the page of `plugin`'s MCP app `app`: the plugin lists
+   * an `mcp-app-failed` problem with `message` (secrets removed), and {@link mcpApps} stops
+   * listing the app. The plugin keeps its status. Names no running plugin or app, and repeats, are
+   * ignored.
+   */
+  reportMcpAppFailure(plugin: string, app: string, message: string): void;
   /** Settles once every running plugin's `afterStart` has settled. Never rejects. */
   ready(): Promise<void>;
 }

@@ -299,6 +299,8 @@ function planOf(
     }
     contribute('mcp-app', app.name);
     claims.push({ space: 'mcp-app-uri', name: app.uri });
+    // A tool links to one page, so the host cannot serve two apps opened from the same tool.
+    claims.push({ space: 'mcp-app-tool', name: app.opensFromTool });
   }
   for (const formatter of contributions.eventFormatters ?? []) {
     contribute('event-formatter', formatter.name);
