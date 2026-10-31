@@ -10,6 +10,8 @@ import {
   createMemoryGovernanceLedger,
   createMemoryGovernancePolicy,
   createMockEmbedder,
+  createMemoryVectorStore,
+  createTestEmbedders,
 } from '@lostgradient/memory';
 import { stopWhen, createAgent } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
@@ -29,7 +31,8 @@ describe('a scheduled fire’s memory (COR-1546)', () => {
     const memory = createGovernedMemory({
       storage: createInMemoryMemoryRecordStorage(),
       ledger: createMemoryGovernanceLedger(new MemoryStorage()),
-      embedder: createMockEmbedder(64),
+      ...createTestEmbedders(createMockEmbedder(64), 64),
+      vectors: createMemoryVectorStore(new MemoryStorage()),
       policy: createMemoryGovernancePolicy({ revision: 'governance:scheduled-fire' }),
     });
     const bureau = await createBureau<AgentDefinitions>({

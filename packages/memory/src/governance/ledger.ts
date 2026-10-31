@@ -110,7 +110,8 @@ export interface MemoryGovernanceLedger {
   listPendingDerivations(filter: { tenantId?: string }): Promise<MemoryPendingDerivation[]>;
   deletePendingDerivation(tenantId: string, record: MemoryRecordSourceReference): Promise<void>;
   registerScope(scope: Required<MemoryRecordScope>): Promise<void>;
-  listScopes(tenantId: string): Promise<Required<MemoryRecordScope>[]>;
+  /** Every scope a governed write registered for `tenantId`, or for every tenant when it is omitted. */
+  listScopes(tenantId?: string): Promise<Required<MemoryRecordScope>[]>;
   putEviction(tenantId: string, contextId: string, recordId: string): Promise<void>;
   listEvictions(tenantId: string, contextId: string): Promise<string[]>;
 }
@@ -269,7 +270,8 @@ export function createMemoryGovernanceLedger(
     tenantId === undefined ? `${prefix}derivation:` : `${prefix}derivation:${component(tenantId)}:`;
   const derivationKey = (tenantId: string, record: MemoryRecordSourceReference) =>
     `${derivationPrefix(tenantId)}${component(record.namespace)}:${component(record.id)}`;
-  const scopePrefix = (tenantId: string) => `${prefix}scope:${component(tenantId)}:`;
+  const scopePrefix = (tenantId?: string) =>
+    tenantId === undefined ? `${prefix}scope:` : `${prefix}scope:${component(tenantId)}:`;
   const evictionPrefix = (tenantId: string, contextId: string) =>
     `${prefix}evict:${component(tenantId)}:${component(contextId)}:`;
 

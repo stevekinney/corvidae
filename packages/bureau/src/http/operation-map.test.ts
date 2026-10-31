@@ -15,6 +15,8 @@ import {
   createMemoryGovernanceLedger,
   createMemoryGovernancePolicy,
   createMockEmbedder,
+  createMemoryVectorStore,
+  createTestEmbedders,
 } from '@lostgradient/memory';
 import { createAgent } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
@@ -48,7 +50,8 @@ async function openFullBureau(): Promise<{ bureau: Bureau; dispose: () => Promis
     memory: createGovernedMemory({
       storage: createInMemoryMemoryRecordStorage(),
       ledger: createMemoryGovernanceLedger(durable),
-      embedder: createMockEmbedder(64),
+      ...createTestEmbedders(createMockEmbedder(64), 64),
+      vectors: createMemoryVectorStore(durable),
       policy: createMemoryGovernancePolicy({ revision: 'governance:operation-map' }),
     }),
   });

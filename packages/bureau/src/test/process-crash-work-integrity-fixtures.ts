@@ -20,6 +20,8 @@ import {
   createMockEmbedder,
   createWeftMemoryRecordStorage,
   type GovernedMemory,
+  createMemoryVectorStore,
+  createTestEmbedders,
 } from '@lostgradient/memory';
 import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
 import { type Storage, textValueStore } from '@lostgradient/storage';
@@ -179,7 +181,8 @@ export async function openGovernedMemory(
   const memory = createGovernedMemory({
     storage: createWeftMemoryRecordStorage(wrapMemoryStorage(memoryStorage)),
     ledger: createMemoryGovernanceLedger(ledgerStorage),
-    embedder: createMockEmbedder(64),
+    ...createTestEmbedders(createMockEmbedder(64), 64),
+    vectors: createMemoryVectorStore(ledgerStorage),
     policy: createMemoryGovernancePolicy({ revision: 'governance:process-crash' }),
   });
   return {

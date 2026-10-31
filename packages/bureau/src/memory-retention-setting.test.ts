@@ -14,6 +14,8 @@ import {
   createMemoryGovernancePolicy,
   createMockEmbedder,
   type GovernedMemory,
+  createMemoryVectorStore,
+  createTestEmbedders,
 } from '@lostgradient/memory';
 import { createAgent } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
@@ -59,7 +61,8 @@ async function start(retention?: BureauOptions<AgentDefinitions>['retention']) {
   const memory: GovernedMemory = createGovernedMemory({
     storage: createInMemoryMemoryRecordStorage({ now: () => runtime.clock.now() }),
     ledger: createMemoryGovernanceLedger(new MemoryStorage()),
-    embedder: createMockEmbedder(64),
+    ...createTestEmbedders(createMockEmbedder(64), 64),
+    vectors: createMemoryVectorStore(new MemoryStorage()),
     policy: createMemoryGovernancePolicy({ revision: 'governance:retention-setting' }),
     runtime,
   });

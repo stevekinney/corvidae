@@ -1,10 +1,12 @@
 /**
  * The governed memory the Bureau remembers with (COR-1546): records and ledger on Bungalow's
- * database, the default policy, and a hashing embedder that makes no network call, so memory works
- * on an installation that has configured no model provider.
+ * database, the default policy, and the embedder registry, whose built-in hashing embedder makes
+ * no network call and is the one memory starts with, so memory works on an installation that has
+ * configured no model provider.
  *
- * Records and the governance ledger share the Bureau's own `Storage` under disjoint key prefixes,
- * so one database holds the whole installation and a restart finds both where it left them.
+ * Records, their vectors (one embedding profile at a time, COR-1898), and the governance ledger
+ * share the Bureau's own `Storage` under disjoint key prefixes, so one database holds the whole
+ * installation and a restart finds all three where it left them.
  *
  * What a deletion leaves behind. A forgotten record is deleted from the record storage at once,
  * and the deletion's other targets settle as the Bureau's maintenance pass runs. This host keeps no
@@ -16,10 +18,11 @@
  */
 
 import {
+  createEmbedderRegistry,
   createGovernedMemory,
-  createHashingEmbedder,
   createMemoryGovernanceLedger,
   createMemoryGovernancePolicy,
+  createMemoryVectorStore,
   createWeftMemoryRecordStorage,
   type GovernedMemory,
   type MemoryDeletionPropagation,
@@ -41,7 +44,8 @@ export function createHostMemory(storage: Storage): GovernedMemory {
   return createGovernedMemory({
     storage: createWeftMemoryRecordStorage(storage),
     ledger: createMemoryGovernanceLedger(storage),
-    embedder: createHashingEmbedder(),
+    embedders: createEmbedderRegistry(),
+    vectors: createMemoryVectorStore(storage),
     policy: createMemoryGovernancePolicy({ revision: MEMORY_POLICY_REVISION }),
     propagation: MEMORY_DELETION_PROPAGATION,
   });

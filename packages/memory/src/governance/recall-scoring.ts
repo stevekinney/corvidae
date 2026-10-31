@@ -1,9 +1,8 @@
-import { cosineSimilarity } from 'armorer';
-
 import type { GovernanceContext } from './governance-context';
 import type { MemoryRecallStageScores } from './governed-memory-types';
 import { textScores } from './governed-reads';
 import { embedOne } from './governed-writes';
+import { candidateKey, loadVectors, type RecallVectors, similarity } from './profile-vectors';
 import type { RecallCandidate } from './recall-candidates';
 import type { MemoryRetrievalPlan } from './retrieval-plan';
 
@@ -55,6 +54,7 @@ function fuse(plan: MemoryRetrievalPlan, scores: Omit<MemoryRecallStageScores, '
  */
 export async function scoreCandidates(
   context: GovernanceContext,
+  vectors: RecallVectors | undefined,
   plan: MemoryRetrievalPlan,
   query: string,
   candidates: readonly RecallCandidate[],
@@ -62,14 +62,15 @@ export async function scoreCandidates(
   if (candidates.length === 0) return { ranked: [], cost: 0 };
   const lexicalStage = plan.stages.includes('exact-lexical');
   const semanticStage = plan.stages.includes('semantic');
-  const queryVector = semanticStage ? await embedOne(context, query) : undefined;
+  if (vectors !== undefined) await loadVectors(context, vectors, candidates);
+  const queryVector =
+    semanticStage && vectors !== undefined ? await embedOne(vectors.active, query) : undefined;
   const lexical = lexicalStage ? await textScores(context, query, candidates) : [];
   const ranked = candidates.map((candidate, index) => {
     const partial = {
       exact: lexicalStage ? exactMatch(query, candidate) : 0,
       lexical: lexical[index] ?? 0,
-      semantic:
-        queryVector === undefined ? 0 : cosineSimilarity(queryVector, candidate.record.vector),
+      semantic: similarity(queryVector, vectors?.byCandidate.get(candidateKey(candidate))),
     };
     const fused = fuse(plan, partial) * candidate.read.governance.retrievalWeight;
     return { candidate, scores: { ...partial, fused } };
@@ -80,7 +81,14 @@ export async function scoreCandidates(
   };
 }
 
-/** Cosine similarity between two candidates' stored vectors. */
-export function candidateSimilarity(left: RecallCandidate, right: RecallCandidate): number {
-  return cosineSimilarity(left.record.vector, right.record.vector);
+/** Cosine similarity between two scored candidates' vectors in the recall's profile, 0 when either has none. */
+export function candidateSimilarity(
+  vectors: RecallVectors | undefined,
+  left: RecallCandidate,
+  right: RecallCandidate,
+): number {
+  return similarity(
+    vectors?.byCandidate.get(candidateKey(left)),
+    vectors?.byCandidate.get(candidateKey(right)),
+  );
 }

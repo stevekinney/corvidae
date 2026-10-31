@@ -12,6 +12,8 @@ import {
   createMemoryGovernanceLedger,
   createMemoryGovernancePolicy,
   type GovernedMemory,
+  createMemoryVectorStore,
+  createTestEmbedders,
 } from '@lostgradient/memory';
 import {
   type ContextEpochSealer,
@@ -69,7 +71,11 @@ function governedMemory(): GovernedMemory {
   return createGovernedMemory({
     storage: createInMemoryMemoryRecordStorage(),
     ledger: createMemoryGovernanceLedger(new MemoryStorage()),
-    embedder: (texts) => texts.map((text) => [text.includes('automobile') ? 1 : 0.1, 1]),
+    ...createTestEmbedders(
+      (texts) => texts.map((text) => [text.includes('automobile') ? 1 : 0.1, 1]),
+      2,
+    ),
+    vectors: createMemoryVectorStore(new MemoryStorage()),
     policy: createMemoryGovernancePolicy({ revision: 'governance:1' }),
   });
 }

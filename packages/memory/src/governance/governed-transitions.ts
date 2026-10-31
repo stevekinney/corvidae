@@ -212,7 +212,6 @@ export async function promoteRecord(
     state: 'active',
     visibility: 'shared',
     lineage: { kind: 'canonical-projection', sources: [referenceOf(located.resolved)] },
-    vector: record.vector,
   });
   if (stored.outcome === 'withdrawn') {
     await context.recordEvent({

@@ -17,6 +17,7 @@ import type {
 } from './governed-memory-types';
 import { capabilityAllowed, evictionContext, scopesFor } from './governed-reads';
 import type { MemoryGovernancePolicy } from './policy';
+import { loadVectors, type RecallVectors } from './profile-vectors';
 import {
   type FilteredCandidates,
   type FilterInput,
@@ -67,6 +68,12 @@ interface RecallRun {
   readonly reformulations: string[];
   readonly contradictions: MemoryRecallContradiction[];
   readonly conflicting: Set<string>;
+  /**
+   * The active embedding and candidate vectors, read at the first scoring pass of a plan with a
+   * semantic or counterevidence stage, so every pass and the counterevidence stage compare
+   * vectors of one profile.
+   */
+  vectors?: RecallVectors;
   filtered?: FilteredCandidates;
   filterInput?: FilterInput;
   /** Lineage sources resolved from outside the recalled collection, reported beside its own candidates. */
@@ -235,6 +242,14 @@ function reformulate(query: string, tried: readonly string[]): string | undefine
   return keywords;
 }
 
+/** The recall's vectors, read once, when a stage of its plan compares vectors. */
+async function recallVectors(run: RecallRun): Promise<RecallVectors | undefined> {
+  const { stages } = run.plan;
+  if (!stages.includes('semantic') && !stages.includes('counterevidence')) return undefined;
+  run.vectors ??= { active: await run.context.embedding.active(), byCandidate: new Map() };
+  return run.vectors;
+}
+
 /**
  * The scoring passes: the query, then each reformulation over the candidates
  * still below the minimum. Returns the candidates no pass lifted above it.
@@ -254,7 +269,13 @@ async function scoringPasses(
     run.iterations += 1;
     let pass: Awaited<ReturnType<typeof scoreCandidates>>;
     try {
-      pass = await scoreCandidates(run.context, run.plan, current, pending);
+      pass = await scoreCandidates(
+        run.context,
+        await recallVectors(run),
+        run.plan,
+        current,
+        pending,
+      );
     } catch {
       // The embedder or text-search provider failed: the recall fails closed
       // with no evidence, and nothing an earlier pass selected stays selected.
@@ -321,9 +342,14 @@ async function expandProvenance(run: RecallRun): Promise<void> {
 }
 
 /** Records what disagrees with each selected record: its superseded predecessors, and near-duplicates that differ. */
-function findCounterevidence(run: RecallRun): void {
+async function findCounterevidence(run: RecallRun): Promise<void> {
   if (!run.plan.stages.includes('counterevidence')) return;
   const filtered = run.filtered!;
+  // Provenance expansion can select a source no scoring pass read a vector for: one from another
+  // collection, or one past the candidate budget. Its vector is read here, so it is compared too.
+  if (run.vectors !== undefined) {
+    await loadVectors(run.context, run.vectors, [...run.selected.values()]);
+  }
   for (const selected of run.selected.values()) {
     for (const predecessor of filtered.superseded) {
       if (predecessor.read.governance.supersededBy !== selected.record.id) continue;
@@ -337,7 +363,7 @@ function findCounterevidence(run: RecallRun): void {
     for (const other of run.budgeted) {
       if (run.selected.has(other.record.id)) continue;
       if (other.read.governance.contentDigest === selected.read.governance.contentDigest) continue;
-      if (candidateSimilarity(selected, other) < run.plan.conflictSimilarity) continue;
+      if (candidateSimilarity(run.vectors, selected, other) < run.plan.conflictSimilarity) continue;
       run.conflicting.add(other.record.id);
       run.contradictions.push({
         recordId: other.record.id,
@@ -410,7 +436,7 @@ async function executePlan(run: RecallRun, query: string): Promise<void> {
     'unavailable',
     'governed memory stores no raw-evidence chunks to expand a record into',
   );
-  findCounterevidence(run);
+  await findCounterevidence(run);
 }
 
 function selectionOf(run: RecallRun, excluded: ReadonlySet<string>, id: string) {

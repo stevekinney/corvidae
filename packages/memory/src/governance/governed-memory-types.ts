@@ -1,7 +1,7 @@
 import type { RuntimeServices } from '@lostgradient/lifecycle';
-import type { Embedder } from 'armorer';
-
+import type { EmbedderRegistry } from '../embedder-registry';
 import type { MemoryRecordStorage } from '../memory-record-storage';
+import type { MemoryVectorStore } from '../memory-vector-store';
 import type { TextSearchProvider } from '../text-search-provider';
 import type { MemoryCorrelation } from '../transition-events';
 import type { MemoryAuthority } from './authority';
@@ -435,7 +435,21 @@ export interface CreateGovernedMemoryOptions {
   /** Record storage owned exclusively by this governed memory. Must implement `deleteMany`. */
   readonly storage: MemoryRecordStorage;
   readonly ledger: MemoryGovernanceLedger;
-  readonly embedder: Embedder;
+  /**
+   * The embedders memory can use (COR-1898). Admission and recall embed with the one the active
+   * embedding names, and deletion evicts content from each that caches it.
+   */
+  readonly embedders: EmbedderRegistry;
+  /**
+   * Where the vectors live, apart from the records (COR-1898). It must be as durable as
+   * {@link CreateGovernedMemoryOptions.storage}: a record whose vector is lost recalls lexically.
+   */
+  readonly vectors: MemoryVectorStore;
+  /**
+   * The registry id a store with no active embedding starts with. Defaults to the built-in hashing
+   * embedder's. A store that already has an active embedding keeps it, whatever this names.
+   */
+  readonly initialEmbedder?: string;
   readonly policy: MemoryGovernancePolicy;
   readonly textSearchProvider?: TextSearchProvider;
   readonly propagation?: MemoryDeletionPropagation;
@@ -446,6 +460,26 @@ export interface CreateGovernedMemoryOptions {
    * ledger event already stored, so the sink should never throw.
    */
   readonly onEvent?: (notification: MemoryGovernanceNotification) => void | Promise<void>;
+}
+
+/**
+ * Whether memory could embed with a registry id now: `not-loaded` when nothing is registered under
+ * it, `needs-setup` when its plugin is loaded but not set up, otherwise `available`.
+ */
+export type MemoryEmbedderAvailability = 'available' | 'needs-setup' | 'not-loaded';
+
+/** What {@link GovernedMemoryEmbedding.status} reports. */
+export interface MemoryEmbeddingStatus {
+  /** The embedding recall and admission use: its embedder's registry id and its dimension. */
+  readonly active: { readonly embedder: string; readonly dimension: number };
+}
+
+/** The embedding side of {@link GovernedMemory} (COR-1898). */
+export interface GovernedMemoryEmbedding {
+  /** The active embedding. A store with none yet starts with the initial embedder's. */
+  status(): Promise<MemoryEmbeddingStatus>;
+  /** Whether memory could embed with the embedder registered as `id` now. */
+  availability(id: string): MemoryEmbedderAvailability;
 }
 
 export interface MemoryLegalHoldResult extends MemoryOperationResult {
@@ -462,6 +496,8 @@ export interface MemoryLegalHoldResult extends MemoryOperationResult {
 export interface GovernedMemory {
   /** The governance policy revision currently in force. */
   readonly policyRevision: string;
+  /** The active embedding, and which registered embedders could replace it. */
+  readonly embedding: GovernedMemoryEmbedding;
   /**
    * Registers `listener` to receive the {@link MemoryGovernanceNotification}s that
    * {@link CreateGovernedMemoryOptions.onEvent} receives, each after `onEvent` has run

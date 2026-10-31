@@ -68,6 +68,7 @@ export type {
   CreateGovernedMemoryOptions,
   GovernedListOptions,
   GovernedMemory,
+  GovernedMemoryEmbedding,
   GovernedSearchHit,
   GovernedSearchOptions,
   GovernedWriteOptions,
@@ -76,6 +77,8 @@ export type {
   MemoryDeletionPropagationResult,
   MemoryDeletionPropagator,
   MemoryDeletionResult,
+  MemoryEmbedderAvailability,
+  MemoryEmbeddingStatus,
   MemoryEvidenceBundle,
   MemoryExportResult,
   MemoryForgetMode,
@@ -250,8 +253,27 @@ export {
   HASHING_EMBEDDER_ID,
   createEmbedderRegistry,
 } from './embedder-registry';
-export type { ContributedEmbedder, EmbedderRegistry } from './embedder-registry';
+export type {
+  ContributedEmbedder,
+  EmbedderAvailability,
+  EmbedderRegistry,
+  RegisteredEmbedder,
+} from './embedder-registry';
+// Where memory's vectors live, one embedding profile at a time (COR-1898).
 export { HASHING_EMBEDDER_DIMENSION, createHashingEmbedder } from './hashing-embedder';
+export {
+  DEFAULT_MEMORY_VECTOR_KEY_PREFIX,
+  MemoryVectorDimensionError,
+  MemoryVectorProfileMissingError,
+  createMemoryVectorStore,
+} from './memory-vector-store';
+export type {
+  CreateMemoryVectorStoreOptions,
+  MemoryEmbeddingProfile,
+  MemoryVectorReference,
+  MemoryVectorStore,
+  StoredMemoryVector,
+} from './memory-vector-store';
 // Capability, operation, principal-kind, and projection vocabularies are public constants.
 export {
   MEMORY_ADMINISTRATIVE_CAPABILITIES,
@@ -347,7 +369,12 @@ export { createReflectionHook } from './reflection';
 export { getMemoryStatus } from './status';
 export { applyTemporalDecay, computeTemporalDecay } from './temporal-decay';
 export { filterByValidity, isValidAtTimestamp, stampSupersession } from './temporal-validity';
-export { createInMemoryMemoryRecordStorage, createMockEmbedder } from './test/index';
+export {
+  TEST_EMBEDDER_ID,
+  createInMemoryMemoryRecordStorage,
+  createMockEmbedder,
+  createTestEmbedders,
+} from './test/index';
 export { computeBM25Scores, tokenize } from './text-search';
 export { createMemoryForgetTool, createMemoryRecallTool, createMemoryStoreTool } from './tools';
 
