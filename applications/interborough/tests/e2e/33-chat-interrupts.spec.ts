@@ -56,9 +56,18 @@ test.describe('a run that asks two questions', () => {
     await send(page, 'Ship it');
     await expect(question(page, ENVIRONMENT_QUESTION)).toBeVisible();
 
+    // Answering decides the first question's review, and the page reads the thread again for it.
+    // That read replaces the transcript, so the answer must survive it, not only the resume.
+    const reread = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' &&
+        /\/ag-ui\/threads\/[^/]+\/run$/.test(new URL(response.url()).pathname),
+    );
     await send(page, 'staging');
 
     // The second question replaces the first, and the first answer is one row, as typed.
+    await expect(question(page, REGION_QUESTION)).toBeVisible();
+    await reread;
     await expect(question(page, REGION_QUESTION)).toBeVisible();
     await expect(question(page, ENVIRONMENT_QUESTION)).toHaveCount(0);
     await expect(page.getByText('staging', { exact: true })).toHaveCount(1);
