@@ -153,6 +153,8 @@ import type { PluginHostApi } from '@lostgradient/interborough-plugin';
 import { shutdownThenRethrow } from './composition-failure';
 import { composePlugins } from './plugins/compose-plugins';
 import { createPluginRegistry } from './plugins/plugin-registry';
+import { markEventSource } from './event-source';
+import { createGoalForPlugin } from './goals';
 import { type AgentDefinitions, type AgentNames, createAgentCatalog } from './agent-catalog';
 import { AgentFileError, AgentSnapshotError, type AgentFileDefinitionInput } from './agent-file';
 import { createTryAgents, isTryAgentName, TRY_AGENT_NAME_START, tryToolProblem } from './agent-try';
@@ -19070,6 +19072,8 @@ async function constructBureau<const D extends AgentDefinitions>(
   async function createSchedule(
     definition: DurableScheduleDefinition,
     scheduleOptions?: CreateScheduleOptions,
+    // COR-1879 — the plugin whose host API creates the schedule; its `schedule.created` names it.
+    source?: string,
   ): Promise<import('@lostgradient/weft').ScheduleSummary | undefined> {
     if (definition.sessionId !== undefined) {
       rejectReservedIdentifier('"sessionId"', definition.sessionId.trim());
@@ -19107,7 +19111,14 @@ async function constructBureau<const D extends AgentDefinitions>(
     // `createAgentSchedule`'s `AgentScheduledEvent` (`schedule.created`, AB-298)
     // straight onto it, exactly once for the fresh registration this call makes —
     // no separate dispatch needed here.
-    const scheduler = createAgentScheduler({ engine: runtime.durable.engine, emitter });
+    const scheduler = createAgentScheduler({
+      engine: runtime.durable.engine,
+      // COR-1879: the internal variant a plugin's host API uses marks what it forwards.
+      emitter:
+        source === undefined
+          ? emitter
+          : { dispatch: (event) => emitter.dispatch(markEventSource(event, source)) },
+    });
     // COR-1952: a schedule a hook-started run creates records the hook before it exists, under an
     // id minted here, so no fire can run before its origin is readable.
     const hookOrigin =
@@ -21305,7 +21316,8 @@ async function constructBureau<const D extends AgentDefinitions>(
   // the emitter, and the transition outbox; `events` reads the `schedule` owner of the history the
   // Bureau already serves.
   const schedules = createSchedules({
-    create: createSchedule,
+    // Never the third, internal parameter: only a plugin's host API names a source.
+    create: (definition, scheduleOptions) => createSchedule(definition, scheduleOptions),
     get: getSchedule,
     list: listSchedules,
     pause: pauseSchedule,
@@ -22110,17 +22122,21 @@ async function constructBureau<const D extends AgentDefinitions>(
   // first events nothing; `bureau.plugins.ready()` settles when every one has.
   // COR-1879 — a file a running plugin ships that names a contribution nothing loaded holds.
   pluginRegistry.observeAgents(() => bureau.agents.list());
-  void pluginRegistry.start(pluginHostApiOf(bureau as unknown as Bureau));
-}
+  void pluginRegistry.start((plugin) => pluginHostApiOf(bureau as unknown as Bureau, plugin));
 
-/** COR-1879 — the slice of `bureau` a plugin's `afterStart` may call, and nothing else. */
-function pluginHostApiOf(bureau: Bureau): PluginHostApi {
-  return {
-    agents: { list: () => bureau.agents.list() },
-    schedules: {
-      create: (definition) => bureau.schedules.create(definition),
-      list: (filter) => bureau.schedules.list(filter),
-    },
-    goals: { create: (request) => bureau.goals.create(request) },
-  };
+  /**
+   * COR-1879 — the slice of `bureau` plugin `plugin` may call, and nothing else. What it causes is
+   * the plugin's: the schedule it creates announces `schedule.created` with `source: plugin`, and
+   * the goal it creates stores the plugin, so every `goal.*` event of the goal carries it.
+   */
+  function pluginHostApiOf(host: Bureau, plugin: string): PluginHostApi {
+    return {
+      agents: { list: () => host.agents.list() },
+      schedules: {
+        create: (definition) => createSchedule(definition, undefined, plugin),
+        list: (filter) => host.schedules.list(filter),
+      },
+      goals: { create: (request) => createGoalForPlugin(goalsComposition.goals, request, plugin) },
+    };
+  }
 }

@@ -16,6 +16,7 @@
 
 import type {
   PluginContributions,
+  PluginHostApi,
   PluginSecrets,
   PluginSetupContext,
   PluginSetupResult,
@@ -42,7 +43,7 @@ import {
   type VersionedCatalog,
 } from '../versioned-catalog';
 import { createClaims, type Claim, type Claims } from './plugin-claims';
-import type { PluginRecord } from './plugin-registry';
+import { lateHostApi, type PluginRecord } from './plugin-registry';
 import {
   createPluginSecretGate,
   gatedContributions,
@@ -560,6 +561,7 @@ async function setUp(
       readonly plan: PluginContributionPlan;
       readonly redact: (message: string) => string;
       readonly gate: PluginSecretGate | undefined;
+      readonly bindHost: (host: PluginHostApi) => void;
     }
 > {
   const { descriptor } = entry;
@@ -577,10 +579,12 @@ async function setUp(
   // Everything that reads the plugin runs inside the `try`: a malformed descriptor or contribution
   // skips this plugin and never fails `createBureau`.
   try {
+    const host = lateHostApi(descriptor.name);
     const context: PluginSetupContext = {
       configuration: configuration.value,
       secrets,
       storage: createPluginStorage(storage, descriptor.name),
+      host: host.api,
     };
     const returned: PluginSetupResult = (await descriptor.setup?.(context as never)) ?? {};
     // Registered now and refused while a declared secret is missing: the options that receive
@@ -592,7 +596,7 @@ async function setUp(
             formatToolId({ namespace: descriptor.name, name }),
           );
     const plan = planOf(descriptor.name, descriptor.version, result, gate);
-    return { status: 'set-up', result, context, plan, redact, gate };
+    return { status: 'set-up', result, context, plan, redact, gate, bindHost: host.bind };
   } catch (error) {
     return {
       status: 'skipped',
@@ -689,7 +693,12 @@ export async function composePlugins<O extends ComposableOptions>(
     );
     record('running', [], {
       contributions: plan.listings.filter(({ kind }) => registersKind(kind, options)),
-      setup: { result: outcome.result, context: outcome.context, redact: outcome.redact },
+      setup: {
+        result: outcome.result,
+        context: outcome.context,
+        redact: outcome.redact,
+        bindHost: outcome.bindHost,
+      },
       ...(outcome.gate === undefined ? {} : { gate: outcome.gate }),
     });
   }

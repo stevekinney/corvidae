@@ -46,6 +46,8 @@ export interface PluginRecord {
     readonly result: PluginSetupResult;
     readonly context: PluginSetupContext;
     readonly redact: (message: string) => string;
+    /** Points the context's `host` at the plugin's own host API once the Bureau exists. */
+    readonly bindHost: (host: PluginHostApi) => void;
   };
 }
 
@@ -92,10 +94,11 @@ export interface PluginRegistry {
   /** The value served as `bureau.plugins`. */
   readonly plugins: BureauPlugins;
   /**
-   * Runs `afterStart` once for each running plugin, in load order, each after the one before has
-   * settled. A rejection becomes that plugin's `after-start-failed` problem; it never rejects.
+   * Binds each running plugin's `host` to the API `hostFor` builds for it, then runs `afterStart`
+   * once for each, in load order, each after the one before has settled, with that same API. A
+   * rejection becomes that plugin's `after-start-failed` problem; it never rejects.
    */
-  start(host: PluginHostApi): Promise<void>;
+  start(hostFor: (plugin: string) => PluginHostApi): Promise<void>;
   /**
    * Reads the agent listing from now on, so a file a running plugin ships that names a
    * contribution nothing loaded holds is that plugin's `reference-unresolved`.
@@ -172,10 +175,18 @@ export function createPluginRegistry(records: readonly PluginRecord[]): PluginRe
       byId.set(key, entry);
       entry.runs.add(runId);
     },
-    async start(host) {
+    async start(hostFor) {
+      const hosts = new Map<string, PluginHostApi>();
+      for (const record of records) {
+        if (record.setup === undefined) continue;
+        const host = hostFor(record.entry.descriptor.name);
+        hosts.set(record.entry.descriptor.name, host);
+        record.setup.bindHost(host);
+      }
       for (const record of records) {
         const { setup } = record;
-        if (setup?.result.afterStart === undefined) continue;
+        const host = hosts.get(record.entry.descriptor.name);
+        if (setup?.result.afterStart === undefined || host === undefined) continue;
         try {
           await setup.result.afterStart(host, setup.context);
         } catch (error) {
@@ -188,6 +199,37 @@ export function createPluginRegistry(records: readonly PluginRecord[]): PluginRe
         }
       }
       started.resolve();
+    },
+  };
+}
+
+/**
+ * A host API for `plugin`'s setup context that forwards to the one {@link PluginRegistry.start}
+ * binds, so a contribution built in `setup` can hold it before the Bureau exists. A call before
+ * the bind rejects.
+ */
+export function lateHostApi(plugin: string): {
+  readonly api: PluginHostApi;
+  readonly bind: (host: PluginHostApi) => void;
+} {
+  let bound: PluginHostApi | undefined;
+  const host = (): PluginHostApi => {
+    if (bound === undefined) {
+      throw new Error(`The host of plugin "${plugin}" has not started yet.`);
+    }
+    return bound;
+  };
+  return {
+    api: {
+      agents: { list: () => host().agents.list() },
+      schedules: {
+        create: async (definition) => host().schedules.create(definition),
+        list: async (filter) => host().schedules.list(filter),
+      },
+      goals: { create: async (request) => host().goals.create(request) },
+    },
+    bind: (given) => {
+      bound = given;
     },
   };
 }

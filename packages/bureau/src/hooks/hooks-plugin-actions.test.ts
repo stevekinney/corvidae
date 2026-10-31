@@ -336,7 +336,8 @@ describe('a contributed hook action', () => {
     await stopping.fire();
     const same = fixture({ kv: kvSame, registrations: at('1.0.0', () => Promise.resolve()) });
     await same.resume();
-    expect((await onlyDelivery(same.hooks, sameHook.id)).status).toBe('delivered');
+    const resumed = await onlyDelivery(same.hooks, sameHook.id);
+    expect(resumed.status).toBe('delivered');
   });
 
   it('is retried when it rejects, and exhausted after the last attempt', async () => {
