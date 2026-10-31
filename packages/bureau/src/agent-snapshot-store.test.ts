@@ -496,6 +496,30 @@ describe('a stored snapshot whose definition is not valid', () => {
   });
 });
 
+describe('a snapshot written when `guardrails` named a preset', () => {
+  it.each(['tripwire', 'default', 'off'])(
+    'loads with no guardrails when it holds %s, so the run resumes under the default preset',
+    async (preset) => {
+      const { backing, store } = setup();
+      await backing.set(
+        `${AGENT_SNAPSHOT_KEY_PREFIX}helper:aa`,
+        JSON.stringify({
+          schemaVersion: 1,
+          id: 'helper',
+          hash: 'aa',
+          firstRunAt: '2026-10-01T00:00:00.000Z',
+          lastRunAt: '2026-10-01T00:00:00.000Z',
+          definition: { ...definition('Hi.\n'), guardrails: preset },
+        }),
+      );
+      const loaded = await store.load('helper', 'aa');
+      expect(loaded?.definition).toEqual(definition('Hi.\n'));
+      const revisions = await store.revisions('helper');
+      expect(revisions.map((revision) => revision.hash)).toEqual(['aa']);
+    },
+  );
+});
+
 describe('referencedRevisions', () => {
   it('lists the revisions of one agent that any retained run references, settled or not', async () => {
     const { store } = setup();

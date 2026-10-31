@@ -157,7 +157,7 @@ describe('a stored definition', () => {
     expect(definition.hooks).toBeUndefined();
   });
 
-  it('keeps the ids it has, and refuses a preset name', () => {
+  it('keeps the ids it has', () => {
     expect(
       agentFileDefinitionSchema.parse({
         ...OLD_SNAPSHOT,
@@ -165,8 +165,20 @@ describe('a stored definition', () => {
         hooks: ['x:audit'],
       }),
     ).toMatchObject({ guardrails: ['x:check'], hooks: ['x:audit'] });
+  });
+
+  it.each(['tripwire', 'default', 'off'])(
+    'reads the old preset name %s as no guardrails, so a stored run still resumes',
+    (preset) => {
+      const parsed = agentFileDefinitionSchema.safeParse({ ...OLD_SNAPSHOT, guardrails: preset });
+      expect(parsed.success).toBe(true);
+      expect(parsed.data?.guardrails).toBeUndefined();
+    },
+  );
+
+  it('still refuses a guardrails value that is neither ids nor an old preset name', () => {
     expect(
-      agentFileDefinitionSchema.safeParse({ ...OLD_SNAPSHOT, guardrails: 'tripwire' }).success,
+      agentFileDefinitionSchema.safeParse({ ...OLD_SNAPSHOT, guardrails: 'strict' }).success,
     ).toBe(false);
   });
 });

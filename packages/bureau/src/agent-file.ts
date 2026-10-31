@@ -454,8 +454,18 @@ export const agentFileDefinitionSchema = z.object({
    * existed, and from a file that has none.
    */
   references: agentReferencesSchema.optional(),
-  /** Absent from a snapshot written before the field existed, and from a file that has none. */
-  guardrails: agentContributionIdsSchema.optional(),
+  /**
+   * Absent from a snapshot written before the field existed, and from a file that has none. A
+   * snapshot or saved version written when `guardrails` named a preset (`tripwire`, `default` or
+   * `off`) reads as absent: the run resumes under Operative's always-on default preset, which is
+   * equal to or stricter than what it had. The front matter still refuses the old string.
+   */
+  guardrails: z
+    .union([
+      agentContributionIdsSchema,
+      z.enum(['tripwire', 'default', 'off']).transform((): undefined => undefined),
+    ])
+    .optional(),
   /** Absent from a snapshot written before the field existed, and from a file that has none. */
   hooks: agentContributionIdsSchema.optional(),
   /** Absent from a snapshot written before the field existed, and from a file that has none. */
