@@ -60,6 +60,19 @@ export const NEW_CHAT_KEY = 'c';
 /** Where the new-chat shortcut goes. */
 export const NEW_CHAT_PATH = '/chats/new';
 
+/**
+ * The pages under Health that have a shortcut of their own, though the sidebar lists only Health:
+ * `g` then `t` for Storage and `g` then `u` for the audit log.
+ */
+export const HEALTH_SHORTCUTS: readonly {
+  readonly view: ViewName;
+  readonly path: string;
+  readonly letter: string;
+}[] = [
+  { view: 'storage', path: '/health/storage', letter: 't' },
+  { view: 'audit', path: '/health/audit', letter: 'u' },
+];
+
 /** What the shell's shortcuts do when they run. */
 export interface ShellShortcutActions {
   /** Opens a path. */
@@ -99,6 +112,15 @@ export function registerShellShortcuts(
         group: SHORTCUT_COPY.navigationGroup,
         scope: 'global',
         handler: () => actions.navigate(destination.path),
+      }),
+    ),
+    ...HEALTH_SHORTCUTS.map((page) =>
+      registry.register({
+        keys: ['g', page.letter],
+        label: SHORTCUT_COPY.goTo(VIEW_COPY[page.view].label),
+        group: SHORTCUT_COPY.navigationGroup,
+        scope: 'global',
+        handler: () => actions.navigate(page.path),
       }),
     ),
     // ListDetail handles its own keys while focus is in its list, on whichever page uses it.

@@ -1,15 +1,15 @@
 /**
- * TanStack Query key for the Storage surface's one genuinely cacheable read
- * (`weft.storage.capabilities` — parameterless, safe to cache for the
- * session). `src/lib/query.ts`'s frozen `queryKeys` object has no
- * storage entries by design (storage wasn't in the plan §4 list of domains
- * it documents); Get/Scan/Put/Delete/Batch are one-shot user-triggered
- * actions modeled as `createMutation` calls instead (see `get-panel.svelte`'s
- * doc comment for why `createQuery` doesn't fit those), so they need no
- * query key at all.
+ * TanStack Query keys for the Storage page's reads: what the backend can do
+ * (`weft.storage.capabilities`, parameterless and safe to cache for the session), the groups of keys
+ * (`prefix-discovery.ts`), and the pages of the key table. A save or a delete invalidates `keys` and
+ * `prefixes`, so the table and the Group select follow what is stored.
  */
 export const storageQueryKeys = {
   capabilities: () => ['storage', 'capabilities'] as const,
-  /** The non-reserved prefixes in storage, which the Scan panel offers (`prefix-discovery.ts`). */
+  /** The groups in storage, which the Group select offers (`prefix-discovery.ts`). */
   prefixes: () => ['storage', 'prefixes'] as const,
+  /** Every page of the key table, to invalidate after a write. */
+  allKeys: () => ['storage', 'keys'] as const,
+  /** The pages of the key table for one group and one search. */
+  keys: (group: string, search: string) => ['storage', 'keys', group, search] as const,
 };

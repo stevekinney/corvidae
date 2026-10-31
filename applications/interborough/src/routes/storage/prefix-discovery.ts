@@ -1,15 +1,16 @@
 /**
- * The prefixes the Scan panel offers (COR-1658): the first segment of every key in storage that is
- * not under a Weft-reserved prefix, such as `agent-session:` or `bureau-goal:`. The engine and its
- * host keep their own keys here, and a person who scans without knowing what is stored has to guess
- * a prefix. Reserved keys are left out: they are the engine's, and a scan that wants one can type it.
+ * The groups the explorer's Group select offers: the first segment of every key in storage, such as
+ * `agent-session:` or `bureau-goal:`, with each Weft-reserved prefix as one group. The engine and its
+ * host keep their own keys here, and a person who looks without knowing what is stored has to guess
+ * a prefix. A group is a place to look, so a managed one is listed too; whether its keys can be
+ * changed is the key's to say (`reserved-prefix.ts`).
  *
  * Storage is ordered, so the prefixes are found by skipping rather than by reading every key: read
  * one key, name its group, jump past the whole group, and read the next. The cost is one request per
  * group of keys, not per key, and `MAXIMUM_STEPS` bounds it for a store with more groups than that.
  * The walk takes an `AbortSignal`, so a view that unmounts stops it between reads.
  */
-import { matchedReservedPrefix } from './reserved-prefix.ts';
+import { WEFT_RESERVED_KEY_PREFIXES } from './reserved-prefix.ts';
 import { storageScan, type StorageConnection, type StorageScanOptions } from './storage-client.ts';
 
 /** The most requests one discovery makes, so a store of many groups costs a bounded number of reads. */
@@ -22,15 +23,18 @@ function endOfGroup(prefix: string): string {
   return `${prefix.slice(0, -1)}${String.fromCodePoint(last.codePointAt(0)! + 1)}`;
 }
 
-/** The group a key belongs to: its reserved prefix, else everything up to and including its first `:`. Keys with no `:` stand alone. */
-function groupOf(key: string): { readonly prefix: string; readonly reserved: boolean } | undefined {
-  const reserved = matchedReservedPrefix(key);
-  if (reserved !== undefined) return { prefix: reserved, reserved: true };
+/**
+ * The group a key belongs to: its Weft-reserved prefix, else everything up to and including its
+ * first `:`. A key with no `:` and no reserved prefix stands alone, in no group.
+ */
+export function keyGroup(key: string): string | undefined {
+  const reserved = WEFT_RESERVED_KEY_PREFIXES.find((prefix) => key.startsWith(prefix));
+  if (reserved !== undefined) return reserved;
   const colon = key.indexOf(':');
-  return colon === -1 ? undefined : { prefix: key.slice(0, colon + 1), reserved: false };
+  return colon === -1 ? undefined : key.slice(0, colon + 1);
 }
 
-/** The non-reserved prefixes in storage, in key order. */
+/** The groups in storage, in key order. */
 export async function discoverPrefixes(
   connection: StorageConnection,
   options: { readonly maximumSteps?: number; readonly signal?: AbortSignal } = {},
@@ -44,14 +48,14 @@ export async function discoverPrefixes(
     const page = await storageScan(connection, { limit: 1, ...after }, options.signal);
     const key = page.entries[0]?.key;
     if (key === undefined) break;
-    const group = groupOf(key);
+    const group = keyGroup(key);
     if (group === undefined) {
       // A key with no prefix stands alone: the next key is the one just after it.
       after = { gt: key };
       continue;
     }
-    if (!group.reserved) found.push(group.prefix);
-    after = { gte: endOfGroup(group.prefix) };
+    found.push(group);
+    after = { gte: endOfGroup(group) };
   }
   return found;
 }

@@ -13,7 +13,7 @@ import { expect, test } from './fixtures.ts';
 
 const WIDTHS = [375, 1280] as const;
 
-const records = (page: Page) => page.locator('[data-record]');
+const records = (page: Page) => page.locator('button[data-record]');
 
 const typeSelect = (page: Page) => page.getByLabel(AUDIT_COPY.typeLabel, { exact: true });
 const resourceKind = (page: Page) => page.getByLabel(AUDIT_COPY.resourceLabel, { exact: true });
@@ -29,7 +29,7 @@ for (const width of WIDTHS) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/health/audit');
     await expect(page.locator('[data-view="audit"]')).toHaveAttribute('data-state', 'ready');
-    await expect(page.getByRole('list', { name: AUDIT_COPY.caption })).toBeVisible();
+    await expect(page.getByRole('region', { name: AUDIT_COPY.caption })).toBeVisible();
     await expect(records(page).first()).toBeVisible();
     await checkA11y(`audit — the trail at ${width}px`);
 
@@ -46,7 +46,7 @@ for (const width of WIDTHS) {
 
     // The resource of the first record found: one schedule, and nothing else. The picker takes its
     // kind and its id, and builds `schedule:<id>` itself.
-    const resourceText = await records(page).first().locator('.weft-audit__resource').innerText();
+    const resourceText = await records(page).first().locator('.ib-audit__resource').innerText();
     const resource = resourceText.trim();
     expect(resource).toMatch(/^schedule:/);
     await resourceKind(page).selectOption('schedule');

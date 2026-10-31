@@ -78,13 +78,10 @@ export const LINUX_BASELINE_COVERAGE_TEST_ORDER = [
   'src/routes/system/registry-view.test.ts',
   'src/routes/system/codegen-preview.test.ts',
   'src/routes/system/discovery-client.test.ts',
-  'src/routes/storage/reserved-prefix-callout.test.ts',
-  'src/routes/storage/put-panel.test.ts',
   'src/routes/storage/capabilities-panel.test.ts',
   'src/routes/storage/storage-client.integration.test.ts',
   'src/routes/storage/reserved-prefix.test.ts',
   'src/routes/storage/value-preview.test.ts',
-  'src/routes/storage/get-panel.test.ts',
   'src/routes/storage/index.test.ts',
   'src/routes/storage/storage-client.test.ts',
   'src/routes/reviews/query-fault-banner.test.ts',
@@ -153,10 +150,6 @@ export const LINUX_BASELINE_COVERAGE_TEST_ORDER = [
   // WFC-10 (PR #14): frozen in the exact lexical order they ran in when the
   // recorded Linux baseline was measured — see the matching comment at the
   // end of DARWIN_BASELINE_COVERAGE_TEST_ORDER below for why this matters.
-  'src/routes/storage/batch-panel.test.ts',
-  'src/routes/storage/delete-panel.test.ts',
-  'src/routes/storage/kv-browser.test.ts',
-  'src/routes/storage/scan-panel.test.ts',
   'src/routes/storage/storage-value-display.test.ts',
   'src/routes/workers/diagnostics-view.test.ts',
   'src/routes/workers/index-actions.test.ts',
