@@ -94,6 +94,8 @@ export const bureauReviewSchema = z.discriminatedUnion('kind', [
     sessionId: z.string().optional(),
     signalName: z.string(),
     prompt: z.string().optional(),
+    /** The JSON Schema the answer must satisfy; it says which control draws the question. */
+    inputSchema: z.record(z.string(), z.unknown()).optional(),
   }),
 ]);
 

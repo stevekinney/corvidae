@@ -344,22 +344,53 @@ describe('the Details rail of a run the engine holds', () => {
 });
 
 describe('a run the Bureau describes', () => {
-  test('is not looked up in the workflow engine, which would answer a run it does not hold with a logged 404', async () => {
+  function describeTask(id: string): void {
     fetchScript.restore();
     fetchScript = new ScriptedFetch();
     fetchScript.routeSseStream('/v1/events/sse');
-    fetchScript.routeJsonRpcMethod(
-      'bureau.tasks.get',
-      taskFixture({ id: 'task-1', agentName: 'echo' }),
-    );
+    fetchScript.routeJsonRpcMethod('bureau.tasks.get', taskFixture({ id, agentName: 'echo' }));
     fetchScript.routeJsonRpcMethod('bureau.contexts.get', contextDetailFixture('session-1'));
     fetchScript.routeJsonRpcMethod('bureau.goals.list', { goals: [], nextOffset: null });
+  }
+
+  test('shows the engine sections too when the engine holds it, with one Cancel', async () => {
+    describeTask('task-1');
+    routeRun('task-1');
 
     const view = mount('task-1');
 
     expect(await view.findByRole('heading', { level: 1, name: 'echo' })).not.toBeNull();
-    expect(fetchScript.calls.some((call) => call.url.includes('/workflows/task-1'))).toBe(false);
+    expect(
+      await view.findByRole('heading', { level: 2, name: 'Change or ask this run' }),
+    ).not.toBeNull();
+    expect(fetchScript.calls.some((call) => call.url.includes('/workflows/task-1'))).toBe(true);
+    // The task's own Cancel run stands; the engine's cancel is not offered a second time.
+    expect(view.getAllByRole('button', { name: 'Cancel run' })).toHaveLength(1);
+    await fireEvent.click(await view.findByRole('button', { name: 'More actions' }));
+    expect(view.queryByRole('menuitem', { name: 'Cancel' })).toBeNull();
+    expect(await view.findByRole('menuitem', { name: 'Suspend' })).not.toBeNull();
+  });
+
+  test('has no engine sections when the engine does not hold it', async () => {
+    describeTask('task-2');
+    fetchScript.routeUrlStatus('/workflows/task-2', 404);
+
+    const view = mount('task-2');
+
+    expect(await view.findByRole('heading', { level: 1, name: 'echo' })).not.toBeNull();
+    await waitFor(() =>
+      expect(fetchScript.calls.some((call) => call.url.includes('/workflows/task-2'))).toBe(true),
+    );
     expect(view.queryByRole('heading', { level: 2, name: 'Change or ask this run' })).toBeNull();
+  });
+
+  test('is not looked up in the workflow engine for a caller without workflows:read', async () => {
+    describeTask('task-3');
+
+    const view = mount('task-3', principalWith());
+
+    expect(await view.findByRole('heading', { level: 1, name: 'echo' })).not.toBeNull();
+    expect(fetchScript.calls.some((call) => call.url.includes('/workflows/task-3'))).toBe(false);
   });
 });
 

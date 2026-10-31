@@ -201,6 +201,99 @@ describe('what a run is waiting on', () => {
     expect(view.container.querySelector('[data-question-answer]')?.textContent).toBe('staging');
   });
 
+  test('an answered question keeps its row after the task stops listing the wait', async () => {
+    const reviewId = 'human-wait:run-1:environment:0';
+    const task = waitingOn('human-wait', reviewId);
+    const view = open(task, { reviews: [humanWaitFixture({ id: reviewId, runId: 'run-1' })] });
+    stub?.on('bureau.tasks.respond', (params) => {
+      // The next read of the task no longer lists the wait.
+      stub?.on('bureau.tasks.get', () => ({ ...task, openWaits: [], status: 'working' }));
+      return {
+        taskId: 'run-1',
+        messageId: params['messageId'],
+        reviewId,
+        kind: 'human-wait',
+        decision: 'approve',
+        receipt: 'applied',
+      };
+    });
+
+    await view.findByText('Which environment should the release go to?');
+    await fireEvent.input(view.getByLabelText('Your answer'), { target: { value: 'staging' } });
+    await fireEvent.click(view.getByRole('button', { name: /^Send$/ }));
+
+    await waitFor(() => expect(stub?.callsTo('bureau.tasks.get').length).toBeGreaterThan(1));
+    await waitFor(() =>
+      expect(view.container.querySelector('[data-section="waiting"]')).not.toBeNull(),
+    );
+    expect(view.container.querySelector('[data-question-answer]')?.textContent).toBe('staging');
+  });
+
+  test('a secret question is a masked field, and what was answered is never shown', async () => {
+    const reviewId = 'human-wait:run-1:environment:0';
+    const view = open(waitingOn('human-wait', reviewId), {
+      reviews: [
+        humanWaitFixture({
+          id: reviewId,
+          runId: 'run-1',
+          inputSchema: { type: 'string', writeOnly: true, 'x-secret': true },
+        }),
+      ],
+    });
+    stub?.on('bureau.tasks.respond', (params) => ({
+      taskId: 'run-1',
+      messageId: params['messageId'],
+      reviewId,
+      kind: 'human-wait',
+      decision: 'approve',
+      receipt: 'applied',
+    }));
+
+    await view.findByText('Which environment should the release go to?');
+    const field = view.getByLabelText('Your answer');
+    expect(field.getAttribute('type')).toBe('password');
+    await fireEvent.input(field, { target: { value: 'hunter2' } });
+    await fireEvent.click(view.getByRole('button', { name: /^Send$/ }));
+
+    await waitFor(() => expect(stub?.callsTo('bureau.tasks.respond')).toHaveLength(1));
+    expect(await view.findByText('You answered')).not.toBeNull();
+    expect(view.container.querySelector('[data-question-answer]')?.textContent).toBe(
+      'a secret (not shown)',
+    );
+    expect(view.container.textContent).not.toContain('hunter2');
+  });
+
+  test('an answer the Bureau refuses for its content is told on the field, not as a failure', async () => {
+    const reviewId = 'human-wait:run-1:environment:0';
+    const view = open(waitingOn('human-wait', reviewId), {
+      reviews: [
+        humanWaitFixture({
+          id: reviewId,
+          runId: 'run-1',
+          inputSchema: { type: 'string', pattern: '^[a-z]+$' },
+        }),
+      ],
+    });
+    stub?.on('bureau.tasks.respond', () => {
+      throw new StubFault('InvalidParams', 400, 'The answer is not valid.', {
+        issues: [
+          {
+            path: ['answer'],
+            message: 'The answer must match the pattern ^[a-z]+$',
+            code: 'pattern',
+          },
+        ],
+      });
+    });
+
+    await view.findByText('Which environment should the release go to?');
+    await fireEvent.input(view.getByLabelText('Your answer'), { target: { value: 'Staging 1' } });
+    await fireEvent.click(view.getByRole('button', { name: /^Send$/ }));
+
+    expect(await view.findByText(/must match the pattern/)).not.toBeNull();
+    expect(view.container.querySelector('[data-question-answer]')).toBeNull();
+  });
+
   test('an answer the Bureau refuses is told next to the field', async () => {
     const view = open(waitingOn('human-wait', 'human-wait:run-1:environment:0'), {
       reviews: [humanWaitFixture({ id: 'human-wait:run-1:environment:0', runId: 'run-1' })],

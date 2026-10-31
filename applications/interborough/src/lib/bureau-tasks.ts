@@ -237,6 +237,39 @@ export async function respondToTask(
   return respondAnswerSchema.parse(await callBureau('bureau.tasks.respond', input, options));
 }
 
+/**
+ * Why the Bureau refused an answer to a wait (`bureau.tasks.respond`) for reasons the person can
+ * fix: the `data.issues` of the `InvalidParams` fault, with each path rooted at the answer (the
+ * wire roots it at the request's `answer` field, which is dropped here). `undefined` for any other
+ * failure.
+ */
+export function answerRefusalIssues(
+  error: unknown,
+):
+  readonly { readonly path: readonly (string | number)[]; readonly message: string }[] | undefined {
+  if (!(error instanceof HttpClientError) || wireCodeOf(error) !== 'InvalidParams') {
+    return undefined;
+  }
+  const raw = error.data?.['issues'];
+  if (!Array.isArray(raw)) return undefined;
+  const found: { path: (string | number)[]; message: string }[] = [];
+  for (const issue of raw as unknown[]) {
+    if (typeof issue !== 'object' || issue === null) continue;
+    const { path, message } = issue as { path?: unknown; message?: unknown };
+    if (typeof message !== 'string' || !Array.isArray(path) || path[0] !== 'answer') continue;
+    found.push({
+      path: (path as unknown[])
+        .slice(1)
+        .filter(
+          (segment): segment is string | number =>
+            typeof segment === 'string' || typeof segment === 'number',
+        ),
+      message,
+    });
+  }
+  return found.length > 0 ? found : undefined;
+}
+
 /** The answer of a finished task, as one artifact. */
 export const taskArtifactSchema = z.object({
   artifactId: z.string(),

@@ -187,13 +187,13 @@
     return undefined;
   });
 
-  // The workflow engine is asked only for a run the Bureau does not describe: a task, or a goal's
-  // attempt, has all the page needs from the Bureau, and the engine would answer a run it does not
-  // hold with a 404 that the browser logs as an error. A caller who may not read the engine
-  // is never asked.
+  // The workflow engine is asked for every run a caller who may read it opens. On the default host
+  // a task is an engine run too, and so is a goal's attempt, and the timeline, events, checkpoints,
+  // logs and actions are the engine's; the engine answering that it does not hold the run only
+  // means the page shows no engine sections. A caller who may not read the engine is never asked.
   const engine = new RunEngine(
     () => initialRunId,
-    () => engineAllowed && notFound && goals.isSuccess && attempt === undefined,
+    () => engineAllowed,
   );
   const workflow = $derived(engine.workflow ?? undefined);
 
@@ -317,7 +317,7 @@
     task.data !== undefined
       ? undefined
       : attempt !== undefined
-        ? engineAllowed
+        ? engineAllowed && workflow !== undefined
           ? TASK_COPY.goalAttemptNote
           : TASK_COPY.goalAttemptNoteBureauOnly
         : notFound && engineAllowed && workflow !== undefined

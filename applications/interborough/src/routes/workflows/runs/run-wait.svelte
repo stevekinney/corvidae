@@ -6,11 +6,18 @@
    * so the question, the tool, and its arguments are read from `bureau.reviews.get`.
    *
    * A question is the chat package's own (`ChatQuestion`), drawn for a text answer with the field
-   * in place (`answerInComposer` off: the page has no composer). Once it is answered it reads
-   * "You answered ...", masked the way the chat masks it (`recordAnswer`), for as long as the page
-   * is open, since the review it answered is no longer open to read it back from.
+   * in place (`answerInComposer` off: the page has no composer), drawn from the review's own
+   * `inputSchema`, so a secret question is a masked field. Once it is answered it reads
+   * "You answered ...", masked the way the chat masks it (`recordAnswer`, on that same schema, so a
+   * secret is never shown), for as long as the page is open: the page that lists the waits keeps the
+   * row (`onAnswered`) after the next read of the task no longer lists the wait.
    */
-  import { ChatQuestion, recordAnswer, type QuestionAnswerRecord } from '@lostgradient/chat';
+  import {
+    ChatQuestion,
+    recordAnswer,
+    type ChatQuestionIssue,
+    type QuestionAnswerRecord,
+  } from '@lostgradient/chat';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { REVIEWS_COPY, TASK_COPY } from '../../../app/copy.ts';
@@ -19,7 +26,11 @@
     isReviewRoundChanged,
     resolveBureauReview,
   } from '../../../lib/bureau-reviews.ts';
-  import { respondToTask, type TaskOpenWait } from '../../../lib/bureau-tasks.ts';
+  import {
+    answerRefusalIssues,
+    respondToTask,
+    type TaskOpenWait,
+  } from '../../../lib/bureau-tasks.ts';
   import ApprovalDecision from '../../../lib/decision/approval-decision.svelte';
   import { classifyFault, faultTreatment } from '../../../lib/faults.ts';
   import IdentifierText from '../../../lib/identifier-text.svelte';
@@ -31,9 +42,11 @@
   interface RunWaitProps {
     taskId: string;
     wait: TaskOpenWait;
+    /** Called once the question is answered, so the page can keep its row after the wait closes. */
+    onAnswered?: (() => void) | undefined;
   }
 
-  let { taskId, wait }: RunWaitProps = $props();
+  let { taskId, wait, onAnswered }: RunWaitProps = $props();
 
   const queryClient = useQueryClient();
 
@@ -56,17 +69,26 @@
   let working = $state(false);
   let failure = $state<string | undefined>(undefined);
   let answered = $state.raw<QuestionAnswerRecord | undefined>(undefined);
+  let issues = $state.raw<readonly ChatQuestionIssue[]>([]);
 
-  /** An answer is free text: the Bureau's `bureau.tasks.respond` takes a string. */
-  const ANSWER_SCHEMA = { type: 'string', title: REVIEWS_COPY.answerLabel } as const;
+  /** What a question that declares no schema takes: free text, which `bureau.tasks.respond` sends. */
+  const FREE_TEXT_SCHEMA = { type: 'string', title: REVIEWS_COPY.answerLabel } as const;
+  /** The schema the question is drawn and its answer recorded on: the review's own, when it has one. */
+  const schema = $derived<Readonly<Record<string, unknown>>>(
+    review.data?.kind === 'human-wait' && review.data.inputSchema !== undefined
+      ? review.data.inputSchema
+      : FREE_TEXT_SCHEMA,
+  );
 
   async function answer(text: string): Promise<void> {
     if (wait.kind !== 'human-wait' || text === '') return;
     // What was asked is read once, before the first await: the props are the page's and move on.
     const { reviewId, signalName } = wait;
     const prompt = review.data?.kind === 'human-wait' ? review.data.prompt : undefined;
+    const answeredSchema = schema;
     working = true;
     failure = undefined;
+    issues = [];
     try {
       await respondToTask({
         taskId,
@@ -79,12 +101,16 @@
         toolCallId: reviewId,
         toolName: 'agent',
         message: prompt,
-        schema: ANSWER_SCHEMA,
+        schema: answeredSchema,
         value: text,
       });
+      onAnswered?.();
       await invalidateReviewQueries(queryClient);
     } catch (error) {
-      failure = faultTreatment(error).message;
+      // A refusal that names fields is shown on them; any other failure is the message below.
+      const refusal = answerRefusalIssues(error);
+      if (refusal === undefined) failure = faultTreatment(error).message;
+      else issues = refusal;
     } finally {
       working = false;
     }
@@ -122,7 +148,7 @@
   {:else if answered !== undefined}
     <ChatQuestion
       id={`run-wait-${wait.reviewId}`}
-      schema={ANSWER_SCHEMA}
+      schema={answered.schema}
       answer={answered}
       onSubmit={() => {}}
     />
@@ -137,9 +163,10 @@
     <ChatQuestion
       {...{ 'data-changes': true }}
       id={`run-wait-${wait.reviewId}`}
-      schema={ANSWER_SCHEMA}
+      {schema}
       answerInComposer={false}
       busy={working}
+      {issues}
       failed={failure !== undefined}
       onSubmit={(value) => void answer(String(value).trim())}
     />

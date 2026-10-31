@@ -16,7 +16,7 @@ import {
 } from '../../fixtures/engine-console-ids.ts';
 import { newThreadId, runToEnd } from './chat-support.ts';
 import { expect, test } from './fixtures.ts';
-import { taskOfSession } from './task-support.ts';
+import { expectEngineMissesForTasks, taskOfSession } from './task-support.ts';
 
 const WIDTHS = [375, 768, 1280] as const;
 
@@ -118,7 +118,11 @@ test('a signal, an update and a query are sent from the section on the page, wit
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 
-test('a waiting question leads the page and is answered where it is asked', async ({ page }) => {
+test('a waiting question leads the page and is answered where it is asked', async ({
+  page,
+  pageErrors,
+}) => {
+  expectEngineMissesForTasks(pageErrors);
   const threadId = newThreadId('run-page-question');
   await runToEnd(page.request, 'request-human-input', threadId, 'Release it');
   const task = await taskOfSession(page.request, threadId);
