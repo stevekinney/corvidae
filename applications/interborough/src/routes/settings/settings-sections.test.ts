@@ -46,6 +46,7 @@ describe('the section navigation', () => {
       'General',
       'Models',
       'Model policy',
+      'Plugins',
       'Data and retention',
       'API reference',
     ]);
@@ -56,6 +57,7 @@ describe('the section navigation', () => {
       '/settings',
       '/settings/models',
       '/settings/model-policy',
+      '/settings/plugins',
       '/settings/data-and-retention',
       '/settings/api-reference',
     ]);
