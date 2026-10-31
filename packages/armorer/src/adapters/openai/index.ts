@@ -6,6 +6,7 @@ import { isAsyncIterable } from '../../type-guards';
 import type { ToolCallInput, ToolResultLike } from '../../types';
 import { importToolSchema } from '../imported-schema';
 import {
+  assertDistinctNamespacedToolNames,
   createProviderToolNameMapper,
   toNamespacedToolName,
   toProviderToolName,
@@ -116,6 +117,7 @@ export function toOpenAITools(
   options?: OpenAIAdapterOptions,
 ): OpenAITool | OpenAITool[] {
   const definitions = normalizeToSerializedDefinitions(input);
+  if (options?.naming !== 'safe-id') assertDistinctNamespacedToolNames(definitions);
   const converted = definitions.map((def) => convertToOpenAI(def, options));
 
   return isSingleInput(input) ? converted[0]! : converted;

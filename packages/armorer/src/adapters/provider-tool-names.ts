@@ -1,6 +1,6 @@
 import { sha256HexSync } from '@lostgradient/cryptography';
 
-import type { ToolIdentity } from '../core/identity';
+import { parseToolId, type ToolIdentity } from '../core/identity';
 import { type AdapterInput, normalizeToSerializedDefinitions } from './shared';
 
 /**
@@ -45,6 +45,47 @@ export function toNamespacedToolName(identity: Pick<ToolIdentity, 'namespace' | 
   return identity.namespace === DEFAULT_NAMESPACE
     ? identity.name
     : `${identity.namespace}${NAMESPACED_TOOL_NAME_SEPARATOR}${identity.name}`;
+}
+
+/**
+ * Throws when two of `tools` would reach a provider under one {@link toNamespacedToolName} name
+ * (COR-1879): a default-namespace tool named `a__search` and namespace `a`'s `search` are both
+ * `a__search`, and a call to that name would run whichever the toolbox resolves first. Versions of
+ * one tool share their name by design and never clash.
+ */
+export function assertDistinctNamespacedToolNames(
+  tools: Iterable<{ readonly id: string; readonly identity: ToolIdentity }>,
+): void {
+  const byName = new Map<string, { readonly id: string; readonly identity: ToolIdentity }>();
+  for (const tool of tools) {
+    const name = toNamespacedToolName(tool.identity);
+    const existing = byName.get(name);
+    if (
+      existing !== undefined &&
+      (existing.identity.namespace !== tool.identity.namespace ||
+        existing.identity.name !== tool.identity.name)
+    ) {
+      throw new Error(
+        `Tools "${existing.id}" and "${tool.id}" both reach a provider as "${name}"; rename one, or export with naming 'safe-id'.`,
+      );
+    }
+    byName.set(name, tool);
+  }
+}
+
+/**
+ * The {@link toNamespacedToolName} name of the tool a result reports by `toolName`
+ * (`formatToolName`: `namespace:name` outside the default namespace), so a result answers under
+ * the name the provider called the tool by. A name with no `:` is a default-namespace tool's and
+ * comes back as it is.
+ */
+export function toNamespacedToolNameOf(toolName: string): string {
+  if (!toolName.includes(':')) return toolName;
+  try {
+    return toNamespacedToolName(parseToolId(toolName));
+  } catch {
+    return toolName;
+  }
 }
 
 /**

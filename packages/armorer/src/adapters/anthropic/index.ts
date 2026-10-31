@@ -4,7 +4,11 @@ import type { ImportedToolConfiguration } from '../../toolbox-type-inference';
 import { isAsyncIterable } from '../../type-guards';
 import type { ToolCallInput, ToolResultLike } from '../../types';
 import { importToolSchema } from '../imported-schema';
-import { toNamespacedToolName, toProviderToolName } from '../provider-tool-names';
+import {
+  assertDistinctNamespacedToolNames,
+  toNamespacedToolName,
+  toProviderToolName,
+} from '../provider-tool-names';
 import {
   type AdapterInput,
   isSingleInput,
@@ -82,6 +86,7 @@ export function toAnthropicTools(
   options?: AnthropicAdapterOptions,
 ): AnthropicTool | AnthropicTool[] {
   const definitions = normalizeToSerializedDefinitions(input);
+  if (options?.naming !== 'safe-id') assertDistinctNamespacedToolNames(definitions);
   const converted = definitions.map((definition) => convertToAnthropic(definition, options));
 
   return isSingleInput(input) ? converted[0]! : converted;

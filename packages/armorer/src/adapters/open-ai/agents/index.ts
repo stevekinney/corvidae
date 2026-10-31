@@ -1,6 +1,10 @@
 import type { Tool, ToolExecutionResult } from '../../../index';
 import { isTool } from '../../../is-tool';
-import { toNamespacedToolName, toProviderToolName } from '../../provider-tool-names';
+import {
+  assertDistinctNamespacedToolNames,
+  toNamespacedToolName,
+  toProviderToolName,
+} from '../../provider-tool-names';
 import { textOfToolResultParts, toolResultParts } from '../../tool-result-parts';
 
 type ToolboxLike = {
@@ -94,6 +98,11 @@ export async function toOpenAIAgentTools(
   const tools = await resolveAvailableTools(input);
   const { tool: sdkTool } = await loadOpenAIAgentsModule();
 
+  if (options.naming !== 'safe-id') {
+    assertDistinctNamespacedToolNames(
+      tools.filter((tool) => !options.toolConfiguration?.(tool)?.name),
+    );
+  }
   const toolNames: string[] = [];
   const mutatingToolNames: string[] = [];
   const dangerousToolNames: string[] = [];
