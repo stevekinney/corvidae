@@ -7,11 +7,13 @@
  *
  * The check reads two kinds of source.
  *
- * Copy: `src/app/copy.ts` and every `src/**\/*.svelte` that is not a test, a harness or under
- * `src/mcp-apps`. A string counts as visible when it is template text, a mustache, a text
- * attribute, or, in a script, a string that reads as prose (it has a space or starts with a capital
- * letter). A string compared with `===`, `in` or `case` is a key, not copy, and is skipped. The
- * copy rules are:
+ * Copy: every `src/**\/*.svelte` and `src/**\/*.ts` that is not a test, a harness, or under
+ * `src/host` or `src/mcp-apps`. A TypeScript module counts because the sentences a page shows live
+ * in them (`src/app/copy.ts`, a status table, a scope catalog). A string counts as visible when it
+ * is template text, a mustache, a text attribute, an argument to `{@render}`, a `{@const}`, or, in a
+ * script or module, a string that reads as prose (it has a space or starts with a capital letter).
+ * A string compared with `===`, `in` or `case` is a key, not copy, and is skipped. The copy rules
+ * are:
  *
  * - `product-word`: Engine and Bureau are internal names, not words a person using the product
  *   knows. A scope or package name such as `bureau.memory:write` is an identifier and passes.
@@ -23,11 +25,12 @@
  * - `large-size`: `size="lg"` is for a page's primary action, so every use is listed with a reason.
  * - `empty-state-title`: an `EmptyState` without a `title`.
  *
- * Styles: `src/styles/*.css`.
+ * Styles: every `.css` under `src` and every component `<style>`, including nested rules.
  *
  * - `app-header-class`: a class ending in `__header` or `-header` is a page or panel header built
  *   from app CSS where Cinder's `PageHeader` and `Card` belong.
- * - `cinder-selector`: a selector that names a `.cinder-` class reaches into Cinder's markup.
+ * - `cinder-selector`: a selector that names a `.cinder-` class, or the class list by prefix
+ *   (`[class*='cinder-']`), reaches into Cinder's markup.
  * - `uppercase-label`: a rule that sets `text-transform: uppercase` with letter spacing.
  *
  * A violation passes only through one of two lists in `tests/`, and each is enforced both ways: a
@@ -90,6 +93,12 @@ type AstNode = {
   operator?: unknown;
   attributes?: unknown;
   content?: unknown;
+  declaration?: unknown;
+  quasis?: unknown;
+  consequent?: unknown;
+  alternate?: unknown;
+  left?: unknown;
+  right?: unknown;
   [key: string]: unknown;
 };
 
@@ -99,7 +108,8 @@ const PACKAGE_ROOT = join(import.meta.dir, '..');
 export const ALLOWLIST_PATH = 'tests/interface-lint-allowlist.json';
 export const PENDING_PATH = 'tests/interface-lint-pending.json';
 
-const COPY_FILE = 'src/app/copy.ts';
+/** Source the copy rules do not read: the host runs on a server, and the MCP apps are other pages. */
+const SKIPPED_DIRECTORIES = ['src/host/', 'src/mcp-apps/'];
 const SKIPPED_FILE = /\.test[.-]|harness/;
 
 /** Attributes whose string is never words a person reads. */
@@ -187,6 +197,8 @@ const API_DOCUMENTATION_PATTERNS = [
 
 const HEADER_CLASS_PATTERN = /\.((?:[\w-]*)(?:__|-)header)(?![\w-])/g;
 const CINDER_CLASS_PATTERN = /\.(cinder-[\w-]+)/g;
+/** An attribute selector on the class list that names Cinder's prefix: `[class*='cinder-']`. */
+const CINDER_ATTRIBUTE_PATTERN = /\[\s*class\s*[~|^$*]?=\s*(["']?)cinder-[^\]"']*\1\s*[is]?\s*\]/g;
 
 /** The path of `file` from `root`, with forward slashes. */
 function relativePath(root: string, file: string): string {
@@ -205,18 +217,18 @@ function filesUnder(directory: string, accept: (path: string) => boolean): strin
   return found.toSorted();
 }
 
-/** The Svelte files whose words a person reads: not tests, harnesses or the MCP apps. */
+/**
+ * The source files whose words a person reads: every Svelte file and every TypeScript module under
+ * `src` that is not a test, a harness, the host or an MCP app. A module such as
+ * `src/lib/system-lease.ts` holds sentences the page renders, and `src/app/copy.ts` is one of them.
+ */
 export function copyFiles(root: string): string[] {
-  const source = join(root, 'src');
-  const svelte = filesUnder(
-    source,
-    (path) =>
-      path.endsWith('.svelte') &&
-      !SKIPPED_FILE.test(path) &&
-      !relativePath(root, path).startsWith('src/mcp-apps/'),
-  );
-  const copy = join(root, COPY_FILE);
-  return existsSync(copy) ? [copy, ...svelte] : svelte;
+  return filesUnder(join(root, 'src'), (path) => {
+    if (SKIPPED_FILE.test(path) || path.endsWith('.d.ts')) return false;
+    if (!path.endsWith('.svelte') && !path.endsWith('.ts')) return false;
+    const relativeToRoot = relativePath(root, path);
+    return !SKIPPED_DIRECTORIES.some((directory) => relativeToRoot.startsWith(directory));
+  });
 }
 
 /** The stylesheets of the app: `src/styles` and the stylesheets that sit beside a route. */
@@ -315,7 +327,12 @@ function collectTemplatePieces(fragment: unknown): Piece[] {
       return;
     }
     if (node.type === 'ExpressionTag' || node.type === 'RenderTag') {
-      if (node.type === 'ExpressionTag') pieces.push(...collectStrings(node.expression, 0, false));
+      // `{@render row('Engine down')}` hands its arguments to a snippet that shows them.
+      pieces.push(...collectStrings(node.expression, 0, false));
+      return;
+    }
+    if (node.type === 'ConstTag') {
+      pieces.push(...collectStrings(node.declaration, 0, false));
       return;
     }
     if (node.type === 'Attribute') {
@@ -550,15 +567,52 @@ function isLarge(value: unknown): boolean {
   return parts.some((part) => {
     if (!isNode(part)) return false;
     if (part.type === 'Text') return (part.data as string).trim() === 'lg';
-    const expression = part.expression as AstNode | undefined;
-    return expression?.type === 'Literal' && expression.value === 'lg';
+    return yieldsLarge(part.expression);
   });
+}
+
+/** Whether an expression can evaluate to `'lg'`: the literal, or a branch of a choice between values. */
+function yieldsLarge(expression: unknown): boolean {
+  if (!isNode(expression)) return false;
+  switch (expression.type) {
+    case 'Literal':
+      return expression.value === 'lg';
+    case 'TemplateLiteral': {
+      const quasis = expression.quasis as AstNode[] | undefined;
+      return (
+        quasis?.length === 1 &&
+        (quasis[0]?.value as { cooked?: string } | undefined)?.cooked === 'lg'
+      );
+    }
+    case 'ConditionalExpression':
+      return yieldsLarge(expression.consequent) || yieldsLarge(expression.alternate);
+    case 'LogicalExpression':
+      return yieldsLarge(expression.left) || yieldsLarge(expression.right);
+    case 'TSAsExpression':
+    case 'TSSatisfiesExpression':
+    case 'TSNonNullExpression':
+      return yieldsLarge(expression.expression);
+    default:
+      return false;
+  }
 }
 
 /** One style rule: its selector text, its declarations and where it starts. */
 type StyleRule = { readonly selector: string; readonly body: string; readonly offset: number };
 
 const SKIPPED_AT_RULES = /^@(?:keyframes|font-face|-webkit-keyframes|property|counter-style)/;
+
+/** A rule body without the blocks nested in it, so its declarations are its own. */
+function withoutNestedBlocks(body: string): string {
+  let depth = 0;
+  let own = '';
+  for (const character of body) {
+    if (character === '{') depth += 1;
+    else if (character === '}') depth -= 1;
+    else if (depth === 0) own += character;
+  }
+  return own;
+}
 
 /** The style rules of a stylesheet, descending through `@media` and the other grouping rules. */
 function styleRules(css: string): StyleRule[] {
@@ -588,11 +642,10 @@ function styleRules(css: string): StyleRule[] {
       } else {
         const leading =
           stripped.slice(cursor, open).length - stripped.slice(cursor, open).trimStart().length;
-        rules.push({
-          selector,
-          body: stripped.slice(open + 1, close - 1),
-          offset: cursor + leading,
-        });
+        const body = stripped.slice(open + 1, close - 1);
+        rules.push({ selector, body: withoutNestedBlocks(body), offset: cursor + leading });
+        // A rule can nest rules (`.a { .b { } }`, `& .b`) and at-rules, which are rules too.
+        if (body.includes('{')) walk(open + 1, close - 1);
       }
       cursor = close;
     }
@@ -636,6 +689,9 @@ function cssViolations(
     }
     for (const match of rule.selector.matchAll(CINDER_CLASS_PATTERN)) {
       add('cinder-selector', `.${match[1]!}`, rule.offset);
+    }
+    for (const match of rule.selector.matchAll(CINDER_ATTRIBUTE_PATTERN)) {
+      add('cinder-selector', match[0].replace(/\s+/g, ''), rule.offset);
     }
     if (hasUppercaseLabel(rule.body)) {
       add('uppercase-label', rule.selector.replace(/\s+/g, ' '), rule.offset);

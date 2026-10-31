@@ -44,7 +44,7 @@ describe('ReviewStep', () => {
       props: { ...BASE_PROPS, submitState: { status: 'idle' } },
     });
 
-    expect(getByText('Worker binding at start')).not.toBeNull();
+    expect(getByText('Worker version at start')).not.toBeNull();
   });
 
   test('disables the submit button while pending', async () => {

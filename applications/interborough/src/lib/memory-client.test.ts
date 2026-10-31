@@ -62,7 +62,7 @@ describe('memoryFaultOf', () => {
     });
     expect(memoryFaultOf('nothing')).toEqual({
       kind: 'other',
-      message: 'The Bureau did not answer.',
+      message: 'The server did not answer.',
     });
   });
 });

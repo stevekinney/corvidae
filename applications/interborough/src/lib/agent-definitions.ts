@@ -318,7 +318,7 @@ export function agentFaultOf(error: unknown): AgentFault {
   if (!(error instanceof HttpClientError)) {
     return {
       kind: 'other',
-      message: error instanceof Error ? error.message : 'The Bureau did not answer.',
+      message: error instanceof Error ? error.message : 'The server did not answer.',
     };
   }
   const data = error.data;

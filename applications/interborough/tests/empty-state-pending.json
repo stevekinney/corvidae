@@ -34,7 +34,7 @@
     },
     {
       "file": "src/routes/reviews/cards/dashboard-card.svelte",
-      "issue": "COR-1849"
+      "issue": "COR-1850"
     },
     {
       "file": "src/routes/reviews/reviews-inbox.svelte",
@@ -42,7 +42,7 @@
     },
     {
       "file": "src/routes/schedules/cards/dashboard-card.svelte",
-      "issue": "COR-1859"
+      "issue": "COR-1850"
     },
     {
       "file": "src/routes/schedules/schedule-detail.svelte",
@@ -90,7 +90,7 @@
     },
     {
       "file": "src/routes/workers/conformance-panel.svelte",
-      "issue": "COR-1850"
+      "issue": "COR-1843"
     },
     {
       "file": "src/routes/workers/deployment-versions-view.svelte",

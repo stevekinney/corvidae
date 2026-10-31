@@ -15,7 +15,7 @@ const CATEGORY_EXPLANATION: Readonly<Record<FailureCategory, string>> = {
   timeout: 'An activity or the workflow itself exceeded its configured deadline.',
   cancellation: 'The workflow was cancelled before it could complete.',
   resource: 'A quota, memory, disk, or capacity limit was exceeded.',
-  system: 'An engine, storage, or worker infrastructure fault caused the failure.',
+  system: 'A server, storage, or worker infrastructure fault caused the failure.',
 };
 
 /**

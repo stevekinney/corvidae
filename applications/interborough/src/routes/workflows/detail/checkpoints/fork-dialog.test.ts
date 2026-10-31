@@ -76,7 +76,7 @@ describe('ForkDialog', () => {
       },
     });
 
-    expect(getByText('Worker binding for a fork')).not.toBeNull();
+    expect(getByText('Worker version for a fork')).not.toBeNull();
     expect(getByText(/unless it names an explicit revision that differs/)).not.toBeNull();
   });
 

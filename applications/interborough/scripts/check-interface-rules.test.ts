@@ -97,8 +97,39 @@ describe('the copy rules', () => {
         'src/routes/page.test.ts': "const text = 'The Bureau';",
         'src/routes/thing.test-harness.svelte': '<p>The Bureau</p>',
         'src/mcp-apps/app.svelte': '<p>The Bureau</p>',
+        'src/host/server.ts': "export const A = 'The Bureau did not answer.';",
+        'src/lib/thing.test-support.ts': "export const A = 'The Bureau did not answer.';",
       }),
     ).toEqual([]);
+  });
+
+  test('read the sentences in any TypeScript module under src, not only copy.ts', () => {
+    expect(
+      rulesIn({ 'src/lib/lease.ts': "export const A = { x: 'This engine holds the lease.' };" }),
+    ).toEqual(['product-word']);
+    expect(
+      rulesIn({ 'src/routes/system/scope.ts': 'export const A = `Read ${x} and the Bureau.`;' }),
+    ).toEqual(['product-word']);
+    expect(
+      rulesIn({ 'src/lib/keys.ts': "export const KEY = 'bureau-tasks'; type T = 'engine';" }),
+    ).toEqual([]);
+  });
+
+  test('read the arguments of a {@render} tag', () => {
+    expect(rulesIn(component("{@render row('Engine down')}"))).toEqual(['product-word']);
+    expect(rulesIn(component('{@render row(x, { label: `Bureau ${x}` })}'))).toEqual([
+      'product-word',
+    ]);
+    expect(rulesIn(component('{@render row(x)}'))).toEqual([]);
+  });
+
+  test('read the strings of a {@const} tag', () => {
+    expect(
+      rulesIn(component("{#if x}{@const note = 'The Bureau did not answer.'}<p>{note}</p>{/if}")),
+    ).toEqual(['product-word']);
+    expect(rulesIn(component("{#if x}{@const kind = x === 'engine'}<p>{kind}</p>{/if}"))).toEqual(
+      [],
+    );
   });
 });
 
@@ -107,6 +138,18 @@ describe('the control and component rules', () => {
     expect(rulesIn(component('<Button size="lg">Save</Button>'))).toEqual(['large-size']);
     expect(rulesIn(component("<Button size={'lg'}>Save</Button>"))).toEqual(['large-size']);
     expect(rulesIn(component('<Button size="sm">Save</Button>'))).toEqual([]);
+  });
+
+  test('fail size="lg" chosen by a condition, and pass a condition that never yields it', () => {
+    expect(rulesIn(component("<Button size={x ? 'lg' : 'md'}>Save</Button>"))).toEqual([
+      'large-size',
+    ]);
+    expect(
+      rulesIn(component("<Button size={x ? 'md' : x === 'a' ? 'lg' : 'sm'}>Save</Button>")),
+    ).toEqual(['large-size']);
+    expect(rulesIn(component("<Button size={x || 'lg'}>Save</Button>"))).toEqual(['large-size']);
+    expect(rulesIn(component("<Button size={x ? 'sm' : 'md'}>Save</Button>"))).toEqual([]);
+    expect(rulesIn(component("<Button size={x === 'lg' ? 'sm' : 'md'}>Save</Button>"))).toEqual([]);
   });
 
   test('fail an EmptyState without a title', () => {
@@ -159,6 +202,45 @@ describe('the style rules', () => {
       '.cinder-select',
     ]);
     expect(rulesIn({ 'src/styles/a.css': 'a { color: var(--cinder-text-muted); }' })).toEqual([]);
+  });
+
+  test('fail a selector that reaches Cinder through the class list, and a rule nested in another', () => {
+    expect(rulesIn({ 'src/styles/a.css': ".mine [class*='cinder-'] { margin: 0; }" })).toEqual([
+      'cinder-selector',
+    ]);
+    expect(rulesIn({ 'src/styles/a.css': '[class^=cinder-button] { margin: 0; }' })).toEqual([
+      'cinder-selector',
+    ]);
+    expect(rulesIn({ 'src/styles/a.css': "[class*='mine-'] { margin: 0; }" })).toEqual([]);
+    expect(
+      rulesIn({ 'src/styles/a.css': '.mine { margin: 0; .cinder-badge { gap: 0; } }' }),
+    ).toEqual(['cinder-selector']);
+    expect(
+      rulesIn({ 'src/styles/a.css': '.mine { margin: 0; &:hover { .ib-x__header { gap: 0; } } }' }),
+    ).toEqual(['app-header-class']);
+    expect(
+      rulesIn({
+        'src/styles/a.css':
+          '.mine { margin: 0; @media (width < 40rem) { .cinder-badge { gap: 0; } } }',
+      }),
+    ).toEqual(['cinder-selector']);
+  });
+
+  test('judge an uppercase label by the rule that declares it, not the rule around it', () => {
+    expect(
+      rulesIn({
+        'src/styles/a.css':
+          '.outer { color: red; .label { text-transform: uppercase; letter-spacing: 0.05em; } }',
+      }),
+    ).toEqual(['uppercase-label']);
+    expect(
+      collectViolations(
+        packageRoot({
+          'src/styles/a.css':
+            '.outer { color: red; .label { text-transform: uppercase; letter-spacing: 0.05em; } }',
+        }),
+      ).map((violation) => violation.subject),
+    ).toEqual(['.label']);
   });
 
   test('fail an uppercase, letter-spaced label and pass uppercase alone', () => {

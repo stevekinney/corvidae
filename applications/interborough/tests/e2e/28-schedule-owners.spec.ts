@@ -122,12 +122,12 @@ test.describe('what each schedule starts', () => {
       // The engine's fields are not there until the disclosure opens.
       await expect(page.getByText('Jitter', { exact: true })).toHaveCount(0);
       await expect(page.getByText('Revision policy', { exact: true })).toHaveCount(0);
-      await expect(page.getByText('Worker binding for scheduled runs')).toHaveCount(0);
+      await expect(page.getByText('Worker version for scheduled runs')).toHaveCount(0);
       await checkA11y(`schedule detail — an agent run at ${width}px`);
       await page.getByRole('main').getByRole('button', { name: 'Advanced' }).click();
       await expect(page.getByText('Jitter', { exact: true })).toBeVisible();
       await expect(page.getByText('Revision policy', { exact: true })).toBeVisible();
-      await expect(page.getByText('Worker binding for scheduled runs')).toBeVisible();
+      await expect(page.getByText('Worker version for scheduled runs')).toBeVisible();
       await checkA11y(`schedule detail — the Advanced disclosure open at ${width}px`);
     });
   }

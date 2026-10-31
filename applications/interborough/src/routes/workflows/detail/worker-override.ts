@@ -53,9 +53,9 @@ export function isOverrideTokenRejected(error: unknown): boolean {
 const PREVIEW_REASONS: Readonly<Record<string, string>> = {
   [WORKER_CONFLICT_REASONS.workflowNotTerminal]:
     'This run is not terminal, so it cannot be restarted with a worker override.',
-  [WORKER_CONFLICT_REASONS.noWorkerBinding]: 'This run has no durable worker binding to override.',
+  [WORKER_CONFLICT_REASONS.noWorkerBinding]: 'This run has no durable worker version to override.',
   [WORKER_CONFLICT_REASONS.policyNotAutoUpgrade]:
-    'This run is pinned to its build, so its worker binding cannot be overridden.',
+    'This run is pinned to its build, so its worker version cannot be overridden.',
   [WORKER_CONFLICT_REASONS.noRoutedDeployment]:
     'No ready, routed deployment build provides this run’s revision, so there is no build to move it to.',
   [WORKER_CONFLICT_REASONS.overrideTokenRejected]:

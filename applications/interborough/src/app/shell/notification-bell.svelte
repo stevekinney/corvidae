@@ -69,6 +69,7 @@
     <Button
       variant="ghost"
       iconOnly
+      class="weft-shell-topbar-control"
       aria-label={NOTIFICATION_COPY.bellLabel(store.unreadCount)}
       onclick={() => (open = !open)}
     >

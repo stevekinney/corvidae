@@ -161,7 +161,7 @@ describe('RestartDialog worker binding', () => {
     expect(view.getByTestId('restart-override-reason').textContent).toContain(
       'cannot be overridden',
     );
-    expect(view.getByText('Worker binding for a restart or retry')).not.toBeNull();
+    expect(view.getByText('Worker version for a restart or retry')).not.toBeNull();
     expect(view.queryByRole('button', { name: 'Preview worker upgrade' })).toBeNull();
   });
 

@@ -146,7 +146,7 @@ const SOURCE_LOAD_STATE_DESCRIPTIONS: Readonly<Record<KnownSourceLoadState, stri
   // means (no load recorded) and names the ambiguity rather than resolving it
   // in the operator's favour.
   idle: 'No load has been recorded for this revision. The workflow name has a registered source; this exact revision may not, in which case preloading it is refused as not found.',
-  loading: 'A load is in flight in the serving engine right now.',
+  loading: 'A load is in flight on the server right now.',
   // Deliberately past tense, and deliberately silent about the catalog:
   // `removeWorkflowRevision()` does not reset this process-local diagnostics
   // entry, so a revision loaded successfully and later removed still reports
@@ -187,7 +187,7 @@ const FAILURE_CATEGORY_LABELS: Readonly<Record<KnownFailureCategory, string>> = 
   timeout: 'Execution exceeded a configured deadline.',
   cancellation: 'Cancellation or abort ended execution.',
   resource: 'A quota, memory, disk, or capacity limit was exceeded.',
-  system: 'An engine, storage, or worker infrastructure fault.',
+  system: 'A server, storage, or worker infrastructure fault.',
 };
 
 function isKnownSourceLoadState(value: string): value is KnownSourceLoadState {

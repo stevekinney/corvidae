@@ -159,7 +159,11 @@
               <code>{entry.problem.code}</code>: {entry.problem.message}
             </p>
           {/if}
-          <CodeLocation file={agentFilePath(directory, entry.id)} data-testid="agent-file-path" />
+          <CodeLocation
+            class="weft-code-location"
+            file={agentFilePath(directory, entry.id)}
+            data-testid="agent-file-path"
+          />
         </div>
       </li>
     {/each}

@@ -47,7 +47,7 @@ const ENGINE_PROBLEMS: Readonly<
     tier: 'warning',
     icon: 'triangle-alert',
     title: NAVIGATION_COPY.engineStatus.stale,
-    detail: 'The engine has not reported in a while. What you see may be out of date.',
+    detail: 'The server has not reported in a while. What you see may be out of date.',
   },
 };
 

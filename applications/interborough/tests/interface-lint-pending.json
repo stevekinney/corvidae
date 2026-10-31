@@ -160,13 +160,13 @@
       "rule": "app-header-class",
       "file": "src/routes/system/revision-detail.svelte",
       "subject": ".weft-revision-detail__header",
-      "issue": "COR-1847"
+      "issue": "COR-1841"
     },
     {
       "rule": "app-header-class",
       "file": "src/routes/system/workflow-revisions-panel.svelte",
       "subject": ".weft-revisions-panel__header",
-      "issue": "COR-1847"
+      "issue": "COR-1841"
     },
     {
       "rule": "cinder-selector",
@@ -424,7 +424,7 @@
       "rule": "app-header-class",
       "file": "src/styles/workflows.css",
       "subject": ".weft-workflow-list__header",
-      "issue": "COR-1856"
+      "issue": "COR-1843"
     },
     {
       "rule": "app-header-class",
@@ -436,7 +436,7 @@
       "rule": "app-header-class",
       "file": "src/styles/workflows.css",
       "subject": ".weft-aggregate-view__header",
-      "issue": "COR-1856"
+      "issue": "COR-1843"
     }
   ]
 }

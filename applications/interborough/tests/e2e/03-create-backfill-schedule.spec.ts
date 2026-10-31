@@ -59,7 +59,7 @@ test('operator creates a cron schedule with backfill and lands on its detail', a
   await backfillToggle.click();
   await expect(
     drawer.getByText(
-      'If the schedule falls behind (for example, the engine was down), missed occurrences fire immediately in a bounded catch-up window instead of being skipped.',
+      'If the schedule falls behind (for example, the server was down), missed occurrences fire immediately in a bounded catch-up window instead of being skipped.',
     ),
   ).toBeVisible();
   await checkA11y('schedules — create slide-over (backfill warning shown)');

@@ -126,7 +126,7 @@
   flex-direction: column;
 }
 
-.weft-shell-sidebar .cinder-side-navigation {
+.weft-shell-sidebar .weft-shell-side-navigation {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -145,11 +145,11 @@
 /* A file path is the longest unbroken thing on a page. Cinder's code location never wraps it, so
  * on a phone a long path pushed its page wider than the outlet and the outlet scrolled sideways.
  * It stays inside its parent and breaks where it has to. */
-.cinder-code-location {
+.weft-code-location {
   max-inline-size: 100%;
 }
 
-.cinder-code-location code {
+.weft-code-location code {
   min-inline-size: 0;
   overflow-wrap: anywhere;
 }
@@ -235,7 +235,7 @@
   white-space: nowrap;
 }
 
-.weft-shell-topbar__trail .cinder-breadcrumbs ol {
+.weft-shell-topbar__trail ol {
   flex-wrap: nowrap;
 }
 
@@ -306,7 +306,7 @@
 
   /* One size for every control in the bar, and a touch target. The search trigger is icon-only at
    * this width. */
-  .weft-shell-topbar .cinder-button {
+  .weft-shell-topbar .weft-shell-topbar-control {
     min-block-size: 2.5rem;
     min-inline-size: 2.5rem;
   }

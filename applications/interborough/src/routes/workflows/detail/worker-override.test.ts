@@ -44,7 +44,7 @@ describe('isOverrideTokenRejected', () => {
 describe('describeOverrideFault', () => {
   test.each([
     ['workflow-not-terminal', /not terminal/],
-    ['no-worker-binding', /no durable worker binding/],
+    ['no-worker-binding', /no durable worker version/],
     ['policy-not-auto-upgrade', /pinned/],
     ['no-routed-deployment', /No ready, routed deployment/],
     ['upgrade-incompatible-contract', /incompatible-contract/],

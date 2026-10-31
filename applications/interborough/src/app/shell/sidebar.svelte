@@ -204,7 +204,7 @@
         </Button>
       </div>
     {/if}
-    <SideNavigation ariaLabel={NAVIGATION_COPY.destinations}>
+    <SideNavigation ariaLabel={NAVIGATION_COPY.destinations} class="weft-shell-side-navigation">
       {#each DESTINATIONS as destination (destination.path)}
         {@const Icon = destination.icon}
         {@const badge = badgeOf(destination)}

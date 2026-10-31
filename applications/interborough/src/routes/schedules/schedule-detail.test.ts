@@ -113,7 +113,7 @@ describe('ScheduleDetail', () => {
         '0 2 * * *',
         'Jitter',
         'Revision policy',
-        'Worker binding for scheduled runs',
+        'Worker version for scheduled runs',
       ]) {
         expect(queryByText(hidden), hidden).toBeNull();
       }
@@ -122,7 +122,7 @@ describe('ScheduleDetail', () => {
       expect(getByText('Jitter')).not.toBeNull();
       expect(getByText('Revision policy')).not.toBeNull();
       // COR-164: the scheduled-run worker rule, worded once in worker-inheritance-rules.ts.
-      expect(getByText('Worker binding for scheduled runs')).not.toBeNull();
+      expect(getByText('Worker version for scheduled runs')).not.toBeNull();
       expect(getByText(/a schedule carries no worker-versioning rule of its own/)).not.toBeNull();
     } finally {
       await server.stop();

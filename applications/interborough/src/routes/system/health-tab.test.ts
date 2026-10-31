@@ -86,7 +86,7 @@ describe('HealthTab', () => {
     routeBaseline(scripted);
     const { findByText, getByText, unmount } = await renderHealthTab();
     expect(await findByText('Disabled')).not.toBeNull();
-    expect(getByText('Lease ownership is not configured for this engine.')).not.toBeNull();
+    expect(getByText('Lease ownership is not configured for this server.')).not.toBeNull();
     unmount();
   });
 
@@ -107,7 +107,7 @@ describe('HealthTab', () => {
     expect(await findByText('Contested')).not.toBeNull();
     expect(getByRole('heading', { name: 'Server lease' })).not.toBeNull();
     expect(
-      getByText('This engine lost the ownership lease: another holder deposed this engine.'),
+      getByText('This server lost the ownership lease: another holder deposed this server.'),
     ).not.toBeNull();
     expect(getByText('engine-b')).not.toBeNull();
     expect(getByText('9')).not.toBeNull();

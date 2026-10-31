@@ -212,7 +212,7 @@ describe('overrideEligibility', () => {
   test('a run with no worker binding is not eligible', () => {
     const result = overrideEligibility({ kind: 'absent' }, 'completed');
     expect(result.eligible).toBe(false);
-    expect(!result.eligible && result.reason).toContain('no worker binding');
+    expect(!result.eligible && result.reason).toContain('no worker version');
   });
 
   test('a malformed reading is not eligible', () => {

@@ -283,7 +283,7 @@ export function modeSummary(
   }
   return {
     mode: 'polling',
-    description: 'Polling: the engine checks this source on a schedule.',
+    description: 'Polling: the server checks this source on a schedule.',
     fields: [
       { term: 'Interval', value: formatPollDuration(polling.intervalMilliseconds) },
       { term: 'Maximum backoff', value: formatPollDuration(polling.maxBackoffMilliseconds) },

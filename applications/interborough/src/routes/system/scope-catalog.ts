@@ -64,7 +64,7 @@ const SCOPE_DESCRIPTIONS: Readonly<Record<AuthorizationScope, ScopeCatalogEntry>
   'reviews:read': {
     scope: 'reviews:read',
     description: 'View pending and completed human review requests.',
-    unlocks: 'The engine’s reviews in the Reviews inbox, and their count',
+    unlocks: 'Workflow reviews in the Reviews inbox, and their count',
   },
   'reviews:write': {
     scope: 'reviews:write',
@@ -88,7 +88,7 @@ const SCOPE_DESCRIPTIONS: Readonly<Record<AuthorizationScope, ScopeCatalogEntry>
   },
   'streams:read': {
     scope: 'streams:read',
-    description: 'Read `ctx.stream` token chunks over the raw stream channel.',
+    description: 'Read a workflow’s streamed token chunks over the raw stream channel.',
     unlocks: 'Streamed-token payload display',
   },
   'events:read': {

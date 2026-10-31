@@ -55,7 +55,7 @@ const FAILURE_LABELS: Readonly<Record<string, string>> = {
   conflict: 'The workflow catalog refused to install the candidate.',
   cancelled: 'The check was cancelled.',
   stopped: 'Refresh is stopped.',
-  internal: 'The check failed inside the engine.',
+  internal: 'The check failed inside the server.',
 };
 
 /** Operator copy for one diagnostics `reason`, or an honest fallback for one this build does not know. */
@@ -210,7 +210,7 @@ function describeFault(error: HttpClientError, name: string): RefreshOutcome {
         kind: 'source-unavailable',
         message:
           faultReason(error) === 'refresh-stopped'
-            ? 'Refresh is stopped on the serving engine.'
+            ? 'Refresh is stopped on the server.'
             : 'The refresh source could not be reached or returned an unusable response. Nothing changed.',
       };
     case 'InvalidParams':

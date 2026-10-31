@@ -76,7 +76,7 @@
     <FileProblem problem={row.problem} />
   {/if}
   {#if row.file !== null && row.file.state === 'invalid' && filePath !== undefined}
-    <CodeLocation file={filePath} data-testid="workflow-file-path" />
+    <CodeLocation class="weft-code-location" file={filePath} data-testid="workflow-file-path" />
   {/if}
   {#if starts !== null || counts !== null}
     <div class="ib-workflow-row__meta">

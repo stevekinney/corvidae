@@ -45,6 +45,7 @@
     <Button
       variant="ghost"
       iconOnly
+      class="weft-shell-topbar-control"
       aria-label={QUICK_SETTINGS_COPY.trigger}
       title={QUICK_SETTINGS_COPY.trigger}
       onclick={() => (open = !open)}
