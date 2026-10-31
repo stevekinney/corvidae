@@ -23,6 +23,8 @@ import {
 } from '@lostgradient/weft';
 
 import { toScheduleSpec } from './schedule-spec';
+import { weftNameOf } from './namespaced-identifier';
+import { WORKFLOW_IDENTIFIER_PATTERN } from './workflow-file';
 import type { ScheduleOverlapPolicy } from './workflow-host';
 
 export const WORKFLOW_SCHEDULE_ID_PREFIX = 'bureau-workflow-schedule:';
@@ -38,8 +40,9 @@ export function parseWorkflowScheduleId(
 ): { readonly identifier: string; readonly generation: number } | undefined {
   if (!id.startsWith(WORKFLOW_SCHEDULE_ID_PREFIX)) return undefined;
   const rest = id.slice(WORKFLOW_SCHEDULE_ID_PREFIX.length);
-  const match = /^([^:]+):(\d+)$/.exec(rest);
-  if (match === null) return undefined;
+  // A plugin's identifier holds a colon (`linear:sync`), so the generation is what follows the last one.
+  const match = /^(.+):(\d+)$/.exec(rest);
+  if (match === null || !WORKFLOW_IDENTIFIER_PATTERN.test(match[1] as string)) return undefined;
   return { identifier: match[1] as string, generation: Number(match[2]) };
 }
 
@@ -150,7 +153,7 @@ export async function reconcileWorkflowSchedules(
     const generation =
       group.reduce((highest, summary) => Math.max(highest, generationOf(summary)), 0) + 1;
     const id = workflowScheduleId(identifier, generation);
-    await engine.schedule(identifier, scheduleTrigger(id), toScheduleSpec(want.spec), {
+    await engine.schedule(weftNameOf(identifier), scheduleTrigger(id), toScheduleSpec(want.spec), {
       id,
       overlap: want.overlap,
       description: `Workflow ${identifier}`,

@@ -96,6 +96,8 @@ Bureau registers the workflows before the engine recovers, and starts the engine
 
 `workflowFileDirectory(path, { plugin: 'linear' })` is a plugin's read-only layer of workflow files (COR-1873), and `workflowSource` takes a list layered with `layeredWorkflowSource`, as `agentSource` does (see the agent files' Plugin layers). A plugin's workflow is named `linear:<name>`, reloads when its file changes, and refuses every write with `WorkflowFileError` `workflow-file-read-only`.
 
+Weft's name grammar has no `:`, so the engine knows a plugin's workflow by its Weft name, `linear__<name>`, the same mapping COR-1871 gives a `plugin:name` handler. That name is the instance's `type` in the engine, the workflow type of its schedule, and part of the document its version is hashed from. A file, a stored revision, and everything `bureau.workflows` reports (listings, runs, revisions, schedules) keep `linear:<name>`. A code workflow registered as `linear__<name>` shadows the plugin's file, which then lists as `shadows-code-workflow`. An owner's identifier cannot contain `_`, so its Weft name is the identifier itself and its version is unchanged.
+
 ## Watching
 
 `workflowFileDirectory(path, { watch?, watchFactory? })` is a `WorkflowSource`, the same contract the agent files use (see [agent files](agent-files.md#sources)): `load()`, `watch()`, and `write` and `delete` with an `expectedHash`. Bureau calls `load()` after each of its own writes, and `bureau.workflows.refresh()` calls `load()`. `watch: false` means no `fs.watch` and no poll.

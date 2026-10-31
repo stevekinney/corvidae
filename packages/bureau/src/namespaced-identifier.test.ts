@@ -1,5 +1,5 @@
 /**
- * COR-1871 — the `plugin:name` identifier grammar and its mapping to Weft handler names.
+ * COR-1871 — the `plugin:name` identifier grammar and its mapping to Weft handler and workflow names.
  */
 import { activity } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
@@ -14,13 +14,14 @@ import { A2A_AGENT_NAME_PATTERN } from './http/create-bureau-handler';
 import { EVENT_OWNER_WORKFLOW_ID_PREFIXES } from './reserved-identifiers';
 import { TRY_AGENT_NAME_START } from './agent-try';
 import {
-  fromWeftHandlerName,
+  bureauNameOf,
+  fromWeftName,
   handlerNameIssue,
   isNamespacedIdentifier,
   NAMESPACED_IDENTIFIER_PATTERN,
   RESERVED_NAMESPACES,
-  toWeftHandlerName,
-  weftHandlerNameOf,
+  toWeftName,
+  weftNameOf,
 } from './namespaced-identifier';
 import { checkWorkflowIdentifier, WORKFLOW_IDENTIFIER_PATTERN } from './workflow-file';
 
@@ -121,16 +122,16 @@ describe('the Weft handler mapping', () => {
   it('maps 1,000 generated ids to names Weft’s grammar accepts, and back', () => {
     const ids = generatedIds(1000);
     for (const id of ids) {
-      const mapped = toWeftHandlerName(id);
+      const mapped = toWeftName(id);
       expect(() => validateWorkflowOrActivityName(mapped, 'activity')).not.toThrow();
-      expect(fromWeftHandlerName(mapped)).toBe(id);
-      expect(weftHandlerNameOf(id)).toBe(mapped);
+      expect(fromWeftName(mapped)).toBe(id);
+      expect(weftNameOf(id)).toBe(mapped);
     }
   });
 
   it('is injective, and its image is never a bare handler name Bureau accepts', () => {
     const ids = [...new Set(generatedIds(1000))];
-    const images = new Set(ids.map(toWeftHandlerName));
+    const images = new Set(ids.map(toWeftName));
     expect(images.size).toBe(ids.length);
     for (const image of images) {
       expect(handlerNameIssue(image)).toContain('__');
@@ -147,9 +148,23 @@ describe('the Weft handler mapping', () => {
   });
 
   it('does not map a name that is not an image', () => {
-    expect(fromWeftHandlerName('plain')).toBeUndefined();
-    expect(fromWeftHandlerName('a__b__c')).toBeUndefined();
-    expect(fromWeftHandlerName('1password__sync')).toBeUndefined();
-    expect(() => toWeftHandlerName('bare')).toThrow(TypeError);
+    expect(fromWeftName('plain')).toBeUndefined();
+    expect(fromWeftName('a__b__c')).toBeUndefined();
+    expect(fromWeftName('1password__sync')).toBeUndefined();
+    expect(() => toWeftName('bare')).toThrow(TypeError);
+  });
+
+  it('leaves a name already on the far side of the mapping as it is, so a second pass is harmless', () => {
+    for (const id of [...generatedIds(200), 'nightly-digest', 'agent']) {
+      const mapped = weftNameOf(id);
+      expect(weftNameOf(mapped)).toBe(mapped);
+      expect(bureauNameOf(mapped)).toBe(id);
+      expect(bureauNameOf(bureauNameOf(mapped))).toBe(id);
+      expect(bureauNameOf(id)).toBe(id);
+    }
+    // Weft's workflow names share the activity grammar, so a plugin workflow's identifier passes once mapped.
+    expect(() =>
+      validateWorkflowOrActivityName(weftNameOf('linear:sync'), 'activity'),
+    ).not.toThrow();
   });
 });

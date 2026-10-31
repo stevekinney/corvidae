@@ -1,7 +1,9 @@
 /**
- * COR-1871 — where a workflow document's handler names cross between Bureau's form and Weft's.
- * A file and a stored revision keep the name a document was written with (`linear:sync-issue`);
- * Weft only ever sees the mapped name (`linear__sync-issue`), because its name grammar has no `:`.
+ * COR-1871 — where a workflow document's names cross between Bureau's form and Weft's: each
+ * activity step's handler, and the document's own `name`, which a plugin's workflow file carries
+ * as `plugin:name`. A file and a stored revision keep the names a document was written with
+ * (`linear:sync-issue`); Weft only ever sees the mapped name (`linear__sync-issue`), because its
+ * name grammar has no `:`.
  */
 import {
   validateWorkflowDocument,
@@ -12,34 +14,60 @@ import {
   type WorkflowDocumentStep,
 } from '@lostgradient/weft';
 
-import { fromWeftHandlerName, handlerNameIssue, weftHandlerNameOf } from './namespaced-identifier';
+import { bureauNameOf, handlerNameIssue, weftNameOf } from './namespaced-identifier';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** `document` with every activity step's handler rewritten by `rename`. */
+/** `document` with its `name` and every activity step's handler rewritten by `rename`. */
 function renameHandlers(
   document: WorkflowDocument,
   rename: (handler: string) => string,
 ): WorkflowDocument {
   return {
     ...document,
+    name: rename(document.name),
     steps: document.steps.map((step): WorkflowDocumentStep =>
       step.kind === 'activity' ? { ...step, handler: rename(step.handler) } : step,
     ),
   };
 }
 
-/** The document Weft receives: each `plugin:name` handler becomes `plugin__name`. */
+/** The document Weft receives: a `plugin:name` name or handler becomes `plugin__name`. */
 export function toWeftDocument(document: WorkflowDocument): WorkflowDocument {
-  return renameHandlers(document, weftHandlerNameOf);
+  return renameHandlers(document, weftNameOf);
+}
+
+/** `document`, as Weft returned or validated it, in Bureau's form: `plugin__name` becomes `plugin:name`. */
+export function fromWeftDocument(document: WorkflowDocument): WorkflowDocument {
+  return renameHandlers(document, bureauNameOf);
+}
+
+/**
+ * `input`, which claims to be a document in Bureau's form but is not yet validated, with its
+ * `name` and each activity step's `handler` that are strings mapped to Weft's form. Anything else
+ * is left for Weft's own schema to refuse. Read a stored or received document through this before
+ * Weft's `workflowDocumentSchema` judges it, because that schema holds names to Weft's grammar.
+ */
+export function toWeftDocumentInput(input: unknown): unknown {
+  if (!isRecord(input)) return input;
+  const mapped: Record<string, unknown> = { ...input };
+  if (typeof input['name'] === 'string') mapped['name'] = weftNameOf(input['name']);
+  if (Array.isArray(input['steps'])) {
+    mapped['steps'] = input['steps'].map((step: unknown) =>
+      isRecord(step) && step['kind'] === 'activity' && typeof step['handler'] === 'string'
+        ? { ...step, handler: weftNameOf(step['handler']) }
+        : step,
+    );
+  }
+  return mapped;
 }
 
 /**
  * Validate `input` as a workflow document in Bureau's form, against `host` (whose activities are
  * keyed by Weft's names). A bare handler containing `__` is refused. The result keeps the
- * `plugin:name` handler names the document was written with. Throws
+ * `plugin:name` name and handler names the document was written with. Throws
  * {@link WorkflowDocumentValidationError}, listing every problem found.
  */
 export function validateBureauWorkflowDocument(
@@ -58,9 +86,12 @@ export function validateBureauWorkflowDocument(
         issues.push({ path: `steps[${String(index)}].handler`, message: problem });
         return step;
       }
-      return { ...step, handler: weftHandlerNameOf(step['handler']) };
+      return { ...step, handler: weftNameOf(step['handler']) };
     });
     prepared = { ...input, steps };
+  }
+  if (isRecord(prepared) && typeof prepared['name'] === 'string') {
+    prepared = { ...prepared, name: weftNameOf(prepared['name']) };
   }
   let document: WorkflowDocument | undefined;
   try {
@@ -71,5 +102,5 @@ export function validateBureauWorkflowDocument(
   }
   if (issues.length > 0) throw new WorkflowDocumentValidationError(issues);
   // `document` is set whenever no issue was recorded.
-  return renameHandlers(document!, (handler) => fromWeftHandlerName(handler) ?? handler);
+  return fromWeftDocument(document!);
 }

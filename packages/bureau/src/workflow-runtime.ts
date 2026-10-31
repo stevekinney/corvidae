@@ -54,6 +54,7 @@ import {
 } from './workflow-file-catalog';
 import type { ScheduleHookOrigins } from './hooks/schedule-hook-origins';
 import { toWeftDocument, validateBureauWorkflowDocument } from './workflow-document-handlers';
+import { bureauNameOf, weftNameOf } from './namespaced-identifier';
 import {
   bridgeEngineActivities,
   registerBureauWorkflowDocuments,
@@ -446,9 +447,15 @@ export interface WorkflowRuntime {
    * have an instance in flight.
    */
   readonly start: () => Promise<WorkflowStartReport>;
-  /** Whether `type` names a workflow Bureau registered from a file, now or earlier. */
+  /**
+   * Whether `type` names a workflow Bureau registered from a file, now or earlier. It may be the
+   * workflow's identifier or the engine's name for it (`linear__sync` for `linear:sync`).
+   */
   readonly isWorkflowType: (type: string) => Promise<boolean>;
-  /** Whether Bureau registered `type` from a file in this process. Synchronous, for the services resolver. */
+  /**
+   * Whether Bureau registered `type`, an identifier or the engine's name for one, from a file in
+   * this process. Synchronous, for the services resolver.
+   */
   readonly isRegisteredType: (type: string) => boolean;
   /** Whether `scheduleId` is a Bureau workflow schedule that exists. */
   readonly scheduleExists: (scheduleId: string) => Promise<boolean>;
@@ -510,7 +517,10 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
   const { engine, snapshotStore: snapshots } = options;
   const host = bridgeEngineActivities(engine, options.host);
   const owner = ownerOrLocal(undefined);
-  /** The workflow types Bureau registered from a file in this process. */
+  /**
+   * The workflows Bureau registered from a file in this process, by identifier. The engine knows
+   * each by its Weft name ({@link weftNameOf}), which differs for a plugin's `plugin:name`.
+   */
   const registeredTypes = new Set<string>();
   /** Stamps of a revision's runs that have not finished being written. */
   const pendingStamps = new Set<Promise<unknown>>();
@@ -522,7 +532,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     host,
     // A name the engine already has that Bureau did not register itself is a code workflow.
     isCodeWorkflow: (id) =>
-      engine.getWorkflowDefinition(id) !== undefined && !registeredTypes.has(id),
+      engine.getWorkflowDefinition(weftNameOf(id)) !== undefined && !registeredTypes.has(id),
     runtime: options.runtime,
     diagnose: options.diagnose,
     afterScan: () => {
@@ -592,7 +602,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
   /** Whether an instance of workflow `id` has not finished. */
   async function hasLiveInstances(id: string): Promise<boolean> {
     const page = await engine.list({
-      type: id,
+      type: weftNameOf(id),
       status: ['pending', 'running', 'suspended'],
       limit: 1,
     });
@@ -636,13 +646,14 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
   }
 
   /**
-   * The instances of `type` that have not finished, by the `workflowVersion` each is pinned to, with
-   * the earliest start of each version.
+   * The instances of workflow `id` that have not finished, by the `workflowVersion` each is pinned
+   * to, with the earliest start of each version.
    */
   async function inFlightRuns(
-    type: string,
+    id: string,
   ): Promise<Map<string, { startedAt: number; runIds: string[] }>> {
     const byVersion = new Map<string, { startedAt: number; runIds: string[] }>();
+    const type = weftNameOf(id);
     for (let offset = 0; ;) {
       const page = await engine.list({ type, status: [...IN_FLIGHT_STATUSES], limit: 100, offset });
       for (const summary of page.items) {
@@ -670,12 +681,12 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       host,
       { active: files.map((file) => file.document), retained },
     );
-    for (const entry of registered) registeredTypes.add(entry.name);
+    for (const entry of registered) registeredTypes.add(bureauNameOf(entry.name));
   }
 
   /** Whether `id` is the name of a workflow the engine has from code, not one Bureau registered. */
   const isCodeName = (id: string): boolean =>
-    engine.getWorkflowDefinition(id) !== undefined && !registeredTypes.has(id);
+    engine.getWorkflowDefinition(weftNameOf(id)) !== undefined && !registeredTypes.has(id);
 
   /**
    * What startup does about the in-flight instances of the workflow files: the stored documents of
@@ -857,17 +868,18 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       workflowId: string;
       workflowType: string;
     };
-    if (!registeredTypes.has(workflowType)) return;
+    const id = bureauNameOf(workflowType);
+    if (!registeredTypes.has(id)) return;
     const stamp = (async () => {
       const state = await engine.get(workflowId);
       if (state === null || state === undefined) return;
       await snapshots.stampRun(
-        workflowType,
+        id,
         state.versionTuple.workflowVersion,
         new Date(state.createdAt).toISOString(),
       );
     })().catch((error: unknown) => {
-      options.diagnose(`Could not record that workflow "${workflowType}" ran.`, error);
+      options.diagnose(`Could not record that workflow "${id}" ran.`, error);
     });
     pendingStamps.add(stamp);
     void stamp.finally(() => pendingStamps.delete(stamp));
@@ -928,7 +940,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
   }): WorkflowRunSummary {
     return {
       id: state.id,
-      workflow: state.type,
+      workflow: bureauNameOf(state.type),
       workflowVersion: state.version,
       status: state.status,
       createdAt: new Date(state.createdAt).toISOString(),
@@ -936,11 +948,11 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     };
   }
 
-  /** Stamp the first and last start of every revision of `type` that has an instance in the engine. */
-  async function syncRunHistory(type: string): Promise<void> {
+  /** Stamp the first and last start of every revision of workflow `id` that has an instance in the engine. */
+  async function syncRunHistory(id: string): Promise<void> {
     const bounds = new Map<string, { first: number; last: number }>();
     for (let offset = 0; offset < RUNS_READ_LIMIT_PER_WORKFLOW;) {
-      const page = await engine.list({ type, limit: 100, offset });
+      const page = await engine.list({ type: weftNameOf(id), limit: 100, offset });
       for (const summary of page.items) {
         const known = bounds.get(summary.version);
         bounds.set(summary.version, {
@@ -952,8 +964,8 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       if (page.items.length === 0 || offset >= page.total) break;
     }
     for (const [version, { first, last }] of bounds) {
-      await snapshots.stampRun(type, version, new Date(first).toISOString());
-      if (last !== first) await snapshots.stampRun(type, version, new Date(last).toISOString());
+      await snapshots.stampRun(id, version, new Date(first).toISOString());
+      if (last !== first) await snapshots.stampRun(id, version, new Date(last).toISOString());
     }
   }
 
@@ -966,10 +978,12 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     ].toSorted();
   }
 
+  /** Whether `type`, an identifier or the engine's name for one, is a workflow file's. */
   async function isWorkflowType(type: string): Promise<boolean> {
-    if (registeredTypes.has(type)) return true;
+    const id = bureauNameOf(type);
+    if (registeredTypes.has(id)) return true;
     const stored = await snapshots.identifiers();
-    return stored.includes(type);
+    return stored.includes(id);
   }
 
   /**
@@ -1093,11 +1107,16 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     return result;
   }
 
-  /** The identifiers of the running instances of `type`, read before any is signalled. */
-  async function runningInstances(type: string): Promise<string[]> {
+  /** The identifiers of the running instances of workflow `id`, read before any is signalled. */
+  async function runningInstances(id: string): Promise<string[]> {
     const identifiers: string[] = [];
     for (let offset = 0; ;) {
-      const page = await engine.list({ type, status: ['running'], limit: 100, offset });
+      const page = await engine.list({
+        type: weftNameOf(id),
+        status: ['running'],
+        limit: 100,
+        offset,
+      });
       identifiers.push(...page.items.map((summary) => summary.id));
       offset += page.items.length;
       if (page.items.length === 0 || offset >= page.total) return identifiers;
@@ -1302,7 +1321,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       for (const type of types) {
         for (let offset = 0; offset < RUNS_READ_LIMIT_PER_WORKFLOW;) {
           const page = await engine.list({
-            type,
+            type: weftNameOf(type),
             ...(filter.status === undefined ? {} : { status: filter.status }),
             limit: 100,
             offset,
@@ -1331,8 +1350,12 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         // status or created-at index before it loads any state, so each read loads only the
         // instances it counts, and `limit: 1` bounds the reply.
         const [active, recent] = await Promise.all([
-          engine.list({ type: id, status: [...IN_FLIGHT_STATUSES], limit: 1 }),
-          engine.list({ type: id, createdAt: { gte: now - RECENT_RUN_WINDOW_MS }, limit: 1 }),
+          engine.list({ type: weftNameOf(id), status: [...IN_FLIGHT_STATUSES], limit: 1 }),
+          engine.list({
+            type: weftNameOf(id),
+            createdAt: { gte: now - RECENT_RUN_WINDOW_MS },
+            limit: 1,
+          }),
         ]);
         // The engine lists newest first, so the first item of a page is the newest in its window.
         // A workflow that ran today already has its newest instance; only a quiet one widens the
@@ -1341,7 +1364,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         for (const windowMs of [QUIET_RUN_WINDOW_MS, undefined]) {
           if (newest !== undefined) break;
           const page = await engine.list({
-            type: id,
+            type: weftNameOf(id),
             ...(windowMs === undefined ? {} : { createdAt: { gte: now - windowMs } }),
             limit: 1,
           });
@@ -1427,7 +1450,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
           rejected.push({ id: file.id, issues });
           continue;
         }
-        const handle = await engine.start(file.id, trigger);
+        const handle = await engine.start(weftNameOf(file.id), trigger);
         startedIds.push(handle.id);
       }
       return { started: startedIds, delivered, rejected };
@@ -1460,7 +1483,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       };
       const trigger = { kind: 'manual', input, origin };
       assertSendable('input', trigger);
-      const handle = await engine.start(id, trigger, {
+      const handle = await engine.start(weftNameOf(id), trigger, {
         tags: [taskOriginTag(origin), ...extraTags],
         ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
       });
@@ -1486,7 +1509,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       if (state === null) return undefined;
       return {
         runId: state.id,
-        workflow: state.type,
+        workflow: bureauNameOf(state.type),
         workflowVersion: state.versionTuple.workflowVersion,
       };
     },
@@ -1510,7 +1533,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     start,
 
     isWorkflowType,
-    isRegisteredType: (type) => registeredTypes.has(type),
+    isRegisteredType: (type) => registeredTypes.has(bureauNameOf(type)),
 
     health: catalog.health,
 
@@ -1543,7 +1566,11 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
           lastActivityAt: async (snapshot) => {
             let latest: number | undefined;
             for (let offset = 0; offset < RUNS_READ_LIMIT_PER_WORKFLOW;) {
-              const page = await engine.list({ type: snapshot.id, limit: 100, offset });
+              const page = await engine.list({
+                type: weftNameOf(snapshot.id),
+                limit: 100,
+                offset,
+              });
               for (const summary of page.items) {
                 if (summary.version !== snapshot.workflowVersion) continue;
                 latest = Math.max(latest ?? 0, summary.updatedAt);
