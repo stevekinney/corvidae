@@ -288,3 +288,106 @@ for (const recovery of ['suffix', 'snapshot', 'other-run'] as const) {
     );
   });
 }
+
+test('a refresh that replaces the transcript reads the run from its snapshot, not from the old cursor', async () => {
+  const response = (events: Array<{ event: unknown; id?: string }>) =>
+    new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (const { event, id } of events) controller.enqueue(encoded(event, id));
+          controller.close();
+        },
+      }),
+    );
+  const asked = { id: 'step-0', role: 'assistant', toolCalls: [call('ask-1', 'environment')] };
+  const answered = { id: 'ask-1-result', role: 'tool', toolCallId: 'ask-1', content: '{}' };
+  const answer = {
+    id: 'signal-environment',
+    role: 'user',
+    content: '[signal:environment] "staging"',
+  };
+  const opener = { id: 'opener', role: 'user', content: 'Ship it' };
+  const parked = {
+    type: 'RUN_FINISHED',
+    threadId: 'thread',
+    runId: 'run',
+    outcome: {
+      type: 'interrupt',
+      interrupts: [{ id: 'human-wait:region', reason: 'human-wait', message: 'Which region?' }],
+    },
+  };
+  const runCursors: Array<string | null> = [];
+  const session = open(async (input, init) => {
+    const url = input instanceof Request ? input.url : input.toString();
+    // The Bureau's history of a parked run holds only the turn that started it.
+    if (url.endsWith('/messages')) return Response.json({ threadId: 'thread', messages: [opener] });
+    const cursor = new Headers(init?.headers).get('Last-Event-ID');
+    runCursors.push(cursor);
+    if (runCursors.length === 1)
+      return response([
+        { event: started },
+        { event: { type: 'MESSAGES_SNAPSHOT', messages: [opener, asked, answered, answer] } },
+        { event: callStart('ask-2'), id: 'cursor-1' },
+        { event: { type: 'TOOL_CALL_END', toolCallId: 'ask-2' }, id: 'cursor-2' },
+        { event: parked },
+      ]);
+    // From the cursor, the run goes on past the rows the page held when it was taken.
+    if (cursor !== null)
+      return response([
+        { event: started },
+        { event: state },
+        {
+          event: {
+            type: 'TOOL_CALL_RESULT',
+            messageId: 'ask-2-result',
+            toolCallId: 'ask-2',
+            content: '{}',
+          },
+          id: 'cursor-3',
+        },
+        { event: parked },
+      ]);
+    const regionAsked = { id: 'step-1', role: 'assistant', toolCalls: [call('ask-2', 'region')] };
+    const regionParked = { id: 'ask-2-result', role: 'tool', toolCallId: 'ask-2', content: '{}' };
+    return response([
+      { event: started },
+      {
+        event: {
+          type: 'MESSAGES_SNAPSHOT',
+          messages: [opener, asked, answered, answer, regionAsked, regionParked],
+        },
+      },
+      { event: state },
+      { event: parked },
+    ]);
+  });
+
+  expect(await session.attach()).toBe(true);
+  await waitUntil(() => !session.streaming && session.humanRequests.length === 1, {
+    message: 'the run parked on its second question',
+  });
+  expect(await session.refresh()).toBe(true);
+  await waitUntil(() => !session.streaming && !session.attaching, { message: 'the reread ended' });
+
+  expect(session.failure).toBeUndefined();
+  expect(session.conversation.messages['signal-environment']).toBeDefined();
+  expect(session.humanRequests.map((request) => request.message)).toEqual(['Which region?']);
+  expect(runCursors).toEqual([null, null]);
+});
+
+function call(id: string, signalName: string) {
+  return {
+    id,
+    type: 'function',
+    function: { name: 'requestHumanInput', arguments: JSON.stringify({ signalName }) },
+  };
+}
+
+function callStart(toolCallId: string) {
+  return {
+    type: 'TOOL_CALL_START',
+    toolCallId,
+    toolCallName: 'requestHumanInput',
+    parentMessageId: 'step-1',
+  };
+}
