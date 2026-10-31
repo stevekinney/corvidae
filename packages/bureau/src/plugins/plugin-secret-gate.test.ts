@@ -25,6 +25,7 @@ import { composePlugins } from './compose-plugins';
 import {
   createPluginSecretGate,
   gatedContributions,
+  PLUGIN_NEEDS_SETUP_CATEGORY,
   PluginNeedsSetupError,
   type PluginSecretGate,
 } from './plugin-secret-gate';
@@ -336,11 +337,16 @@ describe('the secret-gating outcome matrix', () => {
         return agent[OPERATIVE_RESOLVE_RUN_OPTIONS]('Go.', {});
       },
     };
-    // Synchronous callables (a formatter, a code agent's `run`) throw; the rest reject.
-    const outcomeOf = async (call: () => unknown): Promise<'refused' | 'called'> => {
+    // Synchronous callables (a formatter, a code agent's `run`) throw; the rest reject. A memory
+    // detector is not run instead: it answers that it detected nothing, without calling `detect`.
+    const outcomeOf = async (call: () => unknown): Promise<'refused' | 'called' | 'not run'> => {
       try {
-        await call();
-        return 'called';
+        const value: unknown = await call();
+        const notRun =
+          typeof value === 'object' &&
+          value !== null &&
+          Reflect.get(value, 'category') === PLUGIN_NEEDS_SETUP_CATEGORY;
+        return notRun ? 'not run' : 'called';
       } catch (error) {
         if (error instanceof PluginNeedsSetupError) return 'refused';
         throw error;
@@ -353,9 +359,14 @@ describe('the secret-gating outcome matrix', () => {
     };
     const all = (outcome: string) =>
       Object.fromEntries(Object.keys(calls).map((name) => [name, outcome]));
+    const missing = { ...all('refused'), 'memory-detector': 'not run' };
 
-    expect(await outcomes()).toEqual(all('refused'));
+    expect(await outcomes()).toEqual(missing);
     expect(called).toEqual([]);
+    expect(await gatedResult.memoryDetectors?.[0]?.detect('x', {} as never)).toMatchObject({
+      triggered: false,
+      confidence: 0,
+    });
     // A refused activity is not retried: the refusal names an error the retry policy skips.
     expect(gatedResult.activities?.[0]?.retry?.nonRetryableErrors).toEqual([
       'PluginNeedsSetupError',
@@ -367,7 +378,7 @@ describe('the secret-gating outcome matrix', () => {
 
     secrets.remove(KEY);
     await settleTo(gate, false);
-    expect(await outcomes()).toEqual(all('refused'));
+    expect(await outcomes()).toEqual(missing);
   });
 
   it('starts a trigger kind once the secret is saved, stops it on removal, and starts it again on a second save', async () => {

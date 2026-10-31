@@ -27,7 +27,7 @@
  * | decision router (`decide`) | refuses | works | refuses |
  * | hook action kind (`run`) | refuses; the delivery fails and is retried by the hook's policy | works | refuses |
  * | embedder (`embed`, `availability`) | refuses; `availability` is `needs-setup` | works; `available` | refuses; `needs-setup` |
- * | memory detector (`detect`) | refuses, which memory counts as a detection (it fails closed) | works | refuses |
+ * | memory detector (`detect`) | not run: it answers that it detected nothing (`triggered: false`, category `plugin-needs-setup`), so memory's other detectors decide | works | not run |
  * | eval judge (`evaluate`) | refuses; the sample is not scored | works | refuses |
  * | event formatter (`format`) | refuses; the event gets the default title | works | refuses |
  * | code agent (`run`, `OPERATIVE_RESOLVE_RUN_OPTIONS`) | throws or rejects; `bureau.tasks.start` rejects and the run is not started, and a recovered or claimed durable run fails to resolve | works | throws or rejects |
@@ -45,8 +45,15 @@ import type {
   PluginTriggerKind,
 } from '@lostgradient/interborough-plugin';
 import { OPERATIVE_RESOLVE_RUN_OPTIONS } from '@lostgradient/operative';
+import type { DetectionResult, DetectorContext } from 'armorer';
 
 import type { BureauPluginSecrets } from './plugin-types';
+
+/**
+ * The `category` of the result a gated memory detector answers with while its plugin needs setup:
+ * it did not run, and detected nothing.
+ */
+export const PLUGIN_NEEDS_SETUP_CATEGORY = 'plugin-needs-setup';
 
 /** A plugin's contribution was called while a secret its plugin declared is not set. */
 export class PluginNeedsSetupError extends Error {
@@ -370,7 +377,23 @@ export function gatedContributions<T extends PluginContributions>(
       : {
           memoryDetectors: result.memoryDetectors.map((detector) => ({
             ...detector,
-            detect: gated(gate, idOf(detector.name), detector.detect.bind(detector)),
+            detect: async (input: string, context: DetectorContext): Promise<DetectionResult> => {
+              // Not run: memory counts a detector's failure as a detection, so a refusal here
+              // would hold back every write and recall while the plugin needs setup.
+              if (!gate.available()) {
+                return {
+                  triggered: false,
+                  confidence: 0,
+                  category: PLUGIN_NEEDS_SETUP_CATEGORY,
+                  detail: new PluginNeedsSetupError(
+                    gate.plugin,
+                    idOf(detector.name),
+                    gate.missing(),
+                  ).message,
+                };
+              }
+              return detector.detect(input, context);
+            },
           })),
         }),
     ...(result.evalJudges === undefined
