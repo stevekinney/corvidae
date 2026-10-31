@@ -258,7 +258,8 @@ describe('the Settings tab, when something goes wrong', () => {
 
     await waitFor(() => expect(settings.textContent).toContain('anthropic/sonnet'));
     expect(settings.textContent).toContain('No limit');
-    expect(settings.textContent).toContain('Not set');
+    // Guardrails and the spend and tool limits are on the Access tab.
+    expect(settings.textContent).not.toContain('Spend limit');
   });
 
   test('shows an agent in code without limits, Delete or versions', async () => {
@@ -416,24 +417,15 @@ describe('the versions of an agent', () => {
 });
 
 describe('what the Settings tab shows of a definition', () => {
-  test('words a limit that is set and leaves one that is not', () => {
+  test('words the step limit when it is set and leaves it when it is not', () => {
     const detail = readyAgent({ id: 'researcher' });
     if (detail.definition === null) throw new Error('expected a definition');
-    expect(
-      settingsOf({
-        ...detail,
-        definition: {
-          ...detail.definition,
-          costBudget: { perRunUsd: 2, perChatUsd: 10 },
-          toolBudget: { maxDurationSeconds: 1 },
-        },
-      }),
-    ).toMatchObject({
-      spendPerRun: '$2.00',
-      spendPerChat: '$10.00',
-      toolCalls: null,
-      toolTime: '1 second',
+    expect(settingsOf({ ...detail, definition: { ...detail.definition, stepLimit: 12 } })).toEqual({
+      model: 'anthropic/sonnet',
+      models: [],
+      stepLimit: '12',
     });
+    expect(settingsOf(detail).stepLimit).toBeNull();
     expect(settingsOf({ ...detail, source: 'code', definition: null })).toMatchObject({
       model: null,
       models: [],

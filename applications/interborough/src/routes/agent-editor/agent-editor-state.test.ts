@@ -393,3 +393,31 @@ describe('the guardrails and limits', () => {
     expect(form.canSave).toBe(true);
   });
 });
+
+describe('the tool approvals the Access tab sets', () => {
+  const withApprovals = (approvals: Record<string, 'never' | 'always'> | null) => {
+    const detail = readyAgent();
+    if (detail.definition === null) throw new Error('expected a definition');
+    return AgentEditorState.edit(
+      { ...detail, definition: { ...detail.definition, toolApproval: approvals } },
+      catalogFixture(),
+    );
+  };
+
+  test('sends none when the file had none, so an update keeps the file’s value', () => {
+    expect('toolApproval' in withApprovals(null).toDefinition()).toBe(false);
+  });
+
+  test('writes them back for a tool that is still chosen', () => {
+    expect(withApprovals({ 'lookup-order': 'always' }).toDefinition().toolApproval).toEqual({
+      'lookup-order': 'always',
+    });
+  });
+
+  test('drops the approval of a tool the person cleared, which the Bureau would refuse to keep', () => {
+    const form = withApprovals({ 'lookup-order': 'always' });
+    form.setTool('lookup-order', false);
+    expect(form.toDefinition().tools).toEqual([]);
+    expect(form.toDefinition().toolApproval).toBeNull();
+  });
+});

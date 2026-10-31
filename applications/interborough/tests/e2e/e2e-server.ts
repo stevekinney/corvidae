@@ -29,6 +29,7 @@ import { seed, workflows } from '../../fixtures/workflows.ts';
 import { buildApplication } from '../../scripts/build.ts';
 import { fakeProvider, writeProviderHome } from '../../src/host/fake-provider.test-support.ts';
 import { startHost } from '../../src/host/host.ts';
+import { createAccessProviderResolver } from './access-provider.ts';
 import { createBarrier, createBarrierAgents } from './barrier-agent.ts';
 import {
   E2E_BARRIER_PORT,
@@ -108,7 +109,8 @@ const host = await startHost({
     },
   },
   environment: { INTERBOROUGH_HOME: home },
-  resolveProviderGenerate: provider.resolver,
+  // A chat whose first message carries an access marker is scripted to call a tool (`access-provider.ts`).
+  resolveProviderGenerate: createAccessProviderResolver(provider.resolver),
   // One setting the deployment holds to its code option, so the settings page's locked state is
   // exercised against the real Bureau (`settings.spec.ts`). It is a `restart` key nothing else reads.
   settings: { locked: { [E2E_LOCKED_SETTING]: 'deployment' } },

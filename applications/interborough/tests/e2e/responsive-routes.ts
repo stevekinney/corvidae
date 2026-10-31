@@ -86,7 +86,7 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
  * Addresses of a route in a second state, by `<pattern> (<state>)`, each opened and measured like a
  * route of its own. The seeded workflow type is code-defined, so the file header's four buttons
  * (Start run, Pause, Edit, Delete) and a file's Code, Runs and History tabs are reached here,
- * as are an agent's Instructions and Settings tabs, with the tab named in the address (`?tab=`).
+ * as are an agent's Instructions, Access and Settings tabs, with the tab named in the address (`?tab=`).
  * The Capabilities page's Skills tab, and one seeded long-named skill open, are reached the same way,
  * as is the Workers page with the seeded worker open and its Task queues tab with a seeded queue
  * open (its dead letters and recovery diagnostics), and as are a waiting review open and the
@@ -97,6 +97,9 @@ export function responsiveVariants(seed: ResponsiveSeed): Readonly<Record<string
   const agent = `/agents/${encodeURIComponent(seed.instructionsAgent)}`;
   return {
     '/agents/:agent (instructions tab)': `${agent}?tab=instructions`,
+    // The Access tab of the agent with the largest budgets the Bureau accepts, a tool set to ask
+    // every time, and the host's skills among them, one with a long name.
+    '/agents/:agent (access tab)': `${agent}?tab=access`,
     '/agents/:agent (settings tab)': `${agent}?tab=settings`,
     '/workflows/:workflow (file)': file,
     '/workflows/:workflow (file, code tab)': `${file}?tab=code`,
