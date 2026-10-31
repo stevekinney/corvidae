@@ -238,10 +238,15 @@ describe('a tool-returned MCP resource link (COR-1634)', () => {
     const bureau = await createBureau({
       agents: { charter: linkAgent(seen) },
       assets: { storage: fixture.storage },
-      mcpResources: async (resource, context) => {
-        reads.push({ ...resource, principalId: context.principalId });
-        return { data: base64Of(linkedPng), encoding: 'base64', mimeType: 'image/png' };
-      },
+      mcpResources: [
+        {
+          serves: () => true,
+          read: async (resource, context) => {
+            reads.push({ ...resource, principalId: context.principalId });
+            return { data: base64Of(linkedPng), encoding: 'base64', mimeType: 'image/png' };
+          },
+        },
+      ],
     });
     cleanups.push(async () => {
       await bureau.dispose();
@@ -273,7 +278,7 @@ describe('a tool-returned MCP resource link (COR-1634)', () => {
     const bureau = await createBureau({
       agents: { charter: linkAgent([]) },
       assets: { storage: fixture.storage },
-      mcpResources: async () => undefined,
+      mcpResources: [{ serves: () => true, read: async () => undefined }],
     });
     cleanups.push(async () => {
       await bureau.dispose();

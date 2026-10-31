@@ -49,10 +49,15 @@ async function open() {
       }),
     },
     assets: { storage: fixture.storage },
-    mcpResources: async (resource) => {
-      reads.push(`${resource.serverId} ${resource.uri}`);
-      return { data: 'x', encoding: 'utf8' };
-    },
+    mcpResources: [
+      {
+        serves: () => true,
+        read: async (resource) => {
+          reads.push(`${resource.serverId} ${resource.uri}`);
+          return { data: 'x', encoding: 'utf8' };
+        },
+      },
+    ],
     storage: new MemoryStorage(),
     durable: true,
   });

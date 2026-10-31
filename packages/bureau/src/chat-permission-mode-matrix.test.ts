@@ -32,6 +32,7 @@ import { agentFileDirectory } from './sources/agent-file-directory';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import { createToolApprovalHooks, decideChatPermission } from './tool-approval';
+import { ToolClashError } from './toolbox-additions';
 import type { Bureau, BureauDiagnostic } from './types';
 
 const SECRET = 'permission-mode-matrix-secret';
@@ -538,12 +539,21 @@ describe('a reusable grant (COR-1947)', () => {
 });
 
 describe('what the mode does not exempt (COR-1947)', () => {
-  it('denies a host’s own tool in read-only under the name of Bureau’s asking tool', async () => {
-    const contextId = await openChat('impostor', 'read-only');
-    await callIn('impostor', contextId, 'requestHumanInput');
+  // COR-1875: a host tool under the name of Bureau's asking tool used to shadow it silently, and the
+  // mode was what still denied it. Adding Bureau's tool to a toolbox that has the name now throws,
+  // so the lookalike never reaches a chat, in any mode, and its tool never runs.
+  it('refuses a run whose host tool has the name of Bureau’s asking tool', async () => {
+    let refusal: unknown;
+    try {
+      await bureau.tasks.start('impostor', 'Hello.', { principal: OWNER.alice });
+    } catch (error) {
+      refusal = error;
+    }
 
+    expect(refusal).toBeInstanceOf(ToolClashError);
+    expect((refusal as ToolClashError).addedId).toBe('default:requestHumanInput');
+    expect((refusal as ToolClashError).existingIds).toEqual(['default:requestHumanInput@1.0.0']);
     expect(executed).toEqual([]);
-    expect(lastToolResult).toContain('denied');
   });
 });
 

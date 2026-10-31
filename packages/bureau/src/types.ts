@@ -83,7 +83,7 @@ import type {
 } from './agent-catalog';
 import type { AgentFileDefinitionInput } from './agent-file';
 import type { BureauAssetOptions } from './assets/asset-service';
-import type { McpResourceReader } from './assets/content-source-resolver';
+import type { McpResourceRegistration } from './assets/content-source-resolver';
 import type { AssetService } from './assets/types';
 import type { AuditRetentionOption, AuditTrail, CheckpointRetentionOption } from './audit-trail';
 import type { BureauEventFeed } from './bureau-event-feed.ts';
@@ -843,16 +843,19 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    */
   assets?: BureauAssetOptions;
   /**
-   * Reads the MCP resource an `mcp-resource` part of a tool result links to (COR-1634), so the
+   * Reads the MCP resources an `mcp-resource` part of a tool result links to (COR-1634), so the
    * step after a tool returned an MCP `resource_link` can send the linked bytes to a provider.
    * Bureau holds no MCP connections, so the host that connected the server supplies the read. Only a
    * tool result introduces such a link (a run, session or schedule input carrying one is refused),
    * but the reader must still authorize the run's principal, the server and the URI on every
    * call, and it is called again at every step that sends the row. Without it, a run whose
    * row holds such a link fails its next generation with a `MediaAdmissionError`. See
-   * {@link McpResourceReader}.
+   * `McpResourceReader`. Several readers register together (COR-1875), each with the test
+   * that claims its resources ({@link McpResourceRegistration}); the first registration that
+   * serves a resource reads it, and a resource none serves fails that step with the reason
+   * `mcp-resource-not-served`.
    */
-  mcpResources?: McpResourceReader;
+  mcpResources?: readonly McpResourceRegistration[];
   /**
    * Host sink for internal operational diagnostics — recovery failures,
    * live-frame listener exceptions, dispose errors, and persistence

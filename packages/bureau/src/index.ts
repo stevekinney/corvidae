@@ -173,7 +173,11 @@ export {
   createAssetContentSourceResolver,
   createMcpResourceContentSourceResolver,
 } from './assets/content-source-resolver';
-export type { McpResourceContents, McpResourceReader } from './assets/content-source-resolver';
+export type {
+  McpResourceContents,
+  McpResourceReader,
+  McpResourceRegistration,
+} from './assets/content-source-resolver';
 export { createAssetGeneratedMediaAdmitter } from './assets/generated-media-admitter';
 export {
   AssetAccessDeniedError,
@@ -526,6 +530,7 @@ export {
   serializeUnknownError,
 } from './serialization';
 export { SessionForkRefusedError } from './session-fork';
+export { ToolClashError } from './toolbox-additions';
 export type {
   ForkSessionRequest,
   ForkSessionResult,

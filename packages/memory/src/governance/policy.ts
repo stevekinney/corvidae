@@ -99,9 +99,17 @@ export interface CreateMemoryGovernancePolicyInput {
   readonly revision: string;
   readonly admission?: Partial<Omit<MemoryAdmissionPolicy, 'sourceTrust'>> & {
     readonly sourceTrust?: Partial<Record<MemorySourceKind, MemoryTrust>>;
+    /**
+     * Detectors a plugin contributes (COR-1875). They run on every write after
+     * `detectors`, which is the poisoning detector unless the host replaced it, so a contributed
+     * detector can add a check but never run in place of the default one.
+     */
+    readonly contributedDetectors?: readonly InputDetector[];
   };
   readonly recall?: {
     readonly detectors?: readonly InputDetector[];
+    /** As `admission.contributedDetectors`, for every recalled record (COR-1875). */
+    readonly contributedDetectors?: readonly InputDetector[];
     readonly minimumTrust?: Partial<Record<MemoryClass, MemoryTrust>>;
   };
   readonly retention?: Partial<Record<MemoryClass, MemoryRetentionRule>>;
@@ -200,14 +208,20 @@ export function createMemoryGovernancePolicy(
     throw new MemoryGovernancePolicyError('A governance policy needs a revision.');
   }
   const admission: MemoryAdmissionPolicy = {
-    detectors: input.admission?.detectors ?? [createMemoryPoisoningDetector()],
+    detectors: [
+      ...(input.admission?.detectors ?? [createMemoryPoisoningDetector()]),
+      ...(input.admission?.contributedDetectors ?? []),
+    ],
     onDetection: input.admission?.onDetection ?? 'quarantine',
     maxContentLength: input.admission?.maxContentLength ?? 32_768,
     maxRecordsPerCollection: input.admission?.maxRecordsPerCollection ?? 10_000,
     sourceTrust: { ...DEFAULT_SOURCE_TRUST, ...input.admission?.sourceTrust },
   };
   const recall: MemoryRecallPolicy = {
-    detectors: input.recall?.detectors ?? [createMemoryPoisoningDetector()],
+    detectors: [
+      ...(input.recall?.detectors ?? [createMemoryPoisoningDetector()]),
+      ...(input.recall?.contributedDetectors ?? []),
+    ],
     minimumTrust: { ...DEFAULT_MINIMUM_TRUST, ...input.recall?.minimumTrust },
   };
   if (admission.detectors.length === 0 || recall.detectors.length === 0) {
