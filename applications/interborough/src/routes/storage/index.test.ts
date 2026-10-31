@@ -3,7 +3,9 @@
  * search controls, the selected key's pane, per-key Edit and Delete with a confirmation, the lock on
  * a key the application manages, and the storage line with its capabilities popover.
  */
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { HttpClient } from '@lostgradient/weft';
+import { focusManager } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
@@ -299,6 +301,19 @@ function conditionalBatchOf(server: ReturnType<typeof serveStorage> | undefined)
   };
 }
 
+/** How many times the server has been asked for a page of keys. */
+const scanCount = (): number =>
+  server?.calls.filter(
+    (call) =>
+      call.method === 'GET' && new URL(call.url, 'http://localhost').pathname === '/v1/storage',
+  ).length ?? 0;
+
+/** Brings the window back into focus, which makes every stale query read again. */
+function refocusWindow(): void {
+  focusManager.setFocused(false);
+  focusManager.setFocused(true);
+}
+
 /** Opens a key, starts editing it, and returns the pane once the editor is up. */
 async function startEditing(view: View, key: string) {
   const pane = within(await select(view, key));
@@ -357,6 +372,75 @@ describe('Edit', () => {
     expect(pane.getByLabelText(STORAGE_COPY.detail.editLabel)).not.toBeNull();
   });
 
+  test('fences the save on the value that was opened, not on what a refetch read since', async () => {
+    const view = await open();
+    const pane = await startEditing(view, 'app:notes');
+    await fireEvent.input(pane.getByLabelText(STORAGE_COPY.detail.editLabel), {
+      target: { value: 'my version' },
+    });
+    // Another writer changes the key, and the window regains focus, so the table reads it again.
+    const scansBefore = scanCount();
+    server?.store.set('app:notes', new TextEncoder().encode('their version'));
+    refocusWindow();
+    await waitUntil(() => scanCount() > scansBefore);
+    await waitFor(() => expect(rowOf(view, 'app:notes').textContent).toContain('13 B'));
+
+    await fireEvent.click(pane.getByRole('button', { name: STORAGE_COPY.detail.save }));
+    const dialog = await view.findByRole('dialog');
+    await fireEvent.click(
+      within(dialog).getByRole('button', { name: STORAGE_COPY.confirmSave.confirm }),
+    );
+
+    expect(await pane.findByText(STORAGE_COPY.detail.changedUnderYou)).not.toBeNull();
+    expect(conditionalBatchOf(server)?.conditions).toEqual([
+      { key: 'app:notes', expected: 'plain text note' },
+    ]);
+    expect(new TextDecoder().decode(server?.store.get('app:notes'))).toBe('their version');
+  });
+
+  test('a refused save reads the key again, so opening it shows what it holds now', async () => {
+    const view = await open();
+    const pane = await startEditing(view, 'app:notes');
+    await fireEvent.input(pane.getByLabelText(STORAGE_COPY.detail.editLabel), {
+      target: { value: 'my version' },
+    });
+    server?.store.set('app:notes', new TextEncoder().encode('their version'));
+    const scansBefore = scanCount();
+
+    await fireEvent.click(pane.getByRole('button', { name: STORAGE_COPY.detail.save }));
+    const dialog = await view.findByRole('dialog');
+    await fireEvent.click(
+      within(dialog).getByRole('button', { name: STORAGE_COPY.confirmSave.confirm }),
+    );
+
+    expect(await pane.findByText(STORAGE_COPY.detail.changedUnderYou)).not.toBeNull();
+    await waitFor(() => expect(scanCount()).toBeGreaterThan(scansBefore));
+    await waitFor(() => expect(rowOf(view, 'app:notes').textContent).toContain('13 B'));
+  });
+
+  test('writes nothing while the storage has not said whether it can write conditionally', async () => {
+    const view = await open({ capabilitiesStatus: 500 });
+    const pane = await startEditing(view, 'app:notes');
+    await waitFor(() =>
+      expect(server?.calls.some((call) => call.body?.includes('weft.storage.capabilities'))).toBe(
+        true,
+      ),
+    );
+    await fireEvent.input(pane.getByLabelText(STORAGE_COPY.detail.editLabel), {
+      target: { value: 'unchecked' },
+    });
+    await fireEvent.click(pane.getByRole('button', { name: STORAGE_COPY.detail.save }));
+    const dialog = await view.findByRole('dialog');
+    await fireEvent.click(
+      within(dialog).getByRole('button', { name: STORAGE_COPY.confirmSave.confirm }),
+    );
+
+    expect(await pane.findByText(STORAGE_COPY.detail.capabilityUnknown)).not.toBeNull();
+    expect(server?.calls.some((call) => call.method === 'PUT')).toBe(false);
+    expect(conditionalBatchOf(server)).toBeUndefined();
+    expect(new TextDecoder().decode(server?.store.get('app:notes'))).toBe('plain text note');
+  });
+
   test('a storage that cannot write conditionally takes a plain put', async () => {
     const view = await open({ conditionalBatch: false });
     await view.findByRole('button', { name: /SQLite/ });
@@ -372,6 +456,8 @@ describe('Edit', () => {
     });
     await fireEvent.click(pane.getByRole('button', { name: STORAGE_COPY.detail.save }));
     const dialog = await view.findByRole('dialog');
+    // Where the person confirms, the dialog says nothing will check the value first.
+    expect(dialog.textContent).toContain(STORAGE_COPY.confirmSave.description('app:notes', true));
     await fireEvent.click(
       within(dialog).getByRole('button', { name: STORAGE_COPY.confirmSave.confirm }),
     );
@@ -471,6 +557,50 @@ describe('Delete', () => {
     expect(server?.store.has('cache:rates')).toBe(true);
   });
 
+  test('fences the delete on the value that was opened, not on what a refetch read since', async () => {
+    const view = await open();
+    const pane = within(await select(view, 'cache:rates'));
+    await waitFor(() =>
+      expect(pane.getByRole('button', { name: STORAGE_COPY.detail.delete })).not.toBeNull(),
+    );
+    await fireEvent.click(pane.getByRole('button', { name: STORAGE_COPY.detail.delete }));
+    const dialog = await view.findByRole('dialog');
+    const scansBefore = scanCount();
+    server?.store.set('cache:rates', new TextEncoder().encode('{"usd":22}'));
+    refocusWindow();
+    await waitUntil(() => scanCount() > scansBefore);
+    await waitFor(() => expect(rowOf(view, 'cache:rates').textContent).toContain('10 B'));
+    await fireEvent.click(
+      within(dialog).getByRole('button', { name: STORAGE_COPY.confirmDelete.confirm }),
+    );
+
+    expect(await pane.findByText(STORAGE_COPY.detail.changedUnderYou)).not.toBeNull();
+    expect(server?.store.has('cache:rates')).toBe(true);
+  });
+
+  test('writes nothing while the storage has not said whether it can write conditionally', async () => {
+    const view = await open({ capabilitiesStatus: 500 });
+    const pane = within(await select(view, 'cache:rates'));
+    await waitFor(() =>
+      expect(pane.getByRole('button', { name: STORAGE_COPY.detail.delete })).not.toBeNull(),
+    );
+    await waitFor(() =>
+      expect(server?.calls.some((call) => call.body?.includes('weft.storage.capabilities'))).toBe(
+        true,
+      ),
+    );
+    await fireEvent.click(pane.getByRole('button', { name: STORAGE_COPY.detail.delete }));
+    const dialog = await view.findByRole('dialog');
+    await fireEvent.click(
+      within(dialog).getByRole('button', { name: STORAGE_COPY.confirmDelete.confirm }),
+    );
+
+    expect(await pane.findByText(STORAGE_COPY.detail.capabilityUnknown)).not.toBeNull();
+    expect(server?.calls.some((call) => call.method === 'DELETE')).toBe(false);
+    expect(conditionalBatchOf(server)).toBeUndefined();
+    expect(server?.store.has('cache:rates')).toBe(true);
+  });
+
   test('a delete the server refuses is an error in the pane', async () => {
     const view = await open();
     const pane = within(await select(view, 'cache:rates'));
@@ -502,6 +632,9 @@ describe('Delete', () => {
     );
     await fireEvent.click(pane.getByRole('button', { name: STORAGE_COPY.detail.delete }));
     const dialog = await view.findByRole('dialog');
+    expect(dialog.textContent).toContain(
+      STORAGE_COPY.confirmDelete.description('cache:rates', true),
+    );
     await fireEvent.click(
       within(dialog).getByRole('button', { name: STORAGE_COPY.confirmDelete.confirm }),
     );

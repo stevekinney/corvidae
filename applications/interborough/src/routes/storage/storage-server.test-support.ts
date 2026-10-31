@@ -13,6 +13,8 @@ export interface StorageServerOptions {
   readonly scanStatus?: number;
   /** Whether the storage reports `conditionalBatch`. True by default. */
   readonly conditionalBatch?: boolean;
+  /** Fails the capabilities call with this status, so the page never learns what the storage can do. */
+  readonly capabilitiesStatus?: number;
 }
 
 /** The capabilities `weft.storage.capabilities` answers with. */
@@ -87,6 +89,12 @@ export function serveStorage(options: StorageServerOptions): {
       );
     }
     if (call.body !== undefined && call.body.includes('weft.storage.capabilities')) {
+      if (options.capabilitiesStatus !== undefined) {
+        return Response.json(
+          { error: 'The capabilities are unavailable.' },
+          { status: options.capabilitiesStatus },
+        );
+      }
       return Response.json({
         jsonrpc: '2.0',
         id: 1,

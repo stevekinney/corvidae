@@ -1205,6 +1205,13 @@ export const AUDIT_COPY = {
     description: 'Nothing in the trail matches this search. Change or clear a filter to see more.',
     clear: 'Clear filters',
   },
+  /** A list with more pages to read, where none of the records read so far matches the search. */
+  noLoadedMatches: {
+    title: 'No loaded record matches',
+    description:
+      'None of the records read so far matches this search, and the trail has more. Load more to keep looking, or change or clear a filter.',
+    clear: 'Clear filters',
+  },
   failed: {
     title: 'The search failed',
     description:
@@ -2456,6 +2463,10 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
   },
 };
 
+/** Said where a write is confirmed when the storage cannot check that the value is unchanged. */
+const UNCHECKED_WRITE_NOTE =
+  ' This storage cannot check that the value is unchanged first, so it overwrites whatever the key holds now.';
+
 /** The words the storage explorer (`/health/storage`) uses outside its view states. */
 export const STORAGE_COPY = {
   title: 'Storage',
@@ -2522,6 +2533,8 @@ export const STORAGE_COPY = {
     binaryNote: 'This value is not text, so it cannot be edited here.',
     notJson: 'The value was JSON and this is not, so it cannot be saved.',
     saveFailed: 'The value was not saved.',
+    capabilityUnknown:
+      'The storage has not said whether it can check that a value is unchanged, so nothing was written. Try again in a moment.',
     changedUnderYou:
       'The value changed after it was opened, so nothing was written. Open the key again to see what it holds now.',
     deleteFailed: 'The key was not deleted.',
@@ -2530,12 +2543,14 @@ export const STORAGE_COPY = {
   },
   confirmSave: {
     title: 'Save this value?',
-    description: (key: string): string => `This replaces the value of ${key}.`,
+    description: (key: string, unchecked = false): string =>
+      `This replaces the value of ${key}.${unchecked ? UNCHECKED_WRITE_NOTE : ''}`,
     confirm: 'Save',
   },
   confirmDelete: {
     title: 'Delete this key?',
-    description: (key: string): string => `This removes ${key} from storage. It cannot be undone.`,
+    description: (key: string, unchecked = false): string =>
+      `This removes ${key} from storage. It cannot be undone.${unchecked ? UNCHECKED_WRITE_NOTE : ''}`,
     confirm: 'Delete',
   },
   backend: {

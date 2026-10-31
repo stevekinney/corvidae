@@ -114,6 +114,17 @@
   );
   type Row = (typeof rows)[number];
 
+  // An address that names a record (`?record=`) opens it, even when it is on a later page: the list
+  // resolves its selection against the rows it holds, so read pages until the record is among them
+  // or the trail has no more.
+  const wantedRecord = $derived(router.current.search.get('record'));
+  $effect(() => {
+    if (wantedRecord === null || trail.isPending || trail.isError) return;
+    if (!trail.hasNextPage || trail.isFetchingNextPage) return;
+    if (rows.some((row) => row.key === wantedRecord)) return;
+    void trail.fetchNextPage();
+  });
+
   const seen = $derived([...(wholeTrail.data?.records ?? []), ...loaded]);
 
   const typeOptions = $derived.by(() => {
@@ -359,9 +370,9 @@
             kind="filtered"
             size="compact"
             headingLevel={3}
-            title={copy.noMatches.title}
-            description={copy.noMatches.description}
-            clearFiltersLabel={copy.noMatches.clear}
+            title={copy.noLoadedMatches.title}
+            description={copy.noLoadedMatches.description}
+            clearFiltersLabel={copy.noLoadedMatches.clear}
             onClearFilters={clear}
           />
         {/snippet}

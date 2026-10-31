@@ -458,15 +458,36 @@ describe('an empty list', () => {
           ? { records: [record(3, { principal: 'carol', resource: 'run-c' })], nextCursor: null }
           : { records: [record(1), record(2)], nextCursor: 'c1' },
     });
-    const { container, findByText, getByRole } = render(RouteOutletHarness, {
+    const { container, findByText, getByRole, queryByText } = render(RouteOutletHarness, {
       props: { client: client(), scopes: AUTHORIZATION_SCOPES },
     } as never);
 
-    await findByText(AUDIT_COPY.noMatches.title);
+    // Later pages may match, so the list does not say the trail holds nothing.
+    await findByText(AUDIT_COPY.noLoadedMatches.title);
+    expect(queryByText(AUDIT_COPY.noMatches.title)).toBeNull();
     expect(rows(container)).toEqual([]);
     await fireEvent.click(getByRole('button', { name: AUDIT_COPY.loadMore }));
 
     await waitFor(() => expect(rows(container)).toEqual(['3']));
+  });
+});
+
+describe('an address that names a record', () => {
+  test('reads on to the page that holds the record, and opens it', async () => {
+    const wanted = record(3, { resource: 'run-c' });
+    landAt(`/health/audit?record=${encodeURIComponent(`${wanted.timestamp}#3#0`)}`);
+    stub = installBureauStub({
+      'bureau.audit.query': (params) =>
+        params['cursor'] === 'c1'
+          ? { records: [wanted], nextCursor: null }
+          : { records: [record(1), record(2)], nextCursor: 'c1' },
+    });
+    const { findByTestId } = render(RouteOutletHarness, {
+      props: { client: client(), scopes: AUTHORIZATION_SCOPES },
+    } as never);
+
+    const detail = await findByTestId('audit-detail');
+    expect(detail.getAttribute('data-record')).toBe('3');
   });
 });
 

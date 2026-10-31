@@ -42,7 +42,8 @@
     /**
      * Whether the storage can write a key only if it still holds the value this pane read
      * (`weft.storage.capabilities`). When it can, a save or a delete that finds the value changed
-     * writes nothing and says so; when it cannot, or is not known, the write is plain.
+     * writes nothing and says so; when it cannot (`false`), the write is plain and the confirmation
+     * says so; while it is not known (`undefined`), no write is made.
      */
     conditionalBatch: boolean | undefined;
     /** Called with the key after it is deleted, so the table can drop the selection if it is still that key. */
@@ -64,12 +65,24 @@
   let draft = $state('');
   let confirmSave = $state(false);
   let confirmDelete = $state(false);
+  /**
+   * The value the pane showed when the person opened the editor or the delete confirmation. The
+   * conditional write is fenced on this, not on the entry as it is at Save: a refetch after another
+   * writer's change replaces `entry.value`, and fencing on that would let the save overwrite it.
+   */
+  let expectedValue = $state<Uint8Array | undefined>(undefined);
 
   const draftInvalid = $derived(editing && text !== undefined && isJson(text) && !isJson(draft));
 
   function startEditing(): void {
     draft = text ?? '';
+    expectedValue = entry.value;
     editing = true;
+  }
+
+  function startDeleting(): void {
+    expectedValue = entry.value;
+    confirmDelete = true;
   }
 
   async function refresh(): Promise<void> {
@@ -100,7 +113,8 @@
     expected: Uint8Array,
     operation: { readonly type: 'put'; readonly value: Uint8Array } | { readonly type: 'delete' },
   ): Promise<void> {
-    if (conditionalBatch !== true) {
+    if (conditionalBatch === undefined) throw new WriteRefusedError(copy.capabilityUnknown);
+    if (conditionalBatch === false) {
       if (operation.type === 'put') await storagePut(client, key, operation.value);
       else await storageDelete(client, key);
       return;
@@ -114,7 +128,11 @@
           : { type: 'delete', key },
       ],
     );
-    if (!applied) throw new WriteRefusedError(copy.changedUnderYou);
+    if (!applied) {
+      // The cached entry is the stale value that fenced this write; drop it so opening the key again shows what it holds now.
+      await refresh();
+      throw new WriteRefusedError(copy.changedUnderYou);
+    }
   }
 
   const saveMutation = createMutation<
@@ -179,7 +197,7 @@
       </Button>
     {/if}
     {#if writable}
-      <Button data-changes variant="danger" onclick={() => (confirmDelete = true)}>
+      <Button data-changes variant="danger" onclick={startDeleting}>
         {#snippet leadingIcon()}<Trash2 aria-hidden="true" size={14} />{/snippet}
         {copy.delete}
       </Button>
@@ -245,18 +263,24 @@
 <ConfirmDialog
   bind:open={confirmSave}
   title={STORAGE_COPY.confirmSave.title}
-  description={STORAGE_COPY.confirmSave.description(entry.key)}
+  description={STORAGE_COPY.confirmSave.description(entry.key, conditionalBatch === false)}
   confirmLabel={STORAGE_COPY.confirmSave.confirm}
-  onConfirm={() => saveMutation.mutate({ key: entry.key, value: draft, expected: entry.value })}
+  onConfirm={() =>
+    saveMutation.mutate({
+      key: entry.key,
+      value: draft,
+      expected: expectedValue ?? entry.value,
+    })}
 />
 
 <ConfirmDialog
   bind:open={confirmDelete}
   title={STORAGE_COPY.confirmDelete.title}
-  description={STORAGE_COPY.confirmDelete.description(entry.key)}
+  description={STORAGE_COPY.confirmDelete.description(entry.key, conditionalBatch === false)}
   confirmLabel={STORAGE_COPY.confirmDelete.confirm}
   destructive
-  onConfirm={() => deleteMutation.mutate({ key: entry.key, expected: entry.value })}
+  onConfirm={() =>
+    deleteMutation.mutate({ key: entry.key, expected: expectedValue ?? entry.value })}
 />
 
 <style>
