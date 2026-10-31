@@ -1,11 +1,8 @@
 <script lang="ts">
   import { Badge, DescriptionList, EmptyState, Skeleton, Table } from '@lostgradient/cinder';
 
-  import { FAULT_TREATMENT_TITLE, faultTreatment } from '../../lib/faults.ts';
-  import {
-    MalformedWorkerDiagnosticsError,
-    type WorkerManifestDiagnostics,
-  } from './worker-manifest-diagnostics.ts';
+  import PanelFault from './panel-fault.svelte';
+  import type { WorkerManifestDiagnostics } from './worker-manifest-diagnostics.ts';
 
   interface WorkerManifestPanelProps {
     readonly diagnostics: WorkerManifestDiagnostics | null | undefined;
@@ -58,33 +55,36 @@
       <Skeleton height="8rem" />
     </div>
   {:else if error}
-    {#if error instanceof MalformedWorkerDiagnosticsError}
-      <EmptyState title="Malformed server response" description={error.message} />
-    {:else}
-      {@const treatment = faultTreatment(error)}
-      <EmptyState title={FAULT_TREATMENT_TITLE[treatment.kind]} description={treatment.message} />
-    {/if}
+    <PanelFault {error} />
   {:else if diagnostics === null}
     <EmptyState
+      kind="done"
+      headingLevel={3}
       title="Worker no longer connected"
       description="The fleet snapshot is stale; the server no longer has an accepted manifest for this worker."
     />
   {:else if diagnostics}
     <div class="weft-workers-panel">
-      <div class="weft-workers-panel__header">Identity and admission</div>
+      <div class="weft-workers-panel__title">Identity and admission</div>
       <div class="weft-worker-manifest-panel__identity">
         <DescriptionList items={identityItems} />
       </div>
     </div>
 
     <div class="weft-workers-panel">
-      <div class="weft-workers-panel__header">Capabilities</div>
+      <div class="weft-workers-panel__title">Capabilities</div>
       <p class="weft-worker-manifest-panel__note">
         Capability claims are descriptive and do not grant authorization. Routing eligibility
         follows server manifest acceptance.
       </p>
       {#if Object.keys(capabilities).length === 0}
-        <p class="weft-worker-manifest-panel__note">No capabilities were advertised.</p>
+        <EmptyState
+          kind="first-use"
+          size="compact"
+          headingLevel={4}
+          title="No capabilities advertised"
+          description="This worker did not advertise any capabilities."
+        />
       {:else}
         <dl class="weft-worker-manifest-panel__capabilities">
           {#each Object.entries(capabilities).toSorted( ([left], [right]) => left.localeCompare(right) ) as [name, value] (name)}
@@ -99,6 +99,9 @@
 
     {#if Object.keys(diagnostics.deploymentVersion.workflows).length === 0}
       <EmptyState
+        kind="first-use"
+        size="compact"
+        headingLevel={3}
         title="No executable workflow contracts"
         description="The accepted manifest advertises no workflows."
       />

@@ -71,7 +71,6 @@ test('filtering Diagnostics by build ID finds the task and deep-links to its wor
   await checkA11y('workers—diagnostics filtered by build');
 
   await workerLink.click();
-  await expect(page).toHaveURL(/tab=list/);
   await expect(page).toHaveURL(new RegExp(`worker=${E2E_CROSS_BUILD_WORKER_ID}`));
   // The detail view shows a truncated id and keeps the full one as its title.
   await expect(page.getByTitle(E2E_CROSS_BUILD_WORKER_ID).first()).toBeVisible();

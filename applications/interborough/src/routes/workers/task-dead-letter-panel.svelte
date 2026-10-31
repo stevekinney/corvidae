@@ -75,7 +75,7 @@
   class="weft-workers-panel weft-dead-letter-retention"
   aria-labelledby="dead-letter-retention-heading"
 >
-  <h3 id="dead-letter-retention-heading" class="weft-workers-panel__header">
+  <h3 id="dead-letter-retention-heading" class="weft-workers-panel__title">
     Retained dead-letter result
   </h3>
   <div class="weft-dead-letter-retention__body">

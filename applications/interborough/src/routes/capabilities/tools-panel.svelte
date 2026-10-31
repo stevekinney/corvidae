@@ -26,10 +26,11 @@
     tierVariant,
     toolSummary,
   } from './capability-presentation.ts';
-  import { routerSelectionLocation } from './selection-location.ts';
+  import { routerSelectionLocationFor } from '../../lib/router-selection-location.ts';
   import ToolDetail from './tool-detail.svelte';
 
   const copy = CAPABILITIES_COPY;
+  const selectionLocation = routerSelectionLocationFor('/capabilities');
 
   const catalog = createQuery(
     () => ({
@@ -77,7 +78,7 @@
         emptyTitle={copy.emptyDetailTitle}
         emptyDescription={copy.emptyDetailDescription}
         selectionParameter="tool"
-        selectionLocation={routerSelectionLocation}
+        {selectionLocation}
         storageKey="interborough-capabilities-tools"
       >
         {#snippet header()}

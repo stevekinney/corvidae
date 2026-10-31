@@ -120,15 +120,15 @@ describe('DeploymentsPanel — states', () => {
   });
 
   test('denied, malformed, and server-fault reads are each explicit', async () => {
-    const cases: [(script: ScriptedFetch) => void, string][] = [
+    const cases: [(script: ScriptedFetch) => void, string | RegExp][] = [
       [
         (s) =>
           s.routeJsonRpcMethodError('weft.worker.deployments.diagnostics', 403, 'no', 'Forbidden'),
-        'Deployments are locked',
+        /to read deployment versions and routing/,
       ],
       [
         (s) => s.routeJsonRpcMethod('weft.worker.deployments.diagnostics', { versions: 'many' }),
-        'Malformed server response',
+        /malformed deployment diagnostics/,
       ],
       [
         (s) =>
@@ -141,11 +141,11 @@ describe('DeploymentsPanel — states', () => {
         'Not authorized',
       ],
     ];
-    for (const [route, title] of cases) {
+    for (const [route, text] of cases) {
       scripted = new ScriptedFetch();
       route(scripted);
       const view = renderPanel();
-      expect(await view.findByText(title)).not.toBeNull();
+      expect(await view.findByText(text)).not.toBeNull();
       view.unmount();
       scripted.restore();
     }

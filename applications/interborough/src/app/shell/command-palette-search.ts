@@ -60,7 +60,7 @@ export function schedulePath(scheduleId: string): string {
 
 /** Where a worker's own page is: the workers view, on its list, with the worker selected. */
 export function workerPath(workerId: string): string {
-  return `/health/workers?tab=list&worker=${encodeURIComponent(workerId)}`;
+  return `/health/workers?worker=${encodeURIComponent(workerId)}`;
 }
 
 const WORKFLOW_ID_PREFIX_PATTERN = /^[A-Za-z0-9_-]+$/;

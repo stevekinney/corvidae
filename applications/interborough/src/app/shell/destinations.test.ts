@@ -68,8 +68,9 @@ describe('the shell’s shortcuts', () => {
     }
   });
 
-  test('G T opens Storage and G U opens the audit log, pages under Health that the sidebar does not list', () => {
+  test('G O opens Workers, G T Storage and G U the audit log, pages under Health that the sidebar does not list', () => {
     expect(HEALTH_SHORTCUTS.map((page) => [page.letter, page.path])).toEqual([
+      ['o', '/health/workers'],
       ['t', '/health/storage'],
       ['u', '/health/audit'],
     ]);
@@ -84,11 +85,12 @@ describe('the shell’s shortcuts', () => {
     }
   });
 
-  test('the map lists both beside the other places to go', () => {
+  test('the map lists all three beside the other places to go', () => {
     const { registry } = registered();
     const navigation = registry
       .groups()
       .find((group) => group.label === SHORTCUT_COPY.navigationGroup);
+    expect(navigation?.shortcuts).toContainEqual({ action: 'Go to Workers', keys: ['G', 'O'] });
     expect(navigation?.shortcuts).toContainEqual({ action: 'Go to Storage', keys: ['G', 'T'] });
     expect(navigation?.shortcuts).toContainEqual({ action: 'Go to Audit log', keys: ['G', 'U'] });
   });
