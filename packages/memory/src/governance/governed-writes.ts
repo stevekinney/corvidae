@@ -185,13 +185,20 @@ export async function storeGovernedRecord(
   const vectorReference = { id: record.id, scope: input.scope };
   // Queued before the record exists, as the ledger learns of it, so a process that stops after the
   // record is stored still leaves the embed queued. A step embeds the queue once the embedder is
-  // loaded; an entry naming a record that was never stored is dropped then.
+  // loaded. A step that reads the entry before the record write lands keeps it while it is younger
+  // than QUEUED_EMBED_GRACE_MILLISECONDS, so it is never dropped from under this admission; an
+  // entry naming a record that was never stored is dropped once it is older.
   // The profile the record's vector is stored in, or, while its embedder is unavailable, queued for.
   let written: MemoryEmbeddingProfile | undefined = active.profile;
   if (vector === undefined) {
     // A queue that refuses lost its profile to two completed switches; the record is embedded into
     // the active profile below instead.
-    if (!(await context.embedding.vectors.enqueueEmbed(active.profile, vectorReference))) {
+    const queued = await context.embedding.vectors.enqueueEmbed(
+      active.profile,
+      vectorReference,
+      context.now(),
+    );
+    if (!queued) {
       written = undefined;
     }
   }

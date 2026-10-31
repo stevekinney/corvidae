@@ -2,6 +2,7 @@ import {
   type BatchOperation,
   encodeStorageKeyComponent,
   MAX_BATCH_OPERATIONS,
+  type ScanOptions,
   type Storage,
   storageBatch,
   storageConditionalBatch,
@@ -49,6 +50,18 @@ export interface MemoryVectorReference {
   readonly id: string;
   /** The record's scope. */
   readonly scope: MemoryRecordScope;
+}
+
+/** One record queued for embedding into a profile (see {@link MemoryVectorStore.enqueueEmbed}). */
+export interface MemoryQueuedEmbed {
+  /** The record to embed. */
+  readonly reference: MemoryVectorReference;
+  /**
+   * When the entry was queued, on the queuing process's clock in milliseconds. An entry whose
+   * record is not stored is kept while it is young, because its admission may not have stored the
+   * record yet.
+   */
+  readonly queuedAt: number;
 }
 
 /** Where a switch of the active embedding stands: `running`, or how it ended without completing. */
@@ -224,17 +237,27 @@ export interface MemoryVectorStore {
   completeJob(expected: MemoryEmbeddingJob): Promise<boolean>;
   /**
    * Queues the record for embedding into `profile`: an admission whose embed into the profile is
-   * still to happen, or failed, so a later step embeds it. Queuing twice keeps one entry. Like
-   * {@link MemoryVectorStore.put}, the write is conditioned on the profile's marker, so an entry
-   * never outlives its profile's deletion; returns `false`, writing nothing, when the store does
-   * not hold `profile`.
+   * still to happen, or failed, so a later step embeds it. `queuedAt` is the caller's clock now.
+   * Queuing twice keeps one entry, with the later `queuedAt`. Like {@link MemoryVectorStore.put},
+   * the write is conditioned on the profile's marker, so an entry never outlives its profile's
+   * deletion; returns `false`, writing nothing, when the store does not hold `profile`.
    */
-  enqueueEmbed(profile: MemoryEmbeddingProfile, reference: MemoryVectorReference): Promise<boolean>;
-  /** Up to `limit` records queued for embedding into `profile`, in key order. */
+  enqueueEmbed(
+    profile: MemoryEmbeddingProfile,
+    reference: MemoryVectorReference,
+    queuedAt: number,
+  ): Promise<boolean>;
+  /**
+   * Up to `limit` records queued for embedding into `profile`, in key order from the first entry
+   * after `after` (from the front when `after` is left out), continuing from the front once the
+   * end is reached, so a caller that passes the last entry it attempted reaches every entry in
+   * turn. Each entry appears at most once.
+   */
   listQueuedEmbeds(
     profile: MemoryEmbeddingProfile,
     limit: number,
-  ): Promise<MemoryVectorReference[]>;
+    after?: MemoryVectorReference,
+  ): Promise<MemoryQueuedEmbed[]>;
   /** Removes the record's entry from `profile`'s queue. */
   dequeueEmbed(profile: MemoryEmbeddingProfile, reference: MemoryVectorReference): Promise<void>;
 }
@@ -284,6 +307,7 @@ const queuedEmbedSchema = z
     id: z.string().min(1),
     tenantId: z.string().optional(),
     namespace: z.string().min(1),
+    queuedAt: z.number().finite(),
   })
   .strict();
 
@@ -377,7 +401,13 @@ function scopeComponent(scope: MemoryRecordScope): string {
  * - `d:<embedderId>:<dimension>:<generation>`: the checkpoint of a profile being deleted, stored
  *   with the marker's removal and removed once its vectors are gone;
  * - `v:<embedderId>:<dimension>:<generation>:t:<tenantId>:n:<namespace>:r:<id>`:
- *   one record's vector, `{ schemaVersion: 1, version, vector }`.
+ *   one record's vector, `{ schemaVersion: 1, version, vector }`;
+ * - `q:<embedderId>:<dimension>:<generation>:t:<tenantId>:n:<namespace>:r:<id>`: one record
+ *   queued for embedding into that profile, `{ schemaVersion: 1, id, tenantId?, namespace,
+ *   queuedAt }`, where `tenantId` is left out for a record with no tenant and `queuedAt` is the
+ *   queuing process's clock in milliseconds. Written only while the profile's marker is held,
+ *   removed with the record's vectors when it is forgotten, and with the profile when it is
+ *   deleted.
  *
  * Every component a caller supplies is percent-encoded, so no id can forge a
  * delimiter. Values are JSON, checked against a schema when read. The active
@@ -632,14 +662,17 @@ export function createMemoryVectorStore(
       );
     },
 
-    async enqueueEmbed(profile, reference) {
+    async enqueueEmbed(profile, reference, queuedAt) {
       checkProfile(profile);
-      const entry = encodeJson({
-        schemaVersion: 1,
-        id: reference.id,
-        ...(reference.scope.tenantId === undefined ? {} : { tenantId: reference.scope.tenantId }),
-        namespace: reference.scope.namespace,
-      });
+      const entry = encodeJson(
+        queuedEmbedSchema.parse({
+          schemaVersion: 1,
+          id: reference.id,
+          ...(reference.scope.tenantId === undefined ? {} : { tenantId: reference.scope.tenantId }),
+          namespace: reference.scope.namespace,
+          queuedAt,
+        }),
+      );
       return storageConditionalBatch(
         storage,
         [{ key: profileKey(profile), expectedValue: encodeProfile(profile) }],
@@ -647,18 +680,33 @@ export function createMemoryVectorStore(
       );
     },
 
-    async listQueuedEmbeds(profile, limit) {
-      const queued: MemoryVectorReference[] = [];
+    async listQueuedEmbeds(profile, limit, after) {
+      const queued: MemoryQueuedEmbed[] = [];
       if (limit < 1) return queued;
-      for await (const [, value] of storage.scan(queuePrefix(profile), { limit })) {
-        const { id, tenantId, namespace } = queuedEmbedSchema.parse(
-          JSON.parse(textDecoder.decode(value)),
-        );
-        queued.push({
-          id,
-          scope: tenantId === undefined ? { namespace } : { tenantId, namespace },
-        });
+      const entries = queuePrefix(profile);
+      // Encoded before the first await, so a caller that reuses its reference cannot move the cursor.
+      const cursor = after === undefined ? undefined : queueKey(profile, after);
+      const read = async (range: ScanOptions): Promise<void> => {
+        for await (const [, value] of storage.scan(entries, range)) {
+          const { id, tenantId, namespace, queuedAt } = queuedEmbedSchema.parse(
+            JSON.parse(textDecoder.decode(value)),
+          );
+          queued.push({
+            reference: {
+              id,
+              scope: tenantId === undefined ? { namespace } : { tenantId, namespace },
+            },
+            queuedAt,
+          });
+        }
+      };
+      if (cursor === undefined) {
+        await read({ limit });
+        return queued;
       }
+      await read({ gt: cursor, limit });
+      // Past the end: the front, up to and including the cursor, so no entry appears twice.
+      if (queued.length < limit) await read({ lte: cursor, limit: limit - queued.length });
       return queued;
     },
 

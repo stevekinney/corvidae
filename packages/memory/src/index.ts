@@ -278,6 +278,7 @@ export type {
   MemoryEmbeddingJob,
   MemoryEmbeddingJobState,
   MemoryEmbeddingProfile,
+  MemoryQueuedEmbed,
   MemoryVectorReference,
   MemoryVectorStore,
   StoredMemoryVector,

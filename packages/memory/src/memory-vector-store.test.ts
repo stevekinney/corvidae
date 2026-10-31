@@ -150,28 +150,58 @@ describe('createMemoryVectorStore (COR-1898)', () => {
     await store.createProfile(next);
     const untenanted = { namespace: 'shared:notes' };
 
-    expect(await store.enqueueEmbed(HASHING, { id: 'a', scope })).toBe(true);
-    expect(await store.enqueueEmbed(HASHING, { id: 'a', scope })).toBe(true);
-    expect(await store.enqueueEmbed(HASHING, { id: 'b', scope: untenanted })).toBe(true);
-    expect(await store.enqueueEmbed(next, { id: 'a', scope })).toBe(true);
-    expect(await store.enqueueEmbed(missing, { id: 'a', scope })).toBe(false);
+    expect(await store.enqueueEmbed(HASHING, { id: 'a', scope }, 100)).toBe(true);
+    expect(await store.enqueueEmbed(HASHING, { id: 'a', scope }, 200)).toBe(true);
+    expect(await store.enqueueEmbed(HASHING, { id: 'b', scope: untenanted }, 300)).toBe(true);
+    expect(await store.enqueueEmbed(next, { id: 'a', scope }, 400)).toBe(true);
+    expect(await store.enqueueEmbed(missing, { id: 'a', scope }, 500)).toBe(false);
 
     const queued = await store.listQueuedEmbeds(HASHING, 10);
-    expect(queued.toSorted((left, right) => left.id.localeCompare(right.id))).toEqual([
-      { id: 'a', scope },
-      { id: 'b', scope: untenanted },
+    // Queuing twice keeps one entry, with the later time.
+    expect(
+      queued.toSorted((left, right) => left.reference.id.localeCompare(right.reference.id)),
+    ).toEqual([
+      { reference: { id: 'a', scope }, queuedAt: 200 },
+      { reference: { id: 'b', scope: untenanted }, queuedAt: 300 },
     ]);
     expect(await store.listQueuedEmbeds(HASHING, 1)).toHaveLength(1);
     expect(await store.listQueuedEmbeds(missing, 10)).toEqual([]);
 
     await store.deleteMany([{ id: 'a', scope }]);
-    expect(await store.listQueuedEmbeds(HASHING, 10)).toEqual([{ id: 'b', scope: untenanted }]);
+    expect(await store.listQueuedEmbeds(HASHING, 10)).toEqual([
+      { reference: { id: 'b', scope: untenanted }, queuedAt: 300 },
+    ]);
     expect(await store.listQueuedEmbeds(next, 10)).toEqual([]);
 
-    await store.enqueueEmbed(next, { id: 'c', scope });
+    await store.enqueueEmbed(next, { id: 'c', scope }, 600);
     await store.deleteProfile(next);
     expect(await store.listQueuedEmbeds(next, 10)).toEqual([]);
     await store.dequeueEmbed(HASHING, { id: 'b', scope: untenanted });
     expect(await store.listQueuedEmbeds(HASHING, 10)).toEqual([]);
+  });
+
+  it('lists queued embeds from past a cursor, wrapping to the front, each at most once', async () => {
+    const store = createMemoryVectorStore(new MemoryStorage());
+    await store.activeProfile(HASHING);
+    for (const id of ['a', 'b', 'c']) {
+      expect(await store.enqueueEmbed(HASHING, { id, scope }, 1)).toBe(true);
+    }
+    const ids = async (limit: number, after?: string): Promise<string[]> => {
+      const listed = await store.listQueuedEmbeds(
+        HASHING,
+        limit,
+        after === undefined ? undefined : { id: after, scope },
+      );
+      return listed.map((entry) => entry.reference.id);
+    };
+
+    expect(await ids(2)).toEqual(['a', 'b']);
+    expect(await ids(2, 'b')).toEqual(['c', 'a']);
+    expect(await ids(10, 'b')).toEqual(['c', 'a', 'b']);
+    expect(await ids(10, 'c')).toEqual(['a', 'b', 'c']);
+    // A cursor whose entry was dequeued still orders the rest.
+    await store.dequeueEmbed(HASHING, { id: 'b', scope });
+    expect(await ids(1, 'b')).toEqual(['c']);
+    expect(await ids(10, 'b')).toEqual(['c', 'a']);
   });
 });

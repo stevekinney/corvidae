@@ -13,6 +13,16 @@ import { evictCachedContent, putRecordVector } from './profile-vectors';
 /** How many records one `memory.embedding.advance()` embeds when its caller names no limit. */
 export const DEFAULT_SWITCH_STEP_LIMIT = 500;
 
+/**
+ * How long a queued embed whose record is not stored is kept, in milliseconds. An admission while
+ * the active embedder is unavailable queues its record before storing it, and between the two it
+ * makes one record write, so an entry this old whose record is still absent belongs to an admission
+ * that stopped before storing it, or to a record forgotten since. A record write that outlives this
+ * is stalled storage, not a slow admission. Generous, so the clocks of processes that share the
+ * store may disagree by minutes.
+ */
+export const QUEUED_EMBED_GRACE_MILLISECONDS = 15 * 60 * 1000;
+
 /** The error a switch fails with when its embedder is no longer registered, or cannot embed. */
 export const TARGET_UNAVAILABLE = 'target-unavailable';
 
@@ -249,12 +259,27 @@ async function embedPending(
 }
 
 /**
+ * Where each memory's queue drain stopped: the profile it drained and the last entry it read. The
+ * next step reads on from there, so an entry whose embed keeps failing takes one attempt per pass
+ * through the queue instead of the front of every step. Held in the process, because losing it
+ * only starts the next pass from the front.
+ */
+const queueCursors = new WeakMap<
+  GovernanceContext,
+  { readonly profile: MemoryEmbeddingProfile; readonly after: MemoryVectorReference }
+>();
+
+/**
  * Embeds up to `limit` records queued for the active profile, and returns how many it embedded. A
  * record is queued when it was admitted while the active embedder was unavailable, or when its
  * embed into a running switch's target, or into a profile a switch made active meanwhile, failed or
  * never finished; once that profile is active, this embeds it. Nothing runs while the active
- * embedder is unavailable. An entry whose record is gone, or already has its vector at its current
- * `version`, is dropped without an embed; one whose embed errors stays queued for a later step.
+ * embedder is unavailable. Each step reads on from the entry the last one stopped at, wrapping to
+ * the front, so every entry is attempted in turn. An entry whose record already has its vector at
+ * its current `version` is dropped without an embed, and so is one whose record is absent once the
+ * entry is older than {@link QUEUED_EMBED_GRACE_MILLISECONDS}; a younger one may belong to an
+ * admission that has queued its record and not stored it yet, and stays. An entry whose embed
+ * errors stays queued for a later pass.
  */
 async function embedQueued(context: GovernanceContext, limit: number): Promise<number> {
   const { embedding } = context;
@@ -262,9 +287,16 @@ async function embedQueued(context: GovernanceContext, limit: number): Promise<n
   const profile = await vectors.getActiveProfile();
   if (profile === undefined || limit < 1 || !embedding.canEmbed(profile)) return 0;
   const active = embedding.bind(profile);
+  const cursor = queueCursors.get(context);
+  const after =
+    cursor !== undefined && sameProfile(cursor.profile, profile) ? cursor.after : undefined;
   let embedded = 0;
-  for (const reference of await vectors.listQueuedEmbeds(profile, limit)) {
+  for (const { reference, queuedAt } of await vectors.listQueuedEmbeds(profile, limit, after)) {
+    queueCursors.set(context, { profile, after: reference });
     const record = await context.storage.get(reference.id, reference.scope);
+    if (record === undefined && context.now() - queuedAt <= QUEUED_EMBED_GRACE_MILLISECONDS) {
+      continue;
+    }
     const held =
       record === undefined
         ? undefined
@@ -395,7 +427,7 @@ export async function embedIntoOtherProfiles(
     done.push(profile);
     try {
       // A profile deleted meanwhile refuses the entry; there is nothing to embed into then.
-      if (!(await vectors.enqueueEmbed(profile, reference))) continue;
+      if (!(await vectors.enqueueEmbed(profile, reference, context.now()))) continue;
       if (!context.embedding.canEmbed(profile)) continue;
       await embedInto(context, profile, reference, version, content);
       await vectors.dequeueEmbed(profile, reference);

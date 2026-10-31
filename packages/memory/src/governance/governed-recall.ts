@@ -277,13 +277,16 @@ async function scoringPasses(
     run.iterations += 1;
     let pass: Awaited<ReturnType<typeof scoreCandidates>>;
     try {
-      pass = await scoreCandidates(
-        run.context,
-        await recallVectors(run),
-        run.plan,
-        current,
-        pending,
-      );
+      const vectors = await recallVectors(run);
+      if (vectors === undefined && pending.length > 0) {
+        report(
+          run,
+          'semantic',
+          'unavailable',
+          'the active embedder is unavailable, so candidates were scored by their text',
+        );
+      }
+      pass = await scoreCandidates(run.context, vectors, run.plan, current, pending);
     } catch {
       // The embedder or text-search provider failed: the recall fails closed
       // with no evidence, and nothing an earlier pass selected stays selected.
