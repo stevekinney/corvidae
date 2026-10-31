@@ -25,7 +25,7 @@ export interface RouteMatch {
 export interface RouteState {
   /** The matched route definition, or `null` when no owned pattern matches. */
   readonly route: RouteDefinition | null;
-  /** Named path params extracted from `route.pattern`, e.g. `{ id: 'wf_123' }`. */
+  /** Named path params extracted from `route.pattern`, e.g. `{ run: 'wf_123' }`. */
   readonly params: Readonly<Record<string, string>>;
   /** The current location's query string. */
   readonly search: URLSearchParams;
@@ -75,7 +75,24 @@ export function workflowDetailPath(
   workflowId: string,
   search: URLSearchParams = new URLSearchParams(),
 ): string {
-  return identifierPath('runs', '/runs/:id', workflowId, search);
+  return identifierPath('runs', '/runs/:run', workflowId, search);
+}
+
+/**
+ * A run's page under the workflow it belongs to, for a caller that knows the workflow type. It is
+ * the same page as {@link workflowDetailPath}, and neither redirects to the other.
+ */
+export function workflowRunPath(
+  workflowType: string,
+  runId: string,
+  search: URLSearchParams = new URLSearchParams(),
+): string {
+  return identifierPath(
+    `workflows/${encodeURIComponent(workflowType)}/runs`,
+    '/workflows/:workflow/runs/:run',
+    runId,
+    search,
+  );
 }
 
 /** A schedule's page. A dot-only identifier is carried as `workflowDetailPath` carries one. */
@@ -83,7 +100,7 @@ export function scheduleDetailPath(
   scheduleId: string,
   search: URLSearchParams = new URLSearchParams(),
 ): string {
-  return identifierPath('schedules', '/schedules/:id', scheduleId, search);
+  return identifierPath('schedules', '/schedules/:schedule', scheduleId, search);
 }
 
 /** A schedule's page with its edit drawer open. */

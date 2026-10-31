@@ -8,5 +8,5 @@ import { chatSessionPath } from '../../lib/identifier-paths.ts';
 export async function chatHomePath(): Promise<string> {
   const page = await listContexts({ origin: 'chat', limit: 1 });
   const newest = page.contexts[0];
-  return newest === undefined ? '/chat' : chatSessionPath(newest.id);
+  return newest === undefined ? '/chats' : chatSessionPath(newest.id);
 }

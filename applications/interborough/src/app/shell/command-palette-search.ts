@@ -60,7 +60,7 @@ export function schedulePath(scheduleId: string): string {
 
 /** Where a worker's own page is: the workers view, on its list, with the worker selected. */
 export function workerPath(workerId: string): string {
-  return `/workers?tab=list&worker=${encodeURIComponent(workerId)}`;
+  return `/health/workers?tab=list&worker=${encodeURIComponent(workerId)}`;
 }
 
 const WORKFLOW_ID_PREFIX_PATTERN = /^[A-Za-z0-9_-]+$/;
@@ -76,10 +76,9 @@ const CONSOLE_PAGES: readonly ConsolePage[] = (
   [
     ['reviews', '/reviews', 'command'],
     ['settings', '/settings', 'command'],
-    ['workers', '/workers', 'engine'],
-    ['storage', '/storage', 'engine'],
-    ['system', '/system', 'engine'],
-    ['audit', '/audit', 'engine'],
+    ['workers', '/health/workers', 'engine'],
+    ['storage', '/health/storage', 'engine'],
+    ['audit', '/health/audit', 'engine'],
   ] as const
 ).map(([view, path, group]) => ({ view, label: VIEW_COPY[view].label, path, group }));
 

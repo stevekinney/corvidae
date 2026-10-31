@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * `/runs/:id`: one run. It leads with the agent and how the run stands, then what started it, and
+   * `/runs/:run`: one run. It leads with the agent and how the run stands, then what started it, and
    * offers the two things a person does here, Open chat and Cancel run, as buttons of one size. The
    * Summary tab holds the answer (rendered as Markdown), the tool calls, and, when the run needs
    * a person, the decision itself, inline. The Engine tab is the workflow page the engine has
@@ -39,7 +39,7 @@
   import { formatDuration, formatRelativeTime } from '../../../lib/format/index.ts';
   import { chatSessionPath } from '../../../lib/identifier-paths.ts';
   import { queryKeys } from '../../../lib/query.ts';
-  import { router, workflowDetailPath } from '../../../lib/router.svelte.ts';
+  import { router, workflowDetailPath, workflowRunPath } from '../../../lib/router.svelte.ts';
   import { getPrincipalStore } from '../../../lib/scopes.svelte.ts';
   import { taskStatePresentation } from '../../../lib/task-status.ts';
   import WorkflowDetail from '../detail/workflow-detail.svelte';
@@ -209,7 +209,14 @@
       else search.delete('view');
       search.delete('tab');
     }
-    router.navigate(workflowDetailPath(initialRunId, search), { replace: true });
+    // The run keeps the address it was opened under: nested under its workflow, or by ID alone.
+    const workflow = router.current.params['workflow'];
+    router.navigate(
+      workflow === undefined
+        ? workflowDetailPath(initialRunId, search)
+        : workflowRunPath(workflow, initialRunId, search),
+      { replace: true },
+    );
   }
 
   const chatHref = $derived(

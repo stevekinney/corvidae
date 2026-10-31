@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * The schedules area: `/schedules` is the list and `/schedules/:id` is one schedule's page. The
+   * The schedules area: `/schedules` is the list and `/schedules/:schedule` is one schedule's page. The
    * create and edit drawers live in query state over those two, so a drawer is a location a link
    * can name and the page behind it stays mounted:
    *
@@ -16,7 +16,7 @@
 
   const search = $derived(router.current.search);
   // A path that names a schedule is its page, and the outlet mounts a page for each address.
-  const id = $derived(router.current.params['id'] ?? null);
+  const id = $derived(router.current.params['schedule'] ?? null);
   const isCreate = $derived(id === null && search.get('create') === '1');
   const isEdit = $derived(id !== null && search.get('edit') === '1');
 

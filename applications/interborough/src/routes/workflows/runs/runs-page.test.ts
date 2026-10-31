@@ -1,5 +1,5 @@
 /**
- * `/runs` and `/runs/:id` through the route outlet, over a Bureau that answers from a table
+ * `/runs` and `/runs/:run` through the route outlet, over a Bureau that answers from a table
  * (`bureau-world.test-support.ts`): the list and a run's page are the Bureau's, so a caller without
  * the engine's scope still sees them; every page of the goals is read; a status or an agent is
  * asked of the Bureau and Load more stays reachable when what the pages hold does not match; and a

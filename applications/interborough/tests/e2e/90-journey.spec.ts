@@ -76,7 +76,7 @@ function sessionOf(page: Page): string {
   return decodeURIComponent(new URL(page.url()).pathname.split('/').at(-1) ?? '');
 }
 
-const sessionAddress = /\/chat\/(?!new(?:$|\?))[^/?]+$/;
+const sessionAddress = /\/chats\/(?!new(?:$|\?))[^/?]+$/;
 
 /** Sends a follow-up and waits for the Bureau to answer it, so what follows acts on an admitted input. */
 async function sendFollowUp(page: Page, text: string): Promise<void> {
@@ -153,7 +153,7 @@ test('chats with the barrier agent, sends a follow-up while it works, and sees i
 }) => {
   await page.goto('/agents/barrier');
   await page.getByRole('link', { name: 'New chat' }).first().click();
-  await expect(page).toHaveURL(/\/chat\/new\?agent=barrier$/);
+  await expect(page).toHaveURL(/\/chats\/new\?agent=barrier$/);
 
   await send(page, 'Start the journey');
   await expect(page).toHaveURL(sessionAddress);
@@ -175,11 +175,11 @@ test('chats with the barrier agent, sends a follow-up while it works, and sees i
 test('lands in the session it just made when it starts from /', async ({ page }) => {
   await page.goto('/');
 
-  await expect(page).toHaveURL(new RegExp(`/chat/${sessions.followUp}$`));
+  await expect(page).toHaveURL(new RegExp(`/chats/${sessions.followUp}$`));
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Start the journey');
 });
 
-test('starts a second session with the same agent from the agent’s page, and returns to the first from /chat', async ({
+test('starts a second session with the same agent from the agent’s page, and returns to the first from /chats', async ({
   page,
   request,
 }) => {
@@ -193,13 +193,13 @@ test('starts a second session with the same agent from the agent’s page, and r
   await releaseBarrier(request);
   await expect(page.getByText(BARRIER_REPLY)).toBeVisible();
 
-  await page.goto('/chat');
+  await page.goto('/chats');
   await page
     .getByRole('navigation', { name: 'Chats' })
     .getByRole('link', { name: /Start the journey/ })
     .click();
 
-  await expect(page).toHaveURL(new RegExp(`/chat/${sessions.followUp}$`));
+  await expect(page).toHaveURL(new RegExp(`/chats/${sessions.followUp}$`));
   await expect(page.getByText(FOLLOW_UP_REPLY)).toBeVisible();
   await expect(page.getByText('Also this')).toHaveCount(1);
 });
@@ -209,7 +209,7 @@ test('reloads while an agent waits on a question, and answers it from the review
   request,
   checkA11y,
 }) => {
-  await page.goto('/chat/new?agent=request-human-input');
+  await page.goto('/chats/new?agent=request-human-input');
   await send(page, 'Ship it');
   await expect(page).toHaveURL(sessionAddress);
   const threadId = sessionOf(page);
@@ -221,7 +221,7 @@ test('reloads while an agent waits on a question, and answers it from the review
 
   await page.goto('/reviews');
   const row = page.locator('.ib-review').filter({
-    has: page.locator(`a[href="/chat/${threadId}"]`),
+    has: page.locator(`a[href="/chats/${threadId}"]`),
   });
   await expect(row).toContainText(QUESTION);
   await checkA11y('the question in the reviews inbox');
@@ -231,7 +231,7 @@ test('reloads while an agent waits on a question, and answers it from the review
 
   // The run went on with the answer: its session ends on the thanks, and the answer it was given
   // is the one typed, as the run's conversation holds it.
-  await page.goto(`/chat/${threadId}`);
+  await page.goto(`/chats/${threadId}`);
   await expect(page.getByText(THANKS)).toBeVisible();
   await expect(question).toHaveCount(0);
   const thread = await request.get(
@@ -273,7 +273,7 @@ test('defines an agent in the editor with the workflow tool, and chats with it u
 
   // A new agent takes a chat as soon as it is saved: nothing has to be switched on first.
   await page.getByRole('link', { name: 'New chat' }).first().click();
-  await expect(page).toHaveURL(new RegExp(`/chat/new\\?agent=${AUTHOR_ID}$`));
+  await expect(page).toHaveURL(new RegExp(`/chats/new\\?agent=${AUTHOR_ID}$`));
 
   await send(page, `${JOURNEY_MARKER} Write me a digest that runs on a schedule.`);
 
@@ -358,7 +358,7 @@ test('follows the schedule’s link to the workflow editor, changes its cadence 
 });
 
 test('attaches an image to the echo agent and sees the image it returns', async ({ page }) => {
-  await page.goto(`/chat/new?agent=${IMAGE_ECHO_AGENT_NAME}`);
+  await page.goto(`/chats/new?agent=${IMAGE_ECHO_AGENT_NAME}`);
   await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
   await page
     .locator('input[type="file"]')
@@ -380,10 +380,10 @@ test('corrects what an agent remembers, and a new chat recalls the correction an
 }) => {
   const original = `Original ${RUN} seat 12A`;
   const correction = `Corrected ${RUN} seat 14C`;
-  const memoryAddress = `/agents/${RECALL_AGENT_NAME}/memory`;
+  const memoryAddress = `/agents/${RECALL_AGENT_NAME}/memories`;
 
   // With nothing recalled the agent echoes the label, and the chat stores that answer.
-  await page.goto(`/chat/new?agent=${RECALL_AGENT_NAME}`);
+  await page.goto(`/chats/new?agent=${RECALL_AGENT_NAME}`);
   await send(page, original);
   await expect(page).toHaveURL(sessionAddress);
   await expect(page.locator(ASSISTANT_ROW).last()).toContainText(original);
@@ -405,7 +405,7 @@ test('corrects what an agent remembers, and a new chat recalls the correction an
   await expect(page.locator('.weft-memory__content', { hasText: original })).toHaveCount(0);
 
   // A new chat that names the label is answered with what the agent remembers now.
-  await page.goto(`/chat/new?agent=${RECALL_AGENT_NAME}`);
+  await page.goto(`/chats/new?agent=${RECALL_AGENT_NAME}`);
   await send(page, `Recall ${RUN}`);
   await expect(page).toHaveURL(sessionAddress);
   const reply = page.locator(ASSISTANT_ROW).last();
@@ -417,7 +417,7 @@ test('starts a run it does not release, reaches it from the chat’s run sentenc
   page,
   request,
 }) => {
-  await page.goto(`/chat/new?agent=barrier`);
+  await page.goto(`/chats/new?agent=barrier`);
   await send(page, 'Hold this task');
   await expect(page).toHaveURL(sessionAddress);
   await expectWaiting(request, 1);
@@ -445,12 +445,12 @@ test('opens the workers screen from Health, which the sidebar opens', async ({ p
     .getByRole('navigation', { name: 'Views' })
     .getByRole('link', { name: /^Health/ })
     .click();
-  await expect(page).toHaveURL(/\/engine$/);
+  await expect(page).toHaveURL(/\/health$/);
   await page
     .getByRole('navigation', { name: 'Health sections' })
     .getByRole('link', { name: 'Workers' })
     .click();
 
-  await expect(page).toHaveURL(/\/workers$/);
+  await expect(page).toHaveURL(/\/health\/workers$/);
   await expect(page.locator('[data-view="workers"]')).toHaveAttribute('data-state', 'ready');
 });

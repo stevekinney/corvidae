@@ -109,7 +109,7 @@ describe('a new chat', () => {
 
   test('offers every listed agent in a searchable list above the composer, starting from the agent it was given', async () => {
     restore = served().restore;
-    landAt('/chat/new');
+    landAt('/chats/new');
 
     const { findByRole } = mount({
       sessionId: 'thread-1',
@@ -141,7 +141,7 @@ describe('a new chat', () => {
         ],
       }),
     }).restore;
-    landAt('/chat/new');
+    landAt('/chats/new');
 
     const { findByTestId, findByRole, queryByRole } = mount({
       sessionId: 'thread-1',
@@ -171,7 +171,7 @@ describe('a new chat', () => {
         agents: [AGENT, { ...RESEARCHER, examples: ['Find the latest filing'] }],
       }),
     }).restore;
-    landAt('/chat/new?agent=researcher');
+    landAt('/chats/new?agent=researcher');
 
     const { findByTestId, queryByRole } = mount({
       sessionId: 'thread-1',
@@ -203,7 +203,7 @@ describe('a new chat', () => {
         return undefined;
       },
     ).restore;
-    landAt('/chat/new');
+    landAt('/chats/new');
     const { container, findByRole } = mount({
       sessionId: 'thread-1',
       title: null,
@@ -230,7 +230,7 @@ describe('a new chat', () => {
       description: null,
     };
     restore = bureau({ 'bureau.agents.list': () => ({ agents: [echo, runner] }) }).restore;
-    landAt('/chat/new');
+    landAt('/chats/new');
     const { findByTestId, findByRole } = mount({
       sessionId: 'thread-1',
       title: null,
@@ -253,7 +253,7 @@ describe('a new chat', () => {
     restore = bureau({
       'bureau.agents.list': () => ({ agents: [{ ...AGENT, examples: ['Say hello'] }] }),
     }).restore;
-    landAt('/chat/new');
+    landAt('/chats/new');
     const { container, findByRole } = mount({
       sessionId: 'thread-1',
       title: null,
@@ -274,7 +274,7 @@ describe('a new chat', () => {
 
   test('replaces ?agent= when the agent is changed, without adding a history entry', async () => {
     restore = served().restore;
-    landAt('/chat/new');
+    landAt('/chats/new');
     const length = window.history.length;
     const { findByRole } = mount({
       sessionId: 'thread-1',
@@ -301,7 +301,7 @@ describe('a new chat', () => {
   test('starts the first run with the chosen agent, becomes the session by replacing its address, and fixes the agent', async () => {
     const runs: string[] = [];
     restore = served(runs).restore;
-    landAt('/chat/new?agent=researcher');
+    landAt('/chats/new?agent=researcher');
     const { container, findByText, queryByRole } = mount({
       sessionId: 'thread-1',
       title: null,
@@ -312,7 +312,7 @@ describe('a new chat', () => {
 
     await sendMessage(container, 'Hello there');
 
-    await waitFor(() => expect(router.pathname).toBe('/chat/thread-1'));
+    await waitFor(() => expect(router.pathname).toBe('/chats/thread-1'));
     expect(runs).toEqual(['/bureau/ag-ui/agents/researcher/run']);
     expect(window.history.length).toBe(length);
     await findByText('Hi.');
@@ -377,7 +377,7 @@ describe('quoting an agent’s reply', () => {
   test('offers Quote on an agent’s reply, gathers the quote above the composer, and sends it as a block quote ahead of the typed text', async () => {
     const bodies: Array<{ messages: Array<{ role: string; content: unknown }> }> = [];
     restore = replying('The first item is alpha.', bodies).restore;
-    landAt('/chat/new?agent=assistant');
+    landAt('/chats/new?agent=assistant');
     const { container, findByRole, findByText } = mount({
       sessionId: 'thread-1',
       title: null,
@@ -411,7 +411,7 @@ describe('an existing session', () => {
       return undefined;
     });
     restore = served.restore;
-    landAt('/chat/session-1');
+    landAt('/chats/session-1');
 
     const { container, findByRole, queryByRole } = mount({
       sessionId: 'session-1',
@@ -433,7 +433,7 @@ describe('an existing session', () => {
       }
       return undefined;
     }).restore;
-    landAt('/chat/session-1');
+    landAt('/chats/session-1');
     const { container } = mount({
       sessionId: 'session-1',
       title: 'Plan the week',
@@ -447,7 +447,7 @@ describe('an existing session', () => {
     });
     expect(link.getAttribute('href')).toBe('/agents/assistant');
     expect(await fireEvent.click(link, { button: 0, ctrlKey: true })).toBe(true);
-    expect(router.pathname).toBe('/chat/session-1');
+    expect(router.pathname).toBe('/chats/session-1');
     expect(await fireEvent.click(link, { button: 0 })).toBe(false);
     expect(router.pathname).toBe('/agents/assistant');
   });
@@ -473,7 +473,7 @@ describe('an existing session', () => {
       return reads > READ_CAP ? new Response(new ReadableStream({ start() {} })) : undefined;
     });
     restore = served.restore;
-    landAt('/chat/session-1');
+    landAt('/chats/session-1');
 
     mount({ sessionId: 'session-1', title: 'Plan the week', agentName: 'assistant' });
 
@@ -509,7 +509,7 @@ describe('an existing session', () => {
       }),
     });
     restore = stub.restore;
-    landAt('/chat/session-1');
+    landAt('/chats/session-1');
     const { container } = mount({
       sessionId: 'session-1',
       title: 'Plan the week',
@@ -539,7 +539,7 @@ describe('an existing session', () => {
       }
       return undefined;
     }).restore;
-    landAt('/chat/session-1');
+    landAt('/chats/session-1');
 
     const { findByText } = mount({
       sessionId: 'session-1',
@@ -578,7 +578,7 @@ describe('a run that waits on a person’s answer', () => {
         },
       ]);
     }).restore;
-    landAt('/chat/session-1');
+    landAt('/chats/session-1');
     const { container, findByText, queryByText } = mount({
       sessionId: 'session-1',
       title: 'Plan the week',
@@ -633,7 +633,7 @@ describe('a run that waits on several questions', () => {
         },
       ]);
     }).restore;
-    landAt('/chat/session-1');
+    landAt('/chats/session-1');
     const { container, findByText, queryByText } = mount({
       sessionId: 'session-1',
       title: 'Plan the week',
@@ -704,7 +704,7 @@ describe('a run that waits on a tool approval', () => {
         },
       ]);
     }).restore;
-    landAt('/chat/session-1');
+    landAt('/chats/session-1');
     const { container, findByRole } = mount({
       sessionId: 'session-1',
       title: 'Plan the week',
@@ -807,7 +807,7 @@ describe('a decision made somewhere else', () => {
         ]);
       },
     ).restore;
-    landAt('/chat/session-1');
+    landAt('/chats/session-1');
     // The poll is TanStack Query's refetch interval, so the clock is faked from here and the test
     // moves it; the afterEach above puts the real one back.
     jest.useFakeTimers();
@@ -898,7 +898,7 @@ describe('a decision made somewhere else, while the Bureau’s feed is live', ()
         return approvalRun(url, init);
       },
     ).restore;
-    landAt('/chat/session-1');
+    landAt('/chats/session-1');
     jest.useFakeTimers();
     const bureauEvents = new BureauEventSource({ computeReconnectDelayMs: () => 1_000_000 });
     try {
@@ -960,7 +960,7 @@ describe('what went wrong', () => {
       }
       return undefined;
     }).restore;
-    landAt('/chat/session-1');
+    landAt('/chats/session-1');
     const { findByRole, findByText } = mount({
       sessionId: 'session-1',
       title: 'Reconnect',
@@ -982,7 +982,7 @@ describe('what went wrong', () => {
       }
       return undefined;
     }).restore;
-    landAt('/chat/session-1');
+    landAt('/chats/session-1');
     const { container, findByText, findByRole, queryByText } = mount({
       sessionId: 'session-1',
       title: 'Plan the week',
@@ -1091,7 +1091,7 @@ describe('attachments', () => {
   }
 
   const open = () => {
-    landAt('/chat/session-1');
+    landAt('/chats/session-1');
     return mount({ sessionId: 'session-1', title: 'Plan the week', agentName: 'seer' });
   };
 
@@ -1235,7 +1235,7 @@ describe('attachments', () => {
   test('refuses, without sending, a file already attached when the agent is switched to one that takes none', async () => {
     const plain = { ...AGENT, name: 'plain', displayName: 'Plain', media: null };
     const state = served([SEER, plain]);
-    landAt('/chat/new?agent=seer');
+    landAt('/chats/new?agent=seer');
     const { container, findByRole, findByText } = mount({
       sessionId: 'thread-1',
       title: null,
@@ -1280,7 +1280,7 @@ describe('attachments', () => {
         return undefined;
       },
     ).restore;
-    landAt('/chat/session-1');
+    landAt('/chats/session-1');
     const { container, findByText } = mount({
       sessionId: 'session-1',
       title: 'Plan the week',
@@ -1390,7 +1390,7 @@ describe('the files on a row', () => {
         return undefined;
       },
     ).restore;
-    landAt('/chat/session-1');
+    landAt('/chats/session-1');
     return mount({ sessionId: 'session-1', title: 'Plan the week', agentName: 'seer' });
   };
 
@@ -1423,7 +1423,7 @@ describe('the files on a row', () => {
         ]);
       },
     ).restore;
-    landAt('/chat/session-1');
+    landAt('/chats/session-1');
     const { container, findByText } = mount({
       sessionId: 'session-1',
       title: 'Plan the week',
@@ -1576,7 +1576,7 @@ describe('the files on a row', () => {
         ]);
       },
     ).restore;
-    landAt('/chat/session-1');
+    landAt('/chats/session-1');
     const { container, findByText } = mount({
       sessionId: 'session-1',
       title: 'Plan the week',
@@ -1619,7 +1619,7 @@ describe('the files on a row', () => {
         ]);
       },
     ).restore;
-    landAt('/chat/session-1');
+    landAt('/chats/session-1');
     return mount({ sessionId: 'session-1', title: 'Plan the week', agentName: 'seer' });
   };
 
@@ -1732,7 +1732,7 @@ describe('a stop before the run’s first event', () => {
       return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
     });
     restore = stub.restore;
-    landAt('/chat/session-1');
+    landAt('/chats/session-1');
     const { container, findByText, findByRole, queryByText } = mount({
       sessionId: 'session-1',
       title: 'Plan the week',

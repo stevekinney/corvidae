@@ -53,16 +53,16 @@ async function saveHumanInput(page: Page, on: boolean): Promise<void> {
 
 /** Starts a chat with the seeded question-asking agent and returns the session it became. */
 async function startChat(page: Page): Promise<string> {
-  await page.goto('/chat/new?agent=request-human-input');
+  await page.goto('/chats/new?agent=request-human-input');
   const composer = page.getByRole('textbox');
   await composer.fill('Release it');
   await composer.press('Enter');
-  await expect(page).toHaveURL(/\/chat\/(?!new)[^/?]+$/);
+  await expect(page).toHaveURL(/\/chats\/(?!new)[^/?]+$/);
   return decodeURIComponent(new URL(page.url()).pathname.split('/').pop() ?? '');
 }
 
 const reviewOf = (page: Page, threadId: string) =>
-  page.locator('.ib-review').filter({ has: page.locator(`a[href="/chat/${threadId}"]`) });
+  page.locator('.ib-review').filter({ has: page.locator(`a[href="/chats/${threadId}"]`) });
 
 for (const width of WIDTHS) {
   test(`draws a control for every setting at ${width} pixels, and passes axe`, async ({

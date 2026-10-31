@@ -1,5 +1,5 @@
 /**
- * `/workflows/:type`: the definition and the schedules that start it, for a code-defined type, and
+ * `/workflows/:workflow`: the definition and the schedules that start it, for a code-defined type, and
  * also the steps, trigger, owning agent, file path, revisions that have run, and the actions on
  * the file, for an agent-authored one. Pause, resume, and delete show the new state without a
  * reload, and a file that changed on disk shows the "changed outside Interborough" state and
@@ -265,7 +265,9 @@ describe('a code-defined type', () => {
       'run-2',
     ]);
     expect(runs[0]?.dataset['status']).toBe('running');
-    expect(runs[0]?.querySelector('a')?.getAttribute('href')).toBe('/runs/run-6');
+    expect(runs[0]?.querySelector('a')?.getAttribute('href')).toBe(
+      '/workflows/order-processing/runs/run-6',
+    );
     // A run that has ended says how long it took; one that is going has no duration yet.
     expect(runs[0]?.textContent).not.toContain('took');
     expect(runs[1]?.textContent).toContain(WORKFLOW_COPY.page.runDuration('400ms'));
@@ -307,7 +309,7 @@ describe('the recent runs', () => {
     await waitFor(() => expect(root.querySelectorAll('[data-run]').length).toBeGreaterThan(0));
     const link = root.querySelector<HTMLAnchorElement>('[data-run] a');
     const href = link?.getAttribute('href') ?? '';
-    expect(href).toMatch(/^\/runs\//);
+    expect(href).toMatch(/^\/workflows\/order-processing\/runs\//);
     link?.click();
     expect(router.pathname).toBe(href);
   });
@@ -911,7 +913,8 @@ describe('a workflow deleted between the frame’s read and the page’s', () =>
       throw workflowFaults.notFound('workflow digest');
     });
     const words =
-      VIEW_COPY.workflows.notFoundByPattern?.['/workflows/:type'] ?? VIEW_COPY.workflows.notFound;
+      VIEW_COPY.workflows.notFoundByPattern?.['/workflows/:workflow'] ??
+      VIEW_COPY.workflows.notFound;
     await findByRole('heading', { level: 1, name: words?.title ?? '' });
     expect(container.querySelector('[data-view="workflows"]')?.getAttribute('data-state')).toBe(
       'not-found',

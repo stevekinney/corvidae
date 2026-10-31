@@ -1,5 +1,5 @@
 /**
- * `/runs` and `/runs/:id` follow `bureau.events` instead of polling (COR-1725). Each read the pages
+ * `/runs` and `/runs/:run` follow `bureau.events` instead of polling (COR-1725). Each read the pages
  * make (the tasks, the goals, the chats, one run's task) is asked on a timer only while the Bureau's
  * feed is not live, and once for each event that can change it. The feeds are the real sources over
  * stubbed streams, and TanStack Query's refetch interval is the timer, so the clock is faked and
@@ -147,7 +147,7 @@ describe.each(RUN_LIST_SITES)('/runs, reading $site', ({ operation, counted, eve
   });
 });
 
-describe('/runs/:id, reading the cleanup of a cancelled run', () => {
+describe('/runs/:run, reading the cleanup of a cancelled run', () => {
   const cancelling = () =>
     taskFixture({ id: 'run-1', status: 'working', cleanup: 'cancel-requested' });
   const gets = () => reads('bureau.tasks.get');
@@ -183,7 +183,7 @@ describe('/runs/:id, reading the cleanup of a cancelled run', () => {
   });
 });
 
-describe('/runs/:id, reading a run whose stream ended before it did', () => {
+describe('/runs/:run, reading a run whose stream ended before it did', () => {
   const going = () => taskFixture({ id: 'run-1', status: 'working' });
   const gets = () => reads('bureau.tasks.get');
 

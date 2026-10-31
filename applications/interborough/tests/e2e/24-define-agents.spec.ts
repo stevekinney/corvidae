@@ -1,5 +1,5 @@
 /**
- * Defining agents in the application: the editor at `/agents/new` and `/agents/:id/edit`, against
+ * Defining agents in the application: the editor at `/agents/new` and `/agents/:agent/edit`, against
  * the real host. An agent is a Markdown file in the host's temporary home, so the specs create,
  * edit, and delete real files, and the host's model catalog holds the two models its provider stub
  * offers, so a save really writes. Every view meets axe at the two widths the application is

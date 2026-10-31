@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * `/workflows/:type/edit`: an agent-authored workflow's file as JSON, in Cinder's editor, saved
+   * `/workflows/:workflow/edit`: an agent-authored workflow's file as JSON, in Cinder's editor, saved
    * through `bureau.workflows.update`. The text shows the file's `name`, which is its identifier,
    * and the update does not send it, because the Bureau's update schema rejects a key it does not
    * know. Text that is not JSON, and a document the Bureau refuses, show the error and save nothing.
@@ -35,7 +35,7 @@
   const queryClient = useQueryClient();
 
   // One page belongs to one type: the outlet mounts a new page when the path changes.
-  const type = untrack(() => router.current.params['type'] ?? '');
+  const type = untrack(() => router.current.params['workflow'] ?? '');
 
   // What the page reads once and then holds. A background refetch must not replace text the person
   // is typing, so nothing here refetches on its own and the editor is filled once.
@@ -92,7 +92,10 @@
   /** A file that is gone: the frame owns that state, so it is asked to look again. */
   function workflowIsGone(): void {
     void queryClient.invalidateQueries({
-      queryKey: queryKeys.view('workflows', workflowViewInstance('/workflows/:type/edit', type)),
+      queryKey: queryKeys.view(
+        'workflows',
+        workflowViewInstance('/workflows/:workflow/edit', type),
+      ),
     });
   }
 

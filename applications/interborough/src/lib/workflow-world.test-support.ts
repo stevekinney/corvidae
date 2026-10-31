@@ -645,7 +645,7 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
     },
   };
 
-  /** The engine's schedule routes: `GET /schedules`, `GET|PATCH|DELETE /schedules/:id`, and `POST` to create, pause, or resume. */
+  /** The engine's schedule routes: `GET /schedules`, `GET|PATCH|DELETE /schedules/:schedule`, and `POST` to create, pause, or resume. */
   const answerSchedule = (
     id: string | undefined,
     action: string | undefined,
@@ -681,7 +681,7 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       return Response.json({ items, total: items.length });
     }
     const verb = action === undefined ? method : `${method} ${action}`;
-    calls.push({ method: `${verb} /schedules/:id`, params: { id } });
+    calls.push({ method: `${verb} /schedules/:schedule`, params: { id } });
     const schedule = findSchedule(decodeURIComponent(id));
     if (method === 'GET') return Response.json(schedule ?? null);
     if (schedule === undefined) return new Response('Not found', { status: 404 });
@@ -697,7 +697,7 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
     } else if (method === 'PATCH') {
       const body: unknown = JSON.parse(typeof init?.body === 'string' ? init.body : '{}');
       const request = isRecord(body) ? body : {};
-      calls.push({ method: 'PATCH /schedules/:id body', params: request });
+      calls.push({ method: 'PATCH /schedules/:schedule body', params: request });
       if (typeof request['cronExpression'] === 'string') {
         schedule.cronExpression = request['cronExpression'];
         delete schedule.intervalMs;

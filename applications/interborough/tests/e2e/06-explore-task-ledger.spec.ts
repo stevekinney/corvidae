@@ -30,7 +30,7 @@ const EVIDENCE_TASKS = [
 ] as const;
 
 async function openTask(page: Page, operationId: string): Promise<void> {
-  await page.goto(`/workers?tab=diagnostics&task=${operationId}`);
+  await page.goto(`/health/workers?tab=diagnostics&task=${operationId}`);
   await expect(page.getByRole('heading', { name: 'Authoritative task ledger' })).toBeVisible();
   await expect(page.getByText(operationId, { exact: true })).toBeVisible();
 }

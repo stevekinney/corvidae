@@ -1,6 +1,6 @@
 /**
  * Component tests for `<HealthTab>` (plan §9.7 T7.5). Covers the engine
- * lease status from `weft.system.lease` (COR-124), retention rendering, the
+ * lease status from `weft.system.lease` (COR-124), the
  * recover-all Tier-2 confirm flow, and the codegen preview.
  */
 import { fireEvent, render } from '@testing-library/svelte';
@@ -29,13 +29,6 @@ function scriptedWithLease(lease: unknown = DISABLED_LEASE): ScriptedFetch {
 }
 
 function routeBaseline(fetch: ScriptedFetch): void {
-  fetch.routeUrl('/retention', {
-    defaultRetention: null,
-    sweepIntervalMs: 300000,
-    sweepBatchSize: 1000,
-    nextSweepAt: null,
-    workflowTypes: [],
-  });
   fetch.routeJsonRpcMethod('weft.system.registry', {
     registryVersion: 2,
     generatedAt: '2026-01-01T00:00:00.000Z',
@@ -64,7 +57,7 @@ function routeBaseline(fetch: ScriptedFetch): void {
 
 /**
  * Every test in this file mounts its own `HealthTab`, which owns two
- * concurrent `createQuery`s (registry + retention) and a `createMutation`.
+ * concurrent `createQuery`s (registry + lease) and a `createMutation`.
  * Callers explicitly `unmount()` at the end of each test (on top of
  * `@testing-library/svelte`'s own global `afterEach(cleanup)`) to guarantee
  * this test's in-flight query/mutation machinery is torn down before the
@@ -202,15 +195,6 @@ describe('HealthTab', () => {
     unmount();
   });
 
-  test('renders retention overview fields', async () => {
-    scripted = scriptedWithLease();
-    routeBaseline(scripted);
-    const { findByText, unmount } = await renderHealthTab();
-    expect(await findByText('300000ms')).not.toBeNull();
-    expect(await findByText('1000')).not.toBeNull();
-    unmount();
-  });
-
   test('renders a codegen preview for the first schema-bearing workflow', async () => {
     scripted = scriptedWithLease();
     routeBaseline(scripted);
@@ -273,36 +257,9 @@ describe('HealthTab', () => {
     unmount();
   });
 
-  test('a failing retention fetch shows the fault banner', async () => {
-    scripted = scriptedWithLease();
-    scripted.routeJsonRpcMethod('weft.system.registry', {
-      registryVersion: 2,
-      generatedAt: '2026-01-01T00:00:00.000Z',
-      workflows: [],
-      activeRevisions: {},
-      activities: {},
-    });
-    // 403, not 500: `shouldRetryQuery` (`query.ts`) retries a classified
-    // `internal` fault (with backoff, which this test isn't set up to wait
-    // out) but never a classified `unauthorized` one — `retentionQuery`
-    // has no per-query `retry: false` override, so it inherits that shared
-    // default.
-    scripted.routeUrlStatus('/retention', 403, 'Forbidden');
-    const { findByText, unmount } = await renderHealthTab();
-    expect(await findByText('Not authorized')).not.toBeNull();
-    unmount();
-  });
-
   test('a failing registry fetch shows the fault banner in the codegen preview panel', async () => {
     scripted = scriptedWithLease();
-    scripted.routeUrl('/retention', {
-      defaultRetention: null,
-      sweepIntervalMs: 300000,
-      sweepBatchSize: 1000,
-      nextSweepAt: null,
-      workflowTypes: [],
-    });
-    // See the retention test above for why 403, not 500.
+    // 403, not 500: `shouldRetryQuery` retries a classified `internal` fault with a backoff this test does not wait out, and never an `unauthorized` one.
     scripted.routeUrlStatus('/jsonrpc', 403, 'Forbidden');
     // Later routes win: keep the lease read healthy so only the registry panel faults.
     scripted.routeJsonRpcMethod('weft.system.lease', DISABLED_LEASE);
@@ -313,13 +270,6 @@ describe('HealthTab', () => {
 
   test('shows an honest empty state when no registered workflow has an input schema', async () => {
     scripted = scriptedWithLease();
-    scripted.routeUrl('/retention', {
-      defaultRetention: null,
-      sweepIntervalMs: 300000,
-      sweepBatchSize: 1000,
-      nextSweepAt: null,
-      workflowTypes: [],
-    });
     scripted.routeJsonRpcMethod('weft.system.registry', {
       registryVersion: 2,
       generatedAt: '2026-01-01T00:00:00.000Z',

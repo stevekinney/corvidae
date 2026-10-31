@@ -167,7 +167,7 @@ describe('editing an agent run', () => {
       expectedRevision: 3,
     });
     // The engine's own update is not used for it.
-    expect(stub?.callsTo('PATCH /schedules/:id')).toEqual([]);
+    expect(stub?.callsTo('PATCH /schedules/:schedule')).toEqual([]);
     // The drawer closed, back to the schedule's page.
     await waitFor(() => expect(router.search.get('edit')).toBeNull());
     expect(router.pathname).toBe(`/schedules/${AGENT_SCHEDULE}`);
@@ -240,7 +240,7 @@ describe('editing a code-defined schedule', () => {
     await fireEvent.input(dialog.getByLabelText('Description'), { target: { value: 'Edited' } });
     await fireEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
 
-    await waitFor(() => expect(stub?.callsTo('PATCH /schedules/:id').length).toBe(1));
+    await waitFor(() => expect(stub?.callsTo('PATCH /schedules/:schedule').length).toBe(1));
     expect(stub?.callsTo('bureau.schedules.update')).toEqual([]);
   });
 });
@@ -601,8 +601,8 @@ describe('the drawers when something is not as it was', () => {
     await fireEvent.input(description, { target: { value: 'Hourly, edited' } });
     await fireEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
 
-    await waitFor(() => expect(stub?.callsTo('PATCH /schedules/:id body').length).toBe(1));
-    expect(stub?.callsTo('PATCH /schedules/:id body')[0]?.params).toMatchObject({
+    await waitFor(() => expect(stub?.callsTo('PATCH /schedules/:schedule body').length).toBe(1));
+    expect(stub?.callsTo('PATCH /schedules/:schedule body')[0]?.params).toMatchObject({
       every: 3_600_000,
       description: 'Hourly, edited',
     });
@@ -709,8 +709,8 @@ describe('a cadence of less than a minute', () => {
     await fireEvent.input(description, { target: { value: 'Still ninety seconds' } });
     await fireEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
 
-    await waitFor(() => expect(stub?.callsTo('PATCH /schedules/:id body').length).toBe(1));
-    const body = stub?.callsTo('PATCH /schedules/:id body')[0]?.params;
+    await waitFor(() => expect(stub?.callsTo('PATCH /schedules/:schedule body').length).toBe(1));
+    const body = stub?.callsTo('PATCH /schedules/:schedule body')[0]?.params;
     expect(body).toMatchObject({ every: 90_000, description: 'Still ninety seconds' });
     expect(body).not.toHaveProperty('cronExpression');
   });
@@ -727,8 +727,10 @@ describe('a cadence of less than a minute', () => {
     await fireEvent.click(dialog.getByRole('switch', { name: 'Backfill missed occurrences' }));
     await fireEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
 
-    await waitFor(() => expect(stub?.callsTo('PATCH /schedules/:id body').length).toBe(1));
-    expect(stub?.callsTo('PATCH /schedules/:id body')[0]?.params).toMatchObject({ every: 30_000 });
+    await waitFor(() => expect(stub?.callsTo('PATCH /schedules/:schedule body').length).toBe(1));
+    expect(stub?.callsTo('PATCH /schedules/:schedule body')[0]?.params).toMatchObject({
+      every: 30_000,
+    });
   });
 
   test('Change cadence brings back the builder, and a cadence chosen in it is sent instead', async () => {
@@ -824,8 +826,8 @@ describe('a code-defined schedule’s cadence changed in the builder', () => {
     await fireEvent.blur(every);
     await fireEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
 
-    await waitFor(() => expect(stub?.callsTo('PATCH /schedules/:id body').length).toBe(1));
-    const body = stub?.callsTo('PATCH /schedules/:id body')[0]?.params;
+    await waitFor(() => expect(stub?.callsTo('PATCH /schedules/:schedule body').length).toBe(1));
+    const body = stub?.callsTo('PATCH /schedules/:schedule body')[0]?.params;
     expect(body).toMatchObject({ every: 1_200_000 });
     expect(body).not.toHaveProperty('cronExpression');
   });

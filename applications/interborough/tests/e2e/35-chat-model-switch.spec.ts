@@ -36,7 +36,7 @@ for (const viewport of VIEWPORTS) {
     await page.setViewportSize(viewport);
     const threadId = newThreadId('model');
     await runToEnd(request, 'model-switcher', threadId, 'Which model answers?');
-    await page.goto(`/chat/${threadId}`);
+    await page.goto(`/chats/${threadId}`);
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
 
     // The picker lists the two models the agent allows, with the agent's default selected.
@@ -76,7 +76,7 @@ test('has no picker for an agent that allows one model, and none for an agent th
   for (const agent of [SINGLE_MODEL_AGENT_NAME, 'echo']) {
     const threadId = newThreadId('single');
     await runToEnd(request, agent, threadId, 'Hello');
-    await page.goto(`/chat/${threadId}`);
+    await page.goto(`/chats/${threadId}`);
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
     await expect(page.locator(ASSISTANT_ROW)).toHaveCount(1);
     await expect(picker(page)).toHaveCount(0);

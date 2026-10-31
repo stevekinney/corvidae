@@ -153,7 +153,7 @@ describe('buildNotificationEntries', () => {
   test('an item links to its chat, and carries the session so opening the chat can read it', () => {
     const [entry] = buildNotificationEntries(sources({ reviews: [approval()] }));
 
-    expect(entry?.href).toBe('/chat/session-refund');
+    expect(entry?.href).toBe('/chats/session-refund');
     expect(entry?.sessionId).toBe('session-refund');
   });
 
@@ -345,7 +345,7 @@ describe('buildNotificationEntries', () => {
       title: 'echo failed',
       identifiers: ['echo'],
       detail: 'Hello echo, say this back',
-      href: '/chat/session-echo',
+      href: '/chats/session-echo',
       sessionId: 'session-echo',
     });
   });

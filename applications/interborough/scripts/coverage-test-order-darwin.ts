@@ -72,7 +72,7 @@ export const DARWIN_BASELINE_COVERAGE_TEST_ORDER = [
   'src/routes/system/operation-catalog.test.ts',
   'src/routes/system/alerts-store.test.ts',
   'src/routes/system/registry-view.test.ts',
-  'src/routes/system/index.test.ts',
+  'src/routes/system/api-reference-sections.test.ts',
   'src/routes/system/registry-tab.test.ts',
   'src/routes/system/discovery-client.test.ts',
   'src/routes/system/health-tab.test.ts',

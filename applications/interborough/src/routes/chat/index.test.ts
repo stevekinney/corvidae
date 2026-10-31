@@ -45,7 +45,7 @@ describe('a session whose page could not read it', () => {
         { status: 404 },
       ),
     );
-    landAt('/chat/session-1');
+    landAt('/chats/session-1');
 
     const { findByRole, container } = mount();
 
@@ -80,7 +80,7 @@ describe('a session whose page could not read it', () => {
           })
         : Response.json({ error: 'The server broke.' }, { status: 500 }),
     );
-    landAt('/chat/session-1');
+    landAt('/chats/session-1');
 
     const { findByRole, container } = mount();
 

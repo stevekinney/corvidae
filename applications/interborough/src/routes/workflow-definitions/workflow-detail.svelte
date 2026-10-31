@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * `/workflows/:type`: one workflow type, leading with what a person acts on: what it is for,
+   * `/workflows/:workflow`: one workflow type, leading with what a person acts on: what it is for,
    * what starts it and whether it is active, its steps (for a file), its last five runs and a
    * link to all of them, and, for a file, pause, resume, edit, delete, and send signal. What the
    * engine's contract says (the signals, updates and queries it accepts, the schemas of its input
@@ -71,7 +71,7 @@
   const queryClient = useQueryClient();
 
   // One page belongs to one type: the outlet mounts a new page when the path changes.
-  const type = untrack(() => router.current.params['type'] ?? '');
+  const type = untrack(() => router.current.params['workflow'] ?? '');
   const detailKey = queryKeys.workflowCatalog.detail(type);
 
   const resolution = createQuery(
@@ -120,7 +120,7 @@
   /** A file that is gone, or never was: the frame owns that state, so it is asked to look again. */
   function workflowIsGone(): void {
     void queryClient.invalidateQueries({
-      queryKey: queryKeys.view('workflows', workflowViewInstance('/workflows/:type', type)),
+      queryKey: queryKeys.view('workflows', workflowViewInstance('/workflows/:workflow', type)),
     });
   }
 

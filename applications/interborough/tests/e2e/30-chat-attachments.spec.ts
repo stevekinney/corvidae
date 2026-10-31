@@ -34,7 +34,7 @@ for (const viewport of VIEWPORTS) {
     checkA11y,
   }) => {
     await page.setViewportSize(viewport);
-    await page.goto(`/chat/new?agent=${IMAGE_ECHO_AGENT_NAME}`);
+    await page.goto(`/chats/new?agent=${IMAGE_ECHO_AGENT_NAME}`);
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
 
     await page
@@ -69,7 +69,7 @@ for (const viewport of VIEWPORTS) {
 }
 
 test('offers no way to attach to an agent that names no model', async ({ page }) => {
-  await page.goto('/chat/new?agent=assistant');
+  await page.goto('/chats/new?agent=assistant');
   await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
 
   await expect(page.getByRole('textbox')).toBeVisible();
@@ -80,7 +80,7 @@ test('offers no way to attach to an agent that names no model', async ({ page })
 test('takes a text file the picker offers, and shows it as a download on the person’s row', async ({
   page,
 }) => {
-  await page.goto(`/chat/new?agent=${IMAGE_ECHO_AGENT_NAME}`);
+  await page.goto(`/chats/new?agent=${IMAGE_ECHO_AGENT_NAME}`);
   await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
 
   await page.locator('input[type="file"]').setInputFiles({

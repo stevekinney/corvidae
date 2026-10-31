@@ -6,6 +6,7 @@
  *
  * @module routes/system/realms-view
  */
+import type { HttpClient } from '@lostgradient/weft';
 
 /** One `weft.realms.diagnostics` realm entry, as the operation's generated client types it. */
 export interface RealmDiagnosticsEntrySource {
@@ -110,4 +111,17 @@ export function realmStateBadgeVariant(
     default:
       return 'neutral';
   }
+}
+
+/**
+ * Reads `weft.realms.diagnostics`. There is no ergonomic `HttpClient` method for it, so it goes
+ * through `client.operations[...]`, as the Realms tab and the Health page both need it.
+ */
+export function fetchRealmDiagnostics(client: HttpClient): Promise<RealmDiagnosticsSource> {
+  return client.operations['weft.realms.diagnostics']({});
+}
+
+/** Whether the engine runs realms: an engine that never opted into realm mode lists no pool. */
+export function runsRealms(diagnostics: RealmDiagnosticsSource | undefined): boolean {
+  return diagnostics !== undefined && diagnostics.pools.length > 0;
 }

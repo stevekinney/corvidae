@@ -107,13 +107,13 @@ describe('Dashboard', () => {
     // Each status opens the engine's own run list on that status, in the engine's own word, and a
     // modified click is the browser's. None goes to the Bureau's `/runs`.
     const targets: Readonly<Record<string, string>> = {
-      Running: '/engine/runs?status=running',
-      Pending: '/engine/runs?status=pending',
-      Suspended: '/engine/runs?status=suspended',
-      Completed: '/engine/runs?status=completed',
-      Cancelled: '/engine/runs?status=cancelled',
-      Failed: '/engine/runs?status=failed',
-      'Timed out': '/engine/runs?status=timed-out',
+      Running: '/health/runs?status=running',
+      Pending: '/health/runs?status=pending',
+      Suspended: '/health/runs?status=suspended',
+      Completed: '/health/runs?status=completed',
+      Cancelled: '/health/runs?status=cancelled',
+      Failed: '/health/runs?status=failed',
+      'Timed out': '/health/runs?status=timed-out',
     };
     for (const [label, target] of Object.entries(targets)) {
       expect(getByText(label).closest('a')?.getAttribute('href'), label).toBe(target);
@@ -122,10 +122,10 @@ describe('Dashboard', () => {
       expect(link.getAttribute('href')?.startsWith('/runs?status='), link.outerHTML).toBe(false);
     }
     const failed = getByText('Failed').closest('a') as HTMLAnchorElement;
-    expect(getByText('View all →').closest('a')?.getAttribute('href')).toBe('/engine/runs');
+    expect(getByText('View all →').closest('a')?.getAttribute('href')).toBe('/health/runs');
     expect(await fireEvent.click(failed, { button: 0, metaKey: true })).toBe(true);
     expect(await fireEvent.click(failed, { button: 0 })).toBe(false);
-    expect(router.pathname).toBe('/engine/runs');
+    expect(router.pathname).toBe('/health/runs');
     expect(router.search.get('status')).toBe('failed');
     // The engine runs its work in-process, so no card counts remote workers, and failures are one
     // count among the statuses rather than a chart of their own.
@@ -146,19 +146,18 @@ describe('Dashboard', () => {
       link.getAttribute('href'),
     ]);
     expect(links).toEqual([
-      ['Workers', '/workers'],
-      ['Storage', '/storage'],
-      ['System', '/system'],
-      ['Audit', '/audit'],
+      ['Workers', '/health/workers'],
+      ['Storage', '/health/storage'],
+      ['Audit', '/health/audit'],
     ]);
-    const audit = sections.querySelector('a[href="/audit"]') as HTMLAnchorElement;
+    const audit = sections.querySelector('a[href="/health/audit"]') as HTMLAnchorElement;
     expect(await fireEvent.click(audit, { button: 0 })).toBe(false);
-    expect(router.pathname).toBe('/audit');
+    expect(router.pathname).toBe('/health/audit');
   });
 
   // COR-124 admits a critical-alerts chip only when it is backed by
   // `weft.workers.diagnostics` or `weft.tasks.get` fields. Engine lease health
-  // lives on the System route's Health tab, so even a contested
+  // lives on the Health tab of the Health page's diagnostics, so even a contested
   // `weft.system.lease` never reaches the band, and the Dashboard never asks.
   test('never shows or requests a weft.system.lease chip, even when the lease is contested', async () => {
     scripted = new ScriptedFetch();

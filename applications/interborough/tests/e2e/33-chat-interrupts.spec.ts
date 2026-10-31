@@ -52,7 +52,7 @@ test.describe('a run that asks two questions', () => {
     checkA11y,
   }) => {
     const starts = recordStarts(page);
-    await page.goto(`/chat/new?agent=${TWO_QUESTIONS_AGENT_NAME}`);
+    await page.goto(`/chats/new?agent=${TWO_QUESTIONS_AGENT_NAME}`);
     await send(page, 'Ship it');
     await expect(question(page, ENVIRONMENT_QUESTION)).toBeVisible();
 
@@ -89,7 +89,7 @@ test.describe('a run that asks a question and then for an approval', () => {
     checkA11y,
   }) => {
     const starts = recordStarts(page);
-    await page.goto(`/chat/new?agent=${QUESTION_AND_APPROVAL_AGENT_NAME}`);
+    await page.goto(`/chats/new?agent=${QUESTION_AND_APPROVAL_AGENT_NAME}`);
     await send(page, 'Ship it');
     await expect(question(page, ENVIRONMENT_QUESTION)).toBeVisible();
 
@@ -161,7 +161,7 @@ test.describe('a stop before the run’s first event', () => {
       });
     });
     try {
-      await page.goto(`/chat/${threadId}`);
+      await page.goto(`/chats/${threadId}`);
       await send(page, 'Start the work');
       await holding;
       await expectWaiting(request, 1);
@@ -209,7 +209,7 @@ test.describe('a session whose identifier the address cannot carry', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('A session named new');
     await expect(page.locator('[data-session="new"]')).toBeVisible();
     // The new chat is still at its own address.
-    await page.goto('/chat/new');
+    await page.goto('/chats/new');
     await expect(page.locator('[data-session="new"]')).toHaveCount(0);
   });
 

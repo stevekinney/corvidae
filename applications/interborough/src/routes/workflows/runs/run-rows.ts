@@ -5,7 +5,7 @@
  * they come from `bureau.goals.list`. Each row says which agent ran, what started it (a chat the
  * Bureau still has, a goal, a schedule's fire, or nothing it can name), how it stands, and when.
  *
- * A run's session is not listed on `/chat` when a goal or a schedule's fire started it (the
+ * A run's session is not listed on `/chats` when a goal or a schedule's fire started it (the
  * session's `origin`), so this list is where it is reached: a goal's row and a fire's row each link
  * to the session the run ran in.
  */

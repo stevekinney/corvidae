@@ -21,7 +21,7 @@
   }
 
   function detailHref(queueName: string): string {
-    return router.href(`/workers?tab=queues&queue=${encodeURIComponent(queueName)}`);
+    return router.href(`/health/workers?tab=queues&queue=${encodeURIComponent(queueName)}`);
   }
 
   function onQueueLinkClick(event: MouseEvent, queueName: string): void {
@@ -29,7 +29,7 @@
       return;
     }
     event.preventDefault();
-    router.navigate(`/workers?tab=queues&queue=${encodeURIComponent(queueName)}`);
+    router.navigate(`/health/workers?tab=queues&queue=${encodeURIComponent(queueName)}`);
   }
 </script>
 

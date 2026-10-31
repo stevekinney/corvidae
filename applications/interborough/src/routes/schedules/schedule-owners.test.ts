@@ -174,7 +174,7 @@ describe('pausing, by kind', () => {
       { scheduleId: AGENT_SCHEDULE, expectedRevision: 3 },
     ]);
     expect(stub?.callsTo('bureau.workflows.pause')).toEqual([]);
-    expect(stub?.callsTo('POST pause /schedules/:id')).toEqual([]);
+    expect(stub?.callsTo('POST pause /schedules/:schedule')).toEqual([]);
   });
 
   test('a workflow file’s schedule pauses through bureau.workflows.pause, with the hash of the file the page read', async () => {
@@ -189,7 +189,7 @@ describe('pausing, by kind', () => {
       { id: 'digest', expectedHash: 'hash-1' },
     ]);
     expect(stub?.callsTo('bureau.schedules.pause')).toEqual([]);
-    expect(stub?.callsTo('POST pause /schedules/:id')).toEqual([]);
+    expect(stub?.callsTo('POST pause /schedules/:schedule')).toEqual([]);
   });
 
   test('any other schedule pauses through the engine, which has no revision to name', async () => {
@@ -200,7 +200,7 @@ describe('pausing, by kind', () => {
     await fireEvent.click(view.getByRole('menuitem', { name: /Pause/ }));
 
     await waitFor(() => expect(row(container, CODE_SCHEDULE)?.dataset['status']).toBe('paused'));
-    expect(stub?.callsTo('POST pause /schedules/:id').map((call) => call.params)).toEqual([
+    expect(stub?.callsTo('POST pause /schedules/:schedule').map((call) => call.params)).toEqual([
       { id: CODE_SCHEDULE },
     ]);
     expect(stub?.callsTo('bureau.schedules.pause')).toEqual([]);
@@ -389,7 +389,7 @@ describe('an agent run and a code-defined schedule', () => {
     await fireEvent.click(await view.findByRole('button', { name: 'Cancel schedule' }));
 
     await waitFor(() => expect(row(container, CODE_SCHEDULE)?.dataset['status']).toBe('cancelled'));
-    expect(stub?.callsTo('DELETE /schedules/:id').map((call) => call.params)).toEqual([
+    expect(stub?.callsTo('DELETE /schedules/:schedule').map((call) => call.params)).toEqual([
       { id: CODE_SCHEDULE },
     ]);
     expect(stub?.callsTo('bureau.schedules.cancel')).toEqual([]);
@@ -551,7 +551,7 @@ describe('one schedule’s page, by kind', () => {
     await fireEvent.click(await findByRole('button', { name: /Pause/ }));
 
     await findByRole('button', { name: /Resume/ });
-    expect(stub?.callsTo('POST pause /schedules/:id')).toHaveLength(1);
+    expect(stub?.callsTo('POST pause /schedules/:schedule')).toHaveLength(1);
   });
 
   test('offers nothing to change to a schedule only the Bureau can place, and says that it has not', async () => {
@@ -576,7 +576,7 @@ describe('a code-defined schedule while the Bureau is not answering', () => {
     await fireEvent.click(view.getByRole('menuitem', { name: /Pause/ }));
 
     await waitFor(() => expect(row(container, CODE_SCHEDULE)?.dataset['status']).toBe('paused'));
-    expect(stub?.callsTo('POST pause /schedules/:id').map((call) => call.params)).toEqual([
+    expect(stub?.callsTo('POST pause /schedules/:schedule').map((call) => call.params)).toEqual([
       { id: CODE_SCHEDULE },
     ]);
   });
@@ -590,7 +590,7 @@ describe('a code-defined schedule while the Bureau is not answering', () => {
     await fireEvent.click(await findByRole('button', { name: /Pause/ }));
     await findByRole('button', { name: /Resume/ });
     await findByText(SCHEDULE_COPY.overlayFailed.title, { exact: false });
-    expect(stub?.callsTo('POST pause /schedules/:id')).toHaveLength(1);
+    expect(stub?.callsTo('POST pause /schedules/:schedule')).toHaveLength(1);
   });
 });
 
@@ -621,7 +621,7 @@ describe('a schedule of an agent-authored workflow’s type that is not the file
     await fireEvent.click(view.getByRole('menuitem', { name: /Pause/ }));
 
     await waitFor(() => expect(row(container, EXTRA)?.dataset['status']).toBe('paused'));
-    expect(stub?.callsTo('POST pause /schedules/:id').map((call) => call.params)).toEqual([
+    expect(stub?.callsTo('POST pause /schedules/:schedule').map((call) => call.params)).toEqual([
       { id: EXTRA },
     ]);
     expect(stub?.callsTo('bureau.workflows.pause')).toEqual([]);

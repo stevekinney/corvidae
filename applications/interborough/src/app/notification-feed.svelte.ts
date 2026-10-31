@@ -28,7 +28,7 @@ import type { NotificationStore } from './notifications.svelte.ts';
 /** The chat the person has open, or `undefined` on any other page (and on a chat not yet started). */
 function openChatSessionId(): string | undefined {
   const { route, params } = router.current;
-  return route?.pattern === '/chat/:sessionId' ? params['sessionId'] : undefined;
+  return route?.pattern === '/chats/:chat' ? params['chat'] : undefined;
 }
 
 export function connectNotificationFeed(store: NotificationStore): void {

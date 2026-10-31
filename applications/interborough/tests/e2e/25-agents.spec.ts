@@ -1,5 +1,5 @@
 /**
- * `/agents` and `/agents/:id`: the agents the Bureau tells the caller of, each with what it is made
+ * `/agents` and `/agents/:agent`: the agents the Bureau tells the caller of, each with what it is made
  * of (its model when the Bureau can tell, its tools), how much it has been used, a New chat action
  * for each, and the chats had with one agent.
  */
@@ -72,7 +72,7 @@ test.describe('the list of agents', () => {
 
     await row(page, 'tool-runner').getByRole('link', { name: 'Memory' }).click();
 
-    await expect(page).toHaveURL(/\/agents\/tool-runner\/memory$/);
+    await expect(page).toHaveURL(/\/agents\/tool-runner\/memories$/);
   });
 
   test('New chat opens a working new chat with that agent', async ({ page }) => {
@@ -80,7 +80,7 @@ test.describe('the list of agents', () => {
 
     await row(page, 'tool-runner').getByRole('link', { name: 'New chat' }).click();
 
-    await expect(page).toHaveURL(/\/chat\/new\?agent=tool-runner$/);
+    await expect(page).toHaveURL(/\/chats\/new\?agent=tool-runner$/);
     await expect(page.getByRole('combobox', { name: 'Agent' })).toHaveValue(/tool-runner/i);
   });
 });
@@ -107,7 +107,7 @@ test.describe('one agent', () => {
     const memory = frame.getByRole('link', { name: /^Memory \(\d+\+?\)$/ });
     await expect(memory).toHaveCount(1);
     await memory.click();
-    await expect(page).toHaveURL(new RegExp(`/agents/${TEXT_ECHO_AGENT_NAME}/memory$`));
+    await expect(page).toHaveURL(new RegExp(`/agents/${TEXT_ECHO_AGENT_NAME}/memories$`));
   });
 
   test('lists the chats had with it, and no other agent’s, and New chat opens a new chat with it', async ({
@@ -129,7 +129,7 @@ test.describe('one agent', () => {
     await expect(chats).toContainText('refund for the runner');
     await expect(chats).not.toContainText('hello for the assistant');
     await page.getByRole('link', { name: 'New chat' }).first().click();
-    await expect(page).toHaveURL(/\/chat\/new\?agent=tool-runner$/);
+    await expect(page).toHaveURL(/\/chats\/new\?agent=tool-runner$/);
   });
 
   test('opens a chat from its list', async ({ page, request }) => {
@@ -142,7 +142,7 @@ test.describe('one agent', () => {
       .getByRole('button', { name: /Open this one from the agent page/ })
       .click();
 
-    await expect(page).toHaveURL(new RegExp(`/chat/${threadId}$`));
+    await expect(page).toHaveURL(new RegExp(`/chats/${threadId}$`));
   });
 
   test('offers a chat with the agent the host once kept private', async ({ page }) => {
@@ -318,18 +318,18 @@ for (const width of WIDTHS) {
     });
 
     test('a new chat passes axe, and so does an unknown agent’s', async ({ page, checkA11y }) => {
-      await page.goto('/chat/new');
+      await page.goto('/chats/new');
       await expect(page.getByRole('combobox', { name: 'Agent' })).toBeVisible();
       await checkA11y(`a new chat at ${width}px`);
 
-      await page.goto('/chat/new?agent=no-such-agent');
+      await page.goto('/chats/new?agent=no-such-agent');
       await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'not-found');
       await checkA11y(`a new chat with an unknown agent at ${width}px`);
     });
 
     test('the list of chats passes axe', async ({ page, request, checkA11y }) => {
       await runToEnd(request, 'assistant', newThreadId('listaxe'), 'A chat for the list');
-      await page.goto('/chat');
+      await page.goto('/chats');
       await expect(page.getByRole('navigation', { name: 'Chats' })).toBeVisible();
       await checkA11y(`the list of chats at ${width}px`);
     });

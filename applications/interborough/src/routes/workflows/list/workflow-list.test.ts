@@ -24,7 +24,7 @@ function happyDomAPI(): DetachedWindowAPI {
   return window.happyDOM;
 }
 
-function resetLocation(path = '/engine/runs'): void {
+function resetLocation(path = '/health/runs'): void {
   happyDomAPI().setURL('http://localhost/');
   router.navigate(path, { replace: true });
 }
@@ -77,7 +77,7 @@ describe('WorkflowList', () => {
   // query-string navigation first keeps this file warning-free without
   // touching the frozen `router.svelte.ts` singleton.
   test('shows the "no workflows match" empty state when a filter is active and nothing matches', async () => {
-    resetLocation('/engine/runs?status=failed');
+    resetLocation('/health/runs?status=failed');
     fetchScript.routeUrl('/workflows', { items: [], total: 0, offset: 0, limit: 50 });
 
     const { findByText } = render(WorkflowListHarness, {
@@ -137,7 +137,7 @@ describe('WorkflowList', () => {
   });
 
   test('filtering from a later page requests and renders the first filtered page', async () => {
-    resetLocation('/engine/runs?offset=50');
+    resetLocation('/health/runs?offset=50');
     fetchScript.enqueueJson({
       items: [summary({ id: 'wf_later_page', type: 'later-page-workflow' })],
       total: 51,
@@ -169,7 +169,7 @@ describe('WorkflowList', () => {
   });
 
   test('lists every type the engine holds in the status the address names, and stays at the engine list', async () => {
-    resetLocation('/engine/runs?status=failed');
+    resetLocation('/health/runs?status=failed');
     fetchScript.routeUrl('/workflows', {
       items: [
         summary({ id: 'wf_failed_a', type: 'payment-failing', status: 'failed' }),
@@ -195,7 +195,7 @@ describe('WorkflowList', () => {
     await waitFor(() =>
       expect(router.search.getAll('status').sort()).toEqual(['completed', 'failed']),
     );
-    expect(router.pathname).toBe('/engine/runs');
+    expect(router.pathname).toBe('/health/runs');
   });
 
   test('shows the "no workflows yet" empty state when the list is empty and no filter is active', async () => {

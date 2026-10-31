@@ -1,5 +1,5 @@
 /**
- * The route table: Chat is the home screen, sessions live under `/chat/:sessionId`, runs moved
+ * The route table: Chat is the home screen, sessions live under `/chats/:chat`, runs moved
  * from `/workflows` to `/runs`, and `/workflows` is the catalog of definitions.
  *
  * These tests check the table's wiring and never import a route's component. Importing one
@@ -75,7 +75,7 @@ describe('the route table', () => {
     }
     expect(
       routes.filter((route) => route.redirect !== undefined).map((route) => route.pattern),
-    ).toEqual(['/', '/tasks', '/tasks/:id']);
+    ).toEqual(['/']);
   });
 
   test('gives the route that redirects a component file too, which the outlet never mounts', () => {
@@ -84,29 +84,29 @@ describe('the route table', () => {
     expect(existsSync(componentPathOfRoute(home!))).toBe(true);
   });
 
-  test('registers /chat/new before /chat/:sessionId, because the first match wins', () => {
+  test('registers /chats/new before /chats/:chat, because the first match wins', () => {
     const patterns = routes.map((route) => route.pattern);
 
-    expect(patterns.indexOf('/chat/new')).toBeLessThan(patterns.indexOf('/chat/:sessionId'));
-    expect(matchRoute('/chat/new')?.pattern).toBe('/chat/new');
-    expect(matchRoute('/chat/abc')?.pattern).toBe('/chat/:sessionId');
+    expect(patterns.indexOf('/chats/new')).toBeLessThan(patterns.indexOf('/chats/:chat'));
+    expect(matchRoute('/chats/new')?.pattern).toBe('/chats/new');
+    expect(matchRoute('/chats/abc')?.pattern).toBe('/chats/:chat');
   });
 
   test('serves the agents list and one agent', () => {
     expect(matchRoute('/agents')?.pattern).toBe('/agents');
     expect(matchRoute('/agents/assistant')).toEqual({
-      pattern: '/agents/:id',
-      params: { id: 'assistant' },
+      pattern: '/agents/:agent',
+      params: { agent: 'assistant' },
     });
   });
 
-  test('serves the engine run list under /engine, in the engine view, apart from the Bureau runs', () => {
-    expect(matchRoute('/engine/runs')).toEqual({ pattern: '/engine/runs', params: {} });
-    expect(routes.find((route) => route.pattern === '/engine/runs')?.view).toBe('engine');
-    expect(componentPathOf('/engine/runs')).toBe(
+  test('serves the engine run list under /health, in the engine view, apart from the Bureau runs', () => {
+    expect(matchRoute('/health/runs')).toEqual({ pattern: '/health/runs', params: {} });
+    expect(routes.find((route) => route.pattern === '/health/runs')?.view).toBe('health');
+    expect(componentPathOf('/health/runs')).toBe(
       sourcePath('../routes/workflows/list/workflow-list.svelte'),
     );
-    expect(componentPathOf('/runs')).not.toBe(componentPathOf('/engine/runs'));
+    expect(componentPathOf('/runs')).not.toBe(componentPathOf('/health/runs'));
   });
 
   test('has no two routes with one pattern', () => {
@@ -114,49 +114,49 @@ describe('the route table', () => {
     expect(new Set(patterns).size).toBe(patterns.length);
   });
 
-  test('makes Chat the home screen, with sessions under /chat/:sessionId', () => {
+  test('makes Chat the home screen, with sessions under /chats/:chat', () => {
     expect(matchRoute('/')).toEqual({ pattern: '/', params: {} });
     expect(routes.find((route) => route.pattern === '/')?.view).toBe('chat');
-    expect(matchRoute('/chat')?.pattern).toBe('/chat');
-    expect(matchRoute('/chat/session-1')).toEqual({
-      pattern: '/chat/:sessionId',
-      params: { sessionId: 'session-1' },
+    expect(matchRoute('/chats')?.pattern).toBe('/chats');
+    expect(matchRoute('/chats/session-1')).toEqual({
+      pattern: '/chats/:chat',
+      params: { chat: 'session-1' },
     });
   });
 
-  test('puts the runs list and one run at /runs and /runs/:id', () => {
+  test('puts the runs list and one run at /runs and /runs/:run', () => {
     expect(matchRoute('/runs')?.pattern).toBe('/runs');
-    expect(matchRoute('/runs/run-1')).toEqual({ pattern: '/runs/:id', params: { id: 'run-1' } });
+    expect(matchRoute('/runs/run-1')).toEqual({ pattern: '/runs/:run', params: { run: 'run-1' } });
     const runsComponent = sourcePath('../routes/workflows/index.svelte');
-    for (const pattern of ['/runs', '/runs/:id']) {
+    for (const pattern of ['/runs', '/runs/:run']) {
       expect(componentPathOf(pattern), pattern).toBe(runsComponent);
       expect(routes.find((candidate) => candidate.pattern === pattern)?.view, pattern).toBe('runs');
     }
   });
 
-  test('serves the Workflows area at /workflows and under /workflows/:type, apart from the runs list', () => {
+  test('serves the Workflows area at /workflows and under /workflows/:workflow, apart from the runs list', () => {
     const runsComponent = sourcePath('../routes/workflows/index.svelte');
     const area = sourcePath('../routes/workflow-definitions/index.svelte');
     expect(matchRoute('/workflows')?.pattern).toBe('/workflows');
     expect(matchRoute('/workflows/invoice')).toEqual({
-      pattern: '/workflows/:type',
-      params: { type: 'invoice' },
+      pattern: '/workflows/:workflow',
+      params: { workflow: 'invoice' },
     });
     expect(matchRoute('/workflows/invoice/runs')).toEqual({
-      pattern: '/workflows/:type/runs',
-      params: { type: 'invoice' },
+      pattern: '/workflows/:workflow/runs',
+      params: { workflow: 'invoice' },
     });
     expect(matchRoute('/workflows/invoice/edit')).toEqual({
-      pattern: '/workflows/:type/edit',
-      params: { type: 'invoice' },
+      pattern: '/workflows/:workflow/edit',
+      params: { workflow: 'invoice' },
     });
     expect(matchRoute('/workflows/new')).toEqual({ pattern: '/workflows/new', params: {} });
     for (const pattern of [
       '/workflows',
       '/workflows/new',
-      '/workflows/:type',
-      '/workflows/:type/runs',
-      '/workflows/:type/edit',
+      '/workflows/:workflow',
+      '/workflows/:workflow/runs',
+      '/workflows/:workflow/edit',
     ]) {
       const loaded = componentPathOf(pattern);
       expect(loaded, pattern).toBe(area);
@@ -170,12 +170,14 @@ describe('the route table', () => {
   test('registers the page that makes a workflow before the page of a type, so new is never read as a type', () => {
     const patterns = routes.map((route) => route.pattern);
     expect(patterns.indexOf('/workflows/new')).toBeGreaterThan(-1);
-    expect(patterns.indexOf('/workflows/new')).toBeLessThan(patterns.indexOf('/workflows/:type'));
+    expect(patterns.indexOf('/workflows/new')).toBeLessThan(
+      patterns.indexOf('/workflows/:workflow'),
+    );
   });
 
   test('never reads a type’s runs or editor as a type, because a path segment is one name', () => {
     expect(matchRoute('/workflows/a/b/c')).toBeNull();
-    expect(matchRoute('/workflows/runs')?.pattern).toBe('/workflows/:type');
+    expect(matchRoute('/workflows/runs')?.pattern).toBe('/workflows/:workflow');
   });
 
   test('names the routes the sidebar links to', () => {
@@ -184,43 +186,26 @@ describe('the route table', () => {
       '/agents',
       '/schedules',
       '/reviews',
-      '/workers',
-      '/storage',
-      '/system',
-      '/audit',
+      '/health/workers',
+      '/health/storage',
+      '/settings/api-reference',
+      '/health/audit',
       '/settings',
-      '/engine',
+      '/health',
     ]) {
       expect(patterns).toContain(path);
     }
   });
 });
 
-describe('the retired Tasks routes', () => {
-  test('/tasks and /tasks/:id redirect, and the navigation has no entry of their own for them', () => {
-    for (const pattern of ['/tasks', '/tasks/:id']) {
-      const route = routes.find((candidate) => candidate.pattern === pattern);
-      expect(route?.redirect, pattern).toBeDefined();
-      expect(route?.view, pattern).toBe('runs');
-    }
-  });
-
-  test('/tasks goes to the runs a chat started, and /tasks/:id to its run', async () => {
-    const list = routes.find((candidate) => candidate.pattern === '/tasks');
-    const one = routes.find((candidate) => candidate.pattern === '/tasks/:id');
-    expect(await list?.redirect?.({ params: {} })).toBe('/runs?startedBy=chat');
-    expect(await one?.redirect?.({ params: { id: 'run-1/a b' } })).toBe('/runs/run-1%2Fa%20b');
-  });
-});
-
 describe('the agent editor’s routes', () => {
-  test('are /agents/new and /agents/:id/edit, both in the agent editor view', () => {
+  test('are /agents/new and /agents/:agent/edit, both in the agent editor view', () => {
     expect(matchRoute('/agents/new')).toEqual({ pattern: '/agents/new', params: {} });
     expect(matchRoute('/agents/researcher/edit')).toEqual({
-      pattern: '/agents/:id/edit',
-      params: { id: 'researcher' },
+      pattern: '/agents/:agent/edit',
+      params: { agent: 'researcher' },
     });
-    for (const pattern of ['/agents/new', '/agents/:id/edit']) {
+    for (const pattern of ['/agents/new', '/agents/:agent/edit']) {
       expect(routes.find((candidate) => candidate.pattern === pattern)?.view, pattern).toBe(
         'agent-editor',
       );
@@ -239,7 +224,7 @@ describe('the agent editor’s routes', () => {
   test('load one component, which both routes render', () => {
     const editor = sourcePath('../routes/agent-editor/index.svelte');
     expect(componentPathOf('/agents/new')).toBe(editor);
-    expect(componentPathOf('/agents/:id/edit')).toBe(editor);
+    expect(componentPathOf('/agents/:agent/edit')).toBe(editor);
   });
 });
 
@@ -249,7 +234,7 @@ describe('a link to a workflow type', () => {
     expect(workflowTypePath('a/b')).toBe('/workflows/a%2Fb');
     expect(workflowRunsPath('order-processing')).toBe('/workflows/order-processing/runs');
     expect(workflowEditPath('order-processing')).toBe('/workflows/order-processing/edit');
-    expect(matchRoute(workflowRunsPath('a/b'))?.params).toEqual({ type: 'a/b' });
+    expect(matchRoute(workflowRunsPath('a/b'))?.params).toEqual({ workflow: 'a/b' });
     expect(workflowNewPath()).toBe('/workflows/new');
   });
 });
@@ -269,28 +254,28 @@ describe('a link to a run', () => {
       if (path === 'app/routes.ts' || path === 'lib/workflow-type-paths.ts') continue;
       const text = await Bun.file(join(sourceRoot, path)).text();
       // A quoted path, or a template literal, that begins `/workflows/` or `/workflows?`. A route's
-      // pattern, which names a workflow type as `:type`, is how the Workflows area is addressed and
+      // pattern, which names a workflow type as `:workflow`, is how the Workflows area is addressed and
       // is not a link to a run, and neither is the literal `/workflows/new`, the page that makes a
       // workflow, which no run's address can be.
-      if (/['"`]\/workflows[/?](?!:type|new['"`])/.test(text)) offenders.push(path);
+      if (/['"`]\/workflows[/?](?!:workflow|new['"`])/.test(text)) offenders.push(path);
     }
     expect(offenders).toEqual([]);
   });
 });
 
 describe('the routes for schedules and goals', () => {
-  test('put the schedules list at /schedules and one schedule at /schedules/:id, both in the schedules view', () => {
+  test('put the schedules list at /schedules and one schedule at /schedules/:schedule, both in the schedules view', () => {
     expect(matchRoute('/schedules')).toEqual({ pattern: '/schedules', params: {} });
     expect(matchRoute('/schedules/nightly-rollup')).toEqual({
-      pattern: '/schedules/:id',
-      params: { id: 'nightly-rollup' },
+      pattern: '/schedules/:schedule',
+      params: { schedule: 'nightly-rollup' },
     });
-    for (const pattern of ['/schedules', '/schedules/:id']) {
+    for (const pattern of ['/schedules', '/schedules/:schedule']) {
       expect(routes.find((candidate) => candidate.pattern === pattern)?.view, pattern).toBe(
         'schedules',
       );
     }
-    expect(componentPathOf('/schedules/:id')).toBe(componentPathOf('/schedules'));
+    expect(componentPathOf('/schedules/:schedule')).toBe(componentPathOf('/schedules'));
   });
 
   test('keep /goals as a route in its own view, and out of the sidebar', async () => {
@@ -301,8 +286,8 @@ describe('the routes for schedules and goals', () => {
     expect(sidebar).not.toContain('/goals');
   });
 
-  test('read /audit as the audit trail, not a placeholder', () => {
-    expect(componentPathOf('/audit')).toBe(sourcePath('../routes/audit/index.svelte'));
+  test('read /health/audit as the audit trail, not a placeholder', () => {
+    expect(componentPathOf('/health/audit')).toBe(sourcePath('../routes/audit/index.svelte'));
   });
 
   test('read /settings as the settings page, in its own view', () => {
@@ -317,7 +302,7 @@ describe('a link to a schedule', () => {
     expect(scheduleDetailPath('a b/c')).toBe('/schedules/a%20b%2Fc');
     expect(scheduleEditPath('nightly-rollup')).toBe('/schedules/nightly-rollup?edit=1');
     expect(scheduleCreatePath()).toBe('/schedules?create=1');
-    expect(matchRoute(scheduleDetailPath('a b/c'))?.params).toEqual({ id: 'a b/c' });
+    expect(matchRoute(scheduleDetailPath('a b/c'))?.params).toEqual({ schedule: 'a b/c' });
   });
 
   test('keeps a dot-only id out of the path, which a browser would normalise away', () => {
@@ -342,7 +327,7 @@ describe('a link to an agent', () => {
     expect(agentPath('assistant')).toBe('/agents/assistant');
     expect(agentPath('a b/c')).toBe('/agents/a%20b%2Fc');
     expect(agentEditPath('assistant')).toBe('/agents/assistant/edit');
-    expect(matchRoute(agentPath('a b/c'))?.params).toEqual({ id: 'a b/c' });
+    expect(matchRoute(agentPath('a b/c'))?.params).toEqual({ agent: 'a b/c' });
 
     const offenders: string[] = [];
     for await (const path of new Glob('**/*.{svelte,ts}').scan(sourceRoot)) {

@@ -1,8 +1,7 @@
 import type { Component } from 'svelte';
 
-import { identifierPath } from '../lib/identifier-paths.ts';
 import { chatHomePath } from '../routes/chat/chat-home.ts';
-import { VIEW_COPY } from './copy.ts';
+import { SETTINGS_SECTION_COPY, VIEW_COPY } from './copy.ts';
 import type { PageKind, ViewName } from './views.ts';
 
 /**
@@ -16,7 +15,7 @@ import type { PageKind, ViewName } from './views.ts';
  * view for the ones that match no pattern here.
  */
 export interface RouteDefinition {
-  /** Path pattern, e.g. `/runs/:id`. */
+  /** Path pattern, e.g. `/runs/:run`. */
   pattern: string;
   /** The view this route renders. The outlet wraps the route in that view's frame. */
   view?: ViewName;
@@ -40,31 +39,32 @@ export interface RouteDefinition {
 const placeholder = () => import('../routes/placeholder/index.svelte');
 const agentEditor = () => import('../routes/agent-editor/index.svelte');
 const workflowArea = () => import('../routes/workflow-definitions/index.svelte');
+const runArea = () => import('../routes/workflows/index.svelte');
 const schedulesArea = () => import('../routes/schedules/index.svelte');
 
 export const routes: readonly RouteDefinition[] = [
-  // Chat is the home screen. Sessions live under `/chat/:sessionId`.
-  // `/` opens the most recently updated session, or `/chat` when there is none.
+  // Chat is the home screen. Sessions live under `/chats/:chat`.
+  // `/` opens the most recently updated session, or `/chats` when there is none.
   { pattern: '/', kind: 'reading', view: 'chat', load: placeholder, redirect: chatHomePath },
   {
-    pattern: '/chat',
+    pattern: '/chats',
     kind: 'reading',
     crumb: VIEW_COPY.chat.label,
     view: 'chat',
     load: () => import('../routes/chat/session-list.svelte'),
   },
-  // `/chat/new` is registered before `/chat/:sessionId`: the first match wins.
+  // `/chats/new` is registered before `/chats/:chat`: the first match wins.
   {
-    pattern: '/chat/new',
+    pattern: '/chats/new',
     kind: 'reading',
     crumb: 'New chat',
     view: 'chat',
     load: () => import('../routes/chat/index.svelte'),
   },
   {
-    pattern: '/chat/:sessionId',
+    pattern: '/chats/:chat',
     kind: 'reading',
-    crumb: { param: 'sessionId' },
+    crumb: { param: 'chat' },
     view: 'chat',
     load: () => import('../routes/chat/index.svelte'),
   },
@@ -75,7 +75,7 @@ export const routes: readonly RouteDefinition[] = [
     view: 'agents',
     load: () => import('../routes/agents/agent-list.svelte'),
   },
-  // `new` is a path segment, not an agent: this route comes before `/agents/:id`.
+  // `new` is a path segment, not an agent: this route comes before `/agents/:agent`.
   {
     pattern: '/agents/new',
     kind: 'editor',
@@ -84,7 +84,7 @@ export const routes: readonly RouteDefinition[] = [
     load: agentEditor,
   },
   {
-    pattern: '/agents/:id/edit',
+    pattern: '/agents/:agent/edit',
     kind: 'editor',
     crumb: 'Edit',
     view: 'agent-editor',
@@ -92,21 +92,22 @@ export const routes: readonly RouteDefinition[] = [
   },
   // What an agent remembers. It keeps the `agents` view, whose frame probes the memory too.
   {
-    pattern: '/agents/:id/memory',
+    pattern: '/agents/:agent/memories',
     kind: 'list-detail',
     crumb: 'Memory',
     view: 'agents',
     load: () => import('../routes/agents/agent-memory.svelte'),
   },
   {
-    pattern: '/agents/:id',
+    pattern: '/agents/:agent',
     kind: 'reading',
-    crumb: { param: 'id' },
+    crumb: { param: 'agent' },
     view: 'agents',
     load: () => import('../routes/agents/agent-detail.svelte'),
   },
   // `/workflows` is the catalog of workflow definitions, and under it one type's page, its runs, and
-  // its editor. A run lives under `/runs`. One component dispatches on the pattern.
+  // its editor. One component dispatches on the pattern. A run reached from its workflow is under
+  // it, and `/runs/:run` is the same page for a run known by its ID alone.
   {
     pattern: '/workflows',
     kind: 'reading',
@@ -114,7 +115,7 @@ export const routes: readonly RouteDefinition[] = [
     view: 'workflows',
     load: workflowArea,
   },
-  // `new` is a path segment, not a workflow: this route comes before `/workflows/:type`.
+  // `new` is a path segment, not a workflow: this route comes before `/workflows/:workflow`.
   {
     pattern: '/workflows/new',
     kind: 'form',
@@ -123,21 +124,28 @@ export const routes: readonly RouteDefinition[] = [
     load: workflowArea,
   },
   {
-    pattern: '/workflows/:type',
+    pattern: '/workflows/:workflow',
     kind: 'reading',
-    crumb: { param: 'type' },
+    crumb: { param: 'workflow' },
     view: 'workflows',
     load: workflowArea,
   },
   {
-    pattern: '/workflows/:type/runs',
+    pattern: '/workflows/:workflow/runs',
     kind: 'reading',
     crumb: VIEW_COPY.runs.label,
     view: 'workflows',
     load: workflowArea,
   },
   {
-    pattern: '/workflows/:type/edit',
+    pattern: '/workflows/:workflow/runs/:run',
+    kind: 'table',
+    crumb: { param: 'run' },
+    view: 'runs',
+    load: runArea,
+  },
+  {
+    pattern: '/workflows/:workflow/edit',
     kind: 'form',
     crumb: 'Edit',
     view: 'workflows',
@@ -148,14 +156,14 @@ export const routes: readonly RouteDefinition[] = [
     kind: 'table',
     crumb: VIEW_COPY.runs.label,
     view: 'runs',
-    load: () => import('../routes/workflows/index.svelte'),
+    load: runArea,
   },
   {
-    pattern: '/runs/:id',
+    pattern: '/runs/:run',
     kind: 'table',
-    crumb: { param: 'id' },
+    crumb: { param: 'run' },
     view: 'runs',
-    load: () => import('../routes/workflows/index.svelte'),
+    load: runArea,
   },
   // The list, and one schedule's page: one component dispatches on whether the path names one.
   {
@@ -166,30 +174,11 @@ export const routes: readonly RouteDefinition[] = [
     load: schedulesArea,
   },
   {
-    pattern: '/schedules/:id',
+    pattern: '/schedules/:schedule',
     kind: 'reading',
-    crumb: { param: 'id' },
+    crumb: { param: 'schedule' },
     view: 'schedules',
     load: schedulesArea,
-  },
-  // A task is a run. Old addresses for one go to the run's page, or to the runs a chat started.
-  {
-    pattern: '/tasks',
-    kind: 'table',
-    view: 'runs',
-    load: placeholder,
-    redirect: () => Promise.resolve('/runs?startedBy=chat'),
-  },
-  {
-    pattern: '/tasks/:id',
-    kind: 'table',
-    view: 'runs',
-    load: placeholder,
-    // `workflowDetailPath` lives in the router, which reads this table, so the path is built here.
-    redirect: ({ params }) =>
-      Promise.resolve(
-        identifierPath('runs', '/runs/:id', params['id'] ?? '', new URLSearchParams()),
-      ),
   },
   {
     pattern: '/reviews',
@@ -197,41 +186,6 @@ export const routes: readonly RouteDefinition[] = [
     crumb: VIEW_COPY.reviews.label,
     view: 'reviews',
     load: () => import('../routes/reviews/index.svelte'),
-  },
-  {
-    pattern: '/workers',
-    kind: 'table',
-    crumb: VIEW_COPY.workers.label,
-    view: 'workers',
-    load: () => import('../routes/workers/index.svelte'),
-  },
-  {
-    pattern: '/storage',
-    kind: 'table',
-    crumb: VIEW_COPY.storage.label,
-    view: 'storage',
-    load: () => import('../routes/storage/index.svelte'),
-  },
-  {
-    pattern: '/system',
-    kind: 'table',
-    crumb: VIEW_COPY.system.label,
-    view: 'system',
-    load: () => import('../routes/system/index.svelte'),
-  },
-  {
-    pattern: '/audit',
-    kind: 'table',
-    crumb: VIEW_COPY.audit.label,
-    view: 'audit',
-    load: () => import('../routes/audit/index.svelte'),
-  },
-  {
-    pattern: '/settings',
-    kind: 'form',
-    crumb: VIEW_COPY.settings.label,
-    view: 'settings',
-    load: () => import('../routes/settings/index.svelte'),
   },
   // Not in the sidebar: a goal is made and cancelled here, and linked to from where it is mentioned.
   {
@@ -241,19 +195,63 @@ export const routes: readonly RouteDefinition[] = [
     view: 'goals',
     load: () => import('../routes/goals/index.svelte'),
   },
+  // Health is the engine's overview, and under it the engine's other pages.
   {
-    pattern: '/engine',
+    pattern: '/health',
     kind: 'table',
-    crumb: VIEW_COPY.engine.label,
-    view: 'engine',
-    load: () => import('../routes/dashboard/index.svelte'),
+    crumb: VIEW_COPY.health.label,
+    view: 'health',
+    load: () => import('../routes/health/index.svelte'),
   },
   // Every engine workflow across types, narrowed by `?status=`: where the Overview's counts open.
   {
-    pattern: '/engine/runs',
+    pattern: '/health/runs',
     kind: 'table',
     crumb: VIEW_COPY.runs.label,
-    view: 'engine',
+    view: 'health',
     load: () => import('../routes/workflows/list/workflow-list.svelte'),
+  },
+  {
+    pattern: '/health/workers',
+    kind: 'table',
+    crumb: VIEW_COPY.workers.label,
+    view: 'workers',
+    load: () => import('../routes/workers/index.svelte'),
+  },
+  {
+    pattern: '/health/storage',
+    kind: 'table',
+    crumb: VIEW_COPY.storage.label,
+    view: 'storage',
+    load: () => import('../routes/storage/index.svelte'),
+  },
+  {
+    pattern: '/health/audit',
+    kind: 'table',
+    crumb: VIEW_COPY.audit.label,
+    view: 'audit',
+    load: () => import('../routes/audit/index.svelte'),
+  },
+  // Settings, and its sections (`settings-sections.ts`).
+  {
+    pattern: '/settings',
+    kind: 'form',
+    crumb: VIEW_COPY.settings.label,
+    view: 'settings',
+    load: () => import('../routes/settings/index.svelte'),
+  },
+  {
+    pattern: '/settings/data-and-retention',
+    kind: 'form',
+    crumb: SETTINGS_SECTION_COPY.dataAndRetention,
+    view: 'settings',
+    load: () => import('../routes/settings/data-and-retention.svelte'),
+  },
+  {
+    pattern: '/settings/api-reference',
+    kind: 'table',
+    crumb: SETTINGS_SECTION_COPY.apiReference,
+    view: 'settings',
+    load: () => import('../routes/settings/api-reference.svelte'),
   },
 ];

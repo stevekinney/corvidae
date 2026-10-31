@@ -15,7 +15,7 @@ const MEDIA = { modalities: {}, mimeFamilies: [], mediaLimits: [] };
 
 describe('an agent as the agents views show it', () => {
   test('opens a new chat at an address that names it, encoded', () => {
-    expect(newChatPath('research bot')).toBe('/chat/new?agent=research%20bot');
+    expect(newChatPath('research bot')).toBe('/chats/new?agent=research%20bot');
   });
 });
 

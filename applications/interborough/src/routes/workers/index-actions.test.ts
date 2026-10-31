@@ -33,8 +33,8 @@ function happyDomAPI(): DetachedWindowAPI {
   return window.happyDOM;
 }
 
-/** Same convention `system/index.test.ts` (Track E2) and `router.svelte.test.ts` (T1.3) establish: give the window a real origin before the reactive `router` singleton is touched. */
-function resetLocation(path = '/workers'): void {
+/** Same convention `system/api-reference-sections.test.ts` (Track E2) and `router.svelte.test.ts` (T1.3) establish: give the window a real origin before the reactive `router` singleton is touched. */
+function resetLocation(path = '/health/workers'): void {
   happyDomAPI().setURL('http://localhost/');
   router.navigate(path, { replace: true });
 }
@@ -174,7 +174,7 @@ describe('Workers route — Workers tab, worker selection and drain/resume', () 
     routeHappyPaths(scripted, { workers: [worker({ id: 'wkr_selected', health: 'active' })] });
     scripted.routeJsonRpcMethod('weft.workers.drain', { ok: true });
 
-    resetLocation('/workers?tab=list&worker=wkr_selected');
+    resetLocation('/health/workers?tab=list&worker=wkr_selected');
     const { findByLabelText, findByRole } = await renderWorkersRoute();
 
     await fireEvent.click(await findByRole('button', { name: 'Drain' }));
@@ -210,7 +210,7 @@ describe('Workers route — Workers tab, worker selection and drain/resume', () 
     routeHappyPaths(scripted, { workers: [worker({ id: 'wkr_draining', health: 'draining' })] });
     scripted.routeJsonRpcMethod('weft.workers.resume', { ok: true });
 
-    resetLocation('/workers?tab=list&worker=wkr_draining');
+    resetLocation('/health/workers?tab=list&worker=wkr_draining');
     const { findByRole } = await renderWorkersRoute();
 
     await fireEvent.click(await findByRole('button', { name: 'Resume' }));

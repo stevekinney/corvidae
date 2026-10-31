@@ -78,22 +78,35 @@
   const bureauLive = useBureauEventsLive();
   const fleetLive = useFleetEventsLive();
 
+  /**
+   * What the probe's key names besides the view: the one thing the route opens, so two pages of one
+   * view that ask different questions, or about different things, never share an answer.
+   */
+  function probeInstance(): string | null {
+    const opened = initial.parameters;
+    const agent = opened['agent'];
+    if (agent !== undefined) {
+      return initial.pattern === AGENT_MEMORY_PATTERN ? agentMemoryViewInstance(agent) : agent;
+    }
+    const item = opened['run'] ?? opened['schedule'] ?? opened['chat'];
+    if (item !== undefined) return item;
+    // A type's page, runs, and editor ask different questions about one type.
+    const workflow = opened['workflow'];
+    if (workflow !== undefined) return workflowViewInstance(initial.pattern ?? '', workflow);
+    if (initial.pattern === '/chats/new') return `new:${initial.search.get('agent') ?? ''}`;
+    // The sections of Settings that moved out of System ask the engine, not the Bureau.
+    return initial.view === 'settings' &&
+      initial.pattern !== undefined &&
+      initial.pattern !== '/settings'
+      ? initial.pattern
+      : null;
+  }
+
   const probeQuery = createQuery(() => {
     // Read here, not in the interval below, which TanStack calls on its own and so is not tracked.
     const live = { bureau: bureauLive(), fleet: fleetLive() };
     return {
-      queryKey: queryKeys.view(
-        initial.view,
-        (initial.pattern === AGENT_MEMORY_PATTERN && initial.parameters['id'] !== undefined
-          ? agentMemoryViewInstance(initial.parameters['id'])
-          : initial.parameters['id']) ??
-          initial.parameters['sessionId'] ??
-          // A type's page, runs, and editor ask different questions about one type.
-          (initial.parameters['type'] === undefined
-            ? null
-            : workflowViewInstance(initial.pattern ?? '', initial.parameters['type'])) ??
-          (initial.pattern === '/chat/new' ? `new:${initial.search.get('agent') ?? ''}` : null),
-      ),
+      queryKey: queryKeys.view(initial.view, probeInstance()),
       queryFn: () => (probe ? probe(client, queryClient) : Promise.resolve({ empty: false })),
       enabled: probe !== undefined && !scopeDenied,
       retry: false,

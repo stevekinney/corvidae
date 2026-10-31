@@ -12,7 +12,7 @@
   import { getClient } from '../../lib/client.ts';
   import { formatDuration, formatRelativeTime } from '../../lib/format/index.ts';
   import { queryKeys } from '../../lib/query.ts';
-  import { router, workflowDetailPath } from '../../lib/router.svelte.ts';
+  import { router, workflowRunPath } from '../../lib/router.svelte.ts';
   import { listWorkflowFileRuns } from '../../lib/workflow-files.ts';
   import { workflowRunsPath } from '../../lib/workflow-type-paths.ts';
   import { workflowStatusBadge } from '../workflows/list/workflow-status-badge.ts';
@@ -103,8 +103,8 @@
         <li data-run={run.id} data-status={run.status}>
           <a
             class="ib-workflow__run-status"
-            href={router.href(workflowDetailPath(run.id))}
-            onclick={(event) => go(event, workflowDetailPath(run.id))}
+            href={router.href(workflowRunPath(type, run.id))}
+            onclick={(event) => go(event, workflowRunPath(type, run.id))}
           >
             <WorkflowStatusIcon icon={status.icon} />
             {status.label}

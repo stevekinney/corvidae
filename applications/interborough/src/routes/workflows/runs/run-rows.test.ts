@@ -61,7 +61,7 @@ describe('buildRunRows', () => {
   test('names what started a run and how it stands, in a task’s words', () => {
     expect(rows[0]).toMatchObject({
       status: 'input-required',
-      origin: { kind: 'chat', title: 'Refund order 1234', href: '/chat/chat-1' },
+      origin: { kind: 'chat', title: 'Refund order 1234', href: '/chats/chat-1' },
       summary: 'Waiting for your approval',
       durationMs: null,
     });
@@ -89,7 +89,7 @@ describe('the session a run ran in', () => {
       kind: 'goal',
       name: 'seeded-goal',
       href: '/goals',
-      session: { title: 'Say hello.', href: '/chat/goal-seeded-goal-s0' },
+      session: { title: 'Say hello.', href: '/chats/goal-seeded-goal-s0' },
     });
   });
 
@@ -101,7 +101,7 @@ describe('the session a run ran in', () => {
       kind: 'goal',
       name: 'seeded-goal',
       href: '/goals',
-      session: { title: '', href: '/chat/goal-seeded-goal-s0' },
+      session: { title: '', href: '/chats/goal-seeded-goal-s0' },
     });
   });
 
@@ -119,7 +119,7 @@ describe('the session a run ran in', () => {
       chats: [fire],
     });
 
-    expect(row?.origin).toEqual({ kind: 'schedule', title: 'Check in', href: '/chat/fire-1' });
+    expect(row?.origin).toEqual({ kind: 'schedule', title: 'Check in', href: '/chats/fire-1' });
   });
 
   test('is a schedule’s even when the fire continued a chat session, which keeps its chat origin', () => {
@@ -135,7 +135,7 @@ describe('the session a run ran in', () => {
     expect(rows.find((row) => row.id === 'run-fire')?.origin).toEqual({
       kind: 'schedule',
       title: 'Refund order 1234',
-      href: '/chat/chat-1',
+      href: '/chats/chat-1',
     });
     expect(rows.find((row) => row.id === 'run-person')?.origin).toMatchObject({ kind: 'chat' });
     expect(filterRunRows(rows, { startedBy: 'schedule' }, Date.now()).map((row) => row.id)).toEqual(
@@ -166,7 +166,7 @@ describe('the session a run ran in', () => {
       chats: [chat],
     });
 
-    expect(row?.origin).toEqual({ kind: 'schedule', title: '', href: '/chat/other-owner-fire' });
+    expect(row?.origin).toEqual({ kind: 'schedule', title: '', href: '/chats/other-owner-fire' });
   });
 
   test('links another owner’s chat from the task’s own session, which the caller does not list', () => {
@@ -179,7 +179,7 @@ describe('the session a run ran in', () => {
       chats: [chat],
     });
 
-    expect(row?.origin).toEqual({ kind: 'chat', title: '', href: '/chat/other-owner-chat' });
+    expect(row?.origin).toEqual({ kind: 'chat', title: '', href: '/chats/other-owner-chat' });
   });
 
   test('names the caller’s own chat by its title, whichever kind the task says it is', () => {
@@ -192,7 +192,7 @@ describe('the session a run ran in', () => {
     expect(row?.origin).toEqual({
       kind: 'chat',
       title: 'Refund order 1234',
-      href: '/chat/chat-1',
+      href: '/chats/chat-1',
     });
   });
 
@@ -223,11 +223,11 @@ describe('the session a run ran in', () => {
     expect(rows.find((row) => row.id === 'run-fire')?.origin).toEqual({
       kind: 'schedule',
       title: '',
-      href: '/chat/other-owner-fire',
+      href: '/chats/other-owner-fire',
     });
     expect(rows.find((row) => row.id === 'goal-seeded-goal-a0')?.origin).toMatchObject({
       kind: 'goal',
-      session: { href: '/chat/goal-seeded-goal-s0' },
+      session: { href: '/chats/goal-seeded-goal-s0' },
     });
   });
 

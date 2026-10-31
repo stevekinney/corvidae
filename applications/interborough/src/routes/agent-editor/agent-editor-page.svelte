@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * The agent editor (`/agents/new`, `/agents/:id/edit`): creates an agent, or edits and deletes one, and lists the versions of it that have run.
+   * The agent editor (`/agents/new`, `/agents/:agent/edit`): creates an agent, or edits and deletes one, and lists the versions of it that have run.
    *
    * An agent is a Markdown file. The page reads it with its `hash`, builds the form once from what
    * it read, and names that hash in every write, so a file that changed on disk since is never

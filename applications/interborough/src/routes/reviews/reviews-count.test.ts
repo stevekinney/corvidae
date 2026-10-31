@@ -83,7 +83,7 @@ const approval = (id: string) => toolApprovalFixture({ id, runId: `run-${id}` })
 
 describe('the count in the navigation', () => {
   test('is the Bureau’s pending reviews and the engine’s, as one number', async () => {
-    const { container } = open('/chat', {
+    const { container } = open('/chats', {
       reviews: [approval('a'), humanWaitFixture({ sessionId: 's' })],
       weftReviews: [weft('w1')],
     });
@@ -92,7 +92,7 @@ describe('the count in the navigation', () => {
 
   test('is the Bureau’s alone when the principal lacks reviews:read, and asks the engine nothing', async () => {
     const { container } = open(
-      '/chat',
+      '/chats',
       { reviews: [approval('a')], weftReviews: [weft('w1'), weft('w2')] },
       AUTHORIZATION_SCOPES.filter((scope) => scope !== 'reviews:read'),
     );
@@ -112,7 +112,7 @@ describe('the count in the navigation', () => {
       createdAt: Date.now() - 120_000,
       timeout: 60_000,
     };
-    const { container } = open('/chat', {
+    const { container } = open('/chats', {
       reviews: [approval('a')],
       weftReviews: [late, weft('w1')],
     });
@@ -120,14 +120,14 @@ describe('the count in the navigation', () => {
   });
 
   test('has no number when nothing is waiting', async () => {
-    const { container } = open('/chat', {});
+    const { container } = open('/chats', {});
     await until(() => expect(stub?.callsTo('bureau.reviews.list').length).toBeGreaterThan(0));
     await settle();
     expect(navigationLabel(container)).toBe('Reviews');
   });
 
   test('changes after five seconds when a review arrives, and not before', async () => {
-    const { container } = open('/chat', { reviews: [approval('a')] });
+    const { container } = open('/chats', { reviews: [approval('a')] });
     await until(() => expect(navigationLabel(container)).toBe('Reviews 1'));
 
     world.reviews = [...world.reviews, approval('b')];
@@ -142,7 +142,7 @@ describe('the count in the navigation', () => {
   });
 
   test('counts a review of the engine’s that arrives after five seconds, too', async () => {
-    const { container } = open('/chat', { reviews: [approval('a')] });
+    const { container } = open('/chats', { reviews: [approval('a')] });
     await until(() => expect(navigationLabel(container)).toBe('Reviews 1'));
     world.weftReviews = [weft('w1')];
     jest.advanceTimersByTime(5_000);

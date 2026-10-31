@@ -87,7 +87,7 @@ describe('classifyFleetEvent', () => {
   test('falls back to a generic body/href when workflowId is absent', () => {
     const classified = classifyFleetEvent(frame('worker:connected', { payload: {} }));
     expect(classified?.body).toBe('A worker joined the fleet');
-    expect(classified?.href).toBe('/workers');
+    expect(classified?.href).toBe('/health/workers');
   });
 
   test('reads a string payload field into the title/body when present', () => {
@@ -100,7 +100,7 @@ describe('classifyFleetEvent', () => {
   test('non-workflow kinds route to their owning domain list', () => {
     expect(classifyFleetEvent(frame('schedule:missed-fire'))?.href).toBe('/schedules');
     expect(classifyFleetEvent(frame('human-review:requested'))?.href).toBe('/reviews');
-    expect(classifyFleetEvent(frame('storage:size-reported'))?.href).toBe('/storage');
-    expect(classifyFleetEvent(frame('development:warning'))?.href).toBe('/system');
+    expect(classifyFleetEvent(frame('storage:size-reported'))?.href).toBe('/health/storage');
+    expect(classifyFleetEvent(frame('development:warning'))?.href).toBe('/health');
   });
 });

@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
-   * The route for `/workflows`, `/workflows/new`, `/workflows/:type`, `/workflows/:type/runs`, and
-   * `/workflows/:type/edit`. The outlet keys a route by its path, so each address mounts a page of
+   * The route for `/workflows`, `/workflows/new`, `/workflows/:workflow`, `/workflows/:workflow/runs`, and
+   * `/workflows/:workflow/edit`. The outlet keys a route by its path, so each address mounts a page of
    * its own, and the pattern says which.
    */
   import { router } from '../../lib/router.svelte.ts';
@@ -16,11 +16,11 @@
 
 {#if pattern === '/workflows/new'}
   <WorkflowCreator />
-{:else if pattern === '/workflows/:type'}
+{:else if pattern === '/workflows/:workflow'}
   <WorkflowDetail />
-{:else if pattern === '/workflows/:type/runs'}
+{:else if pattern === '/workflows/:workflow/runs'}
   <WorkflowRuns />
-{:else if pattern === '/workflows/:type/edit'}
+{:else if pattern === '/workflows/:workflow/edit'}
   <WorkflowEditor />
 {:else}
   <WorkflowList />

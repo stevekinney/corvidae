@@ -5,7 +5,7 @@
  *
  * An entry is `{ keys, label, group, scope, handler }`. `keys` is a sequence: `['g', 'c']` is `g`,
  * then `c`, within {@link CHORD_WINDOW_MS}. `scope` says where the keys act: everywhere
- * (`'global'`), on one route of the route table (`{ route: '/agents/:id' }`), or while focus is
+ * (`'global'`), on one route of the route table (`{ route: '/agents/:agent' }`), or while focus is
  * inside one focus region (`{ region: 'memory-list' }`, an element carrying
  * `data-shortcut-region="memory-list"`). The same keys may be registered in scopes that can never
  * be active together; two registrations whose scopes can be are a programming error, and

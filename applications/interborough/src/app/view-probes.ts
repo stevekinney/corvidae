@@ -135,18 +135,24 @@ async function probeWorkflowType(
   type: string,
   pattern: string | undefined,
 ): Promise<ViewProbeResult> {
-  if (pattern === '/workflows/:type/edit') {
+  if (pattern === '/workflows/:workflow/edit') {
     if ((await orNotFound(getWorkflowFile(type))) === undefined) throw notFound('workflow');
     return { empty: false };
   }
   if ((await resolveWorkflow(client, type)) === undefined) throw notFound('workflow');
-  if (pattern === '/workflows/:type/runs') {
+  if (pattern === '/workflows/:workflow/runs') {
     const page = await client.list({ type, limit: 1 });
     // A first run of the type is the engine's `workflow:started`.
     return page.items.length === 0
       ? { empty: true, recheckMs: RUNS_RECHECK_MS, liveSource: 'fleet' }
       : { empty: false };
   }
+  return { empty: false };
+}
+
+/** The engine answering is all the pages that read it need settled before they show. */
+async function probeEngineRegistry(client: HttpClient): Promise<ViewProbeResult> {
+  await client.operations['weft.system.registry']({});
   return { empty: false };
 }
 
@@ -163,8 +169,8 @@ export function probeFor(
   switch (view) {
     case 'chat':
       // One session's page asks for that session, which settles whether it exists and may be seen.
-      if (parameters['sessionId'] !== undefined) {
-        const sessionId = parameters['sessionId'];
+      if (parameters['chat'] !== undefined) {
+        const sessionId = parameters['chat'];
         return async () => {
           // Only whether it exists and may be seen matters here; the page reads what it shows.
           await callBureau('bureau.contexts.get', { contextId: sessionId });
@@ -172,7 +178,7 @@ export function probeFor(
         };
       }
       // A new chat needs an agent the Bureau lists: an unknown one is not found.
-      if (pattern === '/chat/new') {
+      if (pattern === '/chats/new') {
         const agent = search.get('agent') ?? DEFAULT_AGENT;
         return async () => {
           const agents = await listAgents();
@@ -190,12 +196,13 @@ export function probeFor(
     case 'agents':
       return async () => {
         const agents = await listAgents();
-        if (parameters['id'] === undefined) return { empty: agents.length === 0 };
-        if (!agents.some((entry) => entry.name === parameters['id'])) throw notFound('agent');
+        const agent = parameters['agent'];
+        if (agent === undefined) return { empty: agents.length === 0 };
+        if (!agents.some((entry) => entry.name === agent)) throw notFound('agent');
         // An agent's memory page is empty when the agent has no memory: ranking has no score floor,
         // so a search finds something whenever one exists, and there is no other empty state.
         if (pattern === AGENT_MEMORY_PATTERN) {
-          const page = await listMemories(parameters['id'], { limit: 1 });
+          const page = await listMemories(agent, { limit: 1 });
           return { empty: page.memories.length === 0 };
         }
         return { empty: false };
@@ -203,6 +210,8 @@ export function probeFor(
     case 'audit':
       return probeAudit;
     case 'settings':
+      // The sections that moved out of the System page read the engine, not the Bureau's settings.
+      if (pattern !== undefined && pattern !== '/settings') return probeEngineRegistry;
       // The settings always have something to show: every key is listed, with a value or without.
       // Asking for them settles whether the caller may read them and whether the Bureau answers.
       return async () => {
@@ -212,23 +221,23 @@ export function probeFor(
     case 'goals':
       return probeGoals;
     case 'agent-editor': {
-      const id = parameters['id'];
-      return id === undefined ? probeAgentCatalog : () => probeEditableAgent(id);
+      const agent = parameters['agent'];
+      return agent === undefined ? probeAgentCatalog : () => probeEditableAgent(agent);
     }
     case 'workflows': {
       // The page that makes a workflow asks for nothing: it is where the first one is written.
       if (pattern === '/workflows/new') return undefined;
-      const type = parameters['type'];
-      return type === undefined
+      const workflow = parameters['workflow'];
+      return workflow === undefined
         ? probeWorkflowList
-        : (client) => probeWorkflowType(client, type, pattern);
+        : (client) => probeWorkflowType(client, workflow, pattern);
     }
     case 'runs':
-      if (parameters['id'] !== undefined) return undefined;
+      if (parameters['run'] !== undefined) return undefined;
       return probeRuns;
     case 'schedules':
       // One schedule's page asks for that schedule, and says in its own words when it is not there.
-      if (parameters['id'] !== undefined) return undefined;
+      if (parameters['schedule'] !== undefined) return undefined;
       return async (client) => {
         const page = await client.listSchedules({});
         return { empty: page.items.length === 0 };
@@ -259,11 +268,7 @@ export function probeFor(
         await client.operations['weft.storage.capabilities']({});
         return { empty: false };
       };
-    case 'system':
-    case 'engine':
-      return async (client) => {
-        await client.operations['weft.system.registry']({});
-        return { empty: false };
-      };
+    case 'health':
+      return probeEngineRegistry;
   }
 }

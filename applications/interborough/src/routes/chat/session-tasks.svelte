@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * The tasks of one chat session (`bureau.tasks.list` with the session's `contextId`, a page of fifty at a time with Load more), reduced to one sentence about the chat's runs
-   * that links to the run to open (`/runs/:id`). A run in the session is a task, so the list is read again when a
+   * that links to the run to open (`/runs/:run`). A run in the session is a task, so the list is read again when a
    * run ends. A session with no task, and a Bureau that cannot say, show nothing: the conversation
    * does not wait on this.
    */

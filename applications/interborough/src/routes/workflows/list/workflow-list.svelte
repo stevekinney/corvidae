@@ -42,7 +42,7 @@
   interface WorkflowListProps {
     /**
      * Narrows the list to one workflow type, whose runs live at their own address
-     * (`/workflows/:type/runs`). The type is the address's, so a `type` in the query string is
+     * (`/workflows/:workflow/runs`). The type is the address's, so a `type` in the query string is
      * ignored and the list offers no filter for it.
      */
     scopedType?: string | undefined;

@@ -22,7 +22,7 @@ let stub: BureauStub | undefined;
 beforeEach(() => {
   if (!(window instanceof Window)) throw new Error('expected a happy-dom test window');
   window.happyDOM.setURL('http://localhost/');
-  router.navigate('/chat/branch-1', { replace: true });
+  router.navigate('/chats/branch-1', { replace: true });
 });
 
 afterEach(() => {
@@ -45,12 +45,12 @@ describe('where a branch came from', () => {
     const { findByRole, container } = mount();
 
     const link = await findByRole('link', { name: 'Plan the week' });
-    expect(link.getAttribute('href')).toBe('/chat/parent-1');
+    expect(link.getAttribute('href')).toBe('/chats/parent-1');
     expect(container.textContent).toContain(CHAT_COPY.branch.branchedFrom);
     expect(stub.callsTo('bureau.contexts.get')[0]?.params).toEqual({ contextId: 'parent-1' });
     // Following the link opens the parent in the application, without a page load.
     await fireEvent.click(link);
-    expect(router.pathname).toBe('/chat/parent-1');
+    expect(router.pathname).toBe('/chats/parent-1');
   });
 
   test('leaves a modified click to the browser, which opens the link its own way', async () => {
@@ -61,7 +61,7 @@ describe('where a branch came from', () => {
 
     await fireEvent.click(await findByRole('link', { name: 'Plan the week' }), { ctrlKey: true });
 
-    expect(router.pathname).toBe('/chat/branch-1');
+    expect(router.pathname).toBe('/chats/branch-1');
   });
 
   test('says so without a link when the parent has been deleted', async () => {
@@ -89,6 +89,6 @@ describe('where a branch came from', () => {
 
     // With no title to name it, the link names the parent as an untitled chat does.
     const link = await findByRole('link', { name: CHAT_COPY.untitled });
-    expect(link.getAttribute('href')).toBe('/chat/parent-1');
+    expect(link.getAttribute('href')).toBe('/chats/parent-1');
   });
 });

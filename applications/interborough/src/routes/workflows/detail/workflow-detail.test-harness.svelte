@@ -6,7 +6,7 @@
    * `../aggregate/aggregate-view.test-harness.svelte`'s identical pattern.
    * `WorkflowDetail` reads its workflow id from `router.current.params`
    * (module doc), not a prop, so the test itself drives the id via
-   * `router.navigate('/runs/:id')` before rendering.
+   * `router.navigate('/runs/:run')` before rendering.
    */
   import type { HttpClient } from '@lostgradient/weft';
   import type { QueryClient } from '@tanstack/svelte-query';

@@ -45,7 +45,7 @@ test('the top bar names no principal and no scopes, and System’s Scopes tab na
   expect(topbarText).not.toContain('anonymous:local');
   expect(topbarText).not.toContain('scopes');
 
-  await page.goto('/system?tab=scopes');
+  await page.goto('/settings/api-reference?tab=scopes');
   await expect(page.getByTestId('principal-subject')).toHaveText('anonymous:local');
 });
 
@@ -135,7 +135,7 @@ test.describe('the notification bell, about the person and not the engine', () =
     await page.goto('/agents');
     await expect(bell(page, 'Notifications, 2 need you')).toBeVisible();
 
-    await page.goto(`/chat/${approvalThread}`);
+    await page.goto(`/chats/${approvalThread}`);
     const approval = page.locator('.ib-decision');
     await expect(approval).toBeVisible();
     await approval.getByRole('button', { name: 'Approve' }).click();
@@ -164,7 +164,7 @@ test.describe('the notification bell, about the person and not the engine', () =
       .getByRole('link', { name: /^request-human-input asked a question/ })
       .click();
 
-    await expect(page).toHaveURL(new RegExp(`/chat/${questionThread}$`));
+    await expect(page).toHaveURL(new RegExp(`/chats/${questionThread}$`));
     await expect(bell(page, 'Notifications')).toBeVisible();
     await expect(page.locator('.weft-notification-bell__count')).toHaveCount(0);
   });
@@ -251,7 +251,7 @@ test('New chat with echo, from the palette, opens a new chat with that agent', a
   await page.keyboard.press('Control+k');
   await page.getByRole('combobox').fill('ech');
   await page.getByRole('option', { name: 'New chat with echo', exact: true }).click();
-  await expect(page).toHaveURL(/\/chat\/new\?agent=echo$/);
+  await expect(page).toHaveURL(/\/chats\/new\?agent=echo$/);
 });
 
 test('g then a letter opens a view, and the sidebar names the keys', async ({ page }) => {
@@ -262,7 +262,7 @@ test('g then a letter opens a view, and the sidebar names the keys', async ({ pa
   await expect(page).toHaveURL(/\/agents$/);
   await page.keyboard.press('g');
   await page.keyboard.press('c');
-  await expect(page).toHaveURL(/\/chat$/);
+  await expect(page).toHaveURL(/\/chats$/);
   await expect(page.getByRole('link', { name: /^Agents/ })).toHaveAttribute(
     'title',
     'Agents (g a)',
@@ -314,18 +314,18 @@ test('the sidebar holds one ordered list, with Settings pinned to the bottom', a
   );
 });
 
-test('Chat is the home screen, and a session lives under /chat/:sessionId', async ({ page }) => {
+test('Chat is the home screen, and a session lives under /chats/:chat', async ({ page }) => {
   // The sidebar's item, not the top bar's breadcrumb, which links to the chats from a session.
   const chat = page.getByRole('navigation', { name: 'Views' }).getByRole('link', { name: /^Chat/ });
   await page.goto('/');
   await expect(page.locator('[data-view="chat"]')).toBeVisible();
   await expect(chat).toHaveAttribute('aria-current', 'page');
-  await page.goto('/chat/session-1');
+  await page.goto('/chats/session-1');
   await expect(page.locator('[data-view="chat"]')).toBeVisible();
   await expect(chat).toHaveAttribute('aria-current', 'page');
 });
 
-test('runs live at /runs and /runs/:id, and /workflows is the catalog of definitions', async ({
+test('runs live at /runs and /runs/:run, and /workflows is the catalog of definitions', async ({
   page,
 }) => {
   await page.goto('/');
@@ -358,7 +358,7 @@ test('the System view loads its Discovery documents through the relay', async ({
     page.waitForResponse((response) => new URL(response.url()).pathname === '/openapi.json'),
     page.waitForResponse((response) => new URL(response.url()).pathname === '/openrpc.json'),
   ];
-  await page.goto('/system?tab=discovery');
+  await page.goto('/settings/api-reference?tab=discovery');
   for (const response of await Promise.all(documents)) expect(response.status()).toBe(200);
 
   const panel = page.getByRole('tabpanel');
@@ -385,7 +385,7 @@ test('a tab left open past the old idle timeout keeps its event feed, and logs n
   const feed = page.waitForResponse(
     (response) => new URL(response.url()).pathname === '/v1/events/sse',
   );
-  await page.goto('/chat');
+  await page.goto('/chats');
   const answered = await feed;
   expect(answered.status()).toBe(200);
   await page.waitForTimeout(12_000);
@@ -401,7 +401,7 @@ test.describe('a tab opened before the host was rebuilt', () => {
       pattern: loggedFailedResponse(404, /\/assets\/.*\.js/),
       reason: 'the test removes a route’s chunk, as a rebuild does',
     });
-    await page.goto('/chat');
+    await page.goto('/chats');
     await expect(page.locator('[data-view="chat"]')).toBeVisible();
 
     let removed = false;
@@ -432,7 +432,7 @@ test.describe('a tab opened before the host was rebuilt', () => {
       reason: 'the test removes a route’s chunk for good',
       count: 2,
     });
-    await page.goto('/chat');
+    await page.goto('/chats');
     await expect(page.locator('[data-view="chat"]')).toBeVisible();
 
     // The first chunk the Agents route asks for goes missing, and stays missing after the reload.

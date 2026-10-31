@@ -140,7 +140,7 @@
     if (destination.view === 'reviews' && reviewsPendingCount !== undefined) {
       return { count: reviewsPendingCount, variant: 'warning' };
     }
-    if (destination.view === 'engine' && workersUnhealthyCount !== undefined) {
+    if (destination.view === 'health' && workersUnhealthyCount !== undefined) {
       return { count: workersUnhealthyCount, variant: 'danger' };
     }
     return undefined;
@@ -148,7 +148,7 @@
 
   function isActivePath(path: string): boolean {
     // The home screen is Chat, so Chat is also active at `/`.
-    if (path === '/chat' && router.pathname === '/') return true;
+    if (path === '/chats' && router.pathname === '/') return true;
     return router.pathname === path || router.pathname.startsWith(`${path}/`);
   }
 
@@ -220,7 +220,7 @@
                whose words stay in the link's accessible name. -->
           <Icon aria-hidden="true" size={16} class="weft-shell-nav-item__icon" />
           <span class="weft-shell-nav-item__label">{VIEW_COPY[destination.view].label}</span>
-          {#if destination.view === 'engine'}
+          {#if destination.view === 'health'}
             <span class="weft-shell-nav-health" data-engine-status={engineStatus}>
               <StatusDot
                 status={ENGINE_DOT_STATUS[engineStatus]}

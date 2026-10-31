@@ -1,5 +1,5 @@
 /**
- * `/workflows/:type/runs`: the runs list of `/runs`, filtered by the type, with each row linking
+ * `/workflows/:workflow/runs`: the runs list of `/runs`, filtered by the type, with each row linking
  * to the run. The type is the address's, so the list offers no type filter of its own, and a
  * filter it does offer keeps the page on this address.
  */
@@ -57,7 +57,10 @@ describe('the runs of a type', () => {
     const links = [...container.querySelectorAll<HTMLAnchorElement>('tbody a')].map((link) =>
       link.getAttribute('href'),
     );
-    expect(links).toEqual(['/runs/run-one', '/runs/run-two']);
+    expect(links).toEqual([
+      '/workflows/order-processing/runs/run-one',
+      '/workflows/order-processing/runs/run-two',
+    ]);
     expect(container.textContent).not.toContain('run-elsewhere');
     expect(container.querySelector('[data-view="workflows"]')?.getAttribute('data-state')).toBe(
       'ready',

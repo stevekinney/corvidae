@@ -1,5 +1,5 @@
 /**
- * The Memory page (`/agents/:id/memory`) against a stand-in for the Bureau's memory operations:
+ * The Memory page (`/agents/:agent/memories`) against a stand-in for the Bureau's memory operations:
  * the list and the search, one memory's lineage, what forgetting answers in each of the deletion's
  * states, and what correcting answers, including the Bureau's two refusals. The Agents view's
  * frame owns the page's loading, empty, failing, locked and not-found states
@@ -84,7 +84,7 @@ function bureau(answers: Answers = {}): BureauStub {
   return stub;
 }
 
-function open(path = '/agents/assistant/memory') {
+function open(path = '/agents/assistant/memories') {
   landAt(path);
   return mount(AgentMemory);
 }
@@ -423,7 +423,7 @@ describe('leaving the page', () => {
 
     const back = await findByRole('link', { name: MEMORY_COPY.backToAgent('assistant') });
     back.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true }));
-    expect(router.pathname).toBe('/agents/assistant/memory');
+    expect(router.pathname).toBe('/agents/assistant/memories');
     back.click();
 
     expect(router.pathname).toBe('/agents/assistant');
@@ -455,7 +455,7 @@ describe('one memory’s lineage', () => {
     expect(field(MEMORY_COPY.detail.fields.session)).toBe(MEMORY_COPY.detail.openChat);
     expect(
       within(detail).getByRole('link', { name: MEMORY_COPY.detail.openChat }).getAttribute('href'),
-    ).toBe('/chat/session-1');
+    ).toBe('/chats/session-1');
     expect(field(MEMORY_COPY.detail.fields.run)).toBe('run-7');
     expect(field(MEMORY_COPY.detail.fields.corrects)).toBe(MEMORY_COPY.detail.openMemory);
     expect(field(MEMORY_COPY.detail.fields.correctedBy)).toBe(MEMORY_COPY.detail.openMemory);
@@ -573,10 +573,10 @@ describe('one memory’s lineage', () => {
     const link = within(detail).getByRole('link', { name: MEMORY_COPY.detail.openChat });
 
     link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true }));
-    expect(router.pathname).toBe('/agents/assistant/memory');
+    expect(router.pathname).toBe('/agents/assistant/memories');
     link.click();
 
-    expect(router.pathname).toBe('/chat/session-1');
+    expect(router.pathname).toBe('/chats/session-1');
   });
 
   test('tries a memory that could not be loaded again on request', async () => {
@@ -775,7 +775,7 @@ describe('forgetting a memory', () => {
         return { id: AISLE.id, deletion: 'completed', receipt: RECEIPT };
       },
     });
-    landAt('/agents/assistant/memory');
+    landAt('/agents/assistant/memories');
     const view = render(FramedMemory, { props: { agentId: 'assistant' } } as never);
     await view.findByText(AISLE.content);
     const detail = await openDetails(view as never, AISLE.content);
@@ -1273,11 +1273,11 @@ describe('the agent’s page', () => {
     const { findByRole } = mount(AgentDetail);
 
     const link = await findByRole('link', { name: MEMORY_COPY.link });
-    expect(link.getAttribute('href')).toBe('/agents/assistant/memory');
+    expect(link.getAttribute('href')).toBe('/agents/assistant/memories');
     link.click();
 
-    expect(router.pathname).toBe('/agents/assistant/memory');
+    expect(router.pathname).toBe('/agents/assistant/memories');
     expect(router.current.route?.view).toBe('agents');
-    expect(router.current.params['id']).toBe('assistant');
+    expect(router.current.params['agent']).toBe('assistant');
   });
 });

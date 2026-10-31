@@ -1,6 +1,6 @@
 /**
  * What a person does on a run's page: cancel it after a confirmation, and decide what it is
- * waiting on, through `/runs/:id` and the route outlet, over a Bureau that answers from a table.
+ * waiting on, through `/runs/:run` and the route outlet, over a Bureau that answers from a table.
  */
 import { HttpClient } from '@lostgradient/weft';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';

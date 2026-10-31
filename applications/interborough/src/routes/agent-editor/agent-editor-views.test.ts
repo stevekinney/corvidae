@@ -75,7 +75,7 @@ describe('the editor’s routes', () => {
     expect(frameOf(container).dataset['state']).toBe('ready');
   });
 
-  test('/agents/:id/edit is the editor for that agent, ready once the agent loads', async () => {
+  test('/agents/:agent/edit is the editor for that agent, ready once the agent loads', async () => {
     const calls = bureau(() => readyAgent());
     landAt('/agents/researcher/edit');
     const { container, findByRole } = mountOutlet();

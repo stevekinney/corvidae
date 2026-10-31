@@ -13,13 +13,13 @@ import { expect, loggedFailedResponse, PageErrorLog, test } from './fixtures.ts'
 test.describe('a page that reports an error fails its test', () => {
   test('for a console error', async ({ page }) => {
     test.fail(true, 'the fixture must fail a test whose page logged a console error');
-    await page.goto('/chat');
+    await page.goto('/chats');
     await page.evaluate(() => console.error('something broke'));
   });
 
   test('for an uncaught exception', async ({ page }) => {
     test.fail(true, 'the fixture must fail a test whose page threw');
-    await page.goto('/chat');
+    await page.goto('/chats');
     await page.evaluate(() => {
       setTimeout(() => {
         throw new Error('uncaught');
@@ -30,14 +30,14 @@ test.describe('a page that reports an error fails its test', () => {
 
   test('for a request that dies', async ({ page }) => {
     test.fail(true, 'the fixture must fail a test whose page had a request fail');
-    await page.goto('/chat');
+    await page.goto('/chats');
     // Nothing listens on port 1: the connection is refused, which is not an abort.
     await page.evaluate(() => fetch('http://127.0.0.1:1/').catch(() => undefined));
   });
 
   test('for a response with an error status the test did not declare', async ({ page }) => {
     test.fail(true, 'the fixture must fail a test whose page logged a failed response');
-    await page.goto('/chat');
+    await page.goto('/chats');
     await page.evaluate(() => fetch('/bureau/missing'));
   });
 });
@@ -49,7 +49,7 @@ test.describe('a declaration covers only what it says', () => {
       pattern: loggedFailedResponse(404, /\/bureau\/missing/),
       reason: 'the test asks the Bureau for a path it does not serve',
     });
-    await page.goto('/chat');
+    await page.goto('/chats');
     await page.evaluate(async () => {
       await fetch('/bureau/missing');
       await fetch('/bureau/missing');
@@ -62,7 +62,7 @@ test.describe('a declaration covers only what it says', () => {
       pattern: loggedFailedResponse(404, /\/bureau\/missing/),
       reason: 'the test declares a failure it does not cause',
     });
-    await page.goto('/chat');
+    await page.goto('/chats');
   });
 
   test('a declaration with a count covers that many', async ({ page, pageErrors }) => {
@@ -71,7 +71,7 @@ test.describe('a declaration covers only what it says', () => {
       reason: 'the test asks the Bureau twice for a path it does not serve',
       count: 2,
     });
-    await page.goto('/chat');
+    await page.goto('/chats');
     await page.evaluate(async () => {
       await fetch('/bureau/missing');
       await fetch('/bureau/missing');
@@ -82,9 +82,9 @@ test.describe('a declaration covers only what it says', () => {
 test.describe('every page of the context is watched', () => {
   test('a second tab that logs an error fails the test', async ({ context, page }) => {
     test.fail(true, 'the fixture must fail a test whose second tab logged a console error');
-    await page.goto('/chat');
+    await page.goto('/chats');
     const second = await context.newPage();
-    await second.goto('/chat');
+    await second.goto('/chats');
     await second.evaluate(() => console.error('the second tab broke'));
   });
 
@@ -93,9 +93,9 @@ test.describe('every page of the context is watched', () => {
       pattern: loggedFailedResponse(404, /\/bureau\/missing/),
       reason: 'the second tab asks the Bureau for a path it does not serve',
     });
-    await page.goto('/chat');
+    await page.goto('/chats');
     const second = await context.newPage();
-    await second.goto('/chat');
+    await second.goto('/chats');
     await second.evaluate(() => fetch('/bureau/missing'));
   });
 });
@@ -174,7 +174,7 @@ test.describe('what the fixture lets through', () => {
       pattern: loggedFailedResponse(404, /\/bureau\/missing/),
       reason: 'the test asks the Bureau for a path it does not serve',
     });
-    await page.goto('/chat');
+    await page.goto('/chats');
     const status = await page.evaluate(async () => {
       const response = await fetch('/bureau/missing');
       return response.status;
@@ -183,7 +183,7 @@ test.describe('what the fixture lets through', () => {
   });
 
   test('a request the page cancels itself, which Chromium does not log', async ({ page }) => {
-    await page.goto('/chat');
+    await page.goto('/chats');
     await page.evaluate(async () => {
       const controller = new AbortController();
       const pending = fetch('/bureau/v1/health', { signal: controller.signal }).catch(

@@ -13,7 +13,7 @@ test('operator inspects installed revisions and sees a refused activation report
   page,
   checkA11y,
 }) => {
-  await page.goto('/system?tab=registry');
+  await page.goto('/settings/api-reference?tab=registry');
 
   const orderProcessingRow = page.getByRole('button', { name: /order-processing/ });
   await expect(orderProcessingRow).toBeVisible();
@@ -61,7 +61,7 @@ test('the Revisions panel is usable across supported widths and themes', async (
       await page.addInitScript((selectedTheme) => {
         localStorage.setItem('weft-ui-theme', selectedTheme);
       }, theme);
-      await page.goto('/system?tab=registry');
+      await page.goto('/settings/api-reference?tab=registry');
 
       const orderProcessingRow = page.getByRole('button', { name: /order-processing/ });
       await expect(orderProcessingRow).toBeVisible();

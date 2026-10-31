@@ -16,11 +16,10 @@ export const VIEW_NAMES = [
   'reviews',
   'workers',
   'storage',
-  'system',
   'audit',
   'settings',
   'goals',
-  'engine',
+  'health',
 ] as const;
 
 export type ViewName = (typeof VIEW_NAMES)[number];
@@ -92,7 +91,7 @@ export type ViewDefinition = {
 export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
   chat: { density: 'comfortable', scopes: [], canBeEmpty: true },
   agents: { density: 'comfortable', scopes: [], canBeEmpty: true },
-  // `/agents/new` and `/agents/:id/edit`. Never empty: it is where an agent is made.
+  // `/agents/new` and `/agents/:agent/edit`. Never empty: it is where an agent is made.
   'agent-editor': { density: 'comfortable', scopes: [], canBeEmpty: false },
   // The catalog of definitions, and under it one type's page, its runs, and its editor. It can be
   // empty when neither the engine nor the Bureau lists a workflow, and a type's runs can be empty.
@@ -122,7 +121,6 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
   reviews: { density: 'comfortable', scopes: [], canBeEmpty: false },
   workers: { density: 'compact', scopes: ['system:read'], canBeEmpty: false },
   storage: { density: 'compact', scopes: ['storage:admin'], canBeEmpty: false },
-  system: { density: 'compact', scopes: ['system:read'], canBeEmpty: false },
   // Holds no console scope: the Bureau shows each caller the records about what it owns, and a
   // principal that may see none is answered with an empty page, so owner scoping is the gate.
   audit: { density: 'compact', scopes: [], canBeEmpty: true },
@@ -137,5 +135,5 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
     canBeEmpty: true,
     creating: (search) => search.get('create') === '1',
   },
-  engine: { density: 'compact', scopes: ['workflows:read'], canBeEmpty: false },
+  health: { density: 'compact', scopes: ['workflows:read'], canBeEmpty: false },
 };

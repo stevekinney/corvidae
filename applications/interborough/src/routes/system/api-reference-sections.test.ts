@@ -1,7 +1,8 @@
 /**
- * Component tests for the System route shell (`index.svelte`; plan §9.7).
- * Covers URL-owned tab state: default tab, switching tabs updates `?tab=`,
- * and a deep link into a non-default tab renders that tab on load.
+ * Component tests for Settings › API reference (`routes/settings/api-reference.svelte`), the
+ * System page's tabs for what the engine exposes (plan §9.7). Covers URL-owned tab state: default
+ * tab, switching tabs updates `?tab=`, and a deep link into a non-default tab renders that tab on
+ * load. The tabs that moved to Health are covered by `routes/health/health-page.test.ts`.
  */
 import { fireEvent, render } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
@@ -9,7 +10,7 @@ import { Window, type DetachedWindowAPI } from 'happy-dom';
 
 import { createQueryClient } from '../../lib/query.ts';
 import { router } from '../../lib/router.svelte.ts';
-import SystemRoute from './index.svelte';
+import SettingsApiReference from '../settings/api-reference.svelte';
 import type { RegistrySnapshotSource } from './registry-view.ts';
 import SystemRouteTestHarness from './system-route-test-harness.test-harness.svelte';
 import {
@@ -34,7 +35,7 @@ function happyDomAPI(): DetachedWindowAPI {
  * the window a real origin before every test touches the reactive `router`
  * singleton.
  */
-function resetLocation(path = '/system'): void {
+function resetLocation(path = '/settings/api-reference'): void {
   happyDomAPI().setURL('http://localhost/');
   router.navigate(path, { replace: true });
 }
@@ -70,11 +71,15 @@ async function renderSystemRoute(
   scripted.routeSseStream('/v1/events/sse', []);
 
   return render(SystemRouteTestHarness, {
-    props: { client: realClient(), queryClient: createQueryClient(), component: SystemRoute },
+    props: {
+      client: realClient(),
+      queryClient: createQueryClient(),
+      component: SettingsApiReference,
+    },
   });
 }
 
-describe('System route', () => {
+describe('Settings › API reference', () => {
   test('defaults to the Workflow types tab when no ?tab= is present', async () => {
     const { findByRole } = await renderSystemRoute();
     const registryTrigger = await findByRole('tab', { name: 'Workflow types' });
@@ -87,30 +92,21 @@ describe('System route', () => {
     const tabs = await findAllByRole('tab');
     expect(tabs.map((tab) => tab.textContent?.trim())).toEqual([
       'Workflow types',
-      'Realms',
-      'Metrics',
       'Discovery',
       'Operations',
-      'Health',
-      'Alerts',
       'Scopes',
     ]);
     unmount();
     // Each render installs its own scripted `fetch` over the last, so the one before is put back first.
     restoreScripted();
 
-    // `registry` and `health` are what the tabs were called, and addresses that name them still work.
-    for (const [value, name] of [
-      ['registry', 'Workflow types'],
-      ['health', 'Health'],
-    ] as const) {
-      resetLocation(`/system?tab=${value}`);
-      const opened = await renderSystemRoute();
-      const tab = await opened.findByRole('tab', { name });
-      expect(tab.getAttribute('aria-selected')).toBe('true');
-      opened.unmount();
-      restoreScripted();
-    }
+    // `registry` is what the first tab was called, and an address that names it still works.
+    resetLocation('/settings/api-reference?tab=registry');
+    const opened = await renderSystemRoute();
+    const tab = await opened.findByRole('tab', { name: 'Workflow types' });
+    expect(tab.getAttribute('aria-selected')).toBe('true');
+    opened.unmount();
+    restoreScripted();
   });
 
   test('clicking a tab updates the URL and renders that tab', async () => {
@@ -123,35 +119,11 @@ describe('System route', () => {
     expect(scopesTrigger.getAttribute('aria-selected')).toBe('true');
   });
 
-  test('deep-linking to ?tab=alerts renders the Alerts tab on load', async () => {
-    resetLocation('/system?tab=alerts');
-    const { findByRole } = await renderSystemRoute();
-    const alertsTrigger = await findByRole('tab', { name: 'Alerts' });
-    expect(alertsTrigger.getAttribute('aria-selected')).toBe('true');
-  });
-
-  test('switching to Metrics, Discovery, Operations, and Health mounts each tab panel', async () => {
-    const { findAllByText, findByRole, findByText } = await renderSystemRoute();
-    scripted?.routeJsonRpcMethod('weft.system.metrics', {});
+  test('switching to Discovery and Operations mounts each tab panel', async () => {
+    const { findByRole, findByText } = await renderSystemRoute();
     scripted?.routeUrl('/openapi.json', { paths: {} });
     scripted?.routeUrl('/openrpc.json', { methods: [] });
     scripted?.routeUrl('/asyncapi.json', { channels: {} });
-    scripted?.routeUrl('/retention', {
-      defaultRetention: null,
-      sweepIntervalMs: 300000,
-      sweepBatchSize: 1000,
-      nextSweepAt: null,
-      workflowTypes: [],
-    });
-    scripted?.routeJsonRpcMethod('weft.system.lease', {
-      mode: 'none',
-      status: 'disabled',
-      holdsLease: false,
-    });
-
-    await fireEvent.click(await findByRole('tab', { name: 'Metrics' }));
-    const metricsMatches = await findAllByText('Active workflows');
-    expect(metricsMatches.length).toBeGreaterThan(0);
 
     await fireEvent.click(await findByRole('tab', { name: 'Discovery' }));
     expect(await findByRole('radio', { name: 'OpenAPI' })).not.toBeNull();
@@ -162,17 +134,21 @@ describe('System route', () => {
         exact: false,
       }),
     ).not.toBeNull();
-
-    await fireEvent.click(await findByRole('tab', { name: 'Health' }));
-    expect(await findByRole('heading', { name: 'Engine lease' })).not.toBeNull();
-    expect(await findByText('Lease ownership is not configured for this engine.')).not.toBeNull();
   });
 
   test('an unrecognized ?tab= value falls back to Workflow types rather than erroring', async () => {
-    resetLocation('/system?tab=nonsense');
+    resetLocation('/settings/api-reference?tab=nonsense');
     const { findByRole } = await renderSystemRoute();
     const registryTrigger = await findByRole('tab', { name: 'Workflow types' });
     expect(registryTrigger.getAttribute('aria-selected')).toBe('true');
+  });
+
+  test('falls back to Workflow types for a tab that moved to Health', async () => {
+    resetLocation('/settings/api-reference?tab=alerts');
+    const { findByRole, queryByRole } = await renderSystemRoute();
+    const registryTrigger = await findByRole('tab', { name: 'Workflow types' });
+    expect(registryTrigger.getAttribute('aria-selected')).toBe('true');
+    expect(queryByRole('tab', { name: 'Alerts' })).toBeNull();
   });
 
   test('renders public Cinder badges throughout the Registry route', async () => {

@@ -132,7 +132,7 @@ describe('an empty view’s call to action', () => {
   }
 
   test('is the empty state’s own link, from the copy', () => {
-    expect(VIEW_COPY.runs.empty?.action).toEqual({ label: 'Start a chat', href: '/chat/new' });
+    expect(VIEW_COPY.runs.empty?.action).toEqual({ label: 'Start a chat', href: '/chats/new' });
     expect(VIEW_COPY.schedules.empty?.action?.href).toBe('/schedules?create=1');
   });
 
@@ -145,6 +145,6 @@ describe('an empty view’s call to action', () => {
 
     const link = await findByRole('link', { name: 'Start a chat' });
 
-    expect(link.getAttribute('href')).toBe('/chat/new');
+    expect(link.getAttribute('href')).toBe('/chats/new');
   });
 });

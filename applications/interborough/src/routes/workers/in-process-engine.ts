@@ -3,7 +3,7 @@
  * reported, and no task queue exists, so the engine runs its work in-process and the page's tabs
  * would be zeros. A queue with a task in it is remote work whose ledger the Diagnostics tab reads,
  * and an address that opens one worker, queue, task, or diagnostic asks for it by name (the Overview
- * alerts link to `/workers?diagnostic=<kind>`), so either keeps the full page.
+ * alerts link to `/health/workers?diagnostic=<kind>`), so either keeps the full page.
  *
  * The queue list names only queues with pending tasks, so a task that dead-lettered after its worker
  * disconnected leaves no queue behind. The diagnostics read counts it, and any count in it (a dead

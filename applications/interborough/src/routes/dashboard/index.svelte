@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * Health (`/engine`; plan §9.1; design `Weft UI.dc.html` dashboard screen), the engine's
+   * Health (`/health`; plan §9.1; design `Weft UI.dc.html` dashboard screen), the engine's
    * overview. The sidebar's Health item is the way in to it, and its links are the way in to the
    * engine's other pages: Workers, Storage, System and the audit log.
    * Three bands — critical alerts, aggregate cards, recent-activity feed —
@@ -55,10 +55,9 @@
 
   /** The engine's other pages, each opened from here. */
   const SECTIONS = [
-    { label: VIEW_COPY.workers.label, path: '/workers' },
-    { label: VIEW_COPY.storage.label, path: '/storage' },
-    { label: VIEW_COPY.system.label, path: '/system' },
-    { label: VIEW_COPY.audit.label, path: '/audit' },
+    { label: VIEW_COPY.workers.label, path: '/health/workers' },
+    { label: VIEW_COPY.storage.label, path: '/health/storage' },
+    { label: VIEW_COPY.audit.label, path: '/health/audit' },
   ] as const;
 
   function openSection(event: MouseEvent, path: string): void {
@@ -73,7 +72,7 @@
 <div class="weft-dashboard">
   <div class="weft-dashboard__header">
     <div>
-      <h1 class="weft-dashboard__title">{VIEW_COPY.engine.label}</h1>
+      <h1 class="weft-dashboard__title">{VIEW_COPY.health.label}</h1>
       {#if healthQuery.dataUpdatedAt > 0}
         <p class="weft-dashboard__subtitle">
           Refreshed {formatRelativeTime(healthQuery.dataUpdatedAt)}

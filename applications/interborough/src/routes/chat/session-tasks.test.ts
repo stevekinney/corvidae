@@ -1,6 +1,6 @@
 /**
  * The runs of a chat session (`bureau.tasks.list` with the session's `contextId`), said as one
- * sentence that links to the run to open (`/runs/:id`): what waits on the person, what is going,
+ * sentence that links to the run to open (`/runs/:run`): what waits on the person, what is going,
  * what failed, and nothing when every run finished well.
  */
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';

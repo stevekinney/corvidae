@@ -24,7 +24,7 @@ describe('the views', () => {
   });
 
   test('the operator tables are compact, and the pages a person reads are not', () => {
-    for (const name of ['runs', 'audit', 'engine', 'workers', 'storage', 'system'] as const) {
+    for (const name of ['runs', 'audit', 'health', 'workers', 'storage'] as const) {
       expect(VIEWS[name].density, name).toBe('compact');
     }
     for (const name of [
@@ -61,21 +61,31 @@ describe('page width by kind of page', () => {
   test('one area holds pages of more than one width, so the width is not the area’s', () => {
     // The agents area: its list and an agent's page read, and its memory and editor are wide.
     expect(widthOf('/agents')).toBe('reading');
-    expect(widthOf('/agents/:id')).toBe('reading');
-    expect(widthOf('/agents/:id/memory')).toBe('full');
+    expect(widthOf('/agents/:agent')).toBe('reading');
+    expect(widthOf('/agents/:agent/memories')).toBe('full');
     expect(widthOf('/agents/new')).toBe('full');
-    expect(widthOf('/agents/:id/edit')).toBe('full');
+    expect(widthOf('/agents/:agent/edit')).toBe('full');
     // The memory page and an agent's page share the `agents` view and differ in width.
-    const memory = routes.find((route) => route.pattern === '/agents/:id/memory');
-    const detail = routes.find((route) => route.pattern === '/agents/:id');
+    const memory = routes.find((route) => route.pattern === '/agents/:agent/memories');
+    const detail = routes.find((route) => route.pattern === '/agents/:agent');
     expect(memory?.view).toBe(detail?.view);
   });
 
   test('the operator tables stay wide and the settings form keeps the reading width', () => {
-    for (const pattern of ['/runs', '/runs/:id', '/workers', '/storage', '/system', '/audit']) {
+    for (const pattern of [
+      '/runs',
+      '/runs/:run',
+      '/workflows/:workflow/runs/:run',
+      '/health',
+      '/health/workers',
+      '/health/storage',
+      '/settings/api-reference',
+      '/health/audit',
+    ]) {
       expect(widthOf(pattern), pattern).toBe('full');
     }
     expect(widthOf('/settings')).toBe('reading');
-    expect(widthOf('/chat/:sessionId')).toBe('reading');
+    expect(widthOf('/settings/data-and-retention')).toBe('reading');
+    expect(widthOf('/chats/:chat')).toBe('reading');
   });
 });

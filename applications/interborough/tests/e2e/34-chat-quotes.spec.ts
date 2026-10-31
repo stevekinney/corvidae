@@ -63,7 +63,7 @@ for (const viewport of VIEWPORTS) {
     const threadId = newThreadId('quote');
     await runToEnd(request, 'echo', threadId, FIRST_QUESTION);
     await runToEnd(request, 'echo', threadId, SECOND_QUESTION);
-    await page.goto(`/chat/${threadId}`);
+    await page.goto(`/chats/${threadId}`);
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
     const replies = page.locator(ASSISTANT_ROW);
     await expect(replies).toHaveCount(2);

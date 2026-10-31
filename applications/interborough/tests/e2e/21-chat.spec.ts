@@ -1,8 +1,8 @@
 /**
- * Chat at `/chat/:sessionId` against the real host: a message sent, a follow-up sent while the run
+ * Chat at `/chats/:chat` against the real host: a message sent, a follow-up sent while the run
  * is going (held on the barrier so nothing depends on a clock), an approval decided in its row under the call,
  * and a reload while a run is going. Sessions are started through the AG-UI mount, the way a client
- * other than the page would, because starting one from the page belongs to `/chat/new`.
+ * other than the page would, because starting one from the page belongs to `/chats/new`.
  */
 import type { Page } from '@playwright/test';
 
@@ -68,7 +68,7 @@ test.describe('a session', () => {
     const threadId = newThreadId('assistant');
     await runToEnd(request, 'assistant', threadId, 'First hello');
 
-    await page.goto(`/chat/${threadId}`);
+    await page.goto(`/chats/${threadId}`);
 
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('First hello');
@@ -95,7 +95,7 @@ test.describe('a tool approval', () => {
     checkA11y,
   }) => {
     const threadId = await toolRunnerSession(request, { settled: true });
-    await page.goto(`/chat/${threadId}`);
+    await page.goto(`/chats/${threadId}`);
 
     await send(page, 'Refund order-1001 again');
 
@@ -128,7 +128,7 @@ test.describe('a tool approval', () => {
   }) => {
     const threadId = await toolRunnerSession(request, { settled: false });
 
-    await page.goto(`/chat/${threadId}`);
+    await page.goto(`/chats/${threadId}`);
 
     const alert = page.locator('.ib-decision');
     await expect(alert).toBeVisible();
@@ -150,7 +150,7 @@ test.describe('a tool approval', () => {
         starts.push(outgoing.postDataJSON());
       }
     });
-    await page.goto(`/chat/${threadId}`);
+    await page.goto(`/chats/${threadId}`);
     await send(page, 'Refund the order');
     const alert = page.locator('.ib-decision');
     await expect(alert).toBeVisible();
@@ -178,7 +178,7 @@ test.describe('a tool call', () => {
     const stream = await runToEnd(request, 'tool-runner', threadId, 'Refund order-1001');
     await approveThroughMount(request, threadId, stream);
 
-    await page.goto(`/chat/${threadId}`);
+    await page.goto(`/chats/${threadId}`);
 
     await expect(page.getByText('Used 2 tools')).toBeVisible();
     await page.getByRole('button', { name: 'Show' }).click();
@@ -199,7 +199,7 @@ test.describe('a follow-up sent while the run is going', () => {
     request,
   }) => {
     const threadId = await idleBarrierSession(request, BARRIER, 'delivered');
-    await page.goto(`/chat/${threadId}`);
+    await page.goto(`/chats/${threadId}`);
     await send(page, 'Start the work');
     await expectWaiting(request, 1);
 
@@ -217,7 +217,7 @@ test.describe('a follow-up sent while the run is going', () => {
     request,
   }) => {
     const threadId = await idleBarrierSession(request, BARRIER_SHORT, 'ended');
-    await page.goto(`/chat/${threadId}`);
+    await page.goto(`/chats/${threadId}`);
     await send(page, 'Start the work');
     await expectWaiting(request, 1);
 
@@ -239,7 +239,7 @@ test.describe('a follow-up sent while the run is going', () => {
     request,
   }) => {
     const threadId = await idleBarrierSession(request, BARRIER, 'stopped');
-    await page.goto(`/chat/${threadId}`);
+    await page.goto(`/chats/${threadId}`);
     await send(page, 'Start the work');
     await expectWaiting(request, 1);
     await sendFollowUp(page, 'Also this');
@@ -261,7 +261,7 @@ test.describe('leaving a chat while its run is going', () => {
     request,
   }) => {
     const threadId = await idleBarrierSession(request, BARRIER, 'leave');
-    await page.goto(`/chat/${threadId}`);
+    await page.goto(`/chats/${threadId}`);
     await send(page, 'Start the work');
     await expectWaiting(request, 1);
     await sendFollowUp(page, 'Also this');
@@ -271,7 +271,7 @@ test.describe('leaving a chat while its run is going', () => {
     await expect(page).toHaveURL(/\/agents$/);
     await expect(page.getByRole('heading', { level: 1, name: 'Agents' })).toBeVisible();
     await page.goBack();
-    await expect(page).toHaveURL(new RegExp(`/chat/${threadId}$`));
+    await expect(page).toHaveURL(new RegExp(`/chats/${threadId}$`));
     // The page joined the run it left: its transcript is the thread as the Bureau holds it.
     await expect(page.getByText('Start the work')).toBeVisible();
     await expectWaiting(request, 1);
@@ -292,7 +292,7 @@ test.describe('a run that asks the person a question', () => {
     page,
     checkA11y,
   }) => {
-    await page.goto('/chat/new?agent=request-human-input');
+    await page.goto('/chats/new?agent=request-human-input');
     await send(page, 'Ship it');
     const question = page.getByRole('alert').filter({ hasText: QUESTION });
     await expect(question).toBeVisible();
@@ -323,7 +323,7 @@ test.describe('a run that asks the person a question', () => {
       }
     });
 
-    await page.goto(`/chat/${threadId}`);
+    await page.goto(`/chats/${threadId}`);
     await expect(page.getByRole('alert').filter({ hasText: QUESTION })).toBeVisible();
     await send(page, 'staging');
 
@@ -339,7 +339,7 @@ test('a reload while the run is going restores the transcript and continues live
   request,
 }) => {
   const threadId = await idleBarrierSession(request, BARRIER, 'reload');
-  await page.goto(`/chat/${threadId}`);
+  await page.goto(`/chats/${threadId}`);
   await send(page, 'Start the work');
   await expectWaiting(request, 1);
 
@@ -385,7 +385,7 @@ for (const width of [375, 1280] as const) {
     }) => {
       const threadId = newThreadId('states');
       await runToEnd(request, 'assistant', threadId, 'Hello');
-      await page.goto(`/chat/${threadId}`);
+      await page.goto(`/chats/${threadId}`);
       await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
       await expect(page.getByRole('textbox')).toBeVisible();
       await checkA11y(`a session, ready, at ${width}px`);
@@ -395,7 +395,7 @@ for (const width of [375, 1280] as const) {
       page,
       checkA11y,
     }) => {
-      await page.goto('/chat/no-such-session');
+      await page.goto('/chats/no-such-session');
       const frame = page.locator('[data-view="chat"]');
       await expect(frame).toHaveAttribute('data-state', 'not-found');
       await expect(frame.getByRole('heading', { level: 1 })).toHaveText(
@@ -417,7 +417,7 @@ for (const width of [375, 1280] as const) {
           });
         }
         await answerSessionProbe(page, outcome);
-        await page.goto('/chat/any-session');
+        await page.goto('/chats/any-session');
         const frame = page.locator('[data-view="chat"]');
         await expect(frame).toHaveAttribute('data-state', outcome);
         await expect(frame.getByRole('heading', { level: 1 })).toHaveText(
@@ -439,7 +439,7 @@ for (const width of [375, 1280] as const) {
       page,
       checkA11y,
     }) => {
-      await page.goto('/chat/new?agent=tool-runner');
+      await page.goto('/chats/new?agent=tool-runner');
 
       const card = page.getByTestId('agent-card');
       await expect(card).toBeVisible();
@@ -458,7 +458,7 @@ for (const width of [375, 1280] as const) {
       await expect(composer(page)).toHaveValue('Refund order 1234');
       await expect(composer(page)).toBeFocused();
       // Filling the composer starts nothing: the address is still the new chat's.
-      await expect(page).toHaveURL(/\/chat\/new\?agent=tool-runner$/);
+      await expect(page).toHaveURL(/\/chats\/new\?agent=tool-runner$/);
     });
 
     test('wraps a long example prompt inside its button, and the outlet does not scroll sideways', async ({
@@ -479,7 +479,7 @@ for (const width of [375, 1280] as const) {
         }
         await route.fulfill({ response, json: body });
       });
-      await page.goto('/chat/new?agent=tool-runner');
+      await page.goto('/chats/new?agent=tool-runner');
 
       const button = page.getByTestId('agent-card').getByRole('button', { name: prompt });
       await expect(button).toBeVisible();
@@ -508,7 +508,7 @@ for (const width of [375, 1280] as const) {
       page,
       checkA11y,
     }) => {
-      await page.goto('/chat/new');
+      await page.goto('/chats/new');
       await expect(page.getByTestId('agent-card')).toContainText('assistant');
       const others = page.getByRole('heading', { name: 'Or start with another agent' });
       await expect(others).toBeVisible();
@@ -516,7 +516,7 @@ for (const width of [375, 1280] as const) {
 
       await page.getByRole('button', { name: /request-human-input/ }).click();
 
-      await expect(page).toHaveURL(/\/chat\/new\?agent=request-human-input$/);
+      await expect(page).toHaveURL(/\/chats\/new\?agent=request-human-input$/);
       await expect(page.getByTestId('agent-card')).toContainText('request-human-input');
       await expect(page.getByTestId('agent-card').getByRole('button')).toHaveText(
         'Ship the release',

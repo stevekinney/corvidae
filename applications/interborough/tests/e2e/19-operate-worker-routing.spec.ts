@@ -40,7 +40,7 @@ async function value(page: Page, term: string) {
 }
 
 async function openDeployments(page: Page): Promise<void> {
-  await page.goto('/workers?tab=deployments');
+  await page.goto('/health/workers?tab=deployments');
   await expect(deployment(page)).toBeVisible();
 }
 

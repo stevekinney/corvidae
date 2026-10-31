@@ -42,7 +42,7 @@ describe('the runs probe', () => {
 describe('the workflows probe', () => {
   test('asks the list, and a type, but nothing for the page that makes a workflow', () => {
     expect(probeFor('workflows', {}, '/workflows')).toBeDefined();
-    expect(probeFor('workflows', { type: 'digest' }, '/workflows/:type')).toBeDefined();
+    expect(probeFor('workflows', { type: 'digest' }, '/workflows/:workflow')).toBeDefined();
     // The first workflow is written here, so there is nothing to find before the page is shown.
     expect(probeFor('workflows', {}, '/workflows/new')).toBeUndefined();
   });

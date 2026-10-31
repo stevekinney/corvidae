@@ -20,7 +20,7 @@ function entry(overrides: Partial<NotificationEntry> = {}): NotificationEntry {
     detail: 'Refund order 1234',
     joiner: ' in ',
     sessionId: 'session-refund',
-    href: '/chat/session-refund',
+    href: '/chats/session-refund',
     emittedAtMs: 1_000,
     ...overrides,
   };
@@ -211,7 +211,7 @@ describe('NotificationStore', () => {
         kind: 'engine',
         tier: 'critical',
         title: 'Engine unreachable',
-        href: '/engine',
+        href: '/health',
         emittedAtMs: 5_000,
       });
       expect(store.unreadCount).toBe(2);

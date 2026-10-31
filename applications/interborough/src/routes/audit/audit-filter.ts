@@ -1,6 +1,6 @@
 /**
  * The audit search as the address says it, and as the Bureau takes it. The address owns the
- * filters (`/audit?type=schedule.created`), so a search can be linked to and survives a reload.
+ * filters (`/health/audit?type=schedule.created`), so a search can be linked to and survives a reload.
  *
  * `since` is written as the local time the person typed (`YYYY-MM-DDTHH:mm`) and sent as epoch
  * milliseconds, which is what `bureau.audit.query` takes.
@@ -49,14 +49,14 @@ export function draftFromSearch(search: URLSearchParams): AuditDraft {
   };
 }
 
-/** The address of a search: `/audit`, with a query for each filter that is set. */
+/** The address of a search: `/health/audit`, with a query for each filter that is set. */
 export function pathOf(draft: AuditDraft): string {
   const params = new URLSearchParams();
   if (draft.since.trim() !== '') params.set('since', draft.since.trim());
   if (draft.type.trim() !== '') params.set('type', draft.type.trim());
   if (draft.resource.trim() !== '') params.set('resource', draft.resource.trim());
   const query = params.toString();
-  return query === '' ? '/audit' : `/audit?${query}`;
+  return query === '' ? '/health/audit' : `/health/audit?${query}`;
 }
 
 /**

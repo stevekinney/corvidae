@@ -186,7 +186,7 @@ export const queryKeys = {
   hostPaths: () => ['host', 'paths'] as const,
   /** The probe behind a view's loading, empty, error, and forbidden states (`app/view-frame.svelte`). */
   view: (view: string, instance: string | null) => ['view', view, instance] as const,
-  /** `weft.system.lease` (COR-124), read only by the System route's Health tab. */
+  /** `weft.system.lease` (COR-124), read only by the Health page's Health tab. */
   systemLease: () => ['system', 'lease'] as const,
   /** The five `weft.workflows.revisions.*`/`weft.workflows.active.get` catalog operations (WFT-11/WFT-115) — per-workflow-name keys, additive (WFT-115). */
   catalog: {
@@ -226,7 +226,7 @@ export function memoryListingsFilter(agentId: string): {
 }
 
 /** The route of an agent's memory page, which the Agents view's frame probes differently from the agent's own. */
-export const AGENT_MEMORY_PATTERN = '/agents/:id/memory';
+export const AGENT_MEMORY_PATTERN = '/agents/:agent/memories';
 
 /**
  * The instance the Agents view's frame keys the memory page's probe under, apart from the agent's

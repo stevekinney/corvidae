@@ -202,7 +202,7 @@ describe('the chat and agent matches', () => {
       ['reviews', 'command'],
     ]);
     expect(matchPages('audit').map((page) => [page.view, page.group, page.path])).toEqual([
-      ['audit', 'engine', '/audit'],
+      ['audit', 'engine', '/health/audit'],
     ]);
     expect(matchPages('zzz')).toEqual([]);
   });

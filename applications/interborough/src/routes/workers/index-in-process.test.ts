@@ -30,7 +30,7 @@ function openAt(path: string): void {
   router.navigate(path, { replace: true });
 }
 
-beforeEach(() => openAt('/workers'));
+beforeEach(() => openAt('/health/workers'));
 
 afterEach(() => {
   cleanup();
@@ -166,7 +166,7 @@ describe('Workers route with something to operate', () => {
   });
 
   test('shows the full page for an address that names a diagnostic, as the Overview alerts do', async () => {
-    openAt('/workers?diagnostic=stuckQueued');
+    openAt('/health/workers?diagnostic=stuckQueued');
     scripted = emptyFleet();
 
     const view = renderRoute();
@@ -191,7 +191,7 @@ describe('Workers route with something to operate', () => {
   });
 
   test('shows the full page for an address that names a worker, even with none connected', async () => {
-    openAt('/workers?tab=list&worker=worker-1');
+    openAt('/health/workers?tab=list&worker=worker-1');
     scripted = emptyFleet();
 
     const view = renderRoute();

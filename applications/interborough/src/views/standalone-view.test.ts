@@ -16,7 +16,6 @@ import ProvidedHostPage from './provided-host-page.test-harness.svelte';
 import ReviewsView from './reviews-view.svelte';
 import SchedulesView from './schedules-view.svelte';
 import StorageView from './storage-view.svelte';
-import SystemView from './system-view.svelte';
 import WorkersView from './workers-view.svelte';
 import WorkflowsView from './workflows-view.svelte';
 
@@ -101,7 +100,6 @@ const views: readonly (readonly [string, Component, string])[] = [
   ['WorkersView', WorkersView, 'Workers'],
   ['SchedulesView', SchedulesView, 'Schedules'],
   ['StorageView', StorageView, 'Storage'],
-  ['SystemView', SystemView, 'System'],
 ];
 
 describe('a view rendered outside the application shell', () => {

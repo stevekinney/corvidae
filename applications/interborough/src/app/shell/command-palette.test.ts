@@ -92,7 +92,7 @@ function stubEngine(): void {
 
 async function choose(query: string, resultName: RegExp) {
   stubEngine();
-  landAt('/chat');
+  landAt('/chats');
   const view = render(CommandPaletteLauncher, {
     props: { open: true, client: new HttpClient({ baseUrl: 'http://localhost/api' }) },
   });
@@ -128,7 +128,7 @@ describe('the command palette', () => {
 describe('the chats, agents, and commands', () => {
   test('lists the chat, then the agent, then the command, and nothing else, for a few letters', async () => {
     stubEngine();
-    landAt('/chat');
+    landAt('/chats');
     const view = render(CommandPaletteLauncher, {
       props: { open: true, client: new HttpClient({ baseUrl: 'http://localhost/api' }) },
     });
@@ -150,7 +150,7 @@ describe('the chats, agents, and commands', () => {
 
   test('opens the chat the title names', async () => {
     await choose('ech', /^Hello echo, say this back/);
-    await waitFor(() => expect(router.pathname).toBe('/chat/echo-chat'));
+    await waitFor(() => expect(router.pathname).toBe('/chats/echo-chat'));
   });
 
   test('opens the agent’s page', async () => {
@@ -161,7 +161,7 @@ describe('the chats, agents, and commands', () => {
   test('New chat with echo opens a new chat with that agent', async () => {
     await choose('ech', /^New chat with echo$/);
     await waitFor(() =>
-      expect(router.pathname + '?' + router.search.toString()).toBe('/chat/new?agent=echo'),
+      expect(router.pathname + '?' + router.search.toString()).toBe('/chats/new?agent=echo'),
     );
   });
 
@@ -174,7 +174,7 @@ describe('the chats, agents, and commands', () => {
 describe('choosing with the keyboard', () => {
   test('Enter opens the first result, the chat', async () => {
     stubEngine();
-    landAt('/chat');
+    landAt('/chats');
     const view = render(CommandPaletteLauncher, {
       props: { open: true, client: new HttpClient({ baseUrl: 'http://localhost/api' }) },
     });
@@ -182,19 +182,19 @@ describe('choosing with the keyboard', () => {
     await fireEvent.input(input, { target: { value: 'ech' } });
     await waitFor(() => expect(view.getAllByRole('option')).toHaveLength(3));
     await fireEvent.keyDown(input, { key: 'Enter' });
-    await waitFor(() => expect(router.pathname).toBe('/chat/echo-chat'));
+    await waitFor(() => expect(router.pathname).toBe('/chats/echo-chat'));
   });
 });
 
 describe('the engine pages and the empty states', () => {
   test('an engine page opens by name', async () => {
     await choose('go to storage', /^Storage$/);
-    await waitFor(() => expect(router.pathname).toBe('/storage'));
+    await waitFor(() => expect(router.pathname).toBe('/health/storage'));
   });
 
   test('says what to type before anything is typed, and when nothing matches', async () => {
     stubEngine();
-    landAt('/chat');
+    landAt('/chats');
     const view = render(CommandPaletteLauncher, {
       props: { open: true, client: new HttpClient({ baseUrl: 'http://localhost/api' }) },
     });
@@ -207,7 +207,7 @@ describe('the engine pages and the empty states', () => {
 describe('the palette shortcut', () => {
   test('Cmd+K and Ctrl+K open the palette, and other keys leave it closed', async () => {
     stubEngine();
-    landAt('/chat');
+    landAt('/chats');
     const view = render(CommandPaletteLauncher, {
       props: { open: false, client: new HttpClient({ baseUrl: 'http://localhost/api' }) },
     });
@@ -223,6 +223,6 @@ describe('the palette shortcut', () => {
 describe('the paths of a record', () => {
   test('encode the identifier', () => {
     expect(schedulePath('a b/c')).toBe('/schedules/a%20b%2Fc');
-    expect(workerPath('a&b')).toBe('/workers?tab=list&worker=a%26b');
+    expect(workerPath('a&b')).toBe('/health/workers?tab=list&worker=a%26b');
   });
 });

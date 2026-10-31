@@ -100,7 +100,7 @@ describe('task ledger response validation', () => {
 });
 
 describe('TaskLedgerDetailView', () => {
-  test('links its workflow to the run page, at /runs/:id', () => {
+  test('links its workflow to the run page, at /runs/:run', () => {
     const { getByRole } = render(TaskLedgerDetailView, {
       props: { task: parseTaskLedgerDetail(queuedTask()), now: NOW },
     });

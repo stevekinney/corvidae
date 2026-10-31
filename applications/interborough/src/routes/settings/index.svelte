@@ -25,6 +25,7 @@
   import { getHostPaths } from '../../lib/host-paths.ts';
   import { queryKeys } from '../../lib/query.ts';
   import SettingsEditor from './settings-editor.svelte';
+  import SettingsSectionNav from './settings-section-nav.svelte';
   import { SettingsFollower } from './settings-follower.ts';
   import { SettingsReader } from './settings-reader.ts';
 
@@ -86,6 +87,7 @@
 </script>
 
 <section class="weft-settings" aria-labelledby="weft-settings-title" data-page="settings">
+  <SettingsSectionNav />
   <header class="weft-settings__header">
     <h1 id="weft-settings-title" class="weft-settings__title">{VIEW_COPY.settings.label}</h1>
     <p class="weft-settings__intro">{SETTINGS_COPY.intro}</p>

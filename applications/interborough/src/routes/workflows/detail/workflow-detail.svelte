@@ -9,7 +9,7 @@
    * resume live" path from the Phase 2 gate, without needing the
    * per-workflow tail the dev harness can't serve yet — see `events-tab.svelte`).
    *
-   * Reads `router.current.params.id` directly rather than a prop — matches
+   * Reads `router.current.params.run` directly rather than a prop — matches
    * `route-outlet.svelte`'s contract (mounts route components with no
    * props; every domain's `index.svelte` self-sources its own params, and
    * the outlet's `{#key router.pathname}` guarantees a fresh mount on every
@@ -62,7 +62,7 @@
   import { getClient } from '../../../lib/client.ts';
   import { faultTreatment } from '../../../lib/faults.ts';
   import { queryKeys } from '../../../lib/query.ts';
-  import { router, workflowDetailPath } from '../../../lib/router.svelte.ts';
+  import { router, workflowDetailPath, workflowRunPath } from '../../../lib/router.svelte.ts';
   import { getPrincipalStore, scopeGate } from '../../../lib/scopes.svelte.ts';
   import { fetchActiveWorkflowRevision } from '../../../lib/workflow-revision.ts';
   import { getFleetEventSource } from '../../../app/engine-status.svelte.ts';
@@ -116,7 +116,7 @@
   const clock = new TickingClock();
   onDestroy(() => clock.dispose());
 
-  const id = $derived(router.current.params['id'] ?? '');
+  const id = $derived(router.current.params['run'] ?? '');
 
   const detailQuery = createQuery(() => ({
     queryKey: queryKeys.workflows.detail(id),
@@ -230,9 +230,14 @@
     const search = new URLSearchParams(router.search);
     if (search.get('tab') === next) return;
     search.set('tab', next);
-    router.navigate(workflowDetailPath(id, search), {
-      replace: true,
-    });
+    // The run keeps the address it was opened under: nested under its workflow, or by ID alone.
+    const workflow = router.current.params['workflow'];
+    router.navigate(
+      workflow === undefined
+        ? workflowDetailPath(id, search)
+        : workflowRunPath(workflow, id, search),
+      { replace: true },
+    );
   });
 
   $effect(() => {

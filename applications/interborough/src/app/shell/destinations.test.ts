@@ -39,13 +39,13 @@ describe('the shell’s shortcuts', () => {
 
   test('the sidebar’s destinations are the eight U1 names, in order, each with its own letter', () => {
     expect(DESTINATIONS.map((destination) => [destination.path, destination.letter])).toEqual([
-      ['/chat', 'c'],
+      ['/chats', 'c'],
       ['/reviews', 'v'],
       ['/agents', 'a'],
       ['/workflows', 'w'],
       ['/runs', 'r'],
       ['/schedules', 's'],
-      ['/engine', 'e'],
+      ['/health', 'e'],
       ['/settings', 'n'],
     ]);
   });
@@ -53,7 +53,7 @@ describe('the shell’s shortcuts', () => {
   test('each g shortcut opens its destination, a page the route table renders', () => {
     for (const destination of DESTINATIONS) {
       const { registry, opened } = registered();
-      const where = { routePattern: '/chat', regions: [] };
+      const where = { routePattern: '/chats', regions: [] };
       registry.handleKey(key('g'), where, 0);
       expect(registry.handleKey(key(destination.letter), where, 1), destination.path).toBe(true);
       expect(opened).toEqual([destination.path]);
@@ -75,7 +75,7 @@ describe('the shell’s shortcuts', () => {
     );
     expect(lists?.shortcuts.map((shortcut) => shortcut.keys[0])).toContain('J');
     expect(lists?.shortcuts.map((shortcut) => shortcut.keys[0])).toContain('K');
-    const inList = { routePattern: '/chat', regions: [LIST_DETAIL_REGION] };
+    const inList = { routePattern: '/chats', regions: [LIST_DETAIL_REGION] };
     expect(registry.handleKey(key('j'), inList, 0)).toBe(false);
     expect(opened).toEqual([]);
   });

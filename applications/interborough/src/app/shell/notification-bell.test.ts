@@ -29,7 +29,7 @@ function entry(overrides: Partial<NotificationEntry> = {}): NotificationEntry {
     detail: 'Refund order 1234',
     joiner: ' in ',
     sessionId: 'session-refund',
-    href: '/chat/session-refund',
+    href: '/chats/session-refund',
     emittedAtMs: Date.now() - 120_000,
     ...overrides,
   };
@@ -44,7 +44,7 @@ const ANSWERED = entry({
   identifiers: ['echo'],
   detail: 'Hello echo, say this back',
   sessionId: 'session-echo',
-  href: '/chat/session-echo',
+  href: '/chats/session-echo',
 });
 
 describe('NotificationBell', () => {
@@ -162,7 +162,7 @@ describe('NotificationBell', () => {
     await fireEvent.click(getByText('Refund order 1234'));
 
     expect(store.items[0]?.read).toBe(true);
-    expect(router.pathname).toBe('/chat/session-refund');
+    expect(router.pathname).toBe('/chats/session-refund');
     expect(queryByText('Mark all read')).toBeNull();
   });
 
@@ -191,7 +191,7 @@ describe('NotificationBell', () => {
     await fireEvent.click(getByRole('button', { name: 'Notifications, 1 needs you' }));
     await fireEvent.click(getByText('Engine status stale'));
 
-    expect(router.pathname).toBe('/engine');
+    expect(router.pathname).toBe('/health');
     expect(store.unreadCount).toBe(0);
   });
 

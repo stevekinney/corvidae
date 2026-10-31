@@ -1,9 +1,11 @@
 <script lang="ts">
   /**
-   * Runs dispatcher. `src/app/routes.ts` maps BOTH `/runs` and `/runs/:id` to this one component:
+   * Runs dispatcher. `src/app/routes.ts` maps `/runs`, `/runs/:run` and
+   * `/workflows/:workflow/runs/:run` to this one component (a run reached by its ID alone, and the
+   * same page under the workflow it belongs to):
    * this file is the only place that can tell those apart, plus the `?view=` sub-navigation the
    * engine's start wizard and aggregate view live under. `/runs` is the human list of what the
-   * agents have done (`runs/run-list.svelte`), and `/runs/:id` is one run's page
+   * agents have done (`runs/run-list.svelte`), and `/runs/:run` is one run's page
    * (`runs/run-detail.svelte`), whose Engine tab is the workflow detail the engine always had.
    *
    * The list and a run's page are the Bureau's, and hold no console scope. The start wizard and the
@@ -21,7 +23,7 @@
   import RunList from './runs/run-list.svelte';
   import StartWizard from './start/start-wizard.svelte';
 
-  const runId = $derived(router.current.params['id']);
+  const runId = $derived(router.current.params['run']);
   const view = $derived(router.current.search.get('view'));
   const principal = getPrincipalStore();
   const engineAllowed = $derived(principal.hasScope('workflows:read'));

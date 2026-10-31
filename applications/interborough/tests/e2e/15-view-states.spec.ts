@@ -15,20 +15,19 @@ import { expect, loggedFailedResponse, test, type PageErrorLog } from './fixture
 const WIDTHS = [375, 1280] as const;
 
 const PATHS: Readonly<Record<ViewName, string>> = {
-  chat: '/chat',
+  chat: '/chats',
   agents: '/agents',
   'agent-editor': '/agents/new',
   workflows: '/workflows',
   runs: '/runs',
   schedules: '/schedules',
   reviews: '/reviews',
-  workers: '/workers',
-  storage: '/storage',
-  system: '/system',
-  audit: '/audit',
+  workers: '/health/workers',
+  storage: '/health/storage',
+  audit: '/health/audit',
   settings: '/settings',
   goals: '/goals',
-  engine: '/engine',
+  health: '/health',
 };
 
 /** The states this spec drives from the view's own path: a view is not found only at an item's address, which `21-chat.spec.ts` covers. */
@@ -120,8 +119,7 @@ const PROBES: Readonly<Record<ViewName, ProbeRoute>> = {
   reviews: bureauProbe('bureau.reviews.list', { reviews: [] }),
   workers: jsonRpcProbe('weft.workers.list'),
   storage: jsonRpcProbe('weft.storage.capabilities'),
-  system: jsonRpcProbe('weft.system.registry'),
-  engine: jsonRpcProbe('weft.system.registry'),
+  health: jsonRpcProbe('weft.system.registry'),
 };
 
 /**
@@ -272,7 +270,7 @@ test('a view the principal lacks the scopes for is forbidden without a probe req
     }
     await route.fallback();
   });
-  await page.goto('/storage');
+  await page.goto('/health/storage');
   const frame = page.locator('[data-view="storage"]');
   await expect(frame).toHaveAttribute('data-state', 'forbidden');
   await expect(frame).toContainText('Requires storage:admin');
@@ -299,7 +297,7 @@ for (const width of WIDTHS) {
     await checkA11y(`not-found route at ${width}px`);
 
     await frame.getByRole('link', { name: NOT_FOUND_ROUTE_COPY.action.label }).click();
-    await expect(page).toHaveURL(/\/chat$/);
+    await expect(page).toHaveURL(/\/chats$/);
   });
 
   test(`the not-found page keeps the sidebar at ${width} pixels`, async ({ page }) => {
@@ -320,7 +318,7 @@ for (const width of WIDTHS) {
 }
 
 test('an address that is not valid percent-encoding shows the not-found page', async ({ page }) => {
-  // `%E0` cannot be decoded; the router used to throw while matching `/workflows/:type/runs`.
+  // `%E0` cannot be decoded; the router used to throw while matching `/workflows/:workflow/runs`.
   const response = await page.goto('/workflows/%E0/nope');
   expect(response?.status()).toBe(200);
   const frame = page.locator('[data-view="not-found"]');

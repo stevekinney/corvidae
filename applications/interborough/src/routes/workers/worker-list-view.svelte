@@ -24,7 +24,7 @@
   let { workers }: WorkerListViewProps = $props();
 
   function detailHref(workerId: string): string {
-    return router.href(`/workers?tab=list&worker=${encodeURIComponent(workerId)}`);
+    return router.href(`/health/workers?tab=list&worker=${encodeURIComponent(workerId)}`);
   }
 
   function onIdLinkClick(event: MouseEvent, workerId: string): void {
@@ -32,7 +32,7 @@
       return;
     }
     event.preventDefault();
-    router.navigate(`/workers?tab=list&worker=${encodeURIComponent(workerId)}`);
+    router.navigate(`/health/workers?tab=list&worker=${encodeURIComponent(workerId)}`);
   }
 </script>
 

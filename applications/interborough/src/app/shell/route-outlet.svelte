@@ -69,7 +69,7 @@
           return undefined;
         },
         () => {
-          if (!cancelled) router.navigate('/chat', { replace: true });
+          if (!cancelled) router.navigate('/chats', { replace: true });
           return undefined;
         },
       );

@@ -35,13 +35,13 @@ export interface Destination {
 
 /** Every destination, in the sidebar's order. Settings is pinned to the bottom. */
 export const DESTINATIONS: readonly Destination[] = [
-  { view: 'chat', path: '/chat', letter: 'c', icon: MessageSquare, pinned: false },
+  { view: 'chat', path: '/chats', letter: 'c', icon: MessageSquare, pinned: false },
   { view: 'reviews', path: '/reviews', letter: 'v', icon: Inbox, pinned: false },
   { view: 'agents', path: '/agents', letter: 'a', icon: Bot, pinned: false },
   { view: 'workflows', path: '/workflows', letter: 'w', icon: Workflow, pinned: false },
   { view: 'runs', path: '/runs', letter: 'r', icon: Play, pinned: false },
   { view: 'schedules', path: '/schedules', letter: 's', icon: CalendarClock, pinned: false },
-  { view: 'engine', path: '/engine', letter: 'e', icon: HeartPulse, pinned: false },
+  { view: 'health', path: '/health', letter: 'e', icon: HeartPulse, pinned: false },
   { view: 'settings', path: '/settings', letter: 'n', icon: SlidersHorizontal, pinned: true },
 ];
 

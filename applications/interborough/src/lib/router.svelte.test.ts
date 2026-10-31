@@ -14,7 +14,13 @@ import { Window, type DetachedWindowAPI } from 'happy-dom';
 
 import { routes } from '../app/routes.ts';
 import { chatSessionPath } from './identifier-paths.ts';
-import { matchRoute, router, scheduleDetailPath, workflowDetailPath } from './router.svelte.ts';
+import {
+  matchRoute,
+  router,
+  scheduleDetailPath,
+  workflowDetailPath,
+  workflowRunPath,
+} from './router.svelte.ts';
 
 function happyDomAPI(): DetachedWindowAPI {
   if (!(window instanceof Window)) {
@@ -34,7 +40,7 @@ describe('matchRoute', () => {
     { pattern: '/', kind: 'reading' as const, load: () => Promise.reject(new Error('unused')) },
     { pattern: '/runs', kind: 'reading' as const, load: () => Promise.reject(new Error('unused')) },
     {
-      pattern: '/runs/:id',
+      pattern: '/runs/:run',
       kind: 'reading' as const,
       load: () => Promise.reject(new Error('unused')),
     },
@@ -54,8 +60,8 @@ describe('matchRoute', () => {
 
   test('extracts and decodes a dynamic segment', () => {
     expect(matchRoute('/runs/wf%20123', definitions)).toEqual({
-      pattern: '/runs/:id',
-      params: { id: 'wf 123' },
+      pattern: '/runs/:run',
+      params: { run: 'wf 123' },
     });
   });
 
@@ -64,7 +70,11 @@ describe('matchRoute', () => {
     expect(matchRoute('/runs/%', definitions)).toBeNull();
     // A later literal segment that would not match anyway must not let the decode throw first.
     const nested = [
-      { pattern: '/workflows/:type/runs', kind: 'reading' as const, load: definitions[1]!.load },
+      {
+        pattern: '/workflows/:workflow/runs',
+        kind: 'reading' as const,
+        load: definitions[1]!.load,
+      },
     ];
     expect(matchRoute('/workflows/%E0/nope', nested)).toBeNull();
     expect(matchRoute('/workflows/%E0/runs', nested)).toBeNull();
@@ -86,10 +96,10 @@ describe('matchRoute', () => {
 
   test('first definition wins when multiple patterns could match', () => {
     const ambiguous = [
-      { pattern: '/runs/:id', kind: 'table' as const, load: definitions[2]!.load },
+      { pattern: '/runs/:run', kind: 'table' as const, load: definitions[2]!.load },
       { pattern: '/runs/new', kind: 'table' as const, load: definitions[1]!.load },
     ];
-    expect(matchRoute('/runs/new', ambiguous)?.pattern).toBe('/runs/:id');
+    expect(matchRoute('/runs/new', ambiguous)?.pattern).toBe('/runs/:run');
   });
 
   test('returns null for a completely unowned path', () => {
@@ -117,73 +127,92 @@ describe('router singleton', () => {
 
   test('navigate() to a dynamic route decodes params', () => {
     router.navigate('/runs/wf_123');
-    expect(router.match).toEqual({ pattern: '/runs/:id', params: { id: 'wf_123' } });
+    expect(router.match).toEqual({ pattern: '/runs/:run', params: { run: 'wf_123' } });
   });
 
   test('workflow detail paths preserve dot-only identifiers without changing legacy tilde links', () => {
     for (const workflowId of ['.', '..']) {
       router.navigate(workflowDetailPath(workflowId));
-      expect(router.current.params['id']).toBe(workflowId);
+      expect(router.current.params['run']).toBe(workflowId);
     }
 
     router.navigate('/runs/~legacy-link');
-    expect(router.current.params['id']).toBe('~legacy-link');
+    expect(router.current.params['run']).toBe('~legacy-link');
     router.navigate(workflowDetailPath('~new-link'));
-    expect(router.current.params['id']).toBe('~new-link');
+    expect(router.current.params['run']).toBe('~new-link');
+  });
+
+  test('a run under its workflow is the same page by another address, with the same escapes', () => {
+    expect(workflowRunPath('order-processing', 'run-1')).toBe(
+      '/workflows/order-processing/runs/run-1',
+    );
+    expect(workflowRunPath('a/b', 'x y?z')).toBe('/workflows/a%2Fb/runs/x%20y%3Fz');
+    expect(
+      workflowRunPath('order-processing', 'run-1', new URLSearchParams({ tab: 'steps' })),
+    ).toBe('/workflows/order-processing/runs/run-1?tab=steps');
+    for (const runId of ['.', '..']) {
+      router.navigate(workflowRunPath('order-processing', runId));
+      expect(router.current.params).toEqual({ workflow: 'order-processing', run: runId });
+    }
+    // The run's escape means nothing on another segment's path.
+    router.navigate('/workflows/order-processing/runs/run-1?__weft_workflow_id=..');
+    expect(router.current.params['run']).toBe('run-1');
+    router.navigate('/workflows/_/runs/run-1?__weft_workflow_id=..');
+    expect(router.current.params['workflow']).toBe('_');
   });
 
   test('the dot-id override applies only to the placeholder path, never to another run', () => {
     router.navigate('/runs/order-123?__weft_workflow_id=..');
-    expect(router.current.params['id']).toBe('order-123');
+    expect(router.current.params['run']).toBe('order-123');
     router.navigate('/runs/_?__weft_workflow_id=..');
-    expect(router.current.params['id']).toBe('..');
+    expect(router.current.params['run']).toBe('..');
   });
 
   test('schedule detail paths preserve dot-only identifiers, and the override applies only to the placeholder path', () => {
     for (const scheduleId of ['.', '..']) {
       router.navigate(scheduleDetailPath(scheduleId));
-      expect(router.current.params['id']).toBe(scheduleId);
+      expect(router.current.params['schedule']).toBe(scheduleId);
     }
     router.navigate('/schedules/nightly?__weft_schedule_id=..');
-    expect(router.current.params['id']).toBe('nightly');
+    expect(router.current.params['schedule']).toBe('nightly');
     router.navigate('/schedules/_?__weft_schedule_id=..');
-    expect(router.current.params['id']).toBe('..');
+    expect(router.current.params['schedule']).toBe('..');
     // The runs' escape means nothing on a schedule's path, and the schedules' means nothing on a run's.
     router.navigate('/schedules/_?__weft_workflow_id=..');
-    expect(router.current.params['id']).toBe('_');
+    expect(router.current.params['schedule']).toBe('_');
     router.navigate('/runs/_?__weft_schedule_id=..');
-    expect(router.current.params['id']).toBe('_');
+    expect(router.current.params['run']).toBe('_');
   });
 
   test('chat session paths carry the sessions the path cannot: new, and the dot-only identifiers', () => {
     for (const sessionId of ['new', '.', '..']) {
       router.navigate(chatSessionPath(sessionId));
-      expect(router.current.route?.pattern).toBe('/chat/:sessionId');
-      expect(router.current.params['sessionId']).toBe(sessionId);
+      expect(router.current.route?.pattern).toBe('/chats/:chat');
+      expect(router.current.params['chat']).toBe(sessionId);
     }
-    // The static new-chat route is still the one `/chat/new` names.
-    router.navigate('/chat/new');
-    expect(router.current.route?.pattern).toBe('/chat/new');
+    // The static new-chat route is still the one `/chats/new` names.
+    router.navigate('/chats/new');
+    expect(router.current.route?.pattern).toBe('/chats/new');
   });
 
   test('chat session paths leave every other identifier as the path segment itself', () => {
-    expect(chatSessionPath('abc-123')).toBe('/chat/abc-123');
-    expect(chatSessionPath('a b/c')).toBe('/chat/a%20b%2Fc');
-    expect(chatSessionPath('news')).toBe('/chat/news');
-    expect(chatSessionPath('_')).toBe('/chat/_');
+    expect(chatSessionPath('abc-123')).toBe('/chats/abc-123');
+    expect(chatSessionPath('a b/c')).toBe('/chats/a%20b%2Fc');
+    expect(chatSessionPath('news')).toBe('/chats/news');
+    expect(chatSessionPath('_')).toBe('/chats/_');
     router.navigate(chatSessionPath('_'));
-    expect(router.current.params['sessionId']).toBe('_');
+    expect(router.current.params['chat']).toBe('_');
     router.navigate(chatSessionPath('a b/c'));
-    expect(router.current.params['sessionId']).toBe('a b/c');
+    expect(router.current.params['chat']).toBe('a b/c');
   });
 
   test('the chat override applies only to the placeholder path, and only to what the builder escapes', () => {
-    router.navigate('/chat/order-123?__weft_session_id=new');
-    expect(router.current.params['sessionId']).toBe('order-123');
-    router.navigate('/chat/_?__weft_session_id=anything-else');
-    expect(router.current.params['sessionId']).toBe('_');
-    router.navigate('/chat/_?__weft_workflow_id=..');
-    expect(router.current.params['sessionId']).toBe('_');
+    router.navigate('/chats/order-123?__weft_session_id=new');
+    expect(router.current.params['chat']).toBe('order-123');
+    router.navigate('/chats/_?__weft_session_id=anything-else');
+    expect(router.current.params['chat']).toBe('_');
+    router.navigate('/chats/_?__weft_workflow_id=..');
+    expect(router.current.params['chat']).toBe('_');
   });
 
   test('the sessions a placeholder path stands in for are different pages, with different keys', () => {
@@ -192,8 +221,8 @@ describe('router singleton', () => {
     router.navigate(chatSessionPath('..'));
 
     expect(router.viewKey).not.toBe(first);
-    router.navigate('/chat/plain');
-    expect(router.viewKey).toBe('/chat/plain');
+    router.navigate('/chats/plain');
+    expect(router.viewKey).toBe('/chats/plain');
   });
 
   test('navigate() to an unowned path yields no match', () => {
@@ -219,8 +248,8 @@ describe('router singleton', () => {
     router.navigate('/runs/wf_123?status=failed');
 
     const current = router.current;
-    expect(current.route).toBe(routes.find((r) => r.pattern === '/runs/:id') ?? null);
-    expect(current.params).toEqual({ id: 'wf_123' });
+    expect(current.route).toBe(routes.find((r) => r.pattern === '/runs/:run') ?? null);
+    expect(current.params).toEqual({ run: 'wf_123' });
     expect(current.search.get('status')).toBe('failed');
   });
 
@@ -273,26 +302,26 @@ describe('the key the outlet mounts a route under', () => {
   beforeEach(() => resetLocation('/'));
 
   test('is the pathname, so a new path is a new page', () => {
-    router.navigate('/chat/new');
-    expect(router.viewKey).toBe('/chat/new');
+    router.navigate('/chats/new');
+    expect(router.viewKey).toBe('/chats/new');
 
-    router.navigate('/chat/session-1');
-    expect(router.viewKey).toBe('/chat/session-1');
+    router.navigate('/chats/session-1');
+    expect(router.viewKey).toBe('/chats/session-1');
   });
 
   test('a navigation that keeps the page leaves the key as it was, and the address changes', () => {
-    router.navigate('/chat/new');
+    router.navigate('/chats/new');
 
-    router.navigate('/chat/session-1', { replace: true, keep: true });
+    router.navigate('/chats/session-1', { replace: true, keep: true });
 
-    expect(router.pathname).toBe('/chat/session-1');
-    expect(router.viewKey).toBe('/chat/new');
-    expect(router.current.params).toEqual({ sessionId: 'session-1' });
+    expect(router.pathname).toBe('/chats/session-1');
+    expect(router.viewKey).toBe('/chats/new');
+    expect(router.current.params).toEqual({ chat: 'session-1' });
   });
 
   test('any later navigation ends the keeping', () => {
-    router.navigate('/chat/new');
-    router.navigate('/chat/session-1', { replace: true, keep: true });
+    router.navigate('/chats/new');
+    router.navigate('/chats/session-1', { replace: true, keep: true });
 
     router.navigate('/agents');
 
@@ -301,8 +330,8 @@ describe('the key the outlet mounts a route under', () => {
 
   test('going back ends the keeping too', () => {
     router.navigate('/agents');
-    router.navigate('/chat/new');
-    router.navigate('/chat/session-1', { replace: true, keep: true });
+    router.navigate('/chats/new');
+    router.navigate('/chats/session-1', { replace: true, keep: true });
 
     router.back();
     window.dispatchEvent(new PopStateEvent('popstate'));
@@ -311,10 +340,10 @@ describe('the key the outlet mounts a route under', () => {
   });
 
   test('keeping replaces the history entry, so the length does not grow', () => {
-    router.navigate('/chat/new');
+    router.navigate('/chats/new');
     const length = window.history.length;
 
-    router.navigate('/chat/session-1', { replace: true, keep: true });
+    router.navigate('/chats/session-1', { replace: true, keep: true });
 
     expect(window.history.length).toBe(length);
   });

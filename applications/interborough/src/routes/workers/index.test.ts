@@ -43,8 +43,8 @@ function happyDomAPI(): DetachedWindowAPI {
   return window.happyDOM;
 }
 
-/** Same convention `system/index.test.ts` (Track E2) and `router.svelte.test.ts` (T1.3) establish: give the window a real origin before the reactive `router` singleton is touched. */
-function resetLocation(path = '/workers'): void {
+/** Same convention `system/api-reference-sections.test.ts` (Track E2) and `router.svelte.test.ts` (T1.3) establish: give the window a real origin before the reactive `router` singleton is touched. */
+function resetLocation(path = '/health/workers'): void {
   happyDomAPI().setURL('http://localhost/');
   router.navigate(path, { replace: true });
 }
@@ -97,7 +97,7 @@ describe('Workers route — fault title mapping', () => {
       const view = await renderWorkersRoute();
       await view.findByText(IN_PROCESS_SENTENCE);
       view.unmount();
-      router.navigate('/workers?tab=queues');
+      router.navigate('/health/workers?tab=queues');
       await act();
       expect(warnings).toEqual([]);
     } finally {

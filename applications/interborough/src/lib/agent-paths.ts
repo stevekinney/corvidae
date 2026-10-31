@@ -16,5 +16,5 @@ export function agentEditPath(name: string): string {
 
 /** What an agent remembers. */
 export function agentMemoryPath(name: string): string {
-  return `${agentPath(name)}/memory`;
+  return `${agentPath(name)}/memories`;
 }

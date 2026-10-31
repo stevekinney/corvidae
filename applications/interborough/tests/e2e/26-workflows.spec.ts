@@ -1,7 +1,7 @@
 /**
  * The Workflows area against the real host: `/workflows` lists the engine's definitions with the
- * Bureau's workflow files, `/workflows/new` makes one, `/workflows/:type` shows one and acts on its
- * file, `/workflows/:type/runs` lists its runs, and `/workflows/:type/edit` edits its JSON. A workflow is a JSON file in the
+ * Bureau's workflow files, `/workflows/new` makes one, `/workflows/:workflow` shows one and acts on its
+ * file, `/workflows/:workflow/runs` lists its runs, and `/workflows/:workflow/edit` edits its JSON. A workflow is a JSON file in the
  * host's temporary home, so the specs create, change, and delete real files; three are seeded by
  * `e2e-server.ts`. Every page meets axe at the two widths the application is built for.
  *
@@ -531,7 +531,7 @@ test.describe('an invalid file', () => {
     await page.goto('/workflows/e2e-gone');
     await expect(area(page)).toHaveAttribute('data-state', 'not-found');
     await expect(area(page).getByRole('heading', { level: 1 })).toHaveText(
-      VIEW_COPY.workflows.notFoundByPattern?.['/workflows/:type']?.title ??
+      VIEW_COPY.workflows.notFoundByPattern?.['/workflows/:workflow']?.title ??
         VIEW_COPY.workflows.notFound?.title ??
         '',
     );
@@ -733,7 +733,7 @@ test.describe('the runs of a type', () => {
     await page.goto(`/workflows/${SEEDED_WORKFLOWS.digest}/runs`);
     await expect(area(page)).toHaveAttribute('data-state', 'empty');
     await expect(area(page).getByRole('heading', { level: 1 })).toHaveText(
-      VIEW_COPY.workflows.emptyByPattern?.['/workflows/:type/runs']?.title ?? '',
+      VIEW_COPY.workflows.emptyByPattern?.['/workflows/:workflow/runs']?.title ?? '',
     );
     await checkA11y('the runs of a type with none');
   });

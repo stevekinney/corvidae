@@ -208,19 +208,19 @@
   function selectTab(next: string): void {
     const params = new URLSearchParams();
     params.set('tab', next);
-    router.navigate(`/workers?${params.toString()}`);
+    router.navigate(`/health/workers?${params.toString()}`);
   }
 
   function applyProvenanceFilters(filters: TaskProvenanceFilters): void {
     const params = writeProvenanceFilters(new URLSearchParams({ tab: 'diagnostics' }), filters);
-    router.navigate(`/workers?${params.toString()}`);
+    router.navigate(`/health/workers?${params.toString()}`);
   }
 
   function selectTask(operationId: string): void {
     const params = new URLSearchParams();
     params.set('tab', 'diagnostics');
     params.set('task', operationId);
-    router.navigate(`/workers?${params.toString()}`);
+    router.navigate(`/health/workers?${params.toString()}`);
   }
 
   // ---------------------------------------------------------------------

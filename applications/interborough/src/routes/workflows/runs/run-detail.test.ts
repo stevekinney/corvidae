@@ -1,5 +1,5 @@
 /**
- * `/runs/:id` as a person uses it: where the run came from and how it stands, the answer the
+ * `/runs/:run` as a person uses it: where the run came from and how it stands, the answer the
  * task's stream carries, what the page says when it cannot follow the run live, and a goal's
  * attempt, which the Bureau holds no task for. Through the route outlet, over a Bureau that
  * answers from a table.
