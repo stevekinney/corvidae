@@ -1,4 +1,4 @@
-import type { OutputValidator, ValidationResult, ValidatorContext } from '../types';
+import type { OutputValidator, ValidationResult, ValidatorContext } from '@lostgradient/operative';
 
 /** Options for configuring the code safety validator. */
 export interface CodeSafetyValidatorOptions {

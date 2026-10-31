@@ -113,4 +113,41 @@ describe('createGroundingValidator', () => {
     );
     expect(result.valid).toBe(true);
   });
+
+  it("grounds claims against the context's conversation text, which a host supplies per call", async () => {
+    const validator = createGroundingValidator();
+    const grounded = await validator.validate('The total is 72 dollars.', {
+      ...baseContext,
+      conversationText: () => 'The invoice total is 72 dollars.',
+    });
+    expect(grounded.valid).toBe(true);
+
+    const ungrounded = await validator.validate('The total is 99 dollars.', {
+      ...baseContext,
+      conversationText: () => 'The invoice total is 72 dollars.',
+    });
+    expect(ungrounded.valid).toBe(false);
+  });
+
+  it('grounds against the configured text and the conversation text together', async () => {
+    const validator = createGroundingValidator({ conversationText: 'The limit is 5 days.' });
+    const result = await validator.validate('The limit is 5 days and the fee is 72 dollars.', {
+      ...baseContext,
+      conversationText: () => 'The fee is 72 dollars.',
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  it('reads the context lazily: a reply with no claims never asks for the conversation', async () => {
+    const validator = createGroundingValidator();
+    let reads = 0;
+    await validator.validate('Nothing to check here.', {
+      ...baseContext,
+      conversationText: () => {
+        reads += 1;
+        return '';
+      },
+    });
+    expect(reads).toBe(0);
+  });
 });

@@ -1,4 +1,4 @@
-import type { OutputValidator, ValidationResult, ValidatorContext } from '../types';
+import type { OutputValidator, ValidationResult, ValidatorContext } from '@lostgradient/operative';
 
 /** Options for configuring the grounding validator. */
 export interface GroundingValidatorOptions {
@@ -77,14 +77,18 @@ export function createGroundingValidator(options: GroundingValidatorOptions = {}
 
   return {
     name: 'grounding',
-    validate(output: string, _context: ValidatorContext): Promise<ValidationResult> {
+    validate(output: string, context: ValidatorContext): Promise<ValidationResult> {
       const claims = extractClaims(output);
 
       if (claims.length === 0) {
         return Promise.resolve({ valid: true, confidence: 0, category: 'grounding' });
       }
 
-      const currentText = resolveConversationText();
+      // The configured text and the conversation the run supplies, so a host that supplies
+      // neither grounds against nothing, and every claim is ungrounded.
+      const currentText = [resolveConversationText(), context.conversationText?.() ?? ''].join(
+        '\n',
+      );
       const groundedCount = claims.filter((claim) => isGrounded(claim, currentText)).length;
       const ratio = groundedCount / claims.length;
 

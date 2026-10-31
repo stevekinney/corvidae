@@ -765,6 +765,22 @@
         "@a2a-js/sdk",
       ],
     },
+    "plugins/guardrails": {
+      "name": "@lostgradient/plugin-guardrails",
+      "dependencies": {
+        "@lostgradient/interborough-plugin": "workspace:*",
+        "@lostgradient/operative": "workspace:*",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/bureau": "workspace:*",
+        "@lostgradient/storage": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "plugins/ollama": {
       "name": "@lostgradient/plugin-ollama",
       "dependencies": {
@@ -1174,6 +1190,8 @@
     "@lostgradient/operative-typesafe": ["@lostgradient/operative-typesafe@workspace:packages/operative-typesafe"],
 
     "@lostgradient/playground": ["@lostgradient/playground@workspace:applications/playground"],
+
+    "@lostgradient/plugin-guardrails": ["@lostgradient/plugin-guardrails@workspace:plugins/guardrails"],
 
     "@lostgradient/plugin-ollama": ["@lostgradient/plugin-ollama@workspace:plugins/ollama"],
 

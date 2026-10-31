@@ -274,6 +274,47 @@ describe('createOutputGuardrail', () => {
       expect(ctx.conversationLength).toBe(2);
       expect(ctx.toolCallCount).toBe(2);
     });
+
+    it('offers the conversation as text, read only when a validator asks', async () => {
+      const seen: string[] = [];
+      const validator: OutputValidator = {
+        name: 'reader',
+        validate: async (_output, ctx) => {
+          seen.push(ctx.conversationText?.() ?? 'missing');
+          return validResult;
+        },
+      };
+      const hook = createOutputGuardrail({ validators: [validator] });
+      const conversation = new Conversation();
+      conversation.appendUserMessage('The invoice total is 72 dollars.');
+      conversation.appendAssistantMessage('Noted.');
+
+      await hook(createMockResponse(), { conversation, step: 1 });
+
+      expect(seen).toHaveLength(1);
+      expect(seen[0]).toContain('The invoice total is 72 dollars.');
+      expect(seen[0]).toContain('Noted.');
+    });
+
+    it('reads the conversation as it stood when the validator ran, not a later one', async () => {
+      let read: (() => string) | undefined;
+      const validator: OutputValidator = {
+        name: 'keeper',
+        validate: async (_output, ctx) => {
+          read = ctx.conversationText;
+          return validResult;
+        },
+      };
+      const hook = createOutputGuardrail({ validators: [validator] });
+      const conversation = new Conversation();
+      conversation.appendUserMessage('before');
+
+      await hook(createMockResponse(), { conversation, step: 1 });
+      conversation.appendUserMessage('after');
+
+      expect(read?.()).toContain('before');
+      expect(read?.()).not.toContain('after');
+    });
   });
 });
 

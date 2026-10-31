@@ -1,5 +1,8 @@
+import type { Message } from 'conversationalist';
+
 import { GuardrailTripwireError } from '../errors';
 import type { GenerateResponse, StepContext, ValidateResponseHook } from '../types';
+import { inspectContent } from './inspectable-content';
 import type {
   OutputGuardrailOptions,
   OutputGuardrailTriggeredEvent,
@@ -17,6 +20,18 @@ function thinkingTextsOf(response: GenerateResponse): ThinkingText[] {
   return (response.parts ?? []).flatMap((part, index) =>
     part.type === 'thinking' && part.thinking.length > 0 ? [{ index, text: part.thinking }] : [],
   );
+}
+
+/**
+ * The conversation's text as a validator reads it, built once and only when asked for. The
+ * messages are the ones the step started with, so a later append does not change what it reads.
+ */
+function conversationTextReader(messages: ReadonlyArray<Message>): () => string {
+  let text: string | undefined;
+  return () =>
+    (text ??= messages
+      .flatMap((message) => inspectContent(message.content).fields.map((field) => field.text))
+      .join('\n'));
 }
 
 type Failure = {
@@ -78,6 +93,7 @@ export function createOutputGuardrail(options: OutputGuardrailOptions): Validate
       step: context.step,
       conversationLength: messages.length,
       toolCallCount: response.toolCalls.length,
+      conversationText: conversationTextReader([...messages]),
     };
 
     // Run every validator over the content and over each thinking part, in parallel.

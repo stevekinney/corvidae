@@ -59,6 +59,13 @@ export interface ValidatorContext {
   step: number;
   conversationLength: number;
   toolCallCount: number;
+  /**
+   * The conversation so far as one string, user, assistant and tool messages in order. It is read
+   * only when called, and reflects the conversation as the step started, so a validator that
+   * checks a reply against what was said (grounding) pays for it, and one that does not, does not.
+   * Absent when a caller builds the context itself.
+   */
+  conversationText?: (() => string) | undefined;
 }
 
 /** Result of running an output validator against model output. */
