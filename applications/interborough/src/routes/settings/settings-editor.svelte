@@ -48,6 +48,13 @@
 
   let { schema, snapshot, section }: Props = $props();
 
+  /** The route each section lives at, which scopes its shortcut. */
+  const SECTION_ROUTES: Readonly<Record<SettingsSectionId, string>> = {
+    general: '/settings',
+    'model-policy': '/settings/model-policy',
+    decisions: '/settings/models',
+  };
+
   const queryClient = useQueryClient();
 
   const keys = $derived(Object.keys(schema).filter((key) => inSection(key, section)));
@@ -158,7 +165,7 @@
       modifier: 'mod',
       label: SETTINGS_COPY.saveAction,
       group: SETTINGS_COPY.shortcutGroup,
-      scope: { route: section === 'general' ? '/settings' : '/settings/model-policy' },
+      scope: { route: SECTION_ROUTES[section] },
       handler: () => void save(),
     }),
   );

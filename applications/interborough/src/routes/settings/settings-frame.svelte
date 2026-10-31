@@ -33,11 +33,13 @@
     intro: string;
     /** Names the page for tests and the responsive specification. */
     page: string;
+    /** What comes between the header and the editor. */
+    before?: Snippet;
     /** What follows the editor. */
     after?: Snippet;
   }
 
-  let { section, title, intro, page, after }: Props = $props();
+  let { section, title, intro, page, before, after }: Props = $props();
 
   const schema = createQuery(
     () => ({
@@ -83,6 +85,8 @@
 <section class="weft-settings" aria-label={title} data-page={page}>
   <SettingsSectionNav />
   <PageHeader {title} description={intro} />
+
+  {@render before?.()}
 
   <!-- A read that fails while the page holds the settings leaves the form as it is, edits and all. -->
   {#if (schema.isError && schema.data === undefined) || (snapshot.isError && snapshot.data === undefined)}

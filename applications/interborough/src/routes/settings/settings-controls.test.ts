@@ -160,13 +160,31 @@ describe('the controls', () => {
 });
 
 describe('the sections', () => {
-  test('keep the model policy out of General and nothing else out of it', () => {
+  test('keep the model policy and the decisions out of General and nothing else out of it', () => {
     expect(inSection(MODEL_POLICY_KEY, 'model-policy')).toBe(true);
     expect(inSection(MODEL_POLICY_KEY, 'general')).toBe(false);
-    for (const key of SETTING_KEYS.filter((key) => key !== MODEL_POLICY_KEY)) {
+    for (const key of SETTING_KEYS.filter(
+      (key) => key !== MODEL_POLICY_KEY && !key.startsWith('decisions.'),
+    )) {
       expect(inSection(key, 'general'), key).toBe(true);
       expect(inSection(key, 'model-policy'), key).toBe(false);
+      expect(inSection(key, 'decisions'), key).toBe(false);
     }
+  });
+
+  test('give the Models page exactly the decision settings, and no other section any of them', () => {
+    const decisions = SETTING_KEYS.filter((key) => key.startsWith('decisions.'));
+    expect(decisions.toSorted()).toEqual([
+      'decisions.fallbackModel',
+      'decisions.maximumPerTask',
+      'decisions.model',
+    ]);
+    for (const key of decisions) {
+      expect(inSection(key, 'decisions'), key).toBe(true);
+      expect(inSection(key, 'general'), key).toBe(false);
+      expect(inSection(key, 'model-policy'), key).toBe(false);
+    }
+    expect(SETTING_KEYS.filter((key) => inSection(key, 'decisions'))).toEqual(decisions);
   });
 });
 

@@ -69,6 +69,7 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
     '/health/storage': '/health/storage',
     '/health/audit': '/health/audit',
     '/settings': '/settings',
+    '/settings/models': '/settings/models',
     '/settings/model-policy': '/settings/model-policy',
     '/settings/data-and-retention': '/settings/data-and-retention',
     '/settings/api-reference': '/settings/api-reference',

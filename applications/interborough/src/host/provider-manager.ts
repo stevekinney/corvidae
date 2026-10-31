@@ -131,12 +131,47 @@ export type ProviderStatus = {
   readonly models?: readonly string[];
 };
 
+/**
+ * One model of the catalog as a page lists it: what a person needs to decide whether to keep it on.
+ * Built from the rows the host serves now, so an edit that turned a model off shows as `off`.
+ */
+export type ProviderModelRow = {
+  /** The row's provider. */
+  readonly provider: InterboroughProviderName;
+  /** The provider-native model name. */
+  readonly model: string;
+  /** The other names that reach the row, which a catalog edit may use instead of `model`. */
+  readonly aliases: readonly string[];
+  /** The context window, in tokens. */
+  readonly contextWindowTokens: number;
+  /** The largest answer, in tokens. */
+  readonly maxOutputTokens: number;
+  /** Whether the model streams its answer. */
+  readonly streaming: boolean;
+  /** Whether the model calls tools. */
+  readonly tools: boolean;
+  /** Whether the model can answer to a schema. */
+  readonly structuredOutput: boolean;
+  /** Whether the model takes images. */
+  readonly images: boolean;
+  /** The price per million tokens, when the catalog has one. */
+  readonly pricing?: {
+    readonly inputPerMillionTokens: number;
+    readonly outputPerMillionTokens: number;
+    readonly currency: string;
+  };
+  /** Whether a catalog edit turned the model off, which keeps it from agents and plans. */
+  readonly off: boolean;
+};
+
 /** The provider configuration as the host holds it, without a key. */
 export type ProviderSnapshot = {
   /** Every provider the host can call, connected or not. */
   readonly providers: readonly ProviderStatus[];
   /** The catalog edits in `configuration.json`. */
   readonly catalog: readonly CatalogEdit[];
+  /** Every model the host's catalog offers now, in catalog order. */
+  readonly models: readonly ProviderModelRow[];
   /** Present when writes are refused, with the reason. */
   readonly lockReason?: SettingLockReason;
 };
@@ -190,6 +225,32 @@ export type ProviderManagerOptions = {
 
 function isProviderName(value: string): value is InterboroughProviderName {
   return (PROVIDER_NAMES as readonly string[]).includes(value);
+}
+
+/** The page's view of a catalog row. */
+function modelRowOf(row: BackendDescriptor): ProviderModelRow | undefined {
+  if (!isProviderName(row.provider)) return undefined;
+  return {
+    provider: row.provider,
+    model: row.model,
+    aliases: row.aliases.map((entry) => entry.alias),
+    contextWindowTokens: row.contextWindowTokens,
+    maxOutputTokens: row.maxOutputTokens,
+    streaming: row.streaming,
+    tools: row.tools,
+    structuredOutput: row.structuredOutput,
+    images: row.modalities.image.input,
+    ...(row.pricing === undefined
+      ? {}
+      : {
+          pricing: {
+            inputPerMillionTokens: row.pricing.inputPerMillionTokens,
+            outputPerMillionTokens: row.pricing.outputPerMillionTokens,
+            currency: row.pricing.currency,
+          },
+        }),
+    off: row.availability === 'unavailable',
+  };
 }
 
 function checkedProvider(value: unknown): InterboroughProviderName {
@@ -319,6 +380,7 @@ export async function createProviderManager(
           };
         }),
         catalog: configuration.catalog ?? [],
+        models: loaded.rows.flatMap((row) => modelRowOf(row) ?? []),
         ...(reason === undefined ? {} : { lockReason: reason }),
       };
     },

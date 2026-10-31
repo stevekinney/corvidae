@@ -696,9 +696,124 @@ export const SCHEDULE_COPY = {
 export const SETTINGS_SECTION_COPY = {
   navigation: 'Settings sections',
   general: 'General',
+  models: 'Models',
   modelPolicy: 'Model policy',
   dataAndRetention: 'Data and retention',
   apiReference: 'API reference',
+} as const;
+
+/**
+ * The words of Settings › Models: the providers agents call, the models those providers offer, and
+ * the models that answer decisions (`routes/settings/models`).
+ */
+export const MODELS_COPY = {
+  title: 'Models',
+  intro:
+    'Connect the providers your agents call, choose which of their models are on, and set how decisions are made.',
+  loading: 'Loading providers and models',
+  loadFailed: {
+    title: 'Providers are unavailable',
+    description: 'The host did not answer. Check that it is running, then try again.',
+  },
+  /** The names of the providers the host can call. A provider not listed here shows its own name. */
+  providerNames: { anthropic: 'Anthropic', openai: 'OpenAI', gemini: 'Gemini' } as Readonly<
+    Record<string, string>
+  >,
+  locked:
+    'This host keeps its providers and keys in its deployment, so they cannot be changed here.',
+  providers: {
+    heading: 'Providers',
+    description: 'A provider is connected once its API key is saved on this machine.',
+    listLabel: 'Providers',
+    connected: 'Connected',
+    connect: 'Connect',
+    manage: 'Manage',
+    connectLabel: (name: string): string => `Connect ${name}`,
+    manageLabel: (name: string): string => `Manage ${name}`,
+    reload: 'Reload from files',
+    reloaded: 'Providers read again from the configuration file',
+    reloadFailed: 'The configuration could not be read again',
+    modelCount: (count: number): string => `${String(count)} ${count === 1 ? 'model' : 'models'}`,
+  },
+  connectDialog: {
+    connectTitle: (name: string): string => `Connect ${name}`,
+    manageTitle: (name: string): string => `Manage ${name}`,
+    description: (name: string): string =>
+      `Saving a key connects ${name} and adds its models without a restart. The key is kept in a file only you can read, and it is never shown again.`,
+    keyLabel: 'API key',
+    keyDescription: 'Paste the key from the provider. Saving again replaces the key in use.',
+    keyRequired: 'Enter the key.',
+    connect: 'Connect',
+    replace: 'Replace key',
+    cancel: 'Cancel',
+    connectedToast: (name: string): string => `${name} connected`,
+    replacedToast: (name: string): string => `${name} key replaced`,
+    failed: 'The key could not be saved.',
+    locked: 'This host keeps its keys in its deployment, so it cannot save one.',
+    partial: 'The key was stored, but the configuration could not be written.',
+  },
+  models: {
+    heading: 'Models',
+    description:
+      'Every model your connected providers offer. Turn one off to keep it from agents and plans, or correct what a row says.',
+    tableLabel: 'Models',
+    columns: {
+      model: 'Model',
+      context: 'Context',
+      abilities: 'Abilities',
+      price: 'Price per million tokens',
+      on: 'On',
+      actions: 'Actions',
+    },
+    onLabel: (model: string): string => `${model} is on`,
+    abilities: {
+      tools: 'Tools',
+      images: 'Images',
+      structuredOutput: 'Structured output',
+    },
+    noAbilities: 'Text only',
+    noPrice: 'No price',
+    price: (input: string, output: string): string => `${input} in, ${output} out`,
+    contextTokens: (count: string): string => `${count} tokens`,
+    added: 'Added',
+    edit: 'Edit',
+    editLabel: (model: string): string => `Edit ${model}`,
+    add: 'Add a model',
+    save: 'Save models',
+    discard: 'Discard model changes',
+    saved: 'Models saved',
+    unsaved: 'You have unsaved changes to the models.',
+    saveFailed: 'The models were not saved',
+    empty: {
+      title: 'No models yet',
+      description: 'Connect a provider and the models it offers appear here.',
+      action: 'Connect a provider',
+    },
+  },
+  rowDialog: {
+    editTitle: (model: string): string => `Edit ${model}`,
+    addTitle: 'Add a model',
+    addDescription:
+      'Add a model the built-in list lacks. It copies the abilities of the model you base it on.',
+    provider: 'Provider',
+    model: 'Model name',
+    modelDescription: 'The name the provider calls it.',
+    basedOn: 'Based on',
+    basedOnDescription: 'A model of the same provider with the same abilities.',
+    contextWindow: 'Context window (tokens)',
+    maxOutput: 'Largest answer (tokens)',
+    inputPrice: 'Input price per million tokens',
+    outputPrice: 'Output price per million tokens',
+    apply: 'Apply',
+    add: 'Add model',
+    cancel: 'Cancel',
+    modelRequired: 'Enter the model name.',
+    modelExists: 'That provider already lists this model.',
+    basedOnRequired: 'Choose the model it is based on.',
+    wholeNumber: 'Enter a whole number above zero.',
+    price: 'Enter a price that is not negative.',
+    outputTooLarge: 'The largest answer cannot be bigger than the context window.',
+  },
 } as const;
 
 /** The words of the diagnostics the Health page carries below the engine overview. */

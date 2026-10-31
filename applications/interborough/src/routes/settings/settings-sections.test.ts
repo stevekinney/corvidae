@@ -1,5 +1,5 @@
 /**
- * The sections of Settings (COR-1837): the section navigation lists General, Model policy, Data and retention, and
+ * The sections of Settings (COR-1837): the section navigation lists General, Models, Model policy, Data and retention, and
  * API reference, marks the one that is open, and moves between them; Data and retention carries the
  * retention overview and API reference carries the engine's reference tabs.
  */
@@ -44,6 +44,7 @@ describe('the section navigation', () => {
     const links = [...getByRole('navigation', { name: 'Settings sections' }).querySelectorAll('a')];
     expect(links.map((link) => link.textContent?.trim())).toEqual([
       'General',
+      'Models',
       'Model policy',
       'Data and retention',
       'API reference',
@@ -53,6 +54,7 @@ describe('the section navigation', () => {
     );
     expect(SETTINGS_SECTIONS.map((section) => section.path)).toEqual([
       '/settings',
+      '/settings/models',
       '/settings/model-policy',
       '/settings/data-and-retention',
       '/settings/api-reference',

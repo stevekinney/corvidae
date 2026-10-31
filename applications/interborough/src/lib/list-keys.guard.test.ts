@@ -28,6 +28,8 @@ const OCCURRENCE_KEYED_LISTS: readonly string[] = [
 
 /** Composite keys whose parts together are unique by construction, with why. */
 const UNIQUE_COMPOSITE_KEYS: Readonly<Record<string, string>> = {
+  'routes/settings/models/models-section.svelte':
+    'the catalog holds one row per (provider, model), and an added row that repeats one is not listed',
   'routes/system/dynamic-source-list.svelte': 'a source is registered once per (name, revision)',
   'routes/workers/manifest-diagnostics-view.svelte':
     'comparisons are one per (deploymentName, buildId); the rejection log goes through the helper',

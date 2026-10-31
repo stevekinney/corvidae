@@ -422,6 +422,40 @@ describe('catalog edits', () => {
     check(await startAt(directory));
   });
 
+  test('the snapshot lists every model the catalog offers, with an off model marked off and no key', async () => {
+    const { host } = await startWithAnthropic();
+    await host.providers.editCatalog([
+      { provider: 'anthropic', model: 'haiku', off: true },
+      {
+        provider: 'anthropic',
+        model: 'sonnet',
+        pricing: { inputPerMillionTokens: 1, outputPerMillionTokens: 2, currency: 'USD' },
+        contextWindowTokens: 100_000,
+        maxOutputTokens: 8_000,
+      },
+    ]);
+
+    const snapshot = await host.providers.snapshot();
+
+    expect(snapshot.models.map((row) => row.model).toSorted()).toEqual(
+      host.bureau.models
+        .catalog()
+        .descriptors.map((row) => row.model)
+        .toSorted(),
+    );
+    const haiku = snapshot.models.find((row) => row.model === 'claude-haiku-4-5');
+    const sonnet = snapshot.models.find((row) => row.model === 'claude-sonnet-5');
+    expect(haiku?.off).toBe(true);
+    expect(sonnet).toMatchObject({
+      provider: 'anthropic',
+      off: false,
+      contextWindowTokens: 100_000,
+      pricing: { inputPerMillionTokens: 1, outputPerMillionTokens: 2, currency: 'USD' },
+    });
+    expect(sonnet?.aliases).toContain('sonnet');
+    expect(JSON.stringify(snapshot)).not.toContain(KEY_A);
+  });
+
   test('a price edit keeps the long-context rates unless it names them', async () => {
     const { host } = await startWithAnthropic();
     const kept = rowOf(host, 'claude-haiku-5-5')?.pricing?.longContext;
