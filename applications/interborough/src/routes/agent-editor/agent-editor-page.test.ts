@@ -4,6 +4,7 @@
  * Every write names the `hash` the form was filled from, a save carries the A2A switch with the
  * rest of the definition, and `skillDescriptors` comes back as it was read.
  */
+import { focusManager } from '@tanstack/svelte-query';
 import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
@@ -170,6 +171,29 @@ describe('a new agent', () => {
     const model = await findByRole('combobox', { name: 'Model' });
     expect(model).not.toBeNull();
     expect(queryByRole('button', { name: AGENT_EDITOR_COPY.noProvider.reload })).toBeNull();
+  });
+
+  test('reads the catalog again when the window is focused, while it offers no model', async () => {
+    let catalog = catalogFixture({ models: [] });
+    const calls = bureau({ catalog: () => catalog });
+    const { findByRole, queryByRole } = mountEditor();
+    await findByRole('heading', { level: 2, name: AGENT_EDITOR_COPY.noProvider.title });
+    const reads = () => calls.callsTo('bureau.agents.catalog').length;
+    const before = reads();
+
+    catalog = catalogFixture();
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+    expect(await findByRole('combobox', { name: 'Model' })).not.toBeNull();
+    expect(queryByRole('heading', { name: AGENT_EDITOR_COPY.noProvider.title })).toBeNull();
+    const afterForm = reads();
+    expect(afterForm).toBeGreaterThan(before);
+
+    // With a form on screen, a focus must not read the catalog and change the form's choices.
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+    await findByRole('combobox', { name: 'Model' });
+    expect(reads()).toBe(afterForm);
   });
 
   test('names no path when the host did not say where its files are', async () => {

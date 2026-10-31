@@ -153,12 +153,12 @@ export const AGENT_EDITOR_COPY = {
   },
   limits: {
     description:
-      'What keeps a run in bounds. Leave a field empty for no limit; the agent page shows what is set.',
+      'What keeps a run in bounds. Leave a spend or tool field empty for no limit; the agent page shows what is set.',
     guardrailsLabel: 'Guardrails',
     guardrailsDescription:
       'Plugin guardrails the agent runs besides the default ones, as plugin:name, one per line.',
     stepLimitLabel: 'Steps per run',
-    stepLimitDescription: 'The most steps one run may take.',
+    stepLimitDescription: 'The most steps one run may take. Empty uses the default of 25.',
     spendPerRunLabel: 'Spend per run (USD)',
     spendPerRunDescription: 'A run that reaches this stops.',
     spendPerChatLabel: 'Spend per chat (USD)',

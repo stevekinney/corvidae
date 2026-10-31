@@ -39,6 +39,7 @@
     getAgentDefinition,
     listAgentVersions,
     updateAgent,
+    type AgentCatalog,
     type AgentFault,
   } from '../../lib/agent-definitions.ts';
   import { agentPath } from '../../lib/agent-paths.ts';
@@ -75,8 +76,13 @@
     retry: false,
   } as const;
 
+  // While the catalog offers no model, coming back to the window reads it again: a person who left
+  // to connect a provider returns to the form. Once it offers one, the form is built from it and a
+  // refetch must not change its choices.
   const catalog = createQuery(() => ({
     ...stable,
+    refetchOnWindowFocus: () =>
+      queryClient.getQueryData<AgentCatalog>(queryKeys.agents.catalog())?.models.length === 0,
     queryKey: queryKeys.agents.catalog(),
     queryFn: ({ signal }) => getAgentCatalog({ signal }),
   }));
