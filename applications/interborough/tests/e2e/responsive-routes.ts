@@ -30,6 +30,8 @@ export interface ResponsiveSeed {
   readonly schedule: string;
   /** A goal, with the attempts its page lists. */
   readonly goal: string;
+  /** A hook whose sentence holds a 300-character unbroken address, and whose name is long. */
+  readonly hook: string;
   /** The key of a waiting review whose chat has a 300-character unbroken title. */
   readonly review: string;
   /** The key of a decided review, shown under Done. */
@@ -70,6 +72,9 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
     '/goals': '/goals',
     '/goals/new': '/goals/new',
     '/goals/:goal': `/goals/${encodeURIComponent(seed.goal)}`,
+    '/hooks': '/hooks',
+    '/hooks/new': '/hooks/new',
+    '/hooks/:hook': `/hooks/${encodeURIComponent(seed.hook)}`,
     '/health': '/health',
     '/health/runs': '/health/runs',
     '/health/workers': '/health/workers',

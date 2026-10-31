@@ -5,7 +5,7 @@
  * images with one inline image part for each image in that message and says how many it echoed.
  * The Bureau admits each part it returns as a new asset, so a returned image has an identifier of
  * its own and is never the one that was sent. It is `echo-image`, because `echo` is the seeded agent
- * that repeats a message's text (`src/host/seed.ts`), which the quote spec talks to.
+ * that repeats a message's text (the demo plugin's `demo:echo`, `plugins/demo`), which the quote spec talks to.
  */
 import {
   createAgent,

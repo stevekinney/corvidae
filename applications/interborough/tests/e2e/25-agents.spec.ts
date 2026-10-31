@@ -31,19 +31,19 @@ test.describe('the list of agents', () => {
     const frame = page.locator('[data-view="agents"]');
     await expect(frame).toHaveAttribute('data-state', 'ready');
     // An absence proves nothing until the rows it is about have rendered.
-    await expect(row(page, 'assistant')).toBeVisible();
-    await expect(row(page, 'internal')).toBeVisible();
+    await expect(row(page, 'demo:assistant')).toBeVisible();
+    await expect(row(page, 'demo:internal')).toBeVisible();
     // Where an agent is defined is for the developer, so it is not said.
     await expect(frame).not.toContainText('Defined in');
     // Its generator is opaque to the Bureau, which cannot say whether it is a script: no model line.
-    await expect(row(page, 'assistant')).not.toContainText('Scripted');
+    await expect(row(page, 'demo:assistant')).not.toContainText('Scripted');
     // The row is compact: what an agent is made of is on its page, so no tool count is here.
-    await expect(row(page, 'tool-runner')).not.toContainText(/\d+ tools?/);
-    await expect(row(page, 'assistant')).not.toContainText('No tools');
-    await expect(row(page, 'assistant').getByRole('link', { name: 'New chat' })).toBeVisible();
-    await expect(row(page, 'assistant').getByRole('link', { name: 'Memory' })).toBeVisible();
+    await expect(row(page, 'demo:tool-runner')).not.toContainText(/\d+ tools?/);
+    await expect(row(page, 'demo:assistant')).not.toContainText('No tools');
+    await expect(row(page, 'demo:assistant').getByRole('link', { name: 'New chat' })).toBeVisible();
+    await expect(row(page, 'demo:assistant').getByRole('link', { name: 'Memory' })).toBeVisible();
     // The seeded agent the host once kept private takes a chat as the others do.
-    await expect(row(page, 'internal').getByRole('link', { name: 'New chat' })).toBeVisible();
+    await expect(row(page, 'demo:internal').getByRole('link', { name: 'New chat' })).toBeVisible();
   });
 
   test('counts each agent’s chats and dates the last, and shows a chat had since on the next visit', async ({
@@ -64,24 +64,24 @@ test.describe('the list of agents', () => {
       /^Last chat (just now|\d+[smhd] ago)$/,
     );
     // An agent nobody has chatted with says so, and has no last chat to date.
-    await expect(chatCount(page, 'internal')).toHaveText('No chats yet');
-    await expect(row(page, 'internal').getByTestId('agent-last-chat')).toHaveCount(0);
+    await expect(chatCount(page, 'demo:internal')).toHaveText('No chats yet');
+    await expect(row(page, 'demo:internal').getByTestId('agent-last-chat')).toHaveCount(0);
   });
 
   test('opens an agent’s memory from its row', async ({ page }) => {
     await page.goto('/agents');
 
-    await row(page, 'tool-runner').getByRole('link', { name: 'Memory' }).click();
+    await row(page, 'demo:tool-runner').getByRole('link', { name: 'Memory' }).click();
 
-    await expect(page).toHaveURL(/\/agents\/tool-runner\/memories$/);
+    await expect(page).toHaveURL(/\/agents\/demo%3Atool-runner\/memories$/);
   });
 
   test('New chat opens a working new chat with that agent', async ({ page }) => {
     await page.goto('/agents');
 
-    await row(page, 'tool-runner').getByRole('link', { name: 'New chat' }).click();
+    await row(page, 'demo:tool-runner').getByRole('link', { name: 'New chat' }).click();
 
-    await expect(page).toHaveURL(/\/chats\/new\?agent=tool-runner$/);
+    await expect(page).toHaveURL(/\/chats\/new\?agent=demo%3Atool-runner$/);
     await expect(page.getByRole('combobox', { name: 'Agent' })).toHaveValue(/tool-runner/i);
   });
 });
@@ -116,10 +116,20 @@ test.describe('one agent', () => {
     request,
   }) => {
     const label = crypto.randomUUID().slice(0, 8);
-    await runToEnd(request, 'tool-runner', newThreadId('mine'), `${label} refund for the runner`);
-    await runToEnd(request, 'assistant', newThreadId('theirs'), `${label} hello for the assistant`);
+    await runToEnd(
+      request,
+      'demo:tool-runner',
+      newThreadId('mine'),
+      `${label} refund for the runner`,
+    );
+    await runToEnd(
+      request,
+      'demo:assistant',
+      newThreadId('theirs'),
+      `${label} hello for the assistant`,
+    );
 
-    await page.goto('/agents/tool-runner');
+    await page.goto('/agents/demo:tool-runner');
 
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('tool-runner');
     // Its tools are named, each as code.
@@ -130,13 +140,13 @@ test.describe('one agent', () => {
     await expect(chats).toContainText('refund for the runner');
     await expect(chats).not.toContainText('hello for the assistant');
     await page.getByRole('link', { name: 'New chat' }).first().click();
-    await expect(page).toHaveURL(/\/chats\/new\?agent=tool-runner$/);
+    await expect(page).toHaveURL(/\/chats\/new\?agent=demo%3Atool-runner$/);
   });
 
   test('opens a chat from its list', async ({ page, request }) => {
     const threadId = newThreadId('open');
-    await runToEnd(request, 'tool-runner', threadId, 'Open this one from the agent page');
-    await page.goto('/agents/tool-runner');
+    await runToEnd(request, 'demo:tool-runner', threadId, 'Open this one from the agent page');
+    await page.goto('/agents/demo:tool-runner');
 
     await page
       .getByRole('navigation', { name: 'Chats with this agent' })
@@ -147,7 +157,7 @@ test.describe('one agent', () => {
   });
 
   test('offers a chat with the agent the host once kept private', async ({ page }) => {
-    await page.goto('/agents/internal');
+    await page.goto('/agents/demo:internal');
 
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('internal');
     await expect(page.getByRole('link', { name: 'New chat' }).first()).toBeVisible();
@@ -175,10 +185,15 @@ for (const width of WIDTHS) {
       request,
       checkA11y,
     }) => {
-      await runToEnd(request, 'tool-runner', newThreadId('listaxe'), 'A chat for the agents list');
+      await runToEnd(
+        request,
+        'demo:tool-runner',
+        newThreadId('listaxe'),
+        'A chat for the agents list',
+      );
       await page.goto('/agents');
       await expect(page.locator('[data-view="agents"]')).toHaveAttribute('data-state', 'ready');
-      await expect(chatCount(page, 'tool-runner')).toHaveText(/^\d+ chats?$/);
+      await expect(chatCount(page, 'demo:tool-runner')).toHaveText(/^\d+ chats?$/);
       await checkA11y(`the list of agents at ${width}px`);
       // No row makes the page scroll sideways.
       expect(
@@ -189,8 +204,8 @@ for (const width of WIDTHS) {
     });
 
     test('an agent’s page passes axe', async ({ page, request, checkA11y }) => {
-      await runToEnd(request, 'tool-runner', newThreadId('axe'), 'A chat for the agent page');
-      await page.goto('/agents/tool-runner');
+      await runToEnd(request, 'demo:tool-runner', newThreadId('axe'), 'A chat for the agent page');
+      await page.goto('/agents/demo:tool-runner');
       await expect(page.getByRole('heading', { level: 1 })).toHaveText('tool-runner');
       await checkA11y(`an agent's page at ${width}px`);
     });
@@ -307,7 +322,7 @@ for (const width of WIDTHS) {
       page,
       checkA11y,
     }) => {
-      await page.goto('/agents/internal');
+      await page.goto('/agents/demo:internal');
       await expect(page.getByRole('heading', { level: 1 })).toHaveText('internal');
       await checkA11y(`the internal agent's page at ${width}px`);
     });
@@ -329,7 +344,7 @@ for (const width of WIDTHS) {
     });
 
     test('the list of chats passes axe', async ({ page, request, checkA11y }) => {
-      await runToEnd(request, 'assistant', newThreadId('listaxe'), 'A chat for the list');
+      await runToEnd(request, 'demo:assistant', newThreadId('listaxe'), 'A chat for the list');
       await page.goto('/chats');
       await expect(page.getByRole('region', { name: 'Chats' })).toBeVisible();
       await checkA11y(`the list of chats at ${width}px`);

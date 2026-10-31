@@ -13,7 +13,7 @@ export const BASE_DEFINITION = {
   name: 'End-to-end agent',
   description: 'Made by a specification',
   model: 'anthropic/sonnet',
-  tools: ['lookup-order'],
+  tools: ['demo:lookup-order'],
   skillDescriptors: [
     { id: 'cite', name: 'Cite', description: 'Cites the sources', tags: ['research'] },
   ],

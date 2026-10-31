@@ -36,7 +36,7 @@
   import { getContext, listContexts } from '../../lib/bureau-client.ts';
   import { listBureauReviews } from '../../lib/bureau-reviews.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
-  import { DEFAULT_AGENT } from '../../lib/default-agent.ts';
+  import { defaultAgentQuery } from '../../lib/default-agent.ts';
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { chatsWithFailedRun, recentTasksQuery } from '../../lib/recent-tasks.ts';
@@ -66,7 +66,13 @@
   const isNew = $derived(router.current.route?.pattern === '/chats/new');
   /** The chat that is open: the address's, or the new chat's, which keeps its name once it starts. */
   const openId = $derived(router.current.params['chat'] ?? draftId);
-  const draftAgent = $derived(router.current.search.get('agent') ?? DEFAULT_AGENT);
+  // The new chat's agent is `?agent=`, or the first agent that can run (the view frame has asked
+  // already, so this is its cached answer). The row names none until the answer is in.
+  const defaultAgent = createQuery(
+    () => ({ ...defaultAgentQuery(), enabled: draftId !== null }),
+    undefined,
+  );
+  const draftAgent = $derived(router.current.search.get('agent') ?? defaultAgent.data ?? '');
 
   const sessions = createInfiniteQuery(
     () => ({

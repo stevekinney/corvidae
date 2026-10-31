@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { enableDemoPlugin } from './demo-plugin.test-support.ts';
 import { deriveStartOverrideSigningSecret, startHost, type Host } from './host.ts';
 
 const directories: string[] = [];
@@ -27,6 +28,7 @@ async function createBuild(): Promise<string> {
 
 async function start(buildDirectory?: string): Promise<Host> {
   const home = await scratch('interborough-home-');
+  await enableDemoPlugin(home);
   const host = await startHost({
     environment: { INTERBOROUGH_HOME: home },
     port: 0,
@@ -189,7 +191,7 @@ describe('the identity of every request', () => {
 
   test('Bureau owns what the local caller creates as anonymous:local', async () => {
     const host = await start();
-    const run = await host.bureau.tasks.start('assistant', 'Who am I?');
+    const run = await host.bureau.tasks.start('demo:assistant', 'Who am I?');
     await run.result();
     const [session] = await host.bureau.contexts.list();
     if (session === undefined) throw new Error('Expected the run to create a session.');

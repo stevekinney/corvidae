@@ -91,12 +91,12 @@ test.describe('what each schedule starts', () => {
       await expect(row(page, id)).toContainText('Every day at 09:00');
       await expect(row(page, id).getByTestId('schedule-input')).toHaveText(`“${SEEDED_INPUT}”`);
       await expect(row(page, id)).not.toContainText(id);
-      const link = row(page, id).getByRole('link', { name: 'assistant' });
-      await expect(link).toHaveAttribute('href', '/agents/assistant');
+      const link = row(page, id).getByRole('link', { name: 'demo:assistant' });
+      await expect(link).toHaveAttribute('href', '/agents/demo%3Aassistant');
       await checkA11y(`schedules — the list at ${width}px`);
 
       await link.click();
-      await expect(page).toHaveURL(/\/agents\/assistant$/);
+      await expect(page).toHaveURL(/\/agents\/demo%3Aassistant$/);
     });
 
     test(`links the same agent from the schedule's own page, at ${width} pixels`, async ({
@@ -111,13 +111,13 @@ test.describe('what each schedule starts', () => {
       // The heading is the name and the sentence says what it runs and when.
       await expect(page.getByRole('heading', { level: 1 })).toHaveText(SEEDED_DESCRIPTION);
       await expect(page.getByTestId('schedule-status-line')).toContainText(
-        'Runs assistant every day at 09:00',
+        'Runs demo:assistant every day at 09:00',
       );
       await expect(page.getByTestId('schedule-input')).toContainText(SEEDED_INPUT);
       const target = page.getByTestId('schedule-target');
-      await expect(target.getByRole('link', { name: 'assistant' })).toHaveAttribute(
+      await expect(target.getByRole('link', { name: 'demo:assistant' })).toHaveAttribute(
         'href',
-        '/agents/assistant',
+        '/agents/demo%3Aassistant',
       );
       // The engine's fields are not there until the disclosure opens.
       await expect(page.getByText('Jitter', { exact: true })).toHaveCount(0);
@@ -261,7 +261,7 @@ test.describe('creating a schedule', () => {
     await expect(drawer.getByRole('radio')).toHaveCount(0);
     await drawer
       .getByRole('combobox', { name: SCHEDULE_COPY.form.agentLabel })
-      .selectOption('assistant');
+      .selectOption('demo:assistant');
     await drawer
       .getByLabel(SCHEDULE_COPY.form.inputLabel)
       .fill('Summarize what happened this week.');
@@ -276,7 +276,7 @@ test.describe('creating a schedule', () => {
       'Summarize what happened this week.',
     );
     await expect(
-      page.getByTestId('schedule-target').getByRole('link', { name: 'assistant' }),
+      page.getByTestId('schedule-target').getByRole('link', { name: 'demo:assistant' }),
     ).toBeVisible();
     // It is a Bureau schedule, owned by the caller, so the Bureau lists it with its agent.
     const response = await request.post('/bureau/jsonrpc', {
@@ -288,7 +288,7 @@ test.describe('creating a schedule', () => {
     expect(
       listed.result.schedules.some(
         (schedule) =>
-          schedule.description === 'Weekly summary' && schedule.agentName === 'assistant',
+          schedule.description === 'Weekly summary' && schedule.agentName === 'demo:assistant',
       ),
     ).toBe(true);
   });

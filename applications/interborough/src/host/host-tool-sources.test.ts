@@ -11,6 +11,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { enableDemoPlugin, pluginsWithUnseededDemo } from './demo-plugin.test-support.ts';
 import { filesUnder } from './files-under.test-support.ts';
 import { startHost, type Host } from './host.ts';
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
@@ -41,7 +42,12 @@ async function home(): Promise<string> {
 }
 
 async function startAt(path: string): Promise<Host> {
-  const host = await startHost({ environment: { INTERBOROUGH_HOME: path }, port: 0, seed: false });
+  await enableDemoPlugin(path);
+  const host = await startHost({
+    environment: { INTERBOROUGH_HOME: path },
+    port: 0,
+    plugins: pluginsWithUnseededDemo(),
+  });
   hosts.push(host);
   return host;
 }
@@ -176,7 +182,7 @@ describe('saved tool sources', () => {
     expect(tiers.get('pets__list-pets')).toBe('read-only');
     expect(tiers.get('pets__create-pet')).toBe('mutating');
     expect(tiers.get('pets__delete-pet')).toBe('dangerous');
-    expect(tiers.get('lookup-order')).toBe('read-only');
+    expect(tiers.get('demo:lookup-order')).toBe('read-only');
     // The credential reached the server through the vault, and only as the bearer.
     expect(mcp.authorizations).toContain(`Bearer ${BEARER}`);
     const listed: {

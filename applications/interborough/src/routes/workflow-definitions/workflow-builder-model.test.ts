@@ -110,11 +110,17 @@ describe('the edits', () => {
 
   test('addStep appends each kind of step', () => {
     let next = text({ trigger: FILE.trigger, steps: [] });
-    for (const kind of ['agent', 'wait', 'signal'] as const) next = addStep(next, kind);
+    for (const kind of ['agent', 'wait', 'signal'] as const) next = addStep(next, kind, 'notes');
     expect(parsed(next)['steps']).toEqual([
-      { kind: 'activity', handler: 'agent', input: { agent: 'assistant', message: '' } },
+      { kind: 'activity', handler: 'agent', input: { agent: 'notes', message: '' } },
       { kind: 'sleep', duration: '1m' },
       { kind: 'await-signal', signal: '' },
+    ]);
+  });
+
+  test('addStep names no agent in a new agent step when none can run', () => {
+    expect(parsed(addStep('{}', 'agent'))['steps']).toEqual([
+      { kind: 'activity', handler: 'agent', input: { agent: '', message: '' } },
     ]);
   });
 

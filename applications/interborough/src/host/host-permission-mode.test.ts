@@ -1,5 +1,5 @@
 /**
- * COR-1947 — a chat's permission mode holds for Interborough's seeded `tool-runner`, a code agent
+ * COR-1947 — a chat's permission mode holds for the demo plugin's `tool-runner`, a code agent
  * whose toolbox was built without any mention of a mode. The chat is opened over the AG-UI mount,
  * steered with `bureau.contexts.steer`, and the next turn is held to it. The `tool-runner` script
  * looks an order up and then refunds it, so a stream tells which of the two calls got how far.
@@ -9,6 +9,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { enableDemoPlugin } from './demo-plugin.test-support.ts';
 import { startHost, type Host } from './host.ts';
 
 const directories: string[] = [];
@@ -24,6 +25,7 @@ afterEach(async () => {
 async function start(): Promise<Host> {
   const home = await mkdtemp(join(tmpdir(), 'interborough-permission-mode-'));
   directories.push(home);
+  await enableDemoPlugin(home);
   const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0 });
   hosts.push(host);
   return host;
@@ -41,7 +43,7 @@ async function call(host: Host, method: string, params: object): Promise<unknown
 }
 
 async function turn(host: Host, threadId: string, extra: object = {}): Promise<string> {
-  const response = await fetch(new URL('/bureau/ag-ui/agents/tool-runner/run', host.url), {
+  const response = await fetch(new URL('/bureau/ag-ui/agents/demo:tool-runner/run', host.url), {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
     body: JSON.stringify({
@@ -79,7 +81,7 @@ async function chatIn(host: Host, threadId: string, permissionMode: string): Pro
   ).toMatchObject({ outcome: 'accepted' });
 }
 
-describe('a chat’s permission mode on the seeded tool-runner', () => {
+describe('a chat’s permission mode on the demo tool-runner', () => {
   test('read-only denies the refund and lets the lookup run', async () => {
     const host = await start();
     await chatIn(host, 'thread-read-only', 'read-only');

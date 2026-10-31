@@ -216,7 +216,7 @@ test.describe('a stop before the run’s first event', () => {
 
 test.describe('a session whose identifier the address cannot carry', () => {
   test('is opened by the address the page builds for it', async ({ page, request }) => {
-    await runToEnd(request, 'assistant', 'new', 'A session named new');
+    await runToEnd(request, 'demo:assistant', 'new', 'A session named new');
 
     await page.goto(chatSessionPath('new'));
 
@@ -232,18 +232,21 @@ test.describe('a session whose identifier the address cannot carry', () => {
     test(`is refused by the mount when a start would create the session ${threadId}`, async ({
       request,
     }) => {
-      const response = await request.post(`${E2E_BASE_URL}/bureau/ag-ui/agents/assistant/run`, {
-        headers: { accept: 'text/event-stream' },
-        data: {
-          threadId,
-          runId: `run-${crypto.randomUUID()}`,
-          messages: [{ id: `user-${crypto.randomUUID()}`, role: 'user', content: 'Hello' }],
-          tools: [],
-          context: [],
-          state: {},
-          forwardedProps: {},
+      const response = await request.post(
+        `${E2E_BASE_URL}/bureau/ag-ui/agents/demo:assistant/run`,
+        {
+          headers: { accept: 'text/event-stream' },
+          data: {
+            threadId,
+            runId: `run-${crypto.randomUUID()}`,
+            messages: [{ id: `user-${crypto.randomUUID()}`, role: 'user', content: 'Hello' }],
+            tools: [],
+            context: [],
+            state: {},
+            forwardedProps: {},
+          },
         },
-      });
+      );
 
       const stream = await response.text();
       expect(stream).toContain('"code":"INVALID_INPUT"');

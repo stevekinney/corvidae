@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import { rejectionOf } from '@lostgradient/testing';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 
+import { enableDemoPlugin } from './demo-plugin.test-support.ts';
 import { fakeProvider, writeProviderHome } from './fake-provider.test-support.ts';
 import { startHost, type Host, type HostOptions } from './host.ts';
 
@@ -56,7 +57,6 @@ async function startAt(home: string, options: Partial<HostOptions> = {}): Promis
   const host = await startHost({
     environment: { INTERBOROUGH_HOME: home },
     port: 0,
-    seed: false,
     resolveProviderGenerate: fakeProvider(REPLY).resolver,
     ...options,
   });
@@ -139,13 +139,15 @@ describe('an agent that opted into A2A', () => {
   });
 
   test('a code agent in the host allowlist is reachable, and one outside it is not', async () => {
-    const host = await startAt(await makeHome(), { a2aAgents: ['echo'], seed: true });
+    const home = await makeHome();
+    await enableDemoPlugin(home);
+    const host = await startAt(home, { a2aAgents: ['demo:echo'] });
 
-    expect(await cardStatus(host, 'echo')).toBe(200);
-    const task = await runToCompletion(host, 'echo', 'ping');
+    expect(await cardStatus(host, 'demo:echo')).toBe(200);
+    const task = await runToCompletion(host, 'demo:echo', 'ping');
     expect(JSON.stringify(task)).toContain('ping');
-    expect(await cardStatus(host, 'assistant')).toBe(404);
-    const refused = await rpc(host, 'assistant', 'SendMessage', { message: message('hello') });
+    expect(await cardStatus(host, 'demo:assistant')).toBe(404);
+    const refused = await rpc(host, 'demo:assistant', 'SendMessage', { message: message('hello') });
     expect(refused.status).toBe(404);
     expect(refused.body?.result).toBeUndefined();
   });

@@ -94,11 +94,25 @@ test.describe('the notification bell, about the person and not the engine', () =
     request,
     checkA11y,
   }) => {
-    await runToEnd(request, 'echo', echoThread, 'Hello echo, say this back', {}, E2E_BUREAU_URL);
-    await runToEnd(request, 'tool-runner', approvalThread, 'Refund order 1234', {}, E2E_BUREAU_URL);
     await runToEnd(
       request,
-      'request-human-input',
+      'demo:echo',
+      echoThread,
+      'Hello echo, say this back',
+      {},
+      E2E_BUREAU_URL,
+    );
+    await runToEnd(
+      request,
+      'demo:tool-runner',
+      approvalThread,
+      'Refund order 1234',
+      {},
+      E2E_BUREAU_URL,
+    );
+    await runToEnd(
+      request,
+      'demo:request-human-input',
       questionThread,
       'Ship the release',
       {},
@@ -114,15 +128,17 @@ test.describe('the notification bell, about the person and not the engine', () =
     await expect(rows(page)).toHaveCount(3);
     const panel = page.locator('.weft-notification-panel');
     await expect(
-      panel.getByRole('link', { name: /^tool-runner needs your approval in Refund order 1234/ }),
-    ).toHaveCount(1);
-    await expect(
       panel.getByRole('link', {
-        name: /^request-human-input asked a question in Ship the release/,
+        name: /^demo:tool-runner needs your approval in Refund order 1234/,
       }),
     ).toHaveCount(1);
     await expect(
-      panel.getByRole('link', { name: /^echo answered in Hello echo, say this back/ }),
+      panel.getByRole('link', {
+        name: /^demo:request-human-input asked a question in Ship the release/,
+      }),
+    ).toHaveCount(1);
+    await expect(
+      panel.getByRole('link', { name: /^demo:echo answered in Hello echo, say this back/ }),
     ).toHaveCount(1);
 
     // The engine's own events, and its run identifiers, stay out of the panel.
@@ -150,11 +166,11 @@ test.describe('the notification bell, about the person and not the engine', () =
     // The question, the echo's answer, and the run's own answer. The approval is gone, and the
     // answer that landed in the chat that is open was read on arrival, so it is not new on leaving.
     await expect(rows(page)).toHaveCount(3);
-    await expect(page.getByRole('link', { name: /^tool-runner needs your approval/ })).toHaveCount(
-      0,
-    );
     await expect(
-      page.getByRole('link', { name: /^tool-runner answered in Refund order 1234/ }),
+      page.getByRole('link', { name: /^demo:tool-runner needs your approval/ }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole('link', { name: /^demo:tool-runner answered in Refund order 1234/ }),
     ).toHaveAttribute('data-read', 'true');
   });
 
@@ -163,7 +179,7 @@ test.describe('the notification bell, about the person and not the engine', () =
     await bell(page, 'Notifications, 1 needs you').click();
     await page
       .locator('.weft-notification-panel')
-      .getByRole('link', { name: /^request-human-input asked a question/ })
+      .getByRole('link', { name: /^demo:request-human-input asked a question/ })
       .click();
 
     await expect(page).toHaveURL(new RegExp(`/chats/${questionThread}$`));
@@ -178,7 +194,7 @@ test.describe('the notification bell, about the person and not the engine', () =
     await bell(page, 'Notifications, 1 needs you').click();
     await expect(rows(page)).toHaveCount(3);
     await expect(
-      page.getByRole('link', { name: /^tool-runner answered in Refund order 1234/ }),
+      page.getByRole('link', { name: /^demo:tool-runner answered in Refund order 1234/ }),
     ).toHaveCount(1);
   });
 
@@ -221,7 +237,7 @@ test('the palette lists the chat and the agent a few letters name above any run'
   request,
   checkA11y,
 }) => {
-  await runToEnd(request, 'echo', newThreadId('palette'), 'Hello echo, say this back');
+  await runToEnd(request, 'demo:echo', newThreadId('palette'), 'Hello echo, say this back');
   await page.goto('/');
   await page.getByRole('button', { name: /^Search everything/ }).click();
   const search = page.getByRole('combobox');
@@ -229,12 +245,12 @@ test('the palette lists the chat and the agent a few letters name above any run'
   await search.fill('ech');
 
   const options = page.getByRole('option');
-  await expect(page.getByRole('option', { name: /^echo, / })).toHaveCount(1);
+  await expect(page.getByRole('option', { name: /^demo:echo, / })).toHaveCount(1);
   const names = await options.evaluateAll((elements) =>
     elements.map((element) => element.getAttribute('aria-label') ?? ''),
   );
   const chatIndex = names.findIndex((label) => label.startsWith('Hello echo, say this back'));
-  const agentIndex = names.findIndex((label) => label.startsWith('echo, '));
+  const agentIndex = names.findIndex((label) => label.startsWith('demo:echo, '));
   expect(chatIndex).toBeGreaterThanOrEqual(0);
   expect(agentIndex).toBeGreaterThan(chatIndex);
   // Neither group of runs the palette also searches (`ech…` ids) comes before them.
@@ -252,8 +268,8 @@ test('New chat with echo, from the palette, opens a new chat with that agent', a
   await expect(page.getByRole('button', { name: /^Search everything/ })).toBeVisible();
   await page.keyboard.press('Control+k');
   await page.getByRole('combobox').fill('ech');
-  await page.getByRole('option', { name: 'New chat with echo', exact: true }).click();
-  await expect(page).toHaveURL(/\/chats\/new\?agent=echo$/);
+  await page.getByRole('option', { name: 'New chat with demo:echo', exact: true }).click();
+  await expect(page).toHaveURL(/\/chats\/new\?agent=demo%3Aecho$/);
 });
 
 test('g then a letter opens a view, and the sidebar names the keys', async ({ page }) => {

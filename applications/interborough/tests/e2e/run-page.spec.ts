@@ -124,7 +124,7 @@ test('a waiting question leads the page and is answered where it is asked', asyn
 }) => {
   expectEngineMissesForRuns(pageErrors);
   const threadId = newThreadId('run-page-question');
-  await runToEnd(page.request, 'request-human-input', threadId, 'Release it');
+  await runToEnd(page.request, 'demo:request-human-input', threadId, 'Release it');
   const task = await taskOfSession(page.request, threadId);
   expect(task.status).toBe('input-required');
 

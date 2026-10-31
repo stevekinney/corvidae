@@ -41,7 +41,7 @@ describe.skipIf(database === null)('a host on Postgres and S3', () => {
       server,
       `host/${crypto.randomUUID()}`,
     );
-    const host = await startHost({ environment, port: 0, seed: false, ...options });
+    const host = await startHost({ environment, port: 0, ...options });
     hosts.push(host);
     return host;
   }
@@ -62,6 +62,21 @@ describe.skipIf(database === null)('a host on Postgres and S3', () => {
     expect(refused).toMatchObject({ outcome: 'rejected', reason: 'locked' });
     const after = await host.bureau.settings.get();
     expect(after.values['durableOwnership.ownership']).not.toBe('none');
+  });
+
+  // COR-1858: a remote home keeps its secrets in the environment, so hooks, which hold a signing
+  // secret each, are off there and the Hooks pages say so.
+  test('leaves hooks off, and answers the hooks operations as a Bureau without them', async () => {
+    const host = await start();
+
+    expect(host.bureau.hooks).toBeUndefined();
+    const response = await fetch(new URL('/bureau/jsonrpc', host.url), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'bureau.hooks.list', params: {} }),
+    });
+    const body = (await response.json()) as { error?: { data?: { weftCode?: string } } };
+    expect(body.error?.data?.['weftCode']).toBe('UnsupportedCapability');
   });
 
   // COR-1797: the other restart-applied settings the overlap depends on.
@@ -144,7 +159,7 @@ describe.skipIf(database === null)('a host on Postgres and S3', () => {
       '---\nname: Researcher\nmodel: anthropic/sonnet\n---\nYou are a careful researcher.\n',
     );
 
-    const host = await startHost({ environment, port: 0, seed: false });
+    const host = await startHost({ environment, port: 0 });
     hosts.push(host);
 
     expect(host.bureau.agents.list().find((listing) => listing.id === 'researcher')).toMatchObject({

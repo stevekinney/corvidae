@@ -13,6 +13,7 @@ import {
   Play,
   SlidersHorizontal,
   Target,
+  Webhook,
   Workflow,
   Wrench,
 } from '@lucide/svelte';
@@ -45,6 +46,7 @@ export const DESTINATIONS: readonly Destination[] = [
   { view: 'runs', path: '/runs', letter: 'r', icon: Play, pinned: false },
   { view: 'schedules', path: '/schedules', letter: 's', icon: CalendarClock, pinned: false },
   { view: 'goals', path: '/goals', letter: 'l', icon: Target, pinned: false },
+  { view: 'hooks', path: '/hooks', letter: 'h', icon: Webhook, pinned: false },
   { view: 'health', path: '/health', letter: 'e', icon: HeartPulse, pinned: false },
   { view: 'settings', path: '/settings', letter: 'n', icon: SlidersHorizontal, pinned: true },
 ];

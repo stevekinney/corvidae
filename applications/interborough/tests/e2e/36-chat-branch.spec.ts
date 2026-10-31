@@ -7,8 +7,8 @@
  */
 import type { Page } from '@playwright/test';
 
+import { MODEL_SWITCHER_MODELS } from '@lostgradient/plugin-demo';
 import { CHAT_COPY } from '../../src/app/copy.ts';
-import { MODEL_SWITCHER_MODELS } from '../../src/host/seed.ts';
 import {
   conversation,
   expectWaiting,
@@ -36,7 +36,7 @@ async function seedSession(
   request: Parameters<typeof runToEnd>[0],
   threadId: string,
 ): Promise<void> {
-  await runToEnd(request, 'model-switcher', threadId, 'First question');
+  await runToEnd(request, 'demo:model-switcher', threadId, 'First question');
   const context = await request.post(`${E2E_BASE_URL}/bureau/jsonrpc`, {
     data: { jsonrpc: '2.0', id: 1, method: 'bureau.contexts.get', params: { contextId: threadId } },
   });
@@ -57,7 +57,7 @@ async function seedSession(
   });
   const outcome = (await steered.json()) as { result: { outcome: string } };
   expect(outcome.result.outcome).toBe('accepted');
-  await runToEnd(request, 'model-switcher', threadId, 'Second question');
+  await runToEnd(request, 'demo:model-switcher', threadId, 'Second question');
 }
 
 for (const viewport of VIEWPORTS) {
@@ -107,7 +107,7 @@ test('stays on the session and says why when the Bureau refuses the branch', asy
   checkA11y,
 }) => {
   const parentId = newThreadId('refused');
-  await runToEnd(request, 'model-switcher', parentId, 'A question');
+  await runToEnd(request, 'demo:model-switcher', parentId, 'A question');
   await page.route('**/bureau/jsonrpc', async (route) => {
     const body = route.request().postDataJSON() as { id: unknown; method: string };
     if (body.method !== 'bureau.contexts.fork') return route.continue();

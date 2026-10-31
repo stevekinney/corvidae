@@ -25,7 +25,6 @@ async function start(options: Pick<HostOptions, 'onRestartRequested'> = {}): Pro
   const host = await startHost({
     environment: { INTERBOROUGH_HOME: home },
     port: 0,
-    seed: false,
     ...options,
   });
   hosts.push(host);

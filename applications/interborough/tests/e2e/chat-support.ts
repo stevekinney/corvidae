@@ -119,7 +119,7 @@ export async function approveThroughMount(
   threadId: string,
   stream: string,
 ): Promise<string> {
-  return runToEnd(request, 'tool-runner', threadId, 'Refund order-1001', {
+  return runToEnd(request, 'demo:tool-runner', threadId, 'Refund order-1001', {
     messages: [],
     resume: [
       { interruptId: interruptIdOf(stream), status: 'resolved', payload: { decision: 'approve' } },

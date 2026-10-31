@@ -2851,6 +2851,16 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
         description: 'It may have been deleted. Choose an agent from the list to start a chat.',
       },
     },
+    // A new chat with no `?agent=` starts with the first agent that can run; with none, there is
+    // nothing to start it with.
+    emptyByPattern: {
+      '/chats/new': {
+        title: 'No agent is ready to chat',
+        description:
+          'This host has no agent that can take a message yet. Turn on a plugin that adds agents, or finish setting one up, then start a chat.',
+        action: { label: 'Open plugins', href: '/settings/plugins' },
+      },
+    },
   },
   agents: {
     label: 'Agents',
@@ -3074,6 +3084,25 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     notFound: {
       title: 'This goal was not found',
       description: 'It may belong to someone else. Open a goal from the list.',
+    },
+  },
+  hooks: {
+    label: 'Hooks',
+    loading: { title: 'Loading hooks', description: 'Reading the hooks you have written.' },
+    empty: {
+      title: 'No hooks yet',
+      description:
+        'A hook does something when an event happens: it sends a signed message, starts a workflow, or notifies you.',
+      action: { label: 'New hook', href: '/hooks/new' },
+    },
+    error: {
+      title: 'Hooks are unavailable',
+      description: 'The server did not answer. Check that the host is running, then try again.',
+    },
+    forbidden: { title: 'Hooks are locked' },
+    notFound: {
+      title: 'This hook was not found',
+      description: 'It may belong to someone else, or it was deleted. Open a hook from the list.',
     },
   },
   health: {
