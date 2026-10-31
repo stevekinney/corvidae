@@ -29,6 +29,8 @@ export type PluginFixture = {
   contributions?: PluginStanding['contributions'];
   secrets?: { key: string; set: boolean }[];
   problems?: PluginStanding['problems'];
+  /** Whether the plugin applies a configuration change at once, so it never waits for a restart. */
+  liveConfiguration?: boolean;
 };
 
 /** What the stand-in holds and how it answers. */
@@ -108,7 +110,8 @@ function standingOf(host: FakePluginHost, plugin: PluginFixture): PluginStanding
     secrets,
     restartRequired:
       stored.enabled !== loadedEnabled ||
-      JSON.stringify(stored.configuration) !== JSON.stringify(loadedConfiguration),
+      (plugin.liveConfiguration !== true &&
+        JSON.stringify(stored.configuration) !== JSON.stringify(loadedConfiguration)),
   };
 }
 

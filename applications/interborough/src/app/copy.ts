@@ -965,6 +965,8 @@ export const PLUGINS_COPY = {
       'The plugin’s own choices, as JSON. The host checks them when it starts, and a plugin that refuses them is not loaded.',
     invalid: 'This is not valid JSON, so it cannot be applied.',
     notAnObject: 'The configuration is an object, such as {}.',
+    rejected: (plugin: string, field: string, message: string): string =>
+      `The host rejected ${field === '' ? 'the change' : field} for ${plugin}.${message === '' ? '' : ` ${message}`}`,
   },
   secrets: {
     set: 'Set',
@@ -1010,6 +1012,9 @@ export const PLUGINS_COPY = {
     restartNow: 'Restart now',
     invalid: 'Fix the configuration that is not valid before restarting.',
     failed: 'The changes could not be saved, so Interborough was not restarted.',
+    rejected: (plugin: string): string =>
+      `${plugin} was not saved, so Interborough was not restarted. Open it to see what the host rejected.`,
+    saved: 'Saved. The host applied these changes at once, so no restart was needed.',
     refused: 'This host cannot restart itself. Restart it where it runs.',
     unreachable: 'Interborough did not answer, so it was not asked to restart. Try again.',
   },
@@ -1025,6 +1030,10 @@ export const PLUGINS_COPY = {
       count === 1
         ? `waits on ${ids}. It shows as unavailable instead of resuming.`
         : `wait on ${ids}. They show as unavailable instead of resuming.`,
+    alsoWrites: 'Restarting also saves these changes, which are waiting:',
+    alsoSwitchedOn: 'switched on',
+    alsoSwitchedOff: 'switched off',
+    alsoConfiguration: 'configuration edited',
     reassurance: 'Nothing is deleted. Enable it again and restart, and it works as before.',
     cancel: 'Cancel',
     confirm: 'Disable and restart',

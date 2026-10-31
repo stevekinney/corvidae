@@ -30,6 +30,8 @@
   interface Props {
     plugin: PluginStanding;
     drafts: PluginDrafts;
+    /** What the host rejected when the last write reached this plugin, if it did. */
+    rejection?: { readonly field: string; readonly message: string } | undefined;
     /** Whether the host keeps its plugin choices and secrets in its deployment. */
     locked: boolean;
     /** Asked when a person turns the plugin off, which needs their say-so first. */
@@ -38,7 +40,7 @@
     onSecret: (plugin: PluginStanding, key: string) => void;
   }
 
-  let { plugin, drafts, locked, onDisable, onSecret }: Props = $props();
+  let { plugin, drafts, rejection, locked, onDisable, onSecret }: Props = $props();
 
   const copy = PLUGINS_COPY;
   const name = $derived(plugin.descriptor.name);
@@ -147,6 +149,13 @@
       rows={6}
       onValueChange={(text) => drafts.setConfiguration(plugin, text)}
     />
+    {#if rejection !== undefined}
+      <Alert variant="danger" data-testid="plugin-write-rejected">
+        <p class="ib-plugin__problem-body">
+          {copy.configuration.rejected(name, rejection.field, rejection.message)}
+        </p>
+      </Alert>
+    {/if}
   </section>
 
   {#if plugin.secrets.length > 0}

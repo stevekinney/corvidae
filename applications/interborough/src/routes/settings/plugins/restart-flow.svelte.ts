@@ -10,6 +10,10 @@
  * reads was never restarted, which is said instead of waited for: nothing supervises it, or the
  * restart failed. The wait is on the host's answer and never on a duration, so a slow start is
  * waited out.
+ *
+ * The host answers each write with whether the change waits for a restart. A write it applied at
+ * once (a provider's allowlist) does not; when no write answered that it does and no plugin was
+ * already waiting, the flow ends as saved and the host is never restarted.
  */
 import {
   getPlugins,
@@ -39,6 +43,13 @@ export type RestartPhase =
 /** Why a restart did not begin. */
 export type RestartRefusal = 'save-failed' | 'locked' | 'refused' | 'unreachable';
 
+/** A write the host rejected: which plugin, the field it named and its message. */
+export type WriteRejection = {
+  readonly plugin: string;
+  readonly field: string;
+  readonly message: string;
+};
+
 /** How the watch on the host runs. A test shortens the wait; the page never changes it. */
 export const restartProbing = {
   /** Milliseconds between two reads of the host. */
@@ -55,6 +66,10 @@ export class RestartFlow {
   refusal = $state<RestartRefusal | undefined>(undefined);
   /** The plugins once the host answered again. */
   result = $state<PluginsSnapshot | undefined>(undefined);
+  /** The write the host rejected as invalid, or `undefined`. */
+  rejection = $state<WriteRejection | undefined>(undefined);
+  /** Whether the last run saved its changes and the host applied them without a restart. */
+  saved = $state(false);
 
   #disposed = false;
 
@@ -66,24 +81,42 @@ export class RestartFlow {
   /**
    * Writes `writes`, restarts the host, and watches it come back. Settles when the host answers
    * again, when it is plain it did not restart, or when the restart could not begin (`refusal`).
-   * A restart that is already under way is not started a second time.
+   * A restart that is already under way is not started a second time. `restartPending` is whether
+   * a plugin the host already holds waits for a restart, which this one then also covers.
    */
-  async run(writes: readonly PluginWrite[]): Promise<void> {
+  async run(writes: readonly PluginWrite[], restartPending = false): Promise<void> {
     if (this.running) return;
     this.refusal = undefined;
+    this.rejection = undefined;
+    this.saved = false;
     this.result = undefined;
     this.phase = 'saving';
     // The caller owns the array and may change it while the writes wait; the flow keeps its own.
     const pending = [...writes];
+    let restartRequired = restartPending;
+    let writing = '';
     try {
       for (const write of pending) {
         const { name, ...choices } = write;
-        await updatePlugin(name, choices);
+        writing = name;
+        const change = await updatePlugin(name, choices);
+        if (change.restartRequired) restartRequired = true;
       }
     } catch (error) {
+      if (error instanceof HostPluginError && error.kind === 'invalid') {
+        this.rejection = {
+          plugin: writing,
+          field: error.field ?? '',
+          message: error.message,
+        };
+      }
       this.#refuse(
         error instanceof HostPluginError && error.kind === 'locked' ? 'locked' : 'save-failed',
       );
+      return;
+    }
+    if (!restartRequired) {
+      await this.#finishSaved();
       return;
     }
     this.phase = 'requesting';
@@ -113,6 +146,18 @@ export class RestartFlow {
   /** Stops watching: the page is gone. */
   dispose(): void {
     this.#disposed = true;
+  }
+
+  /** Every write was applied at once: read the plugins again and end without a restart. */
+  async #finishSaved(): Promise<void> {
+    try {
+      const snapshot = await getPlugins();
+      if (!this.#disposed) this.result = snapshot;
+    } catch {
+      // The page reads the plugins again when it sees `saved`.
+    }
+    this.phase = 'idle';
+    this.saved = true;
   }
 
   #refuse(refusal: RestartRefusal): void {

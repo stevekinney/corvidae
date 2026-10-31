@@ -23,6 +23,7 @@
   import { onDestroy, untrack } from 'svelte';
 
   import { PLUGINS_COPY, RETRY_LABEL } from '../../../app/copy.ts';
+  import { showToast } from '../../../app/toast-host.svelte';
   import { getPlugins, type PluginStanding } from '../../../lib/host-plugins.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import { routerSelectionLocationFor } from '../../../lib/router-selection-location.ts';
@@ -83,6 +84,18 @@
     });
   });
 
+  // The host applied every write at once: nothing waits for a restart, so nothing is a draft.
+  $effect(() => {
+    if (!flow.saved) return;
+    untrack(() => {
+      drafts.discard();
+      showToast(copy.banner.saved, { variant: 'success' });
+      if (flow.result === undefined) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.hostPlugins() });
+      }
+    });
+  });
+
   // A write that failed part way left some plugins written; the page reads them again.
   $effect(() => {
     if (flow.refusal !== undefined) {
@@ -91,11 +104,25 @@
   });
 
   function restart(): void {
-    if (snapshot === undefined) return;
-    void flow.run(drafts.writes(snapshot));
+    if (snapshot === undefined || invalid) return;
+    void flow.run(
+      drafts.writes(snapshot),
+      snapshot.plugins.some((plugin) => plugin.restartRequired),
+    );
   }
 
+  // The dialog's Disable and restart writes everything the page holds, so it lists the other
+  // changes and waits for text that cannot be applied to be fixed, as Restart now does.
+  const otherChanges = $derived(
+    snapshot === undefined || disabling === null
+      ? []
+      : drafts
+          .pendingWrites(snapshot)
+          .filter((change) => change.name !== disabling?.descriptor.name),
+  );
+
   function confirmDisable(plugin: PluginStanding): void {
+    if (invalid) return;
     drafts.setEnabled(plugin, false);
     disabling = null;
     restart();
@@ -103,7 +130,9 @@
 
   const refusalWords = $derived(
     flow.refusal === 'save-failed'
-      ? copy.banner.failed
+      ? flow.rejection === undefined
+        ? copy.banner.failed
+        : copy.banner.rejected(flow.rejection.plugin)
       : flow.refusal === 'locked'
         ? copy.locked
         : flow.refusal === 'refused'
@@ -131,8 +160,13 @@
       >
       {#snippet actions()}
         {#if drafts.hasDrafts}
-          <Button variant="secondary" size="sm" onclick={() => drafts.discard()}
-            >{copy.banner.discard}</Button
+          <Button
+            variant="secondary"
+            size="sm"
+            onclick={() => {
+              drafts.discard();
+              flow.rejection = undefined;
+            }}>{copy.banner.discard}</Button
           >
         {/if}
         <Button
@@ -205,6 +239,9 @@
               {plugin}
               {drafts}
               locked={locked || isShadowed(snapshot, plugin)}
+              rejection={flow.rejection?.plugin === plugin.descriptor.name
+                ? flow.rejection
+                : undefined}
               onDisable={(target) => (disabling = target)}
               onSecret={(target, key) => (secret = { plugin: target.descriptor.name, key })}
             />
@@ -231,7 +268,13 @@
   {/if}
 </section>
 
-<DisableDialog plugin={disabling} onConfirm={confirmDisable} onCancel={() => (disabling = null)} />
+<DisableDialog
+  plugin={disabling}
+  {otherChanges}
+  {invalid}
+  onConfirm={confirmDisable}
+  onCancel={() => (disabling = null)}
+/>
 <SecretDialog bind:target={secret} />
 <RestartDialog {flow} />
 

@@ -109,6 +109,15 @@ async function restartPanel(container: HTMLElement): Promise<HTMLElement> {
   });
 }
 
+/** The textarea behind a plugin's configuration editor, which holds its text once the editor mounts. */
+function configurationField(container: HTMLElement, plugin: string): HTMLTextAreaElement {
+  const field = container.querySelector<HTMLTextAreaElement>(
+    `[data-plugin-detail="${plugin}"] textarea.cinder-json-editor__textarea`,
+  );
+  expect(field).not.toBeNull();
+  return field!;
+}
+
 async function loaded(container: HTMLElement, plugin: string) {
   await waitFor(() => expect(rowOf(container, plugin)).not.toBeNull());
   await waitFor(() => expect(container.querySelector('[data-plugin-detail]')).not.toBeNull());
@@ -531,6 +540,172 @@ describe('restarting', () => {
       expect(container.querySelector('[data-testid="plugins-restart-refused"]')).not.toBeNull(),
     );
     expect(container.textContent).toContain(PLUGINS_COPY.banner.refused);
+  });
+});
+
+describe('a change the host applies at once', () => {
+  test('is saved without a restart, and is not left pending', async () => {
+    const { container, getByRole } = open('anthropic', {}, [
+      {
+        name: 'anthropic',
+        liveConfiguration: true,
+        configuration: { allowlist: ['a'] },
+        contributions: [contribution('provider', 'anthropic')],
+      },
+      { name: 'demo', enabled: false },
+    ]);
+    await loaded(container, 'anthropic');
+    await fireEvent.input(configurationField(container, 'anthropic'), {
+      target: { value: '{ "allowlist": ["a", "b"] }' },
+    });
+    await waitFor(() => expect(bannerText(container)).not.toBeNull());
+
+    await fireEvent.click(getByRole('button', { name: PLUGINS_COPY.banner.restartNow }));
+
+    await waitFor(() => expect(bannerText(container)).toBeNull());
+    expect(writes()).toEqual([
+      {
+        method: 'PUT',
+        path: '/host/plugins/anthropic',
+        body: { configuration: { allowlist: ['a', 'b'] } },
+      },
+    ]);
+    expect(
+      container.ownerDocument.body.querySelector('[data-testid="plugins-restart"]'),
+    ).toBeNull();
+    expect(bodyOf(container).queryByRole('dialog')?.outerHTML ?? null).toBeNull();
+    expect(configurationField(container, 'anthropic').value).toContain('"b"');
+    expect(container.ownerDocument.body.textContent).toContain(PLUGINS_COPY.banner.saved);
+  });
+
+  test('still restarts when another plugin in the same write needs it', async () => {
+    const { container, getByRole } = open('anthropic', {}, [
+      { name: 'anthropic', liveConfiguration: true, configuration: {} },
+      { name: 'demo', enabled: false },
+    ]);
+    await loaded(container, 'anthropic');
+    await fireEvent.input(configurationField(container, 'anthropic'), {
+      target: { value: '{ "allowlist": [] }' },
+    });
+    await fireEvent.click(rowOf(container, 'demo')!);
+    await waitFor(() =>
+      expect(container.querySelector('[data-plugin-detail="demo"]')).not.toBeNull(),
+    );
+    await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.enabled }));
+
+    await fireEvent.click(getByRole('button', { name: PLUGINS_COPY.banner.restartNow }));
+
+    const status = await restartPanel(container);
+    await waitFor(() => expect(status.getAttribute('data-phase')).toBe('back'));
+    expect(writes().filter((request) => request.path === '/host/restart')).toHaveLength(1);
+  });
+});
+
+describe('a write the host rejects', () => {
+  test('names the plugin, the field and the host message beside that plugin editor', async () => {
+    const { container, getByRole } = open('linear');
+    await loaded(container, 'linear');
+    await fireEvent.input(configurationField(container, 'linear'), {
+      target: { value: '{ "teamKey": 7 }' },
+    });
+    host!.refuseNext = Response.json(
+      { error: 'invalid', field: 'configuration.teamKey', message: 'expected a string.' },
+      { status: 400 },
+    );
+
+    await fireEvent.click(getByRole('button', { name: PLUGINS_COPY.banner.restartNow }));
+
+    const rejection = await waitFor(() => {
+      const found = container.querySelector<HTMLElement>('[data-testid="plugin-write-rejected"]');
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    expect(rejection.textContent).toContain('configuration.teamKey');
+    expect(rejection.textContent).toContain('expected a string.');
+    expect(container.querySelector('[data-plugin-detail="linear"]')?.contains(rejection)).toBe(
+      true,
+    );
+    expect(container.textContent).toContain(PLUGINS_COPY.banner.rejected('linear'));
+    expect(writes().filter((request) => request.path === '/host/restart')).toHaveLength(0);
+    // The text is still there to correct.
+    expect(bannerText(container)).not.toBeNull();
+  });
+});
+
+describe('disabling with other changes waiting', () => {
+  async function stageDemoSwitch() {
+    const opened = open('demo');
+    await loaded(opened.container, 'demo');
+    await fireEvent.click(opened.getByRole('switch', { name: PLUGINS_COPY.enabled }));
+    await fireEvent.click(rowOf(opened.container, 'linear')!);
+    await waitFor(() =>
+      expect(opened.container.querySelector('[data-plugin-detail="linear"]')).not.toBeNull(),
+    );
+    return opened;
+  }
+
+  test('does not write or restart while another plugin holds text that is not valid, and keeps the text', async () => {
+    const { container, getByRole } = open('linear');
+    await loaded(container, 'linear');
+    await fireEvent.input(configurationField(container, 'linear'), {
+      target: { value: '{ "teamKey": ' },
+    });
+    await fireEvent.click(rowOf(container, 'anthropic')!);
+    await waitFor(() =>
+      expect(container.querySelector('[data-plugin-detail="anthropic"]')).not.toBeNull(),
+    );
+    await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.enabled }));
+    const dialog = await bodyOf(container).findByRole('dialog');
+
+    expect(dialog.textContent).toContain(PLUGINS_COPY.banner.invalid);
+    const confirm = within(dialog).getByRole('button', { name: PLUGINS_COPY.disable.confirm });
+    expect(confirm.hasAttribute('disabled')).toBe(true);
+    await fireEvent.click(confirm);
+
+    expect(writes()).toEqual([]);
+    await fireEvent.click(
+      within(dialog).getByRole('button', { name: PLUGINS_COPY.disable.cancel }),
+    );
+    await waitFor(() =>
+      expect(bodyOf(container).queryByRole('dialog')?.outerHTML ?? null).toBeNull(),
+    );
+    await fireEvent.click(rowOf(container, 'linear')!);
+    await waitFor(() =>
+      expect(configurationField(container, 'linear').value).toBe('{ "teamKey": '),
+    );
+  });
+
+  test('lists every other change it will write, then writes them', async () => {
+    const { container, getByRole } = await stageDemoSwitch();
+    await fireEvent.input(configurationField(container, 'linear'), {
+      target: { value: '{ "teamKey": "OPS" }' },
+    });
+    await fireEvent.click(rowOf(container, 'anthropic')!);
+    await waitFor(() =>
+      expect(container.querySelector('[data-plugin-detail="anthropic"]')).not.toBeNull(),
+    );
+    await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.enabled }));
+    const dialog = await bodyOf(container).findByRole('dialog');
+
+    const pending = [...dialog.querySelectorAll<HTMLElement>('[data-pending-change]')].map(
+      (item) => item.textContent ?? '',
+    );
+    expect(pending).toHaveLength(2);
+    expect(pending.join('\n')).toContain('demo');
+    expect(pending.join('\n')).toContain('linear');
+    await fireEvent.click(
+      within(dialog).getByRole('button', { name: PLUGINS_COPY.disable.confirm }),
+    );
+
+    await restartPanel(container);
+    await waitFor(() =>
+      expect(writes().map((request) => `${request.method} ${request.path}`)).toEqual([
+        'PUT /host/plugins/linear',
+        'PUT /host/plugins/anthropic',
+        'PUT /host/plugins/demo',
+        'POST /host/restart',
+      ]),
+    );
   });
 });
 

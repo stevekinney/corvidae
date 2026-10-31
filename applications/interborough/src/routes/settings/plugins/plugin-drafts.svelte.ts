@@ -154,6 +154,22 @@ export class PluginDrafts {
     return count;
   }
 
+  /**
+   * The drafts a restart writes, by plugin: what each changed plugin is switched to and whether its
+   * configuration text was edited. The dialog that disables one plugin lists these for the others.
+   */
+  pendingWrites(snapshot: PluginsSnapshot): readonly {
+    readonly name: string;
+    readonly enabled: boolean | undefined;
+    readonly configuration: boolean;
+  }[] {
+    return this.writes(snapshot).map((write) => ({
+      name: write.name,
+      enabled: write.enabled,
+      configuration: write.configuration !== undefined,
+    }));
+  }
+
   /** The writes that apply every draft, one per changed plugin, in the host's order. */
   writes(snapshot: PluginsSnapshot): readonly PluginWrite[] {
     const writes: PluginWrite[] = [];
