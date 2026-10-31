@@ -167,10 +167,10 @@ import { basename, join, relative, sep } from 'node:path';
 import ts from 'typescript';
 import { HANG_GUARD_MILLISECONDS } from '../testing/testing/src/hang-guard.ts';
 import { TEST_TIMEOUT_MILLISECONDS } from './test-deadlines.ts';
-import { workspaceParentDirectories } from './workspace-directories.ts';
+import { scannedSourceDirectories } from './workspace-directories.ts';
 
 const root = join(import.meta.dir, '..');
-const SCANNED_DIRECTORIES = [...workspaceParentDirectories, 'scripts'];
+const SCANNED_DIRECTORIES = scannedSourceDirectories(root);
 // Installed dependencies and generated output, mirroring `.gitignore`. Dot
 // directories (`.svelte-kit`, `.turbo`, `.playwright`) are skipped wholesale.
 const SKIPPED_DIRECTORIES = new Set([

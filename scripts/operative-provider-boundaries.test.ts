@@ -1,8 +1,11 @@
 import { describe, expect, test } from 'bun:test';
-import { readdirSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { workspaceParentDirectories } from './workspace-directories.ts';
+import {
+  workspaceChildDirectoryNames,
+  workspaceParentDirectories,
+} from './workspace-directories.ts';
 
 /**
  * COR-1792: the dependency edges that keep Operative's model providers in their own packages.
@@ -107,9 +110,7 @@ function readWorkspaceManifests(): Map<string, Manifest> {
   const manifests = new Map<string, Manifest>();
   const directories = [
     ...workspaceParentDirectories.flatMap((parent) =>
-      readdirSync(join(root, parent), { withFileTypes: true })
-        .filter((entry) => entry.isDirectory())
-        .map((entry) => join(root, parent, entry.name)),
+      workspaceChildDirectoryNames(root, parent).map((name) => join(root, parent, name)),
     ),
     join(root, 'scripts/browser-fixtures'),
   ];

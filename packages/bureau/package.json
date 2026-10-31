@@ -22,6 +22,7 @@
     "@a2a-js/sdk": "catalog:",
     "@ag-ui/core": "catalog:",
     "@lostgradient/cryptography": "workspace:*",
+    "@lostgradient/interborough-plugin": "workspace:*",
     "@lostgradient/lifecycle": "workspace:*",
     "@lostgradient/memory": "workspace:*",
     "@lostgradient/operative": "workspace:*",

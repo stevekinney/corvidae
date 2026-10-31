@@ -11,6 +11,7 @@
     "packages/*",
     "testing/*",
     "internal/*",
+    "plugins/*",
     "scripts/browser-fixtures"
   ],
   "catalog": {

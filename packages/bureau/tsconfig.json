@@ -7,6 +7,9 @@
       "path": "../cryptography/tsconfig.source.json"
     },
     {
+      "path": "../interborough-plugin/tsconfig.source.json"
+    },
+    {
       "path": "../lifecycle/tsconfig.source.json"
     },
     {

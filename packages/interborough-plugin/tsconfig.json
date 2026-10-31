@@ -1,0 +1,19 @@
+{
+  "extends": "@lostgradient/typescript/library.json",
+  "include": ["src"],
+  "exclude": ["node_modules", "coverage"],
+  "references": [
+    {
+      "path": "../armorer/tsconfig.source.json"
+    },
+    {
+      "path": "../operative/tsconfig.source.json"
+    },
+    {
+      "path": "../storage/tsconfig.source.json"
+    },
+    {
+      "path": "../weft/tsconfig.source.json"
+    }
+  ]
+}
