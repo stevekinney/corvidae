@@ -51,6 +51,7 @@
         "@lostgradient/operative-gemini": "workspace:*",
         "@lostgradient/operative-openai": "workspace:*",
         "@lostgradient/plugin-anthropic": "workspace:*",
+        "@lostgradient/plugin-demo": "workspace:*",
         "@lostgradient/plugin-gemini": "workspace:*",
         "@lostgradient/plugin-openai": "workspace:*",
         "@lostgradient/plugin-typesafe": "workspace:*",
@@ -784,6 +785,24 @@
         "typescript": "catalog:",
       },
     },
+    "plugins/demo": {
+      "name": "@lostgradient/plugin-demo",
+      "dependencies": {
+        "@lostgradient/interborough-plugin": "workspace:*",
+        "@lostgradient/operative": "workspace:*",
+        "@lostgradient/storage": "workspace:*",
+        "armorer": "workspace:*",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/bureau": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "plugins/gemini": {
       "name": "@lostgradient/plugin-gemini",
       "dependencies": {
@@ -1263,6 +1282,8 @@
     "@lostgradient/playground": ["@lostgradient/playground@workspace:applications/playground"],
 
     "@lostgradient/plugin-anthropic": ["@lostgradient/plugin-anthropic@workspace:plugins/anthropic"],
+
+    "@lostgradient/plugin-demo": ["@lostgradient/plugin-demo@workspace:plugins/demo"],
 
     "@lostgradient/plugin-gemini": ["@lostgradient/plugin-gemini@workspace:plugins/gemini"],
 

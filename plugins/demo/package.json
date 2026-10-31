@@ -1,0 +1,33 @@
+{
+  "name": "@lostgradient/plugin-demo",
+  "private": true,
+  "description": "The demo plugin for Interborough: scripted agents, tools, validators, a goal, and a schedule that run without a model provider. Off by default.",
+  "type": "module",
+  "exports": {
+    ".": "./src/plugin.ts"
+  },
+  "scripts": {
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json && bun ../../scripts/check-inherited-key-reads.ts && bun ../../scripts/check-documentation-coverage.ts",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
+    "types": "tsc -b tsconfig.source.json",
+    "typecheck": "tsc -b tsconfig.json && bun run typecheck:documentation",
+    "typecheck:documentation": "bun ../../scripts/check-documentation-code-blocks.ts",
+    "test": "bun ../../scripts/bun-test-junit.ts"
+  },
+  "dependencies": {
+    "@lostgradient/interborough-plugin": "workspace:*",
+    "@lostgradient/operative": "workspace:*",
+    "@lostgradient/storage": "workspace:*",
+    "armorer": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@lostgradient/bureau": "workspace:*",
+    "@lostgradient/testing": "workspace:*",
+    "@lostgradient/typescript": "workspace:*",
+    "@types/bun": "catalog:",
+    "oxlint": "catalog:",
+    "typescript": "catalog:"
+  },
+  "sideEffects": false
+}

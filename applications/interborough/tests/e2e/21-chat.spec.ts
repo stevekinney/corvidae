@@ -66,15 +66,17 @@ async function indexIn(page: Page, text: string): Promise<number> {
 
 test.describe('a session', () => {
   test('answers a message and shows the header once', async ({ page, request }) => {
-    const threadId = newThreadId('assistant');
-    await runToEnd(request, 'assistant', threadId, 'First hello');
+    const threadId = newThreadId('demo:assistant');
+    await runToEnd(request, 'demo:assistant', threadId, 'First hello');
 
     await page.goto(`/chats/${threadId}`);
 
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('First hello');
     await expect(
-      page.getByRole('region', { name: 'Conversation' }).getByText('assistant', { exact: true }),
+      page
+        .getByRole('region', { name: 'Conversation' })
+        .getByText('demo:assistant', { exact: true }),
     ).toHaveCount(1);
     await send(page, 'Hello again');
     await expect(conversation(page).getByText('Hello from the assistant.')).toBeVisible();
@@ -86,8 +88,8 @@ test.describe('a tool approval', () => {
     request: Parameters<typeof runToEnd>[0],
     options: { settled: boolean },
   ): Promise<string> {
-    const threadId = newThreadId('tool-runner');
-    const stream = await runToEnd(request, 'tool-runner', threadId, 'Refund order-1001');
+    const threadId = newThreadId('demo:tool-runner');
+    const stream = await runToEnd(request, 'demo:tool-runner', threadId, 'Refund order-1001');
     if (options.settled) await approveThroughMount(request, threadId, stream);
     return threadId;
   }
@@ -177,8 +179,8 @@ test.describe('a tool call', () => {
     page,
     request,
   }) => {
-    const threadId = newThreadId('tool-runner');
-    const stream = await runToEnd(request, 'tool-runner', threadId, 'Refund order-1001');
+    const threadId = newThreadId('demo:tool-runner');
+    const stream = await runToEnd(request, 'demo:tool-runner', threadId, 'Refund order-1001');
     await approveThroughMount(request, threadId, stream);
 
     await page.goto(`/chats/${threadId}`);
@@ -295,7 +297,7 @@ test.describe('a run that asks the person a question', () => {
     page,
     checkA11y,
   }) => {
-    await page.goto('/chats/new?agent=request-human-input');
+    await page.goto('/chats/new?agent=demo:request-human-input');
     await send(page, 'Ship it');
     const question = page.getByRole('alert').filter({ hasText: QUESTION });
     await expect(question).toBeVisible();
@@ -318,7 +320,7 @@ test.describe('a run that asks the person a question', () => {
     request,
   }) => {
     const threadId = newThreadId('human');
-    await runToEnd(request, 'request-human-input', threadId, 'Ship it');
+    await runToEnd(request, 'demo:request-human-input', threadId, 'Ship it');
     const starts: Array<{ messages: unknown[]; resume?: unknown }> = [];
     page.on('request', (outgoing) => {
       if (outgoing.method() === 'POST' && outgoing.url().includes('/ag-ui/agents/')) {
@@ -387,7 +389,7 @@ for (const width of [375, 1280] as const) {
       checkA11y,
     }) => {
       const threadId = newThreadId('states');
-      await runToEnd(request, 'assistant', threadId, 'Hello');
+      await runToEnd(request, 'demo:assistant', threadId, 'Hello');
       await page.goto(`/chats/${threadId}`);
       await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
       await expect(page.getByRole('textbox')).toBeVisible();
@@ -442,11 +444,11 @@ for (const width of [375, 1280] as const) {
       page,
       checkA11y,
     }) => {
-      await page.goto('/chats/new?agent=tool-runner');
+      await page.goto('/chats/new?agent=demo:tool-runner');
 
       const welcome = page.getByTestId('new-chat-welcome');
       await expect(welcome).toBeVisible();
-      await expect(welcome.locator('.ib-new-chat__greeting')).toContainText('tool-runner');
+      await expect(welcome.locator('.ib-new-chat__greeting')).toContainText('demo:tool-runner');
       await expect(welcome.locator('.ib-new-chat__greeting code')).toHaveCount(1);
       await expect(welcome).toContainText(
         'Looks an order up, then asks for approval to refund it.',
@@ -462,7 +464,7 @@ for (const width of [375, 1280] as const) {
       await expect(composer(page)).toHaveValue('Refund order 1234');
       await expect(composer(page)).toBeFocused();
       // Filling the composer starts nothing: the address is still the new chat's.
-      await expect(page).toHaveURL(/\/chats\/new\?agent=tool-runner$/);
+      await expect(page).toHaveURL(/\/chats\/new\?agent=demo(?::|%3A)tool-runner$/);
     });
 
     test('wraps a long example prompt inside its button, and the outlet does not scroll sideways', async ({
@@ -479,11 +481,11 @@ for (const width of [375, 1280] as const) {
         const response = await route.fetch();
         const body = await response.json();
         for (const agent of body.result.agents) {
-          if (agent.name === 'tool-runner') agent.examples = [prompt];
+          if (agent.name === 'demo:tool-runner') agent.examples = [prompt];
         }
         await route.fulfill({ response, json: body });
       });
-      await page.goto('/chats/new?agent=tool-runner');
+      await page.goto('/chats/new?agent=demo:tool-runner');
 
       const button = page.getByTestId('new-chat-welcome').getByRole('button', { name: prompt });
       await expect(button).toBeVisible();
@@ -514,15 +516,15 @@ for (const width of [375, 1280] as const) {
     }) => {
       await page.goto('/chats/new');
       const welcome = page.getByTestId('new-chat-welcome');
-      await expect(welcome).toContainText('assistant');
+      await expect(welcome).toContainText('demo:assistant');
       const others = page.getByRole('group', { name: 'Or start with another agent' });
       await expect(others).toBeVisible();
       await checkA11y(`a new chat with the agents to choose from at ${width}px`);
 
       await others.getByRole('button', { name: /request-human-input/ }).click();
 
-      await expect(page).toHaveURL(/\/chats\/new\?agent=request-human-input$/);
-      await expect(welcome).toContainText('request-human-input');
+      await expect(page).toHaveURL(/\/chats\/new\?agent=demo%3Arequest-human-input$/);
+      await expect(welcome).toContainText('demo:request-human-input');
       await expect(page.getByTestId('agent-prompts').getByRole('button')).toHaveText(
         'Ship the release',
       );

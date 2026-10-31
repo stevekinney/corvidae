@@ -7,7 +7,7 @@
  */
 import type { Page } from '@playwright/test';
 
-import { MODEL_SWITCHER_MODELS, modelSwitcherReply } from '../../src/host/seed.ts';
+import { MODEL_SWITCHER_MODELS, modelSwitcherReply } from '@lostgradient/plugin-demo';
 import { newThreadId, runToEnd } from './chat-support.ts';
 import { expect, test } from './fixtures.ts';
 import { SINGLE_MODEL_AGENT_NAME } from './model-agents.ts';
@@ -35,7 +35,7 @@ for (const viewport of VIEWPORTS) {
   }) => {
     await page.setViewportSize(viewport);
     const threadId = newThreadId('model');
-    await runToEnd(request, 'model-switcher', threadId, 'Which model answers?');
+    await runToEnd(request, 'demo:model-switcher', threadId, 'Which model answers?');
     await page.goto(`/chats/${threadId}`);
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
 
@@ -73,7 +73,7 @@ test('has no picker for an agent that allows one model, and none for an agent th
   page,
   request,
 }) => {
-  for (const agent of [SINGLE_MODEL_AGENT_NAME, 'echo']) {
+  for (const agent of [SINGLE_MODEL_AGENT_NAME, 'demo:echo']) {
     const threadId = newThreadId('single');
     await runToEnd(request, agent, threadId, 'Hello');
     await page.goto(`/chats/${threadId}`);

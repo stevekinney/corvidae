@@ -12,6 +12,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { enableDemoPlugin, pluginsWithUnseededDemo } from './demo-plugin.test-support.ts';
 import { filesUnder } from './files-under.test-support.ts';
 import { startHost, type Host } from './host.ts';
 import {
@@ -55,7 +56,12 @@ async function home(): Promise<string> {
 }
 
 async function startAt(path: string): Promise<Host> {
-  const host = await startHost({ environment: { INTERBOROUGH_HOME: path }, port: 0, seed: false });
+  await enableDemoPlugin(path);
+  const host = await startHost({
+    environment: { INTERBOROUGH_HOME: path },
+    port: 0,
+    plugins: pluginsWithUnseededDemo(),
+  });
   hosts.push(host);
   return host;
 }
@@ -82,13 +88,16 @@ const agentFile = (frontmatter: string[]) =>
 const AGENT_FILES: Record<string, string> = {
   // Lists a tool of the source and approves it: valid before the removal.
   'reader.md': agentFile([
-    'tools: [files__lookup, lookup-order]',
+    'tools: [files__lookup, demo:lookup-order]',
     'toolApproval: { files__lookup: always }',
   ]),
   // Names a tool of the source only in toolApproval. It was already invalid, and still names it.
-  'approver.md': agentFile(['tools: [lookup-order]', 'toolApproval: { files__wipe: blocked }']),
+  'approver.md': agentFile([
+    'tools: [demo:lookup-order]',
+    'toolApproval: { files__wipe: blocked }',
+  ]),
   // Names no tool of the source.
-  'bystander.md': agentFile(['tools: [lookup-order]']),
+  'bystander.md': agentFile(['tools: [demo:lookup-order]']),
   'plain.md': agentFile([]),
 };
 

@@ -26,7 +26,7 @@ afterEach(async () => {
 test('the engine event feed stays open through a quiet stretch', async () => {
   const home = await mkdtemp(join(tmpdir(), 'interborough-idle-'));
   homes.push(home);
-  const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0, seed: false });
+  const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0 });
   hosts.push(host);
 
   const controller = new AbortController();

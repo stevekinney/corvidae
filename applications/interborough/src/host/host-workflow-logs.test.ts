@@ -38,7 +38,7 @@ afterEach(async () => {
 });
 
 async function start(home: string): Promise<Host> {
-  const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0, seed: false });
+  const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0 });
   hosts.push(host);
   return host;
 }

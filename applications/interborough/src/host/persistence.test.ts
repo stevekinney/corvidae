@@ -5,6 +5,7 @@ import { join } from 'node:path';
 
 import { openBungalow } from '@lostgradient/bungalow';
 
+import { enableDemoPlugin } from './demo-plugin.test-support.ts';
 import { startHost, type Host } from './host.ts';
 
 const homes: string[] = [];
@@ -17,6 +18,7 @@ async function createHome(): Promise<string> {
 }
 
 async function start(home: string): Promise<Host> {
+  await enableDemoPlugin(home);
   const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0 });
   hosts.push(host);
   return host;
@@ -54,7 +56,7 @@ describe('the Interborough host', () => {
     const home = await createHome();
 
     const first = await start(home);
-    const run = await first.bureau.tasks.start('assistant', 'Remember this run.');
+    const run = await first.bureau.tasks.start('demo:assistant', 'Remember this run.');
     await run.result();
     const runsBefore = await first.bureau.tasks.workflows();
     const runIds = runsBefore?.items.map((item) => item.id) ?? [];

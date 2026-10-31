@@ -515,7 +515,7 @@ describe('the chat list, a new chat, and the agents', () => {
   });
 
   test('a new chat is ready for an agent the Bureau lists', async () => {
-    stubBureau({ 'bureau.agents.list': () => agents({ name: 'assistant' }) });
+    stubBureau({ 'bureau.agents.list': () => agents({ name: 'demo:assistant' }) });
     const { container, findByTestId } = mount('chat', { pattern: '/chats/new' });
 
     expect(await findByTestId('content')).not.toBeNull();

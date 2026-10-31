@@ -295,7 +295,7 @@ test.describe('the History tab', () => {
       id,
       expectedHash: (read.result as { hash: string }).hash,
       definition: {
-        agent: 'assistant',
+        agent: 'demo:assistant',
         trigger: { kind: 'signal', name: 'e2e-page-history-go' },
         steps: [{ kind: 'await-signal', signal: 'e2e-page-history-wait-later' }],
       },

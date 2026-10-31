@@ -140,7 +140,7 @@ test.describe('the records pages', () => {
     await page.goto('/agents');
 
     await expect(page.locator('[data-view="agents"]')).toHaveAttribute('data-state', 'ready');
-    const row = page.locator('[data-agent="assistant"]');
+    const row = page.locator('[data-agent="demo:assistant"]');
     await expect(row).toBeVisible();
     await expect(row.getByRole('link', { name: 'Memory' })).toBeVisible();
     await expect(row.getByRole('link', { name: 'New chat' })).toBeVisible();
@@ -160,7 +160,7 @@ test.describe('the records pages', () => {
     const row = page.locator(`[data-agent="${TWO_QUESTIONS_AGENT_NAME}"]`);
     await expect(row.getByTestId('agent-needs-you')).toHaveText('Needs you');
     await expect(
-      page.locator('[data-agent="assistant"]').getByTestId('agent-needs-you'),
+      page.locator('[data-agent="demo:assistant"]').getByTestId('agent-needs-you'),
     ).toHaveCount(0);
     await row.getByTestId('agent-chat-count').click();
     await expect(page).toHaveURL(new RegExp(`/agents/${TWO_QUESTIONS_AGENT_NAME}$`));

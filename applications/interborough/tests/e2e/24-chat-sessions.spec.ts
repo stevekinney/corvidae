@@ -94,12 +94,12 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
       const agents = page.getByTestId('welcome-agents');
       await expect(agents).toContainText('Agents:');
       await expect(agents.locator('code.ib-identifier')).toHaveText([
-        'assistant',
-        'tool-runner',
-        'request-human-input',
-        'echo',
-        'model-switcher',
-        'internal',
+        'demo:assistant',
+        'demo:tool-runner',
+        'demo:request-human-input',
+        'demo:echo',
+        'demo:model-switcher',
+        'demo:internal',
       ]);
       await expect(agents.locator('code.ib-identifier').first()).toHaveCSS('font-family', /mono/i);
       await checkA11y(`chat — the welcome at ${width}px`);
@@ -133,7 +133,7 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
     request,
   }) => {
     const created = await bureau<{ id: string }>(request, 'bureau.schedules.create', {
-      agentName: 'assistant',
+      agentName: 'demo:assistant',
       spec: '2s',
       input: fireInput,
       description: 'e2e fire for the chat list',
@@ -214,9 +214,9 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
 
 test.describe('the home screen', () => {
   test('opens the chat that was updated most recently', async ({ page, request }) => {
-    await runToEnd(request, 'assistant', newThreadId('older'), 'An older chat');
+    await runToEnd(request, 'demo:assistant', newThreadId('older'), 'An older chat');
     const newest = newThreadId('newest');
-    await runToEnd(request, 'assistant', newest, 'The newest chat');
+    await runToEnd(request, 'demo:assistant', newest, 'The newest chat');
 
     await page.goto('/');
 
@@ -228,7 +228,7 @@ test.describe('the home screen', () => {
     page,
     request,
   }) => {
-    await runToEnd(request, 'assistant', newThreadId('home'), 'Chat for the home screen');
+    await runToEnd(request, 'demo:assistant', newThreadId('home'), 'Chat for the home screen');
     await page.goto('/agents');
 
     await page.goto('/');
@@ -252,8 +252,8 @@ test.describe('the list of sessions, grouped', () => {
       const waiting = newThreadId('waiting');
       const finishedTitle = `A finished chat ${crypto.randomUUID().slice(0, 8)}`;
       const waitingTitle = `A waiting chat ${crypto.randomUUID().slice(0, 8)}`;
-      await runToEnd(request, 'request-human-input', waiting, waitingTitle);
-      await runToEnd(request, 'assistant', finished, finishedTitle);
+      await runToEnd(request, 'demo:request-human-input', waiting, waitingTitle);
+      await runToEnd(request, 'demo:assistant', finished, finishedTitle);
       await page.setViewportSize({ width, height: 900 });
 
       await page.goto('/chats');
@@ -295,7 +295,7 @@ test.describe('the list of sessions', () => {
     for (let index = 1; index <= 22; index += 1) {
       await runToEnd(
         request,
-        'assistant',
+        'demo:assistant',
         newThreadId('page'),
         `${label} chat ${String(index).padStart(2, '0')}`,
       );
@@ -309,7 +309,7 @@ test.describe('the list of sessions', () => {
     // row names the agent.
     const today = list.locator('[data-group="today"]');
     await expect(today.first()).toContainText(`${label} chat 22`);
-    await expect(today.first()).toContainText('assistant');
+    await expect(today.first()).toContainText('demo:assistant');
     // A page is twenty rows. The list loads the next page as the end comes into view, or when
     // Load more is pressed, so keep asking for it until the oldest of these chats is there.
     const oldest = list.getByRole('button', { name: new RegExp(`${label} chat 01`) });
@@ -323,7 +323,7 @@ test.describe('the list of sessions', () => {
 
   test('opens the session a row names', async ({ page, request }) => {
     const threadId = newThreadId('row');
-    await runToEnd(request, 'assistant', threadId, 'Open me from the list');
+    await runToEnd(request, 'demo:assistant', threadId, 'Open me from the list');
     await page.goto('/chats');
 
     await page
@@ -347,14 +347,14 @@ test.describe('a new chat', () => {
     await agent.fill('tool');
     await page.getByRole('option', { name: /tool-runner/i }).click();
 
-    await expect(page).toHaveURL(/\/chats\/new\?agent=tool-runner$/);
+    await expect(page).toHaveURL(/\/chats\/new\?agent=demo(?::|%3A)tool-runner$/);
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
   });
 
   test('starts from ?agent=, becomes /chats/:chat without a reload, and fixes the agent', async ({
     page,
   }) => {
-    await page.goto('/chats/new?agent=tool-runner');
+    await page.goto('/chats/new?agent=demo:tool-runner');
     await expect(page.getByRole('combobox', { name: 'Agent' })).toHaveValue('tool-runner');
     // A reload would discard this.
     await page.evaluate(() => {
@@ -368,7 +368,9 @@ test.describe('a new chat', () => {
     expect(await page.evaluate(() => Reflect.get(window, '__stillHere'))).toBe(true);
     await expect(page.getByRole('combobox', { name: 'Agent' })).toHaveCount(0);
     await expect(
-      page.getByRole('region', { name: 'Conversation' }).getByText('tool-runner', { exact: true }),
+      page
+        .getByRole('region', { name: 'Conversation' })
+        .getByText('demo:tool-runner', { exact: true }),
     ).toHaveCount(1);
   });
 
@@ -399,7 +401,7 @@ test.describe('a new chat', () => {
     page,
   }) => {
     let refuse = true;
-    await page.route('**/ag-ui/agents/assistant/run', async (route) => {
+    await page.route('**/ag-ui/agents/demo*assistant/run', async (route) => {
       if (!refuse) {
         await route.fallback();
         return;
@@ -428,13 +430,13 @@ test.describe('returning to a session', () => {
     page,
   }) => {
     const label = crypto.randomUUID().slice(0, 8);
-    await page.goto('/chats/new?agent=assistant');
+    await page.goto('/chats/new?agent=demo:assistant');
     await send(page, `${label} first topic`);
     await expect(page).toHaveURL(sessionUrl);
     const first = sessionOf(page);
     await expect(conversation(page).getByText('Hello from the assistant.')).toBeVisible();
 
-    await page.goto('/chats/new?agent=assistant');
+    await page.goto('/chats/new?agent=demo:assistant');
     await send(page, `${label} second topic`);
     await expect(page).toHaveURL(sessionUrl);
     const second = sessionOf(page);

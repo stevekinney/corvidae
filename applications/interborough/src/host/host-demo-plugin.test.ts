@@ -3,24 +3,30 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { awakeTurns, quietFor } from '@lostgradient/testing/wait-until';
-import { startHost, type Host } from './host.ts';
-import { runTask } from './run-task.test-support.ts';
 import {
+  DEMO_AGENT_NAMES,
   HUMAN_INPUT_PROMPT,
   HUMAN_INPUT_SIGNAL,
-  NEVER_PASSING_VALIDATOR,
-  SEEDED_AGENT_NAMES,
+  NEVER_PASSING,
   SEEDED_GOAL_RUN_IDENTIFIER,
   SEEDED_SCHEDULE_DESCRIPTION,
-} from './seed.ts';
+} from '@lostgradient/plugin-demo';
+import { awakeTurns, quietFor } from '@lostgradient/testing/wait-until';
+
+import { enableDemoPlugin } from './demo-plugin.test-support.ts';
+import { startHost, type Host } from './host.ts';
+import { runTask } from './run-task.test-support.ts';
+
+/** The names the host lists the demo agents under. */
+const DEMO_AGENT_IDS = DEMO_AGENT_NAMES.map((name) => `demo:${name}`);
 
 const homes: string[] = [];
 const hosts: Host[] = [];
 
 async function createHome(): Promise<string> {
-  const home = await mkdtemp(join(tmpdir(), 'interborough-seed-'));
+  const home = await mkdtemp(join(tmpdir(), 'interborough-demo-'));
   homes.push(home);
+  await enableDemoPlugin(home);
   return home;
 }
 
@@ -43,21 +49,21 @@ afterEach(async () => {
   for (const home of homes.splice(0)) await rm(home, { recursive: true, force: true });
 });
 
-describe('the seeded agents', () => {
-  test('are the six the host defines, and it serves all of them to chat', async () => {
+describe('the demo agents', () => {
+  test('are the six the demo plugin defines, and the host serves all of them to chat', async () => {
     const host = await start();
-    for (const name of SEEDED_AGENT_NAMES) expect(host.bureau.agents.has(name)).toBe(true);
-    expect([...SEEDED_AGENT_NAMES].toSorted()).toEqual([
-      'assistant',
-      'echo',
-      'internal',
-      'model-switcher',
-      'request-human-input',
-      'tool-runner',
+    for (const id of DEMO_AGENT_IDS) expect(host.bureau.agents.has(id)).toBe(true);
+    expect([...DEMO_AGENT_IDS].toSorted()).toEqual([
+      'demo:assistant',
+      'demo:echo',
+      'demo:internal',
+      'demo:model-switcher',
+      'demo:request-human-input',
+      'demo:tool-runner',
     ]);
   });
 
-  test('each seeded agent suggests one prompt, which the agent list carries to a new chat', async () => {
+  test('each demo agent suggests one prompt, which the agent list carries to a new chat', async () => {
     const host = await start();
     const response = await fetch(new URL('/bureau/jsonrpc', host.url), {
       method: 'POST',
@@ -68,10 +74,10 @@ describe('the seeded agents', () => {
       result?: { agents: { name: string; examples?: string[] }[] };
     };
     const examples = new Map(body.result?.agents.map((agent) => [agent.name, agent.examples]));
-    for (const name of SEEDED_AGENT_NAMES) {
-      expect(examples.get(name)?.length, name).toBe(1);
+    for (const id of DEMO_AGENT_IDS) {
+      expect(examples.get(id)?.length, id).toBe(1);
     }
-    expect(examples.get('tool-runner')).toEqual(['Refund order 1234']);
+    expect(examples.get('demo:tool-runner')).toEqual(['Refund order 1234']);
   });
 
   test('answer from a script, run after run, without calling a model', async () => {
@@ -81,12 +87,12 @@ describe('the seeded agents', () => {
     globalThis.fetch = Object.assign(
       (input: RequestInfo | URL) => {
         network.push(input instanceof Request ? input.url : input.toString());
-        return Promise.reject(new Error('The seeded agents must not touch the network.'));
+        return Promise.reject(new Error('The demo agents must not touch the network.'));
       },
       { preconnect: original.preconnect },
     );
     try {
-      for (const name of ['assistant', 'internal', 'tool-runner'] as const) {
+      for (const name of ['demo:assistant', 'demo:internal', 'demo:tool-runner'] as const) {
         for (let turn = 0; turn < 3; turn += 1) {
           const result = await runTask(host.bureau, name, `Message ${turn}`);
           expect(result.steps.length, name).toBeGreaterThan(0);
@@ -100,33 +106,33 @@ describe('the seeded agents', () => {
 
   test('assistant and internal each give one fixed reply', async () => {
     const host = await start();
-    const assistant = await runTask(host.bureau, 'assistant', 'Hello');
+    const assistant = await runTask(host.bureau, 'demo:assistant', 'Hello');
     expect(assistant.content).toBe(
       'Hello from the assistant. This reply is scripted; no model was called.',
     );
-    const internal = await runTask(host.bureau, 'internal', 'Hello');
+    const internal = await runTask(host.bureau, 'demo:internal', 'Hello');
     expect(internal.content).toBe('Internal bookkeeping is done. This reply is scripted.');
   });
 
   test('echo repeats the last user message it received, quotes and all', async () => {
     const host = await start();
     const quoted = '> first excerpt\n\n> second\n> excerpt\n\nWhy does that matter?';
-    const echoed = await runTask(host.bureau, 'echo', quoted);
+    const echoed = await runTask(host.bureau, 'demo:echo', quoted);
     expect(echoed.content).toBe(quoted);
     // A second turn on the same agent repeats that turn's message, not the first one.
-    const again = await runTask(host.bureau, 'echo', 'Another message');
+    const again = await runTask(host.bureau, 'demo:echo', 'Another message');
     expect(again.content).toBe('Another message');
   });
 
   test('request-human-input parks its task and resumes through the review of its context', async () => {
     const host = await start();
-    const run = await host.bureau.tasks.start('request-human-input', 'Ship it');
+    const run = await host.bureau.tasks.start('demo:request-human-input', 'Ship it');
 
     const review = await waitForReview(host, run.id);
     expect(review).toMatchObject({
       kind: 'human-wait',
       runId: run.id,
-      agentName: 'request-human-input',
+      agentName: 'demo:request-human-input',
       signalName: HUMAN_INPUT_SIGNAL,
       prompt: HUMAN_INPUT_PROMPT,
     });
@@ -146,7 +152,7 @@ describe('the seeded agents', () => {
 
   test('tool-runner looks the order up, then stops on a refund waiting for approval', async () => {
     const host = await start();
-    const result = await runTask(host.bureau, 'tool-runner', 'Refund order-1001');
+    const result = await runTask(host.bureau, 'demo:tool-runner', 'Refund order-1001');
     const calls = result.steps.flatMap((step) =>
       step.results.map((outcome) => [outcome.toolName, outcome.outcome] as const),
     );
@@ -161,7 +167,7 @@ describe('the seeded agents', () => {
   });
 });
 
-describe('the seeded schedule and goal', () => {
+describe('the demo schedule and goal', () => {
   test('are one schedule and one goal, created once and kept across restarts', async () => {
     const home = await createHome();
     const first = await start(home);
@@ -246,10 +252,10 @@ describe('the seeded schedule and goal', () => {
     const host = await start();
     const created = await host.bureau.goals.create({
       goalRunId: 'goal-that-never-passes',
-      agentName: 'assistant',
+      agentName: 'demo:assistant',
       prompt: 'Say hello.',
       identity: { name: 'say-hello', version: '1' },
-      validator: NEVER_PASSING_VALIDATOR,
+      validator: { name: `demo:${NEVER_PASSING.name}`, version: NEVER_PASSING.version },
       bounds: { maximumAttempts: 3, maximumTotalSteps: 20 },
     });
     expect(created).toMatchObject({ outcome: 'created' });
@@ -275,18 +281,16 @@ describe('the seeded schedule and goal', () => {
     expect(await statusOf()).toBe('canceled');
   });
 
-  test('can be left out', async () => {
-    const home = await createHome();
-    const host = await startHost({
-      environment: { INTERBOROUGH_HOME: home },
-      port: 0,
-      seed: false,
-    });
+  test('with the plugin disabled, the host lists no demo agent and seeds no schedule or goal', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'interborough-demo-off-'));
+    homes.push(home);
+    const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0 });
     hosts.push(host);
+    expect(host.bureau.agents.list().filter(({ id }) => id.startsWith('demo:'))).toEqual([]);
+    for (const id of DEMO_AGENT_IDS) expect(host.bureau.agents.has(id)).toBe(false);
     const schedules = await host.bureau.schedules.list();
     expect(schedules?.items).toEqual([]);
     expect(await host.bureau.goals.list()).toEqual([]);
-    expect(host.bureau.agents.has('assistant')).toBe(true);
   });
 });
 
@@ -299,17 +303,17 @@ async function waitForReview(host: Host, runId: string) {
   throw new Error(`No review was raised for run "${runId}".`);
 }
 
-describe('the seeded agents through session runs', () => {
+describe('the demo agents through session runs', () => {
   test('request-human-input parks for an operator and continues once answered', async () => {
     const host = await start();
-    const run = await host.bureau.tasks.start('request-human-input', 'Ship it');
+    const run = await host.bureau.tasks.start('demo:request-human-input', 'Ship it');
 
     const review = await waitForReview(host, run.id);
     expect(review).toMatchObject({
       kind: 'human-wait',
       runId: run.id,
       sessionId: run.contextId,
-      agentName: 'request-human-input',
+      agentName: 'demo:request-human-input',
       signalName: HUMAN_INPUT_SIGNAL,
       prompt: HUMAN_INPUT_PROMPT,
     });
@@ -327,7 +331,7 @@ describe('the seeded agents through session runs', () => {
 
   test('tool-runner raises its refund approval under its task, and approving it through the task’s context runs it', async () => {
     const host = await start();
-    const run = await host.bureau.tasks.start('tool-runner', 'Refund order-1001');
+    const run = await host.bureau.tasks.start('demo:tool-runner', 'Refund order-1001');
 
     const review = await waitForReview(host, run.id);
     expect(review.kind).toBe('tool-approval');
@@ -348,9 +352,9 @@ describe('the seeded agents through session runs', () => {
 
   test('a second session run starts from the first response again', async () => {
     const host = await start();
-    const first = await host.bureau.tasks.start('request-human-input', 'one');
+    const first = await host.bureau.tasks.start('demo:request-human-input', 'one');
     await waitForReview(host, first.id);
-    const second = await host.bureau.tasks.start('request-human-input', 'two');
+    const second = await host.bureau.tasks.start('demo:request-human-input', 'two');
 
     const review = await waitForReview(host, second.id);
 

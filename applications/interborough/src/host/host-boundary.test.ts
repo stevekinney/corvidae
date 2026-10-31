@@ -10,6 +10,7 @@ import { join } from 'node:path';
 
 import { BUREAU_RESERVED_KEY_PREFIXES, SHARED_KEY_FAMILIES_OF_A_CHAT } from '@lostgradient/bureau';
 
+import { enableDemoPlugin } from './demo-plugin.test-support.ts';
 import { MANAGED_KEY_PREFIXES } from './host-storage.ts';
 import { startHost, type Host } from './host.ts';
 
@@ -24,6 +25,7 @@ afterEach(async () => {
 async function start(existingHome?: string): Promise<Host> {
   const home = existingHome ?? (await mkdtemp(join(tmpdir(), 'interborough-boundary-')));
   if (existingHome === undefined) homes.push(home);
+  await enableDemoPlugin(home);
   const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0 });
   hosts.push(host);
   return host;

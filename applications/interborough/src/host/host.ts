@@ -11,19 +11,20 @@
  * definitions are objects in the bucket, the approval secret is `INTERBOROUGH_SECRET_APPROVAL_SECRET`,
  * and Bureau's durable ownership and maintenance settings are locked, so any number of hosts, such as the old and new release
  * of a rolling deploy, can run at once on the same state.
- * The seeded agents are code, so they are rebuilt from {@link createSeededAgents} on every start.
- * Other agents are Markdown files in `agents/` under the home, which the Bureau loads and watches
+ * A fresh host defines no agent of its own. The `demo` plugin (`plugins/demo`, off by default)
+ * contributes the scripted agents, tools, validators, goal and schedule a new install can try.
+ * Agents are Markdown files in `agents/` under the home, which the Bureau loads and watches
  * (COR-1524): `researcher.md` is the agent `researcher`, its `model` is `<provider>/<model>` from
- * the catalog below, and its `tools` come from {@link createAgentFileTools}.
+ * the catalog below, and its `tools` come from the loaded plugins and the saved tool sources.
  *
  * Memory is governed memory over the same database (`memory.ts`), embedded with a hashing
- * embedder that needs no model provider, so every agent, the seeded ones included, remembers across
+ * embedder that needs no model provider, so every agent, the demo ones included, remembers across
  * its owner's chats.
  *
  * The model catalog holds the models of the providers the loaded plugins contribute (the anthropic,
  * openai and gemini plugins) that have an API key in Bungalow's secrets (`providers.ts`), limited
  * by each plugin's `configuration.models` in `configuration.json`, with the catalog edits beside them
- * (`catalog-edits.ts`). The seeded agents still answer from a script. A local host writes the
+ * (`catalog-edits.ts`). The demo agents still answer from a script. A local host writes the
  * configuration and a provider's key, and reloads the catalog, without a restart
  * (`provider-manager.ts`, `provider-routes.ts`); a remote host refuses, reporting the reason
  * `deployment`.
@@ -95,13 +96,14 @@ import {
   createBureau,
   createBureauHandler,
   createDurableAssetStorage,
-  createSecretAnswerResolver,
   resolveProviderGenerate,
+  type AgentDefinitions,
   type Bureau,
   type BureauPluginEntry,
   type SettingsOptions,
 } from '@lostgradient/bureau';
 import { type GenerateFunction } from '@lostgradient/operative';
+import { DEMO_AGENT_NAMES } from '@lostgradient/plugin-demo';
 import { type Storage } from '@lostgradient/storage';
 import {
   serve,
@@ -164,14 +166,6 @@ import { providerRoutes } from './provider-routes.ts';
 import { contributedProviders, type ModelSelection } from './providers.ts';
 import { allowedHosts, createRequestGuard } from './request-guard.ts';
 import { HOST_RESTART_ROUTE } from './restart.ts';
-import {
-  createAgentFileTools,
-  createSeededAgents,
-  createSeededValidators,
-  seedBureau,
-  SEEDED_AGENT_NAMES,
-  type SeededAgents,
-} from './seed.ts';
 import { isShellNavigation } from './shell-request.ts';
 import { createSkillManager, type SkillManager } from './skill-manager.ts';
 import { skillRoutes } from './skill-routes.ts';
@@ -186,7 +180,11 @@ export const APPLICATION_NAME = 'interborough';
 /** The only address the host listens on. */
 const LOOPBACK = '127.0.0.1';
 
-/** The Bungalow secret that signs the approvals the seeded `tool-runner` raises. */
+/**
+ * The Bungalow secret that signs the approvals a file agent's tools raise. The host keeps it for
+ * itself: a plugin that declares it is refused (`reservedSecretKeys`), so a plugin signs with a
+ * secret of its own.
+ */
 export const APPROVAL_SECRET_KEY = 'approval-secret';
 
 /**
@@ -249,9 +247,9 @@ export const WORKFLOW_DIRECTORY_NAME = 'workflows';
 /** The path prefix under which the Bureau handler is mounted. */
 export const BUREAU_PATH_PREFIX = '/bureau';
 
-/** Agents a host serves beside the seeded ones. */
+/** Agents a host serves beside the ones its plugins contribute. */
 export type ExtraAgents = {
-  readonly agents: Readonly<Record<string, SeededAgents['assistant']>>;
+  readonly agents: Readonly<Record<string, AgentDefinitions[string]>>;
 };
 
 /**
@@ -276,22 +274,17 @@ export type HostOptions = {
   readonly createConsoleEngine?: (
     storage: Storage,
   ) => RegistryAgnosticEngine | Promise<RegistryAgnosticEngine>;
-  /** Replaces the scripted generate of the seeded `assistant` agent. For tests that need a run to stay in flight. */
-  readonly generate?: GenerateFunction;
   /** The few Weft server settings a host may tune for the engine API it relays. */
   readonly engineServer?: Pick<
     ServeOptions,
     'cancellationGracePeriodMs' | 'workerReconnectGracePeriodMs'
   >;
-  /**
-   * Agents to define beside the seeded ones, for tests that need an agent of their own without
-   * changing the seed.
-   */
+  /** Agents to define beside the ones the plugins contribute, for tests that need an agent of their own. */
   readonly extraAgents?: ExtraAgents;
   /**
    * The code-defined agents that opt into A2A (COR-1819): each is served at
    * `/bureau/a2a/<name>` with an Agent Card, as a file agent with `a2a: true` is. Every name must
-   * be an agent the host defines (a seeded one, or one of {@link HostOptions.extraAgents}) and a
+   * be an agent the host defines (one a plugin contributes, or one of {@link HostOptions.extraAgents}) and a
    * valid A2A name, or the host does not start. Defaults to none, so a code agent is reachable
    * over A2A only when it is named here.
    */
@@ -310,8 +303,6 @@ export type HostOptions = {
   readonly developmentPlugins?: readonly string[];
   /** Receives the host's progress lines, such as one per plugin at startup. Defaults to `console.info`. */
   readonly log?: (message: string) => void;
-  /** Whether to create the seeded schedule and goal. Agents are always defined. Defaults to `true`. */
-  readonly seed?: boolean;
   /**
    * Replaces Bureau's provider resolver, which {@link Host.generateFor} calls with the host's provider
    * definitions and the provider, model, and API key from Bungalow's secret. For tests that stand a fake client in for the SDK.
@@ -351,7 +342,7 @@ export type Host = {
   /** The origin the host listens on, `http://127.0.0.1:<port>/`. */
   readonly url: URL;
   /** The Bureau, running on Bungalow's database. */
-  readonly bureau: Bureau<SeededAgents>;
+  readonly bureau: Bureau<AgentDefinitions>;
   /** The engine behind the Engine console: the Bureau's durable engine unless the host was given another. */
   readonly engine: RegistryAgnosticEngine;
   /** Weft's server, which owns the listening socket. */
@@ -552,12 +543,14 @@ type EngineUpstream = { readonly url: string; readonly key: string };
 
 /** Start the host. The caller owns it and must `close()` it. */
 export async function startHost(options: HostOptions = {}): Promise<Host> {
-  // The seeded agents are defined last, so an extra agent that took a seeded name would be replaced
-  // without a word. That is a mistake in whoever named it, so it stops the host before anything opens.
-  for (const name of SEEDED_AGENT_NAMES) {
-    if (options.extraAgents?.agents !== undefined && name in options.extraAgents.agents) {
+  // The demo plugin's agents are named `demo:<name>`, and Bureau skips a plugin whose contribution
+  // takes a name a host option already holds. That is a mistake in whoever named the extra agent,
+  // so it stops the host before anything opens, rather than silently dropping the plugin.
+  for (const name of DEMO_AGENT_NAMES) {
+    const id = `demo:${name}`;
+    if (options.extraAgents?.agents !== undefined && id in options.extraAgents.agents) {
       throw new Error(
-        `The extra agent "${name}" has the name of a seeded agent, which would replace it. Give it another name.`,
+        `The extra agent "${id}" has the name of an agent the demo plugin contributes, which would clash with it. Give it another name.`,
       );
     }
   }
@@ -590,13 +583,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // The key secret answers are sealed with (COR-1920), read or created the same way and as early.
     const answerKeys = await answerEncryptionKeys(bungalow);
     const storage = createHostStorage(bungalow.database);
-    // A toolbox the host builds reads secret answers through the Bureau's records and keys; Bureau
-    // supplies the same resolver to the toolbox it builds itself.
-    const secretResolver = createSecretAnswerResolver({ storage, keys: answerKeys });
     held.storage = storage;
     // The catalog holds the models of the providers `configuration.json` names that have a key in
     // the secrets, and nothing else. The Bureau is created with exactly these rows, so no boot step
-    // plans against a provider that is not configured. The seeded agents still answer from a
+    // plans against a provider that is not configured. The demo agents still answer from a
     // script.
     const configurationQueue = createConfigurationQueue();
     // The folder plugins load now, once: Bungalow's `plugins/` folder, then the development ones.
@@ -693,13 +683,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         : options.settings;
     const bureau = await createBureau({
       id: bungalow.deploymentId,
-      agents: {
-        ...options.extraAgents?.agents,
-        ...createSeededAgents(approval, options.generate, secretResolver),
-      },
-      // A session run of a seeded agent is offered `requestHumanInput`, which `request-human-input`
-      // calls to park for an operator's answer.
-      validators: createSeededValidators(),
+      agents: { ...options.extraAgents?.agents },
       // The default of the `decisions.model` setting is the plugin's Jev model, while that plugin
       // is loaded and enabled; the other choice is Bureau's own `catalog`, the language-model fallback.
       ...defaultDecisionOptions(pluginManager.loadable(), pluginManager.settings()),
@@ -737,10 +721,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       assets: { storage: createDurableAssetStorage(storage) },
       // Agent files: Markdown files in Bungalow's `agents/` directory are agents (COR-1524). A
       // file's `model` is a row of the `models` catalog.
-      agentSource: createAgentSource(bungalow, agentContent, {
-        ...createAgentFileTools(),
-        ...toolSources.tools(),
-      }),
+      agentSource: createAgentSource(bungalow, agentContent, toolSources.tools()),
       // The approvals a file agent's tools raise are signed with the host's approval secret, so a
       // restart still resolves a pending one.
       agentApprovalSecret: approval,
@@ -775,9 +756,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       await bureau.agents.refresh();
       return catalog.revision;
     });
-    if (options.seed !== false) {
-      await seedBureau(bureau, storage);
-    }
+
     // The console serves the engine that owns the Bureau's runs. A second engine over the same
     // storage holds no lease on them, so its cancel would not be fenced by their owner and its
     // live feed would not see them.
@@ -1036,7 +1015,7 @@ export function deriveStartOverrideSigningSecret(key: string): string {
 type Held = {
   readonly bungalow: Bungalow;
   storage?: Storage;
-  bureau?: Bureau<SeededAgents>;
+  bureau?: Bureau<AgentDefinitions>;
   providers?: ProviderManager;
   plugins?: PluginManager;
   skills?: SkillManager;

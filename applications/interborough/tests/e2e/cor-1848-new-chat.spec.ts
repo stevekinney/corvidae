@@ -94,7 +94,7 @@ test.describe('a new chat', () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto('/chats/new?agent=assistant');
+    await page.goto('/chats/new?agent=demo:assistant');
     await composer(page).fill('A chat to resize');
     await composer(page).press('Enter');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('A chat to resize');
@@ -103,12 +103,12 @@ test.describe('a new chat', () => {
     await page.setViewportSize({ width: 600, height: 800 });
     await expect(page.getByRole('region', { name: 'Chats' })).toHaveCount(0);
     await expect(transcript(page)).toContainText('A chat to resize');
-    await expect(page.locator('.weft-chat-header__agent')).toHaveText('assistant');
+    await expect(page.locator('.weft-chat-header__agent')).toHaveText('demo:assistant');
 
     await page.setViewportSize({ width: 1280, height: 800 });
     await expect(page.getByRole('region', { name: 'Chats' })).toBeVisible();
     await expect(transcript(page)).toContainText('A chat to resize');
-    await expect(page.locator('.weft-chat-header__agent')).toHaveText('assistant');
+    await expect(page.locator('.weft-chat-header__agent')).toHaveText('demo:assistant');
     expect(page.url()).toBe(address);
     await expect(page.getByTestId('new-chat-welcome')).toHaveCount(0);
   });
@@ -121,8 +121,8 @@ test.describe('the chat list beside the open chat', () => {
   }) => {
     const waiting = newThreadId('cor-1848-waiting');
     const finished = newThreadId('cor-1848-finished');
-    await runToEnd(request, 'request-human-input', waiting, 'A chat that asks me a question');
-    await runToEnd(request, 'assistant', finished, 'A chat that finished');
+    await runToEnd(request, 'demo:request-human-input', waiting, 'A chat that asks me a question');
+    await runToEnd(request, 'demo:assistant', finished, 'A chat that finished');
     await page.setViewportSize({ width: 1280, height: 900 });
 
     await page.goto(`/chats/${finished}`);
@@ -147,7 +147,7 @@ test.describe('the chat list beside the open chat', () => {
 
   test('shows one pane at a time on a phone, with Back to the list', async ({ page, request }) => {
     const thread = newThreadId('cor-1848-phone');
-    await runToEnd(request, 'assistant', thread, 'A chat on a phone');
+    await runToEnd(request, 'demo:assistant', thread, 'A chat on a phone');
     await page.setViewportSize({ width: 375, height: 800 });
 
     await page.goto(`/chats/${thread}`);

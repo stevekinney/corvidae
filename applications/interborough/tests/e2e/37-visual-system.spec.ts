@@ -62,7 +62,7 @@ test.describe('the outlet pads a page and nothing else does', () => {
       // A host with no chat a person started opens /chats on its welcome, which the view frame
       // draws (COR-1645). The page under test is the list, so there is a chat to list.
       if (path === '/chats') {
-        await runToEnd(request, 'echo', newThreadId('visual-system-list'), 'Hello echo');
+        await runToEnd(request, 'demo:echo', newThreadId('visual-system-list'), 'Hello echo');
       }
       await page.setViewportSize(DESKTOP);
       await page.goto(path);
@@ -198,7 +198,7 @@ test.describe('a chat', () => {
     request,
   }) => {
     const threadId = newThreadId('visual-system');
-    const stream = await runToEnd(request, 'tool-runner', threadId, 'Refund order-1001');
+    const stream = await runToEnd(request, 'demo:tool-runner', threadId, 'Refund order-1001');
     await approveThroughMount(request, threadId, stream);
     await page.setViewportSize(DESKTOP);
     await page.goto(`/chats/${threadId}`);

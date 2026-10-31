@@ -1,4 +1,5 @@
 import type { Storage } from '@lostgradient/storage';
+import type { ToolPolicyHooks } from 'armorer';
 import type { z } from 'zod';
 
 import type { PluginSetupResult } from './contributions.ts';
@@ -35,6 +36,15 @@ export interface PluginSetupContext<TConfiguration = unknown> {
    * the host has started, from `setup` itself, rejects.
    */
   readonly host: PluginHostApi;
+  /**
+   * The host's tool-approval rule as a policy hook, for the toolbox a plugin builds for one of its
+   * code agents: pass it as the toolbox's `policy`. A tool of `tools` that only reads runs, and one
+   * that changes something waits for an operator, unless the chat's permission mode says
+   * otherwise: `read-only` denies it, `allow-all` lets it run, and `always` asks about every call.
+   * It governs only the tools named in `tools`, because the host adds its own tools to a run's
+   * toolbox, and those take the host's rule instead.
+   */
+  readonly toolApprovalHooks: (tools: readonly string[]) => ToolPolicyHooks;
 }
 
 /** The schema a plugin without a `configuration` declares: an object with no members. */

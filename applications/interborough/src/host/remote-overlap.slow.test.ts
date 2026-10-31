@@ -16,6 +16,11 @@
  * The suite needs a live PostgreSQL (`@lostgradient/testing/postgres-server`) and skips without one.
  */
 import { createAgent, stopWhen, type GenerateFunction } from '@lostgradient/operative';
+import {
+  HUMAN_INPUT_PROMPT,
+  HUMAN_INPUT_SIGNAL,
+  SEEDED_GOAL_RUN_IDENTIFIER,
+} from '@lostgradient/plugin-demo';
 import { openPostgresTestDatabase } from '@lostgradient/testing/postgres-server';
 import { createS3TestServer, type S3TestServer } from '@lostgradient/testing/s3-server';
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
@@ -24,9 +29,9 @@ import { createTool, createToolbox } from 'armorer';
 import { afterAll, afterEach, beforeAll, describe, expect, mock, spyOn, test } from 'bun:test';
 import { z } from 'zod';
 
+import { pluginsWithEnabledDemo } from './demo-plugin.test-support.ts';
 import { startHost, type Host } from './host.ts';
 import { createFreshDatabaseUrl, remoteEnvironment } from './remote-backends.test-support.ts';
-import { HUMAN_INPUT_PROMPT, HUMAN_INPUT_SIGNAL, SEEDED_GOAL_RUN_IDENTIFIER } from './seed.ts';
 
 const database = await openPostgresTestDatabase();
 
@@ -113,6 +118,7 @@ function startOverlapHost(environment: Record<string, string>, counter: { count:
   return startHost({
     environment,
     port: 0,
+    plugins: pluginsWithEnabledDemo(),
     extraAgents: { agents: createOverlapAgents(counter) },
   }).then((host) => {
     hosts.push(host);

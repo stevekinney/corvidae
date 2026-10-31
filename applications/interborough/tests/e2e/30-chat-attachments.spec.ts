@@ -70,7 +70,7 @@ for (const viewport of VIEWPORTS) {
 }
 
 test('offers no way to attach to an agent that names no model', async ({ page }) => {
-  await page.goto('/chats/new?agent=assistant');
+  await page.goto('/chats/new?agent=demo:assistant');
   await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
 
   await expect(page.getByRole('textbox')).toBeVisible();

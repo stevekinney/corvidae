@@ -1,11 +1,12 @@
+import { HUMAN_INPUT_PROMPT, HUMAN_INPUT_SIGNAL } from '@lostgradient/plugin-demo';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { enableDemoPlugin, pluginsWithUnseededDemo } from './demo-plugin.test-support.ts';
 import { startHost, type Host } from './host.ts';
-import { HUMAN_INPUT_PROMPT, HUMAN_INPUT_SIGNAL } from './seed.ts';
 
 const homes: string[] = [];
 const hosts: Host[] = [];
@@ -17,10 +18,11 @@ async function createHome(): Promise<string> {
 }
 
 async function start(home: string): Promise<Host> {
+  await enableDemoPlugin(home);
   const host = await startHost({
     environment: { INTERBOROUGH_HOME: home },
     port: 0,
-    seed: false,
+    plugins: pluginsWithUnseededDemo(),
   });
   hosts.push(host);
   return host;
@@ -51,7 +53,7 @@ describe('a parked run across a clean host restart', () => {
   test('keeps the review and completes after the next host resolves it', async () => {
     const home = await createHome();
     const first = await start(home);
-    const run = await first.bureau.tasks.start('request-human-input', 'Ship the release');
+    const run = await first.bureau.tasks.start('demo:request-human-input', 'Ship the release');
     const firstReview = await waitForReview(first, run.id);
     expect(firstReview).toMatchObject({
       kind: 'human-wait',

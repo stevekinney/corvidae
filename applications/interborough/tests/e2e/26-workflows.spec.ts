@@ -37,7 +37,7 @@ const WIDTHS = [375, 1280] as const;
 
 /** A document needs at least one step. */
 const STEPS = [
-  { kind: 'activity', handler: 'agent', input: { agent: 'assistant', message: 'Say hello.' } },
+  { kind: 'activity', handler: 'agent', input: { agent: 'demo:assistant', message: 'Say hello.' } },
 ];
 
 /** Identifiers this file's specs create, removed after each spec. */
@@ -432,7 +432,7 @@ test.describe('an agent-authored type', () => {
       const root = detail(page);
       await expect(root.getByRole('heading', { level: 1 })).toHaveText(SEEDED_WORKFLOWS.digest);
       await expect(root).toContainText(WORKFLOW_COPY.agentAuthoredBadge);
-      await expect(root.getByTestId('workflow-agent')).toHaveText('assistant');
+      await expect(root.getByTestId('workflow-agent')).toHaveText('demo:assistant');
       await expect(root.getByTestId('workflow-description')).toHaveText('Writes the daily digest.');
       await expect(root.getByTestId('workflow-trigger')).toHaveText(
         describeCadence({ intervalMs: 86_400_000 }),
@@ -482,7 +482,7 @@ test.describe('an agent-authored type', () => {
       id: 'e2e-ran',
       expectedHash: file.hash,
       definition: {
-        agent: 'assistant',
+        agent: 'demo:assistant',
         trigger: { kind: 'signal', name: 'e2e-ran-go' },
         steps: [{ kind: 'await-signal', signal: 'e2e-ran-wait-later' }],
       },
@@ -606,13 +606,13 @@ test.describe('pause, resume, and delete', () => {
       id: 'e2e-stale',
       expectedHash: before.hash,
       definition: {
-        agent: 'assistant',
+        agent: 'demo:assistant',
         trigger: { kind: 'schedule', spec: '12h' },
         steps: [
           {
             kind: 'activity',
             handler: 'agent',
-            input: { agent: 'assistant', message: 'Edited.' },
+            input: { agent: 'demo:assistant', message: 'Edited.' },
           },
         ],
       },

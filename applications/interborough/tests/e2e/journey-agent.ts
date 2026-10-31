@@ -65,7 +65,7 @@ function authorResponse(context: GenerateContext): GenerateResponse {
             {
               kind: 'activity',
               handler: 'agent',
-              input: { agent: 'assistant', message: 'Write the journey digest.' },
+              input: { agent: 'demo:assistant', message: 'Write the journey digest.' },
             },
           ],
         },

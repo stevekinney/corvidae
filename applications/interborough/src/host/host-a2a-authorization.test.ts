@@ -390,7 +390,6 @@ async function startConfigured(configuration: Configuration): Promise<Host> {
       ...(configuration === 'public' ? { INTERBOROUGH_A2A_PUBLIC_ORIGIN: PUBLIC_ORIGIN } : {}),
     },
     port: 0,
-    seed: false,
     resolveProviderGenerate: fakeProvider('Answered.').resolver,
     warn: (message) => warnings.push(message),
   });
@@ -608,7 +607,6 @@ describe('the public origin', () => {
       startHost({
         environment: { INTERBOROUGH_HOME: home, INTERBOROUGH_A2A_PUBLIC_ORIGIN: PUBLIC_ORIGIN },
         port: 0,
-        seed: false,
       }),
     );
 
@@ -624,7 +622,6 @@ describe('the public origin', () => {
         startHost({
           environment: { INTERBOROUGH_HOME: home, INTERBOROUGH_A2A_PUBLIC_ORIGIN: origin },
           port: 0,
-          seed: false,
         }),
       );
 
@@ -638,7 +635,7 @@ describe('the A2A key', () => {
     const home = await makeHome('  \n');
 
     const failure = await rejectionOf(
-      startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0, seed: false }),
+      startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0 }),
     );
 
     expect(String(failure)).toContain('a2a-api-key');
@@ -650,7 +647,6 @@ describe('the A2A key', () => {
     const host = await startHost({
       environment: { INTERBOROUGH_HOME: home },
       port: 0,
-      seed: false,
       warn: (message) => warnings.push(message),
     });
     try {

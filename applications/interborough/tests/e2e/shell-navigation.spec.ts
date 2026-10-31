@@ -92,7 +92,7 @@ test('compact density from quick settings applies to every view and survives a r
 });
 
 test('the breadcrumb trail follows the route, and its links open their pages', async ({ page }) => {
-  await page.goto('/agents/assistant/memories');
+  await page.goto('/agents/demo:assistant/memories');
   const trail = page.getByRole('banner').getByRole('navigation', { name: 'Breadcrumb' });
   await expect(trail.getByRole('link', { name: 'Agents' })).toBeVisible();
   await expect(trail.getByText('Memory')).toHaveAttribute('aria-current', 'page');

@@ -1,7 +1,11 @@
 /**
  * COR-1879 — what a running plugin contributes reaches the option it belongs to.
  */
-import { definePlugin, type PluginSetupResult } from '@lostgradient/interborough-plugin';
+import {
+  definePlugin,
+  type PluginSetupContext,
+  type PluginSetupResult,
+} from '@lostgradient/interborough-plugin';
 import { createAgent } from '@lostgradient/operative';
 import { createTool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
@@ -237,6 +241,31 @@ describe('composePlugins', () => {
     ).toEqual(['kit/page@1.2.0']);
     expect(options.onlineEvals?.judges.map(({ name }) => name)).toEqual(['kit:judge']);
     expect(Object.keys(options.agents ?? {})).toEqual(['kit:writer']);
+  });
+
+  it('gives setup the host’s tool-approval rule for the tools a plugin names, and no others', async () => {
+    let hooks: ReturnType<PluginSetupContext['toolApprovalHooks']> | undefined;
+    const descriptor = definePlugin({
+      name: 'p',
+      version: '1.0.0',
+      description: 'p',
+      setup: ({ toolApprovalHooks }) => {
+        hooks = toolApprovalHooks(['governed']);
+        return {};
+      },
+    });
+    await composePlugins({ plugins: [{ descriptor, source: 'package', location: '@example/p' }] });
+
+    const decide = (toolName: string) =>
+      hooks?.beforeExecute?.({
+        toolName,
+        metadata: { mutates: true },
+        tags: [],
+        configuration: { id: toolName },
+      } as never);
+    // A tool it names that changes something waits for an operator; one it does not name is left to the host.
+    expect(await decide('governed')).toMatchObject({ allow: false, status: 'needs_approval' });
+    expect(await decide('hosts-own')).toEqual({ allow: true, status: 'allow' });
   });
 
   it('refuses a plugin that claims a name a host option holds, for every kind a host can hold', async () => {

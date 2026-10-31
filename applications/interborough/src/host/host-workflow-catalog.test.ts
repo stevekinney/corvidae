@@ -30,6 +30,7 @@ import {
   signalWorkflows,
 } from '../lib/workflow-files.ts';
 import { startHost, type Host } from './host.ts';
+import { scriptedAssistantAgents } from './scripted-assistant.test-support.ts';
 
 const directories: string[] = [];
 const hosts: Host[] = [];
@@ -67,7 +68,11 @@ async function start(): Promise<{ host: Host; client: HttpClient; options: { fet
       `${JSON.stringify(document, null, 2)}\n`,
     );
   }
-  const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0, seed: false });
+  const host = await startHost({
+    environment: { INTERBOROUGH_HOME: home },
+    port: 0,
+    extraAgents: scriptedAssistantAgents(),
+  });
   hosts.push(host);
   const fetcher: Fetcher = (input, init) => fetch(new URL(urlOf(input), host.url), init);
   return {

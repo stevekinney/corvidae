@@ -8,6 +8,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { enableDemoPlugin } from './demo-plugin.test-support.ts';
 import { startHost, type Host } from './host.ts';
 
 const homes: string[] = [];
@@ -23,6 +24,7 @@ afterEach(async () => {
 async function start(): Promise<Host> {
   const home = await mkdtemp(join(tmpdir(), 'interborough-bureau-websocket-'));
   homes.push(home);
+  await enableDemoPlugin(home);
   const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0 });
   hosts.push(host);
   return host;
@@ -114,7 +116,7 @@ describe('an upgrade under /bureau/', () => {
     });
     expect(subscribed).toMatchObject({ id: 1, result: { subscriptionId: expect.any(String) } });
     const delivered = client.next((frame) => frame['method'] === 'weft.events.deliver');
-    const run = await host.bureau.tasks.start('assistant', 'Tell me when you start.');
+    const run = await host.bureau.tasks.start('demo:assistant', 'Tell me when you start.');
 
     expect(await delivered).toMatchObject({
       method: 'weft.events.deliver',

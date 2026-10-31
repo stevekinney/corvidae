@@ -211,7 +211,7 @@ test('reloads while an agent waits on a question, and answers it from the review
   request,
   checkA11y,
 }) => {
-  await page.goto('/chats/new?agent=request-human-input');
+  await page.goto('/chats/new?agent=demo:request-human-input');
   await send(page, 'Ship it');
   await expect(page).toHaveURL(sessionAddress);
   const threadId = sessionOf(page);

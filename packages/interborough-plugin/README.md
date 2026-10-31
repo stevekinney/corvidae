@@ -6,7 +6,7 @@ The authoring package for Interborough plugins. A plugin is trusted, in-process 
 | --- | --- |
 | `definePlugin` | Declares a plugin and refuses a malformed descriptor where it is written. |
 | `PluginDescriptor` | `name`, `version`, `description`, `required`, `enabledByDefault`, `configuration`, `secrets`, `content`, and `setup`. |
-| `PluginSetupContext` | The parsed `configuration`, the `secrets` reader, and `storage` confined to the key prefix `plugin:<name>:`. |
+| `PluginSetupContext` | The parsed `configuration`, the `secrets` reader, `storage` confined to the key prefix `plugin:<name>:`, the `host` API, and `toolApprovalHooks`, the host's tool-approval rule as a `policy` for a toolbox the plugin builds for a code agent. |
 | `PluginSetupResult` | What `setup` returns: the contributions, and `afterStart(bureau, context)`. |
 | `PluginHostApi` | The structural slice of Bureau `afterStart` receives: `agents.list`, `schedules.list`, `schedules.create`, `goals.create`. |
 | `PluginContributions` | Tools, activities, validators, guardrails, run hooks, decision routers, trigger kinds, hook action kinds, providers (each with its catalog rows), embedders, memory detectors, eval judges, MCP apps, event formatters, and code agents. |

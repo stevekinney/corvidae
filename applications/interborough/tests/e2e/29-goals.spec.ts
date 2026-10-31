@@ -24,7 +24,7 @@ for (const width of WIDTHS) {
     await expect(seeded).toHaveAttribute('data-status', 'succeeded');
     await expect(seeded.getByRole('link', { name: 'assistant' })).toHaveAttribute(
       'href',
-      '/agents/assistant',
+      '/agents/demo%3Aassistant',
     );
     await checkA11y(`goals — the list at ${width}px`);
   });
@@ -82,11 +82,11 @@ test('creates a goal that names the validator that never passes, cancels it, and
   await page.getByRole('link', { name: GOALS_COPY.newAction }).click();
   await expect(page).toHaveURL(/\/goals\/new$/);
   await expect(page.getByRole('heading', { level: 1, name: GOALS_COPY.form.title })).toBeVisible();
-  await page.getByLabel(GOALS_COPY.form.agentLabel).selectOption('assistant');
+  await page.getByLabel(GOALS_COPY.form.agentLabel).selectOption('demo:assistant');
   await page.getByLabel(GOALS_COPY.form.promptLabel).fill('Say hello, and keep trying.');
   await page.getByLabel(GOALS_COPY.form.identityNameLabel).fill('say-hello-forever');
   await page.getByLabel(GOALS_COPY.form.identityVersionLabel).fill('1');
-  await page.getByLabel(GOALS_COPY.form.validatorNameLabel).fill('never-passes');
+  await page.getByLabel(GOALS_COPY.form.validatorNameLabel).fill('demo:never-passes');
   await page.getByLabel(GOALS_COPY.form.validatorVersionLabel).fill('1');
   await checkA11y('goals — the new goal page');
   await page.getByRole('button', { name: GOALS_COPY.form.createAction }).click();
@@ -116,7 +116,7 @@ test('says Unprocessable on the page for a validator the Bureau does not have', 
 }) => {
   await page.goto('/goals/new');
   await expect(page.getByRole('heading', { level: 1, name: GOALS_COPY.form.title })).toBeVisible();
-  await page.getByLabel(GOALS_COPY.form.agentLabel).selectOption('assistant');
+  await page.getByLabel(GOALS_COPY.form.agentLabel).selectOption('demo:assistant');
   await page.getByLabel(GOALS_COPY.form.promptLabel).fill('Say hello.');
   await page.getByLabel(GOALS_COPY.form.identityNameLabel).fill('say-hello');
   await page.getByLabel(GOALS_COPY.form.identityVersionLabel).fill('1');

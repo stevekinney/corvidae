@@ -27,6 +27,7 @@ import { seedRefreshSources } from '../../fixtures/workflow-refresh.ts';
 import { seedWorkflowRevisions } from '../../fixtures/workflow-revisions.ts';
 import { seed, workflows } from '../../fixtures/workflows.ts';
 import { buildApplication } from '../../scripts/build.ts';
+import { enableDemoPlugin } from '../../src/host/demo-plugin.test-support.ts';
 import { fakeProvider, writeProviderHome } from '../../src/host/fake-provider.test-support.ts';
 import { startHost } from '../../src/host/host.ts';
 import { createBarrier, createBarrierAgents } from './barrier-agent.ts';
@@ -68,6 +69,10 @@ await mkdir(home, { recursive: true });
 await writeProviderHome(home, ['sonnet', 'claude-haiku-4-5']);
 // Executable skills in two sources, one trusted and one not (`skills-support.ts`).
 await seedSkills(home);
+// The scripted agents the specs talk to (`demo:assistant`, `demo:tool-runner`, and the rest) come
+// from the demo plugin, which is off by default, so the home turns it on. It goes last because it
+// merges into the `configuration.json` the lines above wrote.
+await enableDemoPlugin(home);
 const provider = fakeProvider('This reply comes from the end-to-end provider stub.');
 
 // Three workflow files, in the directory the Bureau reads at start (`26-workflows.spec.ts`): one
@@ -234,6 +239,7 @@ await writeFile(
   join(bureauWorkflowDirectory, 'e2e-digest.json'),
   `${JSON.stringify(SEEDED_WORKFLOW_FILES['e2e-digest'], null, 2)}\n`,
 );
+await enableDemoPlugin(bureauHome);
 const bureauHost = await startHost({
   environment: { INTERBOROUGH_HOME: bureauHome },
   port: E2E_BUREAU_PORT,
@@ -248,6 +254,7 @@ const bureauHost = await startHost({
 const journeyHome = join(scratch, 'journey-home');
 await mkdir(journeyHome, { recursive: true });
 await writeProviderHome(journeyHome);
+await enableDemoPlugin(journeyHome);
 const journeyBarrier = createBarrier();
 const journeyHost = await startHost({
   extraAgents: {

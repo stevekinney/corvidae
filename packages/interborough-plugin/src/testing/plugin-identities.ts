@@ -181,6 +181,7 @@ export async function pluginContributions(
     secrets: { get: async () => undefined },
     storage: new MemoryStorage(),
     host: unstartedHost,
+    toolApprovalHooks: () => ({}),
   });
 }
 

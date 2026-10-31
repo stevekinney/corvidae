@@ -1,16 +1,17 @@
 /**
- * The seeded `model-switcher` (COR-1565) against the real host: a session of it can be switched
+ * The demo `model-switcher` (COR-1565) against the real host: a session of it can be switched
  * between the two models its script names, and the next reply says which model answered. The
  * script calls no model, and the host's provider path is never reached, so no key is read.
  */
+import { MODEL_SWITCHER_MODELS, modelSwitcherReply } from '@lostgradient/plugin-demo';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { enableDemoPlugin } from './demo-plugin.test-support.ts';
 import { writeProviderHome } from './fake-provider.test-support.ts';
 import { startHost, type Host } from './host.ts';
-import { MODEL_SWITCHER_MODELS, modelSwitcherReply } from './seed.ts';
 
 const directories: string[] = [];
 const hosts: Host[] = [];
@@ -30,6 +31,7 @@ async function start(models: readonly string[] | undefined): Promise<Host> {
     await mkdir(home, { recursive: true });
     await writeProviderHome(home, models);
   }
+  await enableDemoPlugin(home);
   const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0 });
   hosts.push(host);
   return host;
@@ -48,7 +50,7 @@ async function call(host: Host, method: string, params: unknown): Promise<unknow
 
 /** One run of a session, read to its end; the stream's text is what the agent said. */
 async function send(host: Host, threadId: string, message: string): Promise<string> {
-  const response = await fetch(new URL('/bureau/ag-ui/agents/model-switcher/run', host.url), {
+  const response = await fetch(new URL('/bureau/ag-ui/agents/demo:model-switcher/run', host.url), {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
     body: JSON.stringify({
@@ -67,11 +69,11 @@ async function send(host: Host, threadId: string, message: string): Promise<stri
 
 const [FIRST, SECOND] = MODEL_SWITCHER_MODELS;
 
-describe('the seeded model-switcher', () => {
+describe('the demo model-switcher', () => {
   test('is selectable over the two models its script names, once the host offers both', async () => {
     const host = await start(['sonnet', 'claude-haiku-4-5']);
     const models = (await call(host, 'bureau.agents.models', {
-      agentName: 'model-switcher',
+      agentName: 'demo:model-switcher',
     })) as {
       selectable: boolean;
       models: { provider: string; model: string }[];
@@ -87,12 +89,12 @@ describe('the seeded model-switcher', () => {
   test('offers only the models the host has, and none on a host with no provider', async () => {
     const one = await start(['sonnet']);
     const offered = (await call(one, 'bureau.agents.models', {
-      agentName: 'model-switcher',
+      agentName: 'demo:model-switcher',
     })) as { models: { model: string }[] };
     expect(offered.models.map((entry) => entry.model)).toEqual([FIRST.model]);
     const none = await start(undefined);
     const empty = (await call(none, 'bureau.agents.models', {
-      agentName: 'model-switcher',
+      agentName: 'demo:model-switcher',
     })) as { selectable: boolean; models: unknown[] };
     expect(empty.selectable).toBe(true);
     expect(empty.models).toEqual([]);
