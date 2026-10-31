@@ -165,11 +165,13 @@ export interface PluginMcpApp {
   readonly entry: URL;
   /** The CSS inlined into the page's `<style>` element, so it needs no origin to load from. */
   readonly styles?: string;
-  /**
-   * The Bureau MCP tool names the panel may call. A panel may call no other tool. The host also
-   * links each of these tools to the page, so a client that runs one can open it.
-   */
+  /** The Bureau MCP tool names the panel may call. A panel may call no other tool. */
   readonly allowedTools: string[];
+  /**
+   * The one Bureau MCP tool a client runs to open the page: the host links this tool to the page.
+   * It is one of `allowedTools`.
+   */
+  readonly opensFromTool: string;
 }
 
 /** A rendering of one event for the host's activity views. */

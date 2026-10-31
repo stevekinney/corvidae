@@ -363,6 +363,7 @@ describe('MCP apps a plugin contributes', () => {
     uri,
     entry: new URL(`file:///${name}/app.ts`),
     allowedTools: ['bureau.tasks.inspect'],
+    opensFromTool: 'bureau.tasks.inspect',
   });
 
   it('lists the apps of the running plugins, in load order, for the host to serve', async () => {
@@ -377,6 +378,17 @@ describe('MCP apps a plugin contributes', () => {
     expect(plugins.mcpApps().map(({ plugin, version, app }) => [plugin, version, app.uri])).toEqual(
       [['first', '1.0.0', 'ui://first/one/v1']],
     );
+  });
+
+  it('skips a plugin whose app is opened from a tool it may not call', async () => {
+    const { records } = await composePlugins<ComposableOptions>({
+      plugins: [
+        pluginEntry('a', () => ({
+          mcpApps: [{ ...mcpApp('one', 'ui://a/one/v1'), opensFromTool: 'bureau.tasks.cancel' }],
+        })),
+      ],
+    });
+    expect(records[0]?.status).toBe('skipped');
   });
 
   it('skips a plugin whose app has no ui:// URI, or whose URI another plugin holds', async () => {

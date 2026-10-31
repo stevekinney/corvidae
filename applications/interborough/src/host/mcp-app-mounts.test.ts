@@ -36,6 +36,7 @@ async function app(name: string, overrides: Partial<PluginMcpApp> = {}): Promise
     entry: pathToFileURL(entry),
     styles: 'body{margin:0}',
     allowedTools: [`bureau.test.${name}`],
+    opensFromTool: `bureau.test.${name}`,
     ...overrides,
   };
 }
@@ -75,11 +76,14 @@ describe('the MCP apps the host serves', () => {
     expect(MCP_APP_UI_META.permissions).toEqual({});
   });
 
-  it('links each allowed tool to the page it opens', async () => {
+  it('links the tool that opens an app to its page, and no other allowed tool', async () => {
     const { toolMeta } = await mcpAppMounts(
-      contributed(await app('one', { allowedTools: ['a.first', 'a.second'] }), await app('two')),
+      contributed(
+        await app('one', { allowedTools: ['a.first', 'a.second'], opensFromTool: 'a.second' }),
+        await app('two'),
+      ),
     );
-    expect(Object.keys(toolMeta).toSorted()).toEqual(['a.first', 'a.second', 'bureau.test.two']);
+    expect(Object.keys(toolMeta).toSorted()).toEqual(['a.second', 'bureau.test.two']);
     expect(toolMeta['a.second']).toEqual({
       ui: { resourceUri: 'ui://test/one/v1', visibility: ['model', 'app'] },
     });
@@ -88,7 +92,7 @@ describe('the MCP apps the host serves', () => {
   it('refuses two apps that name the same tool', async () => {
     const apps = contributed(
       await app('one'),
-      await app('two', { allowedTools: ['bureau.test.one'] }),
+      await app('two', { allowedTools: ['bureau.test.one'], opensFromTool: 'bureau.test.one' }),
     );
     expect(String(await rejectionOf(mcpAppMounts(apps)))).toMatch(/test:one and test:two/);
   });

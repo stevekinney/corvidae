@@ -292,6 +292,11 @@ function planOf(
         `setup returned the MCP app "${app.name}" with the URI "${app.uri}", which is not a ui:// resource URI.`,
       );
     }
+    if (!app.allowedTools.includes(app.opensFromTool)) {
+      throw new TypeError(
+        `setup returned the MCP app "${app.name}" opened from "${app.opensFromTool}", which is not one of its allowedTools.`,
+      );
+    }
     contribute('mcp-app', app.name);
     claims.push({ space: 'mcp-app-uri', name: app.uri });
   }

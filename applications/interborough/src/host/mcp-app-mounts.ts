@@ -28,7 +28,7 @@ export type ContributedMcpApps = ReturnType<BureauPlugins['mcpApps']>;
 
 /**
  * Build every contributed app once and merge their resources and tool metadata. An app is linked
- * from each tool in its `allowedTools`; two apps that name the same tool are refused, because the
+ * from its `opensFromTool`; two apps that name the same tool are refused, because the
  * adapter links a tool to one page.
  */
 export async function mcpAppMounts(contributed: ContributedMcpApps) {
@@ -57,14 +57,16 @@ export async function mcpAppMounts(contributed: ContributedMcpApps) {
       text: page.html,
       _meta: { ui: MCP_APP_UI_META, contentDigest: page.contentDigest },
     });
-    for (const tool of app.allowedTools) {
-      const owner = toolOwner.get(tool);
-      if (owner !== undefined) {
-        throw new Error(`The tool "${tool}" opens both ${owner} and ${id}; a tool opens one page.`);
-      }
-      toolOwner.set(tool, id);
-      toolMeta[tool] = { ui: { resourceUri: app.uri, visibility: ['model', 'app'] } };
+    const owner = toolOwner.get(app.opensFromTool);
+    if (owner !== undefined) {
+      throw new Error(
+        `The tool "${app.opensFromTool}" opens both ${owner} and ${id}; a tool opens one page.`,
+      );
     }
+    toolOwner.set(app.opensFromTool, id);
+    toolMeta[app.opensFromTool] = {
+      ui: { resourceUri: app.uri, visibility: ['model', 'app'] },
+    };
   }
   return { resources, toolMeta };
 }

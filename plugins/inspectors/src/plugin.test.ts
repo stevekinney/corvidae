@@ -1,6 +1,8 @@
 import { createPluginTestHost } from '@lostgradient/bureau/testing';
 import { pluginContract } from '@lostgradient/interborough-plugin/testing';
 import { describe, expect, it } from 'bun:test';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import inspectors, { pendingReview, runInspector } from './plugin.ts';
 
@@ -21,9 +23,28 @@ describe('the inspectors plugin', () => {
     expect(pendingReview.uri).toBe('ui://bureau/pending-review/v1');
   });
 
-  it('links each panel to the tool a client runs to open it', () => {
-    expect(runInspector.allowedTools).toEqual(['bureau.tasks.inspect']);
-    expect(pendingReview.allowedTools).toEqual(['bureau.reviews.list']);
+  it('links each panel to the tool a client runs to open it, one it may call', () => {
+    expect(runInspector.opensFromTool).toBe('bureau.tasks.inspect');
+    expect(pendingReview.opensFromTool).toBe('bureau.reviews.list');
+    expect(runInspector.allowedTools).toContain(runInspector.opensFromTool);
+    expect(pendingReview.allowedTools).toContain(pendingReview.opensFromTool);
+  });
+
+  it('lists every Bureau tool a page names in its source, so the list cannot drift', async () => {
+    const directory = fileURLToPath(new URL('.', import.meta.url));
+    for (const [app, folder] of [
+      [runInspector, 'run-inspector'],
+      [pendingReview, 'pending-review'],
+    ] as const) {
+      const named = new Set<string>();
+      for await (const file of new Bun.Glob(`${folder}/*.ts`).scan(directory)) {
+        if (file.endsWith('.test.ts')) continue;
+        const source = await Bun.file(join(directory, file)).text();
+        for (const [tool] of source.matchAll(/\bbureau\.[a-z]+\.[a-z]+\b/g)) named.add(tool);
+      }
+      expect(named.size, folder).toBeGreaterThan(0);
+      expect([...named].toSorted(), folder).toEqual(app.allowedTools.toSorted());
+    }
   });
 
   it('points every panel at an entry module that exists', async () => {
