@@ -159,12 +159,22 @@ const DURABILITY_KEYS: ReadonlySet<string> = new Set([
 /** The one setting the Model policy section holds, and so the General section does not. */
 export const MODEL_POLICY_KEY = 'modelPolicy';
 
-/** The sections of Settings that edit settings: General holds every key but the model policy. */
-export type SettingsSectionId = 'general' | 'model-policy';
+/**
+ * The sections of Settings that edit settings: General holds every key but the two below, Model
+ * policy holds the model policy, and the Decisions part of the Models page holds `decisions.*`.
+ */
+export type SettingsSectionId = 'general' | 'model-policy' | 'decisions';
+
+/** The settings the Models page holds: the decision model, its fallback, and its limit per task. */
+function isDecisionKey(key: string): boolean {
+  return key.startsWith('decisions.');
+}
 
 /** Whether the section `section` edits the key `key`. */
 export function inSection(key: string, section: SettingsSectionId): boolean {
-  return (key === MODEL_POLICY_KEY) === (section === 'model-policy');
+  if (section === 'model-policy') return key === MODEL_POLICY_KEY;
+  if (section === 'decisions') return isDecisionKey(key);
+  return key !== MODEL_POLICY_KEY && !isDecisionKey(key);
 }
 
 /**

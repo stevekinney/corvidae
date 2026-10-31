@@ -1,6 +1,6 @@
 /**
  * `/settings` (COR-1711) against the real host: the page draws a control for every setting the
- * Bureau publishes but the model policy, which has a section of its own, shows the key the host locked read-only, and changes what the Bureau does.
+ * Bureau publishes but the model policy and the decisions, which have sections of their own, shows the key the host locked read-only, and changes what the Bureau does.
  * `tools.humanInput` is the setting whose effect a person can see: with it off, a chat with
  * `request-human-input` asks nothing and leaves nothing to review; with it back on, the same chat
  * parks on its question and the question is waiting in Reviews.
@@ -79,7 +79,10 @@ for (const width of WIDTHS) {
         schema: { properties: Record<string, unknown> };
       }
     ).schema.properties;
-    const keys = Object.keys(published).filter((key) => key !== 'modelPolicy');
+    // The model policy has a section of its own, and the decisions are on Settings › Models.
+    const keys = Object.keys(published).filter(
+      (key) => key !== 'modelPolicy' && !key.startsWith('decisions.'),
+    );
     await expect(page.locator('[data-setting]')).toHaveCount(keys.length);
     for (const key of keys) {
       // A value that has none is Not set, with a button to set it; every other has a control.
@@ -200,7 +203,7 @@ test('saves on ⌘Enter from a field, and puts nothing else in the update', asyn
     await wakeup.click();
     await expect(settingRow(page, 'tools.wakeup')).toHaveAttribute('data-dirty', 'true');
     // The shortcut acts with focus in a field, which is where a person is when they want to save.
-    await page.getByRole('spinbutton', { name: 'decisions.maximumPerTask' }).focus();
+    await page.getByRole('spinbutton', { name: 'logs.maximumLinesPerRun' }).focus();
     await page.keyboard.press('ControlOrMeta+Enter');
     await expect(page.getByText(SETTINGS_COPY.saved.title)).toBeVisible();
     await expect(settingRow(page, 'tools.wakeup')).toHaveAttribute('data-dirty', 'false');
@@ -235,8 +238,8 @@ test('edits an object without JSON, and a model name from the catalog', async ({
     await page.goto('/settings');
     const receipts = settingRow(page, 'retention.receipts');
     await expect(receipts.locator('textarea')).toHaveCount(0);
-    // The fallback model is a choice of the catalog's rows, never a typed `provider/model`.
-    const fallback = settingRow(page, 'decisions.fallbackModel');
+    // The summarizer model is a choice of the catalog's rows, never a typed `provider/model`.
+    const fallback = settingRow(page, 'context.summarizerModel');
     await expect(fallback.getByRole('combobox')).toBeVisible();
     await expect(fallback.getByRole('textbox')).toHaveCount(0);
     // A value the host has not set reads Not set, with a button that shows its fields.

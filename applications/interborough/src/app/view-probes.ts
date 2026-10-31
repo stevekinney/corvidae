@@ -211,10 +211,11 @@ export function probeFor(
       return probeAudit;
     case 'settings':
       // The sections that moved out of the System page read the engine, not the Bureau's settings;
-      // General and Model policy read the settings.
+      // General, Models and Model policy read the settings.
       if (
         pattern !== undefined &&
         pattern !== '/settings' &&
+        pattern !== '/settings/models' &&
         pattern !== '/settings/model-policy'
       ) {
         return probeEngineRegistry;

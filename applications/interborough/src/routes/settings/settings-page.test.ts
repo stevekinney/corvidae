@@ -71,9 +71,9 @@ describe('the page', () => {
     await findByRole('group', { name: SETTINGS_COPY.formLabel });
 
     const rows = [...container.querySelectorAll<HTMLElement>('[data-setting]')];
-    // The model policy has a section of its own.
+    // The model policy has a section of its own, and the decisions are on the Models page.
     expect(rows.map((entry) => entry.dataset['setting'])).toEqual(
-      SETTING_KEYS.filter((key) => key !== 'modelPolicy'),
+      SETTING_KEYS.filter((key) => key !== 'modelPolicy' && !key.startsWith('decisions.')),
     );
     for (const entry of rows) {
       expect(entry.querySelector(CONTROLS), entry.dataset['setting']).not.toBeNull();
@@ -90,7 +90,6 @@ describe('the page', () => {
     );
     expect(headings).toEqual([
       'Tools',
-      'Decisions',
       'Context',
       'Retention',
       'Memory',
@@ -348,27 +347,30 @@ describe('a save', () => {
       }),
     });
     const form = await findByRole('group', { name: SETTINGS_COPY.formLabel });
-    const select = row(container, 'decisions.fallbackModel')?.querySelector(
+    const select = row(container, 'context.summarizerModel')?.querySelector(
       'select',
     ) as HTMLSelectElement;
     await waitFor(() =>
       expect([...select.options].map((option) => option.value)).toEqual([
+        '',
         'anthropic/claude-haiku-5-5',
         'openai/gpt-5',
       ]),
     );
-    expect(row(container, 'decisions.fallbackModel')?.querySelector('input')).toBeNull();
+    expect(row(container, 'context.summarizerModel')?.querySelector('input')).toBeNull();
 
     await fireEvent.change(select, { target: { value: 'openai/gpt-5' } });
     await fireEvent.click(within(form).getByRole('button', { name: SETTINGS_COPY.saveAction }));
     await waitFor(() => expect(updates()).toHaveLength(1));
-    expect(updates()[0]?.params['patch']).toEqual({ 'decisions.fallbackModel': 'openai/gpt-5' });
+    expect(updates()[0]?.params['patch']).toEqual({ 'context.summarizerModel': 'openai/gpt-5' });
   });
 
   test('keeps the model a setting holds in its choices when the catalog does not list it', async () => {
-    const { container, findByRole } = open(servedSettings());
+    const served = servedSettings();
+    served.values = { ...served.values, 'context.summarizerModel': 'anthropic/claude-haiku-5-5' };
+    const { container, findByRole } = open(served);
     await findByRole('group', { name: SETTINGS_COPY.formLabel });
-    const select = row(container, 'decisions.fallbackModel')?.querySelector(
+    const select = row(container, 'context.summarizerModel')?.querySelector(
       'select',
     ) as HTMLSelectElement;
     expect([...select.options].map((option) => option.value)).toContain(

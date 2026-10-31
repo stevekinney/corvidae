@@ -24,7 +24,7 @@
  * entry says it fails at) fails this specification, so remove it; an unlisted route that overflows
  * fails it too.
  */
-import type { Page } from '@playwright/test';
+import type { APIRequestContext, Page } from '@playwright/test';
 
 import { WORKFLOW_COPY } from '../../src/app/copy.ts';
 import { routes } from '../../src/app/routes.ts';
@@ -44,6 +44,13 @@ import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
 const WIDTHS = [375, 768, 1280] as const;
 const HEIGHT = 900;
 
+/** One edit of the host's catalog, as far as this specification reads it. */
+interface CatalogEdit {
+  readonly provider: string;
+  readonly model: string;
+  readonly basedOn?: string;
+}
+
 /** A scrolling region may hold this many viewports of content before it counts as overflow. */
 const SCROLL_REGION_VIEWPORTS = 2;
 
@@ -58,6 +65,8 @@ const LONG_DESCRIPTION = 'An agent description that keeps going well past one li
 const LONG_INSTRUCTIONS = `Responsive instructions ${'i'.repeat(300)}`;
 const LONG_STORAGE_KEY = `responsive-${'k'.repeat(1989)}`;
 const LONG_MEMORY = `responsive-memory-${'m'.repeat(300)}`;
+/** A catalog row whose model name is one unbroken word, to be listed on Settings › Models. */
+const LONG_MODEL = `responsive-model-${'m'.repeat(300)}`;
 const CHAT_THREAD = newThreadId('responsive');
 const MEMORY_THREAD = newThreadId('responsive-memory');
 /** The agent-authored workflow the end-to-end host starts with; it has a file, so it has an editor. */
@@ -96,6 +105,8 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   // This host's engine holds none of the Bureau's own types; the Bureau's host lists them (26-workflows).
   '/internal-workflows': /No internal workflows/,
   '/health/runs': /order-processing/,
+  // The added row's long name, beside the Decisions part's heading, which loads last.
+  '/settings/models': /mmmmmmmmmm/,
 };
 
 /** What was measured: how far the document and the outlet scroll sideways, and what else does not fit. */
@@ -269,6 +280,36 @@ async function problemsAt(page: Page, pattern: string, width: number): Promise<s
   return findings;
 }
 
+/** The catalog edits the host holds now. */
+async function catalogEdits(request: APIRequestContext): Promise<CatalogEdit[]> {
+  const response = await request.get('/host/providers');
+  return ((await response.json()) as { catalog: CatalogEdit[] }).catalog;
+}
+
+/**
+ * Adds a row named `model` to the host's catalog, on Gemini, which has no allowlist, so the host
+ * serves it (the end-to-end home restricts Anthropic to two models). Connecting is safe to repeat.
+ */
+async function addCatalogRow(request: APIRequestContext, model: string): Promise<void> {
+  const connected = await request.put('/host/providers/gemini', {
+    data: { apiKey: 'e2e-responsive-gemini-key' },
+  });
+  expect(connected.ok(), 'connecting gemini').toBe(true);
+  const current = await catalogEdits(request);
+  const edits = current.filter((edit) => edit.model !== model);
+  const put = await request.put('/host/catalog', {
+    data: { edits: [...edits, { provider: 'gemini', model, basedOn: 'gemini-2.5-pro' }] },
+  });
+  expect(put.status(), 'adding the long model').toBe(200);
+}
+
+/** Takes the row named `model` out of the host's catalog edits. */
+async function removeCatalogRow(request: APIRequestContext, model: string): Promise<void> {
+  const current = await catalogEdits(request);
+  const edits = current.filter((edit) => edit.model !== model);
+  await request.put('/host/catalog', { data: { edits } });
+}
+
 let addresses: Readonly<Record<string, string>>;
 let variantAddresses: Readonly<Record<string, string>>;
 
@@ -293,6 +334,7 @@ test.beforeAll(async ({ playwright }) => {
       data: Buffer.from('a value'),
     });
     expect(stored.status(), 'storing the long key').toBeLessThan(300);
+    await addCatalogRow(request, LONG_MODEL);
     const listed = await request.get('/v1/workflows?type=order-processing&limit=1');
     const runs = (await listed.json()) as { items?: { id: string }[] };
     const scheduled = await request.get('/v1/schedules');
@@ -321,6 +363,7 @@ test.afterAll(async ({ playwright }) => {
     await removeAgent(request, AGENT_ID);
     await removeAgent(request, INSTRUCTIONS_AGENT_ID);
     await request.delete(`/v1/storage/${encodeURIComponent(LONG_STORAGE_KEY)}`);
+    await removeCatalogRow(request, LONG_MODEL);
     const listed = await request.post('/bureau/jsonrpc', {
       data: {
         jsonrpc: '2.0',

@@ -86,6 +86,7 @@ describe('page width by kind of page', () => {
       expect(widthOf(pattern), pattern).toBe('full');
     }
     expect(widthOf('/settings')).toBe('reading');
+    expect(widthOf('/settings/models')).toBe('reading');
     expect(widthOf('/settings/model-policy')).toBe('reading');
     expect(widthOf('/settings/data-and-retention')).toBe('reading');
     expect(widthOf('/chats/:chat')).toBe('reading');

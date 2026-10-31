@@ -201,6 +201,8 @@ export const queryKeys = {
   principal: () => ['principal'] as const,
   /** Where the host keeps what a person may edit by hand (`/host/paths`). */
   hostPaths: () => ['host', 'paths'] as const,
+  /** The model providers, the models they offer, and the catalog edits (`/host/providers`). */
+  hostProviders: () => ['host', 'providers'] as const,
   /** The probe behind a view's loading, empty, error, and forbidden states (`app/view-frame.svelte`). */
   view: (view: string, instance: string | null) => ['view', view, instance] as const,
   /** `weft.system.lease` (COR-124), read only by the Health page's Health tab. */
