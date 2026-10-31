@@ -11,6 +11,8 @@ import type { Storage } from '@lostgradient/storage';
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { PostgresStorage } from '@lostgradient/storage-postgres';
 import type { Tool } from 'armorer';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /**
  * How often a remote definition source lists its prefix, in milliseconds. A tick lists the prefix
@@ -147,6 +149,16 @@ export function createAgentSource(
       pollIntervalMilliseconds: REMOTE_POLL_INTERVAL_MILLISECONDS,
     },
   );
+}
+
+/**
+ * The read-only agent layer of the plugin `plugin` (COR-1897): the `agents` folder of its `content`
+ * URL, listed as `plugin:name`. A `content` that is not a `file:` URL names nothing a directory can
+ * hold, so it has no layer.
+ */
+export function createPluginAgentSource(plugin: string, content: URL): AgentSource | undefined {
+  if (content.protocol !== 'file:') return undefined;
+  return agentFileDirectory(join(fileURLToPath(content), 'agents'), { plugin });
 }
 
 /** The source of workflow definitions at `content`: a directory, or a bucket prefix polled for changes. */
