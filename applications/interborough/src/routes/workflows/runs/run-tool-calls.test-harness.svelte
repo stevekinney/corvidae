@@ -13,9 +13,10 @@
 
   interface HarnessProps {
     task: TaskView;
+    threadId?: string | null | undefined;
   }
 
-  let { task }: HarnessProps = $props();
+  let { task, threadId = undefined }: HarnessProps = $props();
 
   let events = $state(0);
   const queryClient = untrack(() => createQueryClient());
@@ -23,5 +24,5 @@
 
 <QueryClientProvider client={queryClient}>
   <button type="button" onclick={() => (events += 1)}>Report an event</button>
-  <RunToolCalls {task} {events} />
+  <RunToolCalls {task} {threadId} {events} />
 </QueryClientProvider>

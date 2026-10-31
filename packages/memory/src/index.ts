@@ -78,7 +78,11 @@ export type {
   MemoryDeletionPropagator,
   MemoryDeletionResult,
   MemoryEmbedderAvailability,
+  MemoryEmbeddingAdvanceOptions,
+  MemoryEmbeddingJobStatus,
   MemoryEmbeddingStatus,
+  MemoryEmbeddingSwitchRefusal,
+  MemoryEmbeddingSwitchResult,
   MemoryEvidenceBundle,
   MemoryExportResult,
   MemoryForgetMode,
@@ -230,6 +234,7 @@ export { chunkMarkdown, chunkText } from './chunking';
 export { createConsolidationTask } from './consolidation';
 export { createMemory } from './create-memory';
 export { createWeftMemoryRecordStorage } from './create-weft-memory-record-storage';
+export { DEFAULT_SWITCH_STEP_LIMIT } from './governance/embedding-switch';
 // The default key prefix is public for custom record storage.
 export { DEFAULT_MEMORY_KEY_PREFIX } from './create-weft-memory-record-storage';
 export { createDualNamespaceMemory } from './dual-namespace-memory';
@@ -269,6 +274,8 @@ export {
 } from './memory-vector-store';
 export type {
   CreateMemoryVectorStoreOptions,
+  MemoryEmbeddingJob,
+  MemoryEmbeddingJobState,
   MemoryEmbeddingProfile,
   MemoryVectorReference,
   MemoryVectorStore,

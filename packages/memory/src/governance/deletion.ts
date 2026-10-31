@@ -1,10 +1,9 @@
-import type { Embedder } from 'armorer';
-
 import {
   type MemoryRecordReference,
   MemoryRecordVersionConflictError,
 } from '../memory-record-storage';
 import type { GovernanceContext, ResolvedRecord } from './governance-context';
+import { cachingEmbedders } from './governed-embedding';
 import type {
   MemoryDeletionPropagationResult,
   MemoryDeletionPropagator,
@@ -182,26 +181,6 @@ interface Inspection {
   readonly contentDigests: readonly string[];
   /** The version of each record that still exists, keyed by {@link referenceKey}. */
   readonly versions: ReadonlyMap<string, number>;
-}
-
-/**
- * An embedder whose cache can evict entries by the SHA-256 digest of the content
- * they embedded, such as `withEmbeddingCache()`. Only such an embedder lets
- * the built-in `caches` handler claim eviction; any other cache needs a
- * configured propagator or a `not-retained` declaration.
- */
-type ContentEvictingEmbedder = Embedder & {
-  evictContent(contentDigests: readonly string[]): number | Promise<number>;
-};
-
-function evictsContent(embedder: Embedder): embedder is ContentEvictingEmbedder {
-  return 'evictContent' in embedder && typeof embedder.evictContent === 'function';
-}
-
-/** Every registered embedder that caches content, so a deletion evicts it from each. */
-function cachingEmbedders(context: GovernanceContext): ContentEvictingEmbedder[] {
-  const { registry } = context.embedding;
-  return registry.ids.map((id) => registry.resolve(id)).filter(evictsContent);
 }
 
 function emptyPlan(): MemoryDeletionPlan {
@@ -775,10 +754,11 @@ export function createDeletionEngine(context: GovernanceContext): DeletionEngine
       for (const reference of references) await context.textSearchProvider?.remove(reference.id);
       return {
         status: 'completed',
-        detail: 'text index entries and record-resident vectors removed',
+        // The vectors themselves left every embedding profile with the records, in the synchronous lane.
+        detail: 'text index entries removed; vectors left every embedding profile with the records',
       };
     }
-    const evicting = cachingEmbedders(context);
+    const evicting = cachingEmbedders(context.embedding.registry);
     if (target === 'caches' && evicting.length > 0) {
       let evicted = 0;
       for (const embedder of evicting)

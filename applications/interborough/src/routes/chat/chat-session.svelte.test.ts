@@ -132,6 +132,64 @@ describe('a follow-up', () => {
     await turn;
   });
 
+  test('sent during a run stays between the replies the Bureau saw it between, after the Bureau’s snapshot', async () => {
+    restore = installFetchImplementation(async () =>
+      Response.json({
+        jsonrpc: '2.0',
+        id: 1,
+        result: { outcome: 'admitted', receipt: { id: 'row', state: 'accepted' } },
+      }),
+    );
+    let finish: ((followUpId: string) => void) | undefined;
+    const encodeTo = (controller: ReadableStreamDefaultController<Uint8Array>, event: unknown) =>
+      controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`));
+    const open$ = new ReadableStream<Uint8Array>({
+      start(controller) {
+        encodeTo(controller, started);
+        for (const event of [
+          { type: 'TEXT_MESSAGE_START', messageId: 'reply-0', role: 'assistant' },
+          { type: 'TEXT_MESSAGE_CONTENT', messageId: 'reply-0', delta: 'First.' },
+          { type: 'TEXT_MESSAGE_END', messageId: 'reply-0' },
+          { type: 'TEXT_MESSAGE_START', messageId: 'reply-1', role: 'assistant' },
+          { type: 'TEXT_MESSAGE_CONTENT', messageId: 'reply-1', delta: 'Second.' },
+          { type: 'TEXT_MESSAGE_END', messageId: 'reply-1' },
+        ])
+          encodeTo(controller, event);
+        finish = (followUpId) => {
+          // What the Bureau holds: the follow-up arrived during the first reply and was answered by
+          // the second, and the snapshot comes before the run's end.
+          encodeTo(controller, {
+            type: 'MESSAGES_SNAPSHOT',
+            messages: [
+              { id: 'start', role: 'user', content: 'Start' },
+              { id: 'reply-0', role: 'assistant', content: 'First.' },
+              { id: followUpId, role: 'user', content: 'More' },
+              { id: 'reply-1', role: 'assistant', content: 'Second.' },
+            ],
+          });
+          encodeTo(controller, finished);
+          controller.close();
+        };
+      },
+    });
+    const session = open(
+      async () => new Response(open$, { headers: { 'content-type': 'text/event-stream' } }),
+    );
+    const turn = session.controller.adapter.sendMessage({ role: 'user', content: 'Start' }, []);
+    await until(() => session.streaming);
+    await session.controller.adapter.sendRunInput?.(THREAD, { role: 'user', content: 'More' }, []);
+    const followUpId = session.conversation.ids.find(
+      (id) => session.conversation.messages[id]?.content === 'More',
+    );
+
+    finish?.(followUpId!);
+    await turn;
+
+    expect(
+      session.conversation.ids.map((id) => session.conversation.messages[id]?.content),
+    ).toEqual(['Start', 'First.', 'More', 'Second.']);
+  });
+
   test('sends the text of a message made of parts', async () => {
     const calls: Array<{ params: { input: { payload: string } } }> = [];
     restore = installFetchImplementation(async (_input, init) => {
@@ -944,5 +1002,170 @@ describe('a stop before the run’s first event', () => {
 
     expect(calls).toBe(2);
     expect(session.streaming).toBe(false);
+  });
+});
+
+describe('a follow-up sent on a page that joined the run', () => {
+  const contents = (session: ChatSessionState): string[] =>
+    session.conversation.ids.map((id) => {
+      const content = session.conversation.messages[id]?.content;
+      return typeof content === 'string' ? content : '';
+    });
+  const idOf = (session: ChatSessionState, content: string) =>
+    session.conversation.ids.find((id) => session.conversation.messages[id]?.content === content)!;
+  const row = (id: string, role: 'user' | 'assistant', content: string) => ({ id, role, content });
+  const reply = (id: string, delta: string) => [
+    { type: 'TEXT_MESSAGE_START', messageId: id, role: 'assistant' },
+    { type: 'TEXT_MESSAGE_CONTENT', messageId: id, delta },
+    { type: 'TEXT_MESSAGE_END', messageId: id },
+  ];
+
+  /** A stream the test writes to as the Bureau would, and closes when the run ends. */
+  function liveStream() {
+    let controller!: ReadableStreamDefaultController<Uint8Array>;
+    const body = new ReadableStream<Uint8Array>({
+      start(opened) {
+        controller = opened;
+      },
+    });
+    return {
+      body,
+      write: (...events: unknown[]) => {
+        for (const event of events)
+          controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`));
+      },
+      close: () => controller.close(),
+    };
+  }
+
+  function admitFollowUps(): void {
+    restore = installFetchImplementation(async () =>
+      Response.json({
+        jsonrpc: '2.0',
+        id: 1,
+        result: { outcome: 'admitted', receipt: { id: 'row', state: 'accepted' } },
+      }),
+    );
+  }
+
+  function openOn(stream: ReturnType<typeof liveStream>): ChatSessionState {
+    return open(
+      async () => new Response(stream.body, { headers: { 'content-type': 'text/event-stream' } }),
+    );
+  }
+
+  // The peer stream sends no text events, so no row this turn streamed is on screen when the run
+  // ends, and the run's end has only the opening snapshot's rows to place the follow-up among.
+  test('stays between the replies the Bureau saw it between, with nothing streamed', async () => {
+    admitFollowUps();
+    const stream = liveStream();
+    const session = openOn(stream);
+    stream.write(started, {
+      type: 'MESSAGES_SNAPSHOT',
+      messages: [row('u1', 'user', 'Start'), row('r0', 'assistant', 'First.')],
+    });
+    await session.attach();
+    await until(() => session.streaming && contents(session).join() === 'Start,First.');
+
+    await session.controller.adapter.sendRunInput?.(THREAD, { role: 'user', content: 'More' }, []);
+    stream.write(
+      {
+        type: 'MESSAGES_SNAPSHOT',
+        messages: [
+          row('u1', 'user', 'Start'),
+          row('r0', 'assistant', 'First.'),
+          row(idOf(session, 'More'), 'user', 'More'),
+          row('r1', 'assistant', 'Second.'),
+        ],
+      },
+      finished,
+    );
+    stream.close();
+    await until(() => !session.streaming);
+
+    expect(contents(session)).toEqual(['Start', 'First.', 'More', 'Second.']);
+  });
+
+  test('keeps two follow-ups in the order the Bureau saw them, with nothing streamed', async () => {
+    admitFollowUps();
+    const stream = liveStream();
+    const session = openOn(stream);
+    stream.write(started, { type: 'MESSAGES_SNAPSHOT', messages: [row('u1', 'user', 'Start')] });
+    await session.attach();
+    await until(() => session.streaming && contents(session).join() === 'Start');
+
+    await session.controller.adapter.sendRunInput?.(THREAD, { role: 'user', content: 'More' }, []);
+    await session.controller.adapter.sendRunInput?.(THREAD, { role: 'user', content: 'Again' }, []);
+    stream.write(
+      {
+        type: 'MESSAGES_SNAPSHOT',
+        messages: [
+          row('u1', 'user', 'Start'),
+          row(idOf(session, 'More'), 'user', 'More'),
+          row('r0', 'assistant', 'First.'),
+          row(idOf(session, 'Again'), 'user', 'Again'),
+          row('r1', 'assistant', 'Second.'),
+        ],
+      },
+      finished,
+    );
+    stream.close();
+    await until(() => !session.streaming);
+
+    expect(contents(session)).toEqual(['Start', 'More', 'First.', 'Again', 'Second.']);
+  });
+
+  test('stays between the replies it was sent between when the page started the run', async () => {
+    admitFollowUps();
+    const stream = liveStream();
+    const session = openOn(stream);
+    const turn = session.controller.adapter.sendMessage({ role: 'user', content: 'Start' }, []);
+    stream.write(started, ...reply('r0', 'First.'));
+    await until(() => session.streaming && contents(session).includes('First.'));
+
+    await session.controller.adapter.sendRunInput?.(THREAD, { role: 'user', content: 'More' }, []);
+    await session.controller.adapter.sendRunInput?.(THREAD, { role: 'user', content: 'Again' }, []);
+    stream.write(...reply('r1', 'Second.'), ...reply('r2', 'Third.'), {
+      type: 'MESSAGES_SNAPSHOT',
+      messages: [
+        row(idOf(session, 'Start'), 'user', 'Start'),
+        row('r0', 'assistant', 'First.'),
+        row(idOf(session, 'More'), 'user', 'More'),
+        row('r1', 'assistant', 'Second.'),
+        row(idOf(session, 'Again'), 'user', 'Again'),
+        row('r2', 'assistant', 'Third.'),
+      ],
+    });
+    stream.write(finished);
+    stream.close();
+    await turn;
+
+    expect(contents(session)).toEqual(['Start', 'First.', 'More', 'Second.', 'Again', 'Third.']);
+  });
+
+  test('stays between the replies it was sent between when the page started the run, with one follow-up', async () => {
+    admitFollowUps();
+    const stream = liveStream();
+    const session = openOn(stream);
+    const turn = session.controller.adapter.sendMessage({ role: 'user', content: 'Start' }, []);
+    const startId = idOf(session, 'Start');
+    stream.write(started, ...reply('r0', 'First.'));
+    await until(() => session.streaming && contents(session).includes('First.'));
+
+    await session.controller.adapter.sendRunInput?.(THREAD, { role: 'user', content: 'More' }, []);
+    stream.write(...reply('r1', 'Second.'), {
+      type: 'MESSAGES_SNAPSHOT',
+      messages: [
+        row(startId, 'user', 'Start'),
+        row('r0', 'assistant', 'First.'),
+        row(idOf(session, 'More'), 'user', 'More'),
+        row('r1', 'assistant', 'Second.'),
+      ],
+    });
+    stream.write(finished);
+    stream.close();
+    await turn;
+
+    expect(contents(session)).toEqual(['Start', 'First.', 'More', 'Second.']);
   });
 });

@@ -270,7 +270,12 @@
     {#snippet actions()}
       <!-- With the form on screen, its footer holds the delete; a file the form cannot show keeps it here. -->
       {#if deleteInHeader}
-        <Button variant="danger" disabled={busy} onclick={() => (confirmingDelete = true)}>
+        <Button
+          data-changes
+          variant="danger"
+          disabled={busy}
+          onclick={() => (confirmingDelete = true)}
+        >
           {copy.deleteAction}
         </Button>
       {/if}

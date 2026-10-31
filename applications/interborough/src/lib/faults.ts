@@ -58,7 +58,13 @@ import {
 
 /** The six `FaultDisplay` UI treatment buckets (plan §10.4). */
 export type FaultTreatmentKind =
-  'not-found' | 'conflict' | 'invalid' | 'unauthorized' | 'not-supported' | 'internal';
+  | 'not-found'
+  | 'conflict'
+  | 'invalid'
+  | 'unauthorized'
+  | 'not-supported'
+  | 'internal'
+  | 'unreachable';
 
 /**
  * A single field-level validation error. Currently unreachable in practice —
@@ -102,6 +108,12 @@ export type FaultTreatment =
       readonly mode: 'reauth' | 'forbidden';
     }
   | { readonly kind: 'not-supported'; readonly message: string }
+  /**
+   * The request never reached a server that answered: the host is stopped, the network is down,
+   * or the connection was cut. Unlike every other kind it says nothing about the request, so a
+   * 5xx the server sent is `internal`, never this.
+   */
+  | { readonly kind: 'unreachable'; readonly message: string }
   | {
       readonly kind: 'internal';
       readonly message: string;
@@ -179,6 +191,39 @@ function unauthorizedMode(error: HttpClientError): 'reauth' | 'forbidden' {
   return error.status === 403 ? 'forbidden' : 'reauth';
 }
 
+/** What the person is told when a request got no answer. */
+const UNREACHABLE_MESSAGE =
+  'The server did not answer. Check that Interborough is running, then try again.';
+
+/**
+ * The messages browsers and runtimes give a `fetch` that never got a response: Chromium's
+ * "Failed to fetch", Bun's and Node's "fetch failed", Firefox's "NetworkError when attempting to
+ * fetch resource", Safari's "Load failed". A bare `TypeError` is not enough, because a bug thrown
+ * while rendering is one too and must not raise the connection banner.
+ */
+const NETWORK_FAILURE_MESSAGE =
+  /failed to fetch|fetch failed|networkerror|load failed|network request failed|network connection was lost|connection (was )?(refused|reset|closed)|socket (hang up|connection)/i;
+
+/**
+ * What a change refused while the server is unreachable throws. It is a network failure by
+ * definition: the request was never sent, so the person reads the same words as for one that was
+ * sent and got no answer.
+ */
+export class ServerUnreachableError extends Error {
+  constructor() {
+    super(UNREACHABLE_MESSAGE);
+    this.name = 'ServerUnreachableError';
+  }
+}
+
+/** Whether `error` is a request that got no answer from the server, as opposed to a fault the server sent. */
+export function isNetworkFailure(error: unknown): boolean {
+  if (error instanceof ServerUnreachableError) return true;
+  if (error instanceof HttpClientError) return false;
+  if (error instanceof DOMException) return error.name === 'NetworkError';
+  return error instanceof TypeError && NETWORK_FAILURE_MESSAGE.test(error.message);
+}
+
 const SPENT_IDEMPOTENCY_KEY_CODE: WeftErrorCode = 'IdempotencyKeyPurgedError';
 
 /**
@@ -190,6 +235,7 @@ const SPENT_IDEMPOTENCY_KEY_CODE: WeftErrorCode = 'IdempotencyKeyPurgedError';
  * documented treatments for those.
  */
 export function classifyFault(error: unknown): FaultTreatment | null {
+  if (isNetworkFailure(error)) return { kind: 'unreachable', message: UNREACHABLE_MESSAGE };
   if (!(error instanceof HttpClientError)) return null;
 
   const kind = treatmentKindForError(error);
@@ -240,4 +286,5 @@ export const FAULT_TREATMENT_TITLE: Readonly<Record<FaultTreatmentKind, string>>
   unauthorized: 'Not authorized',
   'not-supported': 'Not supported',
   internal: 'Something went wrong',
+  unreachable: 'Server unreachable',
 };

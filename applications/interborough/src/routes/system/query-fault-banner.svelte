@@ -17,6 +17,7 @@
     Lock,
     SearchX,
     ServerCrash,
+    WifiOff,
     type LucideIcon,
   } from '@lucide/svelte';
 
@@ -40,6 +41,7 @@
     unauthorized: Lock,
     'not-supported': CircleSlash,
     internal: ServerCrash,
+    unreachable: WifiOff,
   };
 
   const FAULT_TONE: Readonly<Record<FaultTreatmentKind, 'neutral' | 'warning' | 'danger'>> = {
@@ -49,6 +51,7 @@
     unauthorized: 'danger',
     'not-supported': 'neutral',
     internal: 'danger',
+    unreachable: 'warning',
   };
 
   const treatment = $derived(faultTreatment(error));

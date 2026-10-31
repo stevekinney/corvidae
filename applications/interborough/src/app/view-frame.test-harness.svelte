@@ -20,8 +20,11 @@
   } from '../lib/scopes.svelte.ts';
   import { subscribeBureauInvalidation } from './bureau-event-queries.ts';
   import { provideFleetEventSource } from './engine-status.svelte.ts';
+  import { armWriteGuard } from '../lib/write-guard.ts';
+  import { ConnectionMonitor, provideConnection } from './connection.svelte.ts';
   import { connectFleetInvalidation } from './fleet-invalidation.svelte.ts';
   import { provideBureauEventSource } from './live-polling.svelte.ts';
+  import ToastHost from './toast-host.svelte';
   import ViewFrame from './view-frame.svelte';
   import type { ViewName } from './views.ts';
 
@@ -40,6 +43,13 @@
     bureauEvents?: BureauEventSource;
     /** The shell's engine feed, provided to the frame and applied to the cache. */
     fleetEvents?: FleetEventSource;
+    /**
+     * Gives the frame the shell's connection monitor, whose probe of the host is this function. It
+     * watches the frame's query cache and refetches what the frame kept once the host answers.
+     */
+    probeHost?: () => Promise<unknown>;
+    /** Receives the monitor, so a test can read whether the host is reachable. */
+    onConnection?: (monitor: ConnectionMonitor) => void;
   }
 
   let {
@@ -52,6 +62,8 @@
     onQueryClient,
     bureauEvents,
     fleetEvents,
+    probeHost,
+    onConnection,
   }: ViewFrameHarnessProps = $props();
 
   provideClient(untrack(() => client));
@@ -64,6 +76,29 @@
   untrack(() => onStore)?.(store);
   const queryClient = createQueryClient();
   untrack(() => onQueryClient)?.(queryClient);
+  const probeHostFunction = untrack(() => probeHost);
+  if (probeHostFunction !== undefined) {
+    const monitor = provideConnection(
+      new ConnectionMonitor({
+        probe: probeHostFunction,
+        onRecovered: () => void queryClient.invalidateQueries(),
+        probeDelayMs: () => 5,
+      }),
+    );
+    untrack(() => onConnection)?.(monitor);
+    $effect(() => {
+      const stopObserving = monitor.observe(queryClient);
+      const stopGuarding = armWriteGuard(
+        () => monitor.unreachable,
+        [window.location.origin, 'http://localhost'],
+      );
+      return () => {
+        stopObserving();
+        stopGuarding();
+        monitor.dispose();
+      };
+    });
+  }
   const feeds = untrack(() => ({ bureauEvents, fleetEvents }));
   if (feeds.bureauEvents !== undefined) {
     const source = feeds.bureauEvents;
@@ -77,6 +112,7 @@
 </script>
 
 <QueryClientProvider client={queryClient}>
+  {#if probeHostFunction !== undefined}<ToastHost />{/if}
   <ViewFrame {view} {parameters} {pattern}>
     <p data-testid="content">The {view} view’s content.</p>
   </ViewFrame>

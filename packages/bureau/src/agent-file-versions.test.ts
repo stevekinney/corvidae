@@ -25,6 +25,7 @@ import {
   KNOWN_MODEL,
   OTHER_MODEL,
   validAgentFile,
+  TEST_CONTRIBUTIONS,
 } from './testing/agent-file-fixtures.test-support';
 
 const fixtures: AgentFileFixture[] = [];
@@ -214,6 +215,46 @@ describe('a save while the directory is being watched', () => {
   });
 });
 
+describe('a version saved when `guardrails` named a preset', () => {
+  /** Rewrite the stored version 1 the way the release before COR-1877 wrote it. */
+  async function legacyVersionOne(preset: string) {
+    const base: ConditionalTextValueStore = textValueStore(new MemoryStorage());
+    const fixture = await seeded({ revisionStore: base });
+    const [key] = await base.list(`${AGENT_VERSION_KEY_PREFIX}helper:`);
+    const record = JSON.parse((await base.get(key ?? '')) ?? '{}');
+    record.definition.guardrails = preset;
+    await base.set(key ?? '', JSON.stringify(record));
+    return fixture;
+  }
+
+  it.each(['tripwire', 'default', 'off'])(
+    'still appears in the list when it holds %s, with no guardrails',
+    async (preset) => {
+      const fixture = await legacyVersionOne(preset);
+
+      const versions = await fixture.catalog.versions.list('helper');
+
+      expect(versions.map((entry) => entry.revision)).toEqual([1]);
+      expect(versions[0]?.definition.guardrails).toBeUndefined();
+    },
+  );
+
+  it('restores as a new version with no guardrails', async () => {
+    const fixture = await legacyVersionOne('tripwire');
+    await fixture.catalog.update('helper', definition('Version two.\n'), {
+      expectedHash: hashOf(fixture),
+      savedBy: ALICE,
+    });
+
+    await fixture.catalog.versions.restore('helper', 1, { expectedHash: hashOf(fixture) });
+
+    const versions = await fixture.catalog.versions.list('helper');
+    expect(versions.map((entry) => entry.revision)).toEqual([3, 2, 1]);
+    expect(versions[0]?.definition.guardrails).toBeUndefined();
+    expect(versions[0]?.definition.instructions).toBe('Version one.\n');
+  });
+});
+
 describe('a crash between the revision and the version', () => {
   it('cannot happen: a batch that does not commit leaves neither', async () => {
     const base: ConditionalTextValueStore = textValueStore(new MemoryStorage());
@@ -339,11 +380,11 @@ describe('restore', () => {
     expect(detail?.definition).toMatchObject({ stepLimit: 10, retry: firstRetry });
   });
 
-  it('restores guardrails to the earlier version’s preset, and names it in changedKeys', async () => {
-    const fixture = await seeded();
+  it('restores guardrails to the earlier version’s ids, and names them in changedKeys', async () => {
+    const fixture = await seeded({ contributions: TEST_CONTRIBUTIONS });
     await fixture.catalog.update(
       'helper',
-      definition('Version one.\n', { guardrails: 'default' }),
+      definition('Version one.\n', { guardrails: ['x:check'] }),
       {
         expectedHash: hashOf(fixture),
         savedBy: ALICE,
@@ -351,7 +392,7 @@ describe('restore', () => {
     );
     await fixture.catalog.update(
       'helper',
-      definition('Version one.\n', { guardrails: 'tripwire' }),
+      definition('Version one.\n', { guardrails: ['y:other'] }),
       {
         expectedHash: hashOf(fixture),
         savedBy: ALICE,
@@ -364,10 +405,10 @@ describe('restore', () => {
     });
 
     const [latest] = await fixture.catalog.versions.list('helper');
-    expect(latest?.definition.guardrails).toBe('default');
+    expect(latest?.definition.guardrails).toEqual(['x:check']);
     expect(latest?.changedKeys).toEqual(['guardrails']);
     const detail = await fixture.catalog.detail('helper');
-    expect(detail?.definition?.guardrails).toBe('default');
+    expect(detail?.definition?.guardrails).toEqual(['x:check']);
   });
 
   it('removes a stepLimit and retry the restored version does not have', async () => {

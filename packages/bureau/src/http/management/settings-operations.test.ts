@@ -5,6 +5,16 @@
  */
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import {
+  createEmbedderRegistry,
+  createGovernedMemory,
+  createInMemoryMemoryRecordStorage,
+  createMemoryGovernanceLedger,
+  createMemoryGovernancePolicy,
+  createMemoryVectorStore,
+  HASHING_EMBEDDER_ID,
+} from '@lostgradient/memory';
+import { MemoryStorage } from '@lostgradient/storage';
 import { encodeCursor } from '@lostgradient/weft';
 
 import { SETTING_KEYS, type SettingKey } from '../../settings/settings-schema.ts';
@@ -46,6 +56,8 @@ const SAMPLES: Readonly<Record<SettingKey, unknown>> = {
   'retention.tasks': 'forever',
   'retention.receipts': { olderThan: 7_200_000 },
   'retention.memory': { olderThan: 604_800_000 },
+  // The embedder memory already uses: a write that starts no switch.
+  'memory.embedder': HASHING_EMBEDDER_ID,
   'retention.logs': { olderThan: 604_800_000 },
   'retention.notifications': { olderThan: 2_592_000_000 },
   'retention.hookDeliveries': { olderThan: 1_209_600_000 },
@@ -118,7 +130,20 @@ describe('bureau.settings operations', () => {
   });
 
   it('round-trips every key through get and update', async () => {
-    const opened = await open();
+    // With governed memory, which `memory.embedder` needs.
+    const storage = new MemoryStorage();
+    const opened = await openBureau({
+      bureauOptions: {
+        memory: createGovernedMemory({
+          storage: createInMemoryMemoryRecordStorage(),
+          ledger: createMemoryGovernanceLedger(storage),
+          embedders: createEmbedderRegistry(),
+          vectors: createMemoryVectorStore(storage),
+          policy: createMemoryGovernancePolicy({ revision: 'governance:settings-operations' }),
+        }),
+      },
+    });
+    cleanups.push(() => opened.dispose());
     for (const key of SETTING_KEYS) {
       const before = await snapshotOf(opened);
       const answered = await update(opened, {

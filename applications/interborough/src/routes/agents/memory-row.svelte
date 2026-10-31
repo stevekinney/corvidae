@@ -73,6 +73,7 @@
     {#snippet trailingActions()}
       <span class="weft-memory__actions">
         <Button
+          data-changes
           variant="ghost"
           size="sm"
           aria-label={MEMORY_COPY.rowAction.correct(name, when)}
@@ -80,6 +81,7 @@
           onclick={() => onCorrect(memory)}>{MEMORY_COPY.correct.action}</Button
         >
         <Button
+          data-changes
           variant="ghost"
           size="sm"
           disabled={forgetPending}

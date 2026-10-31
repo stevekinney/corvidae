@@ -115,7 +115,9 @@
   {/snippet}
   {#snippet footer()}
     <Button variant="secondary" onclick={dismiss} disabled={start.isPending}>{copy.cancel}</Button>
-    <Button variant="primary" onclick={submit} loading={start.isPending}>{copy.confirm}</Button>
+    <Button data-changes variant="primary" onclick={submit} loading={start.isPending}
+      >{copy.confirm}</Button
+    >
   {/snippet}
 </Modal>
 

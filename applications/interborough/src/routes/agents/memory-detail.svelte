@@ -158,11 +158,14 @@
     <DescriptionList {items} variant="two-column" />
 
     <div class="weft-memory-detail__actions">
-      <Button variant="secondary" onclick={() => onCorrect(memory)}
+      <Button data-changes variant="secondary" onclick={() => onCorrect(memory)}
         >{MEMORY_COPY.correct.action}</Button
       >
-      <Button variant="danger" disabled={forgetPending} onclick={() => onForget(memory.id)}
-        >{MEMORY_COPY.forget.action}</Button
+      <Button
+        data-changes
+        variant="danger"
+        disabled={forgetPending}
+        onclick={() => onForget(memory.id)}>{MEMORY_COPY.forget.action}</Button
       >
     </div>
   {/if}

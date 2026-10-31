@@ -346,6 +346,82 @@ describe('a goal’s attempt', () => {
     expect(view.queryByRole('link', { name: TASK_COPY.openSession })).toBeNull();
   });
 
+  test('a goal’s attempt the Bureau also lists as a task opens the attempt’s session, never the run handle as a chat', async () => {
+    const view = open('/runs/goal-1-a0', {
+      tasks: [
+        taskFixture({
+          id: 'goal-1-a0',
+          contextId: 'goal-1-a0',
+          kind: 'catalog',
+          agentName: 'planner',
+          origin: { kind: 'goal', goalRunId: 'goal-1', attemptId: 'goal-1:a0' },
+        }),
+      ],
+      goals: [attempt('passed')],
+      scopes: BUREAU_ONLY,
+    });
+    stub?.on('bureau.contexts.get', (params) => ({
+      ...contextDetailFixture(String(params['contextId'])),
+      origin: 'goal',
+    }));
+
+    const link = (await view.findByRole('link', {
+      name: TASK_COPY.openSession,
+    })) as HTMLAnchorElement;
+    await waitFor(() =>
+      expect(origin(view.container)?.textContent).toContain(TASK_COPY.startedFromGoal),
+    );
+    expect(stub?.callsTo('bureau.contexts.get').map((call) => call.params)).toEqual([
+      { contextId: 'goal-session-goal-1-a0' },
+    ]);
+    expect(await fireEvent.click(link, { button: 0 })).toBe(false);
+    expect(router.pathname).toContain('goal-session-goal-1-a0');
+  });
+
+  test('a goal’s attempt whose goal the person cannot read still shows the task’s open decisions, and reads no thread', async () => {
+    const requested: string[] = [];
+    const view = open('/runs/goal-1-a0', {
+      tasks: [
+        taskFixture({
+          id: 'goal-1-a0',
+          contextId: 'goal-1-a0',
+          kind: 'catalog',
+          agentName: 'planner',
+          status: 'input-required',
+          origin: { kind: 'goal', goalRunId: 'goal-1', attemptId: 'goal-1:a0' },
+          openWaits: [
+            { kind: 'tool-approval', reviewId: 'review-1', callId: 'call-1' },
+            { kind: 'human-wait', reviewId: 'review-2', signalName: 'environment' },
+          ],
+        }),
+      ],
+      // The goals the person may read do not include this attempt's goal.
+      goals: [],
+      scopes: BUREAU_ONLY,
+    });
+    // The stub the world installed answers the Bureau; this only records what is asked of it.
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      requested.push(String(input instanceof Request ? input.url : input));
+      return realFetch(input, init);
+    }) as typeof fetch;
+
+    try {
+      await waitFor(() =>
+        expect(
+          [...view.container.querySelectorAll('.ib-run-wait')].map((wait) =>
+            wait.getAttribute('data-kind'),
+          ),
+        ).toEqual(['tool-approval', 'human-wait']),
+      );
+      await waitFor(() => expect(stub?.callsTo('bureau.goals.list').length).toBeGreaterThan(0));
+      expect(requested.filter((url) => url.includes('/threads/'))).toEqual([]);
+      expect(stub?.callsTo('bureau.contexts.get')).toEqual([]);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
   test('names the goal, which opens in place', async () => {
     const view = open('/runs/goal-1-a0', { goals: [attempt('passed')], scopes: BUREAU_ONLY });
 

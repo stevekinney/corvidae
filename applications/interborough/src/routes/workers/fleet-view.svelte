@@ -142,6 +142,7 @@
                 onclick={() => onDrainDeployment(formatDeploymentName(deployment))}
               />
               <Button
+                data-changes
                 variant="ghost"
                 size="sm"
                 label="Resume"

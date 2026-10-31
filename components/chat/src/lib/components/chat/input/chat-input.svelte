@@ -35,6 +35,11 @@
     composerAriaAutocomplete?: 'none' | 'inline' | 'list' | 'both' | undefined;
     /** Whether the input is disabled */
     disabled?: boolean;
+    /**
+     * Whether typing and sending are paused by the host. The editor is read-only rather than
+     * disabled, so it keeps focus and its text, and takes keys again once this clears.
+     */
+    paused?: boolean;
     /** Whether a submission is in progress */
     sending?: boolean;
     /**
@@ -203,6 +208,7 @@
     composerAriaActiveDescendant,
     composerAriaAutocomplete,
     disabled = false,
+    paused = false,
     sending = false,
     allowFollowUp = false,
     error,
@@ -343,6 +349,7 @@
   const canSubmit = $derived(
     (!isWhitespaceOnly || hasReadyAttachments || hasReadyPromotedPaste) &&
       !disabled &&
+      !paused &&
       !sendBlocked &&
       !hasPendingAttachments,
   );
@@ -1125,6 +1132,7 @@
       aria-activedescendant={composerAriaActiveDescendant}
       aria-autocomplete={composerAriaAutocomplete}
       {disabled}
+      readonly={paused}
       class={classNames('chat-input-editor', markdownStyling && 'chat-input-editor-styled')}
       aria-describedby={shortcutDescriptionId}
       rows="1"></textarea>
@@ -1151,7 +1159,7 @@
           variant="ghost"
           size="sm"
           onclick={() => fileInputRef?.click()}
-          disabled={disabled || sendBlocked}
+          disabled={disabled || paused || sendBlocked}
           aria-label="Attach file"
         >
           <Paperclip class="cinder-icon-sm" />
@@ -1167,7 +1175,7 @@
               size="sm"
               aria-label={button.label}
               aria-keyshortcuts={button.keyshortcuts}
-              disabled={disabled || sendBlocked}
+              disabled={disabled || paused || sendBlocked}
               onmousedown={(event: MouseEvent) => event.preventDefault()}
               onclick={() => applyFormat(button.format)}
             >

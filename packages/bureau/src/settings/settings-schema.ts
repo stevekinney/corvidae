@@ -199,6 +199,12 @@ export const settingsSchema = z
           .strict(),
       ])
       .describe('How many checkpoints of a durable run are kept.'),
+    'memory.embedder': z
+      .string()
+      .min(1)
+      .describe(
+        'The registry id of the embedder governed memory embeds with: `hashing`, the built-in default, or one a plugin contributes. A change starts a background switch that re-embeds every stored memory into a new embedding while recall keeps the current one, and makes the new one active once it holds every memory. A write is refused while the embedder is not loaded or needs setup, or while a switch runs. A switch that fails or is cancelled sets this back to the embedder memory still uses.',
+      ),
     'logs.maximumLinesPerRun': positiveInteger
       .max(MAXIMUM_WORKFLOW_LOG_LINES_PER_RUN)
       .describe(
@@ -312,6 +318,7 @@ export const SETTING_APPLY: Readonly<Record<SettingKey, SettingApply>> = {
   'retention.notifications': 'live',
   'retention.hookDeliveries': 'live',
   'retention.checkpoints': 'live',
+  'memory.embedder': 'live',
   'logs.maximumLinesPerRun': 'live',
   // Live from the next session (owner decision, COR-1710 revision 2026-10-27): a running session
   // keeps the limit its Weft mailbox was built with, which keeps Weft's backlog check atomic.

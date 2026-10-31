@@ -315,6 +315,7 @@
 
       <div class="weft-dynamic-source__actions">
         <Button
+          data-changes
           size="sm"
           variant="secondary"
           label={isPreloadingLookup ? 'Preloading…' : 'Preload'}

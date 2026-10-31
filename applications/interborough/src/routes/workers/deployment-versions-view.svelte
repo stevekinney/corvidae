@@ -199,6 +199,7 @@
                           onclick={() => onDrain(version.deploymentName, version.buildId)}
                         />
                         <Button
+                          data-changes
                           variant="ghost"
                           size="sm"
                           label="Resume"
@@ -206,6 +207,7 @@
                         />
                         {#if blocked === undefined}
                           <Button
+                            data-changes
                             variant="ghost"
                             size="sm"
                             label="Remove"

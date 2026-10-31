@@ -9,7 +9,7 @@ import type { AgentSkills, AgentSkillsRun } from './agent-policy';
 import { resolveAgentGuardrails, resolvesOwnGuardrails } from './agent-policy';
 import { createAgent } from './create-agent';
 import { createDefaultGuardrailsPreset } from './guardrails/default-preset';
-import type { GuardrailsOptions, InputDetector } from './guardrails/types';
+import type { GuardrailsOptions, InputDetector, OutputValidator } from './guardrails/types';
 import { type DefinitionResolvingAgent, OPERATIVE_RESOLVE_RUN_OPTIONS } from './runnable-agent';
 import type { GenerateFunction, RunOptions } from './types';
 
@@ -78,6 +78,90 @@ describe('resolveAgentGuardrails', () => {
     expect(resolved?.output?.validators.map((validator) => validator.name)).toEqual(
       preset.output?.validators.map((validator) => validator.name),
     );
+  });
+});
+
+describe('guardrail additions', () => {
+  const extraValidator: OutputValidator = {
+    name: 'cor-1877-extra-output',
+    validate: async (output) => ({
+      valid: !output.includes('FORBIDDEN'),
+      category: 'policy',
+      confidence: 0.99,
+    }),
+  };
+
+  it('adds detectors and validators to the resolved configuration, keeping the preset', () => {
+    const resolved = resolveAgentGuardrails(undefined, undefined, {
+      inputDetectors: [sentinelDetector],
+      outputValidators: [extraValidator],
+    });
+    const preset = createDefaultGuardrailsPreset();
+    expect(resolved?.mode).toBe('tripwire');
+    expect(resolved?.input?.detectors.map((detector) => detector.name)).toEqual([
+      ...(preset.input?.detectors.map((detector) => detector.name) ?? []),
+      'cor-1367-sentinel',
+    ]);
+    expect(resolved?.output?.validators.map((validator) => validator.name)).toEqual([
+      ...(preset.output?.validators.map((validator) => validator.name) ?? []),
+      'cor-1877-extra-output',
+    ]);
+  });
+
+  it('adds to an inherited policy without changing it', () => {
+    const inherited: GuardrailsOptions = { output: { validators: [] } };
+    const resolved = resolveAgentGuardrails(undefined, inherited, {
+      inputDetectors: [sentinelDetector],
+    });
+    expect(resolved?.input?.detectors).toEqual([sentinelDetector]);
+    expect(resolved?.output).toBe(inherited.output);
+    expect(inherited.input).toBeUndefined();
+  });
+
+  it('returns the resolved configuration itself when there is nothing to add', () => {
+    const inherited: GuardrailsOptions = { output: { validators: [] } };
+    expect(resolveAgentGuardrails(undefined, inherited, {})).toBe(inherited);
+    expect(resolveAgentGuardrails(undefined, inherited, { inputDetectors: [] })).toBe(inherited);
+  });
+
+  it('runs the additions alone, as a tripwire, when the host opted out of guardrails', () => {
+    const resolved = resolveAgentGuardrails(undefined, false, {
+      inputDetectors: [sentinelDetector],
+    });
+    expect(resolved?.mode).toBe('tripwire');
+    expect(resolved?.input?.detectors).toEqual([sentinelDetector]);
+    expect(resolveAgentGuardrails(undefined, false, {})).toBeUndefined();
+  });
+
+  it('runs an added detector beside the preset on a real run, and only for the agent that has it', async () => {
+    const added = createAgent({
+      generate: reply(),
+      additionalGuardrails: { inputDetectors: [sentinelDetector] },
+    });
+    expect(await finishReasonFor(added, 'SENTINEL')).toBe('tripwire');
+    expect(await finishReasonFor(added, INJECTION)).toBe('tripwire');
+    expect(await finishReasonFor(added, 'Summarize the quarter.')).toBe('stop-condition');
+
+    const plain = createAgent({ generate: reply() });
+    expect(await finishReasonFor(plain, 'SENTINEL')).toBe('stop-condition');
+  });
+
+  it('keeps an added detector when the agent opts out of the defaults, and drops the preset', async () => {
+    const agent = createAgent({
+      generate: reply(),
+      guardrails: false,
+      additionalGuardrails: { inputDetectors: [sentinelDetector] },
+    });
+    expect(await finishReasonFor(agent, 'SENTINEL')).toBe('tripwire');
+    expect(await finishReasonFor(agent, INJECTION)).toBe('stop-condition');
+  });
+
+  it('runs an added output validator beside the preset', async () => {
+    const added = createAgent({
+      generate: reply('FORBIDDEN text'),
+      additionalGuardrails: { outputValidators: [extraValidator] },
+    });
+    expect(await finishReasonFor(added, 'Hello.')).toBe('tripwire');
   });
 });
 

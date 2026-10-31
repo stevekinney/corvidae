@@ -419,6 +419,7 @@
   {:else}
     <Tooltip text={writeGate.title ?? ''}>
       <Button
+        data-changes
         variant="primary"
         size="sm"
         fullWidth

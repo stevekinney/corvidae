@@ -258,6 +258,7 @@
   {/if}
 
   <Button
+    data-changes
     label={conditional ? 'Apply conditional batch · confirm' : 'Apply batch · confirm'}
     variant="primary"
     size="sm"

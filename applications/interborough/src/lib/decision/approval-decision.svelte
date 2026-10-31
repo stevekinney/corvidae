@@ -51,11 +51,17 @@
     </div>
   {/if}
   <div class="ib-decision__actions" role="group" aria-labelledby={`${id}-question`}>
-    <Button variant="secondary" disabled={deciding} onclick={() => onDecide('deny', note.trim())}
-      >{CHAT_COPY.deny}</Button
+    <Button
+      data-changes
+      variant="secondary"
+      disabled={deciding}
+      onclick={() => onDecide('deny', note.trim())}>{CHAT_COPY.deny}</Button
     >
-    <Button variant="primary" disabled={deciding} onclick={() => onDecide('approve', note.trim())}
-      >{CHAT_COPY.approve}</Button
+    <Button
+      data-changes
+      variant="primary"
+      disabled={deciding}
+      onclick={() => onDecide('approve', note.trim())}>{CHAT_COPY.approve}</Button
     >
   </div>
 </div>

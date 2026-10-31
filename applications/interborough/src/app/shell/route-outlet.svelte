@@ -9,8 +9,7 @@
    */
   import type { Component } from 'svelte';
 
-  import { Button, Skeleton, EmptyState } from '@lostgradient/cinder';
-  import { CircleAlert, SearchX } from '@lucide/svelte';
+  import { Button, ErrorState, Skeleton } from '@lostgradient/cinder';
 
   import { router } from '../../lib/router.svelte.ts';
   import { NOT_FOUND_ROUTE_COPY, ROUTE_LOAD_FAILURE_COPY } from '../copy.ts';
@@ -121,40 +120,33 @@
   <FaultBoundary>
     {#if notFound}
       <div class="weft-view" data-view="not-found" data-state="not-found">
-        <EmptyState
+        <ErrorState
+          variant="flat"
           title={NOT_FOUND_ROUTE_COPY.title}
           description={NOT_FOUND_ROUTE_COPY.description}
           headingLevel={1}
-        >
-          {#snippet icon()}<SearchX size={28} aria-hidden="true" />{/snippet}
-          {#snippet action()}
-            <div class="weft-not-found__action">
-              <code class="ib-identifier weft-not-found__path">{router.pathname}</code>
-              <Button
-                variant="primary"
-                href={router.href(NOT_FOUND_ROUTE_COPY.action.href)}
-                onclick={goToChats}
-              >
-                {NOT_FOUND_ROUTE_COPY.action.label}
-              </Button>
-            </div>
-          {/snippet}
-        </EmptyState>
+        />
+        <div class="weft-not-found__action">
+          <code class="ib-identifier weft-not-found__path">{router.pathname}</code>
+          <Button
+            variant="primary"
+            href={router.href(NOT_FOUND_ROUTE_COPY.action.href)}
+            onclick={goToChats}
+          >
+            {NOT_FOUND_ROUTE_COPY.action.label}
+          </Button>
+        </div>
       </div>
     {:else if loadFailed}
       <div class="weft-view" data-state="error" data-view="route">
-        <EmptyState
+        <ErrorState
+          variant="flat"
           title={ROUTE_LOAD_FAILURE_COPY.title}
           description={ROUTE_LOAD_FAILURE_COPY.description}
           headingLevel={1}
-        >
-          {#snippet icon()}<CircleAlert size={28} aria-hidden="true" />{/snippet}
-          {#snippet action()}
-            <Button variant="secondary" onclick={() => window.location.reload()}>
-              {ROUTE_LOAD_FAILURE_COPY.action}
-            </Button>
-          {/snippet}
-        </EmptyState>
+          retryLabel={ROUTE_LOAD_FAILURE_COPY.action}
+          onRetry={() => window.location.reload()}
+        />
       </div>
     {:else if loading || !activeComponent}
       <div class="weft-shell-outlet__skeleton" role="status" aria-busy="true" aria-label="Loading">

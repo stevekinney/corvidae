@@ -299,6 +299,7 @@ import { createLateDecisions } from './decisions/late-decisions';
 import { createSettings, type SettingsComposition } from './settings/create-settings';
 import type { SettingsValues } from './settings/settings-schema';
 import { summarizerFailures } from './settings/settings-validation';
+import { createMemoryEmbedderSetting, type MemoryEmbedderSetting } from './memory-embedder-setting';
 import {
   bootSettings,
   enginePatchOf,
@@ -2498,6 +2499,8 @@ async function constructBureau<const D extends AgentDefinitions>(
       ...(cause === undefined ? {} : { cause }),
     });
   let settingsComposition: SettingsComposition | undefined;
+  // COR-1898 — the reader of `memory.embedder`, built with the settings and run by every maintenance pass.
+  let memoryEmbedder: MemoryEmbedderSetting | undefined;
   // COR-1710 — the task registry, for the grant a resumed task reads back; it is built after the
   // runtime composition, whose recovery paths reach it only once composition has finished.
   const taskRegistryHolder: { current?: TaskRegistry } = {};
@@ -3010,14 +3013,26 @@ async function constructBureau<const D extends AgentDefinitions>(
     );
     // COR-1710: the settings, over the record read at boot. A live engine key is applied through
     // `engine.reconfigure`, now for the stored values and on every later change.
+    memoryEmbedder = createMemoryEmbedderSetting({
+      memory: runtime.memory,
+      settings: currentSettings,
+      bureauSettings: () => settingsComposition?.settings,
+      diagnose: diagnoseSettings,
+    });
+    const embedderSetting = memoryEmbedder;
     settingsComposition = createSettings({
       store: runtime.kv,
       persisted: booted.persisted,
       defaults: settingsDefaults,
       locked: settingsLocked,
       decisionModels: decisionModelNames(options.decisions),
-      // A summarizer must name a row of the catalog as it is at the write (COR-1899).
-      checkPatch: (values) => summarizerFailures(values, models.catalog().descriptors),
+      // A summarizer must name a row of the catalog as it is at the write (COR-1899), and an
+      // embedder one memory can switch to now (COR-1898).
+      checkPatch: async (values) => [
+        ...summarizerFailures(values, models.catalog().descriptors),
+        ...(await embedderSetting.failures(values)),
+      ],
+      afterUpdate: (keys) => embedderSetting.afterUpdate(keys),
       boot: booted.stored,
       nowISO: runtimeServices.clock.nowISO,
       diagnose: diagnoseSettings,
@@ -3110,6 +3125,7 @@ async function constructBureau<const D extends AgentDefinitions>(
                 : { approvalSecret: options.agentApprovalSecret }),
               // COR-1828: a tool a person allowed for the rest of the chat skips its `on-changes` ask.
               rememberedTools: approvalGrantsOfRun,
+              contributions: options.agentContributions,
               // COR-1920: a file agent's per-run toolbox resolves secret answers as the Bureau's does.
               ...(runtime.secretAnswers === undefined
                 ? {}
@@ -13748,6 +13764,8 @@ async function constructBureau<const D extends AgentDefinitions>(
       await pruneNotifications('Manual');
       // COR-1943 — settled hook deliveries past `retention.hookDeliveries`.
       await pruneHookDeliveries('Manual');
+      // COR-1898 — governed memory's embedder switch advances only when asked to.
+      await memoryEmbedder?.reconcile();
       // COR-1546 — governed memory's deletions advance only when asked to.
       try {
         await propagateMemoryDeletions();
@@ -14076,6 +14094,8 @@ async function constructBureau<const D extends AgentDefinitions>(
         await pruneNotifications('Automatic');
         // COR-1943 — settled hook deliveries past `retention.hookDeliveries`.
         await pruneHookDeliveries('Automatic');
+        // COR-1898 — governed memory's embedder switch advances only when asked to.
+        await memoryEmbedder?.reconcile();
         // COR-1546 — governed memory's deletions advance only when asked to.
         try {
           await propagateMemoryDeletions();

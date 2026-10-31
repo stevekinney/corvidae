@@ -13,6 +13,8 @@ import {
   classifyFault,
   FAULT_TREATMENT_TITLE,
   faultTreatment,
+  isNetworkFailure,
+  ServerUnreachableError,
   UNKNOWN_FAULT_TREATMENT,
   type FaultTreatmentKind,
 } from './faults.ts';
@@ -264,9 +266,36 @@ describe('classifyFault — status fallback for every remaining bucket', () => {
   });
 });
 
+describe('classifyFault — a request that got no answer', () => {
+  test.each([
+    'Failed to fetch',
+    'fetch failed',
+    'NetworkError when attempting to fetch resource.',
+    'Load failed',
+  ])('a fetch that failed with "%s" is unreachable', (message) => {
+    const treatment = classifyFault(new TypeError(message));
+    expect(treatment?.kind).toBe('unreachable');
+    expect(isNetworkFailure(new TypeError(message))).toBe(true);
+  });
+
+  test('a change refused for the unreachable server reads as one', () => {
+    expect(classifyFault(new ServerUnreachableError())?.kind).toBe('unreachable');
+  });
+
+  test('a server that answered with a 5xx is internal, never unreachable', () => {
+    expect(classifyFault(new HttpClientError(503, 'Service unavailable'))?.kind).toBe('internal');
+    expect(isNetworkFailure(new HttpClientError(503, 'Service unavailable'))).toBe(false);
+  });
+
+  test('a bug thrown while rendering is not a network failure', () => {
+    expect(classifyFault(new TypeError('undefined is not a function'))).toBeNull();
+    expect(isNetworkFailure(new TypeError('x.map is not a function'))).toBe(false);
+  });
+});
+
 describe('classifyFault — errors that never crossed the Weft fault wire', () => {
-  test('a plain Error (e.g. a network failure) is not classified', () => {
-    expect(classifyFault(new TypeError('Failed to fetch'))).toBeNull();
+  test('a plain Error is not classified', () => {
+    expect(classifyFault(new Error('boom'))).toBeNull();
   });
 
   test('a non-error thrown value is not classified', () => {
@@ -284,7 +313,7 @@ describe('faultTreatment — always returns a treatment, falling back to UNKNOWN
   });
 
   test('unclassifiable errors fall back to UNKNOWN_FAULT_TREATMENT', () => {
-    expect(faultTreatment(new TypeError('offline'))).toBe(UNKNOWN_FAULT_TREATMENT);
+    expect(faultTreatment(new TypeError('x is not a function'))).toBe(UNKNOWN_FAULT_TREATMENT);
     expect(UNKNOWN_FAULT_TREATMENT.kind).toBe('internal');
   });
 });
@@ -298,6 +327,7 @@ describe('FAULT_TREATMENT_TITLE', () => {
       'unauthorized',
       'not-supported',
       'internal',
+      'unreachable',
     ];
     for (const kind of kinds) {
       expect(FAULT_TREATMENT_TITLE[kind]).toEqual(expect.any(String));

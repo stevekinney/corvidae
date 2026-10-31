@@ -328,6 +328,7 @@
     {/if}
     {#if actions.pause && !file.paused}
       <Button
+        data-changes
         variant="secondary"
         size="sm"
         disabled={busy || file.hash === null}
@@ -336,6 +337,7 @@
     {/if}
     {#if actions.resume && file.paused}
       <Button
+        data-changes
         variant="secondary"
         size="sm"
         disabled={busy || file.hash === null}
@@ -351,8 +353,12 @@
       >
     {/if}
     {#if actions.delete}
-      <Button variant="danger" size="sm" disabled={busy} onclick={() => (confirmingDelete = true)}
-        >{copy.deleteAction}</Button
+      <Button
+        data-changes
+        variant="danger"
+        size="sm"
+        disabled={busy}
+        onclick={() => (confirmingDelete = true)}>{copy.deleteAction}</Button
       >
     {/if}
   {/if}

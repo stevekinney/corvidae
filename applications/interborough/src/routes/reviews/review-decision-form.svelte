@@ -211,6 +211,7 @@
 
     <Tooltip text={submitGate.title ?? ''}>
       <Button
+        data-changes
         variant="primary"
         label={submitting ? 'Submitting…' : 'Submit decision'}
         disabled={!canSubmit}

@@ -264,7 +264,7 @@
     <Button variant="secondary" onclick={dismiss} disabled={step.kind === 'applying'}>Cancel</Button
     >
     {#if step.kind === 'confirm'}
-      <Button variant="primary" onclick={confirm}
+      <Button data-changes variant="primary" onclick={confirm}
         >Confirm {TITLE[request.kind].toLowerCase()}</Button
       >
     {:else if step.kind === 'form' && request.kind === 'setrouting'}

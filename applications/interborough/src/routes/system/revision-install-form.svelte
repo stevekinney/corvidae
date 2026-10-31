@@ -84,6 +84,7 @@
     {/if}
     <div>
       <Button
+        data-changes
         variant="primary"
         size="sm"
         label="Install revision"
