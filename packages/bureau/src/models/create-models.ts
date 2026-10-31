@@ -7,7 +7,7 @@ import {
 } from '@lostgradient/operative';
 
 import type { AgentDefinitions } from '../agent-catalog';
-import type { PluginModelContributions } from '../plugins/plugin-types';
+import type { PluginModelContributions, PluginProviderContribution } from '../plugins/plugin-types';
 import {
   createModelPolicyPlanner,
   type BureauModelPolicyOptions,
@@ -29,6 +29,14 @@ export interface ModelsOptions {
    */
   readonly catalog?: readonly BackendDescriptor[] | CatalogFactory;
   /**
+   * Checks a plugin's providers against the plugin's own configuration once its `setup` has run,
+   * because only then are the providers' rows known. It answers what is wrong, and the plugin is
+   * `skipped` with a `configuration-invalid` problem for each answer, so none of its contributions
+   * is registered and the host starts. It answers nothing when the configuration is fine. It is
+   * called only for a plugin that contributes a provider (COR-1884).
+   */
+  readonly checkProviders?: ProviderChecker;
+  /**
    * How a catalog row becomes the `generate` an agent file runs with. The host supplies it
    * because the host holds the credentials; Bureau passes the row (provider and model) a file's
    * `model: <provider>/<model>` resolved to. It may throw to say the row cannot be set up, which
@@ -36,6 +44,18 @@ export interface ModelsOptions {
    */
   readonly generate?: (row: BackendDescriptor) => GenerateFunction;
 }
+
+/** What is wrong with a plugin's configuration, seen against the providers it contributes. */
+export type ProviderChecker = (check: {
+  /** The plugin whose configuration is checked. */
+  readonly plugin: string;
+  /** The plugin's configuration, as its schema parsed it (`{}` when it has none). */
+  readonly configuration: unknown;
+  /** The providers the plugin contributed, each with its resolved rows. */
+  readonly providers: readonly PluginProviderContribution[];
+}) =>
+  | readonly { readonly field: string; readonly message: string }[]
+  | Promise<readonly { readonly field: string; readonly message: string }[]>;
 
 /** Builds the catalog rows from what the running plugins contributed. */
 export type CatalogFactory = (

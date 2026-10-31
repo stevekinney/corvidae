@@ -137,3 +137,46 @@ describe('the models.catalog factory', () => {
     expect(records[0]?.status).toBe('skipped');
   });
 });
+
+describe('the models.checkProviders check', () => {
+  it('skips a plugin it finds a problem with, as configuration-invalid, and hands the catalog none of its providers', async () => {
+    const received: PluginModelContributions[] = [];
+    const checked: unknown[] = [];
+    const { records } = await composePlugins({
+      plugins: [
+        pluginEntry('bad', () => ({ providers: [definition('bad')] })),
+        pluginEntry('good', () => ({ providers: [definition('good')] })),
+        pluginEntry('plain', () => ({})),
+      ],
+      pluginConfiguration: { bad: { configuration: {} } },
+      models: {
+        catalog: (contributions) => {
+          received.push(contributions);
+          return [];
+        },
+        checkProviders: ({ plugin, configuration, providers }) => {
+          checked.push([
+            plugin,
+            configuration,
+            providers.map(({ definition: found }) => found.name),
+          ]);
+          return plugin === 'bad' ? [{ field: 'models[0]', message: 'matches no model.' }] : [];
+        },
+      },
+    });
+    expect(records.map(({ entry, status }) => [entry.descriptor.name, status])).toEqual([
+      ['bad', 'skipped'],
+      ['good', 'running'],
+      ['plain', 'running'],
+    ]);
+    expect(records[0]?.problems).toEqual([
+      { code: 'configuration-invalid', field: 'models[0]', message: 'matches no model.' },
+    ]);
+    // Only a plugin that contributes a provider is checked.
+    expect(checked).toEqual([
+      ['bad', {}, ['bad']],
+      ['good', {}, ['good']],
+    ]);
+    expect(received[0]?.providers.map(({ plugin }) => plugin)).toEqual(['good']);
+  });
+});

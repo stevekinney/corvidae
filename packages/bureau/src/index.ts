@@ -482,7 +482,12 @@ export type {
   PlanSelectionRequest,
 } from './model-policy';
 export { createModelPolicyPlanner } from './model-policy';
-export type { CatalogFactory, Models, ModelsOptions } from './models/create-models';
+export type {
+  CatalogFactory,
+  Models,
+  ModelsOptions,
+  ProviderChecker,
+} from './models/create-models';
 export type {
   BureauDecideOptions,
   BureauDecisions,

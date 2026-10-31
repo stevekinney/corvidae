@@ -198,7 +198,7 @@ describe('the allowlist', () => {
 });
 
 describe('an agent on a model of a plugin that is not enabled', () => {
-  test('reports it unavailable when only anthropic is enabled', async () => {
+  test('is invalid with unknown-model, the label for a disabled provider, when only anthropic is enabled', async () => {
     const agent = (name: string, model: string) =>
       [
         '---',
@@ -298,5 +298,104 @@ describe('changing a provider plugin’s configuration through the plugin routes
     expect(String(failure)).not.toContain('gpt-nonexistent');
     expect(existsSync(join(home, 'configuration.json'))).toBe(false);
     expect(pairsOf(host)).toEqual(before);
+  });
+});
+
+describe('a stored allowlist that names a model the provider does not offer', () => {
+  const rowOf = async (host: Host, name: string) => {
+    const snapshot = await host.plugins.snapshot();
+    return snapshot.plugins.find((plugin) => plugin.descriptor.name === name);
+  };
+
+  test('skips the plugin with configuration-invalid at startup and starts, and the route fixes it', async () => {
+    const home = await prepareHome({
+      configuration: { plugins: { openai: { enabled: false } } },
+      secrets: { 'openai-api-key': KEY },
+    });
+    const first = await startAt(home);
+    // Disabled, the plugin is not loaded, so the route cannot check its models: both calls succeed.
+    await first.plugins.update('openai', { configuration: { models: ['gpt-nonexistent'] } });
+    await first.plugins.update('openai', { enabled: true });
+    await first.close();
+    hosts.splice(hosts.indexOf(first), 1);
+
+    const second = await startAt(home);
+
+    expect(await rowOf(second, 'openai')).toMatchObject({
+      status: 'skipped',
+      problems: [{ code: 'configuration-invalid', field: 'models[0]' }],
+    });
+    const skipped = await rowOf(second, 'openai');
+    // The message never repeats the entry, which may be a secret.
+    expect(JSON.stringify(skipped?.problems)).not.toContain('gpt-nonexistent');
+    expect(pairsOf(second).filter((pair) => pair.startsWith('openai/'))).toEqual([]);
+
+    await second.plugins.update('openai', { configuration: { models: ['gpt-4.1'] } });
+    await second.close();
+    hosts.splice(hosts.indexOf(second), 1);
+
+    const third = await startAt(home);
+    expect(await rowOf(third, 'openai')).toMatchObject({ status: 'running' });
+    expect(pairsOf(third).filter((pair) => pair.startsWith('openai/'))).toEqual(['openai/gpt-4.1']);
+  });
+
+  test('still starts a plugin whose allowlist names a row the catalog edits add', async () => {
+    const home = await prepareHome({
+      configuration: {
+        catalog: [{ provider: 'openai', model: 'gpt-next', basedOn: 'gpt-4.1' }],
+        plugins: { openai: { configuration: { models: ['gpt-next'] } } },
+      },
+      secrets: { 'openai-api-key': KEY },
+    });
+    const host = await startAt(home);
+    expect(await rowOf(host, 'openai')).toMatchObject({ status: 'running' });
+    expect(pairsOf(host).filter((pair) => pair.startsWith('openai/'))).toEqual(['openai/gpt-next']);
+  });
+});
+
+describe('an allowlist written while the catalog edits change', () => {
+  const addsRow = { provider: 'openai', model: 'gpt-next', basedOn: 'gpt-4.1' };
+
+  async function openHome() {
+    const home = await prepareHome({
+      configuration: { catalog: [addsRow] },
+      secrets: { 'openai-api-key': KEY },
+    });
+    return { home, host: await startAt(home) };
+  }
+
+  async function restartsCleanly(home: string, host: Host): Promise<void> {
+    await host.close();
+    hosts.splice(hosts.indexOf(host), 1);
+    await startAt(home);
+  }
+
+  test('is refused when the edit that removes its model lands first, and nothing invalid is stored', async () => {
+    const { home, host } = await openHome();
+
+    // The edit is queued before the allowlist's write, as the plugin route's old separate check
+    // let it be: the write must be judged against the document the edit left.
+    const edit = host.providers.editCatalog([]);
+    const write = host.plugins.update('openai', { configuration: { models: ['gpt-next'] } });
+    const [edited, written] = await Promise.allSettled([edit, write]);
+
+    expect(edited.status).toBe('fulfilled');
+    expect(written.status).toBe('rejected');
+    expect((written as PromiseRejectedResult).reason).toBeInstanceOf(ProviderConfigurationError);
+    expect(await readFile(join(home, 'configuration.json'), 'utf8')).not.toContain('gpt-next');
+    await restartsCleanly(home, host);
+  });
+
+  test('refuses the edit that would remove the model, when the allowlist is written first', async () => {
+    const { home, host } = await openHome();
+
+    const [written, edited] = await Promise.allSettled([
+      host.plugins.update('openai', { configuration: { models: ['gpt-next'] } }),
+      host.providers.editCatalog([]),
+    ]);
+
+    expect(written.status).toBe('fulfilled');
+    expect(edited.status).toBe('rejected');
+    await restartsCleanly(home, host);
   });
 });

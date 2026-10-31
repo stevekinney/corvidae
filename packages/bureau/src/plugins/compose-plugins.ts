@@ -438,15 +438,7 @@ class Contributed {
       this.judges.push({ ...judge, name: id(judge.name), evaluate: (run) => judge.evaluate(run) });
     }
     for (const { name, agent } of result.codeAgents ?? []) this.agents[id(name)] = agent;
-    for (const provider of result.providers ?? []) {
-      this.providers.push({
-        plugin,
-        definition: provider,
-        rows:
-          provider.rows ??
-          createModelCatalog().descriptors.filter((row) => row.provider === provider.name),
-      });
-    }
+    this.providers.push(...providersOf(plugin, result));
     this.memory.detectors.push(...(result.memoryDetectors ?? []));
     for (const embedder of result.embedders ?? []) {
       this.memory.embedders.push({
@@ -460,6 +452,17 @@ class Contributed {
       });
     }
   }
+}
+
+/** The providers a plugin's setup returned, each with the rows it carries or Operative's static ones. */
+function providersOf(plugin: string, result: PluginSetupResult): PluginProviderContribution[] {
+  return (result.providers ?? []).map((provider) => ({
+    plugin,
+    definition: provider,
+    rows:
+      provider.rows ??
+      createModelCatalog().descriptors.filter((row) => row.provider === provider.name),
+  }));
 }
 
 function catalogWith(
@@ -718,6 +721,22 @@ export async function composePlugins<O extends ComposableOptions>(
       continue;
     }
     const { plan } = outcome;
+    const providers = providersOf(entry.descriptor.name, outcome.result);
+    const checked =
+      providers.length === 0
+        ? []
+        : ((await options.models?.checkProviders?.({
+            plugin: entry.descriptor.name,
+            configuration: outcome.context.configuration,
+            providers,
+          })) ?? []);
+    if (checked.length > 0) {
+      record(
+        'skipped',
+        checked.map(({ field, message }) => ({ code: 'configuration-invalid', field, message })),
+      );
+      continue;
+    }
     const clashes = claims.clashesOf(plan.claims, party);
     if (clashes.length > 0) {
       record('skipped', clashes);

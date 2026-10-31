@@ -99,19 +99,23 @@ describe('a configuration that is not valid', () => {
     expect(host.bureau.models.catalog().descriptors).toEqual([]);
   });
 
-  test('fails startup on an allowlist entry that matches no row', async () => {
+  test('starts, and skips the plugin, on an allowlist entry that matches no row', async () => {
     const home = await prepareHome({
       configuration: {
         plugins: { openai: { configuration: { models: ['gpt-4.1', 'gpt-nonexistent'] } } },
       },
       secrets: { 'openai-api-key': FIXTURE_KEY },
     });
-    const failure = await startAt(home).then(
-      () => undefined,
-      (error: unknown) => error,
+    const host = await startAt(home);
+    const snapshot = await host.plugins.snapshot();
+    const standing = snapshot.plugins.find((plugin) => plugin.descriptor.name === 'openai');
+    expect(standing).toMatchObject({
+      status: 'skipped',
+      problems: [{ code: 'configuration-invalid', field: 'models[1]' }],
+    });
+    expect(host.bureau.models.catalog().descriptors.map((row) => row.provider)).not.toContain(
+      'openai',
     );
-    expect(String(failure)).toContain(join(home, 'configuration.json'));
-    expect(String(failure)).toContain('plugins.openai.configuration.models[1]');
   });
 });
 

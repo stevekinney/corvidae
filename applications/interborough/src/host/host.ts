@@ -596,9 +596,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // A provider plugin's allowlist applies without a restart: the provider manager reloads the catalog.
       appliesConfigurationLive: (plugin) =>
         held.providers?.current().providers.some((provider) => provider.plugin === plugin) === true,
-      checkConfiguration: async (plugin, configuration) => {
-        await held.providers?.checkAllowlist(plugin, configuration);
-      },
+      checkDocument: (document) => held.providers?.checkDocument(document),
       applyConfiguration: async () => {
         await held.providers?.reload();
       },
@@ -687,6 +685,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // The catalog is built once the plugins have been set up, from the providers they contribute.
       models: {
         catalog: (contributions) => providers.adopt(contributedProviders(contributions, plugins)),
+        // A stored allowlist the provider's rows do not match skips its plugin and starts the host.
+        checkProviders: (check) => providers.checkProviders(check),
         generate: (row) => generateFor({ provider: row.provider, model: row.model }),
       },
       storage,

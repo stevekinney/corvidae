@@ -22,7 +22,11 @@
  */
 
 import type { Bungalow } from '@lostgradient/bungalow';
-import type { resolveProviderGenerate, SettingLockReason } from '@lostgradient/bureau';
+import type {
+  ProviderChecker,
+  resolveProviderGenerate,
+  SettingLockReason,
+} from '@lostgradient/bureau';
 import type { BackendDescriptor, GenerateFunction } from '@lostgradient/operative';
 
 import { parseCatalogEdits, type CatalogEdit } from './catalog-edits.ts';
@@ -32,12 +36,14 @@ import { providerDiagnostics } from './host-diagnostics.ts';
 import { hostWriteLocks } from './locations.ts';
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
 import {
+  allowlistMissMessage,
   createCatalogGenerate,
   loadProviders,
   parseDocument,
   parseProviderConfiguration,
   readAllowlists,
   selectCatalogRows,
+  unmatchedAllowlistEntries,
   type ContributedProvider,
   type LoadedProviders,
   type ModelSelection,
@@ -195,11 +201,19 @@ export type ProviderManager = {
   /** Read the configuration and the keys again and apply them. */
   reload(): Promise<ProviderChange>;
   /**
-   * Check that `configuration` could be stored as `plugin`'s choices (its allowlist matches the
-   * plugin's models, counting the rows the catalog edits add), and throw what the next start would
-   * throw. Writes nothing.
+   * Check that `document` could be written as `configuration.json`: its allowlists match the
+   * loaded plugins' models, counting the rows its catalog edits add. It throws what the next start
+   * would throw and writes nothing. It does not queue, so a caller already inside the
+   * configuration queue can use it on the document it read there.
    */
-  checkAllowlist(plugin: string, configuration: unknown): Promise<void>;
+  checkDocument(document: Record<string, unknown>): void;
+  /**
+   * What is wrong with a plugin's stored allowlist, seen against the providers it contributes, as
+   * Bureau's `models.checkProviders` asks it before the plugin is accepted. A plugin with a
+   * mismatched allowlist is skipped, so the host starts and the owner fixes it through the plugin
+   * routes. Reads the catalog edits from the stored configuration; writes nothing.
+   */
+  checkProviders: ProviderChecker;
   /**
    * Hand the manager the providers the loaded plugins contribute and load them: the rows for the
    * Bureau's first catalog. The host calls it from Bureau's `models.catalog` factory, once.
@@ -546,21 +560,26 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
       });
     },
     reload: () => serialized(apply),
-    async checkAllowlist(plugin, configuration) {
-      // Copied before the first `await`: the caller owns the request.
-      const given: unknown = structuredClone(configuration);
-      return serialized(async () => {
-        const document = await readDocument();
-        const plugins = isPlainObject(document['plugins']) ? document['plugins'] : {};
-        const existing = Object.hasOwn(plugins, plugin) ? plugins[plugin] : undefined;
-        const entry = isPlainObject(existing)
-          ? { ...existing, configuration: given }
-          : { configuration: given };
-        validated(
-          { ...document, plugins: { ...plugins, [plugin]: entry } },
-          new Set(loaded.apiKeys.keys()),
-        );
-      });
+    checkDocument(document) {
+      validated(document, new Set(loaded.apiKeys.keys()));
+    },
+    async checkProviders({ configuration, providers: contributed }) {
+      const models = isPlainObject(configuration) ? configuration['models'] : undefined;
+      if (!Array.isArray(models) || !models.every((entry) => typeof entry === 'string')) return [];
+      let text: string | undefined;
+      try {
+        text = await bungalow.readConfiguration();
+      } catch {
+        throw new ProviderConfigurationError(location, 'the file', 'it could not be read.');
+      }
+      const edits =
+        text === undefined ? [] : (parseProviderConfiguration(text, location).catalog ?? []);
+      const owned = contributed.map(({ definition, rows }) => ({ name: definition.name, rows }));
+      const misses = unmatchedAllowlistEntries(owned, models, edits);
+      return misses.map((index) => ({
+        field: `models[${index}]`,
+        message: allowlistMissMessage(owned),
+      }));
     },
   };
 }

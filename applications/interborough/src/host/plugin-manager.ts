@@ -198,10 +198,12 @@ export type PluginManagerOptions = {
    */
   readonly appliesConfigurationLive?: (plugin: string) => boolean;
   /**
-   * For a plugin the host applies live: checks a configuration the host is about to store, and
-   * throws what the next start would throw, before a byte is written.
+   * For a plugin the host applies live: checks the whole document the host is about to write, and
+   * throws what the next start would throw, before a byte is written. It runs inside the
+   * configuration queue, on the document read there, so another writer cannot change what it was
+   * checked against before the write (a catalog edit that removes a row the allowlist names).
    */
-  readonly checkConfiguration?: (plugin: string, configuration: unknown) => Promise<void>;
+  readonly checkDocument?: (document: Record<string, unknown>) => void;
   /**
    * For a plugin the host applies live: called once a change to its choices is stored, outside the
    * configuration queue, to apply them (the host reloads the model catalog).
@@ -447,9 +449,6 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
         if (problem !== undefined) throw new PluginInputError(problem.field, problem.message);
       }
       const live = options.appliesConfigurationLive?.(name) === true;
-      if (live && configuration !== undefined) {
-        await options.checkConfiguration?.(name, configuration);
-      }
       const change = await serialized(async () => {
         assertWritable();
         const text = await readText();
@@ -471,6 +470,7 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
         const nextDocument = { ...document, plugins: { ...declared, [name]: nextEntry } };
         // The same check the next start applies, before a byte is written.
         const applied = parsePluginSettings(nextDocument, location);
+        if (live && configuration !== undefined) options.checkDocument?.(nextDocument);
         try {
           bungalow.writeConfiguration(`${JSON.stringify(nextDocument, null, 2)}\n`);
         } catch (error) {

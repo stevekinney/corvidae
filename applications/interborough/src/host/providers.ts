@@ -179,6 +179,46 @@ function matchesEntry(row: BackendDescriptor, entry: string): boolean {
   return row.model === entry || row.aliases.some((alias) => alias.alias === entry);
 }
 
+/** The rows of `provider` an allowlist may name: every one that is not retired. */
+function liveRows(provider: { readonly rows: readonly BackendDescriptor[] }) {
+  return provider.rows.filter((row) => row.lifecycle !== 'retired');
+}
+
+/** Why an allowlist entry is refused. The entry's value is not repeated: it may be a secret. */
+export function allowlistMissMessage(owned: readonly { readonly name: string }[]): string {
+  return `the entry matches no current ${owned.map((provider) => provider.name).join(' or ')} model. Its value is not repeated here, because it may be a secret.`;
+}
+
+/**
+ * The indexes of the entries of one plugin's allowlist that name no model: no non-retired row of
+ * the providers `owned` by the plugin, and no row the `catalog` edits add to them. The one rule
+ * the catalog load, the plugin route and plugin composition all apply.
+ */
+export function unmatchedAllowlistEntries(
+  owned: readonly {
+    readonly name: string;
+    readonly rows: readonly BackendDescriptor[];
+  }[],
+  allowlist: readonly string[],
+  edits: readonly CatalogEdit[],
+): readonly number[] {
+  const misses: number[] = [];
+  allowlist.forEach((model, index) => {
+    // The allowlist may name a row the `catalog` list adds, which has no built-in match.
+    const addedByEdit = edits.some(
+      (edit) =>
+        edit.model === model &&
+        owned.some((provider) => provider.name === edit.provider) &&
+        !owned.some((provider) => liveRows(provider).some((row) => matchesEntry(row, edit.model))),
+    );
+    const matches = owned.some((provider) =>
+      liveRows(provider).some((row) => matchesEntry(row, model)),
+    );
+    if (!matches && !addedByEdit) misses.push(index);
+  });
+  return misses;
+}
+
 /**
  * The catalog rows for the contributed providers. A row is kept when its provider has a key
  * (`available`), it is not retired, and its plugin's allowlist, when it has one, names it. An
@@ -206,26 +246,19 @@ export function selectCatalogRows(input: {
     const entry = input.allowlists.get(plugin);
     const owned = input.providers.filter((provider) => provider.plugin === plugin);
     const named = new Set<BackendDescriptor>();
-    entry?.forEach((model, index) => {
-      // The allowlist may name a row the `catalog` list adds, which has no built-in match.
-      const addedByEdit = edits.some(
-        (edit) =>
-          edit.model === model &&
-          owned.some((provider) => provider.name === edit.provider) &&
-          !owned.some((provider) => live(provider).some((row) => matchesEntry(row, edit.model))),
+    const misses = entry === undefined ? [] : unmatchedAllowlistEntries(owned, entry, edits);
+    if (misses[0] !== undefined) {
+      throw new ProviderConfigurationError(
+        input.path,
+        `plugins.${plugin}.configuration.models[${misses[0]}]`,
+        allowlistMissMessage(owned),
       );
-      const matches = owned.flatMap((provider) =>
-        live(provider).filter((row) => matchesEntry(row, model)),
-      );
-      if (matches.length === 0 && !addedByEdit) {
-        throw new ProviderConfigurationError(
-          input.path,
-          `plugins.${plugin}.configuration.models[${index}]`,
-          `the entry matches no current ${owned.map((provider) => provider.name).join(' or ')} model. Its value is not repeated here, because it may be a secret.`,
-        );
+    }
+    for (const model of entry ?? []) {
+      for (const provider of owned) {
+        for (const row of live(provider)) if (matchesEntry(row, model)) named.add(row);
       }
-      for (const row of matches) named.add(row);
-    });
+    }
     for (const provider of owned) {
       if (!input.available.has(provider.name)) continue;
       selected.push(
