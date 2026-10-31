@@ -2017,7 +2017,8 @@
           bind:this={inputRef}
           onsubmit={handleComposerSubmit}
           {...questions.composerTarget === undefined ? {} : { placeholder: 'Answer' }}
-          disabled={disabled || (streaming && !followUpsEnabled)}
+          disabled={streaming && !followUpsEnabled}
+          paused={disabled}
           sending={streaming}
           allowFollowUp={followUpsEnabled}
           actions={composerActions}

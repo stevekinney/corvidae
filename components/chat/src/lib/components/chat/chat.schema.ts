@@ -46,7 +46,7 @@ const schema = {
     disabled: {
       type: 'boolean',
       description:
-        'Disables the composer: typed text stays in place and readable, Send and Enter do nothing, and Stop and the rest of the chat stay usable. A host sets it while the server is unreachable or the chat is disconnected. The composer is also disabled while a reply streams and the adapter has no `sendRunInput`. Default `false`.',
+        'Pauses the composer: typing, Send and Enter do nothing, but the editor keeps focus and its text (it is read-only, not disabled), so a draft survives and the composer takes keys again once this clears. A host sets it while the server is unreachable or the chat is disconnected. The composer is also disabled while a reply streams and the adapter has no `sendRunInput`. Default `false`.',
     },
     density: {
       enum: ['comfortable', 'compact'],

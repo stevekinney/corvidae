@@ -59,14 +59,16 @@ describe('Chat disabled', () => {
       onSubmit: (event: unknown) => sent.push(event),
     });
     await tick();
-    expect(composerOf(container).disabled).toBe(false);
+    expect(composerOf(container).readOnly).toBe(false);
 
+    composerOf(container).focus();
     await fireEvent.input(composerOf(container), { target: { value: 'draft text' } });
     await rerender({ disabled: true });
     await tick();
 
     const composer = composerOf(container);
-    expect(composer.disabled).toBe(true);
+    expect(composer.readOnly).toBe(true);
+    expect(document.activeElement).toBe(composer);
     expect(composer.value).toBe('draft text');
     await fireEvent.keyDown(composer, { key: 'Enter' });
     const send = container.querySelector<HTMLButtonElement>('button.chat-input-send');
@@ -77,5 +79,14 @@ describe('Chat disabled', () => {
     await tick();
     expect(sent).toEqual([]);
     expect(composerOf(container).value).toBe('draft text');
+    expect(document.activeElement).toBe(composerOf(container));
+
+    await rerender({ disabled: false });
+    await tick();
+    expect(composerOf(container).readOnly).toBe(false);
+    expect(document.activeElement).toBe(composerOf(container));
+    await fireEvent.keyDown(composerOf(container), { key: 'Enter' });
+    await tick();
+    expect(sent).toHaveLength(1);
   });
 });

@@ -24,7 +24,7 @@ export const CHANGING_ACTION_SELECTOR =
   '[data-changes], button[type="submit"], input[type="submit"]';
 
 /** What a click can land on: the nearest of these decides, so a marked container never holds its children. */
-const ACTIVATABLE = 'button, input, a, summary, [role="button"], [role="menuitem"]';
+const ACTIVATABLE = 'button, input, select, a, summary, [role="button"], [role="menuitem"]';
 
 /** What this module added to a control, so it removes that and nothing else. */
 interface Added {

@@ -44,6 +44,18 @@ describe('holdChangingActions', () => {
     expect(byId(root, 'save').hasAttribute('title')).toBe(false);
   });
 
+  test('stops a click on a marked select before the page sees it', () => {
+    const root = page('<select data-changes id="model"><option>a</option></select>');
+    let reached = 0;
+    root.querySelector('#model')!.addEventListener('click', () => (reached += 1));
+    const release = holdChangingActions(root, 'Turned off');
+    root.querySelector<HTMLElement>('#model')!.click();
+    expect(reached).toBe(0);
+    release();
+    root.querySelector<HTMLElement>('#model')!.click();
+    expect(reached).toBe(1);
+  });
+
   test('holds a control rendered after the server went away', async () => {
     const root = page('<div id="slot"></div>');
     const release = holdChangingActions(root, 'Turned off');
