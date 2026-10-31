@@ -116,6 +116,7 @@
       <button
         type="button"
         class="weft-start-review__submit"
+        data-changes
         disabled={submitState.status === 'pending'}
         onclick={onSubmit}
       >

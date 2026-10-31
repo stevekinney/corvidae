@@ -262,6 +262,8 @@
   {/snippet}
   {#snippet empty()}
     <EmptyState
+      kind={query.length === 0 ? 'first-use' : 'filtered'}
+      onClearFilters={() => (query = '')}
       title={query.length === 0 ? PALETTE_COPY.emptyTitle : PALETTE_COPY.noMatchesTitle}
       description={query.length === 0
         ? PALETTE_COPY.emptyDescription

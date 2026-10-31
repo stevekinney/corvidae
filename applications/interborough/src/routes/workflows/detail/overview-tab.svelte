@@ -214,6 +214,7 @@
         Tags
       </div>
       <TagInput
+        {...{ 'data-changes': true }}
         id={`workflow-detail-tags-${workflow.id}`}
         aria-labelledby={`workflow-detail-tags-label-${workflow.id}`}
         placeholder="Add tag"

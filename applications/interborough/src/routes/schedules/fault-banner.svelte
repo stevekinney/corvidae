@@ -34,6 +34,7 @@
     unauthorized: 'danger',
     'not-supported': 'info',
     internal: 'danger',
+    unreachable: 'warning',
   };
 </script>
 

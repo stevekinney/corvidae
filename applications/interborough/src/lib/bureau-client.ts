@@ -9,6 +9,8 @@
 import { HttpClientError } from '@lostgradient/weft';
 import { z } from 'zod';
 
+import { refuseWrite } from './write-guard.ts';
+
 /** The part of `fetch` the application's requests use, so a test can stand a stub in for it. */
 export type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -112,6 +114,8 @@ export async function callBureau(
   params: unknown,
   options: { readonly signal?: AbortSignal; readonly fetch?: Fetcher } = {},
 ): Promise<unknown> {
+  // A write is refused here, by operation, before any fetch is chosen: see `./write-guard.ts`.
+  refuseWrite(method);
   const send = options.fetch ?? fetch;
   const response = await send(`${BUREAU_PATH}/jsonrpc`, {
     method: 'POST',

@@ -125,7 +125,9 @@
       description={copy.page.runs.emptyDescriptionPaused}
     >
       {#snippet action()}
-        <Button variant="primary" size="sm" onclick={onResume}>{copy.resumeAction}</Button>
+        <Button data-changes variant="primary" size="sm" onclick={onResume}
+          >{copy.resumeAction}</Button
+        >
       {/snippet}
     </EmptyState>
   {:else if runs.data.length === 0}

@@ -84,6 +84,7 @@
     unauthorized: 'danger',
     'not-supported': 'warning',
     internal: 'danger',
+    unreachable: 'warning',
   };
 
   /**
@@ -106,6 +107,7 @@
     unauthorized: 0,
     'not-supported': 6_000,
     internal: 0,
+    unreachable: 6_000,
   };
 
   /**

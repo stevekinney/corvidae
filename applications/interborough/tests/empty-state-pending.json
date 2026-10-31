@@ -1,22 +1,6 @@
 {
   "entries": [
     {
-      "file": "src/app/boot-failure.svelte",
-      "issue": "COR-1839"
-    },
-    {
-      "file": "src/app/shell/command-palette.svelte",
-      "issue": "COR-1839"
-    },
-    {
-      "file": "src/app/shell/route-outlet.svelte",
-      "issue": "COR-1839"
-    },
-    {
-      "file": "src/app/view-frame.svelte",
-      "issue": "COR-1839"
-    },
-    {
       "file": "src/routes/agent-editor/agent-editor-no-provider.svelte",
       "issue": "COR-1852"
     },

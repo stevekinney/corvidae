@@ -197,6 +197,7 @@
             <Table.Cell align="right">
               {#if !goalHasEnded(goal.status)}
                 <Button
+                  data-changes
                   variant="ghost"
                   size="sm"
                   disabled={cancellation.isPending}

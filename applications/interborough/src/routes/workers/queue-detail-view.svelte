@@ -97,6 +97,7 @@
                 </Tooltip>
               {:else}
                 <Button
+                  data-changes
                   variant="secondary"
                   size="sm"
                   label="Clear"

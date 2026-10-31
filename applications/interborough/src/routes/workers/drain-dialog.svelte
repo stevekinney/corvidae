@@ -104,6 +104,8 @@
   {/snippet}
   {#snippet footer()}
     <Button variant="secondary" onclick={handleDismiss} disabled={submitting}>Cancel</Button>
-    <Button variant="primary" onclick={handleDrain} loading={submitting}>{title}</Button>
+    <Button data-changes variant="primary" onclick={handleDrain} loading={submitting}
+      >{title}</Button
+    >
   {/snippet}
 </Modal>

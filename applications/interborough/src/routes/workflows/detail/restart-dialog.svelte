@@ -306,6 +306,7 @@
     >
     <Tooltip text={restartGate.title ?? ''}>
       <Button
+        data-changes
         variant="primary"
         onclick={submit}
         loading={restartMutation.isPending}

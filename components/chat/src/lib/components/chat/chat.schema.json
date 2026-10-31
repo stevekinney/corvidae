@@ -34,6 +34,10 @@
       "type": "boolean",
       "description": "Whether the composer answers an open free-text question. A free-text question then reads \"Answer below\", the composer's placeholder reads \"Answer\", and sending from the composer calls `onInputSubmit` with the typed text instead of `onSubmit`. Without it (a reviews inbox, which has no composer) a text field is drawn in the question. Every other kind of question is answered in place either way. Default `false`."
     },
+    "disabled": {
+      "type": "boolean",
+      "description": "Pauses the composer: typing, Send and Enter do nothing, but the editor keeps focus and its text (it is read-only, not disabled), so a draft survives and the composer takes keys again once this clears. A host sets it while the server is unreachable or the chat is disconnected. The composer is also disabled while a reply streams and the adapter has no `sendRunInput`. Default `false`."
+    },
     "density": {
       "enum": ["comfortable", "compact"],
       "description": "Controls spacing density of the message timeline.\n- `'comfortable'` (default): standard padding and gap.\n- `'compact'`: tighter spacing for data-dense contexts (e.g., embedded panels).\n  Action buttons keep `min-height: var(--cinder-touch-target-min)` regardless."

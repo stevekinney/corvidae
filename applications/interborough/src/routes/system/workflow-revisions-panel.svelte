@@ -371,6 +371,7 @@
               (selectedRevision = selectedRevision === row.revision ? null : row.revision)}
           />
           <Button
+            data-changes
             size="sm"
             variant="secondary"
             label={row.isActive ? 'Refresh' : 'Activate'}

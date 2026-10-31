@@ -323,6 +323,7 @@
             <Dropdown.Menu>
               {#if allowed.pause || allowed.resume}
                 <Dropdown.Item
+                  data-changes
                   disabled={writeGate.disabled || actions.busy}
                   onclick={() => togglePause(schedule)}
                 >
@@ -350,6 +351,7 @@
               </Dropdown.Item>
               {#if allowed.cancel}
                 <Dropdown.Item
+                  data-changes
                   variant="danger"
                   disabled={writeGate.disabled || actions.busy}
                   onclick={() => requestCancel(schedule, name)}

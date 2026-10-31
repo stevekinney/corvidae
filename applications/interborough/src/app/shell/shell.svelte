@@ -15,19 +15,22 @@
    * for each destination and `?` for the map (`./destinations.ts`), and reads
    * each key press against it.
    */
-  import { SIDEBAR_MOBILE_MEDIA_QUERY } from '@lostgradient/cinder';
+  import { Banner, SIDEBAR_MOBILE_MEDIA_QUERY } from '@lostgradient/cinder';
   import type { HttpClient } from '@lostgradient/weft';
   import { useQueryClient } from '@tanstack/svelte-query';
-  import { untrack } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
 
   import { provideClient } from '../../lib/client.ts';
   import { BureauEventSource } from '../../lib/live-source/bureau-event-source.svelte.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { shortcuts } from '../../lib/shortcuts.ts';
+  import { armWriteGuard } from '../../lib/write-guard.ts';
   import type { Principal } from '../../lib/scopes.svelte.ts';
   import { providePrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
   import { subscribeBureauInvalidation } from '../bureau-event-queries.ts';
+  import { CONNECTION_COPY } from '../copy.ts';
+  import { ConnectionMonitor, provideConnection } from '../connection.svelte.ts';
   import { EngineStatusController, provideFleetEventSource } from '../engine-status.svelte.ts';
   import { connectFleetInvalidation } from '../fleet-invalidation.svelte.ts';
   import { provideBureauEventSource } from '../live-polling.svelte.ts';
@@ -37,6 +40,7 @@
   import { subscribeTaskEvidenceInvalidation } from '../task-event-queries.ts';
   import { ThemeStore } from '../theme.svelte.ts';
   import AuthModeBanner from './auth-mode-banner.svelte';
+  import { holdChangingActions } from './changing-actions.ts';
   import CommandPaletteLauncher from './command-palette.svelte';
   import CriticalAlertStrip from './critical-alert-strip.svelte';
   import { registerShellShortcuts } from './destinations.ts';
@@ -73,6 +77,42 @@
     onAuthExpired: () => authExpiredHandler(initialClient),
   });
   principalStore.setPrincipal(resolvedPrincipal);
+
+  const queryClient = useQueryClient();
+
+  // Whether the server answers. Every request that gets no answer says so, the browser's own
+  // offline event says so, and the probe of `/v1/health` that the monitor makes while it is down
+  // says when it is back, at which point what the page kept is fetched again.
+  const connection = provideConnection(
+    new ConnectionMonitor({
+      probe: () =>
+        fetch(`${initialClient.baseUrl}/v1/health`, {
+          headers: initialClient.headers,
+          cache: 'no-store',
+        }),
+      onRecovered: () => void queryClient.invalidateQueries(),
+    }),
+  );
+  // Armed while the shell initializes, not in an effect, because a child that captures `fetch` when
+  // it is created (a chat's run wiring) would otherwise keep the one that never refuses.
+  const disarmWriteGuard = armWriteGuard(
+    () => connection.unreachable,
+    [window.location.origin, new URL(initialClient.baseUrl, window.location.origin).origin],
+  );
+  onDestroy(disarmWriteGuard);
+  $effect(() => {
+    const stopObserving = connection.observe(queryClient);
+    const goOffline = () => connection.reportUnreachable();
+    const comeOnline = () => void connection.check();
+    window.addEventListener('offline', goOffline);
+    window.addEventListener('online', comeOnline);
+    return () => {
+      stopObserving();
+      window.removeEventListener('offline', goOffline);
+      window.removeEventListener('online', comeOnline);
+      connection.dispose();
+    };
+  });
 
   const theme = new ThemeStore();
   const layout = provideLayoutPreferences(new LayoutPreferences());
@@ -149,9 +189,20 @@
     return () => window.removeEventListener('keydown', onKeydown);
   });
 
+  // The engine's feed giving up is the server being unreachable. While the feed is only retrying
+  // the server may be fine, so that asks the server once instead of saying it is down.
+  $effect(() => {
+    const status = engineStatus.status;
+    untrack(() => {
+      if (status === 'stale' || status === 'closed') connection.reportUnreachable();
+    });
+  });
+  $effect(() => {
+    if (engineStatus.fleetSource.status === 'reconnecting') untrack(() => void connection.check());
+  });
+
   // A dead-lettered or delivered task result refreshes the task evidence on screen and the
   // Dashboard's alerts without a manual refresh. This rides the one shared fleet subscription.
-  const queryClient = useQueryClient();
   $effect(() => subscribeTaskEvidenceInvalidation(engineStatus.fleetSource, queryClient));
   // The engine's feed, applied for every page: a schedule that fires and the run it launches
   // settling, a review requested or decided, a worker connecting, a run's update answered.
@@ -180,9 +231,18 @@
   }
 
   let paletteOpen = $state(false);
+
+  // While the server does not answer, every control that changes something is held back: dimmed by
+  // the shell's `data-connection` attribute, refused on activation, and marked `aria-disabled`.
+  // The page's own `disabled` state is never touched (`./changing-actions.ts`).
+  // A dialog renders outside the shell, so the hold covers the whole document.
+  $effect(() => {
+    if (!connection.unreachable) return;
+    return holdChangingActions(document.body, CONNECTION_COPY.changesOff);
+  });
 </script>
 
-<div class="weft-shell">
+<div class="weft-shell" data-connection={connection.unreachable ? 'unreachable' : 'reachable'}>
   <Sidebar
     {client}
     engineStatus={engineStatus.status}
@@ -190,6 +250,14 @@
   />
   <div class="weft-shell-main">
     <Topbar {notifications} {theme} {layout} bind:paletteOpen bind:drawerOpen />
+    {#if connection.unreachable}
+      <Banner
+        preset="unreachable"
+        dismissible={false}
+        dataUpdatedAt={connection.lastHealthyAt}
+        onRetry={() => void connection.check()}>{CONNECTION_COPY.banner}</Banner
+      >
+    {/if}
     <AuthModeBanner mode={principalStore.bannerMode} />
     <CriticalAlertStrip store={notifications} />
     <RouteOutlet />

@@ -280,6 +280,7 @@
 
           <div class="weft-refresh-panel__actions">
             <Button
+              data-changes
               size="sm"
               variant="secondary"
               label="Check now"
@@ -291,6 +292,7 @@
                 actionMutation.mutate({ action: 'check', source, expectedGeneration: undefined })}
             />
             <Button
+              data-changes
               size="sm"
               variant="secondary"
               label="Check and activate"
@@ -301,6 +303,7 @@
             />
             {#if hasPendingCandidate(source)}
               <Button
+                data-changes
                 size="sm"
                 variant="secondary"
                 label="Activate candidate"
