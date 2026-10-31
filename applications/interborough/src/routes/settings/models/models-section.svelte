@@ -115,7 +115,7 @@
       <Button
         variant="secondary"
         size="sm"
-        disabled={locked || connected.length === 0}
+        disabled={locked || savePending || connected.length === 0}
         onclick={() => (dialog = { kind: 'add' })}>{copy.add}</Button
       >
     {/if}
