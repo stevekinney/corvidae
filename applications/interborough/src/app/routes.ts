@@ -286,6 +286,13 @@ export const routes: readonly RouteDefinition[] = [
     load: () => import('../routes/settings/model-policy.svelte'),
   },
   {
+    pattern: '/settings/plugins',
+    kind: 'list-detail',
+    crumb: SETTINGS_SECTION_COPY.plugins,
+    view: 'settings',
+    load: () => import('../routes/settings/plugins/index.svelte'),
+  },
+  {
     pattern: '/settings/data-and-retention',
     kind: 'form',
     crumb: SETTINGS_SECTION_COPY.dataAndRetention,

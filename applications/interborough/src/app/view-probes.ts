@@ -210,6 +210,8 @@ export function probeFor(
     case 'audit':
       return probeAudit;
     case 'settings':
+      // Plugins reads the host's own route, and the page words its loading and failure itself.
+      if (pattern === '/settings/plugins') return undefined;
       // The sections that moved out of the System page read the engine, not the Bureau's settings;
       // General, Models and Model policy read the settings.
       if (

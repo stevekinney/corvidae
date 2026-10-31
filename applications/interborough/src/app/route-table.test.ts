@@ -113,6 +113,7 @@ describe('the route table', () => {
         '/settings',
         '/settings/models',
         '/settings/model-policy',
+        '/settings/plugins',
         '/settings/data-and-retention',
         '/settings/api-reference',
       ]),
