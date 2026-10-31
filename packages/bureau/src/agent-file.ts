@@ -78,6 +78,7 @@ export const AGENT_FILE_KNOWN_KEYS = [
   'compaction',
   'references',
   'guardrails',
+  'hooks',
   'costBudget',
   'toolBudget',
   'toolApproval',
@@ -91,6 +92,7 @@ export type AgentFileProblemCode =
   | 'unknown-tool'
   | 'unknown-approval-tool'
   | 'missing-reference'
+  | 'reference-unresolved'
   | 'reference-too-large'
   | 'shadows-code-agent'
   | 'missing-frontmatter'
@@ -127,18 +129,13 @@ export const agentSkillDescriptorSchema = z.strictObject({
 });
 
 /**
- * The guardrail presets a file's `guardrails` key may name. `default` runs the shipped detectors in
- * validate mode, so a run goes on with the input blocked or the reply redacted; `tripwire` runs the
- * same detectors as a tripwire, which halts the run; `off` runs none. See `guardrail-presets.ts`
- * for what each one runs.
+ * The contributions a file's `guardrails` and `hooks` keys name: each is a contribution id,
+ * `plugin:name` (the form Armorer's `formatToolId` writes), without a version, so a file floats
+ * with the plugin that contributes it. Bureau resolves each against the contributions it was given
+ * (`BureauOptions.agentContributions`); one it cannot is `reference-unresolved`. An empty list
+ * says nothing, and a definition holds none.
  */
-export const AGENT_GUARDRAIL_PRESETS = ['default', 'tripwire', 'off'] as const;
-
-/** One of {@link AGENT_GUARDRAIL_PRESETS}. */
-export type AgentGuardrailPreset = (typeof AGENT_GUARDRAIL_PRESETS)[number];
-
-/** A file's `guardrails`: the name of a preset. */
-export const agentGuardrailPresetSchema = z.enum(AGENT_GUARDRAIL_PRESETS);
+export const agentContributionIdsSchema = z.array(z.string().min(1));
 
 /** The most steps an agent file may allow a run (`stepLimit`). */
 export const AGENT_STEP_LIMIT_MAXIMUM = 1000;
@@ -350,10 +347,14 @@ export const agentFileFrontmatterSchema = z
      */
     references: agentReferencesSchema.nullish(),
     /**
-     * The guardrail preset the agent runs under. Absent, the agent runs Operative's own default,
-     * which is the `tripwire` preset.
+     * The plugin guardrails (`plugin:name`) the agent runs besides Operative's default preset, which
+     * every agent runs. Absent, the agent runs only the default preset.
      */
-    guardrails: agentGuardrailPresetSchema.nullish(),
+    guardrails: agentContributionIdsSchema.nullish(),
+    /**
+     * The plugin run hooks (`plugin:name`) the agent runs. Absent, the agent runs none.
+     */
+    hooks: agentContributionIdsSchema.nullish(),
     /**
      * What one run may spend. Absent, a run has no spend limit. The agent's `model` must have a
      * price in the model catalog, or the file is not usable.
@@ -453,7 +454,10 @@ export const agentFileDefinitionSchema = z.object({
    * existed, and from a file that has none.
    */
   references: agentReferencesSchema.optional(),
-  guardrails: agentGuardrailPresetSchema.optional(),
+  /** Absent from a snapshot written before the field existed, and from a file that has none. */
+  guardrails: agentContributionIdsSchema.optional(),
+  /** Absent from a snapshot written before the field existed, and from a file that has none. */
+  hooks: agentContributionIdsSchema.optional(),
   /** Absent from a snapshot written before the field existed, and from a file that has none. */
   costBudget: agentCostBudgetSchema.optional(),
   /** Absent from a snapshot written before the field existed, and from a file that has none. */
@@ -533,10 +537,12 @@ export interface AgentFileDefinition {
    */
   readonly references?: readonly string[];
   /**
-   * The guardrail preset the agent runs under. Absent when the file sets none: the agent runs
-   * Operative's own default, which is the `tripwire` preset.
+   * The ids (`plugin:name`) of the plugin guardrails the agent runs besides Operative's default
+   * preset, which every agent runs. Absent when the file lists none.
    */
-  readonly guardrails?: AgentGuardrailPreset;
+  readonly guardrails?: readonly string[];
+  /** The ids (`plugin:name`) of the plugin run hooks the agent runs. Absent when the file lists none. */
+  readonly hooks?: readonly string[];
   /**
    * What one run of the agent may spend, as the file's `costBudget` states it, with `warnAt`
    * sorted and without repeats. Absent when the file sets none: a run has no spend limit.
@@ -579,6 +585,7 @@ const definitionKeyTable: Record<keyof AgentFileDefinition, true> = {
   compaction: true,
   references: true,
   guardrails: true,
+  hooks: true,
   costBudget: true,
   toolBudget: true,
   toolApproval: true,
@@ -640,9 +647,14 @@ export interface AgentFileDefinitionInput {
   readonly references?: readonly string[] | null | undefined;
   /**
    * See {@link AgentFileDefinition.guardrails}. An update that omits it keeps the file's value;
-   * `null` removes it.
+   * `null`, or an empty list, removes it.
    */
-  readonly guardrails?: AgentGuardrailPreset | null | undefined;
+  readonly guardrails?: readonly string[] | null | undefined;
+  /**
+   * See {@link AgentFileDefinition.hooks}. An update that omits it keeps the file's value; `null`,
+   * or an empty list, removes it.
+   */
+  readonly hooks?: readonly string[] | null | undefined;
   /**
    * See {@link AgentFileDefinition.costBudget}. An update that omits it keeps the file's value;
    * `null` removes it.
@@ -821,7 +833,12 @@ function toDefinition(
     ...(frontmatter.references == null || frontmatter.references.length === 0
       ? {}
       : { references: [...frontmatter.references] }),
-    ...(frontmatter.guardrails == null ? {} : { guardrails: frontmatter.guardrails }),
+    ...(frontmatter.guardrails == null || frontmatter.guardrails.length === 0
+      ? {}
+      : { guardrails: [...frontmatter.guardrails] }),
+    ...(frontmatter.hooks == null || frontmatter.hooks.length === 0
+      ? {}
+      : { hooks: [...frontmatter.hooks] }),
     ...optionalToolApproval(frontmatter.toolApproval),
     ...(frontmatter.costBudget == null ? {} : { costBudget: costBudgetOf(frontmatter.costBudget) }),
     ...(frontmatter.toolBudget == null ? {} : { toolBudget: toolBudgetOf(frontmatter.toolBudget) }),
@@ -928,7 +945,12 @@ function knownFrontmatter(definition: AgentFileDefinitionInput): Record<string, 
   if (definition.references != null && definition.references.length > 0) {
     known['references'] = [...definition.references];
   }
-  if (definition.guardrails != null) known['guardrails'] = definition.guardrails;
+  if (definition.guardrails != null && definition.guardrails.length > 0) {
+    known['guardrails'] = [...definition.guardrails];
+  }
+  if (definition.hooks != null && definition.hooks.length > 0) {
+    known['hooks'] = [...definition.hooks];
+  }
   if (definition.costBudget != null) known['costBudget'] = costBudgetOf(definition.costBudget);
   if (definition.toolBudget != null) known['toolBudget'] = toolBudgetOf(definition.toolBudget);
   const toolApproval =
@@ -965,7 +987,10 @@ export function resolveAgentFileDefinition(
     ...(input.references == null || input.references.length === 0
       ? {}
       : { references: [...input.references] }),
-    ...(input.guardrails == null ? {} : { guardrails: input.guardrails }),
+    ...(input.guardrails == null || input.guardrails.length === 0
+      ? {}
+      : { guardrails: [...input.guardrails] }),
+    ...(input.hooks == null || input.hooks.length === 0 ? {} : { hooks: [...input.hooks] }),
     ...(input.costBudget == null ? {} : { costBudget: costBudgetOf(input.costBudget) }),
     ...(input.toolBudget == null ? {} : { toolBudget: toolBudgetOf(input.toolBudget) }),
     ...optionalToolApproval(input.toolApproval),
@@ -977,7 +1002,7 @@ export function resolveAgentFileDefinition(
 export function agentFileInputOf(definition: AgentFileDefinition): AgentFileDefinitionInput {
   // A rest, so a key the definition gains is carried into the input and not dropped here.
   const { examples: _examples, ...input } = definition;
-  // An update that omits `stepLimit`, `retry`, `compaction`, `references`, `guardrails`,
+  // An update that omits `stepLimit`, `retry`, `compaction`, `references`, `guardrails`, `hooks`,
   // `costBudget`, `toolBudget` or `toolApproval` keeps the file's value, and a version that has none must remove
   // it: `null` says so.
   return {
@@ -987,6 +1012,7 @@ export function agentFileInputOf(definition: AgentFileDefinition): AgentFileDefi
     compaction: definition.compaction ?? null,
     references: definition.references ?? null,
     guardrails: definition.guardrails ?? null,
+    hooks: definition.hooks ?? null,
     costBudget: definition.costBudget ?? null,
     toolBudget: definition.toolBudget ?? null,
     toolApproval: definition.toolApproval ?? null,
@@ -1009,7 +1035,7 @@ export function serializeUpdatedAgentFile(
 ): Uint8Array | undefined {
   const before = existing.definition;
   // A key the caller leaves out (`a2a`, `stepLimit`, `retry`, `compaction`, `references`,
-  // `guardrails`, `costBudget`, `toolBudget`, `toolApproval`) is not a change to it: the file keeps the value it has, and a file
+  // `guardrails`, `hooks`, `costBudget`, `toolBudget`, `toolApproval`) is not a change to it: the file keeps the value it has, and a file
   // with no such key is not given one.
   const keptA2a = input.a2a === undefined;
   const next = resolveAgentFileDefinition(id, {
@@ -1020,6 +1046,7 @@ export function serializeUpdatedAgentFile(
     ...(input.compaction === undefined ? { compaction: before.compaction } : {}),
     ...(input.references === undefined ? { references: before.references } : {}),
     ...(input.guardrails === undefined ? { guardrails: before.guardrails } : {}),
+    ...(input.hooks === undefined ? { hooks: before.hooks } : {}),
     ...(input.costBudget === undefined ? { costBudget: before.costBudget } : {}),
     ...(input.toolBudget === undefined ? { toolBudget: before.toolBudget } : {}),
     ...(input.toolApproval === undefined ? { toolApproval: before.toolApproval } : {}),
@@ -1045,6 +1072,7 @@ export function serializeUpdatedAgentFile(
         ...(input.compaction === undefined ? { compaction: before.compaction } : {}),
         ...(input.references === undefined ? { references: before.references } : {}),
         ...(input.guardrails === undefined ? { guardrails: before.guardrails } : {}),
+        ...(input.hooks === undefined ? { hooks: before.hooks } : {}),
         ...(input.costBudget === undefined ? { costBudget: before.costBudget } : {}),
         ...(input.toolBudget === undefined ? { toolBudget: before.toolBudget } : {}),
         ...(input.toolApproval === undefined ? { toolApproval: before.toolApproval } : {}),

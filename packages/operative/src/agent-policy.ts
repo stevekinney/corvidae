@@ -17,7 +17,12 @@ import type { ToolPolicy } from './create-policy-enforcement-hook';
 import { createPolicyEnforcementHook } from './create-policy-enforcement-hook';
 import { createGuardrails } from './guardrails/create-guardrails';
 import { createDefaultGuardrailsPreset } from './guardrails/default-preset';
-import type { GuardrailHooks, GuardrailsOptions } from './guardrails/types';
+import type {
+  GuardrailHooks,
+  GuardrailsOptions,
+  InputDetector,
+  OutputValidator,
+} from './guardrails/types';
 import type { OperativeHookMap } from './hooks';
 
 /**
@@ -67,20 +72,66 @@ export interface AgentSkills {
 }
 
 /**
+ * Detectors and validators added to whatever guardrails an agent's run resolves (COR-1877). They
+ * run beside the resolved configuration's own and never replace it.
+ */
+export interface GuardrailAdditions {
+  /** Detectors run over the input, after the resolved configuration's own. */
+  readonly inputDetectors?: readonly InputDetector[] | undefined;
+  /** Validators run over a response, after the resolved configuration's own. */
+  readonly outputValidators?: readonly OutputValidator[] | undefined;
+}
+
+/**
+ * `resolved` with `additions` appended to its detectors and validators, as a new object. `resolved`
+ * itself when there is nothing to add. Under `false` (no guardrails) the additions run alone, as a
+ * tripwire: an agent that asks for a guardrail by name is not left without it because its host
+ * opted out of the defaults.
+ */
+function withGuardrailAdditions(
+  resolved: GuardrailsOptions | false,
+  additions: GuardrailAdditions,
+): GuardrailsOptions | undefined {
+  const detectors = additions.inputDetectors ?? [];
+  const validators = additions.outputValidators ?? [];
+  if (detectors.length === 0 && validators.length === 0) {
+    return resolved === false ? undefined : resolved;
+  }
+  const base: GuardrailsOptions = resolved === false ? { mode: 'tripwire' } : resolved;
+  return {
+    ...base,
+    ...(detectors.length === 0
+      ? {}
+      : { input: { ...base.input, detectors: [...(base.input?.detectors ?? []), ...detectors] } }),
+    ...(validators.length === 0
+      ? {}
+      : {
+          output: {
+            ...base.output,
+            validators: [...(base.output?.validators ?? []), ...validators],
+          },
+        }),
+  };
+}
+
+/**
  * Resolves the guardrails an agent's run applies.
  *
  * Precedence, most specific first: the agent's own declaration, then the
  * policy its host hands down through `AgentRunContext.inheritedGuardrails`,
  * then the AB-40 preset. `false` at whichever layer answers first means no
- * guardrails at all — an explicit opt-out is an answer, not an absence.
+ * guardrails at all — an explicit opt-out is an answer, not an absence. The
+ * agent's `additions` (COR-1877) are appended to whichever answered.
  *
  * Returns `undefined` for "no guardrails", so a caller narrows once.
  */
 export function resolveAgentGuardrails(
   declared: GuardrailsDeclaration | undefined,
   inherited: GuardrailsDeclaration | undefined,
+  additions?: GuardrailAdditions,
 ): GuardrailsOptions | undefined {
   const resolved = declared ?? inherited ?? createDefaultGuardrailsPreset();
+  if (additions !== undefined) return withGuardrailAdditions(resolved, additions);
   return resolved === false ? undefined : resolved;
 }
 

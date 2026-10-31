@@ -59,6 +59,7 @@ import {
   type ContextManagementOptions,
   createAgent,
   type GenerateFunction,
+  type GuardrailAdditions,
   shouldRetryProviderError,
   stopWhen,
 } from '@lostgradient/operative';
@@ -106,7 +107,13 @@ import { createFileAgentCompactor } from './file-agent-compaction';
 import { isNamespacedIdentifier } from './namespaced-identifier';
 import { createFileAgentGenerate } from './file-agent-generate';
 import { costBudgetOptions, toolboxBudgetOf, usdPricingOfRow } from './file-agent-cost-budget';
-import { guardrailsOfPreset } from './guardrail-presets';
+import {
+  type AgentContributions,
+  guardrailAdditionsOf,
+  NO_AGENT_CONTRIBUTIONS,
+  runHooksOf,
+  unresolvedContributions,
+} from './agent-contributions';
 import { createToolApprovalHooks, defaultToolApproval } from './tool-approval';
 import { type AgentRevisionRecord, createAgentRevisionStore } from './agent-revision-store';
 import {
@@ -365,6 +372,12 @@ export interface AgentFileCatalogOptions {
    * has; without one such a tool sees no secret.
    */
   readonly secretResolver?: ToolSecretResolver | undefined;
+  /**
+   * The plugin guardrails and run hooks a file's `guardrails` and `hooks` may list (COR-1877). A
+   * file that lists an id these do not hold is `invalid` with `reference-unresolved`. Omitted,
+   * nothing is contributed, so a file that lists any is invalid.
+   */
+  readonly contributions?: AgentContributions | undefined;
   /** Where watcher and scan failures are reported. */
   readonly diagnose: (message: string, cause: unknown) => void;
   /**
@@ -666,6 +679,19 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         },
       };
     }
+    const unresolved = unresolvedContributions(
+      definition,
+      options.contributions ?? NO_AGENT_CONTRIBUTIONS,
+    );
+    if (unresolved.length > 0) {
+      return {
+        problem: {
+          code: 'reference-unresolved',
+          message: `The definition lists ${unresolved.map((issue) => issue.message).join('; ')}. A guardrail or run hook is listed as plugin:name; check that the plugin is loaded, or remove the entry.`,
+          issues: unresolved,
+        },
+      };
+    }
     return { descriptor: resolved };
   }
 
@@ -724,6 +750,23 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         }),
       },
     };
+  }
+
+  function optionalGuardrailAdditions(
+    definition: AgentFileDefinition,
+  ): { readonly additionalGuardrails: GuardrailAdditions } | Record<string, never> {
+    const additions = guardrailAdditionsOf(
+      definition,
+      options.contributions ?? NO_AGENT_CONTRIBUTIONS,
+    );
+    return additions === undefined ? {} : { additionalGuardrails: additions };
+  }
+
+  function optionalRunHooks(
+    definition: AgentFileDefinition,
+  ): { readonly hooks: NonNullable<ReturnType<typeof runHooksOf>> } | Record<string, never> {
+    const hooks = runHooksOf(definition, options.contributions ?? NO_AGENT_CONTRIBUTIONS);
+    return hooks === undefined ? {} : { hooks };
   }
 
   function buildAgent(
@@ -804,9 +847,10 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       // A call that asks parks the run on the approval: the answer comes from a person, not the
       // model, and a model that is told "action required" would only ask again.
       stopWhen: [stopWhen.pendingApproval(), stopWhen.noToolCalls()],
-      ...(definition.guardrails === undefined
-        ? {}
-        : { guardrails: guardrailsOfPreset(definition.guardrails) }),
+      // The default guardrail preset guards every agent; the plugin guardrails the file lists are
+      // added to it (COR-1877), and so are the plugin run hooks to the agent's hook tier.
+      ...optionalGuardrailAdditions(definition),
+      ...optionalRunHooks(definition),
       ...(definition.costBudget === undefined
         ? {}
         : costBudgetOptions(

@@ -25,6 +25,7 @@ import {
   KNOWN_MODEL,
   OTHER_MODEL,
   validAgentFile,
+  TEST_CONTRIBUTIONS,
 } from './testing/agent-file-fixtures.test-support';
 
 const fixtures: AgentFileFixture[] = [];
@@ -339,11 +340,11 @@ describe('restore', () => {
     expect(detail?.definition).toMatchObject({ stepLimit: 10, retry: firstRetry });
   });
 
-  it('restores guardrails to the earlier version’s preset, and names it in changedKeys', async () => {
-    const fixture = await seeded();
+  it('restores guardrails to the earlier version’s ids, and names them in changedKeys', async () => {
+    const fixture = await seeded({ contributions: TEST_CONTRIBUTIONS });
     await fixture.catalog.update(
       'helper',
-      definition('Version one.\n', { guardrails: 'default' }),
+      definition('Version one.\n', { guardrails: ['x:check'] }),
       {
         expectedHash: hashOf(fixture),
         savedBy: ALICE,
@@ -351,7 +352,7 @@ describe('restore', () => {
     );
     await fixture.catalog.update(
       'helper',
-      definition('Version one.\n', { guardrails: 'tripwire' }),
+      definition('Version one.\n', { guardrails: ['y:other'] }),
       {
         expectedHash: hashOf(fixture),
         savedBy: ALICE,
@@ -364,10 +365,10 @@ describe('restore', () => {
     });
 
     const [latest] = await fixture.catalog.versions.list('helper');
-    expect(latest?.definition.guardrails).toBe('default');
+    expect(latest?.definition.guardrails).toEqual(['x:check']);
     expect(latest?.changedKeys).toEqual(['guardrails']);
     const detail = await fixture.catalog.detail('helper');
-    expect(detail?.definition?.guardrails).toBe('default');
+    expect(detail?.definition?.guardrails).toEqual(['x:check']);
   });
 
   it('removes a stepLimit and retry the restored version does not have', async () => {

@@ -1,3 +1,4 @@
+import type { AgentContributions } from './agent-contributions';
 import type { BureauWorkflows } from './workflow-runtime';
 import type { AnswerEncryptionKeys } from './secret-answers';
 import type { BureauWorkerDeployments } from './worker-deployments';
@@ -525,6 +526,16 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * not reach the code agents in {@link BureauOptions.agents}, whose toolboxes carry their own.
    */
   agentApprovalSecret?: string;
+  /**
+   * COR-1877 — the guardrails and run hooks plugins contribute, which an agent file chooses with
+   * `guardrails: [plugin:name]` and `hooks: [plugin:name]`. Build the value with
+   * `createAgentContributions`. Operative's default guardrail preset still guards every agent, and a
+   * chosen guardrail runs beside it; a chosen run hook set joins the agent's hook tier, each entry
+   * tagged with its plugin as its `source`. A file that lists an id this does not hold is `invalid`
+   * with `reference-unresolved`. Omitted, nothing is contributed, so a file that lists any is
+   * invalid. Used only with {@link BureauOptions.agentSource}.
+   */
+  agentContributions?: AgentContributions;
   /**
    * COR-1702 — where workflow definitions are loaded from, watched in, and written back to. Pass
    * `workflowFileDirectory(path)` from `@lostgradient/bureau/sources` for a directory of JSON

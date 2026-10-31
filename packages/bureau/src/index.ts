@@ -37,7 +37,13 @@ export type {
   CreateAgentCatalogOptions,
 } from './agent-catalog';
 export { createAgentCatalog } from './agent-catalog';
-export { guardrailsOfPreset } from './guardrail-presets';
+export { createAgentContributions, NO_AGENT_CONTRIBUTIONS } from './agent-contributions';
+export type {
+  AgentContributions,
+  AgentContributionSource,
+  ContributedGuardrail,
+  ContributedRunHooks,
+} from './agent-contributions';
 export {
   createToolApprovalHooks,
   TOOL_APPROVAL_DEFAULT_MODE,
@@ -54,14 +60,12 @@ export type {
   AgentFileProblemCode,
   AgentCompaction,
   AgentCostBudget,
-  AgentGuardrailPreset,
   AgentRetry,
   AgentToolBudget,
 } from './agent-file';
 export {
   AGENT_COST_BUDGET_MAXIMUM_USD,
   AGENT_COST_BUDGET_MAXIMUM_WARNINGS,
-  AGENT_GUARDRAIL_PRESETS,
   AGENT_FILE_STEM_PATTERN,
   AGENT_IDENTIFIER_PATTERN,
   AGENT_TOOL_BUDGET_MAXIMUM_CALLS,

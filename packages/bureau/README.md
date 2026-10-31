@@ -192,6 +192,7 @@ The agent fields say what a Bureau can run and where the definitions come from.
 | `agents` | `AgentDefinitions` | The typed agent catalog, exposed as `bureau.agents` and started by name through `bureau.tasks.start`. Omitted means `{}`. |
 | `agentSource` | `AgentSource` | Where agent definitions are loaded from, watched in, and written back to. Requires `models.generate`. |
 | `agentApprovalSecret` | `string` | Signs the tool approvals file agents raise (a file's `toolApproval`); keep it the same across restarts. Without it an approval can only be denied. |
+| `agentContributions` | `AgentContributions` | The plugin guardrails and run hooks an agent file chooses with `guardrails: [plugin:name]` and `hooks: [plugin:name]`; build it with `createAgentContributions`. Operative's default guardrail preset still guards every agent, and a chosen guardrail runs beside it. A file that lists an id this does not hold is `invalid` with `reference-unresolved`. |
 | `workflowSource` | `WorkflowSource` | Where workflow definitions are loaded from, watched in, and written back to. Needs a durable engine. |
 | `children` | `BureauChildrenOptions` | Configures `bureau.children`: each child agent's typed signal contract and, optionally, signed delegation grants. |
 | `validators` | `readonly Validator[]` | The validators durable goals may name. Registered here and resolved by exact name and version every time one runs, including after a restart. |

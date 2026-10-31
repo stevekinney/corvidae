@@ -3109,6 +3109,7 @@ async function constructBureau<const D extends AgentDefinitions>(
                 : { approvalSecret: options.agentApprovalSecret }),
               // COR-1828: a tool a person allowed for the rest of the chat skips its `on-changes` ask.
               rememberedTools: approvalGrantsOfRun,
+              contributions: options.agentContributions,
               // COR-1920: a file agent's per-run toolbox resolves secret answers as the Bureau's does.
               ...(runtime.secretAnswers === undefined
                 ? {}

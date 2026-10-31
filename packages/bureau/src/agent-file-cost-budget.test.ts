@@ -28,6 +28,7 @@ import {
   agentFileText,
   createAgentFileFixture,
   KNOWN_MODEL,
+  TEST_CONTRIBUTIONS,
 } from './testing/agent-file-fixtures.test-support';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
 
@@ -469,7 +470,10 @@ describe('restoring a version', () => {
   });
 
   it('removes the budget and the guardrails a version that never had them lacks', async () => {
-    const fixture = await createAgentFileFixture({ watch: false });
+    const fixture = await createAgentFileFixture({
+      watch: false,
+      contributions: TEST_CONTRIBUTIONS,
+    });
     fixtures.push(fixture);
     await fixture.put('helper.md', agentFileText({ name: 'Helper', model: KNOWN_MODEL }));
     await fixture.catalog.refresh();
@@ -480,7 +484,7 @@ describe('restoring a version', () => {
       {
         name: 'Helper',
         model: KNOWN_MODEL,
-        guardrails: 'off',
+        guardrails: ['x:check'],
         costBudget: { perRunUsd: 1, warnAt: [0.5] },
         instructions: 'You are helpful.\n',
       },
@@ -488,7 +492,7 @@ describe('restoring a version', () => {
     );
     const updated = await fixture.catalog.detail('helper');
     expect(updated?.definition).toMatchObject({
-      guardrails: 'off',
+      guardrails: ['x:check'],
       costBudget: { perRunUsd: 1, warnAt: [0.5] },
     });
 
@@ -501,7 +505,10 @@ describe('restoring a version', () => {
   });
 
   it('lists the keys a save changed, guardrails and costBudget among them', async () => {
-    const fixture = await createAgentFileFixture({ watch: false });
+    const fixture = await createAgentFileFixture({
+      watch: false,
+      contributions: TEST_CONTRIBUTIONS,
+    });
     fixtures.push(fixture);
     await fixture.put('helper.md', agentFileText({ name: 'Helper', model: KNOWN_MODEL }));
     await fixture.catalog.refresh();
@@ -512,7 +519,7 @@ describe('restoring a version', () => {
       {
         name: 'Helper',
         model: KNOWN_MODEL,
-        guardrails: 'default',
+        guardrails: ['x:check'],
         costBudget: { perRunUsd: 1 },
         instructions: 'You are helpful.\n',
       },
