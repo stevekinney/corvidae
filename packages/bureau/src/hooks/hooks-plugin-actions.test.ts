@@ -31,8 +31,11 @@ function fixture(
     ) => readonly HookActionKindRegistration[];
     readonly keys?: Awaited<ReturnType<typeof generateEncryptionKey>>;
     readonly kv?: ReturnType<typeof textValueStore>;
+    readonly workflows?: Parameters<typeof createHooks>[0]['workflows'];
   } = {},
 ) {
+  // Set to stop the process under a delivery, as a shutdown does.
+  const state = { shuttingDown: false };
   const tracked: Promise<void>[] = [];
   const requests: Array<{ url: string; body: string }> = [];
   const engine: WebhookDeliveryEngine = {
@@ -47,7 +50,7 @@ function fixture(
     maxAttempts: 3,
     backoffMilliseconds: () => 0,
     wait: () => Promise.resolve(),
-    shuttingDown: () => false,
+    shuttingDown: () => state.shuttingDown,
     signal: new AbortController().signal,
     track: (promise) => {
       tracked.push(promise);
@@ -82,11 +85,18 @@ function fixture(
     audit: () => Promise.resolve(),
     diagnose: () => undefined,
     actionKinds: registrations,
+    ...(options.workflows === undefined ? {} : { workflows: options.workflows }),
   });
   return {
     hooks: created.hooks,
     received,
     requests,
+    state,
+    /** What a restarted process does: resumes the deliveries the last one left pending. */
+    async resume(): Promise<void> {
+      await created.resume();
+      await Promise.all(tracked.splice(0));
+    },
     async fire(extra: { readonly source?: string } = {}): Promise<void> {
       await created.resume();
       created.dispatch({
@@ -161,7 +171,7 @@ describe('a contributed hook action', () => {
     expect(delivery.work).toMatchObject({ type: 'plugin', event: { source: 'calendar' } });
   });
 
-  it('adds source to a webhook body and to a start-workflow event input only when the event has one', async () => {
+  it('adds source to a webhook body only when the event has one', async () => {
     const setup = fixture({ keys: await generateEncryptionKey() });
     await setup.hooks.create({
       events: ['run.settled'],
@@ -179,6 +189,95 @@ describe('a contributed hook action', () => {
     expect(Object.hasOwn(bodies[0]!, 'source')).toBe(false);
     expect(bodies[1]!['source']).toBe('calendar');
     expect(bodies[1]!['payload']).toEqual({ runId: 'r1' });
+  });
+
+  it('adds source to a start-workflow event input only when the event has one', async () => {
+    const inputs: unknown[] = [];
+    const setup = fixture({
+      workflows: () => ({
+        assertStartable: () => undefined,
+        findStart: () => Promise.resolve(undefined),
+        start: (_id: string, options: { input?: unknown }) => {
+          inputs.push(options.input);
+          return Promise.resolve({
+            runId: `run-${inputs.length}`,
+            workflow: 'lookup',
+            workflowVersion: 'v1',
+          });
+        },
+      }),
+    });
+    await setup.hooks.create({
+      events: ['run.settled'],
+      action: { type: 'start-workflow', workflowId: 'lookup', input: 'event' },
+    });
+
+    await setup.fire();
+    await setup.fire({ source: 'calendar' });
+
+    expect(inputs).toHaveLength(2);
+    expect(Object.hasOwn(inputs[0] as object, 'source')).toBe(false);
+    expect(inputs[1]).toEqual({
+      kind: 'run.settled',
+      bureauId: 'plugin-bureau',
+      emittedAtMs: 1_800_000_000_000,
+      payload: { runId: 'r1' },
+      source: 'calendar',
+    });
+  });
+
+  it('hands the action its delivery id and the idempotency key of that delivery', async () => {
+    const setup = fixture();
+    const hook = await setup.hooks.create({ events: ['run.settled'], action: ACTION });
+
+    await setup.fire();
+    await setup.fire();
+
+    const deliveries = await setup.hooks.deliveries(hook.id);
+    expect(deliveries).toHaveLength(2);
+    expect(setup.received).toHaveLength(2);
+    const keys = setup.received.map((context) => context.idempotencyKey);
+    for (const delivery of deliveries) {
+      const context = setup.received.find((candidate) => candidate.deliveryId === delivery.id);
+      expect(context?.idempotencyKey).toBe(`hook:${hook.id}:${delivery.id}`);
+    }
+    expect(new Set(keys).size).toBe(2);
+  });
+
+  it('hands a replayed attempt, after an interrupted one succeeded, the same idempotency key', async () => {
+    const kv = textValueStore(new MemoryStorage(), { disposeUnderlyingStorage: false });
+    const effects: string[] = [];
+    // The first attempt does its external effect, then the process stops before the delivery is
+    // marked delivered; the attempt after the restart must be able to tell it already happened.
+    const first = fixture({
+      kv,
+      run: (context) => {
+        effects.push(context.idempotencyKey);
+        first.state.shuttingDown = true;
+        return Promise.reject(new Error('the process is stopping'));
+      },
+    });
+    const hook = await first.hooks.create({ events: ['run.settled'], action: ACTION });
+    await first.fire();
+    const [stopped] = await first.hooks.deliveries(hook.id);
+    expect(stopped!.status).toBe('pending');
+
+    const second = fixture({
+      kv,
+      run: (context) => {
+        effects.push(context.idempotencyKey);
+        return Promise.resolve();
+      },
+    });
+    await second.resume();
+
+    const [delivery] = await second.hooks.deliveries(hook.id);
+    expect(delivery!.status).toBe('delivered');
+    expect(delivery!.attempts.map((attempt) => attempt.outcome)).toEqual([
+      'interrupted',
+      'completed',
+    ]);
+    expect(effects).toEqual([`hook:${hook.id}:${delivery!.id}`, `hook:${hook.id}:${delivery!.id}`]);
   });
 
   it('is retried when it rejects, and exhausted after the last attempt', async () => {

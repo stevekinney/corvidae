@@ -647,6 +647,8 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
           event: work.event,
           configuration: checked.value,
           signal: engine.signal,
+          deliveryId: context.deliveryId,
+          idempotencyKey: key,
         });
         return {};
       }
