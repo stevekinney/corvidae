@@ -34,6 +34,12 @@ export type SchemaFormProps = Omit<HTMLFormAttributes, 'class' | 'onsubmit'> & {
    * two. Find a field and the other large-form affordances are unaffected.
    */
   jsonEditable?: boolean;
+  /**
+   * Problems the host found with a value this form submitted, such as a server-side validation
+   * refusal. Each one is shown on the field its `path` names, as a built-in validation message is,
+   * and cleared when that field is edited. Pass a new array to show a new set.
+   */
+  issues?: readonly { path: readonly (string | number)[]; message: string }[] | undefined;
   /** Name of the hidden serialized output field. Defaults to `value`. */
   name?: string;
   /** Label for the built-in submit button. Defaults to `Submit`. */

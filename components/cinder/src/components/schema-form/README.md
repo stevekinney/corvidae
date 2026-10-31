@@ -33,6 +33,8 @@ Render an accessible form from a JSON Schema object and submit one validated val
 
 The three value channels have distinct ownership. `value` seeds internal state on mount and is not a live binding, so later `value` changes do not discard active edits. `onDraftChange` reports the complete current draft after each edit, before schema validation, so consumers can mirror nested or temporarily invalid values. In-progress numeric editors and temporarily unparseable JSON fields are reported as their current raw text until the value commits or parses successfully. `onSubmit` reports only schema-valid output after submission.
 
+Pass `issues` to show problems the host found with a submitted value, such as a server-side refusal: each `{ path, message }` appears on the field its `path` names (property names and array indexes; `[]` is the whole value) like a built-in validation message, and editing the field clears it. A string with `writeOnly: true` is a password field.
+
 ## Control shapes
 
 Each shape below has exactly one schema rule. A schema that does not match a rule keeps the rendering it had before (a generic array editor, an object group, or the raw JSON textarea), so a rule never guesses.
@@ -69,6 +71,7 @@ A failed submit clears the filter and opens every group that holds an error, so 
 | `jsonEditable` | `boolean` | no | — | Whether a large form offers its own Edit as JSON panel. Defaults to `true`; set `false` when the host already provides a JSON entry point for the same payload, so the page does not show two. Find a field and the other large-form affordances are unaffected. |
 | `name` | `string` | no | — | Name of the hidden serialized output field. Defaults to `value`. |
 | `submitLabel` | `string` | no | — | Label for the built-in submit button. Defaults to `Submit`. |
+| `issues` | `(opaque)` | no | — | Problems the host found with a value this form submitted, such as a server-side validation refusal. Each one is shown on the field its `path` names, as a built-in validation message is, and cleared when that field is edited. Pass a new array to show a new set. Not expressible in JSON Schema; see the component types for the signature. |
 | `onDraftChange` | `(opaque)` | no | — | Called after each edit with the complete current draft, before schema validation. The draft can be schema-invalid and does not change the seed-only `value` contract. In-progress numeric editors and temporarily unparseable JSON fields are reported as their current raw text until the value commits or parses successfully. Not expressible in JSON Schema; see the component types for the signature. |
 | `onSubmit` | `(opaque)` | no | — | Called after validation passes with the schema-conformant output value. Not expressible in JSON Schema; see the component types for the signature. |
 | `schema` | `(opaque)` | yes | — | JSON Schema object used to render and validate the form. Not expressible in JSON Schema; see the component types for the signature. |

@@ -1022,7 +1022,9 @@ test.describe('chat harness — mounts cleanly', () => {
       await expect
         .poll(submissions)
         .toEqual([{ toolCallId: 'call-book-room', value: { room: 'Atlas', attendees: 4 } }]);
-      await expect(request.getByRole('status')).toHaveText('Input submitted.');
+      await expect(request.getByRole('status')).toHaveText(
+        'You answered Room: Atlas, Attendees: 4',
+      );
       await expect(request.locator('form')).toHaveCount(0);
 
       expect(diagnostics, 'Chat input fixture must not emit browser errors or warnings').toEqual(

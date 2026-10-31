@@ -50,6 +50,7 @@
   import { useChatSearch } from './use-chat-search.svelte.ts';
   import { useIntersection } from '../../../utilities/use-intersection.svelte.ts';
   import ChatJumpControls from './chat-jump-controls.svelte';
+  import { provideQuestionStore, QuestionStore } from '../question/question-store.svelte.ts';
   import ChatHistoryTrigger from './chat-history-trigger.svelte';
   import ChatStatusAnnouncer from './chat-status-announcer.svelte';
   import ChatSearchBar from './chat-search-bar.svelte';
@@ -141,6 +142,7 @@
     onArtifactOpen,
     onApprovalResolve,
     onInputSubmit,
+    answerInComposer = false,
     messageReasoning,
     messageSteps,
     messageSuggestions,
@@ -303,6 +305,18 @@
     quoteSelection.dismiss();
   });
 
+  const questions = new QuestionStore(
+    () => answerInComposer,
+    () =>
+      uploadAttachment === undefined
+        ? undefined
+        : async (file, signal) => {
+            const reference = await uploadAttachment(file, { signal });
+            return reference.id;
+          },
+  );
+  provideQuestionStore(questions);
+
   const commandActions = useChatCommandActions({
     getAdapter: () => adapter,
     getMessages: () => messages,
@@ -410,6 +424,7 @@
     getStreamingContent: () => streamingState.content,
     getMessageReasoning: () => messageReasoning,
     getFirstUnreadId: () => unreadState.firstUnreadId,
+    getAnsweredToolCallIds: () => questions.answers.keys(),
     getUngroupAllToolCalls: () =>
       Boolean(
         row ||
@@ -1095,6 +1110,13 @@
    * added since, without repeats and within the limit.
    */
   function handleComposerSubmit(message: MessageInput, attachments: ChatAttachment[]): void {
+    // An open free-text question takes the typed text as its answer, not as a new message.
+    const question = questions.composerTarget;
+    const typed = typeof message.content === 'string' ? message.content.trim() : '';
+    if (question !== undefined && typed !== '' && attachments.length === 0) {
+      void question.submit(typed);
+      return;
+    }
     const carried = quotes.quotes;
     if (carried.length === 0) {
       handleSubmit(message, attachments);
@@ -1930,6 +1952,7 @@
           id={inputId}
           bind:this={inputRef}
           onsubmit={handleComposerSubmit}
+          {...questions.composerTarget === undefined ? {} : { placeholder: 'Answer' }}
           disabled={streaming && !followUpsEnabled}
           sending={streaming}
           allowFollowUp={followUpsEnabled}

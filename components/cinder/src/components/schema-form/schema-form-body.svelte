@@ -86,6 +86,7 @@
     value,
     name = 'value',
     jsonEditable = true,
+    issues: hostIssues,
     submitLabel = 'Submit',
     class: customClassName,
     onSubmit,
@@ -118,6 +119,14 @@
   const formState = createSchemaFormState(initialModel, initialFormValue, {
     getSubmitting: () => submitting,
     onDraftChange: (draft) => onDraftChange?.(draft),
+  });
+
+  // Host-reported problems (a server-side refusal) show on their fields like built-in ones.
+  $effect(() => {
+    if (hostIssues === undefined || hostIssues.length === 0) return;
+    formState.applyIssues(
+      hostIssues.map((issue) => ({ path: issue.path.map(String), message: issue.message })),
+    );
   });
 
   // The hidden serialized-output input is a plain DOM ref, not a Svelte
@@ -555,6 +564,8 @@
         <Input
           {id}
           {...labelledProps}
+          type={field.schema['writeOnly'] === true ? 'password' : 'text'}
+          autocomplete={field.schema['writeOnly'] === true ? 'off' : undefined}
           required={field.required}
           disabled={submitting}
           onblur={() => formState.validateTouchedField(field)}

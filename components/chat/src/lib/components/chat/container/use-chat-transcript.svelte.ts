@@ -24,6 +24,8 @@ export interface UseChatTranscriptOptions {
     (() => ((message: Message) => string | ReasoningInfo | undefined) | undefined) | undefined;
   getFirstUnreadId: () => string | null;
   getUngroupAllToolCalls: () => boolean;
+  /** Tool calls whose question was answered here, which keep their own row. */
+  getAnsweredToolCallIds?: (() => Iterable<string>) | undefined;
 }
 
 export interface UseChatTranscriptReturn {
@@ -61,6 +63,9 @@ export function useChatTranscript(options: UseChatTranscriptOptions): UseChatTra
 
   const messageGroups = useChatMessageGroups({
     getMessages: () => messages,
+    ...(options.getAnsweredToolCallIds === undefined
+      ? {}
+      : { getAnsweredToolCallIds: options.getAnsweredToolCallIds }),
     getRenderOptions: () => {
       const renderOptions: {
         firstUnreadId: string | null;

@@ -38,6 +38,11 @@ const schema = {
       description:
         'Show a scroll-driven edge fade on the top and bottom of the message\ntimeline as it overflows. Opt-in and presentation-only — never the sole\nsignal that more messages exist; the jump-to-latest button and unread\ncount remain the authoritative affordances. Only visible when\n`surfaceMode` is `\'default\'`: with `surfaceMode="transparent"` the\ntimeline paints no background of its own, so there is no color the fade\ncould correctly fade toward, and it stays inert rather than painting an\nincorrect opaque band. Default `false`.',
     },
+    answerInComposer: {
+      type: 'boolean',
+      description:
+        'Whether the composer answers an open free-text question. A free-text question then reads "Answer below", the composer\'s placeholder reads "Answer", and sending from the composer calls `onInputSubmit` with the typed text instead of `onSubmit`. Without it (a reviews inbox, which has no composer) a text field is drawn in the question. Every other kind of question is answered in place either way. Default `false`.',
+    },
     density: {
       enum: ['comfortable', 'compact'],
       description:
@@ -248,7 +253,7 @@ const schema = {
         name: 'onInputSubmit',
         reason: 'function-or-snippet',
         description:
-          "Called when the user submits the form for an action-required tool result\nthat requests input. Chat renders the action's JSON Schema with Cinder's\n`SchemaForm` and calls this only with a value that passed validation. A\nrejected promise keeps the form open so the user can try again. Without\nthis callback, Chat shows the request's message but no form.",
+          "Called when the user answers an action-required tool result that requests\ninput. Chat draws the action's JSON Schema as the control that fits it\n(buttons for a choice, a field for a text, number, date, rating, secret or\nfile, Cinder's `SchemaForm` for an object) and calls this only with an answer\nthat passed validation. A rejected promise keeps the question open so the user\ncan try again; reject with `ChatQuestionAnswerError` to show the host's\nreasons on the fields they name. Without this callback, Chat shows the\nrequest's message but no control.",
       },
       {
         name: 'uploadAttachment',

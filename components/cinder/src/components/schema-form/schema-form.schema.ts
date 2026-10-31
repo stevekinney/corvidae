@@ -26,6 +26,12 @@ const schema = {
   metadata: {
     unsupportedProps: [
       {
+        name: 'issues',
+        reason: 'unknown-shape',
+        description:
+          'Problems the host found with a value this form submitted, such as a server-side validation\nrefusal. Each one is shown on the field its `path` names, as a built-in validation message is,\nand cleared when that field is edited. Pass a new array to show a new set.',
+      },
+      {
         name: 'onDraftChange',
         reason: 'function-or-snippet',
         description:

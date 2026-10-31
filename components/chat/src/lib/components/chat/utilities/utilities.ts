@@ -400,7 +400,20 @@ function deriveToolInputPart(
   result: ToolResult,
   context: MessagePartDerivationContext,
 ): ToolInputMessagePart | undefined {
-  if (result.outcome !== 'action_required' || result.action?.type !== 'input') return undefined;
+  const answered = context.questionAnswers?.get(result.callId);
+  if (result.outcome !== 'action_required' || result.action?.type !== 'input') {
+    // A question that was answered here keeps its "You answered" row once the run resumes and
+    // the result becomes the tool's own output, which is not for the person to read.
+    if (answered === undefined) return undefined;
+    return {
+      type: 'tool-input',
+      key: `${messageId}:tool-input:${result.callId}`,
+      toolCallId: result.callId,
+      toolName: answered.toolName,
+      message: answered.message,
+      schema: { ...answered.schema },
+    };
+  }
   const schema: unknown = result.action.schema;
   if (!isSchemaObject(schema)) return undefined;
   return {
@@ -503,7 +516,15 @@ export function deriveMessageParts(
     if (context.toolCallPresentation) toolCallPart.presentation = context.toolCallPresentation;
     const approvalState = context.approvalStates?.get(context.toolCallPair.call.id);
     if (approvalState !== undefined) toolCallPart.approvalState = approvalState;
-    return [...entryParts, toolCallPart, ...(actionPart ? [actionPart] : []), ...imageParts];
+    // An answered question reads as the question and its answer, never as the tool's own output.
+    const answeredQuestion =
+      actionPart?.type === 'tool-input' && result?.outcome !== 'action_required';
+    return [
+      ...entryParts,
+      ...(answeredQuestion ? [] : [toolCallPart]),
+      ...(actionPart ? [actionPart] : []),
+      ...imageParts,
+    ];
   }
 
   // Tool-result body: when the outcome is `action_required` and an action is

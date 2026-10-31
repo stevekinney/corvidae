@@ -16,6 +16,7 @@ import type {
   ToolCallPair,
   ToolResult,
 } from '../conversation-model.ts';
+import type { QuestionAnswerRecord } from '../question/question-answer.ts';
 
 /**
  * Delivery status for messages in the UI.
@@ -301,6 +302,11 @@ export type MessagePartDerivationContext = {
   approvalStates?: ReadonlyMap<string, ApprovalState> | undefined;
   /** Tool-call ids currently submitting a resolution. Used to disable duplicate submits. */
   approvalResolutionInFlightIds?: ReadonlySet<string> | undefined;
+  /**
+   * UI-only answers to questions, keyed by tool-call id. A question in this map keeps its
+   * `tool-input` part (and so its "You answered" row) after its result stops asking for input.
+   */
+  questionAnswers?: ReadonlyMap<string, QuestionAnswerRecord> | undefined;
   /**
    * Pre-body extended thinking block. When present and non-empty, a
    * `reasoning` part is emitted before the markdown body part. An empty string
