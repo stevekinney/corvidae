@@ -230,6 +230,21 @@ function parseSnapshot(text: string | null, id: string, workflowVersion: string)
   };
 }
 
+/** The pin problem `value` holds, or `undefined` when it is not exactly one. */
+function parsePinProblem(value: unknown): WorkflowRunPinProblem | undefined {
+  if (!isRecord(value)) return undefined;
+  const { reason, activity, availableVersions } = value;
+  if (
+    (reason !== 'missing' && reason !== 'version-mismatch') ||
+    typeof activity !== 'string' ||
+    !Array.isArray(availableVersions) ||
+    !availableVersions.every((version): version is string => typeof version === 'string')
+  ) {
+    return undefined;
+  }
+  return { reason, activity, availableVersions };
+}
+
 function parseCancellation(text: string | null): WorkflowRunCancellation | undefined {
   if (text === null) return undefined;
   try {
@@ -243,7 +258,17 @@ function parseCancellation(text: string | null): WorkflowRunCancellation | undef
       typeof value['reason'] === 'string' &&
       typeof value['cancelledAt'] === 'string'
     ) {
-      return value as unknown as WorkflowRunCancellation;
+      // `pin` is read field by field: a record whose pin is not one is a cancellation without it.
+      const pin = parsePinProblem(value['pin']);
+      return {
+        schemaVersion: 1,
+        runId: value['runId'],
+        id: value['id'],
+        workflowVersion: value['workflowVersion'],
+        reason: value['reason'],
+        ...(pin === undefined ? {} : { pin }),
+        cancelledAt: value['cancelledAt'],
+      };
     }
   } catch {
     // A record that is not JSON is not a cancellation.
