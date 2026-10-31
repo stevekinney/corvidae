@@ -136,6 +136,9 @@ const host = await startHost({
 if (fixtureEngine === undefined) throw new Error('The host did not create the console engine.');
 const engine = fixtureEngine;
 const { server } = host;
+// The demo plugin seeds the schedule and the goal in `afterStart`, which `startHost` does not wait
+// for, and the specs read both as soon as the server says it is listening.
+await host.bureau.plugins.ready();
 
 await seed(engine);
 
@@ -245,6 +248,7 @@ const bureauHost = await startHost({
   port: E2E_BUREAU_PORT,
   buildDirectory,
 });
+await bureauHost.bureau.plugins.ready();
 
 // The third host, which only the journey opens (`90-journey.spec.ts`). Its console is the Bureau's
 // own engine, because the journey follows an agent-authored workflow's schedule into the Workflows
@@ -271,6 +275,7 @@ const journeyHost = await startHost({
   port: E2E_JOURNEY_PORT,
   buildDirectory,
 });
+await journeyHost.bureau.plugins.ready();
 
 // The barrier's control: the one route a spec uses to learn that a run is waiting and to let it
 // go. It binds loopback only and exists in this process alone, never in the host. The journey's
