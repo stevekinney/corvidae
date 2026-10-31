@@ -176,12 +176,6 @@
     },
     {
       "rule": "app-header-class",
-      "file": "src/styles/storage.css",
-      "subject": ".weft-storage-results-header",
-      "issue": "COR-1851"
-    },
-    {
-      "rule": "app-header-class",
       "file": "src/styles/workers.css",
       "subject": ".weft-queue-detail__header",
       "issue": "COR-1972"

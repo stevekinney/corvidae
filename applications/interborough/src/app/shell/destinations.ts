@@ -49,12 +49,6 @@ export const DESTINATIONS: readonly Destination[] = [
   { view: 'settings', path: '/settings', letter: 'n', icon: SlidersHorizontal, pinned: true },
 ];
 
-/**
- * Workers lives under Health, so the sidebar does not list it, but it opens from the keyboard: `g`
- * then `o`. (`w` is Workflows, and `e` is Health.)
- */
-export const WORKERS_SHORTCUT = { view: 'workers', path: '/health/workers', letter: 'o' } as const;
-
 /** The key sequence that opens a destination, such as `['g', 'c']`. */
 export function destinationKeys(destination: { readonly letter: string }): readonly string[] {
   return ['g', destination.letter];
@@ -65,6 +59,21 @@ export const NEW_CHAT_KEY = 'c';
 
 /** Where the new-chat shortcut goes. */
 export const NEW_CHAT_PATH = '/chats/new';
+
+/**
+ * The pages under Health that have a shortcut of their own, though the sidebar lists only Health:
+ * `g` then `o` for Workers (`w` is Workflows, and `e` is Health), `g` then `t` for Storage and
+ * `g` then `u` for the audit log.
+ */
+export const HEALTH_SHORTCUTS: readonly {
+  readonly view: ViewName;
+  readonly path: string;
+  readonly letter: string;
+}[] = [
+  { view: 'workers', path: '/health/workers', letter: 'o' },
+  { view: 'storage', path: '/health/storage', letter: 't' },
+  { view: 'audit', path: '/health/audit', letter: 'u' },
+];
 
 /** What the shell's shortcuts do when they run. */
 export interface ShellShortcutActions {
@@ -107,13 +116,15 @@ export function registerShellShortcuts(
         handler: () => actions.navigate(destination.path),
       }),
     ),
-    registry.register({
-      keys: destinationKeys(WORKERS_SHORTCUT),
-      label: SHORTCUT_COPY.goTo(VIEW_COPY[WORKERS_SHORTCUT.view].label),
-      group: SHORTCUT_COPY.navigationGroup,
-      scope: 'global',
-      handler: () => actions.navigate(WORKERS_SHORTCUT.path),
-    }),
+    ...HEALTH_SHORTCUTS.map((page) =>
+      registry.register({
+        keys: ['g', page.letter],
+        label: SHORTCUT_COPY.goTo(VIEW_COPY[page.view].label),
+        group: SHORTCUT_COPY.navigationGroup,
+        scope: 'global',
+        handler: () => actions.navigate(page.path),
+      }),
+    ),
     // ListDetail handles its own keys while focus is in its list, on whichever page uses it.
     ...LIST_DETAIL_SHORTCUTS.map((shortcut) =>
       registry.describe({

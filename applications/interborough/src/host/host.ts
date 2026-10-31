@@ -113,6 +113,7 @@ import {
 
 import { routes as clientRoutes } from '../app/routes.ts';
 import { HOST_PATHS_ROUTE } from '../lib/host-paths.ts';
+import { HOST_STORAGE_ROUTE } from '../lib/host-storage.ts';
 import { A2A_API_KEY_SECRET_KEY, resolveA2aExposure } from './a2a-authentication.ts';
 import { startHostPushDelivery, type HostPushDelivery } from './a2a-push.ts';
 import { ANSWER_ENCRYPTION_KEY, answerEncryptionKeys } from './answer-encryption.ts';
@@ -137,6 +138,7 @@ import {
 } from './environment-configuration.ts';
 import { HOST_DEPENDENCIES, loadFolderPlugins, PLUGIN_FOLDER_NAME } from './folder-plugins.ts';
 import { buildDiagnostics, providerDiagnostics, type HostDiagnostics } from './host-diagnostics.ts';
+import { hostStorageReport } from './host-storage.ts';
 import {
   bureauUpgradeServer,
   hostWebSocketHandlers,
@@ -879,6 +881,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         ...pluginRoutes(pluginManager, refuse),
         ...skillRoutes(skills, refuse),
         ...toolSourceRoutes(toolSources, refuse, { principal: () => ANONYMOUS_LOCAL_OWNER }),
+        // The key prefixes the Bureau writes, which the storage explorer refuses to edit.
+        [HOST_STORAGE_ROUTE]: {
+          GET: (request: Request) => refuse(request) ?? Response.json(hostStorageReport()),
+        },
         [HOST_PATHS_ROUTE]: {
           GET: async (request: Request) =>
             refuse(request) ??

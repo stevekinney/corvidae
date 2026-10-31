@@ -11,9 +11,9 @@ import { ShortcutRegistry, type ShortcutKey } from '../../lib/shortcuts.ts';
 import { SHORTCUT_COPY } from '../copy.ts';
 import {
   DESTINATIONS,
+  HEALTH_SHORTCUTS,
   LIST_DETAIL_REGION,
   registerShellShortcuts,
-  WORKERS_SHORTCUT,
 } from './destinations.ts';
 
 function key(value: string): ShortcutKey {
@@ -68,19 +68,31 @@ describe('the shell’s shortcuts', () => {
     }
   });
 
-  test('G O opens Workers, which lives under Health and is not in the sidebar', () => {
-    const { registry, opened } = registered();
-    const where = { routePattern: '/health', regions: [] };
-    registry.handleKey(key('g'), where, 0);
-    expect(registry.handleKey(key('o'), where, 1)).toBe(true);
-    expect(opened).toEqual([WORKERS_SHORTCUT.path]);
-    expect(matchRoute(WORKERS_SHORTCUT.path)?.pattern).toBe(WORKERS_SHORTCUT.path);
-    expect(DESTINATIONS.map((destination) => destination.letter)).not.toContain('o');
-    const listed = registry.groups().find((group) => group.label === SHORTCUT_COPY.navigationGroup);
-    expect(listed?.shortcuts).toContainEqual({
-      action: SHORTCUT_COPY.goTo('Workers'),
-      keys: ['G', 'O'],
-    });
+  test('G O opens Workers, G T Storage and G U the audit log, pages under Health that the sidebar does not list', () => {
+    expect(HEALTH_SHORTCUTS.map((page) => [page.letter, page.path])).toEqual([
+      ['o', '/health/workers'],
+      ['t', '/health/storage'],
+      ['u', '/health/audit'],
+    ]);
+    for (const page of HEALTH_SHORTCUTS) {
+      const { registry, opened } = registered();
+      const where = { routePattern: '/agents', regions: [] };
+      registry.handleKey(key('g'), where, 0);
+      expect(registry.handleKey(key(page.letter), where, 1), page.path).toBe(true);
+      expect(opened).toEqual([page.path]);
+      expect(matchRoute(page.path)?.pattern).toBe(page.path);
+      expect(DESTINATIONS.some((destination) => destination.letter === page.letter)).toBe(false);
+    }
+  });
+
+  test('the map lists all three beside the other places to go', () => {
+    const { registry } = registered();
+    const navigation = registry
+      .groups()
+      .find((group) => group.label === SHORTCUT_COPY.navigationGroup);
+    expect(navigation?.shortcuts).toContainEqual({ action: 'Go to Workers', keys: ['G', 'O'] });
+    expect(navigation?.shortcuts).toContainEqual({ action: 'Go to Storage', keys: ['G', 'T'] });
+    expect(navigation?.shortcuts).toContainEqual({ action: 'Go to Audit log', keys: ['G', 'U'] });
   });
 
   test('C opens a new chat from anywhere, and is listed in the map', () => {

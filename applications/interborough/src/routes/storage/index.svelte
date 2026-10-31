@@ -1,24 +1,26 @@
 <script lang="ts">
   /**
-   * Storage route (plan §9.6, T7.1): raw KV browser + capabilities panel.
-   * Gated on `storage:admin` as a whole — not the finer `storage:read`/
-   * `storage:write` scopes the operation catalog declares, which
-   * `resolveAuthorizedStorage` never actually honors (`storage-client.ts`'s
-   * module doc; filed upstream: https://github.com/stevekinney/weft/issues/726).
+   * `/health/storage`: the key explorer, and the storage line under its title. Gated on
+   * `storage:admin` as a whole, not the finer `storage:read` and `storage:write` scopes the
+   * operation catalog declares, which `resolveAuthorizedStorage` never honors (`storage-client.ts`'s
+   * module doc; filed upstream: https://github.com/stevekinney/weft/issues/726). Writes are per key
+   * (`key-detail.svelte`): there is no switch that turns them all on.
    */
   import { untrack } from 'svelte';
 
-  import { EmptyState, Tabs } from '@lostgradient/cinder';
+  import { EmptyState, PageHeader } from '@lostgradient/cinder';
   import { Lock } from '@lucide/svelte';
 
   import { createQuery } from '@tanstack/svelte-query';
 
+  import { STORAGE_COPY } from '../../app/copy.ts';
   import { getClient } from '../../lib/client.ts';
+  import { getHostPaths } from '../../lib/host-paths.ts';
+  import { queryKeys } from '../../lib/query.ts';
   import { getPrincipalStore, scopeReason } from '../../lib/scopes.svelte.ts';
-  import CapabilitiesPanel from './capabilities-panel.svelte';
-  import KvBrowser from './kv-browser.svelte';
-  import { discoverPrefixes } from './prefix-discovery.ts';
   import { storageQueryKeys } from './queries.ts';
+  import StorageBackend from './storage-backend.svelte';
+  import StorageExplorer from './storage-explorer.svelte';
 
   const client = getClient();
   const principalStore = getPrincipalStore();
@@ -26,17 +28,12 @@
   const hasStorageAdmin = $derived(principalStore.hasScope('storage:admin'));
 
   /**
-   * `@tanstack/svelte-query`'s `createQuery` wraps a plain (non-store)
-   * options object in `readable(options)` exactly once
-   * (`createBaseQuery.js`) — its `enabled` flag is genuinely a one-time
-   * snapshot, never reactive, no matter how it's written. `untrack()` here
-   * says that honestly (same convention `provide-client-harness.test-harness.svelte`
-   * documents for the same "read once, on purpose" situation) instead of
-   * implying `enabled` tracks scope changes when it structurally can't.
-   * Harmless if `storage:admin` is later revoked mid-session: `KvBrowser`/
-   * `CapabilitiesPanel` (the only consumers of this query) unmount via the
-   * `{#if !hasStorageAdmin}` gate below, so a stale "enabled" query with no
-   * one reading it does nothing.
+   * `@tanstack/svelte-query`'s `createQuery` wraps a plain (non-store) options object in
+   * `readable(options)` exactly once (`createBaseQuery.js`) — its `enabled` flag is genuinely a
+   * one-time snapshot, never reactive, no matter how it's written. `untrack()` here says that
+   * honestly instead of implying `enabled` tracks scope changes when it structurally can't. Harmless
+   * if `storage:admin` is later revoked mid-session: the explorer and the line unmount via the gate
+   * below, so a stale "enabled" query with no one reading it does nothing.
    */
   const capabilitiesQuery = createQuery(
     () => ({
@@ -49,54 +46,39 @@
     undefined,
   );
 
-  // The prefixes the Scan panel offers. Only the picker depends on them: a read that fails leaves the
-  // panel with the field to type a prefix into, as it always had. The query hands its abort signal to
-  // the walk, so leaving the route (the last observer going) cancels the reads still to come.
-  const prefixesQuery = createQuery(
+  // Where the host keeps its state, for the line under the title. A host that cannot say leaves the line bare.
+  const pathsQuery = createQuery(
     () => ({
-      queryKey: storageQueryKeys.prefixes(),
-      queryFn: ({ signal }) => discoverPrefixes(client, { signal }),
+      queryKey: queryKeys.hostPaths(),
+      queryFn: ({ signal }) => getHostPaths({ signal }),
       enabled: untrack(() => hasStorageAdmin),
-      staleTime: 5 * 60_000,
       retry: false,
     }),
     undefined,
   );
-
-  let activeTab = $state('browser');
 </script>
 
 <div class="weft-storage-route">
-  <h1 class="weft-storage-title">Storage</h1>
+  <PageHeader title={STORAGE_COPY.title} description={STORAGE_COPY.description} />
+  {#if hasStorageAdmin}
+    <StorageBackend
+      paths={pathsQuery.data}
+      capabilities={capabilitiesQuery.data}
+      loading={capabilitiesQuery.isPending}
+      error={capabilitiesQuery.error}
+      onRetry={() => void capabilitiesQuery.refetch()}
+    />
+  {/if}
 
   {#if !hasStorageAdmin}
     <EmptyState
+      kind="first-use"
       title="Storage access requires storage:admin"
       description={scopeReason('storage:admin')}
     >
       {#snippet icon()}<Lock aria-hidden="true" size={22} />{/snippet}
     </EmptyState>
   {:else}
-    <Tabs bind:value={activeTab} fill>
-      <Tabs.List label="Storage views">
-        <Tabs.Trigger value="browser">KV browser</Tabs.Trigger>
-        <Tabs.Trigger value="capabilities">Capabilities</Tabs.Trigger>
-      </Tabs.List>
-      <Tabs.Panel value="browser">
-        <KvBrowser
-          {client}
-          conditionalBatchSupported={capabilitiesQuery.data?.conditionalBatch}
-          knownPrefixes={prefixesQuery.data ?? []}
-        />
-      </Tabs.Panel>
-      <Tabs.Panel value="capabilities">
-        <CapabilitiesPanel
-          capabilities={capabilitiesQuery.data}
-          loading={capabilitiesQuery.isPending}
-          error={capabilitiesQuery.error}
-          onRetry={() => void capabilitiesQuery.refetch()}
-        />
-      </Tabs.Panel>
-    </Tabs>
+    <StorageExplorer {client} conditionalBatch={capabilitiesQuery.data?.conditionalBatch} />
   {/if}
 </div>

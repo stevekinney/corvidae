@@ -9,7 +9,7 @@ import { installFetchImplementation } from '../../lib/live-source/fetch.test-sup
 export interface StubbedFetchCall {
   readonly url: string;
   readonly method: string;
-  /** The request body when it was a string (a JSON-RPC envelope, for example). */
+  /** The request body when it was a string (a JSON-RPC envelope, for example) or a blob (a key's value), as text. */
   readonly body?: string;
   /** The abort signal the request was made with, when it had one. */
   readonly signal?: AbortSignal;
@@ -21,10 +21,16 @@ export function stubStorageFetch(
   const calls: StubbedFetchCall[] = [];
 
   const restore = installFetchImplementation(async (input, init) => {
+    const body =
+      typeof init?.body === 'string'
+        ? init.body
+        : init?.body instanceof Blob
+          ? await init.body.text()
+          : undefined;
     const call: StubbedFetchCall = {
       url: typeof input === 'string' ? input : input instanceof URL ? input.href : input.url,
       method: init?.method ?? 'GET',
-      ...(typeof init?.body === 'string' ? { body: init.body } : {}),
+      ...(body === undefined ? {} : { body }),
       ...(init?.signal ? { signal: init.signal } : {}),
     };
     calls.push(call);
