@@ -50,8 +50,8 @@ afterEach(() => {
 describe('SourceLoadDiagnostics', () => {
   test('shows a loading state while the diagnostics query is pending', async () => {
     scripted = new ScriptedFetch();
-    const { findByText } = await renderDiagnostics();
-    expect(await findByText('Loading diagnostics…')).not.toBeNull();
+    const { findByLabelText } = await renderDiagnostics();
+    expect(await findByLabelText('Loading the diagnostics')).not.toBeNull();
   });
 
   test('renders the denied state without system:read, and never calls the operation', async () => {

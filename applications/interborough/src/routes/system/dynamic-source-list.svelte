@@ -53,10 +53,11 @@
    * enough to select an exact `(name, revision)` key, never a substitute for
    * the per-key diagnostics/preload calls below it.
    */
-  import { Badge, Button, EmptyState, Table } from '@lostgradient/cinder';
+  import { Badge, Button, EmptyState, SectionHeading, Skeleton, Table } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
   import { DatabaseZap } from '@lucide/svelte';
 
+  import { API_REFERENCE_COPY } from '../../app/copy.ts';
   import { useFleetEventsLive } from '../../app/live-polling.svelte.ts';
   import { getClient } from '../../lib/client.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -135,62 +136,78 @@
   }
 </script>
 
-<section class="weft-source-list" aria-labelledby="weft-source-list-title">
-  <div class="weft-source-list__header">
-    <div>
-      <h3 class="weft-source-list__title" id="weft-source-list-title">Registered source list</h3>
-      <p class="weft-source-list__note">
-        Select a registered dynamic source revision, or use the manual lookup below.
-      </p>
-    </div>
-    <div class="weft-source-list__pager" role="group" aria-label="Source list pagination">
-      <Button
-        type="button"
-        size="sm"
-        variant="secondary"
-        label="Previous"
-        disabled={!canGoBack || sourcesQuery.isPending || sourcesQuery.isPlaceholderData}
-        onclick={previousPage}
-      />
-      <span class="weft-source-list__note">Page {currentPage}</span>
-      <Button
-        type="button"
-        size="sm"
-        variant="secondary"
-        label="Next"
-        disabled={!canGoForward || sourcesQuery.isPending || sourcesQuery.isPlaceholderData}
-        onclick={nextPage}
-      />
-    </div>
-  </div>
+<section class="weft-source-list" aria-label="Registered source list">
+  <SectionHeading
+    level={3}
+    title="Registered source list"
+    description="Select a registered dynamic source revision, or use the manual lookup below."
+  >
+    {#snippet actions()}
+      <div class="weft-source-list__pager" role="group" aria-label="Source list pagination">
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          label="Previous"
+          disabled={!canGoBack || sourcesQuery.isPending || sourcesQuery.isPlaceholderData}
+          onclick={previousPage}
+        />
+        <span class="weft-source-list__page">Page {currentPage}</span>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          label="Next"
+          disabled={!canGoForward || sourcesQuery.isPending || sourcesQuery.isPlaceholderData}
+          onclick={nextPage}
+        />
+      </div>
+    {/snippet}
+  </SectionHeading>
 
   {#if !canRead}
-    <p class="weft-source-list__note">Requires system:read to list registered sources.</p>
+    <EmptyState
+      kind="first-use"
+      size="compact"
+      headingLevel={4}
+      title={API_REFERENCE_COPY.notAvailable('The source list')}
+      description={API_REFERENCE_COPY.requiresScope('system:read', 'list registered sources')}
+    />
   {:else if sourcesQuery.isPending || sourcesQuery.isPlaceholderData}
-    <p class="weft-source-list__note" role="status" aria-busy="true">Loading sources…</p>
+    <div role="status" aria-busy="true" aria-label={API_REFERENCE_COPY.sources.loadingSources}>
+      <Skeleton height="6rem" />
+    </div>
   {:else if sourcesQuery.isError}
     <QueryFaultBanner error={sourcesQuery.error} onRetry={() => sourcesQuery.refetch()} />
   {:else if sources.length === 0}
     <EmptyState
-      title={offset === 0 ? 'No dynamic sources registered' : 'No sources on this page'}
+      kind="first-use"
+      size="compact"
+      title={offset === 0
+        ? API_REFERENCE_COPY.sources.sourceListEmptyTitle
+        : API_REFERENCE_COPY.sources.sourcePageEmptyTitle}
       description={offset === 0
-        ? 'This server has no registered dynamic workflow sources to select.'
-        : 'Go back to the previous page or use the manual lookup below.'}
+        ? API_REFERENCE_COPY.sources.sourceListEmptyDescription
+        : API_REFERENCE_COPY.sources.sourcePageEmptyDescription}
       headingLevel={4}
     >
+      {#snippet action()}
+        {#if offset > 0}
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            label={API_REFERENCE_COPY.sources.previousPage}
+            onclick={previousPage}
+          />
+        {/if}
+      {/snippet}
       {#snippet icon()}
         <DatabaseZap aria-hidden="true" size={24} />
       {/snippet}
     </EmptyState>
   {:else}
     <Table caption="Registered dynamic workflow sources" scrollable class="weft-source-list__table">
-      <colgroup>
-        <col style="width: 180px" />
-        <col style="width: 320px" />
-        <col style="width: 100px" />
-        <col style="width: 100px" />
-        <col style="width: 90px" />
-      </colgroup>
       <Table.Header>
         <Table.Row>
           <Table.HeaderCell>Name</Table.HeaderCell>
@@ -235,22 +252,7 @@
     gap: 10px;
   }
 
-  .weft-source-list__header {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-  }
-
-  .weft-source-list__title {
-    margin: 0;
-    font-size: var(--cinder-text-sm);
-    font-weight: 600;
-  }
-
-  .weft-source-list__note {
-    margin: 0;
+  .weft-source-list__page {
     font-size: var(--cinder-text-xs);
     color: var(--cinder-text-subtle);
   }

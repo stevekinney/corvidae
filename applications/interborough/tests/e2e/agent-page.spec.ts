@@ -1,8 +1,8 @@
 /**
  * `/agents/:agent` by its tabs, against the real host: Chats (filtered by state, who started them
  * and a title search, each applied by the Bureau before it cuts a page), Instructions (the file's
- * body as a document, with Edit, and the reference documents), and Settings (the file's limits and
- * Delete, and the saved versions with Restore). The tab is in the address.
+ * body as a document, with Edit, and the reference documents), Access (the tools and when each asks first, the skills, guardrails and budgets; see
+ * `agent-access.spec.ts`) and Settings (the model, Delete, and the saved versions with Restore). The tab is in the address.
  */
 import type { APIRequestContext, Page } from '@playwright/test';
 
@@ -184,7 +184,7 @@ test.describe('the Settings tab', () => {
 
 for (const width of WIDTHS) {
   test.describe(`at ${width} pixels`, () => {
-    for (const tab of ['chats', 'instructions', 'settings'] as const) {
+    for (const tab of ['chats', 'instructions', 'access', 'settings'] as const) {
       test(`the ${tab} tab passes axe`, async ({ page, request, checkA11y }) => {
         await page.setViewportSize({ width, height: 900 });
         const id = 'e2e-page-axe';

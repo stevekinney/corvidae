@@ -29,7 +29,16 @@
    * refreshed diagnostics is the only classified account of why the load
    * failed (`preload-workflow-revision.ts`'s own catch says so explicitly).
    */
-  import { Badge, Button, Checkbox, Input, Tooltip } from '@lostgradient/cinder';
+  import {
+    Alert,
+    Badge,
+    Button,
+    Card,
+    Checkbox,
+    EmptyState,
+    Input,
+    Tooltip,
+  } from '@lostgradient/cinder';
   import { Ban, CircleCheck, CircleQuestionMark, TriangleAlert } from '@lucide/svelte';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
 
@@ -246,145 +255,143 @@
 </script>
 
 <section class="weft-dynamic-source" aria-labelledby="weft-dynamic-source-title">
-  <div class="weft-dynamic-source__header">
-    <div class="weft-dynamic-source__title-row">
-      <h2 class="weft-dynamic-source__title" id="weft-dynamic-source-title">Workflow sources</h2>
-      <Tooltip text={SOURCES_HELP}>
-        <Button variant="ghost" size="sm" iconOnly label="About workflow sources">
-          {#snippet leadingIcon()}
-            <CircleQuestionMark aria-hidden="true" size={14} />
-          {/snippet}
-        </Button>
-      </Tooltip>
-    </div>
-  </div>
-
-  <DynamicSourceList selectedKey={lookup} onSelect={selectSource} />
-
-  <form class="weft-dynamic-source__form" onsubmit={submitLookup}>
-    <Input
-      id="weft-dynamic-source-name"
-      label="Workflow name"
-      bind:value={nameInput}
-      placeholder="dynamic-invoice"
-      autocomplete="off"
-    />
-    <Input
-      id="weft-dynamic-source-revision"
-      label="Revision"
-      bind:value={revisionInput}
-      placeholder={revisionIsJsonString ? '"line\\r\\nrevision"' : 'r1'}
-      autocomplete="off"
-      {...revisionIsJsonString && submittedRevision === undefined
-        ? { error: 'Enter a JSON string literal.' }
-        : {}}
-    />
-    <Checkbox
-      id="weft-dynamic-source-revision-json"
-      bind:checked={revisionIsJsonString}
-      label="Revision is a JSON string literal"
-      description={'Use this mode for opaque revisions containing CR or LF; for example, "line\\r\\nrevision".'}
-    />
-    <Button type="submit" size="sm" variant="secondary" label="Inspect" disabled={!canSubmit} />
-  </form>
-
-  {#if lookup === null}
-    <p class="weft-dynamic-source__note">
-      No source inspected yet. Both fields are required — Weft answers for one exact
-      <code>(name, revision)</code> key at a time.
-    </p>
-  {:else}
-    <div class="weft-dynamic-source__result">
-      <div class="weft-dynamic-source__result-identity">
-        <Badge variant="neutral" monospace>{lookup.name}</Badge>
-        <Badge variant="neutral" monospace>{lookup.revision}</Badge>
+  <Card>
+    {#snippet header()}
+      <div class="weft-dynamic-source__title-row">
+        <h2 class="weft-dynamic-source__title" id="weft-dynamic-source-title">Workflow sources</h2>
+        <Tooltip text={SOURCES_HELP}>
+          <Button variant="ghost" size="sm" iconOnly label="About workflow sources">
+            {#snippet leadingIcon()}
+              <CircleQuestionMark aria-hidden="true" size={14} />
+            {/snippet}
+          </Button>
+        </Tooltip>
       </div>
+    {/snippet}
+    <div class="weft-dynamic-source__body">
+      <DynamicSourceList selectedKey={lookup} onSelect={selectSource} />
 
-      {#if isStale}
-        <p class="weft-dynamic-source__stale" role="status">
-          Showing the last inspected key. Select Inspect to look up what is currently typed above.
-        </p>
-      {/if}
-
-      <SourceLoadDiagnostics
-        workflowName={lookup.name}
-        revision={lookup.revision}
-        preloadPending={preloadInFlightKey?.name === lookup.name &&
-          preloadInFlightKey?.revision === lookup.revision}
-      />
-
-      <div class="weft-dynamic-source__actions">
-        <Button
-          data-changes
-          size="sm"
-          variant="secondary"
-          label={isPreloadingLookup ? 'Preloading…' : 'Preload'}
-          disabled={adminGate.disabled || preloadInFlightKey !== null}
-          title={preloadInFlightKey !== null && !isPreloadingLookup
-            ? `Waiting for the preload of "${preloadInFlightKey.revision}" to finish.`
-            : adminGate.title}
-          onclick={runPreload}
+      <form class="weft-dynamic-source__form" onsubmit={submitLookup}>
+        <Input
+          id="weft-dynamic-source-name"
+          label="Workflow name"
+          bind:value={nameInput}
+          placeholder="dynamic-invoice"
+          autocomplete="off"
         />
-        <span class="weft-dynamic-source__note">
-          Ensures this revision is installed in the durable catalog. Weft validates an existing
-          entry or loads and validates the module, sharing one load per key within the serving
-          server. The diagnostics above are a separate observation of the responding server; they do
-          not prove which process handled this preload. It cannot be cancelled from here.
-        </span>
-      </div>
+        <Input
+          id="weft-dynamic-source-revision"
+          label="Revision"
+          bind:value={revisionInput}
+          placeholder={revisionIsJsonString ? '"line\\r\\nrevision"' : 'r1'}
+          autocomplete="off"
+          {...revisionIsJsonString && submittedRevision === undefined
+            ? { error: 'Enter a JSON string literal.' }
+            : {}}
+        />
+        <Checkbox
+          id="weft-dynamic-source-revision-json"
+          bind:checked={revisionIsJsonString}
+          label="Revision is a JSON string literal"
+          description={'Use this mode for opaque revisions containing CR or LF; for example, "line\\r\\nrevision".'}
+        />
+        <Button type="submit" size="sm" variant="secondary" label="Inspect" disabled={!canSubmit} />
+      </form>
 
-      {#if outcome !== null}
-        {#if outcome.kind === 'installed'}
-          <p class="weft-dynamic-source__outcome weft-dynamic-source__outcome--ok" role="status">
-            <CircleCheck aria-hidden="true" size={16} />
-            <span>
-              Revision "{outcome.revision}" is installed in the workflow catalog. A Load state of
-              Idle above means this panel's last observation did not see an active load; another
-              server may have loaded the revision.
-            </span>
-          </p>
-        {:else if outcome.kind === 'rejected'}
-          <div class="weft-dynamic-source__outcome weft-dynamic-source__outcome--bad" role="alert">
-            <Ban aria-hidden="true" size={16} />
-            <div>
-              <Badge variant="danger">Refused: {outcome.reason}</Badge>
-              <p>{outcome.message}</p>
-              {#if outcome.rejectionReasons.length > 0}
-                <ul>
-                  {#each outcome.rejectionReasons as reason, index (index)}
-                    <li>{sourceRejectionReasonLabel(reason)} ({reason})</li>
-                  {/each}
-                </ul>
-              {/if}
-            </div>
+      {#if lookup === null}
+        <EmptyState
+          kind="first-use"
+          size="compact"
+          headingLevel={3}
+          title="No source inspected yet"
+          description="Both fields are required. The server answers for one exact name and revision at a time."
+        />
+      {:else}
+        <div class="weft-dynamic-source__result">
+          <div class="weft-dynamic-source__result-identity">
+            <Badge variant="neutral" monospace>{lookup.name}</Badge>
+            <Badge variant="neutral" monospace>{lookup.revision}</Badge>
           </div>
-        {:else}
-          <p class="weft-dynamic-source__outcome weft-dynamic-source__outcome--bad" role="alert">
-            <TriangleAlert aria-hidden="true" size={16} />
-            <span>{outcome.message}</span>
-          </p>
-        {/if}
+
+          {#if isStale}
+            <Alert variant="info">
+              Showing the last inspected key. Select Inspect to look up what is currently typed
+              above.
+            </Alert>
+          {/if}
+
+          <SourceLoadDiagnostics
+            workflowName={lookup.name}
+            revision={lookup.revision}
+            preloadPending={preloadInFlightKey?.name === lookup.name &&
+              preloadInFlightKey?.revision === lookup.revision}
+          />
+
+          <div class="weft-dynamic-source__actions">
+            <Button
+              data-changes
+              size="sm"
+              variant="secondary"
+              label={isPreloadingLookup ? 'Preloading…' : 'Preload'}
+              disabled={adminGate.disabled || preloadInFlightKey !== null}
+              title={preloadInFlightKey !== null && !isPreloadingLookup
+                ? `Waiting for the preload of "${preloadInFlightKey.revision}" to finish.`
+                : adminGate.title}
+              onclick={runPreload}
+            />
+            <span class="weft-dynamic-source__note">
+              Ensures this revision is installed in the durable catalog. Weft validates an existing
+              entry or loads and validates the module, sharing one load per key within the serving
+              server. The diagnostics above are a separate observation of the responding server;
+              they do not prove which process handled this preload. It cannot be cancelled from
+              here.
+            </span>
+          </div>
+
+          {#if outcome !== null}
+            {#if outcome.kind === 'installed'}
+              <Alert variant="success">
+                {#snippet icon()}<CircleCheck aria-hidden="true" size={16} />{/snippet}
+                Revision "{outcome.revision}" is installed in the workflow catalog. A Load state of
+                Idle above means this panel's last observation did not see an active load; another
+                server may have loaded the revision.
+              </Alert>
+            {:else if outcome.kind === 'rejected'}
+              <Alert variant="danger">
+                {#snippet icon()}<Ban aria-hidden="true" size={16} />{/snippet}
+                <Badge variant="danger">Refused: {outcome.reason}</Badge>
+                <p class="weft-dynamic-source__refusal">{outcome.message}</p>
+                {#if outcome.rejectionReasons.length > 0}
+                  <ul class="weft-dynamic-source__refusal">
+                    {#each outcome.rejectionReasons as reason, index (index)}
+                      <li>{sourceRejectionReasonLabel(reason)} ({reason})</li>
+                    {/each}
+                  </ul>
+                {/if}
+              </Alert>
+            {:else}
+              <Alert variant="danger">
+                {#snippet icon()}<TriangleAlert aria-hidden="true" size={16} />{/snippet}
+                {outcome.message}
+              </Alert>
+            {/if}
+          {/if}
+        </div>
       {/if}
     </div>
-  {/if}
+  </Card>
 </section>
 
 <style>
   .weft-dynamic-source {
+    margin-block-end: 16px;
+  }
+
+  .weft-dynamic-source__body {
     display: flex;
     flex-direction: column;
     gap: 12px;
-    padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-    margin-block-end: 16px;
-    background: var(--cinder-surface-raised);
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-lg);
-  }
-
-  .weft-dynamic-source__header {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
+    min-width: 0;
   }
 
   .weft-dynamic-source__title-row {
@@ -417,18 +424,13 @@
     flex-direction: column;
     gap: 10px;
     padding-block: var(--cinder-space-2);
+    min-width: 0;
   }
 
   .weft-dynamic-source__result-identity {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-  }
-
-  .weft-dynamic-source__stale {
-    margin: 0;
-    font-size: var(--cinder-text-xs);
-    color: var(--cinder-text-subtle);
   }
 
   .weft-dynamic-source__actions {
@@ -438,34 +440,11 @@
     gap: 10px;
   }
 
-  .weft-dynamic-source__outcome {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    margin: 0;
-    padding: var(--cinder-density-pad-block) var(--cinder-space-3);
-    border-radius: var(--cinder-radius-md);
-    font-size: var(--cinder-text-xs);
-  }
-
-  .weft-dynamic-source__outcome p,
-  .weft-dynamic-source__outcome ul {
+  .weft-dynamic-source__refusal {
     margin: 6px 0 0;
   }
 
-  .weft-dynamic-source__outcome ul {
+  ul.weft-dynamic-source__refusal {
     padding-inline-start: var(--cinder-space-4);
-  }
-
-  .weft-dynamic-source__outcome--ok {
-    background: var(--cinder-status-success-background);
-    border: 1px solid var(--cinder-status-success-border);
-    color: var(--cinder-status-success-text);
-  }
-
-  .weft-dynamic-source__outcome--bad {
-    background: var(--cinder-status-danger-background);
-    border: 1px solid var(--cinder-status-danger-border);
-    color: var(--cinder-status-danger-text);
   }
 </style>

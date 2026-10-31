@@ -5,6 +5,7 @@ import { join } from 'node:path';
 
 import {
   createHostStorage,
+  createPluginAgentSource,
   describeContent,
   disposeHostStorage,
   hostPathsReport,
@@ -114,5 +115,18 @@ describe('the storage for a database location', () => {
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
+  });
+});
+
+describe('the agent layer of a plugin’s shipped content', () => {
+  test('is the read-only layer of the content’s agents folder for a file: URL', () => {
+    const layer = createPluginAgentSource('shipper', new URL('file:///plugins/shipper/content/'));
+    expect(layer).toMatchObject({ kind: 'agent', plugin: 'shipper' });
+  });
+
+  test('is nothing for content that is not a file: URL', () => {
+    expect(
+      createPluginAgentSource('shipper', new URL('https://example.com/content/')),
+    ).toBeUndefined();
   });
 });

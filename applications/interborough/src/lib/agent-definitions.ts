@@ -40,6 +40,12 @@ const skillSchema = z.looseObject({
 /** An agent definition's `skillDescriptors` entry, as the Bureau reads it back. */
 export type AgentSkill = z.infer<typeof skillSchema>;
 
+/** When a tool asks a person before it runs (`toolApproval` in an agent file). A tool the file leaves out is `on-changes`. */
+export const TOOL_APPROVALS = ['never', 'on-changes', 'always', 'blocked'] as const;
+
+/** One of the four answers to "when does this tool ask first?". */
+export type ToolApproval = (typeof TOOL_APPROVALS)[number];
+
 const definitionSchema = z.object({
   name: z.string(),
   description: z.string().nullable(),
@@ -74,6 +80,11 @@ const definitionSchema = z.object({
     .object({ maxCalls: z.number().optional(), maxDurationSeconds: z.number().optional() })
     .nullable()
     .default(null),
+  /**
+   * When each listed tool asks first, by tool name; `null` when the file sets none. A tool the
+   * map leaves out is `on-changes`. Every key is one of `tools`.
+   */
+  toolApproval: z.record(z.string(), z.enum(TOOL_APPROVALS)).nullable().default(null),
   instructions: z.string(),
 });
 
@@ -214,6 +225,11 @@ export type AgentDefinitionInput = {
     readonly maxCalls?: number;
     readonly maxDurationSeconds?: number;
   } | null;
+  /**
+   * When each tool asks first. `null` removes the map; left out, an update keeps the file's. A
+   * key must be one of `tools`, or the Bureau refuses the write.
+   */
+  readonly toolApproval?: Readonly<Record<string, ToolApproval>> | null;
   readonly instructions: string;
 };
 

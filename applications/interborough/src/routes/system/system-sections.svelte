@@ -1,24 +1,17 @@
 <script lang="ts">
   /**
-   * The tabs of what the System page held (plan §9.7, T7.2–T7.6), URL-owned via `?tab=` (plan §4:
-   * "URL owns filter/pagination/tab state"). The System page was split by audience: Health carries
-   * the metrics, alerts, lease and recovery (and Realms when the engine runs them), and Settings ›
-   * API reference carries the workflow types, discovery documents, operations and scopes. Each page
-   * renders this component with the tabs it owns and the path they live at. Each tab is named in
-   * words (COR-1658) while its `?tab=` value stays what it was, so an address that links to one
-   * keeps working: `registry` is "Workflow types" and `health` is "Health".
+   * The tabs Health carries below its overview (plan §9.7, T7.2–T7.6), URL-owned via `?tab=` (plan
+   * §4: "URL owns filter/pagination/tab state"): the metrics, alerts, lease and recovery, and Realms
+   * when the engine runs them. The rest of what the System page held is Settings › API reference, a
+   * side list of groups. Each tab is named in words (COR-1658).
    */
   import { Tabs } from '@lostgradient/cinder';
 
   import { router } from '../../lib/router.svelte.ts';
   import AlertsTab from './alerts-tab.svelte';
-  import DiscoveryTab from './discovery-tab.svelte';
   import HealthTab from './health-tab.svelte';
   import MetricsTab from './metrics-tab.svelte';
-  import OperationsTab from './operations-tab.svelte';
   import RealmsTab from './realms-tab.svelte';
-  import RegistryTab from './registry-tab.svelte';
-  import ScopePanel from './scope-panel.svelte';
   import { SYSTEM_TABS, type SystemTabValue } from './system-tabs.ts';
 
   interface Props {
@@ -35,7 +28,7 @@
   function currentTab(): SystemTabValue {
     const requested = router.search.get('tab');
     const found = tabs.find((tab) => tab === requested);
-    return found ?? tabs[0] ?? 'registry';
+    return found ?? tabs[0] ?? 'metrics';
   }
 
   // `Tabs.value` is a `$bindable` prop — `bind:value` gives the child full
@@ -68,15 +61,9 @@
       {/each}
     </Tabs.List>
 
-    {#if tabs.includes('registry')}<Tabs.Panel value="registry"><RegistryTab /></Tabs.Panel>{/if}
     {#if tabs.includes('realms')}<Tabs.Panel value="realms"><RealmsTab /></Tabs.Panel>{/if}
     {#if tabs.includes('metrics')}<Tabs.Panel value="metrics"><MetricsTab /></Tabs.Panel>{/if}
-    {#if tabs.includes('discovery')}<Tabs.Panel value="discovery"><DiscoveryTab /></Tabs.Panel>{/if}
-    {#if tabs.includes('operations')}
-      <Tabs.Panel value="operations"><OperationsTab /></Tabs.Panel>
-    {/if}
     {#if tabs.includes('health')}<Tabs.Panel value="health"><HealthTab /></Tabs.Panel>{/if}
     {#if tabs.includes('alerts')}<Tabs.Panel value="alerts"><AlertsTab /></Tabs.Panel>{/if}
-    {#if tabs.includes('scopes')}<Tabs.Panel value="scopes"><ScopePanel /></Tabs.Panel>{/if}
   </Tabs>
 </div>

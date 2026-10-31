@@ -92,6 +92,8 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/capabilities (skill open)': /Where it comes from/,
   '/agents/:agent': /An agent description that keeps going/,
   '/agents/:agent (instructions tab)': /iiiiiiiiii/,
+  // The skills load last, and the seeded long-named one is among them.
+  '/agents/:agent (access tab)': /responsive-skill-kkkkkkkk/,
   '/agents/:agent (settings tab)': /Version 1/,
   // Only the form prints this heading; the long word is in the textarea, which the text does not include.
   '/agents/:agent/edit': /Guardrails and limits/,
@@ -128,6 +130,14 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/health/audit': /schedule\.created/,
   // The added row's long name, beside the Decisions part's heading, which loads last.
   '/settings/models': /mmmmmmmmmm/,
+  // Each group of the API reference prints a value only its live read gives.
+  '/settings/api-reference': /weft\.alerts\.list/,
+  '/settings/api-reference (discovery)': /\/api\/v1\/alerts/,
+  '/settings/api-reference (openrpc)': /weft\.alerts\.list/,
+  '/settings/api-reference (asyncapi)': /Channel/,
+  '/settings/api-reference (mcp)': /Test MCP session/,
+  '/settings/api-reference (scopes)': /Unlocks:/,
+  '/settings/api-reference (sources)': /order-processing/,
 };
 
 /** What was measured: how far the document and the outlet scroll sideways, and what else does not fit. */
@@ -371,6 +381,10 @@ test.beforeAll(async ({ playwright }) => {
       name: INSTRUCTIONS_AGENT_ID,
       description: LONG_DESCRIPTION,
       instructions: LONG_INSTRUCTIONS,
+      // The Access tab's largest values, and a tool that asks every time.
+      toolApproval: { 'lookup-order': 'always' },
+      costBudget: { perRunUsd: 1_000_000, perChatUsd: 1_000_000 },
+      toolBudget: { maxCalls: 100_000, maxDurationSeconds: 86_400 },
     });
     await runToEnd(request, 'demo:assistant', CHAT_THREAD, 'Say hello');
     await runToEnd(request, TEXT_ECHO_AGENT_NAME, MEMORY_THREAD, LONG_MEMORY);

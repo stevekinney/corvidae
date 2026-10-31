@@ -151,6 +151,7 @@ import {
 import {
   createAgentSource,
   createHostStorage,
+  createPluginAgentSource,
   createWorkflowSource,
   disposeHostStorage,
   hostPathsReport,
@@ -725,6 +726,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // Agent files: Markdown files in Bungalow's `agents/` directory are agents (COR-1524). A
       // file's `model` is a row of the `models` catalog.
       agentSource: createAgentSource(bungalow, agentContent, toolSources.tools()),
+      // The agent files a running plugin ships (COR-1897): its `content/agents`, read-only, beneath the owner's.
+      pluginAgentSource: createPluginAgentSource,
       // The approvals a file agent's tools raise are signed with the host's approval secret, so a
       // restart still resolves a pending one.
       agentApprovalSecret: approval,

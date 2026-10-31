@@ -1,6 +1,6 @@
 /**
  * The shell as a person meets it: one loopback origin, no sign-in, and one local caller. The top
- * bar holds no principal and no scope count (System's Scopes tab names that caller from
+ * bar holds no principal and no scope count (Settings › API reference › Your scopes names that caller from
  * `weft.system.principal`), the sidebar holds one ordered list, Chat is the home screen, the palette
  * searches chats and agents first, and Bureau answers beside the engine on the same origin. The
  * notification bell is about the person: what is waiting on them, and what finished.
@@ -30,7 +30,7 @@ const DESTINATIONS = [
   'Settings',
 ];
 
-test('the top bar names no principal and no scopes, and System’s Scopes tab names the principal weft.system.principal reports', async ({
+test('the top bar names no principal and no scopes, and API reference’s Your scopes names the principal weft.system.principal reports', async ({
   page,
   request,
 }) => {
@@ -47,7 +47,7 @@ test('the top bar names no principal and no scopes, and System’s Scopes tab na
   expect(topbarText).not.toContain('anonymous:local');
   expect(topbarText).not.toContain('scopes');
 
-  await page.goto('/settings/api-reference?tab=scopes');
+  await page.goto('/settings/api-reference?group=scopes');
   await expect(page.getByTestId('principal-subject')).toHaveText('anonymous:local');
 });
 
@@ -376,11 +376,11 @@ test('the System view loads its Discovery documents through the relay', async ({
     page.waitForResponse((response) => new URL(response.url()).pathname === '/openapi.json'),
     page.waitForResponse((response) => new URL(response.url()).pathname === '/openrpc.json'),
   ];
-  await page.goto('/settings/api-reference?tab=discovery');
+  await page.goto('/settings/api-reference?group=discovery');
   for (const response of await Promise.all(documents)) expect(response.status()).toBe(200);
 
-  const panel = page.getByRole('tabpanel');
-  await expect(panel.getByText('Loading OpenAPI document')).toHaveCount(0);
+  const panel = page.locator('[data-group-panel="discovery"]');
+  await expect(panel.getByRole('status')).toHaveCount(0);
   await expect(panel.getByRole('table').first()).toBeVisible();
   await expect(panel.getByRole('alert')).toHaveCount(0);
 

@@ -985,3 +985,34 @@ describe('the Reviews view', () => {
     expect(VIEW_COPY.reviews.empty).toBeUndefined();
   });
 });
+
+describe('the Settings API reference route', () => {
+  test('shows its content when the engine fails, because no probe stands in front of it', async () => {
+    const { requests } = stub('settings', 'error');
+    const { container, findByTestId } = mount('settings', {
+      pattern: '/settings/api-reference',
+    });
+    expect(await findByTestId('content')).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('ready');
+    expect(requests).toEqual([]);
+  });
+
+  test('shows its content when the engine refuses the caller', async () => {
+    const { requests } = stub('settings', 'forbidden');
+    const { container, findByTestId } = mount('settings', {
+      pattern: '/settings/api-reference',
+    });
+    expect(await findByTestId('content')).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('ready');
+    expect(requests).toEqual([]);
+  });
+
+  test('shows its content while the engine is still answering', async () => {
+    restore = installFetchImplementation(() => new Promise<Response>(() => {}));
+    const { container, findByTestId } = mount('settings', {
+      pattern: '/settings/api-reference',
+    });
+    expect(await findByTestId('content')).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('ready');
+  });
+});

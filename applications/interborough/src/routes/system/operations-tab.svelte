@@ -9,15 +9,18 @@
    */
   import {
     Badge,
+    EmptyState,
     PermissionMatrix,
     Segment,
     SegmentedControl,
     SearchField,
+    Skeleton,
     Table,
   } from '@lostgradient/cinder';
   import { Check, Minus } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
+  import { API_REFERENCE_COPY } from '../../app/copy.ts';
   import { getClient } from '../../lib/client.ts';
   import { fetchDiscoveryDocument } from './discovery-client.ts';
   import {
@@ -54,7 +57,15 @@
 
 <div class="weft-operations-tab">
   {#if openapiQuery.isPending || openrpcQuery.isPending}
-    <p class="weft-operations-tab__loading">Loading operation catalog…</p>
+    <div
+      role="status"
+      aria-busy="true"
+      aria-label={API_REFERENCE_COPY.loading.operations}
+      class="weft-operations-tab__loading"
+    >
+      <Skeleton height="2rem" width="300px" />
+      <Skeleton height="12rem" />
+    </div>
   {:else if openapiQuery.isError}
     <QueryFaultBanner error={openapiQuery.error} onRetry={() => openapiQuery.refetch()} />
   {:else if openrpcQuery.isError}
@@ -65,9 +76,10 @@
       <SearchField
         id="operation-search"
         class="weft-operations-tab__search"
-        placeholder="Search operations…"
-        value={searchQuery}
-        onValueChange={(next) => (searchQuery = next)}
+        aria-label={API_REFERENCE_COPY.operations.searchLabel}
+        placeholder={API_REFERENCE_COPY.operations.searchPlaceholder}
+        bind:value={searchQuery}
+        onClear={() => (searchQuery = '')}
       />
       <SegmentedControl
         id="operations-view"
@@ -84,48 +96,56 @@
     {#if view === 'table'}
       {@const rows = filterOperationCatalog(catalog, searchQuery)}
       <p class="weft-operations-tab__scope-note">
-        The discovery documents do not list the scope each operation needs yet. See the Scopes tab
-        for what each granted scope unlocks.
+        The discovery documents do not list the scope each operation needs yet. Your scopes shows
+        what each granted scope unlocks.
       </p>
-      <Table caption="Operation catalog" scrollable>
-        <Table.Header>
-          <Table.Row>
-            <Table.HeaderCell>Operation</Table.HeaderCell>
-            <Table.HeaderCell>REST</Table.HeaderCell>
-            <Table.HeaderCell>JSON-RPC</Table.HeaderCell>
-            <Table.HeaderCell>MCP</Table.HeaderCell>
-          </Table.Row>
-        </Table.Header>
-        <Table.Body>
-          {#each rows as row (row.name)}
-            <Table.Row>
-              <Table.Cell as="th"><code>{row.name}</code></Table.Cell>
-              <Table.Cell>
-                {#if row.restMethod && row.restPath}
-                  <Badge variant="neutral">{row.restMethod}</Badge>
-                  <code>{row.restPath}</code>
-                {:else}
-                  —
-                {/if}
-              </Table.Cell>
-              <Table.Cell>
-                {#if row.jsonRpc}<Check aria-hidden="true" size={14} />{:else}<Minus
-                    aria-hidden="true"
-                    size={14}
-                  />{/if}
-              </Table.Cell>
-              <Table.Cell>
-                {#if row.mcp}<Check aria-hidden="true" size={14} />{:else}<Minus
-                    aria-hidden="true"
-                    size={14}
-                  />{/if}
-              </Table.Cell>
-            </Table.Row>
-          {/each}
-        </Table.Body>
-      </Table>
       {#if rows.length === 0}
-        <p class="weft-operations-tab__empty">No operations match "{searchQuery}".</p>
+        <EmptyState
+          kind="filtered"
+          headingLevel={2}
+          title={API_REFERENCE_COPY.operations.noMatchTitle}
+          description={API_REFERENCE_COPY.operations.noMatchDescription(searchQuery)}
+          clearFiltersLabel={API_REFERENCE_COPY.operations.clearSearch}
+          onClearFilters={() => (searchQuery = '')}
+        />
+      {:else}
+        <Table caption="Operation catalog" scrollable>
+          <Table.Header>
+            <Table.Row>
+              <Table.HeaderCell>Operation</Table.HeaderCell>
+              <Table.HeaderCell>REST</Table.HeaderCell>
+              <Table.HeaderCell>JSON-RPC</Table.HeaderCell>
+              <Table.HeaderCell>MCP</Table.HeaderCell>
+            </Table.Row>
+          </Table.Header>
+          <Table.Body>
+            {#each rows as row (row.name)}
+              <Table.Row>
+                <Table.Cell as="th"><code>{row.name}</code></Table.Cell>
+                <Table.Cell>
+                  {#if row.restMethod && row.restPath}
+                    <Badge variant="neutral">{row.restMethod}</Badge>
+                    <code class="weft-operations-tab__path">{row.restPath}</code>
+                  {:else}
+                    —
+                  {/if}
+                </Table.Cell>
+                <Table.Cell>
+                  {#if row.jsonRpc}<Check aria-hidden="true" size={14} />{:else}<Minus
+                      aria-hidden="true"
+                      size={14}
+                    />{/if}
+                </Table.Cell>
+                <Table.Cell>
+                  {#if row.mcp}<Check aria-hidden="true" size={14} />{:else}<Minus
+                      aria-hidden="true"
+                      size={14}
+                    />{/if}
+                </Table.Cell>
+              </Table.Row>
+            {/each}
+          </Table.Body>
+        </Table>
       {/if}
     {:else}
       {@const columns = domainColumnsFromTags(catalog.flatMap((row) => row.tags))}
@@ -147,6 +167,7 @@
 
 <style>
   .weft-operations-tab {
+    min-width: 0;
     max-width: 1080px;
     display: flex;
     flex-direction: column;
@@ -154,8 +175,14 @@
   }
 
   .weft-operations-tab__loading {
-    font-size: var(--cinder-text-sm);
-    color: var(--cinder-text-subtle);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  /* A path has no space to break at, so it may break anywhere instead of widening the table. */
+  .weft-operations-tab__path {
+    overflow-wrap: anywhere;
   }
 
   .weft-operations-tab__toolbar {
@@ -168,11 +195,6 @@
   .weft-operations-tab__toolbar :global(.weft-operations-tab__search) {
     flex: 1;
     max-width: 300px;
-  }
-
-  .weft-operations-tab__empty {
-    font-size: var(--cinder-text-sm);
-    color: var(--cinder-text-subtle);
   }
 
   .weft-operations-tab__scope-note {

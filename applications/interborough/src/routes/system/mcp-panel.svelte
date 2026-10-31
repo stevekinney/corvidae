@@ -11,10 +11,18 @@
    * `metrics-tab.svelte`'s module doc for why `language="text"` alone still
    * triggers Shiki's "language not in bundle" warning.
    */
-  import { Button, CodeBlock, DescriptionList } from '@lostgradient/cinder';
+  import {
+    Button,
+    Card,
+    CodeBlock,
+    DescriptionList,
+    EmptyState,
+    Skeleton,
+  } from '@lostgradient/cinder';
   import { Plug } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
+  import { API_REFERENCE_COPY } from '../../app/copy.ts';
   import { codeHighlighter } from '../../lib/code-highlighter.ts';
   import { getClient } from '../../lib/client.ts';
   import { DiscoveryFetchError, fetchDiscoveryDocument } from './discovery-client.ts';
@@ -66,19 +74,16 @@
 
 <div class="weft-mcp-panel">
   {#if mcpQuery.isPending}
-    <p class="weft-mcp-panel__loading">Loading MCP discovery document…</p>
-  {:else if mcpQuery.isError && isPublicOriginNotConfigured(mcpQuery.error)}
-    <div class="weft-mcp-panel__not-configured" role="status">
-      <p>
-        MCP discovery isn't available: this server has no <code>publicOrigin</code>/<code
-          >trustedHosts</code
-        > configured, so it can't safely emit absolute discovery URLs.
-      </p>
-      <p>
-        Set <code>serve({'{'} publicOrigin: 'https://your-host.example.com' {'}'})</code> (or
-        <code>trustedHosts</code>) to enable it.
-      </p>
+    <div role="status" aria-busy="true" aria-label={API_REFERENCE_COPY.loading.mcp}>
+      <Skeleton height="8rem" />
     </div>
+  {:else if mcpQuery.isError && isPublicOriginNotConfigured(mcpQuery.error)}
+    <EmptyState
+      kind="first-use"
+      headingLevel={2}
+      title={API_REFERENCE_COPY.mcp.unavailableTitle}
+      description={API_REFERENCE_COPY.mcp.unavailableDescription}
+    />
   {:else if mcpQuery.isError}
     <QueryFaultBanner error={mcpQuery.error} onRetry={() => mcpQuery.refetch()} />
   {:else}
@@ -105,24 +110,26 @@
     />
   {/if}
 
-  <div class="weft-mcp-panel__diagram-card">
-    <div class="weft-mcp-panel__diagram-header">MCP session protocol</div>
+  <Card title="MCP session protocol" headingLevel={2}>
     <McpSessionDiagram />
-  </div>
+  </Card>
 
-  <div class="weft-mcp-panel__test-card">
-    <div class="weft-mcp-panel__test-header">
-      <span>Test MCP session</span>
-      <Button
-        variant="secondary"
-        size="sm"
-        label={testing ? 'Testing…' : 'Test'}
-        onclick={runTest}
-        disabled={testing}
-      >
-        {#snippet leadingIcon()}<Plug aria-hidden="true" size={13} />{/snippet}
-      </Button>
-    </div>
+  <Card>
+    {#snippet header()}
+      <div class="weft-mcp-panel__test-title">
+        <h2 class="weft-mcp-panel__test-heading">Test MCP session</h2>
+        <Button
+          data-changes
+          variant="secondary"
+          size="sm"
+          label={testing ? 'Testing…' : 'Test'}
+          onclick={runTest}
+          disabled={testing}
+        >
+          {#snippet leadingIcon()}<Plug aria-hidden="true" size={13} />{/snippet}
+        </Button>
+      </div>
+    {/snippet}
 
     {#if testError}
       <QueryFaultBanner error={testError} onRetry={runTest} />
@@ -150,7 +157,7 @@
         Sends a real <code>initialize</code> request and shows the full request/response headers and body.
       </p>
     {/if}
-  </div>
+  </Card>
 </div>
 
 <style>
@@ -158,47 +165,20 @@
     display: flex;
     flex-direction: column;
     gap: 16px;
+    min-width: 0;
     max-width: 720px;
   }
 
-  .weft-mcp-panel__loading {
-    font-size: var(--cinder-text-sm);
-    color: var(--cinder-text-subtle);
-  }
-
-  .weft-mcp-panel__not-configured {
+  .weft-mcp-panel__test-title {
     display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-    background: var(--cinder-status-warning-background);
-    border: 1px solid var(--cinder-status-warning-border);
-    border-radius: var(--cinder-radius-lg);
-    font-size: var(--cinder-text-sm);
-  }
-
-  .weft-mcp-panel__not-configured p {
-    margin: 0;
-  }
-
-  .weft-mcp-panel__not-configured code {
-    font-family: var(--cinder-font-mono);
-  }
-
-  .weft-mcp-panel__diagram-card,
-  .weft-mcp-panel__test-card {
-    background: var(--cinder-surface-raised);
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-lg);
-    padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-  }
-
-  .weft-mcp-panel__diagram-header,
-  .weft-mcp-panel__test-header {
-    display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 10px;
+    gap: var(--cinder-space-2);
+  }
+
+  .weft-mcp-panel__test-heading {
+    margin: 0;
     font-size: var(--cinder-text-sm);
     font-weight: 600;
   }

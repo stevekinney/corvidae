@@ -162,6 +162,7 @@ describe('an agent’s facts', () => {
     guardrails: null,
     costBudget: null,
     toolBudget: null,
+    toolApproval: null,
     instructions: '',
   });
 

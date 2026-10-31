@@ -6,11 +6,22 @@
    * "required scope" is honestly absent) + raw-JSON toggle, plus the MCP
    * sub-view (`mcp-panel.svelte`).
    */
-  import { Badge, CodeBlock, Segment, SegmentedControl, Table } from '@lostgradient/cinder';
+  import {
+    Badge,
+    CodeBlock,
+    EmptyState,
+    Segment,
+    SegmentedControl,
+    Skeleton,
+    Table,
+  } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
+  import { API_REFERENCE_COPY } from '../../app/copy.ts';
   import { codeHighlighter } from '../../lib/code-highlighter.ts';
   import { getClient } from '../../lib/client.ts';
+  import { router } from '../../lib/router.svelte.ts';
+  import { groupPath } from '../settings/api-reference-groups.ts';
   import { extractAsyncApiChannels, type AsyncApiDocumentLike } from './asyncapi-channels.ts';
   import { fetchDiscoveryDocument } from './discovery-client.ts';
   import McpPanel from './mcp-panel.svelte';
@@ -24,9 +35,19 @@
 
   const client = getClient();
 
-  type DiscoveryView = 'openapi' | 'openrpc' | 'asyncapi' | 'mcp';
-  let view = $state<DiscoveryView>('openapi');
+  const VIEWS = ['openapi', 'openrpc', 'asyncapi', 'mcp'] as const;
+  type DiscoveryView = (typeof VIEWS)[number];
+
+  // The open document is the `document` search parameter, so a document is linked to and survives
+  // a reload, and the responsive specification can open each one.
+  const view = $derived<DiscoveryView>(
+    VIEWS.find((candidate) => candidate === router.search.get('document')) ?? 'openapi',
+  );
   let showRaw = $state(false);
+
+  function openDocument(next: string): void {
+    router.navigate(`${groupPath('discovery')}&document=${next}`);
+  }
 
   // `retry: false` on every query below — see `metrics-tab.svelte`'s
   // `rawQuery` for why `DiscoveryFetchError` shouldn't get the QueryClient's
@@ -51,14 +72,34 @@
   }));
 </script>
 
+{#snippet loading()}
+  <div
+    role="status"
+    aria-busy="true"
+    aria-label={API_REFERENCE_COPY.loading.discovery}
+    class="weft-discovery-tab__loading"
+  >
+    <Skeleton height="12rem" />
+  </div>
+{/snippet}
+
+{#snippet nothingListed()}
+  <EmptyState
+    kind="first-use"
+    headingLevel={2}
+    title={API_REFERENCE_COPY.discovery.emptyTitle}
+    description={API_REFERENCE_COPY.discovery.emptyDescription}
+  />
+{/snippet}
+
 <div class="weft-discovery-tab">
   <div class="weft-discovery-tab__toolbar">
     <SegmentedControl
       id="discovery-view"
-      label="Discovery document"
+      label={API_REFERENCE_COPY.discovery.documentLabel}
       labelVisible={false}
       value={view}
-      onValueChange={(next) => (view = next)}
+      onValueChange={openDocument}
     >
       <Segment value="openapi">OpenAPI</Segment>
       <Segment value="openrpc">OpenRPC</Segment>
@@ -69,14 +110,14 @@
     {#if view !== 'mcp'}
       <label class="weft-discovery-tab__raw-toggle">
         <input type="checkbox" bind:checked={showRaw} />
-        Raw JSON
+        {API_REFERENCE_COPY.discovery.rawJson}
       </label>
     {/if}
   </div>
 
   {#if view === 'openapi'}
     {#if openapiQuery.isPending}
-      <p class="weft-discovery-tab__loading">Loading OpenAPI document…</p>
+      {@render loading()}
     {:else if openapiQuery.isError}
       <QueryFaultBanner error={openapiQuery.error} onRetry={() => openapiQuery.refetch()} />
     {:else if showRaw}
@@ -88,30 +129,35 @@
       />
     {:else}
       {@const rows = filterOperationCatalog(buildOperationCatalog(openapiQuery.data, null), '')}
-      <Table caption="OpenAPI operations" scrollable>
-        <Table.Header>
-          <Table.Row>
-            <Table.HeaderCell>Method</Table.HeaderCell>
-            <Table.HeaderCell>Path</Table.HeaderCell>
-            <Table.HeaderCell>Summary</Table.HeaderCell>
-          </Table.Row>
-        </Table.Header>
-        <Table.Body>
-          {#each rows as row (row.name)}
+      {#if rows.length === 0}
+        {@render nothingListed()}
+      {:else}
+        <Table caption="OpenAPI operations" scrollable>
+          <Table.Header>
             <Table.Row>
-              <Table.Cell as="th">
-                <Badge variant="neutral">{row.restMethod}</Badge>
-              </Table.Cell>
-              <Table.Cell><code>{row.restPath}</code></Table.Cell>
-              <Table.Cell>{row.summary ?? '—'}</Table.Cell>
+              <Table.HeaderCell>Method</Table.HeaderCell>
+              <Table.HeaderCell>Path</Table.HeaderCell>
+              <Table.HeaderCell>Summary</Table.HeaderCell>
             </Table.Row>
-          {/each}
-        </Table.Body>
-      </Table>
+          </Table.Header>
+          <Table.Body>
+            {#each rows as row (row.name)}
+              <Table.Row>
+                <Table.Cell as="th">
+                  <Badge variant="neutral">{row.restMethod}</Badge>
+                </Table.Cell>
+                <Table.Cell><code class="weft-discovery-tab__path">{row.restPath}</code></Table.Cell
+                >
+                <Table.Cell>{row.summary ?? '—'}</Table.Cell>
+              </Table.Row>
+            {/each}
+          </Table.Body>
+        </Table>
+      {/if}
     {/if}
   {:else if view === 'openrpc'}
     {#if openrpcQuery.isPending}
-      <p class="weft-discovery-tab__loading">Loading OpenRPC document…</p>
+      {@render loading()}
     {:else if openrpcQuery.isError}
       <QueryFaultBanner error={openrpcQuery.error} onRetry={() => openrpcQuery.refetch()} />
     {:else if showRaw}
@@ -123,28 +169,32 @@
       />
     {:else}
       {@const rows = filterOperationCatalog(buildOperationCatalog(null, openrpcQuery.data), '')}
-      <Table caption="OpenRPC methods" scrollable>
-        <Table.Header>
-          <Table.Row>
-            <Table.HeaderCell>Method</Table.HeaderCell>
-            <Table.HeaderCell>Summary</Table.HeaderCell>
-            <Table.HeaderCell>MCP</Table.HeaderCell>
-          </Table.Row>
-        </Table.Header>
-        <Table.Body>
-          {#each rows as row (row.name)}
+      {#if rows.length === 0}
+        {@render nothingListed()}
+      {:else}
+        <Table caption="OpenRPC methods" scrollable>
+          <Table.Header>
             <Table.Row>
-              <Table.Cell as="th"><code>{row.name}</code></Table.Cell>
-              <Table.Cell>{row.summary ?? '—'}</Table.Cell>
-              <Table.Cell>{row.mcp ? row.mcpToolName : '—'}</Table.Cell>
+              <Table.HeaderCell>Method</Table.HeaderCell>
+              <Table.HeaderCell>Summary</Table.HeaderCell>
+              <Table.HeaderCell>MCP</Table.HeaderCell>
             </Table.Row>
-          {/each}
-        </Table.Body>
-      </Table>
+          </Table.Header>
+          <Table.Body>
+            {#each rows as row (row.name)}
+              <Table.Row>
+                <Table.Cell as="th"><code>{row.name}</code></Table.Cell>
+                <Table.Cell>{row.summary ?? '—'}</Table.Cell>
+                <Table.Cell>{row.mcp ? row.mcpToolName : '—'}</Table.Cell>
+              </Table.Row>
+            {/each}
+          </Table.Body>
+        </Table>
+      {/if}
     {/if}
   {:else if view === 'asyncapi'}
     {#if asyncapiQuery.isPending}
-      <p class="weft-discovery-tab__loading">Loading AsyncAPI document…</p>
+      {@render loading()}
     {:else if asyncapiQuery.isError}
       <QueryFaultBanner error={asyncapiQuery.error} onRetry={() => asyncapiQuery.refetch()} />
     {:else if showRaw}
@@ -156,39 +206,43 @@
       />
     {:else}
       {@const rows = extractAsyncApiChannels(asyncapiQuery.data)}
-      <Table caption="AsyncAPI channels" scrollable>
-        <Table.Header>
-          <Table.Row>
-            <Table.HeaderCell>Channel</Table.HeaderCell>
-            <Table.HeaderCell>Address</Table.HeaderCell>
-            <Table.HeaderCell>Title</Table.HeaderCell>
-            <Table.HeaderCell align="right">Messages</Table.HeaderCell>
-          </Table.Row>
-        </Table.Header>
-        <Table.Body>
-          {#each rows as row (row.channel)}
+      {#if rows.length === 0}
+        {@render nothingListed()}
+      {:else}
+        <Table caption="AsyncAPI channels" scrollable>
+          <Table.Header>
             <Table.Row>
-              <Table.Cell as="th"><code>{row.channel}</code></Table.Cell>
-              <Table.Cell><code>{row.address ?? '—'}</code></Table.Cell>
-              <Table.Cell>{row.title ?? '—'}</Table.Cell>
-              <Table.Cell align="right">{row.messageCount}</Table.Cell>
+              <Table.HeaderCell>Channel</Table.HeaderCell>
+              <Table.HeaderCell>Address</Table.HeaderCell>
+              <Table.HeaderCell>Title</Table.HeaderCell>
+              <Table.HeaderCell align="right">Messages</Table.HeaderCell>
             </Table.Row>
-          {/each}
-        </Table.Body>
-      </Table>
+          </Table.Header>
+          <Table.Body>
+            {#each rows as row (row.channel)}
+              <Table.Row>
+                <Table.Cell as="th"><code>{row.channel}</code></Table.Cell>
+                <Table.Cell><code>{row.address ?? '—'}</code></Table.Cell>
+                <Table.Cell>{row.title ?? '—'}</Table.Cell>
+                <Table.Cell align="right">{row.messageCount}</Table.Cell>
+              </Table.Row>
+            {/each}
+          </Table.Body>
+        </Table>
+      {/if}
     {/if}
   {:else}
     <McpPanel />
   {/if}
 
   <p class="weft-discovery-tab__scope-note">
-    Required scope isn't advertised by these documents yet — see the Scopes tab for what each scope
-    unlocks.
+    {API_REFERENCE_COPY.discovery.scopeNote}
   </p>
 </div>
 
 <style>
   .weft-discovery-tab {
+    min-width: 0;
     max-width: 1000px;
     display: flex;
     flex-direction: column;
@@ -198,6 +252,7 @@
   .weft-discovery-tab__toolbar {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 14px;
   }
 
@@ -210,8 +265,14 @@
   }
 
   .weft-discovery-tab__loading {
-    font-size: var(--cinder-text-sm);
-    color: var(--cinder-text-subtle);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  /* A path has no space to break at, so it may break anywhere instead of widening the table. */
+  .weft-discovery-tab__path {
+    overflow-wrap: anywhere;
   }
 
   .weft-discovery-tab__scope-note {

@@ -286,7 +286,7 @@ describe('the Settings tab', () => {
     changedKeys,
   });
 
-  test('shows the model, the models to switch to, the guardrails and the limits', async () => {
+  test('shows the model, the models to switch to and the step limit, and leaves access to its own tab', async () => {
     landAt('/agents/researcher?tab=settings');
     serve({ 'bureau.agents.versions.list': () => ({ versions: [] }) }, withSettings());
     const { findByTestId, container } = mount();
@@ -294,8 +294,9 @@ describe('the Settings tab', () => {
     const settings = await findByTestId('agent-settings');
     await waitFor(() => expect(settings.textContent).toContain('anthropic/haiku'));
 
-    for (const text of ['acme:tripwire', '12', '$1.50', '30', '90 seconds']) {
-      expect(settings.textContent).toContain(text);
+    expect(settings.textContent).toContain('12');
+    for (const text of ['acme:tripwire', '$1.50', '90 seconds']) {
+      expect(settings.textContent).not.toContain(text);
     }
     expect(container.querySelector('[data-testid="agent-versions"]')).not.toBeNull();
   });

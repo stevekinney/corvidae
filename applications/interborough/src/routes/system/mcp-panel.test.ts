@@ -43,9 +43,9 @@ describe('McpPanel', () => {
     scripted = new ScriptedFetch();
     scripted.routeUrlStatus('/.well-known/mcp.json', 503, 'Service Unavailable');
 
-    const { findAllByText } = await renderMcpPanel();
-    const matches = await findAllByText('publicOrigin', { exact: false });
-    expect(matches.length).toBeGreaterThan(0);
+    const { findByText } = await renderMcpPanel();
+    expect(await findByText("MCP discovery isn't available")).not.toBeNull();
+    expect(await findByText('public origin', { exact: false })).not.toBeNull();
   });
 
   test('a generic fetch failure still shows the standard fault banner', async () => {

@@ -11,16 +11,26 @@
    * as of `@lostgradient/weft@0.12.0` (`tests/e2e/e2e-server.ts`'s plain
    * `serve()` now routes `/jsonrpc`).
    */
-  import { Badge, EmptyState, Table, Skeleton } from '@lostgradient/cinder';
+  import {
+    Alert,
+    Badge,
+    Card,
+    EmptyState,
+    SectionHeading,
+    Skeleton,
+    Table,
+  } from '@lostgradient/cinder';
   import { GitBranch, Zap } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
   import type { RetryPolicy } from '@lostgradient/weft';
 
+  import { API_REFERENCE_COPY } from '../../app/copy.ts';
   import { useFleetEventsLive } from '../../app/live-polling.svelte.ts';
   import { getClient } from '../../lib/client.ts';
   import { formatDuration } from '../../lib/format/index.ts';
   import { queryKeys } from '../../lib/query.ts';
+  import { getPrincipalStore } from '../../lib/scopes.svelte.ts';
   import ManifestDiagnosticsView from '../workers/manifest-diagnostics-view.svelte';
   import { MalformedRegistrySnapshotError } from '../workers/registry-snapshot-guard.ts';
   import {
@@ -39,6 +49,12 @@
   } from './registry-view.ts';
 
   const client = getClient();
+  const principal = getPrincipalStore();
+
+  // The registry snapshot is `weft.system.registry`, which needs `system:read`. The page around this
+  // tab does not gate on it (see `probeFor`), so a caller without the scope reads a locked state
+  // here while the rest of the page still shows.
+  const canRead = $derived(principal.hasScope('system:read'));
 
   // Each query asks again when the fleet feed reports what it reads (`worker:connected`,
   // `worker:disconnected`, `worker:registration-rejected`, `workflow:definition-registered`), and on
@@ -54,6 +70,7 @@
     return {
       queryKey: queryKeys.registrySnapshot(),
       queryFn: (): Promise<RegistrySnapshotSource> => loadRegistrySnapshot(client),
+      enabled: canRead,
       // poll-reason: fallback
       refetchInterval: polling ? 30_000 : false,
     };
@@ -127,7 +144,12 @@
 
 {#snippet registryFault(error: unknown)}
   {#if error instanceof MalformedRegistrySnapshotError}
-    <EmptyState title="Malformed server response" description={error.message} />
+    <EmptyState
+      kind="first-use"
+      headingLevel={2}
+      title="Malformed server response"
+      description={error.message}
+    />
   {:else}
     <QueryFaultBanner {error} onRetry={() => query.refetch()} />
   {/if}
@@ -158,12 +180,24 @@
   Query retains `data` and sets `error`, so the fault is shown above it.
 -->
 {#if query.data !== undefined && query.isError}
-  <p class="weft-registry-stale">Refresh failed · showing the last registry snapshot</p>
+  <Alert variant="warning">{API_REFERENCE_COPY.sources.staleRegistry}</Alert>
   {@render registryFault(query.error)}
 {/if}
 
-{#if query.isPending}
-  <div class="weft-registry-skeleton" role="status" aria-busy="true" aria-label="Loading registry">
+{#if !canRead}
+  <EmptyState
+    kind="first-use"
+    headingLevel={2}
+    title={API_REFERENCE_COPY.notAvailable('The workflow registry')}
+    description={API_REFERENCE_COPY.requiresScope('system:read', 'list the registered workflows')}
+  />
+{:else if query.isPending}
+  <div
+    class="weft-registry-skeleton"
+    role="status"
+    aria-busy="true"
+    aria-label={API_REFERENCE_COPY.sources.loadingRegistry}
+  >
     <Skeleton height="1.25rem" width="220px" />
     <Skeleton height="220px" />
     <Skeleton height="140px" />
@@ -179,8 +213,10 @@
     registered with this engine" would be flatly untrue there.
   -->
   <EmptyState
-    title="Registry · 3-step onboarding"
-    description="No eagerly registered workflow or activity definitions appear in this server's registry snapshot. Dynamic sources never appear here — use Workflow sources above."
+    kind="first-use"
+    headingLevel={2}
+    title={API_REFERENCE_COPY.sources.noRegistryTitle}
+    description={API_REFERENCE_COPY.sources.noRegistryDescription}
   >
     {#snippet icon()}
       <GitBranch aria-hidden="true" size={26} />
@@ -209,10 +245,11 @@
     />
   {:else}
     <div class="weft-registry-list">
-      <div class="weft-registry-list__header">
-        <span class="weft-registry-list__title">Workflow definitions</span>
-        <span class="weft-registry-list__count">{workflowRows.length} registered</span>
-      </div>
+      <SectionHeading
+        level={2}
+        title="Workflow definitions"
+        description={`${workflowRows.length} registered`}
+      />
 
       <Table class="weft-registry-list__table" caption="Workflow definitions" scrollable>
         <Table.Header>
@@ -253,23 +290,34 @@
         </Table.Body>
       </Table>
 
-      <div class="weft-registry-list__header" style="margin-top:26px;">
-        <span class="weft-registry-list__title">Activity definitions</span>
-        <span class="weft-registry-list__count">{activityRows.length} registered</span>
+      <div class="weft-registry-list__activities">
+        <SectionHeading
+          level={2}
+          title="Activity definitions"
+          description={`${activityRows.length} registered`}
+        />
       </div>
 
       {#if activityRows.length === 0}
-        <p class="weft-registry-list__empty-note">No activities registered for this server.</p>
+        <EmptyState
+          kind="first-use"
+          size="compact"
+          headingLevel={3}
+          title={API_REFERENCE_COPY.sources.noActivitiesTitle}
+          description={API_REFERENCE_COPY.sources.noActivitiesDescription}
+        />
       {:else}
         <div class="weft-registry-activity-grid">
           {#each activityRows as activity (activity.name)}
-            <div class="weft-registry-activity-card">
-              <div class="weft-registry-activity-card__header">
-                <span class="weft-registry-activity-card__icon"
-                  ><Zap aria-hidden="true" size={14} /></span
-                >
-                <span class="weft-registry-activity-card__name">{activity.name}</span>
-              </div>
+            <Card class="weft-registry-activity-card">
+              {#snippet header()}
+                <span class="weft-registry-activity-card__identity">
+                  <span class="weft-registry-activity-card__icon"
+                    ><Zap aria-hidden="true" size={14} /></span
+                  >
+                  <span class="weft-registry-activity-card__name">{activity.name}</span>
+                </span>
+              {/snippet}
               <div class="weft-registry-activity-card__meta">
                 {@render registryBadge(`queue: ${activity.queue}`, 'neutral')}
                 {#if activity.hasInputSchema}
@@ -294,7 +342,7 @@
                   )}
                 {/if}
               </div>
-            </div>
+            </Card>
           {/each}
         </div>
       {/if}
@@ -313,12 +361,6 @@
 />
 
 <style>
-  .weft-registry-stale {
-    margin: 0 0 8px;
-    font-size: var(--cinder-text-sm);
-    color: var(--cinder-text-muted);
-  }
-
   .weft-registry-skeleton {
     max-width: 1000px;
     display: flex;
@@ -337,15 +379,8 @@
     color: var(--cinder-text-muted);
   }
 
-  .weft-registry-list__header {
-    display: flex;
-    align-items: baseline;
-    gap: 9px;
-    margin-bottom: 10px;
-  }
-
   /* The table's own `caption` prop stays present for assistive tech (naming
-   * the table) but visually hidden — `.weft-registry-list__header` above is
+   * the table) but visually hidden — the section heading above is
    * the sighted-user label, and rendering both duplicated "Workflow
    * definitions" on screen. Standard clip-based sr-only pattern, matching
    * Cinder's own sr-only utility class. Table's public `class` prop is forwarded
@@ -362,21 +397,6 @@
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
     border: 0;
-  }
-
-  .weft-registry-list__title {
-    font-size: var(--cinder-text-sm);
-    font-weight: 600;
-  }
-
-  .weft-registry-list__count {
-    font-size: var(--cinder-text-xs);
-    color: var(--cinder-text-subtle);
-  }
-
-  .weft-registry-list__empty-note {
-    font-size: var(--cinder-text-sm);
-    color: var(--cinder-text-subtle);
   }
 
   .weft-registry-list__row-button {
@@ -417,18 +437,14 @@
     gap: 12px;
   }
 
-  .weft-registry-activity-card {
-    background: var(--cinder-surface-raised);
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-lg);
-    padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
+  .weft-registry-list__activities {
+    margin-top: var(--cinder-space-6);
   }
 
-  .weft-registry-activity-card__header {
+  .weft-registry-activity-card__identity {
     display: flex;
     align-items: center;
     gap: 10px;
-    margin-bottom: 10px;
     min-width: 0;
   }
 

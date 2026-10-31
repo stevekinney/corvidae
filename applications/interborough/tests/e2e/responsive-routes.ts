@@ -86,7 +86,7 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
  * Addresses of a route in a second state, by `<pattern> (<state>)`, each opened and measured like a
  * route of its own. The seeded workflow type is code-defined, so the file header's four buttons
  * (Start run, Pause, Edit, Delete) and a file's Code, Runs and History tabs are reached here,
- * as are an agent's Instructions and Settings tabs, with the tab named in the address (`?tab=`).
+ * as are an agent's Instructions, Access and Settings tabs, with the tab named in the address (`?tab=`).
  * The Capabilities page's Skills tab, and one seeded long-named skill open, are reached the same way,
  * as is the Workers page with the seeded worker open and its Task queues tab with a seeded queue
  * open (its dead letters and recovery diagnostics), and as are a waiting review open and the
@@ -97,6 +97,9 @@ export function responsiveVariants(seed: ResponsiveSeed): Readonly<Record<string
   const agent = `/agents/${encodeURIComponent(seed.instructionsAgent)}`;
   return {
     '/agents/:agent (instructions tab)': `${agent}?tab=instructions`,
+    // The Access tab of the agent with the largest budgets the Bureau accepts, a tool set to ask
+    // every time, and the host's skills among them, one with a long name.
+    '/agents/:agent (access tab)': `${agent}?tab=access`,
     '/agents/:agent (settings tab)': `${agent}?tab=settings`,
     '/workflows/:workflow (file)': file,
     '/workflows/:workflow (file, code tab)': `${file}?tab=code`,
@@ -115,6 +118,15 @@ export function responsiveVariants(seed: ResponsiveSeed): Readonly<Record<string
     // the list), and the Done tab with a decided review open.
     '/reviews (review open)': `/reviews?review=${encodeURIComponent(seed.review)}`,
     '/reviews (done tab, review open)': `/reviews?tab=done&review=${encodeURIComponent(seed.decidedReview)}`,
+    // Each group of the API reference beside the first, which is the route's own address, and each
+    // discovery document, whose tables and diagrams are wider than the groups' first view.
+    '/settings/api-reference (discovery)': '/settings/api-reference?group=discovery',
+    '/settings/api-reference (openrpc)': '/settings/api-reference?group=discovery&document=openrpc',
+    '/settings/api-reference (asyncapi)':
+      '/settings/api-reference?group=discovery&document=asyncapi',
+    '/settings/api-reference (mcp)': '/settings/api-reference?group=discovery&document=mcp',
+    '/settings/api-reference (scopes)': '/settings/api-reference?group=scopes',
+    '/settings/api-reference (sources)': '/settings/api-reference?group=sources',
   };
 }
 
@@ -133,8 +145,4 @@ export interface PendingRoute {
  * still listed (remove it), and a route that overflows but is not listed (fix it, or list it with
  * its owner). Do not add an entry to ship a regression.
  */
-export const pending: readonly PendingRoute[] = [
-  // The Discovery tab's outlet scrolls 8px at 375 and its raw-toggle ends at 383px, and the
-  // Operations and Discovery tables are cut off. The API reference is rebuilt there.
-  { pattern: '/settings/api-reference', issue: 'COR-1847', failsAt: [375] },
-];
+export const pending: readonly PendingRoute[] = [];

@@ -1,8 +1,9 @@
 <script lang="ts">
   /**
-   * The Settings tab of an agent's page: the model and the models a chat may switch to, the
-   * guardrails, the step, spend and tool limits, Delete, and the saved versions with Restore. It
-   * shows what the agent's file says; changing it is the editor's job. An agent defined in code
+   * The Settings tab of an agent's page: the model and the models a chat may switch to, the step
+   * limit, Delete, and the saved versions with Restore. It shows what the agent's file says;
+   * changing it is the editor's job. Guardrails, spend and tool limits, and tool approvals are on
+   * the Access tab. An agent defined in code
    * has no file, so it shows its model and says the rest cannot be changed here, with no Delete and
    * no versions.
    *
@@ -136,28 +137,8 @@
         </div>
         {#if isFile}
           <div class="ib-agent-settings__row">
-            <dt>{copy.guardrailsLabel}</dt>
-            <dd>{settings.guardrails ?? copy.notSet}</dd>
-          </div>
-          <div class="ib-agent-settings__row">
             <dt>{copy.stepLimitLabel}</dt>
             <dd>{settings.stepLimit ?? copy.none}</dd>
-          </div>
-          <div class="ib-agent-settings__row">
-            <dt>{copy.spendLimitLabel}</dt>
-            <dd>{settings.spendPerRun ?? copy.none}</dd>
-          </div>
-          <div class="ib-agent-settings__row">
-            <dt>{copy.chatSpendLimitLabel}</dt>
-            <dd>{settings.spendPerChat ?? copy.none}</dd>
-          </div>
-          <div class="ib-agent-settings__row">
-            <dt>{copy.toolCallLimitLabel}</dt>
-            <dd>{settings.toolCalls ?? copy.none}</dd>
-          </div>
-          <div class="ib-agent-settings__row">
-            <dt>{copy.toolTimeLimitLabel}</dt>
-            <dd>{settings.toolTime ?? copy.none}</dd>
           </div>
         {/if}
       </dl>

@@ -9,18 +9,6 @@
       "issue": "COR-1859"
     },
     {
-      "file": "src/routes/system/dynamic-source-list.svelte",
-      "issue": "COR-1847"
-    },
-    {
-      "file": "src/routes/system/registry-contract-verification-panel.svelte",
-      "issue": "COR-1847"
-    },
-    {
-      "file": "src/routes/system/registry-tab.svelte",
-      "issue": "COR-1847"
-    },
-    {
       "file": "src/routes/workflows/detail/async-activity/activity-worker-provenance.svelte",
       "issue": "COR-1860"
     },

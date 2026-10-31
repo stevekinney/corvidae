@@ -303,6 +303,7 @@ export function readyAgent(overrides: Partial<AgentDetail> = {}): AgentDetail {
       guardrails: null,
       costBudget: null,
       toolBudget: null,
+      toolApproval: null,
       instructions: 'You are a careful researcher.',
     },
     ...overrides,
