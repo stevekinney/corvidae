@@ -41,7 +41,7 @@
     workflowViewInstance,
   } from '../lib/query.ts';
   import { router } from '../lib/router.svelte.ts';
-  import { getPrincipalStore, scopeReason } from '../lib/scopes.svelte.ts';
+  import { anyScopeReason, getPrincipalStore } from '../lib/scopes.svelte.ts';
   import { getConnection } from './connection.svelte.ts';
   import { CHAT_COPY, CONNECTION_COPY, RETRY_LABEL, STALE_DATA_LABEL, VIEW_COPY } from './copy.ts';
   import { useBureauEventsLive, useFleetEventsLive } from './live-polling.svelte.ts';
@@ -81,7 +81,11 @@
   const definition = VIEWS[initial.view];
   const probe = probeFor(initial.view, initial.parameters, initial.pattern, initial.search);
 
-  const scopeDenied = $derived(!principalStore.hasScope(...definition.scopes));
+  const scopeDenied = $derived(
+    definition.scopes.length === 0
+      ? !principalStore.hasScope()
+      : !principalStore.hasAnyScope(...definition.scopes),
+  );
 
   // The location can be the view's way of creating its first item (`views.ts`, `creating`).
   const creating = $derived(definition.creating?.(router.current.search) ?? false);
@@ -189,7 +193,7 @@
     if (!probeQuery.isError || !isForbiddenFault(probeQuery.error)) return;
     // `denyScope()` reads and rewrites the principal, which this effect would otherwise depend on.
     untrack(() => {
-      if (definition.scopes.length > 0 && principalStore.hasScope(...definition.scopes)) {
+      if (definition.scopes.length > 0 && principalStore.hasAnyScope(...definition.scopes)) {
         principalStore.denyScope(...definition.scopes);
       }
     });
@@ -208,7 +212,7 @@
     forbiddenCopy !== undefined
       ? forbiddenCopy.description
       : definition.scopes.length > 0
-        ? scopeReason(...definition.scopes)
+        ? anyScopeReason(...definition.scopes)
         : 'This view is not available to the current principal.',
   );
   const forbiddenTitle = $derived(forbiddenCopy?.title ?? copy.forbidden.title);

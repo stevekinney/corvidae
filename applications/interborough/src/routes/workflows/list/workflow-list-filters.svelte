@@ -67,6 +67,9 @@
 
   const statuses = $derived(normalizeWorkflowStatusFilter(filter.status));
   const createdPreset = $derived(timeRangeToCreatedDatePreset(filter.createdAt));
+  // No control sets the updated window: a link does (the Health overview's Failed in 24h), so the
+  // chip names it, and removing it or Clear all drops it.
+  const updatedPreset = $derived(timeRangeToCreatedDatePreset(filter.updatedAt));
 
   /**
    * Builds the next filter via a mutator over a draft copy, using `delete`
@@ -99,6 +102,14 @@
       filter.idPrefix ? { key: 'idPrefix', value: filter.idPrefix, label: 'ID prefix' } : null,
       filter.type && !lockType ? { key: 'type', value: filter.type, label: 'Type' } : null,
       createdPreset !== 'all' ? { key: 'created', value: createdPreset, label: 'Created' } : null,
+      filter.updatedAt !== undefined
+        ? {
+            key: 'updated',
+            value:
+              updatedPreset === 'all' ? 'Custom range' : CREATED_DATE_PRESET_LABEL[updatedPreset],
+            label: 'Updated',
+          }
+        : null,
     ].filter((entry): entry is AppliedFilter => entry !== null),
   );
 
@@ -136,6 +147,7 @@
       if (key === 'idPrefix') delete draft.idPrefix;
       else if (key === 'type') delete draft.type;
       else if (key === 'created') delete draft.createdAt;
+      else if (key === 'updated') delete draft.updatedAt;
     });
   }
 

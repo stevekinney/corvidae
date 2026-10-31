@@ -292,6 +292,9 @@ export function probeFor(
         return { empty: false };
       };
     case 'health':
-      return probeEngineRegistry;
+      // The page reads the engine band by band, each with its own scope and its own failure, so a
+      // principal holding only one of the page's scopes is not turned away by a probe that needs
+      // the other.
+      return undefined;
   }
 }

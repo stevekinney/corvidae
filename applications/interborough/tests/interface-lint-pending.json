@@ -50,12 +50,6 @@
     },
     {
       "rule": "app-header-class",
-      "file": "src/routes/system/alerts-tab.svelte",
-      "subject": ".weft-alerts-tab__header",
-      "issue": "COR-1850"
-    },
-    {
-      "rule": "app-header-class",
       "file": "src/routes/system/dynamic-source-list.svelte",
       "subject": ".weft-source-list__header",
       "issue": "COR-1847"
@@ -68,18 +62,6 @@
     },
     {
       "rule": "app-header-class",
-      "file": "src/routes/system/health-tab.svelte",
-      "subject": ".weft-health-tab__panel-header",
-      "issue": "COR-1850"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/routes/system/lease-status-panel.svelte",
-      "subject": ".weft-health-tab__lease-header",
-      "issue": "COR-1850"
-    },
-    {
-      "rule": "app-header-class",
       "file": "src/routes/system/mcp-panel.svelte",
       "subject": ".weft-mcp-panel__diagram-header",
       "issue": "COR-1847"
@@ -89,12 +71,6 @@
       "file": "src/routes/system/mcp-panel.svelte",
       "subject": ".weft-mcp-panel__test-header",
       "issue": "COR-1847"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/routes/system/metrics-tab.svelte",
-      "subject": ".weft-metrics-tab__raw-header",
-      "issue": "COR-1850"
     },
     {
       "rule": "app-header-class",
@@ -164,18 +140,6 @@
     },
     {
       "rule": "app-header-class",
-      "file": "src/styles/dashboard.css",
-      "subject": ".weft-dashboard__header",
-      "issue": "COR-1850"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/styles/dashboard.css",
-      "subject": ".weft-dashboard-card__header",
-      "issue": "COR-1850"
-    },
-    {
-      "rule": "app-header-class",
       "file": "src/styles/foundation.css",
       "subject": ".weft-notification-panel__header",
       "issue": "COR-1861"
@@ -220,73 +184,73 @@
       "rule": "app-header-class",
       "file": "src/styles/workers.css",
       "subject": ".weft-workers-panel__header",
-      "issue": "COR-1850"
+      "issue": "COR-1971"
     },
     {
       "rule": "app-header-class",
       "file": "src/styles/workers.css",
       "subject": ".weft-workers-route__header",
-      "issue": "COR-1850"
+      "issue": "COR-1971"
     },
     {
       "rule": "app-header-class",
       "file": "src/styles/workers.css",
       "subject": ".weft-fleet-view__section-header",
-      "issue": "COR-1850"
+      "issue": "COR-1971"
     },
     {
       "rule": "app-header-class",
       "file": "src/styles/workers.css",
       "subject": ".weft-worker-detail__header",
-      "issue": "COR-1850"
+      "issue": "COR-1971"
     },
     {
       "rule": "app-header-class",
       "file": "src/styles/workers.css",
       "subject": ".weft-queue-detail__header",
-      "issue": "COR-1850"
+      "issue": "COR-1972"
     },
     {
       "rule": "app-header-class",
       "file": "src/styles/workers.css",
       "subject": ".weft-dead-letter-panel__header",
-      "issue": "COR-1850"
+      "issue": "COR-1972"
     },
     {
       "rule": "app-header-class",
       "file": "src/styles/workers.css",
       "subject": ".weft-diagnostic-card__header",
-      "issue": "COR-1850"
+      "issue": "COR-1971"
     },
     {
       "rule": "app-header-class",
       "file": "src/styles/workers.css",
       "subject": ".weft-task-ledger-detail__header",
-      "issue": "COR-1850"
+      "issue": "COR-1972"
     },
     {
       "rule": "app-header-class",
       "file": "src/styles/workers.css",
       "subject": ".weft-worker-session__header",
-      "issue": "COR-1850"
+      "issue": "COR-1971"
     },
     {
       "rule": "app-header-class",
       "file": "src/styles/workers.css",
       "subject": ".weft-task-cancellation__header",
-      "issue": "COR-1850"
+      "issue": "COR-1972"
     },
     {
       "rule": "app-header-class",
       "file": "src/styles/workers.css",
       "subject": ".weft-conformance__target-header",
-      "issue": "COR-1850"
+      "issue": "COR-1971"
     },
     {
       "rule": "app-header-class",
       "file": "src/styles/workers.css",
       "subject": ".weft-deployment__header",
-      "issue": "COR-1850"
+      "issue": "COR-1971"
     },
     {
       "rule": "app-header-class",

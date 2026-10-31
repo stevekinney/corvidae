@@ -7,10 +7,11 @@
  */
 import { ANONYMOUS_LOCAL_OWNER, auditTrailToolSourceOwnerId } from '@lostgradient/bureau';
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { filesUnder } from './files-under.test-support.ts';
 import { startHost, type Host } from './host.ts';
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
 import { ToolSourceOwnerOnlyError } from './tool-source-manager.ts';
@@ -64,17 +65,6 @@ function send(host: Host, method: string, path: string, body?: unknown): Promise
       ? {}
       : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
   });
-}
-
-/** Every file under `directory`, read as bytes. */
-async function filesUnder(directory: string): Promise<Map<string, Buffer>> {
-  const found = new Map<string, Buffer>();
-  for (const entry of await readdir(directory, { withFileTypes: true, recursive: true })) {
-    if (!entry.isFile()) continue;
-    const path = join(entry.parentPath, entry.name);
-    found.set(path, Buffer.from(await readFile(path)));
-  }
-  return found;
 }
 
 /** The files under `directory` that hold `needle`, in any of the encodings a store might use. */

@@ -893,6 +893,43 @@ export const HEALTH_DIAGNOSTICS_COPY = {
   sections: 'Diagnostic sections',
 } as const;
 
+/** The words of the Health overview: its health line, its four counts, and the recent-activity window. */
+export const HEALTH_OVERVIEW_COPY = {
+  /** The accessible name of the four counts. */
+  countsLabel: 'Health counts',
+  workingNow: 'Working now',
+  needsYou: 'Needs you',
+  failedIn24Hours: 'Failed in 24h',
+  schedules: 'Schedules',
+  /** The value of a count that could not be read. */
+  unavailable: '—',
+  /** The health line when nothing needs attention. */
+  allClear: 'All clear. Nothing needs attention.',
+  /**
+   * The health line when a read it depends on failed and nothing it could read needs attention:
+   * the line cannot say all is clear about what it never saw.
+   */
+  lineUnavailable:
+    'Health could not be fully read. Nothing was reported, but that is not all clear.',
+  /** The note beside the chips when one of the line's reads failed. */
+  lineReadFailed: 'Some checks could not be read',
+  /** The health line when something does: how many things, and each one below it. */
+  needsAttention: (count: number): string =>
+    count === 1 ? '1 thing needs attention' : `${String(count)} things need attention`,
+  activity: {
+    title: 'Recent activity',
+    /** What the empty window says: the engine has not reported anything yet. */
+    emptyTitle: 'Nothing has happened yet',
+    emptyDescription: 'Events from runs, schedules and reviews appear here as they happen.',
+    /** The footer link to the whole trail. */
+    auditLink: 'Open the audit log',
+    /** The accessible name of the live window. */
+    windowLabel: 'Recent activity. Updates pause while you are reading.',
+    /** A line that stands for several in a row, such as `Workflow completed ×3`. */
+    repeated: (title: string, count: number): string => `${title} ×${String(count)}`,
+  },
+} as const;
+
 /** The words of Settings › Model policy: which models may be used, and the caller's own preferences. */
 export const MODEL_POLICY_COPY = {
   intro:
@@ -2036,6 +2073,8 @@ export const NAVIGATION_COPY = {
   breadcrumb: 'Breadcrumb',
   /** What the Health page's links to the engine's other pages are called. */
   healthSections: 'Health sections',
+  /** What the link to the audit trail is called among the Health page's links. */
+  auditLog: 'Audit log',
   /** The button that folds the sidebar to its icon rail, and opens it again. */
   collapseSidebar: 'Collapse sidebar',
   expandSidebar: 'Expand sidebar',

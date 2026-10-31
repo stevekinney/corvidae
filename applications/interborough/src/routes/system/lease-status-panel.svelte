@@ -5,7 +5,14 @@
    * malformed response, and server faults are explicit; a failed read,
    * including a failed refetch over a cached reading, never renders a status.
    */
-  import { Alert, Badge, DescriptionList, EmptyState, Skeleton } from '@lostgradient/cinder';
+  import {
+    Alert,
+    Badge,
+    DescriptionList,
+    ErrorState,
+    SectionHeading,
+    Skeleton,
+  } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { useFleetEventsLive } from '../../app/live-polling.svelte.ts';
@@ -64,19 +71,25 @@
   );
 </script>
 
-<section class="weft-health-tab__lease" aria-labelledby="engine-lease-heading">
-  <div class="weft-health-tab__lease-header">
-    <h2 id="engine-lease-heading">Server lease</h2>
-    {#if presentation}
-      <Badge variant={presentation.variant}>{presentation.label}</Badge>
-    {/if}
-  </div>
+<section class="weft-health-tab__lease" aria-label="Server lease">
+  <SectionHeading level={3} title="Server lease">
+    {#snippet actions()}
+      {#if presentation}
+        <Badge variant={presentation.variant}>{presentation.label}</Badge>
+      {/if}
+    {/snippet}
+  </SectionHeading>
   {#if leaseQuery.isPending}
     <div role="status" aria-busy="true" aria-label="Loading server lease">
       <Skeleton height="3rem" />
     </div>
   {:else if leaseQuery.error instanceof MalformedSystemLeaseError}
-    <EmptyState title="Malformed server response" description={leaseQuery.error.message} />
+    <ErrorState
+      title="Malformed server response"
+      description={leaseQuery.error.message}
+      headingLevel={4}
+      variant="flat"
+    />
   {:else if leaseQuery.isError}
     <QueryFaultBanner error={leaseQuery.error} onRetry={() => leaseQuery.refetch()} />
   {:else if presentation}
@@ -101,19 +114,6 @@
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
     overflow-wrap: anywhere;
-  }
-
-  .weft-health-tab__lease-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-
-  .weft-health-tab__lease-header h2 {
-    margin: 0;
-    font-size: var(--cinder-text-sm);
-    font-weight: 600;
   }
 
   .weft-health-tab__hint {

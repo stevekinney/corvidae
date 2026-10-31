@@ -220,7 +220,11 @@ function frame(container: HTMLElement): HTMLElement {
  * it lets only a refusal or a 401 through, and shows the Bureau's other failures in a banner beside
  * the engine's reviews (see "the Reviews view", which asserts that and the 401).
  */
-const VIEWS_THAT_CAN_FAIL = VIEW_NAMES.filter((view) => view !== 'reviews');
+const VIEWS_THAT_CAN_FAIL = VIEW_NAMES.filter((view) => view !== 'reviews' && view !== 'health');
+
+// Health is left out of the probe cases below: it asks the server nothing before it shows. Its
+// bands each read with their own scope, so a probe needing one scope would turn away a principal
+// holding the other (see "the Health view").
 
 describe('every view whose probe fails the page, when its probe fails', () => {
   for (const view of VIEWS_THAT_CAN_FAIL) {
@@ -254,6 +258,7 @@ describe('every view, in every state', () => {
     });
 
     test(`${view} is forbidden when its probe is refused`, async () => {
+      if (view === 'health') return;
       stub(view, 'forbidden');
       const { container, findByRole } = mount(view);
       expect(await findByRole('heading', { level: 1, name: copy.forbidden.title })).not.toBeNull();
@@ -261,6 +266,7 @@ describe('every view, in every state', () => {
     });
 
     test(`${view} is loading while its probe is pending`, async () => {
+      if (view === 'health') return;
       restore = installFetchImplementation(() => new Promise<Response>(() => {}));
       const { container, findByRole } = mount(view);
       expect(await findByRole('heading', { level: 1, name: copy.loading.title })).not.toBeNull();
@@ -275,11 +281,34 @@ describe('every view, in every state', () => {
       const { requests } = stub(view, 'content');
       const { container, unmount } = mount(view, { scopes: [] });
       expect(frame(container).dataset['state']).toBe('forbidden');
-      expect(container.textContent).toContain(`Requires ${VIEWS[view].scopes.join(', ')}`);
+      expect(container.textContent).toContain(`Requires ${VIEWS[view].scopes.join(' or ')}`);
       expect(requests).toEqual([]);
       unmount();
       restore?.();
     }
+  });
+});
+
+describe('the Health view', () => {
+  test('opens for system:read alone and for workflows:read alone, and asks nothing to do so', async () => {
+    expect(VIEWS.health.scopes).toEqual(['system:read', 'workflows:read']);
+    for (const scope of ['system:read', 'workflows:read'] as const) {
+      const { requests } = stub('health', 'content');
+      const { container, findByTestId, unmount } = mount('health', { scopes: [scope] });
+      expect(await findByTestId('content')).not.toBeNull();
+      expect(frame(container).dataset['state']).toBe('ready');
+      expect(requests).toEqual([]);
+      unmount();
+      restore?.();
+    }
+  });
+
+  test('is forbidden for a principal holding neither scope, and names both', () => {
+    const { requests } = stub('health', 'content');
+    const { container } = mount('health', { scopes: ['schedules:read'] });
+    expect(frame(container).dataset['state']).toBe('forbidden');
+    expect(container.textContent).toContain('Requires system:read or workflows:read');
+    expect(requests).toEqual([]);
   });
 });
 

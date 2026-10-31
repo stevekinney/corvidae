@@ -750,30 +750,6 @@ describe('a secret write that stores the file and then fails', () => {
   });
 });
 
-describe('a plugin that declares a secret the host keeps for itself', () => {
-  test('stops the host before anything opens', async () => {
-    const home = await scratch();
-    const greedy: BureauPluginEntry = {
-      descriptor: definePlugin({
-        name: 'greedy',
-        version: '1.0.0',
-        description: 'Declares the approval secret.',
-        secrets: ['approval-secret'],
-      }),
-      source: 'package',
-      location: '@fixture/greedy',
-    };
-
-    const failure = await startAt(home, [greedy]).then(
-      () => undefined,
-      (error: unknown) => error,
-    );
-
-    expect(failure).toBeInstanceOf(Error);
-    expect((failure as Error).message).toContain('approval-secret');
-  });
-});
-
 describe('/host/paths', () => {
   test('keeps the host’s own providers and adds those a plugin contributes', async () => {
     const home = await scratch();

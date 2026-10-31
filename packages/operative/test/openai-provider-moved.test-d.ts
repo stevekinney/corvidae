@@ -250,64 +250,64 @@ export type ProvidersMockOpenAIClient = import('../src/providers/index.ts').Mock
 export type ProvidersMockOpenAIStreamingClient = import('../src/providers/index.ts').MockOpenAIStreamingClient;
 // prettier-ignore
 // @ts-expect-error `OpenAIBatch` moved to @lostgradient/operative-openai.
-export type EmbeddingsOpenAIBatch = import('../src/providers/embeddings/index.ts').OpenAIBatch;
+export type EmbeddingsOpenAIBatch = import('../src/providers/index.ts').OpenAIBatch;
 // prettier-ignore
 // @ts-expect-error `OpenAIBatchClient` moved to @lostgradient/operative-openai.
-export type EmbeddingsOpenAIBatchClient = import('../src/providers/embeddings/index.ts').OpenAIBatchClient;
+export type EmbeddingsOpenAIBatchClient = import('../src/providers/index.ts').OpenAIBatchClient;
 // prettier-ignore
 // @ts-expect-error `OpenAIBatchClientOptions` moved to @lostgradient/operative-openai.
-export type EmbeddingsOpenAIBatchClientOptions = import('../src/providers/embeddings/index.ts').OpenAIBatchClientOptions;
+export type EmbeddingsOpenAIBatchClientOptions = import('../src/providers/index.ts').OpenAIBatchClientOptions;
 // prettier-ignore
 // @ts-expect-error `OpenAIBatchCreateRequest` moved to @lostgradient/operative-openai.
-export type EmbeddingsOpenAIBatchCreateRequest = import('../src/providers/embeddings/index.ts').OpenAIBatchCreateRequest;
+export type EmbeddingsOpenAIBatchCreateRequest = import('../src/providers/index.ts').OpenAIBatchCreateRequest;
 // prettier-ignore
 // @ts-expect-error `OpenAIBatchListQuery` moved to @lostgradient/operative-openai.
-export type EmbeddingsOpenAIBatchListQuery = import('../src/providers/embeddings/index.ts').OpenAIBatchListQuery;
+export type EmbeddingsOpenAIBatchListQuery = import('../src/providers/index.ts').OpenAIBatchListQuery;
 // prettier-ignore
 // @ts-expect-error `OpenAIBatchOperations` moved to @lostgradient/operative-openai.
-export type EmbeddingsOpenAIBatchOperations = import('../src/providers/embeddings/index.ts').OpenAIBatchOperations;
+export type EmbeddingsOpenAIBatchOperations = import('../src/providers/index.ts').OpenAIBatchOperations;
 // prettier-ignore
 // @ts-expect-error `OpenAIBatchRequestCounts` moved to @lostgradient/operative-openai.
-export type EmbeddingsOpenAIBatchRequestCounts = import('../src/providers/embeddings/index.ts').OpenAIBatchRequestCounts;
+export type EmbeddingsOpenAIBatchRequestCounts = import('../src/providers/index.ts').OpenAIBatchRequestCounts;
 // prettier-ignore
 // @ts-expect-error `OpenAIChatCompletion` moved to @lostgradient/operative-openai.
-export type EmbeddingsOpenAIChatCompletion = import('../src/providers/embeddings/index.ts').OpenAIChatCompletion;
+export type EmbeddingsOpenAIChatCompletion = import('../src/providers/index.ts').OpenAIChatCompletion;
 // prettier-ignore
 // @ts-expect-error `OpenAIChatCompletionChunk` moved to @lostgradient/operative-openai.
-export type EmbeddingsOpenAIChatCompletionChunk = import('../src/providers/embeddings/index.ts').OpenAIChatCompletionChunk;
+export type EmbeddingsOpenAIChatCompletionChunk = import('../src/providers/index.ts').OpenAIChatCompletionChunk;
 // prettier-ignore
 // @ts-expect-error `OpenAIChatCompletionCreateRequest` moved to @lostgradient/operative-openai.
-export type EmbeddingsOpenAIChatCompletionCreateRequest = import('../src/providers/embeddings/index.ts').OpenAIChatCompletionCreateRequest;
+export type EmbeddingsOpenAIChatCompletionCreateRequest = import('../src/providers/index.ts').OpenAIChatCompletionCreateRequest;
 // prettier-ignore
 // @ts-expect-error `OpenAIClient` moved to @lostgradient/operative-openai.
-export type EmbeddingsOpenAIClient = import('../src/providers/embeddings/index.ts').OpenAIClient;
+export type EmbeddingsOpenAIClient = import('../src/providers/index.ts').OpenAIClient;
 // prettier-ignore
 // @ts-expect-error `OpenAIEmbedderOptions` moved to @lostgradient/operative-openai.
-export type EmbeddingsOpenAIEmbedderOptions = import('../src/providers/embeddings/index.ts').OpenAIEmbedderOptions;
+export type EmbeddingsOpenAIEmbedderOptions = import('../src/providers/index.ts').OpenAIEmbedderOptions;
 // prettier-ignore
 // @ts-expect-error `OpenAIEmbeddingClient` moved to @lostgradient/operative-openai.
-export type EmbeddingsOpenAIEmbeddingClient = import('../src/providers/embeddings/index.ts').OpenAIEmbeddingClient;
+export type EmbeddingsOpenAIEmbeddingClient = import('../src/providers/index.ts').OpenAIEmbeddingClient;
 // prettier-ignore
 // @ts-expect-error `OpenAIMessageMapping` moved to @lostgradient/operative-openai.
-export type EmbeddingsOpenAIMessageMapping = import('../src/providers/embeddings/index.ts').OpenAIMessageMapping;
+export type EmbeddingsOpenAIMessageMapping = import('../src/providers/index.ts').OpenAIMessageMapping;
 // prettier-ignore
 // @ts-expect-error `OpenAIProviderConfiguration` moved to @lostgradient/operative-openai.
-export type EmbeddingsOpenAIProviderConfiguration = import('../src/providers/embeddings/index.ts').OpenAIProviderConfiguration;
+export type EmbeddingsOpenAIProviderConfiguration = import('../src/providers/index.ts').OpenAIProviderConfiguration;
 // prettier-ignore
 // @ts-expect-error `OpenAIProviderOptions` moved to @lostgradient/operative-openai.
-export type EmbeddingsOpenAIProviderOptions = import('../src/providers/embeddings/index.ts').OpenAIProviderOptions;
+export type EmbeddingsOpenAIProviderOptions = import('../src/providers/index.ts').OpenAIProviderOptions;
 // prettier-ignore
 // @ts-expect-error `OpenAIRequestOptions` moved to @lostgradient/operative-openai.
-export type EmbeddingsOpenAIRequestOptions = import('../src/providers/embeddings/index.ts').OpenAIRequestOptions;
+export type EmbeddingsOpenAIRequestOptions = import('../src/providers/index.ts').OpenAIRequestOptions;
 // prettier-ignore
 // @ts-expect-error `OpenAIStreamingClient` moved to @lostgradient/operative-openai.
-export type EmbeddingsOpenAIStreamingClient = import('../src/providers/embeddings/index.ts').OpenAIStreamingClient;
+export type EmbeddingsOpenAIStreamingClient = import('../src/providers/index.ts').OpenAIStreamingClient;
 // prettier-ignore
 // @ts-expect-error `MockOpenAIClient` moved to @lostgradient/operative-openai.
-export type EmbeddingsMockOpenAIClient = import('../src/providers/embeddings/index.ts').MockOpenAIClient;
+export type EmbeddingsMockOpenAIClient = import('../src/providers/index.ts').MockOpenAIClient;
 // prettier-ignore
 // @ts-expect-error `MockOpenAIStreamingClient` moved to @lostgradient/operative-openai.
-export type EmbeddingsMockOpenAIStreamingClient = import('../src/providers/embeddings/index.ts').MockOpenAIStreamingClient;
+export type EmbeddingsMockOpenAIStreamingClient = import('../src/providers/index.ts').MockOpenAIStreamingClient;
 // prettier-ignore
 // @ts-expect-error `OpenAIBatch` moved to @lostgradient/operative-openai.
 export type StructuredOutputOpenAIBatch = import('../src/providers/structured-output/index.ts').OpenAIBatch;

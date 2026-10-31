@@ -246,33 +246,7 @@
   background: var(--cinder-surface-canvas);
 }
 
-.weft-reviews-card-link {
-  display: block;
-  color: inherit;
-  text-decoration: none;
-}
-
-.weft-reviews-card__stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 12px;
-  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-}
-
-.weft-reviews-card__skeleton {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-}
-
-.weft-reviews-card__error {
-  margin: 0;
-  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-  font-size: var(--cinder-text-sm);
-  color: var(--cinder-status-danger-text);
-}
-
+/* What an approval would run (bureau-review-operation.svelte) */
 .weft-bureau-review-operation {
   display: flex;
   flex-direction: column;
