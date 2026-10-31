@@ -5,6 +5,8 @@
  * lane, so a new route cannot be added without an address, and an entry cannot lose its owner.
  */
 
+import { E2E_SKILLS, skillAddressKey } from './skills-support.ts';
+
 /** The identifiers the specification seeds, and so the addresses it can name. */
 export interface ResponsiveSeed {
   /** A chat session that exists. */
@@ -38,6 +40,7 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
     '/chats/:chat': `/chats/${encodeURIComponent(seed.chat)}`,
     '/agents': '/agents',
     '/agents/new': '/agents/new',
+    '/capabilities': '/capabilities',
     '/agents/:agent/edit': `/agents/${agent}/edit`,
     '/agents/:agent/memories': `/agents/${memoryAgent}/memories`,
     '/agents/:agent': `/agents/${agent}`,
@@ -69,6 +72,7 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
  * route of its own. The seeded workflow type is code-defined, so the file header's four buttons
  * (Start run, Pause, Edit, Delete) and a file's Code, Runs and History tabs are reached here,
  * as are an agent's Instructions and Settings tabs, with the tab named in the address (`?tab=`).
+ * The Capabilities page's Skills tab, and one seeded long-named skill open, are reached the same way.
  */
 export function responsiveVariants(seed: ResponsiveSeed): Readonly<Record<string, string>> {
   const file = `/workflows/${encodeURIComponent(seed.workflowFile)}`;
@@ -80,6 +84,10 @@ export function responsiveVariants(seed: ResponsiveSeed): Readonly<Record<string
     '/workflows/:workflow (file, code tab)': `${file}?tab=code`,
     '/workflows/:workflow (file, runs tab)': `${file}?tab=runs`,
     '/workflows/:workflow (file, history tab)': `${file}?tab=history`,
+    // The Skills tab, and a long-named skill open (one pane at a time below 900px, so at 375 and
+    // 768 the detail replaces the list).
+    '/capabilities (skills tab)': '/capabilities?tab=skills',
+    '/capabilities (skill open)': `/capabilities?tab=skills&skill=${encodeURIComponent(skillAddressKey(E2E_SKILLS.long))}`,
   };
 }
 

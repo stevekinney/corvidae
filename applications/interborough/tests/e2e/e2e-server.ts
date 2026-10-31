@@ -50,6 +50,7 @@ import { seedLedgerEvidence } from './ledger-evidence-seed.ts';
 import { createModelAgents } from './model-agents.ts';
 import { createQuestionAgents } from './question-agents.ts';
 import { SEEDED_WORKFLOW_FILES } from './seeded-workflow-files.ts';
+import { seedSkills } from './skills-seed.ts';
 import { createTextEchoAgents } from './text-echo-agent.ts';
 import { seedVersionedRuns } from './versioned-run-seed.ts';
 
@@ -64,6 +65,8 @@ const home = join(scratch, 'home');
 await mkdir(home, { recursive: true });
 // Two models, so a spec can change an agent's model and save it.
 await writeProviderHome(home, ['sonnet', 'claude-haiku-4-5']);
+// Executable skills in two sources, one trusted and one not (`skills-support.ts`).
+await seedSkills(home);
 const provider = fakeProvider('This reply comes from the end-to-end provider stub.');
 
 // Three workflow files, in the directory the Bureau reads at start (`26-workflows.spec.ts`): one

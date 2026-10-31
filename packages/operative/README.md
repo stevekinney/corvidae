@@ -2863,6 +2863,8 @@ Pass `guardrails: false` to `bureau`'s options to opt out entirely, or a `Guardr
 
 The preset is exported as `createDefaultGuardrailsPreset()`, and `createAgent` applies it too (COR-1367): an agent whose `guardrails` option is omitted resolves its run's guardrails as `inheritedGuardrails ?? createDefaultGuardrailsPreset()`, where `inheritedGuardrails` is the policy a host hands down through `AgentRunContext` (Bureau hands down the deprecated `BureauOptions.guardrails`). `guardrails: false` opts the agent out, and a `GuardrailsOptions` replaces the preset whatever the host says. The guardrails are created per run, registered in the agent's tier (`agent:guardrails-prepare-step`, `agent:guardrails-validate-response`, pinned behind the agent's own hooks), and also scan the agent's skill bodies and resources when `skills` is set.
 
+`additionalGuardrails` (COR-1877) adds `inputDetectors` and `outputValidators` to whatever the agent resolved, whether that is the preset, an inherited policy or the agent's own `guardrails`, so an agent can pick up a plugin's guardrail without losing the preset. When the resolved guardrails are `false`, whether the agent's or its host's, they run alone, as a tripwire: asking for a guardrail by name is not undone by an opt-out of the defaults.
+
 ```typescript
 import { createAgent, createPromptInjectionDetector } from '@lostgradient/operative';
 import type { GenerateFunction } from '@lostgradient/operative';

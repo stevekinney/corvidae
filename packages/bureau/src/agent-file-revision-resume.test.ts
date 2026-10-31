@@ -23,6 +23,7 @@ import { textValueStore, MemoryStorage } from '@lostgradient/storage';
 import { createConversationHistory } from 'conversationalist';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
+import type { AgentFileDefinition } from './agent-file';
 import { createAgentSnapshotStore } from './agent-snapshot-store';
 import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
@@ -93,7 +94,11 @@ describe('a pending approval restored after a restart', () => {
    * One session whose two runs are of the same agent at different revisions. The older run
    * (revision 2) is pending; the session's metadata names the newer run's revision (3) and hash.
    */
-  async function restoreTwoRuns(options: { readonly referencesNameRevision: boolean }) {
+  async function restoreTwoRuns(options: {
+    readonly referencesNameRevision: boolean;
+    /** The old preset name the older run's snapshot holds as `guardrails` (before COR-1877). */
+    readonly olderSnapshotGuardrails?: string;
+  }) {
     const directory = createTemporaryDirectory('bureau-revision-resume-approvals');
     cleanups.push(() => removeTemporaryPath(directory));
     await writeFile(
@@ -109,7 +114,17 @@ describe('a pending approval restored after a restart', () => {
     const named = (revision: number) =>
       options.referencesNameRevision ? { definitionRevision: revision } : {};
     await snapshots.recordRun(
-      { id: 'alpha-file', hash: 'hash-two', definition: definition('Older run.\n'), ...named(2) },
+      {
+        id: 'alpha-file',
+        hash: 'hash-two',
+        definition: {
+          ...definition('Older run.\n'),
+          ...(options.olderSnapshotGuardrails === undefined
+            ? {}
+            : { guardrails: options.olderSnapshotGuardrails }),
+        } as unknown as AgentFileDefinition,
+        ...named(2),
+      },
       'run-older',
     );
     await snapshots.recordRun(
@@ -162,6 +177,16 @@ describe('a pending approval restored after a restart', () => {
 
     expect(revisionBuiltFor(builds, 'Older run.')).toEqual([2]);
     expect(revisionBuiltFor(builds, 'Newer run.')).toEqual([3]);
+  });
+
+  it('is restored when its snapshot holds the old preset name `tripwire` as `guardrails`', async () => {
+    const builds = await restoreTwoRuns({
+      referencesNameRevision: true,
+      olderSnapshotGuardrails: 'tripwire',
+    });
+
+    // Both runs came back (the helper asserts both reviews), and the older one was rebuilt.
+    expect(revisionBuiltFor(builds, 'Older run.')).toEqual([2]);
   });
 
   it('is rebuilt at the session’s revision when its reference was written before references named one, if it is the session’s latest run', async () => {

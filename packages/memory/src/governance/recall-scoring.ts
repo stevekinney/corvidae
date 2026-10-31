@@ -32,17 +32,21 @@ function exactMatch(query: string, candidate: RecallCandidate): number {
   return candidate.record.content.toLowerCase().includes(normalized) ? 1 : 0;
 }
 
-/** The fused score: the weighted lexical and semantic scores, plus one for an exact match, scaled by retrieval weight. */
-function fuse(plan: MemoryRetrievalPlan, scores: Omit<MemoryRecallStageScores, 'fused'>): number {
-  const lexical = plan.stages.includes('exact-lexical');
-  const semantic = plan.stages.includes('semantic');
-  if (!plan.stages.includes('rank-fusion')) {
-    return semantic ? scores.semantic : scores.lexical + scores.exact;
-  }
-  if (lexical && semantic) {
+/**
+ * The fused score: the weighted lexical and semantic scores, plus one for an exact match. Without
+ * vectors (`semantic` false: the plan selects no semantic stage, or the active embedder is
+ * unavailable) the lexical and exact scores rank alone, as they do for a lexical-only plan.
+ */
+function fuse(
+  plan: MemoryRetrievalPlan,
+  semantic: boolean,
+  scores: Omit<MemoryRecallStageScores, 'fused'>,
+): number {
+  if (!semantic) return scores.lexical + scores.exact;
+  if (plan.stages.includes('exact-lexical') && plan.stages.includes('rank-fusion')) {
     return VECTOR_WEIGHT * scores.semantic + TEXT_WEIGHT * scores.lexical + scores.exact;
   }
-  return semantic ? scores.semantic : scores.lexical + scores.exact;
+  return scores.semantic;
 }
 
 /**
@@ -50,7 +54,9 @@ function fuse(plan: MemoryRetrievalPlan, scores: Omit<MemoryRecallStageScores, '
  * contributes BM25 (or the configured text-search provider) and an exact
  * identifier or phrase match; `semantic` contributes cosine similarity to the
  * embedded query; `rank-fusion` combines them. Without fusion the plan's one
- * scoring stage ranks alone.
+ * scoring stage ranks alone. With no `vectors` for a plan that selects
+ * `semantic`, the active embedder is unavailable: the candidates are scored
+ * as `exact-lexical` would score them, and the pass costs no embedder call.
  */
 export async function scoreCandidates(
   context: GovernanceContext,
@@ -60,8 +66,9 @@ export async function scoreCandidates(
   candidates: readonly RecallCandidate[],
 ): Promise<ScoringPass> {
   if (candidates.length === 0) return { ranked: [], cost: 0 };
-  const lexicalStage = plan.stages.includes('exact-lexical');
-  const semanticStage = plan.stages.includes('semantic');
+  const semanticStage = plan.stages.includes('semantic') && vectors !== undefined;
+  // A plan that selects `semantic` falls back to text while the active embedder is unavailable.
+  const lexicalStage = plan.stages.includes('exact-lexical') || !semanticStage;
   if (vectors !== undefined) await loadVectors(context, vectors, candidates);
   const queryVector =
     semanticStage && vectors !== undefined ? await embedOne(vectors.active, query) : undefined;
@@ -72,7 +79,7 @@ export async function scoreCandidates(
       lexical: lexical[index] ?? 0,
       semantic: similarity(queryVector, vectors?.byCandidate.get(candidateKey(candidate))),
     };
-    const fused = fuse(plan, partial) * candidate.read.governance.retrievalWeight;
+    const fused = fuse(plan, semanticStage, partial) * candidate.read.governance.retrievalWeight;
     return { candidate, scores: { ...partial, fused } };
   });
   return {

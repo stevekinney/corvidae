@@ -85,7 +85,12 @@ export {
   resolvesOwnGuardrails,
   withActiveSkillToolPolicy,
 } from './agent-policy';
-export type { AgentSkills, AgentSkillsRun, GuardrailsDeclaration } from './agent-policy';
+export type {
+  AgentSkills,
+  AgentSkillsRun,
+  GuardrailAdditions,
+  GuardrailsDeclaration,
+} from './agent-policy';
 export * from './agent-skill-descriptor';
 export { RUN_COST_BUDGET_MAXIMUM_WARNINGS } from './cost-budget';
 export type { RunCostBudget } from './cost-budget';

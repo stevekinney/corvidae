@@ -11,7 +11,7 @@ import { Conversation } from 'conversationalist';
 import type { ZodType } from 'zod';
 
 import { appendAgentInput, assertAgentInput, isConversationInput } from './agent-input';
-import type { AgentSkills } from './agent-policy';
+import type { AgentSkills, GuardrailAdditions } from './agent-policy';
 import {
   composeAgentRunPolicy,
   OPERATIVE_RESOLVES_GUARDRAILS,
@@ -292,6 +292,14 @@ export interface CreateAgentOptionsBase {
    * tripwire must gate what a client sees.
    */
   guardrails?: GuardrailsOptions | false | undefined;
+
+  /**
+   * Detectors and validators added to this agent's resolved guardrails (COR-1877), whichever layer
+   * resolved them: the agent's own `guardrails`, the host's inherited policy, or the AB-40 preset.
+   * They run beside those and never replace them, so an agent that adds one is still guarded by the
+   * preset. When the resolved guardrails are `false`, whether the agent's own or its host's, they run alone, as a tripwire.
+   */
+  additionalGuardrails?: GuardrailAdditions | undefined;
 
   /**
    * This agent's skills (COR-1367) — the per-agent counterpart of the
@@ -879,6 +887,7 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
     // `...rest`: both are resolved per run below into hook registrations and
     // toolbox contributions, which is the only form a run consumes them in.
     guardrails: declaredGuardrails,
+    additionalGuardrails,
     skills,
     // Review findings (AB-241): `principal` is inherently per-call
     // attribution (AB-21's `AgentRunContext.principal`), never a
@@ -979,7 +988,11 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
     // COR-1367 — the agent's own declaration first, then whatever the host
     // handed down, then the AB-40 preset. Resolved per run because the
     // inherited half arrives with the run's context.
-    const runGuardrails = resolveAgentGuardrails(declaredGuardrails, context?.inheritedGuardrails);
+    const runGuardrails = resolveAgentGuardrails(
+      declaredGuardrails,
+      context?.inheritedGuardrails,
+      additionalGuardrails,
+    );
     // COR-1265 — the agent tier becomes this run's effective hook plan, as a
     // fresh merged snapshot rather than the agent's own registry.
     // `mergeHookRegistries` copies every entry into a new registry that holds

@@ -198,6 +198,16 @@ describe('the route table', () => {
   });
 });
 
+describe('the capabilities route', () => {
+  test('is /capabilities, a wide list with its detail in its own view, and is in the sidebar', () => {
+    expect(matchRoute('/capabilities')).toEqual({ pattern: '/capabilities', params: {} });
+    const route = routes.find((candidate) => candidate.pattern === '/capabilities');
+    expect(route?.view).toBe('capabilities');
+    expect(route?.kind).toBe('list-detail');
+    expect(route?.crumb).toBe('Capabilities');
+  });
+});
+
 describe('the agent editor’s routes', () => {
   test('are /agents/new and /agents/:agent/edit, both in the agent editor view', () => {
     expect(matchRoute('/agents/new')).toEqual({ pattern: '/agents/new', params: {} });

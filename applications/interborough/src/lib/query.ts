@@ -80,6 +80,12 @@ export const queryKeys = {
     /** The models a session of one agent may be switched to (`bureau.agents.models`). */
     models: (agentName: string) => ['agents', 'models', agentName] as const,
   },
+  /** The executable skills the host discovered (`bureau.skills.list`). */
+  skills: {
+    list: () => ['skills', 'list'] as const,
+    /** The agents that name each skill, read from the code-defined agents' own statements. */
+    users: () => ['skills', 'users'] as const,
+  },
   /** The Workflows area: the engine's definitions joined with the Bureau's files (`lib/workflow-catalog.ts`). */
   workflowCatalog: {
     list: () => ['workflow-catalog', 'list'] as const,
