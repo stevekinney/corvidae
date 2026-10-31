@@ -39,7 +39,6 @@ import {
   responsiveVariants,
   type ResponsiveSeed,
 } from './responsive-routes.ts';
-import { listResolvedReviews } from './review-support.ts';
 import { bureauCall, waitingReviewOf } from './task-support.ts';
 import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
 
@@ -220,10 +219,6 @@ async function untilQuiet(page: Page): Promise<void> {
  */
 async function settle(page: Page, pattern: string, width: number): Promise<void> {
   await page.setViewportSize({ width, height: HEIGHT });
-  // The Done tab lists the decided review, which the Bureau does not list within seconds (`review-support.ts`).
-  if (pattern === '/reviews (done tab, review open)') {
-    await listResolvedReviews(page, [decidedReviewId]);
-  }
   await page.goto((addresses[pattern] ?? variantAddresses[pattern])!);
   const outlet = page.locator('main.weft-shell-outlet');
   await expect(outlet).toBeVisible();
@@ -341,8 +336,6 @@ async function reviewOfRun(
   return review.id;
 }
 
-/** The identifier of the decided review the Done variant opens. */
-let decidedReviewId = '';
 let addresses: Readonly<Record<string, string>>;
 let variantAddresses: Readonly<Record<string, string>>;
 
@@ -379,7 +372,6 @@ test.beforeAll(async ({ playwright }) => {
     const runs = (await listed.json()) as { items?: { id: string }[] };
     const scheduled = await request.get('/v1/schedules');
     const schedules = (await scheduled.json()) as { items?: { id: string }[] };
-    decidedReviewId = decidedReview;
     const seed: ResponsiveSeed = {
       chat: CHAT_THREAD,
       agent: AGENT_ID,

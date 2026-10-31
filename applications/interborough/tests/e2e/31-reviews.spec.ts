@@ -13,7 +13,6 @@ import { HUMAN_INPUT_PROMPT } from '../../src/host/seed.ts';
 import { conversation, newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BASE_URL } from './e2e-constants.ts';
 import { expect, holdBureauFeed, loggedFailedResponse, test } from './fixtures.ts';
-import { listResolvedReviews } from './review-support.ts';
 import {
   bureauCall,
   taskOfSession,
@@ -267,7 +266,6 @@ test.describe('a tool approval', () => {
     await paneOf(page).getByRole('button', { name: 'Approve' }).click();
     await expect(rowOf(page, review)).toHaveCount(0);
 
-    await listResolvedReviews(page, [review.id]);
     await page.goto(inboxAt(review, 'done'));
     await expect(rowOf(page, review)).toContainText('Approved');
     await expect(paneOf(page).getByTestId('review-resolution')).toContainText('Approved');
@@ -376,7 +374,6 @@ test.describe('a question a run asks', () => {
       .toBe('completed');
 
     // What was answered is under Done, as answered, and the answer itself is not shown.
-    await listResolvedReviews(page, [review.id]);
     await page.goto(inboxAt(review, 'done'));
     await expect(rowOf(page, review)).toContainText('Answered');
     await expect(paneOf(page).getByTestId('review-resolution')).toContainText(

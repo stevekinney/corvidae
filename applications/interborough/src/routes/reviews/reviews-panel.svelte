@@ -7,7 +7,7 @@
    * pick a choice (registered for this route, so they are listed in the `?` map and never act in a
    * field). J, K and Enter are ListDetail's own.
    */
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { SvelteMap } from 'svelte/reactivity';
 
   import {
@@ -100,6 +100,34 @@
   const selected = $derived(items.find((item) => item.key === selectedKey));
   const lastKey = $derived(items.at(-1)?.key);
 
+  /**
+   * Whether the keys that decide (A, D, 1 to 9) act. A decision opens the review after it at once,
+   * and a key pressed while that review was still coming up, or a press already queued behind the
+   * deciding one, would decide a review the person has not seen. The keys stay off from the
+   * advance until the next review has rendered and been painted, so the next decision is a press
+   * made after the person could see it.
+   */
+  let decisionKeysArmed = $state(true);
+
+  /**
+   * Whether a decision has been sent and the page has not yet reported it in flight. `resolving`
+   * only turns true when the page next renders, so a second press made in the same moment would
+   * send the same decision twice; this closes that gap and is cleared as `resolving` settles.
+   */
+  let decisionSent = false;
+  $effect(() => {
+    // A refusal or a superseded decision is written to `outcome`, which settles the send too.
+    void outcome;
+    if (!resolving) decisionSent = false;
+  });
+
+  /** Turns the deciding keys back on once the review that just opened has rendered and painted. */
+  async function armDecisionKeysWhenSeen(): Promise<void> {
+    decisionKeysArmed = false;
+    await tick();
+    requestAnimationFrame(() => requestAnimationFrame(() => (decisionKeysArmed = true)));
+  }
+
   /** The function that opens the review after `key` once `key` is decided, if `key` is still open then. */
   function advancer(key: string): () => void {
     const next = neighbourKey(items, key);
@@ -107,6 +135,7 @@
       // The list is read again as the decision lands, so the review chosen to follow may be gone too.
       if (selectedKey === key) {
         selectedKey = items.some((item) => item.key === next) ? next : null;
+        void armDecisionKeysWhenSeen();
       }
     };
   }
@@ -116,10 +145,12 @@
     review: Extract<BureauReview, { kind: 'tool-approval' }>,
     action: 'approve' | 'deny' | 'remember',
   ): void {
-    if (mode !== 'waiting' || resolving || review.status !== 'pending') return;
+    if (mode !== 'waiting' || resolving || decisionSent || review.status !== 'pending') return;
+    decisionSent = true;
     const note = (notes.get(review.id) ?? '').trim();
     const advance = advancer(`bureau:${review.id}`);
     const onDone = (): void => {
+      decisionSent = false;
       notes.delete(review.id);
       advance();
     };
@@ -160,7 +191,7 @@
         scope,
         handler: () => {
           const review = approvalOpen();
-          if (review !== undefined) decide(review, 'approve');
+          if (review !== undefined && decisionKeysArmed) decide(review, 'approve');
         },
       }),
       shortcuts.register({
@@ -170,7 +201,7 @@
         scope,
         handler: () => {
           const review = approvalOpen();
-          if (review !== undefined) decide(review, 'deny');
+          if (review !== undefined && decisionKeysArmed) decide(review, 'deny');
         },
       }),
       ...Array.from({ length: 9 }, (_, index) =>
@@ -180,7 +211,9 @@
           group,
           scope,
           handler: () => {
-            if (selected?.review.kind === 'human-wait') pickChoice(detailElement, index + 1);
+            if (selected?.review.kind === 'human-wait' && decisionKeysArmed) {
+              pickChoice(detailElement, index + 1);
+            }
           },
         }),
       ),
@@ -268,26 +301,30 @@
       {/snippet}
       {#snippet detail(item)}
         <div class="ib-reviews__detail" bind:this={detailElement}>
-          {#if item.review.kind === 'tool-approval'}
-            {@const review = item.review}
-            <ApprovalPane
-              {review}
-              bind:note={() => notes.get(review.id) ?? '', (value) => notes.set(review.id, value)}
-              deciding={resolving}
-              outcome={outcome?.reviewId === review.id ? outcome : undefined}
-              onDecide={(action) => decide(review, action)}
-            />
-          {:else if item.review.kind === 'human-wait'}
-            {@const review = item.review}
-            <QuestionPane
-              {review}
-              answering={resolving}
-              outcome={outcome?.reviewId === review.id ? outcome : undefined}
-              onAnswer={(answer) => onAnswer(review, answer, advancer(item.key))}
-            />
-          {:else}
-            <EngineReviewPane review={item.review} {submitting} {submitGate} {onSubmit} />
-          {/if}
+          <!-- One pane per review: a draft, a note or a section decision made on one never carries to
+               the next, so the answer posted always belongs to the review shown. -->
+          {#key item.key}
+            {#if item.review.kind === 'tool-approval'}
+              {@const review = item.review}
+              <ApprovalPane
+                {review}
+                bind:note={() => notes.get(review.id) ?? '', (value) => notes.set(review.id, value)}
+                deciding={resolving}
+                outcome={outcome?.reviewId === review.id ? outcome : undefined}
+                onDecide={(action) => decide(review, action)}
+              />
+            {:else if item.review.kind === 'human-wait'}
+              {@const review = item.review}
+              <QuestionPane
+                {review}
+                answering={resolving}
+                outcome={outcome?.reviewId === review.id ? outcome : undefined}
+                onAnswer={(answer) => onAnswer(review, answer, advancer(item.key))}
+              />
+            {:else}
+              <EngineReviewPane review={item.review} {submitting} {submitGate} {onSubmit} />
+            {/if}
+          {/key}
         </div>
       {/snippet}
     </ListDetail>

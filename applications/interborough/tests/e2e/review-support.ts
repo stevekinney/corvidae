@@ -77,35 +77,3 @@ export async function listEngineReviews(page: Page, request: APIRequestContext):
     await route.fulfill({ response, json: answer });
   });
 }
-
-/**
- * Answers every `bureau.reviews.list` for what was decided (`status: 'resolved'`) with the reviews
- * named, each read with `bureau.reviews.get`. The Bureau keeps the record of a decision that rode a
- * session commit once the commit's outbox entry is replayed (`recordResolvedReview`), and this host
- * has not listed one as resolved within seconds of the decision, so the Done tab is read here from
- * the records the Bureau does hold, which `get` returns decided.
- */
-export async function listResolvedReviews(page: Page, ids: readonly string[]): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
-    const body = (route.request().postDataJSON() ?? {}) as {
-      id?: unknown;
-      method?: string;
-      params?: { status?: string };
-    };
-    if (body.method !== 'bureau.reviews.list' || body.params?.status !== 'resolved') {
-      await route.fallback();
-      return;
-    }
-    const reviews: unknown[] = [];
-    for (const id of ids) {
-      const response = await page.request.post(`${E2E_BASE_URL}/bureau/jsonrpc`, {
-        data: { jsonrpc: '2.0', id: 'get', method: 'bureau.reviews.get', params: { id } },
-      });
-      const answer = (await response.json()) as { result?: unknown };
-      if (answer.result !== undefined) reviews.push(answer.result);
-    }
-    await route.fulfill({
-      json: { jsonrpc: '2.0', id: body.id, result: { reviews, nextPageToken: null } },
-    });
-  });
-}
