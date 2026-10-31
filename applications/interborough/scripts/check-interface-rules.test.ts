@@ -152,6 +152,22 @@ describe('the control and component rules', () => {
     expect(rulesIn(component("<Button size={x === 'lg' ? 'sm' : 'md'}>Save</Button>"))).toEqual([]);
   });
 
+  test('fail size="lg" written as a template literal or behind a TypeScript wrapper', () => {
+    expect(rulesIn(component('<Button size={`lg`}>Save</Button>'))).toEqual(['large-size']);
+    expect(rulesIn(component("<Button size={'lg' as const}>Save</Button>"))).toEqual([
+      'large-size',
+    ]);
+    expect(rulesIn(component("<Button size={'lg' satisfies string}>Save</Button>"))).toEqual([
+      'large-size',
+    ]);
+    expect(rulesIn(component("<Button size={(x ? 'lg' : 'md')!}>Save</Button>"))).toEqual([
+      'large-size',
+    ]);
+    expect(rulesIn(component('<Button size={`l${x}`}>Save</Button>'))).toEqual([]);
+    expect(rulesIn(component('<Button size={`md`}>Save</Button>'))).toEqual([]);
+    expect(rulesIn(component('<Button size={x as string}>Save</Button>'))).toEqual([]);
+  });
+
   test('fail an EmptyState without a title', () => {
     expect(rulesIn(component('<EmptyState description="Nothing here" kind="done" />'))).toEqual([
       'empty-state-title',
@@ -304,6 +320,26 @@ describe('the entry lists', () => {
       'tests/interface-lint-allowlist.json',
       'tests/interface-lint-pending.json',
     ]);
+  });
+
+  test('run exits 1 and names a stale entry', () => {
+    const messages: string[] = [];
+    const quiet = console.error;
+    console.error = (message: string) => void messages.push(message);
+    try {
+      expect(
+        run(
+          packageRoot({
+            'src/styles/a.css': '.ib-x__body { gap: 0; }',
+            'tests/interface-lint-pending.json': JSON.stringify({ entries: [entry] }),
+          }),
+        ),
+      ).toBe(1);
+    } finally {
+      console.error = quiet;
+    }
+    expect(messages[0]).toContain('stale app-header-class entry');
+    expect(messages[1]).toContain('0 interface violation(s) and 1 stale entry');
   });
 
   test('run exits 1 for a violation and 0 once the entry is listed', () => {
