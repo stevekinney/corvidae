@@ -2,9 +2,9 @@ import type { OutputValidator, ValidationResult, ValidatorContext } from '@lostg
 
 /** Options for configuring the grounding validator. */
 export interface GroundingValidatorOptions {
-  /** Conversation text to ground claims against. Accepts a string or a getter
-   *  function that returns the current conversation text on each validation call,
-   *  which is necessary for live agent sessions where the conversation grows. */
+  /** Extra text to ground claims against, beside the conversation the run supplies through
+   *  `ValidatorContext.conversationText()`. Accepts a string or a getter function that returns
+   *  the current text on each validation call. */
   conversationText?: (string | (() => string)) | undefined;
   groundingThreshold?: number | undefined;
 }

@@ -15,7 +15,7 @@ An agent that lists nothing still runs the default preset, and neither validator
 
 | Setting | Default | What it is |
 | --- | --- | --- |
-| `blockedPatterns` | `[]` | Regular expressions the code-safety validator flags in addition to its built-in patterns. |
+| `blockedPatterns` | `[]` | Regular expressions, matched case-sensitively, that the code-safety validator flags in addition to its built-in patterns. |
 | `groundingThreshold` | `0.8` | The share of a reply's claims that must appear in the conversation, from 0 to 1. |
 
 The grounding validator reads the conversation through `ValidatorContext.conversationText()`, which Operative's output guardrail supplies on every step. A caller that builds the context itself and supplies no text grounds against nothing, so every claim is ungrounded.
