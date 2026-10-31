@@ -918,7 +918,6 @@ export const PLUGINS_COPY = {
   },
   alwaysOn: 'Always on',
   enabled: 'Enabled',
-  enabledHint: (name: string): string => `Enabled: ${name}`,
   status: {
     running: 'Running',
     needsSetup: 'Needs setup',

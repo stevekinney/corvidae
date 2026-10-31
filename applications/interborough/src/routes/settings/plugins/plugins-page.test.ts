@@ -165,6 +165,38 @@ describe('the page', () => {
   });
 });
 
+describe('the controls that call a write', () => {
+  test('are marked on Restart now and Disable and restart, and not on the switch or Discard', async () => {
+    const { container, getByRole } = open('demo');
+    await loaded(container, 'demo');
+    await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.enabled }));
+    await waitFor(() => expect(bannerText(container)).not.toBeNull());
+
+    expect(
+      getByRole('button', { name: PLUGINS_COPY.banner.restartNow }).hasAttribute('data-changes'),
+    ).toBe(true);
+    expect(
+      getByRole('button', { name: PLUGINS_COPY.banner.discard }).hasAttribute('data-changes'),
+    ).toBe(false);
+    expect(getByRole('switch', { name: PLUGINS_COPY.enabled }).hasAttribute('data-changes')).toBe(
+      false,
+    );
+  });
+
+  test('includes the confirmation that disables a plugin and restarts', async () => {
+    const { container, getByRole } = open('linear');
+    await loaded(container, 'linear');
+    await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.enabled }));
+
+    const dialog = await bodyOf(container).findByRole('dialog');
+    expect(
+      within(dialog)
+        .getByRole('button', { name: PLUGINS_COPY.disable.confirm })
+        .hasAttribute('data-changes'),
+    ).toBe(true);
+  });
+});
+
 describe('a plugin that is always on', () => {
   test('shows Always on and no switch', async () => {
     const { container, queryByRole } = open('bureau');
@@ -208,6 +240,22 @@ describe('pending changes', () => {
       'false',
     );
     expect(rowOf(container, 'demo')?.textContent).toContain(PLUGINS_COPY.status.disabled);
+    expect(writes()).toEqual([]);
+  });
+
+  test('turning a staged plugin back off drops the draft without asking', async () => {
+    const { container, getByRole } = open('demo');
+    await loaded(container, 'demo');
+    await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.enabled }));
+    await waitFor(() => expect(bannerText(container)).not.toBeNull());
+
+    await fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.enabled }));
+
+    await waitFor(() => expect(bannerText(container)).toBeNull());
+    expect(bodyOf(container).queryByRole('dialog')?.outerHTML ?? null).toBeNull();
+    expect(getByRole('switch', { name: PLUGINS_COPY.enabled }).getAttribute('aria-checked')).toBe(
+      'false',
+    );
     expect(writes()).toEqual([]);
   });
 

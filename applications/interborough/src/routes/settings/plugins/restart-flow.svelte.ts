@@ -73,8 +73,10 @@ export class RestartFlow {
     this.refusal = undefined;
     this.result = undefined;
     this.phase = 'saving';
+    // The caller owns the array and may change it while the writes wait; the flow keeps its own.
+    const pending = [...writes];
     try {
-      for (const write of writes) {
+      for (const write of pending) {
         const { name, ...choices } = write;
         await updatePlugin(name, choices);
       }

@@ -47,11 +47,14 @@
   const groups = $derived(contributionGroups(plugin));
   const invalid = $derived(drafts.invalid(plugin));
 
-  /** Turning on stages the change; turning off asks first, so the switch is held where it is. */
+  /**
+   * Turning a plugin on, or back to what is stored, only changes the draft. Turning off a plugin
+   * the host has on is a real disable: it asks first, so the switch is held where it is.
+   */
   function request(next: boolean): boolean {
-    if (next) {
-      drafts.setEnabled(plugin, true);
-      return true;
+    if (next || !plugin.enabled) {
+      drafts.setEnabled(plugin, next);
+      return next;
     }
     onDisable(plugin);
     return enabled;
@@ -92,7 +95,6 @@
       {#if view.secretKey !== undefined && view.secretKey !== ''}
         {@const key = view.secretKey}
         <Button
-          data-changes
           variant="secondary"
           size="sm"
           disabled={locked}
@@ -160,7 +162,6 @@
               labelVisible
             />
             <Button
-              data-changes
               variant="secondary"
               size="sm"
               disabled={locked}
