@@ -373,6 +373,45 @@ describe('what a run is waiting on', () => {
     expect(view.container.textContent).not.toContain('hunter2');
   });
 
+  test('a file question takes the file, uploads it, and sends the asset id', async () => {
+    const reviewId = 'human-wait:run-1:logo:0';
+    const view = open(waitingOn('human-wait', reviewId), {
+      reviews: [
+        humanWaitFixture({
+          id: reviewId,
+          runId: 'run-1',
+          inputSchema: { type: 'string', contentMediaType: 'image/png', 'x-asset': true },
+        }),
+      ],
+    });
+    stub?.on('bureau.assets.uploads.create', () => ({ uploadId: 'upload-1' }));
+    stub?.on('bureau.assets.uploads.append', () => ({}));
+    stub?.on('bureau.assets.uploads.complete', () => ({
+      assetId: 'asset-42',
+      mediaType: 'image/png',
+    }));
+    stub?.on('bureau.tasks.respond', (params) => ({
+      taskId: 'run-1',
+      messageId: params['messageId'],
+      reviewId,
+      kind: 'human-wait',
+      decision: 'approve',
+      receipt: 'applied',
+    }));
+
+    await view.findByText('Which environment should the release go to?');
+    await waitFor(() => expect(view.container.querySelector('input[type="file"]')).not.toBeNull());
+    const input = view.container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    Object.defineProperty(input, 'files', {
+      value: [new File(['x'], 'logo.png', { type: 'image/png' })],
+      configurable: true,
+    });
+    await fireEvent.change(input);
+
+    await waitFor(() => expect(stub?.callsTo('bureau.tasks.respond')).toHaveLength(1));
+    expect(stub?.callsTo('bureau.tasks.respond')[0]?.params).toMatchObject({ answer: 'asset-42' });
+  });
+
   test('an answer the Bureau refuses for its content is told on the field, not as a failure', async () => {
     const reviewId = 'human-wait:run-1:environment:0';
     const view = open(waitingOn('human-wait', reviewId), {

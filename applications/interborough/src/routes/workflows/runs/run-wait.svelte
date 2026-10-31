@@ -21,6 +21,7 @@
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { REVIEWS_COPY, TASK_COPY } from '../../../app/copy.ts';
+  import { uploadAsset } from '../../../lib/bureau-assets.ts';
   import {
     getBureauReview,
     isReviewRoundChanged,
@@ -188,6 +189,7 @@
       busy={working}
       {issues}
       failed={failure !== undefined}
+      uploadFile={async (file, signal) => (await uploadAsset(file, { signal })).assetId}
       onSubmit={(value) => void answer(value)}
     />
     {#if failure !== undefined}<p class="ib-run-wait__note" role="alert">{failure}</p>{/if}

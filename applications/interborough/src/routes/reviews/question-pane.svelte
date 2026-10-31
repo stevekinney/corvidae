@@ -9,6 +9,7 @@
   import { ChatQuestion } from '@lostgradient/chat';
 
   import { REVIEWS_COPY } from '../../app/copy.ts';
+  import { uploadAsset } from '../../lib/bureau-assets.ts';
   import type { BureauHumanWait } from '../../lib/bureau-reviews.ts';
   import IdentifierText from '../../lib/identifier-text.svelte';
   import { choiceButtons } from './choice-buttons.ts';
@@ -62,6 +63,7 @@
         busy={answering}
         issues={outcome?.issues ?? []}
         failed={outcome !== undefined && outcome.issues === undefined}
+        uploadFile={async (file, signal) => (await uploadAsset(file, { signal })).assetId}
         onSubmit={onAnswer}
       />
     </div>
