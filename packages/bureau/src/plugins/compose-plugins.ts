@@ -411,7 +411,10 @@ class Contributed {
       });
     }
     for (const model of result.decisionRouters ?? []) this.decisionModels[id(model.name)] = model;
-    for (const kind of result.hookActionKinds ?? []) this.actionKinds.push({ plugin, kind });
+    for (const kind of result.hookActionKinds ?? []) {
+      // A delivery pins the kind's own version, else its plugin's (COR-1879).
+      this.actionKinds.push({ plugin, kind, version: kind.version ?? version });
+    }
     for (const formatter of result.eventFormatters ?? [])
       this.formatters.push({ plugin, formatter });
     for (const judge of result.evalJudges ?? []) {

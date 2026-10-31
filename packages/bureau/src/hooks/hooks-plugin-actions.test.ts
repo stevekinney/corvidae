@@ -280,6 +280,65 @@ describe('a contributed hook action', () => {
     expect(effects).toEqual([`hook:${hook.id}:${delivery!.id}`, `hook:${hook.id}:${delivery!.id}`]);
   });
 
+  it('runs a delivery pending across an upgrade only on the version it was created against', async () => {
+    const kv = textValueStore(new MemoryStorage(), { disposeUnderlyingStorage: false });
+    const ran: string[] = [];
+    const at =
+      (version: string, onRun: (context: PluginHookActionContext) => Promise<void>) =>
+      (): readonly HookActionKindRegistration[] => [
+        {
+          plugin: 'slack',
+          version,
+          kind: {
+            name: 'post-message',
+            description: 'Posts the event to a channel.',
+            configuration: CONFIGURATION,
+            run: (context) => {
+              ran.push(version);
+              return onRun(context);
+            },
+          },
+        },
+      ];
+    // The delivery is created at 1.0.0 and left pending by a process that stops under it.
+    const first = fixture({
+      kv,
+      registrations: at('1.0.0', () => {
+        first.state.shuttingDown = true;
+        return Promise.reject(new Error('the process is stopping'));
+      }),
+    });
+    const hook = await first.hooks.create({ events: ['run.settled'], action: ACTION });
+    await first.fire();
+    const [pending] = await first.hooks.deliveries(hook.id);
+    expect(pending?.status).toBe('pending');
+
+    // The plugin is upgraded: the delivery fails, permanently, and 2.0.0 never runs it.
+    const upgraded = fixture({ kv, registrations: at('2.0.0', () => Promise.resolve()) });
+    await upgraded.resume();
+    const delivery = await onlyDelivery(upgraded.hooks, hook.id);
+    expect(delivery.status).toBe('failed');
+    expect(delivery.attempts.at(-1)).toMatchObject({ outcome: 'rejected' });
+    expect(delivery.attempts.at(-1)?.error).toContain('version 1.0.0');
+    expect(delivery.attempts.at(-1)?.error).toContain('version-mismatch');
+    expect(ran).toEqual(['1.0.0']);
+
+    // At the same version, a pending delivery resumes as before.
+    const kvSame = textValueStore(new MemoryStorage(), { disposeUnderlyingStorage: false });
+    const stopping = fixture({
+      kv: kvSame,
+      registrations: at('1.0.0', () => {
+        stopping.state.shuttingDown = true;
+        return Promise.reject(new Error('the process is stopping'));
+      }),
+    });
+    const sameHook = await stopping.hooks.create({ events: ['run.settled'], action: ACTION });
+    await stopping.fire();
+    const same = fixture({ kv: kvSame, registrations: at('1.0.0', () => Promise.resolve()) });
+    await same.resume();
+    expect((await onlyDelivery(same.hooks, sameHook.id)).status).toBe('delivered');
+  });
+
   it('is retried when it rejects, and exhausted after the last attempt', async () => {
     const setup = fixture({ run: () => Promise.reject(new Error('Slack is down')) });
     const hook = await setup.hooks.create({ events: ['run.settled'], action: ACTION });
