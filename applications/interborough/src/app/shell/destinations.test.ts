@@ -37,7 +37,7 @@ describe('the shell’s shortcuts', () => {
     expect(() => registerShellShortcuts(registry, actions)).not.toThrow();
   });
 
-  test('the sidebar’s destinations are the nine names, in order, each with its own letter', () => {
+  test('the sidebar’s destinations are the ten names, in order, each with its own letter', () => {
     expect(DESTINATIONS.map((destination) => [destination.path, destination.letter])).toEqual([
       ['/chats', 'c'],
       ['/reviews', 'v'],

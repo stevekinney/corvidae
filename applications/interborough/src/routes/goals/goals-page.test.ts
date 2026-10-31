@@ -12,7 +12,13 @@ import { HttpClient } from '@lostgradient/weft';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { GOALS_COPY, RETRY_LABEL, SCHEDULE_COPY, VIEW_COPY } from '../../app/copy.ts';
+import {
+  AGENT_EDITOR_COPY,
+  GOALS_COPY,
+  RETRY_LABEL,
+  SCHEDULE_COPY,
+  VIEW_COPY,
+} from '../../app/copy.ts';
 import RouteOutletHarness from '../../app/shell/route-outlet.test-harness.svelte';
 import {
   installBureauStub,
@@ -247,9 +253,46 @@ describe('the goals', () => {
 
     await waitFor(() => expect(row(view.container, 'goal-3')).not.toBeNull());
   });
+
+  test('offer Load more beside the filtered empty state, so a match on a later page can be reached', async () => {
+    const { view } = open(
+      [
+        goal('goal-1', { status: 'running' }),
+        goal('goal-2', { status: 'running' }),
+        goal('goal-3', { status: 'exhausted' }),
+      ],
+      { pageSize: 2 },
+    );
+    await waitFor(() => expect(row(view.container, 'goal-1')).not.toBeNull());
+    await fireEvent.change(await view.findByLabelText(GOALS_COPY.statusColumn), {
+      target: { value: 'Failed' },
+    });
+    // Nothing on the first page matches, yet the match is on the second.
+    await view.findByRole('heading', { level: 2, name: GOALS_COPY.noMatch.title });
+
+    await fireEvent.click(await view.findByRole('button', { name: GOALS_COPY.loadMore }));
+
+    await waitFor(() => expect(row(view.container, 'goal-3')).not.toBeNull());
+  });
 });
 
 describe('creating a goal', () => {
+  test('says there are no agents, and offers to make one, when the Bureau lists none', async () => {
+    stub = installBureauStub({ 'bureau.agents.list': () => ({ agents: [] }) });
+    landAt('/goals/new');
+    const empty = render(RouteOutletHarness, {
+      props: {
+        client: new HttpClient({ baseUrl: 'http://localhost/api' }),
+        scopes: AUTHORIZATION_SCOPES,
+      },
+    } as never);
+    await empty.findByRole('heading', { level: 2, name: GOALS_COPY.form.noAgents.title });
+    expect(
+      empty.getByRole('link', { name: AGENT_EDITOR_COPY.newAction }).getAttribute('href'),
+    ).toBe('/agents/new');
+    expect(empty.queryByLabelText(GOALS_COPY.form.agentLabel)).toBeNull();
+  });
+
   test('takes an agent, a prompt, an identity, a validator by free text, and a maximum number of attempts, with a bound on steps, and sends exactly those', async () => {
     const { view } = open([goal('goal-1')]);
     await waitFor(() => expect(row(view.container, 'goal-1')).not.toBeNull());

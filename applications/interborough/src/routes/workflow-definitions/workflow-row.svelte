@@ -10,6 +10,7 @@
   import { Badge, CodeLocation, Table } from '@lostgradient/cinder';
 
   import { WORKFLOW_COPY } from '../../app/copy.ts';
+  import { useAgentDisplayName } from '../../lib/agent-display-name.svelte.ts';
   import { router } from '../../lib/router.svelte.ts';
   import StatusLabel from '../../lib/status-label.svelte';
   import type { CatalogRow, CodeActivity } from '../../lib/workflow-catalog.ts';
@@ -34,6 +35,7 @@
 
   let { row, activity, filePath }: Props = $props();
 
+  const agentLabel = useAgentDisplayName();
   const copy = WORKFLOW_COPY;
   const path = $derived(workflowTypePath(row.name));
   const runs = $derived(row.kind === 'code' ? activity?.runs : row.runs);
@@ -82,7 +84,7 @@
       </span>
     {/each}
     {#if row.agent !== null}
-      <code class="ib-workflow-agent" data-testid="workflow-agent">{row.agent}</code>
+      <code class="ib-workflow-agent" data-testid="workflow-agent">{agentLabel(row.agent)}</code>
     {/if}
   </Table.Cell>
   <Table.Cell class="ib-records__wrap">

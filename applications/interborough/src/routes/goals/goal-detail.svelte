@@ -22,6 +22,7 @@
 
   import { GOALS_COPY, RETRY_LABEL } from '../../app/copy.ts';
   import { useBureauEventsLive } from '../../app/live-polling.svelte.ts';
+  import { useAgentDisplayName } from '../../lib/agent-display-name.svelte.ts';
   import { agentPath } from '../../lib/agent-paths.ts';
   import { getGoal, goalHasEnded, type Goal } from '../../lib/bureau-goals.ts';
   import { formatDuration, formatRelativeTime } from '../../lib/format/index.ts';
@@ -37,6 +38,7 @@
 
   const goalRunId = $derived(router.current.params['goal'] ?? '');
   const bureauLive = useBureauEventsLive();
+  const agentLabel = useAgentDisplayName();
   const goal = createQuery(() => {
     // Read here, not in the interval below, which TanStack calls on its own and so is not tracked.
     const polling = !bureauLive();
@@ -109,7 +111,8 @@
         <dd class="ib-records__wrap">
           <a
             href={router.href(agentPath(found.agentName))}
-            onclick={(event) => go(event, agentPath(found.agentName))}>{found.agentName}</a
+            onclick={(event) => go(event, agentPath(found.agentName))}
+            >{agentLabel(found.agentName)}</a
           >
         </dd>
       </div>

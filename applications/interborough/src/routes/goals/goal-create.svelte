@@ -7,10 +7,18 @@
    * inline, keeping what was typed so the name can be fixed. A goal that is made takes the person to
    * the list of goals.
    */
-  import { Alert, Button, Input, PageHeader, Select, Textarea } from '@lostgradient/cinder';
+  import {
+    Alert,
+    Button,
+    EmptyState,
+    Input,
+    PageHeader,
+    Select,
+    Textarea,
+  } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
-  import { GOALS_COPY } from '../../app/copy.ts';
+  import { AGENT_EDITOR_COPY, GOALS_COPY } from '../../app/copy.ts';
   import { listAgents, wireCodeOf } from '../../lib/bureau-client.ts';
   import { createGoal, type GoalCreated } from '../../lib/bureau-goals.ts';
   import { faultTreatment } from '../../lib/faults.ts';
@@ -82,105 +90,127 @@
 
 <section class="weft-goal-form" aria-label={copy.title} data-page="goal-new">
   <PageHeader title={copy.title} headingLevel={1} description={copy.description} />
-  <form class="weft-goal-form__fields" onsubmit={submit}>
-    <Select
-      id="weft-goal-agent"
-      label={copy.agentLabel}
-      description={agentsQuery.isError ? copy.agentUnavailableDescription : copy.agentDescription}
-      bind:value={form.agentName}
-      disabled={created || agentsQuery.isPending}
-      options={agentOptions}
-    />
-    <Textarea
-      id="weft-goal-prompt"
-      label={copy.promptLabel}
-      description={copy.promptDescription}
-      rows={4}
-      disabled={created}
-      bind:value={form.prompt}
-    />
-    <fieldset class="weft-goal-form__group">
-      <legend class="weft-goal-form__legend">{copy.identityDescription}</legend>
-      <Input
-        id="weft-goal-identity-name"
-        label={copy.identityNameLabel}
+  {#if agentsQuery.isSuccess && agentsQuery.data.length === 0}
+    <EmptyState
+      kind="first-use"
+      title={copy.noAgents.title}
+      description={copy.noAgents.description}
+      headingLevel={2}
+    >
+      {#snippet action()}
+        <Button
+          href={router.href('/agents/new')}
+          variant="primary"
+          size="sm"
+          onclick={(event) => leave(event, '/agents/new')}>{AGENT_EDITOR_COPY.newAction}</Button
+        >
+      {/snippet}
+    </EmptyState>
+  {:else}
+    <form class="weft-goal-form__fields" onsubmit={submit}>
+      <Select
+        id="weft-goal-agent"
+        label={copy.agentLabel}
+        description={agentsQuery.isError ? copy.agentUnavailableDescription : copy.agentDescription}
+        bind:value={form.agentName}
+        disabled={created || agentsQuery.isPending}
+        options={agentOptions}
+      />
+      <Textarea
+        id="weft-goal-prompt"
+        label={copy.promptLabel}
+        description={copy.promptDescription}
+        rows={4}
         disabled={created}
-        bind:value={form.identityName}
+        bind:value={form.prompt}
+      />
+      <fieldset class="weft-goal-form__group">
+        <legend class="weft-goal-form__legend">{copy.identityDescription}</legend>
+        <Input
+          id="weft-goal-identity-name"
+          label={copy.identityNameLabel}
+          disabled={created}
+          bind:value={form.identityName}
+        />
+        <Input
+          id="weft-goal-identity-version"
+          label={copy.identityVersionLabel}
+          disabled={created}
+          bind:value={form.identityVersion}
+        />
+      </fieldset>
+      <fieldset class="weft-goal-form__group">
+        <legend class="weft-goal-form__legend">{copy.validatorDescription}</legend>
+        <Input
+          id="weft-goal-validator-name"
+          label={copy.validatorNameLabel}
+          disabled={created}
+          bind:value={form.validatorName}
+        />
+        <Input
+          id="weft-goal-validator-version"
+          label={copy.validatorVersionLabel}
+          disabled={created}
+          bind:value={form.validatorVersion}
+        />
+      </fieldset>
+      <Input
+        id="weft-goal-maximum-attempts"
+        label={copy.maximumAttemptsLabel}
+        description={copy.maximumAttemptsDescription}
+        inputmode="numeric"
+        disabled={created}
+        bind:value={form.maximumAttempts}
+        error={form.attemptsValid ? '' : copy.maximumAttemptsInvalid}
       />
       <Input
-        id="weft-goal-identity-version"
-        label={copy.identityVersionLabel}
+        id="weft-goal-maximum-total-steps"
+        label={copy.maximumTotalStepsLabel}
+        description={copy.maximumTotalStepsDescription}
+        inputmode="numeric"
         disabled={created}
-        bind:value={form.identityVersion}
+        bind:value={form.maximumTotalSteps}
+        error={form.stepsValid ? '' : copy.maximumTotalStepsInvalid}
       />
-    </fieldset>
-    <fieldset class="weft-goal-form__group">
-      <legend class="weft-goal-form__legend">{copy.validatorDescription}</legend>
-      <Input
-        id="weft-goal-validator-name"
-        label={copy.validatorNameLabel}
-        disabled={created}
-        bind:value={form.validatorName}
-      />
-      <Input
-        id="weft-goal-validator-version"
-        label={copy.validatorVersionLabel}
-        disabled={created}
-        bind:value={form.validatorVersion}
-      />
-    </fieldset>
-    <Input
-      id="weft-goal-maximum-attempts"
-      label={copy.maximumAttemptsLabel}
-      description={copy.maximumAttemptsDescription}
-      inputmode="numeric"
-      disabled={created}
-      bind:value={form.maximumAttempts}
-      error={form.attemptsValid ? '' : copy.maximumAttemptsInvalid}
-    />
-    <Input
-      id="weft-goal-maximum-total-steps"
-      label={copy.maximumTotalStepsLabel}
-      description={copy.maximumTotalStepsDescription}
-      inputmode="numeric"
-      disabled={created}
-      bind:value={form.maximumTotalSteps}
-      error={form.stepsValid ? '' : copy.maximumTotalStepsInvalid}
-    />
-    {#if notStarted !== undefined}
-      <Alert variant="warning" data-testid="goal-not-started">
-        <p class="weft-goal-form__alert-title">{copy.startFailedTitle}</p>
-        {#if notStarted.controller?.reason}
-          <p class="weft-goal-form__alert-body">{notStarted.controller.reason}</p>
-        {/if}
-        <p class="weft-goal-form__alert-body">{copy.startFailedGoal(notStarted.goal.goalRunId)}</p>
-      </Alert>
-    {:else if fault}
-      <Alert variant="danger" data-testid="goal-fault" data-fault-code={wireCodeOf(fault) ?? ''}>
-        <p class="weft-goal-form__alert-title">{copy.failed}</p>
-        <p class="weft-goal-form__alert-body">{faultTreatment(fault).message}</p>
-      </Alert>
-    {/if}
-    <div class="weft-goal-form__footer">
-      <Button
-        href={router.href(
-          notStarted === undefined ? LIST_PATH : goalPath(notStarted.goal.goalRunId),
-        )}
-        variant="ghost"
-        size="sm"
-        onclick={(event) =>
-          leave(event, notStarted === undefined ? LIST_PATH : goalPath(notStarted.goal.goalRunId))}
-        >{created ? copy.closeAction : copy.cancelAction}</Button
-      >
-      <Button
-        data-changes
-        type="submit"
-        variant="primary"
-        size="sm"
-        disabled={!form.isValid || submitting || created}>{copy.createAction}</Button
-      >
-    </div>
-  </form>
+      {#if notStarted !== undefined}
+        <Alert variant="warning" data-testid="goal-not-started">
+          <p class="weft-goal-form__alert-title">{copy.startFailedTitle}</p>
+          {#if notStarted.controller?.reason}
+            <p class="weft-goal-form__alert-body">{notStarted.controller.reason}</p>
+          {/if}
+          <p class="weft-goal-form__alert-body">
+            {copy.startFailedGoal(notStarted.goal.goalRunId)}
+          </p>
+        </Alert>
+      {:else if fault}
+        <Alert variant="danger" data-testid="goal-fault" data-fault-code={wireCodeOf(fault) ?? ''}>
+          <p class="weft-goal-form__alert-title">{copy.failed}</p>
+          <p class="weft-goal-form__alert-body">{faultTreatment(fault).message}</p>
+        </Alert>
+      {/if}
+      <div class="weft-goal-form__footer">
+        <Button
+          href={router.href(
+            notStarted === undefined ? LIST_PATH : goalPath(notStarted.goal.goalRunId),
+          )}
+          variant="ghost"
+          size="sm"
+          onclick={(event) =>
+            leave(
+              event,
+              notStarted === undefined ? LIST_PATH : goalPath(notStarted.goal.goalRunId),
+            )}>{created ? copy.closeAction : copy.cancelAction}</Button
+        >
+        <Button
+          data-changes
+          type="submit"
+          variant="primary"
+          size="sm"
+          disabled={!form.isValid || submitting || created}>{copy.createAction}</Button
+        >
+      </div>
+    </form>
+  {/if}
 </section>
 
 <style>

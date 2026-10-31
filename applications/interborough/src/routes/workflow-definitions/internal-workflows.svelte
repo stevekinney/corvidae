@@ -34,6 +34,7 @@
       queryKey: queryKeys.workflowCatalog.list(),
       queryFn: ({ signal }) => loadCatalog(client, { signal }),
       staleTime: CATALOG_STALE_TIME_MS,
+      retry: false,
     }),
     undefined,
   );

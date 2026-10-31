@@ -819,6 +819,10 @@ export const GOALS_COPY = {
     agentPlaceholder: 'Choose an agent',
     agentDescription: 'The agent that runs each attempt.',
     agentUnavailableDescription: 'The agents could not be listed. Reload the page to try again.',
+    noAgents: {
+      title: 'No agents to run a goal',
+      description: 'A goal runs an agent, and this installation lists none. Create an agent first.',
+    },
     promptLabel: 'Prompt',
     promptDescription:
       'What the agent is asked to do. The goal runs it until the validator passes.',

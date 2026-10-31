@@ -35,6 +35,7 @@
   import { useBureauEventsLive } from '../../app/live-polling.svelte.ts';
   import { showFault } from '../../app/toast-host.svelte';
   import { agentFaultOf } from '../../lib/agent-definitions.ts';
+  import { useAgentDisplayName } from '../../lib/agent-display-name.svelte.ts';
   import { agentPath } from '../../lib/agent-paths.ts';
   import {
     cancelGoal,
@@ -96,6 +97,7 @@
         (agentFilter === undefined || goal.agentName === agentFilter),
     ),
   );
+  const agentLabel = useAgentDisplayName();
   const agentNames = $derived(
     [
       ...new Set([...rows.map((goal) => goal.agentName), ...(agentFilter ? [agentFilter] : [])]),
@@ -114,7 +116,7 @@
       key: 'agent',
       label: GOALS_COPY.agentColumn,
       placeholder: GOALS_COPY.anyAgent,
-      options: agentNames.map((name) => ({ value: name, label: name })),
+      options: agentNames.map((name) => ({ value: name, label: agentLabel(name) })),
     },
   ]);
   const appliedFilters = $derived([
@@ -276,7 +278,8 @@
             <Table.Cell class="ib-records__wrap">
               <a
                 href={router.href(agentPath(goal.agentName))}
-                onclick={(event) => go(event, agentPath(goal.agentName))}>{goal.agentName}</a
+                onclick={(event) => go(event, agentPath(goal.agentName))}
+                >{agentLabel(goal.agentName)}</a
               >
             </Table.Cell>
             <Table.Cell>
@@ -304,16 +307,16 @@
         {/each}
       </Table.Body>
     </Table>
-    {#if goals.hasNextPage}
-      <div class="ib-records__more">
-        <Button
-          variant="secondary"
-          size="sm"
-          disabled={goals.isFetchingNextPage}
-          onclick={() => void goals.fetchNextPage()}>{GOALS_COPY.loadMore}</Button
-        >
-      </div>
-    {/if}
+  {/if}
+  {#if !goals.isError && goals.hasNextPage}
+    <div class="ib-records__more">
+      <Button
+        variant="secondary"
+        size="sm"
+        disabled={goals.isFetchingNextPage}
+        onclick={() => void goals.fetchNextPage()}>{GOALS_COPY.loadMore}</Button
+      >
+    </div>
   {/if}
 </section>
 

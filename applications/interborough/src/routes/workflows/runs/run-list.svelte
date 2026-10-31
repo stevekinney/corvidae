@@ -20,6 +20,7 @@
 
   import { RETRY_LABEL, TASK_COPY } from '../../../app/copy.ts';
   import { useBureauEventsLive } from '../../../app/live-polling.svelte.ts';
+  import { useAgentDisplayName } from '../../../lib/agent-display-name.svelte.ts';
   import { listAgents, listAllContexts } from '../../../lib/bureau-client.ts';
   import { listAllGoals } from '../../../lib/bureau-goals.ts';
   import { listTasks, loadMoreTasks } from '../../../lib/bureau-tasks.ts';
@@ -92,6 +93,7 @@
   }, undefined);
   // The agents to filter by come from the catalog, because the runs on screen are already narrowed
   // to the agent chosen and would leave nothing else to choose.
+  const agentLabel = useAgentDisplayName();
   const agents = createQuery(
     () => ({
       queryKey: ['agents', 'runs'] as const,
@@ -151,7 +153,7 @@
       key: 'agent',
       label: TASK_COPY.agentLabel,
       placeholder: TASK_COPY.anyAgent,
-      options: agentNames.map((name) => ({ value: name, label: name })),
+      options: agentNames.map((name) => ({ value: name, label: agentLabel(name) })),
     },
     {
       type: 'select' as const,
@@ -302,7 +304,7 @@
                 onclick={(event) => open(event, workflowDetailPath(row.id))}
               >
                 {#if row.agentName === null}{TASK_COPY.unknownAgent}{:else}<code
-                    class="ib-identifier">{row.agentName}</code
+                    class="ib-identifier">{agentLabel(row.agentName)}</code
                   >{/if}
               </a>
             </Table.Cell>
