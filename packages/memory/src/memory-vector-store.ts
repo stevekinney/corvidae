@@ -222,6 +222,21 @@ export interface MemoryVectorStore {
    * changing nothing, when the record or the active profile is no longer what the switch expects.
    */
   completeJob(expected: MemoryEmbeddingJob): Promise<boolean>;
+  /**
+   * Queues the record for embedding into `profile`: an admission whose embed into the profile is
+   * still to happen, or failed, so a later step embeds it. Queuing twice keeps one entry. Like
+   * {@link MemoryVectorStore.put}, the write is conditioned on the profile's marker, so an entry
+   * never outlives its profile's deletion; returns `false`, writing nothing, when the store does
+   * not hold `profile`.
+   */
+  enqueueEmbed(profile: MemoryEmbeddingProfile, reference: MemoryVectorReference): Promise<boolean>;
+  /** Up to `limit` records queued for embedding into `profile`, in key order. */
+  listQueuedEmbeds(
+    profile: MemoryEmbeddingProfile,
+    limit: number,
+  ): Promise<MemoryVectorReference[]>;
+  /** Removes the record's entry from `profile`'s queue. */
+  dequeueEmbed(profile: MemoryEmbeddingProfile, reference: MemoryVectorReference): Promise<void>;
 }
 
 /** Options for {@link createMemoryVectorStore}. */
@@ -260,6 +275,15 @@ const vectorSchema = z
     schemaVersion: z.literal(1),
     version: z.number().int().positive(),
     vector: z.array(z.number()),
+  })
+  .strict();
+
+const queuedEmbedSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    id: z.string().min(1),
+    tenantId: z.string().optional(),
+    namespace: z.string().min(1),
   })
   .strict();
 
@@ -381,6 +405,10 @@ export function createMemoryVectorStore(
     `${scopeComponent(reference.scope)}:r:${encodeStorageKeyComponent(reference.id)}`;
   const vectorKey = (profile: MemoryEmbeddingProfile, reference: MemoryVectorReference): string =>
     `${prefix}v:${profileComponent(profile)}:${recordComponent(reference)}`;
+  const queuePrefix = (profile: MemoryEmbeddingProfile): string =>
+    `${prefix}q:${profileComponent(profile)}:`;
+  const queueKey = (profile: MemoryEmbeddingProfile, reference: MemoryVectorReference): string =>
+    `${queuePrefix(profile)}${recordComponent(reference)}`;
 
   async function listProfiles(): Promise<MemoryEmbeddingProfile[]> {
     const profiles: MemoryEmbeddingProfile[] = [];
@@ -398,6 +426,7 @@ export function createMemoryVectorStore(
   /** Removes a deleting profile's vectors, then its checkpoint, which goes only once they are gone. */
   async function finishDeletion(profile: MemoryEmbeddingProfile): Promise<void> {
     await storageDeletePrefix(storage, profileVectorsPrefix(profile));
+    await storageDeletePrefix(storage, queuePrefix(profile));
     await storage.delete(deletingKey(profile));
   }
 
@@ -489,6 +518,8 @@ export function createMemoryVectorStore(
             type: 'delete',
             key: `${prefix}v:${profileComponent(profile)}:${record}`,
           });
+          // A forgotten record leaves no queue entry that could embed it again.
+          operations.push({ type: 'delete', key: `${queuePrefix(profile)}${record}` });
         }
       }
       // Each chunk stays under the backend's batch cap. The chunks need not commit together: a
@@ -599,6 +630,41 @@ export function createMemoryVectorStore(
           { type: 'delete', key: jobKey },
         ],
       );
+    },
+
+    async enqueueEmbed(profile, reference) {
+      checkProfile(profile);
+      const entry = encodeJson({
+        schemaVersion: 1,
+        id: reference.id,
+        ...(reference.scope.tenantId === undefined ? {} : { tenantId: reference.scope.tenantId }),
+        namespace: reference.scope.namespace,
+      });
+      return storageConditionalBatch(
+        storage,
+        [{ key: profileKey(profile), expectedValue: encodeProfile(profile) }],
+        [{ type: 'put', key: queueKey(profile, reference), value: entry }],
+      );
+    },
+
+    async listQueuedEmbeds(profile, limit) {
+      const queued: MemoryVectorReference[] = [];
+      if (limit < 1) return queued;
+      for await (const [, value] of storage.scan(queuePrefix(profile))) {
+        const { id, tenantId, namespace } = queuedEmbedSchema.parse(
+          JSON.parse(textDecoder.decode(value)),
+        );
+        queued.push({
+          id,
+          scope: tenantId === undefined ? { namespace } : { tenantId, namespace },
+        });
+        if (queued.length >= limit) break;
+      }
+      return queued;
+    },
+
+    async dequeueEmbed(profile, reference) {
+      await storage.delete(queueKey(profile, reference));
     },
   };
 }

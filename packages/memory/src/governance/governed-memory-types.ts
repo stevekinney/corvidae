@@ -492,7 +492,16 @@ export interface MemoryEmbeddingStatus {
   readonly active: { readonly embedder: string; readonly dimension: number };
   /** The switch that is running, or the last one, when it failed or was cancelled. */
   readonly job?: MemoryEmbeddingJobStatus;
+  /**
+   * What keeps the active embedding from working fully, when anything does:
+   * `embedder-unavailable` while its embedder is not loaded, is loaded with another dimension, or
+   * needs setup. Recall then scores by text alone, and admissions are queued until it is loaded.
+   */
+  readonly problem?: MemoryEmbeddingProblem;
 }
+
+/** See {@link MemoryEmbeddingStatus.problem}. */
+export type MemoryEmbeddingProblem = 'embedder-unavailable';
 
 /**
  * Why {@link GovernedMemoryEmbedding.switchTo} refused: the embedder is `not-loaded` or
@@ -546,8 +555,10 @@ export interface GovernedMemoryEmbedding {
    */
   cancel(): Promise<boolean>;
   /**
-   * Embeds records the running switch's target lacks, and completes the switch, in one step, once
-   * it holds every stored record. A switch whose embedder is no longer registered fails as
+   * Embeds records queued for the active profile (admitted while its embedder was unavailable, or
+   * whose embed into it failed while a switch made it active), then records the running switch's
+   * target lacks, `limit` in all, and completes the switch, in one step, once it holds every stored
+   * record. Queued records wait while the active embedder is unavailable. A switch whose embedder is no longer registered fails as
    * `target-unavailable`; one whose embedder errors, or gives a vector of the wrong length or with
    * an entry that is not a finite number, fails with that error. A failed switch's profile is
    * deleted. Every step, a switch running or not, first finishes any profile deletion that stopped

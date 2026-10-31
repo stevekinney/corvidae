@@ -29,6 +29,11 @@
  * | running, embed held  | forget another pending record, release  | the forgotten record's content is not left in the target's cache |
  * | running, admission's target embed held | forget it, release | the forgotten record's content is not left in the target's cache |
  * | profile deletion stopped part-way | forget, then advance       | the forget removes the record's vector from it; the advance finishes the deletion |
+ * | none, active embedder not loaded | status, recall, admit       | `problem: 'embedder-unavailable'`; recall is lexical; the admission is stored and queued |
+ * | none, active embedder not loaded | advance                     | the queued admission stays queued |
+ * | none, active embedder loaded again | restart, advance          | the queued admission is embedded into the active profile; the queue is empty |
+ * | none, active embedder not loaded | switch to a loaded one, admit, advance | completes; every record, a queued one included, has a vector in the new profile; the problem clears |
+ * | running, last survey done, completion held | admit, target embed errors, complete | the record is queued for the target; the next advance embeds it into the now-active profile |
  */
 import { sha256Hex } from '@lostgradient/cryptography';
 import { MemoryStorage } from '@lostgradient/storage';
@@ -49,6 +54,7 @@ import { collectionNamespace } from '../../src/governance/record-governance';
 import {
   createMemoryVectorStore,
   DEFAULT_MEMORY_VECTOR_KEY_PREFIX,
+  type MemoryEmbeddingJob,
   type MemoryEmbeddingProfile,
   type MemoryVectorReference,
   type MemoryVectorStore,
@@ -182,8 +188,11 @@ const evictingCaches = {
   'external-processors': 'not-retained',
 } as const;
 
-/** `store`, with its next `createProfile` held until the returned hold is released. */
-function holdingCreateProfile(store: MemoryVectorStore): {
+/** `store`, with its next call of `method` held until the returned hold is released. */
+function holding(
+  store: MemoryVectorStore,
+  method: 'createProfile' | 'completeJob',
+): {
   readonly store: MemoryVectorStore;
   readonly hold: Hold;
 } {
@@ -192,17 +201,28 @@ function holdingCreateProfile(store: MemoryVectorStore): {
     release = resolve;
   });
   const hold: Hold = { entered: false, release: () => release() };
+  async function gate(): Promise<void> {
+    if (hold.entered) return;
+    hold.entered = true;
+    await released;
+  }
   return {
     hold,
     store: {
       ...store,
-      async createProfile(profile) {
-        if (!hold.entered) {
-          hold.entered = true;
-          await released;
-        }
-        return store.createProfile(profile);
-      },
+      ...(method === 'createProfile'
+        ? {
+            async createProfile(profile: MemoryEmbeddingProfile) {
+              await gate();
+              return store.createProfile(profile);
+            },
+          }
+        : {
+            async completeJob(expected: MemoryEmbeddingJob) {
+              await gate();
+              return store.completeJob(expected);
+            },
+          }),
     },
   };
 }
@@ -676,7 +696,7 @@ for (const backend of ['in-memory', 'weft'] as const satisfies readonly Governed
       const fake = new FakeEmbedder();
       const fixture = await fixtureWith(fake);
       const alpha = await writeNote(fixture.memory, 'alpha note');
-      const { store, hold } = holdingCreateProfile(createMemoryVectorStore(fixture.durable));
+      const { store, hold } = holding(createMemoryVectorStore(fixture.durable), 'createProfile');
       const other = fixture.restart({
         embedders: registryWith(fake),
         initialEmbedder: HASHING_EMBEDDER_ID,
@@ -827,6 +847,107 @@ for (const backend of ['in-memory', 'weft'] as const satisfies readonly Governed
       await fixture.memory.embedding.advance();
       expect(await keysUnder(fixture.durable, leftoverVectors)).toEqual([]);
       expect(await keysUnder(fixture.durable, 'd:')).toEqual([]);
+    });
+
+    it('recalls lexically while the active embedder is not loaded, and embeds what it admitted once it is loaded again', async () => {
+      const fake = new FakeEmbedder();
+      const fixture = await fixtureWith(fake);
+      const alpha = await writeNote(fixture.memory, 'alpha note');
+      const active = await started(fixture.memory);
+      await advanceToEnd(fixture.memory);
+
+      const unloaded = fixture.restart({
+        embedders: registryWith(fake, false),
+        initialEmbedder: HASHING_EMBEDDER_ID,
+      });
+      await unloaded.init();
+      expect(await unloaded.embedding.status()).toEqual({
+        active: { embedder: FAKE, dimension: DIMENSION },
+        problem: 'embedder-unavailable',
+      });
+      const beta = await writeNote(unloaded, 'beta note');
+      const bundle = await unloaded.recallForModel(principalA, 'beta', { collection: 'notes' });
+      expect(bundle.stopReason).not.toBe('failed');
+      expect(bundle.candidates.map((candidate) => candidate.recordId)).toContain(beta);
+      const hits = await unloaded.search(principalA, 'beta', { collection: 'notes' });
+      expect(hits.map((hit) => hit.record.id)).toContain(beta);
+      // An advance while the embedder is not loaded leaves the admission queued.
+      await unloaded.embedding.advance();
+      expect(await vectorIn(fixture, active, beta)).toBeUndefined();
+      expect(await keysUnder(fixture.durable, 'q:')).toHaveLength(1);
+
+      // A restart between the admission and its embedding keeps it queued.
+      const reloaded = fixture.restart({
+        embedders: registryWith(fake),
+        initialEmbedder: HASHING_EMBEDDER_ID,
+      });
+      await reloaded.init();
+      expect(await reloaded.embedding.status()).toEqual({
+        active: { embedder: FAKE, dimension: DIMENSION },
+      });
+      await reloaded.embedding.advance();
+
+      expect(await vectorIn(fixture, active, beta)).toEqual(axis('beta'));
+      expect(await keysUnder(fixture.durable, 'q:')).toEqual([]);
+      const scores = await semanticScores(reloaded, 'beta');
+      expect(scores.get(beta)).toBeCloseTo(1);
+      expect(scores.get(alpha)).toBeCloseTo(0);
+    });
+
+    it('switches away from an active embedder that is not loaded, embedding every record into the new profile', async () => {
+      const fake = new FakeEmbedder();
+      const fixture = await fixtureWith(fake);
+      const alpha = await writeNote(fixture.memory, 'alpha note');
+      await started(fixture.memory);
+      await advanceToEnd(fixture.memory);
+      const unloaded = fixture.restart({
+        embedders: registryWith(fake, false),
+        initialEmbedder: HASHING_EMBEDDER_ID,
+      });
+      await unloaded.init();
+      const beta = await writeNote(unloaded, 'beta note');
+
+      const target = await started(unloaded, HASHING_EMBEDDER_ID);
+      const gamma = await writeNote(unloaded, 'gamma note');
+      await advanceToEnd(unloaded);
+
+      const status = await unloaded.embedding.status();
+      expect(status.active.embedder).toBe(HASHING_EMBEDDER_ID);
+      expect(status.problem).toBeUndefined();
+      expect(status.job).toBeUndefined();
+      for (const id of [alpha, beta, gamma]) {
+        expect(await vectorIn(fixture, target, id)).toHaveLength(target.dimension);
+      }
+    });
+
+    it('embeds into the new active profile a record whose target embed failed after the last survey and before completion', async () => {
+      const fake = new FakeEmbedder();
+      const fixture = await fixtureWith(fake);
+      await writeNote(fixture.memory, 'alpha note');
+      const { store, hold } = holding(createMemoryVectorStore(fixture.durable), 'completeJob');
+      const switching = fixture.restart({
+        embedders: registryWith(fake),
+        initialEmbedder: HASHING_EMBEDDER_ID,
+        vectors: store,
+      });
+      await switching.init();
+      const target = await started(fixture.memory);
+
+      const advancing = switching.embedding.advance();
+      await waitUntil(() => hold.entered, { message: 'the switch surveys and completes' });
+      fake.failOnce('gamma note');
+      const gamma = await writeNote(fixture.memory, 'gamma note');
+      hold.release();
+      await advancing;
+
+      expect(await activeEmbedder(fixture.memory)).toBe(FAKE);
+      expect(await vectorIn(fixture, target, gamma)).toBeUndefined();
+      await fixture.memory.embedding.advance();
+
+      expect(await vectorIn(fixture, target, gamma)).toEqual(axis('gamma'));
+      expect(await keysUnder(fixture.durable, 'q:')).toEqual([]);
+      const scores = await semanticScores(fixture.memory, 'gamma');
+      expect(scores.get(gamma)).toBeCloseTo(1);
     });
   });
 }

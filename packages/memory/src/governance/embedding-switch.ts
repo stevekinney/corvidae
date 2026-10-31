@@ -194,11 +194,34 @@ async function survey(
 type EmbedOutcome = 'held' | 'withdrawn' | 'stopped';
 
 /**
- * Embeds one record into the switch's target, as a write conditioned on the record: the vector is
- * written with the `version` the record had when it was read, then the record is read again, and a
- * record deleted or changed meanwhile has its vector withdrawn from the target alone. A deletion
- * that ran first is seen by that read; one that runs after it finds the vector and deletes it, so a
- * forgotten record never reappears, and a changed record is embedded again by a later survey.
+ * Writes `vector` as the record's vector in `profile`, conditioned on the record: the vector carries
+ * the `version` the record had when it was read, then the record is read again, and a record
+ * deleted or changed meanwhile has its vector withdrawn from `profile` alone. A deletion that ran
+ * first is seen by that read; one that runs after it finds the vector and deletes it, so a
+ * forgotten record never reappears, and a changed record is embedded again later. Throws
+ * {@link MemoryVectorProfileMissingError} when the store no longer holds `profile`.
+ */
+async function putConditioned(
+  context: GovernanceContext,
+  profile: MemoryEmbeddingProfile,
+  item: PendingRecord,
+  vector: Float32Array,
+): Promise<'held' | 'withdrawn' | 'deleted'> {
+  const { vectors } = context.embedding;
+  await vectors.put(profile, item.reference, { version: item.record.version, vector });
+  const current = await context.storage.get(item.reference.id, item.reference.scope);
+  if (current?.version === item.record.version) return 'held';
+  await vectors.delete(profile, item.reference);
+  if (current !== undefined) return 'withdrawn';
+  // A deleted record's `caches` target may have run before this embed cached its content again.
+  await evictCachedContent(context, item.record.content);
+  return 'deleted';
+}
+
+/**
+ * Embeds one record into the switch's target, as a write conditioned on the record (see
+ * `putConditioned`). An embedder that errors fails the switch, and so does a target deleted
+ * meanwhile.
  */
 async function embedPending(
   context: GovernanceContext,
@@ -206,7 +229,6 @@ async function embedPending(
   job: MemoryEmbeddingJob,
   item: PendingRecord,
 ): Promise<EmbedOutcome> {
-  const { vectors } = context.embedding;
   let vector: Float32Array;
   try {
     [vector] = (await target.embed([item.record.content])) as [Float32Array];
@@ -215,44 +237,90 @@ async function embedPending(
     return 'stopped';
   }
   try {
-    await vectors.put(job.target, item.reference, { version: item.record.version, vector });
+    return (await putConditioned(context, job.target, item, vector)) === 'held'
+      ? 'held'
+      : 'withdrawn';
   } catch (error) {
     if (!(error instanceof MemoryVectorProfileMissingError)) throw error;
     // Cancelled meanwhile, which deleted the profile; otherwise something else deleted it.
     await endSwitch(context, job, { state: 'failed', error: TARGET_MISSING });
     return 'stopped';
   }
-  const current = await context.storage.get(item.reference.id, item.reference.scope);
-  if (current?.version === item.record.version) return 'held';
-  await vectors.delete(job.target, item.reference);
-  // A deleted record's `caches` target may have run before this embed cached its content again.
-  if (current === undefined) await evictCachedContent(context, item.record.content);
-  return 'withdrawn';
 }
 
 /**
- * One step of the running switch (see `GovernedMemoryEmbedding.advance`), after finishing any
- * profile deletion a stopped process or a failed write left part-way: embeds up to `limit`
- * records its target lacks, and completes it, making its target active in one compare-and-swap,
- * once a survey finds nothing pending. On completion the profiles other than the new active one and
- * the one it replaced are deleted, so the embedding two switches back goes.
+ * Embeds up to `limit` records queued for the active profile, and returns how many it embedded. A
+ * record is queued when it was admitted while the active embedder was unavailable, or when its
+ * embed into a running switch's target, or into a profile a switch made active meanwhile, failed or
+ * never finished; once that profile is active, this embeds it. Nothing runs while the active
+ * embedder is unavailable. An entry whose record is gone, or already has its vector at its current
+ * `version`, is dropped without an embed; one whose embed errors stays queued for a later step.
  */
-export async function advanceSwitch(context: GovernanceContext, limit: number): Promise<void> {
+async function embedQueued(context: GovernanceContext, limit: number): Promise<number> {
+  const { embedding } = context;
+  const { vectors } = embedding;
+  const profile = await vectors.getActiveProfile();
+  if (profile === undefined || limit < 1 || !embedding.canEmbed(profile)) return 0;
+  const active = embedding.bind(profile);
+  let embedded = 0;
+  for (const reference of await vectors.listQueuedEmbeds(profile, limit)) {
+    const record = await context.storage.get(reference.id, reference.scope);
+    const held =
+      record === undefined
+        ? undefined
+        : await vectors.getMany(profile, reference.scope, [reference.id]);
+    if (record !== undefined && held?.get(reference.id)?.version !== record.version) {
+      embedded += 1;
+      let vector: Float32Array;
+      try {
+        [vector] = (await active.embed([record.content])) as [Float32Array];
+      } catch {
+        continue;
+      }
+      let outcome: Awaited<ReturnType<typeof putConditioned>>;
+      try {
+        outcome = await putConditioned(context, profile, { reference, record }, vector);
+      } catch (error) {
+        if (!(error instanceof MemoryVectorProfileMissingError)) throw error;
+        // A switch completed meanwhile and replaced this profile; the next step reads the new one.
+        return embedded;
+      }
+      // A record changed meanwhile stays queued, and is embedded at its new `version` next step.
+      if (outcome === 'withdrawn') continue;
+    }
+    await vectors.dequeueEmbed(profile, reference);
+  }
+  return embedded;
+}
+
+/**
+ * One step of `memory.embedding.advance()`: finishes any profile deletion a stopped process or a
+ * failed write left part-way, embeds records queued for the active profile, then advances the
+ * running switch, `limit` embeds in all.
+ */
+export async function advanceEmbedding(context: GovernanceContext, limit: number): Promise<void> {
   if (!Number.isSafeInteger(limit) || limit < 1) {
     throw new RangeError(`An advance needs a positive integer limit, not ${limit}.`);
   }
+  // Each step, a switch running or not, finishes a profile deletion that stopped part-way.
+  await context.embedding.vectors.resumeProfileDeletions();
+  const embedded = await embedQueued(context, limit);
+  await advanceSwitch(context, limit - embedded);
+}
+
+/**
+ * One step of the running switch (see `GovernedMemoryEmbedding.advance`): embeds up to `limit`
+ * records its target lacks, and completes it, making its target active in one compare-and-swap,
+ * once a survey finds nothing pending. A `limit` of 0 still counts the switch's progress, and
+ * completes it when nothing is pending. On completion the profiles other than the new active one
+ * and the one it replaced are deleted, so the embedding two switches back goes.
+ */
+async function advanceSwitch(context: GovernanceContext, limit: number): Promise<void> {
   const { embedding } = context;
   const { vectors } = embedding;
-  // Each step, a switch running or not, finishes a profile deletion that stopped part-way.
-  await vectors.resumeProfileDeletions();
   let job = await vectors.getJob();
   if (job?.state !== 'running') return;
-  const registered = embedding.registry.describe(job.target.embedderId);
-  if (
-    registered === undefined ||
-    registered.dimension !== job.target.dimension ||
-    registered.availability !== 'available'
-  ) {
+  if (!embedding.canEmbed(job.target)) {
     await endSwitch(context, job, { state: 'failed', error: TARGET_UNAVAILABLE });
     return;
   }
@@ -299,10 +367,14 @@ async function embedInto(
 }
 
 /**
- * After an admission stored a record and its vector in `written`, the active profile it read:
- * embeds the record into the running switch's target too, and into the active profile when a
- * switch completed after the admission read it. A failure here never fails the admission, whose
- * record is stored: the target lacks the record, so the switch embeds it before it completes.
+ * After an admission stored a record and its vector in `written`, the active profile it read (or
+ * queued the record for it, while its embedder was unavailable): embeds the record into the running
+ * switch's target too, and into the active profile when a switch completed after the admission read
+ * it. Each embed is queued first and dequeued once its vector is stored, so a failure, or a process
+ * that stops part-way, leaves it queued. A failure here never fails the admission, whose record is
+ * stored: the switch embeds what its target lacks before it completes, and a step embeds a queued
+ * record into the active profile, which covers a record stored after the switch's last survey whose
+ * embed into its target failed before the switch completed.
  */
 export async function embedIntoOtherProfiles(
   context: GovernanceContext,
@@ -322,11 +394,14 @@ export async function embedIntoOtherProfiles(
     if (profile === undefined || done.some((other) => sameProfile(other, profile))) continue;
     done.push(profile);
     try {
+      // A profile deleted meanwhile refuses the entry; there is nothing to embed into then.
+      if (!(await vectors.enqueueEmbed(profile, reference))) continue;
+      if (!context.embedding.canEmbed(profile)) continue;
       await embedInto(context, profile, reference, version, content);
+      await vectors.dequeueEmbed(profile, reference);
     } catch {
-      // For a running switch's target, the switch repairs it: its survey finds the record missing.
-      // For an active profile a switch completed meanwhile, nothing does yet, and the record is
-      // recalled by its text in that profile.
+      // The entry stays queued: a step embeds it once the profile is active, and a running
+      // switch's survey finds the record missing from its target before then.
     }
   }
 }

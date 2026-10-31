@@ -80,6 +80,7 @@ export type {
   MemoryEmbedderAvailability,
   MemoryEmbeddingAdvanceOptions,
   MemoryEmbeddingJobStatus,
+  MemoryEmbeddingProblem,
   MemoryEmbeddingStatus,
   MemoryEmbeddingSwitchRefusal,
   MemoryEmbeddingSwitchResult,

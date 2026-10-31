@@ -242,11 +242,19 @@ function reformulate(query: string, tried: readonly string[]): string | undefine
   return keywords;
 }
 
-/** The recall's vectors, read once, when a stage of its plan compares vectors. */
+/**
+ * The recall's vectors, read once, when a stage of its plan compares vectors. While the active
+ * embedder is unavailable there are none, and the recall scores by text alone instead of failing
+ * closed; an embedder that is loaded and errors still fails it closed.
+ */
 async function recallVectors(run: RecallRun): Promise<RecallVectors | undefined> {
   const { stages } = run.plan;
   if (!stages.includes('semantic') && !stages.includes('counterevidence')) return undefined;
-  run.vectors ??= { active: await run.context.embedding.active(), byCandidate: new Map() };
+  if (run.vectors === undefined) {
+    const { embedding } = await run.context.embedding.activeIfAvailable();
+    if (embedding === undefined) return undefined;
+    run.vectors = { active: embedding, byCandidate: new Map() };
+  }
   return run.vectors;
 }
 

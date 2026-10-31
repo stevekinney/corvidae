@@ -8,7 +8,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 
-import { createEmbedderRegistry, EmbedderRegistryError } from '../../src/embedder-registry';
+import { createEmbedderRegistry } from '../../src/embedder-registry';
 import { createGovernedEmbedding } from '../../src/governance/governed-embedding';
 import type { CreateGovernedMemoryOptions } from '../../src/governance/governed-memory-types';
 import { collectionNamespace } from '../../src/governance/record-governance';
@@ -206,7 +206,7 @@ for (const backend of ['in-memory', 'weft'] as const satisfies readonly Governed
       expect(await vectors.getMany(PROFILE, scope, ['direct'])).toEqual(new Map());
     });
 
-    it('keeps the stored active profile when a restart registers its embedder with another dimension', async () => {
+    it('keeps the stored active profile, and queues admissions, when a restart registers its embedder with another dimension', async () => {
       const fixture = await fixtureWith();
       await writeNote(fixture, 'alpha note');
       const restarted = fixture.restart(
@@ -215,19 +215,21 @@ for (const backend of ['in-memory', 'weft'] as const satisfies readonly Governed
           HASHING_EMBEDDER_DIMENSION,
         ),
       );
-      const write = restarted.write(principalA, 'beta note', {
-        collection: 'notes',
-        source: 'conversation',
-      });
-      expect(
-        await write.then(
-          () => undefined,
-          (error: unknown) => error,
-        ),
-      ).toBeInstanceOf(EmbedderRegistryError);
+      // The profile's embedder is unavailable (COR-1898 part 2b): nothing embeds with a model of
+      // another dimension, the admission is stored, and its embed waits in the queue.
+      await recordIdOf(
+        restarted.write(principalA, 'beta note', { collection: 'notes', source: 'conversation' }),
+      );
       expect(await restarted.embedding.status()).toEqual({
         active: { embedder: TEST_EMBEDDER_ID, dimension: DIMENSION },
+        problem: 'embedder-unavailable',
       });
+      expect(await storedVectorKeys(fixture)).toHaveLength(1);
+      const queued: string[] = [];
+      for await (const [key] of fixture.durable.scan(`${DEFAULT_MEMORY_VECTOR_KEY_PREFIX}q:`)) {
+        queued.push(key);
+      }
+      expect(queued).toHaveLength(1);
     });
 
     it('leaves no vector behind for a record deleted while its vector was being written', async () => {

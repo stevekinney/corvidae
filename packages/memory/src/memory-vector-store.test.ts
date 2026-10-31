@@ -140,4 +140,38 @@ describe('createMemoryVectorStore (COR-1898)', () => {
     );
     expect(() => createMemoryVectorStore(new MemoryStorage(), { keyPrefix: '' })).toThrow();
   });
+
+  it('queues embeds per profile, only into a profile it holds, and drops them on forget and on profile deletion', async () => {
+    const storage = new MemoryStorage();
+    const store = createMemoryVectorStore(storage);
+    const next: MemoryEmbeddingProfile = { ...HASHING, generation: 2 };
+    const missing: MemoryEmbeddingProfile = { ...HASHING, generation: 3 };
+    await store.activeProfile(HASHING);
+    await store.createProfile(next);
+    const untenanted = { namespace: 'shared:notes' };
+
+    expect(await store.enqueueEmbed(HASHING, { id: 'a', scope })).toBe(true);
+    expect(await store.enqueueEmbed(HASHING, { id: 'a', scope })).toBe(true);
+    expect(await store.enqueueEmbed(HASHING, { id: 'b', scope: untenanted })).toBe(true);
+    expect(await store.enqueueEmbed(next, { id: 'a', scope })).toBe(true);
+    expect(await store.enqueueEmbed(missing, { id: 'a', scope })).toBe(false);
+
+    const queued = await store.listQueuedEmbeds(HASHING, 10);
+    expect(queued.toSorted((left, right) => left.id.localeCompare(right.id))).toEqual([
+      { id: 'a', scope },
+      { id: 'b', scope: untenanted },
+    ]);
+    expect(await store.listQueuedEmbeds(HASHING, 1)).toHaveLength(1);
+    expect(await store.listQueuedEmbeds(missing, 10)).toEqual([]);
+
+    await store.deleteMany([{ id: 'a', scope }]);
+    expect(await store.listQueuedEmbeds(HASHING, 10)).toEqual([{ id: 'b', scope: untenanted }]);
+    expect(await store.listQueuedEmbeds(next, 10)).toEqual([]);
+
+    await store.enqueueEmbed(next, { id: 'c', scope });
+    await store.deleteProfile(next);
+    expect(await store.listQueuedEmbeds(next, 10)).toEqual([]);
+    await store.dequeueEmbed(HASHING, { id: 'b', scope: untenanted });
+    expect(await store.listQueuedEmbeds(HASHING, 10)).toEqual([]);
+  });
 });
