@@ -81,7 +81,7 @@ const PRELOAD_CONFLICT_REASON_LABELS: Readonly<Record<KnownPreloadConflictReason
   // stored content — or a concurrent catalog mutation.
   'catalog-conflict':
     'The durable workflow catalog rejected the install. This exact revision is already stored with different contract metadata, or the catalog changed concurrently.',
-  'not-registered': 'This revision is no longer registered with the serving engine.',
+  'not-registered': 'This revision is no longer registered with the server.',
   'legacy-ambiguous': 'This revision predates revision pinning, so Weft cannot resolve it.',
   'not-installed': 'This revision was removed from the catalog while the load was running.',
 };
@@ -119,14 +119,14 @@ type KnownSourceRejectionReason = (typeof KNOWN_SOURCE_REJECTION_REASONS)[number
  * revision — the descriptor or the artifact is what they need to look at.
  */
 const SOURCE_REJECTION_REASON_LABELS: Readonly<Record<KnownSourceRejectionReason, string>> = {
-  'unregistered-source-kind': 'The descriptor names a source kind this engine cannot load.',
+  'unregistered-source-kind': 'The descriptor names a source kind this server cannot load.',
   'missing-export': 'The module does not export the name the descriptor points at.',
   'ambiguous-export': 'The module exports more than one candidate workflow definition.',
   'invalid-definition': 'The candidate workflow definition is invalid or could not be normalized.',
   'manifest-build-failed': 'A revision manifest could not be built from the loaded contract.',
   'name-mismatch': 'The candidate workflow is named differently from the descriptor.',
   'manifest-version-unsupported':
-    'The candidate uses a manifest schema version this engine does not support.',
+    'The candidate uses a manifest schema version this server does not support.',
   // "candidate", not "loaded artifact": these are reached from the cached-manifest
   // path too, where nothing was loaded (see `validation-failed` above).
   'contract-hash-mismatch':

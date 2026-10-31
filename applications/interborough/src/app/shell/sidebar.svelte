@@ -186,7 +186,7 @@
 <Sidebar label="Interborough" bind:collapsed class={sidebarStateClass}>
   {#snippet navigation()}
     {#if !isMobileViewport.current}
-      <div class="weft-shell-sidebar__header">
+      <div class="weft-shell-sidebar__brand">
         <Button
           variant="ghost"
           iconOnly
@@ -204,7 +204,7 @@
         </Button>
       </div>
     {/if}
-    <SideNavigation ariaLabel={NAVIGATION_COPY.destinations}>
+    <SideNavigation ariaLabel={NAVIGATION_COPY.destinations} class="weft-shell-side-navigation">
       {#each DESTINATIONS as destination (destination.path)}
         {@const Icon = destination.icon}
         {@const badge = badgeOf(destination)}

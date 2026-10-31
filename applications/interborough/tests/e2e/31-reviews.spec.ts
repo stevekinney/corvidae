@@ -360,7 +360,7 @@ test.describe('a Bureau that fails', () => {
     await expect(page.locator('[data-view="reviews"]')).toHaveAttribute('data-state', 'ready');
     await expect(page.getByRole('alert').filter({ hasText: 'Something went wrong' })).toBeVisible();
     // The engine's seeded reviews are still listed beside it, in their own section.
-    await expect(page.getByRole('heading', { level: 2, name: 'Engine reviews' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 2, name: 'Workflow reviews' })).toBeVisible();
     await checkA11y('the inbox with the Bureau failing');
   });
 });

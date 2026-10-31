@@ -68,7 +68,7 @@ describe('Workers route — transports', () => {
     const { findByText, getByRole } = renderRoute();
 
     expect(await findByText('Worker closed')).not.toBeNull();
-    expect(await findByText(/No worker with the id wkr_gone is registered/)).not.toBeNull();
+    expect(await findByText(/No worker with the ID wkr_gone is registered/)).not.toBeNull();
     await fireEvent.click(getByRole('button', { name: 'Back to all workers' }));
     expect(router.search.get('tab')).toBe('list');
     expect(router.search.get('worker')).toBeNull();

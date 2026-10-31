@@ -487,8 +487,6 @@
 .weft-start-review__payload-label {
   display: block;
   font-size: var(--cinder-text-2xs);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
   color: var(--cinder-text-disabled);
   margin-bottom: var(--cinder-space-2);
 }

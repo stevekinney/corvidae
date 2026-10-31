@@ -61,7 +61,7 @@ describe('weft.system.lease', () => {
     expect(() => parseSystemLease({ ...CONTESTED, fencingEpoch: '4' })).toThrow(
       MalformedSystemLeaseError,
     );
-    expect(() => parseSystemLease(null)).toThrow('malformed engine lease response');
+    expect(() => parseSystemLease(null)).toThrow('malformed lease response');
   });
 
   test('rejects lease instants outside the ECMAScript Date range instead of throwing a RangeError', () => {
@@ -153,7 +153,7 @@ describe('weft.system.lease', () => {
     expect(leaseStatusPresentation(parseSystemLease(CONTESTED))).toEqual({
       label: 'Contested',
       variant: 'danger',
-      description: 'This engine lost the ownership lease: another holder deposed this engine.',
+      description: 'This server lost the ownership lease: another holder deposed this server.',
     });
     expect(
       leaseStatusPresentation(
@@ -162,7 +162,7 @@ describe('weft.system.lease', () => {
     ).toContain('storage failures outlasted');
     const { lossReason: _lossReason, ...withoutReason } = CONTESTED;
     expect(leaseStatusPresentation(parseSystemLease(withoutReason)).description).toBe(
-      'This engine lost the ownership lease.',
+      'This server lost the ownership lease.',
     );
     expect(
       leaseStatusPresentation({ mode: 'lease', status: 'healthy', holdsLease: true }).label,

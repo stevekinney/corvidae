@@ -139,7 +139,7 @@ describe('Health page', () => {
     });
     const { findByRole, queryByText } = renderHealthPage();
 
-    expect(await findByRole('heading', { name: 'Engine lease' })).not.toBeNull();
+    expect(await findByRole('heading', { name: 'Server lease' })).not.toBeNull();
     expect(await findByRole('button', { name: 'Recover all' })).not.toBeNull();
     expect(queryByText('Sweep interval')).toBeNull();
   });

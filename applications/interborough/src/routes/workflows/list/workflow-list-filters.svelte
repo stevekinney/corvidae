@@ -165,8 +165,8 @@
   <FilterBar
     aria-label="Workflow filters"
     searchQuery={filter.idPrefix ?? ''}
-    searchPlaceholder="wf_… id prefix"
-    searchAriaLabel="Filter by workflow id prefix"
+    searchPlaceholder="wf_… ID prefix"
+    searchAriaLabel="Filter by workflow ID prefix"
     {onSearchChange}
     {appliedFilters}
     {onFacetChange}

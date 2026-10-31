@@ -219,21 +219,21 @@ export function overrideEligibility(
   if (reading.kind === 'malformed') {
     return {
       eligible: false,
-      reason: 'The worker binding could not be read, so no override can be offered.',
+      reason: 'The worker version could not be read, so no override can be offered.',
     };
   }
   if (reading.kind === 'absent') {
     return {
       eligible: false,
       reason:
-        'This run has no worker binding (it predates worker versioning), so there is nothing to override.',
+        'This run has no worker version (it predates worker versioning), so there is nothing to override.',
     };
   }
   if (reading.policy.mode !== 'auto-upgrade') {
     return {
       eligible: false,
       reason:
-        'This run is pinned to its build, so its worker binding cannot be overridden. Only an auto-upgrade run can move to a newly routed build.',
+        'This run is pinned to its build, so its worker version cannot be overridden. Only an auto-upgrade run can move to a newly routed build.',
     };
   }
   if (!TERMINAL_STATUSES.has(status)) {

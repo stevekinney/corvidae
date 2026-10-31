@@ -488,8 +488,6 @@
 .weft-children-tab__header {
   font-size: var(--cinder-text-2xs);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
   color: var(--cinder-text-subtle);
   background: var(--cinder-surface-inset);
   border-bottom: 1px solid var(--cinder-border-muted);

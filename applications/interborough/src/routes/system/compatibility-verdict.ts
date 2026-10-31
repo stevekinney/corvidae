@@ -43,7 +43,7 @@ type KnownCompatibilityReason = (typeof KNOWN_COMPATIBILITY_REASONS)[number];
 const COMPATIBILITY_REASON_LABELS: Readonly<Record<KnownCompatibilityReason, string>> = {
   'name-mismatch': 'Candidate revision is for a different workflow name.',
   'manifest-version-unsupported':
-    'Candidate manifest uses a schema version this engine does not support.',
+    'Candidate manifest uses a schema version this server does not support.',
   'contract-hash-mismatch': 'Candidate payload contract differs from the active revision.',
   'workflow-version-incompatible': 'Candidate workflow version differs from the active revision.',
   'artifact-revision-mismatch': 'Candidate revision identity differs from the active revision.',

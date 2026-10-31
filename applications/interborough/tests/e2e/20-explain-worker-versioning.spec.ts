@@ -55,14 +55,14 @@ test('a pinned run shows its binding and says why it cannot be overridden', asyn
   await expect(panel(page).getByTestId('worker-binding-why')).toContainText(
     'Weft never moves a pinned run',
   );
-  await expect(panel(page).getByText(/No earlier bindings/)).toBeVisible();
+  await expect(panel(page).getByText(/No earlier versions/)).toBeVisible();
   await expect(panel(page).getByText('Workflow-bound and standalone activities')).toBeVisible();
   await checkA11y('workflow detail — pinned worker binding');
 
   // The restart dialog states the inheritance rule and offers no override.
   await page.getByRole('button', { name: 'Restart' }).click();
   const dialog = page.getByRole('dialog', { name: 'Restart workflow' });
-  await expect(dialog.getByText('Worker binding for a restart or retry')).toBeVisible();
+  await expect(dialog.getByText('Worker version for a restart or retry')).toBeVisible();
   await expect(dialog.getByTestId('restart-override-reason')).toContainText('cannot be overridden');
   await expect(dialog.getByRole('button', { name: 'Preview worker upgrade' })).toHaveCount(0);
   await checkA11y('workflow detail — restart dialog for a pinned run');
@@ -113,7 +113,7 @@ test('an operator previews a worker upgrade, confirms it, and the restart binds 
   await page.goto(`/runs/${E2E_AUTO_UPGRADE_RUN_ID}`);
   await page.getByRole('button', { name: 'Restart' }).click();
   const dialog = page.getByRole('dialog', { name: 'Restart workflow' });
-  await expect(dialog.getByText('Worker binding for a restart or retry')).toBeVisible();
+  await expect(dialog.getByText('Worker version for a restart or retry')).toBeVisible();
 
   // Nothing is previewed until the operator asks, and a preview alone changes nothing.
   await expect(dialog.getByLabel('Restart on the build routing selects now')).toHaveCount(0);

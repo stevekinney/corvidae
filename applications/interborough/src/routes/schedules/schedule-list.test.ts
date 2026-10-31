@@ -305,9 +305,9 @@ describe('ScheduleList', () => {
 
       // The identifier is copied, and the person is told so.
       await fireEvent.click(actions);
-      await fireEvent.click(await waitFor(() => getByRole('menuitem', { name: 'Copy id' })));
+      await fireEvent.click(await waitFor(() => getByRole('menuitem', { name: 'Copy ID' })));
       await waitFor(() => expect(written).toEqual(['nightly-rollup']));
-      expect(await findByText('Schedule id copied')).not.toBeNull();
+      expect(await findByText('Schedule ID copied')).not.toBeNull();
 
       await fireEvent.click(getByRole('button', { name: 'Actions for Nightly rollup' }));
       await fireEvent.click(await waitFor(() => getByRole('menuitem', { name: /Resume/ })));
@@ -346,9 +346,9 @@ describe('ScheduleList', () => {
       await fireEvent.click(
         await waitFor(() => getByRole('button', { name: 'Actions for Nightly rollup' })),
       );
-      await fireEvent.click(await waitFor(() => getByRole('menuitem', { name: 'Copy id' })));
+      await fireEvent.click(await waitFor(() => getByRole('menuitem', { name: 'Copy ID' })));
 
-      expect(await findByText(/The schedule id was not copied/)).not.toBeNull();
+      expect(await findByText(/The schedule ID was not copied/)).not.toBeNull();
     } finally {
       if (original) Object.defineProperty(navigator, 'clipboard', original);
       else Reflect.deleteProperty(navigator, 'clipboard');

@@ -273,7 +273,7 @@ test('the engine status is a dot on Health, with its words in the link’s name'
   page,
 }) => {
   await page.goto('/');
-  const engine = page.getByRole('link', { name: /^Health\s*Engine (healthy|connecting)/ });
+  const engine = page.getByRole('link', { name: /^Health\s*Server (healthy|connecting)/ });
   await expect(engine).toHaveCount(1);
   await expect(engine.locator('.cinder-status-dot')).toHaveCount(1);
 });

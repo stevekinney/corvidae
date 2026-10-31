@@ -340,7 +340,7 @@
     <FaultBanner
       treatment={{
         kind: 'not-found',
-        message: `No schedule with id "${scheduleId}" exists — it may have been cancelled and purged.`,
+        message: `No schedule with ID "${scheduleId}" exists — it may have been cancelled and purged.`,
       }}
     />
   {:else if mode === 'edit' && editKind?.kind === 'unknown' && overlayQuery.data?.failed}

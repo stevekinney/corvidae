@@ -73,7 +73,7 @@
         Keys under Weft-reserved prefixes (<code class="weft-storage-inline-code">wf:</code>,
         <code class="weft-storage-inline-code">state:</code>,
         <code class="weft-storage-inline-code">lease:</code>, and others) are used internally by the
-        engine. Writing to or deleting them directly may disrupt recovery.
+        server. Writing to or deleting them directly may disrupt recovery.
       </p>
     </div>
   </div>

@@ -389,7 +389,7 @@
     {#if file !== undefined && file.problem !== null}
       <Alert variant="danger">
         <FileProblem problem={file.problem} />
-        <CodeLocation file={path} data-testid="workflow-file-path" />
+        <CodeLocation class="weft-code-location" file={path} data-testid="workflow-file-path" />
       </Alert>
     {/if}
 

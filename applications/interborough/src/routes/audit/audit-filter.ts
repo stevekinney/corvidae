@@ -69,7 +69,7 @@ export const RESOURCE_KINDS = [
   { kind: 'agent', label: 'Agent', prefix: 'agent:' },
   { kind: 'schedule', label: 'Schedule', prefix: 'schedule:' },
   { kind: 'workflow', label: 'Workflow', prefix: 'workflow:' },
-  { kind: 'run', label: 'Run id', prefix: '' },
+  { kind: 'run', label: 'Run ID', prefix: '' },
 ] as const;
 
 export type ResourceKind = (typeof RESOURCE_KINDS)[number]['kind'];

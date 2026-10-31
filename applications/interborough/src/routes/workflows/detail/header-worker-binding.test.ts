@@ -77,11 +77,11 @@ describe('Header worker versioning badge', () => {
   test('a run with no worker data shows no worker badge', () => {
     const { queryByText } = renderHeader({});
     expect(queryByText(/^Worker:/)).toBeNull();
-    expect(queryByText('Worker binding unreadable')).toBeNull();
+    expect(queryByText('Worker version unreadable')).toBeNull();
   });
 
   test('an unreadable binding shows a warning badge in text', () => {
     const { getByText } = renderHeader({ workerVersioningPolicy: { mode: 'pinned' } });
-    expect(getByText('Worker binding unreadable')).not.toBeNull();
+    expect(getByText('Worker version unreadable')).not.toBeNull();
   });
 });

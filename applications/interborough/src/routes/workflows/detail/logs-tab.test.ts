@@ -8,7 +8,6 @@ describe('LogsTab', () => {
     const { getByText } = render(LogsTab);
 
     expect(getByText("Logs aren't available over the API")).not.toBeNull();
-    expect(getByText(/EngineOptions.onLog/)).not.toBeNull();
-    expect(getByText(/intentional/)).not.toBeNull();
+    expect(getByText(/stay on the server that runs the workflow/)).not.toBeNull();
   });
 });

@@ -100,7 +100,7 @@
     {:else if diagnostics === null}
       <EmptyState
         title="Session closed"
-        description="The server reports no registered session for this worker id: the worker has closed, or it was removed."
+        description="The server reports no registered session for this worker ID: the worker has closed, or it was removed."
       />
     {:else if instance}
       {#if stale}

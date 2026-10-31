@@ -33,7 +33,7 @@ for (const viewport of VIEWPORTS) {
     await failedCount.click();
 
     await expect(page).toHaveURL(/\/health\/runs\?status=failed$/);
-    await expect(page.getByRole('heading', { level: 1, name: 'Engine runs' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Workflow runs' })).toBeVisible();
     // Across types: a count spans every workflow type the engine holds.
     await expect(page.getByRole('row', { name: /payment-failing/ }).first()).toBeVisible();
     // The list is the set the count named.

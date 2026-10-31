@@ -39,7 +39,7 @@
 {#if workers.length === 0}
   <EmptyState
     title="No workers connected"
-    description="Connect a RemoteWorker to this queue to see it here — see the SDK docs for `RemoteWorker`."
+    description="Connect a remote worker to this queue to see it here. The documentation explains how."
   />
 {:else}
   <Table caption="Workers" scrollable class="weft-workers-table">

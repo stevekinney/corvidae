@@ -137,7 +137,7 @@ export async function callBureau(
     );
   }
   if (!isRecord(body) || !('result' in body)) {
-    throw new HttpClientError(response.status, 'The Bureau answered with no result.');
+    throw new HttpClientError(response.status, 'The server answered with no result.');
   }
   return body['result'];
 }

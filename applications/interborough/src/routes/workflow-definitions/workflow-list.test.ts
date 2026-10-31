@@ -153,7 +153,7 @@ describe('the list of workflows', () => {
     });
     await findByRole('heading', { level: 1, name: 'Workflows' });
     await waitFor(() => expect(rowCount(container)).toBeGreaterThan(0));
-    expect(container.textContent).not.toContain('Engine workflows');
+    expect(container.textContent).not.toContain('Internal workflows');
   });
 
   test('badges a file as agent-authored and a code type as code, and shows the agent of a file that names one in monospace', async () => {

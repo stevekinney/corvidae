@@ -46,7 +46,9 @@
   <dl class="weft-workflow-facts">
     {#if filePath !== undefined}
       <dt>{mode === 'remote' ? copy.remote.fileLabel : copy.fileLabel}</dt>
-      <dd><CodeLocation file={filePath} data-testid="workflow-file-path" /></dd>
+      <dd>
+        <CodeLocation class="weft-code-location" file={filePath} data-testid="workflow-file-path" />
+      </dd>
     {/if}
     {#if document !== undefined}
       <dt>{copy.page.trigger}</dt>

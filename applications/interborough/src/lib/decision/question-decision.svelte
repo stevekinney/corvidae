@@ -45,7 +45,6 @@
     <Button
       type="submit"
       variant="primary"
-      size="lg"
       label={REVIEWS_COPY.sendAnswer}
       loading={sending}
       disabled={answer.trim() === '' || sending}

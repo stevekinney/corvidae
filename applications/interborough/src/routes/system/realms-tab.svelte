@@ -53,7 +53,7 @@
   {:else if query.data.pools.length === 0}
     <EmptyState
       title="No revision realms"
-      description="This engine has not opted into workflowExecutionMode: 'realm' — no workflow-revision realm pools exist to diagnose. See the Workflow revision isolation guide."
+      description="This server has not opted into workflowExecutionMode: 'realm' — no workflow-revision realm pools exist to diagnose. See the Workflow revision isolation guide."
     >
       {#snippet icon()}
         <Layers aria-hidden="true" size={26} />

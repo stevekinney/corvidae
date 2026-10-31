@@ -180,7 +180,7 @@
   -->
   <EmptyState
     title="Registry · 3-step onboarding"
-    description="No eagerly registered workflow or activity definitions appear in this engine's registry snapshot. Dynamic sources never appear here — use Workflow sources above."
+    description="No eagerly registered workflow or activity definitions appear in this server's registry snapshot. Dynamic sources never appear here — use Workflow sources above."
   >
     {#snippet icon()}
       <GitBranch aria-hidden="true" size={26} />
@@ -189,7 +189,7 @@
   <ol class="weft-registry-onboarding">
     <li>Install the SDK — <code>bun add @lostgradient/weft</code></li>
     <li>Define a workflow — <code>workflow({'{'} name {'}'} ).execute(...)</code></li>
-    <li>Connect a worker — start the process that registers it with this engine</li>
+    <li>Connect a worker — start the process that registers it with this server</li>
   </ol>
 {:else}
   {@const workflowRows = registryWorkflowRows(query.data)}
@@ -259,7 +259,7 @@
       </div>
 
       {#if activityRows.length === 0}
-        <p class="weft-registry-list__empty-note">No activities registered for this engine.</p>
+        <p class="weft-registry-list__empty-note">No activities registered for this server.</p>
       {:else}
         <div class="weft-registry-activity-grid">
           {#each activityRows as activity (activity.name)}

@@ -36,7 +36,7 @@ describe('CriticalAlertStrip', () => {
     const { container } = render(CriticalAlertStrip, { props: { store } });
 
     expect(container.querySelectorAll('.weft-critical-strip__row')).toHaveLength(1);
-    expect(container.textContent).toContain('Engine unreachable');
+    expect(container.textContent).toContain('Server unreachable');
   });
 
   test('dismissing a row calls dismissCritical and removes it from the strip', async () => {

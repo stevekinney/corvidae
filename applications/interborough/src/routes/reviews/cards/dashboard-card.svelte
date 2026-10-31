@@ -49,11 +49,11 @@
   href={router.href('/reviews')}
   onclick={onCardClick}
   class="weft-reviews-card-link"
-  aria-label="Engine reviews"
+  aria-label="Workflow reviews"
 >
   <Card padding="none" class="weft-dashboard-card">
     {#snippet header()}
-      <span class="weft-dashboard-card__title">Engine reviews</span>
+      <span class="weft-dashboard-card__title">Workflow reviews</span>
     {/snippet}
 
     {#if locked}

@@ -23,7 +23,7 @@ export type SystemLeaseStatus = SystemLease['status'];
 /** A `weft.system.lease` response the dashboard refuses to render. */
 export class MalformedSystemLeaseError extends Error {
   constructor() {
-    super('Weft returned a malformed engine lease response.');
+    super('Weft returned a malformed lease response.');
     this.name = 'MalformedSystemLeaseError';
   }
 }
@@ -135,7 +135,7 @@ export interface LeaseStatusPresentation {
 }
 
 const LOSS_REASON_TEXT: Readonly<Record<NonNullable<SystemLease['lossReason']>, string>> = {
-  deposed: 'another holder deposed this engine',
+  deposed: 'another holder deposed this server',
   'renewal-unconfirmable': 'storage failures outlasted the last confirmed lease expiry',
 };
 
@@ -146,27 +146,27 @@ export function leaseStatusPresentation(lease: SystemLease): LeaseStatusPresenta
       return {
         label: 'Healthy',
         variant: 'success',
-        description: 'This engine holds the ownership lease.',
+        description: 'This server holds the ownership lease.',
       };
     case 'no-lease':
       return {
         label: 'No lease held',
         variant: 'warning',
-        description: 'Lease ownership is enabled, but this engine does not hold the lease yet.',
+        description: 'Lease ownership is enabled, but this server does not hold the lease yet.',
       };
     case 'contested':
       return {
         label: 'Contested',
         variant: 'danger',
         description: lease.lossReason
-          ? `This engine lost the ownership lease: ${LOSS_REASON_TEXT[lease.lossReason]}.`
-          : 'This engine lost the ownership lease.',
+          ? `This server lost the ownership lease: ${LOSS_REASON_TEXT[lease.lossReason]}.`
+          : 'This server lost the ownership lease.',
       };
     case 'disabled':
       return {
         label: 'Disabled',
         variant: 'neutral',
-        description: 'Lease ownership is not configured for this engine.',
+        description: 'Lease ownership is not configured for this server.',
       };
   }
 }

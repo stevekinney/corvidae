@@ -57,7 +57,7 @@
 
   /** What a workflow source is, for the person who has not met one: shown from the help button beside the title. */
   const SOURCES_HELP =
-    'Dynamic workflows never appear in the registered-definitions table. Select a registered source revision, or enter the exact workflow name and revision its registerSource() descriptor declares. Load diagnostics describe the engine that answered.';
+    'Dynamic workflows never appear in the registered-definitions table. Select a registered source revision, or enter the exact workflow name and revision its registerSource() descriptor declares. Load diagnostics describe the server that answered.';
 
   const client = getClient();
   const principal = getPrincipalStore();
@@ -327,8 +327,8 @@
         <span class="weft-dynamic-source__note">
           Ensures this revision is installed in the durable catalog. Weft validates an existing
           entry or loads and validates the module, sharing one load per key within the serving
-          engine process. The diagnostics above are a separate observation of the responding engine;
-          they do not prove which process handled this preload. It cannot be cancelled from here.
+          server. The diagnostics above are a separate observation of the responding server; they do
+          not prove which process handled this preload. It cannot be cancelled from here.
         </span>
       </div>
 
@@ -339,7 +339,7 @@
             <span>
               Revision "{outcome.revision}" is installed in the workflow catalog. A Load state of
               Idle above means this panel's last observation did not see an active load; another
-              engine process may have loaded the revision.
+              server may have loaded the revision.
             </span>
           </p>
         {:else if outcome.kind === 'rejected'}

@@ -314,7 +314,7 @@ describe('agentFaultOf', () => {
       kind: 'other',
       message: 'Failed to fetch',
     });
-    expect(agentFaultOf('nope')).toEqual({ kind: 'other', message: 'The Bureau did not answer.' });
+    expect(agentFaultOf('nope')).toEqual({ kind: 'other', message: 'The server did not answer.' });
   });
 
   test('reads the faults the stub puts on the wire, end to end through the client', async () => {

@@ -10,7 +10,7 @@ test('operator inspects a server-accepted canonical worker manifest', async ({
   // A worker is connected, so the page is the full fleet view and not the in-process sentence.
   await expect(page.getByRole('tablist', { name: 'Workers views' })).toBeVisible();
   await expect(
-    page.getByText('This engine runs its work in-process. Remote workers are not configured.'),
+    page.getByText('This server runs its work in-process. Remote workers are not configured.'),
   ).toHaveCount(0);
 
   const workerLink = page.getByRole('link', { name: 'e2e-flee…er-1' });

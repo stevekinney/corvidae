@@ -189,7 +189,7 @@ describe('NotificationBell', () => {
 
     const { getByRole, getByText } = render(NotificationBell, { props: { store } });
     await fireEvent.click(getByRole('button', { name: 'Notifications, 1 needs you' }));
-    await fireEvent.click(getByText('Engine status stale'));
+    await fireEvent.click(getByText('Server status stale'));
 
     expect(router.pathname).toBe('/health');
     expect(store.unreadCount).toBe(0);

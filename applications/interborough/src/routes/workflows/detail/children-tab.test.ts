@@ -60,7 +60,7 @@ describe('ChildrenTab', () => {
       },
     });
     await waitFor(() => expect(empty.getByText('No child workflows')).not.toBeNull());
-    expect(empty.getByText('Worker binding for child workflows')).not.toBeNull();
+    expect(empty.getByText('Worker version for child workflows')).not.toBeNull();
     empty.unmount();
 
     const populated = render(ChildrenTabHarness, {
@@ -73,7 +73,7 @@ describe('ChildrenTab', () => {
       },
     });
     await waitFor(() =>
-      expect(populated.getByText('Worker binding for child workflows')).not.toBeNull(),
+      expect(populated.getByText('Worker version for child workflows')).not.toBeNull(),
     );
     expect(populated.getByText(/same workflow type and the same revision/)).not.toBeNull();
   });

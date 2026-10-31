@@ -20,7 +20,7 @@ import WorkersRoute from './index.svelte';
 import WorkersRouteTestHarness from './workers-route-test-harness.test-harness.svelte';
 import { realClient, ScriptedFetch } from './workers-route-test-support.test-support.ts';
 
-const SENTENCE = 'This engine runs its work in-process. Remote workers are not configured.';
+const SENTENCE = 'This server runs its work in-process. Remote workers are not configured.';
 
 let scripted: ScriptedFetch | undefined;
 

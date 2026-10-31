@@ -34,7 +34,7 @@ import { realClient, ScriptedFetch } from './workers-route-test-support.test-sup
 let scripted: ScriptedFetch | undefined;
 
 const IN_PROCESS_SENTENCE =
-  'This engine runs its work in-process. Remote workers are not configured.';
+  'This server runs its work in-process. Remote workers are not configured.';
 
 function happyDomAPI(): DetachedWindowAPI {
   if (!(window instanceof Window)) {

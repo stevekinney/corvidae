@@ -1,0 +1,46 @@
+{
+  "entries": [
+    {
+      "rule": "cinder-selector",
+      "file": "src/styles/foundation.css",
+      "subject": ".cinder-sidebar__footer",
+      "reason": "Cinder's Sidebar renders this part of its markup inside itself and takes a class only for its own root, so the shell has no way to hand this element a class or a token."
+    },
+    {
+      "rule": "cinder-selector",
+      "file": "src/styles/foundation.css",
+      "subject": ".cinder-sidebar__nav",
+      "reason": "Cinder's Sidebar renders this part of its markup inside itself and takes a class only for its own root, so the shell has no way to hand this element a class or a token."
+    },
+    {
+      "rule": "cinder-selector",
+      "file": "src/styles/foundation.css",
+      "subject": ".cinder-side-navigation__list",
+      "reason": "Cinder's SideNavigation renders its list inside itself and takes a class only for its nav, so the shell has no way to hand the list a class or a token."
+    },
+    {
+      "rule": "cinder-selector",
+      "file": "src/styles/foundation.css",
+      "subject": ".cinder-drawer__body",
+      "reason": "Cinder's Sidebar renders the Drawer it opens on a phone inside itself and takes a class only for its own root, so the shell has no way to hand the drawer, or its body, header and title, a class or a token."
+    },
+    {
+      "rule": "cinder-selector",
+      "file": "src/styles/foundation.css",
+      "subject": ".cinder-drawer",
+      "reason": "Cinder's Sidebar renders the Drawer it opens on a phone inside itself and takes a class only for its own root, so the shell has no way to hand the drawer, or its body, header and title, a class or a token."
+    },
+    {
+      "rule": "cinder-selector",
+      "file": "src/styles/foundation.css",
+      "subject": ".cinder-drawer__header",
+      "reason": "Cinder's Sidebar renders the Drawer it opens on a phone inside itself and takes a class only for its own root, so the shell has no way to hand the drawer, or its body, header and title, a class or a token."
+    },
+    {
+      "rule": "cinder-selector",
+      "file": "src/styles/foundation.css",
+      "subject": ".cinder-drawer__title",
+      "reason": "Cinder's Sidebar renders the Drawer it opens on a phone inside itself and takes a class only for its own root, so the shell has no way to hand the drawer, or its body, header and title, a class or a token."
+    }
+  ]
+}

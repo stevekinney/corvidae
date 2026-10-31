@@ -130,7 +130,7 @@ describe('Settings › API reference', () => {
 
     await fireEvent.click(await findByRole('tab', { name: 'Operations' }));
     expect(
-      await findByText("Required scope isn't advertised by the discovery documents yet", {
+      await findByText('The discovery documents do not list the scope each operation needs yet', {
         exact: false,
       }),
     ).not.toBeNull();

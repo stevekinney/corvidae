@@ -273,7 +273,6 @@
           {#if chatHref !== undefined}
             <Button
               variant="secondary"
-              size="lg"
               href={router.href(chatHref)}
               label={chat.data?.origin === 'chat' ? TASK_COPY.openChat : TASK_COPY.openSession}
               onclick={(event) => {
@@ -345,7 +344,6 @@
           <div class="ib-run__actions">
             <Button
               variant="secondary"
-              size="lg"
               href={router.href(sessionHref)}
               label={TASK_COPY.openSession}
               onclick={(event) => {

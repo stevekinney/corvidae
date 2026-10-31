@@ -93,7 +93,7 @@ describe('the page', () => {
       'Logs',
       'Session input',
       'Children',
-      'Engine',
+      'Workflows',
       'Durability',
       'A2A',
       SETTINGS_COPY.hostPaths.title,

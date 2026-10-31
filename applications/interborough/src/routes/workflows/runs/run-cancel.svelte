@@ -61,7 +61,6 @@
 {#if canCancel}
   <Button
     variant="secondary"
-    size="lg"
     label={TASK_COPY.cancelAction}
     loading={cancelling}
     disabled={cancelling}

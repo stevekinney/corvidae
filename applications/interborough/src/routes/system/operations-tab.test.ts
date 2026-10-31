@@ -57,7 +57,7 @@ describe('OperationsTab', () => {
     routeDocuments(scripted);
     const { findByText } = await renderOperationsTab();
     expect(
-      await findByText("Required scope isn't advertised by the discovery documents yet", {
+      await findByText('The discovery documents do not list the scope each operation needs yet', {
         exact: false,
       }),
     ).not.toBeNull();

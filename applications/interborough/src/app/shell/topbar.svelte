@@ -68,7 +68,7 @@
   <Button
     variant="ghost"
     iconOnly
-    class="weft-shell-menu-trigger"
+    class="weft-shell-topbar-control weft-shell-menu-trigger"
     aria-label="Toggle navigation menu"
     onclick={() => (drawerOpen = !drawerOpen)}
   >
@@ -80,7 +80,11 @@
     <Breadcrumbs items={trail} label={NAVIGATION_COPY.breadcrumb} separator="›" />
   </div>
 
-  <Button variant="ghost" class="weft-shell-search-trigger" onclick={() => (paletteOpen = true)}>
+  <Button
+    variant="ghost"
+    class="weft-shell-topbar-control weft-shell-search-trigger"
+    onclick={() => (paletteOpen = true)}
+  >
     {#snippet leadingIcon()}<Search aria-hidden="true" size={16} />{/snippet}
     <span class="weft-shell-search-trigger__label">{PALETTE_COPY.placeholder}</span>
     <span class="weft-shell-search-trigger__kbd" aria-hidden="true">

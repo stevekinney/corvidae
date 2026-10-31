@@ -53,6 +53,7 @@
         {#if paths !== undefined}
           <p class="weft-no-provider__path">
             <CodeLocation
+              class="weft-code-location"
               file={paths.configurationFile}
               data-testid="provider-configuration-file"
             />
@@ -69,7 +70,7 @@
             {#each paths.providers as provider (provider.name)}
               <li data-provider={provider.name}>
                 <code class="weft-no-provider__provider">{provider.name}</code>
-                <CodeLocation file={provider.secretFile} />
+                <CodeLocation class="weft-code-location" file={provider.secretFile} />
               </li>
             {/each}
           </ul>

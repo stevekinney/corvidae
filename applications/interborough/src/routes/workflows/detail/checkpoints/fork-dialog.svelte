@@ -351,7 +351,7 @@
       {#if isDegraded}
         <Input
           id={`fork-explicit-revision-${workflowId}`}
-          label="Revision id"
+          label="Revision ID"
           description="You don't have permission to list installed revisions — enter one you already know. The server still validates it."
           bind:value={explicitRevisionText}
         />

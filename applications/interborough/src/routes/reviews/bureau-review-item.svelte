@@ -112,7 +112,6 @@
     <div class="ib-review__details">
       <Button
         variant="ghost"
-        size="lg"
         label={REVIEWS_COPY.details}
         aria-expanded={detailsOpen}
         aria-controls={`review-${review.id}-details`}

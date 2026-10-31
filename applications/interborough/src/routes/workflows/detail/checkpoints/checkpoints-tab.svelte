@@ -96,7 +96,7 @@
   {:else if (checkpointsQuery.data ?? []).length === 0}
     <EmptyState
       title="No checkpoint history retained"
-      description="This engine's checkpoint history window is 0, or none has been recorded yet for this run."
+      description="This server's checkpoint history window is 0, or none has been recorded yet for this run."
     />
   {:else}
     <div class="weft-checkpoints-tab__layout">

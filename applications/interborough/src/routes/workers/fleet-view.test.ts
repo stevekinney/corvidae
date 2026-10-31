@@ -45,7 +45,7 @@ function deployment(overrides: Partial<WorkerDeploymentSummary> = {}): WorkerDep
 const OPEN_GATE: ScopeGate = { disabled: false, title: undefined };
 
 describe('FleetView — deployment groups empty state', () => {
-  test('a genuinely empty fleet (no workers at all) names connecting a RemoteWorker as the next step', () => {
+  test('a genuinely empty fleet (no workers at all) names connecting a remote worker as the next step', () => {
     const { getByText, queryByText } = render(FleetView, {
       props: {
         workers: [],
@@ -59,7 +59,7 @@ describe('FleetView — deployment groups empty state', () => {
     expect(getByText('No workers connected')).not.toBeNull();
     expect(
       getByText(
-        'Connect a RemoteWorker to this queue to see it here — see the SDK docs for `RemoteWorker`.',
+        'Connect a remote worker to this queue to see it here. The documentation explains how.',
       ),
     ).not.toBeNull();
     expect(queryByText('No deployment metadata')).toBeNull();

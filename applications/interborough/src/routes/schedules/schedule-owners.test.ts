@@ -669,7 +669,7 @@ describe('a schedule is named by what it does', () => {
     const code = within(row(container, CODE_SCHEDULE) as HTMLElement);
     expect(code.getByRole('link', { name: 'Schedule for order-processing' })).not.toBeNull();
     const menu = await openMenu(container, AGENT_SCHEDULE);
-    expect(menu.getByRole('menuitem', { name: 'Copy id' })).not.toBeNull();
+    expect(menu.getByRole('menuitem', { name: 'Copy ID' })).not.toBeNull();
   });
 
   test('the Agent filter narrows the list to that agent’s schedules, and the address carries it', async () => {

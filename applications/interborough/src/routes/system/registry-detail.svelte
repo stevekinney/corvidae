@@ -370,8 +370,6 @@
     font-size: var(--cinder-text-2xs);
     font-weight: 600;
     color: var(--cinder-text-subtle);
-    text-transform: uppercase;
-    letter-spacing: 0.02em;
   }
 
   .weft-registry-detail__panel {

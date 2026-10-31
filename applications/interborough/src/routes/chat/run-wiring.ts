@@ -1153,7 +1153,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
       }
       const snapshot = { type: 'MESSAGES_SNAPSHOT', messages };
       if (!isMessagesSnapshot(snapshot)) {
-        throw new Error('The Bureau answered with messages this page cannot read.');
+        throw new Error('The server answered with messages this page cannot read.');
       }
       return mergeAGUIMessages(createConversationHistory({ id: threadId }), snapshot.messages);
     },

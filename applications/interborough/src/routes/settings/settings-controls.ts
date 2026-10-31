@@ -135,7 +135,7 @@ export const SETTING_GROUPS = [
   { id: 'logs', label: 'Logs' },
   { id: 'sessionInput', label: 'Session input' },
   { id: 'children', label: 'Children' },
-  { id: 'engine', label: 'Engine' },
+  { id: 'engine', label: 'Workflows' },
   { id: 'durability', label: 'Durability' },
   { id: 'a2a', label: 'A2A' },
 ] as const;

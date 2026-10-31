@@ -178,7 +178,7 @@ describe('the sidebar', () => {
     stubEngine();
     landAt('/chats');
     const { getByRole } = mount();
-    const link = getByRole('link', { name: /^Health\s*Engine healthy/ });
+    const link = getByRole('link', { name: /^Health\s*Server healthy/ });
     expect(link.getAttribute('href')).toBe('/health');
     expect(link.querySelector('.cinder-status-dot')?.getAttribute('data-cinder-status')).toBe(
       'online',
@@ -189,7 +189,7 @@ describe('the sidebar', () => {
     stubEngine();
     landAt('/chats');
     const { getByRole } = mount(undefined, 'closed');
-    const link = getByRole('link', { name: /^Health\s*Engine unreachable/ });
+    const link = getByRole('link', { name: /^Health\s*Server unreachable/ });
     expect(link.querySelector('.cinder-status-dot')?.getAttribute('data-cinder-status')).toBe(
       'danger',
     );

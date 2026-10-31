@@ -167,7 +167,7 @@
                 <code>{truncateId(row.id)}</code>
               </a>
             </Tooltip>
-            <CopyButton value={row.id} iconOnly label={`Copy workflow id ${truncateId(row.id)}`}>
+            <CopyButton value={row.id} iconOnly label={`Copy workflow ID ${truncateId(row.id)}`}>
               <Copy aria-hidden="true" size={13} />
             </CopyButton>
           </span>

@@ -432,7 +432,7 @@
         {:else if selectedWorkerId}
           <EmptyState
             title="Worker closed"
-            description={`No worker with the id ${selectedWorkerId} is registered with the server. It has closed, or it never connected here.`}
+            description={`No worker with the ID ${selectedWorkerId} is registered with the server. It has closed, or it never connected here.`}
           >
             {#snippet action()}
               <Button

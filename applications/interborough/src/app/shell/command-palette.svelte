@@ -228,8 +228,8 @@
     {/if}
     {#if enginePages.length > 0}
       <li role="presentation" class="weft-command-group">
-        <span class="weft-command-group__label">Engine pages</span>
-        <ul role="group" aria-label="Engine pages">
+        <span class="weft-command-group__label">Health pages</span>
+        <ul role="group" aria-label="Health pages">
           {#each enginePages as page (page.path)}
             <CommandItem value={`page-${page.view}`} onSelect={() => goTo(page.path)}>
               {page.label}
