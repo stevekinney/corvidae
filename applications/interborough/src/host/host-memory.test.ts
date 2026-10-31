@@ -6,7 +6,10 @@
 import {
   collectionNamespace,
   createHashingEmbedder,
+  createMemoryVectorStore,
   createWeftMemoryRecordStorage,
+  HASHING_EMBEDDER_DIMENSION,
+  HASHING_EMBEDDER_ID,
 } from '@lostgradient/memory';
 import { createAgent, stopWhen } from '@lostgradient/operative';
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
@@ -159,13 +162,23 @@ describe('the host’s governed memory', () => {
     await host.close();
     const storage = new BunSQLiteStorage(database.path);
     try {
-      const [record] = await createWeftMemoryRecordStorage(storage).list({
+      const scope = {
         tenantId: deploymentId,
         namespace: collectionNamespace('private', 'anonymous:local', 'alpha'),
-      });
+      };
+      const [record] = await createWeftMemoryRecordStorage(storage).list(scope);
       const [expected] = await createHashingEmbedder()([record?.content ?? '']);
-      expect(record?.vector).toHaveLength(256);
-      expect(Array.from(record?.vector ?? [])).toEqual(
+      // COR-1898: the vector lives in the vector store, under the hashing embedder's profile.
+      expect(record?.vector).toHaveLength(0);
+      const vectors = createMemoryVectorStore(storage);
+      const profile = {
+        embedderId: HASHING_EMBEDDER_ID,
+        dimension: HASHING_EMBEDDER_DIMENSION,
+        generation: 1,
+      };
+      expect(await vectors.listProfiles()).toEqual([profile]);
+      const stored = await vectors.getMany(profile, scope, [record?.id ?? '']);
+      expect(Array.from(stored.get(record?.id ?? '')?.vector ?? [])).toEqual(
         (expected ?? []).map((entry) => Math.fround(entry)),
       );
     } finally {

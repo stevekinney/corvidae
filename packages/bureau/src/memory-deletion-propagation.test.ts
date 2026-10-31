@@ -14,6 +14,8 @@ import {
   type GovernedMemory,
   type MemoryDeletionPropagator,
   type MemoryDeletionReceipt,
+  createMemoryVectorStore,
+  createTestEmbedders,
 } from '@lostgradient/memory';
 import { stopWhen, waitForCondition, createAgent } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
@@ -54,7 +56,8 @@ function fixture(overrides: { wrap?: (memory: GovernedMemory) => GovernedMemory 
   const memory = createGovernedMemory({
     storage: createInMemoryMemoryRecordStorage({ now: () => runtime.clock.now() }),
     ledger: createMemoryGovernanceLedger(new MemoryStorage()),
-    embedder: createMockEmbedder(64),
+    ...createTestEmbedders(createMockEmbedder(64), 64),
+    vectors: createMemoryVectorStore(new MemoryStorage()),
     policy: createMemoryGovernancePolicy({ revision: 'governance:deletion' }),
     propagation: {
       caches: 'not-retained',

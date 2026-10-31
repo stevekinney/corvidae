@@ -1,5 +1,4 @@
 import type { RuntimeServices } from '@lostgradient/lifecycle';
-import type { Embedder } from 'armorer';
 
 import {
   type MemoryRecord,
@@ -11,6 +10,7 @@ import {
 import type { TextSearchProvider } from '../text-search-provider';
 import type { MemoryCorrelation } from '../transition-events';
 import type { MemoryAuthority, MemoryOperation } from './authority';
+import type { GovernedEmbedding } from './governed-embedding';
 import type {
   MemoryDeletionPropagation,
   MemoryGovernanceNotification,
@@ -101,9 +101,13 @@ export type AuthorizationOutcome =
  */
 export interface GovernanceContext {
   readonly storage: MemoryRecordStorage;
+  /**
+   * Deletes the referenced records in one storage transaction, then their vectors from every
+   * profile. A version conflict throws before any vector is touched.
+   */
   readonly deleteMany: (references: readonly MemoryRecordReference[]) => Promise<number>;
   readonly ledger: MemoryGovernanceLedger;
-  readonly embedder: Embedder;
+  readonly embedding: GovernedEmbedding;
   readonly textSearchProvider: TextSearchProvider | undefined;
   readonly runtime: RuntimeServices;
   readonly propagation: MemoryDeletionPropagation;
@@ -188,7 +192,7 @@ export function statusForDenial(reason: MemoryDenialReason): MemoryOperationStat
 export interface CreateGovernanceContextInput {
   readonly storage: MemoryRecordStorage;
   readonly ledger: MemoryGovernanceLedger;
-  readonly embedder: Embedder;
+  readonly embedding: GovernedEmbedding;
   readonly textSearchProvider: TextSearchProvider | undefined;
   readonly runtime: RuntimeServices;
   readonly propagation: MemoryDeletionPropagation;
@@ -199,11 +203,20 @@ export interface CreateGovernanceContextInput {
 
 export function createGovernanceContext(input: CreateGovernanceContextInput): GovernanceContext {
   const { storage, ledger, runtime, onEvent } = input;
-  const deleteMany = storage.deleteMany?.bind(storage);
-  if (deleteMany === undefined) {
+  const boundDeleteMany = storage.deleteMany?.bind(storage);
+  if (boundDeleteMany === undefined) {
     throw new Error(
       'Governed memory requires storage.deleteMany: synchronous deletion targets must share one transaction.',
     );
+  }
+  const deleteRecords: (references: readonly MemoryRecordReference[]) => Promise<number> =
+    boundDeleteMany;
+  async function deleteMany(references: readonly MemoryRecordReference[]): Promise<number> {
+    // Snapshotted before the first await, so the vectors deleted are those of the records that were.
+    const vectors = references.map(({ id, scope: target }) => ({ id, scope: { ...target } }));
+    const removed = await deleteRecords(references);
+    await input.embedding.forget(vectors);
+    return removed;
   }
 
   function scope(
@@ -257,7 +270,7 @@ export function createGovernanceContext(input: CreateGovernanceContextInput): Go
     storage,
     deleteMany,
     ledger,
-    embedder: input.embedder,
+    embedding: input.embedding,
     textSearchProvider: input.textSearchProvider,
     runtime,
     propagation: input.propagation,

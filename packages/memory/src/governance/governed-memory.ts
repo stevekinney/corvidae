@@ -1,5 +1,6 @@
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 
+import { HASHING_EMBEDDER_ID } from '../embedder-registry';
 import { createDeletionEngine } from './deletion';
 import { settlePendingDerivations } from './derivation';
 import { createGovernanceContext } from './governance-context';
@@ -10,6 +11,7 @@ import {
   readEvents,
   sweepRetention,
 } from './governed-administration';
+import { createGovernedEmbedding } from './governed-embedding';
 import { deleteLocated, forget } from './governed-forgetting';
 import type {
   CreateGovernedMemoryOptions,
@@ -64,10 +66,15 @@ export function createGovernedMemory(options: CreateGovernedMemoryOptions): Gove
   const runtime = options.runtime ?? createDefaultRuntimeServices();
   const listeners = new Set<(notification: MemoryGovernanceNotification) => unknown>();
   const policies = createPolicyHistory(() => context, options.policy);
+  const embedding = createGovernedEmbedding({
+    registry: options.embedders,
+    vectors: options.vectors,
+    initialEmbedder: options.initialEmbedder ?? HASHING_EMBEDDER_ID,
+  });
   const context = createGovernanceContext({
     storage: options.storage,
     ledger: options.ledger,
-    embedder: options.embedder,
+    embedding,
     textSearchProvider: options.textSearchProvider,
     runtime,
     propagation: options.propagation ?? {},
@@ -87,6 +94,10 @@ export function createGovernedMemory(options: CreateGovernedMemoryOptions): Gove
   return {
     get policyRevision() {
       return policies.current().revision;
+    },
+    embedding: {
+      status: () => embedding.status(),
+      availability: (id) => embedding.availability(id),
     },
     subscribe(listener) {
       if (typeof listener !== 'function') {

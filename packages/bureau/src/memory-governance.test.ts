@@ -8,6 +8,8 @@ import {
   createMockEmbedder,
   type GovernedMemory,
   type MemoryAuthority,
+  createMemoryVectorStore,
+  createTestEmbedders,
 } from '@lostgradient/memory';
 import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
@@ -34,7 +36,8 @@ function governedMemoryFixture() {
   const memory = createGovernedMemory({
     storage,
     ledger,
-    embedder: createMockEmbedder(64),
+    ...createTestEmbedders(createMockEmbedder(64), 64),
+    vectors: createMemoryVectorStore(new MemoryStorage()),
     policy: createMemoryGovernancePolicy({ revision: 'governance:bureau-test' }),
     runtime,
   });
@@ -215,7 +218,8 @@ describe('Bureau memory hooks enforce governance (COR-41)', () => {
     const permissive = createGovernedMemory({
       storage,
       ledger: createMemoryGovernanceLedger(new MemoryStorage()),
-      embedder: createMockEmbedder(64),
+      ...createTestEmbedders(createMockEmbedder(64), 64),
+      vectors: createMemoryVectorStore(new MemoryStorage()),
       policy: createMemoryGovernancePolicy({
         revision: 'permissive',
         admission: {
@@ -257,7 +261,8 @@ describe('Bureau memory hooks enforce governance (COR-41)', () => {
     const permissive = createGovernedMemory({
       storage,
       ledger: createMemoryGovernanceLedger(new MemoryStorage()),
-      embedder: createMockEmbedder(64),
+      ...createTestEmbedders(createMockEmbedder(64), 64),
+      vectors: createMemoryVectorStore(new MemoryStorage()),
       policy: createMemoryGovernancePolicy({
         revision: 'permissive',
         admission: {

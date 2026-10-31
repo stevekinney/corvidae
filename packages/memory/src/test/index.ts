@@ -1,4 +1,6 @@
-import { cosineSimilarity, type EmbeddingVectorLike } from 'armorer';
+import { cosineSimilarity, type Embedder, type EmbeddingVectorLike } from 'armorer';
+
+import { createEmbedderRegistry, type EmbedderRegistry } from '../embedder-registry';
 
 import {
   type MemoryRecord,
@@ -9,6 +11,24 @@ import {
   MemoryRecordVersionConflictError,
   type MemoryVectorSearchResult,
 } from '../memory-record-storage';
+
+/** The registry id {@link createTestEmbedders} registers its embedder under. */
+export const TEST_EMBEDDER_ID = 'test';
+
+/**
+ * The governed-memory options that make `embedder` the one memory starts with: a registry holding
+ * it under {@link TEST_EMBEDDER_ID} with `dimension`, and that id as the initial embedder. Spread
+ * it into `createGovernedMemory` beside a `vectors` store.
+ */
+export function createTestEmbedders(
+  embedder: Embedder,
+  dimension: number,
+): { readonly embedders: EmbedderRegistry; readonly initialEmbedder: string } {
+  return {
+    embedders: createEmbedderRegistry([{ id: TEST_EMBEDDER_ID, embedder, dimension }]),
+    initialEmbedder: TEST_EMBEDDER_ID,
+  };
+}
 
 /**
  * Deterministic hash-based embedder for testing.

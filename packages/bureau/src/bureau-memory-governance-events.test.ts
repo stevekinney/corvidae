@@ -11,6 +11,8 @@ import {
   createMockEmbedder,
   type GovernedMemory,
   type MemoryGovernanceNotification,
+  createMemoryVectorStore,
+  createTestEmbedders,
 } from '@lostgradient/memory';
 import { MemoryStorage } from '@lostgradient/storage';
 import { mkdtemp } from 'node:fs/promises';
@@ -35,7 +37,8 @@ function governedMemory(): GovernedMemory {
   return createGovernedMemory({
     storage: createInMemoryMemoryRecordStorage(),
     ledger: createMemoryGovernanceLedger(new MemoryStorage()),
-    embedder: createMockEmbedder(64),
+    ...createTestEmbedders(createMockEmbedder(64), 64),
+    vectors: createMemoryVectorStore(new MemoryStorage()),
     policy: createMemoryGovernancePolicy({ revision: 'governance:cor-1723' }),
   });
 }

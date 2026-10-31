@@ -24,6 +24,8 @@ import {
   createMemoryGovernancePolicy,
   createMockEmbedder,
   createWeftMemoryRecordStorage,
+  createMemoryVectorStore,
+  createTestEmbedders,
 } from '@lostgradient/memory';
 import { createBureau } from './create-bureau';
 import { notificationOutboxKey } from './notifications/notification-outbox';
@@ -375,7 +377,8 @@ async function openWorld(
     memory: createGovernedMemory({
       storage: createWeftMemoryRecordStorage(fixture.storage),
       ledger: createMemoryGovernanceLedger(fixture.storage),
-      embedder: createMockEmbedder(64),
+      ...createTestEmbedders(createMockEmbedder(64), 64),
+      vectors: createMemoryVectorStore(fixture.storage),
       policy: createMemoryGovernancePolicy({ revision: 'governance:chat-purge' }),
       propagation: {
         caches: 'not-retained',

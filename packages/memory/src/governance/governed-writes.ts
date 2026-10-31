@@ -17,6 +17,7 @@ import {
   type ResolvedRecord,
   type TenantScope,
 } from './governance-context';
+import type { ActiveEmbedding } from './governed-embedding';
 import type {
   GovernedWriteOptions,
   MemoryRecordLocator,
@@ -72,7 +73,6 @@ export interface AdmittedRecordInput {
   readonly state: RecordGovernance['state'];
   readonly lineage?: MemoryRecordLineage;
   readonly visibility?: RecordGovernance['visibility'];
-  readonly vector?: Float32Array;
 }
 
 /**
@@ -88,10 +88,10 @@ export type StoredGovernedRecord =
       readonly reason: DerivationBlocker;
     };
 
-/** Embeds one text through the governed memory's embedder. */
-export async function embedOne(context: GovernanceContext, text: string): Promise<Float32Array> {
-  const [vector] = await context.embedder([text]);
-  return new Float32Array(vector!);
+/** Embeds one text with the active embedding's embedder. */
+export async function embedOne(active: ActiveEmbedding, text: string): Promise<Float32Array> {
+  const [vector] = await active.embed([text]);
+  return vector!;
 }
 
 /**
@@ -132,7 +132,9 @@ export async function storeGovernedRecord(
       : { lineage: input.lineage, pendingDerivation: true as const }),
     attribution: context.attribution(authority, input.operationId),
   };
-  const vector = input.vector ?? (await embedOne(context, input.content));
+  // Embedded before anything is stored, so a vector the active profile refuses stores nothing.
+  const active = await context.embedding.active();
+  const vector = await embedOne(active, input.content);
   // Only the write option sets the operation key; a `dedupeKey` smuggled in
   // through extension metadata would otherwise claim another write's key.
   const { dedupeKey: _callerKey, ...extension } = withoutReservedMetadata(options.metadata ?? {});
@@ -141,7 +143,8 @@ export async function storeGovernedRecord(
     tenantId: input.scope.tenantId,
     namespace: input.scope.namespace,
     content: input.content,
-    vector,
+    // The record carries no vector: its embedding lives in the vector store, per profile.
+    vector: new Float32Array(0),
     metadata: {
       ...extension,
       ...(options.dedupeKey === undefined ? {} : { dedupeKey: options.dedupeKey }),
@@ -181,6 +184,14 @@ export async function storeGovernedRecord(
   } else {
     await context.storage.put(record);
   }
+  // After the record, so a vector never names a record that was not stored. A process that dies
+  // between the two leaves a record with no vector in the active profile, which recall scores
+  // lexically, as it does any record the active profile has not embedded.
+  await context.embedding.vectors.put(
+    active.profile,
+    { id: record.id, scope: input.scope },
+    { version: record.version, vector },
+  );
   if (lineage === undefined) {
     if (input.state === 'active') {
       await context.textSearchProvider?.index(record.id, input.content, input.scope.namespace);

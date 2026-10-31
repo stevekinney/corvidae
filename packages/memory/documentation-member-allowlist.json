@@ -25,7 +25,6 @@
     ". ContentChunk.index",
     ". ContentChunk.startLine",
     ". ContentChunk.text",
-    ". CreateGovernedMemoryOptions.embedder",
     ". CreateGovernedMemoryOptions.ledger",
     ". CreateGovernedMemoryOptions.policy",
     ". CreateGovernedMemoryOptions.propagation",

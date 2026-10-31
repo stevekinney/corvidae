@@ -466,6 +466,9 @@ export const SHARED_KEY_FAMILIES_OF_A_CHAT: readonly ReservedKeyFamily[] = [
   // Governed memory (`@lostgradient/memory`): what a run remembers, partitioned by the Bureau and
   // the run's owner, under the agent's collection (`createMemoryPersistHook`).
   purged('app:agent-bureau:memory:v1:'),
+  // Each record's vector, per embedding profile (COR-1898), deleted with the record; beside them the
+  // active-profile and profile markers name an embedder, a dimension and a generation, never content.
+  purged('app:agent-bureau:memory-vectors:v1:'),
   kept(
     'app:agent-bureau:memory-governance:v1:',
     'governed memory’s ledger: its events, deletion receipts and scopes name the principal (a run id), the record ids and content digests of what was written, recalled or forgotten, and never the content; it is the proof a memory was deleted',

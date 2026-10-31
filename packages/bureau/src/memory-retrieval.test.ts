@@ -7,6 +7,8 @@ import {
   createMemoryGovernancePolicy,
   type GovernedMemory,
   type MemoryAuthority,
+  createMemoryVectorStore,
+  createTestEmbedders,
 } from '@lostgradient/memory';
 import {
   createAgent,
@@ -119,7 +121,8 @@ describe('Bureau runs recall through the retrieval plan (COR-771)', () => {
     memory = createGovernedMemory({
       storage: createInMemoryMemoryRecordStorage({ now: () => runtime.clock.now() }),
       ledger: createMemoryGovernanceLedger(new MemoryStorage()),
-      embedder: (texts) => texts.map(conceptVector),
+      ...createTestEmbedders((texts) => texts.map(conceptVector), CONCEPTS.length + 1),
+      vectors: createMemoryVectorStore(new MemoryStorage()),
       policy: createMemoryGovernancePolicy({
         revision: 'governance:bureau-retrieval',
         ...(options.admissionDetectors === undefined

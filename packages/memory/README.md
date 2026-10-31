@@ -2005,7 +2005,9 @@ import {
   createMemoryAuthority,
   createMemoryGovernanceLedger,
   createMemoryGovernancePolicy,
+  createMemoryVectorStore,
   createMockEmbedder,
+  createTestEmbedders,
   createWeftMemoryRecordStorage,
 } from '@lostgradient/memory';
 
@@ -2014,7 +2016,9 @@ const storage = new MemoryStorage();
 const memory = createGovernedMemory({
   storage: createWeftMemoryRecordStorage(storage),
   ledger: createMemoryGovernanceLedger(storage),
-  embedder: createMockEmbedder(64), // use a real embedder in production
+  // One embedder, registered with its dimension; use a real one in production.
+  ...createTestEmbedders(createMockEmbedder(64), 64),
+  vectors: createMemoryVectorStore(storage),
   policy: createMemoryGovernancePolicy({ revision: 'governance:1' }),
 });
 await memory.init();
@@ -2074,12 +2078,16 @@ await memory.close();
 | --- | --- | --- |
 | `storage` | Yes | A `MemoryRecordStorage` this instance owns alone. It must implement `deleteMany()`, because the synchronous deletion lane is one storage transaction; construction throws when it is missing. A write's `dedupeKey` also needs `getByDedupeKey()` and `putOnce()`, which construction does not check. Without either method, the key is ignored without an error and every keyed write is stored. Without `putOnce()`, the key is checked only by a lookup before the write, so two concurrent writes with the same key can both be stored. Both bundled backends implement all three methods. A record without a governance envelope, such as one `createMemory()` wrote into the same storage, is invisible to every governed call. |
 | `ledger` | Yes | `createMemoryGovernanceLedger(storage, { keyPrefix? })` over a Weft `Storage`. It holds governance events, deletion receipts, export manifests, lineage links, pending derivations, the scopes this instance has written, and context evictions. A restarted process resumes deletion from it. Its default prefix, `DEFAULT_MEMORY_GOVERNANCE_KEY_PREFIX`, is disjoint from the record prefix, so the records and the ledger can share one `Storage`. |
-| `embedder` | Yes | Embeds writes and queries. When it has an `evictContent(contentDigests)` method, as `withEmbeddingCache()` does, the built-in `caches` deletion handler can evict deleted content. |
+| `embedders` | Yes | An `EmbedderRegistry` (see [Hashing embedder](#hashing-embedder)). Writes and queries embed with the embedder the active embedding names. Each registered embedder with an `evictContent(contentDigests)` method, as `withEmbeddingCache()` has, lets the built-in `caches` deletion handler evict deleted content from it. |
+| `vectors` | Yes | A `MemoryVectorStore`, where each record's vector lives apart from the record, per embedding profile. `createMemoryVectorStore(storage, { keyPrefix? })` keeps it in a Weft `Storage` under `DEFAULT_MEMORY_VECTOR_KEY_PREFIX`, which is disjoint from the record and ledger prefixes, so all three can share one `Storage`. Give it storage as durable as the records': a record whose vector is lost is recalled by its text alone. |
+| `initialEmbedder` | No | The registry id a store with no active embedding starts with. Defaults to `HASHING_EMBEDDER_ID`. A store that has an active embedding keeps it, whatever this names. |
 | `policy` | Yes | The governance policy in force at construction. See [Policy revisions](#policy-revisions). |
 | `propagation` | No | A `MemoryDeletionPropagator` or `'not-retained'` for each bounded-async deletion target. See [Deletion and receipts](#deletion-and-receipts). |
 | `textSearchProvider` | No | Text scores for ranking, and the index the `indexes` deletion handler removes entries from. Without one, ranking uses in-process BM25. |
 | `runtime` | No | `RuntimeServices` for the clock and identifiers. Defaults to the real ones. |
 | `onEvent` | No | Called with a redacted `MemoryGovernanceNotification` for every ledger event: `type`, `outcome`, `tenantId`, `at`, `recordIds`, and, when known, `operationId`, `principalId`, `projection`, and `correlation` (see [Correlating events with a run](#correlating-events-with-a-run)). It never carries a protected reason, a detector diagnostic, or record content. It is awaited inside the governed call, after the event is appended to the ledger. A throw or rejection therefore escapes the call even though the change and its ledger event are already stored. A write is stored, so retrying it without a `dedupeKey`, or on storage that cannot honor one, stores it again. A deletion has persisted its receipt, but neither lane runs until the next `processDeletionPropagation()`. Reads and denials record events too, so they throw as well, and under Bureau the run fails. Make the sink non-throwing, for example by catching and buffering what it cannot deliver. |
+
+**Embedding profiles.** A record's vector is not stored on the record (its `vector` is empty). It is stored in the vector store under an embedding profile: the embedder's registry id, its registered dimension, and a generation. The store holds one active profile; the first write or recall of a store with none makes the initial embedder's profile, generation 1, active. Every write embeds with the active profile's embedder, and a vector of any other length than the profile's dimension throws `MemoryVectorDimensionError` before anything is stored, so a profile never holds a second model or dimension. Recall and `search()` compare the query with the active profile's vectors; a record that profile holds no vector for scores 0 on the semantic stage and is ranked by its text. A deletion removes the record's vector from every profile. `memory.embedding.status()` reports the active profile as `{ active: { embedder, dimension } }`, and `memory.embedding.availability(id)` says whether a registered id could embed now: `available`, `needs-setup`, or `not-loaded`. An active profile whose embedder is no longer registered, or is registered with another dimension, makes writes and semantic recall throw.
 
 `memory.subscribe(listener)` is `onEvent` for a caller that does not construct the memory, such as a Bureau handed one. It registers `listener` for the same `MemoryGovernanceNotification`s and returns a function that removes the listener. Each notification reaches `onEvent` first (and reaches the listeners even when `onEvent` threw), then each listener registered at that moment, in the order it was added (a listener added while a call is in flight hears that call's notification if the call has not reached its delivery yet). A listener that throws, or returns a promise that rejects, is reported with `console.error`: it never rejects the governed call and never keeps a later listener from hearing the notification. Bureau subscribes to the memory in `BureauOptions.memory` and publishes `memory.governance` events from it.
 
@@ -2493,9 +2501,9 @@ The root API includes deterministic test helpers and the storage contract harnes
 import { createHashingEmbedder, HASHING_EMBEDDER_DIMENSION } from '@lostgradient/memory';
 ```
 
-**`createHashingEmbedder()`:** Returns a deterministic `Embedder` that makes no network call and needs no model, so it runs where no model provider is configured. It hashes a text's words and word pairs into `HASHING_EMBEDDER_DIMENSION` (256) dimensions and normalizes the result to unit length, so two texts that share vocabulary have a positive cosine similarity. It is lexical, not semantic: it knows nothing of synonyms, and a deployment that wants meaning supplies a provider-backed embedder instead. An empty text embeds as the zero vector. `createMockEmbedder` is the test helper and stays one.
+**`createHashingEmbedder()`:** Returns a deterministic `Embedder` that makes no network call and needs no model, so it runs where no model provider is configured. It hashes a text's words and word pairs into `HASHING_EMBEDDER_DIMENSION` (256) dimensions and normalizes the result to unit length, so two texts that share vocabulary have a positive cosine similarity. It is lexical, not semantic: it knows nothing of synonyms, and a deployment that wants meaning supplies a provider-backed embedder instead. An empty text embeds as the zero vector. `createMockEmbedder` is the test helper and stays one. `createTestEmbedders(embedder, dimension)` is its governed-memory counterpart: it returns `{ embedders, initialEmbedder }`, a registry holding `embedder` under `TEST_EMBEDDER_ID` (`'test'`) and that id as the initial embedder, for spreading into `createGovernedMemory()` beside a `vectors` store.
 
-**`createEmbedderRegistry(contributed?)`:** Registers embedders that plugins contribute, each as `{ id, embedder }`, beside the hashing embedder under `HASHING_EMBEDDER_ID` (`'hashing'`). `registry.resolve(selected?)` returns the embedder named by `selected`, and the hashing embedder when nothing is selected, however many are contributed. An unregistered id, a blank or repeated id, and a contribution under `'hashing'` throw `EmbedderRegistryError`. The registry only resolves an id to an embedder: it does not switch the embedder of a memory that already holds vectors, or re-embed them.
+**`createEmbedderRegistry(contributed?)`:** Registers embedders that plugins contribute, each as `{ id, embedder, dimension, availability? }`, beside the hashing embedder under `HASHING_EMBEDDER_ID` (`'hashing'`, `HASHING_EMBEDDER_DIMENSION` dimensions). `availability` is a function read each time it is asked, returning `'available'` or `'needs-setup'`; omitted, the embedder is always available. `registry.resolve(selected?)` returns the embedder named by `selected`, and the hashing embedder when nothing is selected, however many are contributed. `registry.describe(id)` returns `{ id, dimension, availability }`, or `undefined` for an id nothing registered. An unregistered id, a blank or repeated id, a contribution under `'hashing'`, and a dimension that is not a positive integer throw `EmbedderRegistryError`. The registry only resolves an id to an embedder: it does not switch the embedder of a memory that already holds vectors, or re-embed them.
 
 ### Test utilities
 

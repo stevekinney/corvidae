@@ -7,7 +7,7 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
   createGovernedMemory,
-  createHashingEmbedder,
+  createEmbedderRegistry,
   createWeftMemoryRecordStorage,
   createInMemoryMemoryRecordStorage,
   createMemoryAuthority,
@@ -16,6 +16,8 @@ import {
   createMockEmbedder,
   type GovernedMemory,
   type MemoryAuthority,
+  createMemoryVectorStore,
+  createTestEmbedders,
 } from '@lostgradient/memory';
 import { createAgent, type GenerateFunction } from '@lostgradient/operative';
 import { type AuthConfig, type AuthorizationScope, principalFromApiKey } from '@lostgradient/weft';
@@ -96,7 +98,11 @@ function governedMemory(
         ? createWeftMemoryRecordStorage(durable)
         : createInMemoryMemoryRecordStorage({ now: () => runtime.clock.now() }),
     ledger: createMemoryGovernanceLedger(durable),
-    embedder: backend === 'weft' ? createHashingEmbedder() : createMockEmbedder(64),
+    // The Weft backend embeds with the default registry's hashing embedder, as Interborough does.
+    ...(backend === 'weft'
+      ? { embedders: createEmbedderRegistry() }
+      : createTestEmbedders(createMockEmbedder(64), 64)),
+    vectors: createMemoryVectorStore(durable),
     policy: createMemoryGovernancePolicy({ revision: 'governance:memory-operations' }),
     runtime,
   });

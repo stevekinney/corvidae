@@ -1858,7 +1858,9 @@ import {
   createMemoryAuthority,
   createMemoryGovernanceLedger,
   createMemoryGovernancePolicy,
+  createMemoryVectorStore,
   createMockEmbedder,
+  createTestEmbedders,
   createWeftMemoryRecordStorage,
 } from '@lostgradient/memory';
 import {
@@ -1873,7 +1875,9 @@ const storage = new MemoryStorage();
 const memory = createGovernedMemory({
   storage: createWeftMemoryRecordStorage(storage),
   ledger: createMemoryGovernanceLedger(storage),
-  embedder: createMockEmbedder(64), // use a real embedder in production
+  // One embedder, registered with its dimension; use a real one in production.
+  ...createTestEmbedders(createMockEmbedder(64), 64),
+  vectors: createMemoryVectorStore(storage),
   policy: createMemoryGovernancePolicy({ revision: 'governance:1' }),
 });
 
