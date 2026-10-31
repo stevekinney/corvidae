@@ -26,14 +26,15 @@
 import { randomUUID } from 'node:crypto';
 
 import type { Bungalow } from '@lostgradient/bungalow';
-import type {
-  BureauPluginEntry,
-  BureauPluginSecrets,
-  BureauPluginSettings,
-  PluginListing,
-  PluginLoadSource,
-  PluginProblem,
-  SettingLockReason,
+import {
+  pluginLoadOrder,
+  type BureauPluginEntry,
+  type BureauPluginSecrets,
+  type BureauPluginSettings,
+  type PluginListing,
+  type PluginLoadSource,
+  type PluginProblem,
+  type SettingLockReason,
 } from '@lostgradient/bureau';
 
 import { createConfigurationQueue, type ConfigurationQueue } from './configuration-queue.ts';
@@ -290,14 +291,19 @@ export function pluginStartupLines(snapshot: PluginSnapshot): string[] {
 export async function createPluginManager(options: PluginManagerOptions): Promise<PluginManager> {
   const { bungalow } = options;
   const location = bungalow.configurationLocation;
-  const entries = [...options.plugins];
+  // Bureau composes plugins in this order and the first holder of a name runs, so the manager
+  // orders them the same way: its lookups by name then find the plugin that is running (COR-1881).
+  const entries = pluginLoadOrder(options.plugins);
   const configurationQueue = options.configurationQueue ?? createConfigurationQueue();
   let closed = false;
 
   const reserved = (key: string): boolean =>
     options.reservedSecretKeys.includes(key) ||
     options.reservedSecretPrefixes.some((prefix) => key.startsWith(prefix));
+  // A refused plugin never reaches Bureau, so a loadable plugin of the same name is the one that
+  // runs and the one a name addresses.
   const entryNamed = (name: string): BureauPluginEntry | undefined =>
+    entries.find((entry) => entry.descriptor.name === name && !refusals.has(entry)) ??
     entries.find((entry) => entry.descriptor.name === name);
 
   // A declaration the host cannot honor is a mistake in the plugin's code. It skips that plugin,
@@ -482,8 +488,11 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
       return {
         plugins: [
           ...listing.flatMap((plugin): PluginStanding[] => {
+            // Two plugins may share a name, one running and one skipped with `name-clash`, so a
+            // listing is matched to its entry by where it came from.
             const entry = loadable.find(
-              (candidate) => candidate.descriptor.name === plugin.descriptor.name,
+              (candidate) =>
+                candidate.source === plugin.source && candidate.location === plugin.location,
             );
             return entry === undefined ? [] : [standingOf(plugin, entry)];
           }),

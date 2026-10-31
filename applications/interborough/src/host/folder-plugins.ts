@@ -186,8 +186,8 @@ export async function loadFolderPlugins(options: LoadFolderPluginsOptions): Prom
   const folders = new Map<string, { location: string; developmentPath?: string }>();
   if (options.directory !== undefined) {
     const names = folderNames(options.directory);
-    // The link is made only for a home that has plugin folders, so a home without any has nothing
-    // in `plugins/` that a scan of the home would walk into the host's whole dependency tree.
+    // The link is made only for a home that has plugin folders, so a `plugins/` directory with none
+    // stays empty rather than holding a link nothing uses.
     const linkFailure =
       names.length === 0
         ? undefined

@@ -274,3 +274,48 @@ describe('a development plugin folder', () => {
     ]);
   });
 });
+
+describe('two folders that declare the same plugin name', () => {
+  test('are one plugin to the host and to Bureau: the copy that runs takes the secrets and the update', async () => {
+    const home = await scratch();
+    // Bureau loads folder plugins by folder name, so `aaa-weather` runs and `weather` is skipped,
+    // although the host lists the installed folder first (COR-1881 round 2).
+    const declaring = (version: string, secrets: readonly string[]): string =>
+      `export default { name: 'weather', version: '${version}', description: 'The weather plugin.', secrets: ${JSON.stringify(secrets)} };\n`;
+    await writePlugin(join(home, 'plugins'), 'weather', declaring('1.0.0', ['weather-alpha']));
+    const development = await writePlugin(
+      await scratch(),
+      'aaa-weather',
+      declaring('2.0.0', ['weather-alpha', 'weather-beta']),
+    );
+
+    const { host } = await startAt(home, { developmentPlugins: [development] });
+
+    const report = await reportOf(host);
+    const standings = report.plugins.filter((plugin) => plugin.descriptor.name === 'weather');
+    expect(standings.map((standing) => [standing.location, standing.status])).toEqual([
+      [development, 'needs-setup'],
+      [join(home, 'plugins', 'weather'), 'skipped'],
+    ]);
+    const secrets = (standing: Standing | undefined) =>
+      (standing as unknown as { secrets: { key: string }[] }).secrets.map(({ key }) => key);
+    expect(secrets(standings[0])).toEqual(['weather-alpha', 'weather-beta']);
+
+    for (const key of ['weather-alpha', 'weather-beta']) {
+      const response = await fetch(new URL(`/host/plugins/weather/secrets/${key}`, host.url), {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ value: `${key}-value` }),
+      });
+      expect(response.status).toBe(200);
+    }
+    // Both declared secrets are set, so the copy that runs leaves setup. The skipped copy declares
+    // fewer secrets and would have stayed in `needs-setup` forever had the host chosen it.
+    const afterReport = await reportOf(host);
+    const after = afterReport.plugins.filter((plugin) => plugin.descriptor.name === 'weather');
+    expect(after.map((standing) => [standing.location, standing.status])).toEqual([
+      [development, 'running'],
+      [join(home, 'plugins', 'weather'), 'skipped'],
+    ]);
+  });
+});
