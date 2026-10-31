@@ -45,7 +45,7 @@ import {
   type SkillSourceStanding,
   type SkillsStanding,
 } from '@lostgradient/bureau';
-import { discoverSkills } from '@lostgradient/bureau/skills';
+import { discoverSkills, type SkillSource } from '@lostgradient/bureau/skills';
 
 import { createConfigurationQueue, type ConfigurationQueue } from './configuration-queue.ts';
 import { hostWriteLocks } from './locations.ts';
@@ -170,6 +170,11 @@ export type SkillManagerOptions = {
    * It must reject when the record cannot be written, so the manager can report and retry it.
    */
   readonly audit: (entry: SkillAuditEntry) => Promise<void>;
+  /**
+   * The skill sources the running plugins ship (COR-1977), read on every discovery so a plugin that
+   * stopped running is no longer offered. They are trusted by kind and are not configurable. Defaults to none.
+   */
+  readonly pluginSources?: () => readonly SkillSource[] | Promise<readonly SkillSource[]>;
   /** The owner a change is made by. Defaults to the local owner, the one principal of a single-user host. */
   readonly owner?: string;
   /** The clock a change is stamped with, in milliseconds. Defaults to `Date.now`. */
@@ -209,13 +214,18 @@ export async function createSkillManager(options: SkillManagerOptions): Promise<
 
   /** Discover the catalog `configuration` describes and make it the current one. */
   async function discover(configuration: SkillsConfiguration): Promise<SkillsStanding> {
-    const sources = toSkillSources(configuration);
+    const sources = [
+      ...toSkillSources(configuration),
+      ...((await options.pluginSources?.()) ?? []),
+    ];
     const catalog = await discoverSkills({
       sources,
       trustPolicy: trustPolicyOf(configuration),
       ...(current === undefined ? {} : { revision: current.catalog.revision + 1 }),
     });
     const trusted = new Set(configuration.trusted);
+    const isTrusted = (source: SkillSource): boolean =>
+      source.kind === 'plugin' || trusted.has(source.id);
     const standing: SkillsStanding = {
       catalog,
       sources: sources.map((source): SkillSourceStanding => ({
@@ -223,10 +233,13 @@ export async function createSkillManager(options: SkillManagerOptions): Promise<
         kind: source.kind,
         location: source.location,
         ...(source.plugin === undefined ? {} : { plugin: source.plugin }),
-        trust: trusted.has(source.id) ? 'trusted' : 'untrusted',
-        trustReason: trusted.has(source.id)
-          ? `Source '${source.id}' is listed in skills.trusted.`
-          : `Source '${source.id}' is not listed in skills.trusted.`,
+        trust: isTrusted(source) ? 'trusted' : 'untrusted',
+        trustReason:
+          source.kind === 'plugin'
+            ? `Source '${source.id}' ships with the plugin '${source.plugin ?? ''}', which is trusted code the host loads.`
+            : trusted.has(source.id)
+              ? `Source '${source.id}' is listed in skills.trusted.`
+              : `Source '${source.id}' is not listed in skills.trusted.`,
       })),
       ...(lockReason() === undefined ? {} : { trustLocked: lockReason() }),
     };

@@ -1,7 +1,9 @@
 /**
  * Writes a folder plugin (COR-1883): `bun scripts/create-plugin.ts <name> --to <directory>` creates
- * `<directory>/<name>/` with `plugin.ts`, `content/agents/assistant.md` and `plugin.test.ts`. The
- * plugin contributes one tool and ships one agent that uses it, so `bun scripts/check-plugin.ts
+ * `<directory>/<name>/` with `plugin.ts`, `content/agents/assistant.md`,
+ * `content/workflows/digest.json`, `content/skills/greeting/SKILL.md` and `plugin.test.ts`. The
+ * plugin contributes one tool and ships one agent that uses it, one workflow that runs the agent
+ * (on a signal, so nothing fires by itself) and one skill, so `bun scripts/check-plugin.ts
  * <directory>/<name>` passes on what it writes. It refuses a name outside the plugin grammar and a
  * folder that already exists.
  */
@@ -45,6 +47,30 @@ model: ${agentModel}
 tools: [${name}:greet]
 ---
 You greet people with the ${name}:greet tool.
+`,
+    // The workflow's `name` is its identifier in the plugin's namespace, and a signal trigger keeps
+    // it from running until something sends the signal.
+    'content/workflows/digest.json': `${JSON.stringify(
+      {
+        name: `${name}:digest`,
+        description: `Asks the ${name} assistant to greet the team.`,
+        trigger: { kind: 'signal', name: `${name}-digest` },
+        steps: [
+          {
+            kind: 'activity',
+            handler: 'agent',
+            input: { agent: `${name}:assistant`, message: 'Greet the team.' },
+          },
+        ],
+      },
+      null,
+      2,
+    )}\n`,
+    'content/skills/greeting/SKILL.md': `---
+name: greeting
+description: How to greet someone on behalf of the ${name} plugin.
+---
+Greet people by name with the ${name}:greet tool, then say what you did in one sentence.
 `,
     'plugin.test.ts': `import { createPluginTestHost } from '@lostgradient/bureau/testing';
 import { pluginContract } from '@lostgradient/interborough-plugin/testing';

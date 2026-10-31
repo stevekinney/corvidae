@@ -7,7 +7,8 @@
  *   then its `plugin.ts` is replaced so it supplies its own model: a provider `e2e` whose generate
  *   asks for the tool and then replies, and the catalog row `e2e/scripted`. The spawned host has no
  *   injected fake, so nothing but the plugin answers.
- * - It is listed by `GET /host/plugins` as `running`, and its agent `e2e:assistant` is listed.
+ * - It is listed by `GET /host/plugins` as `running`, and its agent `e2e:assistant`, workflow
+ *   `e2e:digest` and skill `greeting` (COR-1977) are listed.
  * - A chat with the agent runs the tool. The tool writes a marker file, so the run is proven from
  *   outside the process, and the answer carries the reply the script gave after the tool's result.
  * - `PUT /host/plugins/e2e` disables the plugin, `POST /host/restart` replaces the host process, and
@@ -234,6 +235,22 @@ async function standingOf(supervised: Supervised): Promise<Standing | undefined>
   return body.plugins.find((plugin) => plugin.descriptor.name === PLUGIN_NAME);
 }
 
+/** The ids `bureau.<method>` lists under `key`, by the field that names each row. */
+async function listedNames(
+  supervised: Supervised,
+  method: string,
+  key: string,
+  field: string,
+): Promise<string[]> {
+  const response = await fetch(new URL('/bureau/jsonrpc', supervised.url), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params: {} }),
+  });
+  const body = (await response.json()) as { result: Record<string, Record<string, string>[]> };
+  return (body.result[key] ?? []).map((row) => row[field] ?? '');
+}
+
 async function agentIds(supervised: Supervised): Promise<string[]> {
   const response = await fetch(new URL('/bureau/jsonrpc', supervised.url), {
     method: 'POST',
@@ -304,6 +321,13 @@ const lifecycle = await (async () => {
     const firstPid = supervised.pids().at(0);
     const standingBefore = await standingOf(supervised);
     const agentsBefore = await agentIds(supervised);
+    const workflowsBefore = await listedNames(
+      supervised,
+      'bureau.workflows.list',
+      'workflows',
+      'id',
+    );
+    const skillsBefore = await listedNames(supervised, 'bureau.skills.list', 'skills', 'name');
     const stream = await chat(supervised);
     const markerWritten = existsSync(marker) ? await readFile(marker, 'utf8') : undefined;
 
@@ -327,12 +351,16 @@ const lifecycle = await (async () => {
       firstAlive: firstPid === undefined ? undefined : alive(firstPid),
       standingBefore,
       agentsBefore,
+      workflowsBefore,
+      skillsBefore,
       stream,
       markerWritten,
       disableStatus: disabled.status,
       restartStatus: restarting.status,
       standingAfter: await standingOf(supervised),
       agentsAfter: await agentIds(supervised),
+      workflowsAfter: await listedNames(supervised, 'bureau.workflows.list', 'workflows', 'id'),
+      skillsAfter: await listedNames(supervised, 'bureau.skills.list', 'skills', 'name'),
       diagnostics: `${supervised.stdout()}\n${supervised.stderr()}`,
     };
   } finally {
@@ -345,6 +373,11 @@ describe('a scaffolded folder plugin through its whole lifecycle', () => {
   test('is listed as running, and its agent is listed', () => {
     expect(lifecycle.standingBefore).toMatchObject({ status: 'running', enabled: true });
     expect(lifecycle.agentsBefore).toContain(AGENT_ID);
+  });
+
+  test('has its shipped workflow and skill listed (COR-1977)', () => {
+    expect(lifecycle.workflowsBefore).toContain(`${PLUGIN_NAME}:digest`);
+    expect(lifecycle.skillsBefore).toContain('greeting');
   });
 
   test('has its agent run its tool, and the tool really ran', () => {
@@ -366,6 +399,8 @@ describe('a scaffolded folder plugin through its whole lifecycle', () => {
   test('is listed as disabled by the new process, and its agent is gone', () => {
     expect(lifecycle.standingAfter).toMatchObject({ status: 'disabled', enabled: false });
     expect(lifecycle.agentsAfter).not.toContain(AGENT_ID);
+    expect(lifecycle.workflowsAfter).not.toContain(`${PLUGIN_NAME}:digest`);
+    expect(lifecycle.skillsAfter).not.toContain('greeting');
   });
 
   test('made no registry request in either process', () => {

@@ -536,6 +536,16 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    */
   pluginAgentSource?: (plugin: string, content: URL) => AgentSource | undefined;
   /**
+   * COR-1977 — the workflow source of a running plugin's shipped content, as
+   * {@link BureauOptions.pluginAgentSource} is for agents. For each running plugin whose
+   * descriptor declares `content`, Bureau calls it with the plugin's name and that URL, and layers
+   * what it returns beneath {@link BureauOptions.workflowSource} (a source with `plugin` set to the
+   * name, such as `workflowFileDirectory(path, { plugin })`). It returns `undefined` for content it
+   * cannot read. A disabled, skipped, or failed plugin is not asked, so its workflows are not
+   * listed. Without it, or without `workflowSource`, a plugin's workflows are not read.
+   */
+  pluginWorkflowSource?: (plugin: string, content: URL) => WorkflowSource | undefined;
+  /**
    * COR-1913 — the secret that signs the tool approvals the file agents of
    * {@link BureauOptions.agentSource} raise. A file agent's tools ask a person before they run
    * according to the file's `toolApproval` (`on-changes` for a tool it does not name), and an

@@ -18,7 +18,7 @@ async function scratch() {
 }
 
 describe('createPlugin', () => {
-  test('writes plugin.ts, an agent file and a test, each naming the plugin', async () => {
+  test('writes plugin.ts, an agent file, a workflow file, a skill and a test, each naming the plugin', async () => {
     const root = await scratch();
     const result = await createPlugin('example', root);
     expect(result).toEqual({ folder: join(root, 'example') });
@@ -27,6 +27,8 @@ describe('createPlugin', () => {
     }
     expect(Object.keys(pluginScaffold('example')).toSorted()).toEqual([
       'content/agents/assistant.md',
+      'content/skills/greeting/SKILL.md',
+      'content/workflows/digest.json',
       'plugin.test.ts',
       'plugin.ts',
     ]);
@@ -34,6 +36,20 @@ describe('createPlugin', () => {
     expect(pluginScaffold('example')['content/agents/assistant.md']).toContain(
       'tools: [example:greet]',
     );
+  });
+
+  test('ships a workflow named in the plugin’s namespace and a skill named for its folder', () => {
+    const files = pluginScaffold('example');
+    const workflow = JSON.parse(files['content/workflows/digest.json'] ?? '') as {
+      name: string;
+      trigger: { kind: string };
+      steps: { input: { agent: string } }[];
+    };
+    expect(workflow.name).toBe('example:digest');
+    expect(workflow.trigger.kind).toBe('signal');
+    expect(workflow.steps[0]?.input.agent).toBe('example:assistant');
+    expect(files['content/skills/greeting/SKILL.md']).toContain('name: greeting\n');
+    expect(files['content/skills/greeting/SKILL.md']).toContain('example:greet');
   });
 
   test('refuses a name outside the plugin grammar and writes nothing', async () => {

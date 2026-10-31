@@ -1465,33 +1465,54 @@ function withLayeredSources<const D extends AgentDefinitions>(
 }
 
 /**
- * COR-1897 — `options` with the agents the running plugins ship layered beneath the owner's agent
- * sources. The layers are known only once plugins are composed, so the sources the caller gave are
- * layered again with them. Nothing changes without an `agentSource` or a `pluginAgentSource`.
+ * COR-1897, COR-1977 — `options` with the agents and workflows the running plugins ship layered
+ * beneath the owner's sources. The layers are known only once plugins are composed, so the sources
+ * the caller gave are layered again with them. Nothing changes without an `agentSource` or a
+ * `pluginAgentSource`, and likewise for workflows.
  */
-function withPluginAgentLayers<const D extends AgentDefinitions>(
+function withPluginContentLayers<const D extends AgentDefinitions>(
   options: LayeredBureauOptions<D>,
-  given: BureauOptions<D>['agentSource'],
+  given: BureauOptions<D>,
   shipped: readonly { readonly plugin: string; readonly content: URL }[],
 ): LayeredBureauOptions<D> {
-  const pluginAgentSource = options.pluginAgentSource;
-  if (pluginAgentSource === undefined || shipped.length === 0 || given === undefined) {
-    return options;
-  }
-  const owners = Array.isArray(given) ? given : [given];
-  const layers = shipped.flatMap(({ plugin, content }) => {
-    const layer = pluginAgentSource(plugin, content);
-    return layer === undefined ? [] : [layer];
-  });
+  if (shipped.length === 0) return options;
+  const agentSource = layeredWithPlugins(
+    'agentSource',
+    'agent',
+    given.agentSource,
+    options.pluginAgentSource,
+    shipped,
+  );
+  const workflowSource = layeredWithPlugins(
+    'workflowSource',
+    'workflow',
+    given.workflowSource,
+    options.pluginWorkflowSource,
+    shipped,
+  );
   return {
     ...options,
-    agentSource: resolveDefinitionSource(
-      'agentSource',
-      'agent',
-      [...owners, ...layers],
-      toBadRequest,
-    ),
+    ...(agentSource === undefined ? {} : { agentSource }),
+    ...(workflowSource === undefined ? {} : { workflowSource }),
   };
+}
+
+/** The owner's `given` sources with the layer `layerOf` returns for each shipped content, or `undefined` for none. */
+function layeredWithPlugins<const Source extends AgentSource | WorkflowSource>(
+  option: 'agentSource' | 'workflowSource',
+  kind: 'agent' | 'workflow',
+  given: Source | readonly Source[] | undefined,
+  layerOf: ((plugin: string, content: URL) => Source | undefined) | undefined,
+  shipped: readonly { readonly plugin: string; readonly content: URL }[],
+): Source | undefined {
+  if (layerOf === undefined || given === undefined) return undefined;
+  const owners: readonly Source[] = Array.isArray(given) ? given : [given as Source];
+  const layers = shipped.flatMap(({ plugin, content }) => {
+    const layer = layerOf(plugin, content);
+    return layer === undefined ? [] : [layer];
+  });
+  if (layers.length === 0) return undefined;
+  return resolveDefinitionSource(option, kind, [...owners, ...layers], toBadRequest) as Source;
 }
 
 function toBadRequest(message: string): never {
@@ -2548,7 +2569,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     plugins: withBuiltInPlugin(options.plugins, bureauTools),
   });
   options = composedPlugins.options;
-  options = withPluginAgentLayers(options, given.agentSource, composedPlugins.shippedContent);
+  options = withPluginContentLayers(options, given, composedPlugins.shippedContent);
   // COR-1879: `decisions.model` may name a decision router a plugin contributed.
   validateDecisionsModelChoice(options.decisions, toBadRequest);
   const pluginRegistry = createPluginRegistry(composedPlugins.records);
