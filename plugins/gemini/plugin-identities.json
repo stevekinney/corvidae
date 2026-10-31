@@ -1,0 +1,24 @@
+{
+  "plugin": "gemini",
+  "version": "0.1.0",
+  "entries": [
+    {
+      "kind": "configuration",
+      "id": "gemini",
+      "version": "0.1.0",
+      "schema": "sha256:bd820299252e6e8133d16b688e6aabbe184002d608ff0f272d2399fdb0fa27b3"
+    },
+    {
+      "kind": "embedder",
+      "id": "gemini:gemini-embedding-001",
+      "version": "0.1.0",
+      "schema": "sha256:cf6b24521d103e328756c1b3f2fb27e1393e511f55d10c47250fa23e58cb1549"
+    },
+    {
+      "kind": "provider",
+      "id": "gemini:gemini",
+      "version": "0.1.0",
+      "schema": null
+    }
+  ]
+}

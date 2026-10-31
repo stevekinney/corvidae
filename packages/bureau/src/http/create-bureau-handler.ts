@@ -257,7 +257,9 @@ export type BureauHandlerSource = Pick<
     | 'respond'
   >;
 } & {
-  readonly reviews: Pick<BureauReviews, 'list' | 'get' | 'resolve' | 'pendingOf'>;
+  // Every member of `BureauReviews`, so the adapter below cannot drop one: a missing member is a
+  // type error here, not a list that silently falls back to empty (COR-1849 `listResolved`).
+  readonly reviews: BureauReviews;
   readonly audit: Pick<BureauAudit, 'query'>;
   readonly notifications: Pick<BureauNotifications, 'list' | 'markRead' | 'dismiss'>;
   readonly contexts: Pick<
@@ -1152,6 +1154,7 @@ export function buildBureauHandlerHost(
     runFeeds: bureau.internals.runEventFeeds,
     reviews: {
       list: () => bureau.reviews.list(),
+      listResolved: (filter) => bureau.reviews.listResolved(filter),
       get: (id) => bureau.reviews.get(id),
       resolve: (input) => bureau.reviews.resolve(input),
       pendingOf: (taskId) => bureau.reviews.pendingOf(taskId),

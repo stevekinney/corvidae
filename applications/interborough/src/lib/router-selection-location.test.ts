@@ -1,49 +1,45 @@
 /**
- * The selection a ListDetail keeps in the address, through the router: it reads one parameter, keeps
- * the rest of the query when it writes, replaces the history entry, and writes only while the
- * router is on the page it was made for.
+ * Where a ListDetail keeps its open item (`router-selection-location.ts`): one parameter of the
+ * address, written through the router, and only while the address is the page's own.
  */
-import { beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
 import { routerSelectionLocationFor } from './router-selection-location.ts';
 import { router } from './router.svelte.ts';
 
-function resetLocation(path: string): void {
-  if (!(window instanceof Window)) throw new Error('expected the test window to be happy-dom');
-  window.happyDOM.setURL('http://localhost/');
-  router.navigate(path, { replace: true });
-}
-
 beforeEach(() => {
-  resetLocation('/health/workers');
+  if (!(window instanceof Window)) throw new Error('expected a happy-dom test window');
+  window.happyDOM.setURL('http://localhost/');
 });
 
-describe('routerSelectionLocationFor', () => {
-  test('reads one parameter of the address, and null when it is absent', () => {
-    resetLocation('/health/workers?tab=workers&worker=wkr_1');
-    const location = routerSelectionLocationFor('/health/workers');
-    expect(location.read('worker')).toBe('wkr_1');
+afterEach(() => {
+  router.navigate('/', { replace: true });
+});
+
+describe('a selection kept in the address', () => {
+  test('reads one parameter of the current address', () => {
+    router.navigate('/reviews?review=bureau%3Aa&tab=done', { replace: true });
+    const location = routerSelectionLocationFor('/reviews');
+    expect(location.read('review')).toBe('bureau:a');
     expect(location.read('missing')).toBeNull();
   });
 
-  test('writes the key without disturbing the rest of the query, and clears it with null', () => {
-    resetLocation('/health/workers?tab=workers');
-    const location = routerSelectionLocationFor('/health/workers');
-    location.write('worker', 'wkr_2');
-    expect(router.pathname).toBe('/health/workers');
-    expect(router.search.get('tab')).toBe('workers');
-    expect(router.search.get('worker')).toBe('wkr_2');
-    location.write('worker', null);
-    expect(router.search.get('worker')).toBeNull();
-    expect(router.search.get('tab')).toBe('workers');
+  test('writes the key, keeps the other parameters, and clears it when the key is null', () => {
+    router.navigate('/reviews?tab=done', { replace: true });
+    const location = routerSelectionLocationFor('/reviews');
+    location.write('review', 'bureau:a');
+    expect(router.search.get('review')).toBe('bureau:a');
+    expect(router.search.get('tab')).toBe('done');
+    location.write('review', null);
+    expect(router.search.get('review')).toBeNull();
+    expect(router.search.get('tab')).toBe('done');
   });
 
-  test('writes nothing once the router has left the page it was made for', () => {
-    const location = routerSelectionLocationFor('/health/workers');
-    resetLocation('/agents');
-    location.write('worker', 'wkr_3');
-    expect(router.pathname).toBe('/agents');
-    expect(router.search.get('worker')).toBeNull();
+  test('writes nothing onto another page, which the list outlives the navigation to by a tick', () => {
+    router.navigate('/chats', { replace: true });
+    routerSelectionLocationFor('/reviews').write('review', 'bureau:a');
+    expect(router.pathname).toBe('/chats');
+    expect(router.search.get('review')).toBeNull();
   });
 });

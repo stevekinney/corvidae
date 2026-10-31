@@ -3,7 +3,9 @@
    * The Workers tab: every worker the server lists, with the open worker beside it (design rows 20c
    * and 19a). The counts are one line under the title, not four cards. The open worker is the
    * `worker` parameter of the address, so a link to one worker opens it. A `worker` the server does
-   * not list says so in the detail pane, with the way back to the list.
+   * not list says so in the detail pane, with the way back to the list. That pane is only on screen
+   * in the side-by-side layout: below the list's push width one pane shows at a time, and an
+   * unlisted worker has no row to open, so the list shows and the message does not.
    *
    * Everything the page reads is handed in by the route (`index.svelte`), which owns the queries and
    * the writes; this component decides only how they are laid out.
@@ -48,9 +50,17 @@
     /** What the fleet's manifests say; undefined until they have been read. */
     readonly manifestDiagnostics: readonly WorkerManifestDiagnostics[] | undefined;
     readonly registrationRejections: readonly WorkerRegistrationRejection[];
+    /** The fleet-level view's state: the manifest read and the registration-rejection read together. */
     readonly manifestLoading: boolean;
     readonly manifestRefreshing: boolean;
     readonly manifestError: unknown;
+    /**
+     * The open worker's state: the manifest read alone, so a failed or pending rejection read does
+     * not hide a worker whose manifest loaded.
+     */
+    readonly workerManifestLoading: boolean;
+    readonly workerManifestRefreshing: boolean;
+    readonly workerManifestError: unknown;
     readonly registry: RegistrySnapshotSource | undefined;
     readonly registryLoading: boolean;
     readonly registryRefreshing: boolean;
@@ -71,6 +81,9 @@
     manifestLoading,
     manifestRefreshing,
     manifestError,
+    workerManifestLoading,
+    workerManifestRefreshing,
+    workerManifestError,
     registry,
     registryLoading,
     registryRefreshing,
@@ -194,9 +207,9 @@
         {onDrainDeployment}
         {onResumeDeployment}
         manifestDiagnostics={manifestOf(worker)}
-        {manifestLoading}
-        {manifestRefreshing}
-        {manifestError}
+        manifestLoading={workerManifestLoading}
+        manifestRefreshing={workerManifestRefreshing}
+        manifestError={workerManifestError}
         {registry}
         {registryLoading}
         {registryRefreshing}

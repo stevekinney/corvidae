@@ -1,0 +1,19 @@
+{
+  "extends": "@lostgradient/typescript/library.json",
+  "include": ["src"],
+  "exclude": ["node_modules", "coverage"],
+  "references": [
+    {
+      "path": "../../packages/armorer/tsconfig.source.json"
+    },
+    {
+      "path": "../../packages/interborough-plugin/tsconfig.source.json"
+    },
+    {
+      "path": "../../packages/operative/tsconfig.source.json"
+    },
+    {
+      "path": "../../packages/operative-gemini/tsconfig.source.json"
+    }
+  ]
+}

@@ -2,6 +2,7 @@ import { describe, expect, it, mock } from 'bun:test';
 import { Conversation } from 'conversationalist';
 
 import { GuardrailTripwireError } from '../errors';
+import type { StepContext } from '../types';
 import { createOutputGuardrail } from './output-guardrail';
 import type {
   OutputGuardrailTriggeredEvent,
@@ -273,6 +274,131 @@ describe('createOutputGuardrail', () => {
       expect(ctx.step).toBe(5);
       expect(ctx.conversationLength).toBe(2);
       expect(ctx.toolCallCount).toBe(2);
+    });
+
+    it('offers the conversation as text, read only when a validator asks', async () => {
+      const seen: string[] = [];
+      const validator: OutputValidator = {
+        name: 'reader',
+        validate: async (_output, ctx) => {
+          seen.push(ctx.conversationText?.() ?? 'missing');
+          return validResult;
+        },
+      };
+      const hook = createOutputGuardrail({ validators: [validator] });
+      const conversation = new Conversation();
+      conversation.appendUserMessage('The invoice total is 72 dollars.');
+      conversation.appendAssistantMessage('Noted.');
+
+      await hook(createMockResponse(), { conversation, step: 1 });
+
+      expect(seen).toHaveLength(1);
+      expect(seen[0]).toContain('The invoice total is 72 dollars.');
+      expect(seen[0]).toContain('Noted.');
+    });
+
+    /** The conversation text a validator reads at a step, given a conversation and the step's sources. */
+    async function textSeenBy(
+      conversation: Conversation,
+      resolvedSources?: StepContext['resolvedSources'],
+    ): Promise<string> {
+      let seen = '';
+      const validator: OutputValidator = {
+        name: 'reader',
+        validate: async (_output, ctx) => {
+          seen = ctx.conversationText?.() ?? 'missing';
+          return validResult;
+        },
+      };
+      await createOutputGuardrail({ validators: [validator] })(createMockResponse(), {
+        conversation,
+        step: 1,
+        resolvedSources,
+      });
+      return seen;
+    }
+
+    it('includes the model-facing text of a tool result, which sits in toolResult, not in content', async () => {
+      const conversation = new Conversation();
+      conversation.appendUserMessage('Look up the order.');
+      conversation.appendToolCall({ id: 'call-1', name: 'lookup', arguments: {} });
+      conversation.appendToolResult({
+        callId: 'call-1',
+        outcome: 'success',
+        content: 'The order total is 72 dollars.',
+      });
+      conversation.appendToolCall({ id: 'call-2', name: 'status', arguments: {} });
+      conversation.appendToolResult({
+        callId: 'call-2',
+        outcome: 'success',
+        content: null,
+        parts: [{ type: 'text', text: 'Shipped on 4 days notice.' }],
+      });
+      conversation.appendToolCall({ id: 'call-3', name: 'fields', arguments: {} });
+      conversation.appendToolResult({
+        callId: 'call-3',
+        outcome: 'success',
+        content: { weightKg: 12 },
+      });
+
+      const text = await textSeenBy(conversation);
+
+      expect(text).toContain('The order total is 72 dollars.');
+      expect(text).toContain('Shipped on 4 days notice.');
+      expect(text).toContain('12');
+    });
+
+    it('includes the body of a resolved attachment, which only the step’s resolved sources hold', async () => {
+      const conversation = new Conversation();
+      conversation.appendUserMessage([
+        { type: 'text', text: 'Summarize the attachment.' },
+        {
+          type: 'document',
+          mimeType: 'text/plain',
+          source: { kind: 'managed-asset', assetId: 'a1' },
+        },
+      ]);
+      const messageId = conversation.current.ids[0]!;
+      const resolvedSources = new Map([
+        [
+          `${messageId}:1`,
+          {
+            outcome: 'resolved' as const,
+            source: {
+              kind: 'inline' as const,
+              data: btoa('The attachment says 72 dollars.'),
+              encoding: 'base64' as const,
+            },
+            mimeType: 'text/plain',
+            safety: 'clean' as const,
+          },
+        ],
+      ]);
+
+      expect(await textSeenBy(conversation, resolvedSources)).toContain(
+        'The attachment says 72 dollars.',
+      );
+      expect(await textSeenBy(conversation)).not.toContain('72 dollars');
+    });
+
+    it('reads the conversation as it stood when the validator ran, not a later one', async () => {
+      let read: (() => string) | undefined;
+      const validator: OutputValidator = {
+        name: 'keeper',
+        validate: async (_output, ctx) => {
+          read = ctx.conversationText;
+          return validResult;
+        },
+      };
+      const hook = createOutputGuardrail({ validators: [validator] });
+      const conversation = new Conversation();
+      conversation.appendUserMessage('before');
+
+      await hook(createMockResponse(), { conversation, step: 1 });
+      conversation.appendUserMessage('after');
+
+      expect(read?.()).toContain('before');
+      expect(read?.()).not.toContain('after');
     });
   });
 });

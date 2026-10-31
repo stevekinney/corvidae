@@ -403,6 +403,9 @@
             manifestRefreshing={(manifestQuery.isFetching && manifestQuery.data !== undefined) ||
               (rejectionsQuery.isFetching && rejectionsQuery.data !== undefined)}
             manifestError={manifestQuery.error ?? rejectionsQuery.error ?? null}
+            workerManifestLoading={manifestQuery.isPending}
+            workerManifestRefreshing={manifestQuery.isFetching && manifestQuery.data !== undefined}
+            workerManifestError={manifestQuery.error ?? null}
             registry={registryQuery.data}
             registryLoading={registryQuery.isPending}
             registryRefreshing={registryQuery.isFetching && registryQuery.data !== undefined}

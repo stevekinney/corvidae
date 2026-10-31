@@ -198,7 +198,7 @@ export const routes: readonly RouteDefinition[] = [
   },
   {
     pattern: '/reviews',
-    kind: 'reading',
+    kind: 'list-detail',
     crumb: VIEW_COPY.reviews.label,
     view: 'reviews',
     load: () => import('../routes/reviews/index.svelte'),

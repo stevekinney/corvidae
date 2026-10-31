@@ -86,11 +86,12 @@ export interface WorkersSummaryInput {
 
 /**
  * The one line under the Workers list's title, such as `3 of 4 connected · 7 running · 12 waiting ·
- * 2 failed for good`. A worker is connected unless it has drained (a drained worker has left);
- * running is the tasks the workers hold now.
+ * 2 failed for good`. Every listed worker counts as connected: the server lists only registered
+ * workers, and a drained one (drain marker, nothing in flight) is still connected until it
+ * disconnects. Running is the tasks the workers hold now.
  */
 export function workersSummaryLine(input: WorkersSummaryInput): string {
-  const connected = input.workers.filter((worker) => worker.health !== 'drained').length;
+  const connected = input.workers.length;
   const running = input.workers.reduce((total, worker) => total + worker.inFlight, 0);
   const parts = [`${String(connected)} of ${String(input.workers.length)} connected`];
   parts.push(`${String(running)} running`);

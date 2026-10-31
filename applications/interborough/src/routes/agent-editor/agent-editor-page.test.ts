@@ -141,8 +141,8 @@ describe('a new agent', () => {
       const row = container.querySelector(`[data-provider="${provider.name}"]`);
       expect(row?.textContent).toContain(provider.secretFile);
     }
-    expect(container.textContent).toContain('"providers"');
-    expect(container.textContent).toContain('"anthropic": {}');
+    expect(container.textContent).toContain('"plugins"');
+    expect(container.textContent).toContain('"enabled": true');
     expect(container.textContent).toContain('chmod 600');
     expect(getByRole('button', { name: AGENT_EDITOR_COPY.noProvider.reload })).not.toBeNull();
     // Nothing to fill in: no field, no model choice, no save.

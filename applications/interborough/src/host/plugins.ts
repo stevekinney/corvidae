@@ -14,17 +14,24 @@
  * @module plugins
  */
 
-import type { BureauPluginEntry, BureauPluginSettings, PluginListing } from '@lostgradient/bureau';
+import type { BureauPluginEntry, BureauPluginSettings } from '@lostgradient/bureau';
+import anthropic from '@lostgradient/plugin-anthropic';
+import gemini from '@lostgradient/plugin-gemini';
+import openai from '@lostgradient/plugin-openai';
 
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
 
 /**
  * The plugins the workspace ships, in load order. `HostOptions.plugins` replaces this list for a
- * host that must load others, such as a test. There are none yet: a workspace plugin adds its
- * entry here, with `source: 'package'` and its package name as `location`.
+ * host that must load others, such as a test. A workspace plugin adds its entry here, with
+ * `source: 'package'` and its package name as `location`.
  */
 export function workspacePlugins(): readonly BureauPluginEntry[] {
-  return [];
+  return [
+    { descriptor: anthropic, source: 'package', location: '@lostgradient/plugin-anthropic' },
+    { descriptor: openai, source: 'package', location: '@lostgradient/plugin-openai' },
+    { descriptor: gemini, source: 'package', location: '@lostgradient/plugin-gemini' },
+  ];
 }
 
 /** The fields an entry of the `plugins` key may hold. */
@@ -91,33 +98,4 @@ export function readPluginSettings(
     throw new ProviderConfigurationError(path, 'the file', 'expected a JSON object.');
   }
   return parsePluginSettings(parsed, path);
-}
-
-/** A model provider and the Bungalow secret that holds its API key. */
-export type ProviderSecret = {
-  /** The provider's name. */
-  readonly name: string;
-  /** The Bungalow secret key that holds its API key. */
-  readonly secretKey: string;
-};
-
-/**
- * The providers `/host/paths` reports: those the plugins contribute, each with its first declared
- * secret (a provider has one API key), and the host's own for any name no plugin carries. A plugin
- * that carries a built-in provider's name replaces it, so the provider plugins that arrive with
- * COR-1884 take over without a second list.
- */
-export function providerSecrets(
-  listing: readonly PluginListing[],
-  builtIn: readonly ProviderSecret[],
-): readonly ProviderSecret[] {
-  const names = new Set(listing.map((plugin) => plugin.descriptor.name));
-  const contributed = listing.flatMap((plugin): ProviderSecret[] => {
-    const key = plugin.descriptor.secrets[0]?.key;
-    const providesModels = plugin.contributions.some((entry) => entry.kind === 'provider');
-    return providesModels && key !== undefined
-      ? [{ name: plugin.descriptor.name, secretKey: key }]
-      : [];
-  });
-  return [...builtIn.filter((provider) => !names.has(provider.name)), ...contributed];
 }

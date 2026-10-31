@@ -8,6 +8,7 @@
  * the same `ScriptedFetch`/harness support (`workers-route-test-support.test-support.ts`,
  * `workers-route-test-harness.test-harness.svelte`).
  */
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { fireEvent, render, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window, type DetachedWindowAPI } from 'happy-dom';
@@ -113,7 +114,7 @@ describe('Workers route — the Workers list', () => {
 
     const summary = await findByTestId('workers-summary');
     expect(summary.textContent).toBe(
-      '1 of 2 connected · 2 running · 12 waiting · 2 failed for good',
+      '2 of 2 connected · 2 running · 12 waiting · 2 failed for good',
     );
     expect(await findByRole('tab', { name: 'Workers', selected: true })).not.toBeNull();
     expect(queryByText('Total workers')).toBeNull();
@@ -148,6 +149,36 @@ describe('Workers route — the Workers list', () => {
     expect(await findByText(/No worker with the ID wkr_gone/)).not.toBeNull();
     await fireEvent.click(await findByRole('button', { name: 'Back to all workers' }));
     expect(router.search.get('worker')).toBeNull();
+  });
+});
+
+describe("Workers route — the open worker's evidence", () => {
+  test("a failed registration-rejection read does not hide the open worker's manifest", async () => {
+    scripted = new ScriptedFetch();
+    routeHappyPaths(scripted, { workers: [worker({ id: 'wkr_selected' })] });
+    scripted.routeJsonRpcMethodError(
+      'weft.workers.rejections',
+      422,
+      'rejection log unavailable',
+      'invalid-request',
+    );
+
+    resetLocation('/health/workers?worker=wkr_selected');
+    const { findByTestId, queryClient } = await renderWorkersRoute();
+
+    const detail = await findByTestId('worker-detail');
+    // Whichever the panel settles on first: the manifest read succeeded (the server has no manifest
+    // for the worker), so it must say that and never the unrelated rejection read's fault.
+    const rejectionFailed = () =>
+      queryClient.getQueryState(queryKeys.workers.rejections())?.status === 'error';
+    const panelSettled = () =>
+      detail.textContent.includes('Worker no longer connected') ||
+      detail.textContent.includes('rejection log unavailable');
+    await waitUntil(() => rejectionFailed() && panelSettled(), {
+      message: 'the rejection read to fail and the manifest panel to settle',
+    });
+    expect(detail.textContent).toContain('Worker no longer connected');
+    expect(detail.textContent).not.toContain('rejection log unavailable');
   });
 });
 
