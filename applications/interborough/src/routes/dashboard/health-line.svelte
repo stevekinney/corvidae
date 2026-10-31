@@ -1,8 +1,9 @@
 <script lang="ts">
   /**
-   * Critical-alerts band (plan §9.1, this track's brief): diagnostic chips
-   * (`GET /api/v1/tasks/diagnostics`, scope `system:read`) + reviews-near-
-   * timeout (`listReviews`, scope `reviews:read`), each deep-linking. See
+   * The Health overview's one health line: a dot and a sentence that say whether anything needs
+   * attention, and below it the things that do, as chips that each deep-link: task diagnostics
+   * (`GET /api/v1/tasks/diagnostics`, scope `system:read`) and reviews near their
+   * timeout (`listReviews`, scope `reviews:read`). See
    * `./critical-alerts.ts`'s module doc for why a "lease contested" chip is
    * intentionally omitted (COR-124 admits only worker-diagnostics and
    * task-detail lease fields; engine lease health is on System → Health).
@@ -16,9 +17,11 @@
    */
   import type { HttpClient, PendingReviewEntry, ReviewListEntry } from '@lostgradient/weft';
 
+  import { Skeleton, StatusDot } from '@lostgradient/cinder';
   import { Lock } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
+  import { HEALTH_OVERVIEW_COPY } from '../../app/copy.ts';
   import { useFleetEventsLive } from '../../app/live-polling.svelte.ts';
   import { getClient } from '../../lib/client.ts';
   import { getPrincipalStore, isForbidden, scopeReason } from '../../lib/scopes.svelte.ts';
@@ -158,60 +161,78 @@
     return null;
   });
 
-  const hasVisibleContent = $derived(chips.length > 0 || deniedScope !== null);
+  /** Danger when any chip is, warning for any other thing that needs attention, and success for none. */
+  const tone = $derived<'success' | 'warning' | 'danger'>(
+    chips.some((chip) => chip.tone === 'danger')
+      ? 'danger'
+      : chips.length > 0
+        ? 'warning'
+        : 'success',
+  );
+  const summary = $derived(
+    chips.length === 0
+      ? HEALTH_OVERVIEW_COPY.allClear
+      : HEALTH_OVERVIEW_COPY.needsAttention(chips.length),
+  );
 </script>
 
 {#if bothScopesDenied}
-  <div class="weft-critical-alerts-band__lock">
+  <div class="weft-health-line weft-health-line--locked">
     <Lock aria-hidden="true" size={15} />
-    <span>{scopeReason('system:read', 'reviews:read')} to see critical alerts here.</span>
+    <span>{scopeReason('system:read', 'reviews:read')} to see what needs attention here.</span>
   </div>
 {:else if isLoading}
   <div
-    class="weft-critical-alerts-band__skeleton"
+    class="weft-health-line__skeleton"
     role="status"
     aria-busy="true"
-    aria-label="Loading alerts"
+    aria-label="Loading the health line"
   >
-    <div class="weft-alert-chip-skeleton"></div>
-    <div class="weft-alert-chip-skeleton"></div>
-    <div class="weft-alert-chip-skeleton"></div>
+    <Skeleton height="1.5rem" width="16rem" />
   </div>
-{:else if hasVisibleContent}
-  <div class="weft-critical-alerts-band">
-    {#each chips as chip (chip.id)}
-      <a
-        href={router.href(chip.href)}
-        class="weft-alert-chip"
-        data-tone={chip.tone}
-        onclick={(event) => {
-          event.preventDefault();
-          router.navigate(chip.href);
-        }}
-      >
-        <span class="weft-alert-chip__label">{chip.label}</span>
-      </a>
-      {#if chip.workflow}
-        {@const workflowHref = chip.workflow.href}
-        <a
-          href={router.href(workflowHref)}
-          class="weft-alert-chip weft-alert-chip--workflow"
-          data-tone={chip.tone}
-          aria-label={`Open workflow ${chip.workflow.id}`}
-          onclick={(event) => {
-            event.preventDefault();
-            router.navigate(workflowHref);
-          }}
-        >
-          <span class="weft-alert-chip__label">Open workflow</span>
-        </a>
-      {/if}
-    {/each}
-    {#if deniedScope}
-      <span class="weft-critical-alerts-band__partial-lock">
-        <Lock aria-hidden="true" size={13} />
-        {scopeReason(deniedScope)}
-      </span>
+{:else}
+  <div class="weft-health-line" data-tone={tone}>
+    <p class="weft-health-line__summary">
+      <StatusDot status={tone} labelVisible={false} />
+      {summary}
+    </p>
+    {#if chips.length > 0 || deniedScope}
+      <div class="weft-health-line__chips">
+        {#each chips as chip (chip.id)}
+          <a
+            href={router.href(chip.href)}
+            class="weft-alert-chip"
+            data-tone={chip.tone}
+            onclick={(event) => {
+              event.preventDefault();
+              router.navigate(chip.href);
+            }}
+          >
+            <span class="weft-alert-chip__label">{chip.label}</span>
+          </a>
+          {#if chip.workflow}
+            {@const workflowHref = chip.workflow.href}
+            <a
+              href={router.href(workflowHref)}
+              class="weft-alert-chip weft-alert-chip--workflow"
+              data-tone={chip.tone}
+              aria-label={`Open workflow ${chip.workflow.id}`}
+              onclick={(event) => {
+                event.preventDefault();
+                router.navigate(workflowHref);
+              }}
+            >
+              <span class="weft-alert-chip__label">Open workflow</span>
+            </a>
+          {/if}
+        {/each}
+        {#if deniedScope}
+          <span class="weft-health-line__partial-lock">
+            <Lock aria-hidden="true" size={13} />
+            {scopeReason(deniedScope)}
+          </span>
+        {/if}
+      </div>
     {/if}
   </div>
 {/if}

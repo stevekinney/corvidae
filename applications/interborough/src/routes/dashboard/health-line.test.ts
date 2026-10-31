@@ -1,5 +1,5 @@
 /**
- * Component tests for `<CriticalAlertsBand>` (plan §9.1, this track's
+ * Component tests for `<HealthLine>` (plan §9.1, this track's
  * brief). Covers rendered chips, the both-scopes-denied lock state, and the
  * 403-degrades-the-principal path (plan §6). Its local client double avoids
  * mutating `globalThis.fetch`, which must remain isolated while Bun executes
@@ -15,7 +15,7 @@ import { HttpClient, HttpClientError } from '@lostgradient/weft';
 import { invalidateForTaskEvent } from '../../app/task-event-queries.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { TASK_HEARTBEAT_STALE_AFTER_MS } from '../workers/worker-catalog-types.ts';
-import CriticalAlertsBandHarness from './critical-alerts-band-test-harness.test-harness.svelte';
+import HealthLineHarness from './health-line-test-harness.test-harness.svelte';
 
 // This component waits for two independently scheduled TanStack Query
 // observers. Keep the established full-suite window rather than depending on
@@ -67,21 +67,22 @@ function alertClient(options: {
   return client;
 }
 
-describe('CriticalAlertsBand', () => {
-  test('renders nothing when diagnostics are clean and no reviews are near timeout', async () => {
+describe('HealthLine', () => {
+  test('says all is clear, with no chips, when diagnostics are clean and no reviews are near timeout', async () => {
     const client = alertClient({
       diagnostics: { items: [], summary: EMPTY_DIAGNOSTICS_SUMMARY, limit: 50 },
       reviews: [],
     });
 
     let queryClient!: QueryClient;
-    const { container, queryByLabelText } = render(CriticalAlertsBandHarness, {
+    const { container, getByText, queryByLabelText } = render(HealthLineHarness, {
       props: { client, onQueryClientReady: (value) => (queryClient = value) },
     });
 
     await waitForSettledQueries(queryClient);
-    expect(queryByLabelText('Loading alerts')).toBeNull();
-    expect(container.textContent).toBe('');
+    expect(queryByLabelText('Loading the health line')).toBeNull();
+    expect(getByText('All clear. Nothing needs attention.')).not.toBeNull();
+    expect(container.querySelectorAll('a')).toHaveLength(0);
   });
 
   test('asks for stale heartbeats at the Workers route threshold', async () => {
@@ -93,7 +94,7 @@ describe('CriticalAlertsBand', () => {
     });
 
     let queryClient!: QueryClient;
-    render(CriticalAlertsBandHarness, {
+    render(HealthLineHarness, {
       props: { client, onQueryClientReady: (value) => (queryClient = value) },
     });
 
@@ -114,16 +115,16 @@ describe('CriticalAlertsBand', () => {
     });
 
     let queryClient!: QueryClient;
-    const { queryByLabelText } = render(CriticalAlertsBandHarness, {
+    const { queryByLabelText } = render(HealthLineHarness, {
       props: { client, onQueryClientReady: (value) => (queryClient = value) },
     });
 
-    expect(queryByLabelText('Loading alerts')).not.toBeNull();
+    expect(queryByLabelText('Loading the health line')).not.toBeNull();
 
     resolveReviews([]);
 
     await waitForSettledQueries(queryClient);
-    expect(queryByLabelText('Loading alerts')).toBeNull();
+    expect(queryByLabelText('Loading the health line')).toBeNull();
   });
 
   test('renders a diagnostic chip that deep-links to the workers queue view', async () => {
@@ -136,7 +137,7 @@ describe('CriticalAlertsBand', () => {
       reviews: [],
     });
 
-    const { getByText } = render(CriticalAlertsBandHarness, { props: { client } });
+    const { getByText } = render(HealthLineHarness, { props: { client } });
 
     await waitFor(
       () => expect(getByText('3 dead-lettered tasks')).not.toBeNull(),
@@ -144,6 +145,9 @@ describe('CriticalAlertsBand', () => {
     );
     const link = getByText('3 dead-lettered tasks').closest('a');
     expect(link?.getAttribute('href')).toBe('/health/workers?diagnostic=deadLettered');
+    // One thing needs attention, so the line says so and is not the all-clear.
+    expect(getByText('1 thing needs attention')).not.toBeNull();
+    expect(link?.closest('.weft-health-line')?.getAttribute('data-tone')).toBe('danger');
   });
 
   test('a chip whose items all belong to one workflow also links to that run', async () => {
@@ -166,7 +170,7 @@ describe('CriticalAlertsBand', () => {
       reviews: [],
     });
 
-    const { getByText, getByRole } = render(CriticalAlertsBandHarness, { props: { client } });
+    const { getByText, getByRole } = render(HealthLineHarness, { props: { client } });
 
     await waitFor(
       () => expect(getByText('1 dead-lettered task')).not.toBeNull(),
@@ -207,7 +211,7 @@ describe('CriticalAlertsBand', () => {
       ],
     });
 
-    const { getByText } = render(CriticalAlertsBandHarness, { props: { client } });
+    const { getByText } = render(HealthLineHarness, { props: { client } });
 
     await waitFor(
       () => expect(getByText('1 review near timeout')).not.toBeNull(),
@@ -223,13 +227,13 @@ describe('CriticalAlertsBand', () => {
       reviews: [],
     });
 
-    const { getByText } = render(CriticalAlertsBandHarness, {
+    const { getByText } = render(HealthLineHarness, {
       props: { client, scopes: [] },
     });
 
     await waitFor(() =>
       expect(
-        getByText('Requires system:read, reviews:read to see critical alerts here.'),
+        getByText('Requires system:read, reviews:read to see what needs attention here.'),
       ).not.toBeNull(),
     );
   });
@@ -253,7 +257,7 @@ describe('CriticalAlertsBand', () => {
       ],
     });
 
-    const { getByText } = render(CriticalAlertsBandHarness, { props: { client } });
+    const { getByText } = render(HealthLineHarness, { props: { client } });
 
     await waitFor(
       () => expect(getByText('1 review near timeout')).not.toBeNull(),
@@ -272,7 +276,7 @@ describe('CriticalAlertsBand', () => {
       reviews: Promise.reject(new HttpClientError(403, 'Forbidden')),
     });
 
-    const { getByText } = render(CriticalAlertsBandHarness, { props: { client } });
+    const { getByText } = render(HealthLineHarness, { props: { client } });
 
     await waitFor(
       () => expect(getByText('3 dead-lettered tasks')).not.toBeNull(),
@@ -287,12 +291,12 @@ describe('CriticalAlertsBand', () => {
       reviews: Promise.reject(new HttpClientError(403, 'Forbidden')),
     });
 
-    const { getByText } = render(CriticalAlertsBandHarness, { props: { client } });
+    const { getByText } = render(HealthLineHarness, { props: { client } });
 
     await waitFor(
       () =>
         expect(
-          getByText('Requires system:read, reviews:read to see critical alerts here.'),
+          getByText('Requires system:read, reviews:read to see what needs attention here.'),
         ).not.toBeNull(),
       WAIT_FOR_TWO_QUERIES,
     );
@@ -321,7 +325,7 @@ describe('CriticalAlertsBand', () => {
       ],
     });
 
-    const { getByText } = render(CriticalAlertsBandHarness, { props: { client } });
+    const { getByText } = render(HealthLineHarness, { props: { client } });
 
     await waitFor(
       () => expect(getByText('3 dead-lettered tasks')).not.toBeNull(),
@@ -347,11 +351,12 @@ describe('CriticalAlertsBand', () => {
     Object.defineProperty(client, 'listReviews', { value: () => Promise.resolve([]) });
 
     let queryClient!: QueryClient;
-    const { container, findByText } = render(CriticalAlertsBandHarness, {
+    const { container, findByText } = render(HealthLineHarness, {
       props: { client, onQueryClientReady: (value) => (queryClient = value) },
     });
     await waitForSettledQueries(queryClient);
-    expect(container.textContent).toBe('');
+    expect(container.textContent).toContain('All clear. Nothing needs attention.');
+    expect(container.querySelectorAll('a')).toHaveLength(0);
 
     // The server dead-letters a result; the fleet feed's event is all the band hears.
     diagnostics = {

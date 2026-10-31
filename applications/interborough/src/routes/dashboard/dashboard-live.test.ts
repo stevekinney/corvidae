@@ -13,8 +13,8 @@ import {
   fetchCount,
   mountLiveView,
 } from '../live-feeds/live-site.test-support.ts';
-import CriticalAlertsBand from './critical-alerts-band.svelte';
 import { ScriptedFetch } from './dashboard-test-support.test-support.ts';
+import HealthLine from './health-line.svelte';
 import DashboardIndex from './index.svelte';
 
 const THIRTY_SECONDS = 30_000;
@@ -62,7 +62,7 @@ describe('the Engine page’s health probe', () => {
   });
 });
 
-describeLiveSite('the critical alerts band’s pending reviews', {
+describeLiveSite('the health line’s pending reviews', {
   intervalMilliseconds: THIRTY_SECONDS,
   watched: [queryKeys.reviews.list({ status: 'pending' })],
   events: [
@@ -84,7 +84,7 @@ describeLiveSite('the critical alerts band’s pending reviews', {
       },
     });
     scripted.routeUrl('/v1/reviews', []);
-    return mountLiveView({ component: CriticalAlertsBand });
+    return mountLiveView({ component: HealthLine });
   },
   restore,
 });

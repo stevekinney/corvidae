@@ -1,31 +1,28 @@
 <script lang="ts">
   /**
-   * Health (`/health`; plan §9.1; design `Weft UI.dc.html` dashboard screen), the engine's
-   * overview. The sidebar's Health item is the way in to it, and its links are the way in to the
-   * engine's other pages: Workers, Storage, System and the audit log.
-   * Three bands — critical alerts, aggregate cards, recent-activity feed —
-   * behind a page-level state machine matching the design's four states
-   * (default/loading/empty/unreachable, Appendix B). Bands own their own
-   * independent skeletons/errors for anything past this initial gate (this
-   * track's brief: "independent per-band skeletons").
+   * Health (`/health`), the engine's overview. The sidebar's Health item is the way in to it, and
+   * its links are the way in to the engine's other pages: Workers, Storage and the audit log.
+   * Three bands, each reading on its own: one health line, four counts that open the list they
+   * counted, and a window of the latest six things that happened. They sit behind a page-level
+   * state machine (default, loading, empty, unreachable); past that gate each band has its own
+   * skeleton and its own failure, so one slow read never holds the others.
    *
    * Query option getters track reactive inputs, including the health gate
    * below. Results expose reactive properties directly and their effects
    * are disposed with the component.
    */
-  import { ArrowRight, Rocket, WifiOff } from '@lucide/svelte';
-  import { Button, EmptyState, Link, Skeleton } from '@lostgradient/cinder';
+  import { ArrowRight, Rocket } from '@lucide/svelte';
+  import { Button, EmptyState, ErrorState, Link, PageHeader, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { getClient } from '../../lib/client.ts';
-  import { formatRelativeTime } from '../../lib/format/index.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { NAVIGATION_COPY, VIEW_COPY } from '../../app/copy.ts';
-  import AggregateCardsBand from './aggregate-cards-band.svelte';
+  import HealthCounts from './health-counts.svelte';
   import { parseWorkflowAggregateResult } from './aggregate-output.ts';
   import ActivityFeedBand from './activity-feed-band.svelte';
-  import CriticalAlertsBand from './critical-alerts-band.svelte';
+  import HealthLine from './health-line.svelte';
   import { probeHealth } from './health-probe.ts';
 
   const client = getClient();
@@ -57,7 +54,7 @@
   const SECTIONS = [
     { label: VIEW_COPY.workers.label, path: '/health/workers' },
     { label: VIEW_COPY.storage.label, path: '/health/storage' },
-    { label: VIEW_COPY.audit.label, path: '/health/audit' },
+    { label: NAVIGATION_COPY.auditLog, path: '/health/audit' },
   ] as const;
 
   function openSection(event: MouseEvent, path: string): void {
@@ -70,23 +67,18 @@
 </script>
 
 <div class="weft-dashboard">
-  <div class="weft-dashboard__header">
-    <div>
-      <h1 class="weft-dashboard__title">{VIEW_COPY.health.label}</h1>
-      {#if healthQuery.dataUpdatedAt > 0}
-        <p class="weft-dashboard__subtitle">
-          Refreshed {formatRelativeTime(healthQuery.dataUpdatedAt)}
-        </p>
-      {/if}
-    </div>
-    <nav class="weft-dashboard__sections" aria-label={NAVIGATION_COPY.healthSections}>
-      {#each SECTIONS as section (section.path)}
-        <Link href={router.href(section.path)} onclick={(event) => openSection(event, section.path)}
-          >{section.label}</Link
-        >
-      {/each}
-    </nav>
-  </div>
+  <PageHeader title={VIEW_COPY.health.label} headingLevel={1}>
+    {#snippet actions()}
+      <nav class="weft-dashboard__sections" aria-label={NAVIGATION_COPY.healthSections}>
+        {#each SECTIONS as section (section.path)}
+          <Link
+            href={router.href(section.path)}
+            onclick={(event) => openSection(event, section.path)}>{section.label}</Link
+          >
+        {/each}
+      </nav>
+    {/snippet}
+  </PageHeader>
 
   {#if isGateLoading}
     <div
@@ -95,32 +87,28 @@
       aria-busy="true"
       aria-label="Loading the health overview"
     >
+      <Skeleton height="1.5rem" width="16rem" />
       <div class="weft-dashboard__gate-skeleton-grid">
-        <Skeleton height="7.5rem" />
-        <Skeleton height="7.5rem" />
-        <Skeleton height="8.2rem" />
-        <Skeleton height="8.2rem" />
+        <Skeleton height="4.5rem" />
+        <Skeleton height="4.5rem" />
+        <Skeleton height="4.5rem" />
+        <Skeleton height="4.5rem" />
       </div>
       <Skeleton height="12rem" />
     </div>
   {:else if isUnreachable}
     <div class="weft-dashboard__full-state">
-      <EmptyState title="Server unreachable" description="The health probe failed to respond.">
-        {#snippet icon()}
-          <WifiOff aria-hidden="true" size={24} />
-        {/snippet}
-        {#snippet action()}
-          <Button
-            variant="secondary"
-            label="Retry probe"
-            onclick={() => void healthQuery.refetch()}
-          />
-        {/snippet}
-      </EmptyState>
+      <ErrorState
+        title="Server unreachable"
+        description="The health probe failed to respond."
+        retryLabel="Retry probe"
+        onRetry={() => void healthQuery.refetch()}
+      />
     </div>
   {:else if isEmpty}
     <div class="weft-dashboard__full-state">
       <EmptyState
+        kind="first-use"
         title="No runs yet"
         description="Runs from chats, schedules, and workflows show up here once one has started."
       >
@@ -141,8 +129,8 @@
       </EmptyState>
     </div>
   {:else}
-    <CriticalAlertsBand />
-    <AggregateCardsBand {statusQuery} />
+    <HealthLine />
+    <HealthCounts {statusQuery} />
     <ActivityFeedBand />
   {/if}
 </div>
