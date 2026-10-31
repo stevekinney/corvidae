@@ -1242,6 +1242,11 @@ export const AUDIT_COPY = {
     description: 'Nothing in the trail matches this search. Change or clear a filter to see more.',
     clear: 'Clear filters',
   },
+  /** An address that names a record the page could not show: the bounded read of the trail did not reach it. */
+  recordNotFound: {
+    more: 'That record was not found in the recent trail. Load more to keep looking.',
+    end: 'That record is not in the trail.',
+  },
   /** A list with more pages to read, where none of the records read so far matches the search. */
   noLoadedMatches: {
     title: 'No loaded record matches',

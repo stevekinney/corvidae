@@ -491,6 +491,32 @@ describe('an address that names a record', () => {
   });
 });
 
+describe('an address that names a record that is not there', () => {
+  test('reads twenty pages, then says the record was not found and leaves Load more', async () => {
+    landAt('/health/audit?record=nowhere%231%230');
+    const pageOf = (cursor: unknown) => {
+      const page = typeof cursor === 'string' ? Number(cursor.slice(1)) : 0;
+      return {
+        records: [record(page + 1)],
+        nextCursor: `c${String(page + 1)}`,
+      };
+    };
+    stub = installBureauStub({
+      'bureau.audit.query': (params) =>
+        isProbe(params) || isTypesRead(params)
+          ? { records: [record(1)], nextCursor: null }
+          : pageOf(params['cursor']),
+    });
+    const { findByText, getByRole } = render(RouteOutletHarness, {
+      props: { client: client(), scopes: AUTHORIZATION_SCOPES },
+    } as never);
+
+    await findByText(AUDIT_COPY.recordNotFound.more);
+    expect(queries()).toHaveLength(20);
+    expect(getByRole('button', { name: AUDIT_COPY.loadMore })).not.toBeNull();
+  });
+});
+
 describe('Who', () => {
   const people = {
     records: [

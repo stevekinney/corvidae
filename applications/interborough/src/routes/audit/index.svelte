@@ -69,6 +69,9 @@
   /** The Type select's value for "a type that is not in the list", which brings a field to type it in. */
   const OTHER_TYPE = '__other__';
 
+  /** How many pages an address that names a record reads, looking for it. */
+  const RECORD_SEARCH_PAGES = 20;
+
   // The filters the address holds are the ones the trail is asked with.
   const applied = $derived(draftFromSearch(router.current.search));
   const filter = $derived(filterOf(applied));
@@ -117,11 +120,20 @@
   // An address that names a record (`?record=`) opens it, even when it is on a later page: the list
   // resolves its selection against the rows it holds, so read pages until the record is among them
   // or the trail has no more.
+  // The read stops after `RECORD_SEARCH_PAGES` pages, so a link to a record that is gone, or far
+  // back, cannot read the whole trail; the page then says so and Load more continues by hand.
   const wantedRecord = $derived(router.current.search.get('record'));
+  const searchedPages = $derived(trail.data?.pages.length ?? 0);
+  const recordMissing = $derived(
+    wantedRecord !== null &&
+      !trail.isPending &&
+      !trail.isError &&
+      !trail.isFetchingNextPage &&
+      !rows.some((row) => row.key === wantedRecord),
+  );
   $effect(() => {
-    if (wantedRecord === null || trail.isPending || trail.isError) return;
-    if (!trail.hasNextPage || trail.isFetchingNextPage) return;
-    if (rows.some((row) => row.key === wantedRecord)) return;
+    if (!recordMissing || !trail.hasNextPage) return;
+    if (searchedPages >= RECORD_SEARCH_PAGES) return;
     void trail.fetchNextPage();
   });
 
@@ -290,6 +302,14 @@
       <Button type="button" variant="secondary" onclick={clear}>{copy.clearAction}</Button>
     </div>
   </form>
+
+  {#if recordMissing && (!trail.hasNextPage || searchedPages >= RECORD_SEARCH_PAGES)}
+    <Alert variant="info">
+      <p class="ib-audit__alert-body">
+        {trail.hasNextPage ? copy.recordNotFound.more : copy.recordNotFound.end}
+      </p>
+    </Alert>
+  {/if}
 
   {#if trail.isError}
     <Alert variant="danger">

@@ -66,22 +66,25 @@
   let confirmSave = $state(false);
   let confirmDelete = $state(false);
   /**
-   * The value the pane showed when the person opened the editor or the delete confirmation. The
-   * conditional write is fenced on this, not on the entry as it is at Save: a refetch after another
-   * writer's change replaces `entry.value`, and fencing on that would let the save overwrite it.
+   * The value the pane showed when the person opened the editor, and, separately, the delete
+   * confirmation. A conditional write is fenced on its own action's snapshot, not on the entry as it
+   * is at confirmation: a refetch after another writer's change replaces `entry.value`, and fencing
+   * on that would let the write overwrite it. The two never share a slot, so opening one action
+   * cannot move the other's fence.
    */
-  let expectedValue = $state<Uint8Array | undefined>(undefined);
+  let editFence = $state<Uint8Array | undefined>(undefined);
+  let deleteFence = $state<Uint8Array | undefined>(undefined);
 
   const draftInvalid = $derived(editing && text !== undefined && isJson(text) && !isJson(draft));
 
   function startEditing(): void {
     draft = text ?? '';
-    expectedValue = entry.value;
+    editFence = entry.value;
     editing = true;
   }
 
   function startDeleting(): void {
-    expectedValue = entry.value;
+    deleteFence = entry.value;
     confirmDelete = true;
   }
 
@@ -131,6 +134,9 @@
     if (!applied) {
       // The cached entry is the stale value that fenced this write; drop it so opening the key again shows what it holds now.
       await refresh();
+      // The refetch can remove this pane (another writer deleted the key), taking the error below
+      // with it; a toast outlives it.
+      showToast(copy.changedUnderYou, { variant: 'danger' });
       throw new WriteRefusedError(copy.changedUnderYou);
     }
   }
@@ -269,7 +275,7 @@
     saveMutation.mutate({
       key: entry.key,
       value: draft,
-      expected: expectedValue ?? entry.value,
+      expected: editFence ?? entry.value,
     })}
 />
 
@@ -279,8 +285,7 @@
   description={STORAGE_COPY.confirmDelete.description(entry.key, conditionalBatch === false)}
   confirmLabel={STORAGE_COPY.confirmDelete.confirm}
   destructive
-  onConfirm={() =>
-    deleteMutation.mutate({ key: entry.key, expected: expectedValue ?? entry.value })}
+  onConfirm={() => deleteMutation.mutate({ key: entry.key, expected: deleteFence ?? entry.value })}
 />
 
 <style>
