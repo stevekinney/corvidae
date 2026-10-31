@@ -146,18 +146,6 @@
     },
     {
       "rule": "app-header-class",
-      "file": "src/styles/reviews.css",
-      "subject": ".weft-reviews-route__header",
-      "issue": "COR-1849"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/styles/reviews.css",
-      "subject": ".weft-review-detail__header",
-      "issue": "COR-1849"
-    },
-    {
-      "rule": "app-header-class",
       "file": "src/styles/schedules.css",
       "subject": ".ib-schedules__header",
       "issue": "COR-1859"

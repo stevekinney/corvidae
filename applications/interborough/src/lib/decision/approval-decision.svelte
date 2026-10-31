@@ -1,13 +1,14 @@
 <script lang="ts">
   /**
    * One tool approval as a flat row: the question on the left, Deny and Approve on the right, on a
-   * tinted band with no border and no card. It is the one decision control, so the chat, the
-   * reviews list, and a run's page all ask the same way. With `withNote` the row has an optional
-   * note the agent reads when the call is denied (sent as a rejection with that reason).
+   * tinted band with no border and no card. It is the one decision control of the chat and of a
+   * run's page, so both ask the same way. The reviews inbox decides in its own pane
+   * (`routes/reviews/approval-pane.svelte`), which adds a note to the agent and allowing the tool
+   * for the rest of the chat.
    */
-  import { Button, Input } from '@lostgradient/cinder';
+  import { Button } from '@lostgradient/cinder';
 
-  import { CHAT_COPY, REVIEWS_COPY } from '../../app/copy.ts';
+  import { CHAT_COPY } from '../../app/copy.ts';
   import IdentifierText from '../identifier-text.svelte';
 
   interface ApprovalDecisionProps {
@@ -17,51 +18,23 @@
     identifiers: readonly string[];
     /** Whether a decision is being sent, which holds both buttons. */
     deciding: boolean;
-    onDecide: (decision: 'approve' | 'deny', note: string) => void;
-    /** Offer a note to the agent with a denial. */
-    withNote?: boolean;
+    onDecide: (decision: 'approve' | 'deny') => void;
     id: string;
   }
 
-  let {
-    question,
-    identifiers,
-    deciding,
-    onDecide,
-    withNote = false,
-    id,
-  }: ApprovalDecisionProps = $props();
-  let note = $state('');
+  let { question, identifiers, deciding, onDecide, id }: ApprovalDecisionProps = $props();
 </script>
 
 <div class="ib-decision" data-kind="approval">
   <p class="ib-decision__question" id={`${id}-question`}>
     <IdentifierText text={question} {identifiers} />
   </p>
-  {#if withNote}
-    <div class="ib-decision__note">
-      <Input
-        id={`${id}-note`}
-        label={REVIEWS_COPY.noteLabel}
-        labelVisible={false}
-        placeholder={REVIEWS_COPY.noteLabel}
-        bind:value={note}
-        disabled={deciding}
-      />
-    </div>
-  {/if}
   <div class="ib-decision__actions" role="group" aria-labelledby={`${id}-question`}>
-    <Button
-      data-changes
-      variant="secondary"
-      disabled={deciding}
-      onclick={() => onDecide('deny', note.trim())}>{CHAT_COPY.deny}</Button
+    <Button data-changes variant="secondary" disabled={deciding} onclick={() => onDecide('deny')}
+      >{CHAT_COPY.deny}</Button
     >
-    <Button
-      data-changes
-      variant="primary"
-      disabled={deciding}
-      onclick={() => onDecide('approve', note.trim())}>{CHAT_COPY.approve}</Button
+    <Button data-changes variant="primary" disabled={deciding} onclick={() => onDecide('approve')}
+      >{CHAT_COPY.approve}</Button
     >
   </div>
 </div>

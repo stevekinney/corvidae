@@ -192,6 +192,24 @@ export async function listBureauReviews(options?: Options): Promise<readonly Bur
   return reviews;
 }
 
+/**
+ * Every review waiting on the caller, the Bureau's and (for a caller who may read them) the engine's
+ * workflow reviews, in the order the list gives them: the longest waiting first. Every page of them.
+ */
+export async function listPendingReviews(options?: Options): Promise<readonly ListedReview[]> {
+  const reviews: ListedReview[] = [];
+  let pageToken: string | undefined;
+  do {
+    const page = await pageReviews(
+      { status: 'pending', ...(pageToken === undefined ? {} : { pageToken }) },
+      options,
+    );
+    reviews.push(...page.reviews);
+    pageToken = page.nextPageToken ?? undefined;
+  } while (pageToken !== undefined);
+  return reviews;
+}
+
 /** One review by its id, pending or not. One the caller may not see is a not-found fault. */
 export async function getBureauReview(id: string, options?: Options): Promise<BureauReview> {
   return bureauReviewSchema.parse(await callBureau('bureau.reviews.get', { id }, options));

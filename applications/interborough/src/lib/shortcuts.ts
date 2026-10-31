@@ -52,6 +52,12 @@ export interface ShortcutContext {
   readonly routePattern: string | null;
   /** The focus regions that contain the focused element, innermost first. */
   readonly regions: readonly string[];
+  /**
+   * Whether a dialog (the `?` map, the command palette, a confirmation) is open. A dialog owns the
+   * keyboard, so no shortcut acts under it: a key meant for the dialog never decides a review
+   * behind it.
+   */
+  readonly dialogOpen?: boolean;
 }
 
 /** The part of a key event the registry reads, so a test needs no DOM. */
@@ -66,6 +72,13 @@ export interface ShortcutKey {
   readonly altKey: boolean;
   /** Whether the key went to something the person is typing into. */
   readonly editable: boolean;
+  /**
+   * Whether the key is the browser repeating a held key (`KeyboardEvent.repeat`). Every shortcut
+   * here acts once per press, so a repeat never acts and never starts or continues a sequence.
+   * Cinder components that move with a held key (J and K in a list) read their own events and are
+   * not in the registry.
+   */
+  readonly repeat?: boolean;
 }
 
 /** One group of the `?` map, in the shape Cinder's `KeyboardShortcuts` reads. */
@@ -206,6 +219,10 @@ export class ShortcutRegistry {
    * the caller can keep the browser from acting on the key as well.
    */
   handleKey(event: ShortcutKey, context: ShortcutContext, nowMs: number): boolean {
+    if (event.repeat === true || context.dialogOpen === true) {
+      this.#pending = null;
+      return false;
+    }
     if ((event.metaKey || event.ctrlKey) && !event.altKey) {
       this.#pending = null;
       const held = this.#registrations.find(

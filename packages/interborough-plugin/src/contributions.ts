@@ -9,7 +9,7 @@ import type {
   ValidateResponseHook,
   Validator,
 } from '@lostgradient/operative';
-import type { ProviderDefinition } from '@lostgradient/operative/provider-kit';
+import type { BackendDescriptor, ProviderDefinition } from '@lostgradient/operative/provider-kit';
 import type { ActivityDefinition } from '@lostgradient/weft';
 import type { AnyTool, Embedder, InputDetector } from 'armorer';
 import type { z } from 'zod';
@@ -117,6 +117,19 @@ export interface PluginHookActionKind {
   run(context: PluginHookActionContext): Promise<void>;
 }
 
+/**
+ * A model provider a plugin contributes: Operative's provider definition, with the catalog rows its
+ * models appear as. A row's `provider` is the definition's `name`; a row naming another provider
+ * is refused when the plugin loads.
+ */
+export type PluginProvider = ProviderDefinition & {
+  /**
+   * The catalog rows of the provider's models. Absent offers Operative's static rows for the
+   * definition's `name`, which is what a provider package that ships its models there wants.
+   */
+  readonly rows?: readonly BackendDescriptor[];
+};
+
 /** An embedder the `memory.embedder` setting can name. */
 export interface PluginEmbedder {
   /** The embedder's name, unique within the plugin. */
@@ -206,8 +219,8 @@ export interface PluginContributions {
   readonly triggerKinds?: readonly PluginTriggerKind[];
   /** New kinds of hook action. */
   readonly hookActionKinds?: readonly PluginHookActionKind[];
-  /** Model providers. */
-  readonly providers?: readonly ProviderDefinition[];
+  /** Model providers, each with its catalog rows. */
+  readonly providers?: readonly PluginProvider[];
   /** Embedders the `memory.embedder` setting can name. */
   readonly embedders?: readonly PluginEmbedder[];
   /** Detectors run after the default poisoning detector, on memory admission and on recall. */

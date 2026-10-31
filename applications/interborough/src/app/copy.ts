@@ -206,7 +206,7 @@ export const AGENT_EDITOR_COPY = {
     fileLabel: 'Stored in',
     noProvider: {
       configurationStep:
-        'Put this in configuration.json in the bucket. If it exists, add the provider to its providers.',
+        'Put this in configuration.json in the bucket. If it exists, add the provider’s plugin to its plugins.',
       secretStep:
         'Set the provider’s API key in the environment variable shown, then restart the host.',
     },
@@ -280,7 +280,7 @@ export const AGENT_EDITOR_COPY = {
     description:
       'Agents run on a model, and this installation has none connected. Connect a provider, then come back: this page shows the form as soon as the installation offers a model.',
     configurationStep:
-      'Put this in the configuration file. If the file exists, add the provider to its providers.',
+      'Put this in the configuration file. If the file exists, add the provider’s plugin to its plugins.',
     secretStep: 'Save the provider’s API key in its own file, readable only by you (chmod 600).',
     restartStep: 'Restart the host, then check again.',
     reload: 'Check again',
@@ -1913,26 +1913,34 @@ export const TASK_COPY = {
 /** The words `/reviews` uses outside its states. */
 export const REVIEWS_COPY = {
   heading: 'Reviews',
+  description: 'Questions, tool approvals and workflow reviews that are waiting on you.',
+  tabsLabel: 'Reviews by state',
+  tabs: { waiting: 'Waiting', done: 'Done' },
+  /** The accessible name of each list. */
+  listLabel: { waiting: 'Waiting on you', done: 'Decided' },
+  detailLabel: 'Review',
+  /** What the list tab says, with the count waiting. */
+  waitingTab: (count: number): string => (count === 0 ? 'Waiting' : `Waiting (${String(count)})`),
+  /** The status of the list while it is read. */
+  loading: 'Loading reviews',
+  /** What a person sees under the heading of a list that holds more than a page. */
+  loadMore: 'Load more',
+  workflowReview: 'Workflow review',
   /** The label for a review that asks to approve a tool call. */
   toolApproval: 'Tool approval',
   /** The label for a review that asks a question. */
   humanWait: 'Question',
   openChat: 'Open chat',
-  openRun: 'Open run',
   unknownAgent: 'An agent',
   untitledChat: 'Untitled chat',
-  asks: 'asks:',
-  details: 'Details',
   questionFallback: 'It is waiting for your answer.',
   waiting: (count: number): string => `${String(count)} waiting on you`,
-  engineHeading: 'Workflow reviews',
   approve: 'Approve',
   deny: 'Deny',
   reject: 'Reject',
   reasonLabel: 'Reason (required to reject)',
   reasonDescription: 'Sent with the decision. A rejection cannot be sent without one.',
   answerLabel: 'Your answer',
-  sendAnswer: 'Send answer',
   /** Said once under an answer field: what the agent does with the answer. */
   answerHint: 'The agent continues with your answer.',
   /** The optional note sent with a denial, which the agent reads. */
@@ -1955,6 +1963,47 @@ export const REVIEWS_COPY = {
   chooseReview: 'Choose a review from the list.',
   allCaughtUp: 'All caught up',
   nothingWaiting: 'No reviews are waiting on a decision.',
+  nothingDecided: 'Nothing decided yet',
+  nothingDecidedDescription: 'Reviews you approve, deny or answer are listed here.',
+  /** The source line under a question: who asked, where, and since when. */
+  source: {
+    askedBy: 'Asked by',
+    in: 'in',
+    waitingSince: 'waiting since',
+    askedAt: 'asked',
+    thisRun: 'this run',
+    unknownWorkflow: 'a workflow',
+  },
+  /** The ways a review left the queue, in a word. */
+  decided: {
+    waiting: 'Waiting',
+    approved: 'Approved',
+    denied: 'Denied',
+    rejected: 'Rejected',
+    needsChanges: 'Changes requested',
+    answered: 'Answered',
+    closed: 'Closed',
+  },
+  /** Between what became of a review and who did it. */
+  by: 'by',
+  reasonIs: 'Reason',
+  artifactLabel: 'What the workflow asks you to review',
+  answerRecorded: 'The answer was sent to the agent.',
+  allowForChat: 'Allow for the rest of this chat',
+  notRemembered: {
+    title: 'Approved, but not remembered',
+    message: 'The tool will ask again in this chat.',
+  },
+  /** Said under a question that is picked from choices: the number keys. */
+  pickHint: 'Press 1 to 9 to pick a choice.',
+  /** What the open approval would run, and what it was given. */
+  inputLabel: 'Input',
+  noInput: 'This call was given no input.',
+  /** The shortcuts the `?` map lists for this page. */
+  shortcutGroup: 'Reviews',
+  approveShortcut: 'Approve the open review',
+  denyShortcut: 'Deny the open review',
+  pickShortcut: (position: number): string => `Pick choice ${String(position)}`,
   decisionFailed: 'The decision was not recorded',
   /**
    * The Bureau's answer when a decision took effect and only its write into the conversation

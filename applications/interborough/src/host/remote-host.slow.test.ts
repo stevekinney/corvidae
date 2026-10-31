@@ -137,7 +137,7 @@ describe.skipIf(database === null)('a host on Postgres and S3', () => {
     };
     server.put(
       `${prefix}configuration.json`,
-      JSON.stringify({ providers: { anthropic: { models: ['sonnet'] } } }),
+      JSON.stringify({ plugins: { anthropic: { configuration: { models: ['sonnet'] } } } }),
     );
     server.put(
       `${prefix}agents/researcher.md`,

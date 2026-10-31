@@ -1,7 +1,8 @@
 /**
- * The catalog rows are handed to the Bureau as `models.catalog`, so no boot step plans against a
- * provider the configuration does not name. The test wraps `createBureau` to read the rows at the
- * moment the Bureau receives them, and the Bureau's own catalog once it exists.
+ * The catalog rows are built while the Bureau is constructed (`models.catalog` is a factory over
+ * the providers the plugins contribute), so no boot step plans against a provider the
+ * configuration does not name. The test wraps `createBureau` to read the Bureau's own catalog the
+ * moment it exists.
  */
 import { openBungalow } from '@lostgradient/bungalow';
 import { afterAll, afterEach, expect, mock, test } from 'bun:test';
@@ -22,12 +23,11 @@ afterAll(() => {
 void mock.module('@lostgradient/bureau', () => ({
   ...actual,
   createBureau: async (options: Parameters<typeof actual.createBureau>[0]) => {
-    const rows = options.models?.catalog ?? [];
     const bureau = await realCreateBureau(options);
     const catalog = bureau.models.catalog();
     seenWhenCreated.push({
       revision: catalog.revision,
-      pairs: rows.map((descriptor) => `${descriptor.provider}/${descriptor.model}`),
+      pairs: catalog.descriptors.map((descriptor) => `${descriptor.provider}/${descriptor.model}`),
       sources: catalog.descriptors.map((descriptor) => descriptor.source),
     });
     return bureau;
@@ -51,7 +51,7 @@ test('the configured rows are the Bureau’s catalog from its first revision', a
   directories.push(home);
   await writeFile(
     join(home, 'configuration.json'),
-    JSON.stringify({ providers: { gemini: { models: ['pro'] } } }),
+    JSON.stringify({ plugins: { gemini: { configuration: { models: ['pro'] } } } }),
   );
   const bungalow = await openBungalow({
     name: 'interborough',
@@ -65,7 +65,7 @@ test('the configured rows are the Bureau’s catalog from its first revision', a
   closers.push(() => host.close());
 
   expect(seenWhenCreated).toHaveLength(1);
-  // Only the configured row, handed over as `models.catalog`, not the static seed.
+  // Only the configured row, not the static seed.
   expect(seenWhenCreated[0]?.pairs).toEqual(['gemini/gemini-2.5-pro']);
   expect(seenWhenCreated[0]?.sources).toEqual(['operator-override']);
   expect(seenWhenCreated[0]?.revision).toBe(1);

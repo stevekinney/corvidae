@@ -14,8 +14,9 @@ export async function bureauCall(
   request: APIRequestContext,
   method: string,
   params: Record<string, unknown>,
+  origin: string = E2E_BASE_URL,
 ): Promise<unknown> {
-  const response = await request.post(`${E2E_BASE_URL}/bureau/jsonrpc`, {
+  const response = await request.post(`${origin}/bureau/jsonrpc`, {
     data: { jsonrpc: '2.0', id: method, method, params },
   });
   expect(response.ok()).toBe(true);
@@ -35,6 +36,28 @@ export async function taskOfSession(
   const [task] = result.tasks;
   if (task === undefined) throw new Error(`The session ${threadId} has no task.`);
   return task;
+}
+
+/** A review a run is waiting on, as `bureau.reviews.list` shows it. */
+export type WaitingReview = { id: string; runId: string; sessionId?: string; kind: string };
+
+/** The review a session's run is waiting on, once the Bureau lists it. */
+export async function waitingReviewOf(
+  request: APIRequestContext,
+  threadId: string,
+  origin: string = E2E_BASE_URL,
+): Promise<WaitingReview> {
+  let found: WaitingReview | undefined;
+  await expect
+    .poll(async () => {
+      const listed = (await bureauCall(request, 'bureau.reviews.list', {}, origin)) as {
+        reviews: WaitingReview[];
+      };
+      found = listed.reviews.find((review) => review.sessionId === threadId);
+      return found?.id;
+    })
+    .toBeTruthy();
+  return found!;
 }
 
 /** The tasks of a session, newest first. */

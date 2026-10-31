@@ -43,7 +43,7 @@ async function startWithFileAgents(files: Record<string, string>) {
   directories.push(home);
   await writeFile(
     join(home, 'configuration.json'),
-    JSON.stringify({ providers: { anthropic: { models: ['sonnet'] } } }),
+    JSON.stringify({ plugins: { anthropic: { configuration: { models: ['sonnet'] } } } }),
   );
   const bungalow = await openBungalow({
     name: 'interborough',

@@ -255,7 +255,7 @@ test.describe('a new agent on a host with no model provider', () => {
           provider.secretFile,
         );
       }
-      await expect(editor(page)).toContainText('"providers"');
+      await expect(editor(page)).toContainText('"plugins"');
       await expect(editor(page)).toContainText('chmod 600');
 
       // No form: nothing to fill in, nothing to choose, nothing to save.

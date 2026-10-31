@@ -260,6 +260,17 @@ describe('applyFleetEventFrame', () => {
     expect(queryClient.getQueryState(REVIEWS_LIST_KEY_PREFIX)?.isInvalidated).toBe(true);
   });
 
+  test('human-review:completed invalidates the inbox, which sits under the reviews list', () => {
+    const queryClient = new QueryClient();
+    for (const status of ['pending', 'resolved'] as const) {
+      queryClient.setQueryData(queryKeys.reviews.inbox(status), () => []);
+    }
+    applyFleetEventFrame(queryClient, fleetFrame({ kind: 'human-review:completed' }));
+    for (const status of ['pending', 'resolved'] as const) {
+      expect(queryClient.getQueryState(queryKeys.reviews.inbox(status))?.isInvalidated).toBe(true);
+    }
+  });
+
   test('a review frame invalidates the reviews list whether or not it names a workflow', () => {
     for (const workflowId of [undefined, 'wf_1']) {
       const queryClient = new QueryClient();

@@ -8,10 +8,11 @@
 import type { PluginClashParty, PluginContributionKind, PluginProblem } from './plugin-types';
 
 /**
- * A space of names. A contribution kind holds `plugin:name` ids, `plugin` holds plugin names, and
- * `event-kind` holds the event kinds a formatter claims.
+ * A space of names. A contribution kind holds `plugin:name` ids, `plugin` holds plugin names,
+ * `event-kind` holds the event kinds a formatter claims, and `provider-name` holds the bare names
+ * of model providers, which the host resolves a generate by, so two plugins cannot share one.
  */
-export type ClaimSpace = PluginContributionKind | 'plugin' | 'event-kind';
+export type ClaimSpace = PluginContributionKind | 'plugin' | 'event-kind' | 'provider-name';
 
 /** One name in one space. */
 export interface Claim {

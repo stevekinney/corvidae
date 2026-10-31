@@ -168,6 +168,12 @@ export const queryKeys = {
   },
   reviews: {
     list: (filter: ReviewListFilter) => ['reviews', 'list', filter] as const,
+    /**
+     * The inbox's merged list (`bureau.reviews.list`): the Bureau's reviews and the engine's in one
+     * list, waiting (`pending`) or decided (`resolved`). It sits under `['reviews', 'list']`, so a
+     * fleet frame about a review asks it again, and under `['reviews']`, which every decision does.
+     */
+    inbox: (status: 'pending' | 'resolved') => ['reviews', 'list', 'inbox', status] as const,
   },
   /** The Bureau's tasks (`bureau.tasks.*`), apart from `tasks`, which is the engine's task ledger. */
   bureauTasks: {

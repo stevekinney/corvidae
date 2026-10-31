@@ -1,0 +1,18 @@
+{
+  "plugin": "anthropic",
+  "version": "0.1.0",
+  "entries": [
+    {
+      "kind": "configuration",
+      "id": "anthropic",
+      "version": "0.1.0",
+      "schema": "sha256:bd820299252e6e8133d16b688e6aabbe184002d608ff0f272d2399fdb0fa27b3"
+    },
+    {
+      "kind": "provider",
+      "id": "anthropic:anthropic",
+      "version": "0.1.0",
+      "schema": null
+    }
+  ]
+}

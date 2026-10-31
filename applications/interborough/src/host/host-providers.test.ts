@@ -82,32 +82,40 @@ function staticPairs(providers: readonly string[]): string[] {
 }
 
 describe('a configuration that is not valid', () => {
-  test('fails startup naming the file and the field, and releases the home', async () => {
-    const home = await prepareHome({ configuration: { providers: { voyage: {} } } });
-    const failure = await startAt(home).then(
-      () => undefined,
-      (error: unknown) => error,
-    );
-    expect(String(failure)).toContain(join(home, 'configuration.json'));
-    expect(String(failure)).toContain('providers.voyage');
-
-    // The failed start released Bungalow's lock, so a corrected file starts.
-    await writeFile(join(home, 'configuration.json'), JSON.stringify({ providers: {} }));
-    const host = await startAt(home);
-    expect(host.bureau.models.catalog().descriptors).toEqual([]);
-  });
-
-  test('fails startup on an allowlist entry that matches no row', async () => {
+  test('fails startup naming the file and the field when the catalog edits are wrong, and releases the home', async () => {
     const home = await prepareHome({
-      configuration: { providers: { openai: { models: ['gpt-4.1', 'gpt-nonexistent'] } } },
-      secrets: { 'openai-api-key': FIXTURE_KEY },
+      configuration: { catalog: [{ provider: 'anthropic', model: 'sonnet', color: 'red' }] },
     });
     const failure = await startAt(home).then(
       () => undefined,
       (error: unknown) => error,
     );
     expect(String(failure)).toContain(join(home, 'configuration.json'));
-    expect(String(failure)).toContain('providers.openai.models[1]');
+    expect(String(failure)).toContain('catalog[0].color');
+
+    // The failed start released Bungalow's lock, so a corrected file starts.
+    await writeFile(join(home, 'configuration.json'), JSON.stringify({ catalog: [] }));
+    const host = await startAt(home);
+    expect(host.bureau.models.catalog().descriptors).toEqual([]);
+  });
+
+  test('starts, and skips the plugin, on an allowlist entry that matches no row', async () => {
+    const home = await prepareHome({
+      configuration: {
+        plugins: { openai: { configuration: { models: ['gpt-4.1', 'gpt-nonexistent'] } } },
+      },
+      secrets: { 'openai-api-key': FIXTURE_KEY },
+    });
+    const host = await startAt(home);
+    const snapshot = await host.plugins.snapshot();
+    const standing = snapshot.plugins.find((plugin) => plugin.descriptor.name === 'openai');
+    expect(standing).toMatchObject({
+      status: 'skipped',
+      problems: [{ code: 'configuration-invalid', field: 'models[1]' }],
+    });
+    expect(host.bureau.models.catalog().descriptors.map((row) => row.provider)).not.toContain(
+      'openai',
+    );
   });
 });
 
@@ -124,14 +132,14 @@ describe('the installed catalog', () => {
     expect(warnings).toEqual([]);
   });
 
-  test('holds no model when the configuration names no provider', async () => {
-    const host = await start({ configuration: { providers: {} } });
+  test('holds no model when no provider has a key, whatever the configuration says', async () => {
+    const host = await start({ configuration: { providers: { anthropic: {} }, plugins: {} } });
     expect(host.bureau.models.catalog().descriptors).toEqual([]);
   });
 
-  test('is the configured providers’ rows, each stamped as the host’s, and survives a replace', async () => {
+  test('is the keyed providers’ rows, each stamped as the host’s, and survives a replace', async () => {
     const host = await start({
-      configuration: { providers: { anthropic: {}, gemini: { models: ['pro'] } } },
+      configuration: { plugins: { gemini: { configuration: { models: ['pro'] } } } },
       secrets: { 'anthropic-api-key': FIXTURE_KEY, 'gemini-api-key': `${FIXTURE_KEY}-gemini` },
     });
     const expected = [...staticPairs(['anthropic']), 'gemini/gemini-2.5-pro'].toSorted();
@@ -147,16 +155,16 @@ describe('the installed catalog', () => {
     const replaced = host.bureau.models.replace(before.descriptors);
     expect(replaced.revision).toBe(before.revision + 1);
     // Replacing with the rows it already holds keeps exactly those rows, so a replace cannot bring
-    // an unconfigured provider back.
+    // a provider without a key back.
     expect(pairsOf(host)).toEqual(expected);
     expect(host.bureau.models.catalog().descriptors.length).toBe(expected.length);
   });
 
-  test('omits a provider whose key is missing and warns once, naming the provider and key but no value', async () => {
+  test('omits a provider whose key is missing and warns once, naming the provider and key but no value, when it has an allowlist', async () => {
     const warnings: string[] = [];
     const host = await start(
       {
-        configuration: { providers: { anthropic: {}, openai: {} } },
+        configuration: { plugins: { openai: { configuration: { models: ['gpt-4.1'] } } } },
         secrets: { 'anthropic-api-key': FIXTURE_KEY },
       },
       { warn: (message) => warnings.push(message) },
@@ -199,7 +207,7 @@ describe('an agent assigned a catalog model', () => {
     const handed: ProviderConfiguration[] = [];
     const host = await start(
       {
-        configuration: { providers: { anthropic: { models: ['sonnet'] } } },
+        configuration: { plugins: { anthropic: { configuration: { models: ['sonnet'] } } } },
         secrets: { 'anthropic-api-key': FIXTURE_KEY },
       },
       {
@@ -241,7 +249,7 @@ describe('an agent assigned a catalog model', () => {
     );
     try {
       const host = await start({
-        configuration: { providers: { anthropic: {} } },
+        configuration: {},
         secrets: { 'anthropic-api-key': `  ${FIXTURE_KEY}\n` },
       });
       // No `resolveProviderGenerate` option: this is the resolver the host ships with.
@@ -254,7 +262,7 @@ describe('an agent assigned a catalog model', () => {
 
   test('sends the trimmed secret to the provider through the shipped default resolver', async () => {
     const host = await start({
-      configuration: { providers: { anthropic: {} } },
+      configuration: {},
       secrets: { 'anthropic-api-key': `  ${FIXTURE_KEY}\n` },
     });
     // The fetch stub is installed after the host starts, so it sees only the run's request.
@@ -300,7 +308,7 @@ describe('an agent assigned a catalog model', () => {
     const handed: ProviderConfiguration[] = [];
     const host = await start(
       {
-        configuration: { providers: { anthropic: {} } },
+        configuration: {},
         secrets: { 'anthropic-api-key': `\n  ${FIXTURE_KEY}  \n` },
       },
       {
@@ -319,7 +327,6 @@ describe('an agent assigned a catalog model', () => {
   test('cannot be given a model the catalog does not hold', async () => {
     const host = await start(
       {
-        configuration: { providers: { anthropic: {}, openai: {} } },
         secrets: { 'anthropic-api-key': FIXTURE_KEY },
       },
       { warn: () => undefined },

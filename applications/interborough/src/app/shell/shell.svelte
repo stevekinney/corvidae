@@ -181,8 +181,14 @@
           ctrlKey: event.ctrlKey,
           altKey: event.altKey,
           editable,
+          repeat: event.repeat,
         },
-        { routePattern: router.current.route?.pattern ?? null, regions },
+        {
+          routePattern: router.current.route?.pattern ?? null,
+          regions,
+          dialogOpen:
+            shortcutMapOpen || paletteOpen || document.querySelector('dialog[open]') !== null,
+        },
         Date.now(),
       );
       if (handled) event.preventDefault();
