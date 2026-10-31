@@ -132,6 +132,7 @@ export const SETTING_GROUPS = [
   { id: 'decisions', label: 'Decisions' },
   { id: 'context', label: 'Context' },
   { id: 'retention', label: 'Retention' },
+  { id: 'memory', label: 'Memory' },
   { id: 'logs', label: 'Logs' },
   { id: 'sessionInput', label: 'Session input' },
   { id: 'children', label: 'Children' },

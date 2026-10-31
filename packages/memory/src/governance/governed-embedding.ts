@@ -32,6 +32,11 @@ export interface GovernedEmbedding {
   readonly initialProfile: MemoryEmbeddingProfile;
   /** The active profile, read now, and its embedder. */
   active(): Promise<ActiveEmbedding>;
+  /**
+   * `profile` with the embedder registered under its id. Throws {@link EmbedderRegistryError} when
+   * nothing is registered under it, or it is registered with another dimension than the profile's.
+   */
+  bind(profile: MemoryEmbeddingProfile): ActiveEmbedding;
   /** What `memory.embedding.status()` reports. A read: it stores no active profile. */
   status(): Promise<MemoryEmbeddingStatus>;
   /** Whether `id` names an embedder memory could embed with now. */
@@ -71,17 +76,16 @@ export function createGovernedEmbedding(input: CreateGovernedEmbeddingInput): Go
     generation: 1,
   };
 
-  async function active(): Promise<ActiveEmbedding> {
-    const profile = await vectors.activeProfile(initialProfile);
+  function bind(profile: MemoryEmbeddingProfile): ActiveEmbedding {
     const registered = registry.describe(profile.embedderId);
     if (registered === undefined) {
       throw new EmbedderRegistryError(
-        `The active embedder "${profile.embedderId}" is not registered. Registered: ${registry.ids.join(', ')}.`,
+        `The embedder "${profile.embedderId}" is not registered. Registered: ${registry.ids.join(', ')}.`,
       );
     }
     if (registered.dimension !== profile.dimension) {
       throw new EmbedderRegistryError(
-        `The embedder "${profile.embedderId}" is registered with ${registered.dimension} dimensions, but memory's active embedding has ${profile.dimension}.`,
+        `The embedder "${profile.embedderId}" is registered with ${registered.dimension} dimensions, but the embedding it is asked for has ${profile.dimension}.`,
       );
     }
     const embedder = registry.resolve(profile.embedderId);
@@ -99,15 +103,34 @@ export function createGovernedEmbedding(input: CreateGovernedEmbeddingInput): Go
     };
   }
 
+  async function active(): Promise<ActiveEmbedding> {
+    return bind(await vectors.activeProfile(initialProfile));
+  }
+
   return {
     registry,
     vectors,
     initialProfile,
     active,
+    bind,
     async status() {
       // A store with no active profile yet reports the one its first write will store.
       const { embedderId, dimension } = (await vectors.getActiveProfile()) ?? initialProfile;
-      return { active: { embedder: embedderId, dimension } };
+      const job = await vectors.getJob();
+      return {
+        active: { embedder: embedderId, dimension },
+        ...(job === undefined
+          ? {}
+          : {
+              job: {
+                target: job.target.embedderId,
+                state: job.state,
+                done: job.done,
+                total: job.total,
+                ...(job.error === undefined ? {} : { error: job.error }),
+              },
+            }),
+      };
     },
     availability(id) {
       return registry.describe(id)?.availability ?? 'not-loaded';

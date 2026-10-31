@@ -78,7 +78,11 @@ export type {
   MemoryDeletionPropagator,
   MemoryDeletionResult,
   MemoryEmbedderAvailability,
+  MemoryEmbeddingAdvanceOptions,
+  MemoryEmbeddingJobStatus,
   MemoryEmbeddingStatus,
+  MemoryEmbeddingSwitchRefusal,
+  MemoryEmbeddingSwitchResult,
   MemoryEvidenceBundle,
   MemoryExportResult,
   MemoryForgetMode,
@@ -269,6 +273,8 @@ export {
 } from './memory-vector-store';
 export type {
   CreateMemoryVectorStoreOptions,
+  MemoryEmbeddingJob,
+  MemoryEmbeddingJobState,
   MemoryEmbeddingProfile,
   MemoryVectorReference,
   MemoryVectorStore,

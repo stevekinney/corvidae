@@ -116,11 +116,14 @@ export const SCHEMA_CHECKED_KEYS = [
  * {@link settingsFailures}, so a stored value this process cannot serve is dropped at read and
  * refused at write), and `context.summarizerModel` against the model catalog as it is now (at
  * write only, in {@link summarizerFailures}, because `models.replace` changes the catalog under a
- * stored value and {@link Models.summarizer} checks the row at each use).
+ * stored value and {@link Models.summarizer} checks the row at each use), and `memory.embedder`
+ * against governed memory's embedders and its running switch (at write only, in
+ * `memory-embedder-setting.ts`, because a restart may load other embedders under a stored value).
  */
 export const CONTEXT_CHECKED_KEYS = [
   'decisions.model',
   'context.summarizerModel',
+  'memory.embedder',
 ] as const satisfies readonly SettingKey[];
 
 /** The keys Weft checks together when it builds an engine: the workflow-claim timing. */

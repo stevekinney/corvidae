@@ -1,6 +1,10 @@
 import type { GuardrailProvenance } from 'armorer';
 
 import type { MemoryRecord } from '../memory-record-storage';
+import {
+  type MemoryEmbeddingProfile,
+  MemoryVectorProfileMissingError,
+} from '../memory-vector-store';
 import { memoryCorrelationSchema } from '../transition-events';
 import {
   delegationChainIncludes,
@@ -10,6 +14,7 @@ import {
 } from './authority';
 import { type GovernedContentScan, scanGovernedContent } from './content-scan';
 import { type DerivationBlocker, derivationBlocker, settleStoredDerivation } from './derivation';
+import { embedIntoOtherProfiles } from './embedding-switch';
 import {
   authorizeLocated,
   type GovernanceContext,
@@ -189,12 +194,22 @@ export async function storeGovernedRecord(
   // deletion that removed the record first (a promotion's copy, found through its lineage). A
   // process that dies between the two leaves a record with no vector in the active profile, which
   // recall scores lexically, as it does any record the active profile has not embedded.
-  await putRecordVector(
-    context,
-    active.profile,
-    { id: record.id, scope: input.scope },
-    { version: record.version, vector },
-  );
+  const vectorReference = { id: record.id, scope: input.scope };
+  let written: MemoryEmbeddingProfile | undefined = active.profile;
+  try {
+    await putRecordVector(context, active.profile, vectorReference, {
+      version: record.version,
+      vector,
+    });
+  } catch (error) {
+    // Two switches completed since the profile was read, and the second deleted it. The record is
+    // embedded into the active profile below instead.
+    if (!(error instanceof MemoryVectorProfileMissingError)) throw error;
+    written = undefined;
+  }
+  // A running switch's target gets the record too (COR-1898), and so does an active profile a
+  // switch made active after this admission read the old one.
+  await embedIntoOtherProfiles(context, written, vectorReference, record.version, input.content);
   if (lineage === undefined) {
     if (input.state === 'active') {
       await context.textSearchProvider?.index(record.id, input.content, input.scope.namespace);

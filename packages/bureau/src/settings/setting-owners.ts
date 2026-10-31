@@ -71,6 +71,13 @@ export const SETTING_OWNERS: readonly SettingOwner[] = [
     reads: 'literal',
   },
   {
+    // COR-1898: read when a write starts the switch and at every maintenance pass.
+    name: 'memory embedder',
+    module: 'memory-embedder-setting.ts',
+    keys: ['memory.embedder'],
+    reads: 'literal',
+  },
+  {
     name: 'workflow log lines per run',
     module: 'create-bureau.ts',
     keys: ['logs.maximumLinesPerRun'],

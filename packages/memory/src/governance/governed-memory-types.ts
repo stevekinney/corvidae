@@ -1,7 +1,11 @@
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import type { EmbedderRegistry } from '../embedder-registry';
 import type { MemoryRecordStorage } from '../memory-record-storage';
-import type { MemoryVectorStore } from '../memory-vector-store';
+import type {
+  MemoryEmbeddingJobState,
+  MemoryEmbeddingProfile,
+  MemoryVectorStore,
+} from '../memory-vector-store';
 import type { TextSearchProvider } from '../text-search-provider';
 import type { MemoryCorrelation } from '../transition-events';
 import type { MemoryAuthority } from './authority';
@@ -468,18 +472,86 @@ export interface CreateGovernedMemoryOptions {
  */
 export type MemoryEmbedderAvailability = 'available' | 'needs-setup' | 'not-loaded';
 
+/** A switch of the active embedding, as {@link GovernedMemoryEmbedding.status} reports it. */
+export interface MemoryEmbeddingJobStatus {
+  /** The registry id of the embedder the switch re-embeds memory with. */
+  readonly target: string;
+  /** `running`, or how the switch ended without completing. A completed switch is not reported. */
+  readonly state: MemoryEmbeddingJobState;
+  /** How many stored records the switch has embedded. */
+  readonly done: number;
+  /** How many records are stored. */
+  readonly total: number;
+  /** Why a `failed` switch failed: `target-unavailable`, or the error its embedder gave. */
+  readonly error?: string;
+}
+
 /** What {@link GovernedMemoryEmbedding.status} reports. */
 export interface MemoryEmbeddingStatus {
   /** The embedding recall and admission use: its embedder's registry id and its dimension. */
   readonly active: { readonly embedder: string; readonly dimension: number };
+  /** The switch that is running, or the last one, when it failed or was cancelled. */
+  readonly job?: MemoryEmbeddingJobStatus;
+}
+
+/**
+ * Why {@link GovernedMemoryEmbedding.switchTo} refused: the embedder is `not-loaded` or
+ * `needs-setup`, a switch is already running (`job-running`), or memory already embeds with it
+ * (`already-active`).
+ */
+export type MemoryEmbeddingSwitchRefusal =
+  Exclude<MemoryEmbedderAvailability, 'available'> | 'job-running' | 'already-active';
+
+/** What {@link GovernedMemoryEmbedding.switchTo} did. */
+export type MemoryEmbeddingSwitchResult =
+  | {
+      /** A switch now runs, filling a new profile. */
+      readonly outcome: 'started';
+      /** The profile it fills. */
+      readonly target: MemoryEmbeddingProfile;
+    }
+  | {
+      /** Nothing changed. */
+      readonly outcome: 'refused';
+      /** Why. */
+      readonly reason: MemoryEmbeddingSwitchRefusal;
+      /** A sentence naming the embedder, or the switch that is running. */
+      readonly message: string;
+    };
+
+/** Options for {@link GovernedMemoryEmbedding.advance}. */
+export interface MemoryEmbeddingAdvanceOptions {
+  /** The most records one call embeds; past it the switch waits for the next call. Defaults to 500. */
+  readonly limit?: number;
 }
 
 /** The embedding side of {@link GovernedMemory} (COR-1898). */
 export interface GovernedMemoryEmbedding {
-  /** The active embedding. A store with none yet starts with the initial embedder's. */
+  /** The active embedding, and the running switch or the last one that did not complete. */
   status(): Promise<MemoryEmbeddingStatus>;
   /** Whether memory could embed with the embedder registered as `id` now. */
   availability(id: string): MemoryEmbedderAvailability;
+  /**
+   * Starts a durable switch to the embedder registered as `id`: a new profile, with a generation no
+   * profile has had, that {@link GovernedMemoryEmbedding.advance} fills with every stored record.
+   * Recall keeps the active profile until the switch completes. While it runs, every admission is
+   * embedded into both profiles, and every deletion removes the record from both. Starting deletes
+   * the profiles that are neither active nor the previous one, such as a crashed switch's target.
+   */
+  switchTo(id: string): Promise<MemoryEmbeddingSwitchResult>;
+  /**
+   * Cancels the running switch and deletes the profile it was filling; recall keeps the active
+   * profile. Returns whether a switch was running.
+   */
+  cancel(): Promise<boolean>;
+  /**
+   * Embeds records the running switch's target lacks, and completes the switch, in one step, once
+   * it holds every stored record. A switch whose embedder is no longer registered fails as
+   * `target-unavailable`; one whose embedder errors fails with that error. A failed switch's
+   * profile is deleted. Memory runs nothing on a timer, so the host calls this, as it calls
+   * {@link GovernedMemory.processDeletionPropagation}. Returns the status after the step.
+   */
+  advance(options?: MemoryEmbeddingAdvanceOptions): Promise<MemoryEmbeddingStatus>;
 }
 
 export interface MemoryLegalHoldResult extends MemoryOperationResult {

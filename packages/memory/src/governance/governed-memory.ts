@@ -3,6 +3,12 @@ import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { HASHING_EMBEDDER_ID } from '../embedder-registry';
 import { createDeletionEngine } from './deletion';
 import { settlePendingDerivations } from './derivation';
+import {
+  advanceSwitch,
+  cancelSwitch,
+  DEFAULT_SWITCH_STEP_LIMIT,
+  switchEmbedder,
+} from './embedding-switch';
 import { createGovernanceContext } from './governance-context';
 import {
   createPolicyHistory,
@@ -91,6 +97,8 @@ export function createGovernedMemory(options: CreateGovernedMemoryOptions): Gove
   });
   const governance = context;
   const deletion = createDeletionEngine(governance);
+  // One step of the switch at a time in this process, shared by every caller that arrives while it runs.
+  let advancing: Promise<void> | undefined;
 
   return {
     get policyRevision() {
@@ -99,6 +107,18 @@ export function createGovernedMemory(options: CreateGovernedMemoryOptions): Gove
     embedding: {
       status: () => embedding.status(),
       availability: (id) => embedding.availability(id),
+      switchTo: (id) => switchEmbedder(governance, id),
+      cancel: () => cancelSwitch(governance),
+      async advance(advanceOptions) {
+        advancing ??= advanceSwitch(
+          governance,
+          advanceOptions?.limit ?? DEFAULT_SWITCH_STEP_LIMIT,
+        ).finally(() => {
+          advancing = undefined;
+        });
+        await advancing;
+        return embedding.status();
+      },
     },
     subscribe(listener) {
       if (typeof listener !== 'function') {

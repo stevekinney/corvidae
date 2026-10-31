@@ -234,7 +234,9 @@ export interface SettingsDependencies {
    * Checks a patch's parsed values against state only the running Bureau holds (the model catalog
    * as it is now), before it is written. A failure refuses the write as `invalid-value`.
    */
-  readonly checkPatch?: (values: SettingsValues) => readonly SettingsFailure[];
+  readonly checkPatch?: (
+    values: SettingsValues,
+  ) => readonly SettingsFailure[] | Promise<readonly SettingsFailure[]>;
   /** The record as `createBureau` read it at boot, before it applied the `restart` keys. */
   readonly boot: StoredSettings;
   readonly nowISO: () => string;
@@ -252,6 +254,13 @@ export interface SettingsDependencies {
    * point of use it does not reach on its own: the durable engine's `reconfigure`.
    */
   readonly applyLive?: (values: SettingsValues, keys: readonly SettingKey[]) => void;
+  /**
+   * Awaited after an update this process applied, before the update returns, with the keys it
+   * changed: starts the work a write asks for, such as governed memory's embedder switch. Not called
+   * when another process's change is reloaded, because that process started it. A throw is
+   * diagnosed and leaves the update applied.
+   */
+  readonly afterUpdate?: (keys: readonly SettingKey[]) => Promise<void>;
 }
 
 /** `bureau.settings` and what the rest of the Bureau reads from it. */
@@ -404,7 +413,7 @@ export function createSettings(dependencies: SettingsDependencies): SettingsComp
         if (invalid.length > 0) {
           return reject('invalid-value', invalid, messages.join('; '), known);
         }
-        const checked = dependencies.checkPatch?.(values) ?? [];
+        const checked = (await dependencies.checkPatch?.(values)) ?? [];
         if (checked.length > 0) {
           return reject(
             'invalid-value',
@@ -468,6 +477,14 @@ export function createSettings(dependencies: SettingsDependencies): SettingsComp
           parseSettingsRecord(text, context, () => undefined),
           keys,
         );
+        try {
+          await dependencies.afterUpdate?.(keys);
+        } catch (error) {
+          dependencies.diagnose(
+            `[bureau] Starting what the settings at revision ${record.revision} ask for failed.`,
+            error,
+          );
+        }
         try {
           await dependencies.audit({
             runId: SETTINGS_AUDIT_RESOURCE,

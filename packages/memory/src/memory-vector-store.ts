@@ -5,6 +5,7 @@ import {
   type Storage,
   storageBatch,
   storageConditionalBatch,
+  storageDeletePrefix,
 } from '@lostgradient/storage';
 import { z } from 'zod';
 
@@ -48,6 +49,30 @@ export interface MemoryVectorReference {
   readonly id: string;
   /** The record's scope. */
   readonly scope: MemoryRecordScope;
+}
+
+/** Where a switch of the active embedding stands: `running`, or how it ended without completing. */
+export type MemoryEmbeddingJobState = 'running' | 'failed' | 'cancelled';
+
+/**
+ * The durable record of a switch of the active embedding (COR-1898): the embedding it started
+ * from, the profile it fills, and how far it got. A switch that completes leaves no record; one
+ * that failed or was cancelled keeps it, so its state and error stay readable, until the next
+ * switch starts.
+ */
+export interface MemoryEmbeddingJob {
+  /** The active profile when the switch started, which recall uses until it completes. */
+  readonly from: MemoryEmbeddingProfile;
+  /** The profile the switch fills, with a generation no other profile has had. */
+  readonly target: MemoryEmbeddingProfile;
+  /** Where the switch stands. */
+  readonly state: MemoryEmbeddingJobState;
+  /** How many stored records the target held a vector for when last counted. */
+  readonly done: number;
+  /** How many records were stored when last counted. */
+  readonly total: number;
+  /** Why a `failed` switch failed: `target-unavailable`, or the error the target embedder gave. */
+  readonly error?: string;
 }
 
 /**
@@ -143,6 +168,40 @@ export interface MemoryVectorStore {
    * so memory never scans its records for them again.
    */
   markInlineVectorsCopied(): Promise<void>;
+  /**
+   * The profile a completed switch replaced most recently, kept beside the active one until the
+   * next switch completes, or `undefined` when no switch has completed.
+   */
+  getPreviousProfile(): Promise<MemoryEmbeddingProfile | undefined>;
+  /**
+   * A generation no profile has had: one more than the last this store gave out. Every switch takes
+   * one, so no switch ever fills a profile that existed before, even one deleted since.
+   */
+  nextGeneration(): Promise<number>;
+  /**
+   * Removes `profile` and every vector it holds. The marker goes first, so a {@link
+   * MemoryVectorStore.put} into the profile that has not committed yet is refused, and one that
+   * has is among the vectors removed.
+   */
+  deleteProfile(profile: MemoryEmbeddingProfile): Promise<void>;
+  /** Deletes one record's vector from `profile` alone, leaving its vectors in other profiles. */
+  delete(profile: MemoryEmbeddingProfile, reference: MemoryVectorReference): Promise<void>;
+  /** The switch record, or `undefined` when no switch is running or has ended without completing. */
+  getJob(): Promise<MemoryEmbeddingJob | undefined>;
+  /**
+   * Replaces the switch record with `next` (`undefined` removes it), only if it still is
+   * `expected`. Returns whether it did.
+   */
+  replaceJob(
+    expected: MemoryEmbeddingJob | undefined,
+    next: MemoryEmbeddingJob | undefined,
+  ): Promise<boolean>;
+  /**
+   * Completes the switch `expected` describes, in one compare-and-swap: its target becomes the
+   * active profile, its `from` becomes the previous one, and the record is removed. Returns `false`,
+   * changing nothing, when the record or the active profile is no longer what the switch expects.
+   */
+  completeJob(expected: MemoryEmbeddingJob): Promise<boolean>;
 }
 
 /** Options for {@link createMemoryVectorStore}. */
@@ -158,6 +217,22 @@ const profileSchema = z
     dimension: z.number().int().positive(),
     generation: z.number().int().positive(),
   })
+  .strict();
+
+const jobSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    from: profileSchema,
+    target: profileSchema,
+    state: z.enum(['running', 'failed', 'cancelled']),
+    done: z.number().int().nonnegative(),
+    total: z.number().int().nonnegative(),
+    error: z.string().optional(),
+  })
+  .strict();
+
+const generationSchema = z
+  .object({ schemaVersion: z.literal(1), generation: z.number().int().positive() })
   .strict();
 
 const vectorSchema = z
@@ -183,12 +258,52 @@ function decodeProfile(bytes: Uint8Array): MemoryEmbeddingProfile {
 }
 
 function encodeProfile(profile: MemoryEmbeddingProfile): Uint8Array {
+  // `put` compares a profile's marker with these bytes, so the encoding never changes.
   return encodeJson({
     schemaVersion: 1,
     embedderId: profile.embedderId,
     dimension: profile.dimension,
     generation: profile.generation,
   });
+}
+
+function profileRecord(profile: MemoryEmbeddingProfile): Record<string, unknown> {
+  return {
+    schemaVersion: 1,
+    embedderId: profile.embedderId,
+    dimension: profile.dimension,
+    generation: profile.generation,
+  };
+}
+
+/** One fixed field order, so a compare-and-swap can expect the bytes a record encodes to. */
+function encodeJob(job: MemoryEmbeddingJob): Uint8Array {
+  return encodeJson({
+    schemaVersion: 1,
+    from: profileRecord(job.from),
+    target: profileRecord(job.target),
+    state: job.state,
+    done: job.done,
+    total: job.total,
+    ...(job.error === undefined ? {} : { error: job.error }),
+  });
+}
+
+function decodeJob(bytes: Uint8Array): MemoryEmbeddingJob {
+  const parsed = jobSchema.parse(JSON.parse(textDecoder.decode(bytes)));
+  const strip = ({ embedderId, dimension, generation }: MemoryEmbeddingProfile) => ({
+    embedderId,
+    dimension,
+    generation,
+  });
+  return {
+    from: strip(parsed.from),
+    target: strip(parsed.target),
+    state: parsed.state,
+    done: parsed.done,
+    total: parsed.total,
+    ...(parsed.error === undefined ? {} : { error: parsed.error }),
+  };
 }
 
 function checkProfile(profile: MemoryEmbeddingProfile): void {
@@ -209,6 +324,9 @@ function scopeComponent(scope: MemoryRecordScope): string {
  * records and the governance ledger use. Keys, under `keyPrefix`:
  *
  * - `active`: the active profile;
+ * - `previous`: the profile the last completed switch replaced;
+ * - `generation`: the last generation a switch was given;
+ * - `job`: the switch record, while one runs or after one failed or was cancelled;
  * - `inline-vectors-copied`: present once the vectors records held inline
  *   before COR-1898 were copied into the profile they were made in;
  * - `p:<embedderId>:<dimension>:<generation>`: one marker per profile;
@@ -228,6 +346,9 @@ export function createMemoryVectorStore(
   validateMemoryKeyPrefix(prefix);
   const activeKey = `${prefix}active`;
   const inlineCopiedKey = `${prefix}inline-vectors-copied`;
+  const previousKey = `${prefix}previous`;
+  const generationKey = `${prefix}generation`;
+  const jobKey = `${prefix}job`;
   const profileKey = (profile: MemoryEmbeddingProfile): string =>
     `${prefix}p:${profileComponent(profile)}`;
   const recordComponent = (reference: MemoryVectorReference): string =>
@@ -337,6 +458,80 @@ export function createMemoryVectorStore(
 
     async markInlineVectorsCopied() {
       await storage.put(inlineCopiedKey, encodeJson({ schemaVersion: 1 }));
+    },
+
+    async getPreviousProfile() {
+      const stored = await storage.get(previousKey);
+      return stored === null ? undefined : decodeProfile(stored);
+    },
+
+    async nextGeneration() {
+      for (;;) {
+        const stored = await storage.get(generationKey);
+        // Before the first switch only the initial profiles exist; the counter starts above them.
+        const profiles = stored === null ? await listProfiles() : [];
+        const last =
+          stored === null
+            ? Math.max(0, ...profiles.map((profile) => profile.generation))
+            : generationSchema.parse(JSON.parse(textDecoder.decode(stored))).generation;
+        const next = last + 1;
+        const taken = await storageConditionalBatch(
+          storage,
+          [{ key: generationKey, expectedValue: stored }],
+          [
+            {
+              type: 'put',
+              key: generationKey,
+              value: encodeJson({ schemaVersion: 1, generation: next }),
+            },
+          ],
+        );
+        if (taken) return next;
+      }
+    },
+
+    async deleteProfile(profile) {
+      checkProfile(profile);
+      await storage.delete(profileKey(profile));
+      await storageDeletePrefix(storage, `${prefix}v:${profileComponent(profile)}:`);
+    },
+
+    async delete(profile, reference) {
+      await storage.delete(vectorKey(profile, reference));
+    },
+
+    async getJob() {
+      const stored = await storage.get(jobKey);
+      return stored === null ? undefined : decodeJob(stored);
+    },
+
+    async replaceJob(expected, next) {
+      if (next !== undefined) jobSchema.parse(JSON.parse(textDecoder.decode(encodeJob(next))));
+      return storageConditionalBatch(
+        storage,
+        [{ key: jobKey, expectedValue: expected === undefined ? null : encodeJob(expected) }],
+        [
+          next === undefined
+            ? { type: 'delete', key: jobKey }
+            : { type: 'put', key: jobKey, value: encodeJob(next) },
+        ],
+      );
+    },
+
+    async completeJob(expected) {
+      return storageConditionalBatch(
+        storage,
+        [
+          { key: jobKey, expectedValue: encodeJob(expected) },
+          { key: activeKey, expectedValue: encodeProfile(expected.from) },
+          { key: profileKey(expected.target), expectedValue: encodeProfile(expected.target) },
+        ],
+        [
+          { type: 'put', key: activeKey, value: encodeProfile(expected.target) },
+          { type: 'put', key: previousKey, value: encodeProfile(expected.from) },
+          { type: 'delete', key: jobKey },
+        ],
+      );
     },
   };
 }

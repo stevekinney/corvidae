@@ -775,7 +775,8 @@ export function createDeletionEngine(context: GovernanceContext): DeletionEngine
       for (const reference of references) await context.textSearchProvider?.remove(reference.id);
       return {
         status: 'completed',
-        detail: 'text index entries and record-resident vectors removed',
+        // The vectors themselves left every embedding profile with the records, in the synchronous lane.
+        detail: 'text index entries removed; vectors left every embedding profile with the records',
       };
     }
     const evicting = cachingEmbedders(context);
