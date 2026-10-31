@@ -180,7 +180,7 @@ describe('RefreshPanel', () => {
 
     const { getByRole } = await renderRefreshPanel();
 
-    expect(getByRole('status', { name: 'Loading refresh sources' })).not.toBeNull();
+    expect(getByRole('status', { name: 'Loading the refresh sources' })).not.toBeNull();
   });
 
   test('without workflows:read it says so and asks the server nothing', async () => {

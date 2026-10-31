@@ -91,6 +91,9 @@
     <VerificationFaultView {error} />
   {:else if !verification || verification.workers.length === 0}
     <EmptyState
+      kind="first-use"
+      size="compact"
+      headingLevel={3}
       title="No worker manifests for this workflow"
       description={`No connected worker with an accepted manifest advertises ${workflow}.`}
     />

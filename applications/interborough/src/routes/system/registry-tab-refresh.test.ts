@@ -118,7 +118,7 @@ describe('RegistryTab registry query', () => {
 
     await queryClient.refetchQueries({ queryKey: queryKeys.registrySnapshot() });
 
-    expect(await findByText('Refresh failed · showing the last registry snapshot')).not.toBeNull();
+    expect(await findByText('Refresh failed. Showing the last registry snapshot.')).not.toBeNull();
     expect(getByText('Not authorized')).not.toBeNull();
     expect(getByText('order-processing')).not.toBeNull();
   });

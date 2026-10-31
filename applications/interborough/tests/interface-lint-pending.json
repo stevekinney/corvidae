@@ -49,60 +49,6 @@
       "issue": "COR-1859"
     },
     {
-      "rule": "app-header-class",
-      "file": "src/routes/system/dynamic-source-list.svelte",
-      "subject": ".weft-source-list__header",
-      "issue": "COR-1847"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/routes/system/dynamic-source-panel.svelte",
-      "subject": ".weft-dynamic-source__header",
-      "issue": "COR-1847"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/routes/system/mcp-panel.svelte",
-      "subject": ".weft-mcp-panel__diagram-header",
-      "issue": "COR-1847"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/routes/system/mcp-panel.svelte",
-      "subject": ".weft-mcp-panel__test-header",
-      "issue": "COR-1847"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/routes/system/refresh-panel.svelte",
-      "subject": ".weft-refresh-panel__header",
-      "issue": "COR-1847"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/routes/system/registry-detail.svelte",
-      "subject": ".weft-registry-detail__header",
-      "issue": "COR-1847"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/routes/system/registry-detail.svelte",
-      "subject": ".weft-registry-detail__message-header",
-      "issue": "COR-1847"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/routes/system/registry-tab.svelte",
-      "subject": ".weft-registry-list__header",
-      "issue": "COR-1847"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/routes/system/registry-tab.svelte",
-      "subject": ".weft-registry-activity-card__header",
-      "issue": "COR-1847"
-    },
-    {
       "rule": "cinder-selector",
       "file": "src/routes/workflows/detail/async-activity/async-activity-drawer.svelte",
       "subject": ".cinder-code-block",

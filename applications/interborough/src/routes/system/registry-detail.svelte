@@ -9,7 +9,14 @@
    * revisions panel with its Activate/compatibility flow
    * (`workflow-revisions-panel.svelte`).
    */
-  import { DescriptionList, Tree, Badge, Button, CopyButton } from '@lostgradient/cinder';
+  import {
+    DescriptionList,
+    Tree,
+    Badge,
+    Button,
+    CopyButton,
+    SectionHeading,
+  } from '@lostgradient/cinder';
   import { ArrowLeft, FileQuestionMark } from '@lucide/svelte';
 
   import { truncateId } from '../../lib/format/index.ts';
@@ -107,7 +114,7 @@
       {#each entries as entry (entry.name)}
         <li class="weft-registry-detail__message">
           <details class="weft-registry-detail__message-details">
-            <summary class="weft-registry-detail__message-header">
+            <summary class="weft-registry-detail__message-summary">
               <span class="weft-registry-detail__message-name">{entry.name}</span>
               {@render schemaBadge(
                 entry.hasInputSchema ? `${entry.inputFields.length} in` : 'no input',
@@ -150,12 +157,13 @@
     {#snippet leadingIcon()}<ArrowLeft aria-hidden="true" size={14} />{/snippet}
   </Button>
 
-  <div class="weft-registry-detail__header">
-    <h2 class="weft-registry-detail__title">{row.type}</h2>
-    {#each row.tags as tag (tag)}
-      <Badge variant="neutral">{tag}</Badge>
-    {/each}
-  </div>
+  <SectionHeading level={2} title={row.type} class="weft-registry-detail__heading">
+    {#snippet actions()}
+      {#each row.tags as tag (tag)}
+        <Badge variant="neutral">{tag}</Badge>
+      {/each}
+    {/snippet}
+  </SectionHeading>
   {#if row.description}
     <p class="weft-registry-detail__description">{row.description}</p>
   {/if}
@@ -282,18 +290,8 @@
     gap: 15px;
   }
 
-  .weft-registry-detail__header {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    flex-wrap: wrap;
-  }
-
-  .weft-registry-detail__title {
-    margin: 0;
+  :global(.weft-registry-detail__heading) {
     font-family: var(--cinder-font-mono);
-    font-size: var(--cinder-text-lg);
-    font-weight: 600;
   }
 
   .weft-registry-detail__description {
@@ -342,7 +340,7 @@
     padding: var(--cinder-space-2) var(--cinder-space-2);
   }
 
-  .weft-registry-detail__message-header {
+  .weft-registry-detail__message-summary {
     display: flex;
     align-items: center;
     gap: 8px;

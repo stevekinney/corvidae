@@ -222,7 +222,7 @@ describe('DynamicSourcePanel source list', () => {
     scripted.enqueueJsonRpcResult(
       sourceList([{ name: NAME, revision: REVISION, kind: 'module', state: 'idle' }], 10),
     );
-    const { getByRole, findByText, queryByText, queryByTitle } = await renderPanel({
+    const { getByRole, findByText, queryByLabelText, queryByTitle } = await renderPanel({
       routeSourceList: false,
     });
 
@@ -242,7 +242,7 @@ describe('DynamicSourcePanel source list', () => {
     await fireEvent.click(getByRole('button', { name: 'Next' }));
 
     const staleSelect = queryByTitle(`Select ${NAME} at revision ${JSON.stringify(REVISION)}`);
-    const loadingText = queryByText('Loading sources…');
+    const loadingText = queryByLabelText('Loading the registered sources');
     const previousDisabled = requireElement(
       getByRole('button', { name: 'Previous' }),
       HTMLButtonElement,

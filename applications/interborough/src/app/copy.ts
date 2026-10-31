@@ -824,6 +824,65 @@ export const SETTINGS_SECTION_COPY = {
 } as const;
 
 /**
+ * The words of Settings › API reference: the side list that names the four groups, and the states
+ * of the groups that have none of their own (`routes/settings/api-reference.svelte`).
+ */
+export const API_REFERENCE_COPY = {
+  groupsLabel: 'API reference groups',
+  groups: {
+    operations: 'Operations',
+    discovery: 'Discovery documents',
+    scopes: 'Your scopes',
+    sources: 'Workflow sources',
+  },
+  /** Said in place of a part the caller's scopes do not reach. */
+  notAvailable: (what: string): string => `${what} is not available to you`,
+  requiresScope: (scope: string, action: string): string => `Requires ${scope} to ${action}.`,
+  loading: {
+    operations: 'Loading the operation catalog',
+    discovery: 'Loading the discovery document',
+    diagnostics: 'Loading the diagnostics',
+    refreshSources: 'Loading the refresh sources',
+    mcp: 'Loading the MCP discovery document',
+  },
+  operations: {
+    searchLabel: 'Search operations',
+    searchPlaceholder: 'Search operations…',
+    noMatchTitle: 'No operations match',
+    noMatchDescription: (search: string) => `No operation matches "${search}".`,
+    clearSearch: 'Show all operations',
+  },
+  discovery: {
+    documentLabel: 'Discovery document',
+    rawJson: 'Raw JSON',
+    emptyTitle: 'This document lists nothing',
+    emptyDescription: 'The server returned the document with no entries to show.',
+    scopeNote:
+      "These documents don't list the scope each operation needs yet. Your scopes shows what each granted scope unlocks.",
+  },
+  mcp: {
+    unavailableTitle: "MCP discovery isn't available",
+    unavailableDescription:
+      "This server has no public origin or trusted hosts configured, so it can't safely give out absolute discovery addresses. Set one in the server's configuration to turn it on.",
+  },
+  sources: {
+    noRegistryTitle: 'No workflow types are registered',
+    noRegistryDescription:
+      'No eagerly registered workflow or activity definitions appear in this server. Dynamic sources never appear here; they are listed above.',
+    noActivitiesTitle: 'No activities are registered',
+    noActivitiesDescription: 'No activity definitions are registered with this server.',
+    staleRegistry: 'Refresh failed. Showing the last registry snapshot.',
+    loadingRegistry: 'Loading the registry',
+    loadingSources: 'Loading the registered sources',
+    sourceListEmptyTitle: 'No dynamic sources registered',
+    sourceListEmptyDescription: 'This server has no registered dynamic workflow sources to select.',
+    sourcePageEmptyTitle: 'No sources on this page',
+    sourcePageEmptyDescription: 'Go back to the previous page or use the manual lookup below.',
+    previousPage: 'Previous page',
+  },
+} as const;
+
+/**
  * The words of Settings › Models: the providers agents call, the models those providers offer, and
  * the models that answer decisions (`routes/settings/models`).
  */

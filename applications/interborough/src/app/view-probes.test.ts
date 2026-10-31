@@ -47,3 +47,12 @@ describe('the workflows probe', () => {
     expect(probeFor('workflows', {}, '/workflows/new')).toBeUndefined();
   });
 });
+
+describe('the settings probe', () => {
+  test('asks nothing for API reference and Plugins, whose parts read for themselves', () => {
+    expect(probeFor('settings', {}, '/settings/api-reference')).toBeUndefined();
+    expect(probeFor('settings', {}, '/settings/plugins')).toBeUndefined();
+    expect(probeFor('settings', {}, '/settings')).toBeDefined();
+    expect(probeFor('settings', {}, '/settings/data-and-retention')).toBeDefined();
+  });
+});

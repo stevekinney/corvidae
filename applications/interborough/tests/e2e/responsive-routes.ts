@@ -115,6 +115,15 @@ export function responsiveVariants(seed: ResponsiveSeed): Readonly<Record<string
     // the list), and the Done tab with a decided review open.
     '/reviews (review open)': `/reviews?review=${encodeURIComponent(seed.review)}`,
     '/reviews (done tab, review open)': `/reviews?tab=done&review=${encodeURIComponent(seed.decidedReview)}`,
+    // Each group of the API reference beside the first, which is the route's own address, and each
+    // discovery document, whose tables and diagrams are wider than the groups' first view.
+    '/settings/api-reference (discovery)': '/settings/api-reference?group=discovery',
+    '/settings/api-reference (openrpc)': '/settings/api-reference?group=discovery&document=openrpc',
+    '/settings/api-reference (asyncapi)':
+      '/settings/api-reference?group=discovery&document=asyncapi',
+    '/settings/api-reference (mcp)': '/settings/api-reference?group=discovery&document=mcp',
+    '/settings/api-reference (scopes)': '/settings/api-reference?group=scopes',
+    '/settings/api-reference (sources)': '/settings/api-reference?group=sources',
   };
 }
 
@@ -133,8 +142,4 @@ export interface PendingRoute {
  * still listed (remove it), and a route that overflows but is not listed (fix it, or list it with
  * its owner). Do not add an entry to ship a regression.
  */
-export const pending: readonly PendingRoute[] = [
-  // The Discovery tab's outlet scrolls 8px at 375 and its raw-toggle ends at 383px, and the
-  // Operations and Discovery tables are cut off. The API reference is rebuilt there.
-  { pattern: '/settings/api-reference', issue: 'COR-1847', failsAt: [375] },
-];
+export const pending: readonly PendingRoute[] = [];
