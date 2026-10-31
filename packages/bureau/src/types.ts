@@ -1,6 +1,7 @@
 import type { BureauWorkflows } from './workflow-runtime';
 import type { AnswerEncryptionKeys } from './secret-answers';
 import type { BureauWorkerDeployments } from './worker-deployments';
+import type { VersionedCatalog } from './versioned-catalog';
 import type {
   EventIteratorOptions,
   EventObservableOptions,
@@ -109,7 +110,8 @@ import type {
 } from './steering';
 import type { WebhookNotifier, WebhookNotifierOptions } from './webhook-notifier';
 import type { BureauHooks } from './hooks/create-hooks';
-import type { HookSecretStore } from './hooks/hook-types';
+import type { BureauEventFormatter, EventFormatterRegistration } from './bureau-event-formatting';
+import type { HookActionKindRegistration, HookSecretStore } from './hooks/hook-types';
 import type { HookUrlPolicy } from './hooks/hook-url-policy';
 
 // ── Provider Configuration ───────────────────────────────────────────
@@ -540,6 +542,16 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    */
   workflowSource?: WorkflowSource | readonly WorkflowSource[];
   /**
+   * COR-1874 — the versioned catalog (`createVersionedCatalog`) whose `activity` and
+   * `trigger-kind` entries workflow files may use besides the `agent` activity and the `schedule`
+   * and `signal` triggers. An entry is named `plugin:name` and holds a plugin's activity or
+   * trigger kind. A file names a contributed activity without a version and floats with it; the
+   * revision Bureau registers pins the version that is loaded, and a run resumes after a restart
+   * only on that version, otherwise it is cancelled and reported `missing` or `version-mismatch`.
+   * A name loaded at two versions is a startup error. Read once, at construction.
+   */
+  contributionCatalog?: VersionedCatalog;
+  /**
    * COR-1813 — Weft's worker deployment catalog, the durable store of worker builds and routing
    * pointers. With it, {@link Bureau.deployments} reads a deployment's routing pointer and ramps,
    * promotes, and rolls back its builds, and the `bureau.deployments.*` operations serve the same
@@ -826,6 +838,13 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * `now`, `signal`), which may have no `targets`. Omit to compose none — the default.
    */
   hooks?: BureauHooksOptions;
+  /**
+   * The event formatters plugins contribute (COR-1876), the entry point plugin composition feeds
+   * with each plugin's `eventFormatters`. {@link Bureau.formatEvent} uses them; an event no
+   * formatter claims is shown by its raw kind. Two formatters that claim one event kind are
+   * refused at construction.
+   */
+  eventFormatters?: readonly EventFormatterRegistration[];
   /**
    * Online evaluations (AB-53) — samples a fraction of completed live runs
    * through configured judges/matchers, records every sampled score to the
@@ -1357,6 +1376,13 @@ export interface BureauHooksOptions {
   urlPolicy?: HookUrlPolicy;
   /** How long one delivery request may take before it counts as failed. Default `10000`. */
   requestTimeoutMilliseconds?: number;
+  /**
+   * The hook action kinds plugins contribute (COR-1876): a hook whose action is
+   * `{ type: 'plugin', plugin, kind, configuration? }` runs the named kind. This is the entry point
+   * plugin composition feeds with each plugin's `hookActionKinds`. A plugin and kind name given
+   * twice is refused at construction. Omitted, only the built-in actions exist.
+   */
+  actionKinds?: readonly HookActionKindRegistration[];
 }
 
 /** {@link BureauOptions.children}. */
@@ -2664,6 +2690,12 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * leave authorization to the caller, as `Bureau.goals` does. See {@link BureauHooks}.
    */
   readonly hooks: BureauHooks | undefined;
+  /**
+   * COR-1876 — an event as a person reads it: a contributed formatter's sentence for its kind, or
+   * the raw kind and the run link for an event no formatter claims. Pure; it never throws for a
+   * formatter that does.
+   */
+  readonly formatEvent: BureauEventFormatter;
 
   /**
    * COR-772 — Bureau's durable parent-child topology: dispatch a catalog

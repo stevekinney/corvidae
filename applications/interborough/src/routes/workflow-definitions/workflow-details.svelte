@@ -1,11 +1,10 @@
 <script lang="ts">
   /**
    * What a workflow says beyond what a person acts on: where its file is, its trigger as written,
-   * and what the engine's contract declares (the signals, updates, and queries it accepts, and the
-   * schemas of its input and output). Only what the workflow has is shown: a fact it does not have
-   * is no row, and the page shows no disclosure when there is nothing to put in it.
+   * and what the engine's contract declares (the signals, updates, and queries it accepts). Only what the workflow has is shown: a fact it does not have
+   * is no row. The schemas are not here: the Overview shows them as field lists.
    */
-  import { CodeBlock, CodeLocation } from '@lostgradient/cinder';
+  import { CodeLocation } from '@lostgradient/cinder';
 
   import { WORKFLOW_COPY } from '../../app/copy.ts';
   import type { WorkflowDocument } from '../../lib/workflow-files.ts';
@@ -35,13 +34,6 @@
   {/if}
 {/snippet}
 
-{#snippet schema(label: string, text: string | undefined)}
-  {#if text !== undefined}
-    <h3 class="ib-workflow__subheading">{label}</h3>
-    <CodeBlock code={text} language="json" highlight={false} />
-  {/if}
-{/snippet}
-
 <div class="ib-workflow__section" data-testid="workflow-definition">
   <dl class="weft-workflow-facts">
     {#if filePath !== undefined}
@@ -58,6 +50,4 @@
     {@render identifiers(copy.page.updates, details.updates)}
     {@render identifiers(copy.page.queries, details.queries)}
   </dl>
-  {@render schema(copy.page.inputSchema, details.inputSchema)}
-  {@render schema(copy.page.outputSchema, details.outputSchema)}
 </div>

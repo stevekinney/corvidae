@@ -62,6 +62,22 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
   };
 }
 
+/**
+ * Addresses of a route in a second state, by `<pattern> (<state>)`, each opened and measured like a
+ * route of its own. The seeded workflow type is code-defined, so the file header's four buttons
+ * (Start run, Pause, Edit, Delete) and a file's Code, Runs and History tabs are reached here,
+ * with the tab named in the address (`?tab=`).
+ */
+export function responsiveVariants(seed: ResponsiveSeed): Readonly<Record<string, string>> {
+  const file = `/workflows/${encodeURIComponent(seed.workflowFile)}`;
+  return {
+    '/workflows/:workflow (file)': file,
+    '/workflows/:workflow (file, code tab)': `${file}?tab=code`,
+    '/workflows/:workflow (file, runs tab)': `${file}?tab=runs`,
+    '/workflows/:workflow (file, history tab)': `${file}?tab=history`,
+  };
+}
+
 /** A route not yet made responsive, and the issue that owns making it so. */
 export interface PendingRoute {
   readonly pattern: string;

@@ -1,7 +1,12 @@
 import { MemoryStorage } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
-import { createInMemoryMemoryRecordStorage, createMockEmbedder } from '../test/index';
+import { createMemoryVectorStore } from '../memory-vector-store';
+import {
+  createInMemoryMemoryRecordStorage,
+  createMockEmbedder,
+  createTestEmbedders,
+} from '../test/index';
 import { createMemoryAuthority } from './authority';
 import { createGovernedMemory } from './governed-memory';
 import { createMemoryGovernanceLedger } from './ledger';
@@ -11,7 +16,8 @@ function fixture() {
   const memory = createGovernedMemory({
     storage: createInMemoryMemoryRecordStorage(),
     ledger: createMemoryGovernanceLedger(new MemoryStorage()),
-    embedder: createMockEmbedder(64),
+    ...createTestEmbedders(createMockEmbedder(64), 64),
+    vectors: createMemoryVectorStore(new MemoryStorage()),
     policy: createMemoryGovernancePolicy({ revision: 'governance:list' }),
   });
   const authority = (capabilities: Parameters<typeof createMemoryAuthority>[0]['capabilities']) =>

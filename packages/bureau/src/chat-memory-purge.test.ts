@@ -12,6 +12,8 @@ import {
   createMockEmbedder,
   type GovernedMemory,
   type MemoryAuthority,
+  createMemoryVectorStore,
+  createTestEmbedders,
 } from '@lostgradient/memory';
 import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
@@ -26,7 +28,8 @@ function memory(): GovernedMemory {
   return createGovernedMemory({
     storage: createInMemoryMemoryRecordStorage(),
     ledger: createMemoryGovernanceLedger(new MemoryStorage()),
-    embedder: createMockEmbedder(64),
+    ...createTestEmbedders(createMockEmbedder(64), 64),
+    vectors: createMemoryVectorStore(new MemoryStorage()),
     policy: createMemoryGovernancePolicy({ revision: 'governance:purge' }),
     propagation: {
       caches: 'not-retained',

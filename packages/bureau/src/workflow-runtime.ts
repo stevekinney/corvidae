@@ -55,7 +55,14 @@ import {
 import type { ScheduleHookOrigins } from './hooks/schedule-hook-origins';
 import { toWeftDocument, validateBureauWorkflowDocument } from './workflow-document-handlers';
 import { bureauNameOf, weftNameOf } from './namespaced-identifier';
+import { NO_WORKFLOW_CONTRIBUTIONS, type WorkflowContributions } from './workflow-contributions';
 import {
+  createWorkflowTriggerSupervisor,
+  type DesiredTrigger,
+} from './workflow-trigger-supervisor';
+import { formatVersionedId } from './versioned-catalog';
+import {
+  acceptContributedTriggers,
   bridgeEngineActivities,
   registerBureauWorkflowDocuments,
   type ScheduleOverlapPolicy,
@@ -76,6 +83,7 @@ import {
   createWorkflowSnapshotStore,
   WorkflowSnapshotError,
   type WorkflowRevision,
+  type WorkflowRunPinProblem,
   type WorkflowSnapshot,
   type WorkflowSnapshotStore,
 } from './workflow-snapshot-store';
@@ -126,6 +134,12 @@ export interface WorkflowRunDetail extends WorkflowRunSummary {
    * broke the workflow's schema (the issues are in `error`), and `null` otherwise.
    */
   readonly finishReason: WorkflowFinishReason | null;
+  /**
+   * Present when Bureau cancelled the instance at startup because a contributed activity its
+   * revision pins is not loaded: `missing` when no version of it is, `version-mismatch` when only
+   * other versions are (COR-1874). The instance is never resumed on another version.
+   */
+  readonly unresumable?: WorkflowRunPinProblem;
 }
 
 /** What {@link BureauWorkflows.start} started. */
@@ -436,6 +450,8 @@ interface Unrecoverable {
   readonly workflowVersion: string;
   readonly runIds: readonly string[];
   readonly reason: string;
+  /** Set when the reason is a pinned activity that is not loaded. */
+  readonly pin?: WorkflowRunPinProblem;
 }
 
 /** What {@link createWorkflowRuntime} builds. */
@@ -472,6 +488,11 @@ export interface WorkflowRuntimeOptions {
   readonly source: WorkflowSource;
   readonly engine: Engine;
   readonly host: DocumentWorkflowHost;
+  /**
+   * The contributed activities and trigger kinds (COR-1874): the same ones `host` was built from.
+   * Absent for a Bureau without plugins.
+   */
+  readonly contributions?: WorkflowContributions | undefined;
   /** Where snapshots live; durable in a Bureau, since this needs the durable engine. */
   readonly snapshotStore: WorkflowSnapshotStore;
   readonly runtime: RuntimeServices;
@@ -515,7 +536,11 @@ export { createWorkflowSnapshotStore };
 
 export function createWorkflowRuntime(options: WorkflowRuntimeOptions): WorkflowRuntime {
   const { engine, snapshotStore: snapshots } = options;
+  /** The host a file is read against: a trigger kind a file names must be loaded. */
   const host = bridgeEngineActivities(engine, options.host);
+  /** The host a revision is registered against, whether it is a file's or has instances (COR-1874). */
+  const registrationHost = acceptContributedTriggers(host);
+  const contributions = options.contributions ?? NO_WORKFLOW_CONTRIBUTIONS;
   const owner = ownerOrLocal(undefined);
   /**
    * The workflows Bureau registered from a file in this process, by identifier. The engine knows
@@ -552,6 +577,26 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     return result;
   }
 
+  /**
+   * The registration of the files' documents with the engine, and a contributed trigger's fire,
+   * one at a time (COR-1874). Narrower than {@link exclusive}: it holds only the registration, never
+   * a schedule, a trigger's `start` or `stop`, or anything else that can wait for a fire, so a fire
+   * that waits for it can never wait for itself.
+   */
+  let registrationTail: Promise<unknown> = Promise.resolve();
+  function withRegistration<T>(work: () => Promise<T>): Promise<T> {
+    const result = registrationTail.then(work, work);
+    registrationTail = result.catch(() => undefined);
+    return result;
+  }
+  /**
+   * The file each workflow's active revision in the engine was registered from, as of the last
+   * registration that succeeded. Written and read only under {@link withRegistration}.
+   */
+  let appliedFiles = new Map<string, ReadyWorkflowFile>();
+  /** Why the last registration failed, until one succeeds. Written under {@link withRegistration}. */
+  let registrationFailure: unknown;
+
   function readyFiles(): ReadyWorkflowFile[] {
     return catalog.list().flatMap((listing) => {
       const file = catalog.find(listing.id);
@@ -585,9 +630,69 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
 
   /** Put the schedules in line with the files, leaving the unreadable ones as they are. */
   async function reconcileSchedules(): Promise<void> {
-    await reconcileWorkflowSchedules(engine, desiredSchedules(), unreadableWorkflows());
+    const unreadable = unreadableWorkflows();
+    await reconcileWorkflowSchedules(engine, desiredSchedules(), unreadable);
+    await triggers.reconcile(desiredTriggers(), unreadable);
     await forgetVanishedHookOrigins();
   }
+
+  /** The contributed triggers the ready, unpaused files want listening (COR-1874). */
+  function desiredTriggers(): Map<string, DesiredTrigger> {
+    const desired = new Map<string, DesiredTrigger>();
+    for (const file of readyFiles()) {
+      if (file.paused) continue;
+      const kind = contributions.triggerKinds.get(file.document.trigger.kind);
+      if (kind !== undefined) desired.set(file.id, { kind, trigger: file.document.trigger });
+    }
+    return desired;
+  }
+
+  /**
+   * A contributed trigger fired for workflow `id`: start an instance with the payload, as a signal
+   * trigger does. A payload the `inputSchema` refuses rejects with {@link WorkflowInputInvalidError},
+   * which the plugin that fired sees.
+   *
+   * The fire takes one snapshot, the file whose revision the engine has applied
+   * ({@link appliedFiles}), judges the payload by that revision's `inputSchema`, and starts that
+   * same revision: both happen under {@link withRegistration}, so no registration can move the
+   * engine's active revision in between. A fire that lands while a change to the files is queued or
+   * applying runs the revision applied before it; one after the change registered runs the new
+   * one. A revision that was paused, or whose trigger is another kind, starts nothing.
+   *
+   * It never waits for an apply. An apply that stops this trigger awaits the trigger's `stop`, and
+   * a trigger's `stop` may wait for its fires in flight (a webhook server's does), so a fire that
+   * waited for the apply would wait for itself. The registration lock holds only the registration,
+   * never a trigger's `start` or `stop`. A failed apply is reported as it is to `start`: the fire
+   * rejects with {@link WorkflowApplyError} until an apply succeeds.
+   */
+  async function fireTrigger(id: string, kind: string, payload: unknown): Promise<void> {
+    if (closed) return;
+    // The caller owns `payload`: snapshot it before the first await. A value that is not JSON is
+    // refused below, once the file it would start is known, as before.
+    const requested: unknown = payload ?? null;
+    const isJson = z.json().safeParse(requested).success;
+    const input: unknown = isJson ? structuredClone(requested) : requested;
+    await withRegistration(async () => {
+      if (closed) return;
+      const failure = registrationFailure ?? applyFailure;
+      if (failure !== undefined) throw new WorkflowApplyError(failure);
+      const file = appliedFiles.get(id);
+      if (file === undefined || file.paused || file.document.trigger.kind !== kind) return;
+      if (!isJson) {
+        throw options.createError('The trigger payload must be a JSON value.', 'BAD_REQUEST');
+      }
+      const issues = file.inputSchema === null ? [] : inputSchemaIssues(file.inputSchema, input);
+      if (issues.length > 0) throw new WorkflowInputInvalidError(id, issues);
+      const trigger = { kind, payload: input };
+      assertSendable('trigger payload', trigger);
+      await engine.start(weftNameOf(id), trigger);
+    });
+  }
+
+  const triggers = createWorkflowTriggerSupervisor({
+    fire: fireTrigger,
+    diagnose: options.diagnose,
+  });
 
   /** The identifiers a write is between claiming the hook origin of and listing the file for. */
   const writingOrigins = new Set<string>();
@@ -676,17 +781,43 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     const files = readyFiles();
     // The snapshot first: a revision never reaches the engine without one behind it.
     for (const file of files) await snapshots.ensure(file.id, file.document);
-    const registered: readonly RegisteredWorkflowDocument[] = await registerBureauWorkflowDocuments(
-      engine,
-      host,
-      { active: files.map((file) => file.document), retained },
-    );
-    for (const entry of registered) registeredTypes.add(bureauNameOf(entry.name));
+    await withRegistration(async () => {
+      try {
+        const registered: readonly RegisteredWorkflowDocument[] =
+          await registerBureauWorkflowDocuments(engine, registrationHost, {
+            active: files.map((file) => file.document),
+            retained,
+          });
+        for (const entry of registered) registeredTypes.add(bureauNameOf(entry.name));
+        appliedFiles = new Map(files.map((file) => [file.id, file]));
+        registrationFailure = undefined;
+      } catch (error) {
+        // Weft activates the documents one at a time, so some may be active and others not: until
+        // a registration succeeds, no fire may trust `appliedFiles`.
+        registrationFailure = error;
+        throw error;
+      }
+    });
   }
 
   /** Whether `id` is the name of a workflow the engine has from code, not one Bureau registered. */
   const isCodeName = (id: string): boolean =>
     engine.getWorkflowDefinition(weftNameOf(id)) !== undefined && !registeredTypes.has(id);
+
+  /** The first activity `document` pins that is not loaded at the pinned version, or `undefined`. */
+  function unresolvedPin(document: WorkflowDocument): WorkflowRunPinProblem | undefined {
+    for (const [handler, version] of Object.entries(document.activityVersions ?? {})) {
+      const resolution = contributions.resolveActivity(handler, version);
+      if (!resolution.ok) {
+        return {
+          reason: resolution.reason,
+          activity: formatVersionedId(handler, version),
+          availableVersions: resolution.availableVersions,
+        };
+      }
+    }
+    return undefined;
+  }
 
   /**
    * What startup does about the in-flight instances of the workflow files: the stored documents of
@@ -758,11 +889,22 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
           cannot(`the revision ${version} of workflow "${id}" is not stored`);
           continue;
         }
+        const pin = unresolvedPin(snapshot.document);
+        if (pin !== undefined) {
+          unrecoverable.push({
+            id,
+            workflowVersion: version,
+            runIds,
+            reason: `the stored revision ${version} of workflow "${id}" pins the activity ${pin.activity}, which is not loaded (${pin.reason}${pin.availableVersions.length === 0 ? '' : `; loaded: ${pin.availableVersions.join(', ')}`})`,
+            pin,
+          });
+          continue;
+        }
         try {
           retained.push({
             id,
             version,
-            document: validateBureauWorkflowDocument(snapshot.document, host),
+            document: validateBureauWorkflowDocument(snapshot.document, registrationHost),
           });
         } catch (error) {
           if (!(error instanceof WorkflowDocumentValidationError)) throw error;
@@ -811,6 +953,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
             id: entry.id,
             workflowVersion: entry.workflowVersion,
             reason,
+            ...(entry.pin === undefined ? {} : { pin: entry.pin }),
             cancelledAt: options.runtime.clock.nowISO(),
           });
           await engine.cancel(runId);
@@ -1238,8 +1381,11 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
   ): Promise<readonly WorkflowRevisionReport[]> {
     const current = catalog.find(id);
     const manifestOf = async (document: WorkflowDocument) => {
+      // A revision that pins an activity version that is no longer loaded has no manifest to
+      // compare, and every revision from before a plugin upgrade is one: not a fault to report.
+      if (unresolvedPin(document) !== undefined) return undefined;
       try {
-        return await buildWorkflowDocumentManifest(toWeftDocument(document), host);
+        return await buildWorkflowDocumentManifest(toWeftDocument(document), registrationHost);
       } catch (error) {
         options.diagnose(`Could not build the manifest of a revision of workflow "${id}".`, error);
         return undefined;
@@ -1407,6 +1553,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         ...(state.result === undefined ? {} : { result: state.result }),
         ...(error === undefined ? {} : { error }),
         finishReason: state.status === 'failed' ? finishReasonOf(state.errorStack) : null,
+        ...(cancellation?.pin === undefined ? {} : { unresumable: cancellation.pin }),
       };
     },
 
@@ -1587,6 +1734,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     async close() {
       closed = true;
       stopListening?.();
+      await triggers.close();
       await catalog.close();
       await settled();
     },

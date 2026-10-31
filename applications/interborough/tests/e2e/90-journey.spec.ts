@@ -305,6 +305,7 @@ test('opens the workflow from /workflows, waits for the schedule’s fire to be 
 
   // The schedule fires every few seconds. This page may open before the first fire, says there are
   // no runs, and asks again until there is one, so the wait is for its first row.
+  await detail.getByRole('tab', { name: WORKFLOW_COPY.page.tabs.runs }).click();
   await detail.getByRole('link', { name: WORKFLOW_COPY.runsAction, exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/workflows/${JOURNEY_WORKFLOW_ID}/runs$`));
   const runs = page.locator('tbody tr');

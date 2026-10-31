@@ -1,14 +1,15 @@
 <script lang="ts">
   /**
-   * The last five runs of one workflow, newest first, each a link to the run with its status, how
-   * long ago it began, and how long it took once it has ended; and a link to all of them. A file's
+   * The Runs tab: the newest runs of one workflow, newest first, each a link to the run with its
+   * status, how long ago it began, and how long it took once it has ended; and a link to all of
+   * them. A workflow that has not run is an empty state that offers to start one where it can. A file's
    * runs are the Bureau's (`bureau.workflows.runs.list`) and a code type's the engine's, because
    * the two services each know only their own instances.
    */
-  import { Skeleton } from '@lostgradient/cinder';
+  import { Alert, Button, EmptyState, SectionHeading, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { WORKFLOW_COPY } from '../../app/copy.ts';
+  import { RETRY_LABEL, WORKFLOW_COPY } from '../../app/copy.ts';
   import { getClient } from '../../lib/client.ts';
   import { formatDuration, formatRelativeTime } from '../../lib/format/index.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -23,14 +24,18 @@
     type: string;
     /** Whose runs: the Bureau's for a file, the engine's for a code-defined type. */
     kind: 'code' | 'agent-authored';
+    /** Starts a run, when this workflow can be started from the page; the empty state offers it. */
+    onStart?: (() => void) | undefined;
+    /** Resumes a paused file, when this page can; the empty state of a paused file offers it. */
+    onResume?: (() => void) | undefined;
   }
 
-  let { type, kind }: Props = $props();
+  let { type, kind, onStart, onResume }: Props = $props();
 
   const copy = WORKFLOW_COPY;
   const client = getClient();
   /** How many runs the page shows before it links to the rest. */
-  const RECENT_LIMIT = 5;
+  const RECENT_LIMIT = 20;
 
   type Run = {
     readonly id: string;
@@ -83,18 +88,56 @@
 </script>
 
 <section class="ib-workflow__section" data-testid="workflow-recent-runs">
-  <div class="ib-workflow__section-header">
-    <h2 class="weft-workflow-section__heading">{copy.page.recentRuns}</h2>
-    <a href={router.href(runsPath)} onclick={(event) => go(event, runsPath)}>{copy.runsAction}</a>
-  </div>
+  <SectionHeading level={2} title={copy.page.recentRuns}>
+    {#snippet actions()}
+      <a href={router.href(runsPath)} onclick={(event) => go(event, runsPath)}>{copy.runsAction}</a>
+    {/snippet}
+  </SectionHeading>
   {#if runs.isError}
-    <p class="ib-workflow__muted" role="alert">{copy.page.runsFailed}</p>
+    <Alert variant="danger">
+      <p class="ib-workflow__alert-body">{copy.page.runsFailed}</p>
+      <Button variant="secondary" size="sm" onclick={() => void runs.refetch()}
+        >{RETRY_LABEL}</Button
+      >
+    </Alert>
   {:else if runs.isPending}
     <div role="status" aria-busy="true" aria-label={copy.page.recentRuns}>
       <Skeleton height="1.5rem" />
     </div>
+  {:else if runs.data.length === 0 && onStart !== undefined}
+    <EmptyState
+      kind="first-use"
+      size="compact"
+      headingLevel={3}
+      title={copy.page.runs.emptyTitle}
+      description={copy.page.runs.emptyDescription}
+    >
+      {#snippet action()}
+        <Button variant="primary" size="sm" onclick={onStart}>{copy.page.startAction}</Button>
+      {/snippet}
+    </EmptyState>
+  {:else if runs.data.length === 0 && kind === 'agent-authored' && onResume !== undefined}
+    <EmptyState
+      kind="first-use"
+      size="compact"
+      headingLevel={3}
+      title={copy.page.runs.emptyTitle}
+      description={copy.page.runs.emptyDescriptionPaused}
+    >
+      {#snippet action()}
+        <Button variant="primary" size="sm" onclick={onResume}>{copy.resumeAction}</Button>
+      {/snippet}
+    </EmptyState>
   {:else if runs.data.length === 0}
-    <p class="ib-workflow__muted">{copy.page.noRuns}</p>
+    <EmptyState
+      kind="first-use"
+      size="compact"
+      headingLevel={3}
+      title={copy.page.runs.emptyTitle}
+      description={kind === 'agent-authored'
+        ? copy.page.runs.emptyDescriptionPaused
+        : copy.page.runs.emptyDescriptionCode}
+    />
   {:else}
     <ul class="ib-workflow__list">
       {#each runs.data as run (run.id)}

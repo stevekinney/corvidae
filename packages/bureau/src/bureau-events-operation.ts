@@ -66,6 +66,12 @@ const publishedBureauEventEnvelopeSchema = z.object({
   kind: z.string().regex(/^(?!feed\.gap$)/),
   emittedAtMs: z.number(),
   payload: z.record(z.string(), z.unknown()),
+  source: z
+    .string()
+    .optional()
+    .describe(
+      'The plugin whose contribution emitted the event. Absent for an event from Bureau core. Not a payload field.',
+    ),
 });
 
 const bureauEventGapEnvelopeSchema = z.object({

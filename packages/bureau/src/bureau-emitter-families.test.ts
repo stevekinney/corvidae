@@ -9,6 +9,8 @@ import {
   createMemoryGovernancePolicy,
   createMockEmbedder,
   type GovernedMemory,
+  createMemoryVectorStore,
+  createTestEmbedders,
 } from '@lostgradient/memory';
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
@@ -258,7 +260,7 @@ describe('agent definition and asset events on the bureau emitter', () => {
     );
 
     const change = changes.find((candidate) => candidate.added.includes('broken'));
-    expect(change?.source).toBe('agents');
+    expect(change?.catalog).toBe('agents');
     expect(change?.rejected).toEqual(['broken']);
 
     const assetService = harness.bureau.assets;
@@ -351,7 +353,8 @@ describe('a missed fire found while the Bureau is still being built', () => {
     const base = createGovernedMemory({
       storage: createInMemoryMemoryRecordStorage(),
       ledger: createMemoryGovernanceLedger(new MemoryStorage()),
-      embedder: createMockEmbedder(64),
+      ...createTestEmbedders(createMockEmbedder(64), 64),
+      vectors: createMemoryVectorStore(new MemoryStorage()),
       policy: createMemoryGovernancePolicy({ revision: 'governance:cor-1721' }),
     });
     const memory: GovernedMemory = Object.assign(Object.create(base) as GovernedMemory, {

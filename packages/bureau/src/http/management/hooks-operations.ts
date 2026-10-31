@@ -101,7 +101,7 @@ const startWorkflowActionInput = z.strictObject({
     .enum(['payload', 'event'])
     .optional()
     .describe(
-      'What of the event is the workflow’s input. `payload` (the default) is the event’s payload object, the shape `bureau.events.catalog` gives for its kind; `event` is `{ kind, bureauId, emittedAtMs, payload }`. Input the workflow’s `inputSchema` refuses fails the delivery without a retry.',
+      'What of the event is the workflow’s input. `payload` (the default) is the event’s payload object, the shape `bureau.events.catalog` gives for its kind; `event` is `{ kind, bureauId, emittedAtMs, payload }`, plus `source` when a plugin’s contribution emitted the event. Input the workflow’s `inputSchema` refuses fails the delivery without a retry.',
     ),
 });
 
@@ -117,10 +117,21 @@ const notifyActionInput = z.strictObject({
     ),
 });
 
+const pluginActionInput = z.strictObject({
+  type: z.literal('plugin'),
+  plugin: z.string().min(1).max(64).describe('The plugin that contributes the action kind.'),
+  kind: z.string().min(1).max(64).describe('The action kind’s name within the plugin.'),
+  configuration: z
+    .unknown()
+    .optional()
+    .describe('The kind’s configuration, checked against the schema the kind declares.'),
+});
+
 const actionInput = z.discriminatedUnion('type', [
   webhookActionInput,
   startWorkflowActionInput,
   notifyActionInput,
+  pluginActionInput,
 ]);
 
 const hookActionSchema = z.discriminatedUnion('type', [
@@ -131,6 +142,12 @@ const hookActionSchema = z.discriminatedUnion('type', [
     input: z.enum(['payload', 'event']),
   }),
   z.object({ type: z.literal('notify'), title: z.string().nullable() }),
+  z.object({
+    type: z.literal('plugin'),
+    plugin: z.string(),
+    kind: z.string(),
+    configuration: z.unknown().nullable(),
+  }),
 ]);
 
 const hookSchema = z.object({
@@ -175,7 +192,7 @@ const deliverySchema = z.object({
   id: z.string(),
   hookId: z.string(),
   owner: z.string(),
-  actionType: z.enum(['webhook', 'start-workflow', 'notify']),
+  actionType: z.enum(['webhook', 'start-workflow', 'notify', 'plugin']),
   kind: z.string(),
   test: z.boolean(),
   status: z.enum(['pending', 'delivered', 'exhausted', 'aborted', 'failed-secret', 'failed']),
@@ -189,9 +206,24 @@ const deliverySchema = z.object({
     .describe('The request of a `webhook` delivery; `null` for the other actions.'),
   work: z
     .object({
-      type: z.enum(['start-workflow', 'notify']),
+      type: z.enum(['start-workflow', 'notify', 'plugin']),
       workflowId: z.string().nullable(),
-      input: z.unknown(),
+      input: z
+        .unknown()
+        .describe(
+          'A `start-workflow` delivery’s workflow input; a `plugin` delivery’s event, `{ kind, bureauId, emittedAtMs, payload, source? }`.',
+        ),
+      plugin: z
+        .string()
+        .nullable()
+        .describe('The plugin of a `plugin` delivery; `null` otherwise.'),
+      pluginKind: z
+        .string()
+        .nullable()
+        .describe('The action kind of a `plugin` delivery; `null` otherwise.'),
+      configuration: z
+        .unknown()
+        .describe('The configuration of a `plugin` delivery; `null` otherwise.'),
       skip: z
         .string()
         .nullable()
@@ -203,7 +235,7 @@ const deliverySchema = z.object({
     })
     .nullable()
     .describe(
-      'What a `start-workflow` or `notify` delivery does, mapped from the event when it was created; `null` for a webhook.',
+      'What a `start-workflow`, `notify` or `plugin` delivery does, mapped from the event when it was created; `null` for a webhook.',
     ),
   attempts: z.array(attemptSchema),
   maxAttempts: z.number().int(),
@@ -219,7 +251,14 @@ function hookViewOf(hook: Hook): z.infer<typeof hookSchema> {
     action:
       hook.action.type === 'notify'
         ? { type: 'notify', title: hook.action.title ?? null }
-        : { ...hook.action },
+        : hook.action.type === 'plugin'
+          ? {
+              type: 'plugin',
+              plugin: hook.action.plugin,
+              kind: hook.action.kind,
+              configuration: hook.action.configuration ?? null,
+            }
+          : { ...hook.action },
     events: [...hook.events],
     enabled: hook.enabled,
     createdAt: hook.createdAt,
@@ -253,18 +292,36 @@ function deliveryViewOf(delivery: HookDelivery): z.infer<typeof deliverySchema> 
               type: 'start-workflow',
               workflowId: delivery.work.workflowId,
               input: delivery.work.input,
+              plugin: null,
+              pluginKind: null,
+              configuration: null,
               skip: delivery.work.skip ?? null,
               title: null,
               body: null,
             }
-          : {
-              type: 'notify',
-              workflowId: null,
-              input: null,
-              skip: null,
-              title: delivery.work.title,
-              body: delivery.work.body,
-            },
+          : delivery.work.type === 'plugin'
+            ? {
+                type: 'plugin',
+                workflowId: null,
+                input: delivery.work.event,
+                plugin: delivery.work.plugin,
+                pluginKind: delivery.work.kind,
+                configuration: delivery.work.configuration ?? null,
+                skip: null,
+                title: null,
+                body: null,
+              }
+            : {
+                type: 'notify',
+                workflowId: null,
+                input: null,
+                plugin: null,
+                pluginKind: null,
+                configuration: null,
+                skip: null,
+                title: delivery.work.title,
+                body: delivery.work.body,
+              },
     attempts: delivery.attempts.map((attempt) => ({
       number: attempt.number,
       startedAt: attempt.startedAt,
@@ -455,7 +512,7 @@ export const hooksCreateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Create a hook',
   description:
-    'Creates a hook owned by the caller: when a published Bureau event of one of `events` happens, its `action` runs. `action` is `{ type: "webhook", url }` (or `url` alone, its shorthand), `{ type: "start-workflow", workflowId, input? }` or `{ type: "notify", title? }`. A webhook sends `url` a POST whose body is `{ id, hookId, kind, bureauId, emittedAtMs, test, payload }` and whose `X-Signature` header (`t=<unix seconds>,v1=<hex>`, an HMAC-SHA256 of `<t>.<body>` under `signingSecret`) lets the receiver verify it; a delivery that fails is retried with backoff and resumed after a restart, and its request, response excerpt and attempts are kept (`bureau.hooks.deliveries`). `signingSecret` is required for a webhook, refused for the other actions, write-only and never returned. `start-workflow` starts the workflow as the owner, with the event’s payload (or, with `input: "event"`, `{ kind, bureauId, emittedAtMs, payload }`) as its input; input the workflow refuses fails that delivery without a retry, a delivery retried or resumed starts one run, and the events of a run a hook started start nothing (that delivery fails, `Skipped`), so hooks do not chain. A delivery is made for each publication of an event, and the `goal.*` events are at-least-once. It needs a caller allowed to start workflows, and an owner who may (in v1 the deployment’s owner of record), else `Forbidden` (`data.reason: "workflow authority"`); an unknown or paused workflow is `InvalidParams`. `notify` writes the owner a notification per event, once per delivery, and cannot list `notification.created` (`InvalidParams` on `events`). The caller needs no scope to own a hook, but needs `bureau.events:observe-all`, because a hook observes the whole Bureau’s events. An unacceptable URL, event list or secret is `InvalidParams`. A deployment that keeps secrets elsewhere refuses with `Forbidden` (`data.reason: "deployment"`). A Bureau without hooks, or without an encryption key, answers `UnsupportedCapability`.',
+    'Creates a hook owned by the caller: when a published Bureau event of one of `events` happens, its `action` runs. `action` is `{ type: "webhook", url }` (or `url` alone, its shorthand), `{ type: "start-workflow", workflowId, input? }`, `{ type: "notify", title? }` or `{ type: "plugin", plugin, kind, configuration? }` (an action kind a plugin contributes; its configuration is checked against the kind’s schema, and an unknown kind is `InvalidParams` on `action.kind`). A webhook sends `url` a POST whose body is `{ id, hookId, kind, bureauId, emittedAtMs, test, payload, source? }`, `source` being the plugin whose contribution emitted the event and absent for an event from Bureau core, and whose `X-Signature` header (`t=<unix seconds>,v1=<hex>`, an HMAC-SHA256 of `<t>.<body>` under `signingSecret`) lets the receiver verify it; a delivery that fails is retried with backoff and resumed after a restart, and its request, response excerpt and attempts are kept (`bureau.hooks.deliveries`). `signingSecret` is required for a webhook, refused for the other actions, write-only and never returned. `start-workflow` starts the workflow as the owner, with the event’s payload (or, with `input: "event"`, `{ kind, bureauId, emittedAtMs, payload, source? }`) as its input; input the workflow refuses fails that delivery without a retry, a delivery retried or resumed starts one run, and the events of a run a hook started start nothing (that delivery fails, `Skipped`), so hooks do not chain. A delivery is made for each publication of an event, and the `goal.*` events are at-least-once. It needs a caller allowed to start workflows, and an owner who may (in v1 the deployment’s owner of record), else `Forbidden` (`data.reason: "workflow authority"`); an unknown or paused workflow is `InvalidParams`. `notify` writes the owner a notification per event, once per delivery, and cannot list `notification.created` (`InvalidParams` on `events`). The caller needs no scope to own a hook, but needs `bureau.events:observe-all`, because a hook observes the whole Bureau’s events. An unacceptable URL, event list or secret is `InvalidParams`. A deployment that keeps secrets elsewhere refuses with `Forbidden` (`data.reason: "deployment"`). A Bureau without hooks, or without an encryption key, answers `UnsupportedCapability`.',
   destructive: false,
   tags: ['Hooks'],
   inputSchema: createInput,

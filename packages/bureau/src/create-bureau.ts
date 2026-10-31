@@ -212,6 +212,7 @@ import {
   type SubordinateRun,
 } from './bureau-catalog-dispatch';
 import { createBureauEventFeed } from './bureau-event-feed.ts';
+import { createBureauEventFormatter } from './bureau-event-formatting.ts';
 import {
   createDiagnosticDispatcher,
   forwardAssetEvents,
@@ -285,6 +286,7 @@ import { createGoalWorkflowHost } from './goal-ports';
 import { recoveryEntryFailure } from './goal-recovery';
 import type { BureauGoals } from './goal-types';
 import { createGoalValidatorCatalog } from './goal-validator-catalog';
+import { createWorkflowContributions } from './workflow-contributions';
 import { composeBureauGoals } from './goals-composition';
 import { leaseEvidenceFromLostHealth } from './liveness-projection';
 import { createAbandonedTaskSweeper, openProcessLease } from './process-lease';
@@ -2361,6 +2363,7 @@ function composeHooks(input: {
     keys: input.keys,
     urlPolicy: options.urlPolicy,
     requestTimeoutMilliseconds: options.requestTimeoutMilliseconds,
+    actionKinds: options.actionKinds,
     workflows: input.workflows,
     notifications: input.notifications,
     startedByHook: input.startedByHook,
@@ -2558,6 +2561,10 @@ async function constructBureau<const D extends AgentDefinitions>(
     now: runtimeServices.clock.now,
     onPublish: (envelope) => hooksInstance?.dispatch(envelope),
   });
+  // COR-1876: the event formatters plugins contribute; a clash between two is refused here.
+  const eventFormatter = createBureauEventFormatter(options.eventFormatters, (message, cause) =>
+    diagnostics.diagnose({ level: 'warn', scope: 'events', message: `[bureau] ${message}`, cause }),
+  );
   // Guarded for the reason `emitLiveFrame` is (AB-96): `dispatchEvent` walks its all-events
   // listeners unguarded, so a throw here would propagate out of whichever `emitter.dispatch` call
   // was in flight — several of which run synchronously inside run setup, where an exception leaves a
@@ -3144,6 +3151,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     // COR-1527: the workflow files. The directory is scanned and the engine told about the documents
     // in `start()`, at the end of construction and before the engine recovers; the `agent` step runs
     // through `runWorkflowAgentStep`, defined below with the rest of the run machinery.
+    const workflowContributions = createWorkflowContributions(options.contributionCatalog);
     workflowRuntime =
       options.workflowSource === undefined || runtime.durable === undefined
         ? undefined
@@ -3154,7 +3162,9 @@ async function constructBureau<const D extends AgentDefinitions>(
             engine: runtime.durable.engine as Engine,
             host: createWorkflowDocumentHost({
               runAgentStep: (request) => runWorkflowAgentStep(request),
+              contributions: workflowContributions,
             }),
+            contributions: workflowContributions,
             snapshotStore: createWorkflowSnapshotStore({
               store: runtime.kv,
               nowISO: runtimeServices.clock.nowISO,
@@ -21375,6 +21385,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     get hooks() {
       return hooksInstance?.hooks;
     },
+    formatEvent: eventFormatter,
     deployments:
       options.workerDeployments === undefined
         ? undefined

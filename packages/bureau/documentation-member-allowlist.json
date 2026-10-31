@@ -443,7 +443,6 @@
     ". DefinitionsChangedEvent.changed",
     ". DefinitionsChangedEvent.rejected",
     ". DefinitionsChangedEvent.removed",
-    ". DefinitionsChangedEvent.source",
     ". DefinitionsChangedEvent.static.type",
     ". DiagnosticEvent.level",
     ". DiagnosticEvent.scope",

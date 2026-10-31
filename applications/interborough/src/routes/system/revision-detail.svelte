@@ -7,7 +7,13 @@
    * a revision uninstalled since the list loaded shows the operation's own
    * not-found fault. Loading, malformed, and fault states are explicit.
    */
-  import { Button, CodeBlock, DescriptionList, Skeleton } from '@lostgradient/cinder';
+  import {
+    Button,
+    CodeBlock,
+    DescriptionList,
+    SectionHeading,
+    Skeleton,
+  } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { getClient } from '../../lib/client.ts';
@@ -35,10 +41,11 @@
 </script>
 
 <section class="weft-revision-detail" aria-label={`Revision ${revision} detail`}>
-  <div class="weft-revision-detail__header">
-    <h4 class="weft-revision-detail__title">Revision detail</h4>
-    <Button size="sm" variant="ghost" label="Close detail" onclick={onClose} />
-  </div>
+  <SectionHeading level={4} title="Revision detail">
+    {#snippet actions()}
+      <Button size="sm" variant="ghost" label="Close detail" onclick={onClose} />
+    {/snippet}
+  </SectionHeading>
 
   {#if recordQuery.isPending}
     <div role="status" aria-busy="true" aria-label="Loading revision detail">
@@ -77,14 +84,6 @@
     background: var(--cinder-surface-raised);
   }
 
-  .weft-revision-detail__header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-  }
-
-  .weft-revision-detail__title,
   .weft-revision-detail__contract-title {
     margin: 0;
     font-size: var(--cinder-text-sm);

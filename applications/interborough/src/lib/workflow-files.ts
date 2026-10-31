@@ -84,6 +84,15 @@ const detailSchema = fileSchema.extend({
 /** One file as `bureau.workflows.get` shows it, with its text and its live schedule. */
 export type WorkflowFileDetail = z.infer<typeof detailSchema>;
 
+/** Weft's verdict on whether a revision is compatible with the workflow's current revision. */
+const compatibilitySchema = z.discriminatedUnion('compatible', [
+  z.object({ compatible: z.literal(true) }),
+  z.object({ compatible: z.literal(false), reasons: z.array(z.string()) }),
+]);
+
+/** A revision's compatibility with the current revision: `{ compatible: true }`, or the reasons it is not. */
+export type WorkflowCompatibility = z.infer<typeof compatibilitySchema>;
+
 const revisionsSchema = z.object({
   revisions: z.array(
     z.object({
@@ -97,12 +106,36 @@ const revisionsSchema = z.object({
         inputSchema: jsonSchemaField.nullable(),
         outputSchema: jsonSchemaField.nullable(),
       }),
+      /** The verdict against the current revision, or `null` when there is no current revision to compare with. */
+      compatibility: compatibilitySchema.nullable(),
     }),
   ),
 });
 
 /** A version of the workflow's document that has run. */
 export type WorkflowRevision = z.infer<typeof revisionsSchema>['revisions'][number];
+
+const codeWorkflowSchema = z.object({
+  id: z.string(),
+  description: z.string().nullable(),
+  version: z.string().nullable(),
+  source: z.object({ kind: z.literal('code'), text: z.string() }),
+});
+
+/**
+ * A workflow that code registered, as `bureau.workflows.internal.get` shows it. `source.text` is
+ * the workflow's description followed by its registered contract as JSON; the code is not exposed.
+ */
+export type CodeWorkflow = z.infer<typeof codeWorkflowSchema>;
+
+const startResultSchema = z.object({
+  runId: z.string(),
+  workflow: z.string(),
+  workflowVersion: z.string(),
+});
+
+/** What starting a workflow answers: the new instance's identifier and the revision it runs. */
+export type WorkflowStartResult = z.infer<typeof startResultSchema>;
 
 const writeResultSchema = z.object({ id: z.string(), hash: z.string() });
 
@@ -173,6 +206,31 @@ export async function listWorkflowRevisions(
 ): Promise<readonly WorkflowRevision[]> {
   return revisionsSchema.parse(await callBureau('bureau.workflows.revisions', { id }, options))
     .revisions;
+}
+
+/** A code-defined workflow's description and registered contract. Anything the caller may not read is a `NotFound` fault. */
+export async function getCodeWorkflow(id: string, options?: Options): Promise<CodeWorkflow> {
+  return codeWorkflowSchema.parse(
+    await callBureau('bureau.workflows.internal.get', { id }, options),
+  );
+}
+
+/**
+ * Starts one instance of a ready, unpaused workflow file with `input`, which the Bureau checks
+ * against the file's `inputSchema` before anything is created (`InvalidParams`, with the issues).
+ */
+export async function startWorkflowFile(
+  id: string,
+  input: unknown,
+  options?: Options,
+): Promise<WorkflowStartResult> {
+  return startResultSchema.parse(
+    await callBureau(
+      'bureau.workflows.start',
+      { id, surface: 'web', ...(input === undefined ? {} : { input }) },
+      options,
+    ),
+  );
 }
 
 /**

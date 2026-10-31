@@ -111,6 +111,7 @@ export type {
   BureauWorkflows,
 } from './workflow-runtime';
 export type { WorkflowFinishReason, WorkflowSchemaIssue } from './workflow-schema';
+export type { WorkflowRunPinProblem } from './workflow-snapshot-store';
 export { WorkflowInputInvalidError } from './workflow-schema';
 export type {
   WorkflowFileDefinition,
@@ -375,7 +376,7 @@ export {
 export type {
   BureauAssetEventKind,
   BureauEventMap,
-  DefinitionSourceKind,
+  DefinitionCatalogKind,
   GoalEventKind,
   RecoveredRunVerdict,
   RecoveryRejectionReason,
@@ -715,6 +716,7 @@ export {
 export type {
   Hook,
   HookAction,
+  HookActionKindRegistration,
   HookActionReceipt,
   HookActionType,
   HookAttemptOutcome,
@@ -727,6 +729,7 @@ export type {
   HookSecretStore,
   HookWorkflowInput,
   NotifyHookAction,
+  PluginHookAction,
   StartWorkflowHookAction,
   WebhookHookAction,
 } from './hooks/hook-types';
@@ -749,6 +752,13 @@ export {
   type PublishedBureauEventKind,
   publishedBureauEventKinds,
 } from './bureau-event-feed';
+export { eventSourceOf, markEventSource } from './event-source';
+export {
+  createBureauEventFormatter,
+  type BureauEventFormatter,
+  type EventFormatterRegistration,
+  type FormattedBureauEvent,
+} from './bureau-event-formatting';
 export {
   BUREAU_EVENT_CATALOG,
   bureauEventCatalog,

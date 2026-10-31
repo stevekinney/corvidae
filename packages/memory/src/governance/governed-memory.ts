@@ -1,5 +1,6 @@
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 
+import { HASHING_EMBEDDER_ID } from '../embedder-registry';
 import { createDeletionEngine } from './deletion';
 import { settlePendingDerivations } from './derivation';
 import { createGovernanceContext } from './governance-context';
@@ -10,6 +11,7 @@ import {
   readEvents,
   sweepRetention,
 } from './governed-administration';
+import { createGovernedEmbedding } from './governed-embedding';
 import { deleteLocated, forget } from './governed-forgetting';
 import type {
   CreateGovernedMemoryOptions,
@@ -26,6 +28,7 @@ import {
   revokeRecord,
 } from './governed-transitions';
 import { admitWrite } from './governed-writes';
+import { copyInlineVectors } from './profile-vectors';
 
 /**
  * Hands `notification` to each listener registered when delivery starts, in order. A listener that
@@ -64,10 +67,15 @@ export function createGovernedMemory(options: CreateGovernedMemoryOptions): Gove
   const runtime = options.runtime ?? createDefaultRuntimeServices();
   const listeners = new Set<(notification: MemoryGovernanceNotification) => unknown>();
   const policies = createPolicyHistory(() => context, options.policy);
+  const embedding = createGovernedEmbedding({
+    registry: options.embedders,
+    vectors: options.vectors,
+    initialEmbedder: options.initialEmbedder ?? HASHING_EMBEDDER_ID,
+  });
   const context = createGovernanceContext({
     storage: options.storage,
     ledger: options.ledger,
-    embedder: options.embedder,
+    embedding,
     textSearchProvider: options.textSearchProvider,
     runtime,
     propagation: options.propagation ?? {},
@@ -88,6 +96,10 @@ export function createGovernedMemory(options: CreateGovernedMemoryOptions): Gove
     get policyRevision() {
       return policies.current().revision;
     },
+    embedding: {
+      status: () => embedding.status(),
+      availability: (id) => embedding.availability(id),
+    },
     subscribe(listener) {
       if (typeof listener !== 'function') {
         throw new TypeError('GovernedMemory.subscribe requires a listener function.');
@@ -103,6 +115,8 @@ export function createGovernedMemory(options: CreateGovernedMemoryOptions): Gove
     async init() {
       await options.storage.init();
       await options.textSearchProvider?.init();
+      // Records stored before COR-1898 held their vector inline; recall reads only the profile's.
+      await copyInlineVectors(governance);
     },
     async close() {
       await options.storage.close();

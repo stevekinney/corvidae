@@ -49,6 +49,7 @@ const SHARED_PREFIXES_OUTSIDE_WEFTS_LIST = new Set([
   'weft:',
   'fresh-attempt-artifact:v1:',
   'app:agent-bureau:memory:v1:',
+  'app:agent-bureau:memory-vectors:v1:',
   'app:agent-bureau:memory-governance:v1:',
   'app:agent-bureau:memory-evidence:v1:',
   'app:agent-bureau:memory-projection:v1:',

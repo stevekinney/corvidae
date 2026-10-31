@@ -1,5 +1,3 @@
-import { cosineSimilarity } from 'armorer';
-
 import { computeBM25Scores } from '../text-search';
 import type { MemoryAuthority, MemoryOperation } from './authority';
 import {
@@ -19,6 +17,7 @@ import type {
 } from './governed-memory-types';
 import { embedOne } from './governed-writes';
 import { decideMemoryAccess, type MemoryRedaction } from './predicate';
+import { candidateKey, loadVectors, type RecallVectors, similarity } from './profile-vectors';
 import {
   type GovernedMemoryRecord,
   projectRecord,
@@ -126,13 +125,18 @@ async function rank(
   candidates: readonly Candidate[],
 ): Promise<{ candidate: Candidate; score: number }[]> {
   if (candidates.length === 0) return [];
-  const queryVector = await embedOne(context, query);
+  const vectors: RecallVectors = {
+    active: await context.embedding.active(),
+    byCandidate: new Map(),
+  };
+  await loadVectors(context, vectors, candidates);
+  const queryVector = await embedOne(vectors.active, query);
   const texts = await textScores(context, query, candidates);
   return candidates
     .map((candidate, index) => ({
       candidate,
       score:
-        (VECTOR_WEIGHT * cosineSimilarity(queryVector, candidate.record.vector) +
+        (VECTOR_WEIGHT * similarity(queryVector, vectors.byCandidate.get(candidateKey(candidate))) +
           TEXT_WEIGHT * texts[index]!) *
         candidate.read.governance.retrievalWeight,
     }))

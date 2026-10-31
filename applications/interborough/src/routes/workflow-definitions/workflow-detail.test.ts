@@ -83,14 +83,10 @@ function open(path: string, overrides: Partial<World> = {}) {
 const page = (container: HTMLElement) =>
   container.querySelector<HTMLElement>('[data-page="workflow-detail"]');
 
-/** The page, once what the type is has been read: its recent runs, or an invalid file's problem, follow it. */
+/** The page, once what the type is has been read: its Overview, the tab it opens on, follows it. */
 async function ready(container: HTMLElement): Promise<HTMLElement> {
   await waitFor(() =>
-    expect(
-      page(container)?.querySelector(
-        '[data-testid="workflow-recent-runs"], [data-testid="workflow-problem"]',
-      ),
-    ).toBeTruthy(),
+    expect(page(container)?.querySelector('[data-testid="workflow-overview"]')).toBeTruthy(),
   );
   return page(container) as HTMLElement;
 }
@@ -98,18 +94,20 @@ async function ready(container: HTMLElement): Promise<HTMLElement> {
 const testId = (root: HTMLElement, id: string) =>
   root.querySelector<HTMLElement>(`[data-testid="${id}"]`);
 
-/** Opens a disclosure on the page by its trigger's name, and answers its panel's content. */
-async function openDisclosure(root: HTMLElement, name: string): Promise<void> {
-  const trigger = [...root.querySelectorAll<HTMLButtonElement>('button[aria-expanded]')].find(
-    (button) => button.textContent?.trim() === name,
+/** Opens a tab of the page by its name. */
+async function openTab(root: HTMLElement, name: string): Promise<void> {
+  const tab = [...root.querySelectorAll<HTMLElement>('[role="tab"]')].find(
+    (candidate) => candidate.textContent?.trim() === name,
   );
-  if (trigger === undefined) throw new Error(`No disclosure called ${name}.`);
-  await fireEvent.click(trigger);
-  await waitFor(() => expect(trigger.getAttribute('aria-expanded')).toBe('true'));
+  if (tab === undefined) throw new Error(`No tab called ${name}.`);
+  await fireEvent.click(tab);
+  await waitFor(() => expect(tab.getAttribute('aria-selected')).toBe('true'));
 }
 
-const disclosures = (root: HTMLElement) =>
-  [...root.querySelectorAll('button[aria-expanded]')].map((button) => button.textContent?.trim());
+const tabNames = (root: HTMLElement) =>
+  [...root.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent?.trim());
+
+const TABS = WORKFLOW_COPY.page.tabs;
 
 describe('a code-defined type', () => {
   test('leads with what it is for, what starts it, and its runs, and has no row whose value is none', async () => {
@@ -131,23 +129,24 @@ describe('a code-defined type', () => {
     expect(root.textContent).not.toContain('No description');
   });
 
-  test('keeps its schemas, signals, updates, queries, and active revision behind a collapsed Details', async () => {
+  test('shows its input and output as field lists, and its signals and queries, on the Overview', async () => {
     const { container } = open('/workflows/order-processing');
     const root = await ready(container);
-    expect(disclosures(root)).toEqual([WORKFLOW_COPY.page.details, WORKFLOW_COPY.page.engine]);
-    expect(testId(root, 'workflow-definition')).toBeNull();
+    expect(tabNames(root)).toEqual([TABS.overview, TABS.code, TABS.runs, TABS.history]);
 
-    await openDisclosure(root, WORKFLOW_COPY.page.details);
+    // One line per field, the name humanised, and the raw schema behind a disclosure.
+    const input = testId(root, 'workflow-input-schema');
+    const output = testId(root, 'workflow-output-schema');
+    expect(input?.textContent).toContain('Order ID');
+    expect(output?.textContent).toContain('Shipped');
+    expect(root.querySelector('pre')).toBeNull();
     const definition = testId(root, 'workflow-definition');
-    expect(definition?.textContent).toContain(WORKFLOW_COPY.page.inputSchema);
-    expect(definition?.textContent).toContain(WORKFLOW_COPY.page.outputSchema);
-    expect(definition?.textContent).toContain('orderId');
     expect(definition?.textContent).toContain('pause-it');
     expect(definition?.textContent).toContain('progress');
     expect(testId(root, 'workflow-file-path')).toBeNull();
   });
 
-  test('has no Details at all when its contract declares nothing, and no row for what it lacks', async () => {
+  test('has no row for what its contract lacks, and says it declares no schema', async () => {
     const { container } = open('/workflows/order-processing', {
       definitions: [
         codeDefinition('order-processing', {
@@ -160,7 +159,13 @@ describe('a code-defined type', () => {
       ],
     });
     const root = await ready(container);
-    expect(disclosures(root)).toEqual([WORKFLOW_COPY.page.engine]);
+    expect(testId(root, 'workflow-definition')).toBeNull();
+    expect(testId(root, 'workflow-input-schema')?.textContent).toContain(
+      WORKFLOW_COPY.page.overview.noSchema,
+    );
+    expect(testId(root, 'workflow-output-schema')?.textContent).toContain(
+      WORKFLOW_COPY.page.overview.noSchema,
+    );
     expect(testId(root, 'workflow-description')).toBeNull();
     expect(root.textContent).not.toMatch(/\bNone\b/);
   });
@@ -177,13 +182,10 @@ describe('a code-defined type', () => {
       ],
     });
     const root = await ready(container);
-    await openDisclosure(root, WORKFLOW_COPY.page.details);
     const definition = testId(root, 'workflow-definition');
     expect(definition?.textContent).toContain(WORKFLOW_COPY.page.signals);
     expect(definition?.textContent).not.toContain(WORKFLOW_COPY.page.updates);
     expect(definition?.textContent).not.toContain(WORKFLOW_COPY.page.queries);
-    expect(definition?.textContent).not.toContain(WORKFLOW_COPY.page.inputSchema);
-    expect(definition?.textContent).not.toContain(WORKFLOW_COPY.page.outputSchema);
   });
 
   test('lists the active and paused schedules that start it, and not a cancelled generation or another type’s', async () => {
@@ -209,13 +211,13 @@ describe('a code-defined type', () => {
     expect(testId(root, 'workflow-trigger')).toBeNull();
   });
 
-  test('keeps the engine’s revision panel, and its install form, behind a collapsed Engine', async () => {
+  test('keeps the engine’s revision panel, and its install form, on the History tab', async () => {
     const { container } = open('/workflows/order-processing');
     const root = await ready(container);
     expect(root.querySelector('.weft-revisions-panel')).toBeNull();
     expect(stub?.callsTo('weft.workflows.revisions.list')).toEqual([]);
 
-    await openDisclosure(root, WORKFLOW_COPY.page.engine);
+    await openTab(root, TABS.history);
     await waitFor(() => expect(root.querySelector('.weft-revisions-panel')).not.toBeNull());
     expect(stub?.callsTo('weft.workflows.revisions.list')[0]?.params).toEqual({
       name: 'order-processing',
@@ -238,13 +240,16 @@ describe('a code-defined type', () => {
     }
     expect(testId(root, 'workflow-signal')).toBeNull();
     expect(testId(root, 'workflow-file-path')).toBeNull();
+    // It cannot be started from here: starting is the Bureau's, and the Bureau starts files.
+    expect(buttons).not.toContain(WORKFLOW_COPY.page.startAction);
+    await openTab(root, TABS.runs);
     const all = [...root.querySelectorAll('a')].find(
       (link) => link.textContent?.trim() === WORKFLOW_COPY.runsAction,
     );
     expect(all?.getAttribute('href')).toBe('/workflows/order-processing/runs');
   });
 
-  test('shows its last five runs, newest first, each a link to the run', async () => {
+  test('shows its newest runs, newest first, each a link to the run', async () => {
     const { container } = open('/workflows/order-processing', {
       runs: Array.from({ length: 7 }, (_, index) =>
         runFixture(`run-${String(index)}`, 'order-processing', {
@@ -255,7 +260,8 @@ describe('a code-defined type', () => {
       ),
     });
     const root = await ready(container);
-    await waitFor(() => expect(root.querySelectorAll('[data-run]').length).toBe(5));
+    await openTab(root, TABS.runs);
+    await waitFor(() => expect(root.querySelectorAll('[data-run]').length).toBe(7));
     const runs = [...root.querySelectorAll<HTMLElement>('[data-run]')];
     expect(runs.map((run) => run.dataset['run'])).toEqual([
       'run-6',
@@ -263,6 +269,8 @@ describe('a code-defined type', () => {
       'run-4',
       'run-3',
       'run-2',
+      'run-1',
+      'run-0',
     ]);
     expect(runs[0]?.dataset['status']).toBe('running');
     expect(runs[0]?.querySelector('a')?.getAttribute('href')).toBe(
@@ -273,14 +281,19 @@ describe('a code-defined type', () => {
     expect(runs[1]?.textContent).toContain(WORKFLOW_COPY.page.runDuration('400ms'));
   });
 
-  test('says nothing has run it when nothing has', async () => {
+  test('shows an empty state when nothing has run it, with no action it cannot take', async () => {
     const { container } = open('/workflows/order-processing', { runs: [] });
     const root = await ready(container);
+    await openTab(root, TABS.runs);
     await waitFor(() =>
       expect(testId(root, 'workflow-recent-runs')?.textContent).toContain(
-        WORKFLOW_COPY.page.noRuns,
+        WORKFLOW_COPY.page.runs.emptyTitle,
       ),
     );
+    expect(
+      testId(root, 'workflow-recent-runs')?.querySelector('.cinder-empty-state'),
+    ).not.toBeNull();
+    expect(testId(root, 'workflow-recent-runs')?.querySelector('button')).toBeNull();
   });
 });
 
@@ -291,13 +304,14 @@ describe('the recent runs', () => {
       throw workflowFaults.unavailable();
     });
     const root = await ready(container);
+    await openTab(root, TABS.runs);
     await waitFor(() =>
       expect(testId(root, 'workflow-recent-runs')?.textContent).toContain(
         WORKFLOW_COPY.page.runsFailed,
       ),
     );
     expect(testId(root, 'workflow-recent-runs')?.textContent).not.toContain(
-      WORKFLOW_COPY.page.noRuns,
+      WORKFLOW_COPY.page.runs.emptyTitle,
     );
   });
 
@@ -306,6 +320,7 @@ describe('the recent runs', () => {
       runs: [runFixture('run-1', 'order-processing')],
     });
     const root = await ready(container);
+    await openTab(root, TABS.runs);
     await waitFor(() => expect(root.querySelectorAll('[data-run]').length).toBeGreaterThan(0));
     const link = root.querySelector<HTMLAnchorElement>('[data-run] a');
     const href = link?.getAttribute('href') ?? '';
@@ -328,7 +343,6 @@ describe('a type with several signals', () => {
       ],
     });
     const root = await ready(container);
-    await openDisclosure(root, WORKFLOW_COPY.page.details);
     const row = [...root.querySelectorAll('dd')].find((entry) =>
       entry.textContent?.includes('pause-it'),
     );
@@ -337,13 +351,13 @@ describe('a type with several signals', () => {
 });
 
 describe('a type the Bureau registers for itself', () => {
-  test('has no Engine disclosure, because a person never installs a revision of one', async () => {
+  test('has no History tab, because a person never installs a revision of one', async () => {
     const { container } = open('/workflows/agentRun', {
       definitions: [codeDefinition('agentRun')],
     });
     const root = await ready(container);
     expect(root.querySelector('h1')?.textContent).toContain('agentRun');
-    expect(disclosures(root)).toEqual([WORKFLOW_COPY.page.details]);
+    expect(tabNames(root)).toEqual([TABS.overview, TABS.code, TABS.runs]);
     expect(stub?.callsTo('weft.workflows.revisions.list')).toEqual([]);
   });
 });
@@ -389,13 +403,10 @@ describe('an agent-authored type', () => {
     expect(trigger?.querySelector('code')?.textContent).toBe('deploy');
   });
 
-  test('keeps its file path, its trigger as written, and its signals behind a collapsed Details', async () => {
+  test('lists its file path, its trigger as written, and its signals on the Overview', async () => {
     const { container } = open('/workflows/digest');
     const root = await ready(container);
-    expect(disclosures(root)).toEqual([WORKFLOW_COPY.page.details, WORKFLOW_COPY.page.engine]);
-    expect(testId(root, 'workflow-file-path')).toBeNull();
-
-    await openDisclosure(root, WORKFLOW_COPY.page.details);
+    expect(tabNames(root)).toEqual([TABS.overview, TABS.code, TABS.runs, TABS.history]);
     expect(testId(root, 'workflow-file-path')?.textContent).toBe(
       `${STUB_WORKFLOW_DIRECTORY}/digest.json`,
     );
@@ -406,13 +417,13 @@ describe('an agent-authored type', () => {
     expect(signals?.textContent).not.toContain('pause-it');
   });
 
-  test('keeps the versions that have run behind a collapsed Engine, shows none the engine merely installed, and cannot activate', async () => {
+  test('keeps the versions that have run on the History tab, shows none the engine merely installed, and cannot activate', async () => {
     const { container } = open('/workflows/digest');
     const root = await ready(container);
     expect(testId(root, 'workflow-revisions')).toBeNull();
     expect(stub?.callsTo('bureau.workflows.revisions')).toEqual([]);
 
-    await openDisclosure(root, WORKFLOW_COPY.page.engine);
+    await openTab(root, TABS.history);
     await waitFor(() =>
       expect(testId(root, 'workflow-revisions')?.textContent).toContain('version-ran'),
     );
@@ -429,7 +440,6 @@ describe('an agent-authored type', () => {
     const { container } = open('/workflows/digest', { definitions: [] });
     const root = await ready(container);
     expect(testId(root, 'workflow-steps')).not.toBeNull();
-    await openDisclosure(root, WORKFLOW_COPY.page.details);
     expect(testId(root, 'workflow-accepted-signals')?.textContent).toContain('approve');
   });
 
@@ -441,13 +451,14 @@ describe('an agent-authored type', () => {
       ],
     });
     const root = await ready(container);
+    await openTab(root, TABS.runs);
     await waitFor(() => expect(root.querySelectorAll('[data-run]').length).toBe(2));
     expect(
       [...root.querySelectorAll<HTMLElement>('[data-run]')].map((run) => run.dataset['run']),
     ).toEqual(['digest-run-2', 'digest-run-1']);
     expect(stub?.callsTo('bureau.workflows.runs.list')[0]?.params).toEqual({
       workflow: 'digest',
-      limit: 5,
+      limit: 20,
     });
     expect(stub?.callsTo('GET /workflows')).toEqual([]);
   });
@@ -488,9 +499,10 @@ describe('an invalid file', () => {
       `${STUB_WORKFLOW_DIRECTORY}/broken.json`,
     );
     expect(testId(root, 'workflow-definition')).toBeNull();
-    expect(testId(root, 'workflow-recent-runs')).toBeNull();
+    expect(testId(root, 'workflow-schemas')).toBeNull();
     expect(testId(root, 'workflow-state')).toBeNull();
-    expect(disclosures(root)).toEqual([WORKFLOW_COPY.page.engine]);
+    // It has not run, so it has no Runs tab; its history and its source are still there to read.
+    expect(tabNames(root)).toEqual([TABS.overview, TABS.code, TABS.history]);
     expect(getByRole('button', { name: WORKFLOW_COPY.deleteAction })).not.toBeNull();
     expect(getByRole('link', { name: WORKFLOW_COPY.editAction })).not.toBeNull();
     expect(queryByRole('button', { name: WORKFLOW_COPY.pauseAction })).toBeNull();
@@ -744,8 +756,8 @@ describe('a type with little to show', () => {
       ],
     });
     const root = await ready(container);
-    // The contract declares no signal, update, query, or schema, so there is nothing to disclose.
-    expect(disclosures(root)).toEqual([WORKFLOW_COPY.page.engine]);
+    // The contract declares no signal, update, query, or schema, so there are no facts to list.
+    expect(testId(root, 'workflow-definition')).toBeNull();
     expect(testId(root, 'workflow-description')).toBeNull();
     expect(root.textContent).not.toMatch(/\bNone\b/);
     await waitFor(() => expect(root.querySelectorAll('[data-schedule]').length).toBe(1));
@@ -763,7 +775,7 @@ describe('a type with little to show', () => {
       files: [readyFile('empty', { text })],
     });
     const root = await ready(container);
-    expect(root.textContent).toContain(WORKFLOW_COPY.noSteps);
+    expect(root.textContent).toContain(WORKFLOW_COPY.page.overview.stepsEmptyTitle);
     expect(testId(root, 'workflow-steps')).toBeNull();
   });
 
@@ -790,7 +802,7 @@ describe('a part of the page that fails', () => {
         WORKFLOW_COPY.page.schedulesFailed,
       ),
     );
-    expect(disclosures(root)).toContain(WORKFLOW_COPY.page.details);
+    expect(testId(root, 'workflow-definition')).not.toBeNull();
   });
 
   test('says the revision history could not be loaded, and shows the rest', async () => {
@@ -799,13 +811,13 @@ describe('a part of the page that fails', () => {
       throw workflowFaults.unprocessable('No history.');
     });
     const root = await ready(container);
-    await openDisclosure(root, WORKFLOW_COPY.page.engine);
+    await openTab(root, TABS.history);
     await waitFor(() =>
       expect(testId(root, 'workflow-revisions')?.textContent).toContain(
         WORKFLOW_COPY.revisions.failed,
       ),
     );
-    expect(testId(root, 'workflow-steps')).not.toBeNull();
+    expect(testId(root, 'workflow-revisions')).not.toBeNull();
   });
 
   test('says the workflow could not be loaded when the page’s own read fails after the frame’s, and reads again on retry', async () => {
@@ -1091,20 +1103,25 @@ describe('the links on a type’s page', () => {
     });
     const root = await ready(container);
     await waitFor(() => expect(root.querySelectorAll('[data-schedule]').length).toBe(1));
-    const links = [
-      ['/workflows/digest/runs', root.querySelector<HTMLAnchorElement>('a[href$="/runs"]')],
+    const clickEach = (links: readonly (readonly [string, HTMLAnchorElement | null])[]) => {
+      for (const [path, link] of links) {
+        link?.dispatchEvent(
+          new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true }),
+        );
+        expect(router.pathname).toBe('/workflows/digest');
+        link?.click();
+        expect(router.pathname).toBe(path);
+        router.navigate('/workflows/digest', { replace: true });
+      }
+    };
+    clickEach([
       ['/workflows/digest/edit', root.querySelector<HTMLAnchorElement>('a[href$="/edit"]')],
       ['/schedules/every-6', root.querySelector<HTMLAnchorElement>('[data-schedule] a')],
-    ] as const;
-    for (const [path, link] of links) {
-      link?.dispatchEvent(
-        new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true }),
-      );
-      expect(router.pathname).toBe('/workflows/digest');
-      link?.click();
-      expect(router.pathname).toBe(path);
-      router.navigate('/workflows/digest', { replace: true });
-    }
+    ]);
+    await openTab(root, TABS.runs);
+    clickEach([
+      ['/workflows/digest/runs', root.querySelector<HTMLAnchorElement>('a[href$="/runs"]')],
+    ]);
   });
 });
 
@@ -1112,7 +1129,6 @@ describe.each(['local', 'remote'] as const)('the details of a workflow on a %s h
   test('labels the file with the words of its mode, and shows the host’s location verbatim', async () => {
     const { container } = open('/workflows/digest', { hostMode: mode });
     const root = await ready(container);
-    await openDisclosure(root, WORKFLOW_COPY.page.details);
 
     const labels = [...root.querySelectorAll('dt')].map((term) => term.textContent?.trim());
     const [present, absent] =

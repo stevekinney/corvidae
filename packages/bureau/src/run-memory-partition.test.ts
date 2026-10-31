@@ -14,6 +14,8 @@ import {
   createMockEmbedder,
   type GovernedMemory,
   type MemoryAuthority,
+  createMemoryVectorStore,
+  createTestEmbedders,
 } from '@lostgradient/memory';
 import { createAgent, type GenerateFunction } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
@@ -38,7 +40,8 @@ function governedMemory(maxRecordsPerCollection?: number): GovernedMemory {
   return createGovernedMemory({
     storage: createInMemoryMemoryRecordStorage({ now: () => runtime.clock.now() }),
     ledger: createMemoryGovernanceLedger(new MemoryStorage()),
-    embedder: createMockEmbedder(64),
+    ...createTestEmbedders(createMockEmbedder(64), 64),
+    vectors: createMemoryVectorStore(new MemoryStorage()),
     policy: createMemoryGovernancePolicy({
       revision: 'governance:run-memory-partition',
       ...(maxRecordsPerCollection === undefined ? {} : { admission: { maxRecordsPerCollection } }),

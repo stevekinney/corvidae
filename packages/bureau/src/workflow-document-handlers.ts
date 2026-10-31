@@ -20,7 +20,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** `document` with its `name` and every activity step's handler rewritten by `rename`. */
+/** `versions` with every key (a handler name) rewritten by `rename`; the values are untouched. */
+function renameVersionKeys<TValue>(
+  versions: Readonly<Record<string, TValue>>,
+  rename: (handler: string) => string,
+): Record<string, TValue> {
+  return Object.fromEntries(Object.entries(versions).map(([key, value]) => [rename(key), value]));
+}
+
+/**
+ * `document` with its `name`, every activity step's handler, and the handlers its
+ * `activityVersions` pins, rewritten by `rename`.
+ */
 function renameHandlers(
   document: WorkflowDocument,
   rename: (handler: string) => string,
@@ -31,6 +42,9 @@ function renameHandlers(
     steps: document.steps.map((step): WorkflowDocumentStep =>
       step.kind === 'activity' ? { ...step, handler: rename(step.handler) } : step,
     ),
+    ...(document.activityVersions === undefined
+      ? {}
+      : { activityVersions: renameVersionKeys(document.activityVersions, rename) }),
   };
 }
 
@@ -60,6 +74,9 @@ export function toWeftDocumentInput(input: unknown): unknown {
         ? { ...step, handler: weftNameOf(step['handler']) }
         : step,
     );
+  }
+  if (isRecord(input['activityVersions'])) {
+    mapped['activityVersions'] = renameVersionKeys(input['activityVersions'], weftNameOf);
   }
   return mapped;
 }
@@ -92,6 +109,12 @@ export function validateBureauWorkflowDocument(
   }
   if (isRecord(prepared) && typeof prepared['name'] === 'string') {
     prepared = { ...prepared, name: weftNameOf(prepared['name']) };
+  }
+  if (isRecord(prepared) && isRecord(prepared['activityVersions'])) {
+    prepared = {
+      ...prepared,
+      activityVersions: renameVersionKeys(prepared['activityVersions'], weftNameOf),
+    };
   }
   let document: WorkflowDocument | undefined;
   try {

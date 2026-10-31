@@ -18,6 +18,8 @@ import {
   type GovernedMemory,
   type GovernedMemoryRecord,
   type MemoryAuthority,
+  createMemoryVectorStore,
+  createTestEmbedders,
 } from '@lostgradient/memory';
 import {
   AbortAgentRunError,
@@ -5339,7 +5341,8 @@ describe('createBureau effectful hook idempotency (#27)', () => {
     const memory = createGovernedMemory({
       storage: createInMemoryMemoryRecordStorage(),
       ledger: createMemoryGovernanceLedger(new MemoryStorage()),
-      embedder: createMockEmbedder(128),
+      ...createTestEmbedders(createMockEmbedder(128), 128),
+      vectors: createMemoryVectorStore(new MemoryStorage()),
       policy: createMemoryGovernancePolicy({ revision: 'governance:idempotency' }),
     });
     const inspector = createMemoryAuthority({

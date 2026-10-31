@@ -34,8 +34,17 @@ A hook has one `action`, tagged by `type`, fixed when the hook is created. `url`
 | `webhook` | `url`; with a `signingSecret` on the hook | Sends the event, signed, to `url` (the rest of this page). |
 | `start-workflow` | `workflowId`, `input?` | Starts the workflow as the hook's owner, with the event as its input. |
 | `notify` | `title?` | Writes the owner a notification (kind `hook`), once per delivery. |
+| `plugin` | `plugin`, `kind`, `configuration?` | Runs an action kind a plugin contributed (below), with the event. |
 
 A record stored before actions existed has a top-level `url` and no `action`. It reads as a webhook with no migration, and is rewritten in the tagged shape the next time it is changed. Likewise a delivery with no `actionType` is a webhook delivery. A `start-workflow` or `notify` delivery has `work` (what it will do, mapped from the event when the delivery was created) in place of a `request`, and its `completed` attempt a `receipt` naming the run or the notification. Two attempt outcomes (`rejected`, `error`) and one delivery status (`failed`) are for these actions.
+
+### Plugin actions
+
+`{ type: 'plugin', plugin, kind, configuration? }` runs an action kind that a plugin contributes (`hookActionKinds` in the plugin's contributions; a Bureau takes them as `hooks.actionKinds`). `create` and `update` refuse a kind no plugin contributes, and a `configuration` the kind's schema refuses, with `InvalidParams` on `action.kind` or `action.configuration`; an `update` cannot change the plugin or the kind. Each delivery resolves the kind and parses the configuration again, and calls the kind's `run` with the event, an abort signal, the `deliveryId`, and the `idempotencyKey` `hook:<hookId>:<deliveryId>` (the same key the built-in actions use). A rejection is a failed attempt, retried like any other. A kind that is no longer contributed, or a configuration its schema now refuses, ends the delivery `failed` without a retry. A delivery keeps the whole event for the action (`work.input` on the wire), so deleting a chat deletes it with the others that name the chat's runs. An action runs at least once per delivery: an attempt that succeeded and was interrupted before the delivery was marked delivered (a restart) is attempted again with the same `idempotencyKey`, and two deliveries never share one. An action with an external effect must use the key to make the repeat a no-op, by passing it as the idempotency key of the call it makes or by recording it with the effect and checking first. A plugin hook cannot be tested with `hooks.test`.
+
+### The event's `source`
+
+An event that a plugin's contribution emitted carries `source: '<plugin>'` beside `kind` and `payload`; an event from Bureau core carries no `source` at all. The envelope field and `markEventSource` (which attaches it) exist, but nothing in core calls `markEventSource` yet: plugin composition (COR-1879) marks the events that contributed tools, activities and hook actions emit, so until it lands every event reads as a core event. The field is the envelope's. It is not a payload field and a hook cannot filter on it: hooks match on `kind` only. A webhook body gains `source` only when the event has one, and so does the `{ kind, bureauId, emittedAtMs, payload }` input of a `start-workflow` hook with `input: 'event'`. (`definitions.changed` names which file catalog changed in its payload's `catalog` field, so that its payload does not use the name.)
 
 ### Start a workflow
 

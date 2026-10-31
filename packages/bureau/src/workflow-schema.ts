@@ -6,7 +6,8 @@
  *
  * The input is the value that started the instance, not the trigger object the engine records it
  * under. A manual start (`bureau.workflows.start`) supplies `input`; a signal trigger supplies the
- * signal's `payload`; a schedule fire supplies nothing, which is `null`. A raw start through the
+ * signal's `payload`; a contributed trigger kind (`plugin:name`, COR-1874) supplies the `payload`
+ * its `fire` was given; a schedule fire supplies nothing, which is `null`. A raw start through the
  * engine (`weft.workflows.start`) supplies whatever it was given, taken as the input as it is. A
  * schedule-triggered workflow whose `inputSchema` does not accept `null` would therefore fail every
  * fire with `input-invalid`, so `parseWorkflowFile` refuses such a file when it is written.
@@ -34,6 +35,7 @@ import {
   WorkflowDocumentSchemaError,
 } from '@lostgradient/weft';
 
+import { isNamespacedIdentifier } from './namespaced-identifier';
 import { validateAgainstSchema } from './review-answer';
 
 /** The two schemas a workflow file may declare, by the key each has in the file. */
@@ -104,8 +106,8 @@ function onlyKeys(record: Readonly<Record<string, unknown>>, allowed: readonly s
  * the module comment for what each start supplies.
  *
  * Only the exact envelopes Bureau and Weft write are unwrapped: `{ kind: 'manual', input, origin }`,
- * `{ kind: 'signal', name, payload }`, and `{ kind: 'schedule', scheduleId }`, each with its
- * required fields and no others. A raw start whose input merely has a `kind` of `manual`, `signal`
+ * `{ kind: 'signal', name, payload }`, `{ kind: 'schedule', scheduleId }`, and a contributed
+ * trigger kind's `{ kind: 'plugin:name', payload }`, each with its required fields and no others. A raw start whose input merely has a `kind` of `manual`, `signal`
  * or `schedule` (`{ kind: 'manual', city: 'Oslo' }`) is its own input. A raw input that spells out
  * a whole envelope is indistinguishable from one, which is why the trigger is the one place the
  * envelope's shape is decided.
@@ -132,7 +134,11 @@ export function workflowInputOf(trigger: unknown): unknown {
         ? null
         : trigger;
     default:
-      return trigger;
+      return typeof record['kind'] === 'string' &&
+        isNamespacedIdentifier(record['kind']) &&
+        onlyKeys(record, ['kind', 'payload'])
+        ? (record['payload'] ?? null)
+        : trigger;
   }
 }
 

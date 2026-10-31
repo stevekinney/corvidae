@@ -18,6 +18,8 @@ import {
   createMockEmbedder,
   createWeftMemoryRecordStorage,
   type MemoryGovernanceNotification,
+  createMemoryVectorStore,
+  createTestEmbedders,
 } from '@lostgradient/memory';
 import { createAgent, createMockGenerate, stopWhen } from '@lostgradient/operative';
 import { waitForTaskState } from './test';
@@ -63,7 +65,8 @@ function governedMemory(
   const memory = createGovernedMemory({
     storage: createWeftMemoryRecordStorage(storage),
     ledger: createMemoryGovernanceLedger(storage),
-    embedder: createMockEmbedder(64),
+    ...createTestEmbedders(createMockEmbedder(64), 64),
+    vectors: createMemoryVectorStore(storage),
     policy: createMemoryGovernancePolicy({ revision: 'governance:1' }),
     onEvent: async (notification) => {
       notifications.push(notification);
@@ -92,7 +95,9 @@ describe('packages/bureau/README.md — Governed memory', () => {
     const memory = createGovernedMemory({
       storage: createWeftMemoryRecordStorage(storage),
       ledger: createMemoryGovernanceLedger(storage),
-      embedder: createMockEmbedder(64), // use a real embedder in production
+      // One embedder, registered with its dimension; use a real one in production.
+      ...createTestEmbedders(createMockEmbedder(64), 64),
+      vectors: createMemoryVectorStore(storage),
       policy: createMemoryGovernancePolicy({ revision: 'governance:1' }),
     });
 
@@ -221,7 +226,8 @@ describe('documented Bureau memory limits', () => {
       const memory = createGovernedMemory({
         storage: createWeftMemoryRecordStorage(storage),
         ledger: createMemoryGovernanceLedger(storage),
-        embedder: createMockEmbedder(64),
+        ...createTestEmbedders(createMockEmbedder(64), 64),
+        vectors: createMemoryVectorStore(storage),
         policy: createMemoryGovernancePolicy({ revision: 'governance:1' }),
         onEvent: (notification) => {
           if (failOn === 'every event' || notification.type === failOn) {
@@ -248,7 +254,8 @@ describe('documented Bureau memory limits', () => {
         const reader = createGovernedMemory({
           storage: createWeftMemoryRecordStorage(storage),
           ledger: createMemoryGovernanceLedger(storage),
-          embedder: createMockEmbedder(64),
+          ...createTestEmbedders(createMockEmbedder(64), 64),
+          vectors: createMemoryVectorStore(storage),
           policy: createMemoryGovernancePolicy({ revision: 'governance:1' }),
         });
         const stored = await reader.list(auditorFor(BUREAU_ID, LOCAL_OWNER), {
@@ -301,7 +308,8 @@ describe('documented Bureau memory limits', () => {
         const memory = createGovernedMemory({
           storage: createWeftMemoryRecordStorage(storage),
           ledger: createMemoryGovernanceLedger(storage),
-          embedder: createMockEmbedder(64),
+          ...createTestEmbedders(createMockEmbedder(64), 64),
+          vectors: createMemoryVectorStore(storage),
           policy: createMemoryGovernancePolicy({ revision: 'governance:1' }),
           onEvent: (notification) => {
             events.push(`${notification.type}:${notification.outcome}`);

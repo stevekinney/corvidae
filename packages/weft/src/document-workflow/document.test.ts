@@ -108,6 +108,7 @@ describe('validateWorkflowDocument()', () => {
 
   it('has no owner or author field: the schema rejects one', () => {
     expect(Object.keys(workflowDocumentSchema.shape).toSorted()).toEqual([
+      'activityVersions',
       'inputSchema',
       'name',
       'outputSchema',

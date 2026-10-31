@@ -1,9 +1,11 @@
 import {
   ASYNCHRONOUS_DELETION_TARGETS,
+  createEmbedderRegistry,
   createGovernedMemory,
   createMemoryAuthority,
   createMemoryGovernanceLedger,
   createMemoryGovernancePolicy,
+  createMemoryVectorStore,
   createWeftMemoryRecordStorage,
   type GovernedMemory,
   type GovernedMemoryRecord,
@@ -131,7 +133,14 @@ export function createLifecycleBaseline(options: BaselineOptions): MemoryBaselin
   const running = baselineComponents('lifecycle', options.components);
   const components = new Set(running);
   const durable = new MemoryStorage();
-  const embedder = createLexicalHashEmbedder(envelope.embedder.dimension);
+  // Registered under the envelope's embedder name, so the profile the vectors live in names it.
+  const embedders = createEmbedderRegistry([
+    {
+      id: envelope.embedder.name,
+      embedder: createLexicalHashEmbedder(envelope.embedder.dimension),
+      dimension: envelope.embedder.dimension,
+    },
+  ]);
   const policy = createMemoryGovernancePolicy({ revision: 'memory-lifecycle-governance-1' });
   const propagation: MemoryDeletionPropagation = Object.fromEntries(
     ASYNCHRONOUS_DELETION_TARGETS.map((target) => [target, 'not-retained' as const]),
@@ -148,7 +157,9 @@ export function createLifecycleBaseline(options: BaselineOptions): MemoryBaselin
       memory = createGovernedMemory({
         storage: createWeftMemoryRecordStorage(durable),
         ledger: createMemoryGovernanceLedger(durable),
-        embedder,
+        embedders,
+        initialEmbedder: envelope.embedder.name,
+        vectors: createMemoryVectorStore(durable),
         policy,
         propagation,
         runtime,

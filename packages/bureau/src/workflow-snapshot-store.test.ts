@@ -226,6 +226,34 @@ describe('the cancellation records', () => {
     expect(await snapshots.identifiers()).toEqual(['gone']);
   });
 
+  it('keeps the activity pin a cancellation names, and drops a pin that is not one', async () => {
+    const { store, snapshots } = setup();
+    const pin = {
+      reason: 'version-mismatch',
+      activity: 'x:y@1',
+      availableVersions: ['2'],
+    } as const;
+    await snapshots.recordCancellation({ ...cancellation, pin });
+    const kept = await snapshots.cancellationOf('run-1');
+    expect(kept?.pin).toEqual(pin);
+
+    for (const [index, bad] of [
+      { reason: 'gone', activity: 'x:y@1', availableVersions: [] },
+      { reason: 'missing', activity: 3, availableVersions: [] },
+      { reason: 'missing', activity: 'x:y@1', availableVersions: [2] },
+      { reason: 'missing', activity: 'x:y@1' },
+      'missing',
+    ].entries()) {
+      await store.set(
+        `bureau-workflow-cancelled-run:v1:bad-${String(index)}`,
+        JSON.stringify({ ...cancellation, runId: `bad-${String(index)}`, pin: bad }),
+      );
+      const read = await snapshots.cancellationOf(`bad-${String(index)}`);
+      expect(read?.reason).toBe(cancellation.reason);
+      expect(read?.pin).toBeUndefined();
+    }
+  });
+
   it('ignores a record that is not a cancellation', async () => {
     const { store, snapshots } = setup();
     await store.set('bureau-workflow-cancelled-run:v1:run-2', '{"runId":"run-2"}');

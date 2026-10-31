@@ -86,6 +86,20 @@ function parseAction(value: Record<string, unknown>): HookAction | undefined {
       ? { type: 'notify' }
       : { type: 'notify', title: action['title'] };
   }
+  if (
+    action['type'] === 'plugin' &&
+    typeof action['plugin'] === 'string' &&
+    typeof action['kind'] === 'string'
+  ) {
+    return action['configuration'] === undefined
+      ? { type: 'plugin', plugin: action['plugin'], kind: action['kind'] }
+      : {
+          type: 'plugin',
+          plugin: action['plugin'],
+          kind: action['kind'],
+          configuration: action['configuration'],
+        };
+  }
   return undefined;
 }
 
@@ -151,7 +165,10 @@ function parseDelivery(raw: string): HookDeliveryRecord | undefined {
     if (!isRecord(value['request'])) return undefined;
     return { ...value, actionType } as unknown as HookDeliveryRecord;
   }
-  if ((actionType !== 'start-workflow' && actionType !== 'notify') || !isRecord(value['work'])) {
+  if (
+    (actionType !== 'start-workflow' && actionType !== 'notify' && actionType !== 'plugin') ||
+    !isRecord(value['work'])
+  ) {
     return undefined;
   }
   return value as unknown as HookDeliveryRecord;
