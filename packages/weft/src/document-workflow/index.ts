@@ -17,7 +17,9 @@ export {
   workflowDocumentVersion,
 } from './document.ts';
 export type {
+  DocumentActivity,
   DocumentActivityArgument,
+  DocumentActivityDefinition,
   DocumentActivityHandler,
   DocumentSchemaChecker,
   DocumentSchemaPoint,

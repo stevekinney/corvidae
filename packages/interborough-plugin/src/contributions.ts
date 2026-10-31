@@ -160,7 +160,9 @@ export interface PluginCodeAgent {
 /**
  * An activity a plugin's workflows can call. Its `name` is unique within the plugin; a workflow
  * file names it `plugin:name`, with no version, and its `execute` receives the step's document
- * activity argument (`input`, `trigger`, `previous`, `workflowId`, `step`).
+ * activity argument (`input`, `trigger`, `previous`, `workflowId`, `step`). The step runs with the
+ * rest of the definition: its `retry`, `timeout`, `idempotencyKey`, `verify` and the other settings
+ * an activity declares apply, as they do in a code workflow.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- an activity's input and output vary per activity.
 export type PluginActivity = ActivityDefinition<any, any> & {

@@ -20,7 +20,7 @@
  */
 
 import type { PluginActivity, PluginTriggerKind } from '@lostgradient/interborough-plugin';
-import type { DocumentActivityHandler, DocumentTriggerValidator } from '@lostgradient/weft';
+import type { DocumentActivity, DocumentTriggerValidator } from '@lostgradient/weft';
 
 import { isNamespacedIdentifier, toWeftName } from './namespaced-identifier';
 import type {
@@ -31,8 +31,12 @@ import type {
 
 /** What the workflow host takes from the catalog. */
 export interface WorkflowContributions {
-  /** The contributed activities as document handlers, by the Weft name of their `plugin:name`. */
-  readonly activities: Readonly<Record<string, DocumentActivityHandler>>;
+  /**
+   * The contributed activities as document activities, by the Weft name of their `plugin:name`.
+   * Each keeps every setting its definition declares (retry, timeout, verifier and the rest), so
+   * Weft runs a step as the plugin said the activity runs.
+   */
+  readonly activities: Readonly<Record<string, DocumentActivity>>;
   /** The version each contributed activity is loaded at, by the Weft name of its `plugin:name`. */
   readonly activityVersions: Readonly<Record<string, string>>;
   /** A validator for each contributed trigger kind, by its `plugin:name`. */
@@ -124,11 +128,17 @@ export function createWorkflowContributions(
       );
     }
   }
-  const activities: Record<string, DocumentActivityHandler> = {};
+  const activities: Record<string, DocumentActivity> = {};
   const activityVersions: Record<string, string> = {};
   for (const entry of activityEntries) {
     const weftName = toWeftName(entry.name);
-    activities[weftName] = (argument) => entry.value.execute(argument);
+    // Everything the definition declares but its identity: the name is the registered key and the
+    // version is pinned by the document, so neither is Weft's to read from the activity.
+    const { name: _name, version: _version, execute: _execute, ...settings } = entry.value;
+    activities[weftName] = {
+      ...settings,
+      execute: (argument, context) => entry.value.execute(argument, context),
+    };
     activityVersions[weftName] = entry.version;
   }
   const triggerValidators: Record<string, DocumentTriggerValidator> = {};

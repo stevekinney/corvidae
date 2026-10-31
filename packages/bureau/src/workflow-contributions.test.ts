@@ -4,6 +4,7 @@
  * Bureau registers pins the activity version that was loaded.
  */
 import { afterEach, describe, expect, it } from 'bun:test';
+import type { PluginActivity } from '@lostgradient/interborough-plugin';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 
@@ -27,12 +28,15 @@ afterEach(async () => {
   for (const harness of harnesses.splice(0).toReversed()) await harness.dispose();
 });
 
-async function start(options: { version?: string; ticker?: TickerController } = {}) {
+async function start(
+  options: { version?: string; ticker?: TickerController; activity?: PluginActivity } = {},
+) {
   const harness = await startWorkflowBureau({
     overrides: {
       contributionCatalog: contributionCatalog({
         activityVersion: options.version ?? '1',
         ticker: options.ticker,
+        activity: options.activity,
       }),
       onDiagnostic: () => undefined,
     },
@@ -65,6 +69,19 @@ async function versionOf(harness: WorkflowBureauHarness, id: string) {
 async function firstRunStatus(harness: WorkflowBureauHarness, id: string) {
   const runs = await runsOf(harness, id);
   return runs[0]?.status;
+}
+
+/** The first run's status once it has ended. */
+async function settledStatus(harness: WorkflowBureauHarness, id: string) {
+  await waitUntil(
+    async () => {
+      const status = await firstRunStatus(harness, id);
+      // `suspended` is a retry waiting out its backoff, not an end.
+      return status === 'completed' || status === 'failed' || status === 'cancelled';
+    },
+    { message: 'the run to settle' },
+  );
+  return firstRunStatus(harness, id);
 }
 
 async function runCount(harness: WorkflowBureauHarness, id: string) {
@@ -106,6 +123,61 @@ describe('a workflow file that uses a contributed activity and trigger kind', ()
     await waitUntil(async () => (await firstRunStatus(harness, 'pipeline')) === 'completed', {
       message: 'the instance the starting trigger fired',
     });
+  });
+
+  it('retries a contributed activity by the retry policy its definition declares', async () => {
+    let attempts = 0;
+    const ticker = createTickerController();
+    const harness = await start({
+      ticker,
+      activity: {
+        name: 'y',
+        retry: { maxAttempts: 3, initialBackoff: 1, backoffMultiplier: 1, maxBackoff: 1 },
+        execute: () => {
+          attempts += 1;
+          if (attempts < 3) throw new Error(`attempt ${attempts} failed`);
+          return `succeeded after ${attempts}`;
+        },
+      },
+    });
+    await harness.put('pipeline.json', workflowFileText('pipeline', ticking()));
+    await listing(harness, 'pipeline');
+
+    await ticker.fire(null);
+    expect(await settledStatus(harness, 'pipeline')).toBe('completed');
+    const [run] = await runsOf(harness, 'pipeline');
+    const detail = await harness.bureau.workflows?.getRun(run!.id);
+    expect(detail?.result).toBe('succeeded after 3');
+    expect(attempts).toBe(3);
+  });
+
+  it('bounds a contributed activity by the timeout its definition declares, and aborts its signal', async () => {
+    let sawAbort = false;
+    const ticker = createTickerController();
+    const harness = await start({
+      ticker,
+      activity: {
+        name: 'y',
+        timeout: 50,
+        execute: (_argument: unknown, context?: { signal: AbortSignal }) =>
+          new Promise<never>((_resolve, reject) => {
+            context?.signal.addEventListener('abort', () => {
+              sawAbort = true;
+              reject(new Error('aborted'));
+            });
+          }),
+      },
+    });
+    await harness.put('pipeline.json', workflowFileText('pipeline', ticking()));
+    await listing(harness, 'pipeline');
+
+    await ticker.fire(null);
+    expect(await settledStatus(harness, 'pipeline')).toBe('failed');
+    const [run] = await runsOf(harness, 'pipeline');
+    expect(JSON.stringify(await harness.bureau.workflows?.getRun(run!.id))).toContain(
+      'per-attempt timeout of 50ms',
+    );
+    expect(sawAbort).toBe(true);
   });
 
   it('pins the loaded version of the activity in the revision it registers', async () => {
@@ -154,6 +226,53 @@ describe('a workflow file that uses a contributed activity and trigger kind', ()
     await waitUntil(async () => (await runCount(harness, 'pipeline')) === 1, {
       message: 'the accepted payload to start an instance',
     });
+  });
+
+  it('starts the revision a changed file registers when a trigger fires while the change is applying', async () => {
+    const ticker = createTickerController();
+    const harness = await start({ ticker });
+    await harness.put('pipeline.json', workflowFileText('pipeline', ticking()));
+    await listing(harness, 'pipeline');
+    const before = await versionOf(harness, 'pipeline');
+    const oldTrigger = ticker.contexts[0]!;
+
+    // Another file's trigger is still starting, so the apply it belongs to has not finished.
+    const release = ticker.hold('blocked');
+    await harness.put(
+      'other.json',
+      workflowFileText('other', ticking({ trigger: { kind: 'x:ticker', channel: 'blocked' } })),
+    );
+    void harness.bureau.workflows?.refresh();
+    await waitUntil(() => ticker.hasStarted('blocked'), { message: 'the held trigger to start' });
+
+    // The pipeline's file changes: the catalog has it now, but its revision is not registered.
+    await harness.put(
+      'pipeline.json',
+      workflowFileText(
+        'pipeline',
+        ticking({ steps: [{ kind: 'activity', handler: 'x:y', input: 'changed' }] }),
+      ),
+    );
+    void harness.bureau.workflows?.refresh();
+    await waitUntil(
+      () =>
+        harness.bureau.workflows?.list().find((entry) => entry.id === 'pipeline')?.version !==
+        before,
+      {
+        message: 'the catalog to hold the changed file',
+      },
+    );
+
+    const fired = oldTrigger.fire({ issue: 'COR-3' });
+    release();
+    await fired;
+
+    await waitUntil(async () => (await firstRunStatus(harness, 'pipeline')) === 'completed', {
+      message: 'the fired instance to complete',
+    });
+    const [run] = await runsOf(harness, 'pipeline');
+    const detail = await harness.bureau.workflows?.getRun(run!.id);
+    expect(detail?.result).toBe(activityAnswer('1', 'changed'));
   });
 
   it('stops the trigger when the file is paused, and a fire after that starts nothing', async () => {

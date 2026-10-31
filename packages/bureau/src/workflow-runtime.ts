@@ -632,18 +632,40 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
    * trigger does. A file that was paused or changed since the trigger started starts nothing. A
    * payload the file's `inputSchema` refuses rejects with {@link WorkflowInputInvalidError}, which
    * the plugin that fired sees.
+   *
+   * The file is judged against, and the instance started on, the revision the engine has applied,
+   * as `start` and `signal` do: a fire that lands while a change is applying waits for it, and
+   * rejects with {@link WorkflowApplyError} when it failed. A fire during the trigger's own
+   * `start` does not wait, because that `start` is inside the apply and would wait for itself; the
+   * apply registers a file's revision before it starts the file's triggers, so the engine already
+   * has it.
    */
-  async function fireTrigger(id: string, kind: string, payload: unknown): Promise<void> {
+  async function fireTrigger(
+    id: string,
+    kind: string,
+    payload: unknown,
+    duringStart: boolean,
+  ): Promise<void> {
     if (closed) return;
+    // The caller owns `payload`: snapshot it before the first await. A value that is not JSON is
+    // refused below, once the file it would start is known, as before.
+    const requested: unknown = payload ?? null;
+    const isJson = z.json().safeParse(requested).success;
+    const input: unknown = isJson ? structuredClone(requested) : requested;
+    if (!duringStart) {
+      if (applyPending) queueApply();
+      await settled();
+      if (closed) return;
+      if (applyFailure !== undefined) throw new WorkflowApplyError(applyFailure);
+    }
     const file = catalog.find(id);
     if (file === undefined || file.paused || file.document.trigger.kind !== kind) return;
-    const input: unknown = payload ?? null;
-    if (!z.json().safeParse(input).success) {
+    if (!isJson) {
       throw options.createError('The trigger payload must be a JSON value.', 'BAD_REQUEST');
     }
     const issues = file.inputSchema === null ? [] : inputSchemaIssues(file.inputSchema, input);
     if (issues.length > 0) throw new WorkflowInputInvalidError(id, issues);
-    const trigger = { kind, payload: structuredClone(input) };
+    const trigger = { kind, payload: input };
     assertSendable('trigger payload', trigger);
     await engine.start(weftNameOf(id), trigger);
   }

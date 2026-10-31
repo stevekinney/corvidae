@@ -10,6 +10,7 @@
  */
 
 import {
+  type DocumentActivity,
   type DocumentActivityArgument,
   type DocumentActivityHandler,
   type DocumentTriggerValidator,
@@ -243,7 +244,7 @@ export function bridgeEngineActivities(
       return run(argument);
     };
   };
-  const activities = new Proxy<Record<string, DocumentActivityHandler>>(
+  const activities = new Proxy<Record<string, DocumentActivity>>(
     {},
     {
       get: (_target, name) =>

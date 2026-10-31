@@ -13,6 +13,7 @@ import { z } from 'zod';
 
 import { isJSONValue, type JSONValue } from '../core/json.ts';
 import { parseDuration } from '../core/scheduler.ts';
+import type { ActivityContext, ActivityDefinition } from '../core/types/activity.ts';
 import { validateWorkflowOrActivityName } from '../core/types/name-grammar.ts';
 import { canonicalJsonStringify } from '../worker/manifest/canonical-json.ts';
 import { sha256Hex } from '../worker/manifest/content-digest.ts';
@@ -41,9 +42,39 @@ export type DocumentActivityArgument = Readonly<{
 
 /**
  * A host-registered activity handler a document names by key. A thrown error
- * fails the instance with that error; documents carry no per-step retry.
+ * fails the instance with that error. The optional `context` is the activity's
+ * {@link ActivityContext}, whose `signal` aborts when an attempt is abandoned (a
+ * `timeout` fired, or the instance was cancelled), so a handler that stops on it
+ * does not keep running beside its retry. A bare handler runs once, with no timeout;
+ * register a {@link DocumentActivityDefinition} to give it a retry policy or a
+ * per-attempt timeout.
  */
-export type DocumentActivityHandler = (argument: DocumentActivityArgument) => unknown;
+export type DocumentActivityHandler = (
+  argument: DocumentActivityArgument,
+  context?: ActivityContext,
+) => unknown;
+
+/**
+ * A host-registered activity that declares how Weft runs it, as a Weft
+ * `ActivityDefinition` does for a code workflow: `retry`, `timeout`,
+ * `scheduleToCloseTimeout`, `idempotencyKey`, `verify`, `compensate`,
+ * `resourceScope`, `queue`, `visibilityTimeout`, and the descriptive `description`,
+ * `tags`, `inputSchema` and `outputSchema`. Its `execute` and its callbacks receive
+ * a {@link DocumentActivityArgument}. The activity's name is the key it is
+ * registered under, so a definition carries none. Weft applies every setting the
+ * same way it does for a code workflow's activity, because the interpreter runs the
+ * step through the definition and not through its `execute` alone.
+ */
+export type DocumentActivityDefinition = Omit<
+  ActivityDefinition<DocumentActivityArgument>,
+  'name' | 'execute'
+> & {
+  /** Runs the step. */
+  execute: DocumentActivityHandler;
+};
+
+/** What a host registers under a handler key: a bare handler, or a definition with settings. */
+export type DocumentActivity = DocumentActivityHandler | DocumentActivityDefinition;
 
 /**
  * Validates one document's `trigger` object for its kind. Return `undefined`
@@ -75,7 +106,7 @@ export type DocumentSchemaChecker = (
 /** What a host registers so documents can name its activities and trigger kinds. */
 export interface DocumentWorkflowHost {
   /** Activity handlers keyed by the name a document's `activity` step uses. */
-  readonly activities: Readonly<Record<string, DocumentActivityHandler>>;
+  readonly activities: Readonly<Record<string, DocumentActivity>>;
   /** Trigger validators keyed by the `kind` a document's `trigger` uses. */
   readonly triggerKinds: Readonly<Record<string, DocumentTriggerValidator>>;
   /**
