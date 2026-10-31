@@ -120,6 +120,36 @@ describe('cancelling a run', () => {
     expect(view.getByRole('button', { name: TASK_COPY.cancelAction })).not.toBeNull();
   });
 
+  test.each([
+    ['an attempt of a goal', { kind: 'goal', goalRunId: 'goal-1', attemptId: 'a' }],
+    ['a step of a workflow', { kind: 'parent', parentRunId: 'wf-1' }],
+  ])('%s offers no cancel, because the goal or the workflow stops it', async (_name, origin) => {
+    const view = open(taskFixture({ id: 'run-1', agentName: 'echo', status: 'working', origin }));
+
+    await view.findByRole('heading', { level: 1, name: 'echo' });
+    expect(view.queryByRole('button', { name: TASK_COPY.cancelAction })).toBeNull();
+  });
+
+  test.each([
+    ['owned-by-goal', TASK_COPY.cancelOwned['owned-by-goal']],
+    ['owned-by-workflow', TASK_COPY.cancelOwned['owned-by-workflow']],
+  ] as const)(
+    'a cancel refused as %s says who owns the run, not that it had finished',
+    async (reason, words) => {
+      const view = open(WORKING);
+      stub?.on('bureau.tasks.cancel', () => ({ taskId: 'run-1', receipt: 'rejected', reason }));
+      await fireEvent.click(await view.findByRole('button', { name: TASK_COPY.cancelAction }));
+      const dialog = await view.findByRole('dialog', { name: TASK_COPY.cancelConfirm.title });
+      await fireEvent.click(within(dialog).getByRole('button', { name: TASK_COPY.cancelAction }));
+
+      await waitFor(() =>
+        expect(view.container.querySelector('[data-cleanup="rejected"]')?.textContent?.trim()).toBe(
+          words,
+        ),
+      );
+    },
+  );
+
   test('a finished run offers no cancel', async () => {
     const view = open(taskFixture({ id: 'run-1', agentName: 'echo', status: 'completed' }));
 

@@ -12,7 +12,9 @@
   import { TASK_COPY } from '../../../app/copy.ts';
   import {
     cancelTask,
+    isOwnedElsewhere,
     isTerminalState,
+    type TaskCancelAnswer,
     type TaskCancelReceipt,
     type TaskView,
   } from '../../../lib/bureau-tasks.ts';
@@ -28,11 +30,16 @@
   const queryClient = useQueryClient();
 
   let receipt = $state<TaskCancelReceipt | undefined>(undefined);
+  let rejection = $state<TaskCancelAnswer['reason']>(undefined);
   let cancelling = $state(false);
   let confirming = $state(false);
   let failure = $state<string | undefined>(undefined);
 
-  const canCancel = $derived(!isTerminalState(task.status) && task.cleanup === null);
+  // An attempt of a goal is stopped by its goal, and a step of a workflow is not canceled on its own
+  // (the Bureau refuses it), so there is nothing to ask of the run itself.
+  const canCancel = $derived(
+    !isTerminalState(task.status) && task.cleanup === null && !isOwnedElsewhere(task),
+  );
 
   async function cancel(): Promise<void> {
     confirming = false;
@@ -41,6 +48,7 @@
     try {
       const answer = await cancelTask(task.id);
       receipt = answer.receipt;
+      rejection = answer.reason;
       if (answer.task !== undefined) {
         queryClient.setQueryData(queryKeys.bureauTasks.detail(task.id), answer.task);
       } else {
@@ -56,6 +64,12 @@
     }
   }
   const words = $derived(task.cleanup ?? receipt);
+  // A refusal that names its owner says so, instead of claiming the run had finished.
+  const refusal = $derived(
+    task.cleanup === null && receipt === 'rejected' && rejection !== undefined
+      ? rejection
+      : undefined,
+  );
 </script>
 
 {#if canCancel}
@@ -81,7 +95,11 @@
 {#if words !== undefined || failure !== undefined}
   <div class="ib-run__cancel-note">
     {#if words !== undefined}
-      <p role="status" data-cleanup={words}>{TASK_COPY.cancel[words]}</p>
+      <p role="status" data-cleanup={words}>
+        {refusal === 'owned-by-goal' || refusal === 'owned-by-workflow'
+          ? TASK_COPY.cancelOwned[refusal]
+          : TASK_COPY.cancel[words]}
+      </p>
     {/if}
     {#if failure !== undefined}
       <Alert variant="danger"><p>{TASK_COPY.cancelFailed}: {failure}</p></Alert>

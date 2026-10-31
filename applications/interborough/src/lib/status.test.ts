@@ -14,6 +14,7 @@ import {
   STATUS_TONES,
   STATUS_WORDS,
   taskStatusWord,
+  workflowRunStatusWord,
   workflowStatusWord,
   type StatusWord,
 } from './status.ts';
@@ -77,5 +78,23 @@ describe('the words the Bureau’s states read as', () => {
     expect(workflowStatusWord({ ...base, running: 1, started: true })).toBe('Running');
     expect(workflowStatusWord({ ...base, started: true })).toBe('Scheduled');
     expect(workflowStatusWord(base)).toBeNull();
+  });
+});
+
+describe('the word an instance of a workflow reads as', () => {
+  test('is one of the seven words, and an instance that timed out has Failed', () => {
+    const words = {
+      pending: 'Scheduled',
+      running: 'Running',
+      completed: 'Done',
+      failed: 'Failed',
+      cancelled: 'Canceled',
+      'timed-out': 'Failed',
+      suspended: 'Paused',
+    } as const;
+    for (const [status, word] of Object.entries(words)) {
+      expect(workflowRunStatusWord(status as keyof typeof words)).toBe(word);
+      expect(STATUS_WORDS).toContain(word);
+    }
   });
 });

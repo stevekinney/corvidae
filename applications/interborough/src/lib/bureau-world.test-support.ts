@@ -83,7 +83,8 @@ function defaultHandlers(world: BureauWorld): Record<string, BureauHandler> {
         (task) =>
           (params['contextId'] === undefined || task.contextId === params['contextId']) &&
           (params['agentName'] === undefined || task.agentName === params['agentName']) &&
-          (params['status'] === undefined || task.status === params['status']),
+          (params['status'] === undefined || task.status === params['status']) &&
+          (params['origin'] === undefined || task.origin?.kind === params['origin']),
       );
       const page = matching.slice(offset, offset + limit);
       return {

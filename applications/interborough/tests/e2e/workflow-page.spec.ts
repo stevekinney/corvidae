@@ -15,7 +15,7 @@ import { rm } from 'node:fs/promises';
 import { WORKFLOW_COPY } from '../../src/app/copy.ts';
 import { bureau } from './agent-support.ts';
 import { E2E_BUREAU_URL } from './e2e-constants.ts';
-import { expect, test } from './fixtures.ts';
+import { expect, loggedFailedResponse, test } from './fixtures.ts';
 import {
   createWorkflowFile,
   listWorkflowRuns,
@@ -219,6 +219,47 @@ test.describe('Start run', () => {
       .poll(async () => {
         await bureau(request, 'bureau.workflows.signal', { name: 'e2e-page-start-wait' });
         return run === undefined ? undefined : workflowRunStatus(request, run.id);
+      })
+      .toBe('completed');
+  });
+
+  test('answers a run’s page from the Bureau’s record when the console’s engine does not hold the run', async ({
+    page,
+    request,
+    pageErrors,
+  }) => {
+    const id = 'e2e-page-record';
+    created.add(id);
+    await createWorkflowFile(request, id, {
+      trigger: { kind: 'signal', name: 'e2e-page-record-go' },
+      steps: [{ kind: 'await-signal', signal: 'e2e-page-record-wait' }],
+    });
+    const started = await bureau(request, 'bureau.workflows.start', { id, surface: 'web' });
+    expect(started.fault).toBeUndefined();
+    const { runId } = started.result as { runId: string };
+
+    // The end-to-end host's console engine is a fixture engine, so it answers the page's read of a
+    // workflow file's instance with a 404 (the Bureau's engine holds it). On a host whose console
+    // engine is the Bureau's there is no such answer.
+    pageErrors.expect({
+      pattern: loggedFailedResponse(404, new RegExp(`/v1/workflows/${runId}`)),
+      reason: 'the fixture console engine does not hold the Bureau’s workflow instances',
+    });
+    await page.goto(`/runs/${runId}`);
+
+    const record = page.getByRole('region', { name: 'Run record' });
+    await expect(record).toContainText(id);
+    await expect(record.getByRole('link', { name: id })).toHaveAttribute(
+      'href',
+      `/workflows/${id}`,
+    );
+    await expect(page.getByText('No workflow found')).toHaveCount(0);
+
+    // Let the instance finish, so it does not stay in the host.
+    await expect
+      .poll(async () => {
+        await bureau(request, 'bureau.workflows.signal', { name: 'e2e-page-record-wait' });
+        return workflowRunStatus(request, runId);
       })
       .toBe('completed');
   });

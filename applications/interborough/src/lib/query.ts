@@ -127,6 +127,8 @@ export const queryKeys = {
   workflows: {
     list: (filter: WorkflowListQuery) => ['workflows', 'list', filter] as const,
     detail: (id: string) => ['workflows', 'detail', id] as const,
+    /** The Bureau's record of one instance of a workflow file (`bureau.workflows.runs.get`). */
+    fileRun: (id: string) => ['workflows', 'file-run', id] as const,
     events: (id: string, cursor?: string) => ['workflows', 'events', id, cursor] as const,
     aggregate: (groupBy: WorkflowAggregateGroupBy, filter: WorkflowListQuery) =>
       ['workflows', 'aggregate', groupBy, filter] as const,

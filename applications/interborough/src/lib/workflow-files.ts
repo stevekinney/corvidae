@@ -271,6 +271,30 @@ const runSummarySchema = z.object({
 /** One instance of a workflow file, as `bureau.workflows.runs.list` summarises it. */
 export type WorkflowFileRun = z.infer<typeof runSummarySchema>;
 
+const runDetailSchema = runSummarySchema.extend({
+  trigger: z.unknown(),
+  // The Bureau answers `null` for a result or an error the instance has not got.
+  result: z.unknown().optional(),
+  error: z.string().nullable().optional(),
+  finishReason: z.string().nullable().optional(),
+});
+
+/** One instance of a workflow file with what started it and how it ended (`bureau.workflows.runs.get`). */
+export type WorkflowFileRunDetail = z.infer<typeof runDetailSchema>;
+
+/**
+ * One instance of a workflow file, by the identifier `bureau.workflows.start` or a trigger gave it.
+ * The Bureau answers for the instance whether or not the engine behind the console holds it, so a
+ * run page that cannot read the engine can still say what the run is. A missing instance is a
+ * not-found fault.
+ */
+export async function getWorkflowFileRun(
+  runId: string,
+  options?: Options,
+): Promise<WorkflowFileRunDetail> {
+  return runDetailSchema.parse(await callBureau('bureau.workflows.runs.get', { runId }, options));
+}
+
 /** The newest `limit` instances of one workflow file. */
 export async function listWorkflowFileRuns(
   id: string,

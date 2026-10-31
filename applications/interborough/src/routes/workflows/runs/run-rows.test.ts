@@ -1,8 +1,10 @@
+import type { TaskOrigin, TaskOriginKind } from '@lostgradient/bureau';
 import { describe, expect, test } from 'bun:test';
 
 import { taskFixture } from '../../../lib/bureau-fixtures.test-support.ts';
 import { SCHEDULER_ACTOR } from '../../../lib/bureau-tasks.ts';
 import { buildRunRows, filterRunRows, parseRunFilter, serializeRunFilter } from './run-rows.ts';
+import { STARTED_BY_LABELS } from './started-by.ts';
 
 const chat = {
   id: 'chat-1',
@@ -151,7 +153,11 @@ describe('the session a run ran in', () => {
       chats: [fire],
     });
 
-    expect(row?.origin).toEqual({ kind: 'schedule', title: 'Check in', href: '/chats/fire-1' });
+    expect(row?.origin).toMatchObject({
+      kind: 'schedule',
+      title: 'Check in',
+      href: '/chats/fire-1',
+    });
   });
 
   test('is a schedule’s even when the fire continued a chat session, which keeps its chat origin', () => {
@@ -164,7 +170,7 @@ describe('the session a run ran in', () => {
       chats: [chat],
     });
 
-    expect(rows.find((row) => row.id === 'run-fire')?.origin).toEqual({
+    expect(rows.find((row) => row.id === 'run-fire')?.origin).toMatchObject({
       kind: 'schedule',
       title: 'Refund order 1234',
       href: '/chats/chat-1',
@@ -198,7 +204,11 @@ describe('the session a run ran in', () => {
       chats: [chat],
     });
 
-    expect(row?.origin).toEqual({ kind: 'schedule', title: '', href: '/chats/other-owner-fire' });
+    expect(row?.origin).toMatchObject({
+      kind: 'schedule',
+      title: '',
+      href: '/chats/other-owner-fire',
+    });
   });
 
   test('links another owner’s chat from the task’s own session, which the caller does not list', () => {
@@ -252,7 +262,7 @@ describe('the session a run ran in', () => {
       chats: [],
     });
 
-    expect(rows.find((row) => row.id === 'run-fire')?.origin).toEqual({
+    expect(rows.find((row) => row.id === 'run-fire')?.origin).toMatchObject({
       kind: 'schedule',
       title: '',
       href: '/chats/other-owner-fire',
@@ -325,5 +335,128 @@ describe('the filter in the address', () => {
     const filter = { status: 'failed', agent: 'echo', startedBy: 'chat', since: '24h' } as const;
     expect(parseRunFilter(new URLSearchParams(serializeRunFilter(filter)))).toEqual(filter);
     expect(parseRunFilter(new URLSearchParams('status=bogus&since=1y&startedBy=x'))).toEqual({});
+  });
+});
+
+describe('Started by, read from the origin the Bureau recorded', () => {
+  // Typed against the Bureau's own kinds: a kind added there fails to compile here until a fixture
+  // and a label exist for it, so the column cannot silently skip one.
+  const ORIGINS = {
+    chat: { kind: 'chat', contextId: 'chat-1', agentName: 'tool-runner', principal: 'me' },
+    person: { kind: 'person', principal: 'me', surface: 'palette' },
+    schedule: { kind: 'schedule', scheduleId: 'nightly', fireId: 'fire-1', manual: true },
+    api: { kind: 'api' },
+    agent: { kind: 'agent', parentRunId: 'run-parent', agentName: 'planner', toolCallId: 'call-1' },
+    goal: { kind: 'goal', goalRunId: 'seeded-goal', attemptId: 'a' },
+    parent: { kind: 'parent', parentRunId: 'wf-instance' },
+  } as const satisfies { readonly [Kind in TaskOriginKind]: Extract<TaskOrigin, { kind: Kind }> };
+
+  const rowOf = (origin: unknown) =>
+    buildRunRows({
+      tasks: [taskFixture({ id: 'run-x', contextId: 'handle', kind: 'catalog', origin } as never)],
+      goals: [],
+      chats: [chat],
+    })[0]?.origin;
+
+  test('has a label for each kind the Bureau records, and the filter takes exactly those', () => {
+    expect(Object.keys(STARTED_BY_LABELS).toSorted()).toEqual(Object.keys(ORIGINS).toSorted());
+    for (const kind of Object.keys(ORIGINS)) {
+      expect(parseRunFilter(new URLSearchParams({ startedBy: kind }))).toEqual({
+        startedBy: kind as TaskOriginKind,
+      });
+    }
+    expect(parseRunFilter(new URLSearchParams({ startedBy: 'someone' }))).toEqual({});
+  });
+
+  test('names each kind, with the thing that started the run where it has a page', () => {
+    expect(rowOf(ORIGINS.chat)).toEqual({
+      kind: 'chat',
+      title: 'Refund order 1234',
+      href: '/chats/chat-1',
+    });
+    expect(rowOf(ORIGINS.person)).toEqual({ kind: 'person', surface: 'palette' });
+    expect(rowOf(ORIGINS.schedule)).toMatchObject({
+      kind: 'schedule',
+      scheduleId: 'nightly',
+      schedulePath: '/schedules/nightly',
+      href: '/chats/handle',
+      manual: true,
+    });
+    expect(rowOf(ORIGINS.api)).toEqual({ kind: 'api' });
+    expect(rowOf(ORIGINS.agent)).toEqual({
+      kind: 'agent',
+      agentName: 'planner',
+      parentRunId: 'run-parent',
+      href: '/runs/run-parent',
+    });
+    expect(rowOf(ORIGINS.goal)).toEqual({
+      kind: 'goal',
+      name: 'seeded-goal',
+      href: '/goals/seeded-goal',
+      session: null,
+    });
+    expect(rowOf(ORIGINS.parent)).toEqual({
+      kind: 'parent',
+      parentRunId: 'wf-instance',
+      href: '/runs/wf-instance',
+    });
+  });
+
+  test('is the recorded origin, not what the task’s chats and goals suggest', () => {
+    // A task that looks like a chat's by its kind and session, but whose origin says a person
+    // started it from the API, is a person's.
+    const [row] = buildRunRows({
+      tasks: [
+        taskFixture({
+          id: 'run-y',
+          contextId: 'chat-1',
+          kind: 'chat',
+          origin: { kind: 'person', principal: 'me', surface: 'api' },
+        }),
+      ],
+      goals: [],
+      chats: [chat],
+    });
+    expect(row?.origin).toEqual({ kind: 'person', surface: 'api' });
+  });
+
+  test('keeps a goal’s session from the goal list when the task’s origin names the goal', () => {
+    const [row] = buildRunRows({
+      tasks: [
+        taskFixture({
+          id: 'goal-seeded-goal-a0',
+          contextId: 'goal-seeded-goal-a0',
+          kind: 'catalog',
+          origin: ORIGINS.goal,
+        }),
+      ],
+      goals: [goal],
+      chats: [],
+    });
+    expect(row?.origin).toMatchObject({
+      kind: 'goal',
+      session: { href: '/chats/goal-seeded-goal-s0' },
+    });
+  });
+
+  test('reads an origin it cannot use as none, and then falls back to the task itself', () => {
+    expect(rowOf({ kind: 'carrier-pigeon' })).toEqual({ kind: 'none' });
+    expect(rowOf({ kind: 'agent' })).toEqual({ kind: 'none' });
+    expect(rowOf({ kind: 'schedule' })).toMatchObject({ kind: 'schedule', scheduleId: null });
+  });
+
+  test('narrows the list to the runs one kind of origin started', () => {
+    const rows = buildRunRows({
+      tasks: Object.entries(ORIGINS).map(([kind, origin]) =>
+        taskFixture({ id: `run-${kind}`, contextId: 'handle', kind: 'catalog', origin } as never),
+      ),
+      goals: [],
+      chats: [],
+    });
+    for (const kind of Object.keys(ORIGINS) as TaskOriginKind[]) {
+      expect(filterRunRows(rows, { startedBy: kind }, 0).map((row) => row.id)).toEqual([
+        `run-${kind}`,
+      ]);
+    }
   });
 });

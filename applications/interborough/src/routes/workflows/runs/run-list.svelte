@@ -33,13 +33,14 @@
   import { TASK_STATE_ORDER } from '../../../lib/task-status.ts';
   import RecordsToolbar from '../../../app/records/records-toolbar.svelte';
   import { REVIEW_POLL_MILLISECONDS } from '../../reviews/reviews-data.ts';
+  import RunOrigin from './run-origin.svelte';
+  import { STARTED_BY_LABELS } from './started-by.ts';
   import {
     buildRunRows,
     filterRunRows,
     parseRunFilter,
     serializeRunFilter,
     SINCE_RANGES,
-    STARTED_BY_LABELS,
   } from './run-rows.ts';
 
   const PAGE_SIZE = 100;
@@ -47,10 +48,10 @@
   const START_RUN_PATH = '/runs?view=start';
   const filter = $derived(parseRunFilter(router.current.search));
 
-  // The status and the agent are asked of the Bureau, so a page holds the runs that match and Load
-  // more goes on from there. "Working" is two of the Bureau's states (a submitted task is working
-  // too), so it is narrowed here instead. The rest (what started a run, how recently) the Bureau
-  // cannot narrow, and are applied to what the pages hold.
+  // The status, the agent and what started a run are asked of the Bureau, so a page holds the runs
+  // that match and Load more goes on from there. "Working" is two of the Bureau's states (a submitted
+  // task is working too), so it is narrowed here instead. How recently a run started the Bureau
+  // cannot narrow, so that is applied to what the pages hold.
   const serverStatus = $derived(filter.status === 'working' ? undefined : filter.status);
   // The three queries below follow `bureau.events`: a run by `run.*` and `action`, a goal by `goal.*`,
   // a chat by `session.*` (`app/bureau-event-queries.ts`). Each asks again on a timer only while the
@@ -59,13 +60,20 @@
   const tasks = createInfiniteQuery(() => {
     const polling = !bureauLive();
     return {
-      queryKey: ['bureau-tasks', 'runs', serverStatus ?? '', filter.agent ?? ''] as const,
+      queryKey: [
+        'bureau-tasks',
+        'runs',
+        serverStatus ?? '',
+        filter.agent ?? '',
+        filter.startedBy ?? '',
+      ] as const,
       queryFn: ({ pageParam, signal }: { pageParam: string; signal: AbortSignal }) =>
         listTasks(
           {
             limit: PAGE_SIZE,
             ...(serverStatus === undefined ? {} : { status: serverStatus }),
             ...(filter.agent === undefined ? {} : { agentName: filter.agent }),
+            ...(filter.startedBy === undefined ? {} : { origin: filter.startedBy }),
             ...(pageParam === '' ? {} : { pageToken: pageParam }),
           },
           { signal },
@@ -309,36 +317,7 @@
               </a>
             </Table.Cell>
             <Table.Cell class="ib-run-row__what ib-records__wrap">
-              {#if row.origin.kind === 'chat'}
-                <a
-                  href={router.href(row.origin.href)}
-                  onclick={(event) =>
-                    open(event, row.origin.kind === 'chat' ? row.origin.href : '')}
-                  >{row.origin.title === '' ? TASK_COPY.untitledChat : row.origin.title}</a
-                >
-              {:else if row.origin.kind === 'schedule'}
-                {@const href = row.origin.href}
-                <a href={router.href(href)} onclick={(event) => open(event, href)}
-                  >{row.origin.title === '' ? TASK_COPY.untitledChat : row.origin.title}</a
-                >
-                ({TASK_COPY.schedule})
-              {:else if row.origin.kind === 'goal'}
-                <a
-                  href={router.href(row.origin.href)}
-                  onclick={(event) =>
-                    open(event, row.origin.kind === 'goal' ? row.origin.href : '')}
-                  ><code class="ib-identifier">{row.origin.name}</code> ({TASK_COPY.goal})</a
-                >
-                {#if row.origin.session}
-                  {@const session = row.origin.session}
-                  ·
-                  <a href={router.href(session.href)} onclick={(event) => open(event, session.href)}
-                    >{session.title === '' ? TASK_COPY.untitledChat : session.title}</a
-                  >
-                {/if}
-              {:else}
-                {TASK_COPY.startedDirectly}
-              {/if}
+              <RunOrigin origin={row.origin} />
               {#if row.summary !== ''}<span class="ib-records__muted"> · {row.summary}</span>{/if}
             </Table.Cell>
             <Table.Cell><StatusLabel {word} /></Table.Cell>

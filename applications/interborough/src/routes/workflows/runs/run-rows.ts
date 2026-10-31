@@ -1,9 +1,12 @@
 /**
  * The rows of `/runs`: one list of what the agents have done, in the words of a task. Two sources
- * are joined. The Bureau's tasks (`bureau.tasks.list`) are the runs of chats and of anything started
- * with `bureau.run()`; a goal's attempts are runs too, but the Bureau does not make them tasks, so
- * they come from `bureau.goals.list`. Each row says which agent ran, what started it (a chat the
- * Bureau still has, a goal, a schedule's fire, or nothing it can name), how it stands, and when.
+ * are joined. The Bureau's tasks (`bureau.tasks.list`) are the runs of chats, of goal attempts and
+ * workflow steps, and of anything started with `bureau.run()`; the goals (`bureau.goals.list`) add
+ * the attempts recorded before attempts were tasks, and name the session an attempt ran in. Each
+ * row says which agent ran, what started it, how it stands, and when. What started a run is the
+ * origin the Bureau recorded on its task (COR-1867): a chat, a person, a schedule's fire, the API,
+ * an agent, a goal, or a workflow. Only a task recorded before origins were kept has none, and
+ * then it is read from the task's own `actor` and `kind`, as it always was.
  *
  * A run's session is not listed on `/chats` when a goal or a schedule's fire started it (the
  * session's `origin`), so this list is where it is reached: a goal's row and a fire's row each link
@@ -19,9 +22,41 @@ import {
   type TaskView,
 } from '../../../lib/bureau-tasks.ts';
 import { chatSessionPath, goalPath } from '../../../lib/identifier-paths.ts';
+import { scheduleDetailPath, workflowDetailPath } from '../../../lib/router.svelte.ts';
+import { STARTED_BY_KINDS, type StartedBy } from './started-by.ts';
+
+/** How a person started a run, as the origin records it. */
+export type RunPersonSurface = 'web' | 'palette' | 'api';
 
 export type RunOrigin =
   | { readonly kind: 'chat'; readonly title: string; readonly href: string }
+  /** A person started it outside a chat, from the surface the origin names. */
+  | { readonly kind: 'person'; readonly surface: RunPersonSurface | null }
+  /**
+   * A schedule's fire. The origin names the schedule (`scheduleId`, and `schedulePath` is its page)
+   * and whether a person fired it by hand. A task recorded before origins were kept says it only
+   * through its `actor`, and then there is no schedule to name. Either way the fire ran in a
+   * session, which is linked (`href`) and titled by the text the schedule delivered when the caller
+   * lists that session, and empty when it does not (an operator sees every owner's fires and lists
+   * only their own sessions).
+   */
+  | {
+      readonly kind: 'schedule';
+      readonly title: string;
+      readonly href: string;
+      readonly scheduleId: string | null;
+      readonly schedulePath: string | null;
+      readonly manual: boolean;
+    }
+  /** The API started it, or something with no context to name: an A2A peer, a recovered run. */
+  | { readonly kind: 'api' }
+  /** Another run started it, as a child: the parent run, and the tool call that started it. */
+  | {
+      readonly kind: 'agent';
+      readonly agentName: string;
+      readonly parentRunId: string;
+      readonly href: string;
+    }
   /** A goal's attempt: the goal, and the session the attempt ran in while the Bureau still has it. */
   | {
       readonly kind: 'goal';
@@ -29,13 +64,9 @@ export type RunOrigin =
       readonly href: string;
       readonly session: { readonly title: string; readonly href: string } | null;
     }
-  /**
-   * A schedule's fire (the task's own `actor`, not the session's origin, which a fire that
-   * continues a chat keeps as `chat`): the session it ran in, named by the text the schedule
-   * delivered when the caller lists that session, and empty when it does not (an operator sees
-   * every owner's fires and lists only their own sessions).
-   */
-  | { readonly kind: 'schedule'; readonly title: string; readonly href: string }
+  /** A step of a workflow instance. */
+  | { readonly kind: 'parent'; readonly parentRunId: string; readonly href: string }
+  /** A task recorded before origins were kept, which nothing else names. */
   | { readonly kind: 'none' };
 
 export type RunRow = {
@@ -53,16 +84,6 @@ export type RunRow = {
   readonly updatedAt: number;
   /** How long it took, once it is over. */
   readonly durationMs: number | null;
-};
-
-/** What can start a run, for the filter. */
-export type StartedBy = 'chat' | 'goal' | 'schedule';
-
-/** The words for each way a run can start. */
-export const STARTED_BY_LABELS: Readonly<Record<StartedBy, string>> = {
-  chat: 'A chat',
-  goal: 'A goal',
-  schedule: 'A schedule',
 };
 
 /** The ranges of time the list can be narrowed to, in milliseconds. */
@@ -89,16 +110,93 @@ function waitSummary(task: TaskView): string {
   return wait.kind === 'tool-approval' ? TASK_COPY.waiting.approval : TASK_COPY.waiting.answer;
 }
 
-function taskOrigin(task: TaskView, chat: ChatContext | undefined): RunOrigin {
-  // The task says what started it. A schedule may continue a chat session, which keeps its `chat`
-  // origin, so the session cannot be asked.
-  // A fire always runs in a session, and its link comes from the task: the caller-owned sessions
-  // listed are only a source of the title. `bureau.contexts.get` decides whether it opens.
+/** A field of the recorded origin, when it is a non-empty string. */
+function recordedText(origin: object, key: string): string | undefined {
+  const value: unknown = Reflect.get(origin, key);
+  return typeof value === 'string' && value !== '' ? value : undefined;
+}
+
+const PERSON_SURFACES: readonly RunPersonSurface[] = ['web', 'palette', 'api'];
+
+/**
+ * What started the task, read from the origin the Bureau recorded with it. An origin of a kind
+ * this page does not know, or one missing a field its kind needs, is read as a task with none.
+ */
+function recordedOrigin(
+  task: TaskView,
+  chats: ReadonlyMap<string, ChatContext>,
+): RunOrigin | undefined {
+  const recorded = task.origin;
+  if (recorded === null || recorded === undefined) return undefined;
+  switch (recorded.kind) {
+    case 'chat': {
+      // The origin names the session, so a chat another owner started links to it as well; the
+      // title is there only when the caller lists that session.
+      const contextId = recordedText(recorded, 'contextId') ?? task.contextId;
+      return {
+        kind: 'chat',
+        title: chats.get(contextId)?.title ?? '',
+        href: chatSessionPath(contextId),
+      };
+    }
+    case 'person': {
+      const surface = PERSON_SURFACES.find((one) => one === recordedText(recorded, 'surface'));
+      return { kind: 'person', surface: surface ?? null };
+    }
+    case 'schedule': {
+      const scheduleId = recordedText(recorded, 'scheduleId');
+      return {
+        kind: 'schedule',
+        title: chats.get(task.contextId)?.title ?? '',
+        href: chatSessionPath(task.contextId),
+        scheduleId: scheduleId ?? null,
+        schedulePath: scheduleId === undefined ? null : scheduleDetailPath(scheduleId),
+        manual: Reflect.get(recorded, 'manual') === true,
+      };
+    }
+    case 'api':
+      return { kind: 'api' };
+    case 'agent': {
+      const parentRunId = recordedText(recorded, 'parentRunId');
+      if (parentRunId === undefined) return undefined;
+      return {
+        kind: 'agent',
+        agentName: recordedText(recorded, 'agentName') ?? '',
+        parentRunId,
+        href: workflowDetailPath(parentRunId),
+      };
+    }
+    case 'goal': {
+      const goalRunId = recordedText(recorded, 'goalRunId');
+      if (goalRunId === undefined) return undefined;
+      return { kind: 'goal', name: goalRunId, href: goalPath(goalRunId), session: null };
+    }
+    case 'parent': {
+      const parentRunId = recordedText(recorded, 'parentRunId');
+      if (parentRunId === undefined) return undefined;
+      return { kind: 'parent', parentRunId, href: workflowDetailPath(parentRunId) };
+    }
+    default:
+      return undefined;
+  }
+}
+
+function taskOrigin(task: TaskView, chats: ReadonlyMap<string, ChatContext>): RunOrigin {
+  const recorded = recordedOrigin(task, chats);
+  if (recorded !== undefined) return recorded;
+  // A task recorded before origins were kept says what started it only through its `actor` and its
+  // `kind`. A schedule may continue a chat session, which keeps its `chat` origin, so the session
+  // cannot be asked, and the fire's link comes from the task: the caller-owned sessions listed are
+  // only a source of the title. `bureau.contexts.get` decides whether it opens.
+  const chat = chats.get(task.contextId);
   if (isScheduleFire(task)) {
     return {
       kind: 'schedule',
       title: chat?.title ?? '',
       href: chatSessionPath(task.contextId),
+      scheduleId: null,
+      schedulePath: null,
+      manual: false,
     };
   }
   // A caller lists only its own sessions, so a chat another owner started is not among them. The
@@ -115,7 +213,6 @@ function taskOrigin(task: TaskView, chat: ChatContext | undefined): RunOrigin {
 }
 
 function taskRow(task: TaskView, chats: ReadonlyMap<string, ChatContext>): RunRow {
-  const chat = chats.get(task.contextId);
   const startedAt = Date.parse(task.createdAt);
   const updatedAt = Date.parse(task.updatedAt);
   const summary =
@@ -128,7 +225,7 @@ function taskRow(task: TaskView, chats: ReadonlyMap<string, ChatContext>): RunRo
     id: task.id,
     agentName: task.agentName,
     status: task.status,
-    origin: taskOrigin(task, chat),
+    origin: taskOrigin(task, chats),
     summary,
     startedAt,
     updatedAt,
@@ -220,14 +317,12 @@ const STATUSES: readonly TaskState[] = [
 export function parseRunFilter(search: URLSearchParams): RunFilter {
   const status = STATUSES.find((state) => state === search.get('status'));
   const agent = search.get('agent')?.trim();
-  const startedBy = search.get('startedBy');
+  const startedBy = STARTED_BY_KINDS.find((kind) => kind === search.get('startedBy'));
   const since = SINCE_KEYS.find((range) => range === search.get('since'));
   return {
     ...(status === undefined ? {} : { status }),
     ...(agent === undefined || agent === '' ? {} : { agent }),
-    ...(startedBy === 'chat' || startedBy === 'goal' || startedBy === 'schedule'
-      ? { startedBy }
-      : {}),
+    ...(startedBy === undefined ? {} : { startedBy }),
     ...(since === undefined ? {} : { since }),
   };
 }

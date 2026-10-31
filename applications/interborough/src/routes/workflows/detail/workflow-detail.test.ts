@@ -69,6 +69,7 @@ describe('WorkflowDetail — not-found state', () => {
     // `HttpClient.get()` resolves a 404 GET to `null` rather than throwing
     // (weft's `request()` — see `workflow-detail.svelte`'s `notFound` derivation).
     fetchScript.routeUrlStatus(`/workflows/${bogusId}`, 404);
+    fetchScript.routeJsonRpcMethodNotFound('bureau.workflows.runs.get', 'No such run');
     resetLocation(`/runs/${bogusId}`);
 
     const { findByText, queryByText } = render(WorkflowDetailHarness, {
@@ -80,6 +81,58 @@ describe('WorkflowDetail — not-found state', () => {
 
     const backLink = await findByText('Back to workflows');
     expect(backLink.closest('a')?.getAttribute('href')).toBe(router.href('/runs'));
+  });
+});
+
+describe('WorkflowDetail — a run the engine does not hold', () => {
+  // The engine behind the console answers 404 for a run of a workflow file whenever it is not the
+  // engine that runs the Bureau's workflows (the end-to-end host's is a fixture engine). The
+  // Bureau holds the instance either way, so the page says what the run is.
+  test('shows the Bureau’s record of a workflow file’s run instead of "No workflow found"', async () => {
+    const id = 'f3a9c0de-0000-4000-8000-000000000001';
+    fetchScript.routeUrlStatus(`/workflows/${id}`, 404);
+    fetchScript.routeJsonRpcMethod('bureau.workflows.runs.get', {
+      id,
+      workflow: 'e2e-approval',
+      workflowVersion: 'sha256:abc',
+      status: 'running',
+      createdAt: '2026-10-31T11:26:19.437Z',
+      updatedAt: '2026-10-31T11:26:20.437Z',
+      trigger: { kind: 'signal', name: 'e2e-begin', payload: null },
+      result: null,
+      error: null,
+      finishReason: null,
+    });
+    resetLocation(`/runs/${id}`);
+
+    const { container, findByRole, queryByText } = render(WorkflowDetailHarness, {
+      props: { client: realClient(), principal: GRANTED_PRINCIPAL, queryClient: newQueryClient() },
+    });
+
+    const record = await findByRole('region', { name: 'Run record' });
+    expect(record.getAttribute('data-run-record')).toBe(id);
+    expect(record.textContent).toContain('e2e-approval');
+    expect(container.querySelector('[data-cinder-status]')).not.toBeNull();
+    expect(record.textContent).toContain('Running');
+    expect(queryByText('No workflow found')).toBeNull();
+    const workflow = [...record.querySelectorAll('a')].find(
+      (link) => link.textContent === 'e2e-approval',
+    );
+    expect(workflow?.getAttribute('href')).toBe(router.href('/workflows/e2e-approval'));
+  });
+
+  test('says the run could not be loaded when the Bureau fails, rather than that it is missing', async () => {
+    const id = 'f3a9c0de-0000-4000-8000-000000000002';
+    fetchScript.routeUrlStatus(`/workflows/${id}`, 404);
+    fetchScript.routeJsonRpcMethodUnprocessable('bureau.workflows.runs.get', 'The Bureau broke.');
+    resetLocation(`/runs/${id}`);
+
+    const { findByText, queryByText } = render(WorkflowDetailHarness, {
+      props: { client: realClient(), principal: GRANTED_PRINCIPAL, queryClient: newQueryClient() },
+    });
+
+    expect(await findByText('The run could not be loaded')).not.toBeNull();
+    expect(queryByText('No workflow found')).toBeNull();
   });
 });
 
