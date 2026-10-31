@@ -1220,7 +1220,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       const writer =
         hash === undefined
           ? undefined
-          : writesInFlight.get(id)?.find((write) => write.hashes.has(hash));
+          : writesInFlight.get(id)?.find((pending) => pending.hashes.has(hash));
       sources.add(writer?.source);
     }
     const [only] = sources;
@@ -1304,13 +1304,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
   ): Promise<WorkflowFileWriteResult> {
     const attribution = attributeWrite(attributedId, context?.source);
     try {
-      return await writeAttributed(
-        type,
-        context,
-        previousHash,
-        () => work(attribution.wrote),
-        id,
-      );
+      return await writeAttributed(type, context, previousHash, () => work(attribution.wrote), id);
     } finally {
       attribution.stop();
     }
@@ -1518,7 +1512,13 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     },
 
     create: (id, definition, context) =>
-      write('workflow.created', context, undefined, (onWritten) => catalog.create(id, definition, { onWritten }), id),
+      write(
+        'workflow.created',
+        context,
+        undefined,
+        (onWritten) => catalog.create(id, definition, { onWritten }),
+        id,
+      ),
     update: (id, definition, update) =>
       write(
         'workflow.updated',

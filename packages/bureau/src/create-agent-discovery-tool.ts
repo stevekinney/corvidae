@@ -60,7 +60,8 @@ export function createAgentDiscoveryTool<D extends AgentDefinitions>(
       const taken = new Set(agents.map(({ name }) => name));
       // `list` carries no skill descriptors, so a file agent is read from the catalog by identifier.
       for (const listing of catalog.list()) {
-        if (listing.source !== 'file' || listing.state !== 'ready' || taken.has(listing.id)) continue;
+        if (listing.source !== 'file' || listing.state !== 'ready' || taken.has(listing.id))
+          continue;
         const agent = catalog.find(listing.id);
         if (agent !== undefined) agents.push({ name: listing.id, agent });
       }

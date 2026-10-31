@@ -113,9 +113,9 @@ import {
 } from './tool-source-vault.ts';
 import {
   parseToolSourcesConfiguration,
-  RESERVED_TOOL_SOURCE_IDENTIFIERS,
   qualifyToolNames,
   readToolSourcesConfiguration,
+  RESERVED_TOOL_SOURCE_IDENTIFIERS,
   serializeToolSources,
   TOOL_SOURCE_IDENTIFIER,
   type ConfiguredToolSettings,

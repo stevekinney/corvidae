@@ -132,12 +132,15 @@ describe('the built-in bureau plugin', () => {
       agentFileText({
         model: KNOWN_MODEL,
         description: 'Finds primary sources',
-        skillDescriptors: '[{id: cite, name: Cite, description: Adds footnotes, tags: [footnoting]}]',
+        skillDescriptors:
+          '[{id: cite, name: Cite, description: Adds footnotes, tags: [footnoting]}]',
       }),
     );
     await writeFile(join(harness.agentsPath, 'broken.md'), 'not an agent file, so it is invalid');
     await harness.bureau.agents.refresh();
-    expect(harness.bureau.agents.list().find((file) => file.id === 'broken')?.state).toBe('invalid');
+    expect(harness.bureau.agents.list().find((file) => file.id === 'broken')?.state).toBe(
+      'invalid',
+    );
 
     const discover = async (text?: string) => {
       const { result, outcome } = await harness.callTool(
@@ -308,7 +311,10 @@ describe('an owner edit that lands while a bureau tool is writing the same workf
       });
 
       holdWrites = true;
-      const call = harness.callTool('bureau__workflows-pause', { id: 'nightly', expectedHash: hash });
+      const call = harness.callTool('bureau__workflows-pause', {
+        id: 'nightly',
+        expectedHash: hash,
+      });
       await reached;
       // The tool's bytes are on disk; the owner edits the file before the tool's write settles.
       const edited = JSON.stringify({
