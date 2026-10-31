@@ -235,12 +235,12 @@ describe('the runs list', () => {
 describe('a run’s page', () => {
   const TASK = taskFixture({ id: 'run-1', agentName: 'echo', status: 'completed' });
 
-  test('has the Engine tab for a caller who may read the engine, and none for one who may not', async () => {
+  test('is a whole page, with no tabs, for a caller who may read the engine and for one who may not', async () => {
     const withEngine = open('/runs/run-1', { world: { tasks: [TASK] } });
     await waitFor(() =>
       expect(withEngine.queryByRole('heading', { level: 1 })?.textContent).toContain('echo'),
     );
-    expect(withEngine.queryByRole('tab', { name: TASK_COPY.tabs.engine })).not.toBeNull();
+    expect(withEngine.queryAllByRole('tab').length).toBe(0);
     cleanup();
     stub?.restore();
 
@@ -248,8 +248,10 @@ describe('a run’s page', () => {
     await waitFor(() =>
       expect(without.queryByRole('heading', { level: 1 })?.textContent).toContain('echo'),
     );
-    expect(without.queryByRole('tab', { name: TASK_COPY.tabs.summary })).not.toBeNull();
-    expect(without.queryByRole('tab', { name: TASK_COPY.tabs.engine })).toBeNull();
+    expect(without.queryAllByRole('tab').length).toBe(0);
+    for (const name of ['Input and output', 'Activity', 'Details']) {
+      expect(without.queryByRole('heading', { level: 2, name })).not.toBeNull();
+    }
   });
 
   test('is a run that was not found when the Bureau has no task or goal for it and the caller may not ask the engine', async () => {

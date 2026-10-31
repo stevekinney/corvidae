@@ -159,14 +159,6 @@
     {
       "file": "src/routes/workflows/detail/timeline-tab.svelte",
       "issue": "COR-1860"
-    },
-    {
-      "file": "src/routes/workflows/detail/workflow-detail.svelte",
-      "issue": "COR-1966"
-    },
-    {
-      "file": "src/routes/workflows/runs/run-detail.svelte",
-      "issue": "COR-1966"
     }
   ]
 }

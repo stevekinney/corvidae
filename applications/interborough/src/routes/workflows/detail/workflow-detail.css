@@ -1,152 +1,8 @@
 /*
- * Workflow detail (Track A2, plan T2.4–T2.7). Imported directly from
- * `workflow-detail.svelte`'s <script> block rather than a shared
- * `src/styles/*.css` file — see this track's final report for why (keeps
- * this track's CSS additions out of `src/styles/workflows.css`, which
- * Track A1's list/wizard surfaces also touch, so the two tracks never
- * conflict on the same file).
+ * The sections of a run's page that the workflow engine fills in (`runs/run-detail.svelte`): its
+ * fault banner, the input and result panels, the lineage panel, events, the signal and update
+ * forms and the children list. The page's own layout is in `src/styles/tasks.css`.
  */
-/* ---------------------------------------------------------------------- */
-/* Header                                                                  */
-/* ---------------------------------------------------------------------- */
-
-.weft-workflow-detail {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-}
-
-.weft-workflow-detail__header {
-  flex: none;
-  border-bottom: 1px solid var(--cinder-border);
-}
-
-.weft-workflow-detail__title-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  flex-wrap: wrap;
-  margin-bottom: 14px;
-}
-
-.weft-workflow-detail__identity {
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-.weft-workflow-detail__badges {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 5px;
-}
-
-.weft-workflow-detail__title {
-  margin: 0;
-  font-size: var(--cinder-text-lg);
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
-.weft-workflow-detail__type-link {
-  color: inherit;
-  text-decoration: none;
-}
-
-.weft-workflow-detail__type-link:hover,
-.weft-workflow-detail__type-link:focus-visible {
-  text-decoration: underline;
-}
-
-.weft-workflow-detail__meta-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  font-size: var(--cinder-text-xs);
-  color: var(--cinder-text-subtle);
-}
-
-.weft-workflow-detail__meta-sep {
-  color: var(--cinder-text-disabled);
-}
-
-.weft-workflow-detail__id {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-family: var(--cinder-font-mono);
-}
-
-.weft-workflow-detail__deadline {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-family: var(--cinder-font-mono);
-  color: var(--cinder-status-warning-text);
-}
-
-.weft-workflow-detail__deadline[data-overdue='true'] {
-  color: var(--cinder-status-danger-text);
-}
-
-.weft-workflow-detail__actions {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  flex-wrap: wrap;
-  margin-bottom: 14px;
-}
-
-.weft-workflow-detail__actions-divider {
-  width: 1px;
-  height: 20px;
-  background: var(--cinder-border);
-  margin: 0 3px;
-}
-
-.weft-workflow-detail__query-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  max-width: 420px;
-  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-  margin-bottom: 14px;
-  background: var(--cinder-surface-raised);
-  border: 1px solid var(--cinder-border);
-  border-radius: var(--cinder-radius-lg);
-}
-
-/* Tab bar scrolls horizontally on narrow viewports rather than wrapping or
- * forcing page-level overflow (PROJECT-BRIEF responsive rules). */
-.weft-workflow-detail__tab-scroll {
-  overflow-x: auto;
-  scrollbar-width: thin;
-}
-
-.weft-workflow-detail__tab-scroll .weft-workflow-detail__tab-list {
-  flex-wrap: nowrap;
-  white-space: nowrap;
-}
-
-/* ---------------------------------------------------------------------- */
-/* Tab content                                                            */
-/* ---------------------------------------------------------------------- */
-
-.weft-workflow-detail__content {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  padding-block-start: var(--cinder-space-4);
-}
-
-.weft-workflow-detail__loading {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
 
 /* ---------------------------------------------------------------------- */
 /* Inline fault (query errors — see faults.ts module doc: query errors     */
@@ -192,20 +48,6 @@
 /* Overview tab                                                           */
 /* ---------------------------------------------------------------------- */
 
-.weft-overview-tab {
-  display: grid;
-  grid-template-columns: 340px 1fr;
-  gap: 18px;
-  align-items: start;
-  max-width: 1100px;
-}
-
-@media (max-width: 900px) {
-  .weft-overview-tab {
-    grid-template-columns: 1fr;
-  }
-}
-
 .weft-overview-tab__panel {
   background: var(--cinder-surface-raised);
   border: 1px solid var(--cinder-border);
@@ -213,18 +55,12 @@
   overflow: hidden;
 }
 
-.weft-overview-tab__panel-header {
+.weft-panel-title {
+  margin: 0;
   padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   border-bottom: 1px solid var(--cinder-border-muted);
   font-size: var(--cinder-text-sm);
   font-weight: 600;
-}
-
-.weft-overview-tab__right {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  min-width: 0;
 }
 
 .weft-overview-tab__tags {
@@ -389,13 +225,6 @@
   min-width: 0;
 }
 
-.weft-send-tab__history-header {
-  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-  border-bottom: 1px solid var(--cinder-border-muted);
-  font-size: var(--cinder-text-sm);
-  font-weight: 600;
-}
-
 .weft-send-tab__history-row {
   display: flex;
   align-items: center;
@@ -491,9 +320,4 @@
   color: var(--cinder-text-subtle);
   background: var(--cinder-surface-inset);
   border-bottom: 1px solid var(--cinder-border-muted);
-}
-
-.weft-workflow-detail__task-link {
-  align-self: flex-start;
-  color: inherit;
 }

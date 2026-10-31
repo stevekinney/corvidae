@@ -92,8 +92,9 @@ describe('a run’s tool calls', () => {
       ],
     });
 
+    // The question is not here: it leads the page, in the waiting section (`run-waiting.svelte`).
     const view = render(Harness, { props: { task, threadId: null } } as never);
-    await waitFor(() => expect(view.container.querySelectorAll('.ib-run-wait')).toHaveLength(2));
+    await waitFor(() => expect(view.container.querySelectorAll('.ib-run-wait')).toHaveLength(1));
 
     await fireEvent.click(view.getByRole('button', { name: 'Report an event' }));
 
@@ -101,7 +102,7 @@ describe('a run’s tool calls', () => {
     // failure; load can only delay such a request, so a quiet window is the proof there is none.
     await quietFor(EVENT_REREAD_WINDOW);
     expect(requested).toEqual([]);
-    expect(view.container.querySelectorAll('.ib-run-wait')).toHaveLength(2);
+    expect(view.container.querySelectorAll('.ib-run-wait')).toHaveLength(1);
     expect(view.container.textContent).not.toContain(TASK_COPY.toolCallsLoadFailed.title);
   });
 

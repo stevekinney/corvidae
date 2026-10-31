@@ -11,6 +11,7 @@ import { TASK_COPY, VIEW_COPY } from '../../src/app/copy.ts';
 import { conversation, deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { expectEngineMissesForRuns } from './task-support.ts';
 
 const composer = (page: Page) => page.getByRole('textbox');
 
@@ -196,7 +197,9 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
 
   test('opens the goal’s session from its run’s page, and the fire’s from its own', async ({
     page,
+    pageErrors,
   }) => {
+    expectEngineMissesForRuns(pageErrors);
     await page.goto(`/runs/${SEEDED_GOAL_RUN}`);
     await page.getByRole('link', { name: TASK_COPY.openSession }).click();
     await expect(page).toHaveURL(new RegExp(`/chats/${SEEDED_GOAL_SESSION}$`));

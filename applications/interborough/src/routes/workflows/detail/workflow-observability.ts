@@ -7,7 +7,7 @@
  *   header badge (`workflow-status.ts`'s `finalizerStatusPresentation`) and
  *   the Timeline tab's finalizer strip (`timeline/finalizer-strip.svelte`) —
  *   both derive their special-status rendering from the SAME fetch, owned
- *   here in `workflow-detail.svelte`, rather than two independent
+ *   here in `runs/run-engine.svelte.ts`, rather than two independent
  *   heuristics disagreeing about the same workflow.
  * - `weft.workflows.scheduleprovenance.get` — the durable schedule id and
  *   optional occurrence timestamp that launched this run

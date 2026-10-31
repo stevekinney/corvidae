@@ -268,3 +268,28 @@ describe('answerFromText', () => {
     expect(validateReviewAnswer({ type: 'integer' }, 'three')[0]).toMatchObject({ code: 'type' });
   });
 });
+
+describe('the text a run page sends for what a question control gave', () => {
+  // The run page's wait sends text as typed and any other answer as its JSON
+  // (`taskAnswerText` in Interborough): every kind of control reads back into the value it gave.
+  const object: HumanInputSchema = {
+    type: 'object',
+    properties: { replicas: { type: 'integer' } },
+    required: ['replicas'],
+  };
+
+  it.each([
+    ['a yes', { type: 'boolean' }, true],
+    ['a no', { type: 'boolean' }, false],
+    ['a rating', rating, 4],
+    ['a pick of several', pickSeveral, ['a', 'b']],
+    ['an object', object, { replicas: 2 }],
+    ['a pick of one', pickOne, 'staging'],
+    ['text', { type: 'string' }, 'staging'],
+  ] as const)('%s reads back as the value and satisfies the schema', (_name, schema, value) => {
+    const text = typeof value === 'string' ? value : JSON.stringify(value);
+    const read = answerFromText(schema, text);
+    expect(read).toEqual(value);
+    expect(validateReviewAnswer(schema, read)).toEqual([]);
+  });
+});

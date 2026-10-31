@@ -11,6 +11,7 @@ import {
   isTerminalState,
   listTasks,
   respondToTask,
+  taskAnswerText,
   taskCancelReceiptSchema,
   taskCleanupSchema,
   taskEventsPath,
@@ -297,5 +298,18 @@ describe('a refused page token', () => {
     expect(isRefusedPageToken(refusal('InvalidParams', 'page-token-expired'))).toBe(false);
     expect(isRefusedPageToken(refusal('NotFound', [{ code: 'page-token-expired' }]))).toBe(false);
     expect(isRefusedPageToken(new Error('page-token-expired'))).toBe(false);
+  });
+});
+
+describe('taskAnswerText', () => {
+  test.each([
+    ['text, as it is', 'staging', 'staging'],
+    ['a yes', true, 'true'],
+    ['a no', false, 'false'],
+    ['a rating', 4, '4'],
+    ['a pick of several', ['a', 'b'], '["a","b"]'],
+    ['an object', { replicas: 2 }, '{"replicas":2}'],
+  ])('carries %s', (_name, value, expected) => {
+    expect(taskAnswerText(value)).toBe(expected);
   });
 });

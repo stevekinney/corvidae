@@ -168,7 +168,7 @@
 
 <div class="weft-send-tab" data-form={canSend ? 'present' : 'absent'}>
   <div class="weft-send-tab__history">
-    <div class="weft-send-tab__history-header">{copy.heading}</div>
+    <h4 class="weft-panel-title">{copy.heading}</h4>
     {#if timedOutName !== null}
       <p class="weft-update-tab__notice" role="status">{copy.timedOut(timedOutName)}</p>
     {/if}

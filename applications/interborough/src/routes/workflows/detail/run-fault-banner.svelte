@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * The run detail page's fault banner, for a fault a section of the page hits (a rejected attribute
-   * edit, an unreadable stream, a refused update). It is the markup `workflow-detail.svelte` renders
+   * edit, an unreadable stream, a refused update). It is the markup `runs/run-engine.svelte.ts` renders
    * for the fault of loading the run itself (`weft-workflow-detail__fault-banner`), so every fault on
    * this page reads the same way, from the same classification (`faults.ts`).
    */

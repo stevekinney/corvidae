@@ -141,26 +141,8 @@
     {
       "rule": "app-header-class",
       "file": "src/routes/workflows/detail/workflow-detail.css",
-      "subject": ".weft-workflow-detail__header",
-      "issue": "COR-1966"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/routes/workflows/detail/workflow-detail.css",
-      "subject": ".weft-overview-tab__panel-header",
-      "issue": "COR-1966"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/routes/workflows/detail/workflow-detail.css",
       "subject": ".weft-lineage-panel__header",
       "issue": "COR-1860"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/routes/workflows/detail/workflow-detail.css",
-      "subject": ".weft-send-tab__history-header",
-      "issue": "COR-1966"
     },
     {
       "rule": "app-header-class",
@@ -245,24 +227,6 @@
       "file": "src/styles/storage.css",
       "subject": ".weft-storage-results-header",
       "issue": "COR-1851"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/styles/tasks.css",
-      "subject": ".ib-run__header",
-      "issue": "COR-1966"
-    },
-    {
-      "rule": "cinder-selector",
-      "file": "src/styles/tasks.css",
-      "subject": ".cinder-description-list__definition",
-      "issue": "COR-1966"
-    },
-    {
-      "rule": "cinder-selector",
-      "file": "src/styles/tasks.css",
-      "subject": ".cinder-badge",
-      "issue": "COR-1966"
     },
     {
       "rule": "app-header-class",

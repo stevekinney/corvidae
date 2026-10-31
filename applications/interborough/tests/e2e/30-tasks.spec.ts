@@ -13,7 +13,7 @@ import { TASK_COPY } from '../../src/app/copy.ts';
 import { taskCursorKey } from '../../src/routes/workflows/runs/task-follower.svelte.ts';
 import { expectWaiting, newThreadId, releaseBarrier, runToEnd, startRun } from './chat-support.ts';
 import { expect, test } from './fixtures.ts';
-import { bureauCall, taskOfSession } from './task-support.ts';
+import { bureauCall, expectEngineMissesForRuns, taskOfSession } from './task-support.ts';
 
 const WIDTHS = [375, 1280] as const;
 const ASSISTANT_REPLY = 'Hello from the assistant.';
@@ -103,7 +103,11 @@ async function runningBarrierTask(
   return { threadId, taskId: task.id, abort: () => held.abort() };
 }
 
-const heading = (page: Page) => page.locator('.ib-run__heading');
+const heading = (page: Page) => page.locator('[data-run-header]');
+
+test.beforeEach(({ pageErrors }) => {
+  expectEngineMissesForRuns(pageErrors);
+});
 
 test.describe('the runs of a chat', () => {
   test('are listed with their agent, their chat, and their status, and a row opens the run with its answer', async ({
@@ -135,12 +139,13 @@ test.describe('the runs of a chat', () => {
       'href',
       `/chats/${threadId}`,
     );
-    await expect(page.getByRole('heading', { level: 2, name: 'Answer' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 2, name: 'Input and output' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 3, name: 'Answer' })).toBeVisible();
     await expect(page.getByText(ASSISTANT_REPLY)).toBeVisible();
-    // What only an operator uses is on the Engine tab, and not on this one.
-    await expect(page.getByRole('button', { name: /Restart|Send signal|Send update/ })).toHaveCount(
-      0,
-    );
+    // What only an operator uses is for a caller who may read the workflow, and this run has none.
+    await expect(
+      page.getByRole('button', { name: /Restart|Send a signal|Send an update/ }),
+    ).toHaveCount(0);
     await checkA11y('a completed run');
   });
 
@@ -170,7 +175,7 @@ test.describe('the runs of a chat', () => {
 });
 
 test.describe('the runs of a caller who may not read the engine', () => {
-  test('are the Bureau’s: the list and a run’s page are there, the Engine tab is not, and the engine-only views say so', async ({
+  test('are the Bureau’s: the list and a run’s page are there, the workflow sections are not, and the engine-only views say so', async ({
     page,
     request,
   }) => {
@@ -205,8 +210,10 @@ test.describe('the runs of a caller who may not read the engine', () => {
 
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('assistant');
     await expect(page.getByText(ASSISTANT_REPLY)).toBeVisible();
-    await expect(page.getByRole('tab', { name: 'Summary' })).toBeVisible();
-    await expect(page.getByRole('tab', { name: 'Workflow' })).toHaveCount(0);
+    // The whole page is there without the workflow's sections, and it has no tabs at all.
+    await expect(page.getByRole('heading', { level: 2, name: 'Details' })).toBeVisible();
+    await expect(page.getByRole('tab')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Send a signal' })).toHaveCount(0);
 
     await page.goto('/runs?view=start');
     await expect(page.getByRole('heading', { level: 1, name: 'Runs are locked' })).toBeVisible();
@@ -227,11 +234,11 @@ test.describe('a run that waits on a question', () => {
 
     await page.goto(`/runs/${task.id}`);
 
-    await expect(heading(page).getByText('Needs you', { exact: true })).toBeVisible();
+    await expect(heading(page).getByText('Waiting on you', { exact: true })).toBeVisible();
     await expect(page.getByText('Which environment should the release go to?')).toBeVisible();
     await checkA11y('a run waiting on a question');
     await page.getByLabel('Your answer').fill('staging');
-    await page.getByRole('button', { name: 'Send answer' }).click();
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
 
     // The page reads the task again, and the stream carries what the run answers.
     await expect(heading(page).getByText('Done', { exact: true })).toBeVisible();
@@ -310,7 +317,7 @@ test.describe('cancelling a run', () => {
     const { taskId, abort } = await runningBarrierTask(request, 'tasks-cancel');
     try {
       await page.goto(`/runs/${taskId}`);
-      await expect(heading(page).getByText('Working', { exact: true })).toBeVisible();
+      await expect(heading(page).getByText('Running', { exact: true })).toBeVisible();
       await checkA11y('a run that can be cancelled');
 
       await page.getByRole('button', { name: 'Cancel run' }).click();

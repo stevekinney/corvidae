@@ -171,7 +171,7 @@ async function scriptRemoteRun(page: Page): Promise<Scripted> {
 
 async function openTimeline(page: Page, href: string): Promise<void> {
   await page.goto(href);
-  await page.getByRole('tab', { name: 'Timeline' }).click();
+  await expect(page.getByRole('heading', { level: 3, name: 'Timeline' })).toBeVisible();
   await expect(page.getByText('reserveInventory').first()).toBeVisible();
 }
 

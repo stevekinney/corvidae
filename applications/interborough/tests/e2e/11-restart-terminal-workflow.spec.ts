@@ -39,10 +39,11 @@ test('operator restarts a completed run, seeing the revision it will select firs
   await expect(
     page.getByRole('heading', { level: 1, name: 'nightly-reconciliation' }),
   ).toBeVisible();
-  // Restart only renders for a terminal run.
-  await expect(page.getByRole('button', { name: 'Restart' })).toBeVisible();
+  // Restart is in the More menu, and only for a terminal run.
+  await page.getByRole('button', { name: 'More actions' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Restart' })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Restart' }).click();
+  await page.getByRole('menuitem', { name: 'Restart' }).click();
   const dialog = page.getByRole('dialog', { name: 'Restart workflow' });
   await expect(dialog).toBeVisible();
 
@@ -70,7 +71,7 @@ test('operator restarts a completed run, seeing the revision it will select firs
 
 test('a run that is not terminal offers no Restart action', async ({ page }) => {
   // `/runs` is the Bureau's list now, so a running engine run is found through the engine's own
-  // API and opened by id: a run only the engine knows opens on its Engine tab.
+  // API and opened by id.
   const running = await page.request.get('/api/v1/workflows', {
     params: { status: 'running', limit: '1' },
   });
@@ -78,10 +79,10 @@ test('a run that is not terminal offers no Restart action', async ({ page }) => 
   const id = ((await running.json()) as { items: Array<{ id: string }> }).items[0]?.id;
   if (id === undefined) throw new Error('The seeded engine has no running workflow.');
   await page.goto(`/runs/${encodeURIComponent(id)}`);
-  // A run only the engine knows has no title of its own: the workflow's is the page's one level-1 heading.
-  await expect(page.locator('h1.weft-workflow-detail__title')).toBeVisible();
+  // A run only the engine knows is titled by its workflow: the page's one level-1 heading.
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
-  await expect(page.getByRole('button', { name: 'Restart' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'More actions' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Restart' })).toHaveCount(0);
 });
 
 test('the restart dialog is usable across supported widths and themes', async ({ page }) => {
@@ -97,7 +98,8 @@ test('the restart dialog is usable across supported widths and themes', async ({
       }, theme);
       await page.goto(`/runs/${WORKFLOW_ID}`);
 
-      await page.getByRole('button', { name: 'Restart' }).click();
+      await page.getByRole('button', { name: 'More actions' }).click();
+      await page.getByRole('menuitem', { name: 'Restart' }).click();
       const dialog = page.getByRole('dialog', { name: 'Restart workflow' });
       await expect(dialog).toBeVisible();
       await expect(dialog.getByLabel('Signal name')).toBeVisible();

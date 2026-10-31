@@ -245,6 +245,16 @@ export class PageErrorLog {
     this.#declared.push({ allowance });
   }
 
+  /**
+   * Declares a report this test causes on purpose, however many times: every match is covered and
+   * none is required. For a cause whose count follows the page's refetches (a mount, a reload, a
+   * reconnect), where an exact count would only pin how often the page happens to ask. A test that
+   * can name the count uses {@link expect}.
+   */
+  expectEvery(allowance: PageErrorAllowance): void {
+    this.#standing.push(allowance);
+  }
+
   /** Hands each report to the first declaration with room for it; what no one covers is left over. */
   #settle(): { unexpected: string[]; matched: number[] } {
     const matched = this.#declared.map(() => 0);

@@ -30,7 +30,7 @@
    *
    * A restart is a FRESH start, so no pin carries over from the prior run:
    * it resolves against whichever revision the workflow type has active.
-   * The dialog fetches that pointer exactly the way `workflow-detail.svelte`
+   * The dialog fetches that pointer exactly the way `runs/run-engine.svelte.ts`
    * does for its single-record comparison — `fetchActiveWorkflowRevision`
    * under the shared `queryKeys.catalog.active(type)` key, gated on
    * `workflows:read` — and shows it before the operator confirms. It is
@@ -132,7 +132,7 @@
     enabled: !readGate.disabled,
   }));
 
-  /** An errored lookup collapses to "unresolved" rather than reusing prior `data` (same reasoning as `workflow-detail.svelte`'s `resolvedActiveRevision`). */
+  /** An errored lookup collapses to "unresolved" rather than reusing prior `data` (same reasoning as `runs/run-engine.svelte.ts`'s `resolvedActiveRevision`). */
   const activePointer = $derived(activeQuery.isError ? undefined : activeQuery.data);
   const activeLoading = $derived(!readGate.disabled && activeQuery.isPending);
 

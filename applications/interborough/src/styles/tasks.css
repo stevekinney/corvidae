@@ -1,5 +1,9 @@
 /* ── Runs: one list of what the agents have done, and one run's page ─────────── */
 
+/*
+ * A run's page is one header and one column of sections beside a 320 px Details rail. Below 1024px
+ * the rail goes under the sections, so the sections keep the whole width of a phone or a tablet.
+ */
 .ib-run {
   display: flex;
   flex-direction: column;
@@ -7,25 +11,50 @@
   min-width: 0;
 }
 
-.ib-run__header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--cinder-space-2) var(--cinder-space-4);
+.ib-run__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--cinder-space-6);
+  align-items: start;
+  min-width: 0;
 }
 
-.ib-run__heading {
+@media (min-width: 1024px) {
+  .ib-run__layout {
+    grid-template-columns: minmax(0, 1fr) 320px;
+  }
+}
+
+.ib-run__main {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-direction: column;
+  gap: var(--cinder-space-6);
+  min-width: 0;
+}
+
+.ib-run__rail {
+  display: flex;
+  flex-direction: column;
   gap: var(--cinder-space-3);
+  inline-size: 100%;
+  min-width: 0;
 }
 
-.ib-run__title {
-  margin: 0;
-  font-size: var(--cinder-text-xl);
-  font-weight: 600;
+@media (min-width: 1024px) {
+  .ib-run__rail {
+    inline-size: 320px;
+  }
+}
+
+.ib-run__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+  min-width: 0;
+}
+
+.ib-run__panels {
+  gap: var(--cinder-space-4);
 }
 
 .ib-run__actions {
@@ -35,54 +64,109 @@
   gap: var(--cinder-space-2);
 }
 
-.ib-run__origin,
 .ib-run__note,
 .ib-run__cancel-note p {
-  flex-basis: 100%;
   margin: 0;
   color: var(--cinder-text-muted);
   font-size: var(--cinder-text-sm);
 }
 
-.ib-run__summary {
-  display: flex;
-  flex-direction: column;
-  gap: var(--cinder-space-5);
-  padding-block-start: var(--cinder-space-4);
-}
-
 .ib-run__heading-2 {
-  margin: 0 0 var(--cinder-space-2);
+  margin: 0;
   font-size: var(--cinder-text-md);
   font-weight: 600;
+}
+
+.ib-run__heading-3 {
+  margin: 0;
+  font-size: var(--cinder-text-sm);
+  font-weight: 600;
+  color: var(--cinder-text-muted);
+}
+
+.ib-run__answer {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .ib-run-wait {
   min-width: 0;
 }
 
+.ib-run-wait__prompt {
+  margin: 0 0 var(--cinder-space-2);
+}
+
+.ib-run-wait__note {
+  margin: var(--cinder-space-2) 0 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
 .ib-run__cancel-note {
   flex-basis: 100%;
 }
 
-/* The Engine tab is the engine's own page. Inside a run's page it adds no padding of its own, and a
- * hash or a tag too long for a narrow screen wraps instead of widening the page. */
-.ib-run .weft-workflow-detail__content {
-  padding-inline: 0;
-  padding-block: var(--cinder-space-4) var(--cinder-space-6);
+/* Signals, updates and queries sit one under another inside their disclosure, not side by side. */
+.ib-run__change .weft-send-tab {
+  grid-template-columns: minmax(0, 1fr);
 }
 
-.ib-run .cinder-description-list__definition,
-.ib-run .cinder-badge {
+.ib-run__disclosures {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-2);
+  min-width: 0;
+}
+
+/* A hash, a tag or a name too long for the rail wraps instead of widening the page. */
+.ib-run-value,
+.ib-run-lineage,
+.ib-run-tags {
   min-width: 0;
   overflow-wrap: anywhere;
-  white-space: normal;
 }
 
-/* Type, version, revision and the like are code values, so the Engine tab sets them in monospace. */
-.ib-run .weft-overview-tab .cinder-description-list__definition {
-  font-family: var(--cinder-font-mono);
-  font-size: var(--cinder-text-sm);
+.ib-run-lineage {
+  margin: 0;
+  padding-inline-start: 0;
+  list-style: none;
+}
+
+.ib-run-lineage__item[data-depth='2'] {
+  padding-inline-start: var(--cinder-space-3);
+}
+
+.ib-run-lineage__item[data-depth='3'] {
+  padding-inline-start: var(--cinder-space-6);
+}
+
+.ib-run-tags__label {
+  margin-block-end: var(--cinder-space-1);
+  color: var(--cinder-text-subtle);
+  font-size: var(--cinder-text-xs);
+}
+
+.ib-run__spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--cinder-border-strong);
+  border-top-color: var(--cinder-accent-solid);
+  border-radius: 50%;
+  animation: ib-run-spin 0.7s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ib-run__spinner {
+    animation-duration: 0.001ms;
+  }
+}
+
+@keyframes ib-run-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .ib-run-row__agent {

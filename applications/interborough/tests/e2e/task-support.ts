@@ -5,7 +5,7 @@
 import type { APIRequestContext } from '@playwright/test';
 
 import { E2E_BASE_URL } from './e2e-constants.ts';
-import { expect } from './fixtures.ts';
+import { expect, loggedFailedResponse, type PageErrorLog } from './fixtures.ts';
 
 type TaskRow = { id: string; contextId: string; status: string };
 
@@ -58,4 +58,19 @@ export async function threadMessages(
   );
   expect(response.ok()).toBe(true);
   return ((await response.json()) as { messages: unknown[] }).messages;
+}
+
+/**
+ * Covers the 404 the run page's read of the workflow engine logs for a run of the Bureau's (a task,
+ * or a goal's attempt). On the default host those are engine runs, and the page asks the engine for
+ * them; this suite's engine is a fixture that holds none of them, so it answers each read with a
+ * 404 (the page shows no engine sections). How many reads there are follows the page's mounts and
+ * refetches, so none is counted, and a read that lands after the test ends is no failure.
+ */
+export function expectEngineMissesForRuns(pageErrors: PageErrorLog): void {
+  pageErrors.expectEvery({
+    pattern: loggedFailedResponse(404, /\/v1\/workflows\/(?:run|goal)-[^\s)]+\)/),
+    reason:
+      'the fixture engine holds no task or attempt, so the run page’s engine read of one is a 404',
+  });
 }

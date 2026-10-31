@@ -115,7 +115,7 @@
 </script>
 
 <div class="weft-overview-tab__panel weft-worker-binding" data-testid="worker-binding-panel">
-  <div class="weft-overview-tab__panel-header">Worker versioning</div>
+  <h3 class="weft-panel-title">Worker versioning</h3>
 
   {#if reading.kind === 'absent'}
     <p class="weft-worker-binding__empty">
@@ -145,14 +145,10 @@
     </p>
 
     <DescriptionList items={policyItems} variant="default" />
-    <div class="weft-overview-tab__panel-header weft-worker-binding__subheader">
-      Current binding
-    </div>
+    <h4 class="weft-panel-title weft-worker-binding__subheader">Current binding</h4>
     <DescriptionList items={bindingItems} variant="default" />
 
-    <div class="weft-overview-tab__panel-header weft-worker-binding__subheader">
-      Binding history
-    </div>
+    <h4 class="weft-panel-title weft-worker-binding__subheader">Binding history</h4>
     {#if reading.record.history.length === 0}
       <p class="weft-worker-binding__empty">
         No earlier versions: this run has only ever been bound to the build above.

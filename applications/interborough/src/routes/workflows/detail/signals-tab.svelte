@@ -78,7 +78,7 @@
 
 <div class="weft-send-tab">
   <div class="weft-send-tab__history">
-    <div class="weft-send-tab__history-header">Received signals</div>
+    <h4 class="weft-panel-title">Received signals</h4>
     {#if timelineQuery.isPending}
       <div style="padding: var(--cinder-density-pad-card);"><Skeleton height="2rem" /></div>
     {:else if receivedSignals.length === 0}

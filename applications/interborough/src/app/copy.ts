@@ -77,6 +77,76 @@ export const RUN_DETAIL_COPY = {
 } as const;
 
 /**
+ * The words on a run's page (`/runs/:run`): the sections it is made of, the Details rail's labels,
+ * and what each control says. A section a caller may not use says which scope it needs instead of
+ * disappearing.
+ */
+export const RUN_PAGE_COPY = {
+  moreActions: 'More actions',
+  copyRunId: 'Copy run ID',
+  runIdCopied: 'Run ID copied',
+  runIdCopyFailed: 'The run ID was not copied',
+  restart: 'Restart',
+  /** Leaves the confirmation of an action on the workflow without doing it. */
+  keep: 'Keep it',
+  restartHint: 'Replace this run with a fresh one under the same ID',
+  inputOutputHeading: 'Input and output',
+  inputHeading: 'Input',
+  resultHeading: 'Result',
+  inputPayload: 'Input payload',
+  resultPayload: 'Result payload',
+  activityHeading: 'Activity',
+  timelineHeading: 'Timeline',
+  eventsHeading: 'Events',
+  checkpointsHeading: 'Checkpoints',
+  logsHeading: 'Logs',
+  relatedHeading: 'Related runs',
+  detailsHeading: 'Details',
+  attributesAndWorkerLabel: 'Attributes and worker',
+  changeHeading: 'Change or ask this run',
+  changeIntro: 'Send a message to the run, or read something from it, without leaving the page.',
+  signal: { label: 'Send a signal', hint: 'Fire-and-forget message' },
+  update: { label: 'Send an update', hint: 'Request / response, awaits a result' },
+  query: { label: 'Ask a question', hint: 'Read-only, no workflow change' },
+  queryName: 'Query name',
+  queryInput: 'Input (JSON, optional)',
+  queryRun: 'Run',
+  queryRunning: 'Running…',
+  queryFailed: 'The query failed.',
+  facts: {
+    startedBy: 'Started by',
+    workflow: 'Workflow',
+    agent: 'Agent',
+    runId: 'Run ID',
+    copyRunId: 'Copy run ID',
+    started: 'Started',
+    updated: 'Last changed',
+    took: 'Took',
+    deadline: 'Deadline',
+    version: 'Version',
+    revision: 'Revision',
+    cleanup: 'Cleanup',
+    tags: 'Tags',
+    session: 'Session',
+    finishReason: 'Finish reason',
+    message: 'Message',
+  },
+  deadline: (remaining: string): string => `in ${remaining}`,
+  deadlinePassed: 'passed',
+  /** Said where a section needs a scope the caller does not hold. */
+  lockedSection: (scope: string): string => `Not available to you. Requires ${scope}.`,
+  noActivity: 'Nothing has happened in this run yet.',
+  confirm: {
+    cancel:
+      'Cancellation is cooperative: the workflow observes a cancellation signal and unwinds through its own cleanup. This is irreversible from your side.',
+    'force-timeout':
+      'Forces the workflow into the timed-out state, as if its execution deadline had elapsed. Irreversible.',
+    suspend: '',
+    resume: '',
+  },
+} as const;
+
+/**
  * What the application says when the server does not answer: the banner above the page, the title
  * a turned-off control shows, and the page that replaces a view with nothing to show.
  */
@@ -1637,7 +1707,6 @@ export const TASK_COPY = {
   schedule: 'schedule',
   agent: 'agent',
   workflow: 'workflow',
-  startedDirectly: 'Started directly',
   /** Under Started by, for a run recorded before the origin of a run was kept. */
   originUnrecorded: 'Not recorded',
   /** How a person started a run outside a chat, after "A person". */
@@ -1714,15 +1783,12 @@ export const TASK_COPY = {
     title: 'The tool calls could not be loaded',
     description: 'The server did not answer. Check that the host is running, then try again.',
   },
-  startedFromChat: 'Started from the chat',
-  startedFromSchedule: 'Started by a schedule, in the session',
-  startedFromGoal: 'Started by the goal',
   runTitle: 'Run',
-  tabsLabel: 'Run sections',
-  tabs: { summary: 'Summary', engine: 'Workflow' },
+  /** The Bureau's side of a run is shown, and the workflow engine's could not be read. */
+  engineReadFailed: 'The workflow’s record could not be read',
   goalAttemptNote:
-    'A goal made this run, so there is no task for it. The Workflow tab has what the workflow recorded.',
-  /** The same, for a caller who may not read the workflow, so there is no Workflow tab to point to. */
+    'A goal made this run, so there is no task for it. The sections below show what the workflow recorded.',
+  /** The same, for a caller who may not read the workflow, so there is nothing recorded to point to. */
   goalAttemptNoteBureauOnly: 'A goal made this run, so there is no task for it.',
   /** A run the Bureau does not know, to a caller who may not read the engine either. */
   notFound: {
@@ -1730,13 +1796,18 @@ export const TASK_COPY = {
     description:
       'It may have been removed, or it may belong to someone else. Open a run from the list.',
   },
-  engineOnlyNote: 'There is no task for this run. The Workflow tab has what the workflow recorded.',
+  engineOnlyNote:
+    'There is no task for this run. The sections below show what the workflow recorded.',
   answerTruncated: 'The answer was cut short.',
   followUnavailable:
     'This server cannot follow a task live, so its answer and live updates are not shown here.',
   followReconnecting: 'The connection dropped. Reconnecting.',
   waitsHeading: 'Waiting on you',
+  /** The heading once everything the run asked has been answered. */
+  waitsAnsweredHeading: 'Answered',
   readingWait: 'Reading what the run is waiting on.',
+  /** The answer is on its way and the wait has already closed. */
+  sendingAnswer: 'Sending your answer.',
   waitGone: 'This wait is no longer open.',
   waitLoadFailed: 'The wait could not be read.',
   humanWaitFallback: 'The agent is waiting for your answer.',
