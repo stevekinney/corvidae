@@ -62,7 +62,7 @@ export type SettingKeyState = z.infer<typeof keyStateSchema>;
 /**
  * A JSON Schema (2020-12) node, with the keywords the settings schema uses. It is read by shape
  * (`settings-controls.ts`), so only what that reading needs is named, and a keyword it does not
- * name is left alone.
+ * name is kept and left alone.
  */
 export type SchemaNode = {
   readonly type?: string | undefined;
@@ -71,6 +71,8 @@ export type SchemaNode = {
   readonly anyOf?: readonly SchemaNode[] | undefined;
   readonly properties?: Readonly<Record<string, SchemaNode>> | undefined;
   readonly required?: readonly string[] | undefined;
+  /** What an object's other properties hold; a record of strings is `{ type: 'string' }`. */
+  readonly additionalProperties?: unknown;
   readonly description?: string | undefined;
   readonly pattern?: string | undefined;
   readonly minimum?: number | undefined;
@@ -78,8 +80,10 @@ export type SchemaNode = {
   readonly maximum?: number | undefined;
 };
 
+// Loose: the keywords this file does not name (`items`, `additionalProperties`, `format`) are kept,
+// because the settings page hands the whole node to a `SchemaForm`.
 const schemaNodeSchema: z.ZodType<SchemaNode> = z.lazy(() =>
-  z.object({
+  z.looseObject({
     type: z.string().optional(),
     const: z.unknown().optional(),
     enum: z.array(z.unknown()).optional(),

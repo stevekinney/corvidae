@@ -157,7 +157,9 @@
   // focus regions (`data-shortcut-region`) around the focus.
   $effect(() => {
     function onKeydown(event: KeyboardEvent): void {
-      if (event.defaultPrevented) return;
+      // A field that handled its own Enter has prevented it, but ⌘Enter is the key a field never
+      // handles, and is meant to act from inside one (`modifier: 'mod'`).
+      if (event.defaultPrevented && !event.metaKey && !event.ctrlKey) return;
       const target = event.target;
       const element = target instanceof Element ? target : null;
       const editable =

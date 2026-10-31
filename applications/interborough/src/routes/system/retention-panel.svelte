@@ -4,7 +4,7 @@
    * it takes at once, and how many workflow types it tracks. It lived in the System page's Health
    * tab, and is Settings › Data and retention now (`routes/settings/data-and-retention.svelte`).
    */
-  import { DescriptionList } from '@lostgradient/cinder';
+  import { Card, DescriptionList, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
   import type { RetentionOverview } from '@lostgradient/weft';
 
@@ -19,12 +19,12 @@
   }));
 </script>
 
-<section class="weft-retention-panel">
-  <div class="weft-retention-panel__header">
-    <span>Retention</span>
-  </div>
+<Card title="Retention" headingLevel={2}>
   {#if retentionQuery.isPending}
-    <p class="weft-retention-panel__loading">Loading…</p>
+    <div role="status" aria-busy="true" aria-label="Loading retention">
+      <Skeleton height="1.25rem" width="60%" />
+      <Skeleton height="6rem" />
+    </div>
   {:else if retentionQuery.isError}
     <QueryFaultBanner error={retentionQuery.error} onRetry={() => retentionQuery.refetch()} />
   {:else}
@@ -45,26 +45,4 @@
       ]}
     />
   {/if}
-</section>
-
-<style>
-  .weft-retention-panel {
-    max-width: 900px;
-    background: var(--cinder-surface-raised);
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-lg);
-    padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-  }
-
-  .weft-retention-panel__header {
-    margin-bottom: 10px;
-    font-size: var(--cinder-text-sm);
-    font-weight: 600;
-  }
-
-  .weft-retention-panel__loading {
-    margin: 0;
-    font-size: var(--cinder-text-xs);
-    color: var(--cinder-text-subtle);
-  }
-</style>
+</Card>

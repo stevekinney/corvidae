@@ -62,12 +62,6 @@
     },
     {
       "rule": "app-header-class",
-      "file": "src/routes/settings/index.svelte",
-      "subject": ".weft-settings__header",
-      "issue": "COR-1842"
-    },
-    {
-      "rule": "app-header-class",
       "file": "src/routes/system/alerts-tab.svelte",
       "subject": ".weft-alerts-tab__header",
       "issue": "COR-1850"
@@ -143,12 +137,6 @@
       "file": "src/routes/system/registry-tab.svelte",
       "subject": ".weft-registry-activity-card__header",
       "issue": "COR-1847"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/routes/system/retention-panel.svelte",
-      "subject": ".weft-retention-panel__header",
-      "issue": "COR-1842"
     },
     {
       "rule": "cinder-selector",

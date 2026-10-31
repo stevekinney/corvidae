@@ -186,3 +186,63 @@ describe('the listing', () => {
     ]);
   });
 });
+
+describe('a shortcut held with ⌘', () => {
+  const route = { route: '/settings' } as const;
+
+  test('runs on ⌘ or Control with its key, even in a field the person is typing into', () => {
+    const ran: string[] = [];
+    const registry = new ShortcutRegistry();
+    registry.register({
+      ...entry(['Enter'], route, 'Save'),
+      modifier: 'mod',
+      handler: () => ran.push('save'),
+    });
+    const here: ShortcutContext = { routePattern: '/settings', regions: [] };
+    expect(registry.handleKey(key('Enter', { metaKey: true, editable: true }), here, 0)).toBe(true);
+    expect(registry.handleKey(key('Enter', { ctrlKey: true, editable: true }), here, 1)).toBe(true);
+    expect(ran).toEqual(['save', 'save']);
+  });
+
+  test('never runs without the modifier, with Alt added, or off its route', () => {
+    const ran: string[] = [];
+    const registry = new ShortcutRegistry();
+    registry.register({
+      ...entry(['Enter'], route, 'Save'),
+      modifier: 'mod',
+      handler: () => ran.push('save'),
+    });
+    const here: ShortcutContext = { routePattern: '/settings', regions: [] };
+    expect(registry.handleKey(key('Enter'), here, 0)).toBe(false);
+    expect(registry.handleKey(key('Enter', { metaKey: true, altKey: true }), here, 1)).toBe(false);
+    expect(registry.handleKey(key('Enter', { metaKey: true }), NOWHERE, 2)).toBe(false);
+    expect(registry.handleKey(key('s', { metaKey: true }), here, 3)).toBe(false);
+    expect(ran).toEqual([]);
+  });
+
+  test('does not collide with the same key pressed alone, and is not part of a sequence', () => {
+    const ran: string[] = [];
+    const registry = new ShortcutRegistry();
+    registry.register({ ...entry(['Enter'], 'global', 'Open'), handler: () => ran.push('open') });
+    registry.register({
+      ...entry(['Enter'], route, 'Save'),
+      modifier: 'mod',
+      handler: () => ran.push('save'),
+    });
+    const here: ShortcutContext = { routePattern: '/settings', regions: [] };
+    expect(registry.handleKey(key('Enter'), here, 0)).toBe(true);
+    expect(registry.handleKey(key('Enter', { metaKey: true }), here, 1)).toBe(true);
+    expect(ran).toEqual(['open', 'save']);
+    expect(() =>
+      registry.register({ ...entry(['Enter'], route, 'Again'), modifier: 'mod' }),
+    ).toThrow(/overlaps/);
+  });
+
+  test('is listed with the ⌘ keycap before its key', () => {
+    const registry = new ShortcutRegistry();
+    registry.register({ ...entry(['Enter'], route, 'Save changes'), modifier: 'mod' });
+    expect(registry.groups()).toEqual([
+      { label: 'Test', shortcuts: [{ action: 'Save changes', keys: ['⌘', 'Enter'] }] },
+    ]);
+  });
+});

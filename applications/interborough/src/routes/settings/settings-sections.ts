@@ -13,6 +13,7 @@ export interface SettingsSection {
 
 export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   { path: '/settings', label: SETTINGS_SECTION_COPY.general },
+  { path: '/settings/model-policy', label: SETTINGS_SECTION_COPY.modelPolicy },
   { path: '/settings/data-and-retention', label: SETTINGS_SECTION_COPY.dataAndRetention },
   { path: '/settings/api-reference', label: SETTINGS_SECTION_COPY.apiReference },
 ];
