@@ -19,7 +19,7 @@
   } from '@lostgradient/cinder';
 
   import { getClient } from '../../lib/client.ts';
-  import { FAULT_TREATMENT_TITLE, faultTreatment } from '../../lib/faults.ts';
+  import { faultTreatment } from '../../lib/faults.ts';
   import { formatBytes } from '../../lib/format/index.ts';
   import {
     getPrincipalStore,
@@ -28,7 +28,7 @@
     scopeReason,
   } from '../../lib/scopes.svelte.ts';
   import { exactTimestamp } from './task-attempt-evidence.ts';
-  import { MalformedDeadLetterError } from './task-delivery-evidence.ts';
+  import PanelFault from './panel-fault.svelte';
   import type { TaskLedgerDetail } from './worker-catalog-types.ts';
   import { deadLetterQuery } from './workers-data.ts';
 
@@ -107,19 +107,22 @@
       </div>
     {:else if error && isForbidden(error)}
       <EmptyState
+        kind="first-use"
+        size="compact"
+        headingLevel={4}
         title="Retained result is locked"
         description={`${scopeReason('system:admin')} to read the retained value.`}
       />
-    {:else if error instanceof MalformedDeadLetterError}
-      <EmptyState title="Malformed server response" description={error.message} />
     {:else if error && faultTreatment(error).kind === 'not-found'}
       <EmptyState
+        kind="done"
+        size="compact"
+        headingLevel={4}
         title="Dead letter no longer retained"
         description="The server holds no dead letter for this task. It may have been cleared since this page loaded."
       />
     {:else if error}
-      {@const treatment = faultTreatment(error)}
-      <EmptyState title={FAULT_TREATMENT_TITLE[treatment.kind]} description={treatment.message} />
+      <PanelFault {error} onRetry={() => void retained.refetch()} />
     {:else if payload?.kind === 'value'}
       <p class="weft-task-deliveries__note">
         Retained value · {formatBytes(payload.serializedBytes)} serialized

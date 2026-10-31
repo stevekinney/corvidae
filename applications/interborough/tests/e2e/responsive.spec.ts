@@ -120,6 +120,8 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   // The summary line prints once the fleet, its queues and its diagnostics have all been read.
   '/health/workers': /\d+ of \d+ connected/,
   '/health/workers (worker open)': /Last heard from/,
+  // Only an open queue prints its strategy, with the seeded retry storm among its recovery diagnostics.
+  '/health/workers (queue open)': /Strategy/,
   // The audit log lists the seeded schedule's creation.
   '/health/audit': /schedule\.created/,
   // The added row's long name, beside the Decisions part's heading, which loads last.

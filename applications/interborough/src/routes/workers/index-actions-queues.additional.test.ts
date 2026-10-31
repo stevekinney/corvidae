@@ -12,7 +12,7 @@ import { fireEvent, render } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window, type DetachedWindowAPI } from 'happy-dom';
 
-import { createQueryClient } from '../../lib/query.ts';
+import { createQueryClient, queryKeys } from '../../lib/query.ts';
 import { router } from '../../lib/router.svelte.ts';
 import WorkersRoute from './index.svelte';
 import {
@@ -64,14 +64,16 @@ async function renderWorkersRoute(
     'system:admin',
   ],
 ) {
-  return render(WorkersRouteTestHarness, {
+  const queryClient = createQueryClient();
+  const view = render(WorkersRouteTestHarness, {
     props: {
       client: realClient(),
-      queryClient: createQueryClient(),
+      queryClient,
       component: WorkersRoute,
       principalScopes,
     },
   });
+  return { ...view, queryClient };
 }
 
 describe('Workers route — Task queues tab, queue selection and dead-letter clear', () => {
@@ -135,9 +137,16 @@ describe('Workers route — Task queues tab, queue selection and dead-letter cle
     );
 
     resetLocation('/health/workers?tab=queues&queue=payments');
-    const { findByLabelText, findByRole } = await renderWorkersRoute();
+    const { findByLabelText, findByRole, findByText } = await renderWorkersRoute();
 
     await fireEvent.click(await findByRole('button', { name: 'Clear' }));
+    // The dialog names what it clears, and the person stays on the queue they were reading.
+    expect(
+      await findByText(/Clears the retained dead-letter record for ChargeCard on queue payments/),
+    ).not.toBeNull();
+    expect(router.search.get('tab')).toBe('queues');
+    expect(router.search.get('queue')).toBe('payments');
+    expect(router.search.get('task')).toBeNull();
     const confirmInput = await findByLabelText(/Type "op_target" to confirm/i);
     await fireEvent.input(confirmInput, { target: { value: 'op_target' } });
     await fireEvent.click(await findByRole('button', { name: 'Clear dead letter' }));
@@ -145,6 +154,76 @@ describe('Workers route — Task queues tab, queue selection and dead-letter cle
     // load-proof: the scripted JSON-RPC fetch resolves in memory, so the call is issued inside the click handler promise chain
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(deleteCalled).toBe(true);
+    expect(router.search.get('tab')).toBe('queues');
+  });
+
+  test('a dead letter cleared elsewhere while the dialog was open is not cleared again, and the refusal says so', async () => {
+    scripted = new ScriptedFetch();
+    routeHappyPaths(scripted, {
+      queues: [queue({ queue: 'payments' })],
+      diagnosticsItems: [diagnosticItem({ queue: 'payments', operationId: 'op_target' })],
+      diagnosticsSummary: { ...EMPTY_DIAGNOSTICS_SUMMARY, deadLettered: 1 },
+    });
+    let deleteCalled = false;
+    scripted.routeRest(
+      (url, method) =>
+        method === 'DELETE' && url.pathname === '/api/v1/tasks/diagnostics/dead-letter/op_target',
+      () => {
+        deleteCalled = true;
+        return new Response(null, { status: 204 });
+      },
+    );
+
+    resetLocation('/health/workers?tab=queues&queue=payments');
+    const { findByLabelText, findByRole, findByText, queryClient } = await renderWorkersRoute();
+
+    await fireEvent.click(await findByRole('button', { name: 'Clear' }));
+    await fireEvent.input(await findByLabelText(/Type "op_target" to confirm/i), {
+      target: { value: 'op_target' },
+    });
+
+    // Someone else clears it first; the diagnostics are read again before the dialog is confirmed.
+    scripted.routeJsonRpcMethod('weft.tasks.diagnostics', {
+      items: [],
+      summary: EMPTY_DIAGNOSTICS_SUMMARY,
+    });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.diagnostics() });
+    await fireEvent.click(await findByRole('button', { name: 'Clear dead letter' }));
+
+    expect(await findByText(/That dead letter was cleared or changed/)).not.toBeNull();
+    expect(deleteCalled).toBe(false);
+  });
+
+  test('a dead letter recorded again at another moment while the dialog was open is refused too', async () => {
+    scripted = new ScriptedFetch();
+    routeHappyPaths(scripted, {
+      queues: [queue({ queue: 'payments' })],
+      diagnosticsItems: [diagnosticItem({ queue: 'payments', operationId: 'op_target' })],
+      diagnosticsSummary: { ...EMPTY_DIAGNOSTICS_SUMMARY, deadLettered: 1 },
+    });
+
+    resetLocation('/health/workers?tab=queues&queue=payments');
+    const { findByLabelText, findByRole, findByText, queryClient } = await renderWorkersRoute();
+
+    await fireEvent.click(await findByRole('button', { name: 'Clear' }));
+    await fireEvent.input(await findByLabelText(/Type "op_target" to confirm/i), {
+      target: { value: 'op_target' },
+    });
+
+    scripted.routeJsonRpcMethod('weft.tasks.diagnostics', {
+      items: [
+        diagnosticItem({
+          queue: 'payments',
+          operationId: 'op_target',
+          deadLetteredAt: 1_700_000_999_000,
+        }),
+      ],
+      summary: { ...EMPTY_DIAGNOSTICS_SUMMARY, deadLettered: 1 },
+    });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.diagnostics() });
+    await fireEvent.click(await findByRole('button', { name: 'Clear dead letter' }));
+
+    expect(await findByText(/That dead letter was cleared or changed/)).not.toBeNull();
   });
 });
 

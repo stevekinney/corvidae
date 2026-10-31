@@ -1,4 +1,4 @@
-import { render } from '@testing-library/svelte';
+import { fireEvent, render } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { createQueryClient } from '../../lib/query.ts';
@@ -130,6 +130,29 @@ describe('TaskDeliveryHistory', () => {
     );
     const fault = renderHistory();
     expect(await fault.findByText('Not authorized')).not.toBeNull();
+  });
+});
+
+describe('TaskDeliveryHistory — a failed read', () => {
+  test('is a fault with Retry, and Retry reads the history again', async () => {
+    scripted = new ScriptedFetch();
+    scripted.routeJsonRpcMethodError(
+      'weft.tasks.deliveries',
+      401,
+      'authentication required',
+      'Unauthorized',
+    );
+    const view = renderHistory();
+    expect(await view.findByText('Not authorized')).not.toBeNull();
+
+    scripted.routeJsonRpcMethod('weft.tasks.deliveries', {
+      operationId: 'op_1',
+      historyLimit: 20,
+      droppedCount: 0,
+      deliveries: [],
+    });
+    await fireEvent.click(await view.findByRole('button', { name: 'Retry' }));
+    expect(await view.findByText('No results submitted')).not.toBeNull();
   });
 });
 

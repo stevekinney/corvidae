@@ -17,7 +17,11 @@ import {
 } from './index-actions.test-support.ts';
 import WorkersRoute from './index.svelte';
 import WorkersRouteTestHarness from './workers-route-test-harness.test-harness.svelte';
-import { realClient, ScriptedFetch } from './workers-route-test-support.test-support.ts';
+import {
+  realClient,
+  ScriptedFetch,
+  taskLedgerDetailFixture,
+} from './workers-route-test-support.test-support.ts';
 
 let scripted: ScriptedFetch | undefined;
 
@@ -87,6 +91,30 @@ describe('Workers route — a read that failed', () => {
     scripted.routeJsonRpcMethod('weft.task.queues.list', { items: [] });
     await fireEvent.click(await view.findByRole('button', { name: 'Retry' }));
     expect(await view.findByRole('tab', { name: 'Task queues', selected: true })).not.toBeNull();
+  });
+});
+
+describe('Workers route — a task ledger that failed to read', () => {
+  test('shows the fault with Retry, and Retry reads the ledger again', async () => {
+    scripted = new ScriptedFetch();
+    routeHappyPaths(scripted);
+    scripted.routeJsonRpcMethodError(
+      'weft.tasks.get',
+      401,
+      'authentication required',
+      'Unauthorized',
+    );
+    resetLocation('/health/workers?tab=diagnostics&task=op_1');
+
+    const view = renderRoute();
+
+    expect(await view.findByText('Not authorized')).not.toBeNull();
+    scripted.routeJsonRpcMethod('weft.tasks.get', {
+      ...taskLedgerDetailFixture(),
+      operationId: 'op_1',
+    });
+    await fireEvent.click(await view.findByRole('button', { name: 'Retry' }));
+    expect(await view.findByText('Authoritative task ledger')).not.toBeNull();
   });
 });
 

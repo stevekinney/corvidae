@@ -1,20 +1,22 @@
 <script lang="ts">
   /**
-   * Queue detail (plan §9.4 T5.3): routing/scheduling strategy, workers on
-   * the queue, dead-letter section (Tier-3 type-to-confirm clear per
+   * Queue detail (plan §9.4 T5.3): routing/scheduling strategy, the dead
+   * letters on the queue as a table (a Tier-3 type-to-confirm clear per
    * dead-lettered task — see `clear-dead-letter-dialog.svelte`'s doc comment
    * for why this is per-`operationId`, not a single queue-wide button: the
    * server operation `weft.tasks.diagnostics.deadletters.clear` clears
    * exactly one `operationId`, so a queue with N dead-lettered tasks needs N
    * individually-confirmed clears, not one bulk action the API doesn't
-   * offer).
+   * offer), and the workers on the queue. There is no Retry: Weft has no
+   * operation that retries a dead letter.
    */
-  import { Badge, Button, DescriptionList, Tooltip } from '@lostgradient/cinder';
+  import { Badge, Button, DescriptionList, EmptyState, Table, Tooltip } from '@lostgradient/cinder';
 
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { truncateId } from '../../lib/format/index.ts';
   import type { ScopeGate } from '../../lib/scopes.svelte.ts';
   import { DIAGNOSTIC_GUIDANCE } from './diagnostics-guidance.ts';
+  import { exactTimestamp } from './task-attempt-evidence.ts';
   import type { RoutingPolicy } from '@lostgradient/weft';
   import type {
     TaskDiagnosticItem,
@@ -45,6 +47,16 @@
     onInspectTask = () => {},
   }: QueueDetailViewProps = $props();
 
+  function activityOf(item: TaskDiagnosticItem): string {
+    return 'activityName' in item ? (item.activityName ?? 'Not recorded') : 'Not recorded';
+  }
+
+  function deadLetteredAtOf(item: TaskDiagnosticItem): string {
+    return 'deadLetteredAt' in item && item.deadLetteredAt !== undefined
+      ? exactTimestamp(item.deadLetteredAt)
+      : 'Not recorded';
+  }
+
   const strategyItems = $derived([
     { term: 'Routing', definition: routingPolicy },
     { term: 'Scheduling', definition: queue.schedulingPolicy },
@@ -52,69 +64,100 @@
 </script>
 
 <div class="weft-queue-detail">
-  <div class="weft-queue-detail__header">
+  <div class="weft-queue-detail__title-row">
     <span class="weft-workers-mono weft-queue-detail__name">{queue.queue}</span>
     {#if diagnosticItems.length > 0}
       <Badge variant="warning">{diagnosticItems.length} diagnostics</Badge>
     {/if}
   </div>
 
-  <div class="weft-queue-detail__grid">
-    <div class="weft-workers-panel">
-      <div class="weft-workers-panel__title">Strategy</div>
-      <DescriptionList items={strategyItems} />
-    </div>
-
-    <div class="weft-workers-callout weft-workers-callout--danger weft-dead-letter-panel">
-      <div class="weft-dead-letter-panel__header">
-        <span>Dead letter</span>
-        <Badge variant="danger">{deadLetteredItems.length} tasks</Badge>
-      </div>
-      <p class="weft-dead-letter-panel__description">
-        Tasks that exhausted their retry policy. Clearing is irreversible.
-      </p>
-      {#if deadLetteredItems.length === 0}
-        <p class="weft-dead-letter-panel__empty">No dead-lettered tasks on this queue.</p>
-      {:else}
-        <ul class="weft-dead-letter-panel__list">
-          {#each deadLetteredItems as item (item.operationId)}
-            <li class="weft-dead-letter-panel__item">
-              <span class="weft-workers-id" title={item.operationId}
-                >{truncateId(item.operationId ?? '')}</span
-              >
-              <span class="weft-dead-letter-panel__activity"
-                >{'activityName' in item ? (item.activityName ?? 'activity') : 'activity'}</span
-              >
-              <Button
-                variant="ghost"
-                size="sm"
-                label="Inspect ledger"
-                onclick={() => item.operationId && onInspectTask(item.operationId)}
-              />
-              {#if adminGate.disabled}
-                <Tooltip text={adminGate.title ?? ''}>
-                  <Button variant="secondary" size="sm" disabled label="Clear" />
-                </Tooltip>
-              {:else}
-                <Button
-                  data-changes
-                  variant="secondary"
-                  size="sm"
-                  label="Clear"
-                  onclick={() => item.operationId && onClearDeadLetter(item.operationId)}
-                />
-              {/if}
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    </div>
+  <div class="weft-workers-panel">
+    <div class="weft-workers-panel__title">Strategy</div>
+    <DescriptionList items={strategyItems} />
   </div>
+
+  <section class="weft-workers-panel weft-dead-letter-panel" aria-labelledby="dead-letters-heading">
+    <h3 id="dead-letters-heading" class="weft-workers-panel__title weft-dead-letter-panel__title">
+      <span>Dead letters</span>
+      <Badge variant="danger">{deadLetteredItems.length} tasks</Badge>
+    </h3>
+    <p class="weft-dead-letter-panel__description">
+      Tasks that exhausted their retry policy. Clearing removes the retained record, is
+      irreversible, and does not retry the task.
+    </p>
+    {#if deadLetteredItems.length === 0}
+      <EmptyState
+        kind="done"
+        size="compact"
+        headingLevel={4}
+        title="No dead letters"
+        description="Nothing on this queue has failed for good."
+      />
+    {:else}
+      <Table caption="Dead letters" scrollable class="weft-dead-letters-table">
+        <Table.Header>
+          <Table.Row>
+            <Table.HeaderCell>Task</Table.HeaderCell>
+            <Table.HeaderCell>Activity</Table.HeaderCell>
+            <Table.HeaderCell>Failed for good</Table.HeaderCell>
+            <Table.HeaderCell>Actions</Table.HeaderCell>
+          </Table.Row>
+        </Table.Header>
+        <Table.Body>
+          {#each deadLetteredItems as item (item.operationId)}
+            <Table.Row>
+              <Table.Cell>
+                <span class="weft-workers-id" title={item.operationId}
+                  >{truncateId(item.operationId ?? '')}</span
+                >
+              </Table.Cell>
+              <Table.Cell
+                ><span class="weft-dead-letter-panel__wrap">{activityOf(item)}</span></Table.Cell
+              >
+              <Table.Cell
+                ><span class="weft-dead-letter-panel__wrap">{deadLetteredAtOf(item)}</span
+                ></Table.Cell
+              >
+              <Table.Cell>
+                <span class="weft-dead-letter-panel__actions">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    label="Inspect ledger"
+                    onclick={() => item.operationId && onInspectTask(item.operationId)}
+                  />
+                  {#if adminGate.disabled}
+                    <Tooltip text={adminGate.title ?? ''}>
+                      <Button variant="secondary" size="sm" disabled label="Clear" />
+                    </Tooltip>
+                  {:else}
+                    <Button
+                      data-changes
+                      variant="secondary"
+                      size="sm"
+                      label="Clear"
+                      onclick={() => item.operationId && onClearDeadLetter(item.operationId)}
+                    />
+                  {/if}
+                </span>
+              </Table.Cell>
+            </Table.Row>
+          {/each}
+        </Table.Body>
+      </Table>
+    {/if}
+  </section>
 
   <div class="weft-workers-panel">
     <div class="weft-workers-panel__title">Recovery diagnostics</div>
     {#if diagnosticItems.length === 0}
-      <p class="weft-queue-detail__no-workers">No recovery diagnostics on this queue.</p>
+      <EmptyState
+        kind="done"
+        size="compact"
+        headingLevel={4}
+        title="No recovery diagnostics"
+        description="Nothing on this queue is delayed, stuck, stale, retrying, or waiting to be adopted."
+      />
     {:else}
       <ul class="weft-dead-letter-panel__list">
         {#each keyedByOccurrence(diagnosticItems, (candidate) => candidate.kind + (candidate.operationId ?? candidate.queue)) as { key, item } (key)}
@@ -139,7 +182,13 @@
   <div class="weft-workers-panel">
     <div class="weft-workers-panel__title">Workers on this queue</div>
     {#if workersOnQueue.length === 0}
-      <p class="weft-queue-detail__no-workers">No connected workers are polling this queue.</p>
+      <EmptyState
+        kind="first-use"
+        size="compact"
+        headingLevel={4}
+        title="No workers on this queue"
+        description="No connected worker is polling this queue, so its tasks wait until one connects."
+      />
     {:else}
       <ul class="weft-queue-workers-list">
         {#each workersOnQueue as worker (worker.id)}
