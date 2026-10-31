@@ -22,6 +22,8 @@ export interface ResponsiveSeed {
   readonly workflow: string;
   /** An agent-authored workflow, which has a file and so an editor. */
   readonly workflowFile: string;
+  /** An agent-authored workflow whose input schema holds a field with a 300-character unbroken name and description. */
+  readonly runSetupFile: string;
   /** A run of that workflow type. */
   readonly run: string;
   /** A schedule. It need not exist: the page says so in a short sentence. */
@@ -41,6 +43,7 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
   const memoryAgent = encodeURIComponent(seed.memoryAgent);
   const workflowFile = encodeURIComponent(seed.workflowFile);
   const workflow = encodeURIComponent(seed.workflow);
+  const runSetupFile = encodeURIComponent(seed.runSetupFile);
   const run = encodeURIComponent(seed.run);
   return {
     '/chats': '/chats',
@@ -58,6 +61,7 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
     '/workflows/:workflow': `/workflows/${workflow}`,
     '/workflows/:workflow/runs': `/workflows/${workflow}/runs`,
     '/workflows/:workflow/runs/:run': `/workflows/${workflow}/runs/${run}`,
+    '/workflows/:workflow/run': `/workflows/${runSetupFile}/run`,
     '/workflows/:workflow/edit': `/workflows/${workflowFile}/edit`,
     '/internal-workflows': '/internal-workflows',
     '/runs': '/runs',
@@ -90,7 +94,7 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
  * The Capabilities page's Skills tab, and one seeded long-named skill open, are reached the same way,
  * as is the Workers page with the seeded worker open and its Task queues tab with a seeded queue
  * open (its dead letters and recovery diagnostics), and as are a waiting review open and the
- * Reviews page's Done tab.
+ * Reviews page's Done tab, the run setup page opened on a schedule, and the picker on Runs.
  */
 export function responsiveVariants(seed: ResponsiveSeed): Readonly<Record<string, string>> {
   const file = `/workflows/${encodeURIComponent(seed.workflowFile)}`;
@@ -105,6 +109,10 @@ export function responsiveVariants(seed: ResponsiveSeed): Readonly<Record<string
     '/workflows/:workflow (file, code tab)': `${file}?tab=code`,
     '/workflows/:workflow (file, runs tab)': `${file}?tab=runs`,
     '/workflows/:workflow (file, history tab)': `${file}?tab=history`,
+    // The run setup page for a code-defined type, whose When opens on a schedule (the Schedule
+    // builder's Repeats, At and Time zone), and the picker that leads to it from Runs.
+    '/workflows/:workflow/run (code, on a schedule)': `/workflows/${encodeURIComponent(seed.workflow)}/run`,
+    '/runs (start picker)': '/runs?view=start',
     // The Skills tab, and a long-named skill open (one pane at a time below 900px, so at 375 and
     // 768 the detail replaces the list).
     // The Workers list with the seeded worker open: its detail is the widest part of the page, and

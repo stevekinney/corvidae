@@ -119,12 +119,6 @@
       "file": "src/styles/schedules.css",
       "subject": ".cinder-form-field",
       "issue": "COR-1859"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/styles/workflows.css",
-      "subject": ".weft-start-wizard__header",
-      "issue": "COR-1855"
     }
   ]
 }

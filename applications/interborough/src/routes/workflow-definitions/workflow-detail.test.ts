@@ -240,8 +240,11 @@ describe('a code-defined type', () => {
     }
     expect(testId(root, 'workflow-signal')).toBeNull();
     expect(testId(root, 'workflow-file-path')).toBeNull();
-    // It cannot be started from here: starting is the Bureau's, and the Bureau starts files.
-    expect(buttons).not.toContain(WORKFLOW_COPY.page.startAction);
+    // It starts from the run setup page, which the header links to.
+    const start = [...root.querySelectorAll('a')].find(
+      (link) => link.textContent?.trim() === WORKFLOW_COPY.page.startAction,
+    );
+    expect(start?.getAttribute('href')).toBe('/workflows/order-processing/run');
     await openTab(root, TABS.runs);
     const all = [...root.querySelectorAll('a')].find(
       (link) => link.textContent?.trim() === WORKFLOW_COPY.runsAction,
@@ -281,7 +284,7 @@ describe('a code-defined type', () => {
     expect(runs[1]?.textContent).toContain(WORKFLOW_COPY.page.runDuration('400ms'));
   });
 
-  test('shows an empty state when nothing has run it, with no action it cannot take', async () => {
+  test('shows an empty state when nothing has run it, whose action opens the run setup page', async () => {
     const { container } = open('/workflows/order-processing', { runs: [] });
     const root = await ready(container);
     await openTab(root, TABS.runs);
@@ -293,7 +296,10 @@ describe('a code-defined type', () => {
     expect(
       testId(root, 'workflow-recent-runs')?.querySelector('.cinder-empty-state'),
     ).not.toBeNull();
-    expect(testId(root, 'workflow-recent-runs')?.querySelector('button')).toBeNull();
+    const action = testId(root, 'workflow-recent-runs')?.querySelector('button');
+    expect(action?.textContent?.trim()).toBe(WORKFLOW_COPY.page.startAction);
+    await fireEvent.click(action as HTMLElement);
+    await waitFor(() => expect(router.pathname).toBe('/workflows/order-processing/run'));
   });
 });
 

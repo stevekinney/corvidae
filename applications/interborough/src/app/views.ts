@@ -85,7 +85,7 @@ export type ViewDefinition = {
    */
   readonly canBeEmpty: boolean;
   /**
-   * Whether the location is the view's way of creating its first item, such as the start wizard
+   * Whether the location is the view's way of creating its first item, such as the start picker
    * on `/runs?view=start`. An empty view offers a link there, so the frame shows the view's own
    * content for that location instead of the empty state it just came from.
    */
@@ -107,7 +107,7 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
     canBeEmpty: true,
   },
   // The list and one run's page read the Bureau's tasks and goals, which hold no console scope. Only
-  // the workflow sections of a run, the start wizard, and the aggregate view read the engine, and they say
+  // the workflow sections of a run, the start picker, and the aggregate view read the engine, and they say
   // so themselves when the caller may not.
   runs: {
     density: 'compact',

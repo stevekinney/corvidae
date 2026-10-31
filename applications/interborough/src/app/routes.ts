@@ -160,6 +160,14 @@ export const routes: readonly RouteDefinition[] = [
     view: 'runs',
     load: runArea,
   },
+  // Setting up one run of the workflow in the path: its input, and whether it starts now or on a schedule.
+  {
+    pattern: '/workflows/:workflow/run',
+    kind: 'form',
+    crumb: WORKFLOW_COPY.runSetup.crumb,
+    view: 'workflows',
+    load: workflowArea,
+  },
   {
     pattern: '/workflows/:workflow/edit',
     kind: 'form',

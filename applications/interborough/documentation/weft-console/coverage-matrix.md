@@ -112,7 +112,7 @@ Two dashboard issues own work that no `tracked` row can carry today. COR-162 (co
 | `weft.workflows.revisions.preload` | exposed | `src/routes/system/dynamic-source-panel.svelte` |  | `src/routes/system/dynamic-source-panel.test.ts` |  |  |
 | `weft.workflows.scheduleprovenance.get` | exposed | `src/routes/workflows/detail/lineage-panel.svelte` |  | `src/routes/workflows/detail/lineage-panel.test.ts` |  |  |
 | `weft.workflows.signal` | exposed | `src/routes/workflows/detail/signals-tab.svelte` | `signal` | `src/routes/workflows/detail/signals-tab.test.ts` |  |  |
-| `weft.workflows.start` | exposed | `src/routes/workflows/start/start-wizard.svelte` | `start` | `src/routes/workflows/start/start-wizard.test.ts` | COR-164 |  |
+| `weft.workflows.start` | exposed | `src/routes/workflow-definitions/run-setup-form.svelte` | `start` | `src/routes/workflow-definitions/run-setup.test.ts` | COR-164, COR-1855 |  |
 | `weft.workflows.startorsignal` | exposed | `src/routes/workflows/detail/restart-dialog.svelte` | `startOrSignal` | `src/routes/workflows/detail/restart-dialog.test.ts` |  |  |
 | `weft.workflows.streams.chunks` | exposed | `src/routes/workflows/detail/streams/stream-chunks-data.ts` |  | `src/routes/workflows/detail/streams/stream-chunks-view.test.ts` | COR-1462 |  |
 | `weft.workflows.suspend` | exposed | `src/routes/workflows/runs/run-engine.svelte.ts` | `suspend` | `src/routes/workflows/runs/run-detail-engine.test.ts` |  |  |

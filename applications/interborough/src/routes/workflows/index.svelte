@@ -4,11 +4,11 @@
    * `/workflows/:workflow/runs/:run` to this one component (a run reached by its ID alone, and the
    * same page under the workflow it belongs to):
    * this file is the only place that can tell those apart, plus the `?view=` sub-navigation the
-   * engine's start wizard and aggregate view live under. `/runs` is the human list of what the
+   * start picker and aggregate view live under. `/runs` is the human list of what the
    * agents have done (`runs/run-list.svelte`), and `/runs/:run` is one run's page
    * (`runs/run-detail.svelte`), whose sections for the workflow engine's side of a run are there for a caller who may read it.
    *
-   * The list and a run's page are the Bureau's, and hold no console scope. The start wizard and the
+   * The list and a run's page are the Bureau's, and hold no console scope. The start picker and the
    * aggregate view read the engine, so a caller without `workflows:read` is told so here instead of
    * being sent to a form the engine would refuse.
    */
@@ -21,7 +21,7 @@
   import AggregateView from './aggregate/aggregate-view.svelte';
   import RunDetail from './runs/run-detail.svelte';
   import RunList from './runs/run-list.svelte';
-  import StartWizard from './start/start-wizard.svelte';
+  import StartPicker from './start/start-picker.svelte';
 
   const runId = $derived(router.current.params['run']);
   const view = $derived(router.current.search.get('view'));
@@ -41,7 +41,7 @@
     {#snippet icon()}<Lock size={28} aria-hidden="true" />{/snippet}
   </EmptyState>
 {:else if view === 'start'}
-  <StartWizard />
+  <StartPicker />
 {:else if view === 'aggregate'}
   <AggregateView />
 {:else}

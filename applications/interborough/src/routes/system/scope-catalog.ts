@@ -29,7 +29,7 @@ const SCOPE_DESCRIPTIONS: Readonly<Record<AuthorizationScope, ScopeCatalogEntry>
   'workflows:write': {
     scope: 'workflows:write',
     description: 'Start, cancel, suspend, resume, time out, and fork workflows.',
-    unlocks: 'Start wizard and per-run actions',
+    unlocks: 'Start picker and per-run actions',
   },
   'workflows:admin': {
     scope: 'workflows:admin',

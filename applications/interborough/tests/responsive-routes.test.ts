@@ -16,6 +16,7 @@ const SEED = {
   memoryAgent: 'agent-2',
   workflow: 'order-processing',
   workflowFile: 'digest',
+  runSetupFile: 'run-setup',
   run: 'run-1',
   schedule: 'schedule-1',
   goal: 'goal-1',

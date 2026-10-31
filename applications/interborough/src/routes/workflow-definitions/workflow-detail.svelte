@@ -5,8 +5,9 @@
    * its input and output, and, for a file, send signal. Code is the file's source, or, for a type
    * code defined, the description and contract it registered. Runs is its newest runs and a link to
    * all of them. History is the versions that have run, each with whether it is compatible with the
-   * current one; a type the Bureau registers for itself has none. The header holds start run, pause,
-   * resume, edit and delete, which only a file has.
+   * current one; a type the Bureau registers for itself has none. The header holds start run, which
+   * opens the run setup page and which every type but the Bureau's own has, and pause, resume, edit
+   * and delete, which only a file has.
    *
    * A write names the hash of the file the page read, so a file that changed on disk since is
    * refused instead of overwritten: the page says the workflow changed outside Interborough, with a
@@ -42,7 +43,11 @@
     startingSchedules,
     type WorkflowResolution,
   } from '../../lib/workflow-catalog.ts';
-  import { workflowEditPath, workflowTypePath } from '../../lib/workflow-type-paths.ts';
+  import {
+    workflowEditPath,
+    workflowRunSetupPath,
+    workflowTypePath,
+  } from '../../lib/workflow-type-paths.ts';
   import {
     deleteWorkflowFile,
     isApplyFailure,
@@ -54,7 +59,6 @@
   import FileProblem from './file-problem.svelte';
   import RecentRuns from './recent-runs.svelte';
   import RevisionHistory from './revision-history.svelte';
-  import StartRunDialog from './start-run-dialog.svelte';
   import WorkflowCode from './workflow-code.svelte';
   import WorkflowOverview from './workflow-overview.svelte';
   import {
@@ -271,11 +275,16 @@
   const inputSchema = $derived(schemaOf(file?.inputSchema, definition, 'inputSchema'));
   const outputSchema = $derived(schemaOf(file?.outputSchema, definition, 'outputSchema'));
   const invalidFile = $derived(file !== undefined && file.state === 'invalid');
-  /** A run starts from a ready, unpaused file the Bureau may write; the engine's own types start themselves. */
+  /**
+   * A run starts from a ready, unpaused file or from a type that code registered; the types the
+   * Bureau registers to run itself start themselves, so they offer no Start run.
+   */
   const canStart = $derived(
-    !engineType && file !== undefined && file.state === 'ready' && !file.paused,
+    !engineType &&
+      resolved !== undefined &&
+      (resolved.kind === 'code' || (resolved.file.state === 'ready' && !resolved.file.paused)),
   );
-  let starting = $state(false);
+  const runSetupPath = workflowRunSetupPath(type);
 
   type TabValue = 'overview' | 'code' | 'runs' | 'history';
   /** The tabs this workflow has: an invalid file has no runs, and a type the Bureau registers for itself has no history. */
@@ -320,12 +329,15 @@
 </script>
 
 {#snippet headerActions()}
+  {#if canStart}
+    <Button
+      variant="primary"
+      size="sm"
+      href={router.href(runSetupPath)}
+      onclick={(event) => go(event, runSetupPath)}>{copy.page.startAction}</Button
+    >
+  {/if}
   {#if file !== undefined && actions !== undefined}
-    {#if canStart}
-      <Button variant="primary" size="sm" disabled={busy} onclick={() => (starting = true)}
-        >{copy.page.startAction}</Button
-      >
-    {/if}
     {#if actions.pause && !file.paused}
       <Button
         data-changes
@@ -479,7 +491,7 @@
           <RecentRuns
             {type}
             kind={resolved.kind}
-            onStart={canStart ? () => (starting = true) : undefined}
+            onStart={canStart ? () => router.navigate(runSetupPath) : undefined}
             onResume={actions?.resume && file?.paused && file.hash !== null
               ? () => {
                   if (!busy) act(resume.mutate);
@@ -500,10 +512,6 @@
     </Tabs>
   {/if}
 </article>
-
-{#if canStart}
-  <StartRunDialog {type} bind:open={starting} />
-{/if}
 
 <ConfirmDialog
   bind:open={confirmingDelete}

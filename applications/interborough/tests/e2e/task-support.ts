@@ -97,3 +97,17 @@ export function expectEngineMissesForRuns(pageErrors: PageErrorLog): void {
       'the fixture engine holds no task or attempt, so the run page’s engine read of one is a 404',
   });
 }
+
+/**
+ * A run of a workflow file opens on a page that may ask the fixture console engine for it, and the
+ * engine answers 404 because the Bureau's engine holds the instance. Whether the page asks, and
+ * whether the browser logs the answer before a test ends, follows timing, so a test that opens
+ * such a run declares the answer with this, which covers it however many times it comes and
+ * requires none.
+ */
+export function expectEngineMissesForFileRuns(pageErrors: PageErrorLog): void {
+  pageErrors.expectEvery({
+    pattern: loggedFailedResponse(404, /\/v1\/workflows\/[^/\s]+:0/),
+    reason: 'the fixture console engine does not hold the Bureau’s workflow instances',
+  });
+}
