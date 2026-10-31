@@ -63,27 +63,6 @@ function inputPayload(message: MessageInput): string {
  * approval is pending, and a hidden turn is not a new one: it reads the run that parked them, whose
  * stream shows the call again and whose interrupts park each approval again (`run-wiring.ts`).
  */
-/**
- * The Bureau's snapshot with this page's own object for each user row it names. A snapshot carries
- * what the Bureau holds, and not what only this page knows about a row: that a follow-up was sent
- * during the run (the marker the run's end reads to put it where the Bureau saw it), and whether it
- * was delivered. Without them the follow-up is a plain row the run's end leaves where it is, after
- * the replies it was sent before. A user row's text is the same on both sides, so only these rows
- * are kept; an assistant row is the snapshot's, which is complete where this page's may be partial.
- */
-function withLocalUserRows(
-  snapshot: ConversationHistory,
-  local: ConversationHistory,
-): ConversationHistory {
-  const messages = { ...snapshot.messages };
-  for (const id of snapshot.ids) {
-    if (!Object.hasOwn(local.messages, id)) continue;
-    const mine = local.messages[id];
-    if (mine?.role === 'user') messages[id] = mine;
-  }
-  return { ...snapshot, messages };
-}
-
 function withoutParkedApprovals(history: ConversationHistory): ConversationHistory {
   return getUnresolvedToolApprovals(history).reduce(
     (current, { message }) => removeMessage(current, message.id),
@@ -152,8 +131,7 @@ export class ChatSessionState {
         this.#attachedRun = false;
       },
       onSnapshot: (history) => {
-        if (!this.#abort.signal.aborted)
-          this.restore(withLocalUserRows(history, this.conversation));
+        if (!this.#abort.signal.aborted) this.restore(history);
       },
       agentName: options.agentName,
       ...(options.fetch === undefined ? {} : { fetch: options.fetch }),

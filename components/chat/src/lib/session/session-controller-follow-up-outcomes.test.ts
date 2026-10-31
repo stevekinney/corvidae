@@ -1,6 +1,10 @@
 import { throwingRejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
-import { appendMessages, createConversationHistory } from '../components/chat/builders.ts';
+import {
+  appendMessages,
+  createConversationHistory,
+  markMessageFollowUp,
+} from '../components/chat/builders.ts';
 import type { ConversationHistory } from '../components/chat/conversation-model.ts';
 import { mergeRunHistory } from './session-controller-rows.ts';
 import {
@@ -409,5 +413,72 @@ describe('the end-of-run merge across consecutive runs', () => {
     expect(merged.ids).toContain('row-2');
     expect(merged.ids.indexOf('row-2')).toBe(1);
     expect(merged.ids).toContain('row-3');
+  });
+});
+
+describe('mergeRunHistory on a page that joined a run in progress', () => {
+  /** A history of the given rows in order; a trailing `*` on an id marks the row as a follow-up. */
+  function rowsOf(...specs: string[]): ConversationHistory {
+    let history = createConversationHistory({ id: 'joined' });
+    for (const spec of specs) {
+      const followUp = spec.endsWith('*');
+      const id = followUp ? spec.slice(0, -1) : spec;
+      history = appendMessages(
+        history,
+        { role: id.startsWith('r') ? 'assistant' : 'user', content: id },
+        { randomId: () => id },
+      );
+      if (followUp) history = markMessageFollowUp(history, id);
+    }
+    return history;
+  }
+
+  // The opening snapshot installed `u` and `r0`: neither is provisional, and neither was on screen
+  // when the run began, so a merge that moved only the marked rows left them before the follow-up
+  // and put it after the reply it was sent before.
+  test('puts a follow-up between the replies the terminal gives it, with no row streamed', () => {
+    const merged = mergeRunHistory(
+      rowsOf('u', 'r0', 'F*', 'r1'),
+      rowsOf('u', 'r0', 'F', 'r1'),
+      new Set(),
+      new Set(),
+    );
+
+    expect(merged.ids).toEqual(['u', 'r0', 'F', 'r1']);
+    expect(isFollowUp(merged, 'F')).toBe(true);
+  });
+
+  test('keeps two follow-ups in the order the terminal gives them', () => {
+    const merged = mergeRunHistory(
+      rowsOf('u', 'F1*', 'r0', 'F2*', 'r1'),
+      rowsOf('u', 'F1', 'r0', 'F2', 'r1'),
+      new Set(),
+      new Set(),
+    );
+
+    expect(merged.ids).toEqual(['u', 'F1', 'r0', 'F2', 'r1']);
+  });
+
+  test('puts a follow-up sent before any reply between the rows the terminal gives it', () => {
+    const merged = mergeRunHistory(
+      rowsOf('u', 'F*', 'r0'),
+      rowsOf('u', 'F', 'r0'),
+      new Set(['r0']),
+      new Set(),
+    );
+
+    expect(merged.ids).toEqual(['u', 'F', 'r0']);
+  });
+
+  test('leaves a row the terminal does not name where it is', () => {
+    const merged = mergeRunHistory(
+      rowsOf('u', 'r0', 'X', 'r1'),
+      rowsOf('u', 'r0', 'r1'),
+      new Set(['u', 'r0', 'r1']),
+      new Set(['u']),
+    );
+
+    expect(merged.ids).toContain('X');
+    expect(merged.ids.filter((id) => id === 'r0')).toHaveLength(1);
   });
 });

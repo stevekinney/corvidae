@@ -52,9 +52,10 @@ export function remapMessageId(
  * resolution associates a tool call with the turn that owns it by identifier,
  * and swapping that identifier mid-run would orphan a pending approval.
  *
- * One exception to "rows the run did not append stay where they are": a
- * follow-up row the terminal names under its own identifier moves to the
- * position the terminal gives it, and the client's object wins.
+ * One exception to "rows the run did not append stay where they are": a row
+ * added after the run started, which the terminal names under its own
+ * identifier, moves to the position the terminal gives it. For a follow-up the
+ * client's object wins.
  */
 export function mergeRunHistory(
   current: ConversationHistory,
@@ -71,23 +72,27 @@ export function mergeRunHistory(
   const retained = new Set(
     [...runStartIds].filter((id) => getOwn(terminal.messages, id) !== undefined),
   );
-  // A follow-up the user sent mid-run, which the terminal names under its own
-  // identifier, is the one exception to "rows the run did not append stay where
-  // they are": it moves to the position the terminal gives it, so the transcript
-  // keeps a single row in the order the server saw. The client's object wins, so
-  // the follow-up marker and any delivery status survive.
-  const clientFollowUps = new Set(
+  // The one exception to "rows the run did not append stay where they are": a
+  // row that arrived after the run started and that the terminal names under its
+  // own identifier moves to the position the terminal gives it, so the
+  // transcript keeps a single row in the order the server saw. That is a
+  // follow-up the user sent mid-run, and also a row an opening snapshot
+  // installed on a page that joined the run: that row is not provisional, so
+  // leaving it where it is would put the terminal's rows after it and a
+  // follow-up before them. A row the terminal omits stays where it is. The
+  // client's object wins for a follow-up, so its marker and delivery status
+  // survive.
+  const relocated = new Set(
     current.ids.filter(
       (id) =>
-        isFollowUpMessage(getOwn(current.messages, id)) &&
         getOwn(terminal.messages, id) !== undefined &&
-        // Only a follow-up added after this run started: an earlier run's
-        // follow-ups were already on screen, so they stay where they are.
+        // Only a row added after this run started: an earlier run's rows were
+        // already on screen, so they stay where they are.
         !runStartIds.has(id),
     ),
   );
   const isRemoved = (id: string): boolean =>
-    (provisionalIds.has(id) && !retained.has(id)) || clientFollowUps.has(id);
+    (provisionalIds.has(id) && !retained.has(id)) || relocated.has(id);
   const firstProvisional = current.ids.findIndex(
     (id) => provisionalIds.has(id) && !retained.has(id),
   );
@@ -101,7 +106,7 @@ export function mergeRunHistory(
   }
   const canonicalIds = terminal.ids.filter((id) => !retained.has(id));
   for (const id of canonicalIds) {
-    const message = clientFollowUps.has(id)
+    const message = isFollowUpMessage(getOwn(current.messages, id))
       ? getOwn(current.messages, id)
       : getOwn(terminal.messages, id);
     if (message !== undefined) messages[id] = message;
