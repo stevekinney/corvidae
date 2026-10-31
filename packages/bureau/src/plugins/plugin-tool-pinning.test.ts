@@ -70,7 +70,8 @@ async function start(
       [KNOWN_MODEL.split('/')[1] as string]: () => {
         if (asked) return 'Done.';
         asked = true;
-        return { content: '', toolCalls: [{ name: 'p:t', arguments: { item: 'x' } }] };
+        // A provider calls the tool `p__t`, the name Armorer exports a namespaced tool under.
+        return { content: '', toolCalls: [{ name: 'p__t', arguments: { item: 'x' } }] };
       },
     },
     overrides: {
@@ -132,13 +133,11 @@ describe('a plugin tool’s version on a durable record', () => {
     const upgraded = await start(directory, '3.0.0', await database.reopen(), diagnostics);
     const recovery = diagnostics.find((diagnostic) => diagnostic.scope === 'approval-recovery');
     expect(recovery?.cause).toBeInstanceOf(PinnedToolUnavailableError);
-    // The pin is the version: the record names 2.0.0 and only 3.0.0 is loaded. (`createAgent` keys a
-    // file agent's tool by the name the file uses, `p:t`, which Armorer folds into the identity's
-    // name, so the recorded id spells the name `p%3At`; the version is what decides.)
+    // The record names `p:t@2.0.0` and only `p:t@3.0.0` is loaded.
     const cause = recovery?.cause as PinnedToolUnavailableError;
     expect(cause.reason).toBe('version-mismatch');
-    expect(cause.toolId).toEndWith('@2.0.0');
-    expect(cause.candidates).toEqual([expect.stringMatching(/@3\.0\.0$/u)]);
+    expect(cause.toolId).toBe('p:t@2.0.0');
+    expect(cause.candidates).toEqual(['p:t@3.0.0']);
     expect(upgraded.bureau.reviews.list()).toEqual([]);
     expect(executed).toEqual(['2.0.0:x']);
   });

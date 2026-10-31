@@ -1,3 +1,4 @@
+import { formatToolId, type ToolIdentity } from './core/identity';
 import type {
   ToolMetadata,
   ToolPolicyContext,
@@ -251,9 +252,12 @@ export type PermissionGate = (toolName: string, input: unknown) => PermissionGat
  * `allowList` is denied outright, not merely hidden from the model.
  */
 export type HeadlessPermissionPolicyConfiguration = {
-  /** Tool names permitted to run. Any tool name not in this list is denied. */
+  /**
+   * Tools permitted to run, matched by {@link toolListEntryMatches}: `a:search` names that tool in
+   * namespace `a`, and a bare `search` names only the default namespace's. Any other tool is denied.
+   */
   allowList: readonly string[];
-  /** Tool names always denied, even when also present in `allowList`. */
+  /** Tools always denied, even when also present in `allowList`; matched the same way. */
   denyList?: readonly string[];
   /**
    * Optional capability-tier policy (AB-22) layered on top of the name list.
@@ -264,6 +268,28 @@ export type HeadlessPermissionPolicyConfiguration = {
   /** Optional synchronous per-call gate re-checking parsed input. */
   gate?: PermissionGate;
 };
+
+/** The namespace `normalizeIdentity` gives a tool that names none. */
+const DEFAULT_TOOL_NAMESPACE = 'default';
+
+/**
+ * Whether an allow- or deny-list `entry` names a tool (COR-1879). An entry with a `:` is a
+ * namespaced id and matches the tool's unversioned id (`a:search` matches `a:search@2.0.0` and
+ * never `b:search`). A bare entry matches only a tool in the default namespace, by name, so
+ * `search` never reaches into a plugin's namespace. Without an `identity` the entry is compared
+ * with `toolName`, as a list of names always was.
+ */
+export function toolListEntryMatches(
+  entry: string,
+  tool: { readonly toolName: string; readonly identity?: ToolIdentity | undefined },
+): boolean {
+  const { identity } = tool;
+  if (identity === undefined) return entry === tool.toolName;
+  if (entry.includes(':')) {
+    return entry === formatToolId({ namespace: identity.namespace, name: identity.name });
+  }
+  return identity.namespace === DEFAULT_TOOL_NAMESPACE && entry === identity.name;
+}
 
 export type HeadlessPermissionResult = {
   status: ApprovalStatus;
@@ -303,14 +329,17 @@ export function evaluateHeadlessPermission(
     params: unknown;
     metadata?: ToolMetadata;
     tags?: readonly string[];
+    /** The called tool's identity; with it, list entries match as {@link toolListEntryMatches} says. */
+    identity?: ToolIdentity;
   },
   configuration: HeadlessPermissionPolicyConfiguration,
 ): HeadlessPermissionResult {
-  const { toolName, params, metadata, tags } = context;
+  const { toolName, params, metadata, tags, identity } = context;
   const { allowList, denyList = [], capability, gate } = configuration;
+  const names = (entry: string) => toolListEntryMatches(entry, { toolName, identity });
 
-  const isDenied = denyList.includes(toolName);
-  const isUnlisted = !allowList.includes(toolName);
+  const isDenied = denyList.some(names);
+  const isUnlisted = !allowList.some(names);
   const nameStatus: ApprovalStatus = isDenied || isUnlisted ? 'deny' : 'allow';
 
   const capabilityContext = {
@@ -384,6 +413,7 @@ export function createHeadlessPermissionPolicyHooks(
         {
           toolName: context.toolName,
           params: context.params,
+          identity: context.configuration.identity,
           ...(context.metadata === undefined ? {} : { metadata: context.metadata }),
           ...(context.tags === undefined ? {} : { tags: context.tags }),
         },

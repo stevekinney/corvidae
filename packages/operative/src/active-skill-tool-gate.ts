@@ -38,33 +38,39 @@ function refusalFor(call: ToolCallInput, toolName: string): ToolExecutionResult 
   };
 }
 
-/**
- * The registered name a call reaches in `target`: by name or id first, then by Armorer's fuzzy
- * resolution over every registered tool name, which a toolbox with `resolution` enabled applies
- * itself. `undefined` for a name nothing resolves to.
- */
-function canonicalName(
-  target: AnyToolbox,
-  registeredNames: readonly string[],
-  name: string,
-): string | undefined {
-  const direct = registeredNameOf(target, name);
-  if (direct !== undefined) return direct;
-  const resolved = resolveFuzzyToolName(name, [...registeredNames]).resolved;
-  return resolved === null ? undefined : registeredNameOf(target, resolved);
+/** The tools a call reaches: its name, and the ids of the one tool or every candidate. */
+interface CallTarget {
+  readonly name: string;
+  readonly ids: readonly string[];
 }
 
 /**
- * The tool name a reference points at, including when the toolbox will not run it. A name that
- * several tools share (two namespaces, or two versions) is ambiguous to the toolbox, but every
- * candidate carries that one name, so the gate still knows which name the call is after and can
- * refuse it as a hidden tool instead of letting it fall through as unknown.
+ * The tools a call reaches in `target`: by name or id first (a `plugin__tool` name included),
+ * then by Armorer's fuzzy resolution over every registered tool name, which a toolbox with
+ * `resolution` enabled applies itself. `undefined` for a name nothing resolves to.
  */
-function registeredNameOf(target: AnyToolbox, reference: string): string | undefined {
+function callTarget(
+  target: AnyToolbox,
+  registeredNames: readonly string[],
+  name: string,
+): CallTarget | undefined {
+  const direct = registeredTargetOf(target, name);
+  if (direct !== undefined) return direct;
+  const resolved = resolveFuzzyToolName(name, [...registeredNames]).resolved;
+  return resolved === null ? undefined : registeredTargetOf(target, resolved);
+}
+
+/**
+ * The tools a reference points at, including when the toolbox will not run it. A name that several
+ * tools share (two namespaces, or two versions) is ambiguous to the toolbox; the gate refuses it
+ * only when every candidate is hidden, and otherwise leaves the ambiguity to the toolbox.
+ */
+function registeredTargetOf(target: AnyToolbox, reference: string): CallTarget | undefined {
   const resolution = target.resolveTool(reference);
-  if (resolution.ok) return resolution.tool.name;
+  if (resolution.ok) return { name: resolution.tool.name, ids: [resolution.tool.id] };
   const [candidate] = resolution.candidates;
-  return candidate === undefined ? undefined : target.getTool(candidate)?.name;
+  const tool = candidate === undefined ? undefined : target.getTool(candidate);
+  return tool === undefined ? undefined : { name: tool.name, ids: resolution.candidates };
 }
 
 /** Re-bases a function key's index onto the original batch, so a refusal never shifts a key. */
@@ -87,10 +93,11 @@ function rebasedKey(
 export function createGatedExecute(
   target: AnyToolbox,
   execute: (calls: unknown, options?: unknown) => Promise<unknown>,
-  visibleTools: () => ReadonlyArray<{ name: string }>,
+  visibleTools: () => ReadonlyArray<{ readonly id: string }>,
 ): (callOrCalls: ToolCallInput | ToolCallInput[], options?: ExecuteOptions) => Promise<unknown> {
   return async (callOrCalls, options) => {
-    const visible = new Set(visibleTools().map((tool) => tool.name));
+    // By id, so a skill that allows `a:search` hides `b:search` though both are named `search`.
+    const visible = new Set(visibleTools().map((tool) => tool.id));
     // Unique, as Armorer's own resolution runs over the keys of its name map: a name registered
     // under two versions or namespaces would otherwise be ambiguous here and pass through.
     const registered = [...new Set(target.tools().map((tool) => tool.name))];
@@ -98,8 +105,10 @@ export function createGatedExecute(
 
     const refusals = new Map<number, ToolExecutionResult>();
     calls.forEach((call, index) => {
-      const name = canonicalName(target, registered, call.name);
-      if (name !== undefined && !visible.has(name)) refusals.set(index, refusalFor(call, name));
+      const reached = callTarget(target, registered, call.name);
+      if (reached !== undefined && !reached.ids.some((id) => visible.has(id))) {
+        refusals.set(index, refusalFor(call, reached.name));
+      }
     });
     if (refusals.size === 0) return execute(callOrCalls, options);
 

@@ -60,6 +60,7 @@ import {
   type ToolPolicyHooks,
   type AnyToolbox,
   createApprovalPolicyHooks,
+  formatToolId,
 } from 'armorer';
 
 import { withToolboxLayer } from './toolbox-additions';
@@ -378,6 +379,18 @@ export interface ToolApprovalHooksOptions {
   readonly permissionMode?: (() => PermissionMode | Promise<PermissionMode>) | undefined;
 }
 
+/**
+ * COR-1879 — the name an agent file gives the called tool, which `toolApproval` and `tools` are
+ * keyed by: `plugin:tool` for a tool in a plugin's namespace, whose own name is only `tool`, and
+ * the tool's name otherwise.
+ */
+function fileToolKeyOf(context: ToolPolicyContext): string {
+  const identity = context.configuration?.identity;
+  return identity === undefined || identity.namespace === 'default'
+    ? context.toolName
+    : formatToolId({ namespace: identity.namespace, name: identity.name });
+}
+
 /** The mode a chat is in when nothing was set: the tool's own setting decides. */
 const DEFAULT_PERMISSION_MODE: PermissionMode = 'on-changes';
 
@@ -456,10 +469,11 @@ export function createToolApprovalHooks(
   }
   return {
     async beforeExecute(context: ToolPolicyContext): Promise<ToolPolicyDecision> {
-      if (governed !== undefined && !governed.has(context.toolName)) {
+      const key = fileToolKeyOf(context);
+      if (governed !== undefined && !governed.has(key)) {
         return { allow: true, status: 'allow' };
       }
-      const setting = modes.get(context.toolName) ?? defaultMode;
+      const setting = modes.get(key) ?? defaultMode;
       const chat = chatPermissionOf(context);
       const { mode, unreadable } = chat ?? (await modeOfChat());
       const tier = resolveCapabilityTier(context.metadata, context.tags);

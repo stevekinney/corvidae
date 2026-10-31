@@ -1,5 +1,6 @@
 import { sha256HexSync } from '@lostgradient/cryptography';
 
+import type { ToolIdentity } from '../core/identity';
 import { type AdapterInput, normalizeToSerializedDefinitions } from './shared';
 
 /**
@@ -25,6 +26,38 @@ export function toProviderToolName(toolId: string): string {
   const leading = /^[A-Za-z_]/.test(sanitized) ? sanitized : `_${sanitized}`;
   const digest = sha256HexSync(toolId).slice(0, HASH_LENGTH);
   return `${leading.slice(0, PROVIDER_TOOL_NAME_LIMIT - HASH_LENGTH - 1)}_${digest}`;
+}
+
+/** What separates a namespace from a name in {@link toNamespacedToolName}'s result. */
+export const NAMESPACED_TOOL_NAME_SEPARATOR = '__';
+
+/** The namespace a tool without one is given, whose tools keep their bare name. */
+const DEFAULT_NAMESPACE = 'default';
+
+/**
+ * The name the adapters' `'default'` naming gives a tool: its bare name in the default namespace,
+ * and `<namespace>__<name>` in any other, so `a:search` and `b:search` reach a provider as
+ * `a__search` and `b__search` rather than as one `search`. A toolbox resolves the result back to
+ * the tool ({@link fromNamespacedToolName}), so no name mapper is needed for a call to run. Unlike
+ * `'safe-id'`, the version is not part of it: a provider sees one name across a tool's versions.
+ */
+export function toNamespacedToolName(identity: Pick<ToolIdentity, 'namespace' | 'name'>): string {
+  return identity.namespace === DEFAULT_NAMESPACE
+    ? identity.name
+    : `${identity.namespace}${NAMESPACED_TOOL_NAME_SEPARATOR}${identity.name}`;
+}
+
+/**
+ * The `namespace` and `name` a {@link toNamespacedToolName} result stands for, read at its first
+ * `__`, or `undefined` when `name` has no `__` with text on both sides.
+ */
+export function fromNamespacedToolName(
+  name: string,
+): { readonly namespace: string; readonly name: string } | undefined {
+  const index = name.indexOf(NAMESPACED_TOOL_NAME_SEPARATOR);
+  if (index < 1) return undefined;
+  const rest = name.slice(index + NAMESPACED_TOOL_NAME_SEPARATOR.length);
+  return rest === '' ? undefined : { namespace: name.slice(0, index), name: rest };
 }
 
 /**

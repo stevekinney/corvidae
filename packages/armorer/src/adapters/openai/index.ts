@@ -5,7 +5,11 @@ import type { ImportedToolConfiguration } from '../../toolbox-type-inference';
 import { isAsyncIterable } from '../../type-guards';
 import type { ToolCallInput, ToolResultLike } from '../../types';
 import { importToolSchema } from '../imported-schema';
-import { createProviderToolNameMapper, toProviderToolName } from '../provider-tool-names';
+import {
+  createProviderToolNameMapper,
+  toNamespacedToolName,
+  toProviderToolName,
+} from '../provider-tool-names';
 import {
   type AdapterInput,
   isSingleInput,
@@ -26,7 +30,8 @@ export type {
 export interface OpenAIAdapterOptions {
   /**
    * Strategy for naming tools in OpenAI format.
-   * - 'default': Use tool name (identity.name).
+   * - 'default': Use tool name (identity.name), prefixed `<namespace>__` outside the default
+   *   namespace (`toNamespacedToolName`), which the toolbox resolves back to the tool.
    * - 'safe-id': Use the tool ID (`namespace:name@version`) encoded as a legal provider name,
    *   which keeps same-named tools from different namespaces apart. Pass
    *   `createNameMapper(tools)` to `parseOpenAIToolCalls` to map a call back to the id.
@@ -237,7 +242,8 @@ function convertToOpenAI(
   options?: OpenAIAdapterOptions,
 ): OpenAITool {
   const parameters = stripSchemaId(tool.input);
-  const name = options?.naming === 'safe-id' ? mapToOpenAIName(tool.id) : tool.identity.name;
+  const name =
+    options?.naming === 'safe-id' ? mapToOpenAIName(tool.id) : toNamespacedToolName(tool.identity);
   return {
     type: 'function',
     function: {

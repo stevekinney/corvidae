@@ -4,7 +4,7 @@ import type { ImportedToolConfiguration } from '../../toolbox-type-inference';
 import { isAsyncIterable } from '../../type-guards';
 import type { ToolCallInput, ToolResultLike } from '../../types';
 import { importToolSchema } from '../imported-schema';
-import { toProviderToolName } from '../provider-tool-names';
+import { toNamespacedToolName, toProviderToolName } from '../provider-tool-names';
 import { normalizeToSerializedDefinitions, type ToolRegistryLike } from '../shared';
 import { geminiToolResultParts, toolResultParts } from '../tool-result-parts';
 import type {
@@ -55,7 +55,8 @@ export interface GeminiFormatToolResultsOptions {
 export interface GeminiAdapterOptions {
   /**
    * Strategy for naming tools in Gemini format.
-   * - 'default': Use the tool name (identity.name).
+   * - 'default': Use the tool name (identity.name), prefixed `<namespace>__` outside the default
+   *   namespace (`toNamespacedToolName`), which the toolbox resolves back to the tool.
    * - 'safe-id': Use the tool ID (`namespace:name@version`) encoded as a legal provider name,
    *   which keeps same-named tools from different namespaces apart. Pass
    *   `createProviderToolNameMapper(tools)` to `parseGeminiToolCalls` to map a call back to the id.
@@ -180,7 +181,10 @@ function convertToGeminiFunctionDeclaration(
   options?: GeminiAdapterOptions,
 ): GeminiFunctionDeclaration {
   return {
-    name: options?.naming === 'safe-id' ? toProviderToolName(tool.id) : tool.identity.name,
+    name:
+      options?.naming === 'safe-id'
+        ? toProviderToolName(tool.id)
+        : toNamespacedToolName(tool.identity),
     description: tool.display.description,
     parameters: transformToGeminiSchema(tool.input),
   };

@@ -146,7 +146,7 @@ describe('plugin composition', () => {
     ]);
   });
 
-  it('keys each plugin tool by plugin:name, so only a host tool keyed the same way clashes with it', async () => {
+  it('keys each plugin tool by plugin:name, so two plugins share a tool name and a host tool keyed plugin:name or plugin__name clashes', async () => {
     const searching = (name: string) =>
       definePlugin({
         name,
@@ -155,18 +155,33 @@ describe('plugin composition', () => {
         setup: () => ({ tools: [toolNamed('search')] }),
       });
     const bureau = await start({
-      plugins: [entry(searching('first')), entry(searching('second'), 'folder', '/plugins/second')],
-      // The host's own catalog already holds `second:search`, as a connected tool source could.
+      plugins: [
+        entry(searching('first')),
+        entry(searching('second'), 'folder', '/plugins/second'),
+        entry(searching('third'), 'folder', '/plugins/third'),
+        entry(searching('fourth'), 'folder', '/plugins/fourth'),
+      ],
+      // The host's own catalog already holds `second:search`, and `third__search` as a connected
+      // tool source's tool would be keyed, which a provider sees under the same name as `third:search`.
       agentSource: agentFileDirectory('/nonexistent-agent-directory', {
-        tools: { 'second:search': toolNamed('search') },
+        tools: {
+          'second:search': toolNamed('search'),
+          third__search: toolNamed('search'),
+        },
         watch: false,
       }),
       models: { generate: () => async () => ({ content: '', toolCalls: [] }) },
     });
 
-    const [first, second] = bureau.plugins.list();
+    // Package plugins first, then folder plugins by folder name.
+    const [first, fourth, second, third] = bureau.plugins.list();
     expect(first?.status).toBe('running');
     expect(first?.contributions).toEqual([{ kind: 'tool', id: 'first:search@1.0.0' }]);
+    // Two plugins' `search` tools never clash: they are `first:search` and `fourth:search`.
+    expect(fourth?.status).toBe('running');
+    expect(third?.problems).toEqual([
+      expect.objectContaining({ code: 'name-clash', name: 'third:search' }),
+    ]);
     expect(second?.status).toBe('skipped');
     expect(second?.contributions).toEqual([]);
     expect(second?.problems).toEqual([

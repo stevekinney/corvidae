@@ -120,6 +120,67 @@ describe('createAgent: generation profile revision (COR-1584)', () => {
   );
 });
 
+describe('createAgent: namespaced tool keys (COR-1879)', () => {
+  function searchIn(namespace: string, executed: string[]) {
+    return createTool({
+      name: 'search',
+      namespace,
+      version: '2.0.0',
+      description: `Search in ${namespace}`,
+      input: z.object({ query: z.string() }),
+      execute: async ({ query }) => {
+        executed.push(`${namespace}:${query}`);
+        return query;
+      },
+    });
+  }
+
+  it('keeps plugin:tool as the identity, shows providers plugin__tool, and runs the tool a provider names', async () => {
+    const executed: string[] = [];
+    const payloads: { anthropic: string[]; gemini: string[]; ids: string[] }[] = [];
+    let step = 0;
+    const agent = createAgent({
+      tools: { 'a:search': searchIn('a', executed), 'b:search': searchIn('b', executed) },
+      generate: async (context) => {
+        const gemini = await context.toolbox.toGeminiTools();
+        const anthropic = await context.toolbox.toAnthropicTools();
+        payloads.push({
+          anthropic: anthropic.map(({ name }) => name),
+          gemini: (gemini[0]?.functionDeclarations ?? []).map(({ name }) => name),
+          ids: context.toolbox.tools().map(({ id }) => id),
+        });
+        step += 1;
+        return step === 1
+          ? { content: '', toolCalls: [{ id: 'c1', name: 'b__search', arguments: { query: 'q' } }] }
+          : { content: 'done', toolCalls: [] };
+      },
+    });
+
+    await agent.run('Search.').result();
+
+    expect(agent.toolNames).toEqual(['a:search', 'b:search']);
+    expect(payloads[0]).toEqual({
+      anthropic: ['a__search', 'b__search'],
+      gemini: ['a__search', 'b__search'],
+      ids: ['a:search@2.0.0', 'b:search@2.0.0'],
+    });
+    expect(executed).toEqual(['b:q']);
+  });
+
+  it('keys a bare-keyed tool by its key, as before', async () => {
+    let names: string[] = [];
+    const agent = createAgent({
+      tools: { lookup: searchIn('a', []) },
+      generate: async (context) => {
+        names = context.toolbox.tools().map(({ name }) => name);
+        return { content: 'done', toolCalls: [] };
+      },
+    });
+    await agent.run('Look.').result();
+    expect(names).toEqual(['lookup']);
+  });
+});
+
 describe('createAgent: tool names', () => {
   const lookup = createTool({
     name: 'lookup-order',

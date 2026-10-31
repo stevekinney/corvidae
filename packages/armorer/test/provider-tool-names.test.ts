@@ -208,3 +208,68 @@ describe('naming through the toolbox and the Gemini result formatter', () => {
     expect(bare?.functionResponse.name).toBe('search');
   });
 });
+
+describe('default naming of a namespaced tool', () => {
+  function searchIn(namespace: string | undefined, executed: string[]) {
+    return createTool({
+      name: 'search',
+      ...(namespace === undefined ? {} : { namespace }),
+      version: '2.0.0',
+      description: 'Search',
+      input: z.object({ query: z.string() }),
+      async execute({ query }) {
+        executed.push(`${namespace ?? 'default'}:${query}`);
+        return query;
+      },
+    });
+  }
+
+  it('exports namespace__name, a name every provider accepts, and keeps a default tool bare', async () => {
+    const toolbox = createToolbox([searchIn('a', []), searchIn('b', []), searchIn(undefined, [])]);
+    const anthropic = await toolbox.toAnthropicTools();
+    const gemini = await toolbox.toGeminiTools();
+    const openai = await toolbox.toOpenAITools();
+    const expected = ['a__search', 'b__search', 'search'];
+
+    expect(anthropic.map(({ name }) => name)).toEqual(expected);
+    expect(gemini[0]!.functionDeclarations.map(({ name }) => name)).toEqual(expected);
+    expect(openai.map(({ function: { name } }) => name)).toEqual(expected);
+    for (const name of expected) expect(name).toMatch(/^[a-zA-Z0-9_-]{1,64}$/);
+    // The id a durable record pins is unchanged by the provider name.
+    expect(toolbox.tools().map(({ id }) => id)).toEqual([
+      'a:search@2.0.0',
+      'b:search@2.0.0',
+      'default:search@2.0.0',
+    ]);
+  });
+
+  it('runs the tool a provider called by namespace__name, through each adapter’s parsed call', async () => {
+    const executed: string[] = [];
+    const toolbox = createToolbox([searchIn('a', executed), searchIn('b', executed)]);
+
+    const [anthropicCall] = parseAnthropicToolCalls([
+      { type: 'tool_use', id: 'call-1', name: 'b__search', input: { query: 'from-claude' } },
+    ]);
+    const [geminiCall] = parseGeminiToolCalls([
+      { functionCall: { id: 'g1', name: 'a__search', args: { query: 'from-gemini' } } },
+    ]);
+    expect(toolbox.resolveTool('b__search')).toMatchObject({
+      ok: true,
+      tool: { id: 'b:search@2.0.0' },
+    });
+    await toolbox.execute(anthropicCall!);
+    await toolbox.execute(geminiCall!);
+    expect(executed).toEqual(['b:from-claude', 'a:from-gemini']);
+  });
+
+  it('prefers a registered bare name that contains __ over the namespaced reading', () => {
+    const toolbox = createToolbox([
+      createTool({ name: 'a__search', description: 'Bare', execute: async () => 'bare' }),
+      searchIn('a', []),
+    ]);
+    expect(toolbox.resolveTool('a__search')).toMatchObject({
+      ok: true,
+      tool: { id: 'default:a__search' },
+    });
+  });
+});

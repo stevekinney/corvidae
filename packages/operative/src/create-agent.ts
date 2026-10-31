@@ -5,6 +5,7 @@ import type {
   HeadlessPermissionPolicyConfiguration,
   Tool,
   ToolboxOptions,
+  ToolConfiguration,
 } from 'armorer';
 import { createHeadlessPermissionPolicyHooks, createToolbox } from 'armorer';
 import { Conversation } from 'conversationalist';
@@ -692,7 +693,8 @@ export interface StandaloneAgent<
 
   /**
    * The names of the tools this agent was created with, in definition order: the keys of
-   * `options.tools` (the canonical names the model calls them by), or the names of the tools in
+   * `options.tools` (the canonical names; a namespaced key `plugin:tool` reaches the model as
+   * `plugin__tool`), or the names of the tools in
    * `options.toolbox`, each name once even when the toolbox holds two tools under it. Read-only
    * description for a host that wants to show what the agent can do: it never reaches a run, and it
    * leaves out the skill tools (`activate_skill`, `deactivate_skill`) a run adds when `skills` is
@@ -748,6 +750,28 @@ export type { AgentRun };
 // ---------------------------------------------------------------------------
 // createAgent — the public factory
 // ---------------------------------------------------------------------------
+
+/**
+ * COR-1879 — a tool's configuration under the key `options.tools` gives it. A bare key becomes the
+ * tool's name, so the model calls the tool by its key. A namespaced key (`plugin:tool`) becomes
+ * the identity's namespace and name, keeping the tool's own version: the durable record pins
+ * `plugin:tool@version`, the model calls it `plugin__tool` (Armorer's default provider naming),
+ * and the toolbox resolves that name back to the tool, so two namespaces' `search` stay apart.
+ */
+function toolEntryUnderKey(key: string, tool: Tool): ToolConfiguration {
+  const separator = key.indexOf(':');
+  const namespace = key.slice(0, separator);
+  const name = key.slice(separator + 1);
+  if (separator < 1 || name === '' || name.includes(':') || name.includes('@')) {
+    return { ...tool.configuration, name: key };
+  }
+  const { version } = tool.configuration.identity;
+  return {
+    ...tool.configuration,
+    name,
+    identity: { namespace, name, ...(version === undefined ? {} : { version }) },
+  };
+}
 
 /**
  * Creates a standalone, bureau-less agent. `generate` is required — there is
@@ -943,15 +967,10 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
   });
 
   // Pre-compute tool entries once (pure transform — no per-run state).
-  // The map key is canonical — override each tool's inner `.name` with the
-  // map key so that the LLM-issued tool call name always matches the key,
-  // regardless of what the tool was originally authored with. Skipped
+  // The map key is canonical, whatever the tool was authored with. Skipped
   // entirely when a pre-built `toolbox` is supplied (mutually exclusive).
   const toolEntries = tools
-    ? Object.entries(tools).map(([key, tool]) => ({
-        ...tool.configuration,
-        name: key,
-      }))
+    ? Object.entries(tools).map(([key, tool]) => toolEntryUnderKey(key, tool))
     : [];
 
   // The names the model calls the tools by: the map keys (see above), or the names in a supplied

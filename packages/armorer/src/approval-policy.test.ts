@@ -17,6 +17,7 @@ import {
   type PermissionGate,
   resolveApprovalMode,
   resolveCapabilityTier,
+  toolListEntryMatches,
 } from './approval-policy';
 import { createCodingTools } from './coding/index';
 import { PathTraversalError } from './coding/jail';
@@ -538,6 +539,58 @@ describe('evaluateHeadlessPermission', () => {
     expect(result.reason).toContain('escapes root');
     expect(result.reason).not.toContain('headless');
     expect(result.reason).not.toContain('capability-tier policy');
+  });
+});
+
+describe('createHeadlessPermissionPolicyHooks — namespaced entries (COR-1879)', () => {
+  function searchIn(namespace: string, ran: string[]) {
+    return createTool({
+      name: 'search',
+      namespace,
+      version: '2.0.0',
+      description: 'Search',
+      input: z.object({}),
+      execute: async () => {
+        ran.push(namespace);
+        return namespace;
+      },
+    });
+  }
+
+  it('matches a namespaced entry by unversioned id, and a bare entry only in the default namespace', async () => {
+    const ran: string[] = [];
+    const run = async (allowList: string[], denyList: string[] = []) => {
+      const toolbox = createToolbox([searchIn('a', ran), searchIn('b', ran)], {
+        policy: createHeadlessPermissionPolicyHooks({ allowList, denyList }),
+      });
+      const results = await toolbox.execute([
+        createToolCall('a__search', {}),
+        createToolCall('b__search', {}),
+      ]);
+      return results.map(({ outcome }) => outcome);
+    };
+
+    expect(await run(['a:search'])).toEqual(['success', 'error']);
+    // A bare `search` names no plugin's tool, so it allows neither.
+    expect(await run(['search'])).toEqual(['error', 'error']);
+    // A namespaced deny entry denies exactly that tool.
+    expect(await run(['a:search', 'b:search'], ['b:search'])).toEqual(['success', 'error']);
+    expect(ran).toEqual(['a', 'a']);
+  });
+
+  it('still matches a bare entry against a default-namespace tool', () => {
+    expect(
+      toolListEntryMatches('search', {
+        toolName: 'search',
+        identity: { namespace: 'default', name: 'search' },
+      }),
+    ).toBe(true);
+    expect(
+      toolListEntryMatches('default:search', {
+        toolName: 'search',
+        identity: { namespace: 'default', name: 'search', version: '1' },
+      }),
+    ).toBe(true);
   });
 });
 

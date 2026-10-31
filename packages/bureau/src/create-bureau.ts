@@ -17958,7 +17958,18 @@ async function constructBureau<const D extends AgentDefinitions>(
             review,
             runToolboxesByRunId.get(review.runId),
           );
-          if (!policyToolbox.tools().some((tool) => tool.name === approval.toolName)) {
+          // COR-1879: by id when the approval is bound to one, so an approval for `b:search` is not
+          // let through by a skill that permits `a:search`, which shares the name `search`.
+          const boundToolId = approval.approvalBinding?.toolDefinitionRevision;
+          if (
+            !policyToolbox
+              .tools()
+              .some((tool) =>
+                boundToolId === undefined
+                  ? tool.name === approval.toolName
+                  : tool.id === boundToolId,
+              )
+          ) {
             throw new BureauError(
               `Cannot approve: tool "${approval.toolName}" is not permitted by the run's active skills.`,
               'CONFLICT',

@@ -23,7 +23,7 @@ import type {
 import { createPluginStorage, isPluginName } from '@lostgradient/interborough-plugin';
 import type { GovernedMemory } from '@lostgradient/memory';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
-import { formatToolId, type Tool } from 'armorer';
+import { formatToolId, fromNamespacedToolName, type Tool } from 'armorer';
 
 import type { AgentDefinitions } from '../agent-catalog';
 import type { AgentContributions } from '../agent-contributions';
@@ -244,10 +244,21 @@ function planOf(
 /** Everything the host already holds, which no plugin may take. */
 function heldByHost(options: ComposableOptions): Claims {
   const claims = createClaims();
-  // A plugin tool is keyed `plugin:name` in the agent tool catalog, the name a file and the model
-  // use, so only a host tool keyed the same way can take its name.
+  // A plugin tool is keyed `plugin:name` in the agent tool catalog, the name a file uses, and a
+  // provider sees it as `plugin__name`. A host tool keyed either way holds the name: one keyed
+  // `plugin__name` (as a tool source's tools are) would reach the provider under the same name.
   for (const key of Object.keys(options.agentSource?.tools ?? {})) {
-    claims.hold({ space: 'tool', name: key }, HOST_PARTY);
+    const providerForm = fromNamespacedToolName(key);
+    claims.hold(
+      {
+        space: 'tool',
+        name:
+          providerForm === undefined
+            ? key
+            : formatToolId({ namespace: providerForm.namespace, name: providerForm.name }),
+      },
+      HOST_PARTY,
+    );
   }
   for (const entry of options.contributionCatalog?.entries('activity') ?? []) {
     claims.hold({ space: 'activity', name: entry.name }, HOST_PARTY);
