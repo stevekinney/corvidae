@@ -7,9 +7,10 @@
  *
  * ## Keys
  *
- * `bureau-workflow-snapshot:v1:<identifier>:<workflowVersion>` holds a {@link WorkflowSnapshot}. An
- * identifier cannot contain `:`, so `bureau-workflow-snapshot:v1:<identifier>:` is an unambiguous
- * prefix even though a version is `sha256:<hex>`.
+ * `bureau-workflow-snapshot:v1:<identifier>:<workflowVersion>` holds a {@link WorkflowSnapshot}. A
+ * plugin's identifier holds a colon (`linear:sync`), so `bureau-workflow-snapshot:v1:linear:` is a
+ * prefix of `linear:sync`'s keys too: a read by prefix keeps only the keys whose identifier, split
+ * before the version's `sha256:`, is the one asked for.
  *
  * The record is content addressed: `document` is exactly what Weft was handed (the file without
  * `agent` and `paused`), so its recomputed version must equal the key's, and a record whose
@@ -35,6 +36,7 @@
 import { MemoryStorage, textValueStore, type TextValueStore } from '@lostgradient/storage';
 import { type WorkflowDocument, workflowDocumentSchema } from '@lostgradient/weft';
 
+import { fromWeftDocument, toWeftDocumentInput } from './workflow-document-handlers';
 import { workflowVersionOf } from './workflow-file';
 
 export const WORKFLOW_SNAPSHOT_KEY_PREFIX = 'bureau-workflow-snapshot:v1:';
@@ -178,7 +180,8 @@ function parseSnapshot(text: string | null, id: string, workflowVersion: string)
   ) {
     return { kind: 'invalid', reason: 'it is not a workflow snapshot for this key' };
   }
-  const document = workflowDocumentSchema.safeParse(value['document']);
+  // A stored document is in Bureau's form; Weft's schema judges its names in Weft's.
+  const document = workflowDocumentSchema.safeParse(toWeftDocumentInput(value['document']));
   if (!document.success) {
     // Read from the validator's issue codes, not its text: a record a newer Bureau wrote carries a
     // key this one does not know, which is not the same as a record that is damaged (COR-1927).
@@ -191,7 +194,8 @@ function parseSnapshot(text: string | null, id: string, workflowVersion: string)
       ...(unrecognized ? { unrecognizedKeys: true as const } : {}),
     };
   }
-  if (workflowVersionOf(document.data as WorkflowDocument) !== workflowVersion) {
+  const stored = fromWeftDocument(document.data as WorkflowDocument);
+  if (workflowVersionOf(stored) !== workflowVersion) {
     return { kind: 'invalid', reason: 'its document does not hash to its key' };
   }
   return {
@@ -203,7 +207,7 @@ function parseSnapshot(text: string | null, id: string, workflowVersion: string)
       registeredAt: value['registeredAt'],
       ...(typeof value['firstRunAt'] === 'string' ? { firstRunAt: value['firstRunAt'] } : {}),
       ...(typeof value['lastRunAt'] === 'string' ? { lastRunAt: value['lastRunAt'] } : {}),
-      document: document.data as WorkflowDocument,
+      document: stored,
     },
   };
 }

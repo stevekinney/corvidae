@@ -71,7 +71,13 @@ describe('workflow schedule ids', () => {
     expect(parseWorkflowScheduleId(id)).toEqual({ identifier: 'nightly-digest', generation: 3 });
     expect(parseWorkflowScheduleId('schedule-abc')).toBeUndefined();
     expect(parseWorkflowScheduleId('bureau-workflow-schedule:nightly-digest')).toBeUndefined();
-    expect(parseWorkflowScheduleId('bureau-workflow-schedule:a:b:1')).toBeUndefined();
+    expect(parseWorkflowScheduleId('bureau-workflow-schedule:a:b:c:1')).toBeUndefined();
+    expect(parseWorkflowScheduleId('bureau-workflow-schedule:Digest:1')).toBeUndefined();
+    // A plugin's workflow (COR-1956) keeps its colon: the generation follows the last one.
+    expect(parseWorkflowScheduleId(workflowScheduleId('linear:sync', 2))).toEqual({
+      identifier: 'linear:sync',
+      generation: 2,
+    });
   });
 
   it('is an id Weft accepts, listed and found like any other', async () => {

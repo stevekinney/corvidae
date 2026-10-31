@@ -19,13 +19,12 @@ import {
   normalizeScheduleSpec,
   registerWorkflowDocuments,
   type RegisteredWorkflowDocument,
-  type WorkflowDocument,
   type WorkflowDocumentSet,
 } from '@lostgradient/weft';
 
-import { isMappedHandlerName } from './namespaced-identifier';
+import { isMappedWeftName } from './namespaced-identifier';
 import { toScheduleSpec } from './schedule-spec';
-import { toWeftDocument } from './workflow-document-handlers';
+import { toWeftDocumentInput } from './workflow-document-handlers';
 import { AGENT_STEP_HANDLER, TRIGGER_KEYS } from './workflow-file';
 import { checkWorkflowSchema } from './workflow-schema';
 
@@ -214,12 +213,6 @@ export function bindWorkflowHost(engine: Engine, host: DocumentWorkflowHost): vo
   }
 }
 
-/** A document in Bureau's form as Weft receives it; anything that is not one passes through to Weft's own refusal. */
-function mapDocumentInput(input: unknown): unknown {
-  const steps = (input as { steps?: unknown } | null)?.steps;
-  return Array.isArray(steps) ? toWeftDocument(input as WorkflowDocument) : input;
-}
-
 /**
  * `host` with the activities registered directly on `engine` under a mapped handler name
  * (`plugin__name`, which a document names as `plugin:name`) added to it. They are looked up when a
@@ -233,7 +226,7 @@ export function bridgeEngineActivities(
 ): DocumentWorkflowHost {
   const bridged = (name: string | symbol): DocumentActivityHandler | undefined => {
     if (typeof name !== 'string' || Object.hasOwn(host.activities, name)) return undefined;
-    if (!isMappedHandlerName(name)) return undefined;
+    if (!isMappedWeftName(name)) return undefined;
     if (engine.getActivityFunction(name) === undefined) return undefined;
     return async (argument) => {
       const run = engine.getActivityFunction(name);
@@ -256,7 +249,7 @@ export function bridgeEngineActivities(
         ...engine
           .listActivityDefinitions()
           .map((definition) => definition.name)
-          .filter((name) => !Object.hasOwn(host.activities, name) && isMappedHandlerName(name)),
+          .filter((name) => !Object.hasOwn(host.activities, name) && isMappedWeftName(name)),
       ],
       getOwnPropertyDescriptor: (_target, name) => {
         const value =
@@ -283,9 +276,9 @@ export async function registerBureauWorkflowDocuments(
 ): Promise<readonly RegisteredWorkflowDocument[]> {
   bindWorkflowHost(engine, host);
   return registerWorkflowDocuments(engine, host, {
-    active: documents.active.map(mapDocumentInput),
+    active: documents.active.map(toWeftDocumentInput),
     ...(documents.retained === undefined
       ? {}
-      : { retained: documents.retained.map(mapDocumentInput) }),
+      : { retained: documents.retained.map(toWeftDocumentInput) }),
   });
 }

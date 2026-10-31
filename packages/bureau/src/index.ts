@@ -120,13 +120,13 @@ export type {
   WorkflowFileProblemCode,
 } from './workflow-file';
 export {
-  fromWeftHandlerName,
+  fromWeftName,
   handlerNameIssue,
   IDENTIFIER_SEGMENT_SOURCE,
   isNamespacedIdentifier,
   NAMESPACED_IDENTIFIER_PATTERN,
   RESERVED_NAMESPACES,
-  toWeftHandlerName,
+  toWeftName,
 } from './namespaced-identifier';
 export {
   createVersionedCatalog,
