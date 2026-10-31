@@ -357,91 +357,91 @@ export type ProvidersMockGeminiModel = import('../src/providers/index.ts').MockG
 export type ProvidersMockGeminiStreamingModel = import('../src/providers/index.ts').MockGeminiStreamingModel;
 // prettier-ignore
 // @ts-expect-error `GeminiBatchClient` moved to @lostgradient/operative-gemini.
-export type EmbeddingsGeminiBatchClient = import('../src/providers/embeddings/index.ts').GeminiBatchClient;
+export type EmbeddingsGeminiBatchClient = import('../src/providers/index.ts').GeminiBatchClient;
 // prettier-ignore
 // @ts-expect-error `GeminiBatchClientOptions` moved to @lostgradient/operative-gemini.
-export type EmbeddingsGeminiBatchClientOptions = import('../src/providers/embeddings/index.ts').GeminiBatchClientOptions;
+export type EmbeddingsGeminiBatchClientOptions = import('../src/providers/index.ts').GeminiBatchClientOptions;
 // prettier-ignore
 // @ts-expect-error `GeminiBatchJob` moved to @lostgradient/operative-gemini.
-export type EmbeddingsGeminiBatchJob = import('../src/providers/embeddings/index.ts').GeminiBatchJob;
+export type EmbeddingsGeminiBatchJob = import('../src/providers/index.ts').GeminiBatchJob;
 // prettier-ignore
 // @ts-expect-error `GeminiBatchJobReference` moved to @lostgradient/operative-gemini.
-export type EmbeddingsGeminiBatchJobReference = import('../src/providers/embeddings/index.ts').GeminiBatchJobReference;
+export type EmbeddingsGeminiBatchJobReference = import('../src/providers/index.ts').GeminiBatchJobReference;
 // prettier-ignore
 // @ts-expect-error `GeminiBatchOperations` moved to @lostgradient/operative-gemini.
-export type EmbeddingsGeminiBatchOperations = import('../src/providers/embeddings/index.ts').GeminiBatchOperations;
+export type EmbeddingsGeminiBatchOperations = import('../src/providers/index.ts').GeminiBatchOperations;
 // prettier-ignore
 // @ts-expect-error `GeminiCacheCreatingClient` moved to @lostgradient/operative-gemini.
-export type EmbeddingsGeminiCacheCreatingClient = import('../src/providers/embeddings/index.ts').GeminiCacheCreatingClient;
+export type EmbeddingsGeminiCacheCreatingClient = import('../src/providers/index.ts').GeminiCacheCreatingClient;
 // prettier-ignore
 // @ts-expect-error `GeminiCachedContent` moved to @lostgradient/operative-gemini.
-export type EmbeddingsGeminiCachedContent = import('../src/providers/embeddings/index.ts').GeminiCachedContent;
+export type EmbeddingsGeminiCachedContent = import('../src/providers/index.ts').GeminiCachedContent;
 // prettier-ignore
 // @ts-expect-error `GeminiCountTokensRequest` moved to @lostgradient/operative-gemini.
-export type EmbeddingsGeminiCountTokensRequest = import('../src/providers/embeddings/index.ts').GeminiCountTokensRequest;
+export type EmbeddingsGeminiCountTokensRequest = import('../src/providers/index.ts').GeminiCountTokensRequest;
 // prettier-ignore
 // @ts-expect-error `GeminiCreateBatchJobRequest` moved to @lostgradient/operative-gemini.
-export type EmbeddingsGeminiCreateBatchJobRequest = import('../src/providers/embeddings/index.ts').GeminiCreateBatchJobRequest;
+export type EmbeddingsGeminiCreateBatchJobRequest = import('../src/providers/index.ts').GeminiCreateBatchJobRequest;
 // prettier-ignore
 // @ts-expect-error `GeminiCreateCachedContentRequest` moved to @lostgradient/operative-gemini.
-export type EmbeddingsGeminiCreateCachedContentRequest = import('../src/providers/embeddings/index.ts').GeminiCreateCachedContentRequest;
+export type EmbeddingsGeminiCreateCachedContentRequest = import('../src/providers/index.ts').GeminiCreateCachedContentRequest;
 // prettier-ignore
 // @ts-expect-error `GeminiDeleteResourceJob` moved to @lostgradient/operative-gemini.
-export type EmbeddingsGeminiDeleteResourceJob = import('../src/providers/embeddings/index.ts').GeminiDeleteResourceJob;
+export type EmbeddingsGeminiDeleteResourceJob = import('../src/providers/index.ts').GeminiDeleteResourceJob;
 // prettier-ignore
 // @ts-expect-error `GeminiEmbedderOptions` moved to @lostgradient/operative-gemini.
-export type EmbeddingsGeminiEmbedderOptions = import('../src/providers/embeddings/index.ts').GeminiEmbedderOptions;
+export type EmbeddingsGeminiEmbedderOptions = import('../src/providers/index.ts').GeminiEmbedderOptions;
 // prettier-ignore
 // @ts-expect-error `GeminiEmbeddingClient` moved to @lostgradient/operative-gemini.
-export type EmbeddingsGeminiEmbeddingClient = import('../src/providers/embeddings/index.ts').GeminiEmbeddingClient;
+export type EmbeddingsGeminiEmbeddingClient = import('../src/providers/index.ts').GeminiEmbeddingClient;
 // prettier-ignore
 // @ts-expect-error `GeminiEmbeddingModel` moved to @lostgradient/operative-gemini.
-export type EmbeddingsGeminiEmbeddingModel = import('../src/providers/embeddings/index.ts').GeminiEmbeddingModel;
+export type EmbeddingsGeminiEmbeddingModel = import('../src/providers/index.ts').GeminiEmbeddingModel;
 // prettier-ignore
 // @ts-expect-error `GeminiGenerateContentRequest` moved to @lostgradient/operative-gemini.
-export type EmbeddingsGeminiGenerateContentRequest = import('../src/providers/embeddings/index.ts').GeminiGenerateContentRequest;
+export type EmbeddingsGeminiGenerateContentRequest = import('../src/providers/index.ts').GeminiGenerateContentRequest;
 // prettier-ignore
 // @ts-expect-error `GeminiGenerateContentResult` moved to @lostgradient/operative-gemini.
-export type EmbeddingsGeminiGenerateContentResult = import('../src/providers/embeddings/index.ts').GeminiGenerateContentResult;
+export type EmbeddingsGeminiGenerateContentResult = import('../src/providers/index.ts').GeminiGenerateContentResult;
 // prettier-ignore
 // @ts-expect-error `GeminiGenerativeModel` moved to @lostgradient/operative-gemini.
-export type EmbeddingsGeminiGenerativeModel = import('../src/providers/embeddings/index.ts').GeminiGenerativeModel;
+export type EmbeddingsGeminiGenerativeModel = import('../src/providers/index.ts').GeminiGenerativeModel;
 // prettier-ignore
 // @ts-expect-error `GeminiListBatchJobsRequest` moved to @lostgradient/operative-gemini.
-export type EmbeddingsGeminiListBatchJobsRequest = import('../src/providers/embeddings/index.ts').GeminiListBatchJobsRequest;
+export type EmbeddingsGeminiListBatchJobsRequest = import('../src/providers/index.ts').GeminiListBatchJobsRequest;
 // prettier-ignore
 // @ts-expect-error `GeminiMapping` moved to @lostgradient/operative-gemini.
-export type EmbeddingsGeminiMapping = import('../src/providers/embeddings/index.ts').GeminiMapping;
+export type EmbeddingsGeminiMapping = import('../src/providers/index.ts').GeminiMapping;
 // prettier-ignore
 // @ts-expect-error `GeminiMappingViolation` moved to @lostgradient/operative-gemini.
-export type EmbeddingsGeminiMappingViolation = import('../src/providers/embeddings/index.ts').GeminiMappingViolation;
+export type EmbeddingsGeminiMappingViolation = import('../src/providers/index.ts').GeminiMappingViolation;
 // prettier-ignore
 // @ts-expect-error `GeminiProviderConfiguration` moved to @lostgradient/operative-gemini.
-export type EmbeddingsGeminiProviderConfiguration = import('../src/providers/embeddings/index.ts').GeminiProviderConfiguration;
+export type EmbeddingsGeminiProviderConfiguration = import('../src/providers/index.ts').GeminiProviderConfiguration;
 // prettier-ignore
 // @ts-expect-error `GeminiProviderOptions` moved to @lostgradient/operative-gemini.
-export type EmbeddingsGeminiProviderOptions = import('../src/providers/embeddings/index.ts').GeminiProviderOptions;
+export type EmbeddingsGeminiProviderOptions = import('../src/providers/index.ts').GeminiProviderOptions;
 // prettier-ignore
 // @ts-expect-error `GeminiStreamingModel` moved to @lostgradient/operative-gemini.
-export type EmbeddingsGeminiStreamingModel = import('../src/providers/embeddings/index.ts').GeminiStreamingModel;
+export type EmbeddingsGeminiStreamingModel = import('../src/providers/index.ts').GeminiStreamingModel;
 // prettier-ignore
 // @ts-expect-error `GeminiTokenCounterOptions` moved to @lostgradient/operative-gemini.
-export type EmbeddingsGeminiTokenCounterOptions = import('../src/providers/embeddings/index.ts').GeminiTokenCounterOptions;
+export type EmbeddingsGeminiTokenCounterOptions = import('../src/providers/index.ts').GeminiTokenCounterOptions;
 // prettier-ignore
 // @ts-expect-error `GeminiTokenCountingClient` moved to @lostgradient/operative-gemini.
-export type EmbeddingsGeminiTokenCountingClient = import('../src/providers/embeddings/index.ts').GeminiTokenCountingClient;
+export type EmbeddingsGeminiTokenCountingClient = import('../src/providers/index.ts').GeminiTokenCountingClient;
 // prettier-ignore
 // @ts-expect-error `GeminiTokenCountingOperations` moved to @lostgradient/operative-gemini.
-export type EmbeddingsGeminiTokenCountingOperations = import('../src/providers/embeddings/index.ts').GeminiTokenCountingOperations;
+export type EmbeddingsGeminiTokenCountingOperations = import('../src/providers/index.ts').GeminiTokenCountingOperations;
 // prettier-ignore
 // @ts-expect-error `GeminiUsageMetadata` moved to @lostgradient/operative-gemini.
-export type EmbeddingsGeminiUsageMetadata = import('../src/providers/embeddings/index.ts').GeminiUsageMetadata;
+export type EmbeddingsGeminiUsageMetadata = import('../src/providers/index.ts').GeminiUsageMetadata;
 // prettier-ignore
 // @ts-expect-error `MockGeminiModel` moved to @lostgradient/operative-gemini.
-export type EmbeddingsMockGeminiModel = import('../src/providers/embeddings/index.ts').MockGeminiModel;
+export type EmbeddingsMockGeminiModel = import('../src/providers/index.ts').MockGeminiModel;
 // prettier-ignore
 // @ts-expect-error `MockGeminiStreamingModel` moved to @lostgradient/operative-gemini.
-export type EmbeddingsMockGeminiStreamingModel = import('../src/providers/embeddings/index.ts').MockGeminiStreamingModel;
+export type EmbeddingsMockGeminiStreamingModel = import('../src/providers/index.ts').MockGeminiStreamingModel;
 // prettier-ignore
 // @ts-expect-error `GeminiBatchClient` moved to @lostgradient/operative-gemini.
 export type StructuredOutputGeminiBatchClient = import('../src/providers/structured-output/index.ts').GeminiBatchClient;

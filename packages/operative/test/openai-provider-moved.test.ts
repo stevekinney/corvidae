@@ -38,11 +38,7 @@ const MOVED_OPENAI_EXPORTS = [
 const entryPoints = { root, providerKit, providerTesting };
 
 /** The barrels under `src/providers/`, which re-export provider files by path. */
-const BARRELS = [
-  'src/providers/index.ts',
-  'src/providers/embeddings/index.ts',
-  'src/providers/structured-output/index.ts',
-] as const;
+const BARRELS = ['src/providers/index.ts', 'src/providers/structured-output/index.ts'] as const;
 
 describe('the OpenAI provider has left Operative', () => {
   for (const [entryPoint, exports] of Object.entries(entryPoints)) {

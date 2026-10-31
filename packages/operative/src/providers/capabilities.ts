@@ -68,10 +68,10 @@ const NO_CAPABILITIES: ProviderCapabilities = {
  * | `gemini` | yes | no | yes | yes |
  * | `voyage`, `ollama` | no | no | no | no |
  *
- * `voyage` and `ollama` are embedding-only providers here: operative ships
- * `createVoyageEmbedder` and `createOllamaEmbedder` and no generate function
- * for either, so none of these four generation-time capabilities applies. All
- * `false` is the honest report, not a placeholder.
+ * `voyage` and `ollama` are embedding-only providers: their embedders are the
+ * `voyage` and `ollama` Interborough plugins, and operative ships no generate
+ * function for either, so none of these four generation-time capabilities
+ * applies. All `false` is the honest report, not a placeholder.
  *
  * ## Why a custom OpenAI `baseURL` reports `false`
  *
