@@ -525,3 +525,44 @@ describe('withActiveSkillToolPolicy as an execution gate (COR-1628)', () => {
     ]);
   });
 });
+
+describe('namespaced tools under an active skill (COR-1879)', () => {
+  function searchIn(namespace: string, executed: string[]) {
+    return createTool({
+      name: 'search',
+      namespace,
+      version: '2.0.0',
+      description: `Search in ${namespace}`,
+      input: z.object({}),
+      execute: async () => {
+        executed.push(namespace);
+        return namespace;
+      },
+    });
+  }
+
+  it('shows and runs only the namespaced tool a skill allows, though both are named search', async () => {
+    const executed: string[] = [];
+    const toolbox = createToolbox([searchIn('a', executed), searchIn('b', executed)]);
+    const gated = withActiveSkillToolPolicy(toolbox, () => ({ allowList: ['a:search'] }));
+
+    expect(gated.tools().map(({ id }) => id)).toEqual(['a:search@2.0.0']);
+    const [allowed, refused] = await gated.execute(
+      [
+        { id: 'call-a', name: 'a__search', arguments: {} },
+        { id: 'call-b', name: 'b__search', arguments: {} },
+      ],
+      { errorMode: 'collect' },
+    );
+    expect(allowed?.outcome).toBe('success');
+    // Named the way every result reports a namespaced tool (COR-1879).
+    expectRefusal(refused!, 'b:search', 'call-b');
+    expect(executed).toEqual(['a']);
+  });
+
+  it('hides every namespace’s tool from a bare entry', () => {
+    const toolbox = createToolbox([searchIn('a', []), searchIn('b', [])]);
+    const gated = withActiveSkillToolPolicy(toolbox, () => ({ allowList: ['search'] }));
+    expect(gated.tools()).toEqual([]);
+  });
+});

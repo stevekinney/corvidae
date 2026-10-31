@@ -25,6 +25,19 @@ export function formatToolId(identity: ToolIdentityInput): ToolId {
   return `${namespace}:${name}${version}`;
 }
 
+/**
+ * The name a tool is reported by wherever it leaves Armorer: a result's, an approval's and a
+ * policy context's `toolName`, and the refusals and events built from them (COR-1879). A tool in
+ * the default namespace is reported by its bare name, as it always was; a tool in any other
+ * namespace by its unversioned id (`namespace:name`), so `a:search` and `b:search` never share
+ * one name in a grant, a policy decision or a saved record.
+ */
+export function formatToolName(identity: Pick<ToolIdentity, 'namespace' | 'name'>): string {
+  return identity.namespace === DEFAULT_NAMESPACE
+    ? identity.name
+    : formatToolId({ namespace: identity.namespace, name: identity.name });
+}
+
 export function parseToolId(id: ToolId): ToolIdentity {
   if (typeof id !== 'string') {
     throw new TypeError('ToolId must be a string');

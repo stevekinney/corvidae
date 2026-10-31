@@ -131,12 +131,8 @@ export function validateDecisionsOptions(
       }
     }
   }
-  if (model !== undefined) {
-    if (typeof model !== 'string' || !isRegisteredDecisionModel(model, models)) {
-      badRequest(
-        `"options.decisions.model" must be \`${CATALOG_DECISION_MODEL}\` or a name in "options.decisions.models"`,
-      );
-    }
+  if (model !== undefined && typeof model !== 'string') {
+    badRequest('"options.decisions.model" must be a string');
   }
   if (fallbackModel !== undefined) {
     if (typeof fallbackModel !== 'string' || !/^[^/\s]+\/\S+$/.test(fallbackModel)) {
@@ -148,6 +144,23 @@ export function validateDecisionsOptions(
       badRequest('"options.decisions.maximumPerTask" must be a positive integer');
     }
   }
+}
+
+/**
+ * Refuses a `decisions.model` that names no registered model, as `BAD_REQUEST`. Separate from
+ * {@link validateDecisionsOptions} because plugins contribute decision models (COR-1879): the name
+ * is checked once composition has folded them into `decisions.models`, so `model: 'kit:router'`
+ * can name a plugin's router.
+ */
+export function validateDecisionsModelChoice(
+  options: DecisionsOptions | undefined,
+  badRequest: (message: string) => never,
+): void {
+  const model = options?.model;
+  if (model === undefined || isRegisteredDecisionModel(model, options?.models)) return;
+  badRequest(
+    `"options.decisions.model" must be \`${CATALOG_DECISION_MODEL}\` or a name in "options.decisions.models"`,
+  );
 }
 
 function eligible(row: BackendDescriptor): boolean {

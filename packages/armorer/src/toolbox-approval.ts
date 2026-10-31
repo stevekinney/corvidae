@@ -15,9 +15,10 @@ import type { GrantListFilter, ReusableApprovalGrantInput } from './toolbox-appr
 import type { PendingToolApproval, SignedPendingToolApproval } from './types';
 
 /**
- * Finds the tool a pending approval was issued for. The approval's `toolName` is the bare name,
- * which two namespaces can share, so the binding's tool definition revision (the tool id) is
- * tried first; the name is the fallback for an approval issued without a binding.
+ * Finds the tool a pending approval was issued for. The binding's tool definition revision (the
+ * tool id, version included) is tried first; the approval's `toolName` (`formatToolName`: the
+ * bare name in the default namespace, `namespace:name` elsewhere) is the fallback for an approval
+ * issued without a binding.
  */
 export function findApprovedTool(
   approval: Pick<SignedPendingToolApproval, 'toolName' | 'approvalBinding'>,

@@ -1,3 +1,4 @@
+import { fromNamespacedToolName } from './adapters/provider-tool-names';
 import type { ToolId } from './core/identity';
 import type { Tool } from './is-tool';
 
@@ -101,12 +102,32 @@ function resolveNamespaced(
 }
 
 /**
+ * Reads `namespace__name`, the name the adapters give a namespaced tool, as that tool. `undefined`
+ * when the name has no `__` or no tool in that namespace has that name.
+ */
+function resolveProviderName(
+  toolsByName: ReadonlyMap<string, readonly Tool[]>,
+  name: string,
+): ToolResolution | undefined {
+  const parsed = fromNamespacedToolName(name);
+  if (!parsed) return undefined;
+  const matches = (toolsByName.get(parsed.name) ?? []).filter(
+    (tool) => tool.identity.namespace === parsed.namespace,
+  );
+  if (matches.length === 0) return undefined;
+  const [only] = matches;
+  return matches.length === 1 && only ? { ok: true, tool: only } : failure('ambiguous', matches);
+}
+
+/**
  * Builds the lookup behind `Toolbox.resolveTool`.
  *
  * An exact registered id always wins. A reference with a `:` is read as `namespace:name`, with an
  * optional `@version`; anything else is a bare name. A registered name that itself contains a `:`
- * still resolves as a bare name when no namespaced tool answers to it. The resolver never throws:
- * a reference that cannot be parsed is `missing`.
+ * still resolves as a bare name when no namespaced tool answers to it. A bare name nothing is
+ * registered under is then read as `namespace__name`, the name a provider calls a namespaced tool
+ * by (`toNamespacedToolName`), so a registered bare name that contains `__` always wins. The
+ * resolver never throws: a reference that cannot be parsed is `missing`.
  */
 export function createToolResolver(
   toolsById: ReadonlyMap<string, Tool>,
@@ -119,7 +140,10 @@ export function createToolResolver(
     const namespaced = idOrName.includes(':')
       ? resolveNamespaced(toolsByName, idOrName)
       : undefined;
-    return namespaced ?? resolveBareName(toolsByName, idOrName);
+    if (namespaced) return namespaced;
+    const bare = resolveBareName(toolsByName, idOrName);
+    if (bare.ok || bare.reason !== 'missing') return bare;
+    return resolveProviderName(toolsByName, idOrName) ?? bare;
   };
 }
 

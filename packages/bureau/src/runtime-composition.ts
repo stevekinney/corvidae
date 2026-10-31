@@ -3072,6 +3072,10 @@ async function buildRuntimeComposition(
     });
   }
 
+  // COR-1879: plugin composition calls a `memory` factory before construction reaches here.
+  if (typeof options.memory === 'function') {
+    throw new TypeError('A memory factory reached composition without being called.');
+  }
   const memory: GovernedMemory | undefined = options.memory;
   await memory?.init();
   // COR-1546 — the tenant a run's memory is partitioned under. `createBureau` passes its resolved

@@ -114,6 +114,14 @@ import type { BureauHooks } from './hooks/create-hooks';
 import type { BureauEventFormatter, EventFormatterRegistration } from './bureau-event-formatting';
 import type { HookActionKindRegistration, HookSecretStore } from './hooks/hook-types';
 import type { HookUrlPolicy } from './hooks/hook-url-policy';
+import type {
+  BureauMemoryFactory,
+  BureauPluginEntry,
+  BureauPlugins,
+  BureauPluginSecrets,
+  BureauPluginSettings,
+  PluginMemoryContributions,
+} from './plugins/plugin-types';
 
 // ── Provider Configuration ───────────────────────────────────────────
 
@@ -670,8 +678,26 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * (see {@link BureauOptions.memoryAuthority}). The host constructs the
    * instance (`createGovernedMemory` from `@lostgradient/memory`) so it owns
    * the storage, ledger, and policy.
+   *
+   * COR-1879: a factory instead builds memory once plugin setup has run, with the detectors and
+   * embedders the running plugins contribute ({@link PluginMemoryContributions}), so the host can
+   * hand them to `createEmbedderRegistry` and the policy's `contributedDetectors`. It is called
+   * once, during construction, with empty lists when no plugin contributes either.
    */
-  memory?: GovernedMemory;
+  memory?: GovernedMemory | BureauMemoryFactory;
+  /**
+   * COR-1879 — the plugins to load, from workspace packages and Bungalow's `plugins/` folder. Each
+   * enabled plugin's `setup` runs once, in load order (package plugins as given, then folder
+   * plugins by folder name), with storage confined to `plugin:<name>:`, and its contributions are
+   * registered through the options they belong to. A plugin whose configuration does not parse,
+   * whose `setup` fails, or that claims a name already held is skipped and the Bureau still
+   * starts; `afterStart` runs once the Bureau is built. {@link Bureau.plugins} reports each.
+   */
+  plugins?: readonly BureauPluginEntry[];
+  /** COR-1879 — the owner's `{ enabled, configuration }` for each plugin, by plugin name. */
+  pluginConfiguration?: Readonly<Record<string, BureauPluginSettings>>;
+  /** COR-1879 — reads the secrets plugins declare; a plugin reads only the keys it declared. */
+  pluginSecrets?: BureauPluginSecrets;
   /**
    * COR-41 — the memory authority Bureau delegates to each run it composes
    * memory hooks for. See {@link BureauMemoryAuthorityOptions}.
@@ -2611,6 +2637,13 @@ export interface BureauInternals {
 export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   /** This bureau's identity — {@link BureauOptions.id}, or a generated one. */
   readonly id: string;
+
+  /**
+   * COR-1879 — the plugins {@link BureauOptions.plugins} named, in load order: `list()` reports
+   * each one's descriptor, status, problems and contributions, and `ready()` settles once every
+   * running plugin's `afterStart` has. Empty without plugins.
+   */
+  readonly plugins: BureauPlugins;
   /**
    * The reviews awaiting a human decision, and the decision (`list`, `get`, `resolve`,
    * `pendingOf`). See {@link BureauReviews}.

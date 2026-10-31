@@ -8,6 +8,7 @@ export {
   evaluateHeadlessPermission,
   resolveApprovalMode,
   resolveCapabilityTier,
+  toolListEntryMatches,
 } from './approval-policy';
 export type {
   ApprovalMode,
@@ -280,8 +281,11 @@ export * from './adapters/anthropic';
 export * from './adapters/gemini';
 export * from './adapters/openai';
 export {
+  NAMESPACED_TOOL_NAME_SEPARATOR,
   PROVIDER_TOOL_NAME_LIMIT,
   createProviderToolNameMapper,
+  fromNamespacedToolName,
+  toNamespacedToolName,
   toProviderToolName,
 } from './adapters/provider-tool-names';
 export * from './inspect';

@@ -47,7 +47,7 @@
  * @module tool-approval
  */
 
-import type { PermissionMode } from '@lostgradient/operative';
+import { type PermissionMode, toolIdentityUnderKey } from '@lostgradient/operative';
 import {
   type ApprovalMode,
   type ApprovalStatus,
@@ -60,6 +60,8 @@ import {
   type ToolPolicyHooks,
   type AnyToolbox,
   createApprovalPolicyHooks,
+  formatToolName,
+  type Tool,
 } from 'armorer';
 
 import { withToolboxLayer } from './toolbox-additions';
@@ -352,11 +354,19 @@ export interface ToolApprovalHooksOptions {
    * `requestHumanInput`, `scheduleWakeup`, the skill tools and the like. Name the agent's tools here
    * so only they are governed by `toolApproval`: a chat's permission mode reaches the others by
    * itself ({@link withChatPermission}). Omitted, every tool in the toolbox is.
+   *
+   * Given as names, each is the name a call reports the tool by (Armorer's `formatToolName`:
+   * `plugin:tool` for a tool outside the default namespace). Given as the agent's `tools` record,
+   * each key is the key the agent declared, and the hook finds the tool `createAgent` puts under
+   * it ({@link toolIdentityUnderKey}), so a namespaced tool a host registered under a bare key is
+   * governed by, and takes the `toolApproval` value of, that bare key (COR-1879).
    */
-  readonly tools?: readonly string[] | undefined;
+  readonly tools?:
+    readonly string[] | Readonly<Record<string, Pick<Tool, 'configuration'>>> | undefined;
   /**
    * Whether a person allowed this tool for the rest of this chat (COR-1828). It receives the name
-   * the model calls the tool by and its id (`namespace:name@version`), so a caller can key a grant
+   * the tool is reported by (`formatToolName`, which an approval's `toolName` carries too) and its
+   * id (`namespace:name@version`), so a caller can key a grant
    * on the exact definition a person approved (COR-1950): a changed schema is a new version, and
    * the grant no longer applies. It is asked, at the
    * time of the call, only for a tool whose value is `on-changes` and only when a grant would
@@ -376,6 +386,25 @@ export interface ToolApprovalHooksOptions {
    * is not read-only is denied, and no call is let through on a guess.
    */
   readonly permissionMode?: (() => PermissionMode | Promise<PermissionMode>) | undefined;
+}
+
+/**
+ * COR-1879 — the key `toolApproval` and `tools` give each tool, by the name a call reports the tool
+ * by. A name in a list is its own key; a key of a `tools` record maps from the name of the tool
+ * `createAgent` puts under it.
+ */
+function keysByReportedName(
+  tools: NonNullable<ToolApprovalHooksOptions['tools']>,
+): ReadonlyMap<string, string> {
+  if (Array.isArray(tools)) return new Map(tools.map((name: string) => [name, name]));
+  return new Map(
+    Object.entries(tools as Readonly<Record<string, Pick<Tool, 'configuration'> | undefined>>).map(
+      ([key, tool]) => [
+        tool === undefined ? key : formatToolName(toolIdentityUnderKey(key, tool)),
+        key,
+      ],
+    ),
+  );
 }
 
 /** The mode a chat is in when nothing was set: the tool's own setting decides. */
@@ -435,7 +464,7 @@ export function createToolApprovalHooks(
 ): ToolPolicyHooks {
   const defaultMode = options.defaultMode ?? TOOL_APPROVAL_DEFAULT_MODE;
   const modes = new Map<string, ToolApprovalMode>(Object.entries(toolApproval ?? {}));
-  const governed = options.tools === undefined ? undefined : new Set(options.tools);
+  const governed = options.tools === undefined ? undefined : keysByReportedName(options.tools);
   const { remembered, permissionMode } = options;
   /** Whether the grant is held; a grant that cannot be read is not held. */
   async function granted(tool: { readonly name: string; readonly id: string }): Promise<boolean> {
@@ -456,10 +485,9 @@ export function createToolApprovalHooks(
   }
   return {
     async beforeExecute(context: ToolPolicyContext): Promise<ToolPolicyDecision> {
-      if (governed !== undefined && !governed.has(context.toolName)) {
-        return { allow: true, status: 'allow' };
-      }
-      const setting = modes.get(context.toolName) ?? defaultMode;
+      const key = governed === undefined ? context.toolName : governed.get(context.toolName);
+      if (key === undefined) return { allow: true, status: 'allow' };
+      const setting = modes.get(key) ?? defaultMode;
       const chat = chatPermissionOf(context);
       const { mode, unreadable } = chat ?? (await modeOfChat());
       const tier = resolveCapabilityTier(context.metadata, context.tags);

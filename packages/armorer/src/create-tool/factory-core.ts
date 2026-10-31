@@ -1,6 +1,7 @@
 import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 import { z } from 'zod';
 
+import { formatToolName } from '../core/identity';
 import type { ToolRisk } from '../core/risk';
 import { isStandardSchema, isZodSchema } from '../core/schema-utilities';
 import { assertJsonValue } from '../core/serialization/json';
@@ -72,6 +73,9 @@ function createToolFromValidatedInput<
     options.name,
   );
   const definition = createDefinition(options, metadataValue, normalizedTags, typedSchema);
+  // COR-1879: the name every result, approval, policy context and event reports the tool by:
+  // `namespace:name` outside the default namespace, so two namespaces' tools never share one.
+  const toolName = formatToolName(definition.identity);
   const surface = createToolEventSurface(runtime);
   let executors!: ToolExecutors<TReturn>;
   const configuration = createConfiguration({
@@ -86,7 +90,7 @@ function createToolFromValidatedInput<
     options.execute,
   );
   const executeInner = createExecuteInner({
-    name: options.name,
+    name: toolName,
     configuration,
     runtime,
     digestOptions,
@@ -103,7 +107,7 @@ function createToolFromValidatedInput<
         configuration,
         inputDigest,
         metadataValue,
-        name: options.name,
+        name: toolName,
         normalizedTags,
         params,
         toolCall,
@@ -132,6 +136,7 @@ function createToolFromValidatedInput<
   const limiter = createConcurrencyLimiter(concurrencyLimit);
   executors = createToolExecutors({
     name: options.name,
+    toolName,
     timeout: options.timeout,
     runtime,
     executionLifecycle: surface.executionLifecycle,

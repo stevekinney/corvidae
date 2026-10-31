@@ -38,7 +38,10 @@ export type ToolExecutors<TReturn> = {
 };
 
 export function createToolExecutors<TReturn>(input: {
+  /** The tool's bare name, which a call may carry. */
   name: string;
+  /** The name the tool is reported by (`formatToolName`), which a call may carry too. */
+  toolName: string;
   timeout: number | undefined;
   runtime: RuntimeServices;
   executionLifecycle: ExecutionLifecycle;
@@ -62,7 +65,7 @@ export function createToolExecutors<TReturn>(input: {
     params: unknown,
     options?: ToolExecuteOptions,
   ): Promise<ToolCallReturn<TReturn>> => {
-    const toolCall = createToolCall(input.name, normalizeToolContent(params));
+    const toolCall = createToolCall(input.toolName, normalizeToolContent(params));
     const result = await executeCall(toolCall, options);
     const errorMessage = result.error?.message;
     if (errorMessage) throw new Error(errorMessage);
@@ -82,7 +85,10 @@ export function createToolExecutors<TReturn>(input: {
     inputValue: unknown,
     options?: ToolExecuteOptions,
   ): Promise<ToolExecutionResult> | Promise<ToolCallReturn<TReturn>> {
-    if (looksLikeToolCall(inputValue, input.name)) {
+    if (
+      looksLikeToolCall(inputValue, input.toolName) ||
+      looksLikeToolCall(inputValue, input.name)
+    ) {
       return executeCall(inputValue, options);
     }
     return executeParams(inputValue, options);
@@ -93,7 +99,7 @@ export function createToolExecutors<TReturn>(input: {
     executeParams,
     executeWith(options: ToolExecuteWithOptions) {
       const toolCall = createToolCall(
-        input.name,
+        input.toolName,
         normalizeToolContent(options.params),
         options.callId,
       );
@@ -108,6 +114,7 @@ export function createToolExecutors<TReturn>(input: {
 
 type RunToolCallInput<TReturn> = {
   name: string;
+  toolName: string;
   timeout: number | undefined;
   runtime: RuntimeServices;
   executionLifecycle: ExecutionLifecycle;
@@ -168,7 +175,7 @@ function settleExpiredDeadline<TReturn>(
   executionHandle: ExecutionHandle,
 ): Promise<TypedToolExecutionResult<TReturn>> {
   executionHandle.abort('deadline', 'Execution deadline exceeded');
-  const result = deadlineCancellationResult(input.name, input.toolCall);
+  const result = deadlineCancellationResult(input.toolName, input.toolCall);
   executionHandle.settle(result);
   return Promise.resolve(result);
 }
@@ -183,7 +190,7 @@ function runAdmittedToolCall<TReturn>(
       ...queuePositionOption(input.capacity, executionHandle),
     })
     .catch((error): TypedToolExecutionResult<TReturn> =>
-      queuedCancellationResult(input.name, input.toolCall, error),
+      queuedCancellationResult(input.toolName, input.toolCall, error),
     );
 }
 
@@ -234,7 +241,7 @@ function createExecutionBeginInput(
   input: PreparedToolCall<unknown>,
 ): Parameters<ExecutionLifecycle['begin']>[0] {
   const executionInput: Parameters<ExecutionLifecycle['begin']>[0] = {
-    toolName: input.name,
+    toolName: input.toolName,
     callId: input.toolCall.id,
     scheduleDeadline: input.executionOptions?.requestContext?.deadline !== undefined,
     now: input.nowFunction,
