@@ -381,6 +381,62 @@ describe('the list of sessions', () => {
     expect(rows[0]).toBe(draft as HTMLElement);
   });
 
+  test('says there are no chats yet when the Bureau lists none', async () => {
+    const served = bureau({
+      'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }),
+      'bureau.reviews.list': () => ({ reviews: [] }),
+    });
+    restore = served.restore;
+    landAt('/chats');
+
+    const { findByRole } = mount();
+
+    const empty = await findByRole('heading', { level: 3, name: 'No chats yet' });
+    expect(empty.closest('.cinder-empty-state')).not.toBeNull();
+  });
+
+  test('shows one pane at a time on a narrow screen, and Back returns to the list', async () => {
+    // ListDetail measures its own width, and happy-dom has no layout, so the component is given one.
+    const measure = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = () =>
+      ({
+        width: 500,
+        height: 800,
+        x: 0,
+        y: 0,
+        top: 0,
+        left: 0,
+        right: 500,
+        bottom: 800,
+      }) as DOMRect;
+    try {
+      const served = bureau({
+        'bureau.contexts.list': () => page(0, 2, false),
+        'bureau.reviews.list': () => ({ reviews: [] }),
+        'bureau.contexts.get': (params) => ({
+          ...CONTEXT,
+          id: String(params['contextId']),
+          title: 'Chat 1',
+        }),
+      });
+      restore = served.restore;
+      landAt('/chats/session-1');
+
+      const { findByRole, queryByRole } = mount();
+
+      await findByRole('heading', { level: 1, name: 'Chat 1' });
+      expect(queryByRole('region', { name: 'Chats' })).toBeNull();
+
+      const back = await findByRole('button', { name: 'Back' });
+      back.click();
+
+      await findByRole('region', { name: 'Chats' });
+      expect(router.pathname).toBe('/chats');
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = measure;
+    }
+  });
+
   test('has a New chat action that opens /chats/new, and leaves a modified click to the browser', async () => {
     const served = bureau({
       'bureau.contexts.list': () => page(0, 1, false),

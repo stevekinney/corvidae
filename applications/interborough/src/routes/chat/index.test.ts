@@ -93,6 +93,28 @@ describe('a session whose page could not read it', () => {
   });
 });
 
+describe('a session the page is still reading', () => {
+  test('shows a loading placeholder in the chat’s place, and then the chat', async () => {
+    restore = bureau(
+      { 'bureau.contexts.get': () => ({ ...CONTEXT, title: 'Plan the week' }) },
+      (url) =>
+        url.endsWith('/messages') || url.includes('/threads/')
+          ? Response.json({ threadId: 'session-1', messages: [] })
+          : undefined,
+    ).restore;
+    landAt('/chats/session-1');
+
+    const { findByRole, container } = mount();
+
+    // The first render comes before any answer.
+    expect(
+      container.querySelector('[role="status"][aria-label="Loading the conversation"]'),
+    ).not.toBeNull();
+    await findByRole('heading', { level: 1, name: 'Plan the week' });
+    expect(container.querySelector('[aria-label="Loading the conversation"]')).toBeNull();
+  });
+});
+
 describe('a session whose identifier the path cannot carry', () => {
   for (const sessionId of ['new', '.', '..']) {
     test(`opens the session ${sessionId}, and not the new chat or another page`, async () => {
