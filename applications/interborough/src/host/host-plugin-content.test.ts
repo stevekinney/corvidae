@@ -58,7 +58,26 @@ async function shippedContent() {
   return { content, url: pathToFileURL(`${content}/`) };
 }
 
-async function startShipper(url: URL, enabled = true): Promise<Host> {
+/** A second plugin of the name `shipper`, from a folder, that Bureau skips with `name-clash`. */
+function clashing(url: URL) {
+  return {
+    descriptor: definePlugin({
+      name: 'shipper',
+      version: '2.0.0',
+      description: 'Shares the running plugin’s name.',
+      content: url,
+    }),
+    source: 'folder' as const,
+    location: '/plugins/shipper',
+  };
+}
+
+async function startShipper(
+  url: URL,
+  enabled = true,
+  extra: readonly ReturnType<typeof clashing>[] = [],
+  shipperContent: URL | null = url,
+): Promise<Host> {
   const home = await scratch('interborough-plugin-content-home-');
   await writeFile(
     join(home, 'configuration.json'),
@@ -74,11 +93,12 @@ async function startShipper(url: URL, enabled = true): Promise<Host> {
           name: 'shipper',
           version: '1.0.0',
           description: 'Ships a workflow and a skill.',
-          content: url,
+          ...(shipperContent === null ? {} : { content: shipperContent }),
         }),
         source: 'package',
         location: '@fixture/shipper',
       },
+      ...extra,
     ],
   });
   hosts.push(host);
@@ -161,5 +181,24 @@ describe('the skills a running folder plugin ships', () => {
 
     expect(listed.skills).toEqual([]);
     expect(listed.sources).toEqual([]);
+  });
+});
+
+describe('a plugin skipped for sharing a name with a running one', () => {
+  test('ships neither its skills nor its workflows under the running plugin’s name', async () => {
+    const { url } = await shippedContent();
+    const host = await startShipper(url, true, [clashing(url)], null);
+
+    const plugins = await host.bureau.plugins.list();
+    expect(plugins.filter((plugin) => plugin.descriptor.name === 'shipper')).toMatchObject([
+      { status: 'running', source: 'package' },
+      { status: 'skipped', source: 'folder' },
+    ]);
+    const listed = await listedSkills(host);
+    expect(listed.skills).toEqual([]);
+    expect(listed.sources).toEqual([]);
+    expect(host.bureau.workflows?.list().map((listing) => listing.id)).not.toContain(
+      'shipper:nightly',
+    );
   });
 });

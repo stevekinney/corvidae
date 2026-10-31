@@ -772,15 +772,18 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // The skills a running plugin ships (COR-1977): its `content/skills`, read each time the catalog is discovered.
       pluginSources: async () => {
         const listed = await bureau.plugins.list();
-        const running = new Set(
-          listed
-            .filter((listing) => listing.status === 'running')
-            .map((listing) => listing.descriptor.name),
-        );
-        return pluginManager.loadable().flatMap(({ descriptor }) => {
+        const loadable = pluginManager.loadable();
+        // Two plugins may share a name, one running and one skipped with `name-clash`, so a running
+        // listing is matched to its entry by where it came from, as the plugin snapshot does.
+        return listed.flatMap((listing) => {
+          const entry = loadable.find(
+            (candidate) =>
+              candidate.source === listing.source && candidate.location === listing.location,
+          );
+          const content = entry?.descriptor.content;
           const source =
-            descriptor.content !== undefined && running.has(descriptor.name)
-              ? createPluginSkillSource(descriptor.name, descriptor.content)
+            listing.status === 'running' && content !== undefined
+              ? createPluginSkillSource(listing.descriptor.name, content)
               : undefined;
           return source === undefined ? [] : [source];
         });
