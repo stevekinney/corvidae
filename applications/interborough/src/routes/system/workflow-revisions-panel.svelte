@@ -41,7 +41,7 @@
    * (`policy.requireExactRevision: false`) is a deliberate omission from
    * this batch, not an oversight — see the PR body.
    */
-  import { Badge, Button, ConfirmDialog, CopyButton } from '@lostgradient/cinder';
+  import { Badge, Button, ConfirmDialog, CopyButton, SectionHeading } from '@lostgradient/cinder';
   import { TriangleAlert } from '@lucide/svelte';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
@@ -281,12 +281,13 @@
 </script>
 
 <section class="weft-revisions-panel" aria-label="Installed revisions">
-  <div class="weft-revisions-panel__header">
-    <h3 class="weft-revisions-panel__title">Revisions</h3>
-    {#if isRefreshing}
-      <span class="weft-revisions-panel__refreshing" role="status">Refreshing…</span>
-    {/if}
-  </div>
+  <SectionHeading level={3} title="Revisions">
+    {#snippet actions()}
+      {#if isRefreshing}
+        <span class="weft-revisions-panel__refreshing" role="status">Refreshing…</span>
+      {/if}
+    {/snippet}
+  </SectionHeading>
 
   {#if !canRead}
     <p class="weft-revisions-panel__note">Requires workflows:read to view installed revisions.</p>
@@ -406,18 +407,6 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
-  }
-
-  .weft-revisions-panel__header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-
-  .weft-revisions-panel__title {
-    margin: 0;
-    font-size: var(--cinder-text-sm);
-    font-weight: 600;
   }
 
   .weft-revisions-panel__refreshing {

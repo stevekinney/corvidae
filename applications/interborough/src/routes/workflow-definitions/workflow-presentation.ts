@@ -172,20 +172,9 @@ export type DefinitionDetails = {
   readonly signals: readonly string[];
   readonly updates: readonly string[];
   readonly queries: readonly string[];
-  /** The input schema as text to read, or `undefined` when the contract declares none. */
-  readonly inputSchema: string | undefined;
-  readonly outputSchema: string | undefined;
 };
 
-function schemaText(
-  definition: DefinitionDetail | undefined,
-  key: 'inputSchema' | 'outputSchema',
-): string | undefined {
-  const schema = definition?.contract?.[key];
-  return schema === undefined || schema === null ? undefined : JSON.stringify(schema, null, 2);
-}
-
-/** The parts of a type's contract worth showing: its signals (passed in), updates, queries, and schemas. */
+/** The parts of a type's contract worth listing: its signals (passed in), updates, and queries. */
 export function definitionDetails(
   definition: DefinitionDetail | undefined,
   signals: readonly string[],
@@ -194,20 +183,27 @@ export function definitionDetails(
     signals,
     updates: definition?.updates ?? [],
     queries: definition?.queries ?? [],
-    inputSchema: schemaText(definition, 'inputSchema'),
-    outputSchema: schemaText(definition, 'outputSchema'),
   };
 }
 
-/** Whether the contract says anything at all, so the page shows a disclosure only when it has something in it. */
+/** Whether the contract lists anything, so the facts show only what the workflow has. */
 export function hasDefinitionDetails(details: DefinitionDetails): boolean {
-  return (
-    details.signals.length > 0 ||
-    details.updates.length > 0 ||
-    details.queries.length > 0 ||
-    details.inputSchema !== undefined ||
-    details.outputSchema !== undefined
-  );
+  return details.signals.length > 0 || details.updates.length > 0 || details.queries.length > 0;
+}
+
+/**
+ * The JSON Schema a workflow's input or output is held to: the file's own when it declares one,
+ * else the engine's contract for the type (a code-defined type's, or the one a ready file loaded as).
+ * `undefined` when neither declares one.
+ */
+export function schemaOf(
+  declared: Readonly<Record<string, unknown>> | null | undefined,
+  definition: DefinitionDetail | undefined,
+  key: 'inputSchema' | 'outputSchema',
+): unknown {
+  if (declared !== null && declared !== undefined) return declared;
+  const fromContract = definition?.contract?.[key];
+  return fromContract === null ? undefined : fromContract;
 }
 
 /** What a row says of a workflow's instances: how many lately, how many are running, and the last. */

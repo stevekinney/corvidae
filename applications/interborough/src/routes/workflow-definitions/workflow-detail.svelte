@@ -1,28 +1,29 @@
 <script lang="ts">
   /**
-   * `/workflows/:workflow`: one workflow type, leading with what a person acts on: what it is for,
-   * what starts it and whether it is active, its steps (for a file), its last five runs and a
-   * link to all of them, and, for a file, pause, resume, edit, delete, and send signal. What the
-   * engine's contract says (the signals, updates and queries it accepts, the schemas of its input
-   * and output) and where a file is sit in a Details disclosure that exists only when it has
-   * something in it. The revisions, and the form that installs one, sit in a collapsed Engine
-   * disclosure, which a type the Bureau registers for itself does not have.
+   * `/workflows/:workflow`: one workflow type, in four tabs. Overview leads with what a person acts
+   * on: what the workflow is for, what starts it and whether it is active, its steps (for a file),
+   * its input and output, and, for a file, send signal. Code is the file's source, or, for a type
+   * code defined, the description and contract it registered. Runs is its newest runs and a link to
+   * all of them. History is the versions that have run, each with whether it is compatible with the
+   * current one; a type the Bureau registers for itself has none. The header holds start run, pause,
+   * resume, edit and delete, which only a file has.
    *
    * A write names the hash of the file the page read, so a file that changed on disk since is
    * refused instead of overwritten: the page says the workflow changed outside Interborough, with a
    * reload, and changes nothing. A write that succeeds takes the file's new hash at once, so the
    * next action is not stale against the page's own write. A file that is gone is the frame's
    * not-found state, so the page asks the frame to look again. An invalid file shows its problem and
-   * path and offers only delete and edit, and has no definition section.
+   * path and offers only delete and edit, and has no steps, schemas or runs.
    */
   import {
     Alert,
     Badge,
     Button,
     CodeLocation,
-    Collapsible,
     ConfirmDialog,
+    PageHeader,
     Skeleton,
+    Tabs,
   } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
@@ -30,11 +31,9 @@
   import { RETRY_LABEL, WORKFLOW_COPY } from '../../app/copy.ts';
   import { agentFaultOf, type AgentFault } from '../../lib/agent-definitions.ts';
   import { getClient } from '../../lib/client.ts';
-  import { formatRelativeTime } from '../../lib/format/index.ts';
   import { getHostPaths, workflowFilePath } from '../../lib/host-paths.ts';
-  import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { queryKeys, workflowViewInstance } from '../../lib/query.ts';
-  import { router, scheduleDetailPath } from '../../lib/router.svelte.ts';
+  import { router } from '../../lib/router.svelte.ts';
   import {
     availableActions,
     awaitedSignals,
@@ -43,7 +42,7 @@
     startingSchedules,
     type WorkflowResolution,
   } from '../../lib/workflow-catalog.ts';
-  import { workflowEditPath } from '../../lib/workflow-type-paths.ts';
+  import { workflowEditPath, workflowTypePath } from '../../lib/workflow-type-paths.ts';
   import {
     deleteWorkflowFile,
     isApplyFailure,
@@ -55,14 +54,13 @@
   import FileProblem from './file-problem.svelte';
   import RecentRuns from './recent-runs.svelte';
   import RevisionHistory from './revision-history.svelte';
-  import SignalForm from './signal-form.svelte';
-  import WorkflowDetails from './workflow-details.svelte';
+  import StartRunDialog from './start-run-dialog.svelte';
+  import WorkflowCode from './workflow-code.svelte';
+  import WorkflowOverview from './workflow-overview.svelte';
   import {
     definitionDetails,
-    hasDefinitionDetails,
-    scheduleLabel,
     schedulesSummary,
-    stepLabel,
+    schemaOf,
     triggerSummary,
   } from './workflow-presentation.ts';
 
@@ -262,8 +260,6 @@
       : (definition?.description ?? null),
   );
   const details = $derived(definitionDetails(definition, acceptedSignals));
-  // A file that loaded always has its path to show; a code type has something to show only if its contract does.
-  const showDetails = $derived(file?.state === 'ready' || hasDefinitionDetails(details));
   // What starts the workflow: a file's trigger, or the schedules the engine has for a code type.
   const starts = $derived(
     file !== undefined
@@ -271,82 +267,122 @@
       : schedulesSummary(schedules.data ?? null),
   );
   const engineType = isEngineType(type);
-  const hasSchedules = $derived((schedules.data?.length ?? 0) > 0);
+  // A file that loaded declares its schemas itself; otherwise the engine's contract does.
+  const inputSchema = $derived(schemaOf(file?.inputSchema, definition, 'inputSchema'));
+  const outputSchema = $derived(schemaOf(file?.outputSchema, definition, 'outputSchema'));
+  const invalidFile = $derived(file !== undefined && file.state === 'invalid');
+  /** A run starts from a ready, unpaused file the Bureau may write; the engine's own types start themselves. */
+  const canStart = $derived(
+    !engineType && file !== undefined && file.state === 'ready' && !file.paused,
+  );
+  let starting = $state(false);
+
+  type TabValue = 'overview' | 'code' | 'runs' | 'history';
+  /** The tabs this workflow has: an invalid file has no runs, and a type the Bureau registers for itself has no history. */
+  const tabs = $derived<readonly TabValue[]>([
+    'overview',
+    'code',
+    ...(invalidFile ? [] : (['runs'] as const)),
+    ...(engineType ? [] : (['history'] as const)),
+  ]);
+
+  // The URL owns the tab, so a tab can be linked and the back button returns to it: `activeTab`
+  // mirrors `?tab=` both ways, and each effect writes only when its target differs. Overview is
+  // the address with no `tab`.
+  let activeTab = $state(untrack(() => router.search.get('tab') ?? 'overview'));
+  /** The tab shown: one this workflow does not have falls back to Overview. */
+  const shownTab = $derived(tabs.some((tab) => tab === activeTab) ? activeTab : 'overview');
+
+  $effect(() => {
+    const next = shownTab;
+    const search = new URLSearchParams(router.search);
+    if ((search.get('tab') ?? 'overview') === next) return;
+    if (next === 'overview') search.delete('tab');
+    else search.set('tab', next);
+    const query = search.size === 0 ? '' : `?${search.toString()}`;
+    router.navigate(`${workflowTypePath(type)}${query}`, { replace: true });
+  });
+
+  $effect(() => {
+    const fromUrl = router.search.get('tab') ?? 'overview';
+    if (fromUrl !== activeTab) activeTab = fromUrl;
+  });
 </script>
 
+{#snippet headerActions()}
+  {#if file !== undefined && actions !== undefined}
+    {#if canStart}
+      <Button variant="primary" size="sm" disabled={busy} onclick={() => (starting = true)}
+        >{copy.page.startAction}</Button
+      >
+    {/if}
+    {#if actions.pause && !file.paused}
+      <Button
+        variant="secondary"
+        size="sm"
+        disabled={busy || file.hash === null}
+        onclick={() => act(pause.mutate)}>{copy.pauseAction}</Button
+      >
+    {/if}
+    {#if actions.resume && file.paused}
+      <Button
+        variant="secondary"
+        size="sm"
+        disabled={busy || file.hash === null}
+        onclick={() => act(resume.mutate)}>{copy.resumeAction}</Button
+      >
+    {/if}
+    {#if actions.edit}
+      <Button
+        href={router.href(editPath)}
+        variant="secondary"
+        size="sm"
+        onclick={(event) => go(event, editPath)}>{copy.editAction}</Button
+      >
+    {/if}
+    {#if actions.delete}
+      <Button variant="danger" size="sm" disabled={busy} onclick={() => (confirmingDelete = true)}
+        >{copy.deleteAction}</Button
+      >
+    {/if}
+  {/if}
+{/snippet}
+
 <article class="ib-workflow" data-page="workflow-detail" data-condition={condition}>
-  <header class="ib-workflow__header">
-    <div class="ib-workflow__identity">
-      <div class="ib-workflow__heading">
-        <h1 class="ib-workflow__title">{type}</h1>
-        {#if resolved !== undefined}
-          <Badge variant={file === undefined ? 'neutral' : 'accent'} size="sm"
-            >{file === undefined ? copy.codeBadge : copy.agentAuthoredBadge}</Badge
-          >
-        {/if}
-        {#if file !== undefined && file.state === 'invalid'}
-          <Badge variant="danger" size="sm">{copy.invalidBadge}</Badge>
-        {/if}
-        {#if file?.agent !== null && file?.agent !== undefined}
-          <code class="ib-workflow-agent" data-testid="workflow-agent">{file.agent}</code>
-        {/if}
-      </div>
-      {#if description}
-        <p class="ib-workflow__description" data-testid="workflow-description">{description}</p>
+  <PageHeader headingLevel={1} title={type} actions={headerActions} />
+  <div class="ib-workflow__identity">
+    <div class="ib-workflow__heading">
+      {#if resolved !== undefined}
+        <Badge variant={file === undefined ? 'neutral' : 'accent'} size="sm"
+          >{file === undefined ? copy.codeBadge : copy.agentAuthoredBadge}</Badge
+        >
       {/if}
-      {#if starts !== null || file?.state === 'ready'}
-        <p class="ib-workflow__status">
-          {#if starts !== null}
-            <span data-testid="workflow-trigger">
-              {#if starts.kind === 'signal'}{copy.list.onSignal}
-                <code>{starts.name}</code>{:else}{starts.words}{/if}
-            </span>
-          {/if}
-          {#if file?.state === 'ready'}
-            <span data-testid="workflow-state"
-              >{file.paused ? copy.page.statusPaused : copy.page.statusActive}</span
-            >
-          {/if}
-        </p>
+      {#if file !== undefined && file.state === 'invalid'}
+        <Badge variant="danger" size="sm">{copy.invalidBadge}</Badge>
+      {/if}
+      {#if file?.agent !== null && file?.agent !== undefined}
+        <code class="ib-workflow-agent" data-testid="workflow-agent">{file.agent}</code>
       {/if}
     </div>
-    {#if file !== undefined && actions !== undefined}
-      <div class="ib-workflow__actions">
-        {#if actions.pause && !file.paused}
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={busy || file.hash === null}
-            onclick={() => act(pause.mutate)}>{copy.pauseAction}</Button
-          >
-        {/if}
-        {#if actions.resume && file.paused}
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={busy || file.hash === null}
-            onclick={() => act(resume.mutate)}>{copy.resumeAction}</Button
-          >
-        {/if}
-        {#if actions.edit}
-          <Button
-            href={router.href(editPath)}
-            variant="secondary"
-            size="sm"
-            onclick={(event) => go(event, editPath)}>{copy.editAction}</Button
-          >
-        {/if}
-        {#if actions.delete}
-          <Button
-            variant="danger"
-            size="sm"
-            disabled={busy}
-            onclick={() => (confirmingDelete = true)}>{copy.deleteAction}</Button
-          >
-        {/if}
-      </div>
+    {#if description}
+      <p class="ib-workflow__description" data-testid="workflow-description">{description}</p>
     {/if}
-  </header>
+    {#if starts !== null || file?.state === 'ready'}
+      <p class="ib-workflow__status">
+        {#if starts !== null}
+          <span data-testid="workflow-trigger">
+            {#if starts.kind === 'signal'}{copy.list.onSignal}
+              <code>{starts.name}</code>{:else}{starts.words}{/if}
+          </span>
+        {/if}
+        {#if file?.state === 'ready'}
+          <span data-testid="workflow-state"
+            >{file.paused ? copy.page.statusPaused : copy.page.statusActive}</span
+          >
+        {/if}
+      </p>
+    {/if}
+  </div>
 
   {#if stale}
     <Alert variant="warning">
@@ -393,80 +429,60 @@
       </Alert>
     {/if}
 
-    {#if document !== undefined}
-      <section class="ib-workflow__section" aria-labelledby="ib-workflow-steps">
-        <h2 id="ib-workflow-steps" class="weft-workflow-section__heading">{copy.stepsLabel}</h2>
-        {#if document.steps.length === 0}
-          <p class="ib-workflow__muted">{copy.noSteps}</p>
-        {:else}
-          <ol class="ib-workflow__steps" data-testid="workflow-steps">
-            {#each keyedByOccurrence( document.steps, (step) => stepLabel(step) ) as { key, item: step } (key)}
-              <li>{stepLabel(step)}</li>
-            {/each}
-          </ol>
+    <Tabs bind:value={activeTab}>
+      <Tabs.List label={copy.page.tabsLabel}>
+        <Tabs.Trigger value="overview">{copy.page.tabs.overview}</Tabs.Trigger>
+        <Tabs.Trigger value="code">{copy.page.tabs.code}</Tabs.Trigger>
+        {#if tabs.includes('runs')}
+          <Tabs.Trigger value="runs">{copy.page.tabs.runs}</Tabs.Trigger>
         {/if}
-      </section>
-    {/if}
+        {#if tabs.includes('history')}
+          <Tabs.Trigger value="history">{copy.page.tabs.history}</Tabs.Trigger>
+        {/if}
+      </Tabs.List>
 
-    {#if !(file !== undefined && file.state === 'invalid')}
-      <RecentRuns {type} kind={resolved.kind} />
-    {/if}
-
-    {#if schedules.isError}
-      <p class="ib-workflow__muted" role="alert">{copy.page.schedulesFailed}</p>
-    {:else if hasSchedules && schedules.data !== undefined}
-      <section class="ib-workflow__section" data-testid="workflow-schedules">
-        <h2 class="weft-workflow-section__heading">{copy.page.schedulesHeading}</h2>
-        <ul class="ib-workflow__list">
-          {#each schedules.data as schedule (schedule.id)}
-            <li data-schedule={schedule.id} data-status={schedule.status}>
-              <a
-                href={router.href(scheduleDetailPath(schedule.id))}
-                onclick={(event) => go(event, scheduleDetailPath(schedule.id))}>{schedule.id}</a
-              >
-              <span>{scheduleLabel(schedule)}</span>
-              <Badge variant={schedule.status === 'active' ? 'success' : 'neutral'} size="sm"
-                >{schedule.status === 'active'
-                  ? copy.page.scheduleActive
-                  : copy.page.schedulePaused}</Badge
-              >
-              {#if schedule.lastFireAt !== undefined}
-                <span class="ib-workflow__muted">
-                  {formatRelativeTime(schedule.lastFireAt)}
-                </span>
-              {/if}
-            </li>
-          {/each}
-        </ul>
-      </section>
-    {/if}
-
-    {#if actions?.signal === true}
-      <SignalForm {document} />
-    {/if}
-
-    {#if showDetails}
-      <Collapsible trigger={copy.page.details} variant="flat">
-        <WorkflowDetails
+      <Tabs.Panel value="overview">
+        <WorkflowOverview
+          {document}
+          {inputSchema}
+          {outputSchema}
           {details}
           filePath={file?.state === 'ready' ? path : undefined}
-          {document}
           mode={hostPaths.data?.mode}
+          schedules={schedules.data}
+          schedulesFailed={schedules.isError}
+          canSignal={actions?.signal === true}
+          showSchemas={!invalidFile}
         />
-      </Collapsible>
-    {/if}
-
-    {#if !engineType}
-      <Collapsible trigger={copy.page.engine} variant="flat">
-        {#if resolved.kind === 'code'}
-          <WorkflowRevisionsPanel workflowName={type} />
-        {:else}
-          <RevisionHistory id={type} />
-        {/if}
-      </Collapsible>
-    {/if}
+      </Tabs.Panel>
+      <Tabs.Panel value="code">
+        <WorkflowCode {type} kind={resolved.kind} text={file?.text ?? null} {document} />
+      </Tabs.Panel>
+      {#if tabs.includes('runs')}
+        <Tabs.Panel value="runs">
+          <RecentRuns
+            {type}
+            kind={resolved.kind}
+            onStart={canStart ? () => (starting = true) : undefined}
+          />
+        </Tabs.Panel>
+      {/if}
+      {#if tabs.includes('history')}
+        <Tabs.Panel value="history">
+          {#if resolved.kind === 'code'}
+            <WorkflowRevisionsPanel workflowName={type} />
+          {:else}
+            <RevisionHistory id={type} />
+          {/if}
+        </Tabs.Panel>
+      {/if}
+    </Tabs>
   {/if}
 </article>
+
+{#if canStart}
+  <StartRunDialog {type} bind:open={starting} />
+{/if}
 
 <ConfirmDialog
   bind:open={confirmingDelete}

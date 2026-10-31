@@ -16,6 +16,7 @@ import {
   runCountsText,
   scheduleLabel,
   schedulesSummary,
+  schemaOf,
   specCadence,
   stepLabel,
   triggerLabel,
@@ -198,23 +199,15 @@ describe('the details of a type', () => {
       }),
       [],
     );
-    expect(bare).toEqual({
-      signals: [],
-      updates: [],
-      queries: [],
-      inputSchema: undefined,
-      outputSchema: undefined,
-    });
+    expect(bare).toEqual({ signals: [], updates: [], queries: [] });
     expect(hasDefinitionDetails(bare)).toBe(false);
   });
 
-  test('keep the signals, updates, queries, and each schema it declares', () => {
+  test('keep the signals, updates, and queries it declares', () => {
     const full = definitionDetails(codeDefinition('full', { updates: ['bump'] }), ['approve']);
     expect(full.signals).toEqual(['approve']);
     expect(full.updates).toEqual(['bump']);
     expect(full.queries).toEqual(['progress']);
-    expect(full.inputSchema).toContain('orderId');
-    expect(full.outputSchema).toContain('shipped');
     expect(hasDefinitionDetails(full)).toBe(true);
     expect(
       hasDefinitionDetails(
@@ -229,5 +222,38 @@ describe('the details of a type', () => {
         ),
       ),
     ).toBe(true);
+  });
+});
+
+describe('the schema a workflow is held to', () => {
+  const declared = { type: 'object', properties: { id: { type: 'string' } } };
+
+  test('is the file’s own when it declares one, before the engine’s contract', () => {
+    expect(schemaOf(declared, codeDefinition('typed'), 'inputSchema')).toBe(declared);
+  });
+
+  test('is the engine’s contract when the file declares none', () => {
+    expect(schemaOf(null, codeDefinition('typed'), 'inputSchema')).toEqual({
+      type: 'object',
+      properties: { orderId: { type: 'string' } },
+    });
+    expect(schemaOf(undefined, codeDefinition('typed'), 'outputSchema')).toEqual({
+      type: 'object',
+      properties: { shipped: { type: 'boolean' } },
+    });
+  });
+
+  test('is nothing when neither declares one', () => {
+    expect(schemaOf(null, undefined, 'inputSchema')).toBeUndefined();
+    expect(
+      schemaOf(null, codeDefinition('bare', { contract: null }), 'inputSchema'),
+    ).toBeUndefined();
+    expect(
+      schemaOf(
+        null,
+        codeDefinition('null-schema', { contract: { inputSchema: null } }),
+        'inputSchema',
+      ),
+    ).toBeUndefined();
   });
 });

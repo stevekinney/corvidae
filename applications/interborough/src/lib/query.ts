@@ -89,6 +89,8 @@ export const queryKeys = {
     file: (type: string) => ['workflow-catalog', 'file', type] as const,
     /** The schedules that start one type (`weft.schedules.list` with `workflowType`). */
     schedules: (type: string) => ['workflow-catalog', 'schedules', type] as const,
+    /** A code-defined workflow's description and registered contract (`bureau.workflows.internal.get`). */
+    codeSource: (type: string) => ['workflow-catalog', 'code-source', type] as const,
     /** The versions of one agent-authored workflow that have run (`bureau.workflows.revisions`). */
     revisions: (type: string) => ['workflow-catalog', 'revisions', type] as const,
   },

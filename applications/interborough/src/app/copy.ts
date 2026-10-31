@@ -239,7 +239,6 @@ export const WORKFLOW_COPY = {
   problemLabel: 'Problem',
   issuesLabel: 'Issues',
   stepsLabel: 'Steps',
-  noSteps: 'This workflow has no steps.',
   /** The link from a workflow's recent runs to all of them. */
   runsAction: 'All runs',
   editAction: 'Edit',
@@ -271,23 +270,61 @@ export const WORKFLOW_COPY = {
     statusActive: 'Active',
     statusPaused: 'Paused',
     recentRuns: 'Recent runs',
-    noRuns: 'Nothing has run this workflow yet.',
-    runsFailed: 'The recent runs could not be loaded.',
+    runsFailed: 'The runs could not be loaded.',
     runDuration: (milliseconds: string): string => `took ${milliseconds}`,
-    details: 'Details',
     trigger: 'Trigger',
-    engine: 'Revisions',
     schedulesHeading: 'Schedules',
     schedulesFailed: 'The schedules could not be loaded.',
     scheduleActive: 'Active',
     schedulePaused: 'Paused',
-    /** The facts of the Details disclosure, each shown only when the workflow has it. */
-    inputSchema: 'Input schema',
-    outputSchema: 'Output schema',
+    /** The facts of the Overview tab, each shown only when the workflow has it. */
     signals: 'Accepted signals',
     updates: 'Updates',
     queries: 'Queries',
-    activeRevision: 'Active revision',
+    /** The tabs of the page, and the name of the list that holds them. */
+    tabsLabel: 'Workflow sections',
+    tabs: { overview: 'Overview', code: 'Code', runs: 'Runs', history: 'History' },
+    startAction: 'Start run',
+    /** The Overview tab. */
+    overview: {
+      inputLabel: 'Input',
+      outputLabel: 'Output',
+      /** Shown when a workflow declares no schema, instead of an empty list of fields. */
+      noSchema: 'Declares no schema.',
+      stepsEmptyTitle: 'This workflow has no steps',
+      stepsEmptyDescription: 'Add a step to its file and it appears here.',
+    },
+    /** The Runs tab. */
+    runs: {
+      emptyTitle: 'Nothing has run this workflow yet',
+      emptyDescription: 'A run appears here as soon as one starts.',
+      emptyDescriptionNoStart: 'Its trigger starts a run, and it appears here.',
+    },
+    /** The Code tab. */
+    code: {
+      fileHeading: 'File source',
+      outlineHeading: 'Step outline',
+      noOutline: 'The file has no steps to outline.',
+      noText: 'The file has no content this page can show.',
+      codeHeading: 'Registered contract',
+      codeNote:
+        'This workflow is defined in code, and the code is not exposed. This is its description and the contract it registered.',
+      failedTitle: 'The source could not be loaded',
+      failedDescription: 'Try again, or check that you may read workflows.',
+      unavailableTitle: 'This workflow has no source to show',
+      unavailableDescription: 'It is not defined in code, or you may not read workflows.',
+    },
+  },
+  /** Starting a run from the page's header. */
+  startDialog: {
+    title: 'Start a run',
+    description: (name: string): string => `Starts one run of ${name}.`,
+    inputLabel: 'Input',
+    inputDescription: 'JSON. Leave empty to start with no input.',
+    invalidInput: 'The input must be valid JSON, or left empty.',
+    confirm: 'Start run',
+    cancel: 'Cancel',
+    failed: 'The run was not started',
   },
   /** `/workflows/new`. */
   creator: {
@@ -313,13 +350,38 @@ export const WORKFLOW_COPY = {
   },
   revisions: {
     heading: 'Revisions that have run',
-    description: 'The versions of this workflow that have run, most recently run first.',
+    description:
+      'The versions of this workflow that have run, most recently run first, each with whether it is compatible with the current one.',
     caption: 'Versions of this workflow that have run',
     versionColumn: 'Version',
     firstRunColumn: 'First run',
     lastRunColumn: 'Last run',
-    empty: 'No version of this workflow has run yet.',
+    emptyTitle: 'No version of this workflow has run yet',
+    emptyDescription: 'A version appears here after its first run.',
     failed: 'The revision history could not be loaded.',
+    /** The verdict against the current revision. */
+    verdictColumn: 'Compatibility',
+    compatible: 'Compatible',
+    incompatible: 'Incompatible',
+    noCurrent: 'No current revision',
+    noCurrentDescription: 'There is no current revision to compare with.',
+    /** Why a revision is not compatible with the current one. */
+    reason: (reason: string): string => {
+      switch (reason) {
+        case 'name-mismatch':
+          return 'It is for a different workflow name.';
+        case 'manifest-version-unsupported':
+          return 'Its manifest uses a schema version this server does not support.';
+        case 'contract-hash-mismatch':
+          return 'Its payload contract differs from the current revision.';
+        case 'workflow-version-incompatible':
+          return 'Its workflow version differs from the current revision.';
+        case 'artifact-revision-mismatch':
+          return 'Its revision identity differs from the current revision.';
+        default:
+          return `Unknown reason: ${reason}`;
+      }
+    },
   },
   steps: {
     agent: (agent: string, message: string): string => `Ask the agent ${agent}: ${message}`,
