@@ -150,8 +150,7 @@
     },
   }));
 
-  function submit(event?: SubmitEvent): void {
-    event?.preventDefault();
+  function submit(): void {
     if (hash === null || save.isPending) return;
     const parsed = updateDefinitionFromText(text);
     if (!parsed.ok) {
@@ -274,7 +273,7 @@
       </Alert>
     {/if}
     {#if editable}
-      <form class="weft-workflow-editor__form" onsubmit={submit}>
+      <form class="weft-workflow-editor__form" onsubmit={(event) => event.preventDefault()}>
         <WorkflowBuilder
           {text}
           mode="edit"
@@ -288,8 +287,12 @@
           }}
         />
         <div class="weft-workflow-editor__actions">
-          <Button data-changes type="submit" variant="primary" disabled={save.isPending}
-            >{copy.editor.saveAction}</Button
+          <Button
+            data-changes
+            type="button"
+            onclick={() => submit()}
+            variant="primary"
+            disabled={save.isPending}>{copy.editor.saveAction}</Button
           >
           <Button variant="secondary" disabled={save.isPending} onclick={cancel}
             >{copy.editor.cancelAction}</Button

@@ -305,6 +305,98 @@ describe('the step builder', () => {
     });
   });
 
+  test('keeps a multi-line message and description through edits, and saves them as written', async () => {
+    const { container } = open();
+    await ready(container);
+    const message = 'First line.\n\nThird line, after a blank one.';
+    const description = 'About it.\nMore about it.';
+    expect(field(container, 'workflow-builder-step-1-message').tagName).toBe('TEXTAREA');
+    expect(field(container, 'workflow-builder-description').tagName).toBe('TEXTAREA');
+    await fireEvent.input(field(container, 'workflow-builder-step-1-message'), {
+      target: { value: message },
+    });
+    await fireEvent.input(field(container, 'workflow-builder-description'), {
+      target: { value: description },
+    });
+    // An edit elsewhere re-reads the text; the multi-line values must come back unchanged.
+    await fireEvent.input(field(container, 'workflow-builder-trigger-field'), {
+      target: { value: '2h' },
+    });
+    expect(field(container, 'workflow-builder-step-1-message').value).toBe(message);
+    expect(field(container, 'workflow-builder-description').value).toBe(description);
+    await fireEvent.input(field(container, 'workflow-builder-step-1-message'), {
+      target: { value: `${message}\nAppended.` },
+    });
+    await fireEvent.click(button(container, WORKFLOW_COPY.creator.saveAction));
+
+    await waitFor(() => expect(stub?.callsTo('bureau.workflows.create')).toHaveLength(1));
+    const definition = stub?.callsTo('bureau.workflows.create')[0]?.params['definition'] as {
+      description: string;
+      steps: { input: { message: string } }[];
+    };
+    expect(definition.description).toBe(description);
+    expect(definition.steps[0]?.input.message).toBe(`${message}\nAppended.`);
+  });
+
+  test('does not save when a form submits from Enter in a field, only from Save or ⌘Enter', async () => {
+    const { container } = open();
+    await ready(container);
+    const form = container.querySelector('form') as HTMLFormElement;
+    const submitted = new window.Event('submit', { bubbles: true, cancelable: true });
+    form.dispatchEvent(submitted);
+    expect(submitted.defaultPrevented).toBe(true);
+    expect(stub?.callsTo('bureau.workflows.create')).toEqual([]);
+    expect(form.querySelector('button[type="submit"]')).toBeNull();
+    expect(router.pathname).toBe('/workflows/new');
+
+    await fireEvent.click(button(container, WORKFLOW_COPY.creator.saveAction));
+    await waitFor(() => expect(stub?.callsTo('bureau.workflows.create')).toHaveLength(1));
+  });
+
+  test('says a wait’s bare number is milliseconds in the field, and that a wait passes no result on', async () => {
+    const { container } = open();
+    await ready(container);
+    await fireEvent.click(button(container, WORKFLOW_COPY.builder.addWait));
+    await fireEvent.click(button(container, WORKFLOW_COPY.builder.addAgent));
+    await fireEvent.input(field(container, 'workflow-builder-step-2-duration'), {
+      target: { value: '5000' },
+    });
+    expect(container.textContent).toContain(WORKFLOW_COPY.builder.durationDescription);
+    expect(container.textContent).toContain(WORKFLOW_COPY.builder.stepsDescription);
+    const summary = container.querySelector('[data-testid="workflow-builder-summary"]');
+    expect(summary?.textContent).toContain('Sleep for 5000 ms');
+    expect(summary?.textContent).toContain(WORKFLOW_COPY.builder.afterWaitSummary);
+  });
+
+  test('leaves a file it cannot represent to the JSON tab: no add, no step fields, no trigger edit', async () => {
+    const { container, findByTestId } = open();
+    await ready(container);
+    await openJson(container);
+    await typeInto(
+      container,
+      JSON.stringify({
+        name: 'odd',
+        trigger: 'hourly',
+        steps: [{ kind: 'activity', handler: 'agent', input: 'Write it.' }],
+      }),
+    );
+    await fireEvent.click(builderTab(container));
+    await ready(container);
+    expect(container.textContent).toContain(WORKFLOW_COPY.builder.otherStepNote);
+    expect(container.textContent).toContain(WORKFLOW_COPY.builder.otherTrigger);
+    expect(container.querySelector('#workflow-builder-step-1-message')).toBeNull();
+    expect(field(container, 'workflow-builder-trigger-kind').disabled).toBe(true);
+
+    await openJson(container);
+    await typeInto(container, JSON.stringify({ name: 'odd', steps: 'later' }));
+    await fireEvent.click(builderTab(container));
+    await findByTestId('workflow-builder-steps-unreadable');
+    expect(button(container, WORKFLOW_COPY.builder.addAgent)).toBeUndefined();
+    expect(button(container, WORKFLOW_COPY.builder.addWait)).toBeUndefined();
+    await openJson(container);
+    expect(JSON.parse(textarea(container).value)).toEqual({ name: 'odd', steps: 'later' });
+  });
+
   test('shows a JSON edit in the builder, and a builder edit in the JSON', async () => {
     const { container } = open();
     await ready(container);

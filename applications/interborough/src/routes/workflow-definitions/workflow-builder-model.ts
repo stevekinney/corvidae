@@ -5,6 +5,7 @@
  * disagree, and a key the builder has no control for (`inputSchema`, `paused`, a step's other
  * fields) survives an edit.
  */
+import { WORKFLOW_COPY } from '../../app/copy.ts';
 import { DEFAULT_AGENT } from '../../lib/default-agent.ts';
 import { stepLabel, triggerLabel } from './workflow-presentation.ts';
 
@@ -33,6 +34,11 @@ export interface BuilderView {
   readonly description: string;
   readonly trigger: BuilderTrigger | null;
   readonly steps: readonly BuilderStep[];
+  /**
+   * Whether `steps` is a list the builder can add to: absent or an array. Anything else is a file
+   * the Bureau refuses, and an edit here would replace it, so the builder leaves it to the JSON tab.
+   */
+  readonly stepsEditable: boolean;
   /** The whole workflow in plain words: what starts it, then each step, joined by arrows. */
   readonly summary: string;
 }
@@ -61,10 +67,18 @@ function toText(document: Json): string {
   return JSON.stringify(document, null, 2);
 }
 
+/** Whether an agent step's `input` is absent or an object, the only shapes the builder can edit in place. */
+function hasObjectInput(step: Json): boolean {
+  return step['input'] === undefined || isRecord(step['input']);
+}
+
 function stepOf(step: unknown): BuilderStep {
-  if (!isRecord(step)) return { kind: 'other', label: '' };
+  if (!isRecord(step)) return { kind: 'other', label: WORKFLOW_COPY.builder.notAnObject };
   const kind = asText(step['kind']);
   if (kind === 'activity' && step['handler'] === 'agent') {
+    // An `input` that is not an object (a string, say) has no agent or message to show, and an
+    // edit would replace it, so the step is left to the JSON tab like any other it cannot read.
+    if (!hasObjectInput(step)) return { kind: 'other', label: stepLabel({ ...step, kind }) };
     const input = isRecord(step['input']) ? step['input'] : {};
     return { kind: 'agent', agent: asText(input['agent']), message: asText(input['message']) };
   }
@@ -74,11 +88,30 @@ function stepOf(step: unknown): BuilderStep {
 }
 
 function triggerOf(trigger: unknown): BuilderTrigger | null {
-  if (!isRecord(trigger)) return null;
+  if (trigger === undefined) return null;
+  // A trigger that is not an object is a file the Bureau refuses; an edit would replace it.
+  if (!isRecord(trigger)) return { kind: 'other', label: WORKFLOW_COPY.builder.notAnObject };
   const kind = asText(trigger['kind']);
   if (kind === 'schedule') return { kind, spec: asText(trigger['spec']) };
   if (kind === 'signal') return { kind, name: asText(trigger['name']) };
   return { kind: 'other', label: triggerLabel({ ...trigger, kind }) };
+}
+
+/**
+ * One step in words. A wait's bare number is milliseconds, so the unit is said. An activity right
+ * after a wait gets no result: the wait passes nothing on.
+ */
+function stepSentence(step: Json, before: unknown): string {
+  const kind = asText(step['kind']);
+  const described =
+    kind === 'sleep' && typeof step['duration'] === 'number'
+      ? { ...step, kind, duration: `${String(step['duration'])} ms` }
+      : { ...step, kind };
+  const sentence = stepLabel(described);
+  const afterWait = isRecord(before) && before['kind'] === 'sleep';
+  return kind === 'activity' && afterWait
+    ? `${sentence} ${WORKFLOW_COPY.builder.afterWaitSummary}`
+    : sentence;
 }
 
 function summaryOf(document: Json): string {
@@ -87,9 +120,10 @@ function summaryOf(document: Json): string {
   if (isRecord(trigger))
     sentences.push(triggerLabel({ ...trigger, kind: asText(trigger['kind']) }));
   const steps = Array.isArray(document['steps']) ? document['steps'] : [];
-  for (const step of steps) {
-    if (isRecord(step)) sentences.push(stepLabel({ ...step, kind: asText(step['kind']) }));
-  }
+  steps.forEach((step: unknown, index: number) => {
+    if (!isRecord(step)) return;
+    sentences.push(stepSentence(step, steps[index - 1]));
+  });
   return sentences.join(' → ');
 }
 
@@ -103,6 +137,7 @@ export function readBuilder(text: string): BuilderView | undefined {
     description: asText(document['description']),
     trigger: triggerOf(document['trigger']),
     steps: Array.isArray(steps) ? steps.map(stepOf) : [],
+    stepsEditable: steps === undefined || Array.isArray(steps),
     summary: summaryOf(document),
   };
 }
@@ -135,6 +170,7 @@ export function setDescription(text: string, value: string): string {
 export function setTrigger(text: string, kind: BuilderTriggerKind, value: string): string {
   const document = parseObject(text);
   if (document === undefined) return text;
+  if (document['trigger'] !== undefined && !isRecord(document['trigger'])) return text;
   const current = isRecord(document['trigger']) ? document['trigger'] : {};
   const field = kind === 'schedule' ? 'spec' : 'name';
   document['trigger'] =
@@ -146,6 +182,8 @@ export function setTrigger(text: string, kind: BuilderTriggerKind, value: string
 export function addStep(text: string, kind: BuilderStepKind): string {
   const document = parseObject(text);
   if (document === undefined) return text;
+  // A `steps` that is not a list stays as it is: adding would replace it.
+  if (document['steps'] !== undefined && !Array.isArray(document['steps'])) return text;
   const steps = stepsOf(document);
   if (kind === 'agent') {
     steps.push({
@@ -197,12 +235,14 @@ export function setStepField(text: string, index: number, field: StepField, valu
   const step = steps[index];
   if (!isRecord(step)) return text;
   if (field === 'agent' || field === 'message') {
-    if (step['kind'] !== 'activity' || step['handler'] !== 'agent') return text;
+    if (step['kind'] !== 'activity' || step['handler'] !== 'agent' || !hasObjectInput(step)) {
+      return text;
+    }
     const input = isRecord(step['input']) ? step['input'] : {};
     steps[index] = { ...step, input: { ...input, [field]: value } };
   } else if (field === 'duration') {
     if (step['kind'] !== 'sleep') return text;
-    // A bare number is milliseconds, as the file may already write it.
+    // A bare number is milliseconds, as the file may already write it; the builder says so.
     steps[index] = { ...step, duration: /^\d+$/.test(value) ? Number(value) : value };
   } else {
     if (step['kind'] !== 'await-signal') return text;

@@ -103,8 +103,7 @@
     },
   }));
 
-  function submit(event?: SubmitEvent): void {
-    event?.preventDefault();
+  function submit(): void {
     if (save.isPending) return;
     const parsed = createDefinitionFromText(text);
     if (!parsed.ok) {
@@ -142,7 +141,7 @@
     </Alert>
   {/if}
 
-  <form class="ib-workflow__section" onsubmit={submit}>
+  <form class="ib-workflow__section" onsubmit={(event) => event.preventDefault()}>
     <WorkflowBuilder
       {text}
       mode="create"
@@ -156,8 +155,13 @@
       }}
     />
     <div class="ib-workflow__actions">
-      <Button data-changes type="submit" variant="primary" size="sm" disabled={save.isPending}
-        >{creator.saveAction}</Button
+      <Button
+        data-changes
+        type="button"
+        onclick={() => submit()}
+        variant="primary"
+        size="sm"
+        disabled={save.isPending}>{creator.saveAction}</Button
       >
       <Button variant="secondary" size="sm" disabled={save.isPending} onclick={cancel}
         >{creator.cancelAction}</Button

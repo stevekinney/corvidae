@@ -530,7 +530,14 @@ export const WORKFLOW_COPY = {
     signalNameLabel: 'Signal name',
     otherTrigger: 'This trigger is edited in the JSON tab.',
     stepsHeading: 'Steps',
-    stepsDescription: 'They run in order. Each step gets the result of the one before it.',
+    stepsDescription:
+      'They run in order. An agent step gets the result of the step before it, except after a wait, which passes nothing on.',
+    afterWaitSummary: '(with no result from before the wait)',
+    stepsUnreadable:
+      'This file’s steps are not a list the builder can read. Fix them in the JSON tab.',
+    notAnObject: 'This is not an object',
+    otherStepNote: 'The builder cannot edit this step. Change it in the JSON tab.',
+    durationDescription: 'A bare number is milliseconds. Or write 30s, 5m, 1h.',
     stepKinds: { agent: 'Agent', wait: 'Wait', signal: 'Signal', other: 'Other' },
     agentLabel: (position: number): string => `Agent for step ${String(position)}`,
     messageLabel: (position: number): string => `Message for step ${String(position)}`,

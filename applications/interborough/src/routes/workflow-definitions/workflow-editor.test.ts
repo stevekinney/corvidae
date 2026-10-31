@@ -520,6 +520,20 @@ describe('the step builder in the editor', () => {
     expect(press()).toBe(false);
   });
 
+  test('does not save when the form submits from Enter in a field, only from Save or ⌘Enter', async () => {
+    const { container, getByRole } = open('/workflows/digest/edit');
+    await builderReady(container);
+    const form = container.querySelector('form') as HTMLFormElement;
+    const submitted = new window.Event('submit', { bubbles: true, cancelable: true });
+    form.dispatchEvent(submitted);
+    expect(submitted.defaultPrevented).toBe(true);
+    expect(form.querySelector('button[type="submit"]')).toBeNull();
+    expect(stub?.callsTo('bureau.workflows.update')).toEqual([]);
+
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }));
+    await waitFor(() => expect(stub?.callsTo('bureau.workflows.update')).toHaveLength(1));
+  });
+
   test('marks Save as a control that changes something', async () => {
     const { container, getByRole } = open('/workflows/digest/edit');
     await builderReady(container);

@@ -5,6 +5,8 @@
  */
 import { describe, expect, test } from 'bun:test';
 
+import { WORKFLOW_COPY } from '../../app/copy.ts';
+
 import {
   addStep,
   moveStep,
@@ -173,5 +175,82 @@ describe('the edits', () => {
     expect(readBuilder(setStepField(typed, 0, 'signal', 'back'))?.steps).toEqual([
       { kind: 'signal', signal: 'back' },
     ]);
+  });
+});
+
+describe('values the builder must not flatten or replace', () => {
+  const MULTI_LINE = 'First line.\n\nSecond line, after a blank one.\n  Indented third.';
+
+  test('a multi-line message and description survive reading and each edit', () => {
+    const file = text({ ...FILE, description: MULTI_LINE });
+    const steps = [{ ...FILE.steps[0], input: { agent: 'writer', message: MULTI_LINE } }];
+    const withMessage = text({ ...FILE, description: MULTI_LINE, steps });
+    expect(readBuilder(withMessage)).toMatchObject({
+      description: MULTI_LINE,
+      steps: [{ kind: 'agent', message: MULTI_LINE }],
+    });
+    const renamed = parsed(setName(withMessage, 'again'));
+    expect(renamed['description']).toBe(MULTI_LINE);
+    expect((renamed['steps'] as { input: { message: string } }[])[0]?.input.message).toBe(
+      MULTI_LINE,
+    );
+    const appended = parsed(setStepField(withMessage, 0, 'message', `${MULTI_LINE}\nMore.`));
+    expect((appended['steps'] as { input: { message: string } }[])[0]?.input.message).toBe(
+      `${MULTI_LINE}\nMore.`,
+    );
+    expect(parsed(setDescription(file, `${MULTI_LINE}\nMore.`))['description']).toBe(
+      `${MULTI_LINE}\nMore.`,
+    );
+  });
+
+  test('a steps value that is not a list is not replaced by an add, and the builder says it cannot edit it', () => {
+    const bad = text({ ...FILE, steps: 'sleep for a while' });
+    expect(readBuilder(bad)?.stepsEditable).toBe(false);
+    for (const kind of ['agent', 'wait', 'signal'] as const) expect(addStep(bad, kind)).toBe(bad);
+    expect(moveStep(bad, 0, 1)).toBe(bad);
+    expect(removeStep(bad, 0)).toBe(bad);
+    expect(readBuilder(text(FILE))?.stepsEditable).toBe(true);
+    expect(readBuilder('{}')?.stepsEditable).toBe(true);
+  });
+
+  test('an agent step whose input is not an object is left to the JSON tab and survives a field edit', () => {
+    for (const input of ['Write it.', ['a'], 7, null]) {
+      const bad = text({ ...FILE, steps: [{ kind: 'activity', handler: 'agent', input }] });
+      expect(readBuilder(bad)?.steps[0]?.kind).toBe('other');
+      expect(setStepField(bad, 0, 'message', 'x')).toBe(bad);
+      expect(setStepField(bad, 0, 'agent', 'x')).toBe(bad);
+    }
+    const none = text({ ...FILE, steps: [{ kind: 'activity', handler: 'agent' }] });
+    expect(readBuilder(none)?.steps[0]).toEqual({ kind: 'agent', agent: '', message: '' });
+  });
+
+  test('a trigger that is not an object is not replaced by an edit', () => {
+    const bad = text({ ...FILE, trigger: '1h' });
+    expect(readBuilder(bad)?.trigger?.kind).toBe('other');
+    expect(setTrigger(bad, 'schedule', '2h')).toBe(bad);
+    expect(setTrigger(bad, 'signal', 'go')).toBe(bad);
+  });
+});
+
+describe('the summary', () => {
+  test('says a bare number of waiting is milliseconds', () => {
+    expect(readBuilder(text({ steps: [{ kind: 'sleep', duration: 5000 }] }))?.summary).toBe(
+      'Sleep for 5000 ms',
+    );
+    expect(readBuilder(text({ steps: [{ kind: 'sleep', duration: '5s' }] }))?.summary).toBe(
+      'Sleep for 5s',
+    );
+  });
+
+  test('says an agent after a wait gets no result from before it, and an agent after a signal does not', () => {
+    const agent = { kind: 'activity', handler: 'agent', input: { agent: 'a', message: 'm' } };
+    const note = WORKFLOW_COPY.builder.afterWaitSummary;
+    expect(
+      readBuilder(text({ steps: [agent, { kind: 'sleep', duration: '1m' }, agent] }))?.summary,
+    ).toBe(`Ask the agent a: m → Sleep for 1m → Ask the agent a: m ${note}`);
+    expect(
+      readBuilder(text({ steps: [agent, { kind: 'await-signal', signal: 's' }, agent] }))?.summary,
+    ).not.toContain(note);
+    expect(readBuilder(text({ steps: [agent, agent] }))?.summary).not.toContain(note);
   });
 });

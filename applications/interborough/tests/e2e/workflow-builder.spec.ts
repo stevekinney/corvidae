@@ -18,6 +18,7 @@ import {
   openJsonTab,
   readWorkflow,
   removeWorkflow,
+  workflowFaultCode,
   workflowFilePath,
   workflowRunStatus,
 } from './workflow-support.ts';
@@ -130,6 +131,46 @@ test.describe('a workflow built from rows', () => {
     await expect(page).toHaveURL(new RegExp(`/workflows/${id}$`));
     const saved = await readWorkflow(request, id);
     expect(saved.state).toBe('ready');
+  });
+});
+
+test.describe('the builder’s fields', () => {
+  test('does not save on plain Enter in a field', async ({ page, request }) => {
+    const id = 'e2e-plain-enter';
+    created.add(id);
+    await page.goto('/workflows/new');
+    await expect(area(page)).toHaveAttribute('data-state', 'ready');
+    const root = creator(page);
+    const name = root.getByLabel(BUILDER.nameLabel, { exact: true });
+    await name.fill(id);
+    await name.press('Enter');
+    await root.getByLabel(BUILDER.scheduleLabel).press('Enter');
+    await expect(
+      root.getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }),
+    ).toBeEnabled();
+    await expect(page).toHaveURL(/\/workflows\/new$/);
+    expect(await workflowFaultCode(request, id)).toBeDefined();
+
+    await root.getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }).click();
+    await expect(page).toHaveURL(new RegExp(`/workflows/${id}$`));
+  });
+
+  test('keeps a multi-line message as written through an edit and a save', async ({ page }) => {
+    const id = 'e2e-multi-line';
+    created.add(id);
+    const message = 'First line.\n\nThird line.';
+    await page.goto('/workflows/new');
+    await expect(area(page)).toHaveAttribute('data-state', 'ready');
+    const root = creator(page);
+    await root.getByLabel(BUILDER.nameLabel, { exact: true }).fill(id);
+    await root.getByLabel(BUILDER.messageLabel(1)).fill(message);
+    await root.getByLabel(BUILDER.scheduleLabel).fill('2h');
+    await expect(root.getByLabel(BUILDER.messageLabel(1))).toHaveValue(message);
+
+    await root.getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }).click();
+    await expect(page).toHaveURL(new RegExp(`/workflows/${id}$`));
+    await page.goto(`/workflows/${id}/edit`);
+    await expect(editor(page).getByLabel(BUILDER.messageLabel(1))).toHaveValue(message);
   });
 });
 

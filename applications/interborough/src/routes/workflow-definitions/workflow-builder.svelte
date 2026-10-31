@@ -19,6 +19,7 @@
     SectionHeading,
     Select,
     Tabs,
+    Textarea,
   } from '@lostgradient/cinder';
 
   import { WORKFLOW_COPY } from '../../app/copy.ts';
@@ -108,12 +109,13 @@
               value={view.name}
               onValueChange={(next) => onTextChange(setName(text, next))}
             />
-            <Input
+            <Textarea
               id="workflow-builder-description"
               label={copy.descriptionLabel}
               description={copy.descriptionDescription}
+              rows={2}
               value={view.description}
-              onValueChange={(next) => onTextChange(setDescription(text, next))}
+              oninput={(event) => onTextChange(setDescription(text, event.currentTarget.value))}
             />
           </FormSection>
 
@@ -152,7 +154,14 @@
             <SectionHeading level={2} title={copy.stepsHeading} />
             <p class="weft-workflow-builder__note">{copy.stepsDescription}</p>
 
-            {#if view.steps.length === 0}
+            {#if !view.stepsEditable}
+              <p
+                class="weft-workflow-builder__note"
+                data-testid="workflow-builder-steps-unreadable"
+              >
+                {copy.stepsUnreadable}
+              </p>
+            {:else if view.steps.length === 0}
               <EmptyState
                 kind="first-use"
                 size="compact"
@@ -190,20 +199,23 @@
                           onValueChange={(next) =>
                             onTextChange(setStepField(text, index, 'agent', next))}
                         />
-                        <Input
+                        <Textarea
                           id={`workflow-builder-step-${String(position)}-message`}
-                          label={copy.messageLabel(position)}
-                          labelVisible={false}
+                          aria-label={copy.messageLabel(position)}
                           size="sm"
+                          rows={2}
                           value={step.message}
-                          onValueChange={(next) =>
-                            onTextChange(setStepField(text, index, 'message', next))}
+                          oninput={(event) =>
+                            onTextChange(
+                              setStepField(text, index, 'message', event.currentTarget.value),
+                            )}
                         />
                       {:else if step.kind === 'wait'}
                         <Input
                           id={`workflow-builder-step-${String(position)}-duration`}
                           label={copy.durationLabel(position)}
                           labelVisible={false}
+                          description={copy.durationDescription}
                           size="sm"
                           variant="code"
                           value={step.duration}
@@ -223,6 +235,7 @@
                         />
                       {:else}
                         <span class="weft-workflow-builder__other">{step.label}</span>
+                        <span class="weft-workflow-builder__note">{copy.otherStepNote}</span>
                       {/if}
                     </div>
                     <div class="weft-workflow-builder__row-actions">
