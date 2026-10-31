@@ -28,6 +28,11 @@ export interface PluginEvent {
   readonly emittedAtMs: number;
   /** The event's payload. */
   readonly payload: unknown;
+  /**
+   * The plugin whose contribution emitted the event. Absent on an event from Bureau core. It is
+   * the event's own field, apart from the payload: a payload key named `source` is the kind's own.
+   */
+  readonly source?: string;
 }
 
 /** Guardrails a plugin adds to the ones Operative applies to every agent. */

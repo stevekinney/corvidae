@@ -52,6 +52,18 @@ const workflow = (input: unknown) =>
     work: { type: 'start-workflow', workflowId: 'wf', input },
   });
 
+const pluginAction = (payload: unknown) =>
+  delivery({
+    status: 'delivered',
+    actionType: 'plugin',
+    work: {
+      type: 'plugin',
+      plugin: 'slack',
+      kind: 'post-message',
+      event: { kind: 'run.settled', bureauId: 'bureau-1', emittedAtMs: 1, payload },
+    },
+  });
+
 describe('which deliveries are a chat’s', () => {
   it.each([
     ['a webhook whose payload names one of the runs', webhook({ runId: 'run-2' })],
@@ -66,6 +78,7 @@ describe('which deliveries are a chat’s', () => {
     ],
     ['a pending webhook', webhook({ runId: 'run-1' }, 'pending')],
     ['a workflow started with the payload', workflow({ runId: 'run-1' })],
+    ['a plugin action that was given the event', pluginAction({ runId: 'run-1' })],
     [
       'a workflow started with the event',
       workflow({ kind: 'run.settled', payload: { runId: 'run-1' } }),
@@ -87,6 +100,7 @@ describe('which deliveries are a chat’s', () => {
         request: { url: 'https://receiver.example/hook', headers: {}, body: 'run-1' },
       }),
     ],
+    ['a plugin action given an event about another run', pluginAction({ runId: 'run-3' })],
     [
       'a notification, which holds no payload',
       delivery({

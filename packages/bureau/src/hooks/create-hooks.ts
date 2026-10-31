@@ -14,7 +14,7 @@
  *
  * ## Actions
  *
- * A hook does one of three things for each event it matches (`HookAction`, tagged by `type`):
+ * A hook does one of four things for each event it matches (`HookAction`, tagged by `type`):
  *
  * - `webhook` sends the event, signed, to a URL, as above. The only action with a signing secret.
  * - `start-workflow` starts a workflow as the hook's owner. The workflow's input is the event's
@@ -38,6 +38,12 @@
  *   `hook:<hookId>:<deliveryId>` so a replayed delivery writes one. It cannot list
  *   `notification.created`, which the notification it writes would fire again; this is refused when
  *   the hook is written and checked again as the event is dispatched.
+ *
+ * - `plugin` runs an action kind a plugin contributed (COR-1876), named by the plugin and the kind.
+ *   The kind's schema parses `configuration` when the hook is written and again for each delivery;
+ *   the action receives the event, with `source` set when a plugin's contribution emitted it. A
+ *   rejection is a failed attempt and is retried like any other; a kind that is no longer
+ *   contributed ends the delivery `failed`.
  *
  * A hook's action type is fixed when it is created; `update` changes the fields of the action.
  * A record stored before actions existed has a top-level `url` and reads as a webhook.
@@ -80,6 +86,7 @@ import {
 } from './hook-store.ts';
 import {
   HookActionError,
+  type HookActionKindRegistration,
   HookError,
   NOTIFICATION_CREATED_EVENT_KIND,
   type Hook,
@@ -133,6 +140,15 @@ export type HookActionInput =
       readonly type: 'notify';
       /** The notification's title, at most 200 characters; without one it names the event kind. */
       readonly title?: string | undefined;
+    }
+  | {
+      readonly type: 'plugin';
+      /** The plugin that contributes the action kind. */
+      readonly plugin: string;
+      /** The action kind's name within the plugin. */
+      readonly kind: string;
+      /** The kind's configuration, checked against the schema the kind declares. */
+      readonly configuration?: unknown;
     };
 
 /** What `hooks.create` takes. Name the action with `action`, or with `url` for a webhook. */
@@ -235,6 +251,12 @@ export interface HooksDependencies {
   readonly startedByHook?: ((runId: string) => Promise<string | undefined>) | undefined;
   /** How long one request may take. */
   readonly requestTimeoutMilliseconds?: number | undefined;
+  /**
+   * The hook action kinds plugins contribute (COR-1876), the entry point plugin composition feeds.
+   * Two registrations of one plugin and kind name are refused. Omitted, only the built-in actions
+   * exist.
+   */
+  readonly actionKinds?: readonly HookActionKindRegistration[] | undefined;
   /** The Bureau's identifier, sent in each delivery. */
   readonly bureauId: string;
   /** Mints identifiers. */
@@ -296,8 +318,46 @@ function invalid(path: string | readonly string[], message: string): never {
 
 const WORKFLOW_ID_MAXIMUM_LENGTH = 256;
 
+/** The key a contributed action kind is looked up by. Plugin and kind names contain no `/`. */
+function actionKindKey(plugin: string, kind: string): string {
+  return `${plugin}/${kind}`;
+}
+
+/** The kinds `registrations` name, by {@link actionKindKey}; a repeated name is refused. */
+function actionKindsOf(
+  registrations: readonly HookActionKindRegistration[] | undefined,
+): ReadonlyMap<string, HookActionKindRegistration> {
+  const kinds = new Map<string, HookActionKindRegistration>();
+  for (const registration of registrations ?? []) {
+    const key = actionKindKey(registration.plugin, registration.kind.name);
+    if (kinds.has(key)) throw new Error(`Hook action kind "${key}" is contributed twice`);
+    kinds.set(key, registration);
+  }
+  return kinds;
+}
+
+/** `configuration` parsed with the schema of `registration`'s kind, or the reason it is refused. */
+function parsedConfiguration(
+  registration: HookActionKindRegistration,
+  configuration: unknown,
+):
+  { readonly ok: true; readonly value: unknown } | { readonly ok: false; readonly reason: string } {
+  const parsed = registration.kind.configuration.safeParse(configuration);
+  if (parsed.success) return { ok: true, value: parsed.data };
+  return {
+    ok: false,
+    reason: parsed.error.issues
+      .map((issue) => `${issue.path.join('.') || 'configuration'}: ${issue.message}`)
+      .join('; '),
+  };
+}
+
 /** Checks and copies the fields of `input` that its `type` names; every other field is dropped. */
-function checkedAction(input: unknown, urlPolicy: HookUrlPolicy): HookAction {
+function checkedAction(
+  input: unknown,
+  urlPolicy: HookUrlPolicy,
+  kinds: ReadonlyMap<string, HookActionKindRegistration>,
+): HookAction {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) {
     invalid('action', 'The action must be an object');
   }
@@ -345,10 +405,38 @@ function checkedAction(input: unknown, urlPolicy: HookUrlPolicy): HookAction {
       }
       return { type: 'notify', title };
     }
+    case 'plugin': {
+      const plugin = action['plugin'];
+      const kind = action['kind'];
+      if (typeof plugin !== 'string' || typeof kind !== 'string') {
+        invalid(['action', 'kind'], 'A plugin action names its plugin and its kind');
+      }
+      const registration = kinds.get(actionKindKey(plugin, kind));
+      if (registration === undefined) {
+        invalid(
+          ['action', 'kind'],
+          `No plugin contributes the hook action kind "${plugin}/${kind}"`,
+        );
+      }
+      // Copied now: the caller owns `input` and the delivery is created long after. A value JSON
+      // cannot carry could not be stored, so it is refused here, not when the hook is written.
+      let configuration: unknown;
+      try {
+        const text = JSON.stringify(action['configuration']);
+        configuration = text === undefined ? undefined : (JSON.parse(text) as unknown);
+      } catch {
+        invalid(['action', 'configuration'], 'The configuration must be JSON');
+      }
+      const checked = parsedConfiguration(registration, configuration);
+      if (!checked.ok) invalid(['action', 'configuration'], checked.reason);
+      return configuration === undefined
+        ? { type: 'plugin', plugin, kind }
+        : { type: 'plugin', plugin, kind, configuration };
+    }
     default:
       invalid(
         ['action', 'type'],
-        'The action type must be "webhook", "start-workflow" or "notify"',
+        'The action type must be "webhook", "start-workflow", "notify" or "plugin"',
       );
   }
 }
@@ -449,6 +537,7 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
   const store: HookStore = createHookStore(kv);
   const secrets = dependencies.secrets ?? createKvHookSecretStore(kv);
   const urlPolicy = dependencies.urlPolicy ?? {};
+  const actionKinds = actionKindsOf(dependencies.actionKinds);
   const mayStartWorkflows =
     dependencies.mayStartWorkflows ?? ((owner: string) => owner === ownerOrLocal(undefined));
 
@@ -457,7 +546,7 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
     if (input.url !== undefined && input.action !== undefined) {
       invalid('action', 'Give `url` or `action`, not both');
     }
-    if (input.action !== undefined) return checkedAction(input.action, urlPolicy);
+    if (input.action !== undefined) return checkedAction(input.action, urlPolicy, actionKinds);
     if (input.url === undefined) invalid('action', 'A hook needs an action, or a url');
     // The shorthand names its field `url`, as it always has.
     const defect =
@@ -536,6 +625,30 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
           const message = error instanceof Error ? error.message : String(error);
           throw new HookActionError(message, isPermanentStartFailure(error));
         }
+      }
+      if (work.type === 'plugin') {
+        // Resolved again as the event fires: the plugin may have been removed since the hook was written.
+        const registration = actionKinds.get(actionKindKey(work.plugin, work.kind));
+        if (registration === undefined) {
+          throw new HookActionError(
+            `No plugin contributes the hook action kind "${work.plugin}/${work.kind}"`,
+            true,
+          );
+        }
+        const checked = parsedConfiguration(registration, work.configuration);
+        if (!checked.ok) {
+          throw new HookActionError(
+            `The action's configuration is refused: ${checked.reason}`,
+            true,
+          );
+        }
+        // A rejection is the delivery's failed attempt; the runner's caller records its message.
+        await registration.kind.run({
+          event: work.event,
+          configuration: checked.value,
+          signal: engine.signal,
+        });
+        return {};
       }
       const notifications = dependencies.notifications?.();
       if (notifications === undefined) {
@@ -709,7 +822,9 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         if (defect !== undefined) invalid('url', defect);
       }
       const replacement =
-        input.action === undefined ? undefined : checkedAction(input.action, urlPolicy);
+        input.action === undefined
+          ? undefined
+          : checkedAction(input.action, urlPolicy, actionKinds);
       const events = input.events === undefined ? undefined : checkedEvents(input.events);
       const secret =
         input.signingSecret === undefined ? undefined : checkedSecret(input.signingSecret);
@@ -735,6 +850,16 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         }
         if (replacement !== undefined && replacement.type !== before.action.type) {
           invalid(['action', 'type'], 'A hook’s action type cannot change; create another hook');
+        }
+        if (
+          replacement?.type === 'plugin' &&
+          before.action.type === 'plugin' &&
+          (replacement.plugin !== before.action.plugin || replacement.kind !== before.action.kind)
+        ) {
+          invalid(
+            ['action', 'kind'],
+            'A plugin hook’s action kind cannot change; create another hook',
+          );
         }
         if (secret !== undefined && before.action.type !== 'webhook') {
           invalid('signingSecret', 'Only a webhook hook has a signing secret');
@@ -806,7 +931,7 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
       if (stored.record.action.type !== 'webhook') {
         invalid(
           'action',
-          'Only a webhook hook can be tested: a test would start a real run or write a real notification',
+          'Only a webhook hook can be tested: a test would start a real run, write a real notification or run a real plugin action',
         );
       }
       const id = await deliveries.enqueue(
@@ -908,6 +1033,7 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
       bureauId: envelope.bureauId,
       emittedAtMs: envelope.emittedAtMs,
       payload: envelope.payload,
+      ...(envelope.source === undefined ? {} : { source: envelope.source }),
     };
     // A failing endpoint's own diagnostic must not become the event that fails it again.
     const scope = event.payload['scope'];

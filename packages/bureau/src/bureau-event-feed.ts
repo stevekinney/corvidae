@@ -25,6 +25,7 @@ import {
   type SequencedEventEnvelope,
 } from '@lostgradient/weft';
 
+import { eventSourceOf } from './event-source.ts';
 import { FRAMES_DROPPED_KIND, withFramesDroppedMarker } from './frames-dropped.ts';
 import {
   ActionEvent,
@@ -85,6 +86,12 @@ export type BureauEventEnvelope = SequencedEventEnvelope & {
   readonly kind: string;
   readonly emittedAtMs: number;
   readonly payload: Readonly<Record<string, unknown>>;
+  /**
+   * The plugin whose contribution emitted the event (COR-1876). Absent, not `undefined`, on an event
+   * from Bureau core. An envelope field, never a payload one: a payload key named `source` means
+   * what its kind's catalog entry says.
+   */
+  readonly source?: string | undefined;
 };
 
 type BureauEventProjection = {
@@ -394,7 +401,7 @@ const PROJECTIONS: readonly BureauEventProjection[] = [
     ),
   ),
   projection(DefinitionsChangedEvent.type, isInstance(DefinitionsChangedEvent), (event) => ({
-    source: event.source,
+    catalog: event.catalog,
     added: [...event.added],
     changed: [...event.changed],
     removed: [...event.removed],
@@ -564,6 +571,7 @@ export function createBureauEventFeed(options: BureauEventFeedOptions): BureauEv
     publish(event) {
       const projected = projectBureauEvent(event);
       if (projected === undefined) return undefined;
+      const source = eventSourceOf(event);
       const envelope: BureauEventEnvelope = {
         sequence,
         cursor: backend.encodeCursor?.(sequence) ?? String(sequence),
@@ -571,6 +579,7 @@ export function createBureauEventFeed(options: BureauEventFeedOptions): BureauEv
         kind: projected.kind,
         emittedAtMs: now(),
         payload: projected.payload,
+        ...(source === undefined ? {} : { source }),
       };
       sequence += 1;
       backend.append(envelope);

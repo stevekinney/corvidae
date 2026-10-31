@@ -212,6 +212,7 @@ import {
   type SubordinateRun,
 } from './bureau-catalog-dispatch';
 import { createBureauEventFeed } from './bureau-event-feed.ts';
+import { createBureauEventFormatter } from './bureau-event-formatting.ts';
 import {
   createDiagnosticDispatcher,
   forwardAssetEvents,
@@ -2361,6 +2362,7 @@ function composeHooks(input: {
     keys: input.keys,
     urlPolicy: options.urlPolicy,
     requestTimeoutMilliseconds: options.requestTimeoutMilliseconds,
+    actionKinds: options.actionKinds,
     workflows: input.workflows,
     notifications: input.notifications,
     startedByHook: input.startedByHook,
@@ -2558,6 +2560,10 @@ async function constructBureau<const D extends AgentDefinitions>(
     now: runtimeServices.clock.now,
     onPublish: (envelope) => hooksInstance?.dispatch(envelope),
   });
+  // COR-1876: the event formatters plugins contribute; a clash between two is refused here.
+  const eventFormatter = createBureauEventFormatter(options.eventFormatters, (message, cause) =>
+    diagnostics.diagnose({ level: 'warn', scope: 'events', message: `[bureau] ${message}`, cause }),
+  );
   // Guarded for the reason `emitLiveFrame` is (AB-96): `dispatchEvent` walks its all-events
   // listeners unguarded, so a throw here would propagate out of whichever `emitter.dispatch` call
   // was in flight — several of which run synchronously inside run setup, where an exception leaves a
@@ -21375,6 +21381,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     get hooks() {
       return hooksInstance?.hooks;
     },
+    formatEvent: eventFormatter,
     deployments:
       options.workerDeployments === undefined
         ? undefined

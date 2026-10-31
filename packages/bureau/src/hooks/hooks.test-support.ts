@@ -102,6 +102,7 @@ export type OpenHooksBureauOptions = {
   readonly onDiagnostic?: BureauOptions['onDiagnostic'];
   readonly withoutKey?: boolean;
   readonly retention?: BureauOptions['retention'];
+  readonly eventFormatters?: BureauOptions['eventFormatters'];
   /** Replaces the instant backoff wait, for a test that holds a wait open. */
   readonly sleep?: (milliseconds: number) => Promise<void>;
 };
@@ -122,6 +123,7 @@ export async function openHooksBureau(options: OpenHooksBureauOptions): Promise<
     ...(options.withoutKey === true ? {} : { answerEncryption: { current: options.key } }),
     ...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),
     ...(options.retention === undefined ? {} : { retention: options.retention }),
+    ...(options.eventFormatters === undefined ? {} : { eventFormatters: options.eventFormatters }),
     hooks: options.hooks ?? {},
     webhooks: {
       targets: [],

@@ -303,6 +303,8 @@ type TopLevelMembers =
   | 'deployments'
   // COR-1939: the user-defined hooks.
   | 'hooks'
+  // COR-1876: an event as a person reads it.
+  | 'formatEvent'
   // COR-1941: the owner's notifications.
   | 'notifications';
 

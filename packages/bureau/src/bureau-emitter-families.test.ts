@@ -258,7 +258,7 @@ describe('agent definition and asset events on the bureau emitter', () => {
     );
 
     const change = changes.find((candidate) => candidate.added.includes('broken'));
-    expect(change?.source).toBe('agents');
+    expect(change?.catalog).toBe('agents');
     expect(change?.rejected).toEqual(['broken']);
 
     const assetService = harness.bureau.assets;
