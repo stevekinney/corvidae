@@ -9,11 +9,15 @@
    * the view frame owns, so the page asks the frame to look again. A write that succeeds lands on
    * the agent's page, and a delete lands on the list.
    *
+   * One Save sits in the header and submits the form by its id; ⌘Enter does the same from anywhere
+   * on the page. There is no draft and nothing to publish: under the heading, an agent that exists
+   * says when it was last saved and links to its versions, on the Settings tab of its page.
+   *
    * What the form offers comes from `bureau.agents.catalog` and nothing else, and the A2A
    * switch is saved with the rest of the definition. A catalog with no model offers
    * nothing a save could use, so the page shows where to configure a provider instead of the form.
    */
-  import { untrack } from 'svelte';
+  import { onMount, untrack } from 'svelte';
 
   import {
     Alert,
@@ -21,6 +25,7 @@
     CodeLocation,
     ConfirmDialog,
     PageHeader,
+    RelativeTime,
     Skeleton,
   } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
@@ -32,16 +37,19 @@
     deleteAgent,
     getAgentCatalog,
     getAgentDefinition,
+    listAgentVersions,
     updateAgent,
     type AgentFault,
   } from '../../lib/agent-definitions.ts';
   import { agentPath } from '../../lib/agent-paths.ts';
+  import { shortcuts } from '../../lib/shortcuts.ts';
   import { agentFilePath, getHostPaths } from '../../lib/host-paths.ts';
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { AgentEditorState } from './agent-editor-state.svelte.ts';
   import AgentEditorForm from './agent-editor-form.svelte';
+  import { AGENT_EDITOR_FORM_ID } from './agent-editor-form-id.ts';
   import AgentEditorNoProvider from './agent-editor-no-provider.svelte';
   import AgentRevisionHistory from './agent-revision-history.svelte';
 
@@ -87,6 +95,16 @@
     queryKey: queryKeys.hostPaths(),
     queryFn: ({ signal }) => getHostPaths({ signal }),
   }));
+
+  // The latest saved version, for the line under the heading. The page works without it.
+  const versions = createQuery(() => ({
+    ...stable,
+    queryKey: queryKeys.agents.versions(agentId ?? ''),
+    queryFn: ({ signal }) => listAgentVersions(agentId ?? '', { signal }),
+    enabled: agentId !== undefined,
+  }));
+  const latestVersion = $derived(versions.data?.[0]);
+  const versionsPath = $derived(`${agentPath(agentId ?? '')}?tab=settings`);
 
   let editor = $state<AgentEditorState>();
   /** A write was refused because the file changed on disk after the form was filled. */
@@ -199,6 +217,29 @@
     if (editor !== undefined) save.mutate(editor);
   }
 
+  // ⌘Enter saves from anywhere on the page, a field included (`lib/shortcuts.ts`).
+  onMount(() =>
+    shortcuts.register({
+      keys: ['Enter'],
+      modifier: 'mod',
+      label: copy.saveAction,
+      group: copy.shortcutGroup,
+      scope: { route: agentId === undefined ? '/agents/new' : '/agents/:agent/edit' },
+      handler: () => {
+        if (editor?.canSave === true && !busy) submit();
+      },
+    }),
+  );
+
+  /** Follows the link to the versions in the app's router, unless the click asks for a new tab. */
+  function openVersions(event: MouseEvent): void {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    router.navigate(versionsPath);
+  }
+
   function confirmDelete(): void {
     if (currentHash !== null) removal.mutate(currentHash);
   }
@@ -267,7 +308,30 @@
 
 <div class="weft-agent-editor" data-editor={condition}>
   <PageHeader title={heading} headingLevel={1}>
+    {#snippet description()}
+      {#if latestVersion !== undefined}
+        <span data-testid="agent-saved">
+          {copy.saved}
+          <RelativeTime date={latestVersion.savedAt} />
+          ·
+          <a href={router.href(versionsPath)} onclick={openVersions}
+            >{copy.version(latestVersion.revision)}</a
+          >
+        </span>
+      {/if}
+    {/snippet}
     {#snippet actions()}
+      {#if editor !== undefined}
+        <Button
+          data-changes
+          type="submit"
+          form={AGENT_EDITOR_FORM_ID}
+          variant="primary"
+          disabled={!editor.canSave || busy}
+        >
+          {editor.mode === 'create' ? copy.createAction : copy.saveAction}
+        </Button>
+      {/if}
       <!-- With the form on screen, its footer holds the delete; a file the form cannot show keeps it here. -->
       {#if deleteInHeader}
         <Button
@@ -378,11 +442,6 @@
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-4);
-  }
-
-  /* The outlet pads the page, so Cinder's page header sits flush with the form under it. */
-  .weft-agent-editor :global(.cinder-page-header__row) {
-    padding-inline: 0;
   }
 
   /*

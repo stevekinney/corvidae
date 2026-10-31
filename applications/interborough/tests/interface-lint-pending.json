@@ -2,21 +2,9 @@
   "entries": [
     {
       "rule": "cinder-selector",
-      "file": "src/routes/agent-editor/agent-editor-form.svelte",
-      "subject": ".cinder-form-field__description",
-      "issue": "COR-1852"
-    },
-    {
-      "rule": "cinder-selector",
-      "file": "src/routes/agent-editor/agent-editor-page.svelte",
-      "subject": ".cinder-page-header__row",
-      "issue": "COR-1852"
-    },
-    {
-      "rule": "cinder-selector",
       "file": "src/routes/agent-editor/agent-editor-tool-row.svelte",
       "subject": ".cinder-form-field__label",
-      "issue": "COR-1852"
+      "issue": "COR-1963"
     },
     {
       "rule": "app-header-class",

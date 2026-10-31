@@ -1,17 +1,27 @@
 <script lang="ts">
   /**
-   * The fields of the agent editor, in four titled sections: Identity (name, identifier,
-   * description), Model, Instructions, and Tools. A footer holds what acts on the agent as a whole:
-   * the A2A switch, a delete for an agent that exists, and always cancel and save.
+   * The fields of the agent editor, in five titled sections: Identity (name, identifier,
+   * description), Model, Instructions, Tools, and Guardrails and limits. A footer holds what acts on
+   * the agent as a whole: the A2A switch, a delete for an agent that exists, and cancel. Save is
+   * the page header's, and submits this form by its id ({@link AGENT_EDITOR_FORM_ID}).
    * `skillDescriptors` has no field here; the state carries it through a save unchanged
    * (`agent-editor-state.svelte.ts`).
    *
    * The form owns no requests. The page that renders it sends a save and a delete, and says whether one is in flight. The page does not render the form for a catalog
    * with no model (`agent-editor-no-provider.svelte`), so every choice here has something to pick.
    */
-  import { Button, FormSection, Input, Select, Textarea, Toggle } from '@lostgradient/cinder';
+  import {
+    Button,
+    EmptyState,
+    FormSection,
+    Input,
+    Select,
+    Textarea,
+    Toggle,
+  } from '@lostgradient/cinder';
 
   import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
+  import { AGENT_EDITOR_FORM_ID } from './agent-editor-form-id.ts';
   import type { AgentEditorState } from './agent-editor-state.svelte.ts';
   import AgentEditorToolRow from './agent-editor-tool-row.svelte';
 
@@ -19,6 +29,7 @@
     editor: AgentEditorState;
     /** A save or a delete is in flight. */
     busy: boolean;
+    /** Saves the form. The page header's Save button submits this form, and so does ⌘Enter. */
     onSave: () => void;
     onCancel: () => void;
     /** Asks to delete the agent. Only an agent that exists has the control. */
@@ -40,7 +51,12 @@
   }
 </script>
 
-<form class="weft-agent-form" aria-label={copy.formLabel} onsubmit={submit}>
+<form
+  id={AGENT_EDITOR_FORM_ID}
+  class="weft-agent-form"
+  aria-label={copy.formLabel}
+  onsubmit={submit}
+>
   <FormSection heading={copy.sections.identity} columns={2}>
     <Input
       id="agent-name"
@@ -102,7 +118,13 @@
     columns={1}
   >
     {#if editor.toolChoices.length === 0}
-      <p class="weft-agent-form__note">{copy.noTools}</p>
+      <EmptyState
+        kind="first-use"
+        size="compact"
+        align="start"
+        headingLevel={3}
+        title={copy.noTools}
+      />
     {:else}
       <ul class="weft-agent-form__tools">
         {#each editor.toolChoices as tool (tool.name)}
@@ -116,6 +138,59 @@
     {/if}
   </FormSection>
 
+  <FormSection heading={copy.sections.limits} description={copy.limits.description} columns={2}>
+    <div class="weft-agent-form__wide">
+      <Textarea
+        id="agent-guardrails"
+        label={copy.limits.guardrailsLabel}
+        description={copy.limits.guardrailsDescription}
+        rows={2}
+        error={editor.limitErrors.guardrails ?? ''}
+        bind:value={editor.guardrails}
+      />
+    </div>
+    <Input
+      id="agent-step-limit"
+      label={copy.limits.stepLimitLabel}
+      description={copy.limits.stepLimitDescription}
+      inputmode="numeric"
+      error={editor.limitErrors.stepLimit ?? ''}
+      bind:value={editor.stepLimit}
+    />
+    <Input
+      id="agent-spend-per-run"
+      label={copy.limits.spendPerRunLabel}
+      description={copy.limits.spendPerRunDescription}
+      inputmode="decimal"
+      error={editor.limitErrors.spendPerRun ?? ''}
+      bind:value={editor.spendPerRun}
+    />
+    <Input
+      id="agent-spend-per-chat"
+      label={copy.limits.spendPerChatLabel}
+      description={copy.limits.spendPerChatDescription}
+      inputmode="decimal"
+      error={editor.limitErrors.spendPerChat ?? ''}
+      bind:value={editor.spendPerChat}
+    />
+    <Input
+      id="agent-tool-calls"
+      label={copy.limits.toolCallsLabel}
+      description={copy.limits.toolCallsDescription}
+      inputmode="numeric"
+      error={editor.limitErrors.toolCalls ?? ''}
+      bind:value={editor.toolCalls}
+    />
+    <Input
+      id="agent-tool-seconds"
+      label={copy.limits.toolSecondsLabel}
+      description={copy.limits.toolSecondsDescription}
+      inputmode="decimal"
+      error={editor.limitErrors.toolSeconds ?? ''}
+      bind:value={editor.toolSeconds}
+    />
+  </FormSection>
+
   <div class="weft-agent-form__footer">
     <div class="weft-agent-form__a2a">
       <Toggle id="agent-a2a" label={copy.a2aLabel} bind:checked={editor.a2a} disabled={busy} />
@@ -124,12 +199,11 @@
 
     <div class="weft-agent-form__actions">
       {#if editor.mode === 'edit'}
-        <Button variant="danger" disabled={busy} onclick={onDelete}>{copy.deleteAction}</Button>
+        <Button data-changes variant="danger" disabled={busy} onclick={onDelete}
+          >{copy.deleteAction}</Button
+        >
       {/if}
       <Button variant="ghost" onclick={onCancel}>{copy.cancelAction}</Button>
-      <Button type="submit" variant="primary" disabled={!editor.canSave || busy}>
-        {editor.mode === 'create' ? copy.createAction : copy.saveAction}
-      </Button>
     </div>
   </div>
 </form>
@@ -143,11 +217,6 @@
 
   .weft-agent-form__wide {
     grid-column: 1 / -1;
-  }
-
-  /* One short line under each field, a step up from Cinder's default so it reads as help. */
-  .weft-agent-form :global(.cinder-form-field__description) {
-    font-size: var(--cinder-text-sm);
   }
 
   .weft-agent-form__tools {

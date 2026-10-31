@@ -267,7 +267,7 @@ describe('the Settings tab', () => {
         ...definition.definition,
         models: ['anthropic/haiku'],
         stepLimit: 12,
-        guardrails: 'tripwire' as const,
+        guardrails: ['acme:tripwire'],
         costBudget: { perRunUsd: 1.5 },
         toolBudget: { maxCalls: 30, maxDurationSeconds: 90 },
       },
@@ -294,7 +294,7 @@ describe('the Settings tab', () => {
     const settings = await findByTestId('agent-settings');
     await waitFor(() => expect(settings.textContent).toContain('anthropic/haiku'));
 
-    for (const text of ['tripwire', '12', '$1.50', '30', '90 seconds']) {
+    for (const text of ['acme:tripwire', '12', '$1.50', '30', '90 seconds']) {
       expect(settings.textContent).toContain(text);
     }
     expect(container.querySelector('[data-testid="agent-versions"]')).not.toBeNull();

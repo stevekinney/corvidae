@@ -140,12 +140,13 @@ test.describe('a new agent', () => {
     ]) {
       await expect(field).toBeInViewport({ ratio: 1 });
     }
-    // Four titled sections, in the order a person fills them in. The tools are a group of
+    // Five titled sections, in the order a person fills them in. The tools are a group of
     // checkboxes, so its title is the group's legend rather than a heading.
     await expect(editor(page).getByRole('heading', { level: 2 })).toHaveText([
       copy.sections.identity,
       copy.sections.model,
       copy.sections.instructions,
+      copy.sections.limits,
     ]);
     await expect(page.getByRole('group', { name: copy.sections.tools })).toBeVisible();
   });
@@ -300,7 +301,7 @@ test.describe('an agent that exists', () => {
       await expect(
         page.getByRole('heading', { level: 2, name: copy.revisions.heading }),
       ).toBeVisible();
-      await expect(page.getByTestId('agent-revisions-empty')).toHaveText(copy.revisions.empty);
+      await expect(page.getByTestId('agent-revisions-empty')).toContainText(copy.revisions.empty);
       await expectNoSidewaysScroll(page, 'the edit page');
 
       // The footer sticks to the foot of the outlet, so scrolled all the way down the revision

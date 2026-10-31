@@ -5,10 +5,10 @@
    * actually ran, and it outlives the agent's file while its runs are retained. The saved
    * versions of the agent, whether or not it ran, are `bureau.agents.versions.list`.
    */
-  import { RelativeTime, Skeleton, Table } from '@lostgradient/cinder';
+  import { Alert, Button, EmptyState, RelativeTime, Skeleton, Table } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
+  import { AGENT_EDITOR_COPY, RETRY_LABEL } from '../../app/copy.ts';
   import { listAgentRevisions } from '../../lib/agent-definitions.ts';
   import { queryKeys } from '../../lib/query.ts';
 
@@ -39,9 +39,22 @@
       <Skeleton height="4rem" />
     </div>
   {:else if revisions.isError}
-    <p role="alert">{copy.failed}</p>
+    <Alert variant="danger">
+      <p class="weft-agent-revisions__alert">{copy.failedTitle}</p>
+      <Button variant="secondary" size="sm" onclick={() => void revisions.refetch()}
+        >{RETRY_LABEL}</Button
+      >
+    </Alert>
   {:else if revisions.data.length === 0}
-    <p class="weft-agent-revisions__empty" data-testid="agent-revisions-empty">{copy.empty}</p>
+    <EmptyState
+      kind="first-use"
+      size="compact"
+      align="start"
+      headingLevel={3}
+      title={copy.emptyTitle}
+      description={copy.empty}
+      data-testid="agent-revisions-empty"
+    />
   {:else}
     <Table caption={copy.caption} scrollable>
       <Table.Header>
@@ -79,8 +92,11 @@
     font-weight: 600;
   }
 
-  .weft-agent-revisions__description,
-  .weft-agent-revisions__empty {
+  .weft-agent-revisions__alert {
+    margin: 0 0 8px;
+  }
+
+  .weft-agent-revisions__description {
     margin: 0;
     font-size: var(--cinder-text-xs);
     color: var(--cinder-text-subtle);
