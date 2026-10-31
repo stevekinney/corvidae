@@ -17,6 +17,7 @@
  * then `failed` at its deadline instead of claiming a deletion nothing performed.
  */
 
+import type { PluginMemoryContributions } from '@lostgradient/bureau';
 import {
   createEmbedderRegistry,
   createGovernedMemory,
@@ -39,14 +40,26 @@ export const MEMORY_DELETION_PROPAGATION: MemoryDeletionPropagation = {
   'external-processors': 'not-retained',
 };
 
-/** Governed memory over `storage`, which the Bureau and the engine share. The Bureau initializes and closes it. */
-export function createHostMemory(storage: Storage): GovernedMemory {
+/**
+ * Governed memory over `storage`, which the Bureau and the engine share. The Bureau initializes and
+ * closes it. It is built once plugin setup has run (COR-1879, `BureauOptions.memory`), with what the
+ * running plugins contribute: their embedders join the registry beside the built-in hashing one, and
+ * their detectors run after the default poisoning detector on admission and on recall.
+ */
+export function createHostMemory(
+  storage: Storage,
+  contributions: PluginMemoryContributions,
+): GovernedMemory {
   return createGovernedMemory({
     storage: createWeftMemoryRecordStorage(storage),
     ledger: createMemoryGovernanceLedger(storage),
-    embedders: createEmbedderRegistry(),
+    embedders: createEmbedderRegistry(contributions.embedders),
     vectors: createMemoryVectorStore(storage),
-    policy: createMemoryGovernancePolicy({ revision: MEMORY_POLICY_REVISION }),
+    policy: createMemoryGovernancePolicy({
+      revision: MEMORY_POLICY_REVISION,
+      admission: { contributedDetectors: contributions.detectors },
+      recall: { contributedDetectors: contributions.detectors },
+    }),
     propagation: MEMORY_DELETION_PROPAGATION,
   });
 }

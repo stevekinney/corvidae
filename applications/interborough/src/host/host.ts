@@ -67,6 +67,9 @@
  *   provider's API key.
  * - `/host/providers`, `/host/providers/<name>`, `/host/providers/reload`, and `/host/catalog`:
  *   read and change the provider configuration (`provider-routes.ts`).
+ * - `/host/plugins`, `/host/plugins/<name>`, and `/host/plugins/<name>/secrets/<key>`: the plugins the
+ *   host loads, the owner's choices for them in `configuration.json` (`plugins`), and the secrets they
+ *   declare (`plugin-routes.ts`). A remote host refuses a change with the reason `deployment`.
  * - `/host/tool-sources`, `/host/tool-sources/<id>`, `/host/tool-sources/<id>/affected-agents`,
  *   `/host/tool-sources/<id>/authorize`, and `/host/oauth/callback/<id>`: the saved MCP and OpenAPI tool sources in `configuration.json`
  *   (`toolSources`), their encrypted credentials, and the OAuth sign-in (`tool-source-routes.ts`).
@@ -94,6 +97,7 @@ import {
   createSecretAnswerResolver,
   resolveProviderGenerate,
   type Bureau,
+  type BureauPluginEntry,
   type SettingsOptions,
 } from '@lostgradient/bureau';
 import { type GenerateFunction } from '@lostgradient/operative';
@@ -108,9 +112,9 @@ import {
 
 import { routes as clientRoutes } from '../app/routes.ts';
 import { HOST_PATHS_ROUTE } from '../lib/host-paths.ts';
-import { resolveA2aExposure } from './a2a-authentication.ts';
+import { A2A_API_KEY_SECRET_KEY, resolveA2aExposure } from './a2a-authentication.ts';
 import { startHostPushDelivery, type HostPushDelivery } from './a2a-push.ts';
-import { answerEncryptionKeys } from './answer-encryption.ts';
+import { ANSWER_ENCRYPTION_KEY, answerEncryptionKeys } from './answer-encryption.ts';
 import { createConfigurationQueue, type ConfigurationQueue } from './configuration-queue.ts';
 import {
   createDevReload,
@@ -149,6 +153,9 @@ import {
 } from './locations.ts';
 import { mcpAppMounts } from './mcp-app-mounts.ts';
 import { createHostMemory } from './memory.ts';
+import { createPluginManager, type PluginManager } from './plugin-manager.ts';
+import { pluginRoutes } from './plugin-routes.ts';
+import { providerSecrets, workspacePlugins } from './plugins.ts';
 import { createProviderManager, type ProviderManager } from './provider-manager.ts';
 import { providerRoutes } from './provider-routes.ts';
 import {
@@ -173,6 +180,7 @@ import { skillRoutes } from './skill-routes.ts';
 import { agentToolUseOf } from './tool-source-agents.ts';
 import { createToolSourceManager, type ToolSourceManager } from './tool-source-manager.ts';
 import { toolSourceRoutes } from './tool-source-routes.ts';
+import { TOOL_SOURCE_SECRET_PREFIX } from './tool-source-vault.ts';
 
 /** The application name Bungalow keys the state directory, `INTERBOROUGH_HOME`, and lock on. */
 export const APPLICATION_NAME = 'interborough';
@@ -290,6 +298,12 @@ export type HostOptions = {
    * over A2A only when it is named here.
    */
   readonly a2aAgents?: readonly string[];
+  /**
+   * The plugins to load, in order. Defaults to the workspace's own (`plugins.ts`). A host started
+   * with others, such as a test's fixtures, loads exactly these. The array is copied before the
+   * host opens anything.
+   */
+  readonly plugins?: readonly BureauPluginEntry[];
   /** Whether to create the seeded schedule and goal. Agents are always defined. Defaults to `true`. */
   readonly seed?: boolean;
   /**
@@ -356,6 +370,13 @@ export type Host = {
    * {@link ProviderWriteLockedError}, reason `deployment`. See {@link ProviderManager}.
    */
   readonly providers: Pick<ProviderManager, 'connect' | 'editCatalog' | 'reload' | 'snapshot'>;
+  /**
+   * The plugins the host loads: report each with the owner's choices and its secrets, store the
+   * choices (`plugins.<name>` in `configuration.json`, applied on the next start), and store a
+   * secret a plugin declared, which a plugin that needs it uses at once. A remote host refuses a
+   * change with {@link PluginWriteLockedError}, reason `deployment`. See {@link PluginManager}.
+   */
+  readonly plugins: Pick<PluginManager, 'snapshot' | 'update' | 'saveSecret'>;
   /**
    * The queue every writer of `configuration.json` runs its read-change-write through, so two
    * writers never start from text the other is about to replace. The provider manager uses it;
@@ -539,6 +560,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
   const callerLocks = { ...options.settings?.locked };
   // The A2A allowlist is read the same way: after the first await it would be the caller's live array.
   const a2aAgents = options.a2aAgents === undefined ? undefined : [...options.a2aAgents];
+  // The plugin list is read the same way, so the Bureau and the routes see the plugins this host was started with.
+  const plugins = [...(options.plugins ?? workspacePlugins())];
   // The A2A public origin (COR-1904) is read from the caller's environment before it can change,
   // and a malformed one stops the host before anything opens.
   const a2aPublicOrigin = resolveA2aPublicOrigin(environment);
@@ -568,8 +591,30 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // plans against a provider that is not configured. The seeded agents still answer from a
     // script.
     const configurationQueue = createConfigurationQueue();
-    const providers = await createProviderManager({
+    // The plugins read their choices from the same file, before the Bureau composes them. A secret
+    // the provider routes store reaches a plugin that waits on it through the same watchers.
+    const pluginManager = await createPluginManager({
       bungalow,
+      plugins,
+      configurationQueue,
+      listing: async () => (held.bureau === undefined ? [] : held.bureau.plugins.list()),
+      reservedSecretKeys: [APPROVAL_SECRET_KEY, A2A_API_KEY_SECRET_KEY],
+      reservedSecretPrefixes: [ANSWER_ENCRYPTION_KEY, TOOL_SOURCE_SECRET_PREFIX],
+    });
+    held.plugins = pluginManager;
+    await pluginManager.ensureGeneratedSecrets();
+    const providers = await createProviderManager({
+      bungalow: {
+        mode: bungalow.mode,
+        configurationLocation: bungalow.configurationLocation,
+        readConfiguration: () => bungalow.readConfiguration(),
+        writeConfiguration: (text) => bungalow.writeConfiguration(text),
+        readSecret: (key) => bungalow.readSecret(key),
+        writeSecret: (key, value) => {
+          bungalow.writeSecret(key, value);
+          pluginManager.secretChanged(key);
+        },
+      },
       configurationQueue,
       warn: options.warn ?? ((message) => console.warn(message)),
       resolveProviderGenerate: options.resolveProviderGenerate ?? resolveProviderGenerate,
@@ -647,6 +692,11 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         },
       },
       storage,
+      // The plugins this host loads, the owner's choices for them, and the secrets they declare
+      // (COR-1880). Memory is built once their setup has run, with what they contribute to it.
+      plugins,
+      pluginConfiguration: pluginManager.settings(),
+      pluginSecrets: pluginManager.secrets,
       answerEncryption: answerKeys,
       // The audit trail is kept 90 days (COR-1810); a person changes it on the Settings page, and
       // the stored value then replaces this default.
@@ -661,7 +711,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       logs: { maximumLinesPerRun: WORKFLOW_LOG_MAXIMUM_LINES_PER_RUN },
       // Governed memory (COR-1546): an agent remembers across every chat its owner has with it, and
       // the Memory page lists, searches, forgets, and corrects what it remembers.
-      memory: createHostMemory(storage),
+      memory: (contributions) => createHostMemory(storage, contributions),
       // Managed assets (COR-1547): the handler serves uploads and an asset's content, and a chat
       // attachment is one, so the Bureau keeps them in the same database as everything else.
       assets: { storage: createDurableAssetStorage(storage) },
@@ -793,16 +843,20 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         // Where a person edits what the host keeps by hand. The pages show an agent's file path and
         // a workflow's.
         ...providerRoutes(providers, refuse),
+        ...pluginRoutes(pluginManager, refuse),
         ...skillRoutes(skills, refuse),
         ...toolSourceRoutes(toolSources, refuse, { principal: () => ANONYMOUS_LOCAL_OWNER }),
         [HOST_PATHS_ROUTE]: {
-          GET: (request: Request) =>
+          GET: async (request: Request) =>
             refuse(request) ??
             Response.json(
               hostPathsReport(
                 bungalow,
                 { agents: agentContent, workflows: workflowContent },
-                PROVIDER_NAMES.map((name) => ({ name, secretKey: PROVIDER_SECRET_KEYS[name] })),
+                providerSecrets(
+                  await bureau.plugins.list(),
+                  PROVIDER_NAMES.map((name) => ({ name, secretKey: PROVIDER_SECRET_KEYS[name] })),
+                ),
               ),
             ),
         },
@@ -914,6 +968,11 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         refresh: () => skills.refresh(),
         standing: () => skills.standing(),
       },
+      plugins: {
+        snapshot: () => pluginManager.snapshot(),
+        update: (name, request) => pluginManager.update(name, request),
+        saveSecret: (name, secretKey, value) => pluginManager.saveSecret(name, secretKey, value),
+      },
       providers: {
         connect: (connection) => providers.connect(connection),
         editCatalog: (edits) => providers.editCatalog(edits),
@@ -950,6 +1009,7 @@ type Held = {
   storage?: Storage;
   bureau?: Bureau<SeededAgents>;
   providers?: ProviderManager;
+  plugins?: PluginManager;
   skills?: SkillManager;
   toolSources?: ToolSourceManager;
   replacementEngine?: RegistryAgnosticEngine;
@@ -972,6 +1032,7 @@ async function teardown(held: Held): Promise<void> {
   };
   // No change to the providers may start once the host is going away.
   held.providers?.close();
+  held.plugins?.close();
   held.skills?.close();
   // End the reload streams first, so no page is left reading a host that is going away.
   await step(held.devReload && (() => held.devReload?.close()));
