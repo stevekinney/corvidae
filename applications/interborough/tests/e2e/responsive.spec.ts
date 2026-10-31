@@ -103,7 +103,9 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/workflows/:workflow (file, runs tab)': /Recent runs/,
   '/workflows/:workflow (file, history tab)': /Revisions that have run/,
   '/workflows/:workflow/runs/:run': /Input and output/,
-  '/workflows/:workflow/edit': /Workflow file/,
+  // The builder's summary prints the file's trigger and steps; the JSON tab's editor text does not count.
+  '/workflows/new': /In plain words/,
+  '/workflows/:workflow/edit': /In plain words/,
   '/runs/:run': /Input and output/,
   // The list prints the question each waiting review asks, and the open review its source line,
   // which links to the chat whose title is the long word.

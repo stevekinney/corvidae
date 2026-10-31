@@ -4,10 +4,11 @@
  * host's temporary home, so a spec that creates one removes it, and a later spec's list never sees
  * it. The files the specs read without changing are seeded by `e2e-server.ts`.
  */
-import type { APIRequestContext } from '@playwright/test';
+import type { APIRequestContext, Locator } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { join } from 'node:path';
 
+import { WORKFLOW_COPY } from '../../src/app/copy.ts';
 import { bureau } from './agent-support.ts';
 
 /** The files `e2e-server.ts` seeds into the host's workflow directory before it starts. */
@@ -113,4 +114,9 @@ export async function workflowRunStatus(
   const answer = await bureau(request, 'bureau.workflows.runs.get', { runId });
   expect(answer.fault, `reading run ${runId}`).toBeUndefined();
   return (answer.result as { status: string }).status;
+}
+
+/** Opens the JSON tab of the workflow builder on `root`, whose editor holds the file's text. */
+export async function openJsonTab(root: Locator): Promise<void> {
+  await root.getByRole('tab', { name: WORKFLOW_COPY.builder.jsonTab }).click();
 }

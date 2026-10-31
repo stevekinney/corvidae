@@ -40,7 +40,7 @@ import {
 } from './journey-agent.ts';
 import { jsonEditor, jsonEditorSource } from './json-editor-support.ts';
 import { expectEngineMissesForRuns, waitingReviewOf } from './task-support.ts';
-import { removeWorkflow } from './workflow-support.ts';
+import { openJsonTab, removeWorkflow } from './workflow-support.ts';
 
 test.use({ baseURL: E2E_JOURNEY_URL, viewport: { width: 1280, height: 900 } });
 test.describe.configure({ mode: 'serial' });
@@ -347,6 +347,7 @@ test('follows the schedule’s link to the workflow editor, changes its cadence 
   await expect(page).toHaveURL(new RegExp(`/workflows/${JOURNEY_WORKFLOW_ID}/edit$`));
 
   const root = page.locator('[data-page="workflow-editor"]');
+  await openJsonTab(root);
   const editor = await jsonEditor(root, WORKFLOW_COPY.editor.textLabel);
   const document = JSON.parse(await jsonEditorSource(editor)) as Record<string, unknown>;
   expect(document['trigger']).toEqual({ kind: 'schedule', spec: JOURNEY_WORKFLOW_CADENCE });
