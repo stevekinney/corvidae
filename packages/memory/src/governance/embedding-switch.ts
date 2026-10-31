@@ -10,7 +10,7 @@ import type { ActiveEmbedding } from './governed-embedding';
 import type { MemoryEmbeddingSwitchResult } from './governed-memory-types';
 import { putRecordVector } from './profile-vectors';
 
-/** How many records one {@link advanceSwitch} embeds when its caller names no limit. */
+/** How many records one `memory.embedding.advance()` embeds when its caller names no limit. */
 export const DEFAULT_SWITCH_STEP_LIMIT = 500;
 
 /** The error a switch fails with when its embedder is no longer registered, or cannot embed. */
@@ -305,7 +305,9 @@ export async function embedIntoOtherProfiles(
     try {
       await embedInto(context, profile, reference, version, content);
     } catch {
-      // Left for the switch: its survey finds the record missing from the target.
+      // For a running switch's target, the switch repairs it: its survey finds the record missing.
+      // For an active profile a switch completed meanwhile, nothing does yet, and the record is
+      // recalled by its text in that profile.
     }
   }
 }

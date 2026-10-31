@@ -208,7 +208,9 @@ export async function storeGovernedRecord(
     written = undefined;
   }
   // A running switch's target gets the record too (COR-1898), and so does an active profile a
-  // switch made active after this admission read the old one.
+  // switch made active after this admission read the old one. Neither failure fails the admission:
+  // the switch embeds what its target lacks, and a record the new active profile lacks is recalled
+  // by its text there.
   await embedIntoOtherProfiles(context, written, vectorReference, record.version, input.content);
   if (lineage === undefined) {
     if (input.state === 'active') {

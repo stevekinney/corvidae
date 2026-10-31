@@ -296,5 +296,7 @@ The contracts in this guide are defined in:
 - `packages/memory/src/governance/governed-transitions.ts` and `governed-forgetting.ts`: promotion, sharing, quarantine, revocation, legal hold, and the ten forgetting modes.
 - `packages/memory/src/governance/deletion.ts` and `ledger-types.ts`: deletion plans, lanes, propagation, and receipts.
 - `packages/memory/src/governance/policy.ts`, `retention.ts`, and `governed-administration.ts`: policy defaults, retention, sweeps, and policy revisions.
+- `packages/memory/src/memory-vector-store.ts` and `governance/embedding-switch.ts`: embedding profiles, the switch record, and the switch itself.
 - `packages/bureau/src/runtime-composition.ts`: `createRunMemoryAuthority()` and Bureau's recall and persistence hooks.
+- `packages/bureau/src/memory-embedder-setting.ts`: the `memory.embedder` setting and the maintenance pass that advances a switch.
 - `testing/evaluation/src/memory-lifecycle/` and `testing/evaluation/scripts/memory-lifecycle.ts`: the lifecycle suite and its command.

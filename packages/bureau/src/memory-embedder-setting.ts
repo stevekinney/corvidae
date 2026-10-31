@@ -11,14 +11,11 @@
  * @module memory-embedder-setting
  */
 
-import type { GovernedMemory } from '@lostgradient/memory';
+import { DEFAULT_SWITCH_STEP_LIMIT, type GovernedMemory } from '@lostgradient/memory';
 
 import type { SettingsFailure } from './settings/settings-validation.ts';
 import type { SettingKey, SettingsValues } from './settings/settings-schema.ts';
 import type { BureauSettings } from './settings/types.ts';
-
-/** How many records one maintenance pass re-embeds at most; a larger store takes several passes. */
-export const MEMORY_SWITCH_RECORDS_PER_PASS = 500;
 
 /** How many times a pass tries to set the setting back when another write keeps moving its revision. */
 const RESET_ATTEMPTS = 3;
@@ -99,7 +96,8 @@ export function createMemoryEmbedderSetting(
   async function reconcileOnce(target: GovernedMemory): Promise<void> {
     let status = await target.embedding.status();
     if (status.job?.state === 'running') {
-      status = await target.embedding.advance({ limit: MEMORY_SWITCH_RECORDS_PER_PASS });
+      // Memory's own step size: a larger store takes several passes.
+      status = await target.embedding.advance({ limit: DEFAULT_SWITCH_STEP_LIMIT });
     }
     const requested = settings()['memory.embedder'];
     const active = status.active.embedder;
