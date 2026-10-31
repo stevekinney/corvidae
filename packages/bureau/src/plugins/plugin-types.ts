@@ -21,6 +21,12 @@ export interface BureauPluginEntry {
   readonly source: PluginLoadSource;
   /** The package name, or the plugin's folder; a folder plugin's last path segment orders it. */
   readonly location: string;
+  /**
+   * Set by a host that loads the plugin from a source tree it is developing (COR-1881): the
+   * folder's absolute path. The listing then carries a `development-source` problem; the plugin's
+   * status is whatever its own standing is.
+   */
+  readonly developmentPath?: string;
 }
 
 /** The owner's choices for one plugin, persisted under `plugins.<name>` in Bungalow's configuration. */
@@ -128,6 +134,39 @@ export type PluginProblem =
        */
       readonly code: 'setup-failed';
       /** The error's message, with every secret value the plugin was handed removed. */
+      readonly message: string;
+    }
+  | {
+      /**
+       * The host loaded this plugin from a source tree under development, not from an installed
+       * package or Bungalow's `plugins/` folder (COR-1881). The plugin runs; the problem tells the
+       * owner it is a work in progress. Set by the host, never by composition.
+       */
+      readonly code: 'development-source';
+      /** The folder the plugin was loaded from. */
+      readonly path: string;
+    }
+  | {
+      /**
+       * The host refused to load the plugin because it declares a secret it cannot honor: a key the
+       * host keeps for itself, or one Bungalow cannot store. The plugin is `skipped` and the host
+       * starts (COR-1881). Set by the host, never by composition.
+       */
+      readonly code: 'secret-refused';
+      /** The declared key. */
+      readonly key: string;
+      /** Why it is refused, naming the key and never a value. */
+      readonly message: string;
+    }
+  | {
+      /**
+       * The host could not load the plugin's code from its folder, such as an import of a package
+       * that is not installed (the message names the specifier) or a `plugin.ts` with no plugin as
+       * its default export. The plugin is `skipped` and the host starts (COR-1881). Set by the
+       * host, never by composition.
+       */
+      readonly code: 'load-failed';
+      /** The failure's message, naming the folder and, for a failed import, the specifier. */
       readonly message: string;
     }
   | {

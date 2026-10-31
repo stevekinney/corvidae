@@ -463,3 +463,33 @@ describe('plugin composition', () => {
     ]);
   });
 });
+
+describe('a plugin loaded from a source tree under development', () => {
+  it('reports development-source with the folder, and the plugin still runs', async () => {
+    const working = definePlugin({
+      name: 'working',
+      version: '1.0.0',
+      description: 'Is being written.',
+    });
+    const installed = definePlugin({
+      name: 'installed',
+      version: '1.0.0',
+      description: 'Is not being written.',
+    });
+    const bureau = await start({
+      plugins: [
+        { ...entry(working, 'folder', '/work/working'), developmentPath: '/work/working' },
+        entry(installed),
+      ],
+    });
+
+    const listed = await bureau.plugins.list();
+
+    expect(
+      listed.map(({ descriptor, status, problems }) => [descriptor.name, status, problems]),
+    ).toEqual([
+      ['installed', 'running', []],
+      ['working', 'running', [{ code: 'development-source', path: '/work/working' }]],
+    ]);
+  });
+});

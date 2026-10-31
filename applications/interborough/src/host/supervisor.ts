@@ -7,6 +7,7 @@
  * ```sh
  * bun src/host/supervisor.ts serve   # bun --no-install src/host/serve.ts   (`start`)
  * bun src/host/supervisor.ts dev     # bun --no-install --watch src/host/dev.ts   (`dev`)
+ * bun src/host/supervisor.ts dev --plugin ./my-plugin   # the same, loading that plugin folder (COR-1881)
  * ```
  *
  * `serve` refuses to start without `build/index.html` (or the directory
@@ -23,8 +24,9 @@
 
 import { existsSync } from 'node:fs';
 import { constants } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve as resolvePath } from 'node:path';
 
+import { DEVELOPMENT_PLUGIN_FLAG } from './development-plugin-flag.ts';
 import { processEnvironment, resolveBuildDirectory } from './environment-configuration.ts';
 import { RESTART_EXIT_CODE } from './restart.ts';
 
@@ -37,13 +39,24 @@ const PACKAGE_DIRECTORY = join(HOST_DIRECTORY, '..', '..');
 
 /**
  * The command that runs the host in `mode`: Bun on the mode's entry (`serve.ts` or `dev.ts`, or
- * `entry` instead). `--no-install` keeps Bun from installing anything at start, and `dev` adds
- * `--watch`.
+ * `entry` instead). `--no-install` keeps Bun from installing anything at start, so an import that
+ * nothing provides fails instead of reaching a registry, and `dev` adds `--watch` and passes each
+ * of `pluginPaths` to the entry as `--plugin <path>`.
  */
-export function hostCommand(mode: SupervisorMode, entry?: string): string[] {
+export function hostCommand(
+  mode: SupervisorMode,
+  entry?: string,
+  pluginPaths: readonly string[] = [],
+): string[] {
   const script = entry ?? join(HOST_DIRECTORY, mode === 'dev' ? 'dev.ts' : 'serve.ts');
   return mode === 'dev'
-    ? [process.execPath, '--no-install', '--watch', script]
+    ? [
+        process.execPath,
+        '--no-install',
+        '--watch',
+        script,
+        ...pluginPaths.flatMap((path) => [DEVELOPMENT_PLUGIN_FLAG, path]),
+      ]
     : [process.execPath, '--no-install', script];
 }
 
@@ -131,27 +144,36 @@ export async function supervise(options: SuperviseOptions): Promise<number> {
   }
 }
 
-const USAGE = 'Usage: bun src/host/supervisor.ts <serve|dev> [--entry <path>]';
+const USAGE =
+  'Usage: bun src/host/supervisor.ts <serve|dev> [--entry <path>] [--plugin <path>]… (--plugin is for dev only)';
 
 /**
  * Run the supervisor for the command line `bun src/host/supervisor.ts <serve|dev> [--entry
- * <path>]` and resolve with its exit code. `--entry` runs another module in place of the mode's own
- * entry, which is how the tests run a host of their own under the real supervisor.
+ * <path>] [--plugin <path>]…` and resolve with its exit code. `--entry` runs another module in
+ * place of the mode's own entry, which is how the tests run a host of their own under the real
+ * supervisor. `--plugin` (dev only, repeatable) names a plugin folder the development host loads
+ * as a development source; a relative path is taken from the directory the command ran in.
  */
 export async function runSupervisor(argumentsList: readonly string[]): Promise<number> {
   const [mode, ...rest] = argumentsList;
-  const entryFlag = rest.indexOf('--entry');
-  const entry = entryFlag === -1 ? undefined : rest[entryFlag + 1];
-  if (
-    (mode !== 'serve' && mode !== 'dev') ||
-    rest.length !== (entryFlag === -1 ? 0 : 2) ||
-    (entryFlag !== -1 && entry === undefined)
-  ) {
+  let entry: string | undefined;
+  const pluginPaths: string[] = [];
+  let understood = mode === 'serve' || mode === 'dev';
+  for (let index = 0; understood && index < rest.length; index += 2) {
+    const flag = rest[index];
+    const value = rest[index + 1];
+    if (value === undefined) understood = false;
+    else if (flag === '--entry' && entry === undefined) entry = value;
+    else if (flag === DEVELOPMENT_PLUGIN_FLAG && mode === 'dev' && value !== '') {
+      pluginPaths.push(resolvePath(value));
+    } else understood = false;
+  }
+  if (!understood || (mode !== 'serve' && mode !== 'dev')) {
     console.error(USAGE);
     return 2;
   }
   const environment = processEnvironment();
-  const command = hostCommand(mode, entry);
+  const command = hostCommand(mode, entry, pluginPaths);
   if (mode === 'dev') return supervise({ command });
   return supervise({
     command,

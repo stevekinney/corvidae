@@ -105,7 +105,16 @@ const missingBuild = await runWithHangGuard([process.execPath, supervisorEntry, 
   env: { ...process.env, INTERBOROUGH_BUILD_DIRECTORY: emptyBuild },
 });
 const badArguments = new Map<string, Awaited<ReturnType<typeof runWithHangGuard>>>();
-for (const argumentsList of [[], ['serve', 'extra'], ['nonsense'], ['dev', '--entry']]) {
+for (const argumentsList of [
+  [],
+  ['serve', 'extra'],
+  ['nonsense'],
+  ['dev', '--entry'],
+  ['dev', '--plugin'],
+  ['dev', '--plugin', ''],
+  ['serve', '--plugin', '/somewhere'],
+  ['dev', '--entry', '/a', '--entry', '/b'],
+]) {
   badArguments.set(
     JSON.stringify(argumentsList),
     await runWithHangGuard([process.execPath, supervisorEntry, ...argumentsList], {
@@ -176,6 +185,24 @@ describe('hostCommand', () => {
       '/elsewhere/entry.ts',
     ]);
   });
+
+  test('dev passes each plugin folder to the entry as --plugin, after the script, and serve takes none', () => {
+    expect(hostCommand('dev', undefined, ['/one', '/two'])).toEqual([
+      process.execPath,
+      '--no-install',
+      '--watch',
+      join(import.meta.dir, 'dev.ts'),
+      '--plugin',
+      '/one',
+      '--plugin',
+      '/two',
+    ]);
+    expect(hostCommand('serve', undefined, ['/one'])).toEqual([
+      process.execPath,
+      '--no-install',
+      join(import.meta.dir, 'serve.ts'),
+    ]);
+  });
 });
 
 describe('the supervisor command', () => {
@@ -186,12 +213,18 @@ describe('the supervisor command', () => {
     expect(missingBuild.stdout.toString()).not.toContain('Started the host');
   });
 
-  test.each([[[]], [['serve', 'extra']], [['nonsense']], [['dev', '--entry']]])(
-    'refuses the arguments %j with a usage line and exit code 2',
-    (argumentsList) => {
-      const result = badArguments.get(JSON.stringify(argumentsList));
-      expect(result?.exitCode).toBe(2);
-      expect(result?.stderr.toString()).toContain('Usage: bun src/host/supervisor.ts');
-    },
-  );
+  test.each([
+    [[]],
+    [['serve', 'extra']],
+    [['nonsense']],
+    [['dev', '--entry']],
+    [['dev', '--plugin']],
+    [['dev', '--plugin', '']],
+    [['serve', '--plugin', '/somewhere']],
+    [['dev', '--entry', '/a', '--entry', '/b']],
+  ])('refuses the arguments %j with a usage line and exit code 2', (argumentsList) => {
+    const result = badArguments.get(JSON.stringify(argumentsList));
+    expect(result?.exitCode).toBe(2);
+    expect(result?.stderr.toString()).toContain('Usage: bun src/host/supervisor.ts');
+  });
 });
