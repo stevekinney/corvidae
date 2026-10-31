@@ -1,9 +1,11 @@
 <script lang="ts">
   /**
-   * `/agents`: every agent the Bureau tells the caller of, one flat row each: its name (and its
-   * identifier beside it when they differ), its description, its model when the Bureau can tell, its tools,
-   * how many chats it has had and when the last was, and the actions that are open to it. New chat
-   * is the main one and is offered for every agent.
+   * `/agents`: every agent the Bureau tells the caller of, as compact rows in one bordered list: an
+   * avatar, its name (and its identifier beside it when they differ), its description, how many
+   * chats it has had (a link to the agent's page) and when the last was, a Needs you marker when a
+   * chat of its own waits on the person, and the actions that are open to it: Memory and New chat
+   * as icon buttons, and Edit for a file. The toolbar under the heading has the count, a search
+   * over the names, and New agent.
    *
    * An agent file the Bureau cannot use is not an agent that can run, so `bureau.agents.list`
    * leaves it out. The list also reads `bureau.agents.definitions.list` and shows each invalid file
@@ -14,11 +16,22 @@
    * (`bureau.contexts.list`, every page of it). They are read again each time the page opens, so a
    * chat had since shows.
    */
-  import { Badge, Button, CodeLocation } from '@lostgradient/cinder';
-  import { Plus } from '@lucide/svelte';
+  import {
+    Avatar,
+    Badge,
+    Button,
+    CodeLocation,
+    DataList,
+    EmptyState,
+    FilterBar,
+    PageHeader,
+    StackedListItem,
+  } from '@lostgradient/cinder';
+  import { Brain, MessageSquarePlus, Plus } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { AGENT_EDITOR_COPY, CHAT_COPY, MEMORY_COPY } from '../../app/copy.ts';
+  import { AGENT_EDITOR_COPY, AGENTS_COPY, CHAT_COPY, MEMORY_COPY } from '../../app/copy.ts';
+  import RecordsToolbar from '../../app/records/records-toolbar.svelte';
   import { listAgentDefinitions } from '../../lib/agent-definitions.ts';
   import { agentEditPath, agentMemoryPath, agentPath } from '../../lib/agent-paths.ts';
   import { listAgents, listAllContexts } from '../../lib/bureau-client.ts';
@@ -26,7 +39,6 @@
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
-  import AgentFacts from './agent-facts.svelte';
   import {
     chatCountText,
     chatUsageByAgent,
@@ -65,6 +77,23 @@
   );
   const directory = $derived(hostPaths.data?.agentDirectory ?? AGENT_EDITOR_COPY.fallbackDirectory);
 
+  // The search narrows the names and descriptions on screen; the Bureau lists every agent at once.
+  let search = $state('');
+  const needle = $derived(search.trim().toLowerCase());
+  const visible = $derived(
+    (agents.data ?? []).filter(
+      (agent) =>
+        needle === '' ||
+        agent.name.toLowerCase().includes(needle) ||
+        agent.displayName.toLowerCase().includes(needle) ||
+        (agent.description ?? '').toLowerCase().includes(needle),
+    ),
+  );
+  const visibleInvalid = $derived(
+    needle === '' ? invalid : invalid.filter((entry) => entry.id.toLowerCase().includes(needle)),
+  );
+  const count = $derived(visible.length + visibleInvalid.length);
+
   function go(event: MouseEvent, path: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
       return;
@@ -74,9 +103,20 @@
   }
 </script>
 
-<section class="ib-agents" aria-labelledby="weft-agents-title">
-  <header class="ib-agents__header">
-    <h1 id="weft-agents-title" class="weft-chat-header__title">{CHAT_COPY.agentsTitle}</h1>
+<section class="ib-agents ib-records" aria-label={CHAT_COPY.agentsTitle}>
+  <PageHeader title={CHAT_COPY.agentsTitle} headingLevel={1} />
+
+  {#snippet filterBar()}
+    <FilterBar
+      aria-label={AGENTS_COPY.filtersLabel}
+      searchQuery={search}
+      searchPlaceholder={AGENTS_COPY.searchPlaceholder}
+      searchAriaLabel={AGENTS_COPY.searchLabel}
+      onSearchChange={(query) => (search = query)}
+      onClearAll={() => (search = '')}
+    />
+  {/snippet}
+  {#snippet newAgent()}
     <Button
       href={router.href('/agents/new')}
       variant="primary"
@@ -86,86 +126,160 @@
       <Plus size={14} aria-hidden="true" />
       {AGENT_EDITOR_COPY.newAction}
     </Button>
-  </header>
-  <ul class="ib-agents__list">
-    {#each agents.data ?? [] as agent (agent.name)}
-      {@const used = usage.get(agent.name)}
-      <li class="ib-agent-row" data-agent={agent.name}>
-        <div class="ib-agent-row__body">
-          <div class="ib-agent-row__title">
-            <a
-              class="ib-agent-name"
-              data-identifier={agent.displayName === agent.name ? '' : undefined}
-              href={router.href(agentPath(agent.name))}
-              onclick={(event) => go(event, agentPath(agent.name))}>{agent.displayName}</a
-            >
-            {#if agent.displayName !== agent.name}
-              <code class="ib-agent-id">{agent.name}</code>
+  {/snippet}
+  <RecordsToolbar count={AGENTS_COPY.count(count)} filters={filterBar} action={newAgent} />
+
+  {#if count === 0 && needle !== '' && agents.isSuccess}
+    <EmptyState
+      kind="filtered"
+      title={AGENTS_COPY.noMatch.title}
+      description={AGENTS_COPY.noMatch.description}
+      headingLevel={2}
+      clearFiltersLabel={AGENTS_COPY.clearAction}
+      onClearFilters={() => (search = '')}
+    />
+  {:else if count === 0 && agents.isSuccess}
+    <EmptyState
+      kind="first-use"
+      title={AGENTS_COPY.empty.title}
+      description={AGENTS_COPY.empty.description}
+      headingLevel={2}
+    >
+      {#snippet action()}{@render newAgent()}{/snippet}
+    </EmptyState>
+  {:else}
+    <DataList
+      class="ib-agents__list"
+      items={visible}
+      key={(agent) => agent.name}
+      density="condensed"
+      aria-label={CHAT_COPY.agentsTitle}
+    >
+      {#snippet children(agent)}
+        {@const used = usage.get(agent.name)}
+        <StackedListItem data-agent={agent.name}>
+          {#snippet leading()}
+            <!-- The name beside it says whose it is, so the avatar adds only a picture. -->
+            <span aria-hidden="true"><Avatar name={agent.displayName} size="sm" /></span>
+          {/snippet}
+          {#snippet title()}
+            <span class="ib-agent-row__title">
+              <a
+                class="ib-agent-name"
+                data-identifier={agent.displayName === agent.name ? '' : undefined}
+                href={router.href(agentPath(agent.name))}
+                onclick={(event) => go(event, agentPath(agent.name))}>{agent.displayName}</a
+              >
+              {#if agent.displayName !== agent.name}
+                <code class="ib-agent-id">{agent.name}</code>
+              {/if}
+            </span>
+          {/snippet}
+          {#snippet description()}
+            {#if agent.description}
+              <span class="ib-agent-row__description">{agent.description}</span>
             {/if}
-          </div>
-          {#if agent.description}
-            <p class="ib-agent-row__description">{agent.description}</p>
-          {/if}
-          <div class="ib-agent-row__meta">
-            <AgentFacts {agent} />
+          {/snippet}
+          {#snippet meta()}
             <!-- Said only once the Bureau has answered: a failed read is not "no chats yet". -->
             {#if chats.isSuccess}
-              <span data-testid="agent-chat-count">{chatCountText(used)}</span>
-              {#if lastChatText(used) !== undefined}
-                <span data-testid="agent-last-chat">{lastChatText(used)}</span>
-              {/if}
+              <span class="ib-agent-row__meta">
+                {#if used === undefined}
+                  <span data-testid="agent-chat-count">{chatCountText(used)}</span>
+                {:else}
+                  <a
+                    data-testid="agent-chat-count"
+                    href={router.href(agentPath(agent.name))}
+                    onclick={(event) => go(event, agentPath(agent.name))}>{chatCountText(used)}</a
+                  >
+                {/if}
+                {#if lastChatText(used) !== undefined}
+                  <span data-testid="agent-last-chat">{lastChatText(used)}</span>
+                {/if}
+                {#if used !== undefined && used.waiting > 0}
+                  <Badge variant="warning" size="sm" data-testid="agent-needs-you"
+                    >{AGENTS_COPY.needsYou}</Badge
+                  >
+                {/if}
+              </span>
             {/if}
-          </div>
-        </div>
-        <div class="ib-agent-row__actions">
-          {#if agent.kind === 'file'}
-            <Button
-              href={router.href(agentEditPath(agent.name))}
-              variant="secondary"
-              size="sm"
-              onclick={(event) => go(event, agentEditPath(agent.name))}
-              >{AGENT_EDITOR_COPY.editAction}</Button
-            >
-          {/if}
-          <Button
-            href={router.href(agentMemoryPath(agent.name))}
-            variant="secondary"
-            size="sm"
-            onclick={(event) => go(event, agentMemoryPath(agent.name))}>{MEMORY_COPY.link}</Button
-          >
-          <Button
-            href={router.href(newChatPath(agent.name))}
-            variant="primary"
-            size="sm"
-            onclick={(event) => go(event, newChatPath(agent.name))}>{CHAT_COPY.newChat}</Button
-          >
-        </div>
-      </li>
-    {/each}
-    {#each keyedByOccurrence(invalid, (entry) => entry.id) as { key, item: entry } (key)}
-      <li class="ib-agent-row" data-agent={entry.id} data-state="invalid">
-        <div class="ib-agent-row__body">
-          <div class="ib-agent-row__title">
-            <a
-              class="ib-agent-name"
-              data-identifier
-              href={router.href(agentEditPath(entry.id))}
-              onclick={(event) => go(event, agentEditPath(entry.id))}>{entry.id}</a
-            >
-            <Badge variant="danger" size="sm">{AGENT_EDITOR_COPY.invalidBadge}</Badge>
-          </div>
-          {#if entry.problem}
-            <p class="ib-agent-row__description" data-testid="agent-problem">
-              <code>{entry.problem.code}</code>: {entry.problem.message}
-            </p>
-          {/if}
-          <CodeLocation
-            class="weft-code-location"
-            file={agentFilePath(directory, entry.id)}
-            data-testid="agent-file-path"
-          />
-        </div>
-      </li>
-    {/each}
-  </ul>
+          {/snippet}
+          {#snippet trailing()}
+            <span class="ib-agent-row__actions">
+              {#if agent.kind === 'file'}
+                <Button
+                  href={router.href(agentEditPath(agent.name))}
+                  variant="ghost"
+                  size="sm"
+                  onclick={(event) => go(event, agentEditPath(agent.name))}
+                  >{AGENT_EDITOR_COPY.editAction}</Button
+                >
+              {/if}
+              <Button
+                href={router.href(agentMemoryPath(agent.name))}
+                variant="ghost"
+                size="sm"
+                iconOnly
+                aria-label={MEMORY_COPY.link}
+                title={MEMORY_COPY.link}
+                onclick={(event) => go(event, agentMemoryPath(agent.name))}
+              >
+                <Brain size={16} aria-hidden="true" />
+              </Button>
+              <Button
+                href={router.href(newChatPath(agent.name))}
+                variant="ghost"
+                size="sm"
+                iconOnly
+                aria-label={CHAT_COPY.newChat}
+                title={CHAT_COPY.newChat}
+                onclick={(event) => go(event, newChatPath(agent.name))}
+              >
+                <MessageSquarePlus size={16} aria-hidden="true" />
+              </Button>
+            </span>
+          {/snippet}
+        </StackedListItem>
+      {/snippet}
+    </DataList>
+    {#if visibleInvalid.length > 0}
+      <DataList
+        class="ib-agents__list"
+        items={[...keyedByOccurrence(visibleInvalid, (entry) => entry.id)]}
+        key={(entry) => entry.key}
+        density="condensed"
+        aria-label={AGENTS_COPY.invalidListLabel}
+      >
+        {#snippet children({ item: entry })}
+          <StackedListItem data-agent={entry.id} data-state="invalid">
+            {#snippet title()}
+              <span class="ib-agent-row__title">
+                <a
+                  class="ib-agent-name"
+                  data-identifier
+                  href={router.href(agentEditPath(entry.id))}
+                  onclick={(event) => go(event, agentEditPath(entry.id))}>{entry.id}</a
+                >
+                <Badge variant="danger" size="sm">{AGENT_EDITOR_COPY.invalidBadge}</Badge>
+              </span>
+            {/snippet}
+            {#snippet description()}
+              {#if entry.problem}
+                <span class="ib-agent-row__description" data-testid="agent-problem">
+                  <code>{entry.problem.code}</code>: {entry.problem.message}
+                </span>
+              {/if}
+            {/snippet}
+            {#snippet meta()}
+              <CodeLocation
+                class="weft-code-location"
+                file={agentFilePath(directory, entry.id)}
+                data-testid="agent-file-path"
+              />
+            {/snippet}
+          </StackedListItem>
+        {/snippet}
+      </DataList>
+    {/if}
+  {/if}
 </section>

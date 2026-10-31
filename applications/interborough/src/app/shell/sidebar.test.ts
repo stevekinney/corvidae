@@ -81,6 +81,7 @@ const DESTINATIONS = [
   'Workflows',
   'Runs',
   'Schedules',
+  'Goals',
   'Health',
   'Settings',
 ];
@@ -120,6 +121,7 @@ describe('the sidebar', () => {
       Workflows: '/workflows',
       Runs: '/runs',
       Schedules: '/schedules',
+      Goals: '/goals',
       Health: '/health',
       Settings: '/settings',
     });
@@ -212,6 +214,7 @@ describe('the sidebar', () => {
       Workflows: 'Workflows (g w)',
       Runs: 'Runs (g r)',
       Schedules: 'Schedules (g s)',
+      Goals: 'Goals (g l)',
       Health: 'Health (g e)',
       Settings: 'Settings (g n)',
     });

@@ -39,6 +39,12 @@ const ESCAPED_IDENTIFIERS: Readonly<
     queryKey: '__weft_schedule_id',
     escapes: isDotOnly,
   },
+  // A goal named `new` would be the new goal page's.
+  '/goals/:goal': {
+    parameter: 'goal',
+    queryKey: '__weft_goal_id',
+    escapes: (id) => isDotOnly(id) || id === 'new',
+  },
   '/chats/:chat': {
     parameter: 'chat',
     queryKey: '__weft_session_id',
@@ -71,6 +77,17 @@ export function chatSessionPath(
   search: URLSearchParams = new URLSearchParams(),
 ): string {
   return identifierPath('chats', '/chats/:chat', sessionId, search);
+}
+
+/**
+ * A goal's page. The goal `new` would be the new goal page, and a dot-only identifier would be
+ * resolved away by the browser, so both are carried in the query.
+ */
+export function goalPath(
+  goalRunId: string,
+  search: URLSearchParams = new URLSearchParams(),
+): string {
+  return identifierPath('goals', '/goals/:goal', goalRunId, search);
 }
 
 /**

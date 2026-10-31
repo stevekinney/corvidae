@@ -1,11 +1,11 @@
 /**
- * Draft state for the drawer that creates a goal (`bureau.goals.create`): an agent, a prompt, an
+ * Draft state for the page that creates a goal (`bureau.goals.create`): an agent, a prompt, an
  * identity (a name and a version), a validator named by free text (a name and a version), and the
  * most attempts the goal may make. A plain rune-backed class, so validation and the payload are
  * testable without a DOM.
  *
  * The validator is free text because it names one this Bureau was configured with, which a browser
- * cannot list: one the Bureau lacks is refused as `Unprocessable`, and the drawer says so.
+ * cannot list: one the Bureau lacks is refused as `Unprocessable`, and the page says so.
  */
 import type { GoalInput } from '../../lib/bureau-goals.ts';
 

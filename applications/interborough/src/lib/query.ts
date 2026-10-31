@@ -97,6 +97,8 @@ export const queryKeys = {
   /** The caller's goals (`bureau.goals.list`). */
   goals: {
     list: () => ['goals', 'list'] as const,
+    /** One goal, read by its page. */
+    detail: (goalRunId: string) => ['goals', 'detail', goalRunId] as const,
     /** Every goal, a page at a time, read by the runs list and a run's page for a goal's attempts. */
     runs: () => ['goals', 'runs'] as const,
   },

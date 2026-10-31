@@ -18,7 +18,7 @@ import {
   type TaskState,
   type TaskView,
 } from '../../../lib/bureau-tasks.ts';
-import { chatSessionPath } from '../../../lib/identifier-paths.ts';
+import { chatSessionPath, goalPath } from '../../../lib/identifier-paths.ts';
 
 export type RunOrigin =
   | { readonly kind: 'chat'; readonly title: string; readonly href: string }
@@ -159,7 +159,7 @@ function goalRows(goal: Goal, chats: ReadonlyMap<string, ChatContext>): RunRow[]
       origin: {
         kind: 'goal',
         name: goal.goalRunId,
-        href: '/goals',
+        href: goalPath(goal.goalRunId),
         session:
           attempt.sessionId === '' ? null : { title, href: chatSessionPath(attempt.sessionId) },
       },

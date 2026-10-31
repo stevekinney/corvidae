@@ -1,22 +1,25 @@
 <script lang="ts">
   /**
-   * `/workflows`: the workflows a person can read and act on, one flat row each, by name
+   * `/workflows`: the workflows a person can read and act on, as a table with one row each, by name
    * (`lib/workflow-catalog.ts` says how the engine's types and the Bureau's files are joined). A
-   * row says what the workflow is for, what kind it is, which agent owns it, what starts it, and
-   * how busy it is (`workflow-row.svelte`). A file the Bureau cannot use is listed with its error,
-   * its issues, and its path, and a source that failed to load shows the category of the failure,
-   * so a broken workflow is never silently missing.
+   * row says what the workflow is for, what kind it is, which agent owns it, what starts it, how
+   * busy it is, and its status in one of the seven words (`workflow-row.svelte`). A file the Bureau
+   * cannot use is listed with its error, its issues, and its path, and a source that failed to load
+   * shows the category of the failure, so a broken workflow is never silently missing. The toolbar
+   * under the heading has the count, a search and a status filter, New workflow, and a link to the
+   * internal workflows.
    *
    * The types the Bureau registers itself to run agents, goals, and its heartbeat are not
-   * workflows a person starts, so they sit apart in a collapsed disclosure. With none besides them
-   * the page says there are no workflows yet, and where one is written. New workflow opens the
-   * editor that writes the first.
+   * workflows a person starts, so they have a page of their own (`internal-workflows.svelte`), linked
+   * from here. With none besides them the page says there are no workflows yet, and where one is
+   * written. New workflow opens the editor that writes the first.
    */
-  import { Button, Collapsible, EmptyState } from '@lostgradient/cinder';
+  import { Button, EmptyState, FilterBar, PageHeader, Table } from '@lostgradient/cinder';
   import { Plus } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { VIEW_COPY, WORKFLOW_COPY } from '../../app/copy.ts';
+  import RecordsToolbar from '../../app/records/records-toolbar.svelte';
   import { getClient } from '../../lib/client.ts';
   import { getHostPaths, workflowFilePath } from '../../lib/host-paths.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -26,7 +29,9 @@
     loadCatalog,
     loadCodeActivity,
   } from '../../lib/workflow-catalog.ts';
-  import { workflowNewPath, workflowTypePath } from '../../lib/workflow-type-paths.ts';
+  import { STATUS_WORDS } from '../../lib/status.ts';
+  import { internalWorkflowsPath, workflowNewPath } from '../../lib/workflow-type-paths.ts';
+  import { workflowRowStatus } from './workflow-presentation.ts';
   import WorkflowRow from './workflow-row.svelte';
 
   const client = getClient();
@@ -72,6 +77,48 @@
   const directory = $derived(hostPaths.data?.workflowDirectory ?? copy.fallbackDirectory);
 
   const newPath = workflowNewPath();
+  const internalPath = internalWorkflowsPath();
+
+  // The search narrows the names and descriptions on screen; the status narrows by the row's word.
+  let search = $state('');
+  let statusFilter = $state('');
+  const needle = $derived(search.trim().toLowerCase());
+  const visible = $derived(
+    workflows.filter(
+      (row) =>
+        (needle === '' ||
+          row.name.toLowerCase().includes(needle) ||
+          (row.description ?? '').toLowerCase().includes(needle)) &&
+        (statusFilter === '' ||
+          workflowRowStatus(row, activity.data?.get(row.name)) === statusFilter),
+    ),
+  );
+  const filtered = $derived(needle !== '' || statusFilter !== '');
+  const facets = [
+    {
+      type: 'select' as const,
+      key: 'status',
+      label: copy.list.statusLabel,
+      placeholder: copy.list.anyStatus,
+      options: STATUS_WORDS.map((word) => ({ value: word, label: word })),
+    },
+  ];
+  const appliedFilters = $derived(
+    statusFilter === ''
+      ? []
+      : [
+          {
+            key: 'status',
+            value: statusFilter,
+            label: `${copy.list.statusLabel}: ${statusFilter}`,
+          },
+        ],
+  );
+
+  function clearFilters(): void {
+    search = '';
+    statusFilter = '';
+  }
 
   function go(event: MouseEvent, path: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
@@ -82,9 +129,31 @@
   }
 </script>
 
-<section class="ib-workflows" aria-labelledby="ib-workflows-title">
-  <header class="ib-workflows__header">
-    <h1 id="ib-workflows-title" class="ib-workflows__title">{VIEW_COPY.workflows.label}</h1>
+<section class="ib-workflows ib-records" aria-label={VIEW_COPY.workflows.label}>
+  <PageHeader title={VIEW_COPY.workflows.label} headingLevel={1} />
+
+  {#snippet filterBar()}
+    <FilterBar
+      aria-label={copy.list.filtersLabel}
+      searchQuery={search}
+      searchPlaceholder={copy.list.searchPlaceholder}
+      searchAriaLabel={copy.list.searchLabel}
+      {facets}
+      {appliedFilters}
+      onSearchChange={(query) => (search = query)}
+      onFacetChange={(_key, value) => (statusFilter = value)}
+      onFilterRemove={() => (statusFilter = '')}
+      onClearAll={clearFilters}
+    />
+  {/snippet}
+  {#snippet toolbarActions()}
+    <Button
+      href={router.href(internalPath)}
+      variant="ghost"
+      size="sm"
+      onclick={(event) => go(event, internalPath)}
+      data-testid="internal-workflows-link">{copy.list.internalWorkflows(engineRows.length)}</Button
+    >
     <Button
       href={router.href(newPath)}
       variant="primary"
@@ -94,10 +163,20 @@
       <Plus size={14} aria-hidden="true" />
       {copy.newAction}
     </Button>
-  </header>
+  {/snippet}
+  <RecordsToolbar
+    count={copy.list.count(visible.length)}
+    filters={filterBar}
+    action={toolbarActions}
+  />
 
   {#if catalog.isSuccess && workflows.length === 0}
-    <EmptyState title={copy.list.emptyTitle} headingLevel={2} data-testid="workflows-empty">
+    <EmptyState
+      kind="first-use"
+      title={copy.list.emptyTitle}
+      headingLevel={2}
+      data-testid="workflows-empty"
+    >
       {#snippet action()}
         <p class="ib-workflows__empty-guide">
           {copy.list.emptyBeforeTool} <code>{copy.list.emptyTool}</code>
@@ -106,32 +185,35 @@
         </p>
       {/snippet}
     </EmptyState>
+  {:else if catalog.isSuccess && visible.length === 0 && filtered}
+    <EmptyState
+      kind="filtered"
+      title={copy.list.noMatch.title}
+      description={copy.list.noMatch.description}
+      headingLevel={2}
+      clearFiltersLabel={copy.list.clearAction}
+      onClearFilters={clearFilters}
+    />
   {:else}
-    <ul class="ib-workflows__list">
-      {#each workflows as row (row.name)}
-        <WorkflowRow
-          {row}
-          activity={activity.data?.get(row.name)}
-          filePath={hostPaths.isPending ? undefined : workflowFilePath(directory, row.name)}
-        />
-      {/each}
-    </ul>
-  {/if}
-
-  {#if engineRows.length > 0}
-    <Collapsible trigger={copy.list.engineWorkflows(engineRows.length)} variant="flat">
-      <p class="ib-workflows__engine-note">{copy.list.engineDescription}</p>
-      <ul class="ib-workflows__list">
-        {#each engineRows as row (row.name)}
-          <li class="ib-workflow-row" data-workflow={row.name} data-kind="code" data-engine>
-            <a
-              class="ib-workflow-name"
-              href={router.href(workflowTypePath(row.name))}
-              onclick={(event) => go(event, workflowTypePath(row.name))}>{row.name}</a
-            >
-          </li>
+    <Table caption={copy.listLabel} density="condensed">
+      <Table.Header>
+        <Table.Row>
+          <Table.HeaderCell>{copy.list.columns.workflow}</Table.HeaderCell>
+          <Table.HeaderCell>{copy.list.columns.kind}</Table.HeaderCell>
+          <Table.HeaderCell>{copy.list.columns.starts}</Table.HeaderCell>
+          <Table.HeaderCell>{copy.list.columns.runs}</Table.HeaderCell>
+          <Table.HeaderCell>{copy.list.columns.status}</Table.HeaderCell>
+        </Table.Row>
+      </Table.Header>
+      <Table.Body>
+        {#each visible as row (row.name)}
+          <WorkflowRow
+            {row}
+            activity={activity.data?.get(row.name)}
+            filePath={hostPaths.isPending ? undefined : workflowFilePath(directory, row.name)}
+          />
         {/each}
-      </ul>
-    </Collapsible>
+      </Table.Body>
+    </Table>
   {/if}
 </section>

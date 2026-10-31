@@ -21,6 +21,7 @@ import {
   stepLabel,
   triggerLabel,
   triggerSummary,
+  workflowRowStatus,
 } from './workflow-presentation.ts';
 
 function listingOf(file: ReturnType<typeof readyFile>) {
@@ -44,15 +45,15 @@ describe('the badges of a row', () => {
     expect(row?.agent).toBe('writer');
   });
 
-  test('add the invalid badge for a file the Bureau cannot use', () => {
+  test('leave a file the Bureau cannot use to its status, which is Failed', () => {
     const [row] = joinCatalog([], [listingOf(invalidFile('broken'))]);
     expect(row === undefined ? undefined : rowBadges(row).map((badge) => badge.label)).toEqual([
       WORKFLOW_COPY.agentAuthoredBadge,
-      WORKFLOW_COPY.invalidBadge,
     ]);
+    expect(row === undefined ? undefined : workflowRowStatus(row, undefined)).toBe('Failed');
   });
 
-  test('add the paused badge for a paused file, and the failure for a source that failed', () => {
+  test('leave a paused file to its status, and add the failure for a source that failed', () => {
     const [row] = joinCatalog(
       [
         sourceDefinition('digest', {
@@ -64,8 +65,30 @@ describe('the badges of a row', () => {
       [listingOf(readyFile('digest', { paused: true }))],
     );
     const labels = row === undefined ? [] : rowBadges(row).map((badge) => badge.label);
-    expect(labels).toContain(WORKFLOW_COPY.pausedBadge);
+    expect(labels).not.toContain(WORKFLOW_COPY.pausedBadge);
     expect(labels).toContain(WORKFLOW_COPY.sourceFailed('resource'));
+    // A source that failed to load is Failed before it is Paused.
+    expect(row === undefined ? undefined : workflowRowStatus(row, undefined)).toBe('Failed');
+  });
+
+  test('read as Paused, Running or Scheduled for a file that loaded, and as nothing for one nothing starts', () => {
+    const status = (file: ReturnType<typeof readyFile>) => {
+      const [row] = joinCatalog([], [listingOf(file)]);
+      return row === undefined ? undefined : workflowRowStatus(row, undefined);
+    };
+    expect(status(readyFile('a', { paused: true, trigger: { kind: 'signal', name: 'go' } }))).toBe(
+      'Paused',
+    );
+    expect(
+      status(
+        readyFile('b', {
+          trigger: { kind: 'signal', name: 'go' },
+          runs: { active: 2, last24Hours: 2, lastRunAt: null },
+        }),
+      ),
+    ).toBe('Running');
+    expect(status(readyFile('c', { trigger: { kind: 'schedule', spec: '1h' } }))).toBe('Scheduled');
+    expect(status(readyFile('d', { trigger: null }))).toBeNull();
   });
 });
 

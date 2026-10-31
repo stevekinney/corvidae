@@ -1,7 +1,7 @@
 /**
- * `/goals` (COR-1494): the caller's goals, listed with where each stands, created from an agent, a
- * prompt, an identity, a validator named by free text, and a maximum number of attempts, and
- * cancelled. An unknown validator is the Bureau's `Unprocessable`, said inline. A cancel names the
+ * `/goals` (COR-1494): the caller's goals, listed with where each stands, created on `/goals/new`
+ * from an agent, a prompt, an identity, a validator named by free text, and a maximum number of
+ * attempts, and cancelled. An unknown validator is the Bureau's `Unprocessable`, said inline. A cancel names the
  * revision of the goal the page read, so a goal that moved since is refused, and the page says so and
  * reloads the row. Owner scoping is the gate, so the view holds no scope of its own.
  *
@@ -21,6 +21,7 @@ import {
 } from '../../lib/bureau-stub.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
+import { STATUS_WORDS } from '../../lib/status.ts';
 import { landAt } from '../chat/pages.test-support.ts';
 
 let stub: BureauStub | undefined;
@@ -78,6 +79,8 @@ function open(
   options: {
     scopes?: readonly string[];
     pageSize?: number;
+    /** Where the page lands: the list unless said. */
+    path?: string;
     /** How the Bureau answers that the goal's controller stands, which is started unless said. */
     controller?: { status: 'started' | 'not-needed' | 'start-failed'; reason: string | null };
   } = {},
@@ -96,6 +99,11 @@ function open(
         goals: page,
         nextOffset: served.goals.length > offset + limit ? offset + limit : null,
       };
+    },
+    'bureau.goals.get': (params) => {
+      const found = served.goals.find((candidate) => candidate.goalRunId === params['goalRunId']);
+      if (found === undefined) throw new StubFault('NotFound', 404, 'No such goal.');
+      return found;
     },
     'bureau.goals.create': (params) => {
       const validator = params['validator'] as { name: string; version: string };
@@ -155,7 +163,7 @@ function open(
       };
     },
   });
-  landAt('/goals');
+  landAt(options.path ?? '/goals');
   const view = render(RouteOutletHarness, {
     props: {
       client: new HttpClient({ baseUrl: 'http://localhost/api' }),
@@ -169,6 +177,13 @@ const row = (container: HTMLElement, id: string) =>
   container.querySelector<HTMLElement>(`tr[data-goal="${id}"]`);
 const frameState = (container: HTMLElement) =>
   container.querySelector('[data-view="goals"]')?.getAttribute('data-state');
+
+/** Opens the page that makes a goal from the list's New goal link, and returns the page. */
+async function openCreatePage(view: ReturnType<typeof open>['view']): Promise<HTMLElement> {
+  await fireEvent.click(await view.findByRole('link', { name: GOALS_COPY.newAction }));
+  await view.findByRole('heading', { level: 1, name: GOALS_COPY.form.title });
+  return view.container;
+}
 
 async function fillGoal(
   element: HTMLElement,
@@ -212,8 +227,8 @@ describe('the goals', () => {
     await waitFor(() => expect(row(view.container, 'goal-1')).not.toBeNull());
     const first = within(row(view.container, 'goal-1') as HTMLElement);
     expect(row(view.container, 'goal-1')?.dataset['status']).toBe('running');
-    // A status is shown as the Bureau names it, so a row can be matched to what the operation says.
-    expect(first.getByText('running')).not.toBeNull();
+    // A row carries the Bureau’s status for a spec to match, and shows it in one of the seven words.
+    expect(first.getByText('Running')).not.toBeNull();
     expect(first.getByRole('link', { name: 'assistant' }).getAttribute('href')).toBe(
       '/agents/assistant',
     );
@@ -239,8 +254,8 @@ describe('creating a goal', () => {
     const { view } = open([goal('goal-1')]);
     await waitFor(() => expect(row(view.container, 'goal-1')).not.toBeNull());
 
-    await fireEvent.click(view.getByRole('button', { name: GOALS_COPY.newAction }));
-    const element = await view.findByRole('dialog', { name: GOALS_COPY.form.title });
+    const element = await openCreatePage(view);
+    expect(router.pathname).toBe('/goals/new');
     const dialog = within(element);
     await fillGoal(element);
     await fireEvent.input(dialog.getByLabelText(GOALS_COPY.form.maximumAttemptsLabel), {
@@ -261,6 +276,8 @@ describe('creating a goal', () => {
       // The Bureau needs a bound on all the attempts together besides how many it makes.
       bounds: { maximumAttempts: 4, maximumTotalSteps: 20 },
     });
+    // A goal that is made takes the person to the list, where it is the new row.
+    await waitFor(() => expect(router.pathname).toBe('/goals'));
     await waitFor(() => expect(row(view.container, 'goal-created-1')).not.toBeNull());
     expect(row(view.container, 'goal-created-1')?.dataset['status']).toBe('pending');
   });
@@ -270,7 +287,9 @@ describe('creating a goal', () => {
     await fireEvent.click(
       await view.findByRole('link', { name: VIEW_COPY.goals.empty?.action?.label ?? '' }),
     );
-    const element = await view.findByRole('dialog', { name: GOALS_COPY.form.title });
+    await view.findByRole('heading', { level: 1, name: GOALS_COPY.form.title });
+    expect(router.pathname).toBe('/goals/new');
+    const element = view.container;
     const dialog = within(element);
     await fillGoal(element, { validatorName: 'no-such-validator' });
 
@@ -289,8 +308,7 @@ describe('creating a goal', () => {
   test('is not offered until every field has something, and a maximum of attempts is a positive whole number', async () => {
     const { view } = open([goal('goal-1')]);
     await waitFor(() => expect(row(view.container, 'goal-1')).not.toBeNull());
-    await fireEvent.click(view.getByRole('button', { name: GOALS_COPY.newAction }));
-    const element = await view.findByRole('dialog', { name: GOALS_COPY.form.title });
+    const element = await openCreatePage(view);
     const dialog = within(element);
     const create = dialog.getByRole('button', { name: GOALS_COPY.form.createAction });
     expect(create).toBeDisabled();
@@ -317,13 +335,12 @@ describe('creating a goal', () => {
 describe('a goal whose controller failed to start', () => {
   const REASON = 'The controller could not start: the run engine is shutting down.';
 
-  test('stays in an open drawer that says so, with the reason and the id, and cannot be submitted again', async () => {
+  test('stays on the page, which says so, with the reason and the id, and cannot be submitted again', async () => {
     const { view, served } = open([goal('goal-1')], {
       controller: { status: 'start-failed', reason: REASON },
     });
     await waitFor(() => expect(row(view.container, 'goal-1')).not.toBeNull());
-    await fireEvent.click(view.getByRole('button', { name: GOALS_COPY.newAction }));
-    const element = await view.findByRole('dialog', { name: GOALS_COPY.form.title });
+    const element = await openCreatePage(view);
     const dialog = within(element);
     await fillGoal(element);
     await fireEvent.click(dialog.getByRole('button', { name: GOALS_COPY.form.createAction }));
@@ -332,9 +349,8 @@ describe('a goal whose controller failed to start', () => {
     expect(notice.textContent).toContain(GOALS_COPY.form.startFailedTitle);
     expect(notice.textContent).toContain(REASON);
     expect(notice.textContent).toContain(GOALS_COPY.form.startFailedGoal('goal-created-1'));
-    // The drawer is still open, read-only, and Cancel has become Close.
-    expect(view.queryByRole('dialog', { name: GOALS_COPY.form.title })).not.toBeNull();
-    expect(router.search.get('create')).toBe('1');
+    // The page is still there, read-only, and Cancel has become Close.
+    expect(router.pathname).toBe('/goals/new');
     expect(dialog.getByRole('button', { name: GOALS_COPY.form.createAction })).toBeDisabled();
     expect(dialog.queryByRole('button', { name: GOALS_COPY.form.cancelAction })).toBeNull();
     for (const label of [
@@ -346,15 +362,14 @@ describe('a goal whose controller failed to start', () => {
     ]) {
       expect(dialog.getByLabelText(label), label).toBeDisabled();
     }
-    // The goal is in the list behind the drawer, because the list was read again.
-    await waitFor(() => expect(row(view.container, 'goal-created-1')).not.toBeNull());
     expect(served.goals.map((candidate) => candidate.goalRunId)).toContain('goal-created-1');
     // Submitting again would reuse the key and come back `existing`, so it is not offered.
     await fireEvent.click(dialog.getByRole('button', { name: GOALS_COPY.form.createAction }));
     expect(stub?.callsTo('bureau.goals.create')).toHaveLength(1);
 
-    await fireEvent.click(dialog.getByRole('button', { name: GOALS_COPY.form.closeAction }));
-    await waitFor(() => expect(router.search.get('create')).toBeNull());
+    // Close goes to the goal that was made, which the Bureau holds and has not started.
+    await fireEvent.click(dialog.getByRole('link', { name: GOALS_COPY.form.closeAction }));
+    await waitFor(() => expect(router.pathname).toBe('/goals/goal-created-1'));
   });
 });
 
@@ -581,31 +596,205 @@ describe('the list of goals', () => {
   });
 });
 
-describe('the drawer that creates a goal', () => {
-  test('takes a typed agent name when the Bureau cannot list the agents', async () => {
-    const { view } = open([goal('goal-1')]);
-    await waitFor(() => expect(row(view.container, 'goal-1') === null).toBe(false));
-    stub?.on('bureau.agents.list', () => {
-      throw new StubFault('Unavailable', 503, 'No agents.');
-    });
-    // A new read of the agents: the drawer asks when it opens.
-    await fireEvent.click(view.getByRole('button', { name: GOALS_COPY.newAction }));
-    const dialog = within(await view.findByRole('dialog', { name: GOALS_COPY.form.title }));
+describe('the page that creates a goal', () => {
+  test('offers the agents the Bureau lists as a picker, and says so when it cannot list them', async () => {
+    const { view } = open([goal('goal-1')], { path: '/goals/new' });
+    const agent = await view.findByLabelText(GOALS_COPY.form.agentLabel);
+    expect(agent.tagName).toBe('SELECT');
+    await waitFor(() =>
+      expect(
+        [...agent.querySelectorAll('option')].map((option) => option.value).filter(Boolean),
+      ).toEqual(['assistant', 'tool-runner']),
+    );
+    cleanup();
+    stub?.restore();
 
-    const agent = await dialog.findByLabelText(GOALS_COPY.form.agentLabel);
-    await waitFor(() => expect(agent.tagName).toBe('INPUT'));
+    stub = installBureauStub({
+      'bureau.agents.list': () => {
+        throw new StubFault('Unavailable', 503, 'No agents.');
+      },
+    });
+    landAt('/goals/new');
+    const failed = render(RouteOutletHarness, {
+      props: {
+        client: new HttpClient({ baseUrl: 'http://localhost/api' }),
+        scopes: AUTHORIZATION_SCOPES,
+      },
+    } as never);
+    await failed.findByText(GOALS_COPY.form.agentUnavailableDescription);
+    const picker = await failed.findByLabelText(GOALS_COPY.form.agentLabel);
+    expect(picker.tagName).toBe('SELECT');
   });
 
-  test('closes with Cancel, and creates nothing', async () => {
+  test('closes with Cancel, which goes back to the list, and creates nothing', async () => {
     const { view } = open([goal('goal-1')]);
     await waitFor(() => expect(row(view.container, 'goal-1') === null).toBe(false));
-    await fireEvent.click(view.getByRole('button', { name: GOALS_COPY.newAction }));
-    const dialog = within(await view.findByRole('dialog', { name: GOALS_COPY.form.title }));
+    const element = await openCreatePage(view);
+    const cancel = within(element).getByRole('link', { name: GOALS_COPY.form.cancelAction });
 
-    await fireEvent.click(dialog.getByRole('button', { name: GOALS_COPY.form.cancelAction }));
+    // A modified click is left to the browser.
+    cancel.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true }),
+    );
+    expect(router.pathname).toBe('/goals/new');
+    await fireEvent.click(cancel);
 
-    await waitFor(() => expect(router.search.get('create')).toBeNull());
+    await waitFor(() => expect(router.pathname).toBe('/goals'));
     expect(stub?.callsTo('bureau.goals.create')).toEqual([]);
+  });
+});
+
+describe('the records page', () => {
+  test('counts the goals, says each status in the seven words, and filters by status and agent', async () => {
+    const { view } = open([
+      goal('goal-1', { status: 'running' }),
+      goal('goal-2', { status: 'succeeded', agentName: 'tool-runner' }),
+      goal('goal-3', { status: 'exhausted' }),
+    ]);
+    await waitFor(() => expect(row(view.container, 'goal-3')).not.toBeNull());
+    expect(view.getByTestId('records-count').textContent).toBe(GOALS_COPY.count(3));
+    const words = [...view.container.querySelectorAll('tr[data-goal]')].map((tableRow) =>
+      tableRow.getAttribute('data-status-word'),
+    );
+    expect(words).toEqual(['Running', 'Done', 'Failed']);
+    for (const word of words) expect(STATUS_WORDS as readonly (string | null)[]).toContain(word);
+
+    await fireEvent.change(await view.findByLabelText(GOALS_COPY.statusColumn), {
+      target: { value: 'Failed' },
+    });
+    await waitFor(() => expect(router.search.get('status')).toBe('Failed'));
+    await waitFor(() => expect(row(view.container, 'goal-1') === null).toBe(true));
+    expect(row(view.container, 'goal-3')).not.toBeNull();
+    expect(view.getByTestId('records-count').textContent).toBe(GOALS_COPY.count(1));
+
+    await fireEvent.change(await view.findByLabelText(GOALS_COPY.agentColumn), {
+      target: { value: 'tool-runner' },
+    });
+    await view.findByRole('heading', { level: 2, name: GOALS_COPY.noMatch.title });
+    expect(view.container.querySelector('[data-cinder-kind="filtered"]')).not.toBeNull();
+
+    const clear = view.container.querySelector<HTMLButtonElement>(
+      '[data-cinder-kind="filtered"] button',
+    );
+    if (clear === null) throw new Error('The empty state did not offer Clear filters.');
+    await fireEvent.click(clear);
+    await waitFor(() => expect(router.search.get('status')).toBeNull());
+    await waitFor(() => expect(row(view.container, 'goal-2')).not.toBeNull());
+  });
+
+  test('links a goal’s identifier to its page', async () => {
+    const { view } = open([goal('goal-1')]);
+    const link = await view.findByRole('link', { name: 'goal-1' });
+    expect(link.getAttribute('href')).toBe('/goals/goal-1');
+    link.click();
+    expect(router.pathname).toBe('/goals/goal-1');
+  });
+});
+
+describe('a goal’s page', () => {
+  const ATTEMPTS = [
+    {
+      attemptId: 'goal-1-a1',
+      attemptIndex: 1,
+      runId: 'run-b',
+      sessionId: 'session-b',
+      status: 'passed',
+      startedAt: '2026-10-19T08:03:00.000Z',
+      completedAt: '2026-10-19T08:04:00.000Z',
+      finishReason: 'validator-passed',
+      usage: { steps: 1, tokens: 1, costUsd: null },
+    },
+    {
+      attemptId: 'goal-1-a0',
+      attemptIndex: 0,
+      runId: 'run-a',
+      sessionId: 'session-a',
+      status: 'failed',
+      startedAt: '2026-10-19T08:01:00.000Z',
+      completedAt: '2026-10-19T08:02:00.000Z',
+      finishReason: 'validator-rejected',
+      usage: { steps: 1, tokens: 1, costUsd: null },
+    },
+  ];
+
+  test('lists the attempts in the order they ran, each linking to its run, in the seven words', async () => {
+    const { view } = open(
+      [
+        goal('goal-1', {
+          status: 'succeeded',
+          attempts: ATTEMPTS,
+          closedAt: '2026-10-19T08:05:00.000Z',
+        }),
+      ],
+      { path: '/goals/goal-1' },
+    );
+
+    await view.findByRole('heading', { level: 1, name: GOALS_COPY.detail.title('goal-1') });
+    await waitFor(() => expect(view.container.querySelectorAll('tr[data-attempt]').length).toBe(2));
+    const attempts = [...view.container.querySelectorAll('tr[data-attempt]')];
+    expect(attempts.map((attempt) => attempt.getAttribute('data-run'))).toEqual(['run-a', 'run-b']);
+    expect(
+      attempts.map(
+        (attempt) => within(attempt as HTMLElement).getByText(/Failed|Done/).textContent,
+      ),
+    ).toEqual(['Failed', 'Done']);
+    const link = within(attempts[0] as HTMLElement).getByRole('link', { name: 'run-a' });
+    expect(link.getAttribute('href')).toBe('/runs/run-a');
+    expect(within(view.getByTestId('goal-facts')).getByText('Done')).not.toBeNull();
+    expect(frameState(view.container)).toBe('ready');
+  });
+
+  test('says there are no attempts yet for a goal that has not started one', async () => {
+    const { view } = open([goal('goal-1', { status: 'pending' })], { path: '/goals/goal-1' });
+    await view.findByRole('heading', { level: 3, name: GOALS_COPY.detail.noAttempts.title });
+    expect(view.container.querySelector('[data-cinder-kind="first-use"]')).not.toBeNull();
+    expect(within(view.getByTestId('goal-facts')).getByText('Scheduled')).not.toBeNull();
+  });
+
+  test('says when and why a goal ended, and links back to the list', async () => {
+    const { view } = open(
+      [
+        goal('goal-1', {
+          status: 'exhausted',
+          terminalReason: 'out of attempts',
+          closedAt: '2026-10-19T09:00:00.000Z',
+        }),
+      ],
+      { path: '/goals/goal-1' },
+    );
+
+    const facts = within(await view.findByTestId('goal-facts'));
+    expect(facts.getByText('Failed')).not.toBeNull();
+    expect(facts.getByText(GOALS_COPY.detail.endedFact)).not.toBeNull();
+    expect(facts.getByText('out of attempts')).not.toBeNull();
+    const back = view.getByRole('link', { name: GOALS_COPY.detail.backToList });
+    back.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true }));
+    expect(router.pathname).toBe('/goals/goal-1');
+    back.click();
+    expect(router.pathname).toBe('/goals');
+  });
+
+  test('says the goal could not be loaded when the Bureau stops answering after the page opened, and tries again', async () => {
+    const { view, served } = open([goal('goal-1')]);
+    await waitFor(() => expect(row(view.container, 'goal-1')).not.toBeNull());
+    // The frame's probe is told the goal exists; the page that follows finds the Bureau down.
+    let asked = 0;
+    stub?.on('bureau.goals.get', () => {
+      asked += 1;
+      if (asked === 1) return served.goals[0];
+      throw new StubFault('Unavailable', 503, 'The Bureau is down.');
+    });
+    router.navigate('/goals/goal-1');
+
+    await view.findByRole('heading', { level: 1, name: GOALS_COPY.detail.loadFailed.title });
+    const before = asked;
+    await fireEvent.click(await view.findByRole('button', { name: RETRY_LABEL }));
+    await waitFor(() => expect(asked).toBeGreaterThan(before));
+  });
+
+  test('is not found for a goal the Bureau does not have', async () => {
+    const { view } = open([], { path: '/goals/missing' });
+    await waitFor(() => expect(frameState(view.container)).toBe('not-found'));
   });
 });
 
@@ -619,8 +808,7 @@ describe('a submit that is sent again', () => {
       if (attempts === 1) throw new StubFault('Unavailable', 503, 'The answer was lost.');
       throw new StubFault('Unprocessable', 422, 'Stop here.', { reason: 'validator-not-found' });
     });
-    await fireEvent.click(view.getByRole('button', { name: GOALS_COPY.newAction }));
-    const element = await view.findByRole('dialog', { name: GOALS_COPY.form.title });
+    const element = await openCreatePage(view);
     const dialog = within(element);
     await fillGoal(element);
     const create = dialog.getByRole('button', { name: GOALS_COPY.form.createAction });

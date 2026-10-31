@@ -123,7 +123,8 @@ test.describe('the list', () => {
       const broken = row(page, SEEDED_WORKFLOWS.broken);
       await expect(broken).toHaveAttribute('data-state', 'invalid');
       await expect(broken).toContainText(WORKFLOW_COPY.agentAuthoredBadge);
-      await expect(broken).toContainText(WORKFLOW_COPY.invalidBadge);
+      // A file the Bureau cannot use has failed: its status is the word Failed, not a badge of its own.
+      await expect(broken).toHaveAttribute('data-status', 'Failed');
       await expect(broken.getByTestId('workflow-problem')).toContainText('invalid-document');
       await expect(broken.getByTestId('workflow-issues')).toContainText('steps');
       await expect(broken.getByTestId('workflow-file-path')).toHaveText(
@@ -191,7 +192,7 @@ test.describe('the list', () => {
     test.use({ baseURL: E2E_BUREAU_URL });
 
     for (const width of WIDTHS) {
-      test(`keeps the types the Bureau registers for itself under a collapsed disclosure, at ${width} pixels`, async ({
+      test(`links the types the Bureau registers for itself to a page of their own, at ${width} pixels`, async ({
         page,
         checkA11y,
       }) => {
@@ -200,26 +201,35 @@ test.describe('the list', () => {
         await expect(area(page)).toHaveAttribute('data-state', 'ready');
         await expect(row(page, SEEDED_WORKFLOWS.digest)).toBeVisible();
 
-        const disclosure = area(page).getByRole('button', {
-          name: WORKFLOW_COPY.list.engineWorkflows(ENGINE_TYPES.length),
+        const link = area(page).getByRole('link', {
+          name: WORKFLOW_COPY.list.internalWorkflows(ENGINE_TYPES.length),
         });
-        await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+        await expect(link).toHaveAttribute('href', '/internal-workflows');
         for (const name of ENGINE_TYPES) await expect(row(page, name)).toHaveCount(0);
-        await checkA11y(`the list with the Bureau’s own types collapsed at ${width}px`);
+        await checkA11y(`the list without the Bureau’s own types at ${width}px`);
 
-        await disclosure.click();
-        await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
-        for (const name of ENGINE_TYPES) await expect(row(page, name)).toBeVisible();
-        await expect(row(page, 'agentRun').getByRole('link', { name: 'agentRun' })).toHaveAttribute(
-          'href',
-          '/workflows/agentRun',
+        await link.click();
+        await expect(page).toHaveURL(/\/internal-workflows$/);
+        await expect(
+          page.getByRole('heading', { level: 1, name: WORKFLOW_COPY.internal.title }),
+        ).toBeVisible();
+        for (const name of ENGINE_TYPES) {
+          await expect(row(page, name)).toBeVisible();
+          // Each says in a line what it does.
+          await expect(row(page, name).getByTestId('workflow-description')).not.toHaveText('');
+        }
+        await expect(
+          row(page, 'agentRun').getByRole('link', { name: 'Agent Run' }),
+        ).toHaveAttribute('href', '/workflows/agentRun');
+        await expect(row(page, 'agentRun').getByTestId('workflow-identifier')).toHaveText(
+          'agentRun',
         );
-        await checkA11y(`the list with the Bureau’s own types open at ${width}px`);
+        await checkA11y(`the Bureau’s own types at ${width}px`);
       });
     }
 
     for (const width of WIDTHS) {
-      test(`on a host with no workflow of its own, says there are none yet, offers New workflow, and keeps the Bureau’s types collapsed, at ${width} pixels`, async ({
+      test(`on a host with no workflow of its own, says there are none yet, offers New workflow, and links the Bureau’s types, at ${width} pixels`, async ({
         page,
         request,
         checkA11y,
@@ -246,10 +256,11 @@ test.describe('the list', () => {
           await workflowDirectory(request),
         );
         await expect(page.getByRole('link', { name: WORKFLOW_COPY.newAction })).toBeVisible();
-        const disclosure = area(page).getByRole('button', {
-          name: WORKFLOW_COPY.list.engineWorkflows(ENGINE_TYPES.length),
-        });
-        await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+        await expect(
+          area(page).getByRole('link', {
+            name: WORKFLOW_COPY.list.internalWorkflows(ENGINE_TYPES.length),
+          }),
+        ).toBeVisible();
         for (const name of ENGINE_TYPES) await expect(row(page, name)).toHaveCount(0);
         await checkA11y(`the list of a host with no workflow at ${width}px`);
       });

@@ -101,7 +101,7 @@
     if (agent !== undefined) {
       return initial.pattern === AGENT_MEMORY_PATTERN ? agentMemoryViewInstance(agent) : agent;
     }
-    const item = opened['run'] ?? opened['schedule'] ?? opened['chat'];
+    const item = opened['run'] ?? opened['schedule'] ?? opened['chat'] ?? opened['goal'];
     if (item !== undefined) return item;
     // A type's page, runs, and editor ask different questions about one type.
     const workflow = opened['workflow'];

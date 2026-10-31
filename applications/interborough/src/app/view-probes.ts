@@ -4,7 +4,7 @@ import type { QueryClient } from '@tanstack/svelte-query';
 import { getAgentCatalog, getAgentDefinition } from '../lib/agent-definitions.ts';
 import { queryAudit } from '../lib/bureau-audit.ts';
 import { callBureau, listAgents, listContexts } from '../lib/bureau-client.ts';
-import { listGoals } from '../lib/bureau-goals.ts';
+import { getGoal, listGoals } from '../lib/bureau-goals.ts';
 import { listBureauReviews } from '../lib/bureau-reviews.ts';
 import { getSettings } from '../lib/bureau-settings.ts';
 import { listTasks } from '../lib/bureau-tasks.ts';
@@ -218,8 +218,17 @@ export function probeFor(
         await getSettings();
         return { empty: false };
       };
-    case 'goals':
-      return probeGoals;
+    case 'goals': {
+      // The page that makes a goal asks for nothing: it is where the first one is made.
+      if (pattern === '/goals/new') return undefined;
+      const goal = parameters['goal'];
+      if (goal === undefined) return probeGoals;
+      // One goal's page asks for that goal, which settles whether it exists and may be seen.
+      return async () => {
+        await getGoal(goal);
+        return { empty: false };
+      };
+    }
     case 'agent-editor': {
       const agent = parameters['agent'];
       return agent === undefined ? probeAgentCatalog : () => probeEditableAgent(agent);
@@ -227,6 +236,8 @@ export function probeFor(
     case 'workflows': {
       // The page that makes a workflow asks for nothing: it is where the first one is written.
       if (pattern === '/workflows/new') return undefined;
+      // The internal workflows are listed from the same catalog and say when there are none.
+      if (pattern === '/internal-workflows') return undefined;
       const workflow = parameters['workflow'];
       return workflow === undefined
         ? probeWorkflowList

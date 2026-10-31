@@ -1,7 +1,8 @@
 /**
- * `/agents` and `/agents/:agent`: the agents the Bureau tells the caller of, each with what it is made
- * of (its model when the Bureau can tell, its tools), how much it has been used, a New chat action
- * for each, and the chats had with one agent.
+ * `/agents` and `/agents/:agent`: the agents the Bureau tells the caller of, each a compact row with
+ * how much it has been used (a count that opens the agent's page), Memory and New chat as buttons
+ * for each, and on the agent's page what it is made of (its model when the Bureau can tell, its
+ * tools) and the chats had with it.
  */
 import type { Page } from '@playwright/test';
 
@@ -22,7 +23,7 @@ async function chatsOf(page: Page, agent: string): Promise<number> {
 }
 
 test.describe('the list of agents', () => {
-  test('shows each agent’s model and tools, and offers New chat for every agent', async ({
+  test('shows each agent as a compact row without a tool count, and offers New chat for every agent', async ({
     page,
   }) => {
     await page.goto('/agents');
@@ -36,9 +37,9 @@ test.describe('the list of agents', () => {
     await expect(frame).not.toContainText('Defined in');
     // Its generator is opaque to the Bureau, which cannot say whether it is a script: no model line.
     await expect(row(page, 'assistant')).not.toContainText('Scripted');
-    // A code-defined agent's tools are counted as a file agent's are: the Bureau names them.
-    await expect(row(page, 'tool-runner')).toContainText('2 tools');
-    await expect(row(page, 'assistant')).toContainText('No tools');
+    // The row is compact: what an agent is made of is on its page, so no tool count is here.
+    await expect(row(page, 'tool-runner')).not.toContainText(/\d+ tools?/);
+    await expect(row(page, 'assistant')).not.toContainText('No tools');
     await expect(row(page, 'assistant').getByRole('link', { name: 'New chat' })).toBeVisible();
     await expect(row(page, 'assistant').getByRole('link', { name: 'Memory' })).toBeVisible();
     // The seeded agent the host once kept private takes a chat as the others do.

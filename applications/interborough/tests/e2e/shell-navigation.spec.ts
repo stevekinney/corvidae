@@ -17,6 +17,7 @@ const SHORTCUTS = [
   { letter: 'w', path: '/workflows', label: VIEW_COPY.workflows.label },
   { letter: 'r', path: '/runs', label: VIEW_COPY.runs.label },
   { letter: 's', path: '/schedules', label: VIEW_COPY.schedules.label },
+  { letter: 'l', path: '/goals', label: VIEW_COPY.goals.label },
   { letter: 'e', path: '/health', label: VIEW_COPY.health.label },
   { letter: 'n', path: '/settings', label: VIEW_COPY.settings.label },
 ] as const;

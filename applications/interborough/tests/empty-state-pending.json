@@ -73,10 +73,6 @@
       "issue": "COR-1847"
     },
     {
-      "file": "src/routes/workers/conformance-panel.svelte",
-      "issue": "COR-1843"
-    },
-    {
       "file": "src/routes/workers/deployment-versions-view.svelte",
       "issue": "COR-1850"
     },
@@ -141,14 +137,6 @@
       "issue": "COR-1850"
     },
     {
-      "file": "src/routes/workflow-definitions/workflow-list.svelte",
-      "issue": "COR-1843"
-    },
-    {
-      "file": "src/routes/workflows/aggregate/aggregate-view.svelte",
-      "issue": "COR-1843"
-    },
-    {
       "file": "src/routes/workflows/detail/async-activity/activity-worker-provenance.svelte",
       "issue": "COR-1860"
     },
@@ -185,20 +173,8 @@
       "issue": "COR-1856"
     },
     {
-      "file": "src/routes/workflows/index.svelte",
-      "issue": "COR-1843"
-    },
-    {
-      "file": "src/routes/workflows/list/workflow-list.svelte",
-      "issue": "COR-1843"
-    },
-    {
       "file": "src/routes/workflows/runs/run-detail.svelte",
       "issue": "COR-1856"
-    },
-    {
-      "file": "src/routes/workflows/runs/run-list.svelte",
-      "issue": "COR-1843"
     }
   ]
 }

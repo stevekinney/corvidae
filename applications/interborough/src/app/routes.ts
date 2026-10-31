@@ -1,7 +1,7 @@
 import type { Component } from 'svelte';
 
 import { chatHomePath } from '../routes/chat/chat-home.ts';
-import { SETTINGS_SECTION_COPY, VIEW_COPY } from './copy.ts';
+import { SETTINGS_SECTION_COPY, VIEW_COPY, WORKFLOW_COPY } from './copy.ts';
 import type { PageKind, ViewName } from './views.ts';
 
 /**
@@ -70,7 +70,7 @@ export const routes: readonly RouteDefinition[] = [
   },
   {
     pattern: '/agents',
-    kind: 'reading',
+    kind: 'table',
     crumb: VIEW_COPY.agents.label,
     view: 'agents',
     load: () => import('../routes/agents/agent-list.svelte'),
@@ -110,7 +110,7 @@ export const routes: readonly RouteDefinition[] = [
   // it, and `/runs/:run` is the same page for a run known by its ID alone.
   {
     pattern: '/workflows',
-    kind: 'reading',
+    kind: 'table',
     crumb: VIEW_COPY.workflows.label,
     view: 'workflows',
     load: workflowArea,
@@ -120,6 +120,14 @@ export const routes: readonly RouteDefinition[] = [
     pattern: '/workflows/new',
     kind: 'form',
     crumb: 'New workflow',
+    view: 'workflows',
+    load: workflowArea,
+  },
+  // The types Interborough runs itself. A path of its own, so a workflow named `internal` keeps its page.
+  {
+    pattern: '/internal-workflows',
+    kind: 'table',
+    crumb: WORKFLOW_COPY.internal.title,
     view: 'workflows',
     load: workflowArea,
   },
@@ -187,11 +195,26 @@ export const routes: readonly RouteDefinition[] = [
     view: 'reviews',
     load: () => import('../routes/reviews/index.svelte'),
   },
-  // Not in the sidebar: a goal is made and cancelled here, and linked to from where it is mentioned.
+  // The list of goals, the page that makes one, and one goal with its attempts. `new` is a path
+  // segment, not a goal: its route comes before `/goals/:goal`.
   {
     pattern: '/goals',
-    kind: 'reading',
+    kind: 'table',
     crumb: VIEW_COPY.goals.label,
+    view: 'goals',
+    load: () => import('../routes/goals/index.svelte'),
+  },
+  {
+    pattern: '/goals/new',
+    kind: 'form',
+    crumb: 'New goal',
+    view: 'goals',
+    load: () => import('../routes/goals/index.svelte'),
+  },
+  {
+    pattern: '/goals/:goal',
+    kind: 'table',
+    crumb: { param: 'goal' },
     view: 'goals',
     load: () => import('../routes/goals/index.svelte'),
   },

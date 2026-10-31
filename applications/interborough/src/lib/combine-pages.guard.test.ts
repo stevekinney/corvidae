@@ -13,7 +13,8 @@ const SOURCE_ROOT = join(import.meta.dir, '..');
 
 /** Files that read the pages of an infinite query but key their rows without a repeat risk, with why. */
 const KEYED_BY_OCCURRENCE: Readonly<Record<string, string>> = {
-  'routes/goals/index.svelte': 'keys each row through keyedByOccurrence, which cannot repeat a key',
+  'routes/goals/goal-list.svelte':
+    'keys each row through keyedByOccurrence, which cannot repeat a key',
   'routes/audit/index.svelte':
     'keys each record through keyedByOccurrence, which cannot repeat a key',
 };

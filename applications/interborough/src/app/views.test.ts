@@ -59,8 +59,8 @@ describe('page width by kind of page', () => {
   });
 
   test('one area holds pages of more than one width, so the width is not the area’s', () => {
-    // The agents area: its list and an agent's page read, and its memory and editor are wide.
-    expect(widthOf('/agents')).toBe('reading');
+    // The agents area: its list is a table's width, an agent's page reads, and its memory and editor are wide.
+    expect(widthOf('/agents')).toBe('full');
     expect(widthOf('/agents/:agent')).toBe('reading');
     expect(widthOf('/agents/:agent/memories')).toBe('full');
     expect(widthOf('/agents/new')).toBe('full');
