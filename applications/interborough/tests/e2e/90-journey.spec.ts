@@ -39,7 +39,7 @@ import {
   RECALL_AGENT_NAME,
 } from './journey-agent.ts';
 import { jsonEditor, jsonEditorSource } from './json-editor-support.ts';
-import { expectEngineMissesForRuns } from './task-support.ts';
+import { expectEngineMissesForRuns, waitingReviewOf } from './task-support.ts';
 import { removeWorkflow } from './workflow-support.ts';
 
 test.use({ baseURL: E2E_JOURNEY_URL, viewport: { width: 1280, height: 900 } });
@@ -221,14 +221,15 @@ test('reloads while an agent waits on a question, and answers it from the review
   await page.reload();
   await expect(question).toBeVisible();
 
-  await page.goto('/reviews');
-  const row = page.locator('.ib-review').filter({
-    has: page.locator(`a[href="/chats/${threadId}"]`),
-  });
+  const review = await waitingReviewOf(request, threadId, E2E_JOURNEY_URL);
+  await page.goto(`/reviews?review=${encodeURIComponent(`bureau:${review.id}`)}`);
+  const row = page.locator(`[data-review-row="bureau:${review.id}"]`);
+  const pane = page.locator('.ib-review-pane');
   await expect(row).toContainText(QUESTION);
+  await expect(pane).toContainText(QUESTION);
   await checkA11y('the question in the reviews inbox');
-  await row.getByLabel('Your answer').fill(ENVIRONMENT_ANSWER);
-  await row.getByRole('button', { name: 'Send answer', exact: true }).click();
+  await pane.getByLabel('Your answer').fill(ENVIRONMENT_ANSWER);
+  await pane.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(row).toHaveCount(0);
 
   // The run went on with the answer: its session ends on the thanks, and the answer it was given

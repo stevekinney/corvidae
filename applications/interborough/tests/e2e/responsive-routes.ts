@@ -27,6 +27,10 @@ export interface ResponsiveSeed {
   readonly schedule: string;
   /** A goal, with the attempts its page lists. */
   readonly goal: string;
+  /** The key of a waiting review whose chat has a 300-character unbroken title. */
+  readonly review: string;
+  /** The key of a decided review, shown under Done. */
+  readonly decidedReview: string;
 }
 
 /** The address of each route in `routes.ts`, by pattern, with the seeded identifiers filled in. */
@@ -81,7 +85,8 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
  * route of its own. The seeded workflow type is code-defined, so the file header's four buttons
  * (Start run, Pause, Edit, Delete) and a file's Code, Runs and History tabs are reached here,
  * as are an agent's Instructions and Settings tabs, with the tab named in the address (`?tab=`).
- * The Capabilities page's Skills tab, and one seeded long-named skill open, are reached the same way.
+ * The Capabilities page's Skills tab, and one seeded long-named skill open, are reached the same way,
+ * as are a waiting review open and the Reviews page's Done tab.
  */
 export function responsiveVariants(seed: ResponsiveSeed): Readonly<Record<string, string>> {
   const file = `/workflows/${encodeURIComponent(seed.workflowFile)}`;
@@ -97,6 +102,10 @@ export function responsiveVariants(seed: ResponsiveSeed): Readonly<Record<string
     // 768 the detail replaces the list).
     '/capabilities (skills tab)': '/capabilities?tab=skills',
     '/capabilities (skill open)': `/capabilities?tab=skills&skill=${encodeURIComponent(skillAddressKey(E2E_SKILLS.long))}`,
+    // A waiting review open (one pane at a time below 900px, so at 375 and 768 the detail replaces
+    // the list), and the Done tab with a decided review open.
+    '/reviews (review open)': `/reviews?review=${encodeURIComponent(seed.review)}`,
+    '/reviews (done tab, review open)': `/reviews?tab=done&review=${encodeURIComponent(seed.decidedReview)}`,
   };
 }
 

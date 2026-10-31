@@ -9,6 +9,7 @@ import {
   isApprovalOutcomeNotWritten,
   isReviewRoundChanged,
   listBureauReviews,
+  listPendingReviews,
   pageReviews,
   resolveBureauReview,
   type BureauReview,
@@ -50,6 +51,37 @@ describe('the Bureau’s review operations', () => {
     ]);
     const wait = reviews[1];
     expect(wait?.kind === 'human-wait' && wait.sessionId).toBeUndefined();
+  });
+
+  test('listPendingReviews reads every page of what waits, the engine’s reviews included', async () => {
+    const engine = {
+      source: 'engine',
+      kind: 'engine-review',
+      id: 'review-1',
+      runId: 'wf-1',
+      requestedAt: 1,
+      ageMilliseconds: 1,
+      status: 'pending',
+      reviewType: 'Contract approval',
+      reviewers: [],
+      allowPartial: false,
+    };
+    const pages = [
+      { reviews: [TOOL_APPROVAL], nextPageToken: 'next' },
+      { reviews: [engine], nextPageToken: null },
+    ];
+    const calls: Call[] = [];
+    const stub: Fetcher = async (_input, init) => {
+      const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as Call;
+      calls.push({ method: body.method, params: body.params });
+      return Response.json({ jsonrpc: '2.0', id: 1, result: pages[calls.length - 1] });
+    };
+    const reviews = await withFetch(stub, () => listPendingReviews());
+    expect(calls.map((call) => call.params)).toEqual([
+      { status: 'pending' },
+      { status: 'pending', pageToken: 'next' },
+    ]);
+    expect(reviews.map((review) => review.kind)).toEqual(['tool-approval', 'engine-review']);
   });
 
   test('get reads one review by its id', async () => {

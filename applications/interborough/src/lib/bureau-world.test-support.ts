@@ -9,7 +9,7 @@
 import type { ReviewListEntry } from '@lostgradient/weft';
 
 import { contextDetailFixture } from './bureau-fixtures.test-support.ts';
-import type { BureauReview } from './bureau-reviews.ts';
+import type { BureauReview, EngineReview } from './bureau-reviews.ts';
 import {
   StubFault,
   urlOf,
@@ -73,6 +73,33 @@ export function emptyBureauWorld(overrides: Partial<BureauWorld> = {}): BureauWo
   return { tasks: [], reviews: [], weftReviews: [], ...overrides };
 }
 
+/** One of the engine's reviews as the merged list shows it (`source: 'engine'`). */
+function engineReviewOf(entry: ReviewListEntry): EngineReview {
+  const common = {
+    source: 'engine' as const,
+    kind: 'engine-review' as const,
+    id: entry.reviewId,
+    runId: entry.workflowId,
+    requestedAt: entry.createdAt,
+    ageMilliseconds: 0,
+    reviewType: entry.reviewType,
+    reviewers: entry.reviewers,
+    allowPartial: entry.allowPartial,
+    artifact: entry.artifact,
+  };
+  if (entry.status === 'pending') return { ...common, status: 'pending' };
+  return {
+    ...common,
+    status: 'completed',
+    resolution: {
+      decision: entry.decision,
+      decidedBy: entry.reviewer,
+      decidedAt: entry.timestamp,
+      ...(entry.feedback === undefined ? {} : { reason: entry.feedback }),
+    },
+  };
+}
+
 function defaultHandlers(world: BureauWorld): Record<string, BureauHandler> {
   return {
     'bureau.tasks.list': (params) => {
@@ -107,9 +134,29 @@ function defaultHandlers(world: BureauWorld): Record<string, BureauHandler> {
       if (!known) throw notFound('context', id);
       return contextDetailFixture(id);
     },
-    'bureau.reviews.list': () => ({
-      reviews: world.reviews.filter((review) => review.status === 'pending'),
-    }),
+    'bureau.reviews.list': (params) => {
+      const resolved = params['status'] === 'resolved';
+      const limit = typeof params['limit'] === 'number' ? params['limit'] : 50;
+      // The token is the position the page starts at: the stub's world does not change mid-listing.
+      const offset = typeof params['pageToken'] === 'string' ? Number(params['pageToken']) : 0;
+      const listed: Array<BureauReview | EngineReview> = [
+        ...world.reviews.filter((review) => (review.status === 'pending') !== resolved),
+        ...world.weftReviews
+          .filter((entry) => (entry.status === 'pending') !== resolved)
+          .map(engineReviewOf),
+      ];
+      // Waiting: the longest first. Decided: the latest decision first.
+      const decidedAt = (review: BureauReview | EngineReview): number =>
+        review.resolution?.decidedAt ?? review.requestedAt;
+      listed.sort((a, b) =>
+        resolved ? decidedAt(b) - decidedAt(a) : a.requestedAt - b.requestedAt,
+      );
+      const page = listed.slice(offset, offset + limit);
+      return {
+        reviews: page,
+        nextPageToken: offset + page.length < listed.length ? String(offset + page.length) : null,
+      };
+    },
     'bureau.reviews.get': (params) => {
       const id = String(params['id']);
       const review = world.reviews.find((entry) => entry.id === id);
@@ -120,7 +167,24 @@ function defaultHandlers(world: BureauWorld): Record<string, BureauHandler> {
       const id = String(params['id']);
       const review = world.reviews.find((entry) => entry.id === id);
       if (review === undefined) throw notFound('review', id);
-      world.reviews = world.reviews.filter((entry) => entry.id !== id);
+      const decision = String(params['decision']);
+      const status =
+        decision === 'approve' ? 'approved' : decision === 'deny' ? 'denied' : 'rejected';
+      // The review leaves the waiting list and is kept as decided, as the Bureau keeps it.
+      world.reviews = world.reviews.map((entry) =>
+        entry.id === id
+          ? {
+              ...entry,
+              status,
+              resolution: {
+                decision: decision as 'approve' | 'deny' | 'reject',
+                decidedBy: 'tester',
+                decidedAt: Date.now(),
+                ...(typeof params['reason'] === 'string' ? { reason: params['reason'] } : {}),
+              },
+            }
+          : entry,
+      );
       return { id, kind: review.kind, decision: params['decision'], receipt: 'applied' };
     },
   };

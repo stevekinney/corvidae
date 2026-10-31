@@ -75,8 +75,17 @@ function navigationLabel(container: HTMLElement): string {
   return link?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
 }
 
-function countOf(container: HTMLElement): string | undefined {
-  return container.querySelector('.ib-reviews__count')?.getAttribute('aria-label') ?? undefined;
+/** What the Waiting tab says, with its count. */
+function tabLabel(container: HTMLElement): string {
+  return container.querySelector('[role="tab"]')?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+}
+
+/** Opens the first review in the list, as a click on its row does. */
+async function openFirst(container: HTMLElement): Promise<void> {
+  const row = container.querySelector<HTMLElement>('[data-review-row]');
+  const primary = row?.querySelector<HTMLElement>('.cinder-selectable-row__primary') ?? row;
+  if (primary === null || primary === undefined) throw new Error('There is no row to open.');
+  await fireEvent.click(primary);
 }
 
 const approval = (id: string) => toolApprovalFixture({ id, runId: `run-${id}` });
@@ -150,14 +159,14 @@ describe('the count in the navigation', () => {
   });
 
   test('changes at once after a decision this application makes, with no time advanced', async () => {
-    const { container, findAllByRole } = open('/reviews', {
+    const { container, findByRole } = open('/reviews', {
       reviews: [approval('a'), approval('b')],
     });
     await until(() => expect(navigationLabel(container)).toBe('Reviews 2'));
-    await until(() => expect(container.querySelectorAll('.ib-review').length).toBe(2));
+    await until(() => expect(container.querySelectorAll('[data-review-row]').length).toBe(2));
 
-    const approves = await findAllByRole('button', { name: 'Approve' });
-    await fireEvent.click(approves[0]!);
+    await openFirst(container);
+    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
     await until(() => expect(navigationLabel(container)).toBe('Reviews 1'));
     expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1);
   });
@@ -168,7 +177,8 @@ describe('answering a question in the inbox', () => {
     const question = humanWaitFixture({ sessionId: 'session-q' });
     const { container, findByRole, findByLabelText } = open('/reviews', { reviews: [question] });
     await until(() => expect(navigationLabel(container)).toBe('Reviews 1'));
-    await until(() => expect(container.querySelectorAll('.ib-review').length).toBe(1));
+    await until(() => expect(container.querySelectorAll('[data-review-row]').length).toBe(1));
+    await openFirst(container);
     stub?.on('bureau.tasks.respond', () => {
       world.reviews = [];
       return {
@@ -182,7 +192,7 @@ describe('answering a question in the inbox', () => {
     });
 
     await fireEvent.input(await findByLabelText('Your answer'), { target: { value: 'staging' } });
-    await fireEvent.click(await findByRole('button', { name: 'Send answer' }));
+    await fireEvent.click(await findByRole('button', { name: 'Send' }));
 
     await until(() => expect(navigationLabel(container)).toBe('Reviews'));
     expect(stub?.callsTo('bureau.tasks.respond').length).toBe(1);
@@ -190,12 +200,12 @@ describe('answering a question in the inbox', () => {
 });
 
 describe('the list on /reviews', () => {
-  const rows = (container: HTMLElement) => container.querySelectorAll('.ib-review').length;
+  const rows = (container: HTMLElement) => container.querySelectorAll('[data-review-row]').length;
 
   test('shows a review that arrives after five seconds, and says how many wait', async () => {
     const { container } = open('/reviews', { reviews: [approval('a')] });
     await until(() => expect(rows(container)).toBe(1));
-    expect(countOf(container)).toBe('1 waiting on you');
+    expect(tabLabel(container)).toBe('Waiting (1)');
 
     world.reviews = [...world.reviews, approval('b')];
     jest.advanceTimersByTime(4_000);
@@ -203,7 +213,7 @@ describe('the list on /reviews', () => {
     expect(rows(container)).toBe(1);
     jest.advanceTimersByTime(1_000);
     await until(() => expect(rows(container)).toBe(2));
-    expect(countOf(container)).toBe('2 waiting on you');
+    expect(tabLabel(container)).toBe('Waiting (2)');
   });
 
   test('drops a review that was resolved elsewhere after five seconds', async () => {

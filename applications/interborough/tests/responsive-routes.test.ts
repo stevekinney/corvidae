@@ -19,6 +19,8 @@ const SEED = {
   run: 'run-1',
   schedule: 'schedule-1',
   goal: 'goal-1',
+  review: 'bureau:review-1',
+  decidedReview: 'bureau:review-2',
 } as const;
 
 const PATTERNS = routes.filter((route) => route.redirect === undefined).map((r) => r.pattern);

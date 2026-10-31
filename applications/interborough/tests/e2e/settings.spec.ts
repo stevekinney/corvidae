@@ -14,7 +14,7 @@ import { SETTINGS_COPY } from '../../src/app/copy.ts';
 import { HUMAN_INPUT_PROMPT } from '../../src/host/seed.ts';
 import { E2E_LOCKED_SETTING } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
-import { bureauCall, taskOfSession } from './task-support.ts';
+import { bureauCall, taskOfSession, waitingReviewOf } from './task-support.ts';
 
 const WIDTHS = [375, 1280] as const;
 
@@ -61,8 +61,11 @@ async function startChat(page: Page): Promise<string> {
   return decodeURIComponent(new URL(page.url()).pathname.split('/').pop() ?? '');
 }
 
-const reviewOf = (page: Page, threadId: string) =>
-  page.locator('.ib-review').filter({ has: page.locator(`a[href="/chats/${threadId}"]`) });
+/** The inbox row of the question a session is waiting on, once the Bureau lists it. */
+async function reviewRowOf(page: Page, request: APIRequestContext, threadId: string) {
+  const review = await waitingReviewOf(request, threadId);
+  return page.locator(`[data-review-row="bureau:${review.id}"]`);
+}
 
 for (const width of WIDTHS) {
   test(`draws a control for every setting at ${width} pixels, and passes axe`, async ({
@@ -136,7 +139,6 @@ test('turning tools.humanInput off leaves a chat with nothing to review, and tur
       .toBe('completed');
     await page.goto('/reviews');
     await expect(page.getByRole('heading', { level: 1, name: 'Reviews' })).toBeVisible();
-    await expect(reviewOf(page, without)).toHaveCount(0);
     const listed = (await bureauCall(request, 'bureau.reviews.list', {})) as {
       reviews: Array<{ sessionId?: string }>;
     };
@@ -147,7 +149,7 @@ test('turning tools.humanInput off leaves a chat with nothing to review, and tur
     await saveHumanInput(page, true);
     const withIt = await startChat(page);
     await page.goto('/reviews');
-    await expect(reviewOf(page, withIt)).toContainText(HUMAN_INPUT_PROMPT);
+    await expect(await reviewRowOf(page, request, withIt)).toContainText(HUMAN_INPUT_PROMPT);
   } finally {
     const current = await snapshotOf(request);
     if (!Object.is(JSON.stringify(current.values['tools.humanInput']), JSON.stringify(original))) {

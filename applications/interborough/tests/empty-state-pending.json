@@ -5,10 +5,6 @@
       "issue": "COR-1851"
     },
     {
-      "file": "src/routes/reviews/reviews-inbox.svelte",
-      "issue": "COR-1849"
-    },
-    {
       "file": "src/routes/schedules/schedule-detail.svelte",
       "issue": "COR-1859"
     },
