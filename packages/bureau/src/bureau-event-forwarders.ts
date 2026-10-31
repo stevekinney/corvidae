@@ -17,7 +17,7 @@ import {
   BUREAU_ASSET_EVENT_KINDS,
   type BureauAssetEventKind,
   DefinitionsChangedEvent,
-  type DefinitionSourceKind,
+  type DefinitionCatalogKind,
   DiagnosticEvent,
   MemoryGovernanceEvent,
   ScheduleMissedEvent,
@@ -116,8 +116,8 @@ export function forwardAssetEvents(
 
 /** Forwards a file catalog's `onChange` reports as `definitions.changed`. Returns the unsubscribe. */
 export function forwardDefinitionChanges(
-  source: DefinitionSourceKind,
-  catalog: {
+  catalog: DefinitionCatalogKind,
+  files: {
     onChange(
       listener: (change: {
         readonly added: readonly string[];
@@ -129,7 +129,7 @@ export function forwardDefinitionChanges(
   },
   dispatch: (event: DefinitionsChangedEvent) => void,
 ): () => void {
-  return catalog.onChange((change) => dispatch(new DefinitionsChangedEvent(source, change)));
+  return files.onChange((change) => dispatch(new DefinitionsChangedEvent(catalog, change)));
 }
 
 /** Where {@link forwardMissedFires} listens: the engine itself, or a {@link bufferMissedFires} view. */

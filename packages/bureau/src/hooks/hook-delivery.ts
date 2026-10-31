@@ -27,6 +27,8 @@
  * @module hook-delivery
  */
 
+import type { PluginEvent } from '@lostgradient/interborough-plugin';
+
 import { NOTIFICATION_FIELD_LIMITS } from '../notifications/notification-types.ts';
 import type { WebhookDeliveryEngine } from '../webhook-notifier.ts';
 import { type AnswerEncryptionKeys } from '../secret-answers.ts';
@@ -112,6 +114,8 @@ export interface HookEventToDeliver {
   readonly emittedAtMs: number;
   /** The event's projection. */
   readonly payload: Readonly<Record<string, unknown>>;
+  /** The plugin whose contribution emitted the event; absent for an event from Bureau core. */
+  readonly source?: string;
 }
 
 /** The delivery operations {@link createHookDeliveries} offers. */
@@ -183,6 +187,17 @@ async function readExcerpt(
   };
 }
 
+/** The event as a plugin's action and the `event` input shape see it: `source` only when it is a plugin's. */
+function pluginEventOf(event: HookEventToDeliver): PluginEvent {
+  return {
+    kind: event.kind,
+    bureauId: event.bureauId,
+    emittedAtMs: event.emittedAtMs,
+    payload: event.payload,
+    ...(event.source === undefined ? {} : { source: event.source }),
+  };
+}
+
 /** The longest notification title and body the store accepts, which the work is cut to. */
 const NOTIFICATION_TITLE_LIMIT = NOTIFICATION_FIELD_LIMITS.title;
 const NOTIFICATION_BODY_LIMIT = NOTIFICATION_FIELD_LIMITS.body;
@@ -198,6 +213,15 @@ function workOf(
   hook: HookRecord,
   event: HookEventToDeliver,
 ): HookDeliveryWork {
+  if (action.type === 'plugin') {
+    return {
+      type: 'plugin',
+      plugin: action.plugin,
+      kind: action.kind,
+      ...(action.configuration === undefined ? {} : { configuration: action.configuration }),
+      event: pluginEventOf(event),
+    };
+  }
   if (action.type === 'start-workflow') {
     return {
       type: 'start-workflow',
@@ -206,10 +230,7 @@ function workOf(
         action.input === 'payload'
           ? event.payload
           : {
-              kind: event.kind,
-              bureauId: event.bureauId,
-              emittedAtMs: event.emittedAtMs,
-              payload: event.payload,
+              ...pluginEventOf(event),
             },
     };
   }
@@ -574,6 +595,7 @@ export function createHookDeliveries(dependencies: HookDeliveryDependencies): Ho
                   emittedAtMs: event.emittedAtMs,
                   test,
                   payload: event.payload,
+                  ...(event.source === undefined ? {} : { source: event.source }),
                 }),
               },
               maxAttempts: test ? 1 : engine.maxAttempts,

@@ -109,7 +109,8 @@ import type {
 } from './steering';
 import type { WebhookNotifier, WebhookNotifierOptions } from './webhook-notifier';
 import type { BureauHooks } from './hooks/create-hooks';
-import type { HookSecretStore } from './hooks/hook-types';
+import type { BureauEventFormatter, EventFormatterRegistration } from './bureau-event-formatting';
+import type { HookActionKindRegistration, HookSecretStore } from './hooks/hook-types';
 import type { HookUrlPolicy } from './hooks/hook-url-policy';
 
 // ── Provider Configuration ───────────────────────────────────────────
@@ -827,6 +828,13 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    */
   hooks?: BureauHooksOptions;
   /**
+   * The event formatters plugins contribute (COR-1876), the entry point plugin composition feeds
+   * with each plugin's `eventFormatters`. {@link Bureau.formatEvent} uses them; an event no
+   * formatter claims is shown by its raw kind. Two formatters that claim one event kind are
+   * refused at construction.
+   */
+  eventFormatters?: readonly EventFormatterRegistration[];
+  /**
    * Online evaluations (AB-53) — samples a fraction of completed live runs
    * through configured judges/matchers, records every sampled score to the
    * durable audit trail, and fires a webhook (via `options.webhooks`, AB-21's
@@ -1357,6 +1365,13 @@ export interface BureauHooksOptions {
   urlPolicy?: HookUrlPolicy;
   /** How long one delivery request may take before it counts as failed. Default `10000`. */
   requestTimeoutMilliseconds?: number;
+  /**
+   * The hook action kinds plugins contribute (COR-1876): a hook whose action is
+   * `{ type: 'plugin', plugin, kind, configuration? }` runs the named kind. This is the entry point
+   * plugin composition feeds with each plugin's `hookActionKinds`. A plugin and kind name given
+   * twice is refused at construction. Omitted, only the built-in actions exist.
+   */
+  actionKinds?: readonly HookActionKindRegistration[];
 }
 
 /** {@link BureauOptions.children}. */
@@ -2664,6 +2679,12 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * leave authorization to the caller, as `Bureau.goals` does. See {@link BureauHooks}.
    */
   readonly hooks: BureauHooks | undefined;
+  /**
+   * COR-1876 — an event as a person reads it: a contributed formatter's sentence for its kind, or
+   * the raw kind and the run link for an event no formatter claims. Pure; it never throws for a
+   * formatter that does.
+   */
+  readonly formatEvent: BureauEventFormatter;
 
   /**
    * COR-772 — Bureau's durable parent-child topology: dispatch a catalog

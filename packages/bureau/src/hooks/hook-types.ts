@@ -6,11 +6,12 @@
  */
 
 import type { EncryptedValue } from '@lostgradient/cryptography';
+import type { PluginEvent, PluginHookActionKind } from '@lostgradient/interborough-plugin';
 
 import type { SettingLockReason } from '../settings/settings-schema.ts';
 
 /** What a hook does when one of its events happens. */
-export type HookActionType = 'webhook' | 'start-workflow' | 'notify';
+export type HookActionType = 'webhook' | 'start-workflow' | 'notify' | 'plugin';
 
 /** The event, as the workflow a `start-workflow` hook starts receives it as its input. */
 export type HookWorkflowInput =
@@ -52,8 +53,34 @@ export interface NotifyHookAction {
   readonly title?: string;
 }
 
+/**
+ * Runs an action kind a plugin contributed (COR-1876). The kind is named by the plugin and its own
+ * name, and `configuration` is what the kind's schema parsed when the hook was written. The kind
+ * is resolved again for each delivery, so a hook whose plugin is gone fails its deliveries
+ * (`rejected`) instead of vanishing.
+ */
+export interface PluginHookAction {
+  /** Always `plugin`. */
+  readonly type: 'plugin';
+  /** The plugin that contributes the kind. */
+  readonly plugin: string;
+  /** The kind's name, unique within the plugin. */
+  readonly kind: string;
+  /** The kind's configuration, parsed with its schema; `undefined` when the schema accepted none. */
+  readonly configuration?: unknown;
+}
+
+/** An action kind a plugin contributes, with the plugin that contributes it (COR-1876). */
+export interface HookActionKindRegistration {
+  /** The plugin's name; the `plugin` of a {@link PluginHookAction} that runs the kind. */
+  readonly plugin: string;
+  /** The kind itself. */
+  readonly kind: PluginHookActionKind;
+}
+
 /** What a hook does for an event, tagged by `type`. */
-export type HookAction = WebhookHookAction | StartWorkflowHookAction | NotifyHookAction;
+export type HookAction =
+  WebhookHookAction | StartWorkflowHookAction | NotifyHookAction | PluginHookAction;
 
 /** A hook: when a published Bureau event of one of `events` happens, its `action` runs. */
 export interface Hook {
@@ -99,11 +126,11 @@ export type HookAttemptOutcome =
   | 'interrupted'
   /** The URL was refused by the policy at send time; no request was made. */
   | 'refused'
-  /** A `start-workflow` or `notify` action ran; `receipt` says what it made. */
+  /** A `start-workflow`, `notify` or `plugin` action ran; `receipt` says what it made. */
   | 'completed'
-  /** A `start-workflow` or `notify` action failed in a way a retry cannot change; `error` says why. */
+  /** A `start-workflow`, `notify` or `plugin` action failed in a way a retry cannot change; `error` says why. */
   | 'rejected'
-  /** A `start-workflow` or `notify` action failed in a way a retry may change; `error` says why. */
+  /** A `start-workflow`, `notify` or `plugin` action failed in a way a retry may change; `error` says why. */
   | 'error';
 
 /** One attempt to deliver, in the order made. */
@@ -182,6 +209,16 @@ export type HookDeliveryWork =
       readonly type: 'notify';
       readonly title: string;
       readonly body: string;
+    }
+  | {
+      readonly type: 'plugin';
+      readonly plugin: string;
+      /** The action kind's name within the plugin. */
+      readonly kind: string;
+      /** The configuration the hook held when the delivery was created. */
+      readonly configuration?: unknown;
+      /** The event, as the action receives it; its `source` is present only for a plugin's event. */
+      readonly event: PluginEvent;
     };
 
 /** A delivery of one event to one hook: the action, every attempt, and where it stands. */
