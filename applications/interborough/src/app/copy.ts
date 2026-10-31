@@ -1404,7 +1404,19 @@ export const TASK_COPY = {
   untitledChat: 'Untitled chat',
   goal: 'goal',
   schedule: 'schedule',
+  agent: 'agent',
+  workflow: 'workflow',
   startedDirectly: 'Started directly',
+  /** Under Started by, for a run recorded before the origin of a run was kept. */
+  originUnrecorded: 'Not recorded',
+  /** How a person started a run outside a chat, after "A person". */
+  personSurface: {
+    web: 'in the web app',
+    palette: 'from the command palette',
+    api: 'through the API',
+  },
+  /** After "A schedule", when a person fired it by hand instead of its cadence. */
+  firedByHand: 'fired by hand',
   sessionLabel: 'Session',
   anyStatus: 'Any status',
   filterAction: 'Filter',
@@ -1530,6 +1542,32 @@ export const TASK_COPY = {
       'Canceled, but cleanup could not be confirmed and may still be running. Nothing is promised about its effects outside this system.',
     'unknown-outcome': 'An effect outside this system may or may not have happened.',
     rejected: 'Not canceled. The task had already finished.',
+  },
+  /** The record of a workflow run the engine behind the console does not hold, read from the Bureau. */
+  runRecord: {
+    label: 'Run record',
+    workflow: 'Workflow',
+    status: 'Status',
+    started: 'Started',
+    changed: 'Last changed',
+    startedBy: 'Started by',
+    input: 'Input',
+    result: 'Result',
+    error: 'Error',
+    inputPayload: 'Input payload',
+    resultPayload: 'Result payload',
+    loading: 'Loading the run',
+    failed: {
+      title: 'The run could not be loaded',
+      description: 'The server did not answer. Check that the host is running, then try again.',
+    },
+  },
+  /** What a refused cancel says when the run belongs to something else, which is the one to stop. */
+  cancelOwned: {
+    'owned-by-goal':
+      'Not canceled. This run is an attempt of a goal, and cancelling the goal stops it.',
+    'owned-by-workflow':
+      'Not canceled. This run is a step of a workflow, and cancelling the workflow run stops it.',
   },
 } as const;
 

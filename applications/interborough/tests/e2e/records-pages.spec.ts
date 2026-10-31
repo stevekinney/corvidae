@@ -8,7 +8,9 @@
  */
 import type { Page } from '@playwright/test';
 
+import { TASK_COPY } from '../../src/app/copy.ts';
 import { STATUS_TONES, STATUS_WORDS } from '../../src/lib/status.ts';
+import { STARTED_BY_LABELS } from '../../src/routes/workflows/runs/started-by.ts';
 import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -54,6 +56,24 @@ test.describe('the records pages', () => {
       '/runs?view=start',
     );
     await checkA11y('records — runs');
+  });
+
+  test('Runs filters by Started by, and offers every kind of origin the Bureau records', async ({
+    page,
+  }) => {
+    await page.goto('/runs');
+    await expect(page.locator('[data-view="runs"]')).toHaveAttribute('data-state', 'ready');
+    const startedBy = page.getByLabel(TASK_COPY.startedByLabel);
+    await expect(startedBy.locator('option')).toHaveText([
+      TASK_COPY.anyOrigin,
+      ...Object.values(STARTED_BY_LABELS),
+    ]);
+
+    await startedBy.selectOption('schedule');
+    await expect(page).toHaveURL(/startedBy=schedule/);
+    for (const row of await page.locator('tr[data-run] .ib-run-origin').all()) {
+      await expect(row).toHaveAttribute('data-origin', 'schedule');
+    }
   });
 
   test('Runs says which filter matched nothing and clears it', async ({ page }) => {

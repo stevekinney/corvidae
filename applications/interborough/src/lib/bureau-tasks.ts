@@ -103,6 +103,16 @@ export function isScheduleFire(task: Pick<TaskView, 'actor'>): boolean {
   return task.actor === SCHEDULER_ACTOR;
 }
 
+/**
+ * Whether the task belongs to a goal or a workflow, which is the one that stops it
+ * (`bureau.tasks.cancel` refuses it with `owned-by-goal` or `owned-by-workflow`): an attempt of a
+ * goal, or a step of a workflow instance.
+ */
+export function isOwnedElsewhere(task: Pick<TaskView, 'origin'>): boolean {
+  const kind = task.origin?.kind;
+  return kind === 'goal' || kind === 'parent';
+}
+
 const taskPageSchema = z.object({
   tasks: z.array(taskViewSchema),
   /** Opaque; `null` when the listing has no more tasks. */

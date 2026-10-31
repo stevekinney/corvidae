@@ -66,6 +66,7 @@
   import { getPrincipalStore, scopeGate } from '../../../lib/scopes.svelte.ts';
   import { fetchActiveWorkflowRevision } from '../../../lib/workflow-revision.ts';
   import { getFleetEventSource } from '../../../app/engine-status.svelte.ts';
+  import BureauRunRecord from './bureau-run-record.svelte';
   import CheckpointsTab from './checkpoints/checkpoints-tab.svelte';
   import ChildrenTab from './children-tab.svelte';
   import EventsTab from './events-tab.svelte';
@@ -260,25 +261,30 @@
       <Skeleton height="8rem" />
     </div>
   {:else if notFound}
-    <div class="weft-workflow-detail__not-found">
-      <EmptyState
-        title="No workflow found"
-        description={`No workflow found with ID "${id}". It may have been purged, or the ID may be mistyped.`}
-      >
-        {#snippet icon()}<SearchX aria-hidden="true" size={22} />{/snippet}
-        {#snippet action()}
-          <a
-            href={router.href('/runs')}
-            onclick={(event) => {
-              event.preventDefault();
-              router.navigate('/runs');
-            }}
+    <!-- The engine does not hold this run. A run of a workflow file may still be the Bureau's. -->
+    <BureauRunRecord runId={id}>
+      {#snippet missing()}
+        <div class="weft-workflow-detail__not-found">
+          <EmptyState
+            title="No workflow found"
+            description={`No workflow found with ID "${id}". It may have been purged, or the ID may be mistyped.`}
           >
-            Back to workflows
-          </a>
-        {/snippet}
-      </EmptyState>
-    </div>
+            {#snippet icon()}<SearchX aria-hidden="true" size={22} />{/snippet}
+            {#snippet action()}
+              <a
+                href={router.href('/runs')}
+                onclick={(event) => {
+                  event.preventDefault();
+                  router.navigate('/runs');
+                }}
+              >
+                Back to workflows
+              </a>
+            {/snippet}
+          </EmptyState>
+        </div>
+      {/snippet}
+    </BureauRunRecord>
   {:else if treatment}
     <div
       class="weft-workflow-detail__fault"

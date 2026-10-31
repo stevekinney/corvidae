@@ -92,6 +92,26 @@ export function attemptStatusWord(status: Goal['attempts'][number]['status']): S
   return ATTEMPT_WORDS[status];
 }
 
+const WORKFLOW_RUN_WORDS: Readonly<
+  Record<
+    'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'timed-out' | 'suspended',
+    StatusWord
+  >
+> = {
+  pending: 'Scheduled',
+  running: 'Running',
+  completed: 'Done',
+  failed: 'Failed',
+  cancelled: 'Canceled',
+  'timed-out': 'Failed',
+  suspended: 'Paused',
+};
+
+/** The word an instance of a workflow reads as: one that timed out did not finish, so it has Failed. */
+export function workflowRunStatusWord(status: keyof typeof WORKFLOW_RUN_WORDS): StatusWord {
+  return WORKFLOW_RUN_WORDS[status];
+}
+
 /**
  * The word a workflow reads as, from what is known of it: a file the Bureau cannot use, or a source
  * the engine failed to load, has Failed; a paused file is Paused; one with an instance going is
