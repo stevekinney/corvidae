@@ -218,8 +218,9 @@ function named(item: Named, kind: string, schema?: unknown) {
  * The identities a plugin holds: its configuration schema, and for every contribution that a
  * record, file or setting can name, its id, version and schema digest. A contribution that
  * declares no version of its own takes the plugin's. The entries are ordered, so equal plugins
- * produce equal snapshots. Guardrails, decision routers and memory detectors carry no name a
- * record or file can refer to, so they are not listed.
+ * produce equal snapshots. Guardrails are listed by the name an agent file lists them under
+ * (`input-guardrail` and `output-guardrail`, with no schema). Decision routers and memory detectors
+ * carry no name a record or file can refer to, so they are not listed.
  */
 export async function pluginIdentities(
   descriptor: PluginDescriptor<z.ZodType>,
@@ -282,6 +283,16 @@ export async function pluginIdentities(
     ...entriesOf(
       contributions.mcpApps,
       (app) => named(app, 'mcp-app', { allowedTools: app.allowedTools.toSorted(compareText) }),
+      descriptor,
+    ),
+    ...entriesOf(
+      contributions.guardrails?.inputDetectors,
+      (detector) => named(detector, 'input-guardrail'),
+      descriptor,
+    ),
+    ...entriesOf(
+      contributions.guardrails?.outputValidators,
+      (validator) => named(validator, 'output-guardrail'),
       descriptor,
     ),
     ...entriesOf(contributions.evalJudges, (judge) => named(judge, 'eval-judge'), descriptor),
