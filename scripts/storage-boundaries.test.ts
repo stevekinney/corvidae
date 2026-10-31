@@ -2,7 +2,10 @@ import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, posix, sep } from 'node:path';
 
-import { workspaceParentDirectories } from './workspace-directories.ts';
+import {
+  workspaceChildDirectoryNames,
+  workspaceParentDirectories,
+} from './workspace-directories.ts';
 
 /**
  * COR-1780: the dependency edges and file placement that keep Weft's storage split into its own
@@ -210,9 +213,7 @@ function readWorkspaceManifests(): Map<string, Manifest> {
   const manifests = new Map<string, Manifest>();
   const directories = [
     ...workspaceParentDirectories.flatMap((parent) =>
-      readdirSync(join(root, parent), { withFileTypes: true })
-        .filter((entry) => entry.isDirectory())
-        .map((entry) => join(root, parent, entry.name)),
+      workspaceChildDirectoryNames(root, parent).map((name) => join(root, parent, name)),
     ),
     join(root, 'scripts/browser-fixtures'),
   ];

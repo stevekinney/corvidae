@@ -6,6 +6,7 @@
  * durable pipeline. Sampling is driven by an injected RNG so `sampleRate` is
  * exercised deterministically: no test depends on `Math.random`.
  */
+import type { EvalScore, OnlineEvalJudge } from '@lostgradient/interborough-plugin';
 import * as lifecycle from '@lostgradient/lifecycle';
 import {
   type Action,
@@ -21,9 +22,7 @@ import { ActionEvent } from './events';
 import {
   createDefaultClock,
   createOnlineEvalSampler,
-  type EvalScore,
   type EvaluationIdentifierSeam,
-  type OnlineEvalJudge,
   worstAssessment,
   worstProgress,
   worstReachability,

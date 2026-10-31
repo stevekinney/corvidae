@@ -6,9 +6,11 @@ import { dirname, isAbsolute, join } from 'node:path';
 import ts from 'typescript';
 
 import { runWithHangGuard } from '../testing/testing/src/hang-guard.ts';
+import { type PluginManifest, pluginDependencyViolations } from './plugin-dependency-rules.ts';
 import {
   directoryGlob,
   verificationWorkspaceDirectories,
+  workspaceChildDirectoryNames,
   workspaceParentDirectories,
 } from './workspace-directories.ts';
 import { sourceExportViolations } from './workspace-exports';
@@ -18,6 +20,7 @@ const componentLibraries = ['cinder', 'chat', 'editor', 'terminal'];
 const verificationLibraries = ['testing', 'evaluation'];
 const libraries = [
   'bureau',
+  'interborough-plugin',
   'operative',
   'operative-anthropic',
   'operative-gemini',
@@ -70,6 +73,7 @@ const expectedWorkspaceNames = new Set([
   '@lostgradient/lifecycle',
   '@lostgradient/bungalow',
   '@lostgradient/bureau',
+  '@lostgradient/interborough-plugin',
   '@lostgradient/memory',
   '@lostgradient/storage',
   '@lostgradient/storage-bun-sqlite',
@@ -128,9 +132,8 @@ async function libraryApplicationConfigurations(): Promise<string[]> {
 async function workspaceManifests(): Promise<Map<string, Manifest>> {
   const manifests = new Map<string, Manifest>();
   for (const directory of workspaceParentDirectories) {
-    for (const entry of await readdir(join(root, directory), { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const path = join(directory, entry.name);
+    for (const name of workspaceChildDirectoryNames(root, directory)) {
+      const path = join(directory, name);
       if (await Bun.file(join(root, path, 'package.json')).exists()) {
         const manifest = await readManifest(path);
         expect(manifests.has(manifest.name), `Duplicate workspace ${manifest.name}`).toBe(false);
@@ -563,6 +566,63 @@ describe('internal workspace architecture', () => {
       ...workspaceParentDirectories.map((directory) => `${directory}/*`),
       'scripts/browser-fixtures',
     ]);
+  });
+
+  test('no script scans the workspace parent directories without tolerating a missing one', async () => {
+    // `plugins/*` is a workspace glob before any plugin exists, so a scan that spreads the parent
+    // list straight into `readdirSync` fails with ENOENT. `scannedSourceDirectories` drops the
+    // parents that are absent.
+    const offending: string[] = [];
+    for await (const path of new Bun.Glob('scripts/**/*.ts').scan({ cwd: root })) {
+      if (path.includes('node_modules') || path.endsWith('workspace-contract.test.ts')) continue;
+      const source = await Bun.file(join(root, path)).text();
+      // A glob over the directories matches nothing in a missing one; only a directory walk fails.
+      if (source.includes('directoryGlob(')) continue;
+      if (/\[\.\.\.workspaceParentDirectories, 'scripts'\]/.test(source)) offending.push(path);
+    }
+    expect(offending).toEqual([]);
+  });
+
+  test('every plugins/* workspace obeys the plugin dependency rules', async () => {
+    const names = async (parent: string) => {
+      const found = new Set<string>();
+      for (const name of workspaceChildDirectoryNames(root, parent)) {
+        const path = join(parent, name);
+        if (await Bun.file(join(root, path, 'package.json')).exists()) {
+          const manifest = await readManifest(path);
+          found.add(manifest.name);
+        }
+      }
+      return found;
+    };
+    const manifests = await workspaceManifests();
+    const context = {
+      workspaceNames: new Set(manifests.keys()),
+      applicationNames: await names('applications'),
+      pluginNames: await names('plugins'),
+      verificationNames: await names('testing'),
+    };
+    const violations: string[] = [];
+    for (const name of context.pluginNames) {
+      const manifest = manifests.get(name);
+      if (manifest) violations.push(...pluginDependencyViolations(manifest, context));
+    }
+    expect(violations).toEqual([]);
+  });
+
+  test('the plugin authoring package names Bureau in no dependency field', async () => {
+    // Bureau depends on the authoring package, so the reverse edge would be a cycle.
+    const manifest = await readManifest('packages/interborough-plugin');
+    const fields = [
+      manifest.dependencies,
+      manifest.devDependencies,
+      manifest.peerDependencies,
+      (manifest as PluginManifest).optionalDependencies,
+    ];
+    for (const field of fields)
+      expect(Object.keys(field ?? {})).not.toContain('@lostgradient/bureau');
+    const bureau = await readManifest('packages/bureau');
+    expect(Object.keys(bureau.dependencies ?? {})).toContain('@lostgradient/interborough-plugin');
   });
 
   test('libraries and components name verification workspaces only as development dependencies', async () => {

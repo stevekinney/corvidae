@@ -1,10 +1,14 @@
 import { describe, expect, test } from 'bun:test';
-import { readdirSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { isBuiltin } from 'node:module';
 import { join } from 'node:path';
 import ts from 'typescript';
 
-import { directoryGlob, workspaceParentDirectories } from './workspace-directories.ts';
+import {
+  directoryGlob,
+  workspaceChildDirectoryNames,
+  workspaceParentDirectories,
+} from './workspace-directories.ts';
 import { declaresImportSpecifier } from './workspace-exports';
 
 const root = join(import.meta.dir, '..');
@@ -26,17 +30,15 @@ async function readManifest(path: string): Promise<Manifest> {
 // load, is the only discriminator that still distinguishes an internal edge from an external one.
 const internalWorkspaceExports = new Map<string, unknown>(
   workspaceParentDirectories.flatMap((directory) =>
-    readdirSync(join(root, directory), { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .flatMap((entry): [string, unknown][] => {
-        const manifestPath = join(root, directory, entry.name, 'package.json');
-        try {
-          const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as Manifest;
-          return [[manifest.name, manifest.exports]];
-        } catch {
-          return [];
-        }
-      }),
+    workspaceChildDirectoryNames(root, directory).flatMap((name): [string, unknown][] => {
+      const manifestPath = join(root, directory, name, 'package.json');
+      try {
+        const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as Manifest;
+        return [[manifest.name, manifest.exports]];
+      } catch {
+        return [];
+      }
+    }),
   ),
 );
 const internalWorkspaceNames = new Set<string>(internalWorkspaceExports.keys());

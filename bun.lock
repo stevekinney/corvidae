@@ -324,6 +324,7 @@
         "@a2a-js/sdk": "catalog:",
         "@ag-ui/core": "catalog:",
         "@lostgradient/cryptography": "workspace:*",
+        "@lostgradient/interborough-plugin": "workspace:*",
         "@lostgradient/lifecycle": "workspace:*",
         "@lostgradient/memory": "workspace:*",
         "@lostgradient/operative": "workspace:*",
@@ -373,6 +374,22 @@
     },
     "packages/cryptography": {
       "name": "@lostgradient/cryptography",
+      "devDependencies": {
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/interborough-plugin": {
+      "name": "@lostgradient/interborough-plugin",
+      "dependencies": {
+        "@lostgradient/operative": "workspace:*",
+        "@lostgradient/storage": "workspace:*",
+        "@lostgradient/weft": "workspace:*",
+        "armorer": "workspace:*",
+        "zod": "catalog:",
+      },
       "devDependencies": {
         "@lostgradient/typescript": "workspace:*",
         "@types/bun": "catalog:",
@@ -1098,6 +1115,8 @@
     "@lostgradient/evaluation": ["@lostgradient/evaluation@workspace:testing/evaluation"],
 
     "@lostgradient/interborough": ["@lostgradient/interborough@workspace:applications/interborough"],
+
+    "@lostgradient/interborough-plugin": ["@lostgradient/interborough-plugin@workspace:packages/interborough-plugin"],
 
     "@lostgradient/lifecycle": ["@lostgradient/lifecycle@workspace:packages/lifecycle"],
 

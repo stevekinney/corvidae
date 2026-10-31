@@ -1,3 +1,6 @@
+import { existsSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+
 /**
  * The directories whose children are corvidae's workspaces, in the order the root `package.json`
  * lists them. `scripts/browser-fixtures` is the one workspace outside them, and it is listed by
@@ -13,6 +16,7 @@ export const workspaceParentDirectories = [
   'packages',
   'testing',
   'internal',
+  'plugins',
 ] as const;
 
 /**
@@ -26,4 +30,28 @@ export const verificationWorkspaceDirectories = ['testing'] as const;
 /** A `Bun.Glob` brace group over the given directories, such as `{applications,packages}`. */
 export function directoryGlob(directories: readonly string[]): string {
   return `{${directories.join(',')}}`;
+}
+
+/**
+ * The names of the directories directly inside `parent` below `root`, or none when `parent` does
+ * not exist. A parent directory such as `plugins` is listed in the root `workspaces` before any
+ * workspace lives in it, so a scan must tolerate its absence instead of failing with `ENOENT`.
+ */
+export function workspaceChildDirectoryNames(root: string, parent: string): string[] {
+  const directory = join(root, parent);
+  if (!existsSync(directory)) return [];
+  return readdirSync(directory, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name);
+}
+
+/**
+ * The directories a source scan reads below `root`: every workspace parent directory that exists,
+ * then `scripts`. A parent such as `plugins` can be listed before it holds a workspace, and a scan
+ * that walks a missing directory fails with `ENOENT`.
+ */
+export function scannedSourceDirectories(root: string): string[] {
+  return [...workspaceParentDirectories, 'scripts'].filter((directory) =>
+    existsSync(join(root, directory)),
+  );
 }
