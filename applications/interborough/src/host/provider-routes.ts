@@ -37,15 +37,16 @@ export const HOST_PROVIDERS_RELOAD_ROUTE = '/host/providers/reload';
 /** The route that connects the provider it names. */
 const HOST_PROVIDER_ROUTE = `${HOST_PROVIDERS_ROUTE}/:name`;
 
-/** The largest request body the provider routes read. */
+/** The largest request body the host's configuration routes read. */
 const MAXIMUM_BODY_BYTES = 256 * 1024;
 
 type Refuse = (request: Request) => Response | undefined;
 
 /** A request body that is not JSON of the expected shape. The message names the body, never its contents. */
-class BodyError extends Error {}
+export class BodyError extends Error {}
 
-async function readObject(request: Request): Promise<Record<string, unknown>> {
+/** Read the request body as a JSON object of at most {@link MAXIMUM_BODY_BYTES}, or throw a {@link BodyError} that names no content. */
+export async function readObject(request: Request): Promise<Record<string, unknown>> {
   const text = await request.text();
   if (text.length > MAXIMUM_BODY_BYTES) throw new BodyError('The request body is too large.');
   let parsed: unknown;

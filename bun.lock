@@ -43,6 +43,7 @@
         "@lostgradient/chat": "workspace:*",
         "@lostgradient/cinder": "workspace:*",
         "@lostgradient/cryptography": "workspace:*",
+        "@lostgradient/interborough-plugin": "workspace:*",
         "@lostgradient/markdown": "workspace:*",
         "@lostgradient/memory": "workspace:*",
         "@lostgradient/operative": "workspace:*",

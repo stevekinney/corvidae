@@ -128,6 +128,24 @@ Every change is checked against the keys the host holds before any byte is writt
 
 The configuration is written atomically (Bungalow's `writeConfiguration`: a temporary file, synced, renamed over `configuration.json`, mode `0600`), so a crash mid-write leaves the previous file whole. An error names the field, such as `apiKey` or `providers.openai.models[0]`, and never a value. No response, warning, log line, or diagnostic holds a key.
 
+### Plugins
+
+The host loads the workspace's plugins (`src/host/plugins.ts`; `HostOptions.plugins` replaces the list for a host that must load others) and composes them into the Bureau with `createBureau({ plugins, pluginConfiguration, pluginSecrets })`. The owner's choices live under `plugins.<name>` in `configuration.json`; a plugin the key does not name takes its descriptor's `enabledByDefault` (`true` when the descriptor leaves it out), and `setup` receives only that entry's `configuration`.
+
+```json
+{ "plugins": { "example": { "enabled": true, "configuration": { "limit": 3 } } } }
+```
+
+| Request | What it does |
+| --- | --- |
+| `GET /host/plugins` | Each plugin in load order: the Bureau's listing (status, problems, contributions), the stored `enabled` and `configuration`, `restartRequired`, and each declared secret with `generated`, `set`, and where it lives. Never a value. Carries `lockReason` when writes are refused. |
+| `PUT /host/plugins/<name>` `{ "enabled"?, "configuration"? }` | Stores the choices, after the configuration passes the plugin's own schema (a `400` names the field, such as `configuration.limit`, and writes nothing). A field left out keeps what is stored, and `"configuration": null` removes it. A `required` plugin cannot be turned off. The Bureau composes plugins once, so the change applies on the next start (`restartRequired`). |
+| `PUT /host/plugins/<name>/secrets/<key>` `{ "value" }` | Stores a secret the plugin declared (mode `0600`; a key it did not declare is a `400`). The plugin uses it at once: one that was `needs-setup` becomes `running` with no restart. |
+
+A declaration with `generated: true` is created by the host, a random value in the secret's `0600` file, the first time its plugin is enabled (at start, or when `PUT /host/plugins/<name>` turns it on). A remote host cannot write secrets, so it leaves the plugin `needs-setup` until the deployment sets the variable, and refuses every plugin write with the reason `deployment`. A plugin may not declare a secret the host keeps for itself (the approval secret, the A2A key, the answer-encryption keys, the tool sources' credentials): the host does not start. Every route runs the request guard first, and no response, listing, or log line holds a secret's value.
+
+The plugins' embedders and memory detectors reach governed memory through `BureauOptions.memory`'s factory (`src/host/memory.ts`), and `/host/paths` reports the secret file of each provider a plugin contributes beside the host's own.
+
 **Catalog edits.** A `catalog` list in `configuration.json` turns a model off, corrects its price or limits, or adds a row the built-in list lacks:
 
 ```json
